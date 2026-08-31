@@ -1944,13 +1944,10 @@ __device__ __forceinline__ void shade_material(
 	// RGB channel - see kRgbChannelWavelengthNm below) with a compensating
 	// 3x reweight (optix_raygen.h), a coarser but far cheaper approximation
 	// - no new device-memory uploads, one new payload register instead of
-	// eight. Scoped to smooth MaterialType::Dielectric only this round
-	// (matching CPU dispersion's own original, deliberately-narrower scope
-	// before a later round extended it to RoughDielectric too) -
-	// RoughDielectric's real NEE/MIS
-	// (rd_bxdf.pdf()/f() calls just below, this same switch) would need the
-	// SAME resolved dispersive ior threaded into THOSE too for a consistent
-	// result, a real follow-up-sized piece of work, not attempted here.
+	// eight. Covers both MaterialType::Dielectric and MaterialType::
+	// RoughDielectric (matching CPU dispersion's own scope) - RoughDielectric's
+	// real NEE/MIS (rd_bxdf.pdf()/f() calls, this same switch) also threads
+	// the same resolved dispersive ior through, for a consistent result.
 	unsigned int& inout_rgb_channel
 ) {
 	float3 attenuation;
@@ -2461,6 +2458,12 @@ __device__ __forceinline__ void shade_material(
 			// flat mat.fuzz, matching CPU's rough_dielectric::true_alpha()
 			// (material_pbrt.h) exactly, including its isotropic-only scope
 			// (no separate uroughness/vroughness texture support).
+			// Untested: no bundled scene combines a texture-bound roughness
+			// (this branch) with a dispersive IOR (mat.dispersive_extra
+			// below) on RoughDielectric - B24 uses a flat scalar roughness.
+			// The two are structurally independent fields/conditions with no
+			// aliasing between them, so this is believed safe, just unverified
+			// by any render or test.
 			float rd_alpha_x, rd_alpha_y;
 			if (mat.textureIdx >= 0) {
 				const float rd_rough = sample_texture(mat.textureIdx, uv_u, uv_v, hit_point).x;
@@ -2479,6 +2482,13 @@ __device__ __forceinline__ void shade_material(
 			// dispersive glass (e.g. B24) previously stayed flat on this
 			// backend even after smooth Dielectric gained real dispersion,
 			// since this case never read mat.dispersive_extra at all.
+			// Deliberately copy-pasted rather than factored into a shared
+			// helper: exactly 2 occurrences (this one and Dielectric's,
+			// above) inside one already-small function, each immediately
+			// followed by a different scatter routine - CauchyEta() itself
+			// (the actual non-trivial math) is already a shared primitive
+			// (src/shared/fresnel.h); a 3rd occurrence would tip this into
+			// worth extracting.
 			float rd_ior = mat.ior;
 			if (mat.dispersive_extra.cauchy_A > 0.0f) {
 				if (inout_rgb_channel == kRgbChannelUnset) {
@@ -2575,7 +2585,14 @@ __device__ __forceinline__ void shade_material(
 			// interface instead of immediately self-intersecting it.
 			if (!rd_dist.EffectivelySmooth()) {
 				is_specular = false;
-				RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha_x, rd_alpha_y };
+				// rd_ior, not mat.ior: RoughDielectricBxDF::f()/pdf() (src/shared/
+				// bxdfs_conductor.h) take eta as an explicit call parameter and
+				// never read this struct's own .ior member - so this value is
+				// currently inert either way - but using the dispersion-resolved
+				// one here avoids leaving a flat, undispersed IOR sitting in a
+				// field literally named for the thing this whole case just
+				// computed a dispersed value for.
+				RoughDielectricBxDF<float> rd_bxdf{ rd_ior, rd_alpha_x, rd_alpha_y };
 				// wo_local was already derived (above) from the flip-adjusted
 				// wi_x/wi_y/wi_z - it's already in the same mirrored frame as
 				// wi, same as the attenuation-weight G2/G1 computation just

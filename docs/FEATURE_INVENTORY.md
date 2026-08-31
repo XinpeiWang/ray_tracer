@@ -179,9 +179,9 @@ real, pre-existing wavefront bug found while verifying this: the smooth
 (always false-negative, always took the "entering" branch) instead of the
 correctly-tracked `h.frontFace` the `RoughDielectric` case next to it
 already used - harmless-looking for a single-bounce sphere (A1) but visibly
-wrong for the prism's many internal total-internal-reflection bounces. **Gap**:
-no dispersion at all on GPU-recursive (would need its own wavelength-
-tracking apparatus built from scratch - see §9).
+wrong for the prism's many internal total-internal-reflection bounces.
+GPU-recursive now has real dispersion too, for both `dielectric` and
+`rough_dielectric` - see §9 for the approximation it uses.
 
 **Not a gap, just a scope note**: `--spectral`'s own material whitelist
 (`cpu_interface.cpp`'s `spectral_scan_hittable()`, via the `spectral_scan_material()`
@@ -387,11 +387,9 @@ path. Every actual spectral computation reduces to RGB immediately, every
 sample, rather than accumulating spectral radiance across the whole image
 and reducing once at the end (pbrt-v4's own architecture).
 
-**Gap**: GPU-recursive has no spectral path at all (RGB only).
-
-**Gap**: no dispersion on GPU-recursive (see §2) — GPU-wavefront now has it
-(both `dielectric` and `rough_dielectric`, matching CPU); GPU-recursive has
-no wavelength-tracking apparatus at all to build it on.
+**Gap**: GPU-recursive has no spectral path at all (RGB only) - its
+dispersion support (see §2) is a separate, coarser 3-representative-
+wavelength scheme layered directly into shading, not a real spectral path.
 
 ## 10. Acceleration Structures
 
@@ -533,10 +531,6 @@ all of them, and it's worth knowing which is which before relying on one.
 - A `Shape` type this loader can't build (e.g. a non-cubic/non-Bezier
   `curve`) → dropped with a "shape not supported" warning; nothing is
   rendered in its place.
-- Dispersion on GPU-recursive → no approximate dispersion; it's just flat,
-  non-dispersive IOR, silently (no warning, since this isn't a scene-loading
-  failure — it's simply a code path that was never built). GPU-wavefront now
-  has real dispersion (both `dielectric` and `rough_dielectric`) — see §2.
 - The orphaned scaffolding (§11: `UniformLightSampler`, `BVHLightSampler2`,
   `ExhaustiveLightSampler`, ReSTIR, `PixelSensor`/`SpectralFilm`) — these
   aren't fallbacks *for* anything and don't *have* fallbacks either; they're

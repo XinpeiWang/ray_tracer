@@ -2,10 +2,10 @@
 // Real end-to-end verification that GPU-recursive (--gpu, no --wavefront)
 // actually disperses light through a dispersive dielectric material -
 // closes a coverage gap a code-review pass found: this backend's new
-// dispersion support (shade_material()'s Dielectric case, gpu/optix/
-// optix_device_helpers.h) had zero automated coverage before this test,
-// unlike CPU's own CauchyEta()/dielectric::scatter_dispersive() (tests/unit/
-// fresnel_tests.cpp, tests/unit/scatter_record_transmission_tests.cpp) -
+// dispersion support (shade_material()'s Dielectric/RoughDielectric cases,
+// gpu/optix/optix_device_helpers.h) had zero automated coverage before this
+// test, unlike CPU's own CauchyEta()/dielectric::scatter_dispersive() (tests/
+// unit/fresnel_tests.cpp, tests/unit/scatter_record_transmission_tests.cpp) -
 // those only exercise code this feature reuses unchanged, not the new
 // per-path stochastic-channel-selection mechanism or the payload plumbing
 // that carries it across bounces.
@@ -14,15 +14,18 @@
 // refracted/dispersed region used the same flat, undispersed mat.ior, so a
 // white light through the prism stayed a uniform, achromatic (R==G==B)
 // grey/white strip - no chromatic fan at all. This test locks in the fix by
-// rendering B23 (Glass Prism Dispersion, src/TheRestOfYourLife/
-// scene_registry.h) and asserting at least one pixel shows real hue
-// separation (max(R,G,B) - min(R,G,B) meaningfully above zero) - a property
-// the pre-fix flat-IOR code could never produce, since B23's only light
-// source is achromatic white and its walls/background are neutral
-// grey/white (see build_prism_dispersion()'s own comment, src/
+// rendering the two dispersion demo scenes (B23 smooth / B24 rough, src/
+// TheRestOfYourLife/scene_registry.h) and asserting at least one pixel shows
+// real hue separation (max(R,G,B) - min(R,G,B) meaningfully above zero) - a
+// property the pre-fix flat-IOR code could never produce, since both scenes'
+// only light source is achromatic white and their walls/background are
+// neutral grey/white (see build_prism_dispersion()'s own comment, src/
 // TheRestOfYourLife/scenes_materials.h) - the ONLY source of real per-
-// channel divergence anywhere in this scene is the dispersive refraction
-// itself.
+// channel divergence anywhere in either scene is the dispersive refraction
+// itself. Parameterized (TEST_P) rather than two hand-copied TEST_F bodies -
+// B23 (smooth Dielectric) and B24 (rough RoughDielectric) exercise two
+// separate shade_material() cases with the identical render/measure/assert
+// shape, differing only in scene id and expected-magnitude commentary.
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cstdio>
@@ -35,7 +38,13 @@ extern "C" {
 
 namespace {
 
-class GpuRecursiveDispersionTest : public ::testing::Test {
+struct DispersionCase {
+	const char* sceneId;
+	const char* outputPath;
+	const char* materialLabel;  // used only in assertion failure text
+};
+
+class GpuRecursiveDispersionTest : public ::testing::TestWithParam<DispersionCase> {
   protected:
 	void SetUp() override {
 		if (!optix_is_available()) {
@@ -43,28 +52,26 @@ class GpuRecursiveDispersionTest : public ::testing::Test {
 		}
 	}
 	void TearDown() override {
-		for (const auto& f : outputFiles_) std::remove(f.c_str());
+		std::remove(GetParam().outputPath);
 	}
-	std::vector<std::string> outputFiles_;
 };
 
 } // namespace
 
-TEST_F(GpuRecursiveDispersionTest, GlassPrismShowsRealChromaticSeparation) {
-	const char* path = "gpu_recursive_dispersion_test_b23.ppm";
-	outputFiles_.push_back(path);
+// force_camera_override=1: both B23 and B24 have their own registered
+// camera (kPrismCamera, scene_registry.h) - cam_x/y/z below are ignored,
+// matching every other B-series scene test in this codebase.
+TEST_P(GpuRecursiveDispersionTest, ShowsRealChromaticSeparation) {
+	const DispersionCase& tc = GetParam();
 
-	// force_camera_override=1: B23 has its own registered camera
-	// (kPrismCamera, scene_registry.h) - cam_x/y/z below are ignored,
-	// matching every other B-series scene test in this codebase.
 	int result = optix_render_main(
 		/*image_width=*/200, /*image_height=*/100,
 		/*samples_per_pixel=*/32, /*max_depth=*/8,
-		path, /*scene_id=*/"B23",
+		tc.outputPath, tc.sceneId,
 		0.0, 0.0, 0.0, /*force_camera_override=*/1);
-	ASSERT_EQ(result, 0) << "optix_render_main failed on scene B23 (--gpu recursive)";
+	ASSERT_EQ(result, 0) << "optix_render_main failed on scene " << tc.sceneId << " (--gpu recursive)";
 
-	PPMImage img = load_ppm(path);
+	PPMImage img = load_ppm(tc.outputPath);
 	ASSERT_TRUE(img.valid) << "Failed to load rendered PPM";
 	ASSERT_EQ(img.width, 200);
 	ASSERT_EQ(img.height, 100);
@@ -76,60 +83,27 @@ TEST_F(GpuRecursiveDispersionTest, GlassPrismShowsRealChromaticSeparation) {
 		maxChannelSpread = std::max(maxChannelSpread, spread);
 	}
 
-	// A flat/undispersed render of this scene (every backend before this
-	// round's own fix, and GPU-recursive specifically before the dispersion
-	// commit) never exceeds a few percent here - noise/tonemapping jitter
-	// only, no real hue. Real dispersion produces a strong, unmistakable
-	// red/orange/yellow fan (see this file's own header comment) - 0.15 is
-	// comfortably above noise floor and comfortably below the real effect's
-	// actual magnitude (empirically closer to 0.5-0.8 at the fan's core).
+	// A flat/undispersed render of either scene (every backend before this
+	// feature's own fix, and GPU-recursive specifically before each
+	// material kind's dispersion commit) never exceeds a few percent here -
+	// noise/tonemapping jitter only, no real hue. Real dispersion produces a
+	// strong, unmistakable red/orange/yellow fan (see this file's own header
+	// comment) - 0.15 is comfortably above noise floor and comfortably below
+	// the real effect's actual magnitude (empirically ~0.5-0.8 for B23's
+	// smooth fan, ~0.9-1.0 for B24's rough-surface mottling, which spreads
+	// the same chromatic separation across more, noisier pixels).
 	EXPECT_GT(maxChannelSpread, 0.15f)
 		<< "No pixel shows real R/G/B divergence - GPU-recursive's dispersive "
-		<< "Dielectric may have regressed back to flat/undispersed refraction "
-		<< "(max channel spread found: " << maxChannelSpread << ")";
-}
-
-// Companion to GlassPrismShowsRealChromaticSeparation above, for
-// MaterialType::RoughDielectric (B24, "Frosted Prism Dispersion") - closes a
-// SEPARATE gap the Dielectric fix above didn't touch: shade_material()'s
-// RoughDielectric case (gpu/optix/optix_device_helpers.h) used the flat,
-// undispersed mat.ior unconditionally even after Dielectric gained real
-// dispersion, so a frosted/rough dispersive glass stayed achromatic on
-// GPU-recursive while GPU-wavefront (add_dispersive_rough_dielectric()'s own
-// NEE/MIS) already rendered it correctly. Same detection method as the
-// smooth-glass test: real dispersion produces per-pixel color mottling (the
-// chromatic fan blurred by roughness rather than a crisp band) with strong
-// R/G/B divergence; a flat render stays uniform grey/white.
-TEST_F(GpuRecursiveDispersionTest, RoughGlassPrismShowsRealChromaticSeparation) {
-	const char* path = "gpu_recursive_dispersion_test_b24.ppm";
-	outputFiles_.push_back(path);
-
-	int result = optix_render_main(
-		/*image_width=*/200, /*image_height=*/100,
-		/*samples_per_pixel=*/32, /*max_depth=*/8,
-		path, /*scene_id=*/"B24",
-		0.0, 0.0, 0.0, /*force_camera_override=*/1);
-	ASSERT_EQ(result, 0) << "optix_render_main failed on scene B24 (--gpu recursive)";
-
-	PPMImage img = load_ppm(path);
-	ASSERT_TRUE(img.valid) << "Failed to load rendered PPM";
-	ASSERT_EQ(img.width, 200);
-	ASSERT_EQ(img.height, 100);
-
-	float maxChannelSpread = 0.0f;
-	for (int i = 0; i + 2 < static_cast<int>(img.pixels.size()); i += 3) {
-		float r = img.pixels[i], g = img.pixels[i + 1], b = img.pixels[i + 2];
-		float spread = std::max({r, g, b}) - std::min({r, g, b});
-		maxChannelSpread = std::max(maxChannelSpread, spread);
-	}
-
-	// Same 0.15 threshold as the smooth-glass test above - empirically this
-	// scene's real dispersion produces a max spread around 0.9-1.0 (the
-	// rough surface's per-microfacet channel mottling is even more extreme
-	// pixel-to-pixel than the smooth prism's fan), comfortably above a flat
-	// render's noise-floor-only spread.
-	EXPECT_GT(maxChannelSpread, 0.15f)
-		<< "No pixel shows real R/G/B divergence - GPU-recursive's dispersive "
-		<< "RoughDielectric may have regressed back to flat/undispersed "
+		<< tc.materialLabel << " may have regressed back to flat/undispersed "
 		<< "refraction (max channel spread found: " << maxChannelSpread << ")";
 }
+
+INSTANTIATE_TEST_SUITE_P(
+	GlassAndFrostedPrisms,
+	GpuRecursiveDispersionTest,
+	::testing::Values(
+		DispersionCase{"B23", "gpu_recursive_dispersion_test_b23.ppm", "Dielectric"},
+		DispersionCase{"B24", "gpu_recursive_dispersion_test_b24.ppm", "RoughDielectric"}),
+	[](const ::testing::TestParamInfo<DispersionCase>& info) {
+		return std::string(info.param.sceneId);
+	});
