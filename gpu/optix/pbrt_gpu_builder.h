@@ -1309,6 +1309,27 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			out.rgbGridData.insert(out.rgbGridData.end(), rf.begin(), rf.end());
 			out.rgbGridData.insert(out.rgbGridData.end(), gf.begin(), gf.end());
 			out.rgbGridData.insert(out.rgbGridData.end(), bf.begin(), bf.end());
+			// Real per-voxel "rgb Le"/"float Lescale" (pbrt-v4 RGBGridMedium::
+			// LeGrid/LeScale) - previously silently dropped entirely on GPU
+			// (both backends), unlike CPU's real RGBGridMediumData::Le_grids
+			// support (rgb_grid_medium_hittable.h). Same is_emissive() gate
+			// as CPU (RGBGridMediumData::is_emissive(): Le_grids present AND
+			// Le_scale > 0) - md.Le_scale defaults to 1.0 when "Lescale" was
+			// omitted (pbrt_flatten.h's own comment on that default), so a
+			// scene with only "rgb Le" and no "Lescale" still glows here too.
+			meta.leDataOffset = -1;
+			meta.Le_scale = static_cast<float>(md.Le_scale);
+			const bool hasLe = md.Le_r.size() == voxels && md.Le_g.size() == voxels
+				&& md.Le_b.size() == voxels;
+			if (hasLe && meta.Le_scale > 0.0f) {
+				std::vector<float> ler(md.Le_r.begin(), md.Le_r.end());
+				std::vector<float> leg(md.Le_g.begin(), md.Le_g.end());
+				std::vector<float> leb(md.Le_b.begin(), md.Le_b.end());
+				meta.leDataOffset = static_cast<int>(out.rgbGridData.size());
+				out.rgbGridData.insert(out.rgbGridData.end(), ler.begin(), ler.end());
+				out.rgbGridData.insert(out.rgbGridData.end(), leg.begin(), leg.end());
+				out.rgbGridData.insert(out.rgbGridData.end(), leb.begin(), leb.end());
+			}
 			const int gridIdx = static_cast<int>(out.rgbGridMediums.size());
 			out.rgbGridMediums.push_back(meta);
 			MaterialData d = {};

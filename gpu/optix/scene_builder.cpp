@@ -3059,6 +3059,12 @@ static void build_rgb_grid_medium_scene_gpu(SceneData& scene) {
 	meta.sigma_scale = sigma_scale;
 	meta.sigma_maj = max_density * sigma_scale * 1.01f;  // small safety margin
 	meta.phase_g = 0.2f;
+	// No per-voxel "rgb Le" for this scattering-only demo scene - -1 is the
+	// documented "no emission" sentinel (GpuRgbGridMedium::leDataOffset's
+	// own comment, optix_types.h); Le_scale left at 0 too, matching CPU's
+	// own RGBGridMediumData::Le_scale default.
+	meta.leDataOffset = -1;
+	meta.Le_scale = 0.0f;
 
 	const int mat_medium = add_rgb_grid_medium(scene, meta, ss_r, ss_g, ss_b);
 
@@ -4478,19 +4484,20 @@ static bool build_loaded_pbrt_scene(
 	// the divergence the old warning here used to flag entirely, not just
 	// narrow it.
 
-	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - now
-	// implemented on both GPU backends for "homogeneous" media (MaterialType::
-	// Medium) only, matching CPU's own scope exactly for GPU (CPU itself now
-	// ALSO decodes "rgbgrid"'s own real per-voxel "Le" - see
-	// pbrt_flatten::Medium::Le_r's own comment - but that support is CPU-only
-	// this round; GPU's MaterialType::RgbGridMedium has no emission concept
-	// at all yet). See MaterialData::medium_emission's own comment
-	// (optix_types.h) for the sigma_a/sigma_t-weighted value baked in at
-	// build time (pbrt_gpu_builder.h's mediumMaterialIndex()) and each
-	// backend's own Medium closest-hit case for the real-collision gate
-	// (added only on a genuine phase-scatter event, never the
-	// straight-through sub-case) - same "cheap warning for a real,
-	// currently-unimplemented backend gap" pattern as the warning above.
+	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - implemented
+	// on both GPU backends for BOTH "homogeneous" media (MaterialType::
+	// Medium, a single build-time-baked sigma_a/sigma_t-weighted constant -
+	// see MaterialData::medium_emission's own comment, optix_types.h, and
+	// each backend's own Medium closest-hit case for the real-collision
+	// gate) AND "rgbgrid"'s real per-voxel "Le" array (MaterialType::
+	// RgbGridMedium - see GpuRgbGridMedium::leDataOffset's own comment,
+	// optix_types.h, and each backend's own RgbGridMedium closest-hit case).
+	// The rgbgrid case is NOT weighted by a sigma_a/sigma_t fraction like
+	// the homogeneous case is - GPU RgbGridMedium has no sigma_a grid at all
+	// (a real, pre-existing, documented simplification over CPU's fuller
+	// RGBGridMediumData support - see GpuRgbGridMedium's own comment) - so
+	// every accepted scatter collision emits the full per-voxel Le rather
+	// than only the "absorption fraction" CPU models.
 	//
 	// "rgbgrid" needs its own hasLe check here: its real Le lives in the
 	// per-voxel Le_r/Le_g/Le_b arrays now (Medium::Le_r's own comment), not

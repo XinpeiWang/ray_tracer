@@ -716,6 +716,22 @@ struct GpuRgbGridMedium {
 	                     // voxel value across all three channels, with a
 	                     // small safety margin - see the GPU scene builder.
 	float phase_g;       // Henyey-Greenstein asymmetry
+	// Real per-voxel "rgb Le" emission (pbrt-v4 RGBGridMedium::LeGrid, CPU's
+	// RGBGridMediumData::Le_grids) - GPU-side counterpart of dataOffset
+	// above, but a SEPARATE offset into the same flat LaunchParams::
+	// rgbGridData buffer (R block at leDataOffset, G at +nx*ny*nz, B at
+	// +2*(nx*ny*nz)), since the sigma_s block above already occupies
+	// [dataOffset, dataOffset+3*nx*ny*nz). -1 when this medium has no valid
+	// "rgb Le" array (matches CPU's Le_grids.has_value()==false) - device
+	// code must check this before reading rgbGridData at leDataOffset.
+	int   leDataOffset;
+	// Matches CPU's RGBGridMediumData::Le_scale / pbrt-v4 "Lescale" - applied
+	// at sample time, NOT baked into the stored grid values (mirrors
+	// dataOffset's own sigma_scale being a separate multiplier for the same
+	// reason). 0 when absent (is_emissive()'s own CPU-side `Le_scale > 0`
+	// gate), so a stray leDataOffset>=0 with a zero scale still safely
+	// contributes no emission even without checking leDataOffset first.
+	float Le_scale;
 };
 
 // Single-channel twin of GpuRgbGridMedium above - see MaterialType::

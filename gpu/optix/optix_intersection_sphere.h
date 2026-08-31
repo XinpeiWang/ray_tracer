@@ -751,6 +751,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			}
 
 			bool did_scatter = false;
+			float3 selfEmission = make_float3(0.0f, 0.0f, 0.0f);
 			if (has_seg && grid.sigma_maj > 0.0f) {
 				if (segMin < 0.0f) segMin = 0.0f;
 				float tt = segMin;
@@ -777,6 +778,27 @@ extern "C" __global__ void __closesthit__sphere() {
 						scattered_dir = sample_henyey_greenstein(-unit_dir3, grid.phase_g, seed);
 						float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
 						attenuation = make_float3(sr/maxc, sg/maxc, sb/maxc);
+						// Real per-voxel "rgb Le" (grid.leDataOffset's own
+						// comment, optix_types.h) sampled at this exact
+						// accepted scatter point, from the SAME rgbGridData
+						// buffer the sigma_s lookups above use. Unlike CPU's
+						// RGBGridMediumData::sample_point() (rgb_grid_medium_
+						// hittable.h), this is NOT weighted by a sigma_a/
+						// sigma_t collision-probability fraction - GPU
+						// RgbGridMedium has no sigma_a grid at all (pure-
+						// scattering simplification, see this branch's own
+						// header comment) - so every accepted scatter
+						// collision emits the full Le here rather than only
+						// the "absorption fraction" of collisions CPU models.
+						if (grid.leDataOffset >= 0) {
+							const float* leRData = params.rgbGridData + grid.leDataOffset;
+							const float* leGData = leRData + voxelCount;
+							const float* leBData = leGData + voxelCount;
+							float ler = gpu_rgb_grid_trilinear(leRData, grid.nx, grid.ny, grid.nz, px, py, pz);
+							float leg = gpu_rgb_grid_trilinear(leGData, grid.nx, grid.ny, grid.nz, px, py, pz);
+							float leb = gpu_rgb_grid_trilinear(leBData, grid.nx, grid.ny, grid.nz, px, py, pz);
+							selfEmission = make_float3(ler, leg, leb) * grid.Le_scale;
+						}
 					}
 				}
 				if (!did_scatter) medium_t_hit = segMax;
@@ -788,13 +810,13 @@ extern "C" __global__ void __closesthit__sphere() {
 			if (did_scatter) {
 				// Real NEE+MIS at the phase-function scatter event - see
 				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
-				// mat.medium_emission is always zero here (RgbGridMedium never
-				// sets it - "rgb Le" support is homogeneous-Medium only), so
-				// this is a pure no-op self-emission term, not a new feature.
+				// selfEmission (computed above, real per-voxel "rgb Le") is
+				// folded in exactly like mat.medium_emission is for every
+				// other medium type's own build-time-baked constant.
 				float3 wo = -unit_dir3;
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
+					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, selfEmission);
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;
