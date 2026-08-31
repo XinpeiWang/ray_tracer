@@ -183,7 +183,7 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist, GpuPortalLight portalLight);
     // Twin of launchEvaluateMaterials() above, scoped to simpleHitQueue's
     // Lambertian/Metal hits (see wavefront_types.h's WavefrontQueues::
     // simpleHitQueue and wavefront_kernels.cu's evaluate_materials_simple()).
@@ -200,7 +200,7 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist, GpuPortalLight portalLight);
     // Twin of launchEvaluateMaterialsSimple() above, scoped to
     // dielectricHitQueue's Dielectric/RoughDielectric hits (see
     // wavefront_types.h's WavefrontQueues::dielectricHitQueue and
@@ -218,12 +218,12 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist, GpuPortalLight portalLight);
     // Neither this nor launchAccumulateMiss() below take the AOV guide
     // buffers as launchX-style params - like textures (see setTextures()'s
     // comment), they travel via denoiserResources_ member state instead,
     // read directly inside each kernel-launch method's own body.
-    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist);
+    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist, GpuPortalLight portalLight);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
     void launchResolveBssrdfExit(int numExit,
         const MaterialData* d_materials, unsigned int numMaterials,
@@ -236,7 +236,7 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist, GpuPortalLight portalLight);
     void launchNormalizeFramebuffer(unsigned int numPixels, const float* d_weightBuffer, float3* d_framebuffer);
     // Denoiser guide-layer AOV normalization (--denoise only) - plain mean
     // over samplesPerPixel, not filter-weighted like launchNormalizeFramebuffer()

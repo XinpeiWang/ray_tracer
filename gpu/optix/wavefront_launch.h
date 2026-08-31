@@ -60,6 +60,7 @@ extern "C" void wf_launch_evaluate_materials(
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
+	GpuPortalLight               portalLight,
 	bool                         regularize,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
@@ -90,6 +91,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
+	GpuPortalLight               portalLight,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	cudaStream_t                 stream);
@@ -119,6 +121,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
+	GpuPortalLight               portalLight,
 	bool                         regularize,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
@@ -127,6 +130,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
+	GpuPortalLight portalLight,
 	float3* d_albedoBuffer, float3* d_normalBuffer, cudaStream_t stream);
 
 extern "C" void wf_launch_accumulate_shadow(
@@ -157,6 +161,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
+	GpuPortalLight               portalLight,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_normalize_framebuffer(

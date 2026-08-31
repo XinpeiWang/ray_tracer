@@ -62,6 +62,23 @@ struct SceneData {
 	int skyWidth = 0, skyHeight = 0;
 	float skyScale = 1.0f;
 
+	// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's own
+	// comment (optix_types.h). Built once by pbrt_gpu_builder.h from a real,
+	// host-side PortalImageInfiniteLightData<double> (same class CPU uses);
+	// portalHeight stays 0 (its default) for every scene without a real
+	// portal[4] quad, matching GpuPortalLight::height's own "disabled"
+	// sentinel - mutually exclusive with the sky fields just above (matches
+	// CPU: a scene's one infinite light is either a portal or a plain
+	// image/flat-colour sky, never both).
+	std::vector<float> portalRectifiedImage;  // portalWidth*portalHeight*3, row-major RGB
+	std::vector<float> portalDistFunc;        // portalWidth*portalHeight
+	std::vector<double> portalSatSum;         // portalWidth*portalHeight - stays double, see
+	                                           // GpuPortalLight::satSum's own comment
+	int portalWidth = 0, portalHeight = 0;
+	float portalScale = 1.0f;
+	float3 portalFrameX = {}, portalFrameY = {}, portalFrameZ = {};
+	float3 portalP0 = {}, portalP2 = {};
+
 	// ---- object instancing ------------------------------------------------
 	// Geometry that exists once and is placed many times. Kept in a SEPARATE
 	// array from `triangles` on purpose: these are in their definition's

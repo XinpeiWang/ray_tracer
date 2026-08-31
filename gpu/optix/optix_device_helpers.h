@@ -298,6 +298,7 @@ __device__ __forceinline__ bool sample_principled_material(
 // it (no OptiX intrinsics, no `params`), so its own position here is only
 // "before optix_sky_light.h, which calls into it" not a hard requirement.
 #include "gpu_sky_light_shared.h"
+#include "gpu_portal_light_shared.h"
 #include "optix_sky_light.h"
 
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {
@@ -1175,7 +1176,7 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 		const float3& skyColor = params.camera.backgroundColor;
 		if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
 			float3 sky_dir, sky_Le_val; float pdf_sky;
-			sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+			sample_sky_nee(seed, skyColor, medium_point, sky_dir, pdf_sky, sky_Le_val);
 			if (pdf_sky > 0.0f) {
 				float phase_val_sky = hg_phase_value(dot(wo, sky_dir), g);
 				if (trace_shadow_ray(medium_point, sky_dir, 1e30f)) {
@@ -1709,7 +1710,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 			// sample_sky_nee() (optix_sky_light.h) - see shade_material()'s
 			// own Lambertian sky-NEE block for the full comment.
 			float3 sky_dir, sky_Le_val; float pdf_sky;
-			sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+			sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 			float  cos_sky = dot(sky_dir, normal);
 			if (cos_sky > 0.0f) {
 				if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
@@ -2056,7 +2057,7 @@ __device__ __forceinline__ void shade_material(
 				const float3& skyColor = params.camera.backgroundColor;
 				if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
 					float3 sky_dir, sky_Le_val; float pdf_sky;
-					sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+					sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 					float  cos_sky = dot(sky_dir, normal);
 					if (cos_sky > 0.0f) {
 						if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
@@ -2424,7 +2425,7 @@ __device__ __forceinline__ void shade_material(
 					const float3& skyColor = params.camera.backgroundColor;
 					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
 						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, cc_tan), sky_y = dot(sky_dir, cc_bit), skz = dot(sky_dir, cc_n);
 						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
@@ -2634,7 +2635,7 @@ __device__ __forceinline__ void shade_material(
 					const float3& skyColor = params.camera.backgroundColor;
 					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
 						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bitan), skz = dot(sky_dir, n);
 						if (rd_flip) { skx=-skx; sky_y=-sky_y; skz=-skz; }
 						if (skz != 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
@@ -2732,7 +2733,7 @@ __device__ __forceinline__ void shade_material(
 					const float3& skyColor = params.camera.backgroundColor;
 					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
 						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, ctan), sky_y = dot(sky_dir, cbitan), skz = dot(sky_dir, cn);
 						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							float fr, fg, fb;
@@ -2820,7 +2821,7 @@ __device__ __forceinline__ void shade_material(
 					const float3& skyColor = params.camera.backgroundColor;
 					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
 						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, rmtan), sky_y = dot(sky_dir, rmbitan), skz = dot(sky_dir, rmn);
 						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							float fr, fg, fb;
@@ -2991,7 +2992,7 @@ __device__ __forceinline__ void shade_material(
 					const float3& skyColor = params.camera.backgroundColor;
 					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
 						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, cdtan), sky_y = dot(sky_dir, cdbit), skz = dot(sky_dir, cdn);
 						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);

@@ -58,6 +58,11 @@ public:
 	int XSize() const { return nx_; }
 	int YSize() const { return ny_; }
 
+	// Flat row-major backing store - GPU callers (e.g. the portal infinite
+	// light's device port) upload this directly rather than walking
+	// operator() cell by cell.
+	const std::vector<T>& data() const { return data_; }
+
 private:
 	int nx_, ny_;
 	std::vector<T> data_;
@@ -101,6 +106,11 @@ public:
 	}
 
 	bool IsEmpty() const { return sum_.XSize() == 0; }
+
+	// Prefix-sum table itself - GPU callers port Integral()/Lookup()/
+	// LookupInt() as device functions over this flat array (double, for the
+	// same accumulation-precision reason this class stores it as double).
+	const Array2D<double>& sum() const { return sum_; }
 
 private:
 	// Bilinearly-interpolated lookup into the prefix-sum table.
@@ -192,6 +202,12 @@ public:
 		if (funcInt == 0.f) return 0.f;
 		return Eval(p) / funcInt;
 	}
+
+	// GPU callers need both the prefix-sum table (for Integral()) and the
+	// raw per-cell values (for Eval()) - the device port of Sample()/PDF()
+	// needs the exact same two arrays this class already keeps internally.
+	const SummedAreaTable& sat() const { return sat_; }
+	const Array2D<float>&  func() const { return func_; }
 
 private:
 	// Bisection search: find x in [min,max] such that CDF P(x) = u.

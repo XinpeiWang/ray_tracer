@@ -1025,7 +1025,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist)
+	GpuSkyDistribution skyDist, GpuPortalLight portalLight)
 {
 	if (numHits == 0) return;
 
@@ -1075,7 +1075,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const float*>(d_measuredData_),
 		reinterpret_cast<const float*>(d_measuredMcdf_),
 		reinterpret_cast<const float*>(d_measuredCcdf_),
-		skyColor, shadowRayEpsilon, skyDist, regularize,
+		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		stream_);
@@ -1097,7 +1097,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist)
+	GpuSkyDistribution skyDist, GpuPortalLight portalLight)
 {
 	if (numHits == 0) return;
 
@@ -1129,7 +1129,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<const TextureData*>(d_textures_),
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
-		skyColor, shadowRayEpsilon, skyDist,
+		skyColor, shadowRayEpsilon, skyDist, portalLight,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		simpleMaterialStream_);
@@ -1153,7 +1153,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist)
+	GpuSkyDistribution skyDist, GpuPortalLight portalLight)
 {
 	if (numHits == 0) return;
 
@@ -1185,14 +1185,14 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		reinterpret_cast<const TextureData*>(d_textures_),
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
-		skyColor, shadowRayEpsilon, skyDist, regularize,
+		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		dielectricMaterialStream_);
 }
 
 void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor,
-												GpuSkyDistribution skyDist) {
+												GpuSkyDistribution skyDist, GpuPortalLight portalLight) {
 	if (numMiss == 0) return;
 
 	WorkQueue<MissWorkItem> mq;
@@ -1200,7 +1200,7 @@ void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffe
 	mq.counter  = reinterpret_cast<int*>(d_missCounter_);
 	mq.capacity = queueCapacity_;
 
-	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist,
+	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist, portalLight,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		stream_);
@@ -1232,7 +1232,7 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 	const GpuAliasEntry* d_aliasTable, unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist)
+	GpuSkyDistribution skyDist, GpuPortalLight portalLight)
 {
 	if (numExit == 0) return;
 
@@ -1263,7 +1263,7 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 		d_punctualLights, numPunctualLights,
 		reinterpret_cast<const TextureData*>(d_textures_),
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
-		skyColor, shadowRayEpsilon, skyDist,
+		skyColor, shadowRayEpsilon, skyDist, portalLight,
 		stream_);
 }
 
@@ -1550,7 +1550,7 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist, camera.portalLight);
 
 			// ------------------------------------------------------------------
 			// Phase 3b: Evaluate simple materials (Lambertian/Metal hits
@@ -1582,7 +1582,7 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist, camera.portalLight);
 
 			// ------------------------------------------------------------------
 			// Phase 3c: Evaluate dielectric materials (Dielectric/RoughDielectric
@@ -1607,12 +1607,12 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist, camera.portalLight);
 
 			// ------------------------------------------------------------------
 			// Phase 4: Accumulate miss (escaped rays → background)
 			// ------------------------------------------------------------------
-			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist);
+			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist, camera.portalLight);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 			CUDA_CHECK(cudaStreamSynchronize(simpleMaterialStream_));
@@ -1673,7 +1673,7 @@ bool WavefrontPathTracer::render(
 					num_lights,
 					reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 					num_punctual_lights,
-					d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+					d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist, camera.portalLight);
 
 				CUDA_CHECK(cudaStreamSynchronize(stream_));
 			}

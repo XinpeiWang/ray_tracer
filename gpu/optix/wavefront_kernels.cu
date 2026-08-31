@@ -585,6 +585,7 @@ __device__ __forceinline__ bool wf_sample_principled_material(
 // (shared with the recursive backend) lives in gpu_sky_light_shared.h,
 // included first.
 #include "gpu_sky_light_shared.h"
+#include "gpu_portal_light_shared.h"
 #include "wavefront_sky_light.h"
 
 // reflect/refract wrappers
@@ -1625,6 +1626,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	const GpuAliasEntry* aliasTable, unsigned int numLights,
 	const PunctualLightGPU* punctualLights, unsigned int numPunctualLights,
 	float3 skyColor, float shadow_eps, const GpuSkyDistribution& skyDist,
+	const GpuPortalLight& portalLight,
 	WorkQueue<ShadowRayWorkItem>& shadowQueue,
 	WorkQueue<RayWorkItem>& nextRayQueue,
 	float3* framebuffer,
@@ -2104,7 +2106,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// backend's identical dispatch, and optix_sky_light.h for the full
 		// algorithm comment.
 		float3 sky_dir, sky_Le_val; float pdf_sky;
-		wf_sample_sky_nee(skyDist, seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+		wf_sample_sky_nee(skyDist, portalLight, seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 		// See the area-light block above for the RoughDielectric two-sided
 		// rationale (matches optix_device_helpers.h's sky-NEE block).
 		float  raw_cos = dot(sky_dir, normal);
@@ -2420,6 +2422,7 @@ extern "C" __global__ void evaluate_materials(
 	// default when the scene has no image sky) makes every sky-NEE/miss call
 	// site below fall back to skyColor + uniform-sphere sampling, unchanged.
 	GpuSkyDistribution skyDist,
+	GpuPortalLight portalLight,
 	// Integrator "bool regularize" (defaults false, matching pbrt-v4's own
 	// real default) - a single scalar pulled out of GpuCameraParams and
 	// passed independently, same established pattern as shadowRayEpsilon
@@ -3721,7 +3724,7 @@ extern "C" __global__ void evaluate_materials(
 		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
-		skyColor, shadow_eps, skyDist,
+		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v);
 }
@@ -3780,6 +3783,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	float3 skyColor,
 	float shadowRayEpsilon,
 	GpuSkyDistribution skyDist,
+	GpuPortalLight portalLight,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3* albedoBuffer,
 	float3* normalBuffer
@@ -3897,7 +3901,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
-		skyColor, shadow_eps, skyDist,
+		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v);
 }
@@ -3949,6 +3953,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	float3 skyColor,
 	float shadowRayEpsilon,
 	GpuSkyDistribution skyDist,
+	GpuPortalLight portalLight,
 	// Integrator "bool regularize" - see evaluate_materials()'s own
 	// identical parameter comment above.
 	bool regularize,
@@ -4214,7 +4219,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
-		skyColor, shadow_eps, skyDist,
+		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v);
 }
@@ -4310,7 +4315,8 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	const unsigned char* texturePixels,
 	float3 skyColor,
 	float shadowRayEpsilon,
-	GpuSkyDistribution skyDist
+	GpuSkyDistribution skyDist,
+	GpuPortalLight portalLight
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Same defensive capacity guard as accumulate_shadow's own version of
@@ -4397,7 +4403,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
-		skyColor, shadow_eps, skyDist,
+		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, /*uv_u=*/0.0f, /*uv_v=*/0.0f);
 }
@@ -4418,6 +4424,7 @@ extern "C" __global__ void accumulate_miss(
 	// Real importance-sampled HDR sky - see evaluate_materials's own
 	// GpuSkyDistribution parameter comment.
 	GpuSkyDistribution      skyDist,
+	GpuPortalLight          portalLight,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3*                 albedoBuffer,
 	float3*                 normalBuffer
@@ -4448,7 +4455,7 @@ extern "C" __global__ void accumulate_miss(
 	// escaped ray doesn't double-count against the NEE sample already taken
 	// at the previous hit. `backgroundColor` still gates "does this scene
 	// have a sky at all" below, matching prior behavior exactly.
-	float3 color = wf_sky_radiance(skyDist, m.rayDir, backgroundColor);
+	float3 color = wf_sky_radiance(skyDist, portalLight, m.rayDir, backgroundColor, m.rayOrigin);
 
 	// Denoiser guide-layer AOV, primary-ray misses only (depth==0) - mirrors
 	// optix_miss.h's pack_aov_payload(color, -rayDir) for the recursive
@@ -4467,7 +4474,7 @@ extern "C" __global__ void accumulate_miss(
 
 	float3 weightedBackground = color;
 	if (m.brdf_pdf > 0.0f && (backgroundColor.x > 0.0f || backgroundColor.y > 0.0f || backgroundColor.z > 0.0f)) {
-		const float pdf_sky = wf_sky_pdf_for_mis(skyDist, m.rayDir);
+		const float pdf_sky = wf_sky_pdf_for_mis(skyDist, portalLight, m.rayDir, m.rayOrigin);
 		float w_b = wf_mis(m.brdf_pdf, pdf_sky);
 		weightedBackground = w_b * color;
 	}

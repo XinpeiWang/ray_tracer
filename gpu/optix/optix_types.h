@@ -1317,6 +1317,53 @@ struct GpuSkyDistribution {
 	const float* conditionalFuncInt; // height floats, one per row
 };
 
+// pbrt-v4 "portal" (windowed) infinite light - GPU-side flat-buffer port of
+// src/shared/portal_image_infinite_light.h's PortalImageInfiniteLightData<T>.
+// Mutually exclusive with GpuSkyDistribution above (matches CPU: a scene's
+// single infinite light is either a plain image/flat-colour sky OR a portal
+// one, never both - src/TheRestOfYourLife/pbrt_cpu_builder.h's own
+// BuildResult::portal/sky comment) - height<=0 here (the zero-init default)
+// means "this scene has no portal light", same convention as
+// GpuSkyDistribution::height. When BOTH are height<=0, every call site falls
+// back to the existing flat-colour + uniform-sphere path unchanged.
+//
+// Unlike GpuSkyDistribution, this struct's queries (eval_Le/sample_li/
+// pdf_li - gpu_portal_light_shared.h) depend on the SHADING POINT, not just
+// a direction: the portal quad's visible angular window changes with
+// viewpoint (ImageBounds() in the CPU class). Every caller (sample_sky_nee/
+// sky_radiance/sky_pdf_for_mis and their wf_ twins) therefore takes an
+// additional shading-point parameter now, threaded through from whichever
+// hit/miss point is already in scope at each call site.
+//
+// The three flat buffers below are NOT rebuilt on GPU - pbrt_gpu_builder.h
+// constructs a real, host-side PortalImageInfiniteLightData<double> (the
+// exact same class CPU uses) and uploads its already-computed rectified
+// image / distribution values / summed-area-table prefix sums verbatim, so
+// the rectified image's content (including the CPU class's own equal-area-
+// vs-equirectangular quirk, see that class's ctor comment) matches CPU
+// bit-for-bit rather than risking a second, independently-reimplemented
+// equal-area rectification pass here.
+//
+// Deliberately NO in-class member initializers - same __constant__-global
+// constraint as GpuSkyDistribution above (see that struct's own comment).
+struct GpuPortalLight {
+	int width, height;   // rectified image dimensions; height<=0 = "no portal light"
+	float scale;
+	// Orthonormal portal-quad frame (PortalImageInfiniteLightData::
+	// portalFrame_'s FromXY(p03,p01) result) - built once, host-side, in
+	// pbrt_gpu_builder.h; ImageFromRender()/RenderFromImage_uv() (gpu_
+	// portal_light_shared.h) project through this frame every query.
+	float3 frameX, frameY, frameZ;
+	// portal[0] and portal[2] (diagonally opposite corners) - the only two
+	// of the CPU class's 4 stored corners ImageBounds() actually reads at
+	// query time; portal[1]/[3] only ever fed the frame construction above,
+	// already baked into frameX/Y/Z, so they need no GPU-side copy.
+	float3 p0, p2;
+	const float*  rectifiedImage;  // width*height*3 floats, row-major RGB
+	const float*  distFunc;        // width*height floats, raw per-cell distribution values
+	const double* satSum;          // width*height doubles, summed-area-table prefix sums
+};
+
 // GPU camera parameters. `origin`/`lower_left_corner`/`horizontal`/`vertical`
 // describe the perspective/orthographic viewport (same meaning as before this
 // struct existed); the remaining fields are only meaningful for their
@@ -1384,6 +1431,11 @@ struct GpuCameraParams {
 	// field existed - every scene with a constant-colour sky, or no infinite
 	// light at all, is completely unaffected.
 	GpuSkyDistribution skyDist;
+
+	// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's own
+	// comment. Mutually exclusive with skyDist above (matches CPU); height<=0
+	// (default) means "no portal light", same convention as skyDist.height.
+	GpuPortalLight portalLight;
 
 	// Pixel reconstruction filter (pbrt-v4 PixelFilter directive) - the GPU
 	// twin of src/shared/filter.h's PixelFilterDispatch (CPU); gpu_filter_

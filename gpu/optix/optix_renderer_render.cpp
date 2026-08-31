@@ -64,6 +64,26 @@ bool OptiXRenderer::render(
 		gpuCam.skyDist.conditionalFuncInt = reinterpret_cast<const float*>(d_skyConditionalFuncInt_);
 	}
 
+	// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's own
+	// comment (optix_types.h). Same "device pointers patched in fresh here"
+	// lifecycle as skyDist just above; mutually exclusive with it (matches
+	// CPU) - portalHeight_ <= 0 leaves gpuCam.portalLight zero-init'd, which
+	// every call site on both GPU backends already treats as "fall through
+	// to the sky/flat-colour path".
+	if (portalHeight_ > 0) {
+		gpuCam.portalLight.width = portalWidth_;
+		gpuCam.portalLight.height = portalHeight_;
+		gpuCam.portalLight.scale = portalScale_;
+		gpuCam.portalLight.frameX = portalFrameX_;
+		gpuCam.portalLight.frameY = portalFrameY_;
+		gpuCam.portalLight.frameZ = portalFrameZ_;
+		gpuCam.portalLight.p0 = portalP0_;
+		gpuCam.portalLight.p2 = portalP2_;
+		gpuCam.portalLight.rectifiedImage = reinterpret_cast<const float*>(d_portalRectifiedImage_);
+		gpuCam.portalLight.distFunc = reinterpret_cast<const float*>(d_portalDistFunc_);
+		gpuCam.portalLight.satSum = reinterpret_cast<const double*>(d_portalSatSum_);
+	}
+
 	// Delegate to WavefrontPathTracer if enabled
 	if (useWavefront_ && wavefrontTracer_) {
 		// Set per render rather than once at enable time, so a scene switch

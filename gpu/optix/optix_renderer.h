@@ -116,7 +116,18 @@ public:
 		const std::vector<float>& skyConditionalCdf = {},
 		const std::vector<float>& skyConditionalFunc = {},
 		const std::vector<float>& skyConditionalFuncInt = {},
-		int skyWidth = 0, int skyHeight = 0, float skyScale = 1.0f
+		int skyWidth = 0, int skyHeight = 0, float skyScale = 1.0f,
+		// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's
+		// own comment (optix_types.h) and SceneData's own matching fields
+		// (scene_builder.h). portalHeight stays 0 (its default) for every
+		// scene without a real portal[4] quad - mutually exclusive with the
+		// sky fields just above (matches CPU).
+		const std::vector<float>& portalRectifiedImage = {},
+		const std::vector<float>& portalDistFunc = {},
+		const std::vector<double>& portalSatSum = {},
+		int portalWidth = 0, int portalHeight = 0, float portalScale = 1.0f,
+		float3 portalFrameX = {}, float3 portalFrameY = {}, float3 portalFrameZ = {},
+		float3 portalP0 = {}, float3 portalP2 = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -482,6 +493,18 @@ private:
 	int skyWidth_ = 0, skyHeight_ = 0;
 	float skyScale_ = 1.0f;
 	float skyMarginalFuncInt_ = 0.0f;
+
+	// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's own
+	// comment (optix_types.h). Same lifecycle/dual-backend delivery as the
+	// sky distribution just above; mutually exclusive with it (matches CPU).
+	// portalHeight_ <= 0 (the default) means "no portal light in this scene".
+	CUdeviceptr d_portalRectifiedImage_ = 0;
+	CUdeviceptr d_portalDistFunc_ = 0;
+	CUdeviceptr d_portalSatSum_ = 0;
+	int portalWidth_ = 0, portalHeight_ = 0;
+	float portalScale_ = 1.0f;
+	float3 portalFrameX_ = {}, portalFrameY_ = {}, portalFrameZ_ = {};
+	float3 portalP0_ = {}, portalP2_ = {};
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices

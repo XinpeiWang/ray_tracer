@@ -265,6 +265,24 @@ struct PortalImageInfiniteLightData {
 	int width()  const { return width_; }
 	int height() const { return height_; }
 	T   scale()  const { return scale_; }
+	T   area()   const { return area_; }
+	const std::array<Vec3T, 4>& portal() const { return portal_; }
+
+	// GPU port (gpu_portal_light_shared.h) needs the same three flat arrays
+	// this class already builds and keeps: the rectified equal-area image
+	// (eval_Le_rgb's own data source), and the distribution's raw per-cell
+	// values + summed-area-table prefix sums (sample_li's/pdf_li's own data
+	// source, WindowedPiecewiseConstant2D::Sample()/PDF()). Rather than
+	// reimplementing the equal-area rectification + SAT-construction math a
+	// second time in the GPU scene builder, the builder constructs a real
+	// PortalImageInfiniteLightData<double> on the host (identical to what
+	// this exact constructor already does for CPU) and reads these back -
+	// guarantees the rectified image content matches CPU bit-for-bit
+	// (including its own quirks - e.g. treating an equirectangular-loaded
+	// image as equal-area, see this struct's own ctor comment) rather than
+	// risking a second, subtly-different reimplementation.
+	const std::vector<float>& rectified() const { return rectified_; }
+	const WindowedPiecewiseConstant2D& distribution() const { return distribution_; }
 
 private:
 	// ---------------------------------------------------------------------------

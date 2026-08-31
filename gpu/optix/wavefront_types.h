@@ -252,7 +252,13 @@ struct MissWorkItem {
 	float  radiance[kWFNWavelengths];
 	float  wavelengths[kWFNWavelengths];
 	float  wavelength_pdfs[kWFNWavelengths];
-	float3 rayDir;             // for environment-map lookups (currently unused)
+	float3 rayDir;             // for environment-map lookups
+	// The point this ray escaped FROM (RayWorkItem::origin, its last bounce
+	// point). Unlike a plain image sky, a portal light's visible window
+	// depends on the shading point, not just direction (GpuPortalLight's own
+	// comment) - accumulate_miss's wf_sky_radiance()/wf_sky_pdf_for_mis()
+	// calls need this for their portal-vs-image-sky-vs-flat-colour dispatch.
+	float3 rayOrigin;
 	int    pixelIndex;
 	// Carried from RayWorkItem::brdf_pdf (see its own comment) - accumulate_miss
 	// needs this to MIS-weight the sky's background contribution against the

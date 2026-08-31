@@ -57,7 +57,13 @@ bool OptiXRenderer::buildScene(
 	const std::vector<float>& skyConditionalCdf,
 	const std::vector<float>& skyConditionalFunc,
 	const std::vector<float>& skyConditionalFuncInt,
-	int skyWidth, int skyHeight, float skyScale
+	int skyWidth, int skyHeight, float skyScale,
+	const std::vector<float>& portalRectifiedImage,
+	const std::vector<float>& portalDistFunc,
+	const std::vector<double>& portalSatSum,
+	int portalWidth, int portalHeight, float portalScale,
+	float3 portalFrameX, float3 portalFrameY, float3 portalFrameZ,
+	float3 portalP0, float3 portalP2
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -510,6 +516,34 @@ bool OptiXRenderer::buildScene(
 	if (skyHeight_ > 0)
 		std::cout << "[OptiX] Uploaded real HDR sky distribution (" << skyWidth_ << "x" << skyHeight_
 			<< ", " << skyImagePixels.size() << " pixel floats) to GPU\n";
+
+	// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's own
+	// comment (optix_types.h). Mutually exclusive with the sky distribution
+	// just above (matches CPU) - same "flat buffers, no per-table metadata"
+	// upload shape, plus a templated version of uploadSkyFloats above for
+	// portalSatSum's double precision (SummedAreaTable's own comment on why
+	// it stays double, not narrowed to float like every other GPU buffer).
+	portalWidth_ = portalWidth;
+	portalHeight_ = portalHeight;
+	portalScale_ = portalScale;
+	portalFrameX_ = portalFrameX; portalFrameY_ = portalFrameY; portalFrameZ_ = portalFrameZ;
+	portalP0_ = portalP0; portalP2_ = portalP2;
+
+	const auto uploadPortalBuf = [&](const auto& src, CUdeviceptr& dst) {
+		using ElemT = typename std::remove_reference<decltype(src)>::type::value_type;
+		if (dst) { cudaFree(reinterpret_cast<void*>(dst)); dst = 0; }
+		if (src.empty()) return;
+		const size_t bytes = src.size() * sizeof(ElemT);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dst), bytes));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(dst), src.data(), bytes, cudaMemcpyHostToDevice));
+	};
+	uploadPortalBuf(portalRectifiedImage, d_portalRectifiedImage_);
+	uploadPortalBuf(portalDistFunc, d_portalDistFunc_);
+	uploadPortalBuf(portalSatSum, d_portalSatSum_);
+
+	if (portalHeight_ > 0)
+		std::cout << "[OptiX] Uploaded real portal infinite light (" << portalWidth_ << "x" << portalHeight_
+			<< ", " << portalRectifiedImage.size() << " rectified-image floats) to GPU\n";
 
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());

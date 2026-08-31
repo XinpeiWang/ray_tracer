@@ -16,7 +16,8 @@ extern "C" __global__ void __miss__ms() {
 	// behavior exactly for every scene without one.
 	const float3& flatColor = params.camera.backgroundColor;
 	const float3 rayDir = optixGetWorldRayDirection();
-	const float3 color = sky_radiance(rayDir, flatColor);
+	const float3 rayOrigin = optixGetWorldRayOrigin();
+	const float3 color = sky_radiance(rayDir, flatColor, rayOrigin);
 
 	// Unpack attenuation from payload
 	float3 attenuation = make_float3(
@@ -42,7 +43,7 @@ extern "C" __global__ void __miss__ms() {
 	const float prev_brdf_pdf = __uint_as_float(optixGetPayload_12());
 	float3 emission = color;
 	if (prev_brdf_pdf > 0.0f && (flatColor.x > 0.0f || flatColor.y > 0.0f || flatColor.z > 0.0f)) {
-		const float pdf_sky = sky_pdf_for_mis(rayDir);
+		const float pdf_sky = sky_pdf_for_mis(rayDir, rayOrigin);
 		float w_b = mis_power_heuristic(prev_brdf_pdf, pdf_sky);
 		emission = w_b * color;
 	}
