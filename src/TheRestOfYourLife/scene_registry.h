@@ -1273,10 +1273,11 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // Same Cornell box world as A1/D5-D8 - only the camera differs
             // (keyframed across the exposure instead of static). closes the
             // "no motion blur anywhere" gap from docs/FEATURE_INVENTORY.md -
-            // CPU default path tracer (+SPPM) only, see camera.h's own
-            // camera_is_animated comment; GPU (either backend) is deferred.
+            // CPU default path tracer (+SPPM), see camera.h's own
+            // camera_is_animated comment, AND both GPU backends (see
+            // GpuCameraParams::animated, gpu/optix/optix_types.h).
             "D13", 138, SceneNames::CameraMotionBlur, SceneCategories::Cameras,
-            "The classic Cornell box (same scene as A1/D5-D8), camera trucking sideways (lookat stays fixed, so this is really a small combined translate+rotate) across the exposure for real AnimatedTransform-based motion blur - CPU only, GPU renders it as a static frame at the first keyframe",
+            "The classic Cornell box (same scene as A1/D5-D8), camera trucking sideways (lookat stays fixed, so this is really a small combined translate+rotate) across the exposure for real AnimatedTransform-based motion blur - CPU and GPU (both recursive and wavefront) all interpolate the same two keyframes",
             "Medium", 200, false, false,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0,
               CameraMode::Fixed, 0.0, 10.0,

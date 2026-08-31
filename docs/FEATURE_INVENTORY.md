@@ -86,9 +86,9 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Orthographic | Y / Y / Y | N/A |
 | Cameras | Spherical (equirect + equal-area) | Y / Y / Y | N/A |
 | Cameras | Realistic (lens-file simulation) | Y / Y / Y | Missing/unreadable lens file → falls back to perspective, warned |
-| Cameras | Motion blur (camera, default perspective camera) | Y (CPU) | GPU falls back to a static frame at the first keyframe |
+| Cameras | Motion blur (camera, default perspective camera) | Y / Y / Y | N/A |
 | Cameras | Motion blur (object; or camera, alt camera models) | N | No fallback — static transform only |
-| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA) | Y (CPU) | Real directives now; GPU falls back to a static frame at the start keyframe. Object motion blur via the same directives still N (Shape/Material/... only ever read the "StartTime" CTM slot) |
+| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA) | Y / Y / Y | Real directives, all three backends. Object motion blur via the same directives still N (Shape/Material/... only ever read the "StartTime" CTM slot) |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
 | Samplers | Independent | Y (CPU) | N/A |
@@ -263,8 +263,9 @@ All 4 pbrt-v4 camera types, full parity CPU/GPU: perspective (+ depth of
 field), orthographic, spherical (equirect + equal-area), realistic
 (lens-file-based, real multi-element simulation on both backends).
 
-**Camera motion blur**: real, on **CPU only** (default path tracer + SPPM,
-both of which share `camera::get_ray()`) — `src/TheRestOfYourLife/camera.h`'s
+**Camera motion blur**: real, on CPU (default path tracer + SPPM,
+both of which share `camera::get_ray()`) and on **both GPU backends**
+(recursive and wavefront) — `src/TheRestOfYourLife/camera.h`'s
 default perspective `camera` class now supports a `camera_is_animated`
 keyframed camera-to-world, built on `src/shared/animated_transform.h`'s
 `AnimatedTransform` (real keyframe interpolation, tested
@@ -277,7 +278,14 @@ between two keyframes (`lookfrom`/`lookat` at `shutter_open`,
 `lookfrom1`/`lookat1` at `shutter_close`) — see `D13` (Cameras category) for
 a native demo. Static cameras (`camera_is_animated=false`, every scene that
 doesn't author motion blur) are a true no-op — the existing world-space fast
-path is untouched. SPPM's blur is real but visually subtle compared to the
+path is untouched. GPU (both backends) mirrors this exactly: the two
+camera-to-world keyframes are decomposed into translate+rotate ONCE,
+host-side, by the same `AnimatedTransform` class (`build_gpu_animated_
+camera_params()`, `gpu/optix/scene_builder.cpp`), and each ray interpolates
+them via a per-ray lerp/slerp (`GpuCameraParams::animated`, `gpu/optix/
+optix_types.h`; `generate_primary_ray()`/`wf_generate_primary_ray()`) —
+`GpuCameraParams::animated=0` (the zero-init default, every scene before
+this feature existed) is the same true no-op. SPPM's blur is real but visually subtle compared to the
 default path tracer's obvious streaking on the same scene — confirmed via
 debug tracing (the visible point genuinely swings across the full keyframe
 range per iteration) and a controlled crop comparison against a static SPPM
@@ -296,7 +304,9 @@ second ("EndTime") CTM slot alongside the existing one, gated by
 `shutterClose`, the last two read from the Camera directive's own real
 `"shutteropen"`/`"shutterclose"` parameters, previously unparsed entirely)
 and wired into a real `camera_is_animated` CPU camera by
-`scene_registry.h`'s `setup_camera` hook. `TransformTimes`'s own two floats
+`scene_registry.h`'s `setup_camera` hook, AND into `GpuCameraParams` for
+both GPU backends (`build_loaded_pbrt_scene()`'s own `c.isAnimated` branch,
+`gpu/optix/scene_builder.cpp`). `TransformTimes`'s own two floats
 are read for real but have no separate effect from `shutteropen`/
 `shutterclose` — this codebase's own `AnimatedTransform` construction uses
 ONE pair of times for both the keyframes' own timestamps and the shutter's
@@ -304,19 +314,13 @@ random-sampling window (unlike real pbrt-v4, which keeps them conceptually
 distinct), so a scene declaring `TransformTimes` with a value different from
 `shutteropen`/`shutterclose` gets a loud warning rather than silently
 following the wrong one. Verified end-to-end via a real `.pbrt` scene
-(`ActiveTransform`-authored camera pan): CPU shows genuine motion-blur
-streaking; GPU (below) cleanly falls back to a sharp static frame at the
-start keyframe, no warning, no error.
+(`ActiveTransform`-authored camera pan): CPU and both GPU backends all show
+genuine motion-blur streaking.
 
-**Gap**: motion blur is otherwise still absent. Not wired: GPU-recursive or
-GPU-wavefront (deferred — camera motion blur specifically; see §2/§9's own
-notes on how far behind CPU's wavelength-tracking apparatus GPU-recursive
-is for an analogous reason - a `.pbrt`-authored animated camera now renders
-correctly on GPU too, just as a static frame at the start keyframe, same as
-D13's own documented GPU fallback); the three **alternate** camera models
+**Gap**: the three **alternate** camera models
 (`src/shared/cameras.h`'s Orthographic/Spherical/Realistic classes still
 have a static `camera_to_world`, unaffected by this - "No motion blur" is
-still literally true for those three); and **object/shape** motion blur
+still literally true for those three, on both CPU and GPU); and **object/shape** motion blur
 (`pbrt_scene.h`'s `ShapeDecl::xform` is still a single static `Matrix4` -
 `ActiveTransform`'s own new "EndTime" CTM slot is deliberately consumed by
 Camera's own `WorldBegin` capture ONLY, not by Shape/Material/LightSource/...,
@@ -453,17 +457,23 @@ relative to it specifically).
    reduces to RGB every sample instead of accumulating spectral radiance
    pbrt-v4-style; the dead `PixelSensor`/`SpectralFilm` classes suggest
    this was planned and abandoned partway.
-3. **No GPU-recursive dispersion** (§2, §9) — GPU-wavefront now has real
-   dispersion (both `dielectric` and `rough_dielectric`, matching CPU);
-   GPU-recursive has none, and would need its own wavelength-tracking
-   apparatus built from scratch (no `SampledWavelengths` anywhere in that
-   backend today, unlike wavefront's always-on hero-wavelength pipeline).
-4. **No motion blur on GPU, or for object transforms/alt camera models on
-   any backend** (§6) — CPU's default perspective camera now has real
-   camera motion blur (`AnimatedTransform`, previously wholly orphaned, now
-   wired into `camera::get_ray()`); GPU (either backend), object/shape
-   transforms, and the Orthographic/Spherical/Realistic alt camera classes
-   remain untouched.
+3. **GPU-recursive dispersion is approximate, and RoughDielectric-only on
+   GPU-recursive is still flat** (§2, §9) — GPU-wavefront has real
+   continuous-wavelength dispersion (both `dielectric` and
+   `rough_dielectric`, matching CPU's `SampledWavelengths` pipeline);
+   GPU-recursive now has real `dielectric` dispersion too, but via a
+   simplified 3-fixed-representative-wavelength scheme (stochastic
+   confinement to one of R/G/B per path, not continuous hero-wavelength
+   sampling) rather than porting `SampledWavelengths` into that backend's
+   own separate OptiX module; its `rough_dielectric` case remains
+   unchanged (flat, non-dispersive).
+4. **No motion blur for object transforms or alt camera models, on any
+   backend** (§6) — the default perspective camera now has real motion
+   blur on CPU and both GPU backends (`AnimatedTransform`, previously
+   wholly orphaned, now wired into `camera::get_ray()` and
+   `GpuCameraParams::animated`); object/shape transforms and the
+   Orthographic/Spherical/Realistic alt camera classes remain untouched
+   on every backend.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
 6. **`Accelerator` pbrt directive not parsed** — verified (unlike the
