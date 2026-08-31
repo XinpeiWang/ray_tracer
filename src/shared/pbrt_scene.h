@@ -71,6 +71,20 @@ struct Matrix4 {
 		return r;
 	}
 
+	// Real (bitwise) inequality against another matrix - the shared
+	// "did this CTM pair actually change" check used by both
+	// Scene::cameraIsAnimated() (camera motion blur) and pbrt_flatten.h's
+	// sphere-flattening loop (object motion blur). Deliberately exact, not
+	// an epsilon compare: a scene that declares ActiveTransform but happens
+	// to author the identical transform for both endpoints has no real
+	// motion to blur either way, and this is the one check both call sites
+	// use to decide that.
+	bool differsFrom(const Matrix4 &other) const {
+		for (int i = 0; i < 16; ++i)
+			if (m[i] != other.m[i]) return true;
+		return false;
+	}
+
 	// The inverse of an affine transform, which is what a renderer needs to
 	// carry a ray INTO an instance's object space. Returns false when the
 	// matrix is singular - a scale of zero on some axis - rather than
@@ -439,9 +453,7 @@ struct Scene {
 	// transform for both endpoints as non-animated too - there is no motion
 	// to blur either way.
 	bool cameraIsAnimated() const {
-		for (int i = 0; i < 16; ++i)
-			if (worldToCamera.m[i] != worldToCameraEnd.m[i]) return true;
-		return false;
+		return worldToCamera.differsFrom(worldToCameraEnd);
 	}
 };
 
@@ -667,15 +679,23 @@ private:
 	// CoordinateSystem/CoordSysTransform: named snapshots of the CTM, saved
 	// and recalled by name - pure parser bookkeeping (mirrors pbrt-v4's own
 	// GraphicsState.namedCoordinateSystems), never read by anything past
-	// this parser since only the resolved gs_.ctm ever reaches Scene. A
-	// plain append + linear scan by name, matching this class's other
-	// "declare by name, recall later" bookkeeping (s_.objects/ObjectBegin,
-	// s_.materials/NamedMaterial, s_.media/MediumInterface just below) -
-	// a redefinition simply appends again and the scan below always finds
-	// the LAST match, same "later definition wins" rule those use. Never
-	// more than a handful of entries in a real scene, so this trades
-	// nothing for staying consistent with the established idiom here.
-	std::vector<std::pair<std::string, Matrix4>> namedCoordinateSystems_;
+	// this parser since only the resolved gs_.ctm/gs_.ctmEnd ever reach
+	// Scene. A plain append + linear scan by name, matching this class's
+	// other "declare by name, recall later" bookkeeping (s_.objects/
+	// ObjectBegin, s_.materials/NamedMaterial, s_.media/MediumInterface
+	// just below) - a redefinition simply appends again and the scan below
+	// always finds the LAST match, same "later definition wins" rule those
+	// use. Never more than a handful of entries in a real scene, so this
+	// trades nothing for staying consistent with the established idiom
+	// here. Snapshots BOTH ctm and ctmEnd (not just ctm) - CoordSysTransform
+	// restoring only ctm used to be harmless (nothing but Camera ever read
+	// ctmEnd), but Shape now captures ctmEnd too (see its own handler and
+	// the ActiveTransform comment above) - restoring a stale/mismatched
+	// ctmEnd here would otherwise let an ordinary CoordSysTransform spuriously
+	// desync xform/xformEnd on a later Shape, making pbrt_flatten.h's real-
+	// inequality animated-check misfire for a scene that never touched
+	// ActiveTransform at all.
+	std::vector<std::pair<std::string, std::pair<Matrix4, Matrix4>>> namedCoordinateSystems_;
 
 	int curLine() const {
 		if (pos_ < t_.size()) return t_[pos_].line;
@@ -825,12 +845,18 @@ private:
 			// own worldToCamera/worldToCameraEnd capture at WorldBegin below,
 			// and Shape's own xform/xformEnd capture (see that directive's
 			// handler), both read ctmEnd - every OTHER directive (Material/
-			// LightSource/CoordSysTransform/...) still only ever reads
-			// gs_.ctm (the StartTime slot), so motion blur via this same
+			// LightSource/...) still only ever reads gs_.ctm (the StartTime
+			// slot) to build its OWN output, so motion blur via this same
 			// directive stays scoped to camera + shape (an unclipped sphere
 			// only - see pbrt_flatten.h's own Sphere::center1 comment for why
 			// meshes/disks/cylinders/clipped spheres don't interpolate a
 			// second CTM yet), not e.g. animated lights or materials.
+			// CoordSysTransform is a partial exception: it doesn't build any
+			// geometry of its own from ctm/ctmEnd, but it DOES restore both
+			// (see namedCoordinateSystems_'s own comment) purely so a later
+			// Shape's ctmEnd doesn't go stale relative to a CoordSysTransform-
+			// restored ctm - plumbing to keep the pair consistent, not a new
+			// motion-blur capability for CoordSysTransform itself.
 			// The state keyword is UNQUOTED in real pbrt-v4 syntax (confirmed
 			// against pbrt-v4's own file format documentation), unlike
 			// Camera/Sampler/Film's own quoted TYPE strings just below -
@@ -880,7 +906,7 @@ private:
 			// after WorldBegin (i.e. identity) - a scene can CoordSysTransform
 			// back to it later without ever having declared its own
 			// CoordinateSystem "world".
-			namedCoordinateSystems_.push_back({"world", gs_.ctm});
+			namedCoordinateSystems_.push_back({"world", {gs_.ctm, gs_.ctmEnd}});
 			inWorld_ = true;
 			return true;
 		}
@@ -952,7 +978,7 @@ private:
 			// pbrt-v4 builtin: "camera" always names the CTM in effect at the
 			// Camera statement - the standard idiom for positioning a light
 			// relative to the camera via a later CoordSysTransform "camera".
-			namedCoordinateSystems_.push_back({"camera", gs_.ctm});
+			namedCoordinateSystems_.push_back({"camera", {gs_.ctm, gs_.ctmEnd}});
 			return true;
 		}
 		if (d == "Film") {
@@ -1115,27 +1141,27 @@ private:
 			return true;
 		}
 		if (d == "CoordinateSystem") {
-			// Snapshots only the StartTime slot (gs_.ctm), never gs_.ctmEnd -
-			// see the ActiveTransform comment above for why. Real pbrt-v4
-			// usage of this directive (naming a coordinate system to
-			// position a light relative to, e.g. "camera"/"world" above) is
-			// unrelated to camera motion blur, so this is a narrow, unlikely
-			// scope gap rather than a real-world limitation.
+			// Snapshots BOTH the StartTime slot (gs_.ctm) and the EndTime slot
+			// (gs_.ctmEnd) - see namedCoordinateSystems_'s own comment for why
+			// this has to capture ctmEnd too now that Shape reads it.
 			std::string name;
 			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
-			namedCoordinateSystems_.push_back({name, gs_.ctm});
+			namedCoordinateSystems_.push_back({name, {gs_.ctm, gs_.ctmEnd}});
 			return true;
 		}
 		if (d == "CoordSysTransform") {
-			// Restores only the StartTime slot (gs_.ctm), leaving gs_.ctmEnd
-			// untouched - same scope boundary as CoordinateSystem above.
+			// Restores BOTH slots - see namedCoordinateSystems_'s own comment
+			// for why restoring only gs_.ctm (as this used to) would leave
+			// gs_.ctmEnd stale and could spuriously desync a later Shape's
+			// xform/xformEnd even in a scene that never used ActiveTransform.
 			std::string name;
 			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
 			int found = -1;
 			for (std::size_t i = 0; i < namedCoordinateSystems_.size(); ++i)
 				if (namedCoordinateSystems_[i].first == name) found = static_cast<int>(i);
 			if (found >= 0) {
-				gs_.ctm = namedCoordinateSystems_[static_cast<std::size_t>(found)].second;
+				gs_.ctm = namedCoordinateSystems_[static_cast<std::size_t>(found)].second.first;
+				gs_.ctmEnd = namedCoordinateSystems_[static_cast<std::size_t>(found)].second.second;
 			} else {
 				warn(line, "CoordSysTransform: unknown coordinate system \"" + name + "\"");
 			}

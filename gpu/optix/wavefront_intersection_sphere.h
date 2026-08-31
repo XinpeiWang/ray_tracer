@@ -263,15 +263,13 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// Object (per-primitive) motion blur: the plain-Sphere intersection
 	// program above (__intersection__wf_sphere) packed the time-interpolated
 	// centre into attributes 0-2 (see its own comment, mirroring
-	// optix_intersection_sphere.h's identical convention) - read it back
-	// here rather than re-reading sph.center, which has no per-ray-time
-	// value precomputed. Meaningless/unused for is_box (static bounds, no
+	// optix_intersection_sphere.h's identical convention) - read it back via
+	// the shared wf_read_hit_sphere_center() (wavefront_common.h) rather
+	// than re-reading sph.center, which has no per-ray-time value
+	// precomputed. Meaningless/unused for is_box (static bounds, no
 	// attributes packed for that branch) and is_clipped (carries its own
 	// w2o affine instead, out of this feature's scope).
-	const float3 sphere_center = make_float3(
-		__int_as_float(optixGetAttribute_0()),
-		__int_as_float(optixGetAttribute_1()),
-		__int_as_float(optixGetAttribute_2()));
+	const float3 sphere_center = wf_read_hit_sphere_center();
 
 	float3 obj_hit = hit_point;
 	float3 obj_normal;

@@ -305,13 +305,13 @@ extern "C" __global__ void __closesthit__wf_probe_sphere() {
 	// program is __intersection__wf_sphere itself (see this file's own
 	// header comment / WavefrontPathTracer::buildSBT()'s probeSphereDesc),
 	// which packs the time-interpolated centre into attributes 0-2 for the
-	// plain-Sphere case - read it back instead of the raw sphere.center,
-	// same fix as wavefront_intersection_sphere.h's own closest-hit.
+	// plain-Sphere case - read it back via the shared
+	// wf_read_hit_sphere_center() (wavefront_common.h, also used by
+	// wavefront_intersection_sphere.h's own closest-hit - both closest-hit
+	// programs live in this same translation unit, so there's no reason to
+	// duplicate the 3-line unpack) instead of the raw sphere.center.
 	// Meaningless/unused when is_clipped (that branch never reads it).
-	const float3 sphere_center = make_float3(
-		__int_as_float(optixGetAttribute_0()),
-		__int_as_float(optixGetAttribute_1()),
-		__int_as_float(optixGetAttribute_2()));
+	const float3 sphere_center = wf_read_hit_sphere_center();
 	float3 obj_hit = hit_point;
 	float3 obj_normal;
 	if (is_clipped) {

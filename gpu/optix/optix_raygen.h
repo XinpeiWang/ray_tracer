@@ -114,7 +114,10 @@ extern "C" __global__ void __raygen__rg() {
 		// use 0.0f, which optix_intersection_sphere.h's lerp(center,
 		// center1, 0.0f) resolves to `center` exactly regardless of
 		// center1's (possibly garbage) value.
-		float ray_time = params.motionBlurEnabled ? random_float(seed) : 0.0f;
+		// params.camera.motionBlurEnabled - the single canonical flag shared
+		// with the wavefront backend (see GpuCameraParams::motionBlurEnabled's
+		// own comment for why this isn't a separate LaunchParams-level field).
+		float ray_time = params.camera.motionBlurEnabled ? random_float(seed) : 0.0f;
 
 		// Path tracing loop
 		// filter_w is deliberately NOT folded in here (unlike cam_weight,

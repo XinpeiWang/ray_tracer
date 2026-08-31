@@ -2941,17 +2941,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// Object motion blur (pbrt-v4's ActiveTransform "StartTime"/
 			// "EndTime" around a Shape "sphere") - bake a second, end-time
 			// centre the same way s.center was baked above, gated on real
-			// inequality (not just "ActiveTransform appeared somewhere"),
-			// exactly mirroring Scene::cameraIsAnimated()'s own convention.
-			// Left at its default (== s.center, i.e. no motion) for a
+			// inequality via Matrix4::differsFrom() (not just "ActiveTransform
+			// appeared somewhere") - the same shared helper Scene::
+			// cameraIsAnimated() uses, so the "real inequality" convention
+			// can't drift between the two independently. Left at its default
+			// (== s.center, i.e. no motion) for a
 			// clipped sphere - that path carries its own unbaked xform and
 			// was never wired for motion blur (see the ActiveTransform
-			// directive's own comment).
+			// directive's own comment). Computed regardless of s.clipped
+			// (not just inside the !s.clipped branch) so the clipped case
+			// can warn - matches this same loop's other warn()s for a
+			// parseable-but-unsupported combination (non-uniform scale just
+			// above, MediumInterface just below).
+			const bool animated = xform.differsFrom(w.xformEnd);
 			if (!s.clipped) {
-				bool animated = false;
-				for (int i = 0; i < 16; ++i) {
-					if (xform.m[i] != w.xformEnd.m[i]) { animated = true; break; }
-				}
 				if (animated) {
 					transformPoint(w.xformEnd, 0.0, 0.0, 0.0, s.center1);
 				} else {
@@ -2959,6 +2962,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					s.center1[1] = s.center[1];
 					s.center1[2] = s.center[2];
 				}
+			} else if (animated) {
+				warn("a clipped sphere (zmin/zmax/phimax) has an ActiveTransform "
+					 "StartTime/EndTime pair, but its own unbaked object-to-world "
+					 "affine was never wired for motion blur - rendered as static, "
+					 "at its StartTime position");
 			}
 
 			s.material = shape.materialIndex;

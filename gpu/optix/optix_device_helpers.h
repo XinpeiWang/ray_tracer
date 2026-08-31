@@ -411,8 +411,24 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	float& out_v,
 	float3& out_normal
 ) {
+	// Object (per-primitive sphere) motion blur: interpolate to this ray's
+	// time, same lerp/no-op-when-static reasoning as optix_intersection_
+	// sphere.h's own __intersection__sphere - a moving emissive sphere's NEE
+	// sample must target the SAME interpolated position the caller's own
+	// shadow ray (traced at this same optixGetRayTime()) will test occlusion
+	// against, or the two disagree on where the light actually is.
+	// optixGetRayTime() is legal here (this helper is only ever called from
+	// within a closest-hit-invoked shading chain, not raygen), and returns
+	// the current ray's own time - the same value for every shading call
+	// this bounce makes, since it isn't reset until the NEXT optixTrace().
+	const float ray_time = optixGetRayTime();
+	const float3 center = make_float3(
+		sphere.center.x + ray_time * (sphere.center1.x - sphere.center.x),
+		sphere.center.y + ray_time * (sphere.center1.y - sphere.center.y),
+		sphere.center.z + ray_time * (sphere.center1.z - sphere.center.z));
+
 	// Direction from origin to sphere center
-	float3 to_center = sphere.center - origin;
+	float3 to_center = center - origin;
 	float dist_sq = dot(to_center, to_center);
 
 	// Avoid division by zero
@@ -444,13 +460,13 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	// Recover the sampled surface point (near root of ray-sphere) to get its
 	// UV/normal - an algebraic identity given `direction` was drawn to hit
 	// the sphere, not an approximation.
-	float3 oc = origin - sphere.center;
+	float3 oc = origin - center;
 	float b = dot(oc, direction);
 	float c = dot(oc, oc) - sphere.radius * sphere.radius;
 	float disc = fmaxf(0.0f, b * b - c);
 	float t_near = -b - sqrtf(disc);
 	float3 point = origin + t_near * direction;
-	float3 local = (point - sphere.center) / sphere.radius;
+	float3 local = (point - center) / sphere.radius;
 	out_normal = local;
 
 	// UV convention must match whatever the DIRECT-hit closest-hit program
@@ -810,8 +826,18 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		float su, sv; float3 snormal;
 		const float3 dir = sample_sphere_light(s, origin, seed, geom_pdf, su, sv, snormal);
 		// Distance to the CENTRE, matching what this path has always used to
-		// bound the shadow ray for a sphere light.
-		max_dist = length(s.center - origin);
+		// bound the shadow ray for a sphere light. Interpolated the same way
+		// sample_sphere_light() itself just did (see that function's own
+		// comment) - a moving sphere light's shadow-ray bound has to agree
+		// with the position its own NEE sample was actually taken against.
+		{
+			const float ray_time = optixGetRayTime();
+			const float3 center = make_float3(
+				s.center.x + ray_time * (s.center1.x - s.center.x),
+				s.center.y + ray_time * (s.center1.y - s.center.y),
+				s.center.z + ray_time * (s.center1.z - s.center.z));
+			max_dist = length(center - origin);
+		}
 		const MaterialData& sm = params.materials[s.materialIdx];
 		emission = nee_light_texture_emission(sm, su, sv);
 		nee_gate_one_sided(sm, dir, snormal, emission);

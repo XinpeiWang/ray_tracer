@@ -43,12 +43,13 @@ bool OptiXRenderer::render(
 		gpuCam.numExitPupilBounds = static_cast<int>(numExitPupilBounds_);
 	}
 
-	// Object (per-primitive sphere) motion blur - same sceneHasMotion_
-	// auto-detection buildScene() already uses for params.motionBlurEnabled
-	// (the recursive backend's own flag, set below), just also mirrored onto
-	// this shared GpuCameraParams so the wavefront backend's plain-CUDA-
-	// kernel programs (which never see a `LaunchParams params` global) can
-	// read it too - see GpuCameraParams::motionBlurEnabled's own comment.
+	// Object (per-primitive sphere) motion blur - set once here from
+	// buildScene()'s own sceneHasMotion_ auto-detection, on the single
+	// canonical flag both backends read (the recursive backend via
+	// params.camera.motionBlurEnabled once params.camera = gpuCam runs
+	// below; the wavefront backend directly, since its plain-CUDA-kernel
+	// programs never see a `LaunchParams params` global) - see
+	// GpuCameraParams::motionBlurEnabled's own comment.
 	gpuCam.motionBlurEnabled = sceneHasMotion_ ? 1 : 0;
 
 	// Real importance-sampled HDR sky distribution (LightSource "infinite"
@@ -235,9 +236,11 @@ bool OptiXRenderer::render(
 	params.punctualLights = reinterpret_cast<PunctualLightGPU*>(d_punctualLights_);
 	params.numPunctualLights = numPunctualLights_;
 
-	// Motion blur: only the scene(s) with moving spheres set this - see
-	// buildScene()'s sceneHasMotion_ detection and optix_raygen.h's use of it.
-	params.motionBlurEnabled = sceneHasMotion_;
+	// Motion blur: gpuCam.motionBlurEnabled (set above) already reached
+	// params.camera via the params.camera = gpuCam; assignment above - no
+	// separate params.motionBlurEnabled to set here, see GpuCameraParams::
+	// motionBlurEnabled's own comment for why this is the single canonical
+	// flag both backends read, not a per-backend copy.
 
 	// --stats device counters - null unless statsEnabled (see alloc above).
 	params.statsBounceRays = reinterpret_cast<unsigned long long*>(d_statsBounceRays);

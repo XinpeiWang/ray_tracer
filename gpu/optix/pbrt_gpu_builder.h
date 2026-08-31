@@ -1803,7 +1803,16 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		for (const pbrt_flatten::Sphere &s : grp.spheres) {
 			SphereData sd = {};
 			sd.center = f3(s.center);
-			sd.center1 = sd.center;          // static; see SphereData's comment
+			// Object motion blur - same fix as the top-level sphere loop above
+			// (see its own comment): pbrt_flatten.h already bakes a real,
+			// per-ray-time-independent center1 for THIS instance definition's
+			// own spheres too (its ShapeWork loop runs uniformly over
+			// out.groups[g].spheres, not just top-level out.spheres), so
+			// hardcoding center1=center here silently dropped motion blur for
+			// any sphere declared inside ObjectBegin/ObjectEnd - a real
+			// CPU/GPU divergence, since pbrt_cpu_builder.h's single shared
+			// emitGeometry lambda already handles this case correctly.
+			sd.center1 = f3(s.center1);
 			sd.radius = static_cast<float>(s.radius);
 			sd.materialIdx = materialIndex(s.material, s.areaLight);
 			out.instanceSpheres.push_back(sd);

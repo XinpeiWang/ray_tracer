@@ -701,8 +701,22 @@ __device__ __forceinline__ float3 wf_dc_apply_point(const float m[12], const flo
 // sphere as a light in wavefront mode until the spherical-camera scene.
 __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hit,
 										  unsigned int& seed, float& pdf, float& maxDist,
-										  float& out_u, float& out_v, float3& out_normal) {
-	float3 to_c = sph.center - hit;
+										  float& out_u, float& out_v, float3& out_normal,
+										  // Object (per-primitive sphere) motion blur shutter
+										  // time (RayWorkItem::time's own comment) - a moving
+										  // emissive sphere's NEE sample must target the SAME
+										  // interpolated position the caller's own shadow ray
+										  // (traced at this same time) will test occlusion
+										  // against, or the two disagree on where the light
+										  // actually is. 0.0f for a static sphere (center1==
+										  // center) is a provable no-op, same convention as
+										  // optix_intersection_sphere.h's own ray_time lerp.
+										  float time) {
+	const float3 center = make_float3(
+		sph.center.x + time * (sph.center1.x - sph.center.x),
+		sph.center.y + time * (sph.center1.y - sph.center.y),
+		sph.center.z + time * (sph.center1.z - sph.center.z));
+	float3 to_c = center - hit;
 	float dist  = length(to_c);
 	float r     = sph.radius;
 	float3 dir;
@@ -729,7 +743,7 @@ __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hi
 	// near root normally; when `hit` is inside the sphere (dist<=r above)
 	// the near root is behind the origin (negative), so fall back to the
 	// far root in that case.
-	float3 oc = hit - sph.center;
+	float3 oc = hit - center;
 	float b = dot(oc, dir);
 	float c = dot(oc, oc) - r * r;
 	float disc = fmaxf(0.0f, b * b - c);
@@ -742,7 +756,7 @@ __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hi
 	// sphere.h), see optix_device_helpers.h's sample_sphere_light() for the
 	// identical derivation.
 	const float3 point = hit + maxDist * dir;
-	const float3 local = (point - sph.center) / r;
+	const float3 local = (point - center) / r;
 	out_normal = local;
 
 	// UV convention must match the DIRECT-hit closest-hit program for this
@@ -1478,8 +1492,8 @@ extern "C" __global__ void generate_camera_rays(
 	// Object (per-primitive sphere) motion blur shutter time - one draw per
 	// PRIMARY ray, then carried unchanged through every bounce of this same
 	// path (see RayWorkItem::time's own comment). Mirrors optix_raygen.h's
-	// identical `params.motionBlurEnabled ? random_float(seed) : 0.0f` gate
-	// for the recursive backend. Drawn BEFORE item.seed is captured below,
+	// identical `params.camera.motionBlurEnabled ? random_float(seed) : 0.0f`
+	// gate for the recursive backend. Drawn BEFORE item.seed is captured below,
 	// not after - seed is a PCG state advanced by reference, so capturing
 	// it first would silently discard this draw's advancement and leave
 	// the next consumer (evaluate_materials, which resumes from item.seed)
@@ -1890,7 +1904,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		if (kind == GpuLightKind::Sphere) {
 			const SphereData& s = spheres[prim_idx];
 			float su, sv; float3 snormal;
-			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist, su, sv, snormal);
+			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist, su, sv, snormal, time);
 			const MaterialData& lm = materials[s.materialIdx];
 			float3 raw = (lm.textureIdx >= 0)
 				? wf_sample_texture(textures, texturePixels, lm.textureIdx, su, sv, hit_point + to_light * max_dist)

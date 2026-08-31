@@ -129,7 +129,7 @@ struct SphereData {
 	// program only ever multiplies it by a ray-time that is provably 0.0f
 	// for those scenes (see optix_raygen.h), and lerp(a, b, 0) == a exactly
 	// regardless of b. Only scenes that actually build moving spheres (with
-	// center1 != center) need to also enable LaunchParams::motionBlurEnabled
+	// center1 != center) need to also enable GpuCameraParams::motionBlurEnabled
 	// and give their sphere GAS build 2 motion keys - see
 	// OptiXRenderer::buildScene()'s sceneHasMotion_ detection. Unused (left
 	// zero) for shapeKind==Box - no scene combines motion blur with a box
@@ -1508,18 +1508,27 @@ struct GpuCameraParams {
 	float3 localLowerLeftCorner, localHorizontal, localVertical;
 	float3 localDefocusDiskU, localDefocusDiskV;  // zero = no DOF
 
-	// Object (per-primitive sphere) motion blur - the wavefront backend's own
-	// copy of LaunchParams::motionBlurEnabled above (recursive backend), NOT
-	// a duplicate name collision: wavefront kernels are plain CUDA kernels,
-	// never given a `LaunchParams` global, so this struct (already threaded
-	// as an explicit parameter through every kernel that needs camera state -
-	// see e.g. GpuPortalLight's own comment on this file's piggyback
-	// convention) is where they read it instead. Set from the identical
-	// OptiXRenderer::sceneHasMotion_ auto-detection (SphereData::center1 !=
-	// center for at least one sphere) as the recursive backend's own flag -
-	// see WavefrontPathTracer::render()'s population of this field. 0
+	// Object (per-primitive sphere) motion blur - the SINGLE canonical flag
+	// for both GPU backends, not a per-backend copy: the recursive backend's
+	// own raygen (optix_raygen.h) reads it as `params.camera.motionBlurEnabled`
+	// (LaunchParams embeds this struct as `camera`), and wavefront kernels
+	// read it directly off this struct, which is already threaded as an
+	// explicit parameter through every kernel that needs camera state (see
+	// e.g. GpuPortalLight's own comment on this file's piggyback convention) -
+	// wavefront kernels are plain CUDA kernels, never given a `LaunchParams`
+	// global, so they have no other way to reach it. An earlier version of
+	// this field had a second, independent LaunchParams::motionBlurEnabled
+	// twin that both backends set separately from the same sceneHasMotion_
+	// source at two different call sites in OptiXRenderer::render() - a real
+	// divergence risk (a future edit to one assignment, forgetting the
+	// other, would let the two backends silently disagree). Consolidated
+	// into this one field instead: set once, from OptiXRenderer::
+	// sceneHasMotion_ auto-detection (SphereData::center1 != center for at
+	// least one sphere), and both backends read the exact same value off the
+	// exact same struct - structurally incapable of drifting apart. 0
 	// (zero-init default, matching every scene before this feature existed)
-	// = static spheres, generate_camera_rays() always samples ray.time = 0.
+	// = static spheres, generate_camera_rays() always samples ray.time = 0
+	// and optix_raygen.h always samples ray_time = 0.0f.
 	int motionBlurEnabled;
 };
 
@@ -1663,12 +1672,6 @@ struct LaunchParams {
 	// not selected via the alias table.
 	PunctualLightGPU* punctualLights;
 	unsigned int numPunctualLights;
-
-	// True only for scenes with moving spheres (SphereData::center1 != center
-	// for at least one sphere - see OptiXRenderer::buildScene()). Tells the
-	// raygen program to sample a random ray-time in [0,1] per pixel-sample
-	// (RTIOW shutter convention) instead of always using 0.0f.
-	bool motionBlurEnabled;
 
 	// --stats device counters (see launcher/main.cpp's own "[STATS]" block
 	// and src/shared/render_stats.h's CPU equivalent) - null unless --stats

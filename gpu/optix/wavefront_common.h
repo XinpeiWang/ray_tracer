@@ -189,6 +189,26 @@ __device__ __forceinline__ float3 wf_dc_apply_normal_from_w2o(const float w2o[12
 		w2o[2] * n.x + w2o[6] * n.y + w2o[10] * n.z);
 }
 
+// Unpacks the time-interpolated plain-sphere centre that __intersection__wf_
+// sphere (wavefront_intersection_sphere.h) packs into intersection attributes
+// 0-2 for object (per-primitive sphere) motion blur - see that program's own
+// comment. Shared (unlike the wf_dc_apply_* helpers above, this one is NOT a
+// cross-module duplicate of a recursive-backend twin): both
+// __closesthit__wf_sphere (wavefront_intersection_sphere.h) and
+// __closesthit__wf_probe_sphere (wavefront_probe.h) read attributes packed
+// by this SAME intersection program within this SAME translation unit
+// (wavefront_programs.cu), so there is no OptiX-module boundary forcing two
+// independent copies of this 3-line unpack the way there is for e.g. the
+// sphere/quad/triangle intersection programs themselves. Meaningless/unused
+// by either caller's is_box/is_clipped branch (neither shape kind packs
+// these attributes - see __intersection__wf_sphere's own comment).
+__device__ __forceinline__ float3 wf_read_hit_sphere_center() {
+	return make_float3(
+		__int_as_float(optixGetAttribute_0()),
+		__int_as_float(optixGetAttribute_1()),
+		__int_as_float(optixGetAttribute_2()));
+}
+
 // Wavefront-native duplicate of optix_disk_cylinder_helpers.h's identically
 // named recursive-backend function (same cross-module reason every other
 // wf_dc_* helper in this file is duplicated, not shared via #include) -
