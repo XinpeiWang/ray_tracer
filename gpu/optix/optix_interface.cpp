@@ -481,7 +481,24 @@ static const char* sppm_gpu_material_type_name(MaterialType t) {
 //
 // Returns "" if the scene is fully supported by GPU SPPM as it stands today,
 // or a human-readable reason (naming the specific blocker) otherwise.
-static std::string sppm_gpu_unsupported_reason(const SceneData& scene) {
+static std::string sppm_gpu_unsupported_reason(const SceneData& scene, const GpuCameraParams& cameraExtra) {
+	if (cameraExtra.animated) {
+		// sppm_programs.cu's own raygens (__raygen__sppm_camera_pass/
+		// __raygen__sppm_photon_pass) build their primary ray purely from
+		// cameraExtra's static origin/lower_left_corner/horizontal/vertical
+		// fields - they never read animated/animT0/animT1/animR0/animR1/
+		// local* at all (unlike the recursive/wavefront backends' own
+		// generate_primary_ray()/wf_generate_primary_ray(), which this
+		// diff wired up). Without this rejection, an animated-camera scene
+		// (e.g. D13) would silently render a perfectly sharp static frame
+		// at the first keyframe under --sppm --gpu, with no warning -
+		// reject loudly instead, matching every other unsupported
+		// combination in this function.
+		return "has an animated camera (pbrt-v4 ActiveTransform camera motion blur) -- "
+		       "GPU SPPM's raygens do not implement per-ray shutter-time interpolation; "
+		       "use --gpu, --gpu --wavefront, or --cpu --sppm instead if the motion blur "
+		       "matters for this render";
+	}
 	if (!scene.triangles.empty() || !scene.instanceTriangles.empty() ||
 	    !scene.instanceSpheres.empty() || !scene.instanceGroups.empty()) {
 		return "uses triangle-mesh and/or instanced geometry -- GPU SPPM's hash-grid "
@@ -657,7 +674,7 @@ extern "C" int optix_render_main_sppm(
 		// geometry/light data, not just its id - but still before renderer
 		// initialization, per this function's own reordering comment above.
 		{
-			const std::string reason = sppm_gpu_unsupported_reason(scene);
+			const std::string reason = sppm_gpu_unsupported_reason(scene, cameraExtra);
 			if (!reason.empty()) {
 				std::cerr << "[OptiX] GPU SPPM does not support scene " << scene_id << ": "
 				          << reason << ". Use CPU SPPM (--sppm without --gpu) instead.\n";

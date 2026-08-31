@@ -378,6 +378,39 @@ namespace {
 		return make_float3(p.x + offset.x, p.y + offset.y, p.z + offset.z);
 	}
 
+	// Lookat basis (right/up/back-from-lookat), shared by
+	// build_pinhole_camera_params (static path, below) and
+	// build_gpu_animated_camera_params's own per-keyframe basis (animated
+	// path) - factored out so the two formulas can't independently drift,
+	// mirroring src/TheRestOfYourLife/camera.h's own compute_lookat_basis(),
+	// added there for the identical reason (see that function's own
+	// comment: "so the two can't drift apart from independent copy-paste
+	// edits").
+	inline void compute_lookat_basis_gpu(
+		const float3& from, const float3& at, const float3& vup,
+		float3& out_u, float3& out_v, float3& out_w)
+	{
+		const float3 view_direction = make_float3(from.x - at.x, from.y - at.y, from.z - at.z);
+		out_w = normalize(view_direction);
+		out_u = normalize(cross(vup, out_w));
+		out_v = cross(out_w, out_u);
+	}
+
+	// Perspective viewport dimensions from vertical FOV/aspect/focus
+	// distance - shared for the same drift-prevention reason as
+	// compute_lookat_basis_gpu above (mirrors camera.h's own
+	// compute_viewport_geometry()).
+	inline void compute_viewport_dims_gpu(
+		float vfov_degrees, float aspect, float focus_dist,
+		float& out_width, float& out_height)
+	{
+		constexpr float kPi = 3.14159265358979323846f;
+		const float theta = vfov_degrees * kPi / 180.0f;
+		const float h = tanf(theta / 2.0f);
+		out_height = 2.0f * h * focus_dist;
+		out_width = aspect * out_height;
+	}
+
 	// Fills the 12-float camera_params layout (origin, lower_left_corner,
 	// horizontal, vertical) shared by every GPU scene's pinhole/thin-lens
 	// camera - the same math src/TheRestOfYourLife/camera.h's initialize()
@@ -394,16 +427,11 @@ namespace {
 		float* camera_params,
 		float3* out_u = nullptr, float3* out_v = nullptr, float3* out_w = nullptr
 	) {
-		constexpr float kPi = 3.14159265358979323846f;
-		const float theta = vfov_degrees * kPi / 180.0f;
-		const float h = tanf(theta / 2.0f);
-		const float viewport_height = 2.0f * h * focus_dist;
-		const float viewport_width = aspect * viewport_height;
+		float viewport_width, viewport_height;
+		compute_viewport_dims_gpu(vfov_degrees, aspect, focus_dist, viewport_width, viewport_height);
 
-		const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
-		const float3 w = normalize(view_direction);
-		const float3 u = normalize(cross(vup, w));
-		const float3 v = cross(w, u);
+		float3 u, v, w;
+		compute_lookat_basis_gpu(lookfrom, lookat, vup, u, v, w);
 
 		const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
 		const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
@@ -484,6 +512,12 @@ namespace {
 		build_pinhole_camera_params(lookfrom0, lookat0, vup, vfov_degrees, aspect,
 			fd_for_viewport, camera_params, &u0, &v0, &w0);
 
+		// camera_params (the static-fallback buffer) is now valid regardless
+		// of out_camera_extra - scene_builder.h documents out_camera_extra
+		// as optional/nullable, and every other camera-writing case in this
+		// file guards its own writes the same way.
+		if (!out_camera_extra) return;
+
 		out_camera_extra->kind = CameraKind::Perspective;
 
 		if (defocus_angle_deg > 0.0f) {
@@ -501,11 +535,7 @@ namespace {
 			out_camera_extra->defocus_disk_v = make_float3(v0.x * defocus_radius, v0.y * defocus_radius, v0.z * defocus_radius);
 		}
 
-		auto build_cam_to_world = [&](const float3& from, const float3& at) -> AT_Mat44 {
-			float3 view_dir = make_float3(from.x - at.x, from.y - at.y, from.z - at.z);
-			float3 w = normalize(view_dir);
-			float3 u = normalize(cross(vup, w));
-			float3 v = cross(w, u);
+		auto make_cam_to_world_matrix = [](const float3& from, const float3& u, const float3& v, const float3& w) -> AT_Mat44 {
 			AT_Mat44 m;
 			m.m[0][0]=u.x; m.m[0][1]=v.x; m.m[0][2]=w.x; m.m[0][3]=from.x;
 			m.m[1][0]=u.y; m.m[1][1]=v.y; m.m[1][2]=w.y; m.m[1][3]=from.y;
@@ -514,8 +544,15 @@ namespace {
 			return m;
 		};
 
-		AnimatedTransform anim(build_cam_to_world(lookfrom0, lookat0), 0.0,
-								build_cam_to_world(lookfrom1, lookat1), 1.0);
+		// Keyframe0 reuses u0/v0/w0 (already computed above by
+		// build_pinhole_camera_params) instead of re-deriving the same
+		// basis a second time; keyframe1's basis is computed once via the
+		// same shared helper.
+		float3 u1, v1, w1;
+		compute_lookat_basis_gpu(lookfrom1, lookat1, vup, u1, v1, w1);
+
+		AnimatedTransform anim(make_cam_to_world_matrix(lookfrom0, u0, v0, w0), 0.0,
+								make_cam_to_world_matrix(lookfrom1, u1, v1, w1), 1.0);
 
 		out_camera_extra->animated = anim.IsAnimated() ? 1 : 0;
 		if (!out_camera_extra->animated) {
@@ -530,21 +567,25 @@ namespace {
 			static_cast<float>(anim.T[0][0]), static_cast<float>(anim.T[0][1]), static_cast<float>(anim.T[0][2]));
 		out_camera_extra->animT1 = make_float3(
 			static_cast<float>(anim.T[1][0]), static_cast<float>(anim.T[1][1]), static_cast<float>(anim.T[1][2]));
-		out_camera_extra->animR0[0] = static_cast<float>(anim.R[0].x); out_camera_extra->animR0[1] = static_cast<float>(anim.R[0].y);
-		out_camera_extra->animR0[2] = static_cast<float>(anim.R[0].z); out_camera_extra->animR0[3] = static_cast<float>(anim.R[0].w);
-		out_camera_extra->animR1[0] = static_cast<float>(anim.R[1].x); out_camera_extra->animR1[1] = static_cast<float>(anim.R[1].y);
-		out_camera_extra->animR1[2] = static_cast<float>(anim.R[1].z); out_camera_extra->animR1[3] = static_cast<float>(anim.R[1].w);
+		out_camera_extra->animR0 = make_float4(
+			static_cast<float>(anim.R[0].x), static_cast<float>(anim.R[0].y),
+			static_cast<float>(anim.R[0].z), static_cast<float>(anim.R[0].w));
+		out_camera_extra->animR1 = make_float4(
+			static_cast<float>(anim.R[1].x), static_cast<float>(anim.R[1].y),
+			static_cast<float>(anim.R[1].z), static_cast<float>(anim.R[1].w));
 
-		constexpr float kPi = 3.14159265358979323846f;
-		const float theta = vfov_degrees * kPi / 180.0f;
-		const float h = tanf(theta / 2.0f);
-		const float viewport_height = 2.0f * h * fd_for_viewport;
-		const float viewport_width = aspect * viewport_height;
+		float viewport_width, viewport_height;
+		compute_viewport_dims_gpu(vfov_degrees, aspect, fd_for_viewport, viewport_width, viewport_height);
 		out_camera_extra->localHorizontal = make_float3(viewport_width, 0.0f, 0.0f);
 		out_camera_extra->localVertical   = make_float3(0.0f, viewport_height, 0.0f);
 		out_camera_extra->localLowerLeftCorner = make_float3(-viewport_width / 2.0f, -viewport_height / 2.0f, -fd_for_viewport);
 
 		if (defocus_angle_deg > 0.0f) {
+			// Untested: no bundled scene currently combines an animated
+			// camera with defocus_angle_deg > 0 (D13 hardcodes 0.0f, and no
+			// pbrt_scenes/*.pbrt file uses ActiveTransform at all) - this
+			// branch has no render or unit test exercising it yet.
+			constexpr float kPi = 3.14159265358979323846f;
 			const float defocus_radius = focus_dist * tanf((defocus_angle_deg * kPi / 180.0f) / 2.0f);
 			out_camera_extra->localDefocusDiskU = make_float3(defocus_radius, 0.0f, 0.0f);
 			out_camera_extra->localDefocusDiskV = make_float3(0.0f, defocus_radius, 0.0f);

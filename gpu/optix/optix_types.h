@@ -1415,7 +1415,7 @@ struct GpuCameraParams {
 	// scale term to interpolate.
 	int    animated;
 	float3 animT0, animT1;
-	float  animR0[4], animR1[4];  // quaternion (x,y,z,w), shortest-arc-aligned
+	float4 animR0, animR1;  // quaternion (x,y,z,w), shortest-arc-aligned
 	float3 localLowerLeftCorner, localHorizontal, localVertical;
 	float3 localDefocusDiskU, localDefocusDiskV;  // zero = no DOF
 };
