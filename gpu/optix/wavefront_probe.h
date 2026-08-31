@@ -301,6 +301,17 @@ extern "C" __global__ void __closesthit__wf_probe_sphere() {
 	// intersection lives in __closesthit__wf_sphere via wf_dc_apply_point/
 	// wf_dc_apply_normal_from_w2o. Mirrored here the same way.
 	const bool is_clipped = (sphere.shapeKind == GpuMediumShapeKind::ClippedSphere);
+	// Object (per-primitive) motion blur: this hit group's intersection
+	// program is __intersection__wf_sphere itself (see this file's own
+	// header comment / WavefrontPathTracer::buildSBT()'s probeSphereDesc),
+	// which packs the time-interpolated centre into attributes 0-2 for the
+	// plain-Sphere case - read it back instead of the raw sphere.center,
+	// same fix as wavefront_intersection_sphere.h's own closest-hit.
+	// Meaningless/unused when is_clipped (that branch never reads it).
+	const float3 sphere_center = make_float3(
+		__int_as_float(optixGetAttribute_0()),
+		__int_as_float(optixGetAttribute_1()),
+		__int_as_float(optixGetAttribute_2()));
 	float3 obj_hit = hit_point;
 	float3 obj_normal;
 	if (is_clipped) {
@@ -309,7 +320,7 @@ extern "C" __global__ void __closesthit__wf_probe_sphere() {
 		obj_normal = (rl > 0.0f) ? (obj_hit / rl) : make_float3(0.0f, 0.0f, 1.0f);
 	} else {
 		if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
-		obj_normal = normalize(obj_hit - sphere.center);
+		obj_normal = normalize(obj_hit - sphere_center);
 	}
 	float3 outward_normal = obj_normal;
 	if (is_clipped) outward_normal = normalize(wf_dc_apply_normal_from_w2o(sphere.w2o, obj_normal));
@@ -467,7 +478,7 @@ extern "C" __global__ void __miss__wf_probe() {}
 // call.
 // ---------------------------------------------------------------------------
 __device__ __forceinline__ WfProbePayload wf_trace_probe_ray(
-	const float3& origin, const float3& direction, float max_distance)
+	const float3& origin, const float3& direction, float max_distance, float rayTime)
 {
 	WfProbePayload payload;
 	payload.found = false;
@@ -481,7 +492,9 @@ __device__ __forceinline__ WfProbePayload wf_trace_probe_ray(
 		direction,
 		1e-5f,                 // tmin
 		max_distance,          // tmax
-		0.0f,                  // rayTime
+		rayTime,               // object (per-primitive sphere) motion blur
+		                        // shutter time - see RayWorkItem::time's own
+		                        // comment (wavefront_types.h)
 		OptixVisibilityMask(255),
 		OPTIX_RAY_FLAG_NONE,   // real closest-hit, not occlusion-only
 		0,                     // SBT offset - probeSBT_'s own dedicated hit records
@@ -506,7 +519,8 @@ __device__ __forceinline__ bool wf_bssrdf_probe_walk(
 	const float3& p0, const float3& axis0,
 	unsigned int& seed,
 	float3& out_exit_pos, float3& out_exit_normal,
-	float3& out_Sp, float& out_pdf, float& out_sample_prob)
+	float3& out_Sp, float& out_pdf, float& out_sample_prob,
+	float rayTime)
 {
 	constexpr int kMaxProbeSteps = 100;
 	const float kPi = 3.14159265358979323846f;
@@ -556,7 +570,7 @@ __device__ __forceinline__ bool wf_bssrdf_probe_walk(
 	float3 base = p_start;
 	float remaining = seg_len;
 	for (int iter = 0; iter < kMaxProbeSteps && remaining > 1e-6f; ++iter) {
-		WfProbePayload hit = wf_trace_probe_ray(base, seg_dir, remaining);
+		WfProbePayload hit = wf_trace_probe_ray(base, seg_dir, remaining, rayTime);
 		if (!hit.found) break;
 		const float t_local = length(hit.position - base);
 		if (hit.materialIdx == matIdx) {
@@ -644,11 +658,12 @@ extern "C" __global__ void __raygen__wf_probe() {
 	exitItem.depth      = item.depth;
 	exitItem.etaScale   = item.etaScale;
 	exitItem.filterWeight = item.filterWeight;
+	exitItem.time       = item.time;
 
 	float3 exitPos, exitNormal, Sp;
 	float pdf, sampleProb;
 	bool found = wf_bssrdf_probe_walk(item.matIdx, item.p0, item.axis0, seed,
-									   exitPos, exitNormal, Sp, pdf, sampleProb);
+									   exitPos, exitNormal, Sp, pdf, sampleProb, item.time);
 	exitItem.seed = seed;
 	if (found) {
 		exitItem.found      = 1;

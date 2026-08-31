@@ -274,6 +274,14 @@ struct ShapeDecl {
 	std::string type;    // "sphere", "trianglemesh", "plymesh", "disk", ...
 	ParamList params;
 	Matrix4 xform;
+	// EndTime CTM (GraphicsState::ctmEnd at Shape-directive time) - see
+	// ActiveTransform's own comment for the authoring idiom. Numerically
+	// identical to xform for every shape that never sat inside an
+	// ActiveTransform "StartTime"/"EndTime" pair (the overwhelming common
+	// case), so pbrt_flatten.h only treats a shape as animated when this
+	// differs from xform, exactly mirroring Scene::cameraIsAnimated()'s own
+	// real-inequality check.
+	Matrix4 xformEnd;
 	int materialIndex = -1;    // index into Scene::materials, -1 = pbrt's default
 	int areaLightIndex = -1;   // index into Scene::areaLights, -1 = not emissive
 	// index into Scene::media, -1 = vacuum. Only the medium a ray enters by
@@ -808,18 +816,21 @@ private:
 			return true;
 		}
 		if (d == "ActiveTransform") {
-			// pbrt-v4's real idiom for authoring a camera-motion-blur pair:
-			// two LookAt/Transform blocks, one gated to each time endpoint -
-			// e.g. `ActiveTransform StartTime` ... `LookAt ...` ...
-			// `ActiveTransform EndTime` ... `LookAt ...` ... `ActiveTransform
-			// All` (back to the default before Camera/WorldBegin). Only
-			// Camera's own worldToCamera/worldToCameraEnd capture at
-			// WorldBegin below actually reads ctmEnd - every other directive
-			// (Shape/Material/LightSource/CoordSysTransform/...) still only
-			// ever reads gs_.ctm (the StartTime slot), so object/shape motion
-			// blur via this same directive is deliberately NOT supported
-			// (see this round's own scope note - CPU camera motion blur
-			// only).
+			// pbrt-v4's real idiom for authoring a camera-motion-blur pair (or
+			// an object-motion-blur pair, per-Shape): two LookAt/Transform
+			// blocks, one gated to each time endpoint - e.g. `ActiveTransform
+			// StartTime` ... `LookAt ...` ... `ActiveTransform EndTime` ...
+			// `LookAt ...` ... `ActiveTransform All` (back to the default
+			// before Camera/WorldBegin, or before the next Shape). Camera's
+			// own worldToCamera/worldToCameraEnd capture at WorldBegin below,
+			// and Shape's own xform/xformEnd capture (see that directive's
+			// handler), both read ctmEnd - every OTHER directive (Material/
+			// LightSource/CoordSysTransform/...) still only ever reads
+			// gs_.ctm (the StartTime slot), so motion blur via this same
+			// directive stays scoped to camera + shape (an unclipped sphere
+			// only - see pbrt_flatten.h's own Sphere::center1 comment for why
+			// meshes/disks/cylinders/clipped spheres don't interpolate a
+			// second CTM yet), not e.g. animated lights or materials.
 			// The state keyword is UNQUOTED in real pbrt-v4 syntax (confirmed
 			// against pbrt-v4's own file format documentation), unlike
 			// Camera/Sampler/Film's own quoted TYPE strings just below -
@@ -1071,6 +1082,7 @@ private:
 			if (pos_ < t_.size() && t_[pos_].quoted) { sh.type = t_[pos_].text; ++pos_; }
 			sh.params = readParams();
 			sh.xform = gs_.ctm;
+			sh.xformEnd = gs_.ctmEnd;
 			sh.materialIndex = gs_.materialIndex;
 			sh.areaLightIndex = gs_.areaLightIndex;
 			sh.insideMedium = gs_.insideMedium;

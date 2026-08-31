@@ -1507,6 +1507,20 @@ struct GpuCameraParams {
 	float4 animR0, animR1;  // quaternion (x,y,z,w), shortest-arc-aligned
 	float3 localLowerLeftCorner, localHorizontal, localVertical;
 	float3 localDefocusDiskU, localDefocusDiskV;  // zero = no DOF
+
+	// Object (per-primitive sphere) motion blur - the wavefront backend's own
+	// copy of LaunchParams::motionBlurEnabled above (recursive backend), NOT
+	// a duplicate name collision: wavefront kernels are plain CUDA kernels,
+	// never given a `LaunchParams` global, so this struct (already threaded
+	// as an explicit parameter through every kernel that needs camera state -
+	// see e.g. GpuPortalLight's own comment on this file's piggyback
+	// convention) is where they read it instead. Set from the identical
+	// OptiXRenderer::sceneHasMotion_ auto-detection (SphereData::center1 !=
+	// center for at least one sphere) as the recursive backend's own flag -
+	// see WavefrontPathTracer::render()'s population of this field. 0
+	// (zero-init default, matching every scene before this feature existed)
+	// = static spheres, generate_camera_rays() always samples ray.time = 0.
+	int motionBlurEnabled;
 };
 
 // Launch parameters (passed to all OptiX programs)

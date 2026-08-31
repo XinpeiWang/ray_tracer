@@ -35,7 +35,9 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		ray.direction,
 		ray.tMin,
 		ray.tMax,
-		0.0f,                             // rayTime
+		ray.time,                         // object (per-primitive sphere)
+		                                   // motion blur shutter time - see
+		                                   // RayWorkItem::time's own comment
 		OptixVisibilityMask(255),
 		OPTIX_RAY_FLAG_NONE,
 		0,                                // SBT offset (radiance)
@@ -76,6 +78,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.etaScale        = ray.etaScale;
 		h.filterWeight    = ray.filterWeight;
 		h.brdf_pdf        = ray.brdf_pdf;
+		h.time            = ray.time;
 		// Resolve Mix HERE, once, before routing - not in each consumer
 		// kernel. h.materialIdx is overwritten with the RESOLVED index, so
 		// evaluate_materials()/_simple()/_dielectric() (wavefront_kernels.cu)
@@ -179,7 +182,9 @@ extern "C" __global__ void __raygen__wf_shadow() {
 		s.direction,
 		0.001f,
 		s.tMax,
-		0.0f,
+		s.time,                // object (per-primitive sphere) motion blur
+		                        // shutter time - see RayWorkItem::time's own
+		                        // comment (wavefront_types.h)
 		OptixVisibilityMask(255),
 		OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
 		1,                  // SBT offset (shadow) -- still a valid slot within

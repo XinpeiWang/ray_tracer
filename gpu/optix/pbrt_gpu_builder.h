@@ -1483,7 +1483,15 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		}
 		SphereData sd = {};
 		sd.center = f3(s.center);
-		sd.center1 = sd.center;          // static; see SphereData's comment
+		// Object motion blur - pbrt_flatten::Sphere::center1 already carries
+		// the real end-time centre (defaults to == center for a static
+		// sphere), computed once with the same real-inequality gate this
+		// backend's own motion detection (sceneHasMotion_) uses. See
+		// SphereData's own comment for the rest of the pipeline (native
+		// OptiX 2-key motion GAS, per-ray time via optixGetRayTime()) -
+		// already built and working, this was the last hardcoded value
+		// standing in its way.
+		sd.center1 = f3(s.center1);
 		sd.radius = static_cast<float>(s.radius);
 		// MediumInterface wins the material slot entirely when both it and
 		// AreaLightSource are set on the same shape (a valid pbrt idiom - an

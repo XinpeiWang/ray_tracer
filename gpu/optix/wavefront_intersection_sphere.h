@@ -182,7 +182,22 @@ extern "C" __global__ void __intersection__wf_sphere() {
 		return;
 	}
 
-	const float3 oc = ray_orig - sphere.center;
+	// Object (per-primitive) motion blur: interpolate to this ray's time -
+	// wavefront-native mirror of optix_intersection_sphere.h's identical
+	// __intersection__sphere block (see that file's own comment for the
+	// lerp(center, center1, 0) == center "provable no-op when unused"
+	// reasoning). The interpolated center is packed into attributes below,
+	// the same way sphere.radius already was, so __closesthit__wf_sphere
+	// doesn't need to re-derive it (and the raw struct has no precomputed
+	// per-ray-time value to read anyway).
+	const float ray_time = optixGetRayTime();
+	const float3 center = make_float3(
+		sphere.center.x + ray_time * (sphere.center1.x - sphere.center.x),
+		sphere.center.y + ray_time * (sphere.center1.y - sphere.center.y),
+		sphere.center.z + ray_time * (sphere.center1.z - sphere.center.z)
+	);
+
+	const float3 oc = ray_orig - center;
 	const float a = dot(ray_dir, ray_dir);
 	const float half_b = dot(oc, ray_dir);
 	const float c = dot(oc, oc) - sphere.radius * sphere.radius;
@@ -199,9 +214,9 @@ extern "C" __global__ void __intersection__wf_sphere() {
 
 	optixReportIntersection(
 		root, 0,
-		__float_as_int(sphere.center.x),
-		__float_as_int(sphere.center.y),
-		__float_as_int(sphere.center.z),
+		__float_as_int(center.x),
+		__float_as_int(center.y),
+		__float_as_int(center.z),
 		__float_as_int(sphere.radius));
 }
 
@@ -245,6 +260,19 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// stay meaningful only for the plain-Sphere/Box branches).
 	const bool is_clipped = (sph.shapeKind == GpuMediumShapeKind::ClippedSphere);
 
+	// Object (per-primitive) motion blur: the plain-Sphere intersection
+	// program above (__intersection__wf_sphere) packed the time-interpolated
+	// centre into attributes 0-2 (see its own comment, mirroring
+	// optix_intersection_sphere.h's identical convention) - read it back
+	// here rather than re-reading sph.center, which has no per-ray-time
+	// value precomputed. Meaningless/unused for is_box (static bounds, no
+	// attributes packed for that branch) and is_clipped (carries its own
+	// w2o affine instead, out of this feature's scope).
+	const float3 sphere_center = make_float3(
+		__int_as_float(optixGetAttribute_0()),
+		__int_as_float(optixGetAttribute_1()),
+		__int_as_float(optixGetAttribute_2()));
+
 	float3 obj_hit = hit_point;
 	float3 obj_normal;
 	if (is_clipped) {
@@ -260,7 +288,7 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 		// (possibly world-transformed) copy used for shading/dpdu.
 		obj_normal = is_box
 			? wf_box_face_normal(obj_hit, sph.boxMin, sph.boxMax)
-			: normalize(obj_hit - sph.center);
+			: normalize(obj_hit - sphere_center);
 	}
 	float3 outward_normal = obj_normal;
 	if (is_clipped)
@@ -388,7 +416,11 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 			t_near = fmaxf(0.0f, bn);
 			t_far  = bf;
 		} else {
-			float3 oc2 = ray_orig - sph.center;
+			// sphere_center (time-interpolated), not sph.center - a moving
+			// Medium sphere's near/far re-entry roots need the same centre
+			// the closest-hit above already resolved this ray's shading
+			// point against, not the raw start-of-shutter struct value.
+			float3 oc2 = ray_orig - sphere_center;
 			float half_b2 = dot(oc2, unit_dir);
 			float c2 = dot(oc2, oc2) - sph.radius * sph.radius;
 			float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);

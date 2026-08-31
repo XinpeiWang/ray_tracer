@@ -70,6 +70,24 @@ struct Triangle {
 
 struct Sphere {
 	double center[3] = {0, 0, 0};
+	// Object-motion-blur end-time centre (pbrt-v4 ActiveTransform "EndTime"
+	// on this Shape - see pbrt_scene.h's ShapeDecl::xformEnd comment).
+	// Defaults to `center` (real-inequality checked below, at the sole
+	// call site that bakes this field, so every shape that never sat
+	// inside an ActiveTransform pair renders exactly as before this field
+	// existed - a stationary sphere). Only baked for a full (non-clipped)
+	// sphere: rotation-invariant like `center`/`radius` above, so a plain
+	// translated-endpoint lerp (matching src/TheRestOfYourLife/sphere.h's
+	// existing two-centre moving constructor and GPU's own SphereData::
+	// center1, both already real, working infrastructure - just never
+	// wired to a pbrt-parsed shape until this field existed) is exact, not
+	// an approximation. A clipped sphere's real end-time xform would need
+	// a materially bigger "carry two full object-to-world transforms,
+	// slerp/lerp the whole matrix" feature (mirroring GpuMediumShapeKind::
+	// ClippedSphere's own unbaked-xform path) - out of scope for this
+	// round, so a clipped sphere's `clipped` flag stays authoritative and
+	// this field is left at `center` (no motion) whenever clipped is true.
+	double center1[3] = {0, 0, 0};
 	double radius = 1.0;
 	int material = -1;
 	int areaLight = -1;
@@ -1314,6 +1332,15 @@ inline void warnIfImagemapOptionsIgnored(const pbrt_scene::TextureDecl &imgTex,
 struct ShapeWork {
 	const pbrt_scene::ShapeDecl *shape = nullptr;
 	pbrt_scene::Matrix4 xform;
+	// EndTime counterpart of xform above (ShapeDecl::xformEnd, composed with
+	// any instance placement transform the same way xform itself is) - see
+	// Sphere::center1's own comment for what consumes this. Defaults to
+	// identity like Matrix4 itself; every call site below sets it to mirror
+	// xform's own construction exactly, so a shape whose ShapeDecl was never
+	// authored inside an ActiveTransform pair keeps xformEnd == xform (no
+	// motion), same "real inequality, not directive presence" convention as
+	// Scene::cameraIsAnimated().
+	pbrt_scene::Matrix4 xformEnd;
 	std::vector<Triangle> *triangles = nullptr;
 	std::vector<Sphere> *spheres = nullptr;
 	std::vector<BilinearPatch> *bilinearPatches = nullptr;
@@ -2795,7 +2822,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	std::vector<flatten_detail::ShapeWork> work;
 
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
-		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres, &out.bilinearPatches,
+		work.push_back({&shape, shape.xform, shape.xformEnd, &out.triangles, &out.spheres, &out.bilinearPatches,
 						&out.disks, &out.cylinders, &out.curves});
 
 	// Sized up front so the pointers taken below stay valid as work is added.
@@ -2810,7 +2837,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// treats a null output the same way it treats any other
 			// unsupported case, rather than silently dropping the shape
 			// with no explanation.
-			work.push_back({&shape, shape.xform,
+			work.push_back({&shape, shape.xform, shape.xformEnd,
 							&out.groups[g].triangles, &out.groups[g].spheres});
 		}
 	}
@@ -2845,6 +2872,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				 scene.objects[static_cast<std::size_t>(group)].shapes) {
 			if (shape.areaLightIndex < 0) continue;
 			work.push_back({&shape, flatten_detail::compose(inst.xform, shape.xform),
+							flatten_detail::compose(inst.xform, shape.xformEnd),
 							&out.triangles, &out.spheres, &out.bilinearPatches,
 							&out.disks, &out.cylinders, &out.curves});
 		}
@@ -2909,6 +2937,29 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 			}
 			s.radius = r * hi;
+
+			// Object motion blur (pbrt-v4's ActiveTransform "StartTime"/
+			// "EndTime" around a Shape "sphere") - bake a second, end-time
+			// centre the same way s.center was baked above, gated on real
+			// inequality (not just "ActiveTransform appeared somewhere"),
+			// exactly mirroring Scene::cameraIsAnimated()'s own convention.
+			// Left at its default (== s.center, i.e. no motion) for a
+			// clipped sphere - that path carries its own unbaked xform and
+			// was never wired for motion blur (see the ActiveTransform
+			// directive's own comment).
+			if (!s.clipped) {
+				bool animated = false;
+				for (int i = 0; i < 16; ++i) {
+					if (xform.m[i] != w.xformEnd.m[i]) { animated = true; break; }
+				}
+				if (animated) {
+					transformPoint(w.xformEnd, 0.0, 0.0, 0.0, s.center1);
+				} else {
+					s.center1[0] = s.center[0];
+					s.center1[1] = s.center[1];
+					s.center1[2] = s.center[2];
+				}
+			}
 
 			s.material = shape.materialIndex;
 			s.areaLight = shape.areaLightIndex;

@@ -91,6 +91,19 @@ struct RayWorkItem {
 	float        brdf_pdf;
 	float        tMin;             // ray t_min (normally 0.001)
 	float        tMax;             // ray t_max (normally 1e30)
+	// Object (per-primitive sphere) motion blur shutter time in [0,1] -
+	// RTIOW convention, matching the recursive backend's own PathTracingPayload
+	// equivalent (optix_raygen.h's ray_time local) and CPU's ray::time(). One
+	// draw per PRIMARY ray (wf_generate_camera_rays, gated on
+	// GpuCameraParams::motionBlurEnabled - 0.0f otherwise, same "no motion in
+	// this scene" sentinel meaning as ray_time's own default), then carried
+	// UNCHANGED through every bounce of the same path (optixTrace's rayTime
+	// argument in __raygen__wf_intersect/__raygen__wf_shadow, and every
+	// continuation-ray/shadow-ray construction site) - a path's shutter time
+	// is fixed once at the camera, never resampled per bounce, exactly
+	// mirroring how the recursive backend reuses one ray_time across an
+	// entire path instead of drawing a fresh one at each closest-hit.
+	float        time;
 };
 
 // Result of a successful intersection, produced by OptiX closesthit.
@@ -202,6 +215,12 @@ struct HitWorkItem {
 	// its very next segment would lose its real MIS pdf and get treated as
 	// a specular bounce (full weight, no MIS) instead.
 	float  brdf_pdf;
+	// Carried from RayWorkItem::time (see its own comment) - the shutter
+	// time this hit's ray was traced at, needed so a continuation ray
+	// spawned from this hit keeps sampling the SAME moving sphere at the
+	// SAME instant for the rest of the path (and so a shadow ray fired from
+	// here tests occlusion at that same instant).
+	float  time;
 };
 
 #if defined(__CUDACC__) || defined(OPTIX_RENDERER_AVAILABLE)
@@ -223,6 +242,7 @@ __device__ __forceinline__ void wf_carry_ray_state(RayWorkItem& next, const HitW
 	next.etaScale        = h.etaScale;
 	next.filterWeight    = h.filterWeight;
 	next.brdf_pdf        = h.brdf_pdf;
+	next.time            = h.time;
 }
 #endif
 
@@ -237,6 +257,12 @@ struct ShadowRayWorkItem {
 	float  wavelengths[kWFNWavelengths];
 	float  wavelength_pdfs[kWFNWavelengths];
 	int    pixelIndex;
+	// Carried from the originating hit's RayWorkItem/HitWorkItem::time (see
+	// RayWorkItem::time's own comment) - a shadow ray must test occlusion
+	// against a moving sphere at the SAME shutter instant its own NEE sample
+	// was taken at, or it could pass through where the sphere actually was
+	// at time 0 while missing where it really is at the sampled time.
+	float  time;
 };
 
 // A miss result: the ray escaped, accumulate background/environment.
@@ -326,6 +352,12 @@ struct BssrdfProbeWorkItem {
 	// own radiance contribution still needs this path's filter weight (see
 	// RayWorkItem::filterWeight's own comment).
 	float  filterWeight;
+	// Carried from RayWorkItem/HitWorkItem::time (see its own comment) - the
+	// probe walk's own optixTrace() calls (wf_trace_probe_ray(),
+	// wavefront_probe.h) need this so a probe segment tests intersection
+	// against a moving sphere at the same shutter instant the entry hit was
+	// traced at.
+	float  time;
 };
 
 // Result of one BSSRDF probe walk (__raygen__wf_probe, wavefront_probe.h) -
@@ -365,6 +397,12 @@ struct BssrdfExitWorkItem {
 	// filterWeight IS also carried, same as BssrdfProbeWorkItem - see
 	// RayWorkItem::filterWeight's own comment.
 	float  filterWeight;
+	// time IS also carried, same as BssrdfProbeWorkItem - see
+	// RayWorkItem::time's own comment. resolve_bssrdf_exit() passes it
+	// through to wf_finish_material_scatter() unchanged, so the resumed
+	// exit-surface bounce keeps sampling the same moving sphere at the same
+	// instant as the rest of this path.
+	float  time;
 };
 
 // ============================================================================

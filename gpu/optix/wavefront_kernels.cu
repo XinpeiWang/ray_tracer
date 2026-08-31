@@ -1475,6 +1475,16 @@ extern "C" __global__ void generate_camera_rays(
 	}
 	item.filterWeight = filter_w;
 	atomicAdd(&weightBuffer[pixelIdx], filter_w);
+	// Object (per-primitive sphere) motion blur shutter time - one draw per
+	// PRIMARY ray, then carried unchanged through every bounce of this same
+	// path (see RayWorkItem::time's own comment). Mirrors optix_raygen.h's
+	// identical `params.motionBlurEnabled ? random_float(seed) : 0.0f` gate
+	// for the recursive backend. Drawn BEFORE item.seed is captured below,
+	// not after - seed is a PCG state advanced by reference, so capturing
+	// it first would silently discard this draw's advancement and leave
+	// the next consumer (evaluate_materials, which resumes from item.seed)
+	// replaying the same stream this draw already used.
+	item.time = camera.motionBlurEnabled ? wf_rand(seed) : 0.0f;
 	item.seed       = seed;
 	item.pixelIndex = pixelIdx;
 	item.depth      = 0;
@@ -1650,7 +1660,12 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// matTypes) just pass their own h.uv_u/h.uv_v too since it's free and
 	// harmless - evalGlossyF's CoatedDiffuse branch is simply never reached
 	// from those call sites.
-	float uv_u, float uv_v)
+	float uv_u, float uv_v,
+	// Object (per-primitive sphere) motion blur shutter time - see
+	// RayWorkItem::time's own comment (wavefront_types.h). Carried unchanged
+	// from the incoming hit into every ShadowRayWorkItem/RayWorkItem this
+	// function pushes below, exactly like filterWeight/etaScale above.
+	float time)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -2084,6 +2099,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				shadow.wavelength_pdfs[i] = swl.pdf[i];
 			}
 			shadow.pixelIndex = pixelIndex;
+			shadow.time = time;
 			shadowQueue.push(shadow);
 		}
 	}
@@ -2196,6 +2212,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				shadow.wavelength_pdfs[i] = swl.pdf[i];
 			}
 			shadow.pixelIndex = pixelIndex;
+			shadow.time = time;
 			shadowQueue.push(shadow);
 		}
 	}
@@ -2298,6 +2315,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			shadow.wavelength_pdfs[i] = swl.pdf[i];
 		}
 		shadow.pixelIndex = pixelIndex;
+		shadow.time = time;
 		shadowQueue.push(shadow);
 	}
 
@@ -2361,6 +2379,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			: fmaxf(dot(next.direction, normal), 0.0f) / 3.14159265f);
 	next.tMin       = 0.001f;
 	next.tMax       = 1e30f;
+	// Fixed for the whole path once sampled at the camera - see RayWorkItem::
+	// time's own comment.
+	next.time       = time;
 	for (int i = 0; i < kWFNWavelengths; ++i) {
 		next.throughput[i]      = new_throughput[i];
 		next.radiance[i]        = is_specular ? radiance[i] : 0.0f;
@@ -2763,6 +2784,7 @@ extern "C" __global__ void evaluate_materials(
 			}
 			probeItem.pixelIndex = h.pixelIndex;
 			probeItem.depth      = h.depth;
+			probeItem.time       = h.time;
 			bssrdfProbeQueue.push(probeItem);
 		}
 		return;
@@ -3737,7 +3759,7 @@ extern "C" __global__ void evaluate_materials(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time);
 }
 
 // ============================================================================
@@ -3914,7 +3936,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time);
 }
 
 // ============================================================================
@@ -4232,7 +4254,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time);
 }
 
 // Uplift a flat RGB color to a spectral sample at the given hero
@@ -4416,7 +4438,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, /*uv_u=*/0.0f, /*uv_v=*/0.0f);
+		textures, texturePixels, /*uv_u=*/0.0f, /*uv_v=*/0.0f, item.time);
 }
 
 // ============================================================================
