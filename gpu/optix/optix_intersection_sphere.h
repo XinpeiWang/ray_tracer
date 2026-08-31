@@ -778,18 +778,19 @@ extern "C" __global__ void __closesthit__sphere() {
 						scattered_dir = sample_henyey_greenstein(-unit_dir3, grid.phase_g, seed);
 						float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
 						attenuation = make_float3(sr/maxc, sg/maxc, sb/maxc);
-						// Real per-voxel "rgb Le" (grid.leDataOffset's own
-						// comment, optix_types.h) sampled at this exact
-						// accepted scatter point, from the SAME rgbGridData
-						// buffer the sigma_s lookups above use. Unlike CPU's
-						// RGBGridMediumData::sample_point() (rgb_grid_medium_
-						// hittable.h), this is NOT weighted by a sigma_a/
-						// sigma_t collision-probability fraction - GPU
-						// RgbGridMedium has no sigma_a grid at all (pure-
-						// scattering simplification, see this branch's own
-						// header comment) - so every accepted scatter
-						// collision emits the full Le here rather than only
-						// the "absorption fraction" of collisions CPU models.
+						// Real per-voxel "rgb Le" (grid.leDataOffset's own,
+						// much longer comment, optix_types.h - read that one
+						// for the full "why" and its brightness-vs-CPU
+						// consequence) sampled at this exact accepted scatter
+						// point, from the SAME rgbGridData buffer the
+						// sigma_s lookups above use. Emits the FULL Le on
+						// every accepted collision (weight 1), not the
+						// sigma_a/sigma_t-weighted fraction CPU's
+						// RGBGridMediumData::sample_point() uses - GPU has no
+						// sigma_a grid at all, so that fraction is always 0
+						// here and CPU's exact formula would make this a
+						// silent no-op; weight 1 is the deliberate tradeoff
+						// that keeps the feature visible instead.
 						if (grid.leDataOffset >= 0) {
 							const float* leRData = params.rgbGridData + grid.leDataOffset;
 							const float* leGData = leRData + voxelCount;

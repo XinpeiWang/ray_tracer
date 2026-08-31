@@ -1322,13 +1322,16 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			const bool hasLe = md.Le_r.size() == voxels && md.Le_g.size() == voxels
 				&& md.Le_b.size() == voxels;
 			if (hasLe && meta.Le_scale > 0.0f) {
-				std::vector<float> ler(md.Le_r.begin(), md.Le_r.end());
-				std::vector<float> leg(md.Le_g.begin(), md.Le_g.end());
-				std::vector<float> leb(md.Le_b.begin(), md.Le_b.end());
+				// Inserted directly from md.Le_r/g/b (double) into
+				// out.rgbGridData (float) - unlike the sigma_s block above,
+				// which needs its own rf/gf/bf float copies to compute
+				// max_density from afterward, ler/leg/leb here had no second
+				// use, so the intermediate copy is skipped; insert() narrows
+				// double->float per element the same way the copy would have.
 				meta.leDataOffset = static_cast<int>(out.rgbGridData.size());
-				out.rgbGridData.insert(out.rgbGridData.end(), ler.begin(), ler.end());
-				out.rgbGridData.insert(out.rgbGridData.end(), leg.begin(), leg.end());
-				out.rgbGridData.insert(out.rgbGridData.end(), leb.begin(), leb.end());
+				out.rgbGridData.insert(out.rgbGridData.end(), md.Le_r.begin(), md.Le_r.end());
+				out.rgbGridData.insert(out.rgbGridData.end(), md.Le_g.begin(), md.Le_g.end());
+				out.rgbGridData.insert(out.rgbGridData.end(), md.Le_b.begin(), md.Le_b.end());
 			}
 			const int gridIdx = static_cast<int>(out.rgbGridMediums.size());
 			out.rgbGridMediums.push_back(meta);

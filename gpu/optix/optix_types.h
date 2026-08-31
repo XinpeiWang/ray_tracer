@@ -731,6 +731,27 @@ struct GpuRgbGridMedium {
 	// reason). 0 when absent (is_emissive()'s own CPU-side `Le_scale > 0`
 	// gate), so a stray leDataOffset>=0 with a zero scale still safely
 	// contributes no emission even without checking leDataOffset first.
+	//
+	// IMPORTANT - not radiometrically weighted like CPU: CPU's
+	// RGBGridMediumData::sample_point() only attributes emission to the
+	// sigma_a/sigma_t fraction of a real collision (rgb_grid_medium_
+	// hittable.h) - the "this collision was absorption, not scattering"
+	// probability. This struct has no sigma_a grid at all (sigma_scale/
+	// sigma_maj above are scattering-only - a real, pre-existing GPU
+	// simplification), so that fraction is architecturally always 0 here;
+	// applying CPU's exact formula would make every rgbgrid Le request a
+	// silent no-op. Each backend's own RgbGridMedium closest-hit case
+	// instead emits the FULL per-voxel Le at every accepted scatter
+	// collision (weight 1, not sigma_a/sigma_t) as the only choice that
+	// makes the feature visible given this constraint - a real, deliberate
+	// tradeoff, not an oversight. Consequence: a scene combining real
+	// "rgb sigma_s" (heavy multi-scattering) with "rgb Le" on the SAME
+	// medium can render substantially - not just slightly - brighter on GPU
+	// than the equivalent --cpu render, since each internal scatter bounce
+	// re-adds the same full, unattenuated Le rather than CPU's small
+	// absorption-weighted fraction. Giving this struct a real sigma_a grid
+	// (closing that gap for exact CPU/GPU parity) is a larger, separate lift
+	// deliberately deferred, not attempted here.
 	float Le_scale;
 };
 

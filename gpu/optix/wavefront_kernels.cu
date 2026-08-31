@@ -3389,12 +3389,16 @@ extern "C" __global__ void evaluate_materials(
 					scattered_dir = wf_sample_phase_scatter(unit_dir, grid.phase_g, seed, phaseWo, phaseG, brdf_pdf_override);
 					float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
 					attenuation = albedoSpectrum(make_float3(sr/maxc, sg/maxc, sb/maxc));
-					// Real per-voxel "rgb Le" - see optix_intersection_sphere.h's
-					// identical RgbGridMedium fix for the full "why" (including
-					// why this is unweighted by a sigma_a/sigma_t fraction,
-					// unlike MaterialType::Medium's own build-time-baked
-					// mat.medium_emission above). Added directly to radiance
-					// here (this backend's own per-case convention, see
+					// Real per-voxel "rgb Le" - emits the FULL Le on every
+					// accepted collision (weight 1), not the sigma_a/sigma_t-
+					// weighted fraction CPU's RGBGridMediumData::sample_point()
+					// uses, unlike MaterialType::Medium's own build-time-baked
+					// mat.medium_emission above (an exact weighted constant,
+					// since GPU has no sigma_a grid here to weight by at all -
+					// see GpuRgbGridMedium::leDataOffset's own comment,
+					// optix_types.h, for the full "why" and its brightness-
+					// vs-CPU consequence). Added directly to radiance here
+					// (this backend's own per-case convention, see
 					// MaterialType::Medium's identical `radiance = radiance +
 					// throughput * ...` above) rather than threaded through to
 					// a later NEE step, since wavefront's NEE/shadow-ray pass

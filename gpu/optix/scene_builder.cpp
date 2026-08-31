@@ -321,7 +321,11 @@ namespace {
 	// a material referencing it via rgb_grid_medium_extra.rgbGridMediumIdx -
 	// see MaterialType::RgbGridMedium's comment in optix_types.h. `meta`'s
 	// dataOffset field is overwritten here; the caller only needs to fill in
-	// every other field before calling this.
+	// every other field before calling this - IN PARTICULAR leDataOffset
+	// (must be explicitly -1 for "no emission"; a value-initialized
+	// GpuRgbGridMedium{} zero-inits it to 0, which the device-side
+	// `leDataOffset >= 0` gate would misread as a real, valid offset into
+	// this same rgbGridData buffer) and Le_scale.
 	inline int add_rgb_grid_medium(SceneData& scene, GpuRgbGridMedium meta,
 	                                const std::vector<float>& r,
 	                                const std::vector<float>& g,
@@ -3061,10 +3065,10 @@ static void build_rgb_grid_medium_scene_gpu(SceneData& scene) {
 	meta.phase_g = 0.2f;
 	// No per-voxel "rgb Le" for this scattering-only demo scene - -1 is the
 	// documented "no emission" sentinel (GpuRgbGridMedium::leDataOffset's
-	// own comment, optix_types.h); Le_scale left at 0 too, matching CPU's
-	// own RGBGridMediumData::Le_scale default.
+	// own comment, optix_types.h). Unlike leDataOffset, Le_scale needs no
+	// explicit assignment here: `GpuRgbGridMedium meta{};` above already
+	// zero-inits it, matching CPU's own RGBGridMediumData::Le_scale default.
 	meta.leDataOffset = -1;
-	meta.Le_scale = 0.0f;
 
 	const int mat_medium = add_rgb_grid_medium(scene, meta, ss_r, ss_g, ss_b);
 
@@ -4493,7 +4497,10 @@ static bool build_loaded_pbrt_scene(
 	// RgbGridMedium - see GpuRgbGridMedium::leDataOffset's own comment,
 	// optix_types.h, and each backend's own RgbGridMedium closest-hit case).
 	// The rgbgrid case is NOT weighted by a sigma_a/sigma_t fraction like
-	// the homogeneous case is - GPU RgbGridMedium has no sigma_a grid at all
+	// the homogeneous case is (so a scene mixing "rgb sigma_s" and "rgb Le"
+	// on the same medium can render noticeably brighter on GPU than --cpu -
+	// see GpuRgbGridMedium::Le_scale's own comment for the full reasoning) -
+	// GPU RgbGridMedium has no sigma_a grid at all
 	// (a real, pre-existing, documented simplification over CPU's fuller
 	// RGBGridMediumData support - see GpuRgbGridMedium's own comment) - so
 	// every accepted scatter collision emits the full per-voxel Le rather
@@ -4509,25 +4516,45 @@ static bool build_loaded_pbrt_scene(
 	// is_emissive()'s own "Le_grids && Le_scale>0" convention) whenever the
 	// medium is rgbgrid specifically.
 	//
-	// "homogeneous" and "rgbgrid" are BOTH excluded from the warning below -
-	// GPU now implements real medium emission for both (see
-	// GpuRgbGridMedium::leDataOffset's own comment, optix_types.h, and each
-	// backend's own RgbGridMedium closest-hit case) - only "cloud"/
-	// "uniformgrid" still have no GPU emission concept at all.
+	// "homogeneous" is unconditionally excluded from the warning below - GPU
+	// always implements its real medium emission (see MaterialData::
+	// medium_emission's own comment). "rgbgrid" is excluded ONLY when GPU can
+	// actually realize it: pbrt_gpu_builder.h's rgbgrid branch (hasScattering)
+	// requires a valid "rgb sigma_s" array of exactly nx*ny*nz*3 numbers to
+	// even build a nonzero majorant (GpuRgbGridMedium::sigma_maj) - without
+	// one the delta-tracking loop in each backend's own RgbGridMedium
+	// closest-hit case never runs a single iteration, so the new Le-sampling
+	// code inside it (gated on an accepted scatter collision) never executes
+	// either. A scene with real "rgb Le" but no (or a malformed) "rgb
+	// sigma_s" would otherwise render that medium as silently invisible on
+	// GPU - same voxels*3 size check as pbrt_gpu_builder.h's own
+	// `hasScattering`, duplicated here since that function's local isn't
+	// reachable from this loop. Only "cloud"/"uniformgrid" still have no GPU
+	// emission concept at all.
 	for (const pbrt_flatten::Medium& med : loaded.scene.media) {
 		bool hasLe = pbrt_flatten::isNonzeroRGB(med.Le);
-		if (med.type == "rgbgrid" && !hasLe && med.Le_scale > 0.0) {
-			const auto anyNonzero = [](const std::vector<double>& v) {
-				return std::any_of(v.begin(), v.end(), [](double x) { return x > 1e-9; });
-			};
-			hasLe = anyNonzero(med.Le_r) || anyNonzero(med.Le_g) || anyNonzero(med.Le_b);
+		bool gpuCanRealizeRgbGridLe = false;
+		if (med.type == "rgbgrid") {
+			if (!hasLe && med.Le_scale > 0.0) {
+				const auto anyNonzero = [](const std::vector<double>& v) {
+					return std::any_of(v.begin(), v.end(), [](double x) { return x > 1e-9; });
+				};
+				hasLe = anyNonzero(med.Le_r) || anyNonzero(med.Le_g) || anyNonzero(med.Le_b);
+			}
+			const std::size_t voxels = static_cast<std::size_t>(med.nx)
+				* static_cast<std::size_t>(med.ny) * static_cast<std::size_t>(med.nz);
+			gpuCanRealizeRgbGridLe = med.sigma_s_r.size() == voxels
+				&& med.sigma_s_g.size() == voxels && med.sigma_s_b.size() == voxels;
 		}
-		if (med.type != "homogeneous" && med.type != "rgbgrid" && hasLe) {
+		const bool gpuSupportsThisMediumsLe =
+			med.type == "homogeneous" || (med.type == "rgbgrid" && gpuCanRealizeRgbGridLe);
+		if (!gpuSupportsThisMediumsLe && hasLe) {
 			std::cerr << "[OptiX] Warning: scene requests a MakeNamedMedium "
 						 "\"Le\"/\"Lescale\" (a self-emitting medium) on a \""
 					  << med.type << "\" medium, but GPU rendering only "
-						 "implements medium emission for \"homogeneous\"/"
-						 "\"rgbgrid\" media - this medium will scatter/absorb "
+						 "implements medium emission for \"homogeneous\" media "
+						 "and \"rgbgrid\" media that also have a valid \"rgb "
+						 "sigma_s\" array - this medium will scatter/absorb "
 						 "but not glow. Use --cpu to honor this request.\n";
 			break;
 		}
