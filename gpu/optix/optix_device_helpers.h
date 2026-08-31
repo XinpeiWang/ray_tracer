@@ -3318,6 +3318,67 @@ __device__ __forceinline__ bool sample_realistic_camera_ray(
 	return true;
 }
 
+// Interpolates GpuCameraParams::animR0/R1 (a shortest-arc-aligned rotation
+// quaternion pair, decomposed host-side once by the real double-precision
+// AnimatedTransform - see build_gpu_animated_camera_params(),
+// scene_builder.cpp) at shutter fraction dt in [0,1], and applies the
+// result to a local-space point (isPoint=true, translation included) or
+// vector (isPoint=false, translation-free). Fused, float-only mirror of
+// AnimatedTransform::Interpolate + apply_point_mat/apply_vector_mat
+// (src/shared/animated_transform.h) for per-ray GPU use.
+__device__ __forceinline__ float3 gpu_camera_anim_apply(
+	const GpuCameraParams& cam, float dt, const float3& v, bool isPoint
+) {
+	float cosTheta = cam.animR0[0]*cam.animR1[0] + cam.animR0[1]*cam.animR1[1] +
+					  cam.animR0[2]*cam.animR1[2] + cam.animR0[3]*cam.animR1[3];
+	float qx, qy, qz, qw;
+	if (cosTheta > 0.9995f) {
+		qx = (1.0f-dt)*cam.animR0[0] + dt*cam.animR1[0];
+		qy = (1.0f-dt)*cam.animR0[1] + dt*cam.animR1[1];
+		qz = (1.0f-dt)*cam.animR0[2] + dt*cam.animR1[2];
+		qw = (1.0f-dt)*cam.animR0[3] + dt*cam.animR1[3];
+		float len = sqrtf(qx*qx + qy*qy + qz*qz + qw*qw);
+		if (len > 0.0f) { qx /= len; qy /= len; qz /= len; qw /= len; }
+	} else {
+		float theta = acosf(fmaxf(-1.0f, fminf(1.0f, cosTheta)));
+		float thetaP = theta * dt;
+		float tx = cam.animR1[0] - cosTheta*cam.animR0[0];
+		float ty = cam.animR1[1] - cosTheta*cam.animR0[1];
+		float tz = cam.animR1[2] - cosTheta*cam.animR0[2];
+		float tw = cam.animR1[3] - cosTheta*cam.animR0[3];
+		float tlen = sqrtf(tx*tx + ty*ty + tz*tz + tw*tw);
+		if (tlen > 0.0f) { tx /= tlen; ty /= tlen; tz /= tlen; tw /= tlen; }
+		float cp = cosf(thetaP), sp = sinf(thetaP);
+		qx = cp*cam.animR0[0] + sp*tx;
+		qy = cp*cam.animR0[1] + sp*ty;
+		qz = cp*cam.animR0[2] + sp*tz;
+		qw = cp*cam.animR0[3] + sp*tw;
+	}
+
+	// Quaternion -> 3x3 rotation, pbrt-v4's left-handed convention (forward
+	// matrix = transpose of the "standard" mInv below) - mirrors
+	// at_quat_to_mat()'s exact derivation (animated_transform.h).
+	float xx=qx*qx, yy=qy*qy, zz=qz*qz;
+	float xy=qx*qy, xz=qx*qz, yz=qy*qz;
+	float wx=qx*qw, wy=qy*qw, wz=qz*qw;
+	float mInv[3][3] = {
+		{1.0f-2.0f*(yy+zz), 2.0f*(xy+wz),      2.0f*(xz-wy)},
+		{2.0f*(xy-wz),      1.0f-2.0f*(xx+zz), 2.0f*(yz+wx)},
+		{2.0f*(xz+wy),      2.0f*(yz-wx),      1.0f-2.0f*(xx+yy)}
+	};
+	float3 out;
+	out.x = mInv[0][0]*v.x + mInv[1][0]*v.y + mInv[2][0]*v.z;
+	out.y = mInv[0][1]*v.x + mInv[1][1]*v.y + mInv[2][1]*v.z;
+	out.z = mInv[0][2]*v.x + mInv[1][2]*v.y + mInv[2][2]*v.z;
+
+	if (isPoint) {
+		out.x += (1.0f-dt)*cam.animT0.x + dt*cam.animT1.x;
+		out.y += (1.0f-dt)*cam.animT0.y + dt*cam.animT1.y;
+		out.z += (1.0f-dt)*cam.animT0.z + dt*cam.animT1.z;
+	}
+	return out;
+}
+
 // Generate a primary camera ray for raster coordinates (u,v) in [0,1]^2,
 // dispatching on params.camera.kind. Mirrors the CPU camera models in
 // src/shared/cameras.h (OrthographicCamera/SphericalCamera/RealisticCamera::
@@ -3332,6 +3393,38 @@ __device__ __forceinline__ void generate_primary_ray(
 ) {
 	const GpuCameraParams& cam = params.camera;
 	weight = 1.0f;
+
+	if (cam.animated) {
+		// Real per-ray shutter-time camera motion blur - mirrors
+		// src/TheRestOfYourLife/camera.h's camera_is_animated branch of
+		// get_ray(): build a LOCAL-space ray exactly as the static
+		// Perspective case below does, then place it in world space via a
+		// per-sample-time-interpolated camera-to-world transform instead
+		// of a single static basis. Perspective-only, like CPU's own
+		// camera_is_animated (mutually exclusive with an alt camera model
+		// there too) - scene_builder.cpp never sets `animated` alongside a
+		// non-Perspective `kind`.
+		float3 local_pixel_sample = cam.localLowerLeftCorner + u * cam.localHorizontal + v * cam.localVertical;
+		float3 local_origin = make_float3(0.0f, 0.0f, 0.0f);
+		bool hasDOF = (cam.localDefocusDiskU.x != 0.0f || cam.localDefocusDiskU.y != 0.0f || cam.localDefocusDiskU.z != 0.0f ||
+					   cam.localDefocusDiskV.x != 0.0f || cam.localDefocusDiskV.y != 0.0f || cam.localDefocusDiskV.z != 0.0f);
+		if (hasDOF) {
+			float3 p = random_in_unit_disk(seed);
+			local_origin = p.x * cam.localDefocusDiskU + p.y * cam.localDefocusDiskV;
+		}
+		float3 local_direction = local_pixel_sample - local_origin;
+		// Shutter-time interpolation fraction, uniform on [0,1]:
+		// AnimatedTransform::Interpolate always normalizes by (endTime -
+		// startTime) before use, so for a time drawn uniformly across the
+		// shutter window, dt is uniform on [0,1] regardless of the
+		// window's actual numeric bounds - GpuCameraParams doesn't need to
+		// store shutterOpen/Close at all.
+		float dt = random_float(seed);
+		origin = gpu_camera_anim_apply(cam, dt, local_origin, true);
+		direction = gpu_camera_anim_apply(cam, dt, local_direction, false);
+		return;
+	}
+
 	switch (cam.kind) {
 		case CameraKind::Orthographic: {
 			origin = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;

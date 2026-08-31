@@ -1251,6 +1251,63 @@ __device__ __forceinline__ bool wf_sample_realistic_camera_ray(
 	return true;
 }
 
+// Interpolates GpuCameraParams::animR0/R1 at shutter fraction dt in [0,1]
+// and applies the result to a local-space point/vector. Duplicated from
+// optix_device_helpers.h's gpu_camera_anim_apply (with the wf_ prefix) -
+// see that function's own comment for the derivation; this is a byte-for-
+// byte mirror, matching this file's existing "duplicate, don't share
+// device helpers with the recursive path" convention (see
+// wf_generate_primary_ray's own comment just below).
+__device__ __forceinline__ float3 wf_camera_anim_apply(
+	const GpuCameraParams& cam, float dt, const float3& v, bool isPoint
+) {
+	float cosTheta = cam.animR0[0]*cam.animR1[0] + cam.animR0[1]*cam.animR1[1] +
+					  cam.animR0[2]*cam.animR1[2] + cam.animR0[3]*cam.animR1[3];
+	float qx, qy, qz, qw;
+	if (cosTheta > 0.9995f) {
+		qx = (1.0f-dt)*cam.animR0[0] + dt*cam.animR1[0];
+		qy = (1.0f-dt)*cam.animR0[1] + dt*cam.animR1[1];
+		qz = (1.0f-dt)*cam.animR0[2] + dt*cam.animR1[2];
+		qw = (1.0f-dt)*cam.animR0[3] + dt*cam.animR1[3];
+		float len = sqrtf(qx*qx + qy*qy + qz*qz + qw*qw);
+		if (len > 0.0f) { qx /= len; qy /= len; qz /= len; qw /= len; }
+	} else {
+		float theta = acosf(fmaxf(-1.0f, fminf(1.0f, cosTheta)));
+		float thetaP = theta * dt;
+		float tx = cam.animR1[0] - cosTheta*cam.animR0[0];
+		float ty = cam.animR1[1] - cosTheta*cam.animR0[1];
+		float tz = cam.animR1[2] - cosTheta*cam.animR0[2];
+		float tw = cam.animR1[3] - cosTheta*cam.animR0[3];
+		float tlen = sqrtf(tx*tx + ty*ty + tz*tz + tw*tw);
+		if (tlen > 0.0f) { tx /= tlen; ty /= tlen; tz /= tlen; tw /= tlen; }
+		float cp = cosf(thetaP), sp = sinf(thetaP);
+		qx = cp*cam.animR0[0] + sp*tx;
+		qy = cp*cam.animR0[1] + sp*ty;
+		qz = cp*cam.animR0[2] + sp*tz;
+		qw = cp*cam.animR0[3] + sp*tw;
+	}
+
+	float xx=qx*qx, yy=qy*qy, zz=qz*qz;
+	float xy=qx*qy, xz=qx*qz, yz=qy*qz;
+	float wx=qx*qw, wy=qy*qw, wz=qz*qw;
+	float mInv[3][3] = {
+		{1.0f-2.0f*(yy+zz), 2.0f*(xy+wz),      2.0f*(xz-wy)},
+		{2.0f*(xy-wz),      1.0f-2.0f*(xx+zz), 2.0f*(yz+wx)},
+		{2.0f*(xz+wy),      2.0f*(yz-wx),      1.0f-2.0f*(xx+yy)}
+	};
+	float3 out;
+	out.x = mInv[0][0]*v.x + mInv[1][0]*v.y + mInv[2][0]*v.z;
+	out.y = mInv[0][1]*v.x + mInv[1][1]*v.y + mInv[2][1]*v.z;
+	out.z = mInv[0][2]*v.x + mInv[1][2]*v.y + mInv[2][2]*v.z;
+
+	if (isPoint) {
+		out.x += (1.0f-dt)*cam.animT0.x + dt*cam.animT1.x;
+		out.y += (1.0f-dt)*cam.animT0.y + dt*cam.animT1.y;
+		out.z += (1.0f-dt)*cam.animT0.z + dt*cam.animT1.z;
+	}
+	return out;
+}
+
 // Generate a primary camera ray, dispatching on camera.kind. Duplicated from
 // optix_device_helpers.h's generate_primary_ray (with the wf_ prefix)
 // rather than shared, matching this file's existing pattern of not sharing
@@ -1262,6 +1319,27 @@ __device__ __forceinline__ void wf_generate_primary_ray(
 	float3& origin, float3& direction, float& weight
 ) {
 	weight = 1.0f;
+
+	if (cam.animated) {
+		// Real per-ray shutter-time camera motion blur - see
+		// optix_device_helpers.h's generate_primary_ray for the derivation
+		// this mirrors.
+		float3 local_pixel_sample = cam.localLowerLeftCorner + u * cam.localHorizontal + v * cam.localVertical;
+		float3 local_origin = make_float3(0.0f, 0.0f, 0.0f);
+		bool hasDOF = (cam.localDefocusDiskU.x != 0.0f || cam.localDefocusDiskU.y != 0.0f || cam.localDefocusDiskU.z != 0.0f ||
+					   cam.localDefocusDiskV.x != 0.0f || cam.localDefocusDiskV.y != 0.0f || cam.localDefocusDiskV.z != 0.0f);
+		if (hasDOF) {
+			float rx = 2.0f * wf_rand(seed) - 1.0f, ry = 2.0f * wf_rand(seed) - 1.0f;
+			while (rx*rx + ry*ry >= 1.0f) { rx = 2.0f * wf_rand(seed) - 1.0f; ry = 2.0f * wf_rand(seed) - 1.0f; }
+			local_origin = rx * cam.localDefocusDiskU + ry * cam.localDefocusDiskV;
+		}
+		float3 local_direction = local_pixel_sample - local_origin;
+		float dt = wf_rand(seed);
+		origin = wf_camera_anim_apply(cam, dt, local_origin, true);
+		direction = wf_camera_anim_apply(cam, dt, local_direction, false);
+		return;
+	}
+
 	switch (cam.kind) {
 		case CameraKind::Orthographic: {
 			origin = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;

@@ -31,6 +31,7 @@
 #include "../../src/shared/mtl_parse.h"
 #include "../../src/shared/cornell_box_data.h"
 #include "../../src/shared/fresnel.h"  // CauchyCoefficientsFromAbbe() - add_dispersive_dielectric/add_dispersive_rough_dielectric
+#include "../../src/shared/animated_transform.h"  // AnimatedTransform - build_gpu_animated_camera_params()
 // Declarations only (no STB_IMAGE_IMPLEMENTATION) - the actual
 // implementation is already compiled once into cpu_renderer.lib (see
 // src/external/stb_image_impl.cpp), and launcher.vcxproj always links
@@ -444,6 +445,113 @@ namespace {
 		return force_camera_override
 			? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
 			: make_float3(default_x, default_y, default_z);
+	}
+
+	// Populates GpuCameraParams for real per-ray camera motion blur (GPU
+	// twin of src/TheRestOfYourLife/camera.h's camera_is_animated path -
+	// see GpuCameraParams::animated's own comment, optix_types.h, and
+	// generate_primary_ray()'s consumption of it, optix_device_helpers.h).
+	// Always fills camera_params (the legacy 12-float static buffer) too,
+	// via build_pinhole_camera_params at keyframe0 - both the "keyframes
+	// turned out identical" fallback below and optix_interface.cpp's own
+	// generic camera_params->cameraExtra copy (for scenes that don't set
+	// cameraExtra explicitly) need it valid regardless of whether the
+	// animated fields end up used.
+	//
+	// The decomposition into translate+rotate keyframes (iterative polar
+	// decomposition + quaternion extraction) runs ONCE here, host-side, via
+	// the real double-precision AnimatedTransform class
+	// (src/shared/animated_transform.h) - GPU only interpolates the two
+	// already-decomposed keyframes per ray. Camera-to-world matrices here
+	// are always built from an orthonormal lookat basis (u/v/w, always
+	// unit-length via normalize()/cross(), same construction as
+	// build_pinhole_camera_params), so there is never a scale term to
+	// store or interpolate, unlike the general AnimatedTransform.
+	void build_gpu_animated_camera_params(
+		const float3& lookfrom0, const float3& lookat0,
+		const float3& lookfrom1, const float3& lookat1,
+		const float3& vup, float vfov_degrees, float aspect,
+		float defocus_angle_deg, float focus_dist,
+		float* camera_params,
+		GpuCameraParams* out_camera_extra
+	) {
+		// Viewport scale is arbitrary when there's no lens to blur through -
+		// see build_pinhole_camera_params's own call sites for this exact
+		// "1.0f, not a real distance, is deliberate" precedent.
+		const float fd_for_viewport = (defocus_angle_deg > 0.0f) ? focus_dist : 1.0f;
+
+		float3 u0, v0, w0;
+		build_pinhole_camera_params(lookfrom0, lookat0, vup, vfov_degrees, aspect,
+			fd_for_viewport, camera_params, &u0, &v0, &w0);
+
+		out_camera_extra->kind = CameraKind::Perspective;
+
+		if (defocus_angle_deg > 0.0f) {
+			// Opts out of optix_interface.cpp's generic camera_params->
+			// cameraExtra fallback (see CameraKind::Perspective's own
+			// comment there) - set the full static set explicitly too, the
+			// same as build_scene()'s own DOF call sites do.
+			constexpr float kPi = 3.14159265358979323846f;
+			const float defocus_radius = focus_dist * tanf((defocus_angle_deg * kPi / 180.0f) / 2.0f);
+			out_camera_extra->origin = lookfrom0;
+			out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+			out_camera_extra->horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+			out_camera_extra->vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+			out_camera_extra->defocus_disk_u = make_float3(u0.x * defocus_radius, u0.y * defocus_radius, u0.z * defocus_radius);
+			out_camera_extra->defocus_disk_v = make_float3(v0.x * defocus_radius, v0.y * defocus_radius, v0.z * defocus_radius);
+		}
+
+		auto build_cam_to_world = [&](const float3& from, const float3& at) -> AT_Mat44 {
+			float3 view_dir = make_float3(from.x - at.x, from.y - at.y, from.z - at.z);
+			float3 w = normalize(view_dir);
+			float3 u = normalize(cross(vup, w));
+			float3 v = cross(w, u);
+			AT_Mat44 m;
+			m.m[0][0]=u.x; m.m[0][1]=v.x; m.m[0][2]=w.x; m.m[0][3]=from.x;
+			m.m[1][0]=u.y; m.m[1][1]=v.y; m.m[1][2]=w.y; m.m[1][3]=from.y;
+			m.m[2][0]=u.z; m.m[2][1]=v.z; m.m[2][2]=w.z; m.m[2][3]=from.z;
+			m.m[3][0]=0;   m.m[3][1]=0;   m.m[3][2]=0;   m.m[3][3]=1;
+			return m;
+		};
+
+		AnimatedTransform anim(build_cam_to_world(lookfrom0, lookat0), 0.0,
+								build_cam_to_world(lookfrom1, lookat1), 1.0);
+
+		out_camera_extra->animated = anim.IsAnimated() ? 1 : 0;
+		if (!out_camera_extra->animated) {
+			// Keyframes resolved identical (e.g. lookfrom1==lookfrom0) -
+			// the static path above (camera_params + the DOF fields, if
+			// any) is already a complete, correct single-frame camera;
+			// nothing more to fill in.
+			return;
+		}
+
+		out_camera_extra->animT0 = make_float3(
+			static_cast<float>(anim.T[0][0]), static_cast<float>(anim.T[0][1]), static_cast<float>(anim.T[0][2]));
+		out_camera_extra->animT1 = make_float3(
+			static_cast<float>(anim.T[1][0]), static_cast<float>(anim.T[1][1]), static_cast<float>(anim.T[1][2]));
+		out_camera_extra->animR0[0] = static_cast<float>(anim.R[0].x); out_camera_extra->animR0[1] = static_cast<float>(anim.R[0].y);
+		out_camera_extra->animR0[2] = static_cast<float>(anim.R[0].z); out_camera_extra->animR0[3] = static_cast<float>(anim.R[0].w);
+		out_camera_extra->animR1[0] = static_cast<float>(anim.R[1].x); out_camera_extra->animR1[1] = static_cast<float>(anim.R[1].y);
+		out_camera_extra->animR1[2] = static_cast<float>(anim.R[1].z); out_camera_extra->animR1[3] = static_cast<float>(anim.R[1].w);
+
+		constexpr float kPi = 3.14159265358979323846f;
+		const float theta = vfov_degrees * kPi / 180.0f;
+		const float h = tanf(theta / 2.0f);
+		const float viewport_height = 2.0f * h * fd_for_viewport;
+		const float viewport_width = aspect * viewport_height;
+		out_camera_extra->localHorizontal = make_float3(viewport_width, 0.0f, 0.0f);
+		out_camera_extra->localVertical   = make_float3(0.0f, viewport_height, 0.0f);
+		out_camera_extra->localLowerLeftCorner = make_float3(-viewport_width / 2.0f, -viewport_height / 2.0f, -fd_for_viewport);
+
+		if (defocus_angle_deg > 0.0f) {
+			const float defocus_radius = focus_dist * tanf((defocus_angle_deg * kPi / 180.0f) / 2.0f);
+			out_camera_extra->localDefocusDiskU = make_float3(defocus_radius, 0.0f, 0.0f);
+			out_camera_extra->localDefocusDiskV = make_float3(0.0f, defocus_radius, 0.0f);
+		} else {
+			out_camera_extra->localDefocusDiskU = make_float3(0.0f, 0.0f, 0.0f);
+			out_camera_extra->localDefocusDiskV = make_float3(0.0f, 0.0f, 0.0f);
+		}
 	}
 
 	// Helper to check if a material is emissive
@@ -4399,6 +4507,38 @@ static bool build_loaded_pbrt_scene(
 	const float focus_dist_world = static_cast<float>(pbrt_flatten::focusDistanceFor(c));
 	const float defocus_angle_deg = static_cast<float>(
 		pbrt_flatten::defocusAngleDegreesFor(c, focus_dist_world));
+	// Camera motion blur (pbrt-v4's real ActiveTransform "StartTime"/
+	// "EndTime" idiom, c.isAnimated - see pbrt_flatten::Camera::isAnimated's
+	// own comment). Perspective-only, matching CPU's camera_is_animated
+	// (mutually exclusive with an alt camera model there too - the
+	// `c.type != "perspective"` block below is skipped by the `return`
+	// this branch takes). Uses c.lookfrom directly, NOT the possibly-
+	// force_camera_override-substituted `lookfrom` local above: an
+	// animated camera always uses its own registered keyframes regardless
+	// of an override, exactly like D13's own case in build_scene() and
+	// CPU's applyCameraConfig() (cpu_interface.cpp) - a moving camera has
+	// no single "current position" for an override to mean.
+	if (c.isAnimated && c.type != "perspective") {
+		// Mirrors camera.h's own camera_is_animated + alt-camera-model
+		// warning: the alternate camera model (handled by the `c.type !=
+		// "perspective"` block below) takes priority and motion blur is
+		// NOT applied.
+		std::cerr << "Warning: this scene's camera is animated together with a "
+					 "non-perspective Camera type (\"" << c.type << "\") - the "
+					 "alternate camera model takes priority and motion blur will "
+					 "NOT be applied.\n";
+	} else if (c.isAnimated && out_camera_extra) {
+		const float3 animLookfrom0 = make_float3(
+			static_cast<float>(c.lookfrom[0]), static_cast<float>(c.lookfrom[1]), static_cast<float>(c.lookfrom[2]));
+		const float3 animLookfrom1 = make_float3(
+			static_cast<float>(c.lookfrom1[0]), static_cast<float>(c.lookfrom1[1]), static_cast<float>(c.lookfrom1[2]));
+		const float3 animLookat1 = make_float3(
+			static_cast<float>(c.lookat1[0]), static_cast<float>(c.lookat1[1]), static_cast<float>(c.lookat1[2]));
+		build_gpu_animated_camera_params(animLookfrom0, lookat, animLookfrom1, animLookat1,
+			vup, static_cast<float>(c.vfov), aspect, defocus_angle_deg, focus_dist_world,
+			camera_params, out_camera_extra);
+		return true;
+	}
 	if (defocus_angle_deg > 0.0f) {
 		float3 dof_u, dof_v;
 		build_pinhole_camera_params(
@@ -6064,13 +6204,16 @@ bool build_scene(
 								break;
 							}
 
-							case 138: {  // D13: Camera Motion Blur (Cornell Box) - GPU has no AnimatedTransform, so this renders a static frame at the first keyframe (lookfrom/lookat), matching CameraConfig's row for D13 and camera.h's camera_is_animated comment.
+							case 138: {  // D13: Camera Motion Blur (Cornell Box) - real per-ray AnimatedTransform-based interpolation on both GPU backends now (see GpuCameraParams::animated, optix_types.h). Matches CPU's own precedence: an animated camera ALWAYS uses its own registered keyframes, ignoring cam_x/y/z/force_camera_override entirely (see applyCameraConfig()'s comment, cpu_interface.cpp - a moving camera has no single "current position" for an override to mean).
 								build_cornell_box(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
-								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
+								const float3 lookfrom0 = make_float3(278.0f, 278.0f, -800.0f);
+								const float3 lookat0   = make_float3(278.0f, 278.0f, 278.0f);
+								const float3 lookfrom1 = make_float3(378.0f, 278.0f, -800.0f);
+								const float3 lookat1   = make_float3(278.0f, 278.0f, 278.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								build_gpu_animated_camera_params(lookfrom0, lookat0, lookfrom1, lookat1,
+									vup, 40.0f, aspect, 0.0f, 10.0f, camera_params, out_camera_extra);
 								break;
 							}
 

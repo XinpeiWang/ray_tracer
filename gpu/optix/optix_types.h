@@ -1395,6 +1395,29 @@ struct GpuCameraParams {
 	// exactly matching every scene (hand-built or pbrt-loaded-without-a-
 	// cropwindow) that never sets these fields at all.
 	int cropX0, cropX1, cropY0, cropY1;
+
+	// Camera motion blur (pbrt-v4 real per-ray AnimatedTransform-based
+	// shutter-time interpolation - mirrors src/TheRestOfYourLife/camera.h's
+	// camera_is_animated path). 0 (zero-init default, matching every scene
+	// before this feature existed) = static camera, every field below
+	// unused. When nonzero (Perspective only - see generate_primary_ray()'s
+	// own comment), a per-sample shutter fraction dt in [0,1] interpolates
+	// animT0/R0 -> animT1/R1 (the two camera-to-world keyframes, already
+	// decomposed into translate+rotate ONCE, host-side, by the real
+	// double-precision AnimatedTransform class - see
+	// build_gpu_animated_camera_params(), scene_builder.cpp) and applies
+	// the result to a ray built from the LOCAL (canonical-axis, world-
+	// placement-independent) viewport geometry below, exactly mirroring
+	// camera.h's local_pixel00_loc/local_pixel_delta_u/v/local_defocus_disk_u/v.
+	// No scale keyframes: camera-to-world matrices here are always built
+	// from an orthonormal lookat basis (unit-length u/v/w via normalize()/
+	// cross()), so unlike the general AnimatedTransform there is never a
+	// scale term to interpolate.
+	int    animated;
+	float3 animT0, animT1;
+	float  animR0[4], animR1[4];  // quaternion (x,y,z,w), shortest-arc-aligned
+	float3 localLowerLeftCorner, localHorizontal, localVertical;
+	float3 localDefocusDiskU, localDefocusDiskV;  // zero = no DOF
 };
 
 // Launch parameters (passed to all OptiX programs)
