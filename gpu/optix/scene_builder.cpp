@@ -4504,13 +4504,16 @@ static bool build_loaded_pbrt_scene(
 	// the flat Le[3] field every OTHER type still uses - the flat field
 	// stays permanently zero for rgbgrid (pbrt_flatten.h's own `if
 	// (!isRgbGrid)` guard around that generic read), so `isNonzeroRGB(med.Le)`
-	// alone can never see a real rgbgrid emission request. A code-review
-	// pass found this exact gap: this warning silently stopped firing for
-	// rgbgrid once CPU started actually honoring its own "Le", since nothing
-	// updated this GPU-side check to look at the new fields too - fixed by
-	// checking Le_r/Le_g/Le_b (gated on Le_scale>0, matching
-	// RGBGridMediumData::is_emissive()'s own "Le_grids && Le_scale>0"
-	// convention) whenever the medium is rgbgrid specifically.
+	// alone can never see a real rgbgrid emission request. Checking
+	// Le_r/Le_g/Le_b (gated on Le_scale>0, matching RGBGridMediumData::
+	// is_emissive()'s own "Le_grids && Le_scale>0" convention) whenever the
+	// medium is rgbgrid specifically.
+	//
+	// "homogeneous" and "rgbgrid" are BOTH excluded from the warning below -
+	// GPU now implements real medium emission for both (see
+	// GpuRgbGridMedium::leDataOffset's own comment, optix_types.h, and each
+	// backend's own RgbGridMedium closest-hit case) - only "cloud"/
+	// "uniformgrid" still have no GPU emission concept at all.
 	for (const pbrt_flatten::Medium& med : loaded.scene.media) {
 		bool hasLe = pbrt_flatten::isNonzeroRGB(med.Le);
 		if (med.type == "rgbgrid" && !hasLe && med.Le_scale > 0.0) {
@@ -4519,13 +4522,13 @@ static bool build_loaded_pbrt_scene(
 			};
 			hasLe = anyNonzero(med.Le_r) || anyNonzero(med.Le_g) || anyNonzero(med.Le_b);
 		}
-		if (med.type != "homogeneous" && hasLe) {
+		if (med.type != "homogeneous" && med.type != "rgbgrid" && hasLe) {
 			std::cerr << "[OptiX] Warning: scene requests a MakeNamedMedium "
 						 "\"Le\"/\"Lescale\" (a self-emitting medium) on a \""
 					  << med.type << "\" medium, but GPU rendering only "
-						 "implements medium emission for \"homogeneous\" media - "
-						 "this medium will scatter/absorb but not glow. "
-						 "Use --cpu to honor this request.\n";
+						 "implements medium emission for \"homogeneous\"/"
+						 "\"rgbgrid\" media - this medium will scatter/absorb "
+						 "but not glow. Use --cpu to honor this request.\n";
 			break;
 		}
 	}
