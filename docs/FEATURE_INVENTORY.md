@@ -56,7 +56,7 @@ numbered sections below for the narrative detail behind any row.
 | Materials | Hair (Marschner/Chiang) | Y / Y / Y | N/A |
 | Materials | Measured (`.bsdf` tensor) | Y / Y / Y | Unresolved filename → falls back to Lambertian (same gate on both backends) |
 | Materials | Principled | Y / Y / Y | N/A |
-| Materials | Dispersion (`dielectric`, `rough_dielectric`) | CPU + GPU-wavefront / GPU-recursive falls back | GPU-recursive request → falls back to flat, non-dispersive IOR, silently (no warning — not a scene-load failure) |
+| Materials | Dispersion (`dielectric`, `rough_dielectric`) | Y / Y / Y | GPU-recursive uses a simplified 3-representative-wavelength (R/G/B) stochastic scheme rather than CPU/GPU-wavefront's continuous hero-wavelength `SampledWavelengths` integration - a real chromatic fan, just coarser |
 | Materials | Unrecognized pbrt `Material` kind | N | Falls back to flat Lambertian using base color, warned by name |
 | Textures | Procedural (checker/noise/marble/windy/dots/etc.) | Y | N/A |
 | Textures | Image textures + mipmap/EWA filter | Y | N/A |
@@ -457,16 +457,15 @@ relative to it specifically).
    reduces to RGB every sample instead of accumulating spectral radiance
    pbrt-v4-style; the dead `PixelSensor`/`SpectralFilm` classes suggest
    this was planned and abandoned partway.
-3. **GPU-recursive dispersion is approximate, and RoughDielectric-only on
-   GPU-recursive is still flat** (§2, §9) — GPU-wavefront has real
-   continuous-wavelength dispersion (both `dielectric` and
+3. **GPU-recursive dispersion is approximate** (§2, §9) — GPU-wavefront has
+   real continuous-wavelength dispersion (both `dielectric` and
    `rough_dielectric`, matching CPU's `SampledWavelengths` pipeline);
-   GPU-recursive now has real `dielectric` dispersion too, but via a
-   simplified 3-fixed-representative-wavelength scheme (stochastic
-   confinement to one of R/G/B per path, not continuous hero-wavelength
-   sampling) rather than porting `SampledWavelengths` into that backend's
-   own separate OptiX module; its `rough_dielectric` case remains
-   unchanged (flat, non-dispersive).
+   GPU-recursive now has real dispersion for both `dielectric` and
+   `rough_dielectric` too, but via a simplified 3-fixed-representative-
+   wavelength scheme (stochastic confinement to one of R/G/B per path, not
+   continuous hero-wavelength sampling) rather than porting
+   `SampledWavelengths` into that backend's own separate OptiX module - a
+   real chromatic fan, just coarser than the other two backends'.
 4. **No motion blur for object transforms or alt camera models, on any
    backend** (§6) — the default perspective camera now has real motion
    blur on CPU and both GPU backends (`AnimatedTransform`, previously

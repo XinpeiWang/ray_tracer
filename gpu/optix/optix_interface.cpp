@@ -205,34 +205,6 @@ extern "C" int optix_render_main(
 			g_renderer->enableWavefront(false);
 		}
 
-		// Dispersive MaterialType::RoughDielectric ("rough_dielectric::
-		// make_dispersive()" on CPU, "add_dispersive_rough_dielectric()" on
-		// GPU, scene_builder.cpp) renders correctly on --wavefront (its own
-		// NEE/MIS reads dispersive_extra) but GPU-recursive's own
-		// shade_material() RoughDielectric case (optix_device_helpers.h)
-		// still uses the flat, undispersed mat.ior unconditionally - a real,
-		// deliberately-scoped-out gap (see that case's own comment), unlike
-		// smooth Dielectric which gained real dispersion this round. Without
-		// this warning a --gpu (no --wavefront) render of a dispersive-
-		// RoughDielectric scene (e.g. B24, "Frosted Prism Dispersion")
-		// silently renders flat with no diagnostic - a code-review pass
-		// found this, matching this codebase's own "reject/warn loudly
-		// rather than silently render wrong" convention used elsewhere
-		// (e.g. GPU SPPM's own sppm_gpu_unsupported_reason()).
-		if (!(wfEnv && std::string(wfEnv) == "1")) {
-			for (const auto& m : scene.materials) {
-				if (m.type == MaterialType::RoughDielectric && m.dispersive_extra.cauchy_A > 0.0f) {
-					std::cerr << "[OptiX] Warning: scene '" << scene_id << "' has a dispersive "
-					             "rough_dielectric material, but GPU-recursive (--gpu without "
-					             "--wavefront) only implements dispersion for smooth dielectric; "
-					             "this material will render as flat/non-dispersive. Use --gpu "
-					             "--wavefront or --cpu --spectral instead if the chromatic fan "
-					             "matters for this render.\n";
-					break;
-				}
-			}
-		}
-
 		// g_renderer is a process-lifetime singleton (see enableWavefront()'s
 		// call above and g_uploaded_scene_id's own comment) - called
 		// unconditionally, same reasoning as enableWavefront(): this render's

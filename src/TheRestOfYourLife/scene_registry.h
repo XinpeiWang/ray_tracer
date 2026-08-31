@@ -996,7 +996,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // (scenes_materials.h) for why this exercises rough_dielectric's
             // real NEE/MIS path, not just its initial scatter.
             "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
-            "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (CPU --spectral or GPU --wavefront; GPU-recursive stays flat/non-dispersive)",
+            "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (CPU --spectral, GPU --wavefront with real continuous-wavelength dispersion, and GPU-recursive with the same 3-representative-wavelength approximation as B23)",
             "Medium", 200, false, true,
             kPrismCamera,
             build_prism_dispersion_rough,

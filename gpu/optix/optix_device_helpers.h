@@ -2473,7 +2473,22 @@ __device__ __forceinline__ void shade_material(
 				rd_alpha_x = RegularizeAlpha(rd_alpha_x);
 				rd_alpha_y = RegularizeAlpha(rd_alpha_y);
 			}
-			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
+			// pbrt-v4 dispersion (Cauchy formula) - same lazy, once-per-path
+			// channel pick as MaterialType::Dielectric above (see that case's
+			// own comment for the full rationale/scope). A frosted/rough
+			// dispersive glass (e.g. B24) previously stayed flat on this
+			// backend even after smooth Dielectric gained real dispersion,
+			// since this case never read mat.dispersive_extra at all.
+			float rd_ior = mat.ior;
+			if (mat.dispersive_extra.cauchy_A > 0.0f) {
+				if (inout_rgb_channel == kRgbChannelUnset) {
+					inout_rgb_channel = static_cast<unsigned int>(random_float(seed) * 3.0f);
+					if (inout_rgb_channel > 2u) inout_rgb_channel = 2u;  // 3.0f*u can hit exactly 3.0f
+				}
+				rd_ior = CauchyEta(kRgbChannelWavelengthNm[inout_rgb_channel],
+				                   mat.dispersive_extra.cauchy_A, mat.dispersive_extra.cauchy_B);
+			}
+			float rd_ri    = front_face ? (1.0f / rd_ior) : rd_ior;
 
 			// Local shading frame (n = +Z)
 			float3 n = normal;

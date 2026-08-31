@@ -88,3 +88,48 @@ TEST_F(GpuRecursiveDispersionTest, GlassPrismShowsRealChromaticSeparation) {
 		<< "Dielectric may have regressed back to flat/undispersed refraction "
 		<< "(max channel spread found: " << maxChannelSpread << ")";
 }
+
+// Companion to GlassPrismShowsRealChromaticSeparation above, for
+// MaterialType::RoughDielectric (B24, "Frosted Prism Dispersion") - closes a
+// SEPARATE gap the Dielectric fix above didn't touch: shade_material()'s
+// RoughDielectric case (gpu/optix/optix_device_helpers.h) used the flat,
+// undispersed mat.ior unconditionally even after Dielectric gained real
+// dispersion, so a frosted/rough dispersive glass stayed achromatic on
+// GPU-recursive while GPU-wavefront (add_dispersive_rough_dielectric()'s own
+// NEE/MIS) already rendered it correctly. Same detection method as the
+// smooth-glass test: real dispersion produces per-pixel color mottling (the
+// chromatic fan blurred by roughness rather than a crisp band) with strong
+// R/G/B divergence; a flat render stays uniform grey/white.
+TEST_F(GpuRecursiveDispersionTest, RoughGlassPrismShowsRealChromaticSeparation) {
+	const char* path = "gpu_recursive_dispersion_test_b24.ppm";
+	outputFiles_.push_back(path);
+
+	int result = optix_render_main(
+		/*image_width=*/200, /*image_height=*/100,
+		/*samples_per_pixel=*/32, /*max_depth=*/8,
+		path, /*scene_id=*/"B24",
+		0.0, 0.0, 0.0, /*force_camera_override=*/1);
+	ASSERT_EQ(result, 0) << "optix_render_main failed on scene B24 (--gpu recursive)";
+
+	PPMImage img = load_ppm(path);
+	ASSERT_TRUE(img.valid) << "Failed to load rendered PPM";
+	ASSERT_EQ(img.width, 200);
+	ASSERT_EQ(img.height, 100);
+
+	float maxChannelSpread = 0.0f;
+	for (int i = 0; i + 2 < static_cast<int>(img.pixels.size()); i += 3) {
+		float r = img.pixels[i], g = img.pixels[i + 1], b = img.pixels[i + 2];
+		float spread = std::max({r, g, b}) - std::min({r, g, b});
+		maxChannelSpread = std::max(maxChannelSpread, spread);
+	}
+
+	// Same 0.15 threshold as the smooth-glass test above - empirically this
+	// scene's real dispersion produces a max spread around 0.9-1.0 (the
+	// rough surface's per-microfacet channel mottling is even more extreme
+	// pixel-to-pixel than the smooth prism's fan), comfortably above a flat
+	// render's noise-floor-only spread.
+	EXPECT_GT(maxChannelSpread, 0.15f)
+		<< "No pixel shows real R/G/B divergence - GPU-recursive's dispersive "
+		<< "RoughDielectric may have regressed back to flat/undispersed "
+		<< "refraction (max channel spread found: " << maxChannelSpread << ")";
+}
