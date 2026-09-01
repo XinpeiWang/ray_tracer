@@ -396,7 +396,15 @@ loader and no longer match the code:
   round); the sparse grid is densified into a flat array at load time
   rather than sampled natively sparse (a real memory/scope tradeoff for
   reusing the existing dense-grid machinery unchanged, not a NanoVDB
-  limitation). Same "sigma_a forced to 0" scope as `"uniformgrid"` above
+  limitation) - capped at 512 voxels per axis (`pbrt_cpu_builder.h`'s own
+  `kMaxVoxelsPerAxis`), both to bound worst-case memory for a real, sparse-
+  but-large-bbox asset and to close off a real integer-overflow-into-heap-
+  overflow risk a code-review pass found in the pre-cap version (a
+  corrupt/malicious file claiming an extreme bbox could silently
+  under-allocate the dense array while the bake loop still wrote the true,
+  huge extent). A grid whose active region genuinely needs more than 512³
+  voxels falls back to an invisible medium rather than attempting the
+  allocation. Same "sigma_a forced to 0" scope as `"uniformgrid"` above
   (`grid_medium_hittable.h`'s own limitation, not new here).
   **GPU has no NanoVDB support at all** - `pbrt_gpu_builder.h` has no
   `"nanovdb"` branch, so a nanovdb medium falls through to the generic

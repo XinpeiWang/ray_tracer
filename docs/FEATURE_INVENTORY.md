@@ -297,8 +297,12 @@ cuts: only a single named `float` density grid (`"gridname"`, default
 (`Vec3f`/`Mask`/etc.); no `"temperaturename"` blackbody emission (a
 separable feature, left for a later round); the sparse grid is densified
 at load time rather than sampled natively sparse (a real memory/scope
-tradeoff, not a NanoVDB limitation). **GPU has no NanoVDB support at
-all** — a nanovdb medium falls through to GPU's generic homogeneous-
+tradeoff, not a NanoVDB limitation), capped at 512 voxels/axis
+(`pbrt_cpu_builder.h`'s `kMaxVoxelsPerAxis` - also closes a real
+integer-overflow-into-heap-overflow risk a code-review pass found for a
+corrupt/malicious file claiming an extreme bbox). **GPU has no NanoVDB
+support at all** — a nanovdb medium falls through to GPU's generic
+homogeneous-
 medium path, rendering as flat fog filling the whole boundary shape
 (using the scene's own sigma_a/sigma_s) rather than the real sparse
 density field, warned explicitly (`scene_builder.cpp`) since this is a

@@ -9,6 +9,7 @@
 // counterpart, which consume the same FlatScene.
 
 #include <cmath>
+#include <iostream>   // std::cerr - see addMediumIfPresent()'s nanovdb read-failure diagnostic, this file's one deliberate exception to its own no-console-output convention
 #include <map>
 #include <memory>
 #include <tuple>
@@ -947,15 +948,38 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 					nx = static_cast<int>(bmax[0] - bmin[0]) + 1;
 					ny = static_cast<int>(bmax[1] - bmin[1]) + 1;
 					nz = static_cast<int>(bmax[2] - bmin[2]) + 1;
-					if (nx > 0 && ny > 0 && nz > 0) {
+					// Sanity cap, checked BEFORE any multiplication: a real
+					// .nvdb grid's active bounding box is at most a few
+					// thousand voxels per axis even for large production
+					// assets, but a corrupt or maliciously crafted file
+					// could in principle claim an extreme (still
+					// individually int32-representable) bbox - nx*ny*nz
+					// would then overflow even a 64-bit size_t computation,
+					// silently under-allocating `density` below while the
+					// bake loop still iterates the TRUE (huge) nx/ny/nz - a
+					// real heap buffer overflow, not just a slow/huge
+					// render. Capping each axis independently, before any
+					// multiplication happens, closes that off entirely
+					// (512^3 already safely fits in size_t with enormous
+					// headroom) while still being far more generous than
+					// any real or bundled test asset needs.
+					constexpr int kMaxVoxelsPerAxis = 512;
+					if (nx > 0 && ny > 0 && nz > 0 &&
+						nx <= kMaxVoxelsPerAxis && ny <= kMaxVoxelsPerAxis && nz <= kMaxVoxelsPerAxis) {
 						const auto& tree = grid->tree();
+						// A cached accessor, not tree.getValue() directly -
+						// this bake loop's access pattern is spatially
+						// coherent (x fastest, matching the grid's own
+						// internal locality), so a real accessor's cached
+						// traversal state pays off here.
+						auto acc = grid->getAccessor();
 						density.resize(static_cast<std::size_t>(nx) * ny * nz);
 						for (int z = 0; z < nz; ++z)
 							for (int y = 0; y < ny; ++y)
 								for (int x = 0; x < nx; ++x) {
 									const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
 									density[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
-										static_cast<double>(tree.getValue(ijk));
+										static_cast<double>(acc.getValue(ijk));
 								}
 
 						// Reconstruct the composed (index-[0,1]-space ->
@@ -990,6 +1014,23 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				// (path resolution); this catches everything path resolution
 				// can't - a truncated/non-NanoVDB file, or a gridname pbrt_
 				// flatten.h had no way to check without opening it.
+				//
+				// This file otherwise has NO console-output convention at
+				// all (every other silent-degradation branch above/below
+				// was already warned about earlier, at flatten()/pbrt_load.h
+				// time, where this codebase's real warning infrastructure
+				// lives) - this is a deliberate, disclosed exception: unlike
+				// every sibling case, THIS failure mode genuinely cannot be
+				// detected any earlier than here (opening and parsing the
+				// file is the only way to know the gridname exists or the
+				// bytes are valid NanoVDB), so without this line a scene
+				// author who typos "gridname" or ships a corrupt .nvdb gets
+				// zero indication anywhere why their medium vanished.
+				std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read grid \""
+						  << md.nanovdbGridName << "\" from \"" << md.nanovdbFilename
+						  << "\" (corrupt file, wrong gridname, or an unsupported "
+							 "NanoVDB grid type - only plain float grids are read); "
+							 "the medium will render as empty (invisible)\n";
 				ok = false;
 			}
 			if (!ok || density.empty()) return;
@@ -1033,8 +1074,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			// convention/reason as uniformgrid above - flatten() already
 			// warned if the scene gave a nonzero one.
 			const Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+			// std::move: `density` is a disposable local (unlike
+			// uniformgrid's own md.gridDensity above, a persistent member
+			// it can't move out of) - for a large baked grid this avoids
+			// doubling peak memory for no reason.
 			const GridMediumData<double> grid(
-				density, nx, ny, nz, bounds,
+				std::move(density), nx, ny, nz, bounds,
 				/*sa=*/0.0, luminance(md.sigma_s), md.g);
 			const point3 world_min(worldMin[0], worldMin[1], worldMin[2]);
 			const point3 world_max(worldMax[0], worldMax[1], worldMax[2]);
