@@ -116,7 +116,7 @@ numbered sections below for the narrative detail behind any row.
 | Orphaned scaffolding | `PixelSensor` / `SpectralFilm` | Present, unwired | N/A |
 | Loader-only | `ColorSpace` `.pbrt` directive | Y | N/A |
 | Loader-only | `CoordinateSystem`/`CoordSysTransform` `.pbrt` directives | Y | N/A |
-| Loader-only | `Accelerator` `.pbrt` directive | N | Warned and skipped; rest of scene still loads |
+| Loader-only | `Accelerator` `.pbrt` directive | Y | See §10 and the "Summary: gaps" list's closed item 6 - real splitmethod/maxnodeprims, not just parsed-and-discarded |
 
 ---
 
@@ -437,11 +437,23 @@ wavelength scheme layered directly into shading, not a real spectral path.
 ## 10. Acceleration Structures
 
 CPU has two independent BVH implementations: a hand-rolled book-style one
-(`bvh.h`) and a full pbrt-v4-style SAH/HLBVH one
-(`src/shared/bvh_aggregate.h`, `BvhSplitMethod::{SAH, Middle, EqualCounts,
-HLBVH}`). GPU uses OptiX's own hardware-accelerated BVH (`OptixTraversableHandle`)
-for primitive traversal — not this project's own BVH code. Light-sampling
-BVH exists (`bvh_light_sampler.h`) but CPU-only (see §4's gap).
+(`bvh.h`, itself real SAH — pbrt-v4 §7.3 — not a naive median split) and a
+full pbrt-v4-style SAH/HLBVH one (`src/shared/bvh_aggregate.h`,
+`BvhSplitMethod::{SAH, Middle, EqualCounts, HLBVH}`). Both are now live: the
+CPU pbrt-scene builder (`pbrt_cpu_builder.h`) reads the scene's `Accelerator
+"bvh" "string splitmethod"` directive (via `FlatScene::
+acceleratorSplitMethod`, resolved by `pbrt_flatten.h`) and uses `bvh_node`
+for the default/`"sah"` case, or `bvh_aggregate_hittable.h`'s adapter around
+`BvhTree<double,...>` for an explicit `"middle"`/`"equal"`/`"hlbvh"` — same
+converged image either way, just a different build strategy. That adapter
+has one disclosed limitation: `BvhTree::intersect()`'s slim primitive
+interface carries no ray time, so a scene combining a non-`"sah"`
+splitmethod with object motion blur (`Sphere::center1 != center`) falls
+back to `"sah"`/`bvh_node` instead (warned, not silently frozen at time 0).
+GPU uses OptiX's own hardware-accelerated BVH (`OptixTraversableHandle`)
+for primitive traversal — not this project's own BVH code, and has no
+`Accelerator`-directive concept at all. Light-sampling BVH exists
+(`bvh_light_sampler.h`) but CPU-only (see §4's gap).
 
 A `kd_tree.h` also exists in `src/shared/`; not confirmed as load-bearing
 in the primary render path from a source scan alone — worth a targeted
@@ -518,16 +530,24 @@ relative to it specifically).
    on every backend.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
-6. **`Accelerator` pbrt directive not parsed** — verified (unlike the
-   now-closed `CoordinateSystem`/`ColorSpace` pair below) that this one is
-   genuinely NOT a quick loader-only win: the live CPU render path for
-   pbrt-loaded scenes builds its accelerator via a fixed, SAH-only
-   `bvh_node` (`src/TheRestOfYourLife/bvh.h`) with no split-method
-   parameter at all; the flexible, split-method-selectable `BvhAggregate`
-   (`src/shared/bvh_aggregate.h`) exists but is wired into nothing but its
-   own unit test. Wiring this directive for real means giving the live
-   render path a selectable accelerator for the first time, not just
-   reading params into a field.
+6. ~~`Accelerator` pbrt directive not parsed~~ — **closed**. `Accelerator
+   "bvh" "string splitmethod"/"integer maxnodeprims"` is now real, parsed
+   input (`pbrt_scene.h`); `pbrt_flatten.h` resolves it to `FlatScene::
+   acceleratorSplitMethod` (falling back to `"sah"` for an unrecognized
+   type/splitmethod, or for a non-`"sah"` splitmethod combined with object
+   motion blur - see that field's own comment for why). The CPU builder
+   (`pbrt_cpu_builder.h`) still uses `bvh_node` (this project's own
+   pre-existing, real SAH build - also pbrt-v4's own default, so this
+   covers the overwhelming majority of scenes unchanged) for `"sah"`, and
+   routes an explicit `"middle"`/`"equal"`/`"hlbvh"` through a new
+   `bvh_aggregate_hittable.h` wrapper around the previously-dead
+   `BvhAggregate`/`BvhTree` (`src/shared/bvh_aggregate.h`) - both produce
+   the exact same converged image over the same primitives (verified: a
+   parameterized test renders an identical scattered-sphere scene through
+   all 4 split methods and asserts pixel-identical hit results), since
+   split method only changes build strategy/tree shape, never rendering
+   behavior. GPU is untouched (no `Accelerator` concept there - OptiX
+   builds its own hardware BVH regardless).
 7. **BDPT/MLT/debug integrators CPU-only** — arguably tracks pbrt-v4's own
    GPU scope (path/volpath only), so more a parity-with-upstream item than
    a true gap.
@@ -554,12 +574,13 @@ all of them, and it's worth knowing which is which before relying on one.
 - `--spectral` combined with `--gpu`/`--sppm`/`--bdpt`/`--mlt`/any debug
   integrator → the flag is silently dropped with a warning; you still get
   an ordinary render on whatever backend/mode you asked for.
-- A `.pbrt` directive this loader doesn't recognize at all (`Accelerator`,
-  etc.) → warned and skipped; the rest of the scene still loads.
+- A `.pbrt` directive this loader doesn't recognize at all → warned and
+  skipped; the rest of the scene still loads.
   (`CoordinateSystem`/`CoordSysTransform`/`ColorSpace`/`ActiveTransform`/
-  `TransformTimes` are now real, recognized directives — see the
-  "Loader-only" rows in the feature table above and §6's own camera-motion-
-  blur entry for `ActiveTransform`/`TransformTimes` specifically.)
+  `TransformTimes`/`Accelerator` are now real, recognized directives — see
+  the "Loader-only" rows in the feature table above, §6's own camera-
+  motion-blur entry for `ActiveTransform`/`TransformTimes` specifically,
+  and §10 for `Accelerator`.)
 - A `ColorSpace` directive naming something other than `srgb`/`dci-p3`/
   `rec2020`/`aces2065-1` → warned, the scene's working color space stays
   whatever it already was (`srgb` if never set).

@@ -433,6 +433,19 @@ struct Scene {
 	// gate it behind a separate CLI opt-in the way those stay gated.
 	std::string filterType = "gaussian";
 	ParamList filterParams;
+	// Accelerator directive's type name (pbrt-v4's real default is "bvh" -
+	// "kdtree" is pbrt-v4's only other option, a legacy structure this
+	// project has never had reason to add) plus its real splitmethod/
+	// maxnodeprims params. Unlike lightSamplerType above (purely advisory),
+	// this one IS actually read by the CPU builder (pbrt_cpu_builder.h) -
+	// but only to choose WHICH of two BVH builds over the exact same
+	// primitive list runs (SAH's own bvh_node vs BvhTree<double,...> for
+	// middle/equal/hlbvh), a build-speed/tree-shape choice with zero effect
+	// on the converged image, not a rendering-behavior toggle like
+	// PixelFilter's filterType.
+	std::string acceleratorType = "bvh";
+	std::string acceleratorSplitMethod = "sah";
+	int acceleratorMaxNodePrims = 4;  // pbrt-v4's real Accelerator "bvh" default
 
 	std::vector<MaterialDecl> materials;
 	std::vector<TextureDecl> textures;
@@ -1046,6 +1059,13 @@ private:
 			s_.maxDepth = p.getInt("maxdepth", s_.maxDepth);
 			s_.regularize = p.getBool("regularize", s_.regularize);
 			s_.lightSamplerType = p.getString("lightsampler", s_.lightSamplerType);
+			return true;
+		}
+		if (d == "Accelerator") {
+			if (pos_ < t_.size() && t_[pos_].quoted) { s_.acceleratorType = t_[pos_].text; ++pos_; }
+			const ParamList p = readParams();
+			s_.acceleratorSplitMethod = p.getString("splitmethod", s_.acceleratorSplitMethod);
+			s_.acceleratorMaxNodePrims = p.getInt("maxnodeprims", s_.acceleratorMaxNodePrims);
 			return true;
 		}
 

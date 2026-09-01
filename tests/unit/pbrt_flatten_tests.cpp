@@ -1333,6 +1333,78 @@ TEST(FlattenTest, ConeWithMediumInterfaceWarnsAndStillBuildsGeometry) {
 	EXPECT_TRUE(warnedAbout(s, "MediumInterface"));
 }
 
+// ===========================================================================
+// Accelerator - splitmethod/maxnodeprims resolution (pbrt_cpu_builder.h
+// reads FlatScene::acceleratorSplitMethod to choose bvh_node vs
+// bvh_aggregate_hittable.h's BvhTree wrapper; see that field's own comment)
+// ===========================================================================
+
+TEST(FlattenTest, AcceleratorDefaultsToSahWithNoWarning) {
+	const FlatScene s = flattenSource("Shape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+	EXPECT_EQ(s.acceleratorMaxNodePrims, 4);
+	EXPECT_FALSE(warnedAbout(s, "Accelerator"));
+}
+
+TEST(FlattenTest, AcceleratorExplicitSahDoesNotWarn) {
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"sah\"\nShape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+	EXPECT_FALSE(warnedAbout(s, "Accelerator"));
+}
+
+TEST(FlattenTest, AcceleratorHlbvhIsHonoredOnAStaticScene) {
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\" "
+		"\"integer maxnodeprims\" [ 2 ]\nShape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorSplitMethod, "hlbvh");
+	EXPECT_EQ(s.acceleratorMaxNodePrims, 2);
+	EXPECT_FALSE(warnedAbout(s, "Accelerator"));
+}
+
+TEST(FlattenTest, AcceleratorUnrecognizedTypeWarnsAndFallsBackToBvh) {
+	const FlatScene s = flattenSource("Accelerator \"kdtree\"\nShape \"sphere\"\n");
+	EXPECT_TRUE(warnedAbout(s, "kdtree"));
+	// The type falls back, but splitmethod/maxnodeprims still resolve
+	// normally from whatever params were given (none here -> defaults).
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+}
+
+TEST(FlattenTest, AcceleratorUnrecognizedSplitMethodWarnsAndFallsBackToSah) {
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"quadtree\"\nShape \"sphere\"\n");
+	EXPECT_TRUE(warnedAbout(s, "quadtree"));
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+}
+
+TEST(FlattenTest, AcceleratorNonSahWithObjectMotionBlurFallsBackToSah) {
+	// bvh_aggregate_hittable.h's BvhTree wrapper has no ray-time channel
+	// (see its own top comment) - a scene combining a non-default
+	// splitmethod with a moving sphere must not silently render that
+	// sphere frozen at time 0.
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n"
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_TRUE(s.spheres[0].center1[0] != s.spheres[0].center[0])
+		<< "sanity check: the scene really does describe a moving sphere";
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+	EXPECT_TRUE(warnedAbout(s, "motion blur"));
+}
+
+TEST(FlattenTest, AcceleratorNonSahWithoutMotionBlurIsNotAffectedByTheMotionCheck) {
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"middle\"\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_EQ(s.acceleratorSplitMethod, "middle");
+	EXPECT_FALSE(warnedAbout(s, "motion blur"));
+}
+
 TEST(FlattenTest, ParaboloidDefaultParamsMatchPbrt) {
 	const FlatScene s = flattenSource("Shape \"paraboloid\" \n");
 	ASSERT_EQ(s.paraboloids.size(), 1u);
@@ -1377,9 +1449,12 @@ TEST(FlattenTest, ParaboloidWithMediumInterfaceWarnsAndStillBuildsGeometry) {
 TEST(FlattenTest, ParserWarningsAreCarriedThrough) {
 	// The caller gets one list, not two - it should not have to check both the
 	// parse result and the flatten result to learn what was approximated.
+	// "Accelerator \"bvh\"" used to be this test's own example - it's real,
+	// fully-supported input now (see the Accelerator tests above), so this
+	// uses a directive pbrt-v4 has no such grammar for at all instead.
 	const FlatScene s = flattenSource(
-		"Accelerator \"bvh\"\n" + std::string(kQuadMesh));
-	EXPECT_TRUE(warnedAbout(s, "Accelerator"));
+		"NotARealDirective \"foo\"\n" + std::string(kQuadMesh));
+	EXPECT_TRUE(warnedAbout(s, "NotARealDirective"));
 }
 
 // ===========================================================================

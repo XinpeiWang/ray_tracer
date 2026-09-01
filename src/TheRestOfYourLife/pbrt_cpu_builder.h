@@ -19,6 +19,7 @@
 #include "../external/tinyexr.h"   // LoadEXR() - see decodePunctualLightImageFile()
 
 #include "bvh.h"
+#include "bvh_aggregate_hittable.h"
 #include "constant_medium.h"
 #include "curve_shape_hittable.h"
 #include "disk_cylinder_hittable.h"
@@ -1108,10 +1109,28 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	}
 
 	// A flat list would make every ray test every primitive; these scenes are
-	// the reason the BVH exists.
+	// the reason the BVH exists. scene.acceleratorSplitMethod is already
+	// fully resolved by flatten() (falls back to "sah" for anything
+	// unrecognized, or combined with object motion blur - see that field's
+	// own comment) - bvh_node (real SAH, this project's pre-existing
+	// default) for "sah"; bvh_aggregate_hittable.h's BvhTree<double,...>
+	// wrapper for an explicit "middle"/"equal"/"hlbvh" only. Both produce
+	// the same converged image over the same primitives - this only changes
+	// build strategy/tree shape, not rendering behavior.
 	if (!out.world->objects.empty()) {
 		auto accelerated = std::make_shared<hittable_list>();
-		accelerated->add(std::make_shared<bvh_node>(*out.world));
+		if (scene.acceleratorSplitMethod == "middle") {
+			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
+				*out.world, BvhSplitMethod::Middle, scene.acceleratorMaxNodePrims));
+		} else if (scene.acceleratorSplitMethod == "equal") {
+			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
+				*out.world, BvhSplitMethod::EqualCounts, scene.acceleratorMaxNodePrims));
+		} else if (scene.acceleratorSplitMethod == "hlbvh") {
+			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
+				*out.world, BvhSplitMethod::HLBVH, scene.acceleratorMaxNodePrims));
+		} else {
+			accelerated->add(std::make_shared<bvh_node>(*out.world));
+		}
 		out.world = accelerated;
 	}
 

@@ -1373,6 +1373,19 @@ struct FlatScene {
 	// would want to casually override between a preview and a final
 	// render.
 	bool regularize = false;
+	// Accelerator "bvh" "string splitmethod"/"integer maxnodeprims" - see
+	// pbrt_scene::Scene::acceleratorSplitMethod's own comment. Applied
+	// unconditionally like PixelFilter/regularize above (not CLI-
+	// overridable): unlike samplerType/maxDepth, which of these two BVH
+	// builds runs isn't something a user would want to casually override
+	// per-render, and both builds produce the same converged image, so
+	// there's no correctness reason to gate it behind a flag either.
+	// "sah" (the default, both here and in real pbrt-v4) keeps using
+	// bvh_node - the CPU builder's own pre-existing, already-real SAH BVH -
+	// unchanged; only an explicit "middle"/"equal"/"hlbvh" routes through
+	// BvhTree<double,...> instead (bvh_aggregate_hittable.h).
+	std::string acceleratorSplitMethod = "sah";
+	int acceleratorMaxNodePrims = 4;
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds", resolved to a
 	// single NDC-fraction rectangle [cropX0,cropX1) x [cropY0,cropY1) in
 	// [0,1] - see flatten()'s own computation for the exact rule. Kept as
@@ -4110,6 +4123,46 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	out.filter.tau = scene.filterParams.getFloat("tau", out.filter.tau);
 
 	out.regularize = scene.regularize;
+
+	if (scene.acceleratorType != "bvh" && !scene.acceleratorType.empty()) {
+		warn("Accelerator \"" + scene.acceleratorType + "\" is not supported "
+			 "(only \"bvh\" is) - falling back to \"bvh\"");
+	}
+	{
+		std::string sm = scene.acceleratorSplitMethod.empty()
+			? "sah" : scene.acceleratorSplitMethod;
+		if (sm != "sah" && sm != "middle" && sm != "equal" && sm != "hlbvh") {
+			warn("Accelerator \"bvh\" \"string splitmethod\" \"" + sm +
+				 "\" is not recognized (expected \"sah\"/\"middle\"/\"equal\"/"
+				 "\"hlbvh\") - falling back to \"sah\"");
+			sm = "sah";
+		}
+		// A non-"sah" split method routes through bvh_aggregate_hittable.h's
+		// BvhTree<double,...> wrapper (pbrt_cpu_builder.h) instead of this
+		// project's own pre-existing bvh_node - but that wrapper's
+		// intersect() has no ray-time channel (see its own top comment), so
+		// it cannot correctly render a moving sphere (center1 != center,
+		// baked by an ActiveTransform "EndTime" pair - see Sphere::center1's
+		// own comment). Fall back to "sah" (bvh_node, which DOES carry ray
+		// time correctly) rather than silently freezing every moving object
+		// at time 0.
+		if (sm != "sah") {
+			bool hasMotion = false;
+			for (const Sphere &s : out.spheres) {
+				if (s.center1[0] != s.center[0] || s.center1[1] != s.center[1] ||
+					s.center1[2] != s.center[2]) { hasMotion = true; break; }
+			}
+			if (hasMotion) {
+				warn("Accelerator \"bvh\" \"string splitmethod\" \"" + sm +
+					 "\" is not supported together with object motion blur "
+					 "(this loader's non-SAH BVH build has no ray-time "
+					 "channel) - falling back to \"sah\"");
+				sm = "sah";
+			}
+		}
+		out.acceleratorSplitMethod = sm;
+	}
+	out.acceleratorMaxNodePrims = scene.acceleratorMaxNodePrims;
 
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds" -> a single
 	// NDC-fraction rectangle. pbrt-v4's own rule: start from the full

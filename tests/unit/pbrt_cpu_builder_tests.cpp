@@ -1648,3 +1648,103 @@ TEST(PbrtCpuBuildTest, MalformedMixFallsBackToLambertianLikeAnyOtherUnsupportedM
 							 interval(0.001, infinity), rec));
 	EXPECT_NE(dynamic_cast<lambertian *>(rec.mat.get()), nullptr);
 }
+
+// ===========================================================================
+// Accelerator - a non-default splitmethod must produce the exact same hit
+// results as the default SAH bvh_node build, over the same primitives - see
+// bvh_aggregate_hittable.h's own top comment (only build strategy/tree shape
+// changes, never the converged image).
+// ===========================================================================
+
+namespace {
+
+// Several spheres spread across all 3 axes, so the BVH actually branches
+// (not just one leaf) regardless of split method.
+// AttributeBegin/End around each sphere resets the CTM, so each Translate
+// below is an absolute world-space center, not cumulative with the others.
+const std::string kScatteredSpheres =
+	"Material \"diffuse\" \"rgb reflectance\" [ 0.6 0.3 0.2 ]\n"
+	"AttributeBegin\nTranslate -4 0 0\nShape \"sphere\" \"float radius\" [ 1 ]\nAttributeEnd\n"
+	"AttributeBegin\nTranslate 4 0 0\nShape \"sphere\" \"float radius\" [ 1 ]\nAttributeEnd\n"
+	"AttributeBegin\nTranslate 0 4 0\nShape \"sphere\" \"float radius\" [ 1 ]\nAttributeEnd\n"
+	"AttributeBegin\nTranslate 0 -4 0\nShape \"sphere\" \"float radius\" [ 1 ]\nAttributeEnd\n"
+	"AttributeBegin\nTranslate 0 0 4\nShape \"sphere\" \"float radius\" [ 1 ]\nAttributeEnd\n"
+	"AttributeBegin\nTranslate 0 0 -4\nShape \"sphere\" \"float radius\" [ 1 ]\nAttributeEnd\n";
+
+} // namespace
+
+class AcceleratorParityTest : public ::testing::TestWithParam<const char *> {};
+
+TEST_P(AcceleratorParityTest, MatchesSahExactlyOverTheSameScene) {
+	const pbrt_cpu::BuildResult sah = buildFrom(kScatteredSpheres);
+	const pbrt_cpu::BuildResult alt = buildFrom(
+		"Accelerator \"bvh\" \"string splitmethod\" \"" + std::string(GetParam()) +
+		"\"\n" + kScatteredSpheres);
+
+	// One ray toward each of the 6 spheres (at (-4,0,0)/(4,0,0)/(0,4,0)/
+	// (0,-4,0)/(0,0,4)/(0,0,-4)), plus one that hits nothing.
+	const struct { point3 origin; vec3 dir; } rays[] = {
+		{point3(-4, 0, -10), vec3(0, 0, 1)},
+		{point3(4, 0, -10), vec3(0, 0, 1)},
+		{point3(0, 4, -10), vec3(0, 0, 1)},
+		{point3(0, -4, -10), vec3(0, 0, 1)},
+		{point3(-10, 0, 4), vec3(1, 0, 0)},
+		{point3(0, 0, -10), vec3(0, 0, 1)},
+		{point3(20, 20, 20), vec3(1, 0, 0)},
+	};
+	int rayIdx = 0;
+	for (const auto &rd : rays) {
+		SCOPED_TRACE(::testing::Message() << "rayIdx=" << rayIdx++);
+		hit_record recSah, recAlt;
+		const ray r(rd.origin, rd.dir);
+		bool hitSah = sah.world->hit(r, interval(0.001, infinity), recSah);
+		bool hitAlt = alt.world->hit(r, interval(0.001, infinity), recAlt);
+		ASSERT_EQ(hitSah, hitAlt);
+		if (!hitSah) continue;
+		EXPECT_NEAR(recSah.t, recAlt.t, 1e-9);
+		EXPECT_NEAR(recSah.normal.x(), recAlt.normal.x(), 1e-9);
+		EXPECT_NEAR(recSah.normal.y(), recAlt.normal.y(), 1e-9);
+		EXPECT_NEAR(recSah.normal.z(), recAlt.normal.z(), 1e-9);
+		EXPECT_NEAR(recSah.u, recAlt.u, 1e-9);
+		EXPECT_NEAR(recSah.v, recAlt.v, 1e-9);
+		ASSERT_NE(recAlt.mat, nullptr);
+		EXPECT_NE(dynamic_cast<lambertian *>(recAlt.mat.get()), nullptr);
+	}
+}
+
+INSTANTIATE_TEST_SUITE_P(SplitMethods, AcceleratorParityTest,
+						  ::testing::Values("middle", "equal", "hlbvh"),
+						  [](const ::testing::TestParamInfo<const char *> &info) {
+							  return std::string(info.param);
+						  });
+
+TEST(PbrtCpuBuildTest, AcceleratorFallsBackToSahForAMovingSphereEvenIfRequested) {
+	// flatten() already forces acceleratorSplitMethod back to "sah" when the
+	// scene has object motion blur (pbrt_flatten_tests.cpp pins this) - this
+	// confirms the CPU builder actually honors that resolved value end to
+	// end: a build that explicitly asked for "hlbvh" on a moving-sphere
+	// scene must match a build of the exact same scene with no Accelerator
+	// override at all (both should silently resolve to the same "sah"
+	// behavior), NOT diverge by rendering the sphere frozen at time 0 the
+	// way routing the moving sphere through bvh_aggregate_hittable (no
+	// ray-time channel) would.
+	const std::string kMovingSphere =
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 4 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n";
+	const pbrt_cpu::BuildResult plain = buildFrom(kMovingSphere);
+	const pbrt_cpu::BuildResult withOverride = buildFrom(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n" + kMovingSphere);
+
+	for (double t : {0.0, 0.5, 1.0}) {
+		hit_record recPlain, recOverride;
+		const ray r(point3(1, 0, -10), vec3(0, 0, 1), t);
+		bool hitPlain = plain.world->hit(r, interval(0.001, infinity), recPlain);
+		bool hitOverride = withOverride.world->hit(r, interval(0.001, infinity), recOverride);
+		ASSERT_EQ(hitPlain, hitOverride) << "t=" << t;
+		if (!hitPlain) continue;
+		EXPECT_NEAR(recPlain.t, recOverride.t, 1e-9) << "t=" << t;
+	}
+}

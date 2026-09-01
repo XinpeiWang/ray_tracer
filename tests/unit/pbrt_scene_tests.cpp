@@ -615,12 +615,48 @@ TEST(PbrtStateTest, ColorSpaceIsScopedByAttributeBeginEnd) {
 // ===========================================================================
 
 TEST(PbrtSkipTest, UnknownDirectiveWarnsAndDoesNotFail) {
+	// "Accelerator" used to be this test's own example - it's real, parsed
+	// input now (see the Accelerator tests below), so this uses a directive
+	// name pbrt-v4 has no such grammar for at all.
 	const ParseResult r = parse(
-		"Accelerator \"bvh\" \"integer maxnodeprims\" [ 4 ]\n"
+		"NotARealDirective \"foo\" \"integer bar\" [ 4 ]\n"
 		"Shape \"sphere\"\n");
 	ASSERT_TRUE(r.ok) << r.error;
 	EXPECT_EQ(r.scene.shapes.size(), 1u) << "the shape after it must still load";
-	EXPECT_TRUE(hasWarningContaining(r.scene, "Accelerator"));
+	EXPECT_TRUE(hasWarningContaining(r.scene, "NotARealDirective"));
+}
+
+// ===========================================================================
+// Accelerator - real splitmethod/maxnodeprims capture
+// ===========================================================================
+
+TEST(PbrtAcceleratorTest, DefaultsMatchPbrtV4) {
+	const Scene s = parseOk("Shape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorType, "bvh");
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+	EXPECT_EQ(s.acceleratorMaxNodePrims, 4);
+}
+
+TEST(PbrtAcceleratorTest, ExplicitSplitMethodAndMaxNodePrimsAreRead) {
+	const Scene s = parseOk(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\" "
+		"\"integer maxnodeprims\" [ 8 ]\n"
+		"Shape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorType, "bvh");
+	EXPECT_EQ(s.acceleratorSplitMethod, "hlbvh");
+	EXPECT_EQ(s.acceleratorMaxNodePrims, 8);
+	EXPECT_FALSE(hasWarningContaining(s, "Accelerator"))
+		<< "a fully-supported Accelerator directive must not warn";
+}
+
+TEST(PbrtAcceleratorTest, UnrecognizedTypeIsCapturedRaw) {
+	// This parser layer captures whatever string was given verbatim; the
+	// "not bvh -> warn and fall back" decision happens in flatten() (see
+	// FlattenTest.AcceleratorUnrecognizedTypeWarnsAndFallsBackToBvh,
+	// pbrt_flatten_tests.cpp), matching every other Scene::*Type field's
+	// "parse now, resolve later" split in this file.
+	const Scene s = parseOk("Accelerator \"kdtree\"\nShape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorType, "kdtree");
 }
 
 TEST(PbrtSkipTest, SkippingConsumesTheDirectivesParametersNotTheNextDirective) {
