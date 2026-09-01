@@ -232,9 +232,11 @@ extern "C" __global__ void __closesthit__quad() {
 				light_pdf_for_incoming = sel_pdf * dist_sq / (cos_theta * area);
 		}
 		optixSetPayload_10(2);  // hit_light
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);  // absorbed
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(0);
 	}
 }

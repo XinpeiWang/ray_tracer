@@ -206,27 +206,42 @@ loader and no longer match the code:
   already immersed in that medium, no bounding shape needed at all - the
   medium simply fills all of space, for a whole-scene fog/haze/underwater
   effect. Previously silently dropped entirely (no field anywhere captured
-  this). Now real on **CPU's default path tracer only** (`ray_color()`,
-  `camera::camera_medium`, `ambient_medium` - `constant_medium.h`) -
-  homogeneous only, and not combined with a real per-shape medium in the
-  same scene (`pbrt_flatten.h` warns and drops the camera medium for either
-  combination, rather than modeling the interaction). Implemented as an
-  explicit step in `ray_color()`'s own hit loop, AFTER `world.hit()`
-  already ran, rather than one more entry in the scene's own BVH/
-  hittable_list - an unbounded medium's own free-path sample needs to be
-  clipped to whatever real surface (or infinity, for an escaped ray) is
-  already known to be nearest, which only works reliably once that's
-  already been determined; see `ambient_medium`'s own comment for the full
-  reasoning. Applies on every bounce of a path, not just the primary ray -
-  once inside a medium filling all of space, every ray segment is inside it
-  too; this doesn't model a real "exit" via some other shape's own
-  `MediumInterface` (the excluded combination above). No NEE/shadow-ray
-  attenuation through it yet either (a light behind the fog isn't dimmed by
-  it on the way to a shadow-ray target) - only primary/bounce-ray
-  transmission. `ray_color_spectral()`, BDPT/MLT, SPPM, and both GPU
-  backends don't consume this field at all yet - each warns explicitly
-  (`cpu_interface.cpp`/`cpu_interface_bdpt.cpp`/`scene_builder.cpp`) rather
-  than silently rendering without the requested fog.
+  this). Now real on **CPU's default path tracer** (`ray_color()`,
+  `camera::camera_medium`, `ambient_medium` - `constant_medium.h`) **and
+  GPU's recursive backend** (`optix_raygen.h`'s own call site,
+  `sample_camera_medium()` - `optix_device_helpers.h`, `GpuCameraParams::
+  cameraMediumSigmaT` - `optix_types.h`) - homogeneous only, and not
+  combined with a real per-shape medium in the same scene (`pbrt_flatten.h`
+  warns and drops the camera medium for either combination, rather than
+  modeling the interaction - the same resolved `FlatScene::
+  cameraMediumIndex` both backends consume, so this scope cut is enforced
+  once, not per-backend). Implemented as an explicit step AFTER the
+  per-bounce ray-scene intersection already ran (CPU: `world.hit()`; GPU:
+  the primary `optixTrace` call, using its own `t_hit`/miss result as the
+  clip distance - every closest-hit program's hit_light/absorbed branches
+  now pack `t_hit` too, not just the "scattered" branch, so this is reliable
+  regardless of what the ray hit), rather than one more entry in the
+  scene's own BVH/scene-traversal structure - an unbounded medium's own
+  free-path sample needs to be clipped to whatever real surface (or
+  infinity, for an escaped ray) is already known to be nearest, which only
+  works reliably once that's already been determined; see `ambient_medium`'s
+  own comment (CPU) for the full reasoning, including why the real blocker
+  isn't traversal order (a plain hittable/BVH entry already resolves nearest-
+  hit correctly) but the lack of a side-channel for a non-winning entry to
+  still attenuate the path's throughput. Applies on every bounce of a path,
+  not just the primary ray - once inside a medium filling all of space,
+  every ray segment is inside it too; this doesn't model a real "exit" via
+  some other shape's own `MediumInterface` (the excluded combination above).
+  No NEE/shadow-ray attenuation through it yet either (a light behind the
+  fog isn't dimmed by it on the way to a shadow-ray target) - only primary/
+  bounce-ray transmission, on both backends that support this feature.
+  `ray_color_spectral()`, BDPT/MLT, CPU SPPM, GPU's wavefront backend, and
+  GPU SPPM still don't consume this field at all - each warns explicitly
+  (`cpu_interface.cpp`/`cpu_interface_bdpt.cpp`/`optix_renderer_render.cpp`/
+  `optix_interface.cpp`'s `sppm_gpu_unsupported_reason` - the last of these
+  rejects the render outright rather than warning-and-continuing, matching
+  that function's own established convention for every other GPU-SPPM gap)
+  rather than silently rendering without the requested fog.
 
 - `Shape "sphere"`'s `"float zmin"`/`"float zmax"`/`"float phimax"`
   (partial-sphere clipping - caps, wedges, hemispheres, e.g. a domed

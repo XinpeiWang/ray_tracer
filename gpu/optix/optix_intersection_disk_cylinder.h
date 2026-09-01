@@ -216,9 +216,11 @@ extern "C" __global__ void __closesthit__disk() {
 			}
 		}
 		optixSetPayload_10(2);
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(0);
 	}
 }
@@ -417,7 +419,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 			// point must scale by ray_dir here too, NOT unit_dir.
 			float3 medium_point = ray_orig + medium_t_hit * ray_dir;
 			emission = emission + medium_phase_nee_mis(
-				medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
+				medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 			is_specular = false;
 		} else {
 			medium_t_hit = t_far;
@@ -495,9 +497,11 @@ extern "C" __global__ void __closesthit__cylinder() {
 			}
 		}
 		optixSetPayload_10(2);
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(0);
 	}
 }

@@ -477,6 +477,19 @@ static std::string sppm_gpu_unsupported_reason(const SceneData& scene, const Gpu
 		       "use --gpu, --gpu --wavefront, or --cpu --sppm instead if the motion blur "
 		       "matters for this render";
 	}
+	if (cameraExtra.cameraMediumSigmaT > 0.0f) {
+		// See GpuCameraParams::cameraMediumSigmaT's own comment (optix_types.h) -
+		// real on the recursive backend (optix_raygen.h's own call site) as of
+		// this round, but sppm_programs.cu's raygens build/continue rays purely
+		// from cameraExtra's static fields the same way the animated-camera
+		// check above already rejects, with no equivalent camera-medium step -
+		// reject loudly rather than silently render without the requested fog,
+		// matching every other unsupported combination in this function.
+		return "has a camera medium (MediumInterface declared before the Camera directive) -- "
+		       "GPU SPPM's raygens don't implement the per-bounce ambient-medium step "
+		       "(optix_raygen.h's own camera-medium check); use --gpu, --gpu --wavefront, "
+		       "or --cpu --sppm instead if the ambient fog matters for this render";
+	}
 	if (!scene.triangles.empty() || !scene.instanceTriangles.empty() ||
 	    !scene.instanceSpheres.empty() || !scene.instanceGroups.empty()) {
 		return "uses triangle-mesh and/or instanced geometry -- GPU SPPM's hash-grid "

@@ -205,7 +205,12 @@ extern "C" __global__ void __raygen__rg() {
 			unsigned int p8 = 0;
 			unsigned int p9 = payload.seed;
 			unsigned int p10 = 0;  // scattered flag
-			unsigned int p11 = 0;  // hit distance 't'
+			// hit distance 't' - initialized to a huge sentinel (matching this
+			// codebase's own "escaped ray" convention, e.g. CloudMedium's own
+			// free_path fallback) rather than 0, so a genuine miss (which
+			// __miss__ms never overwrites this register for) reads back as
+			// "no clip" for the camera-medium check below, not "hit at t=0".
+			unsigned int p11 = __float_as_uint(1e30f);
 			// INPUT for __miss__ms (see its own comment): prev_brdf_pdf, the BRDF
 			// PDF of the ray that arrives at this trace - 0 for the primary ray or
 			// a specular bounce (CPU's prev_bsdf_pdf convention exactly), non-zero
@@ -340,6 +345,58 @@ extern "C" __global__ void __raygen__rg() {
 			if (depth == 0 && params.albedoBuffer) {
 				albedo_sum = albedo_sum + payload.albedo;
 				normal_sum = normal_sum + payload.normal;
+			}
+
+			// pbrt-v4's own "camera medium" (unbounded ambient fog the camera
+			// itself starts inside) - see GpuCameraParams::cameraMediumSigmaT's
+			// own comment and sample_camera_medium()'s own comment (optix_
+			// device_helpers.h) for the full derivation; mirrors CPU's camera.h
+			// call site exactly, including WHY this runs here (after the trace
+			// already ran, using its own t_hit/miss result as the clip
+			// distance) rather than as one more scene-BVH entry. t_hit is
+			// reliable for every flag value here (0/1/2/3/4 alike) because
+			// every closest-hit program's hit_light/absorbed branches now pack
+			// it too (previously only the "scattered" branch did) - see those
+			// branches' own "camera-medium clip distance" comments across the
+			// 6 intersection files. On a real miss, t_hit is whatever p11 was
+			// initialized to below (a huge sentinel, since __miss__ms never
+			// touches p11), correctly acting as "no clip" for an escaped ray.
+			if (params.camera.cameraMediumSigmaT > 0.0f) {
+				unsigned int medium_seed = payload.seed;
+				float3 medium_point, medium_dir, medium_emission;
+				float medium_brdf_pdf = 0.0f, medium_transmittance = 1.0f;
+				const bool medium_scattered = sample_camera_medium(
+					ray_origin, ray_direction, t_hit, medium_seed,
+					medium_point, medium_dir, medium_brdf_pdf, medium_emission, medium_transmittance, ray_time);
+				payload.seed = medium_seed;
+				if (medium_scattered) {
+					radiance = radiance + throughput * medium_emission;
+
+					// Same Russian Roulette as the normal scattered-bounce
+					// branch below (depth>1 gate, power-heuristic-compatible
+					// rr_max/q derivation) - a medium scatter consumes a real
+					// depth/RR trial, unlike flag==4's free Interface crossing.
+					if (depth > 1) {
+						float3 rr_beta = throughput * eta_scale;
+						float rr_max = fmaxf(rr_beta.x, fmaxf(rr_beta.y, rr_beta.z));
+						if (rr_max < 1.0f) {
+							float q = fmaxf(0.0f, 1.0f - rr_max);
+							if (random_float(medium_seed) < q) break;
+							throughput = throughput / (1.0f - q);
+						}
+					}
+
+					prev_brdf_pdf = medium_brdf_pdf;
+					any_nonspecular = true;  // a phase-function scatter is never specular
+					// eta_scale is deliberately untouched - a phase-function
+					// scatter is not a transmission event (matches CPU's
+					// hg_phase_material::scatter() leaving srec.eta at 1.0).
+					ray_origin = medium_point;
+					ray_direction = medium_dir;  // already normalized (sample_henyey_greenstein)
+					seed = medium_seed;
+					continue;
+				}
+				throughput = throughput * medium_transmittance;
 			}
 
 			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light, 3=scattered

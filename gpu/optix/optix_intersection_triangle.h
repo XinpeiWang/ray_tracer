@@ -367,9 +367,11 @@ extern "C" __global__ void __closesthit__triangle() {
 			}
 		}
 		optixSetPayload_10(2);
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(0);
 	}
 }

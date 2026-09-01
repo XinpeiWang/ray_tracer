@@ -95,6 +95,22 @@ bool OptiXRenderer::render(
 
 	// Delegate to WavefrontPathTracer if enabled
 	if (useWavefront_ && wavefrontTracer_) {
+		// pbrt-v4's own "camera medium" (GpuCameraParams::cameraMediumSigmaT's
+		// own comment, optix_types.h) - real on the recursive backend
+		// (optix_raygen.h's own call site) as of this round, but the
+		// wavefront backend's separate queue/kernel-per-stage architecture
+		// (RayWorkItem/HitWorkItem/MissWorkItem, wavefront_kernels.cu) needs
+		// its own threading work this round didn't reach - warn rather than
+		// silently drop it, same "warn rather than silently drop" precedent
+		// as every other unsupported-combination case in this codebase
+		// (--sppm/--bdpt/--mlt/--spectral all warn for this exact feature).
+		if (gpuCam.cameraMediumSigmaT > 0.0f) {
+			std::cerr << "[OptiX] Warning: scene has a camera medium (MediumInterface "
+						 "declared before the Camera directive), which is not supported under "
+						 "--wavefront - the scene will render without it; use the default GPU "
+						 "recursive backend (or --cpu) instead if the ambient fog matters for "
+						 "this render.\n";
+		}
 		// Set per render rather than once at enable time, so a scene switch
 		// cannot leave a previous scene's table wired in - same reasoning
 		// as this backend's own enableDenoise()'s comment. WavefrontPathTracer

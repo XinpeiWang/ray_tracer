@@ -409,19 +409,23 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	float& pdf,
 	float& out_u,
 	float& out_v,
-	float3& out_normal
+	float3& out_normal,
+	float ray_time
 ) {
 	// Object (per-primitive sphere) motion blur: interpolate to this ray's
 	// time, same lerp/no-op-when-static reasoning as optix_intersection_
 	// sphere.h's own __intersection__sphere - a moving emissive sphere's NEE
 	// sample must target the SAME interpolated position the caller's own
-	// shadow ray (traced at this same optixGetRayTime()) will test occlusion
-	// against, or the two disagree on where the light actually is.
-	// optixGetRayTime() is legal here (this helper is only ever called from
-	// within a closest-hit-invoked shading chain, not raygen), and returns
-	// the current ray's own time - the same value for every shading call
-	// this bounce makes, since it isn't reset until the NEXT optixTrace().
-	const float ray_time = optixGetRayTime();
+	// shadow ray (traced at this same time) will test occlusion against, or
+	// the two disagree on where the light actually is. `ray_time` is passed
+	// in explicitly (NOT read via optixGetRayTime() here) because this
+	// helper is called both from closest-hit-invoked shading chains (where
+	// optixGetRayTime() is legal) AND from the recursive backend's raygen
+	// loop's own camera-medium NEE (optix_raygen.h - see sample_camera_
+	// medium()'s own comment), where there is no "current ray" for
+	// optixGetRayTime() to read - every caller passes optixGetRayTime() or
+	// its own already-known ray time, matching CPU's own convention of
+	// explicit time-threading rather than an implicit "current ray" global.
 	const float3 center = make_float3(
 		sphere.center.x + ray_time * (sphere.center1.x - sphere.center.x),
 		sphere.center.y + ray_time * (sphere.center1.y - sphere.center.y),
@@ -817,21 +821,25 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 	unsigned int& seed,
 	float& geom_pdf,
 	float& max_dist,
-	float3& emission
+	float3& emission,
+	float ray_time
 ) {
 	const int prim_idx = params.lightIndices[light_idx];
 	switch (params.lightKinds[light_idx]) {
 	case GpuLightKind::Sphere: {
 		const SphereData& s = params.spheres[prim_idx];
 		float su, sv; float3 snormal;
-		const float3 dir = sample_sphere_light(s, origin, seed, geom_pdf, su, sv, snormal);
+		const float3 dir = sample_sphere_light(s, origin, seed, geom_pdf, su, sv, snormal, ray_time);
 		// Distance to the CENTRE, matching what this path has always used to
 		// bound the shadow ray for a sphere light. Interpolated the same way
 		// sample_sphere_light() itself just did (see that function's own
 		// comment) - a moving sphere light's shadow-ray bound has to agree
 		// with the position its own NEE sample was actually taken against.
+		// ray_time is the SAME parameter just passed to sample_sphere_light()
+		// above, not a fresh optixGetRayTime() read - see this function's own
+		// parameter comment for why an implicit "current ray" read isn't
+		// always legal here.
 		{
-			const float ray_time = optixGetRayTime();
 			const float3 center = make_float3(
 				s.center.x + ray_time * (s.center1.x - s.center.x),
 				s.center.y + ray_time * (s.center1.y - s.center.y),
@@ -973,7 +981,8 @@ __device__ __forceinline__ bool sample_nee_light(
 	float3& to_light,
 	float3& sampled_light_emission,
 	float& max_dist,
-	float& light_pdf
+	float& light_pdf,
+	float ray_time
 ) {
 	if (params.numLights <= 0) return false;
 
@@ -993,7 +1002,7 @@ __device__ __forceinline__ bool sample_nee_light(
 
 	float geom_pdf = 0.0f;
 	to_light = sample_area_light_by_kind(
-		light_idx, origin, seed, geom_pdf, max_dist, sampled_light_emission);
+		light_idx, origin, seed, geom_pdf, max_dist, sampled_light_emission, ray_time);
 
 	light_pdf = selection_pdf * geom_pdf;
 	return light_pdf > 1e-6f;
@@ -1167,7 +1176,8 @@ __device__ __forceinline__ bool trace_shadow_ray(
 __device__ __forceinline__ float3 medium_phase_nee_mis(
 	const float3& medium_point, const float3& wo, float g,
 	const float3& attenuation, const float3& scattered_dir,
-	unsigned int& seed, float& brdf_pdf_override, const float3& self_emission)
+	unsigned int& seed, float& brdf_pdf_override, const float3& self_emission,
+	float ray_time)
 {
 	float3 medium_emission = self_emission;
 	if (params.numLights > 0) {
@@ -1187,7 +1197,7 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 		float geom_pdf = 0.0f, max_dist = 0.0f;
 		float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
 		float3 to_light = sample_area_light_by_kind(
-			light_idx, medium_point, seed, geom_pdf, max_dist, sampled_light_emission);
+			light_idx, medium_point, seed, geom_pdf, max_dist, sampled_light_emission, ray_time);
 		float light_pdf = selection_pdf * geom_pdf;
 		if (light_pdf > 1e-6f) {
 			float phase_val = hg_phase_value(dot(wo, to_light), g);
@@ -1215,6 +1225,64 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 	}
 	brdf_pdf_override = hg_phase_value(dot(wo, scattered_dir), g);
 	return medium_emission;
+}
+
+// pbrt-v4's own "camera medium" (unbounded ambient fog the camera itself
+// starts inside) - GPU counterpart of CPU's ambient_medium::sample_scatter()/
+// transmittance_over() (src/TheRestOfYourLife/constant_medium.h) exactly:
+// the same single-inversion Beer-Lambert free-path sample against a scalar
+// sigma_t (a homogeneous medium's extinction has no spatial variation, so
+// this needs no delta-tracking/majorant rejection loop the way CloudMedium/
+// GridMedium's real heterogeneous sampling does). `surface_t` is the
+// ALREADY-KNOWN distance to the nearest real hit (or a huge sentinel for an
+// escaped ray) - see optix_raygen.h's own call site for why this runs AFTER
+// the primary optixTrace rather than as one more scene-BVH entry (the real
+// reason, per ambient_medium's own comment: a plain hittable has no side-
+// channel for a non-winning child to still attenuate the path's
+// throughput - not a traversal-order problem).
+//
+// Returns true on a scatter event within [0, surface_t]: writes
+// `out_scatter_point`/`out_scatter_dir` (phase-function-sampled)/
+// `out_brdf_pdf_override` (for the NEXT bounce's own MIS)/`out_emission`
+// (NEE + self-emission at the event, via medium_phase_nee_mis - reused, not
+// reimplemented) - `out_transmittance` is left untouched. Returns false
+// otherwise (including "no camera medium" and "no real hit AND zero
+// extinction" - both degenerate to a no-op multiply): leaves the scatter
+// outputs untouched and writes `out_transmittance` (a single scalar, not
+// float3 - see GpuCameraParams::cameraMediumSigmaT's own comment for why a
+// scalar sigma_t is correct here, matching CPU exactly) to multiply into
+// throughput. sigma_t>0 is already guaranteed on every path that reaches the
+// expf() call, so `expf(-sigma_t * surface_t)` never hits CPU's documented
+// exp(-0*infinity)=NaN edge case (guarded by the early return just below).
+// `ray_time` is passed through to medium_phase_nee_mis()'s own NEE sampling
+// (sample_area_light_by_kind()/sample_sphere_light(), for a moving sphere
+// light's interpolated position) rather than read via optixGetRayTime()
+// anywhere in this call chain - this function is called from optix_raygen.h's
+// RAYGEN loop, where optixGetRayTime() is illegal (no "current ray" context
+// exists there the way it does inside a closest-hit program) - confirmed by
+// a real OptiX module-compile failure ("Illegal call to optixGetRayTime in
+// function __raygen__rg") the first time this call chain read it implicitly.
+__device__ __forceinline__ bool sample_camera_medium(
+	const float3& ray_orig, const float3& ray_dir, float surface_t, unsigned int& seed,
+	float3& out_scatter_point, float3& out_scatter_dir, float& out_brdf_pdf_override,
+	float3& out_emission, float& out_transmittance, float ray_time)
+{
+	const float sigma_t = params.camera.cameraMediumSigmaT;
+	if (sigma_t <= 0.0f || surface_t <= 0.0f) { out_transmittance = 1.0f; return false; }
+
+	const float free_path = -logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t;
+	if (free_path >= surface_t) {
+		out_transmittance = expf(-sigma_t * surface_t);
+		return false;
+	}
+
+	out_scatter_point = ray_orig + free_path * ray_dir;
+	const float3 wo = -ray_dir;
+	out_scatter_dir = sample_henyey_greenstein(wo, params.camera.cameraMediumG, seed);
+	out_emission = medium_phase_nee_mis(out_scatter_point, wo, params.camera.cameraMediumG,
+		params.camera.cameraMediumAlbedo, out_scatter_dir, seed, out_brdf_pdf_override,
+		params.camera.cameraMediumEmission, ray_time);
+	return true;
 }
 
 // Result of one RAY_TYPE_PROBE trace - see trace_probe_ray() below and
@@ -1779,7 +1847,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 
 	{
 		float3 to_light, light_emission; float max_dist, light_pdf;
-		if (sample_nee_light(hit_point, seed, to_light, light_emission, max_dist, light_pdf)) {
+		if (sample_nee_light(hit_point, seed, to_light, light_emission, max_dist, light_pdf, optixGetRayTime())) {
 			bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
 			if (visible) {
 				float cos_to_light = fmaxf(dot(to_light, normal), 0.0f);
@@ -2077,7 +2145,7 @@ __device__ __forceinline__ void shade_material(
 			// Add direct lighting via explicit light sampling (Next Event Estimation)
 			{
 				float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-				if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
+				if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 					// Check if light is visible (shadow ray)
 					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
 
@@ -2501,7 +2569,7 @@ __device__ __forceinline__ void shade_material(
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, cc_tan), lly = dot(to_light, cc_bit), llz = dot(to_light, cc_n);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
@@ -2713,7 +2781,7 @@ __device__ __forceinline__ void shade_material(
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, tan), lly = dot(to_light, bitan), llz = dot(to_light, n);
 						if (rd_flip) { llx=-llx; lly=-lly; llz=-llz; }
 						if (llz != 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
@@ -2811,7 +2879,7 @@ __device__ __forceinline__ void shade_material(
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, ctan), lly = dot(to_light, cbitan), llz = dot(to_light, cn);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							float fr, fg, fb;
@@ -2899,7 +2967,7 @@ __device__ __forceinline__ void shade_material(
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, rmtan), lly = dot(to_light, rmbitan), llz = dot(to_light, rmn);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							float fr, fg, fb;
@@ -3068,7 +3136,7 @@ __device__ __forceinline__ void shade_material(
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, cdtan), lly = dot(to_light, cdbit), llz = dot(to_light, cdn);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);

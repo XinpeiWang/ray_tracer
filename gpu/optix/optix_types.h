@@ -1562,6 +1562,34 @@ struct GpuCameraParams {
 	// = static spheres, generate_camera_rays() always samples ray.time = 0
 	// and optix_raygen.h always samples ray_time = 0.0f.
 	int motionBlurEnabled;
+
+	// pbrt-v4's own "camera medium" (unbounded ambient fog/haze the camera
+	// itself starts inside - MediumInterface declared before the Camera
+	// directive; see FlatScene::cameraMediumIndex's own comment, pbrt_
+	// flatten.h, and CPU's ambient_medium, src/TheRestOfYourLife/constant_
+	// medium.h, for the full feature writeup, including why this is an
+	// explicit per-bounce step rather than one more scene-BVH entry).
+	// cameraMediumSigmaT<=0 (the zero-init default, same "no in-class
+	// initializer" __constant__ constraint as every other optional field on
+	// this struct) means "no camera medium" - every scene that doesn't
+	// request this is completely unaffected. Scalar sigma_t (not per-RGB-
+	// channel) matches CPU's own camera-medium construction exactly - CPU's
+	// pbrt_cpu_builder.h collapses to a scalar sigma_a/sigma_s via
+	// `collapse_homogeneous_medium()` before ever reaching ambient_medium's
+	// constructor, so CPU's own per-channel HomogeneousMediumData ends up
+	// with all three channels identical too; the real per-channel color
+	// lives entirely in cameraMediumAlbedo. cameraMediumEmission is already
+	// weighted by sigma_a/sigma_t (MakeNamedMedium's own "rgb Le"), matching
+	// CPU's hg_phase_material::emitted() exactly - not re-weighted per
+	// launch. Living on GpuCameraParams (not a bare LaunchParams field)
+	// means the wavefront backend gets this for free through its existing
+	// GpuCameraParams argument - see motionBlurEnabled's own comment just
+	// above for why that's the established pattern for scene state either
+	// backend's kernels need.
+	float  cameraMediumSigmaT;
+	float3 cameraMediumAlbedo;
+	float  cameraMediumG;
+	float3 cameraMediumEmission;
 };
 
 // Launch parameters (passed to all OptiX programs)

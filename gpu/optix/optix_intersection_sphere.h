@@ -618,7 +618,7 @@ extern "C" __global__ void __closesthit__sphere() {
 				// time).
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
+					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 				is_specular = false;
 			} else {
 				medium_t_hit = t_far;
@@ -695,7 +695,7 @@ extern "C" __global__ void __closesthit__sphere() {
 				// sets it - "rgb Le" support is homogeneous-Medium only), so
 				// this is a pure no-op self-emission term, not a new feature.
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
+					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;  // straight through, no interaction
@@ -817,7 +817,7 @@ extern "C" __global__ void __closesthit__sphere() {
 				float3 wo = -unit_dir3;
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, selfEmission);
+					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, selfEmission, optixGetRayTime());
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;
@@ -895,7 +895,7 @@ extern "C" __global__ void __closesthit__sphere() {
 				float3 wo = -unit_dir3;
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
+					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;
@@ -984,7 +984,7 @@ extern "C" __global__ void __closesthit__sphere() {
 					// reachable from the pbrt loader - see pbrt_gpu_builder.h's
 					// own comment), so this is a pure no-op self-emission term.
 					emission = emission + medium_phase_nee_mis(
-						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
+						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 					is_specular = false;
 				} else {
 					attenuation = make_float3(1.0f, 1.0f, 1.0f);
@@ -1154,9 +1154,11 @@ extern "C" __global__ void __closesthit__sphere() {
 			}
 		}
 		optixSetPayload_10(2);  // hit_light
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);  // absorbed
+		optixSetPayload_11(__float_as_uint(optixGetRayTmax()));  // camera-medium clip distance (see optix_raygen.h's own call site)
 		optixSetPayload_12(0);
 	}
 }
