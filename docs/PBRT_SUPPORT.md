@@ -542,18 +542,21 @@ per-`MaterialKind` behavior.)
   inert, and `invert` didn't exist) are now read and honored on **CPU and
   both GPU backends**, for the primary `"reflectance"` slot
   (`Material::textureFilename`) of `Diffuse`/`CoatedDiffuse`/
-  `DiffuseTransmission` — the other four texture-filename slots
-  (`transmittanceTextureFilename`/`roughnessTextureFilename`/
-  `alphaTextureFilename`/`displacementTextureFilename`) still get this
-  codebase's long-standing gamma-2.2/Clamp/no-invert defaults regardless of
-  what the scene's own `imagemap` declares, a deliberate scope cut matching
-  this loader's own "close the reflectance slot first" precedent (see
-  `Material::textureGamma`/`textureWrap`/`textureInvert`'s own comments,
-  `pbrt_flatten.h`) — `Material::textureFilename` is never populated for any
-  other material kind on either backend (verified directly: both
-  `pbrt_cpu_builder.h` and `gpu/optix/pbrt_gpu_builder.h` each have exactly
-  3 read sites for it, all 3 of these kinds), so this is the entire gap, not
-  a narrowed one. `"encoding"`: `"linear"` → gamma 1.0 (no decode — the
+  `DiffuseTransmission`, and (a follow-up round) the `transmittance`
+  (`DiffuseTransmission`) and `roughness` (`Dielectric`) slots too, via each
+  slot's own `TextureDecodeOptions` field
+  (`transmittanceTextureOptions`/`roughnessTextureOptions`,
+  `resolveTextureDecodeOptions()`, `pbrt_flatten.h`) — the remaining two
+  texture-filename slots (`alphaTextureFilename`/`displacementTextureFilename`)
+  still get this codebase's long-standing gamma-2.2/Clamp/no-invert defaults
+  regardless of what the scene's own `imagemap` declares: alpha is a
+  coverage MASK, not colour, so `"encoding"` (gamma) isn't meaningful there
+  by this codebase's own established design
+  (`getOrBuildPbrtAlphaMaskTexture()`'s own comment,
+  `gpu/optix/pbrt_gpu_builder.h`); displacement goes through a materially
+  different CPU pipeline (`rtw_image`/`image_texture`, not
+  `mipmap_texture`/`MipMapOptions`) with no wrap-mode concept at all today —
+  a deliberate, narrower scope cut than before. `"encoding"`: `"linear"` → gamma 1.0 (no decode — the
   real use case is a roughness/normal/displacement map bound as reflectance
   on a stand-in material for inspection, or a genuinely-linear photo source);
   `"gamma <value>"` → that exact exponent; `"sRGB"`/absent → 2.2 (this
@@ -585,10 +588,11 @@ per-`MaterialKind` behavior.)
   (non-pbrt) scenes; `TextureData::wrapMode`'s own C++ struct default
   (`optix_types.h`) deliberately stays `Clamp` for the identical reason —
   every OTHER GPU texture-table entry (checker/mix tex1/tex2/amount,
-  roughness/transmittance/displacement) is still built without threading
-  these options through at all, so those stay byte-for-byte at GPU's
-  original hard-clamp/gamma-2.2/no-invert behavior, unaffected by this
-  change. Gamma and invert are baked into the decoded pixel bytes once at
+  displacement) is still built without threading these options through at
+  all, so those stay byte-for-byte at GPU's original hard-clamp/gamma-2.2/
+  no-invert behavior, unaffected by this change (roughness/transmittance now
+  thread their own resolved options through, per the follow-up round noted
+  above). Gamma and invert are baked into the decoded pixel bytes once at
   scene-load time on GPU (`getOrBuildPbrtImageTexture()`,
   `gpu/optix/pbrt_gpu_builder.h`, via `stbi_ldr_to_hdr_gamma()` - the same
   process-global stb_image mechanism `rtw_stb_image.h`'s `rtw_image`
@@ -606,8 +610,8 @@ per-`MaterialKind` behavior.)
   without throwing per `strtod` semantics — or `<= 0`). An unrecognized
   `"string wrap"` value (a typo or wrong case, e.g. `"Clamp"`) similarly
   falls back to `"repeat"` WITH a warning rather than silently. Binding
-  `"encoding"`/`"wrap"`/`"invert"` to one of the 4 non-primary texture-
-  filename slots (transmittance/roughness/alpha/displacement) also warns
-  that the request is ignored there — those slots still only ever get this
-  codebase's original gamma-2.2/Clamp/no-invert defaults on either backend,
-  regardless of what the scene's own imagemap declares.
+  `"encoding"`/`"wrap"`/`"invert"` to one of the 2 remaining non-resolving
+  texture-filename slots (alpha/displacement) also warns that the request is
+  ignored there — those slots still only ever get this codebase's original
+  gamma-2.2/Clamp/no-invert defaults on either backend, regardless of what
+  the scene's own imagemap declares.

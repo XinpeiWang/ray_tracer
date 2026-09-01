@@ -72,14 +72,14 @@ inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const d
 		: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(filename.c_str()));
 }
 
-// Builds the MipMapOptions for m.textureFilename specifically (the ONLY
-// slot pbrt_flatten.h resolves textureGamma/textureWrap/textureInvert for -
-// see Material::textureGamma's own comment on why the other texture-
-// filename slots aren't threaded this round). Every other mipmap_texture
-// construction in this file (roughness/mix-amount/checker/emission/etc.)
-// deliberately keeps using the default-constructed MipMapOptions{} (gamma
-// 2.2, Clamp, no invert) - this codebase's pre-existing behavior for those
-// slots is unchanged.
+// Builds the MipMapOptions for m.textureFilename specifically - see
+// Material::textureGamma's own comment (pbrt_flatten.h) for why this slot
+// keeps its own 3 loose fields instead of a TextureDecodeOptions like
+// transmittance/roughness now use (toMipMapOptions() just below). Every
+// OTHER mipmap_texture construction in this file that has no corresponding
+// pbrt_flatten::Material options field at all (mix-amount/checker/emission/
+// etc.) still deliberately keeps using the default-constructed
+// MipMapOptions{} (gamma 2.2, Clamp, no invert) - unchanged.
 inline MipMapOptions imageMapOptionsFor(const pbrt_flatten::Material &m) {
 	MipMapOptions opts;
 	opts.gamma = m.textureGamma;
@@ -90,6 +90,17 @@ inline MipMapOptions imageMapOptionsFor(const pbrt_flatten::Material &m) {
 	// it by construction, so this just recovers the enum rather than
 	// re-parsing the string a second time.
 	opts.wrap = static_cast<MipWrapMode>(m.textureWrapIndex);
+	return opts;
+}
+
+// Same conversion as imageMapOptionsFor() above, for a slot that carries its
+// own pbrt_flatten::TextureDecodeOptions (transmittance/roughness) instead
+// of 3 loose Material fields - see that struct's own comment.
+inline MipMapOptions toMipMapOptions(const pbrt_flatten::TextureDecodeOptions &o) {
+	MipMapOptions opts;
+	opts.gamma = static_cast<float>(o.gamma);
+	opts.invert = o.invert;
+	opts.wrap = static_cast<MipWrapMode>(o.wrapIndex);
 	return opts;
 }
 
@@ -173,7 +184,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// instead of a flat number - see flatten()'s own resolution).
 		if (!m.roughnessTextureFilename.empty())
 			return std::make_shared<rough_dielectric>(m.ior,
-				std::make_shared<mipmap_texture>(m.roughnessTextureFilename.c_str()), m.remapRoughness);
+				std::make_shared<mipmap_texture>(m.roughnessTextureFilename.c_str(),
+					toMipMapOptions(m.roughnessTextureOptions)), m.remapRoughness);
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness_u/
 		// m.roughness_v - see flatten()'s own fallback-chain comment) means
 		// the scene asked for a GGX microfacet dielectric (pbrt-v4
@@ -281,7 +293,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (rTex && m.textureScale != 1.0)
 			rTex = std::make_shared<scaled_texture>(rTex, m.textureScale);
 		shared_ptr<texture> tTex = m.transmittanceTextureFilename.empty()
-			? nullptr : std::make_shared<mipmap_texture>(m.transmittanceTextureFilename.c_str());
+			? nullptr : std::make_shared<mipmap_texture>(m.transmittanceTextureFilename.c_str(),
+				toMipMapOptions(m.transmittanceTextureOptions));
 		if (tTex && m.transmittanceTextureScale != 1.0)
 			tTex = std::make_shared<scaled_texture>(tTex, m.transmittanceTextureScale);
 		return std::make_shared<diffuse_transmission>(albedo, transmittance, rTex, tTex);

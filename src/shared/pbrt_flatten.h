@@ -470,6 +470,21 @@ enum class MaterialKind {
 // instead of 3 independent copies of `2.2`.
 constexpr double kDefaultTextureGamma = 2.2;
 
+// Texture "imagemap"'s own "string encoding"/"string wrap"/"bool invert"
+// (pbrt-v4), resolved once per bound imagemap - see Material::textureGamma's
+// own comment (below) for what each field means and defaults to. Originally
+// only threaded for the primary reflectance-equivalent slot (Material::
+// textureFilename, as 3 loose fields); this struct exists so the
+// transmittance/roughness slots below can carry the identical resolution
+// without duplicating those 3 fields a second and third time - see
+// resolveTextureDecodeOptions() (flatten_detail, below) for how it's built.
+struct TextureDecodeOptions {
+	double gamma = kDefaultTextureGamma;
+	std::string wrap = "repeat";
+	int wrapIndex = 1;   // Repeat - see Material::textureWrapIndex's own comment
+	bool invert = false;
+};
+
 struct Material {
 	MaterialKind kind = MaterialKind::Diffuse;
 	std::string pbrtType;              // as written, for diagnostics
@@ -585,14 +600,21 @@ struct Material {
 	double textureScale = 1.0;
 
 	// Texture "imagemap"'s own "string encoding"/"string wrap"/"bool
-	// invert" (pbrt-v4), resolved for textureFilename above ONLY - not
-	// threaded to transmittanceTextureFilename/roughnessTextureFilename/
-	// alphaTextureFilename/displacementTextureFilename below, a deliberate,
-	// documented scope cut (see docs/PBRT_SUPPORT.md's own note on this)
-	// matching this codebase's own established "close the reflectance slot
-	// first, other slots later if a real scene needs it" precedent (e.g.
-	// textureScale itself started reflectance-only before
-	// transmittanceTextureScale existed). textureGamma: resolved from
+	// invert" (pbrt-v4), resolved for textureFilename above as 3 loose
+	// fields (kept exactly as-is - CPU's imageMapOptionsFor()/GPU's own call
+	// sites already read these 3 by name) - transmittanceTextureFilename/
+	// roughnessTextureFilename below carry the identical resolution via
+	// their own TextureDecodeOptions field instead (transmittanceTextureOptions/
+	// roughnessTextureOptions). alphaTextureFilename/displacementTextureFilename
+	// still don't: alpha is a coverage MASK, not colour, so "encoding"
+	// (gamma) is not meaningful there by this codebase's own established
+	// design (see gpu/optix/pbrt_gpu_builder.h's getOrBuildPbrtAlphaMaskTexture()
+	// own comment on why alpha masks deliberately skip the gamma decode a
+	// reflectance imagemap needs); displacement goes through a materially
+	// different CPU pipeline (rtw_image/image_texture, not mipmap_texture/
+	// MipMapOptions) with no wrap-mode concept at all today. Both remaining
+	// gaps still warn via warnIfImagemapOptionsIgnored() below rather than
+	// silently dropping the request. textureGamma: resolved from
 	// "encoding" to an actual gamma exponent - "linear" -> 1.0 (no decode,
 	// pbrt-v4's own real intent for a roughness/normal/displacement map
 	// bound this way), "gamma <value>" -> that value, "sRGB" or absent ->
@@ -643,6 +665,12 @@ struct Material {
 	// wrapping "scale", or when transmittanceTextureFilename is empty.
 	double transmittanceTextureScale = 1.0;
 
+	// This slot's own "encoding"/"wrap"/"invert" - see TextureDecodeOptions'
+	// own comment. Default-constructed (2.2/"repeat"/no-invert) when
+	// transmittanceTextureFilename is empty or the scene gave none of the
+	// three.
+	TextureDecodeOptions transmittanceTextureOptions;
+
 	// Dielectric only: an "imagemap" Texture bound to "roughness" (e.g. a
 	// scratched/frosted-glass mask), same "raw as written, resolved later
 	// by pbrt_load.h" convention as textureFilename above - bare imagemap
@@ -655,6 +683,10 @@ struct Material {
 	// hit; see rough_dielectric::true_alpha()'s own comment (material_pbrt.h)
 	// for why this is isotropic-only, sampled per-hit rather than once.
 	std::string roughnessTextureFilename;
+
+	// This slot's own "encoding"/"wrap"/"invert" - see
+	// transmittanceTextureOptions' own comment just above.
+	TextureDecodeOptions roughnessTextureOptions;
 
 	// A Diffuse material's "reflectance" bound to a "checkerboard" Texture
 	// instead of an "imagemap" one (e.g. named-material-and-texture.pbrt's
@@ -1344,14 +1376,55 @@ inline double resolveTextureGamma(const pbrt_scene::TextureDecl &imgTex,
 	return kDefaultTextureGamma;
 }
 
-// The 4 non-primary texture-filename slots (transmittance/roughness/alpha/
-// displacement, each set right after a call to this) never read
-// "encoding"/"wrap"/"invert" at all - Material::textureGamma's own comment
-// on why that's a deliberate, documented scope cut (only the primary
-// reflectance slot resolves them). That cut is otherwise silent: a scene
-// author binding one of those params to a non-primary slot's imagemap gets
-// it dropped with no diagnostic anywhere (CPU or GPU). Called at each of
-// those 4 resolution sites right after a bare/scale-wrapped imagemap is
+// Resolves an "imagemap" Texture's "string wrap" param against the 3 real
+// values this loader understands - guaranteed to always return "repeat"/
+// "clamp"/"black" by construction, matching resolveTextureGamma's own
+// "approximate, but never silently wrong" precedent. An unrecognized value
+// (typo, wrong case, e.g. "Clamp") falls back to "repeat" (pbrt-v4's real
+// default) WITH a warning, rather than silently resolving to the opposite of
+// what may have been intended.
+inline std::string resolveTextureWrap(const pbrt_scene::TextureDecl &imgTex,
+									   const std::function<void(const std::string&)> &warn) {
+	const std::string wrapStr = imgTex.params.getString("wrap", "repeat");
+	if (wrapStr == "repeat" || wrapStr == "clamp" || wrapStr == "black") return wrapStr;
+	warn("Texture \"imagemap\" \"string wrap\" \"" + wrapStr +
+		 "\" is not recognized (expected \"repeat\", \"clamp\", or \"black\"); "
+		 "using \"repeat\" instead");
+	return "repeat";
+}
+
+// Resolves an "imagemap" Texture's full "encoding"/"wrap"/"invert" set into
+// one TextureDecodeOptions - the single per-slot resolution point every
+// slot that carries this options struct (currently textureFilename's own 3
+// loose fields, plus transmittanceTextureOptions/roughnessTextureOptions)
+// funnels through, so the gamma/wrap-validation logic above lives in exactly
+// one place regardless of how many slots end up using it.
+inline TextureDecodeOptions resolveTextureDecodeOptions(const pbrt_scene::TextureDecl &imgTex,
+														  const std::function<void(const std::string&)> &warn) {
+	TextureDecodeOptions opts;
+	opts.gamma = resolveTextureGamma(imgTex, warn);
+	opts.wrap = resolveTextureWrap(imgTex, warn);
+	// See Material::textureWrapIndex's own comment - kept in sync with
+	// `wrap` above, the single resolution point for both.
+	opts.wrapIndex = (opts.wrap == "clamp") ? 0 : (opts.wrap == "black") ? 2 : 1;
+	opts.invert = imgTex.params.getBool("invert", false);
+	return opts;
+}
+
+// The 2 remaining non-primary texture-filename slots (alpha/displacement)
+// still never read "encoding"/"wrap"/"invert" - alpha is a coverage MASK,
+// not colour, so "encoding" (gamma) is not meaningful there by this
+// codebase's own established design (see gpu/optix/pbrt_gpu_builder.h's
+// getOrBuildPbrtAlphaMaskTexture() own comment); displacement goes through a
+// materially different CPU pipeline (rtw_image/image_texture, not
+// mipmap_texture/MipMapOptions) with no wrap-mode concept at all today -
+// both a deliberate, documented scope cut (see docs/PBRT_SUPPORT.md's own
+// note on this), NOT the "every non-primary slot" cut this used to be
+// (transmittance/roughness now resolve for real via
+// resolveTextureDecodeOptions() above). That cut is otherwise silent: a
+// scene author binding one of those params to alpha/displacement's imagemap
+// gets it dropped with no diagnostic anywhere (CPU or GPU). Called at each
+// of those 2 resolution sites right after a bare/scale-wrapped imagemap is
 // found, so the warning names the slot it was ignored for.
 inline void warnIfImagemapOptionsIgnored(const pbrt_scene::TextureDecl &imgTex,
 										  const char *slotName,
@@ -1359,8 +1432,8 @@ inline void warnIfImagemapOptionsIgnored(const pbrt_scene::TextureDecl &imgTex,
 	if (imgTex.params.find("encoding") || imgTex.params.find("wrap") || imgTex.params.find("invert")) {
 		warn(std::string("Texture \"imagemap\" bound to \"") + slotName +
 			 "\" declares \"encoding\"/\"wrap\"/\"invert\", but this loader only "
-			 "honors those on a material's primary reflectance texture - the "
-			 "request is ignored for this slot");
+			 "honors those on a material's reflectance/transmittance/roughness "
+			 "textures - the request is ignored for this slot");
 	}
 }
 
@@ -1790,35 +1863,21 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (!filename.empty()) {
 						m.textureFilename = filename;
 						m.textureScale = texScale;
-						m.textureGamma = resolveTextureGamma(*imgTex, warn);
-						// "string wrap": validated against the 3 real values
-						// this loader understands, so m.textureWrap is
-						// guaranteed to always be "repeat"/"clamp"/"black" by
-						// construction below - imageMapOptionsFor()
-						// (pbrt_cpu_builder.h) relies on that guarantee for
-						// its own else-defaults-to-Repeat mapping. An
-						// unrecognized value (typo, wrong case, e.g.
-						// "Clamp") falls back to "repeat" (pbrt-v4's real
-						// default) WITH a warning, rather than silently
-						// resolving to the opposite of what may have been
-						// intended.
+						// imageMapOptionsFor() (pbrt_cpu_builder.h) and GPU's
+						// own call sites read these 3 loose fields by name
+						// (kept as-is rather than switched to a
+						// TextureDecodeOptions field, to avoid touching every
+						// existing reader) - resolveTextureDecodeOptions() is
+						// still the single resolution point feeding them,
+						// same as transmittanceTextureOptions/
+						// roughnessTextureOptions below use directly.
 						{
-							const std::string wrapStr = imgTex->params.getString("wrap", "repeat");
-							if (wrapStr == "repeat" || wrapStr == "clamp" || wrapStr == "black") {
-								m.textureWrap = wrapStr;
-							} else {
-								warn("Texture \"imagemap\" \"string wrap\" \"" + wrapStr +
-									 "\" is not recognized (expected \"repeat\", \"clamp\", or "
-									 "\"black\"); using \"repeat\" instead");
-								m.textureWrap = "repeat";
-							}
-							// See Material::textureWrapIndex's own comment - kept in
-							// sync with textureWrap above, the single resolution
-							// point for both.
-							m.textureWrapIndex = (m.textureWrap == "clamp") ? 0
-								: (m.textureWrap == "black") ? 2 : 1;
+							const TextureDecodeOptions opts = resolveTextureDecodeOptions(*imgTex, warn);
+							m.textureGamma = opts.gamma;
+							m.textureWrap = opts.wrap;
+							m.textureWrapIndex = opts.wrapIndex;
+							m.textureInvert = opts.invert;
 						}
-						m.textureInvert = imgTex->params.getBool("invert", false);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
@@ -1957,7 +2016,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (!filename.empty()) {
 						m.transmittanceTextureFilename = filename;
 						m.transmittanceTextureScale = texScale;
-						warnIfImagemapOptionsIgnored(*imgTex, "transmittance", warn);
+						m.transmittanceTextureOptions = resolveTextureDecodeOptions(*imgTex, warn);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
@@ -1973,7 +2032,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					const std::string filename = tex->params.getString("filename", "");
 					if (!filename.empty()) {
 						m.roughnessTextureFilename = filename;
-						warnIfImagemapOptionsIgnored(*tex, "roughness", warn);
+						m.roughnessTextureOptions = resolveTextureDecodeOptions(*tex, warn);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}

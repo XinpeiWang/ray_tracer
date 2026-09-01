@@ -692,7 +692,10 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// constant/default value" convention every other texture-decode
 		// failure in this codebase gets.
 		if (!m.roughnessTextureFilename.empty()) {
-			const int roughTexIdx = getOrBuildPbrtImageTexture(m.roughnessTextureFilename, out, imageTextureCache);
+			const int roughTexIdx = getOrBuildPbrtImageTexture(m.roughnessTextureFilename, out, imageTextureCache,
+				static_cast<float>(m.roughnessTextureOptions.gamma),
+				static_cast<GpuWrapMode>(m.roughnessTextureOptions.wrapIndex),
+				m.roughnessTextureOptions.invert);
 			if (roughTexIdx >= 0) {
 				d.type = MaterialType::RoughDielectric;
 				d.textureIdx = roughTexIdx;
@@ -851,7 +854,10 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
 		if (!m.transmittanceTextureFilename.empty()) {
-			d.transmittanceTextureIdx = getOrBuildPbrtImageTexture(m.transmittanceTextureFilename, out, imageTextureCache);
+			d.transmittanceTextureIdx = getOrBuildPbrtImageTexture(m.transmittanceTextureFilename, out, imageTextureCache,
+				static_cast<float>(m.transmittanceTextureOptions.gamma),
+				static_cast<GpuWrapMode>(m.transmittanceTextureOptions.wrapIndex),
+				m.transmittanceTextureOptions.invert);
 			d.transmittanceScale = static_cast<float>(m.transmittanceTextureScale);
 		}
 		break;

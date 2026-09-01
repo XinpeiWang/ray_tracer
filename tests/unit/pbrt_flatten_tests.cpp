@@ -1677,10 +1677,10 @@ TEST(FlattenMaterialTest, ReflectanceImagemapUnrecognizedWrapFallsBackToRepeatAn
 	EXPECT_TRUE(warnedAbout(s, "wrap"));
 }
 
-TEST(FlattenMaterialTest, RoughnessImagemapEncodingIsIgnoredAndWarns) {
-	// Only the primary reflectance slot resolves encoding/wrap/invert - a
-	// scene binding them to a non-primary slot (roughness here) must be
-	// warned that the request is silently dropped for that slot.
+TEST(FlattenMaterialTest, RoughnessImagemapEncodingIsNowResolvedNotIgnored) {
+	// Superseded by DielectricRoughnessEncodingWrapInvertAreNowResolved
+	// (below in this file) once roughness gained real encoding/wrap/invert
+	// support - roughness is no longer one of the "ignored, warns" slots.
 	const FlatScene s = flattenSource(
 		"Texture \"rmap\" \"float\" \"imagemap\" \"string filename\" [ \"rough.png\" ] "
 		"\"string encoding\" [ \"linear\" ]\n"
@@ -1688,7 +1688,8 @@ TEST(FlattenMaterialTest, RoughnessImagemapEncodingIsIgnoredAndWarns) {
 		+ std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_EQ(s.materials[0].roughnessTextureFilename, "rough.png");
-	EXPECT_TRUE(warnedAbout(s, "roughness"));
+	EXPECT_DOUBLE_EQ(s.materials[0].roughnessTextureOptions.gamma, 1.0);
+	EXPECT_FALSE(warnedAbout(s, "\"encoding\"/\"wrap\"/\"invert\""));
 }
 
 TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardResolvesToAProceduralTexture) {
@@ -2153,6 +2154,74 @@ TEST(FlattenMaterialTest, DielectricRoughnessImagemapIsThreadedThrough) {
 	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_EQ(s.materials[0].roughnessTextureFilename, "scratch.png");
 	EXPECT_FALSE(warnedAbout(s, "dielectric"));
+}
+
+TEST(FlattenMaterialTest, DielectricRoughnessEncodingWrapInvertAreNowResolved) {
+	// Previously silently dropped for every non-primary slot - now resolved
+	// the same way the primary reflectance slot's own textureGamma/
+	// textureWrap/textureInvert are, via roughnessTextureOptions.
+	const FlatScene s = flattenSource(
+		"Texture \"scratch\" \"float\" \"imagemap\" \"string filename\" [ \"scratch.png\" ] "
+		"\"string encoding\" [ \"linear\" ] \"string wrap\" [ \"black\" ] \"bool invert\" [ true ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"scratch\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].roughnessTextureOptions.gamma, 1.0);
+	EXPECT_EQ(s.materials[0].roughnessTextureOptions.wrap, "black");
+	EXPECT_EQ(s.materials[0].roughnessTextureOptions.wrapIndex, 2);
+	EXPECT_TRUE(s.materials[0].roughnessTextureOptions.invert);
+	EXPECT_FALSE(warnedAbout(s, "\"encoding\"/\"wrap\"/\"invert\""));
+}
+
+TEST(FlattenMaterialTest, DielectricRoughnessNoEncodingGivenKeepsThePreExistingDefault) {
+	// A scene that doesn't opt in gets exactly the same default as before
+	// this feature existed (gamma 2.2/"repeat"/no-invert) - no behavior
+	// change for the common case.
+	const FlatScene s = flattenSource(
+		"Texture \"scratch\" \"float\" \"imagemap\" \"string filename\" [ \"scratch.png\" ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"scratch\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].roughnessTextureOptions.gamma, 2.2);
+	EXPECT_EQ(s.materials[0].roughnessTextureOptions.wrap, "repeat");
+	EXPECT_FALSE(s.materials[0].roughnessTextureOptions.invert);
+}
+
+TEST(FlattenMaterialTest, DiffuseTransmissionTransmittanceEncodingWrapInvertAreNowResolved) {
+	const FlatScene s = flattenSource(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ] "
+		"\"string encoding\" [ \"gamma 1.8\" ] \"string wrap\" [ \"clamp\" ] \"bool invert\" [ true ]\n"
+		"Material \"diffusetransmission\" \"texture transmittance\" [ \"leaf\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].transmittanceTextureOptions.gamma, 1.8);
+	EXPECT_EQ(s.materials[0].transmittanceTextureOptions.wrap, "clamp");
+	EXPECT_EQ(s.materials[0].transmittanceTextureOptions.wrapIndex, 0);
+	EXPECT_TRUE(s.materials[0].transmittanceTextureOptions.invert);
+}
+
+TEST(FlattenMaterialTest, RoughnessTextureUnrecognizedWrapWarnsAndFallsBackToRepeat) {
+	const FlatScene s = flattenSource(
+		"Texture \"scratch\" \"float\" \"imagemap\" \"string filename\" [ \"scratch.png\" ] "
+		"\"string wrap\" [ \"Clamp\" ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"scratch\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].roughnessTextureOptions.wrap, "repeat");
+	EXPECT_TRUE(warnedAbout(s, "string wrap"));
+}
+
+TEST(FlattenMaterialTest, AlphaAndDisplacementStillWarnEncodingWrapInvertIsIgnored) {
+	// The 2 remaining slots (alpha/displacement) are a deliberate, still-open
+	// scope cut - see warnIfImagemapOptionsIgnored()'s own comment for why.
+	const FlatScene s = flattenSource(
+		"Texture \"disp\" \"float\" \"imagemap\" \"string filename\" [ \"disp.png\" ] "
+		"\"bool invert\" [ true ]\n"
+		"Material \"diffuse\" \"texture displacement\" [ \"disp\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].displacementTextureFilename, "disp.png");
+	EXPECT_TRUE(warnedAbout(s, "\"encoding\"/\"wrap\"/\"invert\""));
 }
 
 TEST(FlattenMaterialTest, DielectricRoughnessConstantTextureResolvesToFlatNumber) {
