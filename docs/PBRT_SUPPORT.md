@@ -308,10 +308,17 @@ loader and no longer match the code:
   **`"cloud"`/`"uniformgrid"` still drop a nonzero `"Le"` with a warning on
   both CPU and GPU** — pbrt-v4 gives them no equivalent `"Le"` parameter at
   all (only `rgbgrid`'s does), so this isn't a scope gap, just a
-  non-feature for those two types. **`rgbgrid`'s own new `"Le"` support is
-  CPU-only this round** — GPU's `MaterialType::RgbGridMedium` has no
-  emission concept yet (a real, deferred follow-up, same shape as
-  homogeneous `Le`'s own earlier CPU-then-GPU staging).
+  non-feature for those two types. **`rgbgrid`'s own `"Le"` support is now
+  real on GPU too**, not CPU-only (`GpuRgbGridMedium::leDataOffset`/
+  `Le_scale`, `optix_intersection_sphere.h`/`wavefront_kernels.cu`'s own
+  RgbGridMedium closest-hit cases, `gpu/optix/pbrt_gpu_builder.h`'s scene
+  builder) - GPU emits the FULL per-voxel `Le` at every accepted scatter
+  collision rather than CPU's real sigma_a/sigma_t-weighted fraction, since
+  this GPU struct carries no sigma_a grid at all (scattering-only, a
+  pre-existing simplification) - see `GpuRgbGridMedium::Le_scale`'s own
+  comment (`optix_types.h`) for the exact consequence: a scene combining
+  heavy `"rgb sigma_s"` multi-scattering with `"rgb Le"` on the same medium
+  can render substantially brighter on GPU than the equivalent `--cpu` render.
   For `"homogeneous"` media specifically, `"blackbody Le"` (real
   Kelvin-to-RGB, the same conversion already used for every light's own
   `"L"`/`"I"` — see `resolveEmissionColor()`) is supported too, not just a
