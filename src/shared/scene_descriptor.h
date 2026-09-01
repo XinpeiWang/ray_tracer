@@ -170,6 +170,7 @@ namespace SceneNames {
     constexpr const char* CylinderMediumPbrtExample           = "Cylinder Medium (pbrt example)";
     constexpr const char* RgbGridMediumPbrtExample            = "RGB Grid Medium (pbrt example)";
     constexpr const char* UniformGridMediumPbrtExample        = "Uniform Grid Medium (pbrt example)";
+    constexpr const char* NanoVdbMediumPbrtExample             = "NanoVDB Medium (pbrt example)";
 
     constexpr const char* PlymeshUvPbrtExample                = "PLY Mesh UV (pbrt example)";
     constexpr const char* PlymeshGeometryPbrtExample          = "PLY Mesh Geometry (pbrt example)";

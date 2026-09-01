@@ -970,14 +970,17 @@ TEST(FlattenTest, UnresolvedMediumNameIsVacuumAndWarns) {
 }
 
 TEST(FlattenTest, UnsupportedMediumTypeFallsBackToHomogeneousAndWarns) {
-	// "nanovdb" (or any other type pbrt-v4 supports that this loader
-	// doesn't) still falls back to homogeneous with a warning - the
-	// generic case cloud/rgbgrid/uniformgrid all now opt out of.
+	// A genuinely unrecognized medium type still falls back to homogeneous
+	// with a warning - the generic case cloud/rgbgrid/uniformgrid/nanovdb
+	// all now opt out of. "nanovdb" used to be this test's own example
+	// (pbrt-v4 supports it, this loader didn't) - it's real, recognized
+	// input now, so this uses a type name pbrt-v4 has no such grammar for
+	// at all instead.
 	const FlatScene s = flattenSource(
-		"MakeNamedMedium \"g\" \"string type\" [ \"nanovdb\" ]\n");
+		"MakeNamedMedium \"g\" \"string type\" [ \"notarealmedium\" ]\n");
 	ASSERT_EQ(s.media.size(), 1u);
 	EXPECT_EQ(s.media[0].type, "homogeneous");
-	EXPECT_TRUE(warnedAbout(s, "nanovdb"));
+	EXPECT_TRUE(warnedAbout(s, "notarealmedium"));
 }
 
 TEST(FlattenTest, UniformgridParsesDensityArray) {
@@ -1015,6 +1018,75 @@ TEST(FlattenTest, UniformgridWrongDensityLengthIsEmptyAndWarns) {
 	ASSERT_EQ(s.media.size(), 1u);
 	EXPECT_TRUE(s.media[0].gridDensity.empty());
 	EXPECT_TRUE(warnedAbout(s, "g"));
+}
+
+// ===========================================================================
+// nanovdb - MakeNamedMedium "nanovdb" (Medium::nanovdbFilename's own
+// comment). File reading/densification happens in pbrt_cpu_builder.h, not
+// here - these tests only pin flatten()'s own capture/validation logic.
+// ===========================================================================
+
+TEST(FlattenTest, NanoVdbCapturesFilenameAndDefaultsGridName) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"clouds.nvdb\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	const Medium &m = s.media[0];
+	EXPECT_EQ(m.type, "nanovdb");
+	EXPECT_EQ(m.nanovdbFilename, "clouds.nvdb");
+	EXPECT_EQ(m.nanovdbGridName, "density");
+}
+
+TEST(FlattenTest, NanoVdbExplicitGridNameOverridesDefault) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"clouds.nvdb\" ] "
+		"\"string gridname\" [ \"smoke\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_EQ(s.media[0].nanovdbGridName, "smoke");
+}
+
+TEST(FlattenTest, NanoVdbMissingFilenameWarns) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_EQ(s.media[0].type, "nanovdb");
+	EXPECT_TRUE(s.media[0].nanovdbFilename.empty());
+	EXPECT_TRUE(warnedAbout(s, "no \"string filename\""));
+}
+
+TEST(FlattenTest, NanoVdbNonzeroSigmaAWarns) {
+	// grid_medium_hittable.h forces sigma_a to 0 (pure scattering) - same
+	// convention/reason as uniformgrid's own identical warning.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"clouds.nvdb\" ] \"rgb sigma_a\" [ 0.5 0.5 0.5 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_TRUE(warnedAbout(s, "nanovdb medium 'fog' has a nonzero sigma_a"));
+}
+
+TEST(FlattenTest, NanoVdbTemperatureNameWarnsEmissionNotSupported) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fire\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"fire.nvdb\" ] "
+		"\"string temperaturename\" [ \"temperature\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_TRUE(warnedAbout(s, "temperaturename"));
+}
+
+TEST(FlattenTest, NanoVdbCapturesSceneCtmUnbaked) {
+	// See Medium::nanovdbXform's own comment for why this is passed through
+	// raw instead of pre-composed the way toMediumMat/worldMin/Max are for
+	// every other grid medium type.
+	const FlatScene s = flattenSource(
+		"Translate 5 6 7\n"
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"clouds.nvdb\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	// Row-major translate components (m[3], m[7], m[11]).
+	EXPECT_DOUBLE_EQ(s.media[0].nanovdbXform[3], 5.0);
+	EXPECT_DOUBLE_EQ(s.media[0].nanovdbXform[7], 6.0);
+	EXPECT_DOUBLE_EQ(s.media[0].nanovdbXform[11], 7.0);
 }
 
 TEST(FlattenTest, CloudMediumComputesWorldAabbAndInverseTransform) {

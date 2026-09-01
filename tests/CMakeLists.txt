@@ -11,7 +11,7 @@ FetchContent_MakeAvailable(googletest)
 
 include(GoogleTest)
 
-set(COMMON_INCLUDES ${CMAKE_SOURCE_DIR}/../src ${CMAKE_SOURCE_DIR}/../src/TheRestOfYourLife ${CMAKE_SOURCE_DIR}/../src/shared ${CMAKE_SOURCE_DIR}/../cpu_renderer ${CMAKE_SOURCE_DIR}/../gpu/cuda ${CMAKE_SOURCE_DIR}/../gpu/optix)
+set(COMMON_INCLUDES ${CMAKE_SOURCE_DIR}/../src ${CMAKE_SOURCE_DIR}/../src/TheRestOfYourLife ${CMAKE_SOURCE_DIR}/../src/shared ${CMAKE_SOURCE_DIR}/../src/external ${CMAKE_SOURCE_DIR}/../cpu_renderer ${CMAKE_SOURCE_DIR}/../gpu/cuda ${CMAKE_SOURCE_DIR}/../gpu/optix)
 
 add_compile_definitions(_USE_MATH_DEFINES NOMINMAX _CRT_SECURE_NO_WARNINGS)
 

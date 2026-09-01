@@ -17,6 +17,8 @@
 #include "../shared/pbrt_flatten.h"
 #include "../shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData<double> - LightSource "infinite" "point3 portal[4]"
 #include "../external/tinyexr.h"   // LoadEXR() - see decodePunctualLightImageFile()
+#include "../external/nanovdb/NanoVDB.h"   // MakeNamedMedium "nanovdb" - see addMediumIfPresent()'s own nanovdb branch
+#include "../external/nanovdb/io/IO.h"     // nanovdb::io::readGrid()
 
 #include "bvh.h"
 #include "bvh_aggregate_hittable.h"
@@ -914,6 +916,130 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
 			world.add(std::make_shared<grid_medium_hittable>(
 				grid, color(1,1,1), md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate));
+			return;
+		}
+		if (md.type == "nanovdb") {
+			// Real NanoVDB file support (Medium::nanovdbFilename's own
+			// comment) - bakes the grid's active index region into a DENSE
+			// flat array reusing GridMediumData<double>/grid_medium_
+			// hittable.h completely unchanged, same as uniformgrid just
+			// above. Unlike every other medium type here, the world-space
+			// bounds/transform can't be resolved until the .nvdb file is
+			// actually read (the grid's own extent isn't known from the
+			// scene text alone) - so this block computes md.worldMin/
+			// worldMax/toMediumMat/toMediumTranslate's local equivalents
+			// itself, from md.nanovdbXform (the raw, unbaked scene CTM),
+			// instead of reading them pre-computed off `md` the way cloud/
+			// rgbgrid/uniformgrid do.
+			if (md.nanovdbFilename.empty()) return;
+
+			std::vector<double> density;
+			int nx = 0, ny = 0, nz = 0;
+			double corner00[3] = {0,0,0}, cornerX[3] = {0,0,0}, cornerY[3] = {0,0,0}, cornerZ[3] = {0,0,0};
+			bool ok = false;
+			try {
+				auto handle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbGridName);
+				const auto* grid = handle.grid<float>();
+				if (grid) {
+					const auto bbox = grid->indexBBox();
+					const auto bmin = bbox.min();
+					const auto bmax = bbox.max();
+					nx = static_cast<int>(bmax[0] - bmin[0]) + 1;
+					ny = static_cast<int>(bmax[1] - bmin[1]) + 1;
+					nz = static_cast<int>(bmax[2] - bmin[2]) + 1;
+					if (nx > 0 && ny > 0 && nz > 0) {
+						const auto& tree = grid->tree();
+						density.resize(static_cast<std::size_t>(nx) * ny * nz);
+						for (int z = 0; z < nz; ++z)
+							for (int y = 0; y < ny; ++y)
+								for (int x = 0; x < nx; ++x) {
+									const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
+									density[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
+										static_cast<double>(tree.getValue(ijk));
+								}
+
+						// Reconstruct the composed (index-[0,1]-space ->
+						// world) affine map by sampling its origin + 3
+						// unit-basis corners, rather than hand-deriving/
+						// multiplying NanoVDB's own Map matrix convention
+						// together with md.nanovdbXform - 4 points fully
+						// determine any affine map, and grid->indexToWorld()
+						// already folds in the grid's own baked voxel-size/
+						// origin transform correctly regardless of what
+						// convention it uses internally.
+						pbrt_scene::Matrix4 sceneXform;
+						for (int i = 0; i < 16; ++i) sceneXform.m[i] = md.nanovdbXform[i];
+						auto mapCorner = [&](double u, double v, double w, double out[3]) {
+							const nanovdb::Vec3d idx(bmin[0] + u * nx, bmin[1] + v * ny, bmin[2] + w * nz);
+							const nanovdb::Vec3d native = grid->indexToWorld(idx);
+							pbrt_flatten::flatten_detail::transformPoint(sceneXform, native[0], native[1], native[2], out);
+						};
+						mapCorner(0, 0, 0, corner00);
+						mapCorner(1, 0, 0, cornerX);
+						mapCorner(0, 1, 0, cornerY);
+						mapCorner(0, 0, 1, cornerZ);
+						ok = true;
+					}
+				}
+			} catch (...) {
+				// Corrupt file, wrong/missing grid name, or any other NanoVDB
+				// read failure - degrade the same way an empty/wrong-length
+				// uniformgrid "density" array does just above: no hittable
+				// added, an invisible medium, rather than propagating the
+				// exception. pbrt_load.h already confirmed the file EXISTS
+				// (path resolution); this catches everything path resolution
+				// can't - a truncated/non-NanoVDB file, or a gridname pbrt_
+				// flatten.h had no way to check without opening it.
+				ok = false;
+			}
+			if (!ok || density.empty()) return;
+
+			// world = worldFromMedium * (u,v,w) + corner00 - worldFromMedium's
+			// columns are the 3 sampled basis differences, matching
+			// pbrt_scene::Matrix4's own row-major layout exactly.
+			pbrt_scene::Matrix4 worldFromMedium;
+			for (int r = 0; r < 3; ++r) {
+				worldFromMedium.m[r * 4 + 0] = cornerX[r] - corner00[r];
+				worldFromMedium.m[r * 4 + 1] = cornerY[r] - corner00[r];
+				worldFromMedium.m[r * 4 + 2] = cornerZ[r] - corner00[r];
+				worldFromMedium.m[r * 4 + 3] = corner00[r];
+			}
+			pbrt_scene::Matrix4 mediumFromWorld;
+			if (!worldFromMedium.inverseAffine(mediumFromWorld)) return;
+
+			// World-space AABB: 8 corners of [0,1]^3 through worldFromMedium -
+			// same "transform all 8 corners, take the axis-aligned min/max"
+			// technique pbrt_flatten.h's own p0/p1 block already uses for
+			// every other grid medium type.
+			double worldMin[3] = {1e300, 1e300, 1e300};
+			double worldMax[3] = {-1e300, -1e300, -1e300};
+			for (int c = 0; c < 8; ++c) {
+				const double u = (c & 1) ? 1.0 : 0.0, v = (c & 2) ? 1.0 : 0.0, w = (c & 4) ? 1.0 : 0.0;
+				double wc[3];
+				pbrt_flatten::flatten_detail::transformPoint(worldFromMedium, u, v, w, wc);
+				for (int a = 0; a < 3; ++a) {
+					worldMin[a] = std::fmin(worldMin[a], wc[a]);
+					worldMax[a] = std::fmax(worldMax[a], wc[a]);
+				}
+			}
+
+			double toMediumMat[9], toMediumTranslate[3];
+			for (int i = 0; i < 3; ++i)
+				for (int j = 0; j < 3; ++j)
+					toMediumMat[i * 3 + j] = mediumFromWorld.m[i * 4 + j];
+			for (int i = 0; i < 3; ++i) toMediumTranslate[i] = mediumFromWorld.m[i * 4 + 3];
+
+			// sigma_a is always forced to 0 below (pure scattering), same
+			// convention/reason as uniformgrid above - flatten() already
+			// warned if the scene gave a nonzero one.
+			const Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+			const GridMediumData<double> grid(
+				density, nx, ny, nz, bounds,
+				/*sa=*/0.0, luminance(md.sigma_s), md.g);
+			const point3 world_min(worldMin[0], worldMin[1], worldMin[2]);
+			const point3 world_max(worldMax[0], worldMax[1], worldMax[2]);
+			world.add(std::make_shared<grid_medium_hittable>(
+				grid, color(1,1,1), md.g, world_min, world_max, toMediumMat, toMediumTranslate));
 			return;
 		}
 

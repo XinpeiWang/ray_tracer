@@ -569,6 +569,25 @@ inline LoadResult loadFile(const std::string &path) {
 		pl.filename = resolved;
 	}
 
+	// MakeNamedMedium "nanovdb"'s own "string filename" (Medium::
+	// nanovdbFilename's own comment) - same resolution convention as every
+	// filename field above; the actual .nvdb read/decode is likewise left
+	// to pbrt_cpu_builder.h.
+	for (pbrt_flatten::Medium &md : r.scene.media) {
+		if (md.type != "nanovdb" || md.nanovdbFilename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, md.nanovdbFilename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "nanovdb medium's file '" + md.nanovdbFilename +
+					"' could not be found; the medium will render as empty (invisible)"});
+			md.nanovdbFilename.clear();
+			continue;
+		}
+
+		md.nanovdbFilename = resolved;
+	}
+
 	return r;
 }
 

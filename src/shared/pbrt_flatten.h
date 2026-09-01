@@ -274,11 +274,13 @@ struct Medium {
 	double Le[3] = {0.0, 0.0, 0.0};
 
 	// "homogeneous" (default, uses sigma_a/sigma_s/g above only), "cloud",
-	// "rgbgrid", or "uniformgrid" - a real, genuinely different medium type
-	// each, with a real implementation on both backends (src/shared/
-	// cloud_medium.h, src/shared/rgb_grid_medium.h, src/shared/
-	// sampled_grid.h's GridMediumData). Anything else pbrt-v4 supports
-	// ("nanovdb") still falls back to homogeneous with a warning.
+	// "rgbgrid", "uniformgrid", or "nanovdb" - a real, genuinely different
+	// medium type each. cloud/rgbgrid/uniformgrid have a real implementation
+	// on both backends (src/shared/cloud_medium.h, src/shared/
+	// rgb_grid_medium.h, src/shared/sampled_grid.h's GridMediumData);
+	// nanovdb is CPU-only (see nanovdbFilename's own comment) - GPU falls
+	// back to homogeneous with a warning, same as any other type it doesn't
+	// recognize.
 	std::string type = "homogeneous";
 
 	// World-space AABB the medium actually occupies - the medium-space box
@@ -361,6 +363,62 @@ struct Medium {
 	// single Spectrum sigma_a/sigma_s each, not per-voxel like rgbgrid's
 	// own "rgb sigma_a"/"rgb sigma_s".
 	std::vector<double> gridDensity;
+
+	// "nanovdb" only - pbrt-v4's own real MakeNamedMedium "nanovdb"
+	// "string filename" (REQUIRED - real pbrt-v4's NanoVDBMedium::Create
+	// has no default and errors without one, matching this loader's own
+	// "empty means absent, warn and skip" convention for every other
+	// filename-typed field) and "string gridname" (default "density" -
+	// the name of the grid INSIDE the .nvdb file to read; a .nvdb can
+	// contain multiple named grids, matching pbrt-v4's own default
+	// exactly). AS WRITTEN here (relative to the scene file's own
+	// directory) - pbrt_load.h::loadFile() resolves it to a real
+	// filesystem path afterward, exactly like Material::textureFilename's
+	// own comment documents for every other filename field this loader
+	// carries unbaked through flatten(); the actual NanoVDB file read (and
+	// its densification into a GridMediumData<double>-compatible flat
+	// array) happens later still, in pbrt_cpu_builder.h - this header
+	// stays free of both filesystem access and the vendored NanoVDB
+	// reader itself (src/external/nanovdb/), matching the same "flatten()
+	// captures the request, the builder does the heavy/backend-specific
+	// work" split image textures already use (see pbrt_cpu_builder.h's
+	// own stbi_load()/LoadEXR() call sites) - keeping pbrt_flatten.h (and
+	// everything that transitively includes it, including the GPU
+	// builder) free of an unnecessary NanoVDB dependency, not just an
+	// arbitrary layering preference.
+	//
+	// CPU-only, real per-voxel density, reusing GridMediumData<double>/
+	// grid_medium_hittable.h completely unchanged - pbrt_cpu_builder.h
+	// bakes the (typically sparse) NanoVDB grid's active region into a
+	// DENSE flat array at load time (matching how "uniformgrid" already
+	// works), rather than keeping it natively sparse; a real, disclosed
+	// scope cut, not a NanoVDB limitation. GPU has no NanoVDB support at
+	// all this round - scene_builder.cpp warns explicitly, matching the
+	// Cone/Paraboloid GPU-unsupported precedent, rather than silently
+	// falling back to homogeneous the way an UNRECOGNIZED medium type
+	// would (this type IS recognized here; only GPU can't build it).
+	//
+	// Real pbrt-v4 also supports a "string temperaturename" grid for
+	// real blackbody emission (glowing fire/smoke) - deliberately NOT
+	// implemented this round (a separable feature; this loader's existing
+	// homogeneous/rgbgrid emission paths already establish the pattern to
+	// extend later). A scene naming one gets a warning, not silent
+	// emission loss disguised as "it just didn't glow".
+	std::string nanovdbFilename;
+	std::string nanovdbGridName = "density";
+	// The CTM captured at MakeNamedMedium declaration time (pbrt_scene::
+	// MediumDecl::xform), UNBAKED - mirrors this loader's own "object-space-
+	// plus-unbaked-CTM" technique used for disk/cylinder/cone/paraboloid
+	// (see e.g. Cone::xform's own comment). Every OTHER medium type instead
+	// gets `toMediumMat`/`toMediumTranslate` above (the ALREADY-inverted,
+	// already-composed-with-p0/p1 transform) because flatten() knows their
+	// full medium-space box (p0/p1) up front; nanovdb's own "box" is the
+	// grid's own index bounding box, which isn't known until the .nvdb file
+	// is actually read - so composing the final world<->medium transform
+	// has to wait for pbrt_cpu_builder.h, which needs the raw scene CTM
+	// (this field) to do it, not the other fields above (left at their
+	// harmless unit-cube/identity defaults for this type).
+	double nanovdbXform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 };
 
 // Shape "bilinearmesh" - a single bilinear patch (4 corner points, not
@@ -2786,11 +2844,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// type can't update one without being pointed at the rest.
 		const bool isRgbGrid = (md.type == "rgbgrid");
 		const bool isUniformGrid = (md.type == "uniformgrid");
-		if (!isCloud && !isRgbGrid && !isUniformGrid && md.type != "homogeneous") {
+		const bool isNanoVdb = (md.type == "nanovdb");
+		if (!isCloud && !isRgbGrid && !isUniformGrid && !isNanoVdb && md.type != "homogeneous") {
 			warn("medium type '" + md.type + "' is not supported; "
 				 "treated as homogeneous with its given sigma_a/sigma_s");
 		}
-		medium.type = (isCloud || isRgbGrid || isUniformGrid) ? md.type : "homogeneous";
+		medium.type = (isCloud || isRgbGrid || isUniformGrid || isNanoVdb) ? md.type : "homogeneous";
 
 		// sigma_a/sigma_s/scale/g: for homogeneous, these ARE the medium
 		// (a flat RGB colour each). For rgbgrid, these same param NAMES
@@ -2901,10 +2960,22 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// Grouped with the sigma_a-dropped warnings just below (same
 		// "parameter X is meaningless for type Y" shape), not folded into
 		// the AABB-computation block above.
-		if ((isCloud || isUniformGrid) && isNonzeroRGB(medium.Le)) {
+		if ((isCloud || isUniformGrid || isNanoVdb) && isNonzeroRGB(medium.Le)) {
 			warn("medium '" + md.name + "' (\"" + md.type + "\") has a nonzero \"Le\", "
 				 "but only \"homogeneous\"/\"rgbgrid\" media support emission in this loader; "
 				 "the emission is dropped");
+		}
+		// "nanovdb"'s own real emission mechanism is a SEPARATE named grid
+		// ("string temperaturename", real blackbody emission from that
+		// grid's values) - not the flat "Le" the check just above already
+		// covers. Not implemented this round (Medium::nanovdbFilename's own
+		// comment) - warn by the param name a scene author would actually
+		// use, since the generic "Le" warning above would stay silent for a
+		// scene that only ever sets "temperaturename".
+		if (isNanoVdb && !md.params.getString("temperaturename", "").empty()) {
+			warn("nanovdb medium '" + md.name + "' has a \"temperaturename\" grid, but "
+				 "blackbody emission from it is not supported in this loader; the medium "
+				 "renders as a non-emissive density field only");
 		}
 
 		if (isCloud) {
@@ -3040,6 +3111,35 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			if (isNonzeroRGB(medium.sigma_a)) {
 				warn("uniformgrid medium '" + md.name + "' has a nonzero sigma_a; "
 					 "uniformgrid media only model scattering (sigma_a is forced to 0)");
+			}
+		}
+
+		if (isNanoVdb) {
+			// "string filename" - REQUIRED (Medium::nanovdbFilename's own
+			// comment); left as written here, resolved to a real filesystem
+			// path by pbrt_load.h afterward. An empty/missing filename is
+			// caught there (same "empty means unresolved, warn and skip"
+			// convention as every other filename field), not here - this
+			// loader has no filesystem access to confirm the file even
+			// exists yet at flatten() time.
+			medium.nanovdbFilename = md.params.getString("filename", "");
+			if (medium.nanovdbFilename.empty()) {
+				warn("nanovdb medium '" + md.name + "' has no \"string filename\" "
+					 "(pbrt-v4 requires one); treated as empty (invisible)");
+			}
+			medium.nanovdbGridName = md.params.getString("gridname", "density");
+			// See Medium::nanovdbXform's own comment for why this is passed
+			// through unbaked instead of pre-composing world<->medium here
+			// the way every other medium type's p0/p1 block above does.
+			for (int i = 0; i < 16; ++i) medium.nanovdbXform[i] = md.xform.m[i];
+			// pbrt_cpu_builder.h's nanovdb path reuses grid_medium_hittable.h
+			// completely unchanged (Medium::nanovdbFilename's own comment),
+			// which forces sigma_a to 0 (pure scattering) - same convention/
+			// reason as uniformgrid just above.
+			if (isNonzeroRGB(medium.sigma_a)) {
+				warn("nanovdb medium '" + md.name + "' has a nonzero sigma_a; "
+					 "this loader's nanovdb media only model scattering (sigma_a is "
+					 "forced to 0)");
 			}
 		}
 

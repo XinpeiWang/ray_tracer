@@ -80,7 +80,7 @@ numbered sections below for the narrative detail behind any row.
 | Media | Cloud (procedural Perlin-FBm) | Y / Y | N/A |
 | Media | RGB grid | Y / Y | N/A |
 | Media | Uniform grid | Y / Y | N/A |
-| Media | NanoVDB | N | Falls back to homogeneous medium, warned |
+| Media | NanoVDB | Y, CPU only | GPU falls back to flat homogeneous fog (whole boundary shape), warned - see §5 |
 | Media | Medium on disk / triangle mesh / etc. (GPU) | N | No fallback — GPU medium dispatch is sphere/cylinder-triggered only |
 | Cameras | Perspective (+ depth of field) | Y / Y / Y | N/A |
 | Cameras | Orthographic | Y / Y / Y | N/A |
@@ -276,12 +276,40 @@ unreachable until this is properly root-caused.
 Homogeneous, cloud (procedural Perlin-FBm), RGB grid (per-voxel RGB
 sigma_a/sigma_s), uniform grid (single-channel density × RGB sigma_s) — all
 four real, on CPU and GPU, DDA majorant-grid delta tracking
-(`src/shared/grid_medium.h`).
+(`src/shared/grid_medium.h`). NanoVDB (below) makes a fifth, CPU-only.
 
-**Gap**: **NanoVDB is not implemented.** `MakeNamedMedium "nanovdb"`
-silently falls back to homogeneous with a warning — this is the one medium
-type pbrt-v4 treats as its primary real-world-volumetric-data path (VDB
-files from Houdini/etc.) that this codebase has no equivalent for at all.
+**Gap (narrowed)**: `MakeNamedMedium "nanovdb"` is now real, **CPU only** —
+pbrt-v4's primary real-world-volumetric-data path (VDB files from
+Houdini/etc.), previously the clearest gap in this codebase versus
+pbrt-v4. `pbrt_cpu_builder.h` reads the named float density grid from the
+`.nvdb` file via a vendored, header-only NanoVDB reader
+(`src/external/nanovdb/` — NVIDIA's own `NanoVDB.h`/`io/IO.h`, Apache-2.0,
+zero required third-party dependencies for uncompressed grids) and bakes
+its active index region into a dense flat array, reusing
+`GridMediumData<double>`/`grid_medium_hittable.h` (the same machinery
+`"uniformgrid"` already used) completely unchanged. See
+`pbrt_scenes/nanovdb-medium.pbrt` (scene `E9`) for a worked example, using
+a small synthetic test grid (`pbrt_scenes/nanovdb-sphere.nvdb`) authored
+directly via NanoVDB's own header-only grid-construction tools — no
+external asset download, no OpenVDB dependency. Real, disclosed scope
+cuts: only a single named `float` density grid (`"gridname"`, default
+`"density"`); no animated/sequence grids; no other NanoVDB build types
+(`Vec3f`/`Mask`/etc.); no `"temperaturename"` blackbody emission (a
+separable feature, left for a later round); the sparse grid is densified
+at load time rather than sampled natively sparse (a real memory/scope
+tradeoff, not a NanoVDB limitation). **GPU has no NanoVDB support at
+all** — a nanovdb medium falls through to GPU's generic homogeneous-
+medium path, rendering as flat fog filling the whole boundary shape
+(using the scene's own sigma_a/sigma_s) rather than the real sparse
+density field, warned explicitly (`scene_builder.cpp`) since this is a
+visibly *wrong* render on GPU, not merely an absent one. NanoVDB's own
+format is explicitly designed to need no deserialization on GPU (the raw
+file bytes already are the traversable structure), which could make GPU
+support cheaper than a typical CPU-to-CUDA port if attempted later — but
+this codebase has two prior unresolved GPU device-crash precedents on
+non-trivial device call graphs (`CloudMedium::compute_density()`'s
+member-call stall, the light-BVH CUDA 700 crash — see §4's own gap), so
+it's scoped as a genuinely separate follow-up round, not attempted here.
 
 **Gap**: GPU medium dispatch (all types) is sphere-hit-triggered only — a
 `MediumInterface` on a disk/cylinder/trianglemesh has no effect on GPU
@@ -510,9 +538,12 @@ relative to it specifically).
 
 ## Summary: gaps from pbrt-v4, ranked by how much they'd actually matter
 
-1. **NanoVDB heterogeneous media** (§5) — the clearest, most consequential
-   gap. pbrt-v4's primary real-world volumetric path; this codebase has no
-   equivalent, only procedural/flat-grid media.
+1. ~~NanoVDB heterogeneous media~~ (§5) — **closed, CPU only**. Was the
+   clearest, most consequential gap (pbrt-v4's primary real-world
+   volumetric path); now real via a vendored header-only NanoVDB reader,
+   reusing the existing `GridMediumData`/DDA-majorant machinery
+   unchanged. GPU has no NanoVDB support at all - see §5's own comment
+   for why that's scoped as a separate follow-up, not attempted here.
 2. **`PixelSensor`/`SpectralFilm` remain dead code** (§9) — the behavioral
    gap they were built to close (early per-sample RGB reduction, and the
    gamut-clamp bias it caused) is now fixed directly via
@@ -566,8 +597,9 @@ all of them, and it's worth knowing which is which before relying on one.
 
 **Falls back to something functional (warns, keeps rendering):**
 
-- `MakeNamedMedium "nanovdb"` → falls back to a homogeneous medium, with a
-  warning. Not real VDB data, but the render doesn't break.
+- `MakeNamedMedium "nanovdb"` on **GPU** → falls back to a flat homogeneous
+  medium filling the boundary shape, with a warning (CPU renders the real
+  grid - see §5).
 - An unrecognized `--sampler` name → silently falls back to Sobol
   (`independent` is now a real, recognized name — see §7).
 - An unrecognized pbrt `Material` kind → falls back to flat Lambertian
@@ -625,7 +657,8 @@ permanent behavior):**
 
 Worth fixing separately (not done here — this is a survey, not a patch):
 
-- `src/shared/pbrt_scene.h`'s top-of-file comment says a real pbrt scene
-  "will always contain something we do not implement yet (subsurface,
-  curves, instancing, media)" — stale; all four are implemented and
-  directive-parsed now. Only NanoVDB media remains genuinely unimplemented.
+- (Previously noted here: `src/shared/pbrt_scene.h`'s top-of-file comment
+  calling out subsurface/curves/instancing/media as unimplemented, and
+  NanoVDB media as the sole remaining gap. Already fixed - the comment no
+  longer exists, and NanoVDB itself is now real, CPU-side, as of this
+  doc's own §5.)

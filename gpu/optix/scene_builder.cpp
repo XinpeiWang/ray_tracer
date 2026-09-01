@@ -4638,6 +4638,29 @@ static bool build_loaded_pbrt_scene(
 		}
 	}
 
+	// MakeNamedMedium "nanovdb" (pbrt_flatten::Medium::nanovdbFilename's own
+	// comment) - CPU-only, v1 scope; GPU has no NanoVDB reader at all. Unlike
+	// cones/paraboloids above, this doesn't just go missing on GPU: pbrt_gpu_
+	// builder.h has no "nanovdb" branch of its own, so a nanovdb medium falls
+	// through to the generic homogeneous-medium path (MaterialType::Medium),
+	// using the SAME sigma_a/sigma_s the scene declared but filling the
+	// ENTIRE boundary shape uniformly - a flat fog, not the real sparse
+	// density field CPU renders. Warned explicitly since this is a visibly
+	// WRONG render, not merely an absent one.
+	{
+		int nanovdbCount = 0;
+		for (const pbrt_flatten::Medium &m : loaded.scene.media)
+			if (m.type == "nanovdb") ++nanovdbCount;
+		if (nanovdbCount > 0) {
+			std::cerr << "[OptiX] Warning: scene has " << nanovdbCount << " nanovdb "
+				   "medium/media, which GPU has no real support for - it/they will "
+				   "render as flat homogeneous fog (using the same sigma_a/sigma_s) "
+				   "filling the whole boundary shape instead of the real sparse "
+				   "density field; use --cpu instead if the real NanoVDB data "
+				   "matters for this render.\n";
+		}
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

@@ -1991,6 +1991,10 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "E8", 123, SceneNames::UniformGridMediumPbrtExample, SceneCategories::Volumes,
             "pbrt's MakeNamedMedium \"uniformgrid\" (a single-channel density voxel grid) rendering as a soft glowing blob, on both backends.",
             "Fast", "uniformgrid-medium.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E9", 141, SceneNames::NanoVdbMediumPbrtExample, SceneCategories::Volumes,
+            "pbrt's MakeNamedMedium \"nanovdb\" (a real NanoVDB-format sparse density grid read from an external .nvdb file) rendering as a soft fog-volume sphere - CPU only, GPU falls back to flat homogeneous fog.",
+            "Fast", "nanovdb-medium.pbrt"),
 
         // -- Geometry --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(

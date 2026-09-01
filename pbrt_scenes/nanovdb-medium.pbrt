@@ -1,0 +1,67 @@
+# nanovdb-medium.pbrt -- exercises MakeNamedMedium "nanovdb" (a real
+# NanoVDB-format sparse density grid read from an external .nvdb file,
+# src/shared/sampled_grid.h's GridMediumData via pbrt_cpu_builder.h's own
+# nanovdb branch) plus MediumInterface - CPU only, see docs/PBRT_SUPPORT.md
+# for the exact scope (GPU falls back to a flat homogeneous fog instead).
+#
+# pbrt_scenes/nanovdb-sphere.nvdb is a small synthetic fog-volume sphere
+# (radius 1.5 world units in its own native/local space, NanoVDB's real
+# "createFogVolumeSphere" primitive - a soft density falloff toward the
+# edge, not a hard-edged ball) authored directly via NanoVDB's own header-
+# only tools/CreatePrimitives.h - no external asset download, no OpenVDB
+# dependency, matching this loader's own vendored-headers-only NanoVDB
+# support. Scaled up (x40) here purely for visual scale in this scene;
+# the grid file itself carries no scene-specific sizing.
+#
+# Like uniformgrid-medium.pbrt/rgbgrid-medium.pbrt, the medium is declared
+# inside its own Translate+Scale block so the CTM captured at
+# MakeNamedMedium time is what places it (this loader's nanovdb path reads
+# that CTM back out of Medium::nanovdbXform at build time, composed with
+# the grid's own baked index-to-world transform - see pbrt_cpu_builder.h's
+# own comment). The trigger sphere needs an explicit near-invisible
+# material (eta~1) - see uniformgrid-medium.pbrt's own comment on why.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints beyond NanoVDB's own (Apache-2.0, src/external/
+# nanovdb/LICENSE) for the tool that authored the bundled .nvdb asset.
+
+LookAt  278 260 -500    278 280 250    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 500 ] "integer yresolution" [ 500 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.6 0.7 0.9 ]
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -400 0 -400   900 0 -400   900 0 900   -400 0 900 ]
+
+Material "conductor" "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 60 60 -50
+  Shape "sphere" "float radius" [ 60 ]
+AttributeEnd
+
+# The CTM at this exact point (Translate + Scale) is captured as the
+# medium's own world-placement transform, composed with the .nvdb grid's
+# own native index-to-world map at build time.
+AttributeBegin
+  Translate 278 280 250
+  Scale 40 40 40
+  MakeNamedMedium "puff" "string type" [ "nanovdb" ]
+    "string filename" [ "nanovdb-sphere.nvdb" ]
+    "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.6 0.6 0.6 ] "float g" [ 0.2 ]
+AttributeEnd
+
+# Trigger sphere: the grid's own native extent is roughly a 3.5-unit cube
+# centered near its local origin, scaled x40 above (~140 units) - radius
+# past its half-diagonal (70*sqrt(3) =~ 121) so the whole grid is enclosed.
+AttributeBegin
+  Translate 278 280 250
+  Material "dielectric" "float eta" [ 1.001 ]
+  MediumInterface "puff" ""
+  Shape "sphere" "float radius" [ 130 ]
+AttributeEnd

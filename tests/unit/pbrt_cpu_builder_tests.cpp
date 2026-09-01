@@ -653,6 +653,44 @@ TEST(PbrtCpuBuildTest, UniformgridMediumIsReachable) {
 		<< "a ray toward the uniformgrid medium's world AABB should still hit something";
 }
 
+TEST(PbrtCpuBuildTest, NanoVdbMediumIsReachable) {
+	// pbrt_scenes/nanovdb-sphere.nvdb - a small synthetic fog-volume sphere
+	// (radius 1.5, centered at its own local origin) authored via NanoVDB's
+	// own tools/CreatePrimitives.h, not read from any external asset this
+	// repo doesn't already bundle. buildFrom() bypasses pbrt_load.h's path
+	// resolution (its own comment on other tests), so the filename must
+	// already resolve from the test binary's own working directory - the
+	// repo root (see this project's own build-toolchain notes).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"pbrt_scenes/nanovdb-sphere.nvdb\" ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 3 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t))
+		<< "a ray straight through the nanovdb grid's own dense centre "
+		   "(world origin) should hit something - either the boundary "
+		   "sphere itself or a real scatter event inside the medium";
+}
+
+TEST(PbrtCpuBuildTest, NanoVdbMissingFilenameBuildsNoMediumButKeepsTheShape) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u)
+		<< "the boundary sphere itself must still build even though the "
+		   "medium (no filename given) doesn't";
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t))
+		<< "the sphere's own opaque-by-default material still hits";
+}
+
 TEST(PbrtCpuBuildTest, SharedVerticesAreDeduplicated) {
 	// The two triangles of a quad share two corners. FlatScene stores all six
 	// vertices explicitly; the builder should recover the original four.
