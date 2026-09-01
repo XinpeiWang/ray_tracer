@@ -2642,8 +2642,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// (see that function's own comment). Multiplies into `scale`
 			// rather than replacing it, so a scene giving both "power" and
 			// "scale" gets both, the same composition pbrt-v4 itself performs.
+			// Guarded on phi > 0, matching pbrt-v4's own PointLight::Create
+			// (`if (phi_v > 0)`) - a zero or negative "power" is treated as
+			// "not given" rather than literally zeroing or negating the
+			// light, which a bare multiply would otherwise do.
 			if (const pbrt_scene::Param *p = ld.params.find("power")) {
-				if (!p->numbers.empty()) {
+				if (!p->numbers.empty() && p->numbers[0] > 0.0) {
 					const double phi = p->numbers[0];
 					pl.scale *= (phi / (4.0 * 3.14159265358979323846)) / relativeLuminance(pl.intensity);
 				}
@@ -2693,9 +2697,10 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// Phi = 2*pi*I*((1-cosFalloffStart) + (cosFalloffStart-cosFalloffEnd)/2)
 			// - inverted for I here exactly like the point-light case just
 			// above (same relativeLuminance() stand-in, same "multiplies into
-			// scale" composition with an explicit "scale" param).
+			// scale" composition with an explicit "scale" param, same phi > 0
+			// guard matching pbrt-v4's own SpotLight::Create).
 			if (const pbrt_scene::Param *p = ld.params.find("power")) {
-				if (!p->numbers.empty()) {
+				if (!p->numbers.empty() && p->numbers[0] > 0.0) {
 					const double phi = p->numbers[0];
 					const double cosFalloffStart = std::cos(pl.falloffStartAngleDeg * 3.14159265358979323846 / 180.0);
 					const double cosFalloffEnd = std::cos(pl.coneAngleDeg * 3.14159265358979323846 / 180.0);
@@ -2703,6 +2708,15 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						((1.0 - cosFalloffStart) + (cosFalloffStart - cosFalloffEnd) * 0.5);
 					if (std::fabs(kE) > 1e-12) {
 						pl.scale *= (phi / kE) / relativeLuminance(pl.intensity);
+					} else {
+						// A degenerate cone (e.g. "coneangle" 0) has no solid
+						// angle to spread Phi over - same class of problem as
+						// the area-light zero-area case below, so it gets the
+						// same treatment: warn and leave "power" unconverted
+						// rather than silently dropping it with no diagnostic.
+						warn("spot light \"power\" given but the cone is degenerate "
+							 "(coneangle/conedeltaangle leave no solid angle to spread "
+							 "it over); \"scale\"/I used as given instead");
 					}
 				}
 			}
@@ -3644,10 +3658,37 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		for (std::size_t i = 0; i < out.areaLights.size(); ++i) {
 			Emission &e = out.areaLights[i];
 			if (!e.hasPower) continue;
+			// A zero or negative "power" is treated as "not given", matching
+			// pbrt-v4's own DiffuseAreaLight::Create (`if (phi_v > 0)`) -
+			// leaves `scale` at whatever "scale"/L already resolved it to,
+			// rather than a bare multiply zeroing or negating the light.
+			if (e.power <= 0.0) continue;
+			// "filename" (a spatially-varying emission image) wins over L
+			// entirely for what actually gets rendered (Emission::filename's
+			// own comment) - but the formula below is derived from L, which
+			// has no relationship to the image's real average radiance. Warn
+			// rather than silently computing a scale against a fictitious
+			// flat colour, matching the goniometric/projection punctual-light
+			// cases' own "power depends on the image, not supported" warning.
+			if (!e.filename.empty()) {
+				warn("area light \"power\" is not supported together with "
+					 "\"filename\" (its real total output depends on the "
+					 "image, not L); \"scale\"/L used as given instead");
+				continue;
+			}
 			if (excluded[i]) {
-				warn("area light \"power\" is not supported when attached to a "
-					 "disk/cylinder/clipped-sphere/curve shape; \"scale\"/L "
-					 "used as given instead");
+				if (area[i] > 1e-12) {
+					warn("area light \"power\" is not supported: attached to a "
+						 "mix of a measurable shape and a disk/cylinder/"
+						 "clipped-sphere/curve shape sharing the same "
+						 "AreaLightSource - the measurable shape's own area "
+						 "cannot be used on its own without mis-stating the "
+						 "light's total power; \"scale\"/L used as given instead");
+				} else {
+					warn("area light \"power\" is not supported when attached to a "
+						 "disk/cylinder/clipped-sphere/curve shape; \"scale\"/L "
+						 "used as given instead");
+				}
 				continue;
 			}
 			if (area[i] <= 1e-12) {

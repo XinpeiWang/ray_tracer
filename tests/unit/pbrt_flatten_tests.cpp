@@ -303,6 +303,83 @@ TEST(FlattenTest, ProjectionLightPowerWarnsAndIsIgnored) {
 	EXPECT_TRUE(warnedAbout(s, "projection light \"power\""));
 }
 
+// Review-fix regression tests: a zero or negative "power" must be treated as
+// "not given" (matching pbrt-v4's own `if (phi_v > 0)` guards), not applied
+// literally - a bare multiply would otherwise zero out or even negate the
+// light's scale.
+TEST(FlattenTest, PointLightNegativePowerIsIgnored) {
+	const FlatScene s = flattenSource(
+		"LightSource \"point\" \"float power\" [ -10 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].scale, 1.0);
+}
+
+TEST(FlattenTest, PointLightZeroPowerIsIgnored) {
+	const FlatScene s = flattenSource(
+		"LightSource \"point\" \"float power\" [ 0 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].scale, 1.0);
+}
+
+TEST(FlattenTest, SpotLightNegativePowerIsIgnored) {
+	const FlatScene s = flattenSource(
+		"LightSource \"spot\" \"float power\" [ -10 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].scale, 1.0);
+}
+
+TEST(FlattenTest, AreaLightNegativePowerIsIgnored) {
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n  AreaLightSource \"diffuse\" \"float power\" [ -10 ]\n")
+		+ kQuadMesh + "AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].scale, 1.0);
+}
+
+TEST(FlattenTest, SpotLightDegenerateConeWarnsAndPowerIsIgnored) {
+	// coneangle=conedeltaangle=0 makes cosFalloffStart==cosFalloffEnd==1, so
+	// kE (the solid-angle-like denominator) is exactly 0 - no angle to spread
+	// Phi over. Should warn (matching the area-light zero-area case) rather
+	// than silently drop the requested power with no diagnostic.
+	const FlatScene s = flattenSource(
+		"LightSource \"spot\" \"float coneangle\" [ 0 ] \"float conedeltaangle\" [ 0 ] "
+		"\"float power\" [ 50 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].scale, 1.0);
+	EXPECT_TRUE(warnedAbout(s, "spot light \"power\""));
+}
+
+TEST(FlattenTest, AreaLightPowerWithFilenameWarnsAndIsIgnored) {
+	// "filename" wins over L entirely for what's actually rendered - the
+	// power formula is derived from L, which has no relationship to the
+	// image's real average radiance. Should warn instead of silently
+	// computing a scale against a fictitious flat colour.
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n  AreaLightSource \"diffuse\" \"string filename\" [ \"glow.png\" ]"
+					" \"float power\" [ 10 ]\n")
+		+ kQuadMesh + "AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].scale, 1.0);
+	EXPECT_TRUE(warnedAbout(s, "area light \"power\""));
+	EXPECT_TRUE(warnedAbout(s, "\"filename\""));
+}
+
+TEST(FlattenTest, AreaLightPowerOnMixedShapeKindsWarnsAndDiscardsComputedArea) {
+	// One AreaLightSource shared by a measurable trianglemesh AND an
+	// unsupported disk: the whole light's power resolution should still bail
+	// out (a partial area would understate the true total and overshoot the
+	// target power), but the warning should distinguish "mixed with a
+	// measurable shape" from "attached only to an unsupported shape kind".
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n  AreaLightSource \"diffuse\" \"float power\" [ 10 ]\n")
+		+ kQuadMesh +
+		"  Shape \"disk\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].scale, 1.0);
+	EXPECT_TRUE(warnedAbout(s, "mix of a measurable shape"));
+}
+
 // ===========================================================================
 // Spheres
 // ===========================================================================
