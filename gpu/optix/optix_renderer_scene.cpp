@@ -15,6 +15,7 @@
 #include "optix_math_helpers.h"
 #include "../../src/shared/bilinear_patch.h"  // blp_area - alias-table power for GpuLightKind::BilinearPatch
 #include "optix_disk_cylinder_helpers.h"  // dc_area_disk/dc_area_cylinder - alias-table power for GpuLightKind::Disk/Cylinder
+#include "../../src/shared/bvh_light_sampler2.h"  // BVHLightSampler2 - host-side light-BVH tree builder (see d_lightBvhNodes_'s own comment, optix_renderer.h)
 #include <cuda.h>
 #include <iostream>
 #include <cstring>       // memcpy, for instance transform packing
@@ -593,11 +594,33 @@ bool OptiXRenderer::buildScene(
 		// Build power-weighted alias table (pbrt-v4 PowerLightSampler / Vose method)
 		// phi_i = area * luminance(emission) * pi  (matches CPU power_light_sampler.h)
 		std::vector<float> powers(numLights_);
+		// Light BVH (pbrt-v4 §12.6, docs/FEATURE_INVENTORY.md's "no light BVH
+		// on GPU" entry - see OptiXRenderer::d_lightBvhNodes_'s own comment)
+		// - per-light world-space AABB + dominant emission direction/cone,
+		// computed alongside the power estimate above since both need the
+		// same per-kind geometry. Flat single-normal shapes (Quad/Triangle/
+		// BilinearPatch) get a real, tight direction bound (cosTheta_o=1: the
+		// normal never varies across a planar shape); curved shapes (Sphere/
+		// Disk/Cylinder) get the conservative omnidirectional default
+		// (cosTheta_o=-1, w arbitrary) rather than a real per-point normal
+		// cone - CPU's own light_bounds_for() (bvh_light_sampler.h) makes the
+		// identical simplification for any shape it doesn't special-case.
+		// Only the SPATIAL/power partitioning benefit is lost for these, not
+		// correctness - a conservative bound can only under-prune, never
+		// wrongly zero out a light that should contribute.
+		auto applyAffine = [](const float m[12], float x, float y, float z, float out[3]) {
+			out[0] = m[0]*x + m[1]*y + m[2]*z  + m[3];
+			out[1] = m[4]*x + m[5]*y + m[6]*z  + m[7];
+			out[2] = m[8]*x + m[9]*y + m[10]*z + m[11];
+		};
+		std::vector<LightBounds> lightBoundsArr(numLights_);
 		for (unsigned int i = 0; i < numLights_; ++i) {
 			int prim_idx = lightIndices[i];
 			float3 emission = make_float3(0.f, 0.f, 0.f);
 			float area = 1.0f;
 			bool twoSided = false;
+			float bMin[3] = {0,0,0}, bMax[3] = {0,0,0};
+			float wx = 0.f, wy = 1.f, wz = 0.f, cosThetaO = -1.0f;
 			if (lightKinds[i] == GpuLightKind::Sphere) {
 				const SphereData& s = spheres[prim_idx];
 				const MaterialData& m = materials[s.materialIdx];
@@ -617,6 +640,9 @@ bool OptiXRenderer::buildScene(
 				area = (s.shapeKind == GpuMediumShapeKind::ClippedSphere)
 					? s.phiMax * s.radiusLocal * (s.zMax - s.zMin)
 					: 4.0f * 3.14159265f * s.radius * s.radius;  // surface area of sphere
+				bMin[0] = s.center.x - s.radius; bMax[0] = s.center.x + s.radius;
+				bMin[1] = s.center.y - s.radius; bMax[1] = s.center.y + s.radius;
+				bMin[2] = s.center.z - s.radius; bMax[2] = s.center.z + s.radius;
 			} else if (lightKinds[i] == GpuLightKind::Triangle) {
 				// Indexes `triangles`, not `quads` - and note this is the
 				// SCENE's triangle array, which is what lightIndices was built
@@ -629,7 +655,12 @@ bool OptiXRenderer::buildScene(
 				// Half the parallelogram the two edges span.
 				const float3 e1 = t.p1 - t.p0;
 				const float3 e2 = t.p2 - t.p0;
-				area = 0.5f * length(cross(e1, e2));
+				float3 n = cross(e1, e2);
+				area = 0.5f * length(n);
+				if (area > 1e-12f) { n = n / length(n); wx = n.x; wy = n.y; wz = n.z; cosThetaO = 1.0f; }
+				bMin[0] = fminf(t.p0.x, fminf(t.p1.x, t.p2.x)); bMax[0] = fmaxf(t.p0.x, fmaxf(t.p1.x, t.p2.x));
+				bMin[1] = fminf(t.p0.y, fminf(t.p1.y, t.p2.y)); bMax[1] = fmaxf(t.p0.y, fmaxf(t.p1.y, t.p2.y));
+				bMin[2] = fminf(t.p0.z, fminf(t.p1.z, t.p2.z)); bMax[2] = fmaxf(t.p0.z, fmaxf(t.p1.z, t.p2.z));
 			} else if (lightKinds[i] == GpuLightKind::BilinearPatch) {
 				// Indexes `bilinearPatches`, not `quads` - this branch must
 				// stay explicit (not fall into the trailing else below) or
@@ -647,6 +678,18 @@ bool OptiXRenderer::buildScene(
 				const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
 				const float p11[3] = {bp.p11.x, bp.p11.y, bp.p11.z};
 				area = blp_area(p00, p10, p01, p11);
+				// Not necessarily planar in general (see BilinearPatchData's
+				// own comment) - a real per-point normal cone would need
+				// integrating over the surface, out of scope here; use the
+				// same conservative omnidirectional default as Sphere/Disk/
+				// Cylinder rather than a single (possibly wrong for a curved
+				// patch) corner normal.
+				bMin[0] = fminf(fminf(bp.p00.x,bp.p10.x), fminf(bp.p01.x,bp.p11.x));
+				bMax[0] = fmaxf(fmaxf(bp.p00.x,bp.p10.x), fmaxf(bp.p01.x,bp.p11.x));
+				bMin[1] = fminf(fminf(bp.p00.y,bp.p10.y), fminf(bp.p01.y,bp.p11.y));
+				bMax[1] = fmaxf(fmaxf(bp.p00.y,bp.p10.y), fmaxf(bp.p01.y,bp.p11.y));
+				bMin[2] = fminf(fminf(bp.p00.z,bp.p10.z), fminf(bp.p01.z,bp.p11.z));
+				bMax[2] = fmaxf(fmaxf(bp.p00.z,bp.p10.z), fmaxf(bp.p01.z,bp.p11.z));
 			} else if (lightKinds[i] == GpuLightKind::Disk) {
 				// Indexes `disks`, not `quads` - same "must stay explicit"
 				// reasoning as the BilinearPatch branch above. dc_area_disk()
@@ -658,12 +701,35 @@ bool OptiXRenderer::buildScene(
 				emission = m.emission;
 				twoSided = m.twoSided;
 				area = dc_area_disk(d);
+				// Not baked to world space (see DiskData's own comment) - a
+				// conservative object-space square around the outer radius,
+				// transformed to world by o2w, at 4 corners of the disk's own
+				// z=height plane.
+				bMin[0]=bMin[1]=bMin[2]= 1e30f; bMax[0]=bMax[1]=bMax[2]=-1e30f;
+				for (int cx = -1; cx <= 1; cx += 2) for (int cy = -1; cy <= 1; cy += 2) {
+					float p[3];
+					applyAffine(d.o2w, cx*d.radius, cy*d.radius, d.height, p);
+					for (int c = 0; c < 3; ++c) { bMin[c] = std::min(bMin[c], p[c]); bMax[c] = std::max(bMax[c], p[c]); }
+				}
 			} else if (lightKinds[i] == GpuLightKind::Cylinder) {
 				const CylinderData& c = cylinders[prim_idx];
 				const MaterialData& m = materials[c.materialIdx];
 				emission = m.emission;
 				twoSided = m.twoSided;
 				area = dc_area_cylinder(c);
+				// Same "not baked to world space, transform a conservative
+				// object-space box by o2w" approach as Disk above - 8 corners
+				// of the object-space [-r,r]x[-r,r]x[zMin,zMax] box.
+				bMin[0]=bMin[1]=bMin[2]= 1e30f; bMax[0]=bMax[1]=bMax[2]=-1e30f;
+				for (int cx = -1; cx <= 1; cx += 2) for (int cy = -1; cy <= 1; cy += 2) {
+					float pLo[3], pHi[3];
+					applyAffine(c.o2w, cx*c.radius, cy*c.radius, c.zMin, pLo);
+					applyAffine(c.o2w, cx*c.radius, cy*c.radius, c.zMax, pHi);
+					for (int cc = 0; cc < 3; ++cc) {
+						bMin[cc] = std::min(bMin[cc], std::min(pLo[cc], pHi[cc]));
+						bMax[cc] = std::max(bMax[cc], std::max(pLo[cc], pHi[cc]));
+					}
+				}
 			} else {
 				const QuadData& q = quads[prim_idx];
 				const MaterialData& m = materials[q.materialIdx];
@@ -675,11 +741,25 @@ bool OptiXRenderer::buildScene(
 					q.u.z*q.v.x - q.u.x*q.v.z,
 					q.u.x*q.v.y - q.u.y*q.v.x);
 				area = sqrtf(cr.x*cr.x + cr.y*cr.y + cr.z*cr.z);
+				wx = q.normal.x; wy = q.normal.y; wz = q.normal.z; cosThetaO = 1.0f;
+				const float3 corners[4] = { q.Q, q.Q+q.u, q.Q+q.v, q.Q+q.u+q.v };
+				bMin[0]=bMin[1]=bMin[2]= 1e30f; bMax[0]=bMax[1]=bMax[2]=-1e30f;
+				for (const float3& p : corners) {
+					bMin[0]=std::min(bMin[0],p.x); bMax[0]=std::max(bMax[0],p.x);
+					bMin[1]=std::min(bMin[1],p.y); bMax[1]=std::max(bMax[1],p.y);
+					bMin[2]=std::min(bMin[2],p.z); bMax[2]=std::max(bMax[2],p.z);
+				}
 			}
 			float lum = 0.2126f*emission.x + 0.7152f*emission.y + 0.0722f*emission.z;
 			powers[i] = area * lum * 3.14159265f;  // phi = area * Le * pi
 			if (twoSided) powers[i] *= 2.0f;  // emits from both faces - pbrt-v4 doubles phi to match
 			if (powers[i] <= 0.f) powers[i] = 1e-6f;  // geometry-only target
+			// cosTheta_e=0 (Lambertian pi/2 cutoff) for every kind - matches
+			// CPU's own light_bounds_for() default and every emissive
+			// material this loader supports (no non-Lambertian area-light
+			// emission profile exists here on either backend).
+			lightBoundsArr[i] = LightBounds(bMin[0],bMin[1],bMin[2], bMax[0],bMax[1],bMax[2],
+											 wx, wy, wz, powers[i], cosThetaO, 0.0f, twoSided);
 		}
 
 		// Vose alias method
@@ -714,6 +794,39 @@ bool OptiXRenderer::buildScene(
 		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_aliasTable_),
 			table.data(), aliasTableSize, cudaMemcpyHostToDevice));
 		std::cout << "[OptiX] Uploaded alias table (" << numLights_ << " entries) for power-weighted sampling\n";
+
+		// Light BVH (see OptiXRenderer::d_lightBvhNodes_'s own comment) -
+		// built host-side from lightBoundsArr above via the previously-dead-
+		// code BVHLightSampler2 (src/shared/bvh_light_sampler2.h), then its
+		// flat node/bit-trail arrays are uploaded for gpu_light_bvh_sample()/
+		// gpu_light_bvh_pmf() (optix_device_helpers.h) to traverse. A
+		// zero-node tree (e.g. every light had phi<=0, which the power loop
+		// above already floors away from - so this is only reachable if
+		// numLights_ were 0, already excluded by this else-branch) leaves
+		// lightBvhNodeCount_ at 0, which every NEE call site already treats
+		// as "fall back to the alias table" - no separate empty-tree guard
+		// needed here beyond what BVHLightSampler2::Empty() already implies.
+		BVHLightSampler2 lightBvh(lightBoundsArr.data(), static_cast<int>(numLights_));
+		lightBvhNodeCount_ = lightBvh.NodeCount();
+		if (d_lightBvhNodes_) { cudaFree(reinterpret_cast<void*>(d_lightBvhNodes_)); d_lightBvhNodes_ = 0; }
+		if (d_lightBvhBitTrail_) { cudaFree(reinterpret_cast<void*>(d_lightBvhBitTrail_)); d_lightBvhBitTrail_ = 0; }
+		if (lightBvhNodeCount_ > 0) {
+			lightBvhAllBMinX_ = lightBvh.AllBMinX(); lightBvhAllBMinY_ = lightBvh.AllBMinY(); lightBvhAllBMinZ_ = lightBvh.AllBMinZ();
+			lightBvhAllBMaxX_ = lightBvh.AllBMaxX(); lightBvhAllBMaxY_ = lightBvh.AllBMaxY(); lightBvhAllBMaxZ_ = lightBvh.AllBMaxZ();
+
+			size_t nodesSize = static_cast<size_t>(lightBvhNodeCount_) * sizeof(LightBVHNode);
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_lightBvhNodes_), nodesSize));
+			CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_lightBvhNodes_),
+				lightBvh.Nodes(), nodesSize, cudaMemcpyHostToDevice));
+
+			std::vector<uint32_t> bitTrails = lightBvh.BitTrails(static_cast<int>(numLights_));
+			size_t bitTrailSize = bitTrails.size() * sizeof(uint32_t);
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_lightBvhBitTrail_), bitTrailSize));
+			CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_lightBvhBitTrail_),
+				bitTrails.data(), bitTrailSize, cudaMemcpyHostToDevice));
+
+			std::cout << "[OptiX] Built light BVH (" << lightBvhNodeCount_ << " nodes) for spatial+power sampling\n";
+		}
 	} else {
 		// No lights in scene
 		if (d_lightIndices_) {
@@ -728,6 +841,9 @@ bool OptiXRenderer::buildScene(
 			cudaFree(reinterpret_cast<void*>(d_aliasTable_));
 			d_aliasTable_ = 0;
 		}
+		if (d_lightBvhNodes_) { cudaFree(reinterpret_cast<void*>(d_lightBvhNodes_)); d_lightBvhNodes_ = 0; }
+		if (d_lightBvhBitTrail_) { cudaFree(reinterpret_cast<void*>(d_lightBvhBitTrail_)); d_lightBvhBitTrail_ = 0; }
+		lightBvhNodeCount_ = 0;
 		std::cout << "[OptiX] No emissive lights in scene\n";
 	}
 

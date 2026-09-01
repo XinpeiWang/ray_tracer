@@ -232,13 +232,33 @@ infinite light).
 | `power_light_sampler` | CPU, superseded by the BVH sampler as default |
 | `PowerLightSampler` (flat, power-only) | **GPU default (both recursive and wavefront)** |
 | `UniformLightSampler` | present, **zero callers** — dead code |
-| `BVHLightSampler2` | present, **zero callers** — dead code |
+| `BVHLightSampler2` | **host-side tree build/upload now real** (`OptiXRenderer::buildScene()`, GPU-recursive only) - device-side traversal exists (`gpu_light_bvh_sample_index()`/`gpu_light_bvh_pmf()`, `optix_device_helpers.h`) but is unreachable by design, see the gap note below |
 | `ExhaustiveLightSampler` | only referenced by the unwired `restir.h` (see §11) — not reachable from any render path |
 
 **Gap**: no light BVH on GPU — GPU light sampling is always the flat
 power-weighted sampler, which scales worse (linear alias-table draw, no
 spatial pruning) on scenes with many lights than CPU's spatial BVH sampler
 does. This is a real perf-scaling gap, not a correctness one.
+
+A GPU-recursive light-BVH port was attempted: `BVHLightSampler2`'s real
+SAH tree build now runs for every scene (`OptiXRenderer::buildScene()`,
+`optix_renderer_scene.cpp`) and uploads a genuinely correct, verified
+(host-side-inspected) tree to the device. But every device-side read of
+that uploaded tree - even a single harmless-looking `lightBvhNodes[0]`
+dereference, with no traversal logic at all - reproducibly triggers a CUDA
+700 illegal-memory-access on at least one real multi-light scene
+(`pbrt_scenes/triangle-fan-light.pbrt`, 5 lights). Ruled out: a shared-
+function-call codegen/inlining issue (hand-inlining the whole descent at
+the call site, this codebase's own established fix for this exact symptom
+class, made no difference); a reference-output-parameter miscompilation
+(switching to a by-value struct return made no difference); an out-of-
+range index (defensive bounds checks never fired before the crash still
+happened). Root cause NOT established. `LaunchParams::lightBvhNodeCount`
+is therefore deliberately left at its zero-init default at launch time
+(see `OptiXRenderer::render()`'s own comment, `optix_renderer_render.cpp`)
+so every NEE call site falls back to the alias table unconditionally -
+the device code is written, present, and believed correct, but genuinely
+unreachable until this is properly root-caused.
 
 ## 5. Media / Volumes
 

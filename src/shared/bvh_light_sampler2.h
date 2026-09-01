@@ -208,6 +208,31 @@ public:
 	float AllBMaxY() const { return allBMaxY; }
 	float AllBMaxZ() const { return allBMaxZ; }
 
+	// Raw node array - for a caller that needs to upload the built tree to a
+	// flat device buffer (e.g. a GPU backend's own traversal code) rather
+	// than call Sample()/PMF() on this host-resident object directly. Each
+	// LightBVHNode is a plain, tightly-packed POD (see its own comment,
+	// light_bvh_node.h) - safe to copy byte-for-byte into device memory.
+	const LightBVHNode* Nodes() const { return nodes_.data(); }
+
+	// Per-light BVH bit-trail as a flat array indexed by light index (0 for
+	// any light NOT present in the BVH, e.g. one this constructor excluded
+	// for phi<=0 - PMF() already returns 0 for such an index via the
+	// unordered_map lookup this mirrors, and a caller replaying bit 0 down
+	// an empty trail for an absent light will same-way fail to find it valid
+	// since Empty()/NodeCount()==0 is checked first). `lightCount` must be
+	// the same `count` passed to the constructor (this class has no other
+	// record of the full, pre-power-filter light count on its own, since
+	// lightToBitTrail_ only maps ones that made it into the BVH).
+	std::vector<uint32_t> BitTrails(int lightCount) const {
+		std::vector<uint32_t> trails(static_cast<std::size_t>(lightCount), 0u);
+		for (const auto& kv : lightToBitTrail_) {
+			if (kv.first >= 0 && kv.first < lightCount)
+				trails[static_cast<std::size_t>(kv.first)] = kv.second;
+		}
+		return trails;
+	}
+
 private:
 	// -----------------------------------------------------------------------
 	// EvaluateCost — solid-angle × area SAH heuristic (pbrt-v4 §12.6)

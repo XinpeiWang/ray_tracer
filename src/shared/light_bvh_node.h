@@ -31,12 +31,25 @@
 // ===========================================================================
 
 struct alignas(32) LightBVHNode {
-	// Public members — matches pbrt-v4 layout exactly
+	// Public members — matches pbrt-v4 layout exactly, EXCEPT
+	// childOrLightIndex/isLeaf are two plain fields here, not a packed
+	// bitfield. A bitfield's bit-packing order/allocation-unit rules are
+	// compiler/ABI-defined, not specified by the C++ standard - this struct
+	// is written host-side (MSVC, via src/shared/bvh_light_sampler2.h's
+	// BVHLightSampler2::buildBVH()) and read device-side (NVCC, via
+	// gpu_light_bvh_sample_index()/gpu_light_bvh_pmf(), optix_device_
+	// helpers.h) as raw bytes (a host cudaMemcpy, not a re-parse), so the two
+	// compilers packing `unsigned childOrLightIndex:31; unsigned isLeaf:1;`
+	// differently would make the device read back a garbage childOrLightIndex
+	// - confirmed as the real, reproducible root cause of a CUDA 700 illegal
+	// memory access the first time a multi-light scene (needing a real
+	// interior node, not just a single leaf) exercised this path: nodeIndex
+	// decoded from the corrupted bits indexed miles past the uploaded nodes_
+	// array. Plain fields have no such ambiguity - every compiler lays out
+	// two ordinary struct members identically.
 	CompactLightBounds lightBounds;
-	struct {
-		unsigned int childOrLightIndex : 31;
-		unsigned int isLeaf            :  1;
-	};
+	unsigned int childOrLightIndex = 0;
+	unsigned int isLeaf = 0;  // 1 = leaf, 0 = interior (kept as unsigned int, not bool, to match this struct's own pre-existing on-the-wire convention)
 
 	// Default constructor
 	LightBVHNode() = default;
@@ -49,7 +62,7 @@ struct alignas(32) LightBVHNode {
 	CPU_GPU static LightBVHNode MakeLeaf(unsigned int lightIndex,
 										  const CompactLightBounds& cb)
 	{
-		return LightBVHNode{cb, {lightIndex, 1}};
+		return LightBVHNode{cb, lightIndex, 1u};
 	}
 
 	// ---------------------------------------------------------------------------
@@ -61,6 +74,6 @@ struct alignas(32) LightBVHNode {
 	CPU_GPU static LightBVHNode MakeInterior(unsigned int child1Index,
 											  const CompactLightBounds& cb)
 	{
-		return LightBVHNode{cb, {child1Index, 0}};
+		return LightBVHNode{cb, child1Index, 0u};
 	}
 };

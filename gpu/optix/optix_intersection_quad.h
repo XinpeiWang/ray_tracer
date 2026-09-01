@@ -219,7 +219,11 @@ extern "C" __global__ void __closesthit__quad() {
 			float sel_pdf = 0.0f;
 			for (unsigned int li = 0; li < params.numLights; ++li) {
 				if (params.lightIndices[li] == prim_idx && params.lightKinds[li] == GpuLightKind::Quad) {
-					sel_pdf = params.aliasTable[li].pdf;
+					// See optix_intersection_sphere.h's identical block for
+					// why this checks the light BVH first.
+					sel_pdf = (params.lightBvhNodeCount > 0)
+						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						: params.aliasTable[li].pdf;
 					break;
 				}
 			}

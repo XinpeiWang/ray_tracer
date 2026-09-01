@@ -1130,7 +1130,16 @@ extern "C" __global__ void __closesthit__sphere() {
 			float sel_pdf = 0.0f;
 			for (unsigned int li = 0; li < params.numLights; ++li) {
 				if (params.lightIndices[li] == prim_idx && params.lightKinds[li] == GpuLightKind::Sphere) {
-					sel_pdf = params.aliasTable[li].pdf;
+					// Light BVH's selection pmf is position-dependent (see
+					// gpu_light_bvh_pmf()'s own comment) - evaluated at
+					// ray_orig, the shading point the BSDF sample that
+					// reached this light was actually taken from, so this
+					// MIS weight matches whatever NEE would have used from
+					// there. Falls back to the alias table's fixed pdf for
+					// any scene that didn't build a light BVH.
+					sel_pdf = (params.lightBvhNodeCount > 0)
+						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						: params.aliasTable[li].pdf;
 					break;
 				}
 			}

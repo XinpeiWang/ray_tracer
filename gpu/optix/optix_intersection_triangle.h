@@ -349,7 +349,9 @@ extern "C" __global__ void __closesthit__triangle() {
 			for (unsigned int li = 0; li < params.numLights; ++li) {
 				if (params.lightIndices[li] == prim_global &&
 					params.lightKinds[li] == GpuLightKind::Triangle) {
-					sel_pdf = params.aliasTable[li].pdf;
+					sel_pdf = (params.lightBvhNodeCount > 0)
+						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						: params.aliasTable[li].pdf;
 					break;
 				}
 			}

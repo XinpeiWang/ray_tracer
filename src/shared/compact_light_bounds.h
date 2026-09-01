@@ -60,9 +60,9 @@ struct CompactLightBounds {
 		phi = lb.phi;
 
 		// Quantise cosines: [-1,1] -> [0, 32767]
-		qCosTheta_o = QuantizeCos(lb.cosTheta_o);
-		qCosTheta_e = QuantizeCos(lb.cosTheta_e);
-		twoSided    = lb.twoSided ? 1u : 0u;
+		const unsigned int qco = QuantizeCos(lb.cosTheta_o);
+		const unsigned int qce = QuantizeCos(lb.cosTheta_e);
+		packedCosThetaAndSide = (qco & 0x7FFFu) | ((qce & 0x7FFFu) << 15) | (lb.twoSided ? (1u << 30) : 0u);
 
 		// Quantise AABB corners into [0, 65535] relative to the scene AABB.
 		// Corner 0 = pMin (floor), corner 1 = pMax (ceil) to be conservative.
@@ -82,9 +82,9 @@ struct CompactLightBounds {
 	// -----------------------------------------------------------------------
 	// Accessors (dequantise)
 	// -----------------------------------------------------------------------
-	CPU_GPU bool  TwoSided()   const { return twoSided != 0; }
-	CPU_GPU float CosTheta_o() const { return 2.f * (qCosTheta_o / 32767.f) - 1.f; }
-	CPU_GPU float CosTheta_e() const { return 2.f * (qCosTheta_e / 32767.f) - 1.f; }
+	CPU_GPU bool  TwoSided()   const { return (packedCosThetaAndSide & (1u << 30)) != 0; }
+	CPU_GPU float CosTheta_o() const { return 2.f * ((packedCosThetaAndSide & 0x7FFFu) / 32767.f) - 1.f; }
+	CPU_GPU float CosTheta_e() const { return 2.f * (((packedCosThetaAndSide >> 15) & 0x7FFFu) / 32767.f) - 1.f; }
 
 	// Reconstruct the float AABB from quantised corners + scene AABB.
 	CPU_GPU void Bounds(float allBMinX, float allBMinY, float allBMinZ,
@@ -150,7 +150,7 @@ struct CompactLightBounds {
 
 		// cos(theta_w)
 		float cosTheta_w = wox*wix + woy*wiy + woz*wiz;
-		if (twoSided) cosTheta_w = std::abs(cosTheta_w);
+		if (TwoSided()) cosTheta_w = std::abs(cosTheta_w);
 		float sinTheta_w = SafeSqrt(1.f - Sqr(cosTheta_w));
 
 		// cos(theta_b)
@@ -184,12 +184,20 @@ struct CompactLightBounds {
 	// -----------------------------------------------------------------------
 	OctahedralVector w;          // 4 bytes
 	float phi = 0.f;             // 4 bytes
-	// Anonymous struct — matches pbrt-v4 CompactLightBounds private members
-	struct {
-		unsigned int qCosTheta_o : 15;
-		unsigned int qCosTheta_e : 15;
-		unsigned int twoSided    :  1;
-	};
+	// Manually packed (NOT a C++ bitfield) qCosTheta_o (bits 0-14) |
+	// qCosTheta_e (bits 15-29) | twoSided (bit 30) - see LightBVHNode's own
+	// comment (light_bvh_node.h) for why: this struct is written host-side
+	// (BVHLightSampler2::buildBVH(), MSVC) and read device-side
+	// (LightBVHNode::lightBounds.Importance(), NVCC) as raw bytes, and a
+	// real C++ bitfield's packing order/allocation-unit is compiler/ABI-
+	// defined - manual shift/mask has one unambiguous layout on every
+	// compiler. Same 4-byte footprint as the bitfield it replaces (unlike
+	// LightBVHNode's own fix, which widened to two plain fields since it had
+	// alignas(32) slack to spend and only 2 sub-fields to begin with - this
+	// one has 3 sub-fields that would double CompactLightBounds's size as
+	// plain fields, and this struct is read on every BVH traversal step, not
+	// just at a leaf, so keeping it compact matters more here).
+	unsigned int packedCosThetaAndSide = 0;
 	uint16_t qb[2][3];           // 12 bytes — [corner][axis]
 
 private:

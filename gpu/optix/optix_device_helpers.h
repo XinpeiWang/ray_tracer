@@ -965,12 +965,137 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 	}
 }
 
-// Selects one area light (power-weighted alias table, falling back to
-// uniform selection when no alias table was built), samples a direction
-// toward it via sample_area_light_by_kind(), and returns the combined
-// selection*geometric PDF. Every NEE call site in shade_material() used to
-// spell this exact selection dance out by hand - one helper keeps them
-// from drifting into slightly different selection logic per material.
+// pbrt-v4 bounding-cone light BVH (GpuCameraParams::cameraMediumSigmaT's
+// sibling gap - see OptiXRenderer::d_lightBvhNodes_'s own comment,
+// optix_renderer.h, for the host build/upload). Device-side mirror of
+// BVHLightSampler2::Sample()/PMF() (src/shared/bvh_light_sampler2.h) - that
+// class's own query methods aren't called directly here because they
+// operate on a std::vector-backed `nodes_`/std::unordered_map-backed
+// `lightToBitTrail_` (host-only containers); these two functions instead
+// walk the flat `params.lightBvhNodes`/`params.lightBvhBitTrail` device
+// arrays that class's own build already produced, using the exact same
+// LightBVHNode::lightBounds.Importance() (CompactLightBounds, light_bvh_
+// node.h) stochastic-descent algorithm.
+//
+// KNOWN UNRESOLVED BUG - these two functions are written and believed
+// correct (the tree they walk was directly verified well-formed at the
+// crash site: sane node indices, sane isLeaf/childOrLightIndex values,
+// matching what the host built), but calling either of them - or even just
+// dereferencing `params.lightBvhNodes[0]` directly inline, with no function
+// call at all - reproducibly triggers a CUDA 700 "illegal memory access" on
+// GPU-recursive for at least one real multi-light scene (pbrt_scenes/
+// triangle-fan-light.pbrt, 5 lights, 9-node tree). Ruled out empirically:
+// a shared-function-call codegen/inlining issue (this file's own established
+// class of bug, see sample_area_light_by_kind()'s Triangle case - hand-
+// inlining the whole descent at the call site made no difference);
+// reference-output-parameter miscompilation (see gpu_cloud_density()'s own
+// documented precedent - switching to a by-value struct return made no
+// difference); an out-of-range node/light index (defensive bounds checks
+// added during diagnosis never fired - the crash persisted even reading
+// index 0 alone). Root cause NOT established. Because of this, `LaunchParams
+// ::lightBvhNodeCount` is deliberately left at its zero-init default by the
+// host (see OptiXRenderer::render()'s own comment, optix_renderer_render.cpp)
+// - the host-side tree build/upload (OptiXRenderer::buildScene(),
+// optix_renderer_scene.cpp) still runs and is exercised/testable, but no
+// launch ever sets `lightBvhNodeCount` above 0, so every NEE call site below
+// unconditionally takes its alias-table/uniform fallback and this code stays
+// unreachable until the crash is actually root-caused. Do not flip the host
+// gate back on without first reproducing and fixing this.
+//
+// Return type for gpu_light_bvh_sample_index() - a plain by-value struct,
+// deliberately NOT a `float&`/`int&` reference-output parameter. This
+// codebase's own memory of a prior GPU recursive-backend miscompile
+// (CloudMedium::compute_density()'s dnoise() helper, see gpu_cloud_density()'s
+// own history) found reference-output device functions unreliable in this
+// exact NVCC/OptiX toolchain when NOT force-inlined - by-value struct
+// returns sidestep that class of bug entirely, matching that fix's own
+// "called by value, no reference/pointer output params" guidance.
+struct GpuLightBvhSample {
+	int lightIndex;  // -1 = no light BVH built, or zero importance everywhere
+	float pmf;
+};
+
+// gpu_light_bvh_sample_index: returns the selected light's index (or -1 if
+// no light BVH was built for this scene, or every light's importance at
+// this point is zero) and its selection PMF - a drop-in replacement for the
+// alias table's `selection_pdf` at every call site below, since
+// `light_pdf = pmf * geom_pdf` is the same formula either way.
+__device__ __forceinline__ GpuLightBvhSample gpu_light_bvh_sample_index(
+	float px, float py, float pz, float nx, float ny, float nz, float u)
+{
+	if (params.lightBvhNodeCount <= 0) return GpuLightBvhSample{-1, 0.f};
+	int nodeIndex = 0;
+	float pmf = 1.f;
+	u = fminf(u, 1.f - 1e-7f);
+	while (true) {
+		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
+		if (!node.isLeaf) {
+			const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];
+			const LightBVHNode& c1 = params.lightBvhNodes[node.childOrLightIndex];
+			float ci0 = c0.lightBounds.Importance(px,py,pz, nx,ny,nz,
+				params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
+				params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
+			float ci1 = c1.lightBounds.Importance(px,py,pz, nx,ny,nz,
+				params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
+				params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
+			if (ci0 == 0.f && ci1 == 0.f) return GpuLightBvhSample{-1, 0.f};
+			float sum = ci0 + ci1;
+			float nodePMF; int child;
+			if (u < ci0 / sum) { child = 0; nodePMF = ci0 / sum; u = u / nodePMF; }
+			else { child = 1; nodePMF = ci1 / sum; u = (u - ci0/sum) / nodePMF; }
+			u = fminf(u, 1.f - 1e-7f);
+			pmf *= nodePMF;
+			nodeIndex = (child == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
+		} else {
+			return GpuLightBvhSample{(int)node.childOrLightIndex, pmf};
+		}
+	}
+}
+
+// gpu_light_bvh_pmf: replays the bit-trail for `lightIndex` to recompute its
+// selection PMF at THIS shading point (position-dependent, unlike the alias
+// table's fixed pdf) - needed at a BSDF-sampled light hit to MIS-weight
+// against whatever NEE would have picked from the point the BSDF sample was
+// actually taken (see this function's callers in the 6 shape closest-hit
+// files' own DiffuseLight branches). Returns 0 if no light BVH was built, or
+// if every ancestor's combined importance was zero (can't happen for a real
+// bit-trail from a light actually in the tree, but matches PMF()'s own
+// defensive return).
+__device__ __forceinline__ float gpu_light_bvh_pmf(
+	float px, float py, float pz, float nx, float ny, float nz, int lightIndex)
+{
+	if (params.lightBvhNodeCount <= 0) return 0.f;
+	uint32_t bitTrail = params.lightBvhBitTrail[lightIndex];
+	float pmf = 1.f;
+	int nodeIndex = 0;
+	while (true) {
+		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
+		if (node.isLeaf) return pmf;
+		const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];
+		const LightBVHNode& c1 = params.lightBvhNodes[node.childOrLightIndex];
+		float ci0 = c0.lightBounds.Importance(px,py,pz, nx,ny,nz,
+			params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
+			params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
+		float ci1 = c1.lightBounds.Importance(px,py,pz, nx,ny,nz,
+			params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
+			params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
+		float sum = ci0 + ci1;
+		if (sum == 0.f) return 0.f;
+		int branch = (int)(bitTrail & 1u);
+		pmf *= (branch == 0 ? ci0 : ci1) / sum;
+		nodeIndex = (branch == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
+		bitTrail >>= 1;
+	}
+}
+
+// Selects one area light (light BVH when the scene built one - see
+// gpu_light_bvh_sample_index()'s own comment - else the power-weighted
+// alias table, falling back further to uniform selection when neither was
+// built), samples a direction toward it via sample_area_light_by_kind(),
+// and returns the combined selection*geometric PDF. Every NEE call site in
+// shade_material() used to spell this exact selection dance out by hand -
+// one helper keeps them from drifting into slightly different selection
+// logic per material.
 // Returns false (light_pdf left untouched) when there are no lights, or
 // when the sampled direction's combined pdf is too small to divide by -
 // callers should skip their light contribution in that case, exactly as
@@ -988,7 +1113,22 @@ __device__ __forceinline__ bool sample_nee_light(
 
 	int light_idx;
 	float selection_pdf;
-	if (params.aliasTable) {
+	// Light BVH first (real spatial+power selection, position-dependent -
+	// see gpu_light_bvh_sample_index()'s own comment); n=0 (no surface-
+	// normal weighting at the SELECTION stage) matches this function's own
+	// pre-existing signature, which never threaded a normal through from
+	// any of its 7 call sites - sample_area_light_by_kind() below still
+	// gets the real geometric pdf regardless. Falls back to the alias
+	// table/uniform selection exactly as before this feature existed for
+	// any scene that didn't build a light BVH (every backend/mode other
+	// than GPU-recursive, this round).
+	if (params.lightBvhNodeCount > 0) {
+		GpuLightBvhSample s = gpu_light_bvh_sample_index(
+			origin.x, origin.y, origin.z, 0.f, 0.f, 0.f, random_float(seed));
+		if (s.lightIndex < 0) return false;
+		light_idx = s.lightIndex;
+		selection_pdf = s.pmf;
+	} else if (params.aliasTable) {
 		int slot = int(random_float(seed) * float(params.numLights));
 		if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
 		const GpuAliasEntry& entry = params.aliasTable[slot];
@@ -1183,7 +1323,25 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 	if (params.numLights > 0) {
 		int light_idx;
 		float selection_pdf;
-		if (params.aliasTable) {
+		// Same light-BVH-first, alias-table-fallback selection as
+		// sample_nee_light()'s own identical block - see that function's
+		// own comment on both the ordering and the n=0 simplification.
+		// Consistency with sample_nee_light() here matters beyond style: a
+		// later BSDF-sampled bounce that hits a light MIS-weights against
+		// gpu_light_bvh_pmf() unconditionally now (see the 6 closest-hit
+		// files' own DiffuseLight branches) - if THIS selection stayed
+		// alias-table-only while surface NEE switched to the light BVH, a
+		// path through a medium scatter would MIS-weight against the wrong
+		// selection strategy's pdf, a real bias, not just an inconsistency.
+		bool have_light = true;
+		if (params.lightBvhNodeCount > 0) {
+			GpuLightBvhSample s = gpu_light_bvh_sample_index(
+				medium_point.x, medium_point.y, medium_point.z, 0.f, 0.f, 0.f,
+				random_float(seed));
+			have_light = (s.lightIndex >= 0);
+			light_idx = s.lightIndex;
+			selection_pdf = s.pmf;
+		} else if (params.aliasTable) {
 			int slot = int(random_float(seed) * float(params.numLights));
 			if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
 			const GpuAliasEntry& entry = params.aliasTable[slot];
@@ -1194,17 +1352,19 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 			if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
 			selection_pdf = 1.0f / float(params.numLights);
 		}
-		float geom_pdf = 0.0f, max_dist = 0.0f;
-		float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-		float3 to_light = sample_area_light_by_kind(
-			light_idx, medium_point, seed, geom_pdf, max_dist, sampled_light_emission, ray_time);
-		float light_pdf = selection_pdf * geom_pdf;
-		if (light_pdf > 1e-6f) {
-			float phase_val = hg_phase_value(dot(wo, to_light), g);
-			if (trace_shadow_ray(medium_point, to_light, max_dist)) {
-				float mis_weight = mis_power_heuristic(light_pdf, phase_val);
-				medium_emission = medium_emission +
-					(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission;
+		if (have_light) {
+			float geom_pdf = 0.0f, max_dist = 0.0f;
+			float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+			float3 to_light = sample_area_light_by_kind(
+				light_idx, medium_point, seed, geom_pdf, max_dist, sampled_light_emission, ray_time);
+			float light_pdf = selection_pdf * geom_pdf;
+			if (light_pdf > 1e-6f) {
+				float phase_val = hg_phase_value(dot(wo, to_light), g);
+				if (trace_shadow_ray(medium_point, to_light, max_dist)) {
+					float mis_weight = mis_power_heuristic(light_pdf, phase_val);
+					medium_emission = medium_emission +
+						(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission;
+				}
 			}
 		}
 	}

@@ -21,6 +21,15 @@
 // sample_texture() for TextureKind::Noise) - no device-side reimplementation
 // needed, same as the punctual lights above.
 #include "../../src/shared/cloud_medium.h"
+// Same relative-path reasoning as punctual_lights.h above. LightBVHNode/
+// CompactLightBounds::Importance() are CPU_GPU-tagged and allocator-free
+// (see light_bvh_node.h's own comment) - already exercised on the host by
+// src/shared/bvh_light_sampler2.h (the tree BUILDER, used only host-side to
+// construct LaunchParams::lightBvhNodes below), and now also compiled for
+// device code here so gpu_light_bvh_sample()/gpu_light_bvh_pmf() (optix_
+// device_helpers.h) can traverse the already-built tree directly - no
+// device-side reimplementation of Importance()'s cone-angle math needed.
+#include "../../src/shared/light_bvh_node.h"
 
 #ifndef __CUDACC__
 #include <stdexcept>
@@ -1726,6 +1735,27 @@ struct LaunchParams {
 
 	// Power-weighted alias table for light selection (pbrt-v4 PowerLightSampler)
 	GpuAliasEntry* aliasTable;  // Device pointer to alias table (numLights entries)
+
+	// pbrt-v4 bounding-cone light BVH (CPU default is bvh_light_sampler.h;
+	// see docs/FEATURE_INVENTORY.md's own "no light BVH on GPU" entry) - GPU
+	// recursive backend only, this round (see OptiXRenderer::d_lightBvhNodes_'s
+	// own comment for the host build/upload). lightBvhNodeCount<=0 (the
+	// zero-init default, same "no in-class initializer" __constant__
+	// constraint as every other optional field on this struct) means "no
+	// light BVH built" - gpu_light_bvh_sample()/gpu_light_bvh_pmf() (optix_
+	// device_helpers.h) both check this first and fall back to the flat
+	// alias table above, unchanged, for every scene that doesn't build one
+	// (currently: every scene under any backend other than GPU-recursive).
+	// lightBvhBitTrail has numLights entries (0 for any light NOT present in
+	// the tree - BVHLightSampler2 excludes phi<=0 lights, matching the alias
+	// table's own "geometry-only target" 1e-6f floor for a truly zero-power
+	// light rather than genuinely dropping it - see the light-power-loop's
+	// own comment, scene_builder.cpp).
+	LightBVHNode* lightBvhNodes;
+	unsigned int* lightBvhBitTrail;
+	int lightBvhNodeCount;
+	float lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ;
+	float lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ;
 
 	// Punctual (delta) lights: point/spot/distant. Separate from the
 	// area-light arrays above - evaluated deterministically every hit,
