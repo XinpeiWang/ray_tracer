@@ -1266,12 +1266,112 @@ TEST(FlattenTest, MeshMissingItsParametersIsSkippedNotCrashed) {
 }
 
 TEST(FlattenTest, UnsupportedShapeTypesAreNamed) {
-	// "cone" - not "cylinder"/"disk", which this loader now supports (see
-	// FlattenTest.MediumInterfaceAttachesTheNamedMediumToTheSphere's sibling
-	// tests above and pbrt_cpu_builder_tests.cpp's disk/cylinder coverage).
-	const FlatScene s = flattenSource("Shape \"cone\" \"float radius\" [ 1 ]\n");
+	// "hyperboloid" - not "cylinder"/"disk"/"cone"/"paraboloid", which this
+	// loader now supports (see FlattenTest.MediumInterfaceAttachesTheNamedMedi
+	// umToTheSphere's sibling tests above, pbrt_cpu_builder_tests.cpp's
+	// disk/cylinder coverage, and the Cone/Paraboloid tests below).
+	// Hyperboloid was deliberately scoped out (twisted ruled-surface math,
+	// rare in practice) - see FlattenTest.Cone/Paraboloid tests for what IS
+	// supported.
+	const FlatScene s = flattenSource("Shape \"hyperboloid\" \"float radius\" [ 1 ]\n");
 	EXPECT_TRUE(s.empty());
-	EXPECT_TRUE(warnedAbout(s, "cone"));
+	EXPECT_TRUE(warnedAbout(s, "hyperboloid"));
+}
+
+// ===========================================================================
+// Cone / Paraboloid (v1, geometry-only - see pbrt_flatten.h's Cone/Paraboloid
+// comment block for scope)
+// ===========================================================================
+
+TEST(FlattenTest, ConeDefaultParamsMatchPbrt) {
+	const FlatScene s = flattenSource("Shape \"cone\" \n");
+	ASSERT_EQ(s.cones.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.cones[0].radius, 1.0);
+	EXPECT_DOUBLE_EQ(s.cones[0].height, 1.0);
+	EXPECT_DOUBLE_EQ(s.cones[0].phiMaxDeg, 360.0);
+}
+
+TEST(FlattenTest, ConeExplicitParamsAreRead) {
+	const FlatScene s = flattenSource(
+		"Shape \"cone\" \"float radius\" [ 1.5 ] \"float height\" [ 3 ] "
+		"\"float phimax\" [ 180 ]\n");
+	ASSERT_EQ(s.cones.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.cones[0].radius, 1.5);
+	EXPECT_DOUBLE_EQ(s.cones[0].height, 3.0);
+	EXPECT_DOUBLE_EQ(s.cones[0].phiMaxDeg, 180.0);
+}
+
+TEST(FlattenTest, ConeCarriesMaterialAndTransform) {
+	const FlatScene s = flattenSource(
+		"Material \"diffuse\" \"rgb reflectance\" [ 0.5 0.5 0.5 ]\n"
+		"Translate 1 2 3\n"
+		"Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 1 ]\n");
+	ASSERT_EQ(s.cones.size(), 1u);
+	EXPECT_GE(s.cones[0].material, 0);
+	EXPECT_DOUBLE_EQ(s.cones[0].xform[3], 1.0);
+	EXPECT_DOUBLE_EQ(s.cones[0].xform[11], 3.0);
+}
+
+TEST(FlattenTest, ConeWithAreaLightSourceWarnsAndStillBuildsGeometry) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.cones.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
+	EXPECT_TRUE(warnedAbout(s, "AreaLightSource"));
+}
+
+TEST(FlattenTest, ConeWithMediumInterfaceWarnsAndStillBuildsGeometry) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.cones.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
+	EXPECT_TRUE(warnedAbout(s, "MediumInterface"));
+}
+
+TEST(FlattenTest, ParaboloidDefaultParamsMatchPbrt) {
+	const FlatScene s = flattenSource("Shape \"paraboloid\" \n");
+	ASSERT_EQ(s.paraboloids.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].radius, 1.0);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].zMin, 0.0);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].zMax, 1.0);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].phiMaxDeg, 360.0);
+}
+
+TEST(FlattenTest, ParaboloidExplicitParamsAreRead) {
+	const FlatScene s = flattenSource(
+		"Shape \"paraboloid\" \"float radius\" [ 1.5 ] \"float zmin\" [ 0 ] "
+		"\"float zmax\" [ 2 ] \"float phimax\" [ 180 ]\n");
+	ASSERT_EQ(s.paraboloids.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].radius, 1.5);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].zMin, 0.0);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].zMax, 2.0);
+	EXPECT_DOUBLE_EQ(s.paraboloids[0].phiMaxDeg, 180.0);
+}
+
+TEST(FlattenTest, ParaboloidWithAreaLightSourceWarnsAndStillBuildsGeometry) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  Shape \"paraboloid\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.paraboloids.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
+	EXPECT_TRUE(warnedAbout(s, "AreaLightSource"));
+}
+
+TEST(FlattenTest, ParaboloidWithMediumInterfaceWarnsAndStillBuildsGeometry) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"paraboloid\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.paraboloids.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
+	EXPECT_TRUE(warnedAbout(s, "MediumInterface"));
 }
 
 TEST(FlattenTest, ParserWarningsAreCarriedThrough) {

@@ -727,12 +727,15 @@ TEST(PbrtCpuBuildTest, NonEmissiveSceneHasAnEmptyLightList) {
 TEST(PbrtCpuBuildTest, AnEmptySceneBuildsWithoutCrashing) {
 	// flatten() drops unsupported shapes, so a scene can legitimately arrive
 	// with nothing in it. A BVH must not be built over zero primitives.
-	// "cone" - not "cylinder"/"disk", which this loader now supports.
-	const pbrt_cpu::BuildResult b = buildFrom("Shape \"cone\"\n");
+	// "hyperboloid" - not "cylinder"/"disk"/"cone"/"paraboloid", which this
+	// loader now supports.
+	const pbrt_cpu::BuildResult b = buildFrom("Shape \"hyperboloid\"\n");
 	EXPECT_EQ(b.triangleCount, 0u);
 	EXPECT_EQ(b.sphereCount, 0u);
 	EXPECT_EQ(b.diskCount, 0u);
 	EXPECT_EQ(b.cylinderCount, 0u);
+	EXPECT_EQ(b.coneCount, 0u);
+	EXPECT_EQ(b.paraboloidCount, 0u);
 	ASSERT_NE(b.world, nullptr);
 	EXPECT_TRUE(b.world->objects.empty());
 }

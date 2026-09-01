@@ -200,6 +200,34 @@ loader and no longer match the code:
   homogeneous medium's entry/exit pair to bound, so this is structurally
   not meaningful, not merely unimplemented, and isn't planned.
 
+- `Shape "cone"`/`Shape "paraboloid"` are now supported, **CPU only**
+  (`ConeShape<T>`/`ParaboloidShape<T>`, `src/shared/shapes.h`, wrapped by
+  `cone_hittable`/`paraboloid_hittable`,
+  `src/TheRestOfYourLife/cone_paraboloid_hittable.h` - same object-space-plus-
+  unbaked-CTM technique as `disk_hittable`/`cylinder_hittable`, transforming
+  the ray into object space at intersection time rather than baking to
+  world-space, so both are exactly correct under arbitrary rotation). Real
+  `"radius"`/`"height"`/`"phimax"` (cone) and `"radius"`/`"zmin"`/`"zmax"`/
+  `"phimax"` (paraboloid) parameters, matching pbrt-v4's own defaults and
+  clipping semantics. Geometry-only (v1 scope): no `AreaLightSource` (warns
+  and renders as ordinary non-emissive geometry, matching this loader's
+  general "unsupported-in-this-context but not dropped" convention) and no
+  `MediumInterface` (warns and drops the medium, the same gap trianglemesh/
+  bilinearmesh already have, since neither shape carries a `medium` field).
+  **GPU (both backends) does not support either shape at all** - a scene
+  using one warns at load time and the shape is silently absent from the
+  GPU render (`scene_builder.cpp`), matching how this loader already handles
+  every other CPU-only shape gap. One ray direction exactly on the
+  paraboloid's own symmetry axis (`dx=dy=0`) degenerates the intersection's
+  quadratic to a linear equation and is not handled - an accepted limitation
+  matching `CylinderShape<T>`'s own identical precedent for a ray exactly
+  parallel to its axis. `Shape "hyperboloid"` (a twisted ruled surface
+  between two arbitrary 3D points) was deliberately not attempted - a
+  meaningfully harder shape (no simple implicit quadric the way cone/
+  paraboloid/cylinder have) that's also rare in practice; still falls
+  through to the generic "shape not supported" warning like any other
+  unimplemented pbrt-v4 shape.
+
 - pbrt-v4's own **"camera medium"**: a `MediumInterface` declared before the
   `Camera` directive (its "outside" name, real pbrt-v4's own convention -
   `pbrt_scene.h`'s `Scene::cameraMediumIndex`) makes every primary ray start

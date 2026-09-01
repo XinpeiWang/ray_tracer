@@ -22,6 +22,7 @@
 #include "constant_medium.h"
 #include "curve_shape_hittable.h"
 #include "disk_cylinder_hittable.h"
+#include "cone_paraboloid_hittable.h"
 #include "grid_medium_hittable.h"
 #include "hair_material.h"
 #include "hittable_list.h"
@@ -531,6 +532,8 @@ struct BuildResult {
 	std::size_t sphereCount = 0;
 	std::size_t diskCount = 0;
 	std::size_t cylinderCount = 0;
+	std::size_t coneCount = 0;
+	std::size_t paraboloidCount = 0;
 	std::size_t bilinearPatchCount = 0;
 	std::size_t curveCount = 0;
 	std::size_t uniqueVertexCount = 0;
@@ -716,6 +719,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 								  const std::vector<pbrt_flatten::Sphere> &sphs,
 								  const std::vector<pbrt_flatten::Disk> &disks,
 								  const std::vector<pbrt_flatten::Cylinder> &cylinders,
+								  const std::vector<pbrt_flatten::Cone> &cones,
+								  const std::vector<pbrt_flatten::Paraboloid> &paraboloids,
 								  const std::vector<pbrt_flatten::BilinearPatch> &patches,
 								  const std::vector<pbrt_flatten::Curve> &curveDecls,
 								  hittable_list &world, hittable_list &lights) {
@@ -965,6 +970,28 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	}
 	out.cylinderCount += cylinders.size();
 
+	// ---- cones / paraboloids -----------------------------------------------
+	// Shape "cone"/"paraboloid" - same unbaked-CTM technique as disk/cylinder
+	// above. v1 scope (see pbrt_flatten::Cone/Paraboloid's own comment):
+	// geometry-only, so no lights.add()/addMediumIfPresent() call - neither
+	// struct carries an areaLight or medium field at all (flatten() already
+	// warns and drops both at parse time if the scene requested them).
+	for (const pbrt_flatten::Cone &cn : cones) {
+		auto mat = cachedMaterial(cn.material, -1);
+		auto cone = std::make_shared<cone_hittable>(
+			cn.radius, cn.height, degrees_to_radians(cn.phiMaxDeg), toMatrix4(cn.xform), mat);
+		world.add(cone);
+	}
+	out.coneCount += cones.size();
+
+	for (const pbrt_flatten::Paraboloid &pb : paraboloids) {
+		auto mat = cachedMaterial(pb.material, -1);
+		auto para = std::make_shared<paraboloid_hittable>(
+			pb.radius, pb.zMin, pb.zMax, degrees_to_radians(pb.phiMaxDeg), toMatrix4(pb.xform), mat);
+		world.add(para);
+	}
+	out.paraboloidCount += paraboloids.size();
+
 	// ---- bilinear patches -------------------------------------------------
 	// Shape "bilinearmesh" - see pbrt_flatten.h's BilinearPatch comment for
 	// why only the single-patch form reaches here. bilinear_patch_hittable
@@ -1027,6 +1054,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 
 	emitGeometry(scene.triangles, scene.spheres, scene.disks, scene.cylinders,
+				 scene.cones, scene.paraboloids,
 				 scene.bilinearPatches, scene.curves, *out.world, *out.lights);
 
 	// ---- instances -------------------------------------------------------
@@ -1048,16 +1076,19 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 		auto geometry = std::make_shared<hittable_list>();
 		hittable_list unusedLights;
-		// No InstanceGroup::bilinearPatches/disks/cylinders/curves - object-
-		// space bilinear patches, disks, cylinders and curves inside an
-		// instance definition are all out of scope (see flatten()'s null-
-		// bilinearPatches/disks/cylinders/curves comments on why), so these
-		// are always empty.
+		// No InstanceGroup::bilinearPatches/disks/cylinders/cones/paraboloids/
+		// curves - object-space bilinear patches, disks, cylinders, cones,
+		// paraboloids and curves inside an instance definition are all out of
+		// scope (see flatten()'s null-bilinearPatches/disks/cylinders/cones/
+		// paraboloids/curves comments on why), so these are always empty.
 		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
 		static const std::vector<pbrt_flatten::Disk> kNoDisks;
 		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+		static const std::vector<pbrt_flatten::Cone> kNoCones;
+		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
 		static const std::vector<pbrt_flatten::Curve> kNoCurves;
 		emitGeometry(grp.triangles, grp.spheres, kNoDisks, kNoCylinders,
+					 kNoCones, kNoParaboloids,
 					 kNoBilinearPatches, kNoCurves, *geometry, unusedLights);
 		if (!geometry->objects.empty())
 			groupBVHs[g] = std::make_shared<bvh_node>(*geometry);

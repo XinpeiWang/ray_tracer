@@ -4598,6 +4598,19 @@ static bool build_loaded_pbrt_scene(
 			static_cast<float>(m.Le[0]), static_cast<float>(m.Le[1]), static_cast<float>(m.Le[2])) * leWeight;
 	}
 
+	// Shape "cone"/"paraboloid" (pbrt_flatten::Cone/Paraboloid's own comment)
+	// - CPU-only, v1 scope; GPU (both backends) has no counterpart at all yet.
+	// Warned rather than silently rendering with the shape simply missing,
+	// same "warn rather than silently drop" precedent as every other CPU-
+	// only feature in this codebase.
+	if (!loaded.scene.cones.empty() || !loaded.scene.paraboloids.empty()) {
+		std::cerr << "[OptiX] Warning: scene has " << loaded.scene.cones.size()
+			<< " cone(s) and " << loaded.scene.paraboloids.size()
+			<< " paraboloid(s), which are not supported on GPU - they will "
+			   "not be rendered; use --cpu instead if this geometry matters "
+			   "for this render.\n";
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

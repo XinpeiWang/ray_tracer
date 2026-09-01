@@ -135,8 +135,12 @@ numbered sections below for the narrative detail behind any row.
 | OBJ mesh loader | Y | Y | Y | `mesh.h` (+ `mesh_mtl.h` for `.mtl`) — hand-written parser. |
 | PLY mesh loader | Y | Y | Y | `src/shared/ply_mesh.h` — ASCII + binary LE/BE, arbitrary vertex properties. |
 | Instancing (`ObjectInstance`) | Y | Y | Y | `transform_instance.h` + `pbrt_scene.h`'s `ObjectBegin/End/ObjectInstance`. |
+| Cone | Y | N | N | `src/shared/shapes.h`'s `ConeShape<T>`, wrapped by `cone_hittable` (`cone_paraboloid_hittable.h`). Geometry-only (no `AreaLightSource`/`MediumInterface`); GPU warns and drops the shape at load time. |
+| Paraboloid | Y | N | N | `ParaboloidShape<T>`, wrapped by `paraboloid_hittable` (`cone_paraboloid_hittable.h`). Same v1 scope as Cone. A ray exactly on the symmetry axis is an accepted miss, matching Cylinder's identical parallel-ray limitation. |
+| Hyperboloid | N | N | N | Not implemented — a twisted ruled surface between two arbitrary points, meaningfully harder than the other quadrics and rare in practice; falls through to the generic "shape not supported" warning. |
 
-No shape gap versus pbrt-v4's own set.
+Shape gap versus pbrt-v4's own set: Hyperboloid (unimplemented on every
+backend), and Cone/Paraboloid are CPU-only (see table above).
 
 ## 2. Materials / BxDFs
 

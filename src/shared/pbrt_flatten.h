@@ -174,6 +174,41 @@ struct Cylinder {
 	int medium = -1;
 };
 
+// Shape "cone" / "paraboloid" - 2 of pbrt-v4's 3 remaining quadric Shape
+// kinds this loader had no counterpart for at all (previously fell to the
+// generic "shape not supported" warning, nothing rendered in their place -
+// see flatten()'s own trailing warning for that fallback). Same unbaked-
+// object-space-plus-CTM technique as Disk/Cylinder above, for the identical
+// reason (not rotation-invariant). v1 scope, CPU-only, geometry-only: no
+// AreaLightSource (not registered as a light even if the scene declares one
+// - see flatten()'s own warning at the dispatch site) and no MediumInterface
+// (same "no medium field, would silently drop it" gap as bilinearmesh/
+// trianglemesh - warned the same way) - these are used as ordinary
+// decorative/architectural geometry in real scenes far more often than as
+// either, so closing the "nothing renders at all" gap for that common case
+// first is the higher-value v1 cut; GPU support is a separate, not-yet-
+// attempted follow-up (both backends warn and drop, same as every other
+// CPU-only feature in this codebase). Shape "hyperboloid" (the 3rd quadric)
+// is deliberately NOT covered here - pbrt-v4's real hyperboloid is a
+// TWISTED ruled surface (ah/ch quadric coefficients derived from two
+// arbitrary 3D points, not a plain surface of revolution the way cone/
+// paraboloid/cylinder are), meaningfully harder to get right than these two
+// and the rarest of the three in practice - left as a future addition
+// rather than risking a subtly-wrong implementation this round.
+struct Cone {
+	double radius = 1.0, height = 1.0;
+	double phiMaxDeg = 360.0;
+	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	int material = -1;
+};
+
+struct Paraboloid {
+	double radius = 1.0, zMin = 0.0, zMax = 1.0;
+	double phiMaxDeg = 360.0;
+	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	int material = -1;
+};
+
 // "Is this RGB triple effectively nonzero" - the same per-channel epsilon
 // threshold used at 4 sites across this file and gpu/optix/scene_builder.cpp
 // (2 pre-existing sigma_a-dropped warnings for cloud/uniformgrid, Medium::
@@ -1300,6 +1335,8 @@ struct FlatScene {
 	std::vector<Sphere> spheres;
 	std::vector<Disk> disks;
 	std::vector<Cylinder> cylinders;
+	std::vector<Cone> cones;
+	std::vector<Paraboloid> paraboloids;
 	std::vector<BilinearPatch> bilinearPatches;
 	std::vector<Curve> curves;
 	std::vector<Material> materials;    // parallel to Scene::materials
@@ -1518,6 +1555,17 @@ struct ShapeWork {
 	// through to the generic unsupported-shape warning" precedent as disks/
 	// cylinders above.
 	std::vector<Curve> *curves = nullptr;
+	// Appended at the END, not alongside disks/cylinders above, so every
+	// existing positional-brace-init call site (this struct is built with
+	// `{&shape, xform, xformEnd, &triangles, ...}`-style positional args,
+	// same convention/hazard as SceneDescriptor - see that struct's own
+	// comment, scene_registry.h) keeps binding its trailing `&out.curves`
+	// argument to `curves` above, not silently shifting onto one of these -
+	// left at their nullptr default (correctly: cone/paraboloid/hyperboloid
+	// are never emissive-baked-into-an-instance in this loader, matching
+	// bilinearPatches' own "left null for an instance definition" precedent).
+	std::vector<Cone> *cones = nullptr;
+	std::vector<Paraboloid> *paraboloids = nullptr;
 };
 
 // Row-major 4x4 multiply: `a` applied after `b`, i.e. the result maps a point
@@ -3219,7 +3267,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
 		work.push_back({&shape, shape.xform, shape.xformEnd, &out.triangles, &out.spheres, &out.bilinearPatches,
-						&out.disks, &out.cylinders, &out.curves});
+						&out.disks, &out.cylinders, &out.curves,
+						&out.cones, &out.paraboloids});
 
 	// Sized up front so the pointers taken below stay valid as work is added.
 	out.groups.resize(scene.objects.size());
@@ -3432,6 +3481,52 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			c.areaLight = shape.areaLightIndex;
 			c.medium = shape.insideMedium;
 			w.cylinders->push_back(c);
+			continue;
+		}
+
+		if (shape.type == "cone" && w.cones) {
+			if (shape.areaLightIndex >= 0) {
+				warn("Shape \"cone\" has an AreaLightSource, but this loader's "
+					 "cone support is geometry-only (v1 scope) - the cone will "
+					 "render as ordinary (non-emissive) geometry with no light "
+					 "contribution");
+			}
+			if (shape.insideMedium >= 0) {
+				warn("Shape \"cone\" has a MediumInterface, but this loader's "
+					 "cone support has no medium field (v1 scope, matching "
+					 "trianglemesh/bilinearmesh's own identical gap) - the "
+					 "medium will be dropped");
+			}
+			Cone cn;
+			cn.radius = shape.params.getFloat("radius", 1.0);
+			cn.height = shape.params.getFloat("height", 1.0);
+			cn.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
+			fromMatrix4(xform, cn.xform);
+			cn.material = shape.materialIndex;
+			w.cones->push_back(cn);
+			continue;
+		}
+
+		if (shape.type == "paraboloid" && w.paraboloids) {
+			if (shape.areaLightIndex >= 0) {
+				warn("Shape \"paraboloid\" has an AreaLightSource, but this "
+					 "loader's paraboloid support is geometry-only (v1 scope) - "
+					 "the paraboloid will render as ordinary (non-emissive) "
+					 "geometry with no light contribution");
+			}
+			if (shape.insideMedium >= 0) {
+				warn("Shape \"paraboloid\" has a MediumInterface, but this "
+					 "loader's paraboloid support has no medium field (v1 "
+					 "scope) - the medium will be dropped");
+			}
+			Paraboloid pb;
+			pb.radius = shape.params.getFloat("radius", 1.0);
+			pb.zMin = shape.params.getFloat("zmin", 0.0);
+			pb.zMax = shape.params.getFloat("zmax", 1.0);
+			pb.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
+			fromMatrix4(xform, pb.xform);
+			pb.material = shape.materialIndex;
+			w.paraboloids->push_back(pb);
 			continue;
 		}
 

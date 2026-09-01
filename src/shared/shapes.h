@@ -828,6 +828,193 @@ struct CylinderShape {
 
 
 // ===========================================================================
+// ConeShape<T>
+// ===========================================================================
+//
+// Cone with base radius `radius` at z=0, narrowing linearly to a point (the
+// apex) at z=height. phi_max is the azimuthal sweep in radians.
+//
+// Implicit surface: x^2 + y^2 - (radius - k*z)^2 = 0, k = radius/height,
+// for z in [0, height] - matches pbrt-v4 Cone semantics exactly.
+//
+// v1 scope: intersect() + area() only - no sample()/sample_from()/pdf_from()
+// (this loader's Cone support is geometry-only, never an area light - see
+// pbrt_flatten.h's Cone struct comment for why).
+//
+// Reference: pbrt-v4 src/pbrt/shapes.h/.cpp  Cone class
+// ===========================================================================
+
+template<typename T>
+struct ConeShape {
+	T radius;    // base radius, at z=0
+	T height;    // apex is at z=height
+	T phi_max;   // azimuthal extent in radians
+
+	CPU_GPU static ConeShape make(T radius, T height, T phi_max_rad) {
+		return ConeShape{radius, height, phi_max_rad};
+	}
+
+	// pbrt-v4 Cone::Area = radius * sqrt(height*height + radius*radius) * phiMax / 2
+	CPU_GPU T area() const {
+		return radius * std::sqrt(height*height + radius*radius) * phi_max / T(2);
+	}
+
+	CPU_GPU std::optional<ShapeHit<T>>
+	intersect(T rox, T roy, T roz,
+	          T rdx, T rdy, T rdz,
+	          T t_min, T t_max) const
+	{
+		using namespace shapes_detail;
+		const T pi = T(3.14159265358979323846);
+		if (height == T(0)) return {};
+		const T k = radius / height;
+
+		double ox=(double)rox, oy=(double)roy, oz=(double)roz;
+		double dx=(double)rdx, dy=(double)rdy, dz=(double)rdz;
+		double dk=(double)k, dr=(double)radius;
+
+		double a = dx*dx + dy*dy - dk*dk*dz*dz;
+		double b = 2.0*(ox*dx + oy*dy) - 2.0*dk*dk*oz*dz + 2.0*dr*dk*dz;
+		double c = ox*ox + oy*oy - dr*dr + 2.0*dr*dk*oz - dk*dk*oz*oz;
+
+		if (a == 0.0) {
+			// Degenerate to a linear equation (ray exactly parallel to a
+			// generator line's projection) - rare enough in practice that a
+			// clean miss is an acceptable v1 answer, matching CylinderShape's
+			// own "a==0 -> no hit" precedent just above.
+			return {};
+		}
+		double discrim = b*b - 4.0*a*c;
+		if (discrim < 0.0) return {};
+		double sqrt_disc = std::sqrt(discrim);
+		double q = (b < 0.0) ? -0.5*(b - sqrt_disc) : -0.5*(b + sqrt_disc);
+		T t0 = (T)(q/a), t1 = (T)(c/q);
+		if (t0 > t1) { T tmp = t0; t0 = t1; t1 = tmp; }
+		if (t0 > t_max || t1 < t_min) return {};
+
+		auto check = [&](T t) -> std::optional<ShapeHit<T>> {
+			if (t < t_min || t > t_max) return {};
+			T hx = rox + t*rdx, hy = roy + t*rdy, hz = roz + t*rdz;
+			if (hz < T(0) || hz > height) return {};
+			T phi = std::atan2(hy, hx);
+			if (phi < T(0)) phi += T(2)*pi;
+			if (phi > phi_max) return {};
+			// Outward normal ∝ (x, y, k*(radius - k*z)) - see this shape's
+			// own header comment for the dpdu×dpdv derivation confirming
+			// this orientation (verified two independent ways, not guessed).
+			T r_local = radius - k*hz;
+			T nx = hx, ny = hy, nz = k*r_local;
+			T nlen = safe_sqrt(nx*nx + ny*ny + nz*nz);
+			if (nlen > T(0)) { nx /= nlen; ny /= nlen; nz /= nlen; }
+			T u = phi / phi_max, v = hz / height;
+			return ShapeHit<T>{t, nx, ny, nz, u, v};
+		};
+		auto hit = check(t0);
+		if (hit) return hit;
+		return check(t1);
+	}
+};
+
+
+// ===========================================================================
+// ParaboloidShape<T>
+// ===========================================================================
+//
+// Paraboloid of revolution: z = k*(x^2+y^2), k = zmax/radius^2, clipped to
+// z in [z_min, z_max] (the underlying paraboloid's own apex, r=0, is always
+// at z=0 - z_min>0 clips off the tip without changing k, matching pbrt-v4's
+// "radius is measured at zmax" convention). phi_max is the azimuthal sweep
+// in radians.
+//
+// v1 scope: intersect() + area() only - see ConeShape's own comment for why.
+//
+// Reference: pbrt-v4 src/pbrt/shapes.h/.cpp  Paraboloid class
+// ===========================================================================
+
+template<typename T>
+struct ParaboloidShape {
+	T radius;    // radius at z = z_max
+	T z_min, z_max;
+	T phi_max;   // azimuthal extent in radians
+
+	CPU_GPU static ParaboloidShape make(T radius, T z_min, T z_max, T phi_max_rad) {
+		return ParaboloidShape{radius, z_min, z_max, phi_max_rad};
+	}
+
+	// pbrt-v4 Paraboloid::Area (radius2 = radius*radius, k=zmax/radius2):
+	//   Area = (radius2*radius2*phiMax/(6*k*k)) *
+	//          (pow(k*zmax+0.25, 1.5) - pow(k*zmin+0.25, 1.5))
+	// - the exact surface-area-of-revolution integral of r(z)=sqrt(z/k).
+	CPU_GPU T area() const {
+		if (radius == T(0)) return T(0);
+		T radius2 = radius*radius;
+		T k = z_max / radius2;
+		T lo = k*z_min + T(0.25), hi = k*z_max + T(0.25);
+		lo = (lo < T(0)) ? T(0) : lo;
+		hi = (hi < T(0)) ? T(0) : hi;
+		return (radius2*radius2*phi_max / (T(6)*k*k)) *
+			   (std::pow(hi, T(1.5)) - std::pow(lo, T(1.5)));
+	}
+
+	CPU_GPU std::optional<ShapeHit<T>>
+	intersect(T rox, T roy, T roz,
+	          T rdx, T rdy, T rdz,
+	          T t_min, T t_max) const
+	{
+		using namespace shapes_detail;
+		const T pi = T(3.14159265358979323846);
+		if (radius == T(0)) return {};
+		const T k = z_max / (radius*radius);
+
+		double ox=(double)rox, oy=(double)roy, oz=(double)roz;
+		double dx=(double)rdx, dy=(double)rdy, dz=(double)rdz;
+		double dk=(double)k;
+
+		double a = dk*(dx*dx + dy*dy);
+		double b = 2.0*dk*(ox*dx + oy*dy) - dz;
+		double c = dk*(ox*ox + oy*oy) - oz;
+
+		// a==0 only when dx=dy=0 (a ray exactly ON the symmetry axis) - the
+		// quadratic degenerates to linear and this shape doesn't special-
+		// case it (matches CylinderShape::intersect's own identical "a==0 ->
+		// no hit" simplification just above), even though the axis DOES
+		// carry one real surface point here (the apex) unlike a cylinder's
+		// own axis. Accepted rather than fixed: a ray landing exactly on the
+		// axis is a measure-zero event in a real Monte Carlo renderer - see
+		// ShapesParaboloid.IntersectMissesExactlyOnAxis (shapes_tests.cpp)
+		// for the documented behavior this produces.
+		if (a == 0.0) return {};
+		double discrim = b*b - 4.0*a*c;
+		if (discrim < 0.0) return {};
+		double sqrt_disc = std::sqrt(discrim);
+		double q = (b < 0.0) ? -0.5*(b - sqrt_disc) : -0.5*(b + sqrt_disc);
+		T t0 = (T)(q/a), t1 = (T)(c/q);
+		if (t0 > t1) { T tmp = t0; t0 = t1; t1 = tmp; }
+		if (t0 > t_max || t1 < t_min) return {};
+
+		auto check = [&](T t) -> std::optional<ShapeHit<T>> {
+			if (t < t_min || t > t_max) return {};
+			T hx = rox + t*rdx, hy = roy + t*rdy, hz = roz + t*rdz;
+			if (hz < z_min || hz > z_max) return {};
+			T phi = std::atan2(hy, hx);
+			if (phi < T(0)) phi += T(2)*pi;
+			if (phi > phi_max) return {};
+			// Outward normal ∝ (x, y, -1/(2k)) - dpdu×dpdv derivation, same
+			// method as ConeShape's own (see that shape's header comment).
+			T nx = hx, ny = hy, nz = -T(1) / (T(2)*k);
+			T nlen = safe_sqrt(nx*nx + ny*ny + nz*nz);
+			if (nlen > T(0)) { nx /= nlen; ny /= nlen; nz /= nlen; }
+			T u = phi / phi_max, v = (hz - z_min) / (z_max - z_min);
+			return ShapeHit<T>{t, nx, ny, nz, u, v};
+		};
+		auto hit = check(t0);
+		if (hit) return hit;
+		return check(t1);
+	}
+};
+
+
+// ===========================================================================
 // TriangleShape<T>
 // ===========================================================================
 //

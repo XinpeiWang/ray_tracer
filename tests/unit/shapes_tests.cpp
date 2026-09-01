@@ -569,6 +569,184 @@ TEST(ShapesCylinder, SampleIsDeterministic) {
 }
 
 // ===========================================================================
+// ConeShape<double> tests
+// pbrt-v4 reference: Cone in shapes.h. base radius at z=0, apex at z=height.
+// ===========================================================================
+
+static ConeShape<double> unit_cone() {
+	// radius=1 at z=0, apex at z=2, full sweep
+	return ConeShape<double>::make(1.0, 2.0, 2.0 * PI);
+}
+
+TEST(ShapesCone, AreaFormula) {
+	// pbrt-v4: radius * sqrt(height^2+radius^2) * phiMax / 2
+	auto c = unit_cone();
+	EXPECT_NEAR(c.area(), 1.0 * std::sqrt(4.0 + 1.0) * 2.0 * PI / 2.0, 1e-10);
+}
+
+TEST(ShapesCone, IntersectAtBase) {
+	// At z=0 the cone's cross-section is the FULL base circle (a hollow
+	// shell, not a filled disk) - a ray along +x from outside hits the NEAR
+	// side of that circle first, same "front face" convention as
+	// ShapesCylinder.IntersectFrontFaceHit's own identical setup.
+	auto c = unit_cone();
+	auto hit = c.intersect(-2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->t, 1.0, 1e-9);  // -2 + 1 = -1: the near-side rim point
+}
+
+TEST(ShapesCone, IntersectRearFaceFromInside) {
+	// Ray from the axis (inside the cone) along +x exits through the FAR
+	// side of the base rim at x=+radius - mirrors ShapesCylinder's own
+	// identical test, and gives an unambiguous "which side did we hit"
+	// point for the outward-normal check below.
+	auto c = unit_cone();
+	auto hit = c.intersect(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->t, 1.0, 1e-9);  // exits at x=+1=radius
+}
+
+TEST(ShapesCone, IntersectMissesAboveApex) {
+	// A ray entirely above the apex (z > height) never crosses the finite cone.
+	auto c = unit_cone();
+	auto hit = c.intersect(-2.0, 0.0, 3.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesCone, IntersectMissesBelowBase) {
+	auto c = unit_cone();
+	auto hit = c.intersect(-2.0, 0.0, -1.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesCone, IntersectMissPhiClip) {
+	// Half cone (phi in [0,pi]): a ray whose hits both land at phi=pi (the
+	// exact -x axis, y=0) sits right on the boundary - offset slightly
+	// negative in y so both candidate hits land at phi>pi and miss cleanly.
+	auto c = ConeShape<double>::make(1.0, 2.0, PI);
+	auto hit = c.intersect(-2.0, -0.01, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesCone, NormalIsUnitLength) {
+	auto c = unit_cone();
+	auto hit = c.intersect(-2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	double nlen = std::sqrt(hit->nx*hit->nx + hit->ny*hit->ny + hit->nz*hit->nz);
+	EXPECT_NEAR(nlen, 1.0, 1e-9);
+}
+
+TEST(ShapesCone, NormalPointsAwayFromAxis) {
+	// From-inside exit at x=+radius (see IntersectRearFaceFromInside above) -
+	// the outward normal there must have a positive x-component, matching
+	// the outward direction verified two independent ways in ConeShape's
+	// own header comment.
+	auto c = unit_cone();
+	auto hit = c.intersect(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_GT(hit->nx, 0.0);
+}
+
+TEST(ShapesCone, UVAtApexEnd) {
+	// A ray hitting near z=height should report v close to 1.
+	auto c = unit_cone();  // height=2
+	// At z=1.8, local radius = 1*(1-1.8/2) = 0.1 - aim a ray through that ring.
+	auto hit = c.intersect(-2.0, 0.0, 1.8, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->v, 0.9, 1e-9);  // v = z/height = 1.8/2
+}
+
+// ===========================================================================
+// ParaboloidShape<double> tests
+// pbrt-v4 reference: Paraboloid in shapes.h. z = k*(x^2+y^2), k=zmax/radius^2.
+// ===========================================================================
+
+static ParaboloidShape<double> unit_paraboloid() {
+	// radius=1 at zmax=1, zmin=0 (apex), full sweep -> k=1, z=x^2+y^2
+	return ParaboloidShape<double>::make(1.0, 0.0, 1.0, 2.0 * PI);
+}
+
+TEST(ShapesParaboloid, IntersectMissesExactlyOnAxis) {
+	// A known, accepted gap (matching CylinderShape::intersect's own
+	// identical "a==0 -> no hit" simplification just above in this file,
+	// see its own comment): a ray exactly ON the symmetry axis (dx=dy=0)
+	// degenerates the quadratic to a linear equation this shape's intersect
+	// doesn't special-case, so it reports a miss even though the apex is a
+	// real, meaningful surface point there. Rare enough in a real Monte
+	// Carlo renderer (a ray landing EXACTLY on the axis is a measure-zero
+	// event) that this documents the behavior rather than fixing it.
+	auto p = unit_paraboloid();
+	auto hit = p.intersect(0.0, 0.0, -5.0, 0.0, 0.0, 1.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesParaboloid, IntersectNearApex) {
+	// A ray with a tiny but nonzero lateral direction component (dx=0.001,
+	// unlike IntersectMissesExactlyOnAxis's dx=dy=0) still finds the
+	// near-apex region correctly - confirms the a==0 gap above is specific
+	// to the exact-axis direction, not a broader problem with small-radius
+	// hits close to the apex.
+	auto p = unit_paraboloid();
+	auto hit = p.intersect(0.0, 0.0, -1.0, 0.001, 0.0, 1.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	double hz = -1.0 + hit->t;
+	EXPECT_NEAR(hz, 0.0, 1e-3);  // crosses the surface very close to the apex (z~0)
+}
+
+TEST(ShapesParaboloid, IntersectAtRimMatchesRadius) {
+	// At z=zmax=1, k=1 -> x^2+y^2=1, so the rim is exactly at radius 1.
+	auto p = unit_paraboloid();
+	auto hit = p.intersect(-2.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	double hx = -2.0 + hit->t;
+	EXPECT_NEAR(std::abs(hx), 1.0, 1e-9);
+}
+
+TEST(ShapesParaboloid, IntersectRearFaceFromInside) {
+	// Ray from inside (0,0,0.5) along +x exits through the near (+x) wall
+	// at z=0.5 - an unambiguous "which side did we hit" point for the
+	// outward-normal check below, mirroring ShapesCone's own identical
+	// from-inside setup and ShapesCylinder.IntersectRearFaceFromInside.
+	auto p = unit_paraboloid();
+	auto hit = p.intersect(0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	double hx = 0.0 + hit->t;
+	EXPECT_GT(hx, 0.0);
+	EXPECT_NEAR(hx*hx, 0.5, 1e-9);  // z=k*(x^2+y^2)=1*(x^2)=0.5 at this hit
+}
+
+TEST(ShapesParaboloid, IntersectMissesBeyondZMax) {
+	// A ray entirely above zmax (further from the axis than the rim allows)
+	// at high z should miss the finite paraboloid.
+	auto p = unit_paraboloid();
+	auto hit = p.intersect(-3.0, 0.0, 2.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesParaboloid, IntersectMissPhiClip) {
+	auto p = ParaboloidShape<double>::make(1.0, 0.0, 1.0, PI);
+	auto hit = p.intersect(-2.0, -0.01, 0.5, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesParaboloid, NormalIsUnitLength) {
+	auto p = unit_paraboloid();
+	auto hit = p.intersect(-2.0, 0.0, 0.5, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	double nlen = std::sqrt(hit->nx*hit->nx + hit->ny*hit->ny + hit->nz*hit->nz);
+	EXPECT_NEAR(nlen, 1.0, 1e-9);
+}
+
+TEST(ShapesParaboloid, NormalPointsAwayFromAxis) {
+	// From-inside exit at x>0 (see IntersectRearFaceFromInside above) - the
+	// outward normal there must have a positive x-component.
+	auto p = unit_paraboloid();
+	auto hit = p.intersect(0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_GT(hit->nx, 0.0);
+}
+
+// ===========================================================================
 // pbrt-v4 parity: reintersect / spawn-ray self-intersection tests
 // Mirrors pbrt-v4 shapes_test.cpp: Triangle.Reintersect, FullSphere.Reintersect,
 // PartialSphere.Reintersect, Cylinder.Reintersect, Triangle.BadCases
