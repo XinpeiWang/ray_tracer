@@ -2011,6 +2011,13 @@ TEST(FlattenMaterialTest, MixTex1NestsAnotherMixResolvesRecursively) {
 	EXPECT_DOUBLE_EQ(s.materials[0].mixTex1Nested.color2[1], 1.0);
 	EXPECT_DOUBLE_EQ(s.materials[0].mixTex1Nested.amount, 0.25);
 	EXPECT_FALSE(warnedAbout(s, "not supported"));
+	// GPU-approximation fallback: a nested "mix" must weight by its own
+	// amount (0.25 -> 75% red, 25% green), not naively average 50/50 the
+	// way checkerboard's own nesting fallback correctly does (its two
+	// cells really do cover equal area) - see
+	// nestedProceduralAverageColor()'s own comment.
+	EXPECT_NEAR(s.materials[0].mixColor1[0], 0.75, 1e-9);
+	EXPECT_NEAR(s.materials[0].mixColor1[1], 0.25, 1e-9);
 }
 
 TEST(FlattenMaterialTest, CheckerboardTex1NestingAThirdLevelStillFallsThroughToGenericWarning) {

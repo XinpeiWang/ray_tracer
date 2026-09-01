@@ -1816,3 +1816,37 @@ TEST(PbrtCpuBuildTest, AcceleratorFallsBackToSahForAMovingSphereEvenIfRequested)
 		EXPECT_NEAR(recPlain.t, recOverride.t, 1e-9) << "t=" << t;
 	}
 }
+
+TEST(PbrtCpuBuildTest, AcceleratorNonSahRoutesAParticipatingMediumWithoutDroppingScatterEvents) {
+	// Regression test for a real bug caught by code review: the first
+	// bvh_aggregate_hittable.h design re-queried the winning primitive's
+	// hit() a SECOND time to recover the full hit_record BvhHit's slim
+	// interface can't carry. constant_medium::hit() (like grid/rgb-grid
+	// medium's own hit()) samples its scatter distance via random_double()
+	// INSIDE hit() itself - a second independent call draws a fresh random
+	// sample, so it could legitimately disagree with (or, on very roughly
+	// half of all such rays, simply fail to reproduce) the first call's
+	// result, silently punching holes through the medium. The fix caches
+	// the ORIGINAL call's own hit_record instead of re-querying - this test
+	// casts many rays guaranteed to enter a dense medium-wrapped sphere and
+	// confirms every single one still scatters, not just "most of them".
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n"
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0 0 0 ] \"rgb sigma_s\" [ 500 500 500 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.sphereCount, 1u);
+	for (int i = 0; i < 200; ++i) {
+		hit_record rec;
+		ASSERT_TRUE(b.world->hit(ray(point3(0, 0, -5), vec3(0, 0, 1)),
+								 interval(0.001, infinity), rec))
+			<< "iteration " << i << ": a sigma_s=500 medium across a "
+			   "radius-1 sphere (optical depth ~1000) must scatter on "
+			   "essentially every ray - a missed hit here means the "
+			   "medium's random free-path sample got silently re-drawn "
+			   "and lost, not that this particular ray genuinely escaped";
+	}
+}

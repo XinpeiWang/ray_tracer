@@ -16,27 +16,34 @@
 // BvhTree<T,Prim>'s own duck-typed Prim concept returns a slim BvhHit<T>
 // (t, normal[3], uv[2], prim_id) from intersect() - far less than this
 // project's own hit_record (p, normal, dpdu, dpdv, mat, t, u, v, front_face,
-// texture-footprint derivatives). HittablePrim below bridges this the
-// standard way for a slim-interface acceleration structure wrapping a
-// richer one: intersect() calls the real hittable::hit() once (to get a
-// correct t/normal/uv for the BVH's own traversal decision), and
-// bvh_aggregate_hittable::hit() below re-calls hit() a SECOND time - but
-// only on the single WINNING primitive, an O(1) primitive test, not a
-// second tree traversal - to repopulate the full hit_record. This is
-// deliberate, not accidental duplication: BvhHit has no room for
-// mat/dpdu/dpdv, and stashing them via a mutable side-channel on the shared,
-// once-built HittablePrim would be a data race across this project's
-// parallel per-scanline render threads (every thread queries the same BVH
-// concurrently).
+// texture-footprint derivatives). HittablePrim below bridges this by having
+// intersect() cache the FULL hit_record it already computed (to get a
+// correct t/normal/uv for the BVH's own traversal decision) into a
+// thread_local scratch map, keyed by this primitive's original index;
+// bvh_aggregate_hittable::hit() below looks the winning entry back up from
+// there instead of re-calling hittable::hit() a second time.
 //
-// Known, disclosed scope cut: BvhTree::intersect()'s org[3]/dir[3] signature
-// carries no ray time, so a scene with object motion blur (pbrt_flatten.h's
-// Sphere::center1 != Sphere::center) cannot be correctly routed through this
-// wrapper - pbrt_cpu_builder.h checks for this and falls back to bvh_node
-// (with a warning) rather than silently rendering a moving object frozen at
-// time 0. Modifying bvh_aggregate.h itself to thread a time parameter
-// through was deliberately avoided, to keep that already-tested,
-// self-contained template untouched.
+// A second call was the first design tried here, and is WRONG: several
+// hittables this wrapper can receive (constant_medium, grid_medium_hittable/
+// rgb_grid_medium_hittable - any pbrt MediumInterface-wrapped shape) sample a
+// free-path scattering distance via random_double() INSIDE hit() itself, so
+// a second independent call draws a fresh random sample - it can legitimately
+// return a different t (silently rendering a different scatter point than
+// what the BVH traversal decided) or fail to reproduce a hit at all (an
+// exponential free-path re-draw lands beyond the now-tightened interval on
+// roughly half of all such rays), silently punching holes through a
+// participating medium. Caching the ORIGINAL call's own result sidesteps
+// this entirely - it's simply never re-evaluated.
+//
+// thread_local, not a mutable member on the (shared, built-once) HittablePrim
+// itself, because this project's render loop traces many rays concurrently
+// across per-scanline worker threads against the SAME built BVH - a shared
+// mutable cache would be a data race. Safe as thread_local specifically
+// because this project's control flow never re-enters a hit() call on the
+// same top-level accelerator from within another one still in progress on
+// the same thread (a primary ray's world->hit() always fully returns before
+// any shadow/NEE ray for the same bounce is cast) - see the two write/read
+// sites below for the exact contract this relies on.
 //==============================================================================================
 
 #include "hittable.h"
@@ -45,15 +52,26 @@
 
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
+
+namespace bvh_aggregate_hittable_detail {
+// See this file's own top comment for why this must be thread_local and why
+// that's safe for this project's render loop. Cleared at the start of every
+// top-level bvh_aggregate_hittable::hit() call (not per-Prim-test), and
+// written to by every leaf primitive HittablePrim::intersect() actually
+// tests during that ONE traversal - at most once per original index, since a
+// built BvhTree partitions each original primitive into exactly one leaf.
+inline thread_local std::unordered_map<int, hit_record> g_lastHitCache;
+}
 
 // ---------------------------------------------------------------------------
 // HittablePrim -- BvhTree<double, Prim> duck-typed primitive wrapping one
 // shared_ptr<hittable>. original_index is assigned before build() (which
-// reorders BvhTree's own internal primitive array), so bvh_aggregate_
-// hittable::hit() can map a returned BvhHit::prim_id back to the correct
-// original object for the full-hit_record re-query - see this file's own
-// top comment.
+// reorders BvhTree's own internal primitive array), so
+// bvh_aggregate_hittable::hit() can map a returned BvhHit::prim_id back to
+// the cached full hit_record for the correct original object - see this
+// file's own top comment.
 // ---------------------------------------------------------------------------
 struct HittablePrim {
     std::shared_ptr<hittable> obj;
@@ -73,6 +91,7 @@ struct HittablePrim {
         ray r(point3(org[0], org[1], org[2]), vec3(dir[0], dir[1], dir[2]), 0.0);
         hit_record rec;
         if (!obj->hit(r, interval(t_min, t_max), rec)) return std::nullopt;
+        bvh_aggregate_hittable_detail::g_lastHitCache[original_index] = rec;
         BvhHit<double> h;
         h.t = rec.t;
         h.normal[0] = rec.normal.x(); h.normal[1] = rec.normal.y(); h.normal[2] = rec.normal.z();
@@ -81,6 +100,20 @@ struct HittablePrim {
         return h;
     }
 
+    // Required by BvhTree's Prim concept (see bvh_aggregate.h's own doc
+    // comment), but currently unreached in practice: bvh_aggregate_hittable
+    // below only ever calls tree_.intersect() (closest-hit), never
+    // tree_.intersect_p() - this project's hittable interface has no
+    // separate any-hit/shadow method for a BVH-level fast path to serve
+    // (shadow rays reuse the same hit() through shadow_ray.h). Kept for
+    // concept-completeness and in case a future caller wants the any-hit
+    // fast path; the same stochastic-hittable caveat HittablePrim::
+    // intersect()'s own top-of-file comment documents would apply here too
+    // if it ever becomes reachable (a hit found here is never cached/
+    // reused - it only reports true/false, so that specific pitfall doesn't
+    // apply to this method itself, but a caller building on top of it still
+    // could not treat "intersect_p found something at t_max" as reusable
+    // state for a later closest-hit query).
     bool intersect_p(const double org[3], const double dir[3], double t_max) const {
         ray r(point3(org[0], org[1], org[2]), vec3(dir[0], dir[1], dir[2]), 0.0);
         hit_record rec;
@@ -112,18 +145,17 @@ class bvh_aggregate_hittable : public hittable {
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
         double org[3] = {r.origin().x(), r.origin().y(), r.origin().z()};
         double dir[3] = {r.direction().x(), r.direction().y(), r.direction().z()};
+        auto& cache = bvh_aggregate_hittable_detail::g_lastHitCache;
+        cache.clear();
         auto hit = tree_.intersect(org, dir, ray_t.min, ray_t.max);
         if (!hit) return false;
-        // Re-query the single winning primitive (see this file's top comment)
-        // to repopulate the full hit_record (mat/dpdu/dpdv/p/front_face) that
-        // BvhHit's slim result can't carry - deterministic: same ray, same
-        // shape, a tight interval around the already-found root re-finds the
-        // exact same surface point.
-        if (hit->prim_id < 0 || hit->prim_id >= static_cast<int>(original_objects_.size()))
-            return false;
-        double eps = 1e-6 * (1.0 + std::abs(hit->t));
-        return original_objects_[hit->prim_id]->hit(
-            r, interval(ray_t.min, hit->t + eps), rec);
+        // The winning primitive's full hit_record was already cached by
+        // HittablePrim::intersect() above, during this same traversal - see
+        // this file's own top comment for why that beats a second call.
+        auto it = cache.find(hit->prim_id);
+        if (it == cache.end()) return false;  // should not happen
+        rec = it->second;
+        return true;
     }
 
     aabb bounding_box() const override { return bbox_; }

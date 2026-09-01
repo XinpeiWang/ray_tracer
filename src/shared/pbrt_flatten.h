@@ -546,6 +546,20 @@ struct NestedProceduralTexture {
 	std::string amountFilename;           // mix only
 };
 
+// GPU's flat-colour stand-in for a resolved NestedProceduralTexture (GPU has
+// no representation for a nested procedural entry - see Material::
+// checkerTex1Nested's own comment). A plain 50/50 average is exactly right
+// for "checkerboard" (its two cells cover equal area by construction), but
+// would silently ignore "mix"'s own amount - weight by it instead, unless
+// amount itself is texture-bound (amountFilename set), where there's no
+// single per-point value available at flatten() time to weight by, so 50/50
+// is the best available approximation, same as it is for checkerboard.
+inline void nestedProceduralAverageColor(const NestedProceduralTexture &n, double out[3]) {
+	const double w = (n.kind == "mix" && n.amountFilename.empty()) ? n.amount : 0.5;
+	for (int i = 0; i < 3; ++i)
+		out[i] = (1.0 - w) * n.color1[i] + w * n.color2[i];
+}
+
 struct Material {
 	MaterialKind kind = MaterialKind::Diffuse;
 	std::string pbrtType;              // as written, for diagnostics
@@ -1418,6 +1432,14 @@ struct FlatScene {
 	// unchanged; only an explicit "middle"/"equal"/"hlbvh" routes through
 	// BvhTree<double,...> instead (bvh_aggregate_hittable.h).
 	std::string acceleratorSplitMethod = "sah";
+	// NOTE: BvhTree<T,Prim>::build() (src/shared/bvh_aggregate.h, untouched
+	// by this loader) only actually consults max_prims_in_node for "sah" and
+	// "hlbvh" - "middle"/"equal"'s own build_recursive() branches split down
+	// to exactly 1 primitive per leaf every time regardless of this value
+	// (no max_prims_ check in either branch). Real, pre-existing behavior of
+	// that already-tested class, not something this loader's wiring
+	// introduces or could easily change - passed through honestly rather
+	// than silently clamped/ignored at this layer.
 	int acceleratorMaxNodePrims = 4;
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds", resolved to a
 	// single NDC-fraction rectangle [cropX0,cropX1) x [cropY0,cropY1) in
@@ -2134,8 +2156,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 							// pattern stand-in for GPU (real GPU-side warning
 							// lives in scene_builder.cpp, matching every other
 							// CPU-real/GPU-approximated gap's own convention).
-							for (int i = 0; i < 3; ++i)
-								m.checkerColor1[i] = 0.5 * (tex1Proc.color1[i] + tex1Proc.color2[i]);
+							nestedProceduralAverageColor(tex1Proc, m.checkerColor1);
 						} else {
 							const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {1.0, 1.0, 1.0});
 							m.checkerColor1[0] = c1.x; m.checkerColor1[1] = c1.y; m.checkerColor1[2] = c1.z;
@@ -2144,8 +2165,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 							m.checkerTex2Filename = tex2Img;
 						} else if (tex2IsNested) {
 							m.checkerTex2Nested = tex2Proc;
-							for (int i = 0; i < 3; ++i)
-								m.checkerColor2[i] = 0.5 * (tex2Proc.color1[i] + tex2Proc.color2[i]);
+							nestedProceduralAverageColor(tex2Proc, m.checkerColor2);
 						} else {
 							const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {0.0, 0.0, 0.0});
 							m.checkerColor2[0] = c2.x; m.checkerColor2[1] = c2.y; m.checkerColor2[2] = c2.z;
@@ -2202,8 +2222,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 							m.mixTex1Nested = tex1Proc;
 							// See the checkerboard case's identical comment above -
 							// same GPU-approximation, same reason.
-							for (int i = 0; i < 3; ++i)
-								m.mixColor1[i] = 0.5 * (tex1Proc.color1[i] + tex1Proc.color2[i]);
+							nestedProceduralAverageColor(tex1Proc, m.mixColor1);
 						} else {
 							const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {0.0, 0.0, 0.0});
 							m.mixColor1[0] = c1.x; m.mixColor1[1] = c1.y; m.mixColor1[2] = c1.z;
@@ -2212,8 +2231,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 							m.mixTex2Filename = tex2Img;
 						} else if (tex2IsNested) {
 							m.mixTex2Nested = tex2Proc;
-							for (int i = 0; i < 3; ++i)
-								m.mixColor2[i] = 0.5 * (tex2Proc.color1[i] + tex2Proc.color2[i]);
+							nestedProceduralAverageColor(tex2Proc, m.mixColor2);
 						} else {
 							const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {1.0, 1.0, 1.0});
 							m.mixColor2[0] = c2.x; m.mixColor2[1] = c2.y; m.mixColor2[2] = c2.z;
