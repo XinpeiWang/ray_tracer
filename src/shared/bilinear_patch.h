@@ -678,11 +678,32 @@ struct BilinearPatchShape {
         bool hit = blp_intersect(ro, rd, (float)t_max, sq00, sq10, sq01, sq11, &h);
         if (!hit || (T)h.t < t_min || (T)h.t > t_max) return {};
         float u = h.u, v = h.v;
-        // Compute normal at (u,v)
+        // Compute normal at (u,v). Returned RAW (the true analytic
+        // cross(dpdu,dpdv) sign, not force-oriented toward the ray) -
+        // callers that need a one-sided front_face determination (CPU's
+        // hit_record::set_face_normal, which computes
+        // front_face = dot(ray_dir, outward_normal) < 0 from exactly this
+        // value) need the genuine, un-oriented outward normal to do that
+        // correctly; force-flipping it here first would make front_face
+        // trivially always true, since the normal would then always already
+        // oppose the ray by construction. This previously DID force-orient
+        // toward the ray (a leftover from this shape's initial port, not a
+        // deliberate two-sided-shading requirement - no other shared shape
+        // in this codebase does this, and both GPU backends' own
+        // independent bilinear-patch closest-hit code already derives
+        // front_face from the raw cross(dpdu,dpdv) normal, matching the
+        // fix here), which made a one-sided (twosided=false, pbrt-v4's own
+        // default) AreaLightSource on a bilinearmesh render as if it were
+        // two-sided on CPU - front_face never came out false, so
+        // diffuse_light::emitted()'s one-sided gate never fired. Ordinary
+        // two-sided diffuse shading is unaffected either way: set_face_normal
+        // still flips this raw normal to face the ray itself
+        // (normal = front_face ? outward_normal : -outward_normal), the
+        // same "shading normal always opposes the ray" result this used to
+        // produce directly - only front_face itself changes from "always
+        // true" to "genuinely reflects which side was hit".
         T nnx,nny,nnz;
         outward_normal((T)u,(T)v, nnx,nny,nnz);
-        // Orient normal toward ray origin
-        if (nnx*rdx+nny*rdy+nnz*rdz > T(0)) { nnx=-nnx; nny=-nny; nnz=-nnz; }
         return ShapeHit<T>{(T)h.t, nnx,nny,nnz, (T)u,(T)v};
     }
 
