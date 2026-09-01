@@ -138,6 +138,16 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	}
 	if (scene_desc->build_punct)
 		out_cam.punct_lights = scene_desc->build_punct();
+	// out_cam.camera_medium is deliberately NOT wired here either, same
+	// "warn rather than silently drop" precedent as the portal-light case
+	// just above - see camera::camera_medium's own comment (camera.h) for
+	// why this is ray_color() (default path tracer) only.
+	if (scene_desc->build_camera_medium && scene_desc->build_camera_medium()) {
+		std::cerr << "Warning: scene '" << scene_id << "' has a camera medium (MediumInterface "
+		             "declared before the Camera directive), which is not supported under "
+		             "--bdpt/--mlt - the scene will render without it; use the default path "
+		             "tracer instead if the ambient fog matters for this render.\n";
+	}
 
 	return scene_desc;
 }

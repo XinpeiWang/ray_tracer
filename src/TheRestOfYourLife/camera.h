@@ -22,6 +22,7 @@
 #include "../shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData<double>
 #include "punctual_light_objects.h"
 #include "shadow_ray.h"
+#include "constant_medium.h"   // ambient_medium - see camera::camera_medium's own comment
 #include "../shared/animated_transform.h"
 #include "../shared/path_sampler.h"
 #include "../shared/sobol_sampler.h"
@@ -177,6 +178,14 @@ class camera {
     // when this is null.
     shared_ptr<PortalImageInfiniteLightData<double>> portal;
     shared_ptr<punctual_light_list> punct_lights; // pbrt-v4 PointLight/SpotLight/DistantLight (delta); nullptr = none
+    // pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own
+    // comment, pbrt_flatten.h) - an unbounded homogeneous medium the camera
+    // itself starts inside, no bounding shape needed. nullptr = none (the
+    // pre-existing default for every scene that doesn't request this).
+    // ray_color() only (see ambient_medium's own scope comment,
+    // constant_medium.h) - ray_color_spectral()/BDPT/MLT/SPPM don't read
+    // this field at all yet.
+    shared_ptr<ambient_medium> camera_medium;
 
     double vfov     = 90;              // Vertical view angle (field of view)
     point3 lookfrom = point3(0,0,0);   // Point camera is looking from
@@ -1153,10 +1162,36 @@ class camera {
                 render_stats::bounce_rays().fetch_add(1, std::memory_order_relaxed);
 
             hit_record rec;
+            bool hit_something = world.hit(current_ray, interval(0.001, infinity), rec);
+
+            // pbrt-v4's own "camera medium" (camera::camera_medium's own
+            // comment) - an unbounded ambient medium the camera itself
+            // starts inside. Tested here, AFTER world.hit() already ran, so
+            // its own free-path sample can be correctly clipped to whatever
+            // real surface (or infinity, for an escaped ray) is already
+            // known to be the nearest thing in front of it - see
+            // ambient_medium's own comment (constant_medium.h) for why this
+            // can't just be one more entry in world's own BVH/hittable_list.
+            // Applies on every bounce, not just the primary ray - once
+            // inside a medium that fills all of space, every ray segment of
+            // the path is inside it too (this v1 doesn't model a real exit
+            // via some other shape's own MediumInterface - see
+            // pbrt_flatten.h's own warning for that combination).
+            if (camera_medium) {
+                const double surface_t = hit_something ? rec.t : infinity;
+                hit_record medium_rec;
+                if (camera_medium->sample_scatter(current_ray, surface_t, medium_rec)) {
+                    rec = medium_rec;
+                    hit_something = true;
+                } else {
+                    const double ray_length = current_ray.direction().length();
+                    beta = clamp_throughput(beta * camera_medium->transmittance_over(surface_t * ray_length));
+                }
+            }
 
             // Miss -- query sky (HDR env map) or fall back to flat background.
             // Mirrors pbrt-v4: "Incorporate emission from infinite lights for escaped ray"
-            if (!world.hit(current_ray, interval(0.001, infinity), rec)) {
+            if (!hit_something) {
                 if (portal) {
                     // Windowed/portal infinite light - position-dependent
                     // (visibility through the finite window depends on the

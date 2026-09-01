@@ -519,6 +519,14 @@ struct BuildResult {
 	// build_punct wiring). Never empty-but-non-null: left null unless
 	// scene.punctualLights actually held something, same as `sky` above.
 	std::shared_ptr<punctual_light_list> punctLights;
+	// pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own
+	// comment, pbrt_flatten.h) - null unless the scene declared a
+	// MediumInterface before its Camera directive AND flatten() resolved
+	// it (homogeneous only, not combined with a real per-shape medium -
+	// see that field's own comment for the two scope cuts). Feeds
+	// camera_t::camera_medium (camera.h) directly, same "null = none, no
+	// existing scene's behavior changes" convention as `sky`/`portal` above.
+	std::shared_ptr<ambient_medium> cameraMedium;
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
 	std::size_t diskCount = 0;
@@ -1120,6 +1128,35 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				scene.infiniteLight.L[1] * scene.infiniteLight.scale,
 				scene.infiniteLight.L[2] * scene.infiniteLight.scale));
 		}
+	}
+
+	// ---- camera medium ------------------------------------------------------
+	// pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own
+	// comment) - already resolved by flatten() to a valid homogeneous-only,
+	// no-per-shape-medium-conflict index, or -1 if none/unsupported (both
+	// scope cuts already warned about there) - this is just the same
+	// Medium-struct-to-runtime-object construction addMediumIfPresent()
+	// below does for a per-shape medium, minus the boundary shape.
+	if (scene.cameraMediumIndex >= 0 &&
+		static_cast<std::size_t>(scene.cameraMediumIndex) < scene.media.size()) {
+		const pbrt_flatten::Medium &m = scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)];
+		// Collapsed to a scalar extinction + chromatic albedo tint, the
+		// EXACT same formula addMediumIfPresent()'s own homogeneous branch
+		// (below) uses for a per-shape medium - luminance-weighted (not a
+		// flat per-channel average), tint derived from sigma_s alone (the
+		// scattering-only single-scattering-albedo direction), Le passed
+		// RAW since ambient_medium's own constructor (mirroring
+		// constant_medium's) already does the sigma_a/sigma_t weighting.
+		const auto luminance = [](const double c[3]) {
+			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+		};
+		const double sig_a = luminance(m.sigma_a);
+		const double sig_s = luminance(m.sigma_s);
+		const color tint = (sig_s > 1e-9)
+			? color(m.sigma_s[0] / sig_s, m.sigma_s[1] / sig_s, m.sigma_s[2] / sig_s)
+			: color(1, 1, 1);
+		out.cameraMedium = std::make_shared<ambient_medium>(
+			sig_a, sig_s, tint, m.g, color(m.Le[0], m.Le[1], m.Le[2]));
 	}
 
 	// ---- punctual (delta) lights -------------------------------------------

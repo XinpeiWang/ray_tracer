@@ -505,6 +505,8 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		}
 		if (scene_desc->build_punct)
 			cam.punct_lights = scene_desc->build_punct();
+		if (scene_desc->build_camera_medium)
+			cam.camera_medium = scene_desc->build_camera_medium();
 		// Apply optional alternate camera model from scene descriptor
 		if (scene_desc->setup_camera)
 			scene_desc->setup_camera(cam);
@@ -717,6 +719,16 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		}
 		if (scene_desc->build_punct)
 			cam.punct_lights = scene_desc->build_punct();
+		// camera::camera_medium is ray_color() (default path tracer) only -
+		// see that field's own comment (camera.h) - deliberately NOT set
+		// here, same "warn rather than silently drop" precedent as the
+		// portal-light case just above.
+		if (scene_desc->build_camera_medium && scene_desc->build_camera_medium()) {
+			std::cerr << "Warning: scene '" << scene_id << "' has a camera medium (MediumInterface "
+						 "declared before the Camera directive), which is not supported under "
+						 "--sppm - the scene will render without it; use the default path tracer "
+						 "instead if the ambient fog matters for this render.\n";
+		}
 		if (scene_desc->setup_camera)
 			scene_desc->setup_camera(cam);
 

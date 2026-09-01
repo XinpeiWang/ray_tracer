@@ -370,5 +370,104 @@ class constant_medium : public hittable {
 };
 
 
+// ---------------------------------------------------------------------------
+// ambient_medium
+// An UNBOUNDED homogeneous participating medium the camera itself starts
+// inside - pbrt-v4's own "camera medium" (the MediumInterface active when
+// the Camera directive is parsed - see pbrt_scene.h's Scene::
+// cameraMediumName and pbrt_flatten.h's FlatScene::cameraMediumIndex own
+// comments for how a scene requests this). No bounding shape at all: the
+// medium simply fills all of space, exactly like real pbrt-v4's own
+// unbounded HomogeneousMedium when nothing else declares an exit.
+//
+// Deliberately NOT a hittable inserted into the scene's own BVH/
+// hittable_list: that list's traversal order isn't guaranteed to visit a
+// real nearer surface before this one, which delta-tracking needs to know
+// about up front to correctly clip its own sampled free path (an unbounded
+// medium tested "too early" could sample a scatter point past a real wall
+// that would have blocked the ray first). Instead called explicitly by
+// camera.h's ray_color() as its own top-level step, AFTER world.hit()
+// already ran, so its [0, t1] range is clipped to whatever real surface (or
+// infinity, for an escaped ray) is already known to be the nearest thing in
+// front of it - see ray_color()'s own call site comment.
+//
+// Scope (v1, this round): default CPU path tracer only (ray_color(), not
+// ray_color_spectral()/BDPT/MLT/SPPM); homogeneous only (matching this
+// loader's own "close the homogeneous case first" precedent for other
+// pbrt-v4 medium features); no shadow-ray/NEE attenuation through it yet
+// (transmittance_fn left null below, so a light behind fog through this
+// medium is not dimmed by it - only primary/bounce-ray transmission is);
+// and no true "exit" interaction with a scene that ALSO has real per-shape
+// media (pbrt_flatten.h warns about this combination rather than modeling
+// it - see that warning's own comment for why).
+// ---------------------------------------------------------------------------
+class ambient_medium {
+  public:
+    ambient_medium(double sigma_a, double sigma_s, const color& albedo, double g = 0.0,
+                   const color& Le = color(0, 0, 0))
+        : med(sigma_a, sigma_s, g) {
+        double sigma_t = sigma_a + sigma_s;
+        color ss_albedo = (sigma_t > 0) ? albedo * color(sigma_s / sigma_t,
+                                                          sigma_s / sigma_t,
+                                                          sigma_s / sigma_t)
+                                        : color(0, 0, 0);
+        color emission = (sigma_t > 0) ? Le * (sigma_a / sigma_t) : color(0, 0, 0);
+        phase_mat = make_shared<hg_phase_material>(ss_albedo, g, /*transmittance_fn=*/nullptr, emission);
+    }
+
+    // Attempts to intercept `r` with a scatter event somewhere within
+    // [0, t_max] - t_max is the ALREADY-KNOWN distance to the nearest real
+    // surface, or `infinity` for an escaped ray. Mirrors constant_medium::
+    // hit()'s own free-path sampling exactly, just without a boundary
+    // shape's own entry/exit test (t0=0, t1=t_max directly - the whole
+    // point of an unbounded medium).
+    bool sample_scatter(const ray& r, double t_max, hit_record& rec) const {
+        if (t_max <= 0) return false;
+
+        const double ray_length = r.direction().length();
+        // t_max==infinity propagates through IEEE754 arithmetic correctly
+        // here (infinity * finite ray_length == infinity) - no special
+        // case needed for the escaped-ray case, unlike transmittance_over()
+        // below (exp(-0*infinity) would be NaN for a zero-extinction
+        // channel, which this multiply doesn't have that problem).
+        const double distance_inside = t_max * ray_length;
+
+        const double hit_distance = med.sample_free_path(random_double());
+        if (hit_distance > distance_inside) return false;
+
+        rec.t = hit_distance / ray_length;
+        rec.p = r.at(rec.t);
+        rec.normal = vec3(1, 0, 0);   // arbitrary (volume has no surface normal)
+        rec.front_face = true;
+        rec.mat = phase_mat;
+        return true;
+    }
+
+    // Beer-Lambert transmittance for a free-flight segment of length
+    // `distance` (world units, already ray_length-scaled) that did NOT
+    // scatter - see constant_medium::transmittance()'s identical formula.
+    // `distance` may be `infinity` (an escaped ray that never scattered
+    // despite this being tested - only possible when sigma_t==0 for every
+    // channel, since sample_scatter() above always eventually wins for any
+    // real extinction) - guarded per-channel rather than calling exp() on
+    // an `sigma_t * infinity` product, which is NaN (0*inf) for exactly the
+    // zero-extinction channels this case requires.
+    color transmittance_over(double distance) const {
+        if (!std::isinf(distance)) {
+            double Tr_r, Tr_g, Tr_b;
+            med.transmittance(distance, Tr_r, Tr_g, Tr_b);
+            return color(Tr_r, Tr_g, Tr_b);
+        }
+        return color(med.sigma_tr() > 0 ? 0.0 : 1.0,
+                     med.sigma_tg() > 0 ? 0.0 : 1.0,
+                     med.sigma_tb() > 0 ? 0.0 : 1.0);
+    }
+
+  private:
+    HomogeneousMediumData<double> med;
+    shared_ptr<hg_phase_material> phase_mat;
+};
+
+
 #endif
 

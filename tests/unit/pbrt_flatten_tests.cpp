@@ -1100,6 +1100,74 @@ TEST(FlattenTest, RgbGridWrongArrayLengthIsDroppedWithWarning) {
 	EXPECT_TRUE(warnedAbout(s, "nebula"));
 }
 
+// ===========================================================================
+// Camera medium (pbrt-v4's "camera medium" - MediumInterface's own
+// "outside" name active when the Camera directive is parsed)
+// ===========================================================================
+
+TEST(FlattenTest, MediumInterfaceBeforeCameraSetsTheCameraMedium) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 0.2 0.2 0.2 ]\n"
+		"MediumInterface \"\" \"fog\"\n"
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_EQ(s.cameraMediumIndex, 0);
+	EXPECT_FALSE(warnedAbout(s, "camera medium"));
+}
+
+TEST(FlattenTest, NoMediumInterfaceLeavesCameraMediumUnset) {
+	const FlatScene s = flattenSource(
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n"
+		+ std::string(kQuadMesh));
+	EXPECT_EQ(s.cameraMediumIndex, -1);
+}
+
+TEST(FlattenTest, InsideNameBeforeCameraDoesNotSetTheCameraMedium) {
+	// Only "outside" (the camera's own side of the interface) counts - the
+	// same MediumInterface directive's "inside" name is irrelevant to the
+	// camera, matching real pbrt-v4's own convention.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"MediumInterface \"fog\" \"\"\n"
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n"
+		+ std::string(kQuadMesh));
+	EXPECT_EQ(s.cameraMediumIndex, -1);
+}
+
+TEST(FlattenTest, CameraMediumCombinedWithPerShapeMediumWarnsAndIsDropped) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"MediumInterface \"\" \"fog\"\n"
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(s.cameraMediumIndex, -1);
+	EXPECT_TRUE(warnedAbout(s, "camera medium"));
+	// The per-shape medium itself is unaffected by the camera-medium warning.
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_EQ(s.spheres[0].medium, 0);
+}
+
+TEST(FlattenTest, NonHomogeneousCameraMediumWarnsAndIsDropped) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"puff\" \"string type\" [ \"cloud\" ]\n"
+		"MediumInterface \"\" \"puff\"\n"
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n"
+		+ std::string(kQuadMesh));
+	EXPECT_EQ(s.cameraMediumIndex, -1);
+	EXPECT_TRUE(warnedAbout(s, "camera"));
+	EXPECT_TRUE(warnedAbout(s, "cloud"));
+}
+
 TEST(FlattenTest, RotationAloneDoesNotCountAsNonUniformScale) {
 	// A rotation leaves all three basis lengths at 1; a naive check that looked
 	// at raw matrix entries rather than their lengths would warn here.

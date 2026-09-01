@@ -1305,6 +1305,18 @@ struct FlatScene {
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
 	std::vector<Medium> media;          // parallel to Scene::media
+	// pbrt-v4's own "camera medium" - see Scene::cameraMediumIndex's own
+	// comment (pbrt_scene.h) for what this requests. -1 (the default)
+	// means none. Resolved by flatten()'s own post-pass (after every shape
+	// is built, so it can check for - and warn about - a scene that ALSO
+	// uses real per-shape media, a combination this loader doesn't model
+	// yet): homogeneous only (media[cameraMediumIndex].type must be
+	// "homogeneous" - matching this loader's own "close the homogeneous
+	// case first" precedent for other pbrt-v4 medium features), CPU only
+	// (src/TheRestOfYourLife/camera.h's ray_color() - see camera::
+	// camera_medium's own comment; ray_color_spectral()/BDPT/MLT/SPPM and
+	// both GPU backends don't consume this field at all yet).
+	int cameraMediumIndex = -1;
 	InfiniteLight infiniteLight;        // present=false if the scene has none
 	std::vector<PunctualLight> punctualLights;   // LightSource point/spot/distant/goniometric/projection
 
@@ -3840,6 +3852,49 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// build, which is worth saying: the scene will render with a hole in
 		// it rather than looking subtly wrong.
 		warn("shape '" + shape.type + "' is not supported; skipped");
+	}
+
+	// ---- camera medium resolution ------------------------------------------
+	// pbrt-v4's own "camera medium" (Scene::cameraMediumIndex's own comment,
+	// pbrt_scene.h) - scene.cameraMediumIndex is already a valid index into
+	// scene.media (resolved at parse time, same as ShapeDecl::insideMedium),
+	// and out.media mirrors scene.media 1:1 (see the "---- media ----"
+	// block's own comment above), so this is a direct copy, no second
+	// lookup needed - gated on two scope cuts specific to THIS feature
+	// (homogeneous-only, and not combined with a real per-shape medium),
+	// each warned rather than silently ignored or silently wrong.
+	if (scene.cameraMediumIndex >= 0 &&
+		static_cast<std::size_t>(scene.cameraMediumIndex) < out.media.size()) {
+		if (out.media[static_cast<std::size_t>(scene.cameraMediumIndex)].type != "homogeneous") {
+			warn("the camera's own medium (MediumInterface's \"outside\" name active "
+				 "at the Camera directive) is a \"" +
+				 out.media[static_cast<std::size_t>(scene.cameraMediumIndex)].type +
+				 "\" medium, which is not supported there yet (homogeneous only); ignored");
+		} else {
+			// A real per-shape medium ANYWHERE in the scene means this
+			// loader's own camera-medium implementation (ray_color()'s own
+			// comment, camera.h) - which treats the camera medium as a
+			// permanent, everywhere-present attenuator for the whole path,
+			// with no true "exit" when a ray passes through another
+			// medium's own boundary shape - would double-count or otherwise
+			// disagree with that shape's own medium there. Warn and skip
+			// rather than silently render an approximation nobody asked
+			// for; a scene that genuinely only wants the ambient fog (the
+			// common, motivating case for this feature) is unaffected.
+			bool hasShapeMedium = false;
+			for (const Sphere &s : out.spheres) if (s.medium >= 0) { hasShapeMedium = true; break; }
+			for (const Disk &d : out.disks) if (!hasShapeMedium && d.medium >= 0) { hasShapeMedium = true; break; }
+			for (const Cylinder &c : out.cylinders) if (!hasShapeMedium && c.medium >= 0) { hasShapeMedium = true; break; }
+			if (hasShapeMedium) {
+				warn("the scene declares both a camera medium (MediumInterface's "
+					 "\"outside\" name active at the Camera directive) and at least "
+					 "one real per-shape medium; combining the two is not supported "
+					 "yet, so the camera medium is ignored (the per-shape media "
+					 "still render normally)");
+			} else {
+				out.cameraMediumIndex = scene.cameraMediumIndex;
+			}
+		}
 	}
 
 	// ---- area light "power" resolution ------------------------------------

@@ -467,6 +467,33 @@ TEST(PbrtCpuBuildTest, MediumInterfaceWrapsTheSphereInAParticipatingMedium) {
 		<< "a ray toward the medium-wrapped sphere should still hit something";
 }
 
+TEST(PbrtCpuBuildTest, CameraMediumIsBuiltFromTheResolvedIndex) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"haze\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.01 0.01 0.01 ] \"rgb sigma_s\" [ 0.04 0.04 0.04 ]\n"
+		"MediumInterface \"\" \"haze\"\n"
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_TRUE(b.cameraMedium != nullptr);
+	// sample_scatter() should eventually intercept a ray traveling toward
+	// infinity (no real surface in front of it) - sigma_t=0.05 makes this
+	// happen with overwhelming probability well before t=1e6.
+	ray r(point3(0, 0, 0), vec3(0, 0, -1));
+	hit_record rec;
+	EXPECT_TRUE(b.cameraMedium->sample_scatter(r, 1e6, rec))
+		<< "an unbounded medium with real extinction should (almost) always "
+		   "scatter a long ray before it escapes";
+}
+
+TEST(PbrtCpuBuildTest, NoCameraMediumWithoutMediumInterfaceBeforeCamera) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	EXPECT_TRUE(b.cameraMedium == nullptr);
+}
+
 TEST(PbrtCpuBuildTest, EmissiveMediumWrapsTheSphereAndStaysReachable) {
 	// "rgb Le"/"float Lescale" - same "builds, geometry stays reachable"
 	// bar as MediumInterfaceWrapsTheSphereInAParticipatingMedium above; the

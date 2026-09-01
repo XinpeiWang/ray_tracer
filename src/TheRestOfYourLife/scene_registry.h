@@ -159,6 +159,18 @@ struct SceneDescriptor {
     // every existing hand-built scene's positional initializer list
     // referring to the same members it always did.
     std::string recommended_light_sampler;
+
+    // pbrt-v4's own "camera medium" (see pbrt_flatten::FlatScene::
+    // cameraMediumIndex's own comment for what this requests, and
+    // camera_t::camera_medium's own comment, camera.h, for what consumes
+    // it) - nullptr unless the loaded scene declared a MediumInterface
+    // before its Camera directive (see pbrt_cpu_builder.h's BuildResult::
+    // cameraMedium comment). Deliberately LAST, same positional-brace-init
+    // fragility reasoning as every other field added here after the
+    // struct's own initial fields - every hand-built scene above leaves
+    // this at its default (empty std::function = nullptr), since none of
+    // them are pbrt-loaded camera-medium scenes.
+    std::function<std::shared_ptr<ambient_medium>()> build_camera_medium;
 };
 
 // Dummy sphere light used by scenes that have no explicit light geometry
@@ -304,6 +316,13 @@ namespace pbrt_scene_registry {
         s.build_punct = [ensure]() -> std::shared_ptr<punctual_light_list> {
             pbrt_cpu::BuildResult& b = ensure();
             return b.punctLights;
+        };
+        // nullptr unless the file declared a MediumInterface before its
+        // Camera directive - see pbrt_cpu_builder.h's build() for how
+        // b.cameraMedium gets populated.
+        s.build_camera_medium = [ensure]() -> std::shared_ptr<ambient_medium> {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.cameraMedium;
         };
 
         // CameraConfig cannot express an up vector, but pbrt's LookAt can,

@@ -4560,6 +4560,17 @@ static bool build_loaded_pbrt_scene(
 		}
 	}
 
+	// pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own
+	// comment, pbrt_flatten.h) - CPU-only, default path tracer only (see
+	// camera::camera_medium's own comment, camera.h) - GPU (both backends)
+	// doesn't consume this field at all yet.
+	if (loaded.scene.cameraMediumIndex >= 0) {
+		std::cerr << "[OptiX] Warning: scene has a camera medium (MediumInterface declared "
+					 "before the Camera directive), which is not supported on GPU - the scene "
+					 "will render without it; use --cpu (the default path tracer) instead if "
+					 "the ambient fog matters for this render.\n";
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

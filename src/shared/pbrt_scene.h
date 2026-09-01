@@ -361,6 +361,18 @@ struct Scene {
 	// library meant only to be Include'd) that happens to parse cleanly -
 	// see pbrt_discover.h's scanDirectory(), the only reader of this field.
 	bool cameraDeclared = false;
+	// pbrt-v4's own "camera medium" - the MediumInterface's "outside" name
+	// active at the moment the Camera directive is parsed becomes the
+	// medium every primary ray starts already immersed in (real pbrt-v4:
+	// BasicSceneBuilder::Camera() captures graphicsState.currentOutsideMedium).
+	// An UNBOUNDED medium - no bounding shape needed at all, unlike every
+	// other medium use in this loader (Sphere/Disk/Cylinder::medium, all
+	// shape-anchored) - see FlatScene::cameraMediumIndex's own comment
+	// (pbrt_flatten.h) for the render-side implementation this feeds.
+	// Index into `media` below, -1 = none (the default - every scene that
+	// doesn't declare a MediumInterface before its Camera directive keeps
+	// this at -1, unchanged behavior).
+	int cameraMediumIndex = -1;
 	int xResolution = 1280;
 	int yResolution = 720;
 	std::string filmFilename;
@@ -623,6 +635,10 @@ struct GraphicsState {
 	int materialIndex = -1;
 	int areaLightIndex = -1;
 	int insideMedium = -1;      // set by MediumInterface, inherited by Shape
+	// set by MediumInterface, captured by a Camera directive as the
+	// camera's own ambient medium (Scene::cameraMediumIndex's own comment) -
+	// unlike insideMedium above, never inherited by a Shape.
+	int outsideMedium = -1;
 	bool reverseOrientation = false;
 	// ColorSpace directive's chosen working color space name - scoped by
 	// AttributeBegin/AttributeEnd exactly like every other field here
@@ -973,6 +989,10 @@ private:
 
 		if (d == "Camera") {
 			s_.cameraDeclared = true;
+			// See Scene::cameraMediumIndex's own comment - matches real
+			// pbrt-v4's BasicSceneBuilder::Camera() capturing
+			// graphicsState.currentOutsideMedium at exactly this point.
+			s_.cameraMediumIndex = gs_.outsideMedium;
 			if (pos_ < t_.size() && t_[pos_].quoted) { s_.cameraType = t_[pos_].text; ++pos_; }
 			s_.cameraParams = readParams();
 			// pbrt-v4 builtin: "camera" always names the CTM in effect at the
@@ -1075,18 +1095,26 @@ private:
 		if (d == "MediumInterface") {
 			// Two consecutive quoted names - "inside" "outside" - not a
 			// "type name" param list. An empty string names vacuum (pbrt's
-			// own convention); only "inside" is tracked (see ShapeDecl::
-			// insideMedium's comment on why "outside" is out of scope).
-			std::string insideName;
+			// own convention). "outside" is now also tracked (gs_.
+			// outsideMedium) - real pbrt-v4 captures exactly this value at
+			// the moment a Camera directive is parsed as the camera's own
+			// ambient medium (see the Camera directive handler's own
+			// comment, and Scene::cameraMediumIndex's) - it was unused
+			// before that feature existed.
+			std::string insideName, outsideName;
 			if (pos_ < t_.size() && t_[pos_].quoted) { insideName = t_[pos_].text; ++pos_; }
-			if (pos_ < t_.size() && t_[pos_].quoted) { ++pos_; }   // outside name, unused
-			int found = -1;
-			for (std::size_t i = 0; i < s_.media.size(); ++i)
-				if (s_.media[i].name == insideName) found = static_cast<int>(i);
-			if (!insideName.empty() && found < 0)
-				warn(line, "MediumInterface names '" + insideName +
-					 "', which was never declared by MakeNamedMedium; treated as vacuum");
-			gs_.insideMedium = found;
+			if (pos_ < t_.size() && t_[pos_].quoted) { outsideName = t_[pos_].text; ++pos_; }
+			auto resolve = [&](const std::string &name) -> int {
+				int found = -1;
+				for (std::size_t i = 0; i < s_.media.size(); ++i)
+					if (s_.media[i].name == name) found = static_cast<int>(i);
+				if (!name.empty() && found < 0)
+					warn(line, "MediumInterface names '" + name +
+						 "', which was never declared by MakeNamedMedium; treated as vacuum");
+				return found;
+			};
+			gs_.insideMedium = resolve(insideName);
+			gs_.outsideMedium = resolve(outsideName);
 			return true;
 		}
 		if (d == "LightSource" || d == "AreaLightSource") {
