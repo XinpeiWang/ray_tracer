@@ -1809,6 +1809,43 @@ TEST(FlattenMaterialTest, DielectricEtaIsReadAsIor) {
 	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.33);
 }
 
+TEST(FlattenMaterialTest, DielectricNamedGlassSpectrumResolvesToKnownIor) {
+	// "spectrum eta" "glass-BK7" previously fell straight through to the
+	// generic 1.5 default with NO warning at all (getFloat() only inspects
+	// numbers, and a named-spectrum Param has none) - now resolves to the
+	// real N-BK7 catalog value.
+	const FlatScene s = flattenSource(
+		"Material \"dielectric\" \"spectrum eta\" [ \"glass-BK7\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].ior, 1.5168, 1e-4);
+	EXPECT_FALSE(warnedAbout(s, "eta"));
+}
+
+TEST(FlattenMaterialTest, ThinDielectricAndCoatedDiffuseAlsoResolveNamedGlass) {
+	const FlatScene sThin = flattenSource(
+		"Material \"thindielectric\" \"spectrum eta\" [ \"glass-SF11\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(sThin.materials.size(), 1u);
+	// pbrt-v4's real registered name drops the "S" from Schott's SF-series
+	// ("glass-F11", not "glass-SF11") - this is a genuinely unrecognized
+	// name and should warn + fall back, exercising the "not a recognized
+	// preset" branch rather than a typo in this test.
+	EXPECT_DOUBLE_EQ(sThin.materials[0].ior, 1.5);
+	EXPECT_TRUE(warnedAbout(sThin, "unrecognized glass"));
+
+	const FlatScene sCoated = flattenSource(
+		"Material \"coateddiffuse\" \"spectrum eta\" [ \"glass-F11\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(sCoated.materials.size(), 1u);
+	EXPECT_NEAR(sCoated.materials[0].ior, 1.7847, 1e-4);
+}
+
+TEST(FlattenMaterialTest, DielectricUnrecognizedNamedSpectrumWarnsAndFallsBack) {
+	const FlatScene s = flattenSource(
+		"Material \"dielectric\" \"spectrum eta\" [ \"not-a-real-spectrum\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.5);
+	EXPECT_TRUE(warnedAbout(s, "not a recognized glass preset"));
+}
+
 TEST(FlattenMaterialTest, InterfaceMaterialNoneMapsToInterfaceKind) {
 	// pbrt-v4's real interface-material idiom (a shape bounding a
 	// participating medium with no BSDF response of its own) - previously

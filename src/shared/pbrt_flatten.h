@@ -34,6 +34,7 @@
 #include "pbrt_scene.h"
 #include "loop_subdivide.h"
 #include "conductor_data.h"
+#include "glass_data.h"
 #include "spectrum_types.h"   // BlackbodySpectrum - see resolveEmissionColor()'s own comment
 #include "spectral_math.h"    // SpectrumToXYZ/InnerProduct/GetCIE_Y - ditto
 #include "rgb_colorspace.h"   // RGBColorSpaceFromName() - ditto
@@ -820,6 +821,17 @@ inline std::string conductorElementFromSpectrumName(const std::string &name) {
 		}
 	}
 	return "";
+}
+
+// Extracts "BK7" from pbrt-v4's "glass-BK7" named-spectrum convention (the
+// only shape a dielectric's "spectrum eta" uses - see glass_data.h's own
+// comment for the full 7-name list pbrt-v4 actually recognizes). Returns ""
+// for anything that doesn't start with "glass-" at all (an explicit float
+// eta, or a non-glass named spectrum).
+inline std::string glassElementFromSpectrumName(const std::string &name) {
+	const std::string prefix = "glass-";
+	if (name.rfind(prefix, 0) != 0) return "";
+	return name.substr(prefix.size());
 }
 
 // Resolves an emission-colour parameter (pbrt-v4's "L" on AreaLightSource/
@@ -2021,6 +2033,39 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// entirely - see interface_material's own comment
 		// (material_simple.h) for why it's a real pass-through, not a
 		// near-1-eta Dielectric.
+
+		// Dielectric/ThinDielectric/CoatedDiffuse: pbrt-v4 conventionally
+		// describes a dielectric's IOR via "spectrum eta" bound to a NAMED
+		// glass ("glass-BK7" etc.), not the plain float getFloat() above can
+		// read - getFloat() only inspects a Param's `numbers`, and a named-
+		// spectrum Param has none, so this previously fell through to the
+		// generic 1.5 default with NO warning at all (worse than this
+		// loader's usual "unrecognized -> fallback + warn" convention,
+		// since 1.5 happens to look plausible for glass and gives no signal
+		// anything was ignored). getString() only inspects `strings`, so
+		// this is safe to call even when "eta" turns out to be a plain
+		// float instead - it just won't find one there. Mirrors
+		// conductorElementFromSpectrumName()'s own pattern above.
+		if (m.kind == MaterialKind::Dielectric || m.kind == MaterialKind::ThinDielectric ||
+			m.kind == MaterialKind::CoatedDiffuse) {
+			const std::string etaName = md.params.getString("eta", "");
+			if (!etaName.empty()) {
+				const std::string glass = glassElementFromSpectrumName(etaName);
+				if (!glass.empty()) {
+					if (const GlassPreset *preset = FindGlassPreset(glass.c_str())) {
+						m.ior = preset->nd;
+					} else {
+						warn("material '" + md.type + "' names an unrecognized glass "
+							 "\"" + etaName + "\" for \"spectrum eta\"; eta=" +
+							 std::to_string(m.ior) + " is used instead");
+					}
+				} else {
+					warn("material '" + md.type + "' binds \"eta\" to the named spectrum "
+						 "\"" + etaName + "\", which is not a recognized glass preset; eta=" +
+						 std::to_string(m.ior) + " is used instead");
+				}
+			}
+		}
 
 		// Conductor OR CoatedConductor: pbrt describes a conductor's complex
 		// IOR via "spectrum eta"/"spectrum k" bound to a NAMED spectrum
