@@ -184,6 +184,125 @@ TEST(FlattenTest, AreaLightFilenameAndTwoSidedDefaultToUnsetAndFalse) {
 	EXPECT_FALSE(s.areaLights[0].twoSided);
 }
 
+// "float power" (total emitted radiometric power Phi, watts) - an
+// alternative to specifying L directly. Each test below picks a power value
+// engineered to reproduce the same DEFAULT scale=1.0 an equivalent
+// power-free light already gets (see each formula's own comment) - a light
+// whose "power" input round-trips back to no scale change is a strong,
+// exactly-checkable correctness signal, not just "some scale got applied".
+TEST(FlattenTest, AreaLightPowerConvertsToScaleForUnitQuad) {
+	// area=1 (kQuadMesh is a unit square), twoSided=false, L defaults to
+	// (1,1,1) (luminance 1.0) - Phi = L*pi*area*1 = pi, so power=pi should
+	// reproduce scale=1.0 exactly, matching a power-free light's own default.
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n  AreaLightSource \"diffuse\" \"float power\" [ 3.14159265358979323846 ]\n")
+		+ kQuadMesh + "AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_TRUE(s.areaLights[0].hasPower);
+	EXPECT_NEAR(s.areaLights[0].scale, 1.0, 1e-9);
+}
+
+TEST(FlattenTest, AreaLightPowerScalesLinearlyWithArea) {
+	// Two adjacent unit quads sharing one area light (area=2) - the same
+	// power now spreads over twice the area, so achieving Phi=pi with twice
+	// the area needs half the scale (an L held fixed at 1.0 over 2x the
+	// area would emit 2x the naive-default Phi, so power=pi should now
+	// halve scale instead of leaving it at 1.0 - a check that area is
+	// really SUMMED across every shape under one areaLight index, not just
+	// read from the first).
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n  AreaLightSource \"diffuse\" \"float power\" [ 3.14159265358979323846 ]\n")
+		+ kQuadMesh +
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"  \"point3 P\" [ 1 0 0  2 0 0  2 1 0  1 1 0 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_NEAR(s.areaLights[0].scale, 0.5, 1e-9);
+}
+
+TEST(FlattenTest, AreaLightPowerHonoursTwoSidedAndExistingLColour) {
+	// twoSided doubles the area term (kE = pi*area*2), and the scale is
+	// normalized by L's own relativeLuminance() (0.2126*2 = 0.4252 for pure
+	// red at 2.0) before being scaled to hit the requested power - the same
+	// "normalize by luminance, then scale to the target" composition used
+	// for point/spot (see relativeLuminance()'s own comment for why: it
+	// keeps a power-driven light's brightness independent of how bright L
+	// happened to be typed in as). L's own colour RATIO should survive
+	// unmodified - only `scale` changes.
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n  AreaLightSource \"diffuse\" \"rgb L\" [ 2 0 0 ]"
+					" \"bool twosided\" [ true ] \"float power\" [ 3.14159265358979323846 ]\n")
+		+ kQuadMesh + "AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	// kE = pi*area(1)*2 = 2*pi; lum(2,0,0) = 0.4252;
+	// scale = (power/kE)/lum = (pi/(2*pi))/0.4252 = 1.1759172154280337.
+	EXPECT_NEAR(s.areaLights[0].scale, 1.1759172154280337, 1e-9);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].L[0], 2.0);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].L[1], 0.0);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].L[2], 0.0);
+}
+
+TEST(FlattenTest, AreaLightPowerOnDiskWarnsAndLeavesScaleUnchanged) {
+	// Disk/Cylinder area (unlike Sphere) are never baked to world space -
+	// see Disk/Cylinder's own struct comment - so this loader deliberately
+	// doesn't attempt a world-space area for them; "power" on one should
+	// warn and fall back to scale=1.0 (as given) rather than silently
+	// mis-stating the light's total output.
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"float power\" [ 10 ]\n"
+		"  Shape \"disk\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].scale, 1.0);
+	EXPECT_TRUE(warnedAbout(s, "area light \"power\""));
+}
+
+TEST(FlattenTest, PointLightPowerConvertsToIntensityScale) {
+	// I = Phi/(4*pi); with the default I=(1,1,1) (luminance 1.0),
+	// power=4*pi should reproduce scale=1.0 exactly - the same value a
+	// power-free point light already defaults to.
+	const FlatScene s = flattenSource(
+		"LightSource \"point\" \"float power\" [ 12.566370614359172 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_NEAR(s.punctualLights[0].scale, 1.0, 1e-9);
+}
+
+TEST(FlattenTest, SpotLightPowerConvertsToIntensityScale) {
+	// Default coneangle=30/conedeltaangle=5 (falloffStart=25) closed-form
+	// kE = 2*pi*((1-cos25)+(cos25-cos30)/2) = 0.7152363751826972 - power
+	// set to exactly that should reproduce scale=1.0, the pre-existing
+	// power-free default.
+	const FlatScene s = flattenSource(
+		"LightSource \"spot\" \"float power\" [ 0.7152363751826972 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_NEAR(s.punctualLights[0].scale, 1.0, 1e-8);
+}
+
+TEST(FlattenTest, DistantLightPowerWarnsAndIsIgnored) {
+	const FlatScene s = flattenSource(
+		"LightSource \"distant\" \"float power\" [ 10 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].scale, 1.0);
+	EXPECT_TRUE(warnedAbout(s, "distant light \"power\""));
+}
+
+TEST(FlattenTest, GoniometricLightPowerWarnsAndIsIgnored) {
+	const FlatScene s = flattenSource(
+		"LightSource \"goniometric\" \"float power\" [ 10 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].scale, 1.0);
+	EXPECT_TRUE(warnedAbout(s, "goniometric light \"power\""));
+}
+
+TEST(FlattenTest, ProjectionLightPowerWarnsAndIsIgnored) {
+	const FlatScene s = flattenSource(
+		"LightSource \"projection\" \"string filename\" [ \"slide.png\" ] \"float power\" [ 10 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].scale, 1.0);
+	EXPECT_TRUE(warnedAbout(s, "projection light \"power\""));
+}
+
 // ===========================================================================
 // Spheres
 // ===========================================================================

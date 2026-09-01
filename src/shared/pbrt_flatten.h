@@ -185,6 +185,20 @@ inline bool isNonzeroRGB(const double v[3]) {
 	return v[0] > kEps || v[1] > kEps || v[2] > kEps;
 }
 
+// Perceptual (Rec. 709) luminance of an RGB triple - the same weights
+// power_light_sampler.h documents as its own stand-in for a full spectral
+// SpectrumToPhotometric conversion. Real pbrt-v4 normalizes a light's
+// "power" parameter by exactly this quantity (computed from the light's
+// own colour/spectrum) before scaling to the requested total power - see
+// PointLight::Create/SpotLight::Create/DiffuseAreaLight::Create - so a
+// power-driven light's brightness doesn't also depend on how bright its L/I
+// happened to be typed in as. Falls back to 1.0 (unweighted) for a literal
+// black input, which has no ratio worth preserving.
+inline double relativeLuminance(const double c[3]) {
+	const double lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+	return (lum > 1e-9) ? lum : 1.0;
+}
+
 // MakeNamedMedium "homogeneous" - a constant-density participating medium.
 // pbrt-v4's real HomogeneousMedium is per-channel RGB sigma_a/sigma_s; both
 // builders' actual medium primitive (src/TheRestOfYourLife/constant_medium.h,
@@ -873,6 +887,20 @@ struct Emission {
 	// regardless of what the scene asked for. false (default) preserves
 	// that exact pre-existing one-sided behavior.
 	bool twoSided = false;
+
+	// pbrt-v4's "power" (total emitted radiometric power Phi, watts) - an
+	// alternative to specifying L directly. hasPower distinguishes "power
+	// was given" from the real default of 0.0. Unlike the punctual lights'
+	// own "power" (resolved immediately at parse time, into `scale`), an
+	// area light's Phi = L * pi * area * (twoSided ? 2 : 1) needs the
+	// attached shape's surface area - and AreaLightSource is declared
+	// BEFORE the Shape it attaches to in pbrt syntax, so area isn't known
+	// yet here. `power` is carried through as-is and resolved into `scale`
+	// by flatten()'s own post-pass, once every shape (and hence every area
+	// light's total attached area) has been built - see that pass's own
+	// comment for the formula.
+	bool hasPower = false;
+	double power = 0.0;
 };
 
 // LightSource "infinite" - a scene's environment/sky light. This is the one
@@ -2607,6 +2635,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			const pbrt_scene::Vec3 I = resolveEmissionColor(ld.params, "I", pbrt_scene::Vec3{1, 1, 1}, RGBColorSpaceFromName(ld.colorSpaceName));
 			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
 			pl.scale = ld.params.getFloat("scale", 1.0);
+			// pbrt-v4's "power" (total emitted Phi, watts): an isotropic point
+			// source radiates over the full 4*pi sphere, so I = Phi/(4*pi) -
+			// matching PointLight::Create exactly, up to the RGB-luminance
+			// stand-in relativeLuminance() uses for its spectral normalization
+			// (see that function's own comment). Multiplies into `scale`
+			// rather than replacing it, so a scene giving both "power" and
+			// "scale" gets both, the same composition pbrt-v4 itself performs.
+			if (const pbrt_scene::Param *p = ld.params.find("power")) {
+				if (!p->numbers.empty()) {
+					const double phi = p->numbers[0];
+					pl.scale *= (phi / (4.0 * 3.14159265358979323846)) / relativeLuminance(pl.intensity);
+				}
+			}
 			out.punctualLights.push_back(pl);
 			continue;
 		}
@@ -2646,6 +2687,25 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// clamping to 0 here used to produce.
 			const double delta = ld.params.getFloat("conedeltaangle", 5.0);
 			pl.falloffStartAngleDeg = pl.coneAngleDeg - delta;
+			// pbrt-v4's "power" (total emitted Phi, watts): SpotLight::Create's
+			// own closed-form integral of the cone's falloff region, treating
+			// it as contributing half its solid angle on average -
+			// Phi = 2*pi*I*((1-cosFalloffStart) + (cosFalloffStart-cosFalloffEnd)/2)
+			// - inverted for I here exactly like the point-light case just
+			// above (same relativeLuminance() stand-in, same "multiplies into
+			// scale" composition with an explicit "scale" param).
+			if (const pbrt_scene::Param *p = ld.params.find("power")) {
+				if (!p->numbers.empty()) {
+					const double phi = p->numbers[0];
+					const double cosFalloffStart = std::cos(pl.falloffStartAngleDeg * 3.14159265358979323846 / 180.0);
+					const double cosFalloffEnd = std::cos(pl.coneAngleDeg * 3.14159265358979323846 / 180.0);
+					const double kE = 2.0 * 3.14159265358979323846 *
+						((1.0 - cosFalloffStart) + (cosFalloffStart - cosFalloffEnd) * 0.5);
+					if (std::fabs(kE) > 1e-12) {
+						pl.scale *= (phi / kE) / relativeLuminance(pl.intensity);
+					}
+				}
+			}
 			out.punctualLights.push_back(pl);
 			continue;
 		}
@@ -2672,6 +2732,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			const pbrt_scene::Vec3 L = resolveEmissionColor(ld.params, "L", pbrt_scene::Vec3{1, 1, 1}, RGBColorSpaceFromName(ld.colorSpaceName));
 			pl.intensity[0] = L.x; pl.intensity[1] = L.y; pl.intensity[2] = L.z;
 			pl.scale = ld.params.getFloat("scale", 1.0);
+			// pbrt-v4 itself has no "power" for a distant light - unlike every
+			// other punctual kind, its irradiance doesn't fall off with
+			// distance, so there is no finite total Phi to solve for without
+			// an arbitrary reference area (real pbrt-v4 instead reads a
+			// separate "illuminance" parameter, in lux, which this loader
+			// does not parse either - out of scope here). Warn rather than
+			// silently ignoring a "power" a scene author expected to matter.
+			if (ld.params.find("power")) {
+				warn("distant light \"power\" is not supported (pbrt-v4 has no "
+					 "finite total power for a directional light); ignored");
+			}
 			out.punctualLights.push_back(pl);
 			continue;
 		}
@@ -2688,6 +2759,16 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			if (!file.empty()) {
 				pl.hadImageFilename = true;
 				pl.filename = file;
+			}
+			// pbrt-v4's real "power" for a goniometric light weighs the
+			// profile image's own luminance distribution into the conversion
+			// (GoniometricLight::Create) - out of scope here (see this
+			// loader's matching scope decision for ReverseOrientation and
+			// other narrowly-closed gaps this session); warn rather than
+			// silently ignore it.
+			if (ld.params.find("power")) {
+				warn("goniometric light \"power\" is not supported (its real "
+					 "pbrt-v4 conversion depends on the profile image); ignored");
 			}
 			out.punctualLights.push_back(pl);
 			continue;
@@ -2713,6 +2794,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					 "one); emitted as a uniform white beam of the requested "
 					 "shape/scale/aim instead of failing outright");
 			}
+			// Same scope decision as goniometric just above: real pbrt-v4
+			// weighs the projected slide image's own luminance into the
+			// conversion (ProjectionLight::Create) - warn instead of ignoring.
+			if (ld.params.find("power")) {
+				warn("projection light \"power\" is not supported (its real "
+					 "pbrt-v4 conversion depends on the projected image); ignored");
+			}
 			out.punctualLights.push_back(pl);
 			continue;
 		}
@@ -2735,6 +2823,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// comment on each field.
 		e.filename = ld.params.getString("filename", "");
 		e.twoSided = ld.params.getBool("twosided", false);
+		if (const pbrt_scene::Param *p = ld.params.find("power")) {
+			if (!p->numbers.empty()) {
+				e.hasPower = true;
+				e.power = p->numbers[0];
+			}
+		}
 		out.areaLights.push_back(e);
 	}
 
@@ -3483,6 +3577,87 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// build, which is worth saying: the scene will render with a hole in
 		// it rather than looking subtly wrong.
 		warn("shape '" + shape.type + "' is not supported; skipped");
+	}
+
+	// ---- area light "power" resolution ------------------------------------
+	// pbrt-v4's own formula (DiffuseAreaLight::Create): Phi = L * pi * area *
+	// (twoSided ? 2 : 1) - inverted here into the `scale` multiplier that
+	// achieves the requested Phi. Can only run now, not in the area-light
+	// parsing loop above: AreaLightSource is declared BEFORE the Shape it
+	// attaches to in pbrt syntax, so a light's attached area isn't known
+	// until every shape referencing it (by `areaLight` index, possibly more
+	// than one - a mesh light is often several triangles) has been built,
+	// which just finished above.
+	//
+	// Triangle/unclipped-Sphere/BilinearPatch carry a plain world-space area
+	// formula. Disk/Cylinder are excluded: unlike Sphere, they are never
+	// baked to world space (see Disk/Cylinder's own struct comment) - their
+	// radius/height fields are object-space, and getting a world-space area
+	// right would need the attached `xform`'s own scale factored in, per
+	// axis, which their non-uniform-scale-tolerant intersection path doesn't
+	// reduce to a single number the way Sphere's "warn and use the largest
+	// axis" approximation does. A clipped Sphere is excluded for the same
+	// reason (its radiusLocal/xform are object-space too). Curve is excluded
+	// because no closed-form area() exists anywhere in this codebase for it.
+	// Each exclusion warns rather than silently mis-stating the light's
+	// total power.
+	if (std::any_of(out.areaLights.begin(), out.areaLights.end(),
+					 [](const Emission &e) { return e.hasPower; })) {
+		std::vector<double> area(out.areaLights.size(), 0.0);
+		std::vector<bool> excluded(out.areaLights.size(), false);
+		auto triangleArea = [](const double a[3], const double b[3], const double c[3]) {
+			double e1[3], e2[3];
+			for (int k = 0; k < 3; ++k) { e1[k] = b[k] - a[k]; e2[k] = c[k] - a[k]; }
+			const double cx = e1[1]*e2[2] - e1[2]*e2[1];
+			const double cy = e1[2]*e2[0] - e1[0]*e2[2];
+			const double cz = e1[0]*e2[1] - e1[1]*e2[0];
+			return 0.5 * std::sqrt(cx*cx + cy*cy + cz*cz);
+		};
+		for (const Triangle &t : out.triangles) {
+			if (t.areaLight < 0) continue;
+			area[t.areaLight] += triangleArea(&t.v[0], &t.v[3], &t.v[6]);
+		}
+		for (const Sphere &s : out.spheres) {
+			if (s.areaLight < 0) continue;
+			if (s.clipped) { excluded[s.areaLight] = true; continue; }
+			area[s.areaLight] += 4.0 * 3.14159265358979323846 * s.radius * s.radius;
+		}
+		for (const Disk &d : out.disks) {
+			if (d.areaLight >= 0) excluded[d.areaLight] = true;
+		}
+		for (const Cylinder &c : out.cylinders) {
+			if (c.areaLight >= 0) excluded[c.areaLight] = true;
+		}
+		for (const BilinearPatch &bp : out.bilinearPatches) {
+			if (bp.areaLight < 0) continue;
+			// Split along the (p00,p10,p01,p11) diagonal into two triangles -
+			// exact for a planar patch (the common case a flat panel light
+			// actually is) and the same approximation real pbrt-v4's own
+			// BilinearPatch::Area() falls back to for a non-rectangular one.
+			area[bp.areaLight] += triangleArea(bp.p[0], bp.p[1], bp.p[2]) +
+								   triangleArea(bp.p[1], bp.p[3], bp.p[2]);
+		}
+		for (const Curve &c : out.curves) {
+			if (c.areaLight >= 0) excluded[c.areaLight] = true;
+		}
+
+		for (std::size_t i = 0; i < out.areaLights.size(); ++i) {
+			Emission &e = out.areaLights[i];
+			if (!e.hasPower) continue;
+			if (excluded[i]) {
+				warn("area light \"power\" is not supported when attached to a "
+					 "disk/cylinder/clipped-sphere/curve shape; \"scale\"/L "
+					 "used as given instead");
+				continue;
+			}
+			if (area[i] <= 1e-12) {
+				warn("area light \"power\" given but the attached shape has no "
+					 "measurable area; \"scale\"/L used as given instead");
+				continue;
+			}
+			const double kE = 3.14159265358979323846 * area[i] * (e.twoSided ? 2.0 : 1.0);
+			e.scale *= (e.power / kE) / relativeLuminance(e.L);
+		}
 	}
 
 	// PixelFilter - see PixelFilter's own struct comment for why only these
