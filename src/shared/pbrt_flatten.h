@@ -2042,27 +2042,52 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// generic 1.5 default with NO warning at all (worse than this
 		// loader's usual "unrecognized -> fallback + warn" convention,
 		// since 1.5 happens to look plausible for glass and gives no signal
-		// anything was ignored). getString() only inspects `strings`, so
-		// this is safe to call even when "eta" turns out to be a plain
-		// float instead - it just won't find one there. Mirrors
-		// conductorElementFromSpectrumName()'s own pattern above.
+		// anything was ignored). Gated on the Param's own declared type
+		// ("spectrum"), not just "does eta have a string at all" - a
+		// "texture eta" binding (pbrt-v4's other legal string-valued form
+		// for eta) also stores its payload in `strings`. An UNRESOLVED
+		// texture reference keeps type=="texture" (correctly excluded); a
+		// texture that resolves via the constant-texture rewrite pre-pass
+		// above (this loop's very first block) gets its type rewritten to
+		// "rgb" (that pass deliberately leaves `strings` populated even
+		// after rewriting, for ITS OWN "still texture-bound" bookkeeping
+		// elsewhere) - also not "spectrum". Gating on type=="spectrum" here
+		// correctly excludes both texture forms without special-casing
+		// either.
 		if (m.kind == MaterialKind::Dielectric || m.kind == MaterialKind::ThinDielectric ||
 			m.kind == MaterialKind::CoatedDiffuse) {
-			const std::string etaName = md.params.getString("eta", "");
-			if (!etaName.empty()) {
-				const std::string glass = glassElementFromSpectrumName(etaName);
-				if (!glass.empty()) {
-					if (const GlassPreset *preset = FindGlassPreset(glass.c_str())) {
-						m.ior = preset->nd;
+			if (const pbrt_scene::Param *etaP = md.params.find("eta");
+				etaP && etaP->type == "spectrum") {
+				if (!etaP->strings.empty()) {
+					const std::string &etaName = etaP->strings[0];
+					const std::string glass = glassElementFromSpectrumName(etaName);
+					if (!glass.empty()) {
+						if (const GlassPreset *preset = FindGlassPreset(glass.c_str())) {
+							m.ior = preset->nd;
+						} else {
+							warn("material '" + md.type + "' names an unrecognized glass "
+								 "\"" + etaName + "\" for \"spectrum eta\"; eta=" +
+								 std::to_string(m.ior) + " is used instead");
+						}
 					} else {
-						warn("material '" + md.type + "' names an unrecognized glass "
-							 "\"" + etaName + "\" for \"spectrum eta\"; eta=" +
+						warn("material '" + md.type + "' binds \"eta\" to the named spectrum "
+							 "\"" + etaName + "\", which is not a recognized glass preset; eta=" +
 							 std::to_string(m.ior) + " is used instead");
 					}
-				} else {
-					warn("material '" + md.type + "' binds \"eta\" to the named spectrum "
-						 "\"" + etaName + "\", which is not a recognized glass preset; eta=" +
-						 std::to_string(m.ior) + " is used instead");
+				} else if (!etaP->numbers.empty()) {
+					// Inline piecewise-linear spectral data ("spectrum eta"
+					// [ 400 1.5168 700 1.5142 ... ], real pbrt-v4 syntax for
+					// a custom spectrum with no named preset) - resolving
+					// this properly would need a real spectral integration
+					// this loader doesn't have; the generic getFloat() read
+					// above already misread numbers[0] (a WAVELENGTH, e.g.
+					// 400) as if it were the IOR itself, which is worse than
+					// the plain default - reset to the ior-or-1.5 fallback
+					// and warn instead of rendering with a nonsensical eta.
+					warn("material '" + md.type + "' gives \"spectrum eta\" as inline "
+						 "wavelength/value data, which is not supported; eta=" +
+						 std::to_string(md.params.getFloat("ior", 1.5)) + " is used instead");
+					m.ior = md.params.getFloat("ior", 1.5);
 				}
 			}
 		}
@@ -2205,8 +2230,25 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// like), not the 1.5 (glass-like) default the generic "eta"/"ior"
 			// read above already applied for every material kind - redo it
 			// here with the right default when the scene gave neither.
-			if (!md.params.find("eta") && !md.params.find("ior"))
+			if (!md.params.find("eta") && !md.params.find("ior")) {
 				m.ior = 1.33;
+			} else if (const pbrt_scene::Param *etaP = md.params.find("eta");
+					   etaP && etaP->type == "spectrum") {
+				// Real pbrt-v4 SubsurfaceMaterial reads eta as a plain float
+				// only (materials.cpp: GetOneFloat) - no spectrum support at
+				// all, unlike Dielectric/ThinDielectric/CoatedDiffuse above.
+				// A "spectrum eta" here (named glass or inline data) has no
+				// usable float value either, so the generic getFloat() read
+				// above landed on the generic 1.5 (glass) default - treat it
+				// the same as "nothing given" instead, and say so, rather
+				// than silently keeping a default this material kind never
+				// actually uses.
+				warn("material 'subsurface' binds \"eta\" to a spectrum, which "
+					 "is not supported (pbrt-v4's own SubsurfaceMaterial reads "
+					 "eta as a plain float only); the default eta (1.33) is "
+					 "used instead");
+				m.ior = 1.33;
+			}
 		}
 
 		// Hair: resolve sigma_a the way pbrt-v4's own HairMaterial::Create
@@ -2224,8 +2266,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// pbrt-v4's HairMaterial defaults eta to 1.55, not the 1.5
 			// (glass-like) default the generic "eta"/"ior" read above
 			// already applied for every material kind.
-			if (!md.params.find("eta") && !md.params.find("ior"))
+			if (!md.params.find("eta") && !md.params.find("ior")) {
 				m.ior = 1.55;
+			} else if (const pbrt_scene::Param *etaP = md.params.find("eta");
+					   etaP && etaP->type == "spectrum") {
+				// Same reasoning as Subsurface's own spectrum-eta check
+				// above: real pbrt-v4 HairMaterial reads eta via a float
+				// texture only (materials.cpp: GetFloatTexture) - no
+				// spectrum support - so a "spectrum eta" has no usable
+				// value here either.
+				warn("material 'hair' binds \"eta\" to a spectrum, which is "
+					 "not supported (pbrt-v4's own HairMaterial reads eta as "
+					 "a float only); the default eta (1.55) is used instead");
+				m.ior = 1.55;
+			}
 
 			const bool hasSigmaA = md.params.find("sigma_a") != nullptr;
 			const bool hasReflectance = md.params.find("reflectance") != nullptr ||

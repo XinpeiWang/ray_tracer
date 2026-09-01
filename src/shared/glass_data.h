@@ -60,7 +60,8 @@ CPU_GPU const GlassPreset* FindGlassPreset(const char* name) {
 		return std::string(a) == std::string(b);
 	};
 #endif
-	for (int i = 0; i < 7; ++i)
+	constexpr int kCount = sizeof(table) / sizeof(table[0]);
+	for (int i = 0; i < kCount; ++i)
 		if (streq(table[i].name, name)) return &table[i];
 	return nullptr;
 }

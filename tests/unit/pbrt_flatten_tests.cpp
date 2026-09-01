@@ -1846,6 +1846,73 @@ TEST(FlattenMaterialTest, DielectricUnrecognizedNamedSpectrumWarnsAndFallsBack) 
 	EXPECT_TRUE(warnedAbout(s, "not a recognized glass preset"));
 }
 
+// Review-fix regression tests (commit following 8884178's review).
+
+TEST(FlattenMaterialTest, DielectricInlineNumericSpectrumEtaWarnsInsteadOfMisreadingAWavelength) {
+	// "spectrum eta" [ 400 1.5168 700 1.5142 ] is real pbrt-v4 syntax for
+	// inline piecewise-linear spectral data, not a named preset - the
+	// generic getFloat() read would otherwise silently read the first
+	// number (400, a WAVELENGTH) as if it were the IOR itself.
+	const FlatScene s = flattenSource(
+		"Material \"dielectric\" \"spectrum eta\" [ 400 1.5168 700 1.5142 ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.5);
+	EXPECT_TRUE(warnedAbout(s, "inline wavelength/value data"));
+}
+
+TEST(FlattenMaterialTest, DielectricTextureEtaIsNotMisreadAsAnUnrecognizedSpectrum) {
+	// A "texture eta" binding also stores its payload in Param::strings,
+	// same as a named-spectrum "spectrum eta" - gating on Param::type
+	// (checked by the glass-resolution code) rather than "is there a
+	// string at all" must NOT fire the glass-preset warning for this case.
+	// This scene's texture isn't "constant", so it still hits the generic,
+	// pre-existing texture-not-supported warning - just not a SECOND,
+	// factually wrong "unrecognized glass" one alongside it.
+	const FlatScene s = flattenSource(
+		"Texture \"etatex\" \"spectrum\" \"checkerboard\" \"float tex1\" [ 1.3 ] \"float tex2\" [ 1.6 ]\n"
+		"Material \"dielectric\" \"texture eta\" [ \"etatex\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.5);
+	EXPECT_FALSE(warnedAbout(s, "unrecognized glass"));
+	EXPECT_FALSE(warnedAbout(s, "not a recognized glass preset"));
+}
+
+TEST(FlattenMaterialTest, DielectricConstantTextureEtaResolvesWithoutASpuriousGlassWarning) {
+	// A CONSTANT texture-bound eta gets rewritten in place to a real number
+	// by the pre-pass at the top of this loop (Param::type becomes "rgb",
+	// not "spectrum") - the glass-resolution code must not treat the
+	// leftover texture-name string as an "unrecognized glass" and must not
+	// clobber the correctly-resolved value.
+	const FlatScene s = flattenSource(
+		"Texture \"etatex\" \"spectrum\" \"constant\" \"float value\" [ 1.6 ]\n"
+		"Material \"dielectric\" \"texture eta\" [ \"etatex\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.6);
+	EXPECT_FALSE(warnedAbout(s, "unrecognized glass"));
+	EXPECT_FALSE(warnedAbout(s, "not a recognized glass preset"));
+}
+
+TEST(FlattenMaterialTest, SubsurfaceNamedGlassSpectrumWarnsAndUsesSubsurfaceDefault) {
+	// Real pbrt-v4 SubsurfaceMaterial reads eta as a plain float only - a
+	// "spectrum eta" here should fall back to subsurface's OWN default
+	// (1.33), not the generic 1.5, and should warn rather than silently
+	// landing on a default that doesn't match either the request or the
+	// material kind's real behavior.
+	const FlatScene s = flattenSource(
+		"Material \"subsurface\" \"spectrum eta\" [ \"glass-BK7\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.33);
+	EXPECT_TRUE(warnedAbout(s, "subsurface"));
+}
+
+TEST(FlattenMaterialTest, HairNamedGlassSpectrumWarnsAndUsesHairDefault) {
+	const FlatScene s = flattenSource(
+		"Material \"hair\" \"spectrum eta\" [ \"glass-BK7\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.55);
+	EXPECT_TRUE(warnedAbout(s, "hair"));
+}
+
 TEST(FlattenMaterialTest, InterfaceMaterialNoneMapsToInterfaceKind) {
 	// pbrt-v4's real interface-material idiom (a shape bounding a
 	// participating medium with no BSDF response of its own) - previously
