@@ -68,11 +68,10 @@ The ray tracer uses a comprehensive error code system to make debugging easier. 
 
 ### 6 - ERR_FILE_COPY_FAILED
 **Message:** Failed to copy output file  
-**Meaning:** Render succeeded but couldn't copy to requested location  
-**Troubleshooting:**
-- Check destination folder permissions
-- Ensure enough disk space
-- Original file may still exist at default location (OneDrive/Desktop)
+**Meaning:** Reserved for a copy-based output step; not currently returned by
+the CPU render path — `camera::render()` writes directly to the requested
+output path (via `camera::output_path`), so there is no longer a
+default-location-then-copy step that could fail this way.
 
 ### 7 - ERR_DIRECTORY_CREATE_FAILED
 **Message:** Failed to create output directory  

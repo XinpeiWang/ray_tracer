@@ -149,10 +149,9 @@ This document provides a comprehensive guide to the inline comments added throug
    - All camera parameters documented
    - Fixed vs configurable distinction
 
-4. **Output File Copy** (lines ~44-72)
-   - Explanation of Desktop default
-   - Cross-platform path detection
-   - Copy logic
+4. **Output Path Handling** (lines ~17-19)
+   - camera::output_path is set to the caller's requested path before
+     render() runs; render() writes there directly, no copy step
 
 ---
 

@@ -15,8 +15,8 @@
 //   - This ensures camera always points toward the center of the scene
 //
 // Output handling:
-//   - Camera class writes to OneDrive/Desktop by default
-//   - This interface copies the result to the requested output path
+//   - camera::render() writes directly to the caller's requested output
+//     path (camera::output_path, set below) - no default-location detour
 // ============================================================================
 
 #include "cpu_interface.h"
@@ -457,6 +457,11 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// exr_output field comment for what this actually changes in
 		// render().
 		cam.exr_output = is_exr_output_path(output_path);
+		// render() now writes straight to this path (see camera::output_path's
+		// own comment) instead of always writing to Desktop and relying on
+		// this function to guess that location and copy the file out
+		// afterward - the copy-out step below is gone accordingly.
+		cam.output_path = output_path;
 		// sampler==nullptr (every existing caller that predates this param)
 		// or an unrecognized name both fall back to Sobol - see
 		// sampler_kind_from_name()'s own comment.
@@ -534,10 +539,6 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// ====================================================================
 		// Output Path Handling
 		// ====================================================================
-		// Save original requested path for later file copy
-
-		std::string orig_path = std::string(output_path);
-
 		// Ensure the output directory exists
 		std::filesystem::path out_fs_path(output_path);
 		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path())) {
@@ -574,48 +575,12 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// ====================================================================
 		// Render Execution
 		// ====================================================================
-		// Camera class handles multithreaded rendering and writes to a default
-		// location (OneDrive/Desktop). We'll copy the file afterward.
+		// cam.output_path (set above) makes render() write straight to the
+		// caller's real requested path - no Desktop detour, no copy-out step
+		// needed afterward (see camera::output_path's own comment).
 
 		std::cout << "[cpu_interface] Starting render..." << std::endl;
 		cam.render(world, *lights_ptr);
-
-		// ====================================================================
-		// Output File Copy
-		// ====================================================================
-		// The camera wrote to its default Desktop location; copy to requested path
-		// This is necessary because the camera class has hardcoded output logic
-
-		// Determine where the camera actually wrote the file
-		// Priority: OneDrive Desktop > regular Desktop > current directory
-		// Same filename render() itself computed (camera.h's exr_output-
-		// gated `filename` local) - must match exactly or this copy finds
-		// nothing.
-		const char* written_filename = cam.exr_output ? "image.exr" : "image.ppm";
-		std::string actual_output;
-		if (const char* od = std::getenv("OneDrive")) {
-			actual_output = std::string(od) + "\\Desktop\\" + written_filename;
-		} else if (const char* up = std::getenv("USERPROFILE")) {
-			if (std::filesystem::exists(std::filesystem::path(std::string(up) + "\\OneDrive"))) {
-				actual_output = std::string(up) + "\\OneDrive\\Desktop\\" + written_filename;
-			} else {
-				actual_output = std::string(up) + "\\Desktop\\" + written_filename;
-			}
-		} else {
-			actual_output = written_filename;
-		}
-
-		// Copy the file to the requested location if different
-		if (actual_output != output_path) {
-			try {
-				std::filesystem::copy_file(actual_output, output_path, std::filesystem::copy_options::overwrite_existing);
-				std::clog << "[cpu_interface] Copied " << actual_output << " to " << output_path << std::endl;
-			} catch (const std::exception& e) {
-				std::cerr << "[cpu_interface] " << ErrorInfo(ERR_FILE_COPY_FAILED).to_string() 
-						  << " - " << e.what() << std::endl;
-				return ERR_FILE_COPY_FAILED;
-			}
-		}
 
 		std::clog << "[cpu_interface] CPU render complete: " << output_path << std::endl;
 		return SUCCESS; // Success code 0

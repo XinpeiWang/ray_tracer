@@ -3,6 +3,7 @@
 #include "settings_keys.h"
 
 #include <QAbstractItemView>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -200,23 +201,34 @@ QList<RecentRenderEntry> MainWindow::loadRecentRenders() const {
 		knownPaths.insert(entry.previewPath);
 	}
 
-	// Best-effort backfill: scan the default output folder (Desktop - see
-	// m_outputPathEdit's own default, mainwindow_tabs.cpp) for
+	// Best-effort backfill: scan the default output folder(s) for
 	// render_*.png/*_video.mp4 files this app produced that have no
 	// persisted entry of their own (predates this feature, or aged out
 	// past kMaxRecentRenders) - see buildScannedEntry()'s own comment.
-	// Anything Browse-saved outside Desktop is invisible to this scan, same
-	// as it always was before Recent Renders existed at all; this only
-	// covers the common default-path case.
-	const QDir desktop(QDir::homePath() + QStringLiteral("/Desktop"));
+	// Anything Browse-saved outside these folders is invisible to this scan,
+	// same as it always was before Recent Renders existed at all; this only
+	// covers the common default-path case. Two folders, not one:
+	// <exe_dir>/output/ is m_outputPathEdit's own CURRENT default
+	// (mainwindow_tabs.cpp, matching the CLI's own <exe_dir>/output/ default
+	// - see launcher/main.cpp), and Desktop is scanned too so renders made
+	// before that default moved off Desktop don't silently vanish from this
+	// list.
+	QList<QDir> scanDirs = {
+		QDir(QCoreApplication::applicationDirPath() + QStringLiteral("/output")),
+		QDir(QDir::homePath() + QStringLiteral("/Desktop")),
+	};
 	QList<RecentRenderEntry> scanned;
-	for (const QFileInfo &fileInfo : desktop.entryInfoList(QStringList() << QStringLiteral("render_*.png"), QDir::Files)) {
-		if (knownPaths.contains(fileInfo.absoluteFilePath())) continue;
-		scanned.append(buildScannedEntry(fileInfo, /*isVideo=*/false));
-	}
-	for (const QFileInfo &fileInfo : desktop.entryInfoList(QStringList() << QStringLiteral("*_video.mp4"), QDir::Files)) {
-		if (knownPaths.contains(fileInfo.absoluteFilePath())) continue;
-		scanned.append(buildScannedEntry(fileInfo, /*isVideo=*/true));
+	for (const QDir &dir : scanDirs) {
+		for (const QFileInfo &fileInfo : dir.entryInfoList(QStringList() << QStringLiteral("render_*.png"), QDir::Files)) {
+			if (knownPaths.contains(fileInfo.absoluteFilePath())) continue;
+			knownPaths.insert(fileInfo.absoluteFilePath());
+			scanned.append(buildScannedEntry(fileInfo, /*isVideo=*/false));
+		}
+		for (const QFileInfo &fileInfo : dir.entryInfoList(QStringList() << QStringLiteral("*_video.mp4"), QDir::Files)) {
+			if (knownPaths.contains(fileInfo.absoluteFilePath())) continue;
+			knownPaths.insert(fileInfo.absoluteFilePath());
+			scanned.append(buildScannedEntry(fileInfo, /*isVideo=*/true));
+		}
 	}
 
 	QList<RecentRenderEntry> merged = existing + scanned;

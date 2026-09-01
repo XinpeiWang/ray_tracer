@@ -679,7 +679,14 @@ void MainWindow::createBasicTab() {
 	QHBoxLayout *pathLayout = new QHBoxLayout();
 	// Use timestamped filename to avoid caching issues
 	QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
-	QString defaultPath = QDir::homePath() + "/Desktop/render_" + timestamp + ".png";
+	// <exe_dir>/output/ - matches launcher/main.cpp's own default for the CLI
+	// (<exe_dir>/output/image.ppm) rather than the Desktop this used to
+	// default to. applicationDirPath() is RayTracerGUI.exe's own directory,
+	// the same RayTracer_Package/ the CLI exe is deployed into, so this
+	// lands in the exact same place a bare `ray_tracer.exe` invocation
+	// (no --output) would. See recent_renders.cpp's own comment - its
+	// Desktop-scan backfill was updated to match this new default too.
+	QString defaultPath = QApplication::applicationDirPath() + "/output/render_" + timestamp + ".png";
 	m_outputPathEdit = new QLineEdit(QDir::toNativeSeparators(defaultPath), basicTab);
 	m_outputPathEdit->setStyleSheet(
 		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"

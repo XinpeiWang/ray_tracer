@@ -168,6 +168,14 @@ class camera {
     // output path ends in ".exr"; false (PPM) is the pre-existing default
     // and behavior for every other extension is unchanged.
     bool   exr_output = false;
+    // Where render() writes the final image. Set by cpu_interface.cpp to the
+    // caller's real requested path before render() runs - matches every
+    // other integrator/backend (BDPT/MLT/SPPM/GPU), which already write
+    // straight to their caller-supplied path with no detour. Empty (the
+    // default) is only a defensive fallback for a caller that predates this
+    // field - see render()'s own comment for what happens then; in normal
+    // use through cpu_interface.cpp this is never empty.
+    std::string output_path;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
     // pbrt-v4 windowed/portal infinite light ("point3 portal[4]") - visible
@@ -229,39 +237,24 @@ class camera {
     void render(const hittable& world, const hittable& lights) {
         initialize();
 
-        // Try writing image to the user's Desktop. If that fails, fall back to
-        // the current working directory, then to the system temp directory.
-        // The filename itself (not just its directory) depends on exr_output -
-        // see that field's own comment - so cpu_interface.cpp's copy-out step
-        // (which mirrors this exact fallback chain to find what render()
-        // actually wrote) can look for the same extension it requested.
+        // Write directly to output_path (set by cpu_interface.cpp to the
+        // caller's real requested path) - matches every other integrator/
+        // backend, which already write straight to their caller-supplied
+        // path with no detour. A prior version of this function instead
+        // always wrote to the user's Desktop and relied on cpu_interface.cpp
+        // to guess that location and copy the file out to the real
+        // destination afterward - fragile (the guess could disagree with
+        // this function's own fallback chain) and a needless side effect
+        // (a stray Desktop file on every render). output_path empty is only
+        // a defensive fallback for a caller that predates this field - the
+        // plain filename (exr_output-gated, CWD-relative) matches this
+        // function's own original last-resort fallback.
         const std::string filename = exr_output ? "image.exr" : "image.ppm";
-        std::string out_path;
-        // Prefer OneDrive Desktop when available (common on Windows). Fall back to
-        // %USERPROFILE%\OneDrive\Desktop, then %USERPROFILE%\Desktop, then HOME/Desktop.
-        if (const char* od = std::getenv("OneDrive")) {
-            out_path = std::string(od) + "\\Desktop\\" + filename;
-        } else if (const char* up = std::getenv("USERPROFILE")) {
-            // If OneDrive folder exists under the user profile prefer it, otherwise use Desktop
-            std::string od_candidate = std::string(up) + "\\OneDrive\\Desktop\\" + filename;
-            try {
-                if (std::filesystem::exists(std::filesystem::path(std::string(up) + "\\OneDrive"))) {
-                    out_path = od_candidate;
-                } else {
-                    out_path = std::string(up) + "\\Desktop\\" + filename;
-                }
-            } catch (...) {
-                out_path = std::string(up) + "\\Desktop\\" + filename;
-            }
-        } else if (const char* home = std::getenv("HOME")) {
-            out_path = std::string(home) + "/Desktop/" + filename;
-        } else {
-            out_path = filename;
-        }
+        std::string out_path = output_path.empty() ? filename : output_path;
 
         std::clog << "Attempting to write image to: " << out_path << std::endl;
 
-        // Try to create parent directory if it doesn't exist (Desktop/ray_tracer)
+        // Try to create the parent directory if it doesn't exist.
         try {
             std::filesystem::path p(out_path);
             auto parent = p.parent_path();
@@ -270,19 +263,21 @@ class camera {
                 std::clog << "Created directory: " << parent.string() << std::endl;
             }
         } catch (const std::exception& e) {
-            std::clog << "Could not create Desktop subdirectory: " << e.what() << std::endl;
+            std::clog << "Could not create output directory: " << e.what() << std::endl;
         }
 
         std::ofstream out(out_path, std::ios::out | std::ios::binary);
         if (!out) {
-            // Fallback to current directory
+            // Fallback to current directory, then TEMP - same last-resort
+            // chain this function always had, now reached only if the
+            // caller-requested path itself isn't writable (a real error
+            // condition), not as this function's own everyday first choice.
             out_path = filename;
-            std::clog << "Desktop write failed, falling back to: " << out_path << std::endl;
+            std::clog << "Requested path not writable, falling back to: " << out_path << std::endl;
             out.open(out_path, std::ios::out | std::ios::binary);
         }
 
         if (!out) {
-            // Fallback to TEMP
             if (const char* tmp = std::getenv("TEMP")) {
                 out_path = std::string(tmp) + "\\" + filename;
             } else if (const char* tmp2 = std::getenv("TMP")) {
@@ -293,16 +288,16 @@ class camera {
         }
 
         if (!out) {
-            std::cerr << "Failed to open any output file (tried Desktop subfolder, cwd, TEMP)" << std::endl;
+            std::cerr << "Failed to open any output file (tried the requested path, cwd, TEMP)" << std::endl;
             return;
         }
 
         std::clog << "Writing image to: " << out_path << std::endl;
         // exr_output writes through write_exr_image() below instead - `out`
         // above only exists to prove out_path is writable via the exact same
-        // Desktop/cwd/TEMP fallback chain the PPM path already used, so it is
-        // opened (and then simply closed unused) rather than duplicating that
-        // fallback logic a second time for the EXR case.
+        // requested-path/cwd/TEMP fallback chain the PPM path already used,
+        // so it is opened (and then simply closed unused) rather than
+        // duplicating that fallback logic a second time for the EXR case.
         if (!exr_output)
             out << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 

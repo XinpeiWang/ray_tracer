@@ -1,5 +1,15 @@
 # Qt GUI Troubleshooting - Output File Issue
 
+**RESOLVED** - kept as a historical record of the incident below, but the
+codebase no longer matches this description: `--output`/`-o` has existed on
+the CLI for a while (`launcher/launcher_args.h`), `cpu_interface.cpp` now
+passes the caller's real requested path straight through to
+`camera::render()` (`camera::output_path`) instead of writing to a hardcoded
+Desktop location and copying it out afterward, and the Qt GUI's own default
+"Output Path" field (`mainwindow_tabs.cpp`) now points at
+`RayTracer_Package/output/` instead of the user's Desktop, matching what the
+CLI actually does. The "Long-term Fix Needed" section below has been done.
+
 ## Problem
 User clicks "Start Render" but no output file appears.
 
