@@ -15,6 +15,7 @@
 #include "rtw_stb_image.h"
 #include "../shared/mipmap.h"
 #include "../shared/scalar_math.h"   // Clamp() - see mipmap_texture::wide_clamp()
+#include "../shared/procedural_textures.h"   // checkerboard_weight_2d() - see uv_checker_texture::value_diff()
 
 
 class texture {
@@ -113,13 +114,31 @@ class uv_checker_texture : public texture {
     // never be reached, silently degrading to its own LOD-0 point-sample
     // fallback for every nested-imagemap checkerboard cell regardless of
     // the surface's actual minification.
+    //
+    // Also now antialiases the CHECKER PATTERN itself via
+    // checkerboard_weight_2d() (procedural_textures.h, real pbrt-v4
+    // box-filtered footprint integration) instead of a hard binary cell
+    // test - matters when a cell is smaller than the pixel footprint (a
+    // finely-tiled or grazing-angle checkerboard), where the old binary
+    // test aliased/moire'd instead of blending toward the 50/50 average a
+    // real filter converges to. The weight snaps to exactly 0 or 1 well
+    // inside a cell (same result as before, just computed differently), so
+    // this changes nothing for the common non-minified case - the early
+    // returns below also avoid sampling BOTH cells (each a real,
+    // potentially-expensive mipmap_texture lookup) except when a blend is
+    // actually needed.
     color value_diff(double u, double v, const point3& p,
                       double dudx, double dvdx, double dudy, double dvdy) const override {
-        const int ui = int(std::floor(u * uscale));
-        const int vi = int(std::floor(v * vscale));
-        const bool isEven = (ui + vi) % 2 == 0;
-        return isEven ? tex1->value_diff(u, v, p, dudx, dvdx, dudy, dvdy)
-                      : tex2->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+        TexCoord2D c;
+        c.st = {static_cast<float>(u * uscale), static_cast<float>(v * vscale)};
+        c.dsdx = static_cast<float>(dudx * uscale); c.dsdy = static_cast<float>(dudy * uscale);
+        c.dtdx = static_cast<float>(dvdx * vscale); c.dtdy = static_cast<float>(dvdy * vscale);
+        const double w = checkerboard_weight_2d<double>(c);
+        if (w <= 0.0) return tex1->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+        if (w >= 1.0) return tex2->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+        const color c1 = tex1->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+        const color c2 = tex2->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+        return (1.0 - w) * c1 + w * c2;
     }
 
   private:

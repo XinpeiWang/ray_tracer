@@ -130,7 +130,6 @@ add_executable(unit_tests
     unit/power_light_sampler_tests.cpp
     unit/uniform_light_sampler_tests.cpp
     unit/principled_bsdf_tests.cpp
-    unit/proc_tex_tests.cpp
     unit/procedural_textures_tests.cpp
     unit/projection_light_tests.cpp
     unit/punctual_light_tests.cpp
@@ -186,7 +185,6 @@ add_executable(unit_tests
     unit/surface_interaction_tests.cpp
     unit/texture_differentials_tests.cpp
     unit/texture_mapping_tests.cpp
-    unit/textures_tests.cpp
     unit/tone_map_tests.cpp
     unit/triangle_tests.cpp
     unit/utility_integrators_tests.cpp

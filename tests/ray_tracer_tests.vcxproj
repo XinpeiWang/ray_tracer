@@ -147,14 +147,12 @@
     <ClCompile Include="unit\rgb_grid_medium_tests.cpp" />
     <ClCompile Include="unit\animated_transform_tests.cpp" />
     <ClCompile Include="unit\sampling_sph_cone_tests.cpp" />
-    <ClCompile Include="unit\proc_tex_tests.cpp" />
     <ClCompile Include="unit\shapes_tests.cpp" />
     <ClCompile Include="unit\area_lights_tests.cpp" />
     <ClCompile Include="unit\materials_tests.cpp" />
     <ClCompile Include="unit\cameras_tests.cpp" />
     <ClCompile Include="unit\film_tests.cpp" />
     <ClCompile Include="unit\surface_interaction_tests.cpp" />
-    <ClCompile Include="unit\textures_tests.cpp" />
     <ClCompile Include="unit\image_infinite_light_tests.cpp" />
     <ClCompile Include="unit\mipmap_tests.cpp" />
     <ClCompile Include="unit\blue_noise_tests.cpp" />

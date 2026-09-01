@@ -241,18 +241,45 @@ TEST(UvCheckerTextureDifferentials, ValueDiffForwardsFootprintToNestedMipmapText
     ASSERT_GT(img.height(), 0);
     auto mip = std::make_shared<mipmap_texture>(std::move(img));
 
-    // uscale/vscale=1 keeps UV 0.3,0.3 in the SAME checker cell (tex1)
-    // regardless of footprint, so any difference below is purely the
-    // nested mipmap_texture's own EWA filtering kicking in (or not).
+    // uscale/vscale=1 (pbrt-v4's own default): checker cell boundaries sit
+    // at integer UV values, so UV 0.3,0.3 with a +-0.225 footprint (1.5x
+    // the 0.15 derivative below, matching checkerboard_weight_2d's own
+    // 1.5x box-filter margin) stays inside [0.075, 0.525] - comfortably
+    // within the SAME cell [0,1), nowhere near a boundary, so
+    // checkerboard_weight_2d pins at exactly 0 (tex1, unblended). 0.15 UV
+    // still spans ~4.8 texels of the 32px nested image - enough to trigger
+    // its own real EWA blur. Isolates the effect under test to purely the
+    // nested mipmap_texture's own filtering, not the checker pattern's own
+    // (separately tested just below).
     uv_checker_texture chk(1.0, 1.0, mip, std::make_shared<solid_color>(color(1, 0, 0)));
 
     color point_sample = chk.value_diff(0.3, 0.3, point3(0, 0, 0), 0, 0, 0, 0);
     double point_extremeness = std::fabs(point_sample.x() - 0.5);
 
-    color blurred = chk.value_diff(0.3, 0.3, point3(0, 0, 0), 1.0, 0.0, 0.0, 1.0);
+    color blurred = chk.value_diff(0.3, 0.3, point3(0, 0, 0), 0.15, 0.0, 0.0, 0.15);
     double blurred_extremeness = std::fabs(blurred.x() - 0.5);
 
     EXPECT_LT(blurred_extremeness, point_extremeness);
+    EXPECT_LT(blurred_extremeness, 0.15);
+}
+
+TEST(UvCheckerTextureDifferentials, ValueDiffAntialiasesTheCheckerPatternItself) {
+    // Complementary to the nested-mipmap test above: a footprint wide
+    // enough to span SEVERAL checker cells should now blend the pattern
+    // itself toward its 50/50 average (checkerboard_weight_2d(),
+    // procedural_textures.h) instead of aliasing to a hard pick of
+    // whichever cell UV 0.3,0.3 happens to sit in - even with plain flat
+    // solid_color children (no nested imagemap involved at all), isolating
+    // this to the checker-pattern-level antialiasing specifically.
+    uv_checker_texture chk(4.0, 4.0, color(0, 0, 0), color(1, 1, 1));
+
+    color point_sample = chk.value_diff(0.3, 0.3, point3(0, 0, 0), 0, 0, 0, 0);
+    double point_extremeness = std::fabs(point_sample.x() - 0.5);
+    // Point sample lands squarely in one cell - saturated black or white.
+    EXPECT_GT(point_extremeness, 0.4);
+
+    color blurred = chk.value_diff(0.3, 0.3, point3(0, 0, 0), 2.0, 0.0, 0.0, 2.0);
+    double blurred_extremeness = std::fabs(blurred.x() - 0.5);
     EXPECT_LT(blurred_extremeness, 0.15);
 }
 
