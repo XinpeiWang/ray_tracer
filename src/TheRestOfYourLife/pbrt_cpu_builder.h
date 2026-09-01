@@ -60,15 +60,43 @@ inline color reflectanceToConductorK(const color& r) {
 	return color(k1(r.x()), k1(r.y()), k1(r.z()));
 }
 
-// A checkerboard/mix texture's own tex1/tex2 slot: a bare imagemap filename
-// (one-level-nested texture reference already resolved by pbrt_flatten.h -
-// see Material::checkerTex1Filename/mixTex1Filename's own comments) when
+// Forward declaration - checkerOrMixSlot (full comment below, at its actual
+// definition) and buildNestedProceduralTexture() are mutually referential (a
+// nested checkerboard/mix's own tex1/tex2 go back through checkerOrMixSlot).
+inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const double color3[3],
+											  const pbrt_flatten::NestedProceduralTexture *nested = nullptr);
+
+// Builds the real CPU texture object for a resolved second-level nested
+// checkerboard/mix (Material::checkerTex1Nested's own comment,
+// pbrt_flatten.h) - this level's own tex1/tex2 are already capped to flat
+// literal/bare imagemap only (NestedProceduralTexture's own comment), so
+// this is NOT itself recursive beyond the one call each way.
+inline shared_ptr<texture> buildNestedProceduralTexture(const pbrt_flatten::NestedProceduralTexture &n) {
+	shared_ptr<texture> tex1 = checkerOrMixSlot(n.tex1Filename, n.color1);
+	shared_ptr<texture> tex2 = checkerOrMixSlot(n.tex2Filename, n.color2);
+	if (n.kind == "checkerboard")
+		return std::make_shared<uv_checker_texture>(n.uscale, n.vscale, tex1, tex2);
+	// "mix"
+	if (!n.amountFilename.empty())
+		return std::make_shared<mix_texture>(
+			tex1, tex2, std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(n.amountFilename.c_str())));
+	return std::make_shared<mix_texture>(tex1, tex2, n.amount);
+}
+
+// A checkerboard/mix texture's own tex1/tex2 slot: a further nested
+// checkerboard/mix (Material::checkerTex1Nested's own comment) when
+// `nested` names one, else a bare imagemap filename (one-level-nested
+// texture reference already resolved by pbrt_flatten.h - see
+// Material::checkerTex1Filename/mixTex1Filename's own comments) when
 // present, otherwise the flat literal RGB colour flatten() resolved into the
 // paired colour array. Shared by hasCheckerReflectance's and
 // hasMixReflectance's own tex1/tex2 slots, on both the Diffuse and (since
 // CoatedDiffuse gained the same procedural-texture support) CoatedDiffuse
 // cases below - four call sites for what used to be identical inline logic.
-inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const double color3[3]) {
+inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const double color3[3],
+											  const pbrt_flatten::NestedProceduralTexture *nested) {
+	if (nested && !nested->kind.empty())
+		return buildNestedProceduralTexture(*nested);
 	return filename.empty()
 		? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(color3[0], color3[1], color3[2])))
 		: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(filename.c_str()));
@@ -235,8 +263,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// fields, just plugged into coated_diffuse's own texture-taking
 		// constructor instead of lambertian's.
 		if (m.hasCheckerReflectance) {
-			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1);
-			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2);
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1, &m.checkerTex1Nested);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2, &m.checkerTex2Nested);
 			return std::make_shared<coated_diffuse>(
 				std::make_shared<uv_checker_texture>(m.checkerUScale, m.checkerVScale, tex1, tex2),
 				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
@@ -250,8 +278,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 				std::make_shared<marble_texture>(m.marbleScale, m.marbleOctaves, m.marbleRoughness, m.marbleVariation),
 				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		if (m.hasMixReflectance) {
-			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1);
-			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2);
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1, &m.mixTex1Nested);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2, &m.mixTex2Nested);
 			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
 			// own comment) - a real per-point spatially-varying blend when
 			// "amount" itself nested a bare imagemap, via mix_texture's own
@@ -410,8 +438,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// field's own comment) - a mipmap_texture per nested slot instead of
 		// the flat solid_color the plain literal case still uses.
 		if (m.hasCheckerReflectance) {
-			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1);
-			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2);
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1, &m.checkerTex1Nested);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2, &m.checkerTex2Nested);
 			return std::make_shared<lambertian>(std::make_shared<uv_checker_texture>(
 				m.checkerUScale, m.checkerVScale, tex1, tex2));
 		}
@@ -432,8 +460,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (m.hasMixReflectance) {
 			// Same one-level-nested-imagemap support as checkerboard above,
 			// via mix_texture's own new polymorphic constructor.
-			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1);
-			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2);
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1, &m.mixTex1Nested);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2, &m.mixTex2Nested);
 			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
 			// own comment) - a real per-point spatially-varying blend when
 			// "amount" itself nested a bare imagemap.

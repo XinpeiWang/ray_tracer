@@ -1026,6 +1026,74 @@ TEST(PbrtCpuBuildTest, CheckerboardWithNestedImagemapTex1BuildsAMipmapBackedSlot
 	EXPECT_NEAR(tex2Cell.z(), 1.0, 1e-9) << "tex2 must stay the flat blue literal, unaffected";
 }
 
+TEST(PbrtCpuBuildTest, CheckerboardWithSecondLevelNestedCheckerboardBuildsRealNestedTexture) {
+	// A second level of nesting: the outer checkerboard's tex1 names ANOTHER
+	// checkerboard Texture (itself nesting a bare imagemap in ITS tex1),
+	// instead of a flat literal or a bare imagemap directly - real recursive
+	// evaluation, not the flat-average-colour approximation GPU falls back
+	// to (see pbrt_flatten::NestedProceduralTexture's own comment).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Texture \"inner\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"leaf\" ] "
+		"\"rgb tex2\" [ 0 1 0 ] \"float uscale\" [ 1 ] \"float vscale\" [ 1 ]\n"
+		"Texture \"outer\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"inner\" ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"float uscale\" [ 1 ] \"float vscale\" [ 1 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"outer\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.25, 0.25, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *outer = dynamic_cast<uv_checker_texture *>(lam->get_texture().get());
+	ASSERT_NE(outer, nullptr);
+	auto *inner = dynamic_cast<uv_checker_texture *>(outer->get_tex1().get());
+	ASSERT_NE(inner, nullptr)
+		<< "outer checkerboard's tex1 slot must build a REAL nested "
+		   "uv_checker_texture, not fall back to a flat colour";
+	// Outer's (0,0) cell is tex1 (the inner checkerboard); at (0.25,0.25) the
+	// inner pattern's own (0,0) cell is ITS tex1 - the imagemap, unresolved
+	// here so it reads back as mipmap_texture's cyan (0,1,1) debug fallback.
+	const color outerTex1Cell = outer->value(0.25, 0.25, rec.p);
+	EXPECT_NEAR(outerTex1Cell.x(), 0.0, 1e-9);
+	EXPECT_NEAR(outerTex1Cell.y(), 1.0, 1e-9);
+	EXPECT_NEAR(outerTex1Cell.z(), 1.0, 1e-9);
+	// Outer's (1,0) cell is tex2 (flat blue), unaffected by the nesting.
+	const color outerTex2Cell = outer->value(1.25, 0.25, rec.p);
+	EXPECT_NEAR(outerTex2Cell.z(), 1.0, 1e-9);
+	// Sample the inner checkerboard directly (not through outer) to confirm
+	// its own tex2 (flat green) is intact and independently addressable.
+	const color innerTex2Cell = inner->value(1.25, 0.25, rec.p);
+	EXPECT_NEAR(innerTex2Cell.y(), 1.0, 1e-9);
+	EXPECT_NEAR(innerTex2Cell.x(), 0.0, 1e-9);
+}
+
+TEST(PbrtCpuBuildTest, MixWithSecondLevelNestedMixBuildsRealNestedTexture) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"inner\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 1 0 ] \"float amount\" [ 1 ]\n"
+		"Texture \"outer\" \"spectrum\" \"mix\" \"texture tex1\" [ \"inner\" ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"float amount\" [ 0 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"outer\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *outer = dynamic_cast<mix_texture *>(lam->get_texture().get());
+	ASSERT_NE(outer, nullptr);
+	auto *inner = dynamic_cast<mix_texture *>(outer->get_tex1().get());
+	ASSERT_NE(inner, nullptr)
+		<< "outer mix's tex1 slot must build a REAL nested mix_texture, not "
+		   "fall back to a flat colour";
+	// Outer amount=0 -> pure tex1 -> inner amount=1 -> pure inner tex2 (green).
+	const color result = outer->value(0.5, 0.5, rec.p);
+	EXPECT_NEAR(result.x(), 0.0, 1e-9);
+	EXPECT_NEAR(result.y(), 1.0, 1e-9);
+	EXPECT_NEAR(result.z(), 0.0, 1e-9);
+}
+
 TEST(PbrtCpuBuildTest, DiffuseReflectanceFbmBuildsAnFbmBackedLambertian) {
 	// Round 6 Phase 1: hasFbmReflectance must make it all the way to an
 	// fbm_texture-backed lambertian, reusing the existing CPU class rather

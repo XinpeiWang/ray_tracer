@@ -141,6 +141,13 @@ class uv_checker_texture : public texture {
         return (1.0 - w) * c1 + w * c2;
     }
 
+    // Accessors for tests confirming a second-level nested checkerboard/mix
+    // (pbrt_flatten::NestedProceduralTexture's own comment) built a REAL
+    // nested texture object here, not a flat-colour fallback - mirrors
+    // lambertian::get_texture()/mix_material::get_mat_a()'s own pattern.
+    const shared_ptr<texture>& get_tex1() const { return tex1; }
+    const shared_ptr<texture>& get_tex2() const { return tex2; }
+
   private:
     double uscale, vscale;
     shared_ptr<texture> tex1, tex2;
@@ -537,6 +544,12 @@ class mix_texture : public texture {
 
     // Accessor for testability, mirroring rough_dielectric::get_roughness_texture().
     shared_ptr<texture> get_amount_texture() const { return amount_tex; }
+
+    // Accessors for tests confirming a second-level nested checkerboard/mix
+    // built a REAL nested texture object in this slot - see
+    // uv_checker_texture::get_tex1()'s own identical comment.
+    const shared_ptr<texture>& get_tex1() const { return tex1; }
+    const shared_ptr<texture>& get_tex2() const { return tex2; }
 
   private:
     shared_ptr<texture> tex1, tex2;

@@ -1976,6 +1976,72 @@ TEST(FlattenMaterialTest, CoatedDiffuseReflectanceMarbleResolvesToAProceduralTex
 	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
 }
 
+TEST(FlattenMaterialTest, CheckerboardTex1NestsAnotherCheckerboardResolvesRecursively) {
+	const FlatScene s = flattenSource(
+		"Texture \"inner\" \"spectrum\" \"checkerboard\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 1 0 ] \"float uscale\" [ 3 ] \"float vscale\" [ 4 ]\n"
+		"Texture \"outer\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"inner\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"outer\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasCheckerReflectance);
+	EXPECT_EQ(s.materials[0].checkerTex1Nested.kind, "checkerboard");
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerTex1Nested.color1[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerTex1Nested.color2[1], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerTex1Nested.uscale, 3.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerTex1Nested.vscale, 4.0);
+	// GPU-approximation fallback: checkerColor1 gets the nested pattern's
+	// own average colour (red+green)/2, not left at its unrelated default.
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerColor1[0], 0.5);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerColor1[1], 0.5);
+	EXPECT_FALSE(warnedAbout(s, "not supported"));
+}
+
+TEST(FlattenMaterialTest, MixTex1NestsAnotherMixResolvesRecursively) {
+	const FlatScene s = flattenSource(
+		"Texture \"inner\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 1 0 ] \"float amount\" [ 0.25 ]\n"
+		"Texture \"outer\" \"spectrum\" \"mix\" \"texture tex1\" [ \"inner\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"outer\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasMixReflectance);
+	EXPECT_EQ(s.materials[0].mixTex1Nested.kind, "mix");
+	EXPECT_DOUBLE_EQ(s.materials[0].mixTex1Nested.color1[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixTex1Nested.color2[1], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixTex1Nested.amount, 0.25);
+	EXPECT_FALSE(warnedAbout(s, "not supported"));
+}
+
+TEST(FlattenMaterialTest, CheckerboardTex1NestingAThirdLevelStillFallsThroughToGenericWarning) {
+	// The second level's own tex1/tex2 must be a flat literal or a bare
+	// imagemap - NOT a further nested procedural (a third level) - see
+	// NestedProceduralTexture's own comment on the deliberate two-level cap.
+	const FlatScene s = flattenSource(
+		"Texture \"innermost\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"inner\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"innermost\" ]\n"
+		"Texture \"outer\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"inner\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"outer\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
+	EXPECT_TRUE(warnedAbout(s, "not supported"));
+}
+
+TEST(FlattenMaterialTest, CheckerboardTex1NestingAnUnrelatedProceduralStillFallsThroughToGenericWarning) {
+	// tex1 names a real Texture, but one that's neither a bare imagemap nor
+	// checkerboard/mix (fbm has no tex1/tex2 concept at all) - still an
+	// unresolvable nested reference, same as any other unsupported case.
+	const FlatScene s = flattenSource(
+		"Texture \"cloud\" \"float\" \"fbm\"\n"
+		"Texture \"outer\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"cloud\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"outer\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
+	EXPECT_TRUE(warnedAbout(s, "not supported"));
+}
+
 TEST(FlattenMaterialTest, DiffuseReflectanceWindyResolvesToAProceduralTexture) {
 	// pbrt-v4 WindyTexture is parameterless - just the "is this bound" flag.
 	const FlatScene s = flattenSource(

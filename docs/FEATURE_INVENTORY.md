@@ -62,7 +62,7 @@ numbered sections below for the narrative detail behind any row.
 | Textures | Image textures + mipmap/EWA filter | Y | N/A |
 | Textures | Texture mapping (UV/spherical/cylindrical/planar) | Y | N/A |
 | Textures | `mix` texture with texture-bound `amount` | N (loader only — class works via native API) | Falls back to flat colour with a warning when loaded from `.pbrt` |
-| Textures | Texture nesting beyond one level | N (loader only) | Same — falls back with a warning |
+| Textures | checkerboard/mix tex1/tex2 nesting a further procedural texture (2nd level) | Y, CPU only | GPU approximates as a flat average colour, warned; a 3rd level of nesting still falls back with a warning on both |
 | Lights | Point / spot / distant | Y / Y / Y | N/A |
 | Lights | Goniometric | Y / Y / Y | Missing/non-square profile image → falls back to a uniform isotropic distribution |
 | Lights | Projection | Y / Y / Y | Missing `filename` → warned (pbrt-v4 itself requires one) |
@@ -213,11 +213,18 @@ Gaussian LUT), point/bilinear/trilinear/EWA all selectable.
 Texture mapping: all 4 pbrt-v4 2D mapping types ported — UV, spherical,
 cylindrical, planar (`src/shared/texture_mapping.h`).
 
-**Gap**: pbrt's `mix` texture with a texture-bound `amount` (rather than a
-constant), and texture nesting past one level, aren't supported when
-loading a `.pbrt` scene — see `PBRT_SUPPORT.md` for the exact scope cut
-(this is a loader-parsing limit, not a missing texture *class*; the classes
-exist and work when built through the native C++ scene API).
+**Gap (narrowed)**: `checkerboard`/`mix` texture nesting is now real up to
+TWO levels on CPU (`tex1`/`tex2` binding to a further `checkerboard`/`mix`
+Texture, not just a bare imagemap or flat literal — `pbrt_flatten::
+NestedProceduralTexture`) — GPU still approximates a nested slot as a flat
+average colour rather than rendering it for real (warned, not silent). A
+THIRD level (that inner texture's own `tex1`/`tex2` naming yet another
+procedural texture) is a deliberate, disclosed cap, not attempted. `mix`'s
+own `amount` parameter separately supports one level of texture binding
+(a spatially-varying blend mask) but not a second — see `PBRT_SUPPORT.md`
+for the exact scope cut (this is a loader-parsing limit for the deeper
+cases, not a missing texture *class*; the classes exist and work when
+built through the native C++ scene API).
 
 ## 4. Lights & Light Sampling
 

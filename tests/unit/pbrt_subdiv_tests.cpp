@@ -292,12 +292,36 @@ TEST(PbrtDroppedTest, CheckerboardNestedTex1UsesTheLastRedeclaredTexture) {
 	EXPECT_EQ(s.materials[0].checkerTex1Filename, "b.png");
 }
 
-TEST(PbrtDroppedTest, CheckerboardWithTex1NestedToANonImagemapStillWarns) {
+TEST(PbrtDroppedTest, CheckerboardWithTex1NestedTwoLevelsIsNowResolved) {
 	// TWO levels of nesting (tex1 -> a Texture that is itself a checkerboard,
-	// not a bare imagemap) stays unsupported - a documented scope cut, not a
-	// regression of the one-level case above.
+	// not a bare imagemap) is now real, recursive support - see
+	// pbrt_flatten::NestedProceduralTexture's own comment and
+	// pbrt_flatten_tests.cpp's FlattenMaterialTest.
+	// CheckerboardTex1NestsAnotherCheckerboardResolvesRecursively for the
+	// full pinned behavior. This test used to assert the opposite (still
+	// unsupported); kept here, updated, as a regression guard specifically
+	// for this file's own `build()`/trianglemesh-based scene shape.
 	const FlatScene s = build(
 		"Texture \"inner\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"inner\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "reflectance"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasCheckerReflectance);
+	EXPECT_EQ(s.materials[0].checkerTex1Nested.kind, "checkerboard");
+}
+
+TEST(PbrtDroppedTest, CheckerboardWithTex1NestedThreeLevelsStillWarns) {
+	// THREE levels of nesting (tex1 -> checkerboard -> checkerboard) stays
+	// unsupported - the second level's own tex1/tex2 must be a flat literal
+	// or a bare imagemap, not a further nested procedural (a documented,
+	// deliberately-bounded scope cut, not a regression of the two-level
+	// case above).
+	const FlatScene s = build(
+		"Texture \"innermost\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"inner\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"innermost\" ]\n"
 		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"inner\" ]\n"
 		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
 		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"

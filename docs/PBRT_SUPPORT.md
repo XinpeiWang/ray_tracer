@@ -575,12 +575,31 @@ per-`MaterialKind` behavior.)
   CPU `mix_texture`'s own texture-taking amount constructor), not a flat
   scalar; `barcelona-pavilion`'s own `materials.pbrt` has a commented-out
   `"float amount"` override on several `Mix` declarations, hinting the
-  original scene author considered exactly this. A SECOND level of nesting
-  (any of tex1/tex2/amount naming a Texture that is itself a checkerboard/
-  fbm/marble/mix, not a bare imagemap) still falls back to the generic "not
-  supported" warning — a documented scope cut, not a new limitation: no
-  bundled scene needs it, and going further would need real cycle/
-  recursion-depth guarding on GPU that a single level doesn't.
+  original scene author considered exactly this. `checkerboard`/`mix`'s own
+  `tex1`/`tex2` now ALSO support a SECOND level of nesting, **CPU only**:
+  either may name a further `Texture` that is itself `checkerboard`/`mix`
+  (not just a bare imagemap or flat literal), real recursive evaluation via
+  `pbrt_flatten::NestedProceduralTexture` (`pbrt_flatten.h`) and
+  `bvh_aggregate_hittable.h`-style CPU-only wiring — `checkerOrMixSlot()`/
+  `buildNestedProceduralTexture()` (`pbrt_cpu_builder.h`) build a real
+  nested `uv_checker_texture`/`mix_texture` object for that slot. GPU has
+  no representation for this (`TextureData::tex1ImageIdx`/`tex2ImageIdx`
+  are image-only, `optix_types.h`) — a scene using it renders correctly on
+  CPU and falls back to a flat colour on GPU: not the previous default
+  white/black, but a real average of the nested pattern's own two colours
+  (computed once at `flatten()` time, so GPU still gets a reasonable
+  approximation instead of an arbitrary placeholder), with an explicit
+  warning (`scene_builder.cpp`) naming the material count affected. `mix`'s
+  own `"amount"` parameter deliberately did NOT gain this second level (it
+  stays capped at one, bare-imagemap-only) — a texture-driven blend MASK
+  nested further is a narrower, separately-scoped gap, left open. A THIRD
+  level of nesting (that second-level texture's own tex1/tex2 naming yet
+  another procedural texture) still falls back to the generic "not
+  supported" warning on both backends — a documented, deliberately bounded
+  cap, not a new limitation: no bundled scene needs it, and unbounded
+  recursion would need real cycle-detection this loader has never needed
+  before, for a feature real pbrt-v4 scenes essentially never exercise past
+  2 levels.
 
 - `Diffuse`/`CoatedDiffuse` `"reflectance"` also now supports 4 more pbrt-v4
   procedural texture kinds on both backends: `"windy"` (two FBm calls

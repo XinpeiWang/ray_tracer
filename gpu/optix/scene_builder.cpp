@@ -4611,6 +4611,33 @@ static bool build_loaded_pbrt_scene(
 			   "for this render.\n";
 	}
 
+	// checkerboard/mix "tex1"/"tex2" nesting a further procedural texture
+	// (pbrt_flatten::NestedProceduralTexture's own comment) - CPU-only;
+	// TextureData's tex1ImageIdx/tex2ImageIdx (optix_types.h) are image-only,
+	// with no representation for a nested Checker/Mix-kind entry. flatten()
+	// already leaves a flat average-of-the-nested-pattern colour behind for
+	// this case (so GPU still renders something reasonable, not black/
+	// garbage) - warned here so that approximation is a known, disclosed
+	// divergence from CPU's real nested rendering, not a silent one.
+	{
+		int nestedCount = 0;
+		for (const pbrt_flatten::Material &m : loaded.scene.materials) {
+			if (m.hasCheckerReflectance &&
+				(!m.checkerTex1Nested.kind.empty() || !m.checkerTex2Nested.kind.empty()))
+				++nestedCount;
+			if (m.hasMixReflectance &&
+				(!m.mixTex1Nested.kind.empty() || !m.mixTex2Nested.kind.empty()))
+				++nestedCount;
+		}
+		if (nestedCount > 0) {
+			std::cerr << "[OptiX] Warning: " << nestedCount << " material(s) bind a "
+				   "checkerboard/mix texture's tex1/tex2 to a further nested "
+				   "procedural texture, which GPU approximates as a flat "
+				   "average colour instead of rendering for real - use --cpu "
+				   "instead if the nested pattern matters for this render.\n";
+		}
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.
