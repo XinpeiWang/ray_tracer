@@ -1423,6 +1423,23 @@ inline void transformNormal(const pbrt_scene::Matrix4 &m,
 	out[0] = nx; out[1] = ny; out[2] = nz;
 }
 
+// True when this transform's upper-left 3x3 has a negative determinant (a
+// mirroring transform - e.g. pbrt's own "Scale -1 1 1") - pbrt-v4's own
+// "transformSwapsHandedness" test, needed alongside a shape's own
+// ReverseOrientation flag to decide whether its normal ends up flipped
+// (pbrt-v4: reverseOrientation ^ transformSwapsHandedness). Same cofactor-
+// determinant computation transformNormal already does internally (see its
+// own comment on the det<0 mirroring case), factored out here since the
+// trianglemesh/plymesh/loopsubdiv branch below needs the raw bool, not a
+// transformed vector.
+inline bool matrixSwapsHandedness(const pbrt_scene::Matrix4 &m) {
+	const double a = m.m[0], b = m.m[1], c = m.m[2];
+	const double d = m.m[4], e = m.m[5], f = m.m[6];
+	const double g = m.m[8], h = m.m[9], i = m.m[10];
+	const double det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+	return det < 0.0;
+}
+
 // True world -> light ROTATION (not the inverse-TRANSPOSE transformNormal
 // computes - a light's "aim" needs the plain inverse of its light -> world
 // rotation, the same sense pbrt-v4's own ApplyInverse(w) uses). Used only by
@@ -2881,6 +2898,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	for (const flatten_detail::ShapeWork &w : work) {
 		const pbrt_scene::ShapeDecl &shape = *w.shape;
 		const pbrt_scene::Matrix4 &xform = w.xform;
+		// ReverseOrientation only flips a normal on a trianglemesh/plymesh/
+		// loopsubdiv shape (see the trianglemesh/plymesh/loopsubdiv branch's
+		// own comment for the flip mechanism) - sphere/disk/cylinder derive
+		// their normal analytically at intersection time in every backend,
+		// with no per-shape "flip" input either backend's intersection code
+		// reads, and bilinear patch/curve have no such mechanism wired either.
+		// Warn rather than silently ignore, matching this loop's established
+		// convention for a parseable-but-unsupported combination.
+		if (shape.reverseOrientation && shape.type != "trianglemesh" &&
+				shape.type != "plymesh" && shape.type != "loopsubdiv") {
+			warn("shape '" + shape.type + "' has ReverseOrientation set, but "
+				 "only trianglemesh/plymesh/loopsubdiv honor it - this shape's "
+				 "normal is unaffected");
+		}
 		if (shape.type == "sphere") {
 			const double r = shape.params.getFloat("radius", 1.0);
 			Sphere s;
@@ -3272,9 +3303,28 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				warn("a mesh supplied fewer uv pairs than vertices; they are ignored");
 			}
 
+			// pbrt-v4 ReverseOrientation: a shape's normal ends up flipped when
+			// reverseOrientation XOR transformSwapsHandedness (a "Scale -1 1 1"-
+			// style mirroring transform already flips it once on its own, so
+			// ReverseOrientation on top of one cancels back out - matching
+			// pbrt-v4's own rule exactly, not just negating reverseOrientation
+			// alone). Achieved here purely as flatten-time data manipulation, no
+			// backend changes needed: swapping the b/c vertex (and uv, to keep
+			// per-vertex correspondence) order flips the sign of every backend's
+			// own cross(e1,e2)-derived geometric normal (used directly when the
+			// mesh has no authored "normal N", and for area/NEE sampling either
+			// way) since all three backends derive it from this same stored
+			// vertex order; separately negating (not reordering - barycentric
+			// interpolation is order-invariant, so reordering alone wouldn't
+			// change the interpolated result) every authored per-vertex normal
+			// flips the shading normal a mesh WITH "normal N" actually uses.
+			const bool flip = shape.reverseOrientation ^ matrixSwapsHandedness(xform);
+
 			bool reportedRange = false;
 			for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
-				const int a = indices[i], b = indices[i + 1], c = indices[i + 2];
+				const int a = indices[i], b0 = indices[i + 1], c0 = indices[i + 2];
+				const int b = flip ? c0 : b0;
+				const int c = flip ? b0 : c0;
 				if (a < 0 || b < 0 || c < 0
 					|| static_cast<std::size_t>(a) >= vertexCount
 					|| static_cast<std::size_t>(b) >= vertexCount
@@ -3297,6 +3347,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						t.n[0 + k] = worldN[static_cast<std::size_t>(a) * 3 + k];
 						t.n[3 + k] = worldN[static_cast<std::size_t>(b) * 3 + k];
 						t.n[6 + k] = worldN[static_cast<std::size_t>(c) * 3 + k];
+					}
+					if (flip) {
+						for (int k = 0; k < 9; ++k) t.n[k] = -t.n[k];
 					}
 					t.hasNormals = true;
 				}
