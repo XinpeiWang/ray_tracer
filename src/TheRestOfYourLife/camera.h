@@ -515,6 +515,23 @@ class camera {
                     color pixel_color = (weight_sum > 0.0)
                         ? weighted_color / weight_sum
                         : color(0, 0, 0);
+                    if (spectral) {
+                        // pixel_color currently holds the filter-weighted-
+                        // averaged CIE XYZ triple, not RGB - see
+                        // ray_color_spectral()'s own comment for why that
+                        // reduction is deferred to exactly here, once per
+                        // pixel, instead of once per sample. Convert (and
+                        // clamp negatives from out-of-gamut XYZ, same as the
+                        // RGB path's existing per-sample clamp used to) now.
+                        float out_r, out_g, out_b;
+                        XYZToLinearRGB(static_cast<float>(pixel_color.x()),
+                                       static_cast<float>(pixel_color.y()),
+                                       static_cast<float>(pixel_color.z()),
+                                       out_r, out_g, out_b);
+                        pixel_color = color(static_cast<double>(out_r),
+                                             static_cast<double>(out_g),
+                                             static_cast<double>(out_b));
+                    }
                     pixel_color = pixel_color * exposure;
                     if (exr_output) {
                         const size_t idx = (static_cast<size_t>(j) * image_width + i) * 3;
@@ -1543,12 +1560,39 @@ class camera {
     // reduction at the end - since the whole point of --spectral is that
     // wavelength sampling actually participates in the walk, giving a
     // different noise pattern than RGB while converging to the same
-    // expected color on these non-dispersive materials. Reduces to RGB
-    // exactly once at the end via SampledSpectrumToXYZ + XYZToLinearRGB
-    // (sampled_spectrum.h) - the same technique already proven correct on
-    // the GPU wavefront backend (gpu/optix/wavefront_kernels.cu), not the
-    // never-live-tested PixelSensor/SpectralFilm classes (pixel_sensor.h/
-    // film.h) - see this port's own plan for why.
+    // expected color on these non-dispersive materials. Reduces to CIE XYZ
+    // exactly once at the end via SampledSpectrumToXYZ (sampled_spectrum.h)
+    // - the same technique already proven correct on the GPU wavefront
+    // backend (gpu/optix/wavefront_kernels.cu) - but returns that XYZ
+    // triple, NOT RGB: XYZ is additive and non-negative by construction (the
+    // CIE curves and every L this function can produce are both
+    // non-negative), so it is safe for render()'s pixel loop to
+    // filter-weight-average many samples' XYZ together the same way it
+    // already averages ray_color()'s RGB. The XYZ->RGB matrix multiply
+    // (XYZToLinearRGB) has negative coefficients, and a single narrow
+    // hero-wavelength sample routinely lands outside the sRGB gamut - doing
+    // that conversion (and its negative-clamp) per SAMPLE here would clip
+    // away part of each sample's color before it had a chance to combine
+    // with the others, a real, systematic desaturation/brightness bias on
+    // any near-gamut-boundary color. render() now does that conversion
+    // exactly once per PIXEL, after averaging - see its own comment at the
+    // spectral post-processing step. Still deliberately not routed through
+    // PixelSensor/SpectralFilm (pixel_sensor.h/film.h): PixelSensor::
+    // ToSensorRGB's output is scaled by roughly kCIE_Y_integral (~107x)
+    // relative to SampledSpectrumToXYZ's for the same input (it has no
+    // /kCIE_Y_integral term this codebase's every other XYZ-producing
+    // function applies) - real pbrt-v4 may fold that factor into its own
+    // Film::Create()-computed imagingRatio rather than into ToSensorRGB
+    // itself, so this is NOT confirmed to be a bug in ToSensorRGB, just a
+    // real, unresolved discrepancy that makes wiring it in with this port's
+    // simplified imagingRatio=1 default (PixelSensor::CreateDefault())
+    // risky to do without deeper pbrt-v4 source verification than this
+    // round did - left untouched rather than guessed at. SpectralFilm's
+    // per-bucket spectral-image storage also has no consumer here (this
+    // renderer only ever emits an RGB image), so there's nothing this fix
+    // would gain from either class over reusing SampledSpectrumToXYZ/
+    // XYZToLinearRGB, which are already proven correct by the GPU wavefront
+    // parity tests.
     //
     // Every RGB attenuation/reflectance value (srec.attenuation, NEE
     // `atten`/`trans`) is uplifted via the BOUNDED technique
@@ -1934,10 +1978,13 @@ class camera {
             }
         }
 
+        // Deliberately NOT converted to RGB here - see this function's own
+        // comment above. render()'s pixel loop filter-weight-averages this
+        // XYZ triple across every sample in the pixel exactly like it does
+        // ray_color()'s RGB, then converts to RGB (and clamps) once, after
+        // averaging.
         XYZResult xyz = SampledSpectrumToXYZ<4>(L, swl, CIE_X, CIE_Y, CIE_Z);
-        float out_r, out_g, out_b;
-        XYZToLinearRGB(xyz.x, xyz.y, xyz.z, out_r, out_g, out_b);
-        return color(static_cast<double>(out_r), static_cast<double>(out_g), static_cast<double>(out_b));
+        return color(static_cast<double>(xyz.x), static_cast<double>(xyz.y), static_cast<double>(xyz.z));
     }
 };
 

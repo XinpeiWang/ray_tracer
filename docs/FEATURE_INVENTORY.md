@@ -102,7 +102,7 @@ numbered sections below for the narrative detail behind any row.
 | Integrators | `--denoise` (OptiX AI denoiser) | GPU-recursive and GPU-wavefront | Wavefront has its own independent denoiser/AOV-buffer implementation (WavefrontPathTracer::denoise(), not shared with OptiXRenderer's) - real support now, previously a silent (then warned) no-op |
 | Spectral | `--spectral` (hero-wavelength Monte Carlo) | CPU, default path tracer only | Combined with GPU/SPPM/BDPT/MLT/debug → flag silently dropped, warned; render proceeds without it |
 | Spectral | GPU-wavefront's internal spectral pipeline | Always-on, GPU-wavefront | N/A (not a flag, not togglable — this is just how the integrator works) |
-| Spectral | Real accumulating spectral film/sensor (`PixelSensor`/`SpectralFilm`) | N, dead code | N/A — not a fallback scenario, simply unused; every spectral computation reduces to RGB per-sample instead |
+| Spectral | Per-pixel (not per-sample) XYZ→RGB reduction, avoiding early gamut-clamp bias | Y | See §9 — `PixelSensor`/`SpectralFilm` themselves remain dead code, but the behavioral gap they existed to close is fixed directly |
 | Acceleration | CPU hand-rolled BVH (`bvh.h`) | Y | N/A |
 | Acceleration | CPU SAH/HLBVH BVH (`bvh_aggregate.h`) | Y | N/A |
 | Acceleration | GPU hardware BVH (OptiX `OptixTraversableHandle`) | Y | N/A |
@@ -393,9 +393,19 @@ works on GPU-recursive — silently a no-op under `--wavefront`.
 Two independent, non-interacting spectral code paths exist:
 
 - **CPU `--spectral`**: opt-in flag, default path tracer only, 6-material
-  whitelist (fails closed on anything else), hero-wavelength Monte Carlo,
-  reduced to RGB once per sample (not accumulated into a real spectral
-  film). Supports dispersion (`dielectric` and `rough_dielectric`). See §2.
+  whitelist (fails closed on anything else), hero-wavelength Monte Carlo.
+  Each sample reduces to CIE XYZ (`ray_color_spectral()`,
+  `SampledSpectrumToXYZ`) — additive and always non-negative — and
+  `render()`'s pixel loop filter-weight-averages XYZ across every sample in
+  a pixel exactly like the RGB path averages RGB; the XYZ→RGB matrix
+  multiply (which has negative coefficients — a single narrow
+  hero-wavelength sample routinely lands outside the sRGB gamut) and its
+  negative-clamp now happen exactly **once per pixel**, after averaging,
+  not once per sample. Fixed a real, previously-unnoticed bias: clamping
+  each sample's out-of-gamut RGB to 0 before averaging systematically
+  desaturated/darkened near-gamut-boundary colors, since some of many
+  additive samples got clipped away before they could combine with the
+  rest. Supports dispersion (`dielectric` and `rough_dielectric`). See §2.
 - **GPU-wavefront's internal spectral pipeline**: always-on, not a flag,
   not user-togglable — this is simply how the wavefront integrator itself
   is implemented internally (CIE tables + D65 + sRGB-upsampling table on
@@ -403,13 +413,22 @@ Two independent, non-interacting spectral code paths exist:
   `rough_dielectric`, piggybacking on this same always-on hero-wavelength
   pipeline) — see §2.
 
-**Gap**: no real accumulating spectral film/sensor. `PixelSensor`
-(`src/shared/pixel_sensor.h`) and `SpectralFilm` (`src/shared/film.h`) are
-complete-looking classes that are **dead code** — `camera.h`'s own comment
-calls them "never-live-tested," and neither is called from any render
-path. Every actual spectral computation reduces to RGB immediately, every
-sample, rather than accumulating spectral radiance across the whole image
-and reducing once at the end (pbrt-v4's own architecture).
+**Gap (narrowed)**: `PixelSensor` (`src/shared/pixel_sensor.h`) and
+`SpectralFilm` (`src/shared/film.h`) remain **dead code**, but the actual
+behavioral gap they were built to close — early per-sample RGB reduction —
+is now fixed above via `SampledSpectrumToXYZ`/`XYZToLinearRGB` directly,
+which this codebase's GPU wavefront parity tests already prove correct.
+Neither class is a net addition over that fix for this renderer's actual
+deliverable (an RGB image, not a spectral one): `SpectralFilm`'s per-bucket
+spectral storage has no consumer (nothing reads a spectral image out of
+this renderer), and `PixelSensor::ToSensorRGB`'s output is scaled by
+roughly `kCIE_Y_integral` (~107x) relative to `SampledSpectrumToXYZ`'s for
+the same input — not confirmed as a bug (real pbrt-v4 may fold that factor
+into `Film::Create()`'s calibrated `imagingRatio` rather than into
+`ToSensorRGB` itself), but a real, unresolved discrepancy that makes wiring
+it in with this port's simplified `imagingRatio=1` default
+(`PixelSensor::CreateDefault()`) risky without deeper source verification
+than this round did. Left untouched rather than guessed at.
 
 **Gap**: GPU-recursive has no spectral path at all (RGB only) - its
 dispersion support (see §2) is a separate, coarser 3-representative-
@@ -475,10 +494,12 @@ relative to it specifically).
 1. **NanoVDB heterogeneous media** (§5) — the clearest, most consequential
    gap. pbrt-v4's primary real-world volumetric path; this codebase has no
    equivalent, only procedural/flat-grid media.
-2. **No real spectral film/sensor accumulation** (§9) — `--spectral`
-   reduces to RGB every sample instead of accumulating spectral radiance
-   pbrt-v4-style; the dead `PixelSensor`/`SpectralFilm` classes suggest
-   this was planned and abandoned partway.
+2. **`PixelSensor`/`SpectralFilm` remain dead code** (§9) — the behavioral
+   gap they were built to close (early per-sample RGB reduction, and the
+   gamut-clamp bias it caused) is now fixed directly via
+   `SampledSpectrumToXYZ`/`XYZToLinearRGB`, deferred to once per pixel; see
+   §9 for why routing through either class wasn't worth the risk on top of
+   that fix.
 3. **GPU-recursive dispersion is approximate** (§2, §9) — GPU-wavefront has
    real continuous-wavelength dispersion (both `dielectric` and
    `rough_dielectric`, matching CPU's `SampledWavelengths` pipeline);
