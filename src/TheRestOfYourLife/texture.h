@@ -310,6 +310,121 @@ class marble_texture : public texture {
 
 
 // ---------------------------------------------------------------------------
+// windy_texture
+// pbrt-v4 WindyTexture - two FBm calls (a coarse "wind strength" and a finer
+// "wave height") combined multiplicatively, for a windswept-grass/wave
+// pattern. Float-only in real pbrt-v4 (parameterless - Create() takes no
+// scene-overridable params); this loader's own convention (same as
+// fbm_texture/marble_texture above) maps its raw signed value to a greyscale
+// [0,1] colour so it can also stand in for a "reflectance"-style texture.
+// pbrt-v4 reference: WindyTexture::Evaluate (textures.cpp)
+// ---------------------------------------------------------------------------
+class windy_texture : public texture {
+  public:
+    color value(double /*u*/, double /*v*/, const point3& p) const override {
+        // pbrt-v4: windStrength = FBm(.1*p, .1*dpdx, .1*dpdy, .5, 3);
+        //          waveHeight   = FBm(p, dpdx, dpdy, .5, 6);
+        //          return |windStrength| * waveHeight;
+        double windStrength = fbm_simple<double>(0.1*p.x(), 0.1*p.y(), 0.1*p.z(), 0.5, 3);
+        double waveHeight   = fbm_simple<double>(p.x(), p.y(), p.z(), 0.5, 6);
+        double v = std::fabs(windStrength) * waveHeight;
+        double t = 0.5 + 0.5 * v;
+        t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        return color(t, t, t);
+    }
+};
+
+
+// ---------------------------------------------------------------------------
+// wrinkled_texture
+// pbrt-v4 WrinkledTexture - raw Turbulence (sum of |noise| octaves, NOT FBm's
+// signed sum), for a crumpled/wrinkled-paper pattern. Float-only in real
+// pbrt-v4. Same greyscale-remap convention as windy_texture above, except
+// Turbulence is already non-negative (no |v| sum can go below 0), so this
+// only needs a plain clamp, not the (1+v)/2 sign-remap fbm_texture/
+// windy_texture use.
+// pbrt-v4 reference: WrinkledTexture::Evaluate (textures.cpp)
+// ---------------------------------------------------------------------------
+class wrinkled_texture : public texture {
+  public:
+    wrinkled_texture(int octaves = 8, double omega = 0.5)
+        : octaves(octaves), omega(omega) {}
+
+    color value(double /*u*/, double /*v*/, const point3& p) const override {
+        double v = turbulence_simple<double>(p.x(), p.y(), p.z(), omega, octaves);
+        double t = v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+        return color(t, t, t);
+    }
+
+  private:
+    int octaves;
+    double omega;
+};
+
+
+// ---------------------------------------------------------------------------
+// dots_texture
+// pbrt-v4 DotsTexture - a polka-dot pattern in (u,v): each unit UV cell may
+// contain one circular dot (present/absent decided per-cell by a 2D noise
+// hash, jittered slightly off-center by two more noise calls), blending
+// between an "inside"/"outside" child texture. Hard binary edge - no
+// antialiasing, matching real pbrt-v4 exactly (InsidePolkaDot()).
+// pbrt-v4's Noise(x,y) 2-arg overload is its own 3-arg gradient noise with z
+// defaulted to 0.5 - reuses this codebase's existing perlin_noise<T> at a
+// fixed z=0.5 rather than porting a separate 2D hash.
+// pbrt-v4 reference: DotsTexture::Evaluate / InsidePolkaDot (textures.cpp)
+// ---------------------------------------------------------------------------
+class dots_texture : public texture {
+  public:
+    dots_texture(shared_ptr<texture> inside, shared_ptr<texture> outside)
+        : inside(inside), outside(outside) {}
+
+    dots_texture(const color& insideColor, const color& outsideColor)
+        : dots_texture(make_shared<solid_color>(insideColor), make_shared<solid_color>(outsideColor)) {}
+
+    color value(double u, double v, const point3& p) const override {
+        return is_inside_dot(u, v) ? inside->value(u, v, p) : outside->value(u, v, p);
+    }
+
+  private:
+    shared_ptr<texture> inside, outside;
+
+    static bool is_inside_dot(double s, double t) {
+        const double sCell = std::floor(s + 0.5);
+        const double tCell = std::floor(t + 0.5);
+        if (perlin_noise<double>(sCell + 0.5, tCell + 0.5, 0.5) <= 0.0) return false;
+        constexpr double radius = 0.35;
+        constexpr double maxShift = 0.5 - radius;
+        const double sCenter = sCell + maxShift * perlin_noise<double>(sCell + 1.5, tCell + 2.8, 0.5);
+        const double tCenter = tCell + maxShift * perlin_noise<double>(sCell + 4.5, tCell + 9.8, 0.5);
+        const double ds = s - sCenter, dt = t - tCenter;
+        return ds * ds + dt * dt < radius * radius;
+    }
+};
+
+
+// ---------------------------------------------------------------------------
+// bilerp_texture
+// pbrt-v4 BilerpTexture - plain bilinear interpolation of 4 corner values by
+// (u,v): (1-u)(1-v)*v00 + u(1-v)*v10 + (1-u)v*v01 + u*v*v11. Real pbrt-v4
+// defaults: v00=0/v10=0 (black), v01=1/v11=1 (white).
+// pbrt-v4 reference: BilerpTexture::Evaluate (textures.cpp)
+// ---------------------------------------------------------------------------
+class bilerp_texture : public texture {
+  public:
+    bilerp_texture(const color& v00, const color& v01, const color& v10, const color& v11)
+        : v00(v00), v01(v01), v10(v10), v11(v11) {}
+
+    color value(double u, double v, const point3& /*p*/) const override {
+        return (1.0-u)*(1.0-v)*v00 + u*(1.0-v)*v10 + (1.0-u)*v*v01 + u*v*v11;
+    }
+
+  private:
+    color v00, v01, v10, v11;
+};
+
+
+// ---------------------------------------------------------------------------
 // mix_texture
 // Linear interpolation between two flat colours by a flat amount.
 // pbrt-v4 reference: SpectrumMixTexture (textures.h/.cpp) - the general

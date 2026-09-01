@@ -1469,6 +1469,56 @@ __device__ __forceinline__ float3 marble_cubic_bezier4(
 		w0*p0.z + w1*p1.z + w2*p2.z + w3*p3.z);
 }
 
+// Matches windy_texture::value() (texture.h) exactly: two FBm calls (a
+// coarse "wind strength", a finer "wave height") combined multiplicatively,
+// remapped to greyscale [0,1] the same way fbm_texture is.
+__device__ __forceinline__ float3 sample_windy_texture(const float3& p) {
+	const float windStrength = fbm_simple<float>(0.1f*p.x, 0.1f*p.y, 0.1f*p.z, 0.5f, 3);
+	const float waveHeight   = fbm_simple<float>(p.x, p.y, p.z, 0.5f, 6);
+	const float v = fabsf(windStrength) * waveHeight;
+	float t = 0.5f + 0.5f * v;
+	t = fminf(fmaxf(t, 0.0f), 1.0f);
+	return make_float3(t, t, t);
+}
+
+// Matches wrinkled_texture::value() (texture.h) exactly: raw Turbulence
+// (already non-negative), plain-clamped to [0,1] - no sign-remap needed.
+__device__ __forceinline__ float3 sample_wrinkled_texture(const TextureData& tex, const float3& p) {
+	const float v = turbulence_simple<float>(p.x, p.y, p.z, tex.omega, tex.octaves);
+	const float t = fminf(fmaxf(v, 0.0f), 1.0f);
+	return make_float3(t, t, t);
+}
+
+// Matches dots_texture::is_inside_dot() (texture.h) exactly - a per-UV-cell
+// polka-dot presence/jitter test via perlin_noise at a fixed z=0.5 (pbrt-v4's
+// own Noise(x,y) 2-arg overload). Hard binary edge, no antialiasing, matching
+// real pbrt-v4's InsidePolkaDot() exactly.
+__device__ __forceinline__ bool is_inside_dot(float s, float t) {
+	const float sCell = floorf(s + 0.5f);
+	const float tCell = floorf(t + 0.5f);
+	if (perlin_noise<float>(sCell + 0.5f, tCell + 0.5f, 0.5f) <= 0.0f) return false;
+	constexpr float radius = 0.35f;
+	constexpr float maxShift = 0.5f - radius;
+	const float sCenter = sCell + maxShift * perlin_noise<float>(sCell + 1.5f, tCell + 2.8f, 0.5f);
+	const float tCenter = tCell + maxShift * perlin_noise<float>(sCell + 4.5f, tCell + 9.8f, 0.5f);
+	const float ds = s - sCenter, dt = t - tCenter;
+	return ds*ds + dt*dt < radius*radius;
+}
+
+// Matches bilerp_texture::value() (texture.h) exactly: plain bilinear blend
+// of 4 corner colours by (u,v). color1/color2 carry v00/v01 (see
+// TextureKind::Bilerp's own comment, optix_types.h); bilerpV10/bilerpV11
+// carry the other two corners.
+__device__ __forceinline__ float3 sample_bilerp_texture(const TextureData& tex, float u, float v) {
+	const float3& v00 = tex.color1; const float3& v01 = tex.color2;
+	const float3& v10 = tex.bilerpV10; const float3& v11 = tex.bilerpV11;
+	const float a = (1.0f-u)*(1.0f-v), b = u*(1.0f-v), c = (1.0f-u)*v, d = u*v;
+	return make_float3(
+		a*v00.x + b*v10.x + c*v01.x + d*v11.x,
+		a*v00.y + b*v10.y + c*v01.y + d*v11.y,
+		a*v00.z + b*v10.z + c*v01.z + d*v11.z);
+}
+
 // Matches marble_texture::value() (texture.h) exactly: FBm-perturbed sine
 // wave mapped through the same 9-knot pbrt-v4 marble colour spline. A
 // standalone function (not inlined into sample_texture's own if/else chain)
@@ -1599,6 +1649,20 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		return make_float3(t, t, t);
 	} else if (tex.kind == TextureKind::Marble) {
 		return sample_marble_texture(tex, p);
+	} else if (tex.kind == TextureKind::Windy) {
+		return sample_windy_texture(p);
+	} else if (tex.kind == TextureKind::Wrinkled) {
+		return sample_wrinkled_texture(tex, p);
+	} else if (tex.kind == TextureKind::Dots) {
+		// Same one-level-nested-imagemap convention as UVChecker/Mix above -
+		// tex1ImageIdx/tex2ImageIdx (-1 by default) let inside/outside each
+		// independently be a bare imagemap instead of the flat color1/color2.
+		const bool inside = is_inside_dot(u, v);
+		return inside
+			? ((tex.tex1ImageIdx >= 0) ? sampleImage(params.textures[tex.tex1ImageIdx]) : tex.color1)
+			: ((tex.tex2ImageIdx >= 0) ? sampleImage(params.textures[tex.tex2ImageIdx]) : tex.color2);
+	} else if (tex.kind == TextureKind::Bilerp) {
+		return sample_bilerp_texture(tex, u, v);
 	} else if (tex.kind == TextureKind::Mix) {
 		// Matches mix_texture::value() (texture.h) exactly: lerp, no
 		// footprint/UV dependence. tex1ImageIdx/tex2ImageIdx - see

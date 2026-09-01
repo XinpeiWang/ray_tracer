@@ -764,6 +764,44 @@ struct Material {
 	double mixAmount = 0.5;
 	std::string mixAmountTextureFilename;  // set instead of mixAmount when "amount" nests a bare imagemap
 
+	// A Diffuse/CoatedDiffuse "reflectance" bound to a "windy" Texture
+	// (pbrt-v4 WindyTexture - two FBm calls combined for a windswept-grass
+	// pattern). Parameterless in real pbrt-v4 (no scene-overridable params
+	// at all), so this is just the "is this bound" flag - see
+	// windy_texture's own comment (texture.h) for the formula.
+	bool hasWindyReflectance = false;
+
+	// A Diffuse/CoatedDiffuse "reflectance" bound to a "wrinkled" Texture
+	// (pbrt-v4 WrinkledTexture - raw Turbulence, not FBm). Same "octaves"/
+	// "roughness" param names/defaults as fbm above.
+	bool hasWrinkledReflectance = false;
+	int wrinkledOctaves = 8;
+	double wrinkledRoughness = 0.5;
+
+	// A Diffuse/CoatedDiffuse "reflectance" bound to a "dots" Texture
+	// (pbrt-v4 DotsTexture - a per-UV-cell polka-dot pattern blending
+	// "inside"/"outside"). Same one-level-nested-bare-imagemap support for
+	// inside/outside as checkerboard's own tex1/tex2 (dotsInsideTexFilename/
+	// dotsOutsideTexFilename below). Defaults match pbrt-v4's DotsTexture
+	// exactly (inside white, outside black).
+	bool hasDotsReflectance = false;
+	double dotsInsideColor[3] = {1.0, 1.0, 1.0};
+	double dotsOutsideColor[3] = {0.0, 0.0, 0.0};
+	std::string dotsInsideTexFilename;   // set instead of dotsInsideColor when "inside" nests a bare imagemap
+	std::string dotsOutsideTexFilename;  // set instead of dotsOutsideColor when "outside" nests a bare imagemap
+
+	// A Diffuse/CoatedDiffuse "reflectance" bound to a "bilerp" Texture
+	// (pbrt-v4 BilerpTexture - plain bilinear blend of 4 corner colours by
+	// (u,v)). Flat-literal corners only - no nested-imagemap support,
+	// matching how rarely a real scene binds anything but a flat colour to
+	// a bilerp corner (no bundled scene needs more). Defaults match
+	// pbrt-v4's BilerpTexture exactly (v00/v10 black, v01/v11 white).
+	bool hasBilerpReflectance = false;
+	double bilerpV00[3] = {0.0, 0.0, 0.0};
+	double bilerpV01[3] = {1.0, 1.0, 1.0};
+	double bilerpV10[3] = {0.0, 0.0, 0.0};
+	double bilerpV11[3] = {1.0, 1.0, 1.0};
+
 	// A pbrt Shape's own "alpha" parameter (bound to a "float"/"imagemap"
 	// Texture - e.g. barcelona-pavilion's foliage, "Shape \"plymesh\"
 	// \"texture alpha\" [ \"leaf_alpha\" ]"), NOT a Material directive
@@ -1989,6 +2027,59 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						m.hasMixReflectance = true;
 						continue;   // resolved to a procedural mix, not a "not supported" warning
 					}
+				}
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "windy") {
+					// Parameterless in real pbrt-v4 - nothing to read.
+					m.hasWindyReflectance = true;
+					continue;   // resolved to procedural windy noise, not a "not supported" warning
+				}
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "wrinkled") {
+					m.wrinkledOctaves = tex->params.getInt("octaves", 8);
+					m.wrinkledRoughness = tex->params.getFloat("roughness", 0.5);
+					m.hasWrinkledReflectance = true;
+					continue;   // resolved to procedural wrinkled turbulence, not a "not supported" warning
+				}
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "dots") {
+					// Same one-level-nested-bare-imagemap support for
+					// inside/outside as checkerboard's own tex1/tex2 above.
+					const pbrt_scene::Param *insideP = tex->params.find("inside");
+					const pbrt_scene::Param *outsideP = tex->params.find("outside");
+					const bool insideIsNested = insideP && insideP->type == "texture";
+					const bool outsideIsNested = outsideP && outsideP->type == "texture";
+					const std::string insideImg = insideIsNested ? resolveNestedImagemap(insideP) : std::string();
+					const std::string outsideImg = outsideIsNested ? resolveNestedImagemap(outsideP) : std::string();
+					if ((!insideIsNested || !insideImg.empty()) && (!outsideIsNested || !outsideImg.empty())) {
+						if (insideIsNested) {
+							m.dotsInsideTexFilename = insideImg;
+						} else {
+							const pbrt_scene::Vec3 c1 = tex->params.getVec3("inside", {1.0, 1.0, 1.0});
+							m.dotsInsideColor[0] = c1.x; m.dotsInsideColor[1] = c1.y; m.dotsInsideColor[2] = c1.z;
+						}
+						if (outsideIsNested) {
+							m.dotsOutsideTexFilename = outsideImg;
+						} else {
+							const pbrt_scene::Vec3 c2 = tex->params.getVec3("outside", {0.0, 0.0, 0.0});
+							m.dotsOutsideColor[0] = c2.x; m.dotsOutsideColor[1] = c2.y; m.dotsOutsideColor[2] = c2.z;
+						}
+						m.hasDotsReflectance = true;
+						continue;   // resolved to a procedural dots pattern, not a "not supported" warning
+					}
+				}
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "bilerp") {
+					const pbrt_scene::Vec3 v00 = tex->params.getVec3("v00", {0.0, 0.0, 0.0});
+					const pbrt_scene::Vec3 v01 = tex->params.getVec3("v01", {1.0, 1.0, 1.0});
+					const pbrt_scene::Vec3 v10 = tex->params.getVec3("v10", {0.0, 0.0, 0.0});
+					const pbrt_scene::Vec3 v11 = tex->params.getVec3("v11", {1.0, 1.0, 1.0});
+					m.bilerpV00[0] = v00.x; m.bilerpV00[1] = v00.y; m.bilerpV00[2] = v00.z;
+					m.bilerpV01[0] = v01.x; m.bilerpV01[1] = v01.y; m.bilerpV01[2] = v01.z;
+					m.bilerpV10[0] = v10.x; m.bilerpV10[1] = v10.y; m.bilerpV10[2] = v10.z;
+					m.bilerpV11[0] = v11.x; m.bilerpV11[1] = v11.y; m.bilerpV11[2] = v11.z;
+					m.hasBilerpReflectance = true;
+					continue;   // resolved to a procedural bilerp blend, not a "not supported" warning
 				}
 			}
 			// DiffuseTransmission's own "transmittance" - same "scale"-wrap

@@ -1733,6 +1733,67 @@ TEST(FlattenMaterialTest, CoatedDiffuseReflectanceMarbleResolvesToAProceduralTex
 	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
 }
 
+TEST(FlattenMaterialTest, DiffuseReflectanceWindyResolvesToAProceduralTexture) {
+	// pbrt-v4 WindyTexture is parameterless - just the "is this bound" flag.
+	const FlatScene s = flattenSource(
+		"Texture \"grass\" \"float\" \"windy\"\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"grass\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasWindyReflectance);
+	EXPECT_FALSE(warnedAbout(s, "diffuse"));
+}
+
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceWrinkledResolvesToAProceduralTexture) {
+	const FlatScene s = flattenSource(
+		"Texture \"paper\" \"float\" \"wrinkled\" \"integer octaves\" [ 5 ] \"float roughness\" [ 0.4 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"paper\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasWrinkledReflectance);
+	EXPECT_EQ(s.materials[0].wrinkledOctaves, 5);
+	EXPECT_DOUBLE_EQ(s.materials[0].wrinkledRoughness, 0.4);
+	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
+}
+
+TEST(FlattenMaterialTest, DiffuseReflectanceDotsResolvesToAProceduralTexture) {
+	const FlatScene s = flattenSource(
+		"Texture \"polka\" \"spectrum\" \"dots\" \"rgb inside\" [ 1 0 0 ] \"rgb outside\" [ 0 0 1 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"polka\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasDotsReflectance);
+	EXPECT_DOUBLE_EQ(s.materials[0].dotsInsideColor[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].dotsOutsideColor[2], 1.0);
+	EXPECT_FALSE(warnedAbout(s, "diffuse"));
+}
+
+TEST(FlattenMaterialTest, DotsDefaultsMatchPbrtV4InsideWhiteOutsideBlack) {
+	const FlatScene s = flattenSource(
+		"Texture \"polka\" \"spectrum\" \"dots\"\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"polka\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasDotsReflectance);
+	EXPECT_DOUBLE_EQ(s.materials[0].dotsInsideColor[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].dotsOutsideColor[0], 0.0);
+}
+
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceBilerpResolvesToAProceduralTexture) {
+	const FlatScene s = flattenSource(
+		"Texture \"grad\" \"spectrum\" \"bilerp\" \"rgb v00\" [ 1 0 0 ] \"rgb v11\" [ 0 0 1 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"grad\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasBilerpReflectance);
+	EXPECT_DOUBLE_EQ(s.materials[0].bilerpV00[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].bilerpV11[2], 1.0);
+	// v01/v10 default to pbrt-v4's own white/black respectively.
+	EXPECT_DOUBLE_EQ(s.materials[0].bilerpV01[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].bilerpV10[0], 0.0);
+	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
+}
+
 TEST(FlattenMaterialTest, MixAmountImagemapCarriesTheTextureFilename) {
 	// pbrt-v4's real "amount" bound to its own Texture (e.g. an fbm-driven
 	// dirt/wear mask) - previously always fell through to the generic "not

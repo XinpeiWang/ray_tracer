@@ -822,6 +822,54 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.textureIdx = static_cast<int>(out.textures.size());
 			out.textures.push_back(tex);
 		}
+		else if (m.hasWindyReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Windy;
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasWrinkledReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Wrinkled;
+			tex.omega = static_cast<float>(m.wrinkledRoughness);
+			tex.octaves = m.wrinkledOctaves;
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasDotsReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Dots;
+			tex.color1 = make_float3(static_cast<float>(m.dotsInsideColor[0]),
+									 static_cast<float>(m.dotsInsideColor[1]),
+									 static_cast<float>(m.dotsInsideColor[2]));
+			tex.color2 = make_float3(static_cast<float>(m.dotsOutsideColor[0]),
+									 static_cast<float>(m.dotsOutsideColor[1]),
+									 static_cast<float>(m.dotsOutsideColor[2]));
+			if (!m.dotsInsideTexFilename.empty())
+				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.dotsInsideTexFilename, out, imageTextureCache);
+			if (!m.dotsOutsideTexFilename.empty())
+				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.dotsOutsideTexFilename, out, imageTextureCache);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasBilerpReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Bilerp;
+			tex.color1 = make_float3(static_cast<float>(m.bilerpV00[0]),
+									 static_cast<float>(m.bilerpV00[1]),
+									 static_cast<float>(m.bilerpV00[2]));
+			tex.color2 = make_float3(static_cast<float>(m.bilerpV01[0]),
+									 static_cast<float>(m.bilerpV01[1]),
+									 static_cast<float>(m.bilerpV01[2]));
+			tex.bilerpV10 = make_float3(static_cast<float>(m.bilerpV10[0]),
+										static_cast<float>(m.bilerpV10[1]),
+										static_cast<float>(m.bilerpV10[2]));
+			tex.bilerpV11 = make_float3(static_cast<float>(m.bilerpV11[0]),
+										static_cast<float>(m.bilerpV11[1]),
+										static_cast<float>(m.bilerpV11[2]));
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
 		// Real independent u/v coat roughness - see MaterialType::Conductor's
 		// identical-shape override above for the full rationale.
 		d.roughness  = static_cast<float>(m.roughness_u);
@@ -1017,6 +1065,54 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			// sample_texture()/wf_sample_texture() when amountImageIdx >= 0.
 			if (!m.mixAmountTextureFilename.empty())
 				tex.amountImageIdx = getOrBuildPbrtImageTexture(m.mixAmountTextureFilename, out, imageTextureCache);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasWindyReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Windy;
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasWrinkledReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Wrinkled;
+			tex.omega = static_cast<float>(m.wrinkledRoughness);
+			tex.octaves = m.wrinkledOctaves;
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasDotsReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Dots;
+			tex.color1 = make_float3(static_cast<float>(m.dotsInsideColor[0]),
+									 static_cast<float>(m.dotsInsideColor[1]),
+									 static_cast<float>(m.dotsInsideColor[2]));
+			tex.color2 = make_float3(static_cast<float>(m.dotsOutsideColor[0]),
+									 static_cast<float>(m.dotsOutsideColor[1]),
+									 static_cast<float>(m.dotsOutsideColor[2]));
+			if (!m.dotsInsideTexFilename.empty())
+				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.dotsInsideTexFilename, out, imageTextureCache);
+			if (!m.dotsOutsideTexFilename.empty())
+				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.dotsOutsideTexFilename, out, imageTextureCache);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasBilerpReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Bilerp;
+			tex.color1 = make_float3(static_cast<float>(m.bilerpV00[0]),
+									 static_cast<float>(m.bilerpV00[1]),
+									 static_cast<float>(m.bilerpV00[2]));
+			tex.color2 = make_float3(static_cast<float>(m.bilerpV01[0]),
+									 static_cast<float>(m.bilerpV01[1]),
+									 static_cast<float>(m.bilerpV01[2]));
+			tex.bilerpV10 = make_float3(static_cast<float>(m.bilerpV10[0]),
+										static_cast<float>(m.bilerpV10[1]),
+										static_cast<float>(m.bilerpV10[2]));
+			tex.bilerpV11 = make_float3(static_cast<float>(m.bilerpV11[0]),
+										static_cast<float>(m.bilerpV11[1]),
+										static_cast<float>(m.bilerpV11[2]));
 			d.textureIdx = static_cast<int>(out.textures.size());
 			out.textures.push_back(tex);
 		}

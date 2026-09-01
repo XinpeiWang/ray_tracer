@@ -510,6 +510,39 @@ per-`MaterialKind` behavior.)
   supported" warning — a documented scope cut, not a new limitation: no
   bundled scene needs it, and going further would need real cycle/
   recursion-depth guarding on GPU that a single level doesn't.
+
+- `Diffuse`/`CoatedDiffuse` `"reflectance"` also now supports 4 more pbrt-v4
+  procedural texture kinds on both backends: `"windy"` (two FBm calls
+  combined, parameterless in real pbrt-v4), `"wrinkled"` (raw Turbulence,
+  not FBm - same `"octaves"`/`"roughness"` params as `fbm`), `"dots"` (a
+  per-UV-cell polka-dot pattern, `"inside"`/`"outside"` each supporting the
+  same one-level-nested-bare-imagemap scope as `checkerboard`'s own
+  `tex1`/`tex2`), and `"bilerp"` (plain bilinear blend of 4 corner colours
+  by (u,v), flat-literal `v00`/`v01`/`v10`/`v11` only - no nested-imagemap
+  support, since a real scene binding anything but a flat colour to a
+  bilerp corner is vanishingly rare). CPU: `windy_texture`/
+  `wrinkled_texture`/`dots_texture`/`bilerp_texture` (`texture.h`), reusing
+  `fbm_simple`/`turbulence_simple`/`perlin_noise` (`noise.h`) - `dots`'s
+  per-cell hash reuses `perlin_noise` at a fixed z=0.5, matching real
+  pbrt-v4's own `Noise(x,y)` 2-arg overload exactly (the same 3-arg
+  gradient noise FBm/Turbulence already use, not a separate hash). GPU:
+  `TextureKind::Windy`/`Wrinkled`/`Dots`/`Bilerp` (`optix_types.h`), with
+  `Wrinkled` reusing `omega`/`octaves` and `Dots` reusing
+  `color1`/`color2`/`tex1ImageIdx`/`tex2ImageIdx` (the same fields
+  `FBm`/`Mix` already use), `Bilerp` adding two new corner fields
+  (`bilerpV10`/`bilerpV11` - `color1`/`color2` carry `v00`/`v01`). `"ptex"`
+  remains unsupported (needs an external library) and falls back to the
+  generic "texture not supported" warning like any other unrecognized
+  class, unchanged.
+  **Note**: `src/shared/procedural_textures.h`/`src/shared/textures.h`
+  contain a SEPARATE, more general (anti-aliased, `TextureEvalContext`-based)
+  procedural texture library that already has its own tested
+  `WindyTexture<T>`/`WrinkledTexture<T>`/`DotsTexture<T>`/`BilerpTexture<T>`
+  - discovered while implementing this round, confirmed to have no live
+  consumer anywhere in the actual rendering pipeline (only its own test
+  file). Not used here; flagged separately for investigation into whether
+  it's worth finishing/integrating or removing.
+
   **Update**: `Shape "trianglemesh"`'s own per-vertex `"point2 uv"` data
   (`"st"` is not a pbrt-v4 alias for it - confirmed against pbrt-v4 source,
   only `"uv"` is read) is now threaded through `pbrt_flatten::Triangle`

@@ -813,7 +813,29 @@ enum class TextureKind : int {
 	// pbrt-v4 SpectrumMixTexture, flat-literal tex1/tex2 only (see
 	// pbrt_flatten.h's Material::hasMixReflectance comment) - matches CPU's
 	// new mix_texture exactly.
-	Mix = 6
+	Mix = 6,
+	// pbrt-v4 WindyTexture - matches CPU's windy_texture exactly
+	// (two FBm calls combined - see that class's own comment). Real
+	// pbrt-v4 WindyTexture takes no scene-overridable params, so this
+	// kind needs no new TextureData fields at all.
+	Windy = 7,
+	// pbrt-v4 WrinkledTexture - matches CPU's wrinkled_texture exactly
+	// (raw Turbulence, not FBm - see that class's own comment). Reuses
+	// omega/octaves below, same meaning as the FBm kind's.
+	Wrinkled = 8,
+	// pbrt-v4 DotsTexture - matches CPU's dots_texture exactly (a
+	// per-UV-cell polka-dot test via perlin_noise at z=0.5, blending
+	// "inside"/"outside"). Reuses color1/color2 (inside/outside) and
+	// tex1ImageIdx/tex2ImageIdx (one-level-nested bare imagemap for
+	// either slot) below, same convention as Mix/UVChecker.
+	Dots = 9,
+	// pbrt-v4 BilerpTexture - matches CPU's bilerp_texture exactly (plain
+	// bilinear blend of 4 corner colours by (u,v), flat-literal corners
+	// only - no nested-imagemap support, matching how rarely real scenes
+	// bind anything but a flat colour to a bilerp corner). Reuses
+	// color1/color2 for v00/v01; bilerpV10/bilerpV11 below carry the
+	// other two corners.
+	Bilerp = 10
 };
 
 // One entry per texture, indexed by MaterialData::textureIdx. Image
@@ -863,6 +885,10 @@ struct TextureData {
 	// comment), or -1 (the default) to use mixAmount directly. Same
 	// one-level, non-recursive scope as tex1ImageIdx/tex2ImageIdx.
 	int amountImageIdx = -1;
+	// Bilerp only: the other two corners (v10/v11) - color1/color2 above
+	// already carry v00/v01 (see TextureKind::Bilerp's own comment).
+	float3 bilerpV10;
+	float3 bilerpV11;
 };
 
 // Material data (packed for SBT).

@@ -261,6 +261,29 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 					std::make_shared<mipmap_texture>(m.mixAmountTextureFilename.c_str()));
 			return std::make_shared<coated_diffuse>(mix, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		}
+		if (m.hasWindyReflectance)
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<windy_texture>(), m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		if (m.hasWrinkledReflectance)
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<wrinkled_texture>(m.wrinkledOctaves, m.wrinkledRoughness),
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		if (m.hasDotsReflectance) {
+			shared_ptr<texture> insideTex = checkerOrMixSlot(m.dotsInsideTexFilename, m.dotsInsideColor);
+			shared_ptr<texture> outsideTex = checkerOrMixSlot(m.dotsOutsideTexFilename, m.dotsOutsideColor);
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<dots_texture>(insideTex, outsideTex),
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		}
+		if (m.hasBilerpReflectance) {
+			const color v00(m.bilerpV00[0], m.bilerpV00[1], m.bilerpV00[2]);
+			const color v01(m.bilerpV01[0], m.bilerpV01[1], m.bilerpV01[2]);
+			const color v10(m.bilerpV10[0], m.bilerpV10[1], m.bilerpV10[2]);
+			const color v11(m.bilerpV11[0], m.bilerpV11[1], m.bilerpV11[2]);
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<bilerp_texture>(v00, v01, v10, v11),
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		}
 		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	case pbrt_flatten::MaterialKind::CoatedConductor: {
 		// A recognized named conductor spectrum or an explicit "rgb eta"/
@@ -417,6 +440,23 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 				: std::make_shared<mix_texture>(tex1, tex2,
 					std::make_shared<mipmap_texture>(m.mixAmountTextureFilename.c_str()));
 			return std::make_shared<lambertian>(mix);
+		}
+		if (m.hasWindyReflectance)
+			return std::make_shared<lambertian>(std::make_shared<windy_texture>());
+		if (m.hasWrinkledReflectance)
+			return std::make_shared<lambertian>(std::make_shared<wrinkled_texture>(
+				m.wrinkledOctaves, m.wrinkledRoughness));
+		if (m.hasDotsReflectance) {
+			shared_ptr<texture> insideTex = checkerOrMixSlot(m.dotsInsideTexFilename, m.dotsInsideColor);
+			shared_ptr<texture> outsideTex = checkerOrMixSlot(m.dotsOutsideTexFilename, m.dotsOutsideColor);
+			return std::make_shared<lambertian>(std::make_shared<dots_texture>(insideTex, outsideTex));
+		}
+		if (m.hasBilerpReflectance) {
+			const color v00(m.bilerpV00[0], m.bilerpV00[1], m.bilerpV00[2]);
+			const color v01(m.bilerpV01[0], m.bilerpV01[1], m.bilerpV01[2]);
+			const color v10(m.bilerpV10[0], m.bilerpV10[1], m.bilerpV10[2]);
+			const color v11(m.bilerpV11[0], m.bilerpV11[1], m.bilerpV11[2]);
+			return std::make_shared<lambertian>(std::make_shared<bilerp_texture>(v00, v01, v10, v11));
 		}
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
