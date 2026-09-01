@@ -1427,16 +1427,26 @@ inline void transformNormal(const pbrt_scene::Matrix4 &m,
 // mirroring transform - e.g. pbrt's own "Scale -1 1 1") - pbrt-v4's own
 // "transformSwapsHandedness" test, needed alongside a shape's own
 // ReverseOrientation flag to decide whether its normal ends up flipped
-// (pbrt-v4: reverseOrientation ^ transformSwapsHandedness). Same cofactor-
-// determinant computation transformNormal already does internally (see its
-// own comment on the det<0 mirroring case), factored out here since the
-// trianglemesh/plymesh/loopsubdiv branch below needs the raw bool, not a
-// transformed vector.
+// (pbrt-v4: reverseOrientation ^ transformSwapsHandedness). Reuses the
+// existing, more numerically stable SquareMatrix<3>/Determinant() (square_matrix.h,
+// already transitively included here via rgb_colorspace.h - a real port of
+// pbrt-v4's own SquareMatrix<N>/Determinant, computed via DifferenceOfProducts
+// to avoid the catastrophic cancellation a plain a*b-c*d subtraction risks)
+// rather than a third hand-rolled cofactor expansion - transformNormal below
+// already has its own inline copy of this exact math, so this at least
+// avoids adding a THIRD independent implementation of the same determinant.
+// Same fabs(det)<1e-18 degenerate threshold transformNormal uses for its own
+// det<0 mirroring check (see that function's own comment) - a near-singular
+// transform's determinant SIGN is numerical noise, not a real answer, so
+// this returns false (no flip) rather than letting floating-point rounding
+// decide whether a shape's normal flips.
 inline bool matrixSwapsHandedness(const pbrt_scene::Matrix4 &m) {
-	const double a = m.m[0], b = m.m[1], c = m.m[2];
-	const double d = m.m[4], e = m.m[5], f = m.m[6];
-	const double g = m.m[8], h = m.m[9], i = m.m[10];
-	const double det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+	const double flat[9] = {m.m[0], m.m[1], m.m[2],
+							 m.m[4], m.m[5], m.m[6],
+							 m.m[8], m.m[9], m.m[10]};
+	const SquareMatrix<3> m3(flat, 9);
+	const double det = Determinant(m3);
+	if (std::fabs(det) < 1e-18) return false;
 	return det < 0.0;
 }
 
@@ -2899,18 +2909,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		const pbrt_scene::ShapeDecl &shape = *w.shape;
 		const pbrt_scene::Matrix4 &xform = w.xform;
 		// ReverseOrientation only flips a normal on a trianglemesh/plymesh/
-		// loopsubdiv shape (see the trianglemesh/plymesh/loopsubdiv branch's
-		// own comment for the flip mechanism) - sphere/disk/cylinder derive
-		// their normal analytically at intersection time in every backend,
-		// with no per-shape "flip" input either backend's intersection code
-		// reads, and bilinear patch/curve have no such mechanism wired either.
-		// Warn rather than silently ignore, matching this loop's established
-		// convention for a parseable-but-unsupported combination.
+		// loopsubdiv/bilinearmesh shape (see each branch's own comment for
+		// its flip mechanism) - sphere/disk/cylinder derive their normal
+		// analytically at intersection time in every backend, with no
+		// per-shape "flip" input either backend's intersection code reads,
+		// and curve has no such mechanism wired either. Warn rather than
+		// silently ignore, matching this loop's established convention for
+		// a parseable-but-unsupported combination.
 		if (shape.reverseOrientation && shape.type != "trianglemesh" &&
-				shape.type != "plymesh" && shape.type != "loopsubdiv") {
+				shape.type != "plymesh" && shape.type != "loopsubdiv" &&
+				shape.type != "bilinearmesh") {
 			warn("shape '" + shape.type + "' has ReverseOrientation set, but "
-				 "only trianglemesh/plymesh/loopsubdiv honor it - this shape's "
-				 "normal is unaffected");
+				 "only trianglemesh/plymesh/loopsubdiv/bilinearmesh honor it - "
+				 "this shape's normal is unaffected");
 		}
 		if (shape.type == "sphere") {
 			const double r = shape.params.getFloat("radius", 1.0);
@@ -3076,6 +3087,24 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				for (int i = 0; i < 4; ++i)
 					transformPoint(xform, P->numbers[i * 3 + 0], P->numbers[i * 3 + 1],
 								   P->numbers[i * 3 + 2], bp.p[i]);
+				// pbrt-v4 ReverseOrientation, same reverseOrientation XOR
+				// transformSwapsHandedness rule as the trianglemesh branch
+				// below (see its own comment) - a bilinear patch's
+				// dpdu(u,v)/dpdv(u,v) each depend on only ONE of its two
+				// parametric axes (pbrt-v4's own p00/p10/p01/p11 corner
+				// convention, matching this codebase's bp.p[0..3] layout),
+				// so swapping corners p10/p01 (indices 1/2) transposes the
+				// two axes and negates cross(dpdu,dpdv) - normal.length() -
+				// everywhere on the patch, exactly mirroring the triangle
+				// fix's own "swap two of the shape's stored points" trick.
+				// No authored-normal or per-vertex-UV data to separately
+				// negate/keep in sync here, unlike trianglemesh - a bilinear
+				// patch carries neither.
+				if (shape.reverseOrientation ^ matrixSwapsHandedness(xform)) {
+					double tmp[3] = {bp.p[1][0], bp.p[1][1], bp.p[1][2]};
+					bp.p[1][0] = bp.p[2][0]; bp.p[1][1] = bp.p[2][1]; bp.p[1][2] = bp.p[2][2];
+					bp.p[2][0] = tmp[0]; bp.p[2][1] = tmp[1]; bp.p[2][2] = tmp[2];
+				}
 				bp.material = shape.materialIndex;
 				bp.areaLight = shape.areaLightIndex;
 				w.bilinearPatches->push_back(bp);
@@ -3311,13 +3340,23 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// alone). Achieved here purely as flatten-time data manipulation, no
 			// backend changes needed: swapping the b/c vertex (and uv, to keep
 			// per-vertex correspondence) order flips the sign of every backend's
-			// own cross(e1,e2)-derived geometric normal (used directly when the
-			// mesh has no authored "normal N", and for area/NEE sampling either
-			// way) since all three backends derive it from this same stored
-			// vertex order; separately negating (not reordering - barycentric
-			// interpolation is order-invariant, so reordering alone wouldn't
-			// change the interpolated result) every authored per-vertex normal
-			// flips the shading normal a mesh WITH "normal N" actually uses.
+			// own cross(e1,e2)-derived geometric normal. Applied unconditionally
+			// (not gated on whether the mesh has authored "normal N") - real
+			// pbrt-v4 (confirmed against its own Triangle::InteractionFromIntersection/
+			// SurfaceInteraction::SetShadingGeometry) does NOT flip an authored
+			// per-vertex normal at all; it flips only the geometric normal, then
+			// face-forwards that geometric normal to agree with the (untouched)
+			// authored one - so ReverseOrientation has no effect on shading for a
+			// mesh that has real "normal N" data, only on one without it. Every
+			// consumer of this codebase's own Triangle struct already matches
+			// that: hasNormals ? interpolated-N : geom_normal - a mesh WITH
+			// authored normals never reads geom_normal for shading/orientation at
+			// all (see CPU triangle.h's identical hit()/sample_area() branches),
+			// so leaving the b/c swap unconditional and NOT separately negating
+			// worldN is correct and safe: the swap still flips geom_normal's
+			// sign for the (only relevant) no-N case, and is a pure no-op for a
+			// hasNormals mesh's actual rendered result, since both barycentric
+			// position and barycentric-N interpolation are order-invariant.
 			const bool flip = shape.reverseOrientation ^ matrixSwapsHandedness(xform);
 
 			bool reportedRange = false;
@@ -3348,9 +3387,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						t.n[3 + k] = worldN[static_cast<std::size_t>(b) * 3 + k];
 						t.n[6 + k] = worldN[static_cast<std::size_t>(c) * 3 + k];
 					}
-					if (flip) {
-						for (int k = 0; k < 9; ++k) t.n[k] = -t.n[k];
-					}
+					// No flip-driven negation here - see this branch's own
+					// comment above for why an authored normal is never
+					// flipped by ReverseOrientation in real pbrt-v4.
 					t.hasNormals = true;
 				}
 				if (!worldUV.empty()) {

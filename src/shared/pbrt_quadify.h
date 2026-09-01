@@ -151,8 +151,41 @@ inline Result quadify(const std::vector<pbrt_flatten::Triangle> &triangles) {
 			continue;
 		}
 
+		// The quad's own cross(eu,ev) normal has to agree with triangle a's
+		// real (already ReverseOrientation-correct - see pbrt_flatten.h's
+		// own comment) cross(e1,e2) geometric normal, computed here fresh
+		// from a's OWN stored vertex order rather than trusted from the
+		// c0/c1/c2/c3 corner-picking above: which shared vertex a face's
+		// b/c-swapped index layout puts at sharedA[0] (this function's own
+		// c0) is independent of the triangle's actual winding for an
+		// "edge-share" index layout (as opposed to a "fan" layout, where
+		// the unique vertex happens to sit at local index 0) - so c0/c1/c2
+		// alone cannot be trusted to reconstruct the correct sign. Swapping
+		// eu/ev (not touching c0) reorients the SAME physical quad without
+		// moving it - Q+s*u+t*v for s,t in [0,1] covers the identical
+		// parallelogram either way, just with u/v's roles exchanged.
+		double e1[3], e2[3], triNormal[3];
+		for (int k = 0; k < 3; ++k) {
+			e1[k] = a.v[3 + k] - a.v[0 + k];
+			e2[k] = a.v[6 + k] - a.v[0 + k];
+		}
+		triNormal[0] = e1[1] * e2[2] - e1[2] * e2[1];
+		triNormal[1] = e1[2] * e2[0] - e1[0] * e2[2];
+		triNormal[2] = e1[0] * e2[1] - e1[1] * e2[0];
+		double quadNormal[3] = {
+			eu[1] * ev[2] - eu[2] * ev[1],
+			eu[2] * ev[0] - eu[0] * ev[2],
+			eu[0] * ev[1] - eu[1] * ev[0]
+		};
+		const double dot = triNormal[0] * quadNormal[0] + triNormal[1] * quadNormal[1] +
+							triNormal[2] * quadNormal[2];
+
 		Quad q;
-		for (int k = 0; k < 3; ++k) { q.Q[k] = c0[k]; q.u[k] = eu[k]; q.v[k] = ev[k]; }
+		for (int k = 0; k < 3; ++k) {
+			q.Q[k] = c0[k];
+			q.u[k] = (dot < 0.0) ? ev[k] : eu[k];
+			q.v[k] = (dot < 0.0) ? eu[k] : ev[k];
+		}
 		q.material = a.material;
 		q.areaLight = a.areaLight;
 		out.quads.push_back(q);
