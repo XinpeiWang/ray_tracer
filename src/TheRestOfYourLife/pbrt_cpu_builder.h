@@ -697,6 +697,17 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		return mask;
 	};
 
+	// RGB-to-scalar collapse (Rec.709 weights) for a homogeneous medium's
+	// sigma_a/sigma_s - used both by emitGeometry()'s own per-shape medium
+	// handling below (captured by reference into that lambda) and by the
+	// camera-medium block further down (build()'s own top-level scope, well
+	// after emitGeometry() has returned) - declared here, before both, so
+	// there's exactly one definition rather than two independently-
+	// maintained copies of the same formula.
+	const auto luminance = [](const double c[3]) {
+		return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+	};
+
 	// Emitting geometry is now done more than once - for the scene itself, and
 	// again for each instance definition, whose geometry stays in object space
 	// and is placed by a transform rather than baked. Everything below is what
@@ -796,16 +807,14 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// fog/smoke boxed inside it). constant_medium's constructor wants a
 	// scalar sigma_a/sigma_s plus a chromatic albedo tint, not pbrt's own
 	// per-channel RGB pair (see pbrt_flatten::Medium's own comment) -
-	// luminance (this loader's existing weighting convention, e.g.
-	// power_light_sampler.h) collapses each to a scalar, and the scattering
-	// channel ratio survives as the albedo tint. Shared across every shape
-	// kind below (sphere, disk, cylinder) that carries a `medium` field.
+	// `luminance` (captured from build()'s own top-level scope - see its
+	// declaration above emitGeometry() for why) collapses each to a scalar,
+	// and the scattering channel ratio survives as the albedo tint. Shared
+	// across every shape kind below (sphere, disk, cylinder) that carries a
+	// `medium` field.
 	const auto addMediumIfPresent = [&](const std::shared_ptr<hittable> &shape, int mediumIndex) {
 		if (mediumIndex < 0 || static_cast<std::size_t>(mediumIndex) >= scene.media.size()) return;
 		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(mediumIndex)];
-		const auto luminance = [](const double c[3]) {
-			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-		};
 
 		// cloud/rgbgrid: real heterogeneous media (src/shared/cloud_medium.h,
 		// src/shared/rgb_grid_medium.h), wrapped in the SAME CPU hittables
@@ -1140,16 +1149,13 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	if (scene.cameraMediumIndex >= 0 &&
 		static_cast<std::size_t>(scene.cameraMediumIndex) < scene.media.size()) {
 		const pbrt_flatten::Medium &m = scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)];
-		// Collapsed to a scalar extinction + chromatic albedo tint, the
-		// EXACT same formula addMediumIfPresent()'s own homogeneous branch
-		// (below) uses for a per-shape medium - luminance-weighted (not a
+		// Collapsed to a scalar extinction + chromatic albedo tint via the
+		// SAME `luminance` addMediumIfPresent() (above) uses for a per-shape
+		// medium's identical homogeneous branch - luminance-weighted (not a
 		// flat per-channel average), tint derived from sigma_s alone (the
 		// scattering-only single-scattering-albedo direction), Le passed
 		// RAW since ambient_medium's own constructor (mirroring
 		// constant_medium's) already does the sigma_a/sigma_t weighting.
-		const auto luminance = [](const double c[3]) {
-			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-		};
 		const double sig_a = luminance(m.sigma_a);
 		const double sig_s = luminance(m.sigma_s);
 		const color tint = (sig_s > 1e-9)

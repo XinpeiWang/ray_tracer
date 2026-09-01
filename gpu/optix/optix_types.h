@@ -833,8 +833,11 @@ enum class TextureKind : int {
 	// bilinear blend of 4 corner colours by (u,v), flat-literal corners
 	// only - no nested-imagemap support, matching how rarely real scenes
 	// bind anything but a flat colour to a bilerp corner). Reuses
-	// color1/color2 for v00/v01; bilerpV10/bilerpV11 below carry the
-	// other two corners.
+	// color1/color2 for v00/v01; the other two corners (v10/v11) are
+	// packed into uScale/vScale/omega and marbleScale/marbleVariation/
+	// mixAmount below (all unused by Bilerp) rather than adding two more
+	// float3 fields that would grow every TextureData entry - see those
+	// fields' own comments.
 	Bilerp = 10
 };
 
@@ -860,13 +863,20 @@ struct TextureData {
 	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused otherwise.
 	float3 color1;     // Checker/UVChecker: "even"/tex1 cell color. Mix: tex1. Unused otherwise.
 	float3 color2;     // Checker/UVChecker: "odd"/tex2 cell color. Mix: tex2. Unused otherwise.
-	float uScale;      // UVChecker: u-axis tile frequency (pbrt-v4 "uscale"). Unused otherwise.
-	float vScale;      // UVChecker: v-axis tile frequency (pbrt-v4 "vscale"). Unused otherwise.
-	float omega;       // FBm/Marble: persistence/roughness param. Unused otherwise.
+	// UVChecker: u-axis tile frequency (pbrt-v4 "uscale"). Bilerp: v10.x
+	// (the 3rd/4th corner colours are packed into these otherwise-unused
+	// fields instead of two new float3s - see TextureKind::Bilerp's own
+	// comment; deliberately not a union, since CUDA/MSVC/GCC/Clang all
+	// agree on plain sequential layout for these but an anonymous
+	// struct-in-union spanning them would be non-standard). Unused by
+	// every other kind.
+	float uScale;
+	float vScale;      // UVChecker: v-axis tile frequency (pbrt-v4 "vscale"). Bilerp: v10.y. Unused otherwise.
+	float omega;       // FBm/Marble: persistence/roughness param. Bilerp: v10.z. Unused otherwise.
 	int   octaves;     // FBm/Marble: octave count. Unused otherwise.
-	float marbleScale;     // Marble: spatial frequency multiplier (pbrt-v4 "scale"). Unused otherwise.
-	float marbleVariation; // Marble: FBm displacement amplitude (pbrt-v4 "variation"). Unused otherwise.
-	float mixAmount;   // Mix: blend weight, 0->color1 1->color2 (pbrt-v4 "amount"). Unused otherwise.
+	float marbleScale;     // Marble: spatial frequency multiplier (pbrt-v4 "scale"). Bilerp: v11.x. Unused otherwise.
+	float marbleVariation; // Marble: FBm displacement amplitude (pbrt-v4 "variation"). Bilerp: v11.y. Unused otherwise.
+	float mixAmount;   // Mix: blend weight, 0->color1 1->color2 (pbrt-v4 "amount"). Bilerp: v11.z. Unused otherwise.
 	// UVChecker/Mix only (NOT the world-space Checker kind, which has no
 	// loader path that ever sets these): index into LaunchParams::textures
 	// for a ONE-LEVEL-nested bare imagemap Texture bound to tex1/tex2 instead of a
@@ -885,10 +895,6 @@ struct TextureData {
 	// comment), or -1 (the default) to use mixAmount directly. Same
 	// one-level, non-recursive scope as tex1ImageIdx/tex2ImageIdx.
 	int amountImageIdx = -1;
-	// Bilerp only: the other two corners (v10/v11) - color1/color2 above
-	// already carry v00/v01 (see TextureKind::Bilerp's own comment).
-	float3 bilerpV10;
-	float3 bilerpV11;
 };
 
 // Material data (packed for SBT).

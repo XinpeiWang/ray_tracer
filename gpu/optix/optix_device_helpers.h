@@ -1506,12 +1506,14 @@ __device__ __forceinline__ bool is_inside_dot(float s, float t) {
 }
 
 // Matches bilerp_texture::value() (texture.h) exactly: plain bilinear blend
-// of 4 corner colours by (u,v). color1/color2 carry v00/v01 (see
-// TextureKind::Bilerp's own comment, optix_types.h); bilerpV10/bilerpV11
-// carry the other two corners.
+// of 4 corner colours by (u,v). color1/color2 carry v00/v01; the other two
+// corners are packed into uScale/vScale/omega and marbleScale/
+// marbleVariation/mixAmount (see TextureKind::Bilerp's own comment,
+// optix_types.h).
 __device__ __forceinline__ float3 sample_bilerp_texture(const TextureData& tex, float u, float v) {
 	const float3& v00 = tex.color1; const float3& v01 = tex.color2;
-	const float3& v10 = tex.bilerpV10; const float3& v11 = tex.bilerpV11;
+	const float3 v10 = make_float3(tex.uScale, tex.vScale, tex.omega);
+	const float3 v11 = make_float3(tex.marbleScale, tex.marbleVariation, tex.mixAmount);
 	const float a = (1.0f-u)*(1.0f-v), b = u*(1.0f-v), c = (1.0f-u)*v, d = u*v;
 	return make_float3(
 		a*v00.x + b*v10.x + c*v01.x + d*v11.x,

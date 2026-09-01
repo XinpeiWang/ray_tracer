@@ -1179,12 +1179,16 @@ class camera {
             // pbrt_flatten.h's own warning for that combination).
             if (camera_medium) {
                 const double surface_t = hit_something ? rec.t : infinity;
-                hit_record medium_rec;
-                if (camera_medium->sample_scatter(current_ray, surface_t, medium_rec)) {
-                    rec = medium_rec;
+                // sample_scatter() writes rec directly (safe: every one of
+                // its failure paths returns before touching rec, so there's
+                // no risk of it leaving rec partially mutated on a miss) and
+                // hands back the ray length it already computed internally,
+                // so the no-scatter branch doesn't need a second sqrt for
+                // the same value.
+                double ray_length = 0.0;
+                if (camera_medium->sample_scatter(current_ray, surface_t, rec, &ray_length)) {
                     hit_something = true;
                 } else {
-                    const double ray_length = current_ray.direction().length();
                     beta = clamp_throughput(beta * camera_medium->transmittance_over(surface_t * ray_length));
                 }
             }

@@ -171,6 +171,27 @@ class hg_phase_material : public material {
 };
 
 
+// Derives a phase material's single-scattering albedo and (already-weighted)
+// emission from a HomogeneousMediumData's own scalar sigma_a/sigma_s plus a
+// caller-supplied RGB albedo/Le - the exact math constant_medium's
+// pbrt-v4-style constructor and ambient_medium's constructor both need,
+// factored out here so it's derived once rather than by each constructor
+// independently. Only meaningful for the scalar (uniform-per-channel)
+// HomogeneousMediumData(sa, ss, g) constructor both callers use -
+// sigma_tr()==sigma_tg()==sigma_tb() and sigma_ar==sigma_ag==sigma_ab hold
+// by construction, so reading sigma_ar/sigma_tr() alone is enough. See
+// hg_phase_material::emitted()'s own comment for the physical derivation of
+// the emission weight (sigma_a/sigma_t).
+inline void collapse_homogeneous_medium(const HomogeneousMediumData<double>& med,
+                                        const color& albedo, const color& Le,
+                                        color& ss_albedo, color& emission) {
+    const double sigma_t = med.sigma_tr();
+    double wr, wg, wb;
+    med.scatter_weight(wr, wg, wb);
+    ss_albedo = (sigma_t > 0) ? albedo * color(wr, wg, wb) : color(0, 0, 0);
+    emission = (sigma_t > 0) ? Le * (med.sigma_ar / sigma_t) : color(0, 0, 0);
+}
+
 // ---------------------------------------------------------------------------
 // constant_medium
 // Homogeneous participating medium (fog, smoke, clouds).
@@ -241,14 +262,9 @@ class constant_medium : public hittable {
         med = HomogeneousMediumData<double>(sigma_a, sigma_s, g);
         // Single-scattering albedo for the phase material, and the
         // collision-probability weight (sigma_a/sigma_t) for emission -
-        // see hg_phase_material::emitted()'s own comment for the physical
-        // derivation of the latter.
-        double sigma_t = sigma_a + sigma_s;
-        color ss_albedo = (sigma_t > 0) ? albedo * color(sigma_s / sigma_t,
-                                                         sigma_s / sigma_t,
-                                                         sigma_s / sigma_t)
-                                        : color(0,0,0);
-        color emission = (sigma_t > 0) ? Le * (sigma_a / sigma_t) : color(0, 0, 0);
+        // see collapse_homogeneous_medium()'s own comment for the derivation.
+        color ss_albedo, emission;
+        collapse_homogeneous_medium(med, albedo, Le, ss_albedo, emission);
         phase_mat = make_shared<hg_phase_material>(ss_albedo, g,
             [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); },
             emission);
@@ -381,15 +397,20 @@ class constant_medium : public hittable {
 // unbounded HomogeneousMedium when nothing else declares an exit.
 //
 // Deliberately NOT a hittable inserted into the scene's own BVH/
-// hittable_list: that list's traversal order isn't guaranteed to visit a
-// real nearer surface before this one, which delta-tracking needs to know
-// about up front to correctly clip its own sampled free path (an unbounded
-// medium tested "too early" could sample a scatter point past a real wall
-// that would have blocked the ray first). Instead called explicitly by
-// camera.h's ray_color() as its own top-level step, AFTER world.hit()
-// already ran, so its [0, t1] range is clipped to whatever real surface (or
-// infinity, for an escaped ray) is already known to be the nearest thing in
-// front of it - see ray_color()'s own call site comment.
+// hittable_list: hittable_list::hit() already selects the true nearest hit
+// regardless of child order (its shrinking closest_so_far interval means a
+// farther candidate can never overwrite a nearer one), so traversal order
+// itself is not the problem. The real blocker is that hittable::hit()'s
+// bool-plus-hit_record signature has no side channel for a child that does
+// NOT win the nearest-hit race to still attenuate the path's throughput by
+// its own transmittance over the segment it WAS tested against - which an
+// ambient medium spanning the whole ray needs to do even when some closer
+// real surface wins. Instead called explicitly by camera.h's ray_color() as
+// its own top-level step, AFTER world.hit() already ran, so its [0, t1]
+// range is clipped to whatever real surface (or infinity, for an escaped
+// ray) is already known to be the nearest thing in front of it, and the
+// no-scatter case can multiply `beta` directly - see ray_color()'s own call
+// site comment.
 //
 // Scope (v1, this round): default CPU path tracer only (ray_color(), not
 // ray_color_spectral()/BDPT/MLT/SPPM); homogeneous only (matching this
@@ -406,12 +427,11 @@ class ambient_medium {
     ambient_medium(double sigma_a, double sigma_s, const color& albedo, double g = 0.0,
                    const color& Le = color(0, 0, 0))
         : med(sigma_a, sigma_s, g) {
-        double sigma_t = sigma_a + sigma_s;
-        color ss_albedo = (sigma_t > 0) ? albedo * color(sigma_s / sigma_t,
-                                                          sigma_s / sigma_t,
-                                                          sigma_s / sigma_t)
-                                        : color(0, 0, 0);
-        color emission = (sigma_t > 0) ? Le * (sigma_a / sigma_t) : color(0, 0, 0);
+        // See collapse_homogeneous_medium()'s own comment (above
+        // constant_medium) for the derivation - shared with that class's
+        // identical pbrt-v4-style constructor rather than re-derived here.
+        color ss_albedo, emission;
+        collapse_homogeneous_medium(med, albedo, Le, ss_albedo, emission);
         phase_mat = make_shared<hg_phase_material>(ss_albedo, g, /*transmittance_fn=*/nullptr, emission);
     }
 
@@ -420,11 +440,16 @@ class ambient_medium {
     // surface, or `infinity` for an escaped ray. Mirrors constant_medium::
     // hit()'s own free-path sampling exactly, just without a boundary
     // shape's own entry/exit test (t0=0, t1=t_max directly - the whole
-    // point of an unbounded medium).
-    bool sample_scatter(const ray& r, double t_max, hit_record& rec) const {
+    // point of an unbounded medium). `out_ray_length` (optional), when
+    // non-null, is always written with r.direction().length() before
+    // returning (scatter or not) - the caller needs this same value to scale
+    // transmittance_over() on the no-scatter path, and this way it's derived
+    // once rather than a second sqrt at the call site.
+    bool sample_scatter(const ray& r, double t_max, hit_record& rec, double* out_ray_length = nullptr) const {
+        const double ray_length = r.direction().length();
+        if (out_ray_length) *out_ray_length = ray_length;
         if (t_max <= 0) return false;
 
-        const double ray_length = r.direction().length();
         // t_max==infinity propagates through IEEE754 arithmetic correctly
         // here (infinity * finite ray_length == infinity) - no special
         // case needed for the escaped-ray case, unlike transmittance_over()
@@ -440,6 +465,12 @@ class ambient_medium {
         rec.normal = vec3(1, 0, 0);   // arbitrary (volume has no surface normal)
         rec.front_face = true;
         rec.mat = phase_mat;
+        // u/v have no meaning for a volume scatter (no surface parameterization)
+        // but hit_record leaves them uninitialized by default - zero them so a
+        // downstream differential/footprint read (see ray_color()'s primary-ray
+        // path) never touches indeterminate memory.
+        rec.u = 0.0;
+        rec.v = 0.0;
         return true;
     }
 

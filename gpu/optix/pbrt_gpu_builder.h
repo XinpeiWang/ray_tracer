@@ -542,6 +542,136 @@ inline float3 resolveMixColor(const pbrt_flatten::Material &m,
 					   ca.z * (1.0f - w) + cb.z * w);
 }
 
+// Resolves whichever procedural (non-file) reflectance texture kind `m` has
+// set - checkerboard/FBm/marble/mix/windy/wrinkled/dots/bilerp, in the same
+// priority order as makeMaterial()'s own imagemap-then-procedural chain -
+// into a new TextureData entry appended to `out.textures`, pointing
+// `d.textureIdx` at it. Shared between the CoatedDiffuse and Diffuse/
+// Lambertian cases in makeMaterial() below, which previously hand-duplicated
+// this entire chain twice (same "no cache/dedup needed" rationale as
+// getOrBuildPbrtImageTexture()'s own call sites - each pbrt Texture
+// declaration is already deduped 1:1 with the Material referencing it by
+// materialCache in build()). Returns true if a procedural kind matched
+// (d.textureIdx was set); false leaves `d` untouched so the caller's own
+// imagemap-filename/flat-color fallback still applies.
+inline bool resolveProceduralReflectanceTexture(const pbrt_flatten::Material &m, MaterialData &d,
+												 SceneData &out, std::map<std::string, int> &imageTextureCache) {
+	if (m.hasCheckerReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::UVChecker;
+		tex.color1 = make_float3(static_cast<float>(m.checkerColor1[0]),
+								 static_cast<float>(m.checkerColor1[1]),
+								 static_cast<float>(m.checkerColor1[2]));
+		tex.color2 = make_float3(static_cast<float>(m.checkerColor2[0]),
+								 static_cast<float>(m.checkerColor2[1]),
+								 static_cast<float>(m.checkerColor2[2]));
+		tex.uScale = static_cast<float>(m.checkerUScale);
+		tex.vScale = static_cast<float>(m.checkerVScale);
+		if (!m.checkerTex1Filename.empty())
+			tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex1Filename, out, imageTextureCache);
+		if (!m.checkerTex2Filename.empty())
+			tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex2Filename, out, imageTextureCache);
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	if (m.hasFbmReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::FBm;
+		tex.omega = static_cast<float>(m.fbmRoughness);
+		tex.octaves = m.fbmOctaves;
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	if (m.hasMarbleReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::Marble;
+		tex.omega = static_cast<float>(m.marbleRoughness);
+		tex.octaves = m.marbleOctaves;
+		tex.marbleScale = static_cast<float>(m.marbleScale);
+		tex.marbleVariation = static_cast<float>(m.marbleVariation);
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	if (m.hasMixReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::Mix;
+		tex.color1 = make_float3(static_cast<float>(m.mixColor1[0]),
+								 static_cast<float>(m.mixColor1[1]),
+								 static_cast<float>(m.mixColor1[2]));
+		tex.color2 = make_float3(static_cast<float>(m.mixColor2[0]),
+								 static_cast<float>(m.mixColor2[1]),
+								 static_cast<float>(m.mixColor2[2]));
+		tex.mixAmount = static_cast<float>(m.mixAmount);
+		if (!m.mixTex1Filename.empty())
+			tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.mixTex1Filename, out, imageTextureCache);
+		if (!m.mixTex2Filename.empty())
+			tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.mixTex2Filename, out, imageTextureCache);
+		if (!m.mixAmountTextureFilename.empty())
+			tex.amountImageIdx = getOrBuildPbrtImageTexture(m.mixAmountTextureFilename, out, imageTextureCache);
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	if (m.hasWindyReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::Windy;
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	if (m.hasWrinkledReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::Wrinkled;
+		tex.omega = static_cast<float>(m.wrinkledRoughness);
+		tex.octaves = m.wrinkledOctaves;
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	if (m.hasDotsReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::Dots;
+		tex.color1 = make_float3(static_cast<float>(m.dotsInsideColor[0]),
+								 static_cast<float>(m.dotsInsideColor[1]),
+								 static_cast<float>(m.dotsInsideColor[2]));
+		tex.color2 = make_float3(static_cast<float>(m.dotsOutsideColor[0]),
+								 static_cast<float>(m.dotsOutsideColor[1]),
+								 static_cast<float>(m.dotsOutsideColor[2]));
+		if (!m.dotsInsideTexFilename.empty())
+			tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.dotsInsideTexFilename, out, imageTextureCache);
+		if (!m.dotsOutsideTexFilename.empty())
+			tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.dotsOutsideTexFilename, out, imageTextureCache);
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	if (m.hasBilerpReflectance) {
+		TextureData tex{};
+		tex.kind = TextureKind::Bilerp;
+		tex.color1 = make_float3(static_cast<float>(m.bilerpV00[0]),
+								 static_cast<float>(m.bilerpV00[1]),
+								 static_cast<float>(m.bilerpV00[2]));
+		tex.color2 = make_float3(static_cast<float>(m.bilerpV01[0]),
+								 static_cast<float>(m.bilerpV01[1]),
+								 static_cast<float>(m.bilerpV01[2]));
+		// v10/v11 packed into otherwise-unused fields rather than two more
+		// float3s - see TextureKind::Bilerp's own comment (optix_types.h).
+		tex.uScale = static_cast<float>(m.bilerpV10[0]);
+		tex.vScale = static_cast<float>(m.bilerpV10[1]);
+		tex.omega  = static_cast<float>(m.bilerpV10[2]);
+		tex.marbleScale     = static_cast<float>(m.bilerpV11[0]);
+		tex.marbleVariation = static_cast<float>(m.bilerpV11[1]);
+		tex.mixAmount       = static_cast<float>(m.bilerpV11[2]);
+		d.textureIdx = static_cast<int>(out.textures.size());
+		out.textures.push_back(tex);
+		return true;
+	}
+	return false;
+}
+
 // Mirrors pbrt_cpu_builder.h's makeMaterial() decision for decision, including
 // emission winning over the declared material - in pbrt an AreaLightSource
 // attaches to the shape, and the surface is an emitter regardless of what else
@@ -755,121 +885,18 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
 		// m.hasCheckerReflectance/hasFbmReflectance/hasMarbleReflectance/
-		// hasMixReflectance (Material's own comments) - same procedural-not-
-		// file, append-one-TextureData pattern as the Diffuse case below,
-		// now also resolved for CoatedDiffuse (previously Diffuse-only).
-		// sample_texture() (optix_device_helpers.h) dispatches purely on
-		// TextureData::kind, not on MaterialType, so pointing d.textureIdx
-		// at a procedural entry works identically for CoatedDiffuse's own
-		// "reflectance" read as it already does for Lambertian's.
-		else if (m.hasCheckerReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::UVChecker;
-			tex.color1 = make_float3(static_cast<float>(m.checkerColor1[0]),
-									 static_cast<float>(m.checkerColor1[1]),
-									 static_cast<float>(m.checkerColor1[2]));
-			tex.color2 = make_float3(static_cast<float>(m.checkerColor2[0]),
-									 static_cast<float>(m.checkerColor2[1]),
-									 static_cast<float>(m.checkerColor2[2]));
-			tex.uScale = static_cast<float>(m.checkerUScale);
-			tex.vScale = static_cast<float>(m.checkerVScale);
-			if (!m.checkerTex1Filename.empty())
-				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex1Filename, out, imageTextureCache);
-			if (!m.checkerTex2Filename.empty())
-				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex2Filename, out, imageTextureCache);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasFbmReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::FBm;
-			tex.omega = static_cast<float>(m.fbmRoughness);
-			tex.octaves = m.fbmOctaves;
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasMarbleReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Marble;
-			tex.omega = static_cast<float>(m.marbleRoughness);
-			tex.octaves = m.marbleOctaves;
-			tex.marbleScale = static_cast<float>(m.marbleScale);
-			tex.marbleVariation = static_cast<float>(m.marbleVariation);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasMixReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Mix;
-			tex.color1 = make_float3(static_cast<float>(m.mixColor1[0]),
-									 static_cast<float>(m.mixColor1[1]),
-									 static_cast<float>(m.mixColor1[2]));
-			tex.color2 = make_float3(static_cast<float>(m.mixColor2[0]),
-									 static_cast<float>(m.mixColor2[1]),
-									 static_cast<float>(m.mixColor2[2]));
-			tex.mixAmount = static_cast<float>(m.mixAmount);
-			if (!m.mixTex1Filename.empty())
-				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.mixTex1Filename, out, imageTextureCache);
-			if (!m.mixTex2Filename.empty())
-				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.mixTex2Filename, out, imageTextureCache);
-			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
-			// own comment) - a real per-point spatially-varying blend when
-			// "amount" itself nested a bare imagemap; tex.mixAmount (above)
-			// stays at its resolved flat value and is unused by
-			// sample_texture()/wf_sample_texture() when amountImageIdx >= 0.
-			if (!m.mixAmountTextureFilename.empty())
-				tex.amountImageIdx = getOrBuildPbrtImageTexture(m.mixAmountTextureFilename, out, imageTextureCache);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasWindyReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Windy;
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasWrinkledReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Wrinkled;
-			tex.omega = static_cast<float>(m.wrinkledRoughness);
-			tex.octaves = m.wrinkledOctaves;
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasDotsReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Dots;
-			tex.color1 = make_float3(static_cast<float>(m.dotsInsideColor[0]),
-									 static_cast<float>(m.dotsInsideColor[1]),
-									 static_cast<float>(m.dotsInsideColor[2]));
-			tex.color2 = make_float3(static_cast<float>(m.dotsOutsideColor[0]),
-									 static_cast<float>(m.dotsOutsideColor[1]),
-									 static_cast<float>(m.dotsOutsideColor[2]));
-			if (!m.dotsInsideTexFilename.empty())
-				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.dotsInsideTexFilename, out, imageTextureCache);
-			if (!m.dotsOutsideTexFilename.empty())
-				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.dotsOutsideTexFilename, out, imageTextureCache);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasBilerpReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Bilerp;
-			tex.color1 = make_float3(static_cast<float>(m.bilerpV00[0]),
-									 static_cast<float>(m.bilerpV00[1]),
-									 static_cast<float>(m.bilerpV00[2]));
-			tex.color2 = make_float3(static_cast<float>(m.bilerpV01[0]),
-									 static_cast<float>(m.bilerpV01[1]),
-									 static_cast<float>(m.bilerpV01[2]));
-			tex.bilerpV10 = make_float3(static_cast<float>(m.bilerpV10[0]),
-										static_cast<float>(m.bilerpV10[1]),
-										static_cast<float>(m.bilerpV10[2]));
-			tex.bilerpV11 = make_float3(static_cast<float>(m.bilerpV11[0]),
-										static_cast<float>(m.bilerpV11[1]),
-										static_cast<float>(m.bilerpV11[2]));
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
+		// hasMixReflectance/hasWindyReflectance/hasWrinkledReflectance/
+		// hasDotsReflectance/hasBilerpReflectance (Material's own comments) -
+		// same procedural-not-file, append-one-TextureData pattern as the
+		// Diffuse case below, now also resolved for CoatedDiffuse (previously
+		// Diffuse-only). sample_texture() (optix_device_helpers.h) dispatches
+		// purely on TextureData::kind, not on MaterialType, so pointing
+		// d.textureIdx at a procedural entry works identically for
+		// CoatedDiffuse's own "reflectance" read as it already does for
+		// Lambertian's - shared via resolveProceduralReflectanceTexture()
+		// above rather than duplicated here (matches the Diffuse case's own
+		// call to the same helper).
+		else resolveProceduralReflectanceTexture(m, d, out, imageTextureCache);
 		// Real independent u/v coat roughness - see MaterialType::Conductor's
 		// identical-shape override above for the full rationale.
 		d.roughness  = static_cast<float>(m.roughness_u);
@@ -993,129 +1020,17 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 				static_cast<float>(m.textureGamma), static_cast<GpuWrapMode>(m.textureWrapIndex), m.textureInvert);
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
-		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own
-		// comment) - a procedural pbrt-v4 checkerboard, appended directly to
-		// out.textures as a TextureKind::UVChecker entry (no cache/dedup:
-		// each pbrt Texture declaration is already deduped 1:1 with the
-		// Material referencing it by materialCache in build(), so this
-		// runs at most once per distinct checkerboard material).
-		else if (m.hasCheckerReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::UVChecker;
-			tex.color1 = make_float3(static_cast<float>(m.checkerColor1[0]),
-									 static_cast<float>(m.checkerColor1[1]),
-									 static_cast<float>(m.checkerColor1[2]));
-			tex.color2 = make_float3(static_cast<float>(m.checkerColor2[0]),
-									 static_cast<float>(m.checkerColor2[1]),
-									 static_cast<float>(m.checkerColor2[2]));
-			tex.uScale = static_cast<float>(m.checkerUScale);
-			tex.vScale = static_cast<float>(m.checkerVScale);
-			// One-level-nested bare imagemap tex1/tex2 (Material::
-			// checkerTex1Filename/checkerTex2Filename's own comment) -
-			// tex1ImageIdx/tex2ImageIdx stay -1 (color1/color2 used
-			// directly) when that slot was a flat literal instead.
-			if (!m.checkerTex1Filename.empty())
-				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex1Filename, out, imageTextureCache);
-			if (!m.checkerTex2Filename.empty())
-				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex2Filename, out, imageTextureCache);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		// m.hasFbmReflectance/hasMarbleReflectance/hasMixReflectance
-		// (Material's own comments) - same procedural-not-file,
-		// append-one-TextureData pattern as hasCheckerReflectance above.
-		else if (m.hasFbmReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::FBm;
-			tex.omega = static_cast<float>(m.fbmRoughness);
-			tex.octaves = m.fbmOctaves;
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasMarbleReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Marble;
-			tex.omega = static_cast<float>(m.marbleRoughness);
-			tex.octaves = m.marbleOctaves;
-			tex.marbleScale = static_cast<float>(m.marbleScale);
-			tex.marbleVariation = static_cast<float>(m.marbleVariation);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasMixReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Mix;
-			tex.color1 = make_float3(static_cast<float>(m.mixColor1[0]),
-									 static_cast<float>(m.mixColor1[1]),
-									 static_cast<float>(m.mixColor1[2]));
-			tex.color2 = make_float3(static_cast<float>(m.mixColor2[0]),
-									 static_cast<float>(m.mixColor2[1]),
-									 static_cast<float>(m.mixColor2[2]));
-			tex.mixAmount = static_cast<float>(m.mixAmount);
-			// Same one-level-nested-imagemap support as UVChecker above
-			// (Material::mixTex1Filename/mixTex2Filename's own comment).
-			if (!m.mixTex1Filename.empty())
-				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.mixTex1Filename, out, imageTextureCache);
-			if (!m.mixTex2Filename.empty())
-				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.mixTex2Filename, out, imageTextureCache);
-			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
-			// own comment) - a real per-point spatially-varying blend when
-			// "amount" itself nested a bare imagemap; tex.mixAmount (above)
-			// stays at its resolved flat value and is unused by
-			// sample_texture()/wf_sample_texture() when amountImageIdx >= 0.
-			if (!m.mixAmountTextureFilename.empty())
-				tex.amountImageIdx = getOrBuildPbrtImageTexture(m.mixAmountTextureFilename, out, imageTextureCache);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasWindyReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Windy;
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasWrinkledReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Wrinkled;
-			tex.omega = static_cast<float>(m.wrinkledRoughness);
-			tex.octaves = m.wrinkledOctaves;
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasDotsReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Dots;
-			tex.color1 = make_float3(static_cast<float>(m.dotsInsideColor[0]),
-									 static_cast<float>(m.dotsInsideColor[1]),
-									 static_cast<float>(m.dotsInsideColor[2]));
-			tex.color2 = make_float3(static_cast<float>(m.dotsOutsideColor[0]),
-									 static_cast<float>(m.dotsOutsideColor[1]),
-									 static_cast<float>(m.dotsOutsideColor[2]));
-			if (!m.dotsInsideTexFilename.empty())
-				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.dotsInsideTexFilename, out, imageTextureCache);
-			if (!m.dotsOutsideTexFilename.empty())
-				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.dotsOutsideTexFilename, out, imageTextureCache);
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
-		else if (m.hasBilerpReflectance) {
-			TextureData tex{};
-			tex.kind = TextureKind::Bilerp;
-			tex.color1 = make_float3(static_cast<float>(m.bilerpV00[0]),
-									 static_cast<float>(m.bilerpV00[1]),
-									 static_cast<float>(m.bilerpV00[2]));
-			tex.color2 = make_float3(static_cast<float>(m.bilerpV01[0]),
-									 static_cast<float>(m.bilerpV01[1]),
-									 static_cast<float>(m.bilerpV01[2]));
-			tex.bilerpV10 = make_float3(static_cast<float>(m.bilerpV10[0]),
-										static_cast<float>(m.bilerpV10[1]),
-										static_cast<float>(m.bilerpV10[2]));
-			tex.bilerpV11 = make_float3(static_cast<float>(m.bilerpV11[0]),
-										static_cast<float>(m.bilerpV11[1]),
-										static_cast<float>(m.bilerpV11[2]));
-			d.textureIdx = static_cast<int>(out.textures.size());
-			out.textures.push_back(tex);
-		}
+		// m.hasCheckerReflectance/hasFbmReflectance/hasMarbleReflectance/
+		// hasMixReflectance/hasWindyReflectance/hasWrinkledReflectance/
+		// hasDotsReflectance/hasBilerpReflectance (Material's own comments) -
+		// procedural pbrt-v4 textures, appended directly to out.textures (no
+		// cache/dedup: each pbrt Texture declaration is already deduped 1:1
+		// with the Material referencing it by materialCache in build(), so
+		// this runs at most once per distinct procedural material) - shared
+		// via resolveProceduralReflectanceTexture() above rather than
+		// duplicated here (matches the CoatedDiffuse case's own call to the
+		// same helper).
+		else resolveProceduralReflectanceTexture(m, d, out, imageTextureCache);
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;
