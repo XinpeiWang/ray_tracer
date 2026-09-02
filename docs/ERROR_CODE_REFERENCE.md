@@ -53,7 +53,7 @@ The ray tracer uses a comprehensive error code system to make debugging easier. 
 **Message:** Required file not found  
 **Meaning:** A texture or resource file is missing  
 **Troubleshooting:**
-- For Earth scene (scene 3), ensure `earthmap.jpg` is in the correct location
+- For the Earth scene (`A4`), ensure `earthmap.jpg` is in the correct location
 - Check that all texture files are present and readable
 - Verify file paths are correct
 
@@ -106,12 +106,13 @@ default-location-then-copy step that could fail this way.
 - Higher values = more realistic reflections/refractions
 
 ### 11 - ERR_INVALID_SCENE_ID
-**Message:** Invalid scene ID (must be 0-8)  
-**Meaning:** Scene ID is out of valid range  
+**Message:** Invalid scene ID (not registered in scene registry)  
+**Meaning:** The given scene id (a category letter + number, e.g. `A1`,
+`B10` - not a flat integer) doesn't match any entry in the scene registry  
 **Troubleshooting:**
-- Valid scene IDs: 0 (Cornell Box) through 8 (Final Scene)
-- Check `docs/SCENE_SELECTION.md` for scene list
-- Use the GUI scene selector to choose valid scenes
+- Check [`docs/SCENE_SELECTION.md`](SCENE_SELECTION.md) for the current id
+  scheme and category list
+- Use the GUI's scene dropdown instead of guessing an id by hand
 
 ### 12 - ERR_INVALID_CAMERA_POSITION
 **Message:** Invalid camera position coordinates  
@@ -146,7 +147,7 @@ default-location-then-copy step that could fail this way.
 **Meaning:** Scene builder returned zero geometry  
 **Troubleshooting:**
 - This indicates a bug in the scene builder
-- Check that the scene ID is valid (0-8)
+- Check that the scene ID is registered in the scene registry (see error 11)
 - Report this error if it persists
 
 ### 102 - ERR_CPU_CAMERA_INIT_FAILED
@@ -316,12 +317,15 @@ default-location-then-copy step that could fail this way.
 - Use CPU mode for high-res textures
 
 ### 211 - ERR_GPU_UNSUPPORTED_SCENE
-**Message:** GPU: Scene not supported on GPU (use CPU mode)  
-**Meaning:** GPU renderer only supports Cornell Box (scene 0)  
+**Message:** This scene has no GPU implementation. Use CPU mode for it - most other scenes do support GPU.  
+**Meaning:** This specific scene is marked `gpu_compatible = false` in the
+scene registry - most scenes DO support GPU rendering; this is a
+scene-specific exception, not a general GPU limitation (see
+[`SCENE_SELECTION.md`](SCENE_SELECTION.md))  
 **Troubleshooting:**
-- **Switch to CPU mode** to render this scene
-- CPU supports all 9 scenes
-- GPU support for other scenes is planned for future releases
+- **Switch to CPU mode** to render this particular scene
+- Check the scene's GPU-compatibility badge in the GUI's info panel before
+  switching to GPU mode
 
 ### 212 - ERR_GPU_SCENE_BUILD_FAILED
 **Message:** GPU: Failed to build scene  
@@ -418,7 +422,7 @@ Exit code 0 = success, any other value = specific error code.
 1. Use GUI scene selector
 2. Check numeric values are positive
 3. Use recommended ranges (see error messages)
-4. Verify scene ID is 0-8
+4. Verify the scene ID is registered (a valid category letter + number, e.g. `A1`)
 
 ---
 
