@@ -40,6 +40,8 @@ SOURCES += \
 	main.cpp \
 	mainwindow.cpp \
 	mainwindow_tabs.cpp \
+	mainwindow_tabs_render.cpp \
+	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
 	mainwindow_actions.cpp \
