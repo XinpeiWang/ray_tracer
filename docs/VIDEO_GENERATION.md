@@ -9,6 +9,12 @@ The video generation feature allows you to:
 - Choose from 4 camera animation paths (orbit, linear, figure8, spiral)
 - Automatically assemble frames into an MP4 video using ffmpeg
 
+This guide covers the CLI. The Qt GUI exposes the same options (camera
+path, frame count, FPS, a live duration calculator) on its **Video
+Settings** tab, selected by switching Output Mode to "Generate Video" on
+the Basic Settings tab - see
+[`qt_gui/QT_GUI_DOCUMENTATION.md`](../qt_gui/QT_GUI_DOCUMENTATION.md).
+
 ## Prerequisites
 
 1. **Build the project** (if not already built):

@@ -2,8 +2,9 @@
 
 ## Overview
 
-The renderer ships with a large, growing library of built-in scenes (~65 at
-last count) covering the original "Ray Tracing in One Weekend" series, a
+The renderer ships with a large, growing library of built-in scenes (123 at
+last count, per `tests/unit/scene_registry_tests.cpp`'s own pinned
+`builtin_scene_count()` check) covering the original "Ray Tracing in One Weekend" series, a
 wide sweep of pbrt-v4 materials/lights/cameras/volumes/shapes, imported mesh
 models, full textured environments, and curated demos of specific render
 options. Scenes can also be loaded at runtime from `.pbrt` scene files found
