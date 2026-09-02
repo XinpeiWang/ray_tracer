@@ -146,6 +146,19 @@ struct BuildStats {
 	// a silent one. Sphere's own object motion blur is unaffected - it has
 	// real support on both GPU backends already (SphereData::center1).
 	int animatedDiskCylinderCount = 0;
+	// Same idea as animatedDiskCylinderCount just above, for trianglemesh/
+	// plymesh/loopsubdiv (pbrt_flatten::AnimatedTriangleMesh, CPU-only real
+	// motion blur via animated_transform_instance.h). GPU has no concept of
+	// that separate object-space list at all - each animated mesh's
+	// Triangle::gpuOnlyStaticFallback-flagged duplicate (in the ordinary
+	// scene.triangles list this builder already reads) renders as an
+	// ordinary static triangle with no special handling needed here, but
+	// that silently drops the requested motion with nothing in the log to
+	// explain why unless this count is reported the same way Disk/Cylinder's
+	// already is. Counted per SHAPE (scene.animatedTriangleMeshes.size()),
+	// not per triangle, matching animatedDiskCylinderCount's own per-shape
+	// granularity.
+	int animatedMeshCount = 0;
 };
 
 namespace detail {
@@ -905,6 +918,8 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.instancePlacements.push_back(p);
 	}
 	stats.instancePlacements = out.instancePlacements.size();
+	// See BuildStats::animatedMeshCount's own comment.
+	stats.animatedMeshCount = static_cast<int>(scene.animatedTriangleMeshes.size());
 
 	// ---- infinite/sky light, flat-colour GPU approximation ----------------
 	if (scene.infiniteLight.present) {

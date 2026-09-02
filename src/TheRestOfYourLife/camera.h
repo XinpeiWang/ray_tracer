@@ -735,12 +735,35 @@ class camera {
             // get_ray() checks the alt-camera-model pointers first (below),
             // so this transform is only ever used for the default
             // perspective path - but that's no longer a silent drop for an
-            // alt camera model: scene_registry.h's own setup_camera()
-            // builds the SAME two-keyframe AnimatedTransform and attaches
-            // it directly to whichever alt_*_cam is constructed (see
-            // cameras.h's own anim_camera_to_world comment), so an alt
-            // camera model genuinely gets real motion blur too, just via
-            // its own copy rather than this one.
+            // alt camera model: scene_registry.h's own setup_camera() (the
+            // real pbrt-file-loading path) builds the SAME two-keyframe
+            // AnimatedTransform and attaches it directly to whichever
+            // alt_*_cam is constructed (see cameras.h's own
+            // anim_camera_to_world comment), so an alt camera model
+            // genuinely gets real motion blur too there. NOT every
+            // alt-camera construction site does this, though -
+            // scene_registry_data.h's own compiled-in demo scenes (D2/D3/D4)
+            // build alt_ortho_cam/alt_spherical_cam/alt_realistic_cam
+            // directly and have never been taught to set
+            // anim_camera_to_world - today none of them also set
+            // camera_is_animated, so this is latent, but a warning is
+            // cheap insurance against a future scene combining the two and
+            // silently rendering frozen at the StartTime pose with nothing
+            // in the log to explain why (a code-review pass on this exact
+            // round is what caught the original blanket "alt camera +
+            // motion blur = unsupported" warning being deleted outright
+            // rather than narrowed).
+            const bool activeAltCameraMissedAnimation =
+                (alt_ortho_cam      && !alt_ortho_cam->anim_camera_to_world.has_value()) ||
+                (alt_spherical_cam  && !alt_spherical_cam->anim_camera_to_world.has_value()) ||
+                (alt_realistic_cam  && !alt_realistic_cam->anim_camera_to_world.has_value());
+            if (activeAltCameraMissedAnimation) {
+                std::cerr << "Warning: camera_is_animated is set together with an "
+                             "alternate camera model (ortho/spherical/realistic), but "
+                             "that specific camera object was never given its own "
+                             "anim_camera_to_world - it will render static at its "
+                             "StartTime pose, not the requested motion blur.\n";
+            }
         }
     }
 

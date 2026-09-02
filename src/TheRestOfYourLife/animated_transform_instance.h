@@ -91,6 +91,12 @@ class animated_transform_instance : public hittable {
 
     aabb bounding_box() const override { return bbox_; }
 
+    // Accessor for structural walkers (e.g. --spectral's material-scan
+    // walker in cpu_interface.cpp) that need to recurse past this wrapper
+    // into the wrapped geometry - mirrors transform_instance.h's own
+    // get_object() exactly (see that file's own comment).
+    std::shared_ptr<hittable> get_object() const { return object_; }
+
   private:
     std::shared_ptr<hittable> object_;
     MotionState motion_;

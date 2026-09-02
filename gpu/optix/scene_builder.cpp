@@ -3933,6 +3933,16 @@ static bool build_loaded_pbrt_scene(
 			     "blurred; use --cpu instead if that motion matters for this "
 			     "render.\n";
 	}
+	// See BuildStats::animatedMeshCount's own comment - real on CPU
+	// (animated_transform_instance.h), not yet ported to either GPU backend.
+	if (stats.animatedMeshCount > 0) {
+		std::cerr << "[OptiX] Warning: " << stats.animatedMeshCount
+			  << " trianglemesh/plymesh/loopsubdiv shape(s) have an "
+			     "ActiveTransform \"StartTime\"/\"EndTime\" motion pair, which "
+			     "GPU has no real support for - rendered static at their "
+			     "StartTime position instead of blurred; use --cpu instead if "
+			     "that motion matters for this render.\n";
+	}
 
 	// The scene's own camera, unless the user moved it.
 	const pbrt_flatten::Camera& c = loaded.scene.camera;

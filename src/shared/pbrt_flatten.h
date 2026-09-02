@@ -3978,18 +3978,39 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		if (shape.type == "trianglemesh" || shape.type == "plymesh"
 				|| shape.type == "loopsubdiv") {
 			// Real object motion blur (AnimatedTriangleMesh's own comment) -
-			// gated on w.triangles pointing at the top-level scene list (not
-			// an ObjectInstance DEFINITION's own object-space geometry list,
-			// InstanceGroup::triangles - that case has no xformEnd concept
-			// at all and keeps baking to xform only, unaffected by this
-			// entire feature; a genuinely rare "animated mesh nested inside
-			// an instance definition" combination, scoped out rather than
-			// adding motion blur to the instancing system too). An emissive
-			// mesh is excluded even when this gate passes - see
-			// AnimatedTriangleMesh's own comment for why - and warned below,
-			// once P/indices/N have actually been resolved (so the warning
-			// can't fire for a shape that's about to be skipped anyway for
-			// an unrelated parse failure).
+			// gated on w.triangles pointing at the top-level scene list. This
+			// pointer is NOT unique to "top-level scene shape", though - a
+			// code-review pass on this feature's own commit found it also
+			// matches the "instanced EMISSIVE shape baked into world space"
+			// ShapeWork entries (built a few dozen lines above this loop,
+			// inside `for (const pbrt_scene::InstanceDecl &inst : ...)`,
+			// which explicitly `continue`s past any shape with
+			// `areaLightIndex < 0` before ever calling work.push_back() -
+			// only emissive shapes ever reach that push_back). It does
+			// correctly rule out an ObjectInstance DEFINITION's own object-
+			// space geometry list (InstanceGroup::triangles - that case has
+			// no xformEnd concept at all and keeps baking to xform only,
+			// unaffected by this entire feature; a genuinely rare "animated
+			// mesh nested inside an instance definition" combination, scoped
+			// out rather than adding motion blur to the instancing system
+			// too).
+			//
+			// What actually keeps an instanced-and-placed emissive mesh out
+			// of the animated path is the SEPARATE `shape.areaLightIndex < 0`
+			// check below (meshAnimated), which is unconditionally true for
+			// every entry from that instanced-emissive path by the
+			// construction just described - not a coincidence, a structural
+			// invariant of that loop, but one this pointer check alone does
+			// NOT enforce. If either gate is ever changed independently (a
+            // third `&out.triangles`-targeting call site added, or the
+			// instanced-emissive loop's own areaLightIndex filter loosened),
+			// re-verify this comment's claim still holds rather than trusting
+			// the pointer check alone - a per-ShapeWork explicit boolean
+			// would remove the coupling entirely, but the 3 existing
+			// positional-brace-init call sites (see ShapeWork's own comment
+			// on why fields are appended at the end for exactly this reason)
+			// made that a bigger change than this round's other fixes
+			// warranted.
 			const bool meshCouldAnimate =
 				(w.triangles == &out.triangles) && xform.differsFrom(w.xformEnd);
 			// A MediumInterface on a mesh shape is silently dropped - Triangle

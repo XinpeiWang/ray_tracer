@@ -771,7 +771,22 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 								  const std::vector<pbrt_flatten::Paraboloid> &paraboloids,
 								  const std::vector<pbrt_flatten::BilinearPatch> &patches,
 								  const std::vector<pbrt_flatten::Curve> &curveDecls,
-								  hittable_list &world, hittable_list &lights) {
+								  hittable_list &world, hittable_list &lights,
+								  // True only for the main scene.triangles call site,
+								  // and only when the scene actually has at least one
+								  // animated mesh (Triangle::gpuOnlyStaticFallback's
+								  // own comment) - both other call sites (ObjectInstance
+								  // group definitions, the animated-mesh block itself)
+								  // structurally never contain a flagged entry, so
+								  // skipping the filtering pass entirely for them (the
+								  // default here) is a correctness no-op, not just an
+								  // optimization; see this lambda's own gpuOnlyStaticFallback
+								  // handling just below for why a real per-scene "any
+								  // flagged?" scan+allocation is otherwise unconditional
+								  // overhead paid by every scene with mesh geometry,
+								  // animated or not (a code-review pass on this feature's
+								  // own commit caught that cost).
+								  bool trisMayHaveGpuOnlyFallback = false) {
 	// ---- triangles -------------------------------------------------------
 	// Triangle::gpuOnlyStaticFallback entries (a StartTime-pose duplicate of
 	// a mesh that's also in scene.animatedTriangleMeshes - see that field's
@@ -780,15 +795,13 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// real motion blur from animatedTriangleMeshes instead (built by this
 	// same function's own animated-mesh call site below in
 	// pbrt_cpu_builder.h's caller), so building a second, static `triangle`
-	// hittable here too would double-render it - filtered out up front so
-	// every loop below (vertex dedup, mesh_data population, per-triangle
-	// hittable construction) only ever sees the real, CPU-facing entries.
-	std::vector<const pbrt_flatten::Triangle *> cpuTris;
-	cpuTris.reserve(tris.size());
-	for (const pbrt_flatten::Triangle &t : tris)
-		if (!t.gpuOnlyStaticFallback) cpuTris.push_back(&t);
-
-	if (!cpuTris.empty()) {
+	// hittable here too would double-render it - skipped inline below via
+	// `trisMayHaveGpuOnlyFallback` (true only for the one call site that
+	// could ever see a flagged entry) rather than a separate filtering pass
+	// + pointer vector, which would otherwise be unconditional overhead paid
+	// by every scene with mesh geometry, animated or not (a code-review pass
+	// on this feature's own commit caught that cost).
+	if (!tris.empty()) {
 		auto mesh = std::make_shared<triangle_mesh_data>();
 		std::map<VertexKey, int> seen;
 
@@ -798,9 +811,10 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// `has_uvs()` (triangle.h) is the same all-or-nothing gate.
 		bool anyNormals = false;
 		bool anyUVs = false;
-		for (const pbrt_flatten::Triangle *t : cpuTris) {
-			if (t->hasNormals) anyNormals = true;
-			if (t->hasUVs) anyUVs = true;
+		for (const pbrt_flatten::Triangle &t : tris) {
+			if (trisMayHaveGpuOnlyFallback && t.gpuOnlyStaticFallback) continue;
+			if (t.hasNormals) anyNormals = true;
+			if (t.hasUVs) anyUVs = true;
 		}
 
 		const auto vertexIndex = [&](const double *p, const double *n, const double *uv) {
@@ -826,9 +840,9 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// it - triangle's constructor reads the positions immediately to
 		// precompute its normal and area.
 		std::vector<std::pair<int, int>> perTriangleMaterial;
-		perTriangleMaterial.reserve(cpuTris.size());
-		for (const pbrt_flatten::Triangle *tp : cpuTris) {
-			const pbrt_flatten::Triangle &t = *tp;
+		perTriangleMaterial.reserve(tris.size());
+		for (const pbrt_flatten::Triangle &t : tris) {
+			if (trisMayHaveGpuOnlyFallback && t.gpuOnlyStaticFallback) continue;
 			// When any mesh in the scene has shading normals, a face without
 			// its own still needs one per vertex or the two arrays fall out of
 			// step. Its geometric normal is the honest answer - it renders
@@ -1447,7 +1461,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 	emitGeometry(scene.triangles, scene.spheres, scene.disks, scene.cylinders,
 				 scene.cones, scene.paraboloids,
-				 scene.bilinearPatches, scene.curves, *out.world, *out.lights);
+				 scene.bilinearPatches, scene.curves, *out.world, *out.lights,
+				 !scene.animatedTriangleMeshes.empty());
 
 	// ---- instances -------------------------------------------------------
 	// Each definition is built once, into its own BVH, and then placed by a
