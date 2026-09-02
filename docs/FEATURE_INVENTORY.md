@@ -323,6 +323,12 @@ it's scoped as a genuinely separate follow-up round, not attempted here.
 `MediumInterface` on a disk/cylinder/trianglemesh has no effect on GPU
 (cylinder gained real homogeneous-medium support since; disk is
 structurally not meaningful — zero-thickness, no "inside" to bound).
+**Trianglemesh specifically canary-tested and confirmed blocked** (same
+session as §6's Disk/Cylinder motion-blur dead end): adding one unused
+`int` field to `TriangleData` alone reproduced the identical 100x+
+`optixModuleCreate` slowdown - see §6's own note on this being a module-
+wide `optix_programs.cu` issue, not specific to any one struct. Not
+attempted further pending diagnosis.
 
 ## 6. Cameras
 
@@ -424,6 +430,29 @@ doc) - don't re-attempt this exact approach (growing these two structs)
 without new diagnostic capability; a design that avoids touching
 `DiskData`/`CylinderData` at all (e.g. a separate parallel array indexed
 by primitive id) is untried and might sidestep whatever this is.
+
+**IMPORTANT, broader confirmed pattern** (same session): this is NOT
+specific to Disk/Cylinder. Two follow-up canary tests - bumping
+`OptixPipelineCompileOptions::numPayloadValues` by 1 (unused, no register
+actually packed anywhere) in `optix_renderer_init.cpp`, and separately
+adding one unused `int` field to `TriangleData` - each independently
+reproduced the identical 100x+ slowdown, in isolation, with nothing else
+changed. A control test (deleting and freshly rebuilding `optix_programs.
+ptx` from completely unchanged source) stayed fast (helper `loadPTX()`
+call to first pixel in ~300ms), ruling out "any freshly rebuilt PTX is
+slow" as an explanation - this is genuinely content-sensitive. **Current
+best understanding: `gpu/optix/optix_programs.cu` (the recursive
+backend's single OptiX module) appears to be sitting at some threshold
+where almost ANY additional growth - a per-primitive struct field, a
+payload register, tested independently on three unrelated structures -
+pushes `optixModuleCreate` into a ~100-400x slower compilation path.**
+Until this is diagnosed (needs NVIDIA Nsight or verbose `ptxas`/OptiX
+compiler diagnostics, unavailable this session), treat ANY struct/payload
+growth to the recursive backend as high-risk and cheap to canary-test
+first: add one trivial unused field, rebuild fresh, time a small render
+before investing in real implementation - both blocked attempts above
+were caught this way in under 10 minutes each rather than after a full
+implementation.
 
 Triangle meshes/bilinear patches/curves have no
 motion-blur representation at all on any backend (a mesh bakes to static
@@ -616,6 +645,13 @@ relative to it specifically).
    continuous hero-wavelength sampling) rather than porting
    `SampledWavelengths` into that backend's own separate OptiX module - a
    real chromatic fan, just coarser than the other two backends'.
+   **Attempted a canary test** (same session as the Disk/Cylinder motion-
+   blur dead end, §6): a real port needs ~8 new payload registers + a CIE
+   table upload into the recursive module's device-constant memory; a
+   minimal canary (`numPayloadValues` 25->26, unused) alone reproduced the
+   identical 100x+ `optixModuleCreate` slowdown described in §6's own
+   note. Blocked by the same undiagnosed module-wide issue - not attempted
+   further.
 4. ~~No object motion blur~~ — **narrowed**. Sphere has real object motion
    blur on all three backends (`Sphere::center1`); Disk/Cylinder now do too
    on **CPU** (`AnimatedTransform`, real TRS interpolation, §6) — GPU (both
