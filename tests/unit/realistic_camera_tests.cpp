@@ -113,6 +113,50 @@ TEST(RealisticCamera, GenerateRayCentralRayPointsForward) {
 }
 
 // ---------------------------------------------------------------------------
+// Animated camera-to-world (real per-ray-time motion blur - see cameras.h's
+// own anim_camera_to_world comment). A central ray with two different
+// sample.time values should land at two different world origins.
+// ---------------------------------------------------------------------------
+TEST(RealisticCamera, AnimatedInterpolatesAtRayTime) {
+	auto cam = make_camera();
+	cam.anim_camera_to_world = AnimatedTransform(
+		at_translate(0.0, 0.0, 0.0), 0.0,
+		at_translate(0.0, 5.0, 0.0), 1.0);
+
+	CameraSample<double> s0;
+	s0.pFilm_x = 0.0; s0.pFilm_y = 0.0;
+	s0.pLens_u = 0.5; s0.pLens_v = 0.5;
+	s0.time    = 0.0;
+	CameraSample<double> s1 = s0;
+	s1.time = 1.0;
+
+	auto r0 = cam.generate_ray(s0);
+	auto r1 = cam.generate_ray(s1);
+	ASSERT_GT(r0.weight, 0.0);
+	ASSERT_GT(r1.weight, 0.0);
+	// Not EXPECT_NEAR against exact 0.0/5.0 - a real lens system's exit-
+	// pupil sampling puts even a "central" ray through a real point on the
+	// aperture, not exactly local origin (0,0,0), so both origins carry the
+	// same small physical offset before the world transform. The delta
+	// between them isolates the animated translation itself.
+	EXPECT_NEAR(r1.origin.y - r0.origin.y, 5.0, 1e-6);
+}
+
+TEST(RealisticCamera, NoAnimationUnaffectedByTime) {
+	auto cam = make_camera();
+	CameraSample<double> s0;
+	s0.pFilm_x = 0.0; s0.pFilm_y = 0.0;
+	s0.pLens_u = 0.5; s0.pLens_v = 0.5;
+	s0.time    = 0.0;
+	CameraSample<double> s1 = s0;
+	s1.time = 1.0;
+
+	auto r0 = cam.generate_ray(s0);
+	auto r1 = cam.generate_ray(s1);
+	EXPECT_NEAR(r0.origin.y, r1.origin.y, 1e-9);
+}
+
+// ---------------------------------------------------------------------------
 // Off-axis film point: should still produce a valid ray (may be vignetted)
 // ---------------------------------------------------------------------------
 TEST(RealisticCamera, GenerateRayOffAxisDoesNotCrash) {

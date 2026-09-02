@@ -388,6 +388,31 @@ namespace pbrt_scene_registry {
             // to keep in sync. Kept in CameraConfig alone so
             // cpu_scene_camera_is_animated_by_id() sees it too (see that
             // brace-init's own comment for why that matters).
+            //
+            // That said, camera_is_animated only wires real motion blur into
+            // the DEFAULT perspective path (camera::initialize()'s own
+            // anim_cam_to_world_) - an alt camera model built below gets its
+            // own separate AnimatedTransform, attached to whichever
+            // alt_*_cam is constructed just below (see cameras.h's own
+            // anim_camera_to_world comment for why each alt camera class
+            // carries this independently rather than sharing camera::get_ray()'s
+            // dispatch, and camera.h's own "alt camera model takes priority"
+            // warning - now genuinely honoring motion blur too instead of
+            // silently dropping it).
+            std::optional<AnimatedTransform> animCtw;
+            if (cam.camera_is_animated) {
+                const Mat4<double> ctw0 = make_look_at<double>(
+                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
+                    cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
+                    ux, uy, uz);
+                const Mat4<double> ctw1 = make_look_at<double>(
+                    cam.lookfrom1.x(), cam.lookfrom1.y(), cam.lookfrom1.z(),
+                    cam.lookat1.x(),   cam.lookat1.y(),   cam.lookat1.z(),
+                    ux, uy, uz);
+                animCtw = AnimatedTransform(
+                    mat4_to_at_mat44(ctw0), cam.shutter_open,
+                    mat4_to_at_mat44(ctw1), cam.shutter_close);
+            }
 
             if (pcam.type == "perspective") return;
 
@@ -411,12 +436,14 @@ namespace pbrt_scene_registry {
                 }
                 cam.alt_ortho_cam = std::make_shared<OrthographicCamera<double>>(
                     xmin, xmax, ymin, ymax, cam.image_width, cam.image_height, ctw);
+                cam.alt_ortho_cam->anim_camera_to_world = animCtw;
             } else if (pcam.type == "spherical" || pcam.type == "environment") {
                 const auto mapping = (pcam.sphericalMapping == "equalarea")
                     ? SphericalCamera<double>::EqualArea
                     : SphericalCamera<double>::EquiRectangular;
                 cam.alt_spherical_cam = std::make_shared<SphericalCamera<double>>(
                     cam.image_width, cam.image_height, mapping, ctw);
+                cam.alt_spherical_cam->anim_camera_to_world = animCtw;
             } else if (pcam.type == "realistic") {
                 // flatten() already turned a missing lensfile into a warning
                 // and fell back to "perspective" (see pbrt_flatten.h), so
@@ -449,6 +476,7 @@ namespace pbrt_scene_registry {
                 const double halfX = aspect * halfY;
                 cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
                     ctw, halfX, halfY, cam.focus_dist, pcam.apertureDiameterMM, lens);
+                cam.alt_realistic_cam->anim_camera_to_world = animCtw;
             }
         };
     }

@@ -13,7 +13,12 @@
 //   - CameraSample: pixel film position + lens sample (both in continuous coords).
 //   - GenerateRay() returns the ray in world space, exactly as pbrt-v4.
 //   - DOF thin-lens: lensRadius > 0 enables concentric-disk sampling + focus plane.
-//   - No motion blur (static camera_to_world), no participating medium pointer.
+//   - Optional real motion blur: an `AnimatedTransform` (src/shared/
+//     animated_transform.h, the same TRS-decomposed interpolator
+//     camera.h's own default-perspective-camera motion blur uses)
+//     interpolated at each ray's own `CameraSample::time`, replacing the
+//     static `camera_to_world` for that ray only - see each class's own
+//     `anim_camera_to_world` member. No participating medium pointer.
 //
 // RealisticCamera (a full physical lens simulator, ~500 lines) lives in
 // realistic_camera.h, #included at this file's own end so existing
@@ -22,7 +27,9 @@
 #pragma once
 #include <cmath>
 #include <algorithm>
+#include <optional>
 #include "sampling.h"           // SampleUniformDiskConcentric, EqualAreaSquareToSphere, WrapEqualAreaSquare
+#include "animated_transform.h" // AnimatedTransform, AT_Mat44 - real per-ray-time camera motion blur
 
 // ---------------------------------------------------------------------------
 // Film "cropwindow"/"pixelbounds" (pbrt-v4) - NDC-fraction bounds resolved
@@ -216,6 +223,20 @@ struct Mat4 {
 	}
 };
 
+// Convert a column-major Mat4<double> (m[col][row], this file's own
+// convention - see Mat4's own comment) to animated_transform.h's row-major
+// AT_Mat44 (m[row][col]) - both represent the exact same "point = basis*p +
+// origin" transform (Mat4's columns are the u/v/w basis vectors + origin,
+// matching AT_Mat44's rows exactly), so this is a plain transpose, not a
+// change of convention.
+inline AT_Mat44 mat4_to_at_mat44(const Mat4<double>& m) {
+	double src[4][4];
+	for (int r = 0; r < 4; ++r)
+		for (int c = 0; c < 4; ++c)
+			src[r][c] = m.m[c][r];
+	return AT_Mat44(src);
+}
+
 // ---------------------------------------------------------------------------
 // Build standard camera matrices (mirrors pbrt-v4 util/transform.h)
 // ---------------------------------------------------------------------------
@@ -285,6 +306,14 @@ struct ProjectiveCameraBase {
 	T focal_dist    = T(1e6);
 	int res_x, res_y;
 
+	// Real per-ray-time motion blur (this file's own header comment) -
+	// nullopt (the default) means the static camera_to_world above is used
+	// for every ray, exactly as before this existed. Only ever set for
+	// T=double (see AnimatedTransform's own comment - hardcoded double,
+	// unlike this templated class), by a caller building a Camera "...
+	// ActiveTransform StartTime/EndTime"-animated alt camera.
+	std::optional<AnimatedTransform> anim_camera_to_world;
+
 	// screen_window: {xmin, xmax, ymin, ymax} in screen (NDC) space
 	void init(const Mat4<T>& screen_from_cam,
 			  T sw_xmin, T sw_xmax, T sw_ymin, T sw_ymax,
@@ -314,8 +343,19 @@ struct ProjectiveCameraBase {
 		camera_from_raster = camera_from_screen * screen_from_raster;
 	}
 
-	// Transform world-space ray direction + origin to world using camera_to_world
+	// Transform world-space ray direction + origin to world using
+	// camera_to_world - or, when anim_camera_to_world is set, the real
+	// TRS-interpolated transform at this exact ray's own time.
 	CameraRayResult<T> to_world(CamVec3<T> o_cam, CamVec3<T> d_cam, T time) const {
+		if (anim_camera_to_world.has_value()) {
+			const double o_in[3] = { double(o_cam.x), double(o_cam.y), double(o_cam.z) };
+			const double d_in[3] = { double(d_cam.x), double(d_cam.y), double(d_cam.z) };
+			double o_out[3], d_out[3];
+			anim_camera_to_world->apply_ray(o_in, d_in, double(time), o_out, d_out);
+			CamVec3<T> o_world{ T(o_out[0]), T(o_out[1]), T(o_out[2]) };
+			CamVec3<T> d_world{ T(d_out[0]), T(d_out[1]), T(d_out[2]) };
+			return {o_world, d_world.normalized(), time, T(1)};
+		}
 		CamVec3<T> o_world = camera_to_world.transform_point(o_cam.x, o_cam.y, o_cam.z);
 		CamVec3<T> d_world = camera_to_world.transform_vec(d_cam.x, d_cam.y, d_cam.z);
 		return {o_world, d_world.normalized(), time, T(1)};
@@ -440,6 +480,10 @@ struct SphericalCamera {
 	int res_x, res_y;
 	Mapping mapping;
 
+	// See ProjectiveCameraBase::anim_camera_to_world's own comment - same
+	// contract, nullopt means static camera_to_world above.
+	std::optional<AnimatedTransform> anim_camera_to_world;
+
 	SphericalCamera(int rx, int ry,
 					Mapping m = EquiRectangular,
 					const Mat4<T>& cam_to_world = Mat4<T>{})
@@ -475,7 +519,18 @@ struct SphericalCamera {
 		CamVec3<T> o{T(0), T(0), T(0)};
 		CamVec3<T> d{wx, wy, wz}; // already unit length from mapping
 
-		// Transform to world
+		// Transform to world - real per-ray-time interpolation when
+		// anim_camera_to_world is set (see its own comment), matching
+		// ProjectiveCameraBase::to_world()'s identical dispatch.
+		if (anim_camera_to_world.has_value()) {
+			const double o_in[3] = { double(o.x), double(o.y), double(o.z) };
+			const double d_in[3] = { double(d.x), double(d.y), double(d.z) };
+			double o_out[3], d_out[3];
+			anim_camera_to_world->apply_ray(o_in, d_in, double(sample.time), o_out, d_out);
+			CamVec3<T> o_w{ T(o_out[0]), T(o_out[1]), T(o_out[2]) };
+			CamVec3<T> d_w{ T(d_out[0]), T(d_out[1]), T(d_out[2]) };
+			return {o_w, d_w.normalized(), sample.time, T(1)};
+		}
 		CamVec3<T> o_w = camera_to_world.transform_point(o.x, o.y, o.z);
 		CamVec3<T> d_w = camera_to_world.transform_vec(d.x, d.y, d.z);
 		return {o_w, d_w.normalized(), sample.time, T(1)};

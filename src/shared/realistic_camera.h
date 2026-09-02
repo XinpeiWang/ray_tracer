@@ -96,6 +96,11 @@ struct RealisticCamera {
         T area() const { return (xMax-xMin)*(yMax-yMin); }
     };
 
+    // See ProjectiveCameraBase::anim_camera_to_world's own comment (cameras.
+    // h) - same contract: nullopt (the default) means the static
+    // camera_to_world_ below is used for every ray.
+    std::optional<AnimatedTransform> anim_camera_to_world;
+
     // nSamples_pupil: samples per exit-pupil annulus slab (pbrt-v4 uses 1M; 1024 is fine for testing)
     RealisticCamera(Mat4<T> camera_to_world,
                     T film_x_mm, T film_y_mm,
@@ -165,9 +170,22 @@ struct RealisticCamera {
         if (lrz <= T(0)) return result;
         w *= (cosTheta*cosTheta*cosTheta*cosTheta) / (ppdf * lrz * lrz);
 
-        // Transform out ray (already in camera space with z=+forward) to world space.
-        CamVec3<T> wo = camera_to_world_.transform_point(out_ox, out_oy, out_oz);
-        CamVec3<T> wd = camera_to_world_.transform_vec(out_dx, out_dy, out_dz);
+        // Transform out ray (already in camera space with z=+forward) to
+        // world space - real per-ray-time interpolation when
+        // anim_camera_to_world is set (see ProjectiveCameraBase::
+        // anim_camera_to_world's own comment; same contract here).
+        CamVec3<T> wo, wd;
+        if (anim_camera_to_world.has_value()) {
+            const double o_in[3] = { double(out_ox), double(out_oy), double(out_oz) };
+            const double d_in[3] = { double(out_dx), double(out_dy), double(out_dz) };
+            double o_out[3], d_out[3];
+            anim_camera_to_world->apply_ray(o_in, d_in, double(sample.time), o_out, d_out);
+            wo = { T(o_out[0]), T(o_out[1]), T(o_out[2]) };
+            wd = { T(d_out[0]), T(d_out[1]), T(d_out[2]) };
+        } else {
+            wo = camera_to_world_.transform_point(out_ox, out_oy, out_oz);
+            wd = camera_to_world_.transform_vec(out_dx, out_dy, out_dz);
+        }
         wd = wd.normalized();
 
         result.origin    = wo;

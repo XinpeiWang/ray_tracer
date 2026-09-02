@@ -90,7 +90,8 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Motion blur (camera, default perspective camera) | Y / Y / Y | N/A |
 | Cameras | Motion blur (object: Sphere) | Y / Y / Y | N/A |
 | Cameras | Motion blur (object: Disk/Cylinder) | Y (CPU) | GPU (both backends) renders static at the StartTime position, warned |
-| Cameras | Motion blur (object: mesh/curve/bilinear patch; or camera, alt camera models) | N | No fallback — static transform only |
+| Cameras | Motion blur (camera, alt camera models: Orthographic/Spherical/Realistic) | Y (CPU) | GPU has no alt-camera-plus-motion-blur support; falls back to static, warned |
+| Cameras | Motion blur (object: mesh/curve/bilinear patch) | N | No fallback — static transform only |
 | Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA or Shape) | Y / Y / Y | Real directives, all three backends, for both camera and the shapes above |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
@@ -461,10 +462,30 @@ Triangle meshes/bilinear patches/curves have no
 motion-blur representation at all on any backend (a mesh bakes to static
 world-space vertices at load time - real per-vertex motion would need a
 second vertex-position keyframe carried all the way through, a separate,
-larger feature). The three **alternate** camera models
-(`src/shared/cameras.h`'s Orthographic/Spherical/Realistic classes) still
-have a static `camera_to_world`, unaffected by any of this - "No motion
-blur" is still literally true for those three, on both CPU and GPU.
+larger feature).
+
+The three **alternate** camera models (`src/shared/cameras.h`'s
+Orthographic/Spherical/Realistic classes) now have real motion blur too,
+CPU only - `ProjectiveCameraBase<T>`/`SphericalCamera<T>`/`RealisticCamera<T>`
+each carry an optional `AnimatedTransform anim_camera_to_world` (same
+TRS-decomposed interpolator, `src/shared/animated_transform.h`, as the
+default perspective camera's own `camera::anim_cam_to_world_`), sampled at
+each ray's own time and substituted for the static `camera_to_world` when
+set. `scene_registry.h`'s `setup_camera()` lambda builds it from the same
+`cam.lookfrom1/lookat1/shutter_open/shutter_close` state
+`camera_is_animated` already populates from a scene's real `ActiveTransform
+"StartTime"/"EndTime"` pair, and attaches it to whichever alt camera the
+scene's own `Camera` type built - so `camera_is_animated` + an alt camera
+model is no longer a silent drop (camera.h used to warn and ignore motion
+blur whenever both were set; that warning is gone because the combination
+now genuinely works). `camera::get_ray()`'s alt-camera dispatch also
+switched from unscaled `random_double()` to a proper
+`shutter_open + random_double()*(shutter_close-shutter_open)` time sample,
+matching the default path's own formula - a real (if usually invisible,
+since most scenes keep the [0,1] default) bug fix needed for a non-default
+shutter window to sample the right portion of the animation. GPU has no
+alt-camera-plus-motion-blur support at all (already warned/falls back
+before this round; unaffected either way).
 
 No other camera gap.
 
@@ -655,15 +676,16 @@ relative to it specifically).
    identical 100x+ `optixModuleCreate` slowdown described in §6's own
    note. Blocked by the same undiagnosed module-wide issue - not attempted
    further.
-4. ~~No object motion blur~~ — **narrowed**. Sphere has real object motion
-   blur on all three backends (`Sphere::center1`); Disk/Cylinder now do too
-   on **CPU** (`AnimatedTransform`, real TRS interpolation, §6) — GPU (both
-   backends) still renders a moving Disk/Cylinder static, warned. Meshes/
-   curves/bilinear patches, and the Orthographic/Spherical/Realistic alt
-   camera classes, remain untouched on every backend — the default
-   perspective camera's own motion blur (`AnimatedTransform`, previously
-   wholly orphaned, now wired into `camera::get_ray()` and
-   `GpuCameraParams::animated`) is unaffected by any of this.
+4. ~~No object motion blur~~ — **narrowed further**. Sphere has real object
+   motion blur on all three backends (`Sphere::center1`); Disk/Cylinder now
+   do too on **CPU** (`AnimatedTransform`, real TRS interpolation, §6) — GPU
+   (both backends) still renders a moving Disk/Cylinder static, warned. The
+   default perspective camera's own motion blur (`AnimatedTransform`,
+   previously wholly orphaned, now wired into `camera::get_ray()` and
+   `GpuCameraParams::animated`) — and now the three **alternate** camera
+   models too (Orthographic/Spherical/Realistic, CPU only, §6) — is
+   unaffected by any of this. Meshes/curves/bilinear patches remain the one
+   fully untouched case, on every backend.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
 6. ~~`Accelerator` pbrt directive not parsed~~ — **closed**. `Accelerator

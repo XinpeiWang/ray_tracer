@@ -172,6 +172,52 @@ TEST(Cameras, OrthoDOFChangesOrigin) {
 }
 
 // ---------------------------------------------------------------------------
+// Animated camera-to-world (real per-ray-time motion blur, mirroring the
+// default perspective camera's own AnimatedTransform - see cameras.h's own
+// anim_camera_to_world comment). AnimatedTransform/AT_Mat44 (animated_
+// transform.h, transitively included via cameras.h) are hardcoded double,
+// independent of these cameras' own T=float in this file's existing style.
+// ---------------------------------------------------------------------------
+TEST(Cameras, OrthoAnimatedInterpolatesAtRayTime) {
+	auto cam = make_ortho();
+	cam.anim_camera_to_world = AnimatedTransform(
+		at_translate(0.0, 0.0, 0.0), 0.0,
+		at_translate(0.0, 0.0, 10.0), 1.0);
+
+	CameraSample<float> s0{256.f, 256.f, 0.5f, 0.5f, 0.f};
+	CameraSample<float> s1{256.f, 256.f, 0.5f, 0.5f, 1.f};
+	auto r0 = cam.generate_ray(s0);
+	auto r1 = cam.generate_ray(s1);
+	EXPECT_NEAR(r0.origin.z, 0.f, 1e-4f);
+	EXPECT_NEAR(r1.origin.z, 10.f, 1e-4f);
+}
+
+TEST(Cameras, OrthoNoAnimationUnaffectedByTime) {
+	// nullopt (the default) - static camera_to_world for every ray,
+	// regardless of sample.time - unchanged pre-existing behavior.
+	auto cam = make_ortho();
+	CameraSample<float> s0{256.f, 256.f, 0.5f, 0.5f, 0.f};
+	CameraSample<float> s1{256.f, 256.f, 0.5f, 0.5f, 1.f};
+	auto r0 = cam.generate_ray(s0);
+	auto r1 = cam.generate_ray(s1);
+	EXPECT_NEAR(r0.origin.z, r1.origin.z, 1e-6f);
+}
+
+TEST(Cameras, SphericalAnimatedInterpolatesAtRayTime) {
+	SphericalCamera<float> cam(64, 64, SphericalCamera<float>::EquiRectangular);
+	cam.anim_camera_to_world = AnimatedTransform(
+		at_translate(0.0, 0.0, 0.0), 0.0,
+		at_translate(5.0, 0.0, 0.0), 1.0);
+
+	CameraSample<float> s0{32.f, 32.f, 0.f, 0.f, 0.f};
+	CameraSample<float> s1{32.f, 32.f, 0.f, 0.f, 1.f};
+	auto r0 = cam.generate_ray(s0);
+	auto r1 = cam.generate_ray(s1);
+	EXPECT_NEAR(r0.origin.x, 0.f, 1e-4f);
+	EXPECT_NEAR(r1.origin.x, 5.f, 1e-4f);
+}
+
+// ---------------------------------------------------------------------------
 // PerspectiveCamera
 // ---------------------------------------------------------------------------
 static PerspectiveCamera<float> make_persp(float fov=90.f, int rx=512, int ry=512) {

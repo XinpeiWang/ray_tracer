@@ -732,15 +732,15 @@ class camera {
                 build_cam_to_world(lookfrom, lookat), shutter_open,
                 build_cam_to_world(lookfrom1, lookat1), shutter_close);
 
-            // get_ray() checks the alt-camera-model pointers first, so if a
-            // scene ever set both, motion blur would be silently dropped
-            // with no diagnostic - warn instead of failing silently.
-            if (alt_ortho_cam || alt_spherical_cam || alt_realistic_cam) {
-                std::cerr << "Warning: camera_is_animated is set together with an "
-                             "alternate camera model (ortho/spherical/realistic) - "
-                             "the alternate camera model takes priority and motion "
-                             "blur will NOT be applied.\n";
-            }
+            // get_ray() checks the alt-camera-model pointers first (below),
+            // so this transform is only ever used for the default
+            // perspective path - but that's no longer a silent drop for an
+            // alt camera model: scene_registry.h's own setup_camera()
+            // builds the SAME two-keyframe AnimatedTransform and attaches
+            // it directly to whichever alt_*_cam is constructed (see
+            // cameras.h's own anim_camera_to_world comment), so an alt
+            // camera model genuinely gets real motion blur too, just via
+            // its own copy rather than this one.
         }
     }
 
@@ -769,7 +769,18 @@ class camera {
             cs.pFilm_y = j + offset.y() + 0.5;
             cs.pLens_u = random_double();
             cs.pLens_v = random_double();
-            cs.time    = random_double();
+            // Sampled within [shutter_open, shutter_close], not plain
+            // [0,1) - matches the default perspective path's own ray_time
+            // formula below exactly, and is a genuine no-op when the
+            // shutter stays at its [0,1] default (the vast majority of
+            // scenes, animated or not). Needed for a genuinely animated alt
+            // camera's own anim_camera_to_world (cameras.h) to sample the
+            // correct portion of its keyframe interpolation - AnimatedTransform
+            // ::Interpolate() clamps outside [startTime,endTime] rather than
+            // erroring, so a non-default shutter window without this fix
+            // would silently bias every alt-camera ray toward one endpoint
+            // instead of spreading across the real exposure.
+            cs.time    = shutter_open + random_double() * (shutter_close - shutter_open);
             CameraRayResult<double> res;
             if (alt_ortho_cam)     res = alt_ortho_cam->generate_ray(cs);
             else if (alt_spherical_cam) res = alt_spherical_cam->generate_ray(cs);
