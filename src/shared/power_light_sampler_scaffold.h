@@ -1,6 +1,20 @@
 #pragma once
 // ---------------------------------------------------------------------------
-// power_light_sampler.h -- Power-proportional light sampler with alias table
+// power_light_sampler_scaffold.h -- Power-proportional light sampler with
+// alias table (orphaned scaffolding - see docs/FEATURE_INVENTORY.md's
+// "Present But Not Wired In" section)
+//
+// Renamed from power_light_sampler.h: that name collided with
+// src/TheRestOfYourLife/power_light_sampler.h (a separate, actually-used
+// CPU light sampler with the same filename, resolved only by C++'s
+// same-directory-first / include-path-order include rules - fragile).
+// Kept the "_scaffold" suffix rather than deleting it outright: it's a
+// real, complete implementation with zero callers (this codebase's actual
+// GPU alias-table light sampling, gpu/optix/optix_renderer_scene.cpp /
+// optix_types.h, implements the same Vose-alias-table algorithm natively
+// rather than through this class) - matching this file's existing peers
+// in the same "present but not wired in" category (UniformLightSampler,
+// BVHLightSampler2, ExhaustiveLightSampler), not a gap to close here.
 //
 // Mirrors pbrt-v4 PowerLightSampler (src/pbrt/lightsamplers.h/cpp).
 //

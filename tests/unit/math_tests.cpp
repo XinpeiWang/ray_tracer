@@ -12,7 +12,7 @@
 #include "rtweekend.h"
 #include "vec3.h"
 #include "color.h"
-#include "interval.h"
+#include "interval_book.h"
 #include "../shared/microfacet.h"
 #include "../shared/fresnel.h"
 #include "../shared/conductor_data.h"

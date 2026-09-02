@@ -1,5 +1,5 @@
-#ifndef INTERVAL_H
-#define INTERVAL_H
+#ifndef INTERVAL_BOOK_H
+#define INTERVAL_BOOK_H
 //==============================================================================================
 // To the extent possible under law, the author(s) have dedicated all copyright and related and
 // neighboring rights to this software to the public domain worldwide. This software is
@@ -8,6 +8,16 @@
 // You should have received a copy (see file COPYING.txt) of the CC0 Public Domain Dedication
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //==============================================================================================
+//
+// Renamed from interval.h to interval_book.h: src/shared/interval.h (a
+// separate, newer, pbrt-v4-style port with real rounding-aware interval
+// arithmetic) used to share this exact filename, resolved only by C++'s
+// same-directory-first / include-path-order include rules - fragile, and a
+// real risk for any #include "interval.h" issued from a file in neither
+// directory (see tests/unit/math_tests.cpp, which relied on this). This
+// file is the original "Ray Tracing in One Weekend" book's simple
+// double-only interval, kept for src/TheRestOfYourLife/'s own book-derived
+// call sites (color.h, rtweekend.h) - see src/TheRestOfYourLife/README.md.
 
 
 class interval {

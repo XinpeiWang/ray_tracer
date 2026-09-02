@@ -76,6 +76,7 @@ numbered sections below for the narrative detail behind any row.
 | Light sampling | `UniformLightSampler` | Dead code, zero callers | N/A — orphaned, not part of any fallback chain |
 | Light sampling | `BVHLightSampler2` | Dead code, zero callers | N/A — orphaned |
 | Light sampling | `ExhaustiveLightSampler` | Dead code (only reachable from unwired `restir.h`) | N/A — orphaned |
+| Light sampling | `PowerLightSampler` (`src/shared/power_light_sampler_scaffold.h`) | Dead code, zero callers | N/A — orphaned; not the same file as `src/TheRestOfYourLife/power_light_sampler.h`, which is real and CPU-default (see row above) |
 | Media | Homogeneous | Y / Y | N/A |
 | Media | Cloud (procedural Perlin-FBm) | Y / Y | N/A |
 | Media | RGB grid | Y / Y | N/A |
@@ -242,11 +243,12 @@ infinite light).
 | Sampler | Where it's actually wired in |
 |---|---|
 | `bvh_light_sampler` (light BVH, spatial+power) | **CPU default**, `cpu_interface.cpp` |
-| `power_light_sampler` | CPU, superseded by the BVH sampler as default |
-| `PowerLightSampler` (flat, power-only) | **GPU default (both recursive and wavefront)** |
+| `power_light_sampler` (`src/TheRestOfYourLife/`) | CPU, superseded by the BVH sampler as default |
+| pbrt-v4's PowerLightSampler algorithm (flat, power-only) | **GPU default (both recursive and wavefront)** - implemented natively in `gpu/optix/optix_renderer_scene.cpp`/`optix_types.h`, NOT via the C++ class below despite the shared algorithm name |
 | `UniformLightSampler` | present, **zero callers** — dead code |
 | `BVHLightSampler2` | **host-side tree build/upload now real** (`OptiXRenderer::buildScene()`, GPU-recursive only) - device-side traversal exists (`gpu_light_bvh_sample_index()`/`gpu_light_bvh_pmf()`, `optix_device_helpers.h`) but is unreachable by design, see the gap note below |
 | `ExhaustiveLightSampler` | only referenced by the unwired `restir.h` (see §11) — not reachable from any render path |
+| `PowerLightSampler<MaxLights>` class (`src/shared/power_light_sampler_scaffold.h`) | present, **zero callers** — dead code; not the GPU row above despite the name |
 
 **Gap**: no light BVH on GPU — GPU light sampling is always the flat
 power-weighted sampler, which scales worse (linear alias-table draw, no
@@ -524,9 +526,19 @@ found anywhere in the render path — not gaps exactly (the code exists),
 but not usable features either since nothing reaches them:
 
 - `UniformLightSampler`, `BVHLightSampler2` (`src/shared/`) — superseded by
-  `bvh_light_sampler.h`/`power_light_sampler.h`, left in place.
+  `src/TheRestOfYourLife/bvh_light_sampler.h`/`power_light_sampler.h` (the
+  CPU-side samplers actually wired into `cpu_interface.cpp` - not to be
+  confused with the next item below, a different, same-named-until-recently
+  file), left in place.
 - `ExhaustiveLightSampler` — only referenced by `restir.h`, which is itself
   unwired.
+- `PowerLightSampler<MaxLights>` (`src/shared/power_light_sampler_scaffold.h`
+  - renamed from `power_light_sampler.h`, which collided with the unrelated,
+  actually-used `src/TheRestOfYourLife/power_light_sampler.h` above) — a
+  complete Vose-alias-table light sampler, zero callers; GPU's own
+  power-weighted alias-table light sampling
+  (`gpu/optix/optix_renderer_scene.cpp`/`optix_types.h`) implements the same
+  algorithm natively rather than through this class.
 - `restir.h` / `reservoir_sampler.h` (ReSTIR/RIS temporal+spatial reservoir
   reuse) — real-looking scaffolding, beyond pbrt-v4 book scope to begin
   with, never connected to any integrator.
@@ -664,9 +676,10 @@ all of them, and it's worth knowing which is which before relying on one.
   `curve`) → dropped with a "shape not supported" warning; nothing is
   rendered in its place.
 - The orphaned scaffolding (§11: `UniformLightSampler`, `BVHLightSampler2`,
-  `ExhaustiveLightSampler`, ReSTIR, `PixelSensor`/`SpectralFilm`) — these
-  aren't fallbacks *for* anything and don't *have* fallbacks either; they're
-  unreachable code with zero callers, not part of any fallback chain.
+  `ExhaustiveLightSampler`, `PowerLightSampler` (scaffold), ReSTIR,
+  `PixelSensor`/`SpectralFilm`) — these aren't fallbacks *for* anything and
+  don't *have* fallbacks either; they're unreachable code with zero
+  callers, not part of any fallback chain.
 
 **Working counterpart already in place (not a degraded fallback — just the
 permanent behavior):**
