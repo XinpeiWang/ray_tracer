@@ -285,6 +285,31 @@ Open `ray_tracer.sln`, then **Test → Test Explorer** and click **Run All**.
 
 > Tests requiring an NVIDIA GPU (OptiX) are automatically skipped if no compatible GPU is present. Mesh-scene tests requiring external assets not present on disk are skipped too (not failed).
 
+#### Quick dev-loop filter
+
+A full GPU-enabled run takes ~160s, but that time is extremely
+concentrated: `MaterialsAndVolumes/MaterialCpuGpuParityTest` alone accounts
+for ~55% of it (it lazily renders every Materials/Volumes scene across
+CPU, GPU-recursive, and GPU-wavefront the first time any of its
+parameterized instances runs - a deliberate, thorough per-material
+CPU/GPU parity sweep, not wasted work, just expensive). A handful of other
+render-heavy suites (`Bundled*`, `AlphaCutoutBundledSceneTest`) account
+for most of the rest of the concentrated cost.
+
+For everyday iteration, exclude the single most expensive suite and cut
+the run to well under a minute:
+```cmd
+bin\Release\ray_tracer_tests.exe --gtest_filter=-MaterialsAndVolumes/*
+```
+For a still-faster loop that also skips the other render-heavy bundled-
+scene suites (trading away some real backend-parity coverage for speed):
+```cmd
+bin\Release\ray_tracer_tests.exe --gtest_filter=-MaterialsAndVolumes/*:Bundled/*:AlphaCutoutBundledSceneTest.*
+```
+Always run the full, unfiltered suite before pushing or in CI - the
+filtered runs are for fast local iteration only, not a replacement for
+full coverage.
+
 See [tests/TESTING_GUIDE.md](tests/TESTING_GUIDE.md) for the full guide including test structure and how to add new tests.
 
 ### Running (Development)
