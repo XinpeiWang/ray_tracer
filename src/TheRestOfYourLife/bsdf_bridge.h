@@ -95,9 +95,11 @@ struct SPPMShadingContext {
 // pbrt-v4's own design for both integrators.
 //
 // diffuse_transmission/normalized_fresnel are intentionally NOT delta
-// (skip_pdf=false) but are also not given full BSDFf support in this v1
-// bridge -- see sppm_bsdf_f's comment. mix_material is never passed here
-// directly -- the owning adapter's Intersect() resolves it down to a
+// (skip_pdf=false) and ARE given full BSDFf support below -- see
+// sppm_bsdf_f's own comment for exactly how each is handled (normalized_
+// fresnel via the generic path, diffuse_transmission via a dedicated
+// closed-form case). mix_material is never passed here directly -- the
+// owning adapter's Intersect() resolves it down to a
 // concrete sub-material first (see sppm_resolve_material() below), so by
 // the time anything in this file classifies or evaluates a material, it's
 // always one of the real, concrete classes checked below.

@@ -1,5 +1,5 @@
 #pragma once
-// scenes_book.h -- Book series scenes (IDs 0-9)
+// scenes_book.h -- Book series scenes (category A, "Basics" - A1 through A9)
 // Included by scenes.h umbrella header.
 
 #include "hittable_list.h"

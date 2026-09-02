@@ -1,5 +1,5 @@
 #pragma once
-// scenes_materials.h -- PBR material showcase scenes (scenes 10-17)
+// scenes_materials.h -- PBR material showcase scenes (category B, "Materials")
 // Included by scenes.h umbrella header.
 
 #include "hittable_list.h"

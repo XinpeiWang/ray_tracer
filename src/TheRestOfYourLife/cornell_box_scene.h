@@ -2,9 +2,14 @@
 #define CORNELL_BOX_SCENE_H
 
 //==============================================================================================
-// Shared Cornell Box Scene Definition
-// This file provides a centralized scene builder to ensure CPU and GPU renderers
-// produce identical output.
+// Standalone Cornell Box Scene Builder (test-only)
+// build_cornell_box_scene() below is used only by tests/unit/scene_tests.cpp
+// as a lightweight, self-contained scene to exercise geometry/material code
+// without going through the scene registry. It is NOT the Cornell Box scene
+// the actual renderer builds for scene id "A1" - that's
+// scenes_book.h::build_cornell_box(), reached via
+// scene_registry.h/scene_builder.cpp (GPU), so this file has no bearing on
+// CPU/GPU output parity.
 //==============================================================================================
 
 #include "hittable_list.h"

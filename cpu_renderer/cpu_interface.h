@@ -3,17 +3,19 @@
 /// @details This header defines the C-linkage interface for the CPU-based ray tracer.
 /// The CPU renderer uses:
 ///   - Multithreaded C++ path tracing
-///   - Importance sampling (PDF-based lighting)
-///   - The shared Cornell box scene definition
+///   - Importance sampling (PDF-based lighting, NEE + MIS)
+///   - Any scene registered in src/TheRestOfYourLife/scene_registry.h (123
+///     built-in scenes at last count), selected by scene_id
 ///
 /// Camera System:
 ///   - Camera position (lookfrom) is configurable via cam_x, cam_y, cam_z
-///   - Camera target (lookat) is fixed at Cornell box center: (278, 278, 278)
-///   - View up vector (vup) is fixed at (0, 1, 0)
-///   - Vertical field of view (vfov) is fixed at 40 degrees
+///   - Camera target (lookat), up vector, and field of view all come from
+///     the selected scene's own CameraConfig (scene_registry.h) - there is
+///     no single fixed camera target across scenes
 ///
-/// This interface allows the launcher (main.cpp) to call the CPU renderer
-/// as an in-process library function with C linkage (no name mangling).
+/// This interface allows the launcher (launcher/main.cpp) to call the CPU
+/// renderer as an in-process library function with C linkage (no name
+/// mangling).
 
 #ifndef CPU_INTERFACE_H
 #define CPU_INTERFACE_H
@@ -24,19 +26,17 @@
 extern "C" {
 #endif
 
-/// @brief Render the Cornell box scene using CPU path tracing with importance sampling
-/// @details The Cornell box scene is predefined in src/TheRestOfYourLife/cornell_box_scene.h
-/// and includes:
-///   - Cornell box walls (red, green, white)
-///   - Ceiling light source
-///   - Glass sphere
-///   - Rotated box
-/// 
+/// @brief Render the requested scene using CPU path tracing with importance sampling
+/// @details Any scene registered in src/TheRestOfYourLife/scene_registry.h,
+/// selected by scene_id (a category letter + number, e.g. "A1" for Cornell
+/// Box). Scene geometry/materials/lights are built by scene_registry.h's
+/// build_world()/build_lights() closures for the selected entry.
+///
 /// Camera configuration:
-///   - lookfrom: (cam_x, cam_y, cam_z) - user-specified position
-///   - lookat:   (278, 278, 278) - fixed at Cornell box center
-///   - vup:      (0, 1, 0) - fixed up direction
-///   - vfov:     40 degrees - fixed field of view
+///   - lookfrom: (cam_x, cam_y, cam_z) - user-specified position (or the
+///     scene's own default, see force_camera_override below)
+///   - lookat/vup/vfov: come from the selected scene's own CameraConfig
+///     (scene_registry.h) - not fixed across scenes
 /// 
 /// @param width         Image width in pixels (height = width for square aspect)
 /// @param height        Image height in pixels
@@ -100,13 +100,13 @@ int cpu_render_main(
 /// (Cornell Rough Glass); other scenes may render correctly but are
 /// unverified.
 ///
-/// Only supports lambertian (non-specular) materials for indirect/caustic
-/// light transport plus the 8 delta-BSDF material classes (metal,
-/// dielectric, rough_metal, rough_dielectric, conductor, coated_diffuse,
-/// thin_dielectric, coated_conductor) - diffuse_transmission/
-/// normalized_fresnel/mix_material are not yet supported by the BSDF
-/// bridge (sppm_adapter.h's sppm_bsdf_f() comment explains why) and will
-/// render those surfaces as black/incorrect.
+/// Supports lambertian (non-specular) materials for indirect/caustic light
+/// transport, the 8 delta-BSDF material classes (metal, dielectric,
+/// rough_metal, rough_dielectric, conductor, coated_diffuse,
+/// thin_dielectric, coated_conductor), and diffuse_transmission/
+/// normalized_fresnel/mix_material (each individually handled by the BSDF
+/// bridge - see src/TheRestOfYourLife/bsdf_bridge.h's sppm_bsdf_f() comment
+/// for exactly how).
 ///
 /// @param width          Image width in pixels (height = width for square aspect)
 /// @param height         Image height in pixels
@@ -156,8 +156,11 @@ int cpu_render_main_sppm(
 /// comparable in scope to the GPU SPPM work and left for a future,
 /// dedicated project -- see launcher_args.h's --bdpt/--gpu handling.
 ///
-/// Area lights ONLY (no punctual/sky-light NEE) -- see bdpt_adapter.h's own
-/// "Scope (v1)" comment for the full reasoning. Verified end-to-end against
+/// Area, point/spot/distant, AND sky/infinite lights are all supported via
+/// one unified power-weighted light distribution -- see bdpt_adapter.h's own
+/// "Scope (v2)" comment. Goniometric and projection lights still have no
+/// light-subpath-emission (SampleLe) implementation, so a scene whose ONLY
+/// light is one of those still renders black. Verified end-to-end against
 /// scene A1 (Cornell Box) only; other scenes are unverified.
 ///
 /// @param width/height    Image dimensions in pixels

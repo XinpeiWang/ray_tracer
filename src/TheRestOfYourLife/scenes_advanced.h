@@ -874,7 +874,7 @@ inline std::shared_ptr<sky_light> build_spherical_sky() {
 }
 
 // ============================================================================
-// Scene 34: Measured BRDF
+// B14: Measured BRDF
 // Sphere cluster with a measured BRDF material (pbrt-v4 MeasuredBxDF)
 // Uses synthetically generated tabulated data to demonstrate the pipeline.
 // ============================================================================

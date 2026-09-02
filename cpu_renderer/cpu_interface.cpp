@@ -2,17 +2,17 @@
 // CPU Renderer Implementation
 // ============================================================================
 // This file implements the CPU-based ray tracer entry point.
-// 
+//
 // Renderer features:
 //   - Multithreaded C++ path tracing
-//   - Importance sampling using PDFs (probability density functions)
-//   - Cornell box scene with glass sphere and rotated box
+//   - Importance sampling using PDFs (probability density functions, NEE + MIS)
+//   - Any scene registered in scene_registry.h, selected via scene_id
 //   - Configurable camera position
 //
 // Camera behavior:
 //   - Position (lookfrom) is set by caller via (cam_x, cam_y, cam_z)
-//   - Target (lookat) is fixed at Cornell box center: (278, 278, 278)
-//   - This ensures camera always points toward the center of the scene
+//   - Target (lookat), up vector, and field of view come from the selected
+//     scene's own CameraConfig (scene_registry.h) unless overridden
 //
 // Output handling:
 //   - camera::render() writes directly to the caller's requested output
@@ -246,8 +246,8 @@ static void applyCameraConfig(camera& cam, const CameraConfig& cc,
 // ============================================================================
 // cpu_render_main - CPU Render Entry Point
 // ============================================================================
-// C-linkage function that can be called from the launcher (main.cpp)
-// Builds the Cornell box scene, configures camera, renders, and copies output
+// C-linkage function that can be called from the launcher (launcher/main.cpp)
+// Builds the requested scene, configures camera, renders, and copies output
 // ============================================================================
 
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
