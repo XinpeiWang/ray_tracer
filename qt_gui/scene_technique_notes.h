@@ -209,8 +209,8 @@ inline QString forScene(const QString &sceneId) {
 // (scene_metadata_client.h's comment: the GUI never links that header
 // directly, only through the DLL boundary this function's caller already
 // uses). Fails loud via qWarning, not a crash or a dialog - same "say so,
-// don't stay silent" choice paneBackgroundRule()'s missing-resource warning
-// makes elsewhere in this app.
+// don't stay silent" choice ThemedScrollArea::setMotif()'s missing-resource
+// warning (mainwindow.h) makes elsewhere in this app.
 inline void warnIfOutOfSync(const QStringList &selfContainedSceneIds) {
 	const auto &map = notes();
 	for (const QString &id : selfContainedSceneIds) {

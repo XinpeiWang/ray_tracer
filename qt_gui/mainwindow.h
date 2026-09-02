@@ -400,8 +400,13 @@ public:
 	// (matches the four topical themes' own backgroundTiled - theme.h);
 	// otherwise drawn once at the SVG's own raw pixel size and anchored to
 	// the corner named in `position` ("top left"/"bottom right", the exact
-	// strings Palette::backgroundPosition already uses).
-	void setMotif(const QString &svgPath, bool tiled, const QString &position) {
+	// strings Palette::backgroundPosition already uses). themeId is only
+	// for the missing-resource warning below (theme::Palette::id) - optional
+	// since a caller with no theme object handy (there is none today, but a
+	// future one might not) can still get a working, just less-labeled,
+	// warning.
+	void setMotif(const QString &svgPath, bool tiled, const QString &position,
+				  const QString &themeId = QString()) {
 		if (svgPath.isEmpty()) {
 			viewport()->setStyleSheet(QString());
 			return;
@@ -410,7 +415,7 @@ public:
 		// declaration - the same failure mode that once made the SVG icons
 		// render as nothing at all. Check rather than trust, and say so.
 		if (!QFile::exists(svgPath)) {
-			qWarning() << "ThemedScrollArea: motif" << svgPath
+			qWarning() << "ThemedScrollArea: theme" << themeId << "motif" << svgPath
 					   << "is not in the resource bundle - check resources.qrc";
 			viewport()->setStyleSheet(QString());
 			return;

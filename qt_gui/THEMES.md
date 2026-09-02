@@ -77,7 +77,17 @@ It cannot go on `QTabWidget::pane`: the scroll area covers the pane edge to
 edge, so a background set there is never seen (confirmed by probing with an
 opaque colour — nothing rendered). The scroll area's own viewport and content
 widget also fill themselves opaquely by default and have to be punched through,
-which is what the `QScrollArea#tabScroll > QWidget` rules do.
+which is what the `QScrollArea#tabScroll > QWidget` rules (mainwindow_style.cpp)
+do for the transparent colour.
+
+The `background-image` itself, though, is applied separately — by
+`ThemedScrollArea` (`mainwindow.h`) calling `viewport()->setStyleSheet(...)`
+directly on its own viewport, a per-widget stylesheet, not a rule in the
+app-wide one. That split exists because the app-wide stylesheet never
+reliably applied a `background-image` to this specific nested selector at
+runtime (confirmed by direct experiment - see `ThemedScrollArea`'s own class
+comment for what was tried and ruled out); a stylesheet set directly on the
+widget does.
 
 ## Your own themes
 

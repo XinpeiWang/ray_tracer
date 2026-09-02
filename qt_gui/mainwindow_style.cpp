@@ -82,7 +82,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 	// per top-level tab (mainwindow_tabs.cpp's own objectName("tabScroll")
 	// call sites) and a new one should pick up theming for free.
 	for (ThemedScrollArea *scroll : findChildren<ThemedScrollArea *>())
-		scroll->setMotif(p.backgroundImage, p.backgroundTiled, p.backgroundPosition);
+		scroll->setMotif(p.backgroundImage, p.backgroundTiled, p.backgroundPosition, p.id);
 
 	// Qt's own palette still matters: it is what non-stylesheet painting and
 	// native dialogs read, so it has to track the scheme too rather than being
