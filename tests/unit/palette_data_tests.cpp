@@ -91,7 +91,7 @@ TEST(PaletteDataTest, RegistryIsNonEmpty) {
 TEST(PaletteDataTest, HasExpectedCount) {
 	// Update deliberately when adding a theme, so one appearing or vanishing by
 	// accident is loud.
-	EXPECT_EQ(builtins().size(), 12u);
+	EXPECT_EQ(builtins().size(), 13u);
 }
 
 TEST(PaletteDataTest, IdsAreUniqueAndNonEmpty) {

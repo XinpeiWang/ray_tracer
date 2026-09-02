@@ -498,6 +498,48 @@ const std::vector<PaletteData> kBuiltins = {
 	":/backgrounds/blossom.svg", false, "top left",
 },
 
+// Comic Pop - a newsprint-cream ground with real primary-colour ink, the
+// only palette here built for saturation rather than restraint. accentDim
+// carries the same gold as the motif's "impact" burst; every log severity
+// still clears WCAG AA at 3:1 or better against surface0, the same floor
+// every other theme in this file is held to.
+{
+	"comic-pop", "Comic Pop", "Original palette - halftone print and primary-colour ink",
+	{0xff, 0xfb, 0xf0},      // surface0
+	{0xff, 0xf2, 0xd9},      // surface1
+	{0xff, 0xe6, 0xb8},      // surface2
+	{0xff, 0xd6, 0x8f},      // surface3
+	{0x1a, 0x1a, 0x2e},      // textBody
+	{0x4a, 0x4a, 0x6a},      // textMuted
+	{0x9a, 0x9a, 0xb0},      // textDisabled
+	{0xe6, 0x39, 0x50},      // accentPrimary
+	{0x22, 0x66, 0xdd},      // accentSecondary
+	{0xf2, 0xb7, 0x05},      // accentDim
+	{0xff, 0xf2, 0xd9},      // primaryTop
+	{0xff, 0xe6, 0xb8},      // primaryBottom
+	{0xff, 0xfb, 0xf0},      // primaryTopHover
+	{0xff, 0xf6, 0xe0},      // primaryBottomHover
+	{0xff, 0xd6, 0x8f},      // border
+	{0xe8, 0xb4, 0x64},      // borderStrong
+	{0xff, 0xed, 0xc2},      // hoverRow
+	{0x1e, 0x8f, 0x4e},      // success
+	{0xd8, 0x1e, 0x34},      // error
+	{0x1a, 0x1a, 0x2e},      // logInfo
+	{0xd8, 0x1e, 0x34},      // logError
+	{0xb8, 0x79, 0x0a},      // logWarning
+	{0x1e, 0x8f, 0x4e},      // logSuccess
+	{0x1e, 0x8f, 0x4e},      // logGpu
+	{0x22, 0x66, 0xdd},      // logCpu
+	{0xa6, 0x6c, 0x0c},      // logPerformance - darkened from logWarning so the two read apart
+	{0x8a, 0x2b, 0xe2},      // logScene
+	{0x0e, 0x8a, 0x8a},      // logInit
+	{0xe6, 0x39, 0x50},      // logTechnique
+	{0x4a, 0x4a, 0x6a},      // logCommand
+	{0x6a, 0x6a, 0x8a},      // logDebug
+	{0xe8, 0xb4, 0x64},      // logSeparator
+	":/backgrounds/comicpop.svg", true, "top left",
+},
+
 };
 
 } // namespace

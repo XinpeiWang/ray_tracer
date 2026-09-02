@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Comic Pop motif: a halftone (Ben-Day) dot field with a red sparkle, a
+     blue sparkle and a gold "impact" burst - the print texture and ink
+     accents of a newsprint comic panel, not any specific comic's art or
+     character. Original artwork.
+
+     TILES - same seam-safety approach as the other tiled motifs, but
+     simpler here: the dot grid is a uniform pitch with no directional line
+     weight to double up, so it needs no top/left-only trick to stay
+     seamless - only the accent shapes need to stay clear of every edge so
+     they never get cut mid-shape by the tile boundary, which they do.
+
+     Opacity is baked in; Qt stylesheets have no opacity property for
+     background-image. The colour accents sit at their own higher opacity
+     than the dot field so they read as real ink colour, not just darker
+     dots. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
+  <g opacity="0.13" fill="#1a1a2e">
+    <circle cx="5" cy="5" r="1.6"/><circle cx="15" cy="5" r="1.6"/><circle cx="25" cy="5" r="1.6"/><circle cx="35" cy="5" r="1.6"/><circle cx="45" cy="5" r="1.6"/><circle cx="55" cy="5" r="1.6"/><circle cx="65" cy="5" r="1.6"/><circle cx="75" cy="5" r="1.6"/>
+    <circle cx="5" cy="15" r="1.6"/><circle cx="15" cy="15" r="1.6"/><circle cx="25" cy="15" r="1.6"/><circle cx="35" cy="15" r="1.6"/><circle cx="45" cy="15" r="1.6"/><circle cx="55" cy="15" r="1.6"/><circle cx="65" cy="15" r="1.6"/><circle cx="75" cy="15" r="1.6"/>
+    <circle cx="5" cy="25" r="1.6"/><circle cx="15" cy="25" r="1.6"/><circle cx="25" cy="25" r="1.6"/><circle cx="35" cy="25" r="1.6"/><circle cx="45" cy="25" r="1.6"/><circle cx="55" cy="25" r="1.6"/><circle cx="65" cy="25" r="1.6"/><circle cx="75" cy="25" r="1.6"/>
+    <circle cx="5" cy="35" r="1.6"/><circle cx="15" cy="35" r="1.6"/><circle cx="25" cy="35" r="1.6"/><circle cx="35" cy="35" r="1.6"/><circle cx="45" cy="35" r="1.6"/><circle cx="55" cy="35" r="1.6"/><circle cx="65" cy="35" r="1.6"/><circle cx="75" cy="35" r="1.6"/>
+    <circle cx="5" cy="45" r="1.6"/><circle cx="15" cy="45" r="1.6"/><circle cx="25" cy="45" r="1.6"/><circle cx="35" cy="45" r="1.6"/><circle cx="45" cy="45" r="1.6"/><circle cx="55" cy="45" r="1.6"/><circle cx="65" cy="45" r="1.6"/><circle cx="75" cy="45" r="1.6"/>
+    <circle cx="5" cy="55" r="1.6"/><circle cx="15" cy="55" r="1.6"/><circle cx="25" cy="55" r="1.6"/><circle cx="35" cy="55" r="1.6"/><circle cx="45" cy="55" r="1.6"/><circle cx="55" cy="55" r="1.6"/><circle cx="65" cy="55" r="1.6"/><circle cx="75" cy="55" r="1.6"/>
+    <circle cx="5" cy="65" r="1.6"/><circle cx="15" cy="65" r="1.6"/><circle cx="25" cy="65" r="1.6"/><circle cx="35" cy="65" r="1.6"/><circle cx="45" cy="65" r="1.6"/><circle cx="55" cy="65" r="1.6"/><circle cx="65" cy="65" r="1.6"/><circle cx="75" cy="65" r="1.6"/>
+    <circle cx="5" cy="75" r="1.6"/><circle cx="15" cy="75" r="1.6"/><circle cx="25" cy="75" r="1.6"/><circle cx="35" cy="75" r="1.6"/><circle cx="45" cy="75" r="1.6"/><circle cx="55" cy="75" r="1.6"/><circle cx="65" cy="75" r="1.6"/><circle cx="75" cy="75" r="1.6"/>
+  </g>
+
+  <g opacity="0.4">
+    <!-- Red four-point sparkle, a classic comic "shine" glyph. -->
+    <path d="M20 50 Q22 58 30 60 Q22 62 20 70 Q18 62 10 60 Q18 58 20 50 Z" fill="#e63950"/>
+    <!-- Blue four-point sparkle, smaller. -->
+    <path d="M58 14 Q59.5 20 66 22 Q59.5 24 58 30 Q56.5 24 50 22 Q56.5 20 58 14 Z" fill="#2266dd"/>
+    <!-- Gold "impact" burst: eight short radiating lines from a centre
+         point, the print-comic stand-in for a starburst panel effect. -->
+    <g stroke="#f2b705" stroke-width="2" stroke-linecap="round">
+      <path d="M60 47 v6 M60 73 v-6 M47 60 h6 M73 60 h-6
+               M50.5 50.5 l4.2 4.2 M69.5 69.5 l-4.2-4.2 M69.5 50.5 l-4.2 4.2 M50.5 69.5 l4.2-4.2"/>
+    </g>
+  </g>
+</svg>

@@ -21,5 +21,6 @@
         <file>backgrounds/blueprint.svg</file>
         <file>backgrounds/arcade.svg</file>
         <file>backgrounds/blossom.svg</file>
+        <file>backgrounds/comicpop.svg</file>
     </qresource>
 </RCC>

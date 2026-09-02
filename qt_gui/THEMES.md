@@ -1,10 +1,10 @@
 # Theme attribution
 
-The GUI ships twelve colour schemes (`qt_gui/theme.cpp`). Seven of them take
+The GUI ships thirteen colour schemes (`qt_gui/theme.cpp`). Seven of them take
 their numbers from established, widely-used developer colour schemes rather
 than from values invented here — they have been eye-tested by far more people
 than this project has, and they land somewhere users already recognise. The
-remaining five (Cyberpunk plus the four topical schemes below) are original.
+remaining six (Cyberpunk plus the five topical schemes below) are original.
 
 ## What was and was not taken
 
@@ -45,7 +45,7 @@ first run as it always did.
 
 ## Topical themes
 
-Four further schemes are not transcriptions of anything - they are original
+Five further schemes are not transcriptions of anything - they are original
 palettes built around a subject, each with its own decorative motif:
 
 | Scheme | Motif | Placement |
@@ -54,6 +54,7 @@ palettes built around a subject, each with its own decorative motif:
 | Sci-Fi Blueprint | drafting grid with registration crosses | tiled |
 | Retro Arcade | dot matrix with sparkles and a scanline | tiled |
 | Cherry Blossom | branch, blossoms and drifting petals | top left |
+| Comic Pop | halftone dot field with ink sparkles and an impact burst | tiled |
 
 **These are named for a genre, never for a franchise, and every motif is drawn
 from scratch** (`qt_gui/backgrounds/*.svg`). No game or film artwork, screenshot,
@@ -61,7 +62,7 @@ logo, or name is used. Naming a theme after a real property, or shipping its
 art, would be someone else's trademark and copyright — the genre carries the
 same feel without borrowing anything.
 
-All four are light schemes deliberately: a faint motif needs a light ground to
+All five are light schemes deliberately: a faint motif needs a light ground to
 read against at all. At the opacities used here it would be either invisible on
 a near-black surface or, once boosted enough to see, glare.
 
