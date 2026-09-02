@@ -1578,9 +1578,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	if (!out.world->objects.empty()) {
 		auto accelerated = std::make_shared<hittable_list>();
 		if (scene.acceleratorType == "kdtree") {
-			accelerated->add(std::make_shared<kd_tree_hittable>(
-				*out.world, scene.acceleratorKdIntersectCost, scene.acceleratorKdTraversalCost,
-				scene.acceleratorKdEmptyBonus, scene.acceleratorKdMaxPrims, scene.acceleratorKdMaxDepth));
+			accelerated->add(std::make_shared<kd_tree_hittable>(*out.world, scene.acceleratorKdParams));
 		} else if (scene.acceleratorSplitMethod == "middle") {
 			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
 				*out.world, BvhSplitMethod::Middle, scene.acceleratorMaxNodePrims));

@@ -43,6 +43,8 @@
 #include <string>
 #include <vector>
 
+#include "kd_tree.h"  // KdTreeAccelParams - Accelerator "kdtree"'s own param set
+
 namespace pbrt_scene {
 
 // ---------------------------------------------------------------------------
@@ -453,16 +455,15 @@ struct Scene {
 	// Accelerator "kdtree"'s own params (pbrt-v4's real defaults - see
 	// aggregates.cpp's KdTreeAggregate::Create: intersectcost=5,
 	// traversalcost=1, emptybonus=0.5, maxprims=1, maxdepth=-1 meaning
-	// "auto" - src/shared/kd_tree.h's KdTree::Params mirrors these exactly).
+	// "auto" - KdTreeAccelParams's own defaults mirror these exactly).
 	// Distinct param names from splitmethod/maxnodeprims above because
 	// that's what pbrt-v4 itself calls them - kdtree and bvh are two
 	// separate Accelerator types with their own independent parameter sets,
-	// not two variants sharing one.
-	int acceleratorKdIntersectCost = 5;
-	int acceleratorKdTraversalCost = 1;
-	double acceleratorKdEmptyBonus = 0.5;
-	int acceleratorKdMaxPrims = 1;
-	int acceleratorKdMaxDepth = -1;
+	// not two variants sharing one. One struct (not 5 loose fields) so
+	// FlatScene/kd_tree_hittable's own constructor can carry the same value
+	// through unchanged rather than re-declaring and re-copying 5 scalars at
+	// every layer.
+	KdTreeAccelParams acceleratorKdParams;
 
 	std::vector<MaterialDecl> materials;
 	std::vector<TextureDecl> textures;
@@ -1083,11 +1084,11 @@ private:
 			const ParamList p = readParams();
 			s_.acceleratorSplitMethod = p.getString("splitmethod", s_.acceleratorSplitMethod);
 			s_.acceleratorMaxNodePrims = p.getInt("maxnodeprims", s_.acceleratorMaxNodePrims);
-			s_.acceleratorKdIntersectCost = p.getInt("intersectcost", s_.acceleratorKdIntersectCost);
-			s_.acceleratorKdTraversalCost = p.getInt("traversalcost", s_.acceleratorKdTraversalCost);
-			s_.acceleratorKdEmptyBonus = p.getFloat("emptybonus", s_.acceleratorKdEmptyBonus);
-			s_.acceleratorKdMaxPrims = p.getInt("maxprims", s_.acceleratorKdMaxPrims);
-			s_.acceleratorKdMaxDepth = p.getInt("maxdepth", s_.acceleratorKdMaxDepth);
+			s_.acceleratorKdParams.intersectCost = p.getInt("intersectcost", s_.acceleratorKdParams.intersectCost);
+			s_.acceleratorKdParams.traversalCost = p.getInt("traversalcost", s_.acceleratorKdParams.traversalCost);
+			s_.acceleratorKdParams.emptyBonus = p.getFloat("emptybonus", s_.acceleratorKdParams.emptyBonus);
+			s_.acceleratorKdParams.maxPrims = p.getInt("maxprims", s_.acceleratorKdParams.maxPrims);
+			s_.acceleratorKdParams.maxDepth = p.getInt("maxdepth", s_.acceleratorKdParams.maxDepth);
 			return true;
 		}
 

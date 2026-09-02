@@ -63,6 +63,7 @@ add_executable(unit_tests
     unit/image_infinite_light_tests.cpp
     unit/interval_tests.cpp
     unit/interval_vec_tests.cpp
+    unit/kd_tree_hittable_tests.cpp
     unit/kd_tree_tests.cpp
     unit/layered_bxdf_tests.cpp
     unit/light_bounds_tests.cpp

@@ -189,6 +189,23 @@ inline bool aabb_intersect_p(const T bmin[3], const T bmax[3],
 } // namespace kd_detail
 
 // ---------------------------------------------------------------------------
+// KdTreeAccelParams -- non-templated mirror of KdTree<T,Prim>::Params below,
+// for callers (e.g. this project's own pbrt-scene loader/CPU builder) that
+// need to carry an Accelerator "kdtree" directive's params through code that
+// has no reason to know T/Prim - one value threaded through instead of 5
+// separately-named, separately-declared scalars at every layer. Field-for-
+// field identical to Params (same pbrt-v4 defaults - see that struct's own
+// comment); KdTree<T,Prim>::build() below accepts either.
+// ---------------------------------------------------------------------------
+struct KdTreeAccelParams {
+	int    intersectCost = 5;
+	int    traversalCost = 1;
+	double emptyBonus    = 0.5;
+	int    maxPrims      = 1;
+	int    maxDepth      = -1; // -1 = auto: round(8 + 1.3*log2(n))
+};
+
+// ---------------------------------------------------------------------------
 // KdTree<T, Prim>
 // ---------------------------------------------------------------------------
 template<typename T, typename Prim>
@@ -201,17 +218,30 @@ public:
 		T     empty_bonus     = T(0.5);
 		int   max_prims_leaf  = 1;
 		int   max_depth       = -1; // -1 = auto: round(8 + 1.3*log2(n))
+
+		Params() = default;
+		// From the non-templated KdTreeAccelParams above - see that
+		// struct's own comment.
+		Params(const KdTreeAccelParams& p)
+			: isect_cost(p.intersectCost), traversal_cost(p.traversalCost),
+			  empty_bonus(T(p.emptyBonus)), max_prims_leaf(p.maxPrims),
+			  max_depth(p.maxDepth) {}
 	};
 
 	KdTree() = default;
 
 	// Build the kd-tree from a list of primitives.
 	// Each prim must satisfy the Prim concept (see file header).
-	// Primitives are copied into an internal array for lifetime safety.
-	void build(const std::vector<Prim>& prims,
+	// Takes prims BY VALUE (not const&) so a caller that no longer needs its
+	// own copy can std::move it in for a real move rather than an extra
+	// internal copy - mirrors bvh_aggregate.h's own BvhTree::build() for the
+	// identical reason. A caller that still needs its vector afterward can
+	// simply pass an lvalue, which copies exactly once at the call boundary,
+	// same cost as the old by-const-ref signature.
+	void build(std::vector<Prim> prims,
 			   const Params& params = Params{}) {
 		params_ = params;
-		prims_  = prims;
+		prims_  = std::move(prims);
 		nodes_.clear();
 		prim_indices_.clear();
 

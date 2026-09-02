@@ -15,18 +15,41 @@
 //
 // KdTree<T,Prim>'s own duck-typed Prim concept returns a slim KdHit<T>
 // (t, nx/ny/nz, u/v, prim_id) from intersect() - far less than this
-// project's own hit_record. KdHittablePrim below bridges this EXACTLY the way
+// project's own hit_record. KdHittablePrim below bridges this the way
 // bvh_aggregate_hittable.h's own HittablePrim does - see that file's own top
-// comment for the full rationale (a second hit() call is wrong for a
+// comment for the base rationale (a second hit() call is wrong for a
 // stochastic hittable like constant_medium/grid_medium_hittable/
 // rgb_grid_medium_hittable, which samples a free-path scattering distance
-// via random_double() INSIDE hit() itself; caching the ORIGINAL call's own
-// result instead of re-querying sidesteps that entirely). thread_local for
-// the identical reason bvh_aggregate_hittable.h's own cache is: many rays
-// traced concurrently across per-scanline worker threads against the SAME
-// built tree, safe because this project's control flow never re-enters a
-// hit() call on the same top-level accelerator from within another one
-// still in progress on the same thread.
+// via random_double() INSIDE hit() itself; caching a result instead of
+// re-querying sidesteps that).
+//
+// One IMPORTANT way this differs from bvh_aggregate_hittable.h's cache,
+// found by code review: BvhTree guarantees at most one leaf per primitive,
+// so HittablePrim::intersect() there is provably called at most once per
+// primitive per traversal - a plain "cache the first result" is airtight.
+// KdTree does NOT have that guarantee: build_tree()'s own SAH split
+// classification (src/shared/kd_tree.h) can put a primitive whose bounding
+// box straddles the chosen split plane into BOTH children, so ONE primitive
+// can be tested from TWO different leaves within a single traversal. Simply
+// caching-and-reusing "the first answer" would still call obj->hit() a
+// second, independent time on the second leaf visit - exactly the bug this
+// pattern exists to prevent, just moved one level down. KdHittablePrim::
+// intersect() below instead checks the cache FIRST: if this original_index
+// was already queried this traversal (hit OR miss - both are cached, via
+// std::optional<hit_record>), it reuses that outcome, range-checked against
+// the CURRENT [t_min, t_max] rather than blindly trusted. That range check
+// is always valid, never a second sample: within one top-level
+// kd_tree_hittable::hit() call, t_min is fixed and t_max only ever narrows
+// as a closer best-hit is found (see hit()'s own loop), so the interval a
+// primitive is re-tested with is always a subset of the one its cached
+// result was drawn against - narrowing an already-drawn outcome's valid
+// window is a deterministic range check, not a fresh stochastic draw.
+//
+// thread_local for the identical reason bvh_aggregate_hittable.h's own
+// cache is: many rays traced concurrently across per-scanline worker
+// threads against the SAME built tree, safe because this project's control
+// flow never re-enters a hit() call on the same top-level accelerator from
+// within another one still in progress on the same thread.
 //==============================================================================================
 
 #include "hittable.h"
@@ -39,13 +62,13 @@
 #include <vector>
 
 namespace kd_tree_hittable_detail {
-// See this file's own top comment for why this must be thread_local and why
-// that's safe for this project's render loop. Cleared at the start of every
-// top-level kd_tree_hittable::hit() call (not per-Prim-test), and written to
-// by every leaf primitive KdHittablePrim::intersect() actually tests during
-// that ONE traversal - at most once per original index, since a built
-// KdTree partitions each original primitive into exactly one leaf.
-inline thread_local std::unordered_map<int, hit_record> g_lastHitCache;
+// See this file's own top comment for why this must be thread_local, why
+// that's safe for this project's render loop, and why the value type is
+// std::optional<hit_record> (present-but-nullopt = "already queried this
+// traversal, was a miss" - a real, deliberately-cached outcome, not the
+// same as "absent = never queried"). Cleared at the start of every
+// top-level kd_tree_hittable::hit() call (not per-Prim-test).
+inline thread_local std::unordered_map<int, std::optional<hit_record>> g_lastHitCache;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,10 +77,11 @@ inline thread_local std::unordered_map<int, hit_record> g_lastHitCache;
 // reorders KdTree's own internal primitive array), so
 // kd_tree_hittable::hit() can map a returned KdHit::prim_id back to the
 // cached full hit_record for the correct original object - see this file's
-// own top comment. Mirrors bvh_aggregate_hittable.h's own HittablePrim
-// exactly (renamed here only to avoid a global-scope name collision when
-// both headers land in the same translation unit), just against
-// KdHit<double> instead of BvhHit<double>.
+// own top comment, including the hit-OR-miss caching and range-check-on-
+// reuse this needs that bvh_aggregate_hittable.h's own HittablePrim does
+// not. (Named differently from that file's HittablePrim only to avoid a
+// global-scope name collision when both headers land in the same
+// translation unit.)
 // ---------------------------------------------------------------------------
 struct KdHittablePrim {
     std::shared_ptr<hittable> obj;
@@ -69,8 +93,29 @@ struct KdHittablePrim {
         out_max[0] = b.x.max; out_max[1] = b.y.max; out_max[2] = b.z.max;
     }
 
+    static KdHit<double> toKdHit(const hit_record& rec, int original_index) {
+        KdHit<double> h;
+        h.t = rec.t;
+        h.nx = rec.normal.x(); h.ny = rec.normal.y(); h.nz = rec.normal.z();
+        h.u = rec.u; h.v = rec.v;
+        h.prim_id = original_index;
+        return h;
+    }
+
     std::optional<KdHit<double>> intersect(const double org[3], const double dir[3],
                                             double t_min, double t_max) const {
+        auto& cache = kd_tree_hittable_detail::g_lastHitCache;
+        auto found = cache.find(original_index);
+        if (found != cache.end()) {
+            // Already queried this primitive earlier in THIS traversal (see
+            // this file's own top comment for why a kd-tree, unlike
+            // BvhTree, can visit one primitive from two different leaves) -
+            // reuse that outcome instead of calling obj->hit() again.
+            if (!found->second) return std::nullopt;  // cached miss
+            const hit_record& rec = *found->second;
+            if (rec.t < t_min || rec.t > t_max) return std::nullopt;
+            return toKdHit(rec, original_index);
+        }
         // time=0: correct for every stationary shape (the only kind ever
         // routed through this wrapper - flatten() falls the "kdtree"
         // accelerator type back to "bvh" on any scene with object motion
@@ -78,14 +123,12 @@ struct KdHittablePrim {
         // own comment).
         ray r(point3(org[0], org[1], org[2]), vec3(dir[0], dir[1], dir[2]), 0.0);
         hit_record rec;
-        if (!obj->hit(r, interval(t_min, t_max), rec)) return std::nullopt;
-        kd_tree_hittable_detail::g_lastHitCache[original_index] = rec;
-        KdHit<double> h;
-        h.t = rec.t;
-        h.nx = rec.normal.x(); h.ny = rec.normal.y(); h.nz = rec.normal.z();
-        h.u = rec.u; h.v = rec.v;
-        h.prim_id = original_index;
-        return h;
+        if (!obj->hit(r, interval(t_min, t_max), rec)) {
+            cache[original_index] = std::nullopt;
+            return std::nullopt;
+        }
+        cache[original_index] = rec;
+        return toKdHit(rec, original_index);
     }
 
     // Required by KdTree's Prim concept (see kd_tree.h's own doc comment),
@@ -105,8 +148,7 @@ struct KdHittablePrim {
 // ---------------------------------------------------------------------------
 class kd_tree_hittable : public hittable {
   public:
-    kd_tree_hittable(const hittable_list& list, int isect_cost, int traversal_cost,
-                      double empty_bonus, int max_prims_leaf, int max_depth) {
+    kd_tree_hittable(const hittable_list& list, const KdTreeAccelParams& params) {
         original_objects_ = list.objects;
         bbox_ = aabb::empty;
         std::vector<KdHittablePrim> prims;
@@ -118,13 +160,11 @@ class kd_tree_hittable : public hittable {
             p.original_index = static_cast<int>(i);
             prims.push_back(std::move(p));
         }
-        KdTree<double, KdHittablePrim>::Params params;
-        params.isect_cost = isect_cost;
-        params.traversal_cost = traversal_cost;
-        params.empty_bonus = empty_bonus;
-        params.max_prims_leaf = max_prims_leaf;
-        params.max_depth = max_depth;
-        tree_.build(prims, params);
+        // std::move: this constructor's own `prims` is never needed again -
+        // KdTree::build() takes it by value specifically so a caller in our
+        // position can hand off ownership instead of paying for an extra
+        // internal copy (see that function's own comment).
+        tree_.build(std::move(prims), KdTree<double, KdHittablePrim>::Params(params));
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
@@ -138,15 +178,18 @@ class kd_tree_hittable : public hittable {
         // KdHittablePrim::intersect() above, during this same traversal - see
         // this file's own top comment for why that beats a second call.
         auto it = cache.find(hit->prim_id);
-        if (it == cache.end()) return false;  // should not happen
-        rec = it->second;
+        if (it == cache.end() || !it->second) return false;  // should not happen
+        rec = *it->second;
         return true;
     }
 
     aabb bounding_box() const override { return bbox_; }
 
-    // Accessor for the --spectral material-scan walker (cpu_interface.cpp) -
-    // mirrors bvh_aggregate_hittable::get_prims()'s own identical pattern.
+    // Accessor for cpu_interface.cpp's --spectral material-scan walker AND
+    // emitter_discovery.h's BDPT/MLT/SPPM light-discovery scan - mirrors
+    // bvh_aggregate_hittable::get_prims()'s own identical pattern (that
+    // file's own comment is stale in the same way - it also gained a second
+    // caller without its comment being updated).
     const std::vector<std::shared_ptr<hittable>>& get_prims() const { return original_objects_; }
 
   private:

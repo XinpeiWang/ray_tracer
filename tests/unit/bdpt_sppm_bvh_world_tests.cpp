@@ -113,7 +113,7 @@ shared_ptr<hittable_list> makeKdTreeWrappedWorldWithOneLight() {
 	flat->add(make_shared<sphere>(point3(0, 0, 0), 1.0, make_shared<lambertian>(color(0.5, 0.5, 0.5))));
 
 	auto wrapped = make_shared<hittable_list>();
-	wrapped->add(make_shared<kd_tree_hittable>(*flat, 5, 1, 0.5, 1, -1));
+	wrapped->add(make_shared<kd_tree_hittable>(*flat, KdTreeAccelParams{}));
 	return wrapped;
 }
 

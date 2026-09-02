@@ -160,8 +160,11 @@ class bvh_aggregate_hittable : public hittable {
 
     aabb bounding_box() const override { return bbox_; }
 
-    // Accessor for the --spectral material-scan walker (cpu_interface.cpp) -
-    // mirrors bvh_leaf::get_prims()'s own identical pattern (bvh.h).
+    // Accessor for cpu_interface.cpp's --spectral material-scan walker AND
+    // emitter_discovery.h's BDPT/MLT/SPPM light-discovery scan (the latter
+    // added later, once a real gap there was found and fixed - see that
+    // file's own comment) - mirrors bvh_leaf::get_prims()'s own identical
+    // pattern (bvh.h).
     const std::vector<std::shared_ptr<hittable>>& get_prims() const { return original_objects_; }
 
   private:

@@ -16,6 +16,7 @@
 #include "pbrt_scene.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -2308,12 +2309,14 @@ TEST(PbrtCpuBuildTest, AcceleratorKdtreeFallsBackToBvhForAMovingSphereEvenIfRequ
 }
 
 TEST(PbrtCpuBuildTest, AcceleratorKdtreeRoutesAParticipatingMediumWithoutDroppingScatterEvents) {
-	// Same stochastic-hittable regression coverage as
+	// Same smoke-test shape as
 	// AcceleratorNonSahRoutesAParticipatingMediumWithoutDroppingScatterEvents
-	// above - kd_tree_hittable.h's HittablePrim::intersect() caches the
-	// ORIGINAL hit_record instead of re-querying, for the identical reason
-	// bvh_aggregate_hittable.h's own HittablePrim does (see that file's top
-	// comment).
+	// above: confirms the accelerated list stays reachable (doesn't throw/
+	// silently drop the whole shape) with a medium present. NOT a real test
+	// of kd_tree_hittable.h's own extra hazard, though - see
+	// kd_tree_hittable_tests.cpp's own top comment for why a single sphere
+	// through the pbrt loader can't actually exercise (or detect) that, and
+	// for the test that does.
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Accelerator \"kdtree\"\n"
 		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
@@ -2334,3 +2337,18 @@ TEST(PbrtCpuBuildTest, AcceleratorKdtreeRoutesAParticipatingMediumWithoutDroppin
 			   "and lost, not that this particular ray genuinely escaped";
 	}
 }
+
+// A statistically-sound version of this test (proving the fix specifically
+// against a primitive genuinely duplicated across two kd-tree leaves, not
+// just "the accelerated list still contains something reachable") lives in
+// kd_tree_hittable_tests.cpp instead of here - see that file's own comment
+// for why: going through the full pbrt scene-text loader always adds the
+// medium's own boundary shape to the world as a SEPARATE, real-material
+// hittable (pbrt_cpu_builder.h's own "surface + fog inside" design, e.g. a
+// glass shell around smoke), which - being geometrically closer than any
+// scatter event drawn from inside the volume - always wins the "closest
+// hit" race over the medium's own constant_medium hittable regardless of
+// whether the cache logic under test is correct, making the medium's own
+// behavior unobservable through pbrt_cpu::build()'s output. Testing
+// kd_tree_hittable directly (bypassing the loader's default-opaque-
+// boundary behavior) is the only way to actually isolate this.

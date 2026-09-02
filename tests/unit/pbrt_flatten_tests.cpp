@@ -1573,14 +1573,14 @@ TEST(FlattenTest, AcceleratorKdtreeIsAcceptedWithNoWarning) {
 TEST(FlattenTest, AcceleratorKdtreeParamsResolveToPbrtV4Defaults) {
 	// pbrt-v4's real KdTreeAggregate::Create defaults (aggregates.cpp):
 	// intersectcost=5, traversalcost=1, emptybonus=0.5, maxprims=1,
-	// maxdepth=-1 - src/shared/kd_tree.h's own KdTree::Params mirrors these
-	// exactly (see that struct's own comment).
+	// maxdepth=-1 - KdTreeAccelParams's own defaults (src/shared/kd_tree.h)
+	// mirror these exactly (see that struct's own comment).
 	const FlatScene s = flattenSource("Accelerator \"kdtree\"\nShape \"sphere\"\n");
-	EXPECT_EQ(s.acceleratorKdIntersectCost, 5);
-	EXPECT_EQ(s.acceleratorKdTraversalCost, 1);
-	EXPECT_DOUBLE_EQ(s.acceleratorKdEmptyBonus, 0.5);
-	EXPECT_EQ(s.acceleratorKdMaxPrims, 1);
-	EXPECT_EQ(s.acceleratorKdMaxDepth, -1);
+	EXPECT_EQ(s.acceleratorKdParams.intersectCost, 5);
+	EXPECT_EQ(s.acceleratorKdParams.traversalCost, 1);
+	EXPECT_DOUBLE_EQ(s.acceleratorKdParams.emptyBonus, 0.5);
+	EXPECT_EQ(s.acceleratorKdParams.maxPrims, 1);
+	EXPECT_EQ(s.acceleratorKdParams.maxDepth, -1);
 }
 
 TEST(FlattenTest, AcceleratorKdtreeParamsAreReadWhenGiven) {
@@ -1589,11 +1589,11 @@ TEST(FlattenTest, AcceleratorKdtreeParamsAreReadWhenGiven) {
 		"\"integer traversalcost\" [ 2 ] \"float emptybonus\" [ 0.25 ] "
 		"\"integer maxprims\" [ 3 ] \"integer maxdepth\" [ 12 ]\n"
 		"Shape \"sphere\"\n");
-	EXPECT_EQ(s.acceleratorKdIntersectCost, 8);
-	EXPECT_EQ(s.acceleratorKdTraversalCost, 2);
-	EXPECT_DOUBLE_EQ(s.acceleratorKdEmptyBonus, 0.25);
-	EXPECT_EQ(s.acceleratorKdMaxPrims, 3);
-	EXPECT_EQ(s.acceleratorKdMaxDepth, 12);
+	EXPECT_EQ(s.acceleratorKdParams.intersectCost, 8);
+	EXPECT_EQ(s.acceleratorKdParams.traversalCost, 2);
+	EXPECT_DOUBLE_EQ(s.acceleratorKdParams.emptyBonus, 0.25);
+	EXPECT_EQ(s.acceleratorKdParams.maxPrims, 3);
+	EXPECT_EQ(s.acceleratorKdParams.maxDepth, 12);
 }
 
 TEST(FlattenTest, AcceleratorKdtreeWithObjectMotionBlurFallsBackToBvh) {

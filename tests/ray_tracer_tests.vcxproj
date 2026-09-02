@@ -274,6 +274,7 @@
     <ClCompile Include="unit\goniometric_light_tests.cpp" />
     <ClCompile Include="unit\homogeneous_medium_tests.cpp" />
     <ClCompile Include="unit\interval_vec_tests.cpp" />
+    <ClCompile Include="unit\kd_tree_hittable_tests.cpp" />
     <ClCompile Include="unit\kd_tree_tests.cpp" />
     <ClCompile Include="unit\light_path_tests.cpp" />
     <ClCompile Include="unit\measured_material_tests.cpp" />

@@ -1644,14 +1644,10 @@ struct FlatScene {
 	// than silently clamped/ignored at this layer.
 	int acceleratorMaxNodePrims = 4;
 	// Accelerator "kdtree"'s own params - see
-	// pbrt_scene::Scene::acceleratorKdIntersectCost's own comment for the
-	// real pbrt-v4 defaults this mirrors. Only consulted when
-	// acceleratorType is "kdtree".
-	int acceleratorKdIntersectCost = 5;
-	int acceleratorKdTraversalCost = 1;
-	double acceleratorKdEmptyBonus = 0.5;
-	int acceleratorKdMaxPrims = 1;
-	int acceleratorKdMaxDepth = -1;
+	// pbrt_scene::Scene::acceleratorKdParams's own comment for the real
+	// pbrt-v4 defaults this mirrors. Only consulted when acceleratorType is
+	// "kdtree".
+	KdTreeAccelParams acceleratorKdParams;
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds", resolved to a
 	// single NDC-fraction rectangle [cropX0,cropX1) x [cropY0,cropY1) in
 	// [0,1] - see flatten()'s own computation for the exact rule. Kept as
@@ -4881,8 +4877,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// hasAcceleratorIncompatibleMotion's own comment just above for why
 		// that wrapper falls back to "sah" (bvh_node, which DOES carry ray
 		// time correctly) on a scene with object motion blur, rather than
-		// silently freezing every moving object at time 0.
-		if (sm != "sah" && hasAcceleratorIncompatibleMotion) {
+		// silently freezing every moving object at time 0. Gated on
+		// `out.acceleratorType == "bvh"` (already resolved just above) so a
+		// scene that also asked for "kdtree" - where splitmethod is unread
+		// by pbrt_cpu_builder.h either way - doesn't get a SECOND, redundant
+		// motion-blur warning on top of the "kdtree"-specific one just
+		// issued.
+		if (sm != "sah" && hasAcceleratorIncompatibleMotion && out.acceleratorType == "bvh") {
 			warn("Accelerator \"bvh\" \"string splitmethod\" \"" + sm +
 				 "\" is not supported together with object motion blur "
 				 "(this loader's non-SAH BVH build has no ray-time "
@@ -4892,11 +4893,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		out.acceleratorSplitMethod = sm;
 	}
 	out.acceleratorMaxNodePrims = scene.acceleratorMaxNodePrims;
-	out.acceleratorKdIntersectCost = scene.acceleratorKdIntersectCost;
-	out.acceleratorKdTraversalCost = scene.acceleratorKdTraversalCost;
-	out.acceleratorKdEmptyBonus = scene.acceleratorKdEmptyBonus;
-	out.acceleratorKdMaxPrims = scene.acceleratorKdMaxPrims;
-	out.acceleratorKdMaxDepth = scene.acceleratorKdMaxDepth;
+	out.acceleratorKdParams = scene.acceleratorKdParams;
 
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds" -> a single
 	// NDC-fraction rectangle. pbrt-v4's own rule: start from the full
