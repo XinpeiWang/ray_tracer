@@ -295,11 +295,14 @@ its active index region into a dense flat array, reusing
 `pbrt_scenes/nanovdb-medium.pbrt` (scene `E9`) for a worked example, using
 a small synthetic test grid (`pbrt_scenes/nanovdb-sphere.nvdb`) authored
 directly via NanoVDB's own header-only grid-construction tools — no
-external asset download, no OpenVDB dependency. Real, disclosed scope
-cuts: only a single named `float` density grid (`"gridname"`, default
-`"density"`); no animated/sequence grids; no other NanoVDB build types
-(`Vec3f`/`Mask`/etc.); no `"temperaturename"` blackbody emission (a
-separable feature, left for a later round); the sparse grid is densified
+external asset download, no OpenVDB dependency. Real blackbody emission is
+supported via a second named `"string temperaturename"` grid (per-voxel
+Kelvin, converted to RGB and weighted by `sigma_a/sigma_t` at each scatter
+event, same convention as `"rgbgrid"`'s own per-voxel `"Le"`) - `sigma_a`
+is only forced to 0 (pure scattering) when no temperature grid is given.
+Real, disclosed scope cuts: only a single named `float` density grid
+(`"gridname"`, default `"density"`); no animated/sequence grids; no other
+NanoVDB build types (`Vec3f`/`Mask`/etc.); the sparse grid is densified
 at load time rather than sampled natively sparse (a real memory/scope
 tradeoff, not a NanoVDB limitation), capped at 512 voxels/axis
 (`pbrt_cpu_builder.h`'s `kMaxVoxelsPerAxis` - also closes a real

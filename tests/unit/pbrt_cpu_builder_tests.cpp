@@ -850,6 +850,69 @@ TEST(PbrtCpuBuildTest, NanoVdbMediumIsReachable) {
 		   "sphere itself or a real scatter event inside the medium";
 }
 
+TEST(PbrtCpuBuildTest, NanoVdbTemperatureNameProducesRealEmission) {
+	// pbrt_scenes/nanovdb-fire-test.nvdb - a small (4x4x4) synthetic asset
+	// with BOTH a "density" grid (uniform 0.5) and a "temperature" grid
+	// (uniform 3000K, a warm orange), authored the same way nanovdb-sphere.
+	// nvdb was (NanoVDB's own header-only tools::build::Grid, no external
+	// asset download). Exercises the real end-to-end file-reading path
+	// (pbrt_cpu_builder.h's addMediumIfPresent nanovdb branch reading a
+	// SECOND named grid) that neither pbrt_flatten_tests.cpp (string-parsing
+	// only, no file I/O) nor sampled_grid_tests.cpp (GridMediumData::
+	// set_emission() fed hand-built in-memory vectors, no NanoVDB reader
+	// involved) actually cover.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fire\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"pbrt_scenes/nanovdb-fire-test.nvdb\" ] "
+		"\"rgb sigma_a\" [ 0.5 0.5 0.5 ] \"rgb sigma_s\" [ 0.1 0.1 0.1 ] "
+		"\"string temperaturename\" [ \"temperature\" ]\n"
+		"AttributeBegin\n"
+		// addMediumIfPresent adds the built grid_medium_hittable to `world`
+		// directly (independent of this shape's own geometry/material) as
+		// soon as ANY shape references the medium via MediumInterface - the
+		// "trigger" shape's only real job is naming the medium, so it's put
+		// far away and shrunk to nothing here rather than sized to actually
+		// enclose the grid (as nanovdb-medium.pbrt's own convention does for
+		// a real render): a raw world->hit() picks the SINGLE nearest
+		// surface, so a boundary shape that genuinely wrapped the medium
+		// would always be hit first (its dielectric material never emits),
+		// masking the medium's own scatter/emission hits this test needs to
+		// reach directly.
+		"  Translate 1000 1000 1000\n"
+		"  Material \"dielectric\" \"float eta\" [ 1.001 ]\n"
+		"  MediumInterface \"fire\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 0.01 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+
+	// The medium scatters/emits via stochastic delta-tracking (see
+	// grid_medium_hittable.h's own march_segments()), so a single ray isn't
+	// guaranteed to land on a real scatter event - fire many rays through
+	// the grid's dense centre and confirm at least one produces a hit whose
+	// material genuinely emits a nonzero, warm (3000K, this asset's own
+	// uniform temperature) colour.
+	bool sawEmission = false;
+	for (int i = 0; i < 500 && !sawEmission; ++i) {
+		hit_record rec;
+		// The 4x4x4 grid's own native index space [0,4]^3 maps directly to
+		// world space (no Translate applied at MakeNamedMedium time), so
+		// its centre is (2,2,2), not the world origin - aim through that,
+		// not (0,0,z).
+		const ray r(point3(2, 2, -20), vec3(0, 0, 1));
+		if (!b.world->hit(r, interval(0.001, infinity), rec)) continue;
+		ASSERT_TRUE(rec.mat != nullptr);
+		const color le = rec.mat->emitted(r, rec, rec.u, rec.v, rec.p);
+		if (le.x() > 0.0 || le.y() > 0.0 || le.z() > 0.0) {
+			sawEmission = true;
+			EXPECT_GT(le.x(), le.z())
+				<< "3000K is a warm colour - red should dominate blue";
+		}
+	}
+	EXPECT_TRUE(sawEmission)
+		<< "expected at least one real scatter event with nonzero blackbody "
+		   "emission across 500 ray casts through the medium's dense centre";
+}
+
 TEST(PbrtCpuBuildTest, NanoVdbMissingFilenameBuildsNoMediumButKeepsTheShape) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ]\n"

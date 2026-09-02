@@ -388,12 +388,15 @@ loader and no longer match the code:
   (`pbrt_scenes/nanovdb-sphere.nvdb`) authored directly via NanoVDB's own
   header-only grid-construction tools (`tools/CreatePrimitives.h`) - no
   external asset download, no OpenVDB dependency anywhere in this loader.
+  Real blackbody emission is supported via a second named `"string
+  temperaturename"` grid (per-voxel Kelvin, converted to RGB and weighted
+  by `sigma_a/sigma_t` at each scatter event, same convention as
+  `"rgbgrid"`'s own per-voxel `"Le"`) - `sigma_a` is only forced to 0 (pure
+  scattering) when no temperature grid is given; a real `sigma_a` is
+  required alongside `temperaturename` for the emission to be visible.
   Real, disclosed scope cuts: only a single named `float` density grid (no
   other NanoVDB build types - `Vec3f`/`Mask`/`Int32`/index-grids); no
-  animated/sequence grids; no `"temperaturename"` blackbody emission (a
-  separable feature - this loader's existing homogeneous/rgbgrid emission
-  paths already establish the pattern to extend later, just not done this
-  round); the sparse grid is densified into a flat array at load time
+  animated/sequence grids; the sparse grid is densified into a flat array at load time
   rather than sampled natively sparse (a real memory/scope tradeoff for
   reusing the existing dense-grid machinery unchanged, not a NanoVDB
   limitation) - capped at 512 voxels per axis (`pbrt_cpu_builder.h`'s own

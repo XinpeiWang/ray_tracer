@@ -1216,14 +1216,41 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				// three flat channel arrays matching GridMediumData::
 				// set_emission()'s own expected shape (mirrors
 				// RGBGridMediumData<T>::build()'s le_r/le_g/le_b split).
+				//
+				// blackbodyKelvinToRGB() is NOT cheap - it runs a real
+				// spectral integration (BlackbodySpectrum -> SpectrumToXYZ,
+				// ~1900 Blackbody()/FastExp() evaluations per call, see that
+				// function's own comment) - and a real fire/smoke grid can
+				// have tens of millions of voxels (up to the 512-per-axis
+				// cap above), most sharing very similar temperatures (or, in
+				// a sparse grid's inactive region, the exact same
+				// background value). Quantizing to 10K buckets before
+				// converting - well below anything visibly distinguishable
+				// as a colour shift - and memoizing per bucket turns what
+				// would otherwise be one full spectral bake per voxel into
+				// at most a few hundred, independent of grid size.
 				std::vector<double> le_r(temperature.size()), le_g(temperature.size()), le_b(temperature.size());
+				std::map<int, pbrt_scene::Vec3> kelvinBucketCache;
+				constexpr float kKelvinBucketSize = 10.0f;
 				for (std::size_t i = 0; i < temperature.size(); ++i) {
-					const pbrt_scene::Vec3 rgb =
-						pbrt_flatten::blackbodyKelvinToRGB(static_cast<float>(temperature[i]));
-					le_r[i] = rgb.x; le_g[i] = rgb.y; le_b[i] = rgb.z;
+					const float t = static_cast<float>(temperature[i]);
+					const int bucket = static_cast<int>(std::lround(t / kKelvinBucketSize));
+					auto [it, inserted] = kelvinBucketCache.try_emplace(bucket);
+					if (inserted) {
+						it->second = pbrt_flatten::blackbodyKelvinToRGB(bucket * kKelvinBucketSize);
+					}
+					le_r[i] = it->second.x; le_g[i] = it->second.y; le_b[i] = it->second.z;
 				}
 				grid.set_emission(std::move(le_r), std::move(le_g), std::move(le_b), md.nanovdbLeScale);
 			}
+			// Peak-memory note: `temperature` is no longer needed once le_r/
+			// le_g/le_b above are built from it - freeing it here (rather
+			// than leaving it to fall out of scope alongside density/grid
+			// much later) cuts the transient peak from ~5x a single grid
+			// array's size down to ~4x (density/grid + le_r + le_g + le_b)
+			// for a temperaturename medium near the 512-voxel-per-axis cap.
+			temperature.clear();
+			temperature.shrink_to_fit();
 			const point3 world_min(worldMin[0], worldMin[1], worldMin[2]);
 			const point3 world_max(worldMax[0], worldMax[1], worldMax[2]);
 			return std::make_shared<grid_medium_hittable>(
