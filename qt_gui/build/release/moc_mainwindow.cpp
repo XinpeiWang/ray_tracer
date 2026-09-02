@@ -317,6 +317,63 @@ int ScaledImageLabel::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     return _id;
 }
 namespace {
+struct qt_meta_tag_ZN16ThemedScrollAreaE_t {};
+} // unnamed namespace
+
+template <> constexpr inline auto ThemedScrollArea::qt_create_metaobjectdata<qt_meta_tag_ZN16ThemedScrollAreaE_t>()
+{
+    namespace QMC = QtMocConstants;
+    QtMocHelpers::StringRefStorage qt_stringData {
+        "ThemedScrollArea"
+    };
+
+    QtMocHelpers::UintData qt_methods {
+    };
+    QtMocHelpers::UintData qt_properties {
+    };
+    QtMocHelpers::UintData qt_enums {
+    };
+    return QtMocHelpers::metaObjectData<ThemedScrollArea, qt_meta_tag_ZN16ThemedScrollAreaE_t>(QMC::MetaObjectFlag{}, qt_stringData,
+            qt_methods, qt_properties, qt_enums);
+}
+Q_CONSTINIT const QMetaObject ThemedScrollArea::staticMetaObject = { {
+    QMetaObject::SuperData::link<QScrollArea::staticMetaObject>(),
+    qt_staticMetaObjectStaticContent<qt_meta_tag_ZN16ThemedScrollAreaE_t>.stringdata,
+    qt_staticMetaObjectStaticContent<qt_meta_tag_ZN16ThemedScrollAreaE_t>.data,
+    qt_static_metacall,
+    nullptr,
+    qt_staticMetaObjectRelocatingContent<qt_meta_tag_ZN16ThemedScrollAreaE_t>.metaTypes,
+    nullptr
+} };
+
+void ThemedScrollArea::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
+{
+    auto *_t = static_cast<ThemedScrollArea *>(_o);
+    (void)_t;
+    (void)_c;
+    (void)_id;
+    (void)_a;
+}
+
+const QMetaObject *ThemedScrollArea::metaObject() const
+{
+    return QObject::d_ptr->metaObject ? QObject::d_ptr->dynamicMetaObject() : &staticMetaObject;
+}
+
+void *ThemedScrollArea::qt_metacast(const char *_clname)
+{
+    if (!_clname) return nullptr;
+    if (!strcmp(_clname, qt_staticMetaObjectStaticContent<qt_meta_tag_ZN16ThemedScrollAreaE_t>.strings))
+        return static_cast<void*>(this);
+    return QScrollArea::qt_metacast(_clname);
+}
+
+int ThemedScrollArea::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
+{
+    _id = QScrollArea::qt_metacall(_c, _id, _a);
+    return _id;
+}
+namespace {
 struct qt_meta_tag_ZN16HorizontalTabBarE_t {};
 } // unnamed namespace
 

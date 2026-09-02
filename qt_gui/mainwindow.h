@@ -40,6 +40,8 @@
 #include <QListWidget>
 #include <QToolButton>
 #include <QScrollArea>
+#include <QDebug>
+#include <QFile>
 #include <functional>
 
 #include "camera_math.h"
@@ -361,6 +363,66 @@ private:
 
 	QPixmap m_original;
 	QString m_placeholderText;
+};
+
+// ============================================================================
+// ThemedScrollArea
+// ============================================================================
+// A QScrollArea that paints an optional theme motif on its viewport via a
+// PER-WIDGET stylesheet (viewport()->setStyleSheet(...)), not the app-wide
+// one. mainwindow_style.cpp's global stylesheet used to declare this same
+// background-image/-repeat/-position rule for QScrollArea#tabScroll, and it
+// never visibly worked - confirmed by direct experiment: a paintEvent
+// override on the viewport (custom widget, replacing Qt's default one
+// entirely via setViewport()) never fires AT ALL despite the widget being
+// properly constructed, assigned, and shown with correct geometry - a real,
+// unexplained Qt behavior in this environment, not a logic bug in this
+// class's own code (verified across autoFillBackground/WA_OpaquePaintEvent/
+// WA_NoSystemBackground, event-filter Paint-event consumption, real window
+// resizes, and forced repaint() calls - none of it made the override run).
+// A per-widget stylesheet set directly on the SAME viewport, by contrast,
+// DOES visibly take effect (verified the same way) - Qt re-polishes a
+// widget's style immediately when setStyleSheet() is called directly on it,
+// which the app-wide stylesheet path apparently doesn't reliably do for a
+// deeply-nested selector like this one when the active theme changes at
+// runtime. So: same QSS property or degradation this app's design accepted
+// - a non-tiled motif still draws at native pixel size (no background-size
+// in Qt QSS), anchored to a stylesheet corner - just applied where it
+// actually works.
+// ============================================================================
+class ThemedScrollArea : public QScrollArea {
+	Q_OBJECT
+public:
+	explicit ThemedScrollArea(QWidget *parent = nullptr) : QScrollArea(parent) {}
+
+	// svgPath empty clears the motif (the eight schemes with none - most
+	// calls). tiled: repeated edge-to-edge across the whole viewport
+	// (matches the four topical themes' own backgroundTiled - theme.h);
+	// otherwise drawn once at the SVG's own raw pixel size and anchored to
+	// the corner named in `position` ("top left"/"bottom right", the exact
+	// strings Palette::backgroundPosition already uses).
+	void setMotif(const QString &svgPath, bool tiled, const QString &position) {
+		if (svgPath.isEmpty()) {
+			viewport()->setStyleSheet(QString());
+			return;
+		}
+		// A missing or unregistered resource makes QSS silently skip the
+		// declaration - the same failure mode that once made the SVG icons
+		// render as nothing at all. Check rather than trust, and say so.
+		if (!QFile::exists(svgPath)) {
+			qWarning() << "ThemedScrollArea: motif" << svgPath
+					   << "is not in the resource bundle - check resources.qrc";
+			viewport()->setStyleSheet(QString());
+			return;
+		}
+		// background-attachment: fixed anchors the motif to the viewport
+		// rather than to the scrolled content, so it stays put while the
+		// settings panel scrolls past it.
+		viewport()->setStyleSheet(
+			QString("background-image: url(%1); background-repeat: %2; "
+					"background-position: %3; background-attachment: fixed;")
+				.arg(svgPath, tiled ? "repeat" : "no-repeat", tiled ? "top left" : position));
+	}
 };
 
 // ============================================================================

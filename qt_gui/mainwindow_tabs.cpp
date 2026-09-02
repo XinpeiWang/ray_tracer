@@ -721,7 +721,7 @@ void MainWindow::createBasicTab() {
 	layout->addStretch();
 
 	// Wrap the tab content in a scroll area for better responsiveness
-	QScrollArea *scrollArea = new QScrollArea();
+	ThemedScrollArea *scrollArea = new ThemedScrollArea();  // theme motif support - see that class's own comment
 	scrollArea->setWidget(basicTab);
 	scrollArea->setWidgetResizable(true);
 	scrollArea->setFrameShape(QFrame::NoFrame);
@@ -732,6 +732,7 @@ void MainWindow::createBasicTab() {
 	// supporting background-attachment, which is what keeps the motif still
 	// while the settings scroll past.
 	scrollArea->setObjectName("tabScroll");
+	scrollArea->setMotif(m_activeTheme.backgroundImage, m_activeTheme.backgroundTiled, m_activeTheme.backgroundPosition);  // m_activeTheme is already set by the time any tab is created - see mainwindow.cpp's own applyTheme()-before-createXTab() order
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
@@ -973,7 +974,7 @@ void MainWindow::createAdvancedTab() {
 	layout->addStretch();
 
 	// Wrap the tab content in a scroll area for better responsiveness
-	QScrollArea *scrollArea = new QScrollArea();
+	ThemedScrollArea *scrollArea = new ThemedScrollArea();  // theme motif support - see that class's own comment
 	scrollArea->setWidget(advancedTab);
 	scrollArea->setWidgetResizable(true);
 	scrollArea->setFrameShape(QFrame::NoFrame);
@@ -984,6 +985,7 @@ void MainWindow::createAdvancedTab() {
 	// supporting background-attachment, which is what keeps the motif still
 	// while the settings scroll past.
 	scrollArea->setObjectName("tabScroll");
+	scrollArea->setMotif(m_activeTheme.backgroundImage, m_activeTheme.backgroundTiled, m_activeTheme.backgroundPosition);  // m_activeTheme is already set by the time any tab is created - see mainwindow.cpp's own applyTheme()-before-createXTab() order
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
@@ -1449,11 +1451,12 @@ void MainWindow::createRenderOptionsTab() {
 	// change handlers (mainwindow.cpp/mainwindow_slots.cpp).
 	updateRenderOptionsEnabled();
 
-	QScrollArea *scrollArea = new QScrollArea();
+	ThemedScrollArea *scrollArea = new ThemedScrollArea();  // theme motif support - see that class's own comment
 	scrollArea->setWidget(optionsTab);
 	scrollArea->setWidgetResizable(true);
 	scrollArea->setFrameShape(QFrame::NoFrame);
 	scrollArea->setObjectName("tabScroll");
+	scrollArea->setMotif(m_activeTheme.backgroundImage, m_activeTheme.backgroundTiled, m_activeTheme.backgroundPosition);  // m_activeTheme is already set by the time any tab is created - see mainwindow.cpp's own applyTheme()-before-createXTab() order
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
@@ -2291,7 +2294,7 @@ void MainWindow::createVideoTab() {
 	layout->addStretch();
 
 	// Scroll area for video tab
-	QScrollArea *scrollArea = new QScrollArea();
+	ThemedScrollArea *scrollArea = new ThemedScrollArea();  // theme motif support - see that class's own comment
 	scrollArea->setWidget(videoTab);
 	scrollArea->setWidgetResizable(true);
 	scrollArea->setFrameShape(QFrame::NoFrame);
@@ -2302,6 +2305,7 @@ void MainWindow::createVideoTab() {
 	// supporting background-attachment, which is what keeps the motif still
 	// while the settings scroll past.
 	scrollArea->setObjectName("tabScroll");
+	scrollArea->setMotif(m_activeTheme.backgroundImage, m_activeTheme.backgroundTiled, m_activeTheme.backgroundPosition);  // m_activeTheme is already set by the time any tab is created - see mainwindow.cpp's own applyTheme()-before-createXTab() order
 
 	m_videoTabIndex = m_tabWidget->addTab(scrollArea, tr("Video Settings"));
 }
