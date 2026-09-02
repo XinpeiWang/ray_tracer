@@ -4443,6 +4443,25 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				if (s.center1[0] != s.center[0] || s.center1[1] != s.center[1] ||
 					s.center1[2] != s.center[2]) { hasMotion = true; break; }
 			}
+			// Disk/Cylinder gained the same per-ray-time-channel motion blur
+			// as Sphere above (see Disk::xformEnd's own comment) - the same
+			// "non-SAH BvhTree has no ray-time channel" gap applies to them
+			// too, so this check has to cover both, not just Sphere.
+			auto xformArrayDiffers = [](const double (&a)[16], const double (&b)[16]) {
+				pbrt_scene::Matrix4 ma, mb;
+				for (int i = 0; i < 16; ++i) { ma.m[i] = a[i]; mb.m[i] = b[i]; }
+				return ma.differsFrom(mb);
+			};
+			if (!hasMotion) {
+				for (const Disk &d : out.disks) {
+					if (xformArrayDiffers(d.xform, d.xformEnd)) { hasMotion = true; break; }
+				}
+			}
+			if (!hasMotion) {
+				for (const Cylinder &c : out.cylinders) {
+					if (xformArrayDiffers(c.xform, c.xformEnd)) { hasMotion = true; break; }
+				}
+			}
 			if (hasMotion) {
 				warn("Accelerator \"bvh\" \"string splitmethod\" \"" + sm +
 					 "\" is not supported together with object motion blur "

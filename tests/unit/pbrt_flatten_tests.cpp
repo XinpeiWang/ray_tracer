@@ -1468,6 +1468,39 @@ TEST(FlattenTest, AcceleratorNonSahWithObjectMotionBlurFallsBackToSah) {
 	EXPECT_TRUE(warnedAbout(s, "motion blur"));
 }
 
+TEST(FlattenTest, AcceleratorNonSahWithDiskCylinderMotionBlurFallsBackToSah) {
+	// See AcceleratorNonSahWithObjectMotionBlurFallsBackToSah's own comment
+	// just above - the identical gap, but for Disk/Cylinder, which gained
+	// real per-ray-time motion blur in the same round this check was
+	// extended to cover them (previously only scanned out.spheres).
+	const FlatScene diskScene = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n"
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(diskScene.disks.size(), 1u);
+	EXPECT_TRUE(diskScene.disks[0].xform[3] != diskScene.disks[0].xformEnd[3])
+		<< "sanity check: the scene really does describe a moving disk";
+	EXPECT_EQ(diskScene.acceleratorSplitMethod, "sah");
+	EXPECT_TRUE(warnedAbout(diskScene, "motion blur"));
+
+	const FlatScene cylScene = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n"
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	ASSERT_EQ(cylScene.cylinders.size(), 1u);
+	EXPECT_TRUE(cylScene.cylinders[0].xform[3] != cylScene.cylinders[0].xformEnd[3])
+		<< "sanity check: the scene really does describe a moving cylinder";
+	EXPECT_EQ(cylScene.acceleratorSplitMethod, "sah");
+	EXPECT_TRUE(warnedAbout(cylScene, "motion blur"));
+}
+
 TEST(FlattenTest, DiskObjectMotionBlurBakesXformEnd) {
 	// Object motion blur (pbrt-v4 ActiveTransform "StartTime"/"EndTime") for
 	// disk/cylinder - see pbrt_flatten::Disk::xformEnd's own comment. Mirrors

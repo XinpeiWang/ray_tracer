@@ -428,6 +428,70 @@ TEST(PbrtCpuBuildTest, CylinderRotatedObjectMotionBlurMovesWithRayTime) {
 	}
 }
 
+TEST(PbrtCpuBuildTest, DiskGrowingFromDegenerateStartTimeStillRendersLater) {
+	// A code-review pass on the commit that first added Disk/Cylinder object
+	// motion blur found that gating the WHOLE animated shape's validity on
+	// only the StartTime transform's invertibility (the same check a purely
+	// static shape needs) made a legitimate "grow from nothing" animation -
+	// ActiveTransform StartTime / Scale 0 0 0 / ... / ActiveTransform
+	// EndTime / a normal transform - permanently invisible at every ray
+	// time, not just near StartTime where the shape genuinely has zero
+	// extent. This fires a ray at time=1.0 (EndTime, a perfectly
+	// well-formed transform) and expects a real hit.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"Scale 0 0 0\n"
+		"ActiveTransform \"EndTime\"\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n");
+	EXPECT_EQ(b.diskCount, 1u);
+
+	hit_record rec;
+	const ray r(point3(0, 0, -5), vec3(0, 0, 1), 1.0);
+	ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec))
+		<< "a shape animated from a degenerate StartTime must still render "
+		   "at a later time whose own interpolated transform is well-formed";
+	EXPECT_NEAR(rec.t, 5.0, 1e-6);
+}
+
+TEST(PbrtCpuBuildTest, RotatingDiskBoundingBoxCoversTheMidRotationSweep) {
+	// A code-review pass on the commit that first added Disk/Cylinder object
+	// motion blur found that unioning only the two ENDPOINT bounding boxes
+	// underestimates the true swept volume under rotation: a disk rotating
+	// from 0 to 180 degrees about the X axis starts AND ends flat in the
+	// world XY plane (z-extent exactly 0 both times), but at the midpoint
+	// (90 degrees) it stands up flat in the world XZ plane instead, with a
+	// z-extent equal to its own full radius - matching DiskUnderRotation
+	// HitsAtTheExactTransformedPosition's own established "Rotate 90 about
+	// X swaps local Y/Z into world Y/Z" geometry, just at the ANIMATED
+	// midpoint instead of a static rotation. A ray that only ever crosses
+	// z=0.9 (inside the disk's radius=1, but well outside the buggy
+	// zero-width z-extent a 2-box union would report) must still hit.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Rotate 180 1 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n");
+	EXPECT_EQ(b.diskCount, 1u);
+
+	hit_record rec;
+	// Local point (x=0, y=0.9, z=0) is within the unit disk and, under a 90
+	// degree rotation about X (this scene's exact midpoint, t=0.5, since a
+	// single-axis rotation slerps at constant angular velocity), lands on
+	// the world Z axis at |z|=0.9 - try both signs, since the rotation
+	// convention's sign isn't this test's concern, only that SOME point out
+	// at |z|=0.9 is reachable at all.
+	const ray rPos(point3(0, -5, 0.9), vec3(0, 1, 0), 0.5);
+	const ray rNeg(point3(0, -5, -0.9), vec3(0, 1, 0), 0.5);
+	const bool hitPos = b.world->hit(rPos, interval(0.001, infinity), rec);
+	const bool hitNeg = !hitPos && b.world->hit(rNeg, interval(0.001, infinity), rec);
+	ASSERT_TRUE(hitPos || hitNeg)
+		<< "the disk's mid-rotation sweep (world |z|~0.9) must be reachable, "
+		   "not culled by a bounding box built from only the two endpoints";
+	EXPECT_NEAR(rec.t, 5.0, 1e-6);
+}
+
 TEST(PbrtCpuBuildTest, CylinderHasNoEndCaps) {
 	// pbrt's cylinder (and this project's CylinderShape<T> port) is an open
 	// tube, not a capped can - matching DiskShape/CylinderShape's own

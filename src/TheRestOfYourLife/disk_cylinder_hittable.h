@@ -32,22 +32,22 @@
 // to detect and warn about it.
 //
 // Object motion blur (pbrt-v4 ActiveTransform "StartTime"/"EndTime" around a
-// Shape "disk"/"cylinder"): both classes carry a SECOND object-to-world
-// transform and resolve the real one at each ray's own r.time() via
-// AnimatedTransform (src/shared/animated_transform.h) - real TRS
-// decomposition (translation lerp, rotation slerp, scale lerp), not a naive
-// per-element matrix lerp, which would visibly shear a rotating shape partway
-// through its motion. The two endpoint transforms are cached as their own
-// AT_Mat44 in the constructor; a STATIC shape (the overwhelmingly common
-// case - AnimatedTransform::IsAnimated() false, both endpoints identical)
-// also caches the resolved object<->world Matrix4 pair once there, so hit()
-// pays for real per-ray interpolation and a 4x4 inversion only when the
-// shape is genuinely moving, exactly the "true no-op when static" contract
-// sphere.h's own motion blur established. random()/pdf_value() (NEE
-// sampling) intentionally still resolve against the STARTING transform only,
-// matching sphere.h's own identical, documented limitation (its random()/
-// pdf_value() use center.at(0) unconditionally) - not a new gap this file
-// introduces.
+// Shape "disk"/"cylinder"): both classes hold a disk_cylinder_detail::
+// MotionState (below), which carries a SECOND object-to-world transform and
+// resolves the real one at each ray's own r.time() via AnimatedTransform
+// (src/shared/animated_transform.h) - real TRS decomposition (translation
+// lerp, rotation slerp, scale lerp), not a naive per-element matrix lerp,
+// which would visibly shear a rotating shape partway through its motion. A
+// STATIC shape (the overwhelmingly common case - AnimatedTransform::
+// IsAnimated() false, both endpoints identical) resolves to a cached
+// object<->world Matrix4 pair with no per-ray interpolation or inversion at
+// all - the "true no-op when static" contract sphere.h's own motion blur
+// established. random()/pdf_value() (NEE sampling) intentionally still
+// resolve against the STARTING transform only, matching sphere.h's own
+// identical, documented limitation (its random()/pdf_value() use
+// center.at(0) unconditionally) - not a new gap this file introduces; see
+// MotionState::o2wStart()/w2oStart() for why this needs no per-call
+// resolution at all, animated or not.
 
 #include "hittable.h"
 #include "material.h"
@@ -78,6 +78,127 @@ inline pbrt_scene::Matrix4 fromAnimMat(const AT_Mat44 &m) {
 	return r;
 }
 
+// Shared per-shape motion state for Disk/Cylinder - factored out of
+// disk_hittable/cylinder_hittable (previously two hand-duplicated copies of
+// this exact logic, caught by a code-review pass on the commit that first
+// added it) so a future fix to the degenerate-matrix handling, or an
+// extension of this motion-blur idiom to a third shape, needs only one edit.
+// This codebase has already shipped a real bug once from the analogous
+// duplicated-with-a-comment-pointer pattern in bvh_aggregate_hittable - see
+// that file's own history for the "silently dropped ~50% of medium scatter
+// events" incident this precedent warns against.
+// Two disclosed, accepted limitations, both raised and deliberately left
+// unfixed by a code-review pass on the commit that added this class -
+// narrow enough in practice, and big enough to fix properly, that they were
+// scoped out rather than papered over:
+//   - The two keyframes are always t0=0.0/t1=1.0 here, regardless of the
+//     scene's own TransformTimes directive (pbrt_scene::Scene::
+//     transformTimeStart/transformTimeEnd) - camera motion blur detects and
+//     warns about exactly this TransformTimes/shutter mismatch
+//     (pbrt_flatten.h's Camera-building code), Disk/Cylinder (and
+//     pre-existing Sphere motion blur) do not. Fixing this for real means
+//     threading the camera's own shutter/TransformTimes context down into
+//     every shape builder, not a local change here.
+//   - random()/pdf_value() (see disk_hittable/cylinder_hittable below)
+//     resolve at time=0 unconditionally, so an animated EMISSIVE disk/
+//     cylinder's NEE sample point and its own hit()-time shadow-ray test
+//     can disagree once real motion has accumulated - matching sphere.h's
+//     own identical, already-shipped center.at(0)-only limitation; MIS
+//     against BSDF sampling partially self-corrects this, same as it
+//     already does for sphere. A real fix needs a time parameter on the
+//     whole hittable::random()/pdf_value() interface, not just this class.
+class MotionState {
+  public:
+	MotionState(const pbrt_scene::Matrix4 &object_to_world,
+				const pbrt_scene::Matrix4 &object_to_world_end)
+		: anim_(toAnimMat(object_to_world), 0.0, toAnimMat(object_to_world_end), 1.0),
+		  o2wStart_(object_to_world)
+	{
+		startValid_ = o2wStart_.inverseAffine(w2oStart_);
+	}
+
+	// True iff the StartTime pose itself is invertible. Only gates the
+	// STATIC fast path and NEE sampling (both of which use exactly this
+	// pose, cached) - deliberately NOT the animated hit()-time path, whose
+	// own validity is checked per-ray by resolve() instead. A shape whose
+	// StartTime keyframe is a legitimate degenerate matrix (e.g. a "grow
+	// from nothing" Scale 0 0 0 opening keyframe, a real pbrt authoring
+	// idiom) must still render correctly once the interpolated matrix
+	// becomes non-degenerate - gating the animated path on THIS flag too
+	// (an earlier version of this code did) made such a shape permanently
+	// invisible for its entire lifetime, caught by a code-review pass.
+	bool startValid() const { return startValid_; }
+
+	// The StartTime pose, precomputed once at construction regardless of
+	// whether this shape is animated - the single source both the static
+	// fast path AND NEE sampling (random()/pdf_value(), which always wants
+	// time=0 - see this file's own header comment) read directly, with no
+	// per-call interpolation or inversion either way.
+	const pbrt_scene::Matrix4 &o2wStart() const { return o2wStart_; }
+	const pbrt_scene::Matrix4 &w2oStart() const { return w2oStart_; }
+
+	// Resolves the real object<->world transform pair for a ray at the
+	// given time. STATIC shape: the cached StartTime pose, true no-op cost
+	// - fails only if that pose is itself degenerate (startValid() false).
+	// ANIMATED shape: real per-ray TRS interpolation (AnimatedTransform)
+	// composed via a closed-form AFFINE inverse (Matrix4::inverseAffine()),
+	// not the generic 4x4 Gauss-Jordan at_invert() - the interpolated
+	// matrix is always a pure affine transform (no perspective row), so the
+	// same cheaper affine-specific inverse the static path already relies
+	// on applies here too, at a fraction of the cost. Gated ONLY on this
+	// time's own interpolated matrix being invertible, never on
+	// startValid() - see that accessor's own comment for why.
+	bool resolve(double time, pbrt_scene::Matrix4 &o2w, pbrt_scene::Matrix4 &w2o) const {
+		if (!anim_.IsAnimated()) {
+			if (!startValid_) return false;
+			o2w = o2wStart_;
+			w2o = w2oStart_;
+			return true;
+		}
+		o2w = fromAnimMat(anim_.Interpolate(time));
+		return o2w.inverseAffine(w2o);
+	}
+
+	// World-space bounding box across the shape's full swept motion, given
+	// a callback that returns transformed_bbox() for a specific
+	// object<->world matrix (the shape-specific object-space extent is the
+	// caller's, not this class's, concern). A static shape needs only its
+	// one pose. An animated one samples the interpolated pose at several
+	// points across [0,1], not just the two endpoints, and unions all of
+	// them: unioning only the two ENDPOINT boxes underestimates the true
+	// swept volume whenever the motion includes rotation - e.g. a disk
+	// rotating from 45 to 135 degrees about an axis in its own plane sweeps
+	// through 90 degrees at the midpoint, extending further along that axis
+	// than either endpoint alone. A code-review pass on the commit that
+	// first added animated Disk/Cylinder motion blur (translation-only
+	// union of two boxes) caught this as a real gap: BVH traversal could
+	// cull rays that should hit the shape mid-rotation, since
+	// bounding_box() feeds it directly. This is a conservative
+	// approximation, not an exact analytic bound (pbrt-v4's own
+	// AnimatedTransform::BoundPointMotion solves for the true per-axis
+	// rotational extremum) - kMotionSamples samples closes the gap for any
+	// realistic single-frame shutter rotation without that extra
+	// complexity; a rotation whipping through more than a full turn within
+	// one shutter interval (vanishingly rare in practice) could still poke
+	// outside between samples.
+	template <typename BoxForTransform>
+	aabb motionBoundingBox(BoxForTransform boxForTransform) const {
+		if (!anim_.IsAnimated()) return boxForTransform(o2wStart_);
+		aabb box = boxForTransform(o2wStart_);
+		constexpr int kMotionSamples = 17;
+		for (int i = 1; i < kMotionSamples; ++i) {
+			const double t = static_cast<double>(i) / (kMotionSamples - 1);
+			box = aabb(box, boxForTransform(fromAnimMat(anim_.Interpolate(t))));
+		}
+		return box;
+	}
+
+  private:
+	AnimatedTransform anim_;
+	pbrt_scene::Matrix4 o2wStart_, w2oStart_;
+	bool startValid_ = false;
+};
+
 } // namespace disk_cylinder_detail
 
 
@@ -89,29 +210,18 @@ class disk_hittable : public hittable {
 				  shared_ptr<material> mat)
 		: shape_(DiskShape<double>::make_annular(0.0, 0.0, height, outer_r, inner_r, phi_max)),
 		  mat_(mat),
-		  anim_(disk_cylinder_detail::toAnimMat(object_to_world), 0.0,
-				disk_cylinder_detail::toAnimMat(object_to_world_end), 1.0),
-		  o2w_static_(object_to_world)
+		  motion_(object_to_world, object_to_world_end)
 	{
-		valid_ = o2w_static_.inverseAffine(w2o_static_);
-		if (!valid_) return;
-		if (!anim_.IsAnimated()) {
-			bbox_ = affine_transform::transformed_bbox(o2w_static_,
+		bbox_ = motion_.motionBoundingBox([&](const pbrt_scene::Matrix4 &o2w) {
+			return affine_transform::transformed_bbox(o2w,
 				-outer_r, outer_r, -outer_r, outer_r, height, height);
-		} else {
-			const aabb box0 = affine_transform::transformed_bbox(object_to_world,
-				-outer_r, outer_r, -outer_r, outer_r, height, height);
-			const aabb box1 = affine_transform::transformed_bbox(object_to_world_end,
-				-outer_r, outer_r, -outer_r, outer_r, height, height);
-			bbox_ = aabb(box0, box1);
-		}
+		});
 	}
 
 	bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
-		if (!valid_) return false;
 		using namespace affine_transform;
 		pbrt_scene::Matrix4 o2w, w2o;
-		if (!resolveTransforms(r.time(), o2w, w2o)) return false;
+		if (!motion_.resolve(r.time(), o2w, w2o)) return false;
 		const point3 ro = apply_point(w2o, r.origin());
 		const vec3   rd = apply_vector(w2o, r.direction());   // NOT normalised - see file comment
 
@@ -150,24 +260,20 @@ class disk_hittable : public hittable {
 	// scale caveat and the "resolves against the starting transform only"
 	// motion-blur caveat.
 	vec3 random(const point3& origin) const override {
-		if (!valid_) return vec3(1, 0, 0);
+		if (!motion_.startValid()) return vec3(1, 0, 0);
 		using namespace affine_transform;
-		pbrt_scene::Matrix4 o2w, w2o;
-		if (!resolveTransforms(0.0, o2w, w2o)) return vec3(1, 0, 0);
-		const point3 ctx_obj = apply_point(w2o, origin);
+		const point3 ctx_obj = apply_point(motion_.w2oStart(), origin);
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		const auto ss = shape_.sample_from(ctx, random_double(), random_double());
-		const point3 p_world = apply_point(o2w, point3(ss.px, ss.py, ss.pz));
+		const point3 p_world = apply_point(motion_.o2wStart(), point3(ss.px, ss.py, ss.pz));
 		return p_world - origin;
 	}
 
 	double pdf_value(const point3& origin, const vec3& direction) const override {
-		if (!valid_) return 0.0;
+		if (!motion_.startValid()) return 0.0;
 		using namespace affine_transform;
-		pbrt_scene::Matrix4 o2w, w2o;
-		if (!resolveTransforms(0.0, o2w, w2o)) return 0.0;
-		const point3 ctx_obj = apply_point(w2o, origin);
-		const vec3 dir_obj = apply_vector(w2o, direction);
+		const point3 ctx_obj = apply_point(motion_.w2oStart(), origin);
+		const vec3 dir_obj = apply_vector(motion_.w2oStart(), direction);
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
 	}
@@ -177,30 +283,8 @@ class disk_hittable : public hittable {
   private:
 	DiskShape<double> shape_;
 	shared_ptr<material> mat_;
-	AnimatedTransform anim_;
-	pbrt_scene::Matrix4 o2w_static_, w2o_static_;
-	bool valid_ = false;
+	disk_cylinder_detail::MotionState motion_;
 	aabb bbox_;
-
-	// Resolves the real object<->world transform pair for a ray at the given
-	// time - see this file's own header comment for the static-vs-animated
-	// cost tradeoff. Returns false (o2w/w2o left untouched) only for the
-	// animated path's own degenerate-matrix case (zero scale at that
-	// instant) - the static path's degeneracy is already excluded by
-	// valid_ at construction time.
-	bool resolveTransforms(double time, pbrt_scene::Matrix4& o2w, pbrt_scene::Matrix4& w2o) const {
-		if (!anim_.IsAnimated()) {
-			o2w = o2w_static_;
-			w2o = w2o_static_;
-			return true;
-		}
-		const AT_Mat44 mat = anim_.Interpolate(time);
-		AT_Mat44 inv;
-		if (!at_invert(mat, inv)) return false;
-		o2w = disk_cylinder_detail::fromAnimMat(mat);
-		w2o = disk_cylinder_detail::fromAnimMat(inv);
-		return true;
-	}
 };
 
 
@@ -212,29 +296,18 @@ class cylinder_hittable : public hittable {
 					   shared_ptr<material> mat)
 		: shape_(CylinderShape<double>::make_partial(0.0, 0.0, z_min, z_max, radius, phi_max)),
 		  mat_(mat),
-		  anim_(disk_cylinder_detail::toAnimMat(object_to_world), 0.0,
-				disk_cylinder_detail::toAnimMat(object_to_world_end), 1.0),
-		  o2w_static_(object_to_world)
+		  motion_(object_to_world, object_to_world_end)
 	{
-		valid_ = o2w_static_.inverseAffine(w2o_static_);
-		if (!valid_) return;
-		if (!anim_.IsAnimated()) {
-			bbox_ = affine_transform::transformed_bbox(o2w_static_,
+		bbox_ = motion_.motionBoundingBox([&](const pbrt_scene::Matrix4 &o2w) {
+			return affine_transform::transformed_bbox(o2w,
 				-radius, radius, -radius, radius, z_min, z_max);
-		} else {
-			const aabb box0 = affine_transform::transformed_bbox(object_to_world,
-				-radius, radius, -radius, radius, z_min, z_max);
-			const aabb box1 = affine_transform::transformed_bbox(object_to_world_end,
-				-radius, radius, -radius, radius, z_min, z_max);
-			bbox_ = aabb(box0, box1);
-		}
+		});
 	}
 
 	bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
-		if (!valid_) return false;
 		using namespace affine_transform;
 		pbrt_scene::Matrix4 o2w, w2o;
-		if (!resolveTransforms(r.time(), o2w, w2o)) return false;
+		if (!motion_.resolve(r.time(), o2w, w2o)) return false;
 		const point3 ro = apply_point(w2o, r.origin());
 		const vec3   rd = apply_vector(w2o, r.direction());   // NOT normalised - see file comment
 
@@ -271,24 +344,20 @@ class cylinder_hittable : public hittable {
 	// scale caveat and the "resolves against the starting transform only"
 	// motion-blur caveat.
 	vec3 random(const point3& origin) const override {
-		if (!valid_) return vec3(1, 0, 0);
+		if (!motion_.startValid()) return vec3(1, 0, 0);
 		using namespace affine_transform;
-		pbrt_scene::Matrix4 o2w, w2o;
-		if (!resolveTransforms(0.0, o2w, w2o)) return vec3(1, 0, 0);
-		const point3 ctx_obj = apply_point(w2o, origin);
+		const point3 ctx_obj = apply_point(motion_.w2oStart(), origin);
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		const auto ss = shape_.sample_from(ctx, random_double(), random_double());
-		const point3 p_world = apply_point(o2w, point3(ss.px, ss.py, ss.pz));
+		const point3 p_world = apply_point(motion_.o2wStart(), point3(ss.px, ss.py, ss.pz));
 		return p_world - origin;
 	}
 
 	double pdf_value(const point3& origin, const vec3& direction) const override {
-		if (!valid_) return 0.0;
+		if (!motion_.startValid()) return 0.0;
 		using namespace affine_transform;
-		pbrt_scene::Matrix4 o2w, w2o;
-		if (!resolveTransforms(0.0, o2w, w2o)) return 0.0;
-		const point3 ctx_obj = apply_point(w2o, origin);
-		const vec3 dir_obj = apply_vector(w2o, direction);
+		const point3 ctx_obj = apply_point(motion_.w2oStart(), origin);
+		const vec3 dir_obj = apply_vector(motion_.w2oStart(), direction);
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
 	}
@@ -328,10 +397,9 @@ class cylinder_hittable : public hittable {
 	// caller is responsible for the same ray_t.min/max clamping it already
 	// does for other boundary shapes.
 	bool volume_bounds(const ray& r, double& out_t0, double& out_t1) const {
-		if (!valid_) return false;
 		using namespace affine_transform;
 		pbrt_scene::Matrix4 o2w, w2o;
-		if (!resolveTransforms(r.time(), o2w, w2o)) return false;
+		if (!motion_.resolve(r.time(), o2w, w2o)) return false;
 		const point3 ro = apply_point(w2o, r.origin());
 		const vec3   rd = apply_vector(w2o, r.direction());   // NOT normalised - see file comment
 
@@ -378,23 +446,6 @@ class cylinder_hittable : public hittable {
   private:
 	CylinderShape<double> shape_;
 	shared_ptr<material> mat_;
-	AnimatedTransform anim_;
-	pbrt_scene::Matrix4 o2w_static_, w2o_static_;
-	bool valid_ = false;
+	disk_cylinder_detail::MotionState motion_;
 	aabb bbox_;
-
-	// See disk_hittable::resolveTransforms's own comment - identical idiom.
-	bool resolveTransforms(double time, pbrt_scene::Matrix4& o2w, pbrt_scene::Matrix4& w2o) const {
-		if (!anim_.IsAnimated()) {
-			o2w = o2w_static_;
-			w2o = w2o_static_;
-			return true;
-		}
-		const AT_Mat44 mat = anim_.Interpolate(time);
-		AT_Mat44 inv;
-		if (!at_invert(mat, inv)) return false;
-		o2w = disk_cylinder_detail::fromAnimMat(mat);
-		w2o = disk_cylinder_detail::fromAnimMat(inv);
-		return true;
-	}
 };
