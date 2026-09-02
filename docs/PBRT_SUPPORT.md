@@ -655,16 +655,21 @@ per-`MaterialKind` behavior.)
   (computed once at `flatten()` time, so GPU still gets a reasonable
   approximation instead of an arbitrary placeholder), with an explicit
   warning (`scene_builder.cpp`) naming the material count affected. `mix`'s
-  own `"amount"` parameter deliberately did NOT gain this second level (it
-  stays capped at one, bare-imagemap-only) — a texture-driven blend MASK
-  nested further is a narrower, separately-scoped gap, left open. A THIRD
-  level of nesting (that second-level texture's own tex1/tex2 naming yet
-  another procedural texture) still falls back to the generic "not
-  supported" warning on both backends — a documented, deliberately bounded
-  cap, not a new limitation: no bundled scene needs it, and unbounded
-  recursion would need real cycle-detection this loader has never needed
-  before, for a feature real pbrt-v4 scenes essentially never exercise past
-  2 levels.
+  own `"amount"` parameter now ALSO reaches this same second level (it used
+  to stay capped at one, bare-imagemap-only) — a texture-driven blend mask
+  itself nested in a further `checkerboard`/`mix` (e.g. a checker-driven
+  dirt/wear mask, or a mix-of-mixes weight) resolves the same way tex1/tex2
+  already did, via the same `checkerOrMixSlot()` reused for the amount slot
+  too; GPU's flat-colour fallback for this case reduces the nested pattern's
+  own average colour to a single representative scalar
+  (`nestedProceduralAverageScalar()`) rather than leaving `mixAmount` at its
+  meaningless struct default. A THIRD level of nesting (that second-level
+  texture's own tex1/tex2/amount naming yet another procedural texture, on
+  any of the three slots) still falls back to the generic "not supported"
+  warning on both backends — a documented, deliberately bounded cap, not a
+  new limitation: no bundled scene needs it, and unbounded recursion would
+  need real cycle-detection this loader has never needed before, for a
+  feature real pbrt-v4 scenes essentially never exercise past 2 levels.
 
 - `Diffuse`/`CoatedDiffuse` `"reflectance"` also now supports 4 more pbrt-v4
   procedural texture kinds on both backends: `"windy"` (two FBm calls

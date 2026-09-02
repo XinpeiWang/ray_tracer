@@ -285,15 +285,20 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (m.hasMixReflectance) {
 			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1, &m.mixTex1Nested);
 			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2, &m.mixTex2Nested);
-			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
-			// own comment) - a real per-point spatially-varying blend when
-			// "amount" itself nested a bare imagemap, via mix_texture's own
-			// texture-taking amount constructor; the flat-scalar constructor
-			// otherwise.
-			shared_ptr<texture> mix = m.mixAmountTextureFilename.empty()
+			// m.mixAmountTextureFilename/mixAmountNested (Material::
+			// mixAmountNested's own comment) - a real per-point spatially-
+			// varying blend when "amount" itself nested a bare imagemap or a
+			// further checkerboard/mix, via mix_texture's own texture-taking
+			// amount constructor (reusing checkerOrMixSlot exactly like
+			// tex1/tex2 just above - amount's own "flat" fallback color3
+			// argument is never actually read here, since this branch only
+			// runs when one of the two texture-valued cases is set); the
+			// flat-scalar constructor otherwise.
+			const bool amountIsTexture = !m.mixAmountTextureFilename.empty() || !m.mixAmountNested.kind.empty();
+			shared_ptr<texture> mix = !amountIsTexture
 				? std::make_shared<mix_texture>(tex1, tex2, m.mixAmount)
 				: std::make_shared<mix_texture>(tex1, tex2,
-					std::make_shared<mipmap_texture>(m.mixAmountTextureFilename.c_str()));
+					checkerOrMixSlot(m.mixAmountTextureFilename, m.mixColor1, &m.mixAmountNested));
 			return std::make_shared<coated_diffuse>(mix, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		}
 		if (m.hasWindyReflectance)
@@ -463,17 +468,17 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			return std::make_shared<lambertian>(std::make_shared<marble_texture>(
 				m.marbleScale, m.marbleOctaves, m.marbleRoughness, m.marbleVariation));
 		if (m.hasMixReflectance) {
-			// Same one-level-nested-imagemap support as checkerboard above,
-			// via mix_texture's own new polymorphic constructor.
+			// Same up-to-two-level nesting as checkerboard above, via
+			// mix_texture's own polymorphic constructor - see the
+			// CoatedDiffuse case's identical block (above in this same
+			// switch's other branch) for the full comment.
 			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1, &m.mixTex1Nested);
 			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2, &m.mixTex2Nested);
-			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
-			// own comment) - a real per-point spatially-varying blend when
-			// "amount" itself nested a bare imagemap.
-			shared_ptr<texture> mix = m.mixAmountTextureFilename.empty()
+			const bool amountIsTexture = !m.mixAmountTextureFilename.empty() || !m.mixAmountNested.kind.empty();
+			shared_ptr<texture> mix = !amountIsTexture
 				? std::make_shared<mix_texture>(tex1, tex2, m.mixAmount)
 				: std::make_shared<mix_texture>(tex1, tex2,
-					std::make_shared<mipmap_texture>(m.mixAmountTextureFilename.c_str()));
+					checkerOrMixSlot(m.mixAmountTextureFilename, m.mixColor1, &m.mixAmountNested));
 			return std::make_shared<lambertian>(mix);
 		}
 		if (m.hasWindyReflectance)

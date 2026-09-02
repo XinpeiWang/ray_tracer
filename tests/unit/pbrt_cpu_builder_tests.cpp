@@ -1473,6 +1473,30 @@ TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceMixAmountImagemapBuildsATextureBa
 		   "texture-backed blend fraction, not the flat-scalar fallback";
 }
 
+TEST(PbrtCpuBuildTest, DiffuseReflectanceMixAmountCheckerboardBuildsARealNestedBlend) {
+	// The new second-level nesting (Material::mixAmountNested's own comment)
+	// - "amount" bound to a further checkerboard Texture, not just a bare
+	// imagemap. Must build a real uv_checker_texture-backed amount (via
+	// checkerOrMixSlot), not the flat-scalar (nestedProceduralAverageScalar)
+	// fallback GPU alone uses.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"texture amount\" [ \"chk\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *mix = dynamic_cast<mix_texture *>(lam->get_texture().get());
+	ASSERT_NE(mix, nullptr);
+	EXPECT_NE(dynamic_cast<uv_checker_texture *>(mix->get_amount_texture().get()), nullptr)
+		<< "a mix reflectance with a checkerboard-bound amount must build a "
+		   "real second-level nested texture, not the flat-scalar fallback";
+}
+
 TEST_F(CpuBuilderTempTree, DisplacementWithARealGrayscaleBumpMapWrapsInBumpMapMaterial) {
 	// Round 5 Phase 1: Material::displacementTextureFilename (see that
 	// field's own comment) must reach the CPU builder's materialFor()

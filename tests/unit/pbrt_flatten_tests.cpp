@@ -2401,13 +2401,12 @@ TEST(FlattenMaterialTest, MixAmountImagemapCarriesTheTextureFilename) {
 	EXPECT_FALSE(warnedAbout(s, "diffuse"));
 }
 
-TEST(FlattenMaterialTest, MixAmountBoundToACheckerboardStillWarns) {
-	// Regression guard for the "amount" nesting added alongside tex1/tex2's
-	// own: "amount" naming a Texture that is itself NOT a bare imagemap
-	// (here, a checkerboard - a second procedural texture, not a colour
-	// sample) must still fall through to the generic warning, same scope
-	// tex1/tex2 already had (see resolveNestedImagemap's own comment on why
-	// this stays one level only).
+TEST(FlattenMaterialTest, MixAmountBoundToACheckerboardResolvesAtTheSecondLevel) {
+	// "amount" naming a Texture that is itself NOT a bare imagemap (here, a
+	// checkerboard - a second procedural texture, not a colour sample) now
+	// resolves at the second level, the SAME up-to-two-level nesting tex1/
+	// tex2 already had (Material::mixAmountNested's own comment) - no
+	// longer a warn-and-fall-back case.
 	const FlatScene s = flattenSource(
 		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
 		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 0 1 ] "
@@ -2415,8 +2414,27 @@ TEST(FlattenMaterialTest, MixAmountBoundToACheckerboardStillWarns) {
 		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
 		+ std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
-	EXPECT_FALSE(s.materials[0].hasMixReflectance);
+	EXPECT_TRUE(s.materials[0].hasMixReflectance);
 	EXPECT_TRUE(s.materials[0].mixAmountTextureFilename.empty());
+	EXPECT_EQ(s.materials[0].mixAmountNested.kind, "checkerboard");
+	EXPECT_FALSE(warnedAbout(s, "diffuse"));
+}
+
+TEST(FlattenMaterialTest, MixAmountBoundToAThirdLevelProceduralStillWarns) {
+	// A THIRD level (amount -> checkerboard -> mix) is still out of scope -
+	// NestedProceduralTexture's own tex1/tex2/amount slots are capped at a
+	// bare literal/imagemap, never a further nested procedural (see that
+	// struct's own comment) - confirms the cap still applies to "amount"
+	// even though it now reaches the second level tex1/tex2 already did.
+	const FlatScene s = flattenSource(
+		"Texture \"inner\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 1 1 ] \"rgb tex2\" [ 0 0 0 ]\n"
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"inner\" ]\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 0 1 ] "
+		"\"texture amount\" [ \"chk\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasMixReflectance);
 	EXPECT_TRUE(warnedAbout(s, "diffuse"));
 }
 

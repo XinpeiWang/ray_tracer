@@ -712,6 +712,22 @@ inline void nestedProceduralAverageColor(const NestedProceduralTexture &n, doubl
 		out[i] = (1.0 - w) * n.color1[i] + w * n.color2[i];
 }
 
+// Same idea as nestedProceduralAverageColor() just above, collapsed to a
+// single scalar (plain channel average of that same approximate colour) -
+// used when a NestedProceduralTexture stands in for a top-level "mix"
+// texture's own "amount" slot (Material::mixAmountNested's own comment):
+// GPU has no per-point representation for a nested-procedural amount any
+// more than it does for a nested-procedural tex1/tex2 (TextureData's
+// amountImageIdx is image-only, same as tex1ImageIdx/tex2ImageIdx), so this
+// feeds Material::mixAmount - the SAME flat fallback GPU already reads
+// whenever amountImageIdx isn't set - with a representative value instead
+// of leaving it at the meaningless struct default.
+inline double nestedProceduralAverageScalar(const NestedProceduralTexture &n) {
+	double c[3];
+	nestedProceduralAverageColor(n, c);
+	return (c[0] + c[1] + c[2]) / 3.0;
+}
+
 struct Material {
 	MaterialKind kind = MaterialKind::Diffuse;
 	std::string pbrtType;              // as written, for diagnostics
@@ -978,16 +994,16 @@ struct Material {
 	// most common real use of "mix" - barcelona-pavilion's own
 	// materials.pbrt has a commented-out "float amount" override on several
 	// Mix declarations, hinting the original scene author considered
-	// exactly this) is ALSO supported now, but stays capped at ONE level
-	// (mixAmountTextureFilename below, bare imagemap only) rather than
-	// gaining the same second level tex1/tex2 just did - a per-point scalar
-	// blend mask driven by a further procedural pattern is a real pbrt-v4
-	// capability this loader still doesn't reach, a narrower, deliberately
-	// out-of-scope-for-this-round gap, not an oversight. A nested amount
-	// that resolves to anything other than a bare imagemap (procedural, or
-	// nested further) still falls through to the generic "not supported"
-	// warning. Defaults match pbrt-v4's SpectrumMixTexture exactly (tex1
-	// black, tex2 white, amount 0.5).
+	// exactly this) is ALSO supported now, at the SAME up-to-two-level
+	// nesting as tex1/tex2 (mixAmountTextureFilename below for a bare
+	// imagemap; mixAmountNested for a further checkerboard/mix, CPU-only -
+	// see NestedProceduralTexture's own comment) - a per-point scalar blend
+	// mask driven by a further procedural pattern (e.g. a checker-driven
+	// mix, or a mix-of-mixes weight) is a real pbrt-v4 capability this
+	// loader now reaches too. A nested amount that resolves to neither
+	// level still falls through to the generic "not supported" warning.
+	// Defaults match pbrt-v4's SpectrumMixTexture exactly (tex1 black, tex2
+	// white, amount 0.5).
 	bool hasMixReflectance = false;
 	double mixColor1[3] = {0.0, 0.0, 0.0};
 	double mixColor2[3] = {1.0, 1.0, 1.0};
@@ -997,6 +1013,7 @@ struct Material {
 	NestedProceduralTexture mixTex2Nested;
 	double mixAmount = 0.5;
 	std::string mixAmountTextureFilename;  // set instead of mixAmount when "amount" nests a bare imagemap
+	NestedProceduralTexture mixAmountNested;  // kind non-empty when "amount" nests a further checkerboard/mix
 
 	// A Diffuse/CoatedDiffuse "reflectance" bound to a "windy" Texture
 	// (pbrt-v4 WindyTexture - two FBm calls combined for a windswept-grass
@@ -2428,12 +2445,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
 					tex && tex->cls == "mix") {
-					// See hasMixReflectance's own comment - tex1/tex2 support
-					// up to two levels (bare imagemap, or a further
-					// checkerboard/mix via resolveNestedProcedural), while
-					// "amount" stays capped at one (bare imagemap only); a
-					// nested slot that resolves at neither level still falls
-					// through to the generic warning below.
+					// See hasMixReflectance's own comment - tex1/tex2/amount
+					// all support up to two levels (bare imagemap, or a
+					// further checkerboard/mix via resolveNestedProcedural);
+					// a nested slot that resolves at neither level still
+					// falls through to the generic warning below.
 					const pbrt_scene::Param *tex1p = tex->params.find("tex1");
 					const pbrt_scene::Param *tex2p = tex->params.find("tex2");
 					const pbrt_scene::Param *amountp = tex->params.find("amount");
@@ -2447,9 +2463,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						(tex1IsNested && tex1Img.empty()) ? resolveNestedProcedural(tex1p) : NestedProceduralTexture{};
 					const NestedProceduralTexture tex2Proc =
 						(tex2IsNested && tex2Img.empty()) ? resolveNestedProcedural(tex2p) : NestedProceduralTexture{};
+					const NestedProceduralTexture amountProc =
+						(amountIsNested && amountImg.empty()) ? resolveNestedProcedural(amountp) : NestedProceduralTexture{};
 					const bool tex1Resolved = !tex1IsNested || !tex1Img.empty() || !tex1Proc.kind.empty();
 					const bool tex2Resolved = !tex2IsNested || !tex2Img.empty() || !tex2Proc.kind.empty();
-					if (tex1Resolved && tex2Resolved && (!amountIsNested || !amountImg.empty())) {
+					const bool amountResolved = !amountIsNested || !amountImg.empty() || !amountProc.kind.empty();
+					if (tex1Resolved && tex2Resolved && amountResolved) {
 						if (tex1IsNested && !tex1Img.empty()) {
 							m.mixTex1Filename = tex1Img;
 						} else if (tex1IsNested) {
@@ -2470,8 +2489,15 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 							const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {1.0, 1.0, 1.0});
 							m.mixColor2[0] = c2.x; m.mixColor2[1] = c2.y; m.mixColor2[2] = c2.z;
 						}
-						if (amountIsNested) {
+						if (amountIsNested && !amountImg.empty()) {
 							m.mixAmountTextureFilename = amountImg;
+						} else if (amountIsNested) {
+							m.mixAmountNested = amountProc;
+							// See tex1/tex2's own identical GPU-approximation
+							// comment above - same reason, scalar instead of
+							// colour (nestedProceduralAverageScalar's own
+							// comment).
+							m.mixAmount = nestedProceduralAverageScalar(amountProc);
 						} else {
 							m.mixAmount = tex->params.getFloat("amount", 0.5);
 						}

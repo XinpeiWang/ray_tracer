@@ -61,7 +61,7 @@ numbered sections below for the narrative detail behind any row.
 | Textures | Procedural (checker/noise/marble/windy/dots/etc.) | Y | N/A |
 | Textures | Image textures + mipmap/EWA filter | Y | N/A |
 | Textures | Texture mapping (UV/spherical/cylindrical/planar) | Y | N/A |
-| Textures | `mix` texture with texture-bound `amount` | N (loader only — class works via native API) | Falls back to flat colour with a warning when loaded from `.pbrt` |
+| Textures | `mix` texture with texture-bound `amount` | Y (CPU); GPU approximates | Bare imagemap or a further checkerboard/mix (2 levels, matching tex1/tex2); GPU falls back to a flat scalar approximation, warned |
 | Textures | checkerboard/mix tex1/tex2 nesting a further procedural texture (2nd level) | Y, CPU only | GPU approximates as a flat average colour, warned; a 3rd level of nesting still falls back with a warning on both |
 | Lights | Point / spot / distant | Y / Y / Y | N/A |
 | Lights | Goniometric | Y / Y / Y | Missing/non-square profile image → falls back to a uniform isotropic distribution |
@@ -218,18 +218,17 @@ Gaussian LUT), point/bilinear/trilinear/EWA all selectable.
 Texture mapping: all 4 pbrt-v4 2D mapping types ported — UV, spherical,
 cylindrical, planar (`src/shared/texture_mapping.h`).
 
-**Gap (narrowed)**: `checkerboard`/`mix` texture nesting is now real up to
-TWO levels on CPU (`tex1`/`tex2` binding to a further `checkerboard`/`mix`
-Texture, not just a bare imagemap or flat literal — `pbrt_flatten::
+**Gap (closed)**: `checkerboard`/`mix` texture nesting is now real up to TWO
+levels on CPU, on ALL THREE nestable slots (`tex1`/`tex2`, and now `mix`'s
+own `amount` too) — any of them may bind to a further `checkerboard`/`mix`
+Texture, not just a bare imagemap or flat literal (`pbrt_flatten::
 NestedProceduralTexture`) — GPU still approximates a nested slot as a flat
-average colour rather than rendering it for real (warned, not silent). A
-THIRD level (that inner texture's own `tex1`/`tex2` naming yet another
-procedural texture) is a deliberate, disclosed cap, not attempted. `mix`'s
-own `amount` parameter separately supports one level of texture binding
-(a spatially-varying blend mask) but not a second — see `PBRT_SUPPORT.md`
-for the exact scope cut (this is a loader-parsing limit for the deeper
-cases, not a missing texture *class*; the classes exist and work when
-built through the native C++ scene API).
+average colour/scalar rather than rendering it for real (warned, not
+silent). A THIRD level (that inner texture's own tex1/tex2/amount naming
+yet another procedural texture, on any slot) is a deliberate, disclosed
+cap, not attempted — this is a loader-parsing limit, not a missing texture
+*class*; the classes exist and work when built through the native C++
+scene API. See `PBRT_SUPPORT.md` for the full detail.
 
 ## 4. Lights & Light Sampling
 
