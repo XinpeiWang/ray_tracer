@@ -1,21 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Cherry Blossom motif: a branch with four blossom clusters, drifting
-     petals, and a thin crescent moon low in the corner - fuller than a
-     single spray of flowers. Original artwork.
+     petals, leaves, a distant bird and a golden crescent moon - in real
+     colour (leaf green, warm gold, a touch of violet) rather than a single
+     pink-on-pink tone. Every accent reuses a colour already in this theme's
+     own palette (accentSecondary leaf green, logWarning gold, logScene
+     violet). Original artwork.
 
      Placed once (not tiled), anchored top-left, so the branch reads as entering
      the frame from the corner rather than as wallpaper.
 
      Opacity is baked in; Qt stylesheets have no opacity property for
-     background-image. -->
+     background-image. Colour accents (moon/leaves/bird) sit at their own
+     higher opacity than the pink blossoms so the palette reads as several
+     real colours, not shades of one. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="400" viewBox="0 0 480 400">
   <g opacity="0.14">
-
-    <!-- Crescent moon, low and to the right, drawn as one circle minus a
-         second offset circle so it reads as a thin waxing crescent. -->
-    <g fill="#c4708c">
-      <path d="M420 250 a46 46 0 1 0 0 92 a58 58 0 0 1 0-92 Z"/>
-    </g>
 
     <!-- Branch: one main limb from the corner with three offshoots. Drawn as
          filled tapering shapes rather than strokes so it thins toward the tip
@@ -85,5 +84,27 @@
       <ellipse cx="440" cy="230" rx="3.6" ry="5.4" transform="rotate(18 440 230)"/>
       <ellipse cx="92" cy="230" rx="3.6" ry="5.4" transform="rotate(-58 92 230)"/>
     </g>
+  </g>
+
+  <!-- Colour accents: a golden crescent moon, leaf-green foliage among the
+       blossoms, and a distant violet bird - own opacity so they read as
+       real colour rather than a darker version of the pink. -->
+  <g opacity="0.34" stroke="none">
+    <!-- Crescent moon, low and to the right, drawn as one circle minus a
+         second offset circle so it reads as a thin waxing crescent. -->
+    <path d="M420 250 a46 46 0 1 0 0 92 a58 58 0 0 1 0-92 Z" fill="#a4761c"/>
+
+    <!-- Leaves: a pointed-oval pair at three of the four blossom clusters,
+         reusing the same taper-to-a-point shape each time. -->
+    <g fill="#5f8a6a">
+      <path d="M152 148 q-18-4 -26-20 q18 0 26 20 Z"/>
+      <path d="M152 148 q4-20 20-28 q4 20 -20 28 Z"/>
+      <path d="M310 194 q-16-2 -24-16 q16-2 24 16 Z"/>
+      <path d="M74 62 q-14-4 -20-16 q14-2 20 16 Z"/>
+    </g>
+
+    <!-- A distant bird, a simple two-stroke silhouette, high in the open
+         sky above the branch. -->
+    <path d="M262 34 q10-10 22-4 q-8 0 -12 6 q12-2 20 6 q-14-2 -20 2 q-6-4 -10-10 Z" fill="#8a5f9e"/>
   </g>
 </svg>

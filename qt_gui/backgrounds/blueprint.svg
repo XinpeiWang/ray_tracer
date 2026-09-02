@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Sci-Fi Blueprint motif: a drafting sheet with real technical content -
-     a routed circuit trace with pads, an IC footprint, a resistor zigzag,
-     a via, and a dimension line - not just a bare grid. Original artwork.
+<!-- Sci-Fi Blueprint motif: a drafting sheet in real colour, not monochrome
+     ink - a resistor with authentic colour-code bands, a green ground
+     symbol, an amber warning triangle and a red power via, alongside the
+     blue circuit trace/IC/dimension line. Every accent reuses a colour
+     already in this theme's own palette (success/error/logWarning) except
+     the resistor bands, which use the real-world resistor colour code
+     (brown-black-red-gold) since that is what makes it read as a resistor.
+     Original artwork.
 
      This one TILES, so every edge has to meet its opposite exactly. The rule
      followed here: draw grid/border lines only on the top and left edges,
@@ -13,7 +18,9 @@
      boundary.
 
      Opacity is baked in for the same reason as the other motifs: Qt
-     stylesheets have no opacity property for background-image. -->
+     stylesheets have no opacity property for background-image. Colour
+     elements sit at a higher opacity than the ink-only grid so they read as
+     colour, not just a darker line. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
   <g opacity="0.17" fill="none" stroke="#0b6f8f">
     <!-- Minor divisions every 20px. Top and left edges only (see above). -->
@@ -45,22 +52,54 @@
       <path d="M102 25 h-7 M102 35 h-7 M136 25 h7 M136 35 h7
                M110 18 v-7 M122 18 v-7 M110 42 v7 M122 42 v7"/>
     </g>
+  </g>
 
-    <!-- Resistor zigzag between two pads, bottom-left quadrant. -->
-    <g stroke-width="1.3">
-      <path d="M14 118 h10 l5 -9 l9 18 l9 -18 l9 18 l5 -9 h10"/>
+  <!-- Colour accents, own opacity so they read as real colour rather than a
+       darker version of the ink line. -->
+  <g opacity="0.5">
+    <!-- Resistor: wire leads in ink, body in cream, four bands in the real
+         resistor colour code (brown-black-red-gold = 10 x 100 = 1k ohm,
+         gold tolerance) - bottom-left quadrant. -->
+    <g stroke="#0b6f8f" stroke-width="1.3" fill="none">
+      <path d="M14 118 h14 M70 118 h14"/>
       <circle cx="14" cy="118" r="2.4"/>
-      <circle cx="71" cy="118" r="2.4"/>
+      <circle cx="84" cy="118" r="2.4"/>
+    </g>
+    <rect x="28" y="110" width="42" height="16" rx="2" fill="#e0c9a0" stroke="#0b6f8f" stroke-width="1"/>
+    <rect x="33" y="110" width="4" height="16" fill="#7b4a24"/>
+    <rect x="41" y="110" width="4" height="16" fill="#2a2a2a"/>
+    <rect x="49" y="110" width="4" height="16" fill="#c23b3b"/>
+    <rect x="60" y="110" width="4" height="16" fill="#c9a227"/>
+
+    <!-- Ground symbol: three horizontal bars, decreasing width, theme's own
+         success green - bottom-right quadrant. -->
+    <g stroke="#2e7d5b" stroke-width="1.6">
+      <path d="M120 128 v-14"/>
+      <path d="M110 128 h20"/>
+      <path d="M113 133 h14"/>
+      <path d="M116 138 h8"/>
     </g>
 
+    <!-- Warning triangle: theme's own logWarning amber - top-right, clear of
+         the IC. -->
+    <g stroke="#a06a10" stroke-width="1.4" fill="none">
+      <path d="M118 62 l9 16 h-18 Z"/>
+      <path d="M118 68 v6"/>
+      <circle cx="118" cy="76" r="0.8" fill="#a06a10" stroke="none"/>
+    </g>
+
+    <!-- Power via: theme's own error red, near the dimension line. -->
+    <g stroke="#b3382f" stroke-width="1.1" fill="none">
+      <circle cx="128" cy="104" r="3.2"/>
+      <path d="M128 100.5 v-9 M128 107.5 v9 M124.5 104 h-9 M131.5 104 h9"/>
+    </g>
+  </g>
+
+  <g opacity="0.17" fill="none" stroke="#0b6f8f">
     <!-- Dimension line with closed end-ticks, bottom-right quadrant. -->
     <g stroke-width="0.8">
       <path d="M96 138 h44"/>
       <path d="M96 133 v10 M140 133 v10"/>
-    </g>
-    <g stroke-width="1.1">
-      <circle cx="128" cy="104" r="3.2"/>
-      <path d="M128 100.5 v-9 M128 107.5 v9 M124.5 104 h-9 M131.5 104 h9"/>
     </g>
   </g>
 </svg>

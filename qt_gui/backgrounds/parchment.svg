@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fantasy Parchment motif: a compass rose over contour lines, with a
      galleon under sail and a proper sea serpent - a surveyor's map with the
-     "here be dragons" filler actually drawn large enough to read. Original
+     "here be dragons" filler actually drawn large enough to read, and in
+     real colour (illuminated-manuscript red/gold on the compass, a green
+     dragon, cream sails) rather than a single ink tone. Every accent reuses
+     a colour already in this theme's own palette (accentPrimary wax-seal
+     red, accentSecondary leather gold, success moss green). Original
      artwork.
 
-     Opacity is baked in (see the group's opacity attribute) rather than applied
-     at runtime: Qt stylesheets have no opacity property for background-image,
-     and this file is drawn for exactly one palette, so there is nothing to
-     parameterise. Ink colour is Fantasy Parchment's own text tone. -->
+     Opacity is baked in (see the group opacity attributes) rather than
+     applied at runtime: Qt stylesheets have no opacity property for
+     background-image, and this file is drawn for exactly one palette, so
+     there is nothing to parameterise. Line ink is Fantasy Parchment's own
+     text tone; colour fills sit at their own higher opacity so they read as
+     colour, not just a darker line. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="460" viewBox="0 0 480 460">
   <g opacity="0.13" fill="none" stroke="#4a3b2a" stroke-width="1.6">
 
@@ -70,9 +76,38 @@
       <path d="M212 384 l6-12 M256 372 l6-13 M300 380 l6-12 M344 376 l6-12"/>
       <g transform="translate(452 372)">
         <path d="M0 0 q-14-30 -34-32 q6 14 -2 22 q16-4 20 10 q10-4 16 0Z"/>
-        <circle cx="-14" cy="-16" r="2" fill="#4a3b2a" stroke="none"/>
         <path d="M-30-30 q-10-6 -18-2 M-26-22 q-10-2 -16 4" stroke-width="1.3"/>
       </g>
+    </g>
+  </g>
+
+  <!-- Colour accents: the illuminated-manuscript red/gold on the compass
+       tips, the dragon in green with a gold belly and a red eye, the sails
+       in cream and the pennant in wax-seal red. Own opacity so they read as
+       real colour rather than a darker version of the ink line. -->
+  <g opacity="0.4" stroke="none">
+    <g transform="translate(340 148)">
+      <path d="M0-92 L14-16 L0 0 L-14-16 Z" fill="#8b3a2f"/>
+      <path d="M92 0 L16-14 L0 0 L16 14 Z" fill="#8b5a2b"/>
+      <path d="M0 92 L14 16 L0 0 L-14 16 Z" fill="#8b3a2f"/>
+      <path d="M-92 0 L-16-14 L0 0 L-16 14 Z" fill="#8b5a2b"/>
+    </g>
+
+    <g transform="translate(96 356)" fill="#efe3cc">
+      <path d="M-22-82 Q8-56 -22-22 Z"/>
+      <path d="M26-64 Q46-42 26-18 Z"/>
+    </g>
+    <path d="M74 274 l14 5 l-14 5 Z" fill="#8b3a2f"/>
+
+    <g fill="#5c7a3a">
+      <path d="M188 410 q34-40 68-6 t68-6 q34-36 66-2 t60 2" stroke="#5c7a3a" stroke-width="4" fill="none"/>
+      <g transform="translate(452 372)">
+        <path d="M0 0 q-14-30 -34-32 q6 14 -2 22 q16-4 20 10 q10-4 16 0Z"/>
+      </g>
+    </g>
+    <g transform="translate(452 372)">
+      <path d="M-30-30 q-10-6 -18-2 M-26-22 q-10-2 -16 4" stroke="#8b5a2b" stroke-width="2" fill="none"/>
+      <circle cx="-14" cy="-16" r="2.2" fill="#8b3a2f"/>
     </g>
   </g>
 </svg>
