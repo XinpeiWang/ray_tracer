@@ -8,9 +8,13 @@ Utility scripts for building, packaging, and testing the ray tracer.
 - **`build_all.ps1`** - Build everything: launcher, renderers, tests, Qt GUI
   - Flags: `-Configuration Debug|Release`, `-SkipTests`, `-SkipGui`, `-Deploy`, `-Clean`
   - Stops a running RayTracerGUI.exe first; it locks the build output
-  - Usage: `.\scriptsuild_all.ps1`
+  - Usage: `.\scripts\build_all.ps1`
 - **`build_all.bat`** - Batch equivalent
 - **`build_and_deploy.ps1`** - build_all.ps1 followed by the Qt deployment step
+- **`build_and_deploy_macos.sh`** - macOS equivalent (CPU renderer + CLI + Qt
+  GUI only - no GPU/OptiX backend on macOS). Run on macOS, not from Windows.
+- **`setup_env.ps1`** / **`setup_env.bat`** - Auto-detect and set the CUDA/OptiX
+  SDK paths a build needs; run once on a fresh machine before the first build.
 
 ### Deployment
 - **`deploy_launcher.ps1`** - Verifies ray_tracer.exe and the PTX files reached
@@ -61,8 +65,7 @@ scripts\clean_vs_cache.bat
 
 Other scripts are located in specific directories:
 - **Qt GUI scripts:** `/qt_gui/verify_qt6.ps1`
-- **Test scripts:** `/tests/build_and_run_tests.ps1`
-- **Build scripts:** `/run.bat`, `/launcher.bat` (in root)
+- **Test scripts:** `/tests/build_and_run_tests.ps1`, `/tests/build_and_run_tests.bat`
 
 ## Dependencies
 

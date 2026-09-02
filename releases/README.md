@@ -36,8 +36,6 @@ To create a new release package:
 
 ## Version History
 
-See `/archive/RELEASE_NOTES_*.md` for historical release notes.
-
 For current version info, see main `/README.md`.
 
 ## Package Structure
