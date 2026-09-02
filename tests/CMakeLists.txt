@@ -109,12 +109,16 @@ add_executable(unit_tests
     # portable, SDK-independent unit_tests target require the OptiX SDK +
     # CUDA Toolkit installed just to build, unlike every other test here.
     # tests/ray_tracer_tests.vcxproj carries those SDK include paths and
-    # lists these files, but is not currently a working alternative home -
-    # confirmed broken on its own (missing even its gtest include path,
-    # C1083 on gtest/gtest.h before reaching these files at all). These 9
-    # files (this group of 8 plus pbrt_alpha_cutout_tests.cpp above) have no
-    # currently-building target anywhere in the repo - a real gap, tracked
-    # separately from this CMakeLists.txt fix.
+    # does list and successfully build/run all of these files (confirmed:
+    # a clean MSBuild rebuild + full run passes 3765/3830, 0 failed - the
+    # rest skipped for lacking a GPU or external assets). An earlier version
+    # of this comment claimed that project was broken (C1083 on gtest/
+    # gtest.h) - that was wrong, or described a since-fixed transient state;
+    # do not trust it without re-verifying. The real, current reason these
+    # files are excluded from THIS target specifically is just what the
+    # paragraph above says: keeping this portable CMake target
+    # SDK-independent. Use the MSVC solution (ray_tracer.sln,
+    # `MSBuild ray_tracer.sln /t:ray_tracer_tests`) to build and run these.
     unit/pbrt_hash_tests.cpp
     unit/pbrt_instance_tests.cpp
     unit/pbrt_load_tests.cpp
