@@ -1804,6 +1804,25 @@ struct ShapeWork {
 	// bilinearPatches' own "left null for an instance definition" precedent).
 	std::vector<Cone> *cones = nullptr;
 	std::vector<Paraboloid> *paraboloids = nullptr;
+	// True only for a plain top-level scene shape (the work.push_back() call
+	// site iterating scene.shapes directly) - false for both an ObjectInstance
+	// DEFINITION's own object-space shape (triangles points at
+	// out.groups[g].triangles, not out.triangles) and an instanced EMISSIVE
+	// shape baked into world space (triangles points at out.triangles too,
+	// same as the top-level case, but this flag is explicitly false there).
+	// Real object motion blur (AnimatedTriangleMesh, mesh-building branch
+	// below) is gated on this instead of on `triangles == &out.triangles`
+	// pointer identity - that pointer alone doesn't distinguish the top-level
+	// and instanced-emissive cases (both target the same list), so a
+	// gating check built on it depended on a SEPARATE, non-obvious invariant
+	// (every instanced-emissive ShapeWork also having areaLightIndex >= 0) to
+	// stay correct; a code-review pass on this feature's own commit flagged
+	// that coupling as fragile enough to warrant this explicit field instead,
+	// once it was clear (from ShapeWork's own "fields appended at the end
+	// default for every other call site" convention, see curves' own comment
+	// above) that doing so only requires updating the ONE call site that
+	// needs `true`, not all three.
+	bool isTopLevelScene = false;
 };
 
 // Row-major 4x4 multiply: `a` applied after `b`, i.e. the result maps a point
@@ -3662,7 +3681,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
 		work.push_back({&shape, shape.xform, shape.xformEnd, &out.triangles, &out.spheres, &out.bilinearPatches,
 						&out.disks, &out.cylinders, &out.curves,
-						&out.cones, &out.paraboloids});
+						&out.cones, &out.paraboloids, /*isTopLevelScene=*/true});
 
 	// Sized up front so the pointers taken below stay valid as work is added.
 	out.groups.resize(scene.objects.size());
@@ -3978,41 +3997,22 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		if (shape.type == "trianglemesh" || shape.type == "plymesh"
 				|| shape.type == "loopsubdiv") {
 			// Real object motion blur (AnimatedTriangleMesh's own comment) -
-			// gated on w.triangles pointing at the top-level scene list. This
-			// pointer is NOT unique to "top-level scene shape", though - a
-			// code-review pass on this feature's own commit found it also
-			// matches the "instanced EMISSIVE shape baked into world space"
-			// ShapeWork entries (built a few dozen lines above this loop,
-			// inside `for (const pbrt_scene::InstanceDecl &inst : ...)`,
-			// which explicitly `continue`s past any shape with
-			// `areaLightIndex < 0` before ever calling work.push_back() -
-			// only emissive shapes ever reach that push_back). It does
-			// correctly rule out an ObjectInstance DEFINITION's own object-
-			// space geometry list (InstanceGroup::triangles - that case has
-			// no xformEnd concept at all and keeps baking to xform only,
-			// unaffected by this entire feature; a genuinely rare "animated
+			// gated on ShapeWork::isTopLevelScene (see that field's own
+			// comment) - true only for a plain top-level scene shape, false
+			// for both an ObjectInstance DEFINITION's own object-space
+			// geometry (InstanceGroup::triangles has no xformEnd concept at
+			// all and keeps baking to xform only - a genuinely rare "animated
 			// mesh nested inside an instance definition" combination, scoped
 			// out rather than adding motion blur to the instancing system
-			// too).
-			//
-			// What actually keeps an instanced-and-placed emissive mesh out
-			// of the animated path is the SEPARATE `shape.areaLightIndex < 0`
-			// check below (meshAnimated), which is unconditionally true for
-			// every entry from that instanced-emissive path by the
-			// construction just described - not a coincidence, a structural
-			// invariant of that loop, but one this pointer check alone does
-			// NOT enforce. If either gate is ever changed independently (a
-            // third `&out.triangles`-targeting call site added, or the
-			// instanced-emissive loop's own areaLightIndex filter loosened),
-			// re-verify this comment's claim still holds rather than trusting
-			// the pointer check alone - a per-ShapeWork explicit boolean
-			// would remove the coupling entirely, but the 3 existing
-			// positional-brace-init call sites (see ShapeWork's own comment
-			// on why fields are appended at the end for exactly this reason)
-			// made that a bigger change than this round's other fixes
-			// warranted.
+			// too) and an instanced EMISSIVE shape baked into world space
+			// (excluded explicitly, not just via the separate
+			// `shape.areaLightIndex < 0` check just below - see
+			// isTopLevelScene's own comment for why relying on that check
+			// alone, via a `triangles == &out.triangles` pointer-identity
+			// gate, was a real fragility a code-review pass on this
+			// feature's own commit caught and this field replaced).
 			const bool meshCouldAnimate =
-				(w.triangles == &out.triangles) && xform.differsFrom(w.xformEnd);
+				w.isTopLevelScene && xform.differsFrom(w.xformEnd);
 			// A MediumInterface on a mesh shape is silently dropped - Triangle
 			// (unlike Sphere/Disk/Cylinder) has no `medium` field to carry it,
 			// and neither CPU's addMediumIfPresent() nor GPU's sphere-only
