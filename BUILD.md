@@ -136,7 +136,7 @@ The solution contains the following projects:
 ### Required
 
 - **Visual Studio 2022 or 2026** with C++ development tools
-- **CUDA Toolkit 12.x+** (for OptiX runtime)
+- **CUDA Toolkit 13.2+** (for OptiX runtime)
 - **NVIDIA OptiX SDK 9.1+**
 - **NVIDIA GPU** with OptiX support (RTX series recommended)
 - **NVIDIA Driver 595.79+** for Blackwell architecture (e.g., RTX 5080)
@@ -149,7 +149,7 @@ falls back to their default install locations. You only need to set
 installed or a non-standard install path:
 ```powershell
 msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64 `
-  /p:CudaToolkitPath="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x" `
+  /p:CudaToolkitPath="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2" `
   /p:OptixSdkPath="C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.1.0"
 ```
 
@@ -308,10 +308,10 @@ RayTracer_Package\               # Deployment package (if deployed)
 **Symptom:** `nvcc.exe not found` or CUDA errors
 
 **Solution:**
-1. Install CUDA Toolkit 12.x+
+1. Install CUDA Toolkit 13.2+
 2. Set environment variable:
    ```powershell
-   $env:CudaToolkitPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x"
+   $env:CudaToolkitPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2"
    ```
 3. Run from VS Developer Command Prompt (nvcc requires vcvars)
 
@@ -398,4 +398,4 @@ After building:
 
 - [Copilot Instructions](.github/copilot-instructions.md) - Project architecture and guidelines
 - [OptiX README](gpu/optix/README.md) - GPU renderer details
-- [Qt GUI README](qt_gui/README.md) - GUI application guide
+- [Qt GUI Documentation](qt_gui/QT_GUI_DOCUMENTATION.md) - GUI application guide

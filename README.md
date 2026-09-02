@@ -1,6 +1,6 @@
 # Ray Tracer
 
-A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 78 scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
+A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 123 built-in scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
@@ -11,10 +11,10 @@ A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementa
 
 **Want to try it without building?** Download the portable release:
 
-1. [Download RayTracer_v1.0_Portable.zip](../../releases) from the Releases page
+1. [Download the latest portable release](../../releases) from the Releases page
 2. Extract to any folder
 3. **GUI Version:** Double-click `RayTracerGUI.exe` for a graphical interface
-   - OR **Console Version:** Double-click `launcher.bat` or `RayTracer.exe` for interactive command-line
+   - OR **Console Version:** Run `RayTracer.exe` from a terminal for command-line rendering
 
 The portable version includes:
 - ✅ **Graphical User Interface** - Easy point-and-click rendering
@@ -134,7 +134,7 @@ Some large mesh/texture assets (Sponza, Bistro, Rungholt and their textures) are
 - Add Qt to PATH: `$env:Path += ";C:\Qt\6.11.1\mingw_64\bin"`
 
 **Optional — GPU rendering:**
-- **CUDA Toolkit 12.x+** and **NVIDIA OptiX SDK 9.1+**
+- **CUDA Toolkit 13.2+** and **NVIDIA OptiX SDK 9.1+**
 - Auto-detected from the standard install locations; set `$env:CudaToolkitPath` /
   `$env:OptixSdkPath` yourself only if you have multiple CUDA versions or a
   non-standard install path
@@ -242,7 +242,7 @@ Mac app.
 
 ### Running Tests
 
-The test suite uses **Google Test** and covers roughly **3,300+ unit and integration tests** across ~170 test files.
+The test suite uses **Google Test** and covers **3,830 unit and integration tests** (524 test suites) across ~184 test files.
 
 #### Option A: Automated script (builds + runs in one step)
 ```powershell
@@ -367,20 +367,26 @@ Both formats are generated after each render completes.
 
 ## 🖼️ Scenes
 
-78 scenes (ids 0-78, id 53 retired), selected via the `scene_id` CLI argument or the GUI's scene dropdown. Full descriptions and camera defaults live in [src/TheRestOfYourLife/scene_registry.h](src/TheRestOfYourLife/scene_registry.h).
+123 built-in scenes, identified by a category letter + number (e.g. `A1`,
+`B10`, `G25`) rather than a flat integer, selected via the CLI's scene-id
+argument or the GUI's scene dropdown. Categories: **A** Basics (the book
+progression), **B** Materials, **C** Lights, **D** Cameras, **E** Volumes,
+**F** Geometry, **G** Models (real-world statue/object meshes - Stanford
+Bunny, Armadillo, Sponza, Bistro, San Miguel, and dozens more), **H** Large
+Scenes ("movie-level" fully textured environments), **I** Education
+(curated demos of specific render-option controls), **J** Custom Scenes
+(loaded live from `.pbrt` files on disk, no code changes needed). Every
+scene renders on the CPU renderer and both GPU backends with real
+NEE+MIS - see [`docs/SCENE_SELECTION.md`](docs/SCENE_SELECTION.md) for the
+full id scheme, GUI usage, and how to add a new scene, and
+[`src/TheRestOfYourLife/scene_registry.h`](src/TheRestOfYourLife/scene_registry.h)
+for the authoritative per-scene table (description, performance hint,
+recommended SPP, camera defaults).
 
-| Range | Category |
-|---|---|
-| 0-8, 22 | "Ray Tracing" book 1-3 progression (Cornell Box, Bouncing Spheres, Checkered/Perlin/Earth spheres, Cornell Smoke, depth of field, ...) |
-| 9-21, 23 | pbrt-v4 material/BxDF showcase — mostly Cornell-box variants exercising rough metal, conductor, coated diffuse/conductor, thin glass, hair, subsurface, bilinear patches |
-| 24-36 | pbrt-v4 light/camera/medium showcase — HDRI sky, spot/distant/point/goniometric/projection lights, homogeneous & cloud media, orthographic/spherical/realistic-lens cameras, measured BRDFs |
-| 37-61 | Real-world statue/object meshes (Stanford Bunny, Armadillo, Happy Buddha, Lucy, XYZRGB Dragon, Utah Teapot, Suzanne, Nefertiti, and ~15 more) — one object per scene, checkered floor, overhead light |
-| 62-64, 73-78 | "Movie-level" environment scenes: Crytek Sponza (262K tris), Amazon Lumberyard Bistro Exterior (2.84M tris), Rungholt (6.7M tris), Fireplace Room, San Miguel (9.9M tris), Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery — real per-face `.mtl` materials, with real `map_Kd` image textures on all nine |
-| 65-68 | The classic Cornell box (same scene as A1/id 0), rendered by each of D1-D4's camera models in turn (defocus blur, orthographic, 360° spherical panorama, realistic-lens bokeh) — a fixed reference scene for directly comparing the four camera types |
-| 69-70 | Additional volumetric-media showcases (a combined dielectric+medium sphere; a heterogeneous RGB-grid medium) — same category as 24-36's E1/E2, added later so non-contiguous |
-| 71-72 | Additional geometry showcases (real object instancing; real Bezier curve/hair-fiber geometry, not the shading-normal proxy scene 19 uses) — same category as scene 23/37, added later so non-contiguous |
-
-Scenes 37-64, 73-78 load external `.obj` assets from `models/` (Git LFS for the large ones); scenes 62-63 and 73-78 additionally need their own texture directories (`models/sponza_textures/`, `models/bistro_textures/`, `models/fireplace_room_textures/`, `models/san_miguel_textures/`, `models/sibenik_cathedral_textures/`, `models/breakfast_room_textures/`, `models/salle_de_bain_textures/`, `models/gallery_textures/`).
+Scenes that import external mesh/texture assets (mostly category **G** and
+**H**) load them from `models/` (Git LFS for the large ones) - the GUI's
+"Requires External Files" tab and the CLI's scene-info output flag which
+scenes need this.
 
 ## 📦 Distribution & Release Process
 
@@ -400,7 +406,7 @@ This will:
 
 Then create a ZIP for easy distribution:
 ```powershell
-Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Portable.zip
+Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_vX.X_Portable.zip
 ```
 
 ### Creating a GitHub Release
@@ -409,7 +415,7 @@ Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Por
 - Build successful in Release|x64 configuration
 - All tests passing
 - Documentation updated
-- Version number decided (e.g., `v1.0`, `v1.1`)
+- Version number decided (e.g., `vX.X`)
 
 **Step-by-Step Process:**
 
@@ -429,14 +435,14 @@ Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Por
 
    # Test the package
    cd RayTracer_Package
-   .\launcher.bat
+   .\RayTracerGUI.exe
    cd ..
    ```
 
 3. **Create Distribution ZIP**
    ```powershell
-   # Update version number in the filename
-   Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Portable.zip
+   # Substitute the actual version number in the filename
+   Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_vX.X_Portable.zip
    ```
 
 4. **Create GitHub Release**
@@ -446,20 +452,18 @@ Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Por
    b. Click **Releases** → **Draft a new release**
 
    c. Fill in release details:
-   - **Tag version**: `v1.0` (or your version number)
-   - **Release title**: `Ray Tracer v1.0 - Portable Edition`
+   - **Tag version**: `vX.X` (your actual version number)
+   - **Release title**: `Ray Tracer vX.X`
    - **Description**: summarize what's new since the last release (new scenes, integrators, materials, fixes)
 
-   d. **Attach the ZIP file**: Drag and drop `RayTracer_v1.0_Portable.zip`
+   d. **Attach the ZIP file**: Drag and drop `RayTracer_vX.X_Portable.zip`
 
    e. Click **Publish release**
 
 5. **Update README Link**
 
-   Once published, update the README download link:
-   ```markdown
-   [Download RayTracer_v1.0_Portable.zip](https://github.com/XinpeiWang/ray_tracer/releases/download/v1.0/RayTracer_v1.0_Portable.zip)
-   ```
+   Once published, update this README's Download link (near the top) to point
+   at the new release's ZIP asset.
 
 6. **Verify the Release**
    - Download the ZIP from the release page
@@ -543,7 +547,7 @@ ray_tracer/
 │
 ├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
 │
-├── tests/                         # Google Test suite (~3,800 tests)
+├── tests/                         # Google Test suite (3,830 tests)
 │   ├── unit/                     # Unit tests
 │   └── integration/              # Integration tests
 │
