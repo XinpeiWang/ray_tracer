@@ -402,7 +402,30 @@ porting this to GPU means every intersection/closest-hit/NEE-sampling call
 site that reads `DiskData`/`CylinderData`'s `o2w`/`w2o` (several sites, both
 backends, since each has its own separately-compiled intersection program)
 becoming per-ray-time-aware, a materially bigger port than Sphere's single
-`center1` field ever needed. Triangle meshes/bilinear patches/curves have no
+`center1` field ever needed.
+
+**Attempted and abandoned**: a full port (host-side T/R/S decomposition via
+`AnimatedTransform`, a shared device interpolation header, per-ray-time-
+aware intersection/closest-hit/probe programs on both backends, a
+conservative 17-sample swept AABB matching CPU's own bbox-under-rotation
+fix) was implemented and unit-tested correctly, but hit a severe, rigorously
+bisected OptiX compile-time regression: adding ANY new field to
+`DiskData`/`CylinderData` in `optix_types.h` - even a single unused `int`,
+independent of size/type/alignment (tested `float3`/`float4` vs. plain
+float arrays, tested with/without the scale-matrix fields) - made
+`optixModuleCreate` (PTX->SASS) take 100-400x longer (300ms baseline to
+30s-116s) for EVERY render, regardless of whether the scene has any disk/
+cylinder shapes at all. Root cause not found (no tooling available this
+session to profile `ptxas`/`optixModuleCreate` internals - would need
+NVIDIA Nsight or verbose `ptxas` diagnostics). Joins this codebase's other
+undiagnosed GPU-compiler dead ends (`CloudMedium::compute_density()`'s
+member-call stall, the light-BVH CUDA 700 crash, both elsewhere in this
+doc) - don't re-attempt this exact approach (growing these two structs)
+without new diagnostic capability; a design that avoids touching
+`DiskData`/`CylinderData` at all (e.g. a separate parallel array indexed
+by primitive id) is untried and might sidestep whatever this is.
+
+Triangle meshes/bilinear patches/curves have no
 motion-blur representation at all on any backend (a mesh bakes to static
 world-space vertices at load time - real per-vertex motion would need a
 second vertex-position keyframe carried all the way through, a separate,
