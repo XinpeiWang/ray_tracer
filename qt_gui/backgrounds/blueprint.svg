@@ -1,30 +1,66 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Sci-Fi Blueprint motif: a drafting grid. Original artwork.
+<!-- Sci-Fi Blueprint motif: a drafting sheet with real technical content -
+     a routed circuit trace with pads, an IC footprint, a resistor zigzag,
+     a via, and a dimension line - not just a bare grid. Original artwork.
 
      This one TILES, so every edge has to meet its opposite exactly. The rule
-     followed here: draw grid lines only on the top and left edges, never the
-     bottom or right - the neighbouring tile supplies those. Drawing all four
-     would double the line weight along every seam and produce a visible lattice
-     of darker lines at the tile boundaries.
+     followed here: draw grid/border lines only on the top and left edges,
+     never the bottom or right - the neighbouring tile supplies those.
+     Drawing all four would double the line weight along every seam and
+     produce a visible lattice of darker lines at the tile boundaries. All
+     the "component" content (trace/chip/resistor/dimension line) is kept
+     well clear of every edge so it never gets cut mid-shape by the tile
+     boundary.
 
-     Opacity is baked in for the same reason as the other motifs: Qt stylesheets
-     have no opacity property for background-image. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+     Opacity is baked in for the same reason as the other motifs: Qt
+     stylesheets have no opacity property for background-image. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
   <g opacity="0.17" fill="none" stroke="#0b6f8f">
-    <!-- Minor divisions every 16px. Top and left edges only (see above). -->
-    <g stroke-width="0.6">
-      <path d="M16 0 v96 M32 0 v96 M48 0 v96 M64 0 v96 M80 0 v96"/>
-      <path d="M0 16 h96 M0 32 h96 M0 48 h96 M0 64 h96 M0 80 h96"/>
+    <!-- Minor divisions every 20px. Top and left edges only (see above). -->
+    <g stroke-width="0.5">
+      <path d="M20 0 v160 M40 0 v160 M60 0 v160 M80 0 v160 M100 0 v160 M120 0 v160 M140 0 v160"/>
+      <path d="M0 20 h160 M0 40 h160 M0 60 h160 M0 80 h160 M0 100 h160 M0 120 h160 M0 140 h160"/>
     </g>
     <!-- Major divisions at the tile boundary, heavier. -->
     <g stroke-width="1.3">
-      <path d="M0 0 v96"/>
-      <path d="M0 0 h96"/>
+      <path d="M0 0 v160"/>
+      <path d="M0 0 h160"/>
     </g>
-    <!-- Registration cross at the major intersection, the way a real drafting
-         sheet marks its origin. -->
+
+    <!-- Routed trace with two pads and a via, top-left quadrant. -->
+    <g stroke-width="1.4">
+      <path d="M14 52 h22 v-24 h22 v14 h16"/>
+      <circle cx="14" cy="52" r="2.8"/>
+      <circle cx="58" cy="28" r="2.8"/>
+      <circle cx="74" cy="42" r="1.6" fill="#0b6f8f" stroke="none"/>
+    </g>
+    <!-- Registration cross, clear of the trace. -->
     <g stroke-width="1.1">
-      <path d="M48 44 v8 M44 48 h8"/>
+      <path d="M70 68 v8 M66 72 h8"/>
+    </g>
+
+    <!-- IC footprint with pin ticks, top-right quadrant. -->
+    <g stroke-width="1">
+      <rect x="102" y="18" width="34" height="24" rx="1"/>
+      <path d="M102 25 h-7 M102 35 h-7 M136 25 h7 M136 35 h7
+               M110 18 v-7 M122 18 v-7 M110 42 v7 M122 42 v7"/>
+    </g>
+
+    <!-- Resistor zigzag between two pads, bottom-left quadrant. -->
+    <g stroke-width="1.3">
+      <path d="M14 118 h10 l5 -9 l9 18 l9 -18 l9 18 l5 -9 h10"/>
+      <circle cx="14" cy="118" r="2.4"/>
+      <circle cx="71" cy="118" r="2.4"/>
+    </g>
+
+    <!-- Dimension line with closed end-ticks, bottom-right quadrant. -->
+    <g stroke-width="0.8">
+      <path d="M96 138 h44"/>
+      <path d="M96 133 v10 M140 133 v10"/>
+    </g>
+    <g stroke-width="1.1">
+      <circle cx="128" cy="104" r="3.2"/>
+      <path d="M128 100.5 v-9 M128 107.5 v9 M124.5 104 h-9 M131.5 104 h9"/>
     </g>
   </g>
 </svg>

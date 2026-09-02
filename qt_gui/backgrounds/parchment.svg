@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Fantasy Parchment motif: a compass rose over contour lines, in the style
-     of an old surveyor's map. Original artwork.
+<!-- Fantasy Parchment motif: a compass rose over contour lines, with a
+     galleon under sail and a proper sea serpent - a surveyor's map with the
+     "here be dragons" filler actually drawn large enough to read. Original
+     artwork.
 
      Opacity is baked in (see the group's opacity attribute) rather than applied
      at runtime: Qt stylesheets have no opacity property for background-image,
      and this file is drawn for exactly one palette, so there is nothing to
      parameterise. Ink colour is Fantasy Parchment's own text tone. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="440" height="440" viewBox="0 0 440 440">
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="460" viewBox="0 0 480 460">
   <g opacity="0.13" fill="none" stroke="#4a3b2a" stroke-width="1.6">
 
     <!-- Contour lines: concentric, deliberately irregular so they read as
@@ -17,7 +19,7 @@
     <path d="M66 262 q44-28 88-12 t82-22 q44-18 96 2"/>
 
     <!-- Compass rose -->
-    <g transform="translate(300 148)">
+    <g transform="translate(340 148)">
       <circle r="96"/>
       <circle r="80"/>
       <circle r="30"/>
@@ -48,8 +50,29 @@
       </g>
     </g>
 
-    <!-- A sea-serpent flourish, the traditional "here be dragons" filler -->
-    <path d="M56 176 q26-30 52-6 t52-6 q26-24 44 2" stroke-width="2"/>
-    <path d="M60 190 q10 8 22 2" stroke-width="1.2"/>
+    <!-- Galleon under sail: a hull, two masts, a mainsail, a foresail, a jib
+         and a pennant, all bulging the same way (with the wind) - placed
+         low-left so it reads as sailing across the contour lines. -->
+    <g transform="translate(96 356)">
+      <path d="M-48 18 Q0 34 48 18 L38 30 Q0 40 -38 30 Z"/>
+      <path d="M-22 18 v-82 M26 18 v-64"/>
+      <path d="M-22-82 Q8-56 -22-22 Z"/>
+      <path d="M26-64 Q46-42 26-18 Z"/>
+      <path d="M42-18 L26-64 L26-18 Z"/>
+      <path d="M-22-82 l14 5 l-14 5 Z"/>
+    </g>
+
+    <!-- Sea serpent: a long undulating body with back-spikes and a raised,
+         maned head - the traditional "here be dragons" filler, drawn large
+         enough this time to actually read as one. -->
+    <g stroke-width="2">
+      <path d="M188 410 q34-40 68-6 t68-6 q34-36 66-2 t60 2"/>
+      <path d="M212 384 l6-12 M256 372 l6-13 M300 380 l6-12 M344 376 l6-12"/>
+      <g transform="translate(452 372)">
+        <path d="M0 0 q-14-30 -34-32 q6 14 -2 22 q16-4 20 10 q10-4 16 0Z"/>
+        <circle cx="-14" cy="-16" r="2" fill="#4a3b2a" stroke="none"/>
+        <path d="M-30-30 q-10-6 -18-2 M-26-22 q-10-2 -16 4" stroke-width="1.3"/>
+      </g>
+    </g>
   </g>
 </svg>
