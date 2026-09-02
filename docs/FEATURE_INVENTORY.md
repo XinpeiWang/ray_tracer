@@ -42,7 +42,9 @@ numbered sections below for the narrative detail behind any row.
 | Shapes | OBJ mesh loader | Y / Y / Y | N/A |
 | Shapes | PLY mesh loader | Y / Y / Y | N/A |
 | Shapes | Instancing (`ObjectInstance`) | Y / Y / Y | N/A |
-| Shapes | Non-cubic / non-Bezier curve (`splitdepth`, other basis/degree) | N | Dropped with a "shape not supported" warning — nothing rendered in its place |
+| Shapes | Quadratic (degree 2) Bezier curve | Y / Y / Y | Exact degree-elevation to the existing cubic representation, both backends |
+| Shapes | Cubic B-spline-basis curve | Y / Y / Y | Exact uniform-B-spline-to-Bezier conversion, both backends |
+| Shapes | Quadratic B-spline curve, other basis/degree, `splitdepth` | N | Dropped with a "shape not supported" warning — nothing rendered in its place |
 | Materials | Lambertian | Y / Y / Y | N/A |
 | Materials | Metal (fuzz) / Conductor (real complex-IOR GGX) | Y / Y / Y | N/A |
 | Materials | Dielectric (smooth) | Y / Y / Y | N/A |

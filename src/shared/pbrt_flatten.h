@@ -25,6 +25,7 @@
 // against a reference image.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -1951,6 +1952,45 @@ inline void transformNormal(const pbrt_scene::Matrix4 &m,
 	const double len = std::sqrt(nx * nx + ny * ny + nz * nz);
 	if (len > 0) { nx /= len; ny /= len; nz /= len; }
 	out[0] = nx; out[1] = ny; out[2] = nz;
+}
+
+// Shape "curve"'s "degree 2"/"basis \"bspline\"" support - both reduce
+// EXACTLY (not approximately) to the same cubic-Bezier-per-segment
+// representation the rest of this loader already builds for the default
+// degree-3/"bezier" case (CurveShape's own intersection/subdivision math,
+// src/shared/shapes.h, is hard-coded to exactly 4 control points per
+// segment throughout) - so both conversions live entirely here, at
+// flatten() time, with zero changes needed anywhere downstream on either
+// backend (both already consume the same pbrt_flatten::Curve::cp layout).
+//
+// Quadratic (degree 2) Bezier -> cubic Bezier: the standard, EXACT degree-
+// elevation formula (raising a Bezier curve's degree by 1 never changes the
+// curve itself, only its control-point count) - Q0=P0, Q3=P2, and the two
+// interior points split the P0->P1/P1->P2 legs 1/3 of the way in.
+inline void curveDegreeElevateQuadratic(const double p0[3], const double p1[3],
+                                         const double p2[3], double out4x3[12]) {
+	for (int k = 0; k < 3; ++k) {
+		out4x3[0 + k] = p0[k];
+		out4x3[3 + k] = p0[k] + (2.0 / 3.0) * (p1[k] - p0[k]);
+		out4x3[6 + k] = p2[k] + (2.0 / 3.0) * (p1[k] - p2[k]);
+		out4x3[9 + k] = p2[k];
+	}
+}
+
+// Uniform cubic B-spline -> Bezier, one segment: the standard, EXACT
+// change-of-basis matrix (a textbook result - see e.g. Foley/van Dam, or
+// pbrt-v4's own BlossomCubicBezier specialized to uniform knot spacing) for
+// the Bezier control points spanned by 4 consecutive B-spline control
+// points p0..p3.
+inline void curveBsplineSegmentToBezierCubic(const double p0[3], const double p1[3],
+                                              const double p2[3], const double p3[3],
+                                              double out4x3[12]) {
+	for (int k = 0; k < 3; ++k) {
+		out4x3[0 + k] = (p0[k] + 4.0 * p1[k] + p2[k]) / 6.0;
+		out4x3[3 + k] = (4.0 * p1[k] + 2.0 * p2[k]) / 6.0;
+		out4x3[6 + k] = (2.0 * p1[k] + 4.0 * p2[k]) / 6.0;
+		out4x3[9 + k] = (p1[k] + 4.0 * p2[k] + p3[k]) / 6.0;
+	}
 }
 
 // True when this transform's upper-left 3x3 has a negative determinant (a
@@ -4425,37 +4465,112 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			const int degree = shape.params.getInt("degree", 3);
 			const std::string basis = shape.params.getString("basis", "bezier");
 			const pbrt_scene::Param *pp = shape.params.find("P");
-			if (degree != 3 || basis != "bezier") {
-				warn("a curve uses degree " + std::to_string(degree) + "/basis '" +
-					 basis + "' - only cubic (degree 3) Bezier-basis curves are "
-					 "supported; skipped");
+
+			// Scope: cubic (degree 3) "bezier" (the original, still the
+			// overwhelming common case), quadratic (degree 2) "bezier" (real
+			// exact degree-elevation to cubic - curveDegreeElevateQuadratic's
+			// own comment), and cubic "bspline" (real exact uniform-B-spline-
+			// to-Bezier conversion - curveBsplineSegmentToBezierCubic's own
+			// comment). Quadratic "bspline" is the one remaining combination
+			// left unsupported - real pbrt-v4 scenes essentially never
+			// combine the two, and closing it needs a second, quadratic-
+			// specific B-spline conversion matrix for marginal real-world
+			// value; a disclosed scope cut, not an oversight.
+			if (degree != 2 && degree != 3) {
+				warn("a curve uses degree " + std::to_string(degree) +
+					 " - only degree 2 (quadratic) or 3 (cubic) is supported; skipped");
 				continue;
 			}
-			if (!pp || pp->numbers.size() < 12) {
-				warn("a curve is missing its \"point3 P\" control points (need "
-					 "at least 4); skipped");
+			if (basis != "bezier" && basis != "bspline") {
+				warn("a curve uses basis '" + basis + "' - only \"bezier\"/"
+					 "\"bspline\" are supported; skipped");
+				continue;
+			}
+			if (basis == "bspline" && degree != 3) {
+				warn("a curve uses basis \"bspline\" with degree " +
+					 std::to_string(degree) + " - bspline is only supported at "
+					 "degree 3; skipped");
+				continue;
+			}
+			if (!pp) {
+				warn("a curve is missing its \"point3 P\" control points; skipped");
 				continue;
 			}
 			const std::size_t numPoints = pp->numbers.size() / 3;
-			if ((numPoints - 1) % 3 != 0) {
-				warn("a curve's \"point3 P\" has " + std::to_string(numPoints) +
-					 " control points; a cubic Bezier curve needs 3*n+1 control "
-					 "points (4, 7, 10, ...); skipped");
-				continue;
+			std::vector<std::array<double, 3>> pts(numPoints);
+			for (std::size_t i = 0; i < numPoints; ++i)
+				pts[i] = {pp->numbers[i * 3], pp->numbers[i * 3 + 1], pp->numbers[i * 3 + 2]};
+
+			// Object-space (pre-CTM) cubic Bezier control points, one 4-point
+			// segment at a time, from whichever degree/basis conversion
+			// applies - transformed to world space afterward, in one shared
+			// loop below, same as every OTHER shape branch in this file
+			// transforms its own already-resolved geometry once.
+			int nSegments = 0;
+			std::vector<double> objCp;
+			if (basis == "bspline") {
+				// nSegments = numPoints - 3 (a sliding 4-point window, one
+				// more segment per additional control point beyond the
+				// first 4) - pbrt-v4's own real point-count convention for
+				// a cubic B-spline curve.
+				if (numPoints < 4) {
+					warn("a curve's \"point3 P\" has " + std::to_string(numPoints) +
+						 " control points; a cubic B-spline curve needs at least "
+						 "4; skipped");
+					continue;
+				}
+				nSegments = static_cast<int>(numPoints) - 3;
+				objCp.resize(static_cast<std::size_t>(nSegments) * 4 * 3);
+				for (int seg = 0; seg < nSegments; ++seg) {
+					double seg4[12];
+					curveBsplineSegmentToBezierCubic(pts[seg].data(), pts[seg + 1].data(),
+													  pts[seg + 2].data(), pts[seg + 3].data(), seg4);
+					for (int j = 0; j < 12; ++j) objCp[static_cast<std::size_t>(seg) * 12 + j] = seg4[j];
+				}
+			} else if (degree == 2) {
+				// nSegments = (numPoints - 1) / 2 - pbrt-v4's own real
+				// point-count convention for a quadratic Bezier curve
+				// (2*n+1 points for n segments, matching the existing
+				// cubic "3*n+1" formula one degree down).
+				if (numPoints < 3 || (numPoints - 1) % 2 != 0) {
+					warn("a curve's \"point3 P\" has " + std::to_string(numPoints) +
+						 " control points; a quadratic Bezier curve needs 2*n+1 "
+						 "control points (3, 5, 7, ...); skipped");
+					continue;
+				}
+				nSegments = static_cast<int>((numPoints - 1) / 2);
+				objCp.resize(static_cast<std::size_t>(nSegments) * 4 * 3);
+				for (int seg = 0; seg < nSegments; ++seg) {
+					double seg4[12];
+					curveDegreeElevateQuadratic(pts[static_cast<std::size_t>(seg) * 2].data(),
+												 pts[static_cast<std::size_t>(seg) * 2 + 1].data(),
+												 pts[static_cast<std::size_t>(seg) * 2 + 2].data(), seg4);
+					for (int j = 0; j < 12; ++j) objCp[static_cast<std::size_t>(seg) * 12 + j] = seg4[j];
+				}
+			} else {
+				// degree 3, "bezier" - the original path, unchanged.
+				if (numPoints < 4 || (numPoints - 1) % 3 != 0) {
+					warn("a curve's \"point3 P\" has " + std::to_string(numPoints) +
+						 " control points; a cubic Bezier curve needs 3*n+1 control "
+						 "points (4, 7, 10, ...); skipped");
+					continue;
+				}
+				nSegments = static_cast<int>((numPoints - 1) / 3);
+				objCp.resize(static_cast<std::size_t>(nSegments) * 4 * 3);
+				for (int seg = 0; seg < nSegments; ++seg)
+					for (int i = 0; i < 4; ++i)
+						for (int k = 0; k < 3; ++k)
+							objCp[(static_cast<std::size_t>(seg) * 4 + i) * 3 + k] =
+								pts[static_cast<std::size_t>(seg) * 3 + i][k];
 			}
 
 			Curve c;
-			c.nSegments = static_cast<int>((numPoints - 1) / 3);
-			c.cp.resize(static_cast<std::size_t>(c.nSegments) * 4 * 3);
-			for (int seg = 0; seg < c.nSegments; ++seg) {
-				for (int i = 0; i < 4; ++i) {
-					const std::size_t srcIdx = (static_cast<std::size_t>(seg) * 3 + i) * 3;
-					double world[3];
-					transformPoint(xform, pp->numbers[srcIdx], pp->numbers[srcIdx + 1],
-									pp->numbers[srcIdx + 2], world);
-					const std::size_t dstIdx = (static_cast<std::size_t>(seg) * 4 + i) * 3;
-					c.cp[dstIdx] = world[0]; c.cp[dstIdx + 1] = world[1]; c.cp[dstIdx + 2] = world[2];
-				}
+			c.nSegments = nSegments;
+			c.cp.resize(objCp.size());
+			for (std::size_t i = 0; i < objCp.size() / 3; ++i) {
+				double world[3];
+				transformPoint(xform, objCp[i * 3], objCp[i * 3 + 1], objCp[i * 3 + 2], world);
+				c.cp[i * 3] = world[0]; c.cp[i * 3 + 1] = world[1]; c.cp[i * 3 + 2] = world[2];
 			}
 
 			const double width = shape.params.getFloat("width", 1.0);

@@ -327,10 +327,23 @@ loader and no longer match the code:
   algorithm). This means GPU renders a close but not pixel-identical
   approximation of a curve's exact silhouette, and does not distinguish
   `"type"` (flat/cylinder/ribbon all tessellate to the same round tube) -
-  pbrt-v4 has the identical divergence for the identical reason. Only cubic
+  pbrt-v4 has the identical divergence for the identical reason. Cubic
   (`"integer degree"` 3), Bezier-basis (`"string basis"` `"bezier"`) curves
-  are built; a b-spline basis or non-cubic degree falls back to the generic
-  "shape not supported" warning. `"integer splitdepth"` is not implemented -
+  are the default and most common case; quadratic (`"integer degree"` 2)
+  Bezier and cubic `"string basis"` `"bspline"` curves are ALSO now real,
+  on both backends - both reduce EXACTLY (not approximately) to the same
+  cubic-Bezier-per-segment representation `CurveShape<T>`'s intersection
+  math already needs (a quadratic Bezier's exact degree-elevation to cubic;
+  a uniform cubic B-spline's exact per-segment change-of-basis to Bezier -
+  `pbrt_flatten.h`'s `curveDegreeElevateQuadratic()`/
+  `curveBsplineSegmentToBezierCubic()`), so the conversion lives entirely in
+  the loader with no changes needed to either backend's own curve code. The
+  one remaining unsupported combination is a quadratic (degree 2) B-spline -
+  real pbrt-v4 scenes essentially never combine the two, and closing it
+  needs a second, quadratic-specific B-spline conversion matrix for
+  marginal real-world value; falls back to the generic "shape not
+  supported" warning, same as any other genuinely unsupported degree/basis.
+  `"integer splitdepth"` is not implemented -
   pbrt-v4 itself forces it to 0 whenever GPU rendering is active, so omitting
   it matches pbrt-v4's own GPU-mode behavior. See `pbrt_scenes/curve-tuft.pbrt`
   for a worked example paired with an ordinary `Material "diffuse"`, and

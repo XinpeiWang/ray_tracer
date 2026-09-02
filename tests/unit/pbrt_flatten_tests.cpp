@@ -724,11 +724,84 @@ TEST(FlattenTest, CurveWithInvalidControlPointCountWarnsAndSkips) {
 }
 
 TEST(FlattenTest, CurveWithUnsupportedDegreeWarnsAndSkips) {
+	// degree 5 (or any value other than 2/3) is genuinely unsupported -
+	// unlike degree 2, which now builds for real (CurveDegree2Builds, below).
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"integer degree\" [ 5 ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0  4 1 0  5 0 0 ]\n");
+	EXPECT_EQ(s.curves.size(), 0u);
+	EXPECT_TRUE(warnedAbout(s, "degree"));
+}
+
+TEST(FlattenTest, CurveDegree2Builds) {
+	// Real quadratic (degree 2) Bezier curve support - exact degree
+	// elevation to the cubic representation CurveShape's own intersection
+	// math needs internally (curveDegreeElevateQuadratic's own comment).
+	// 3 control points = exactly 1 quadratic segment (2*n+1 formula).
 	const FlatScene s = flattenSource(
 		std::string("Shape \"curve\" \"integer degree\" [ 2 ]\n") +
 		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0 ]\n");
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_EQ(s.curves[0].nSegments, 1);
+	ASSERT_EQ(s.curves[0].cp.size(), 12u);
+	// Exact degree-elevation identity check: the elevated cubic's endpoints
+	// must equal the quadratic's own endpoints exactly (Q0=P0, Q3=P2).
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[1], 0.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[9], 2.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[10], 1.0);
+	EXPECT_FALSE(warnedAbout(s, "degree"));
+}
+
+TEST(FlattenTest, CurveDegree2WrongPointCountWarnsAndSkips) {
+	// A quadratic Bezier needs 2*n+1 points (3, 5, 7, ...) - 4 is valid for
+	// neither a quadratic (would need 3 or 5) nor implicitly anything else
+	// once degree is explicitly 2.
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"integer degree\" [ 2 ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n");
 	EXPECT_EQ(s.curves.size(), 0u);
-	EXPECT_TRUE(warnedAbout(s, "degree"));
+	EXPECT_TRUE(warnedAbout(s, "quadratic"));
+}
+
+TEST(FlattenTest, CurveBsplineBasisBuilds) {
+	// Real "bspline" basis support - exact uniform-cubic-B-spline-to-Bezier
+	// conversion (curveBsplineSegmentToBezierCubic's own comment). 5 control
+	// points = exactly 2 segments (nSegments = numPoints - 3 formula).
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"string basis\" [ \"bspline\" ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0  4 1 0 ]\n");
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_EQ(s.curves[0].nSegments, 2);
+	ASSERT_EQ(s.curves[0].cp.size(), 24u);
+	EXPECT_FALSE(warnedAbout(s, "basis"));
+}
+
+TEST(FlattenTest, CurveBsplineTooFewPointsWarnsAndSkips) {
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"string basis\" [ \"bspline\" ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0 ]\n");
+	EXPECT_EQ(s.curves.size(), 0u);
+	EXPECT_TRUE(warnedAbout(s, "B-spline"));
+}
+
+TEST(FlattenTest, CurveBsplineDegree2StillWarnsAndSkips) {
+	// The one remaining disclosed scope cut - "bspline" is only supported
+	// at degree 3 (AnimatedTriangleMesh-style deliberate cap, see the
+	// curve-branch's own comment for why).
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"string basis\" [ \"bspline\" ] \"integer degree\" [ 2 ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n");
+	EXPECT_EQ(s.curves.size(), 0u);
+	EXPECT_TRUE(warnedAbout(s, "bspline"));
+}
+
+TEST(FlattenTest, CurveUnsupportedBasisWarnsAndSkips) {
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"string basis\" [ \"hermite\" ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n");
+	EXPECT_EQ(s.curves.size(), 0u);
+	EXPECT_TRUE(warnedAbout(s, "basis"));
 }
 
 TEST(FlattenTest, RibbonCurveWithoutNormalsWarnsAndSkips) {
