@@ -32,8 +32,9 @@
 // to detect and warn about it.
 //
 // Object motion blur (pbrt-v4 ActiveTransform "StartTime"/"EndTime" around a
-// Shape "disk"/"cylinder"): both classes hold a disk_cylinder_detail::
-// MotionState (below), which carries a SECOND object-to-world transform and
+// Shape "disk"/"cylinder"): both classes hold a MotionState (motion_state.h,
+// shared with animated_transform_instance.h's mesh/curve/bilinear-patch
+// motion blur), which carries a SECOND object-to-world transform and
 // resolves the real one at each ray's own r.time() via AnimatedTransform
 // (src/shared/animated_transform.h) - real TRS decomposition (translation
 // lerp, rotation slerp, scale lerp), not a naive per-element matrix lerp,
@@ -56,41 +57,15 @@
 #include "../shared/animated_transform.h"
 
 #include "affine_transform_apply.h"
+#include "motion_state.h"
 
 #include <cmath>
 #include <memory>
 
-namespace disk_cylinder_detail {
-
-inline AT_Mat44 toAnimMat(const pbrt_scene::Matrix4 &m) {
-	AT_Mat44 r;
-	for (int i = 0; i < 4; ++i)
-		for (int j = 0; j < 4; ++j)
-			r.m[i][j] = m.m[i * 4 + j];
-	return r;
-}
-
-inline pbrt_scene::Matrix4 fromAnimMat(const AT_Mat44 &m) {
-	pbrt_scene::Matrix4 r;
-	for (int i = 0; i < 4; ++i)
-		for (int j = 0; j < 4; ++j)
-			r.m[i * 4 + j] = m.m[i][j];
-	return r;
-}
-
-// Shared per-shape motion state for Disk/Cylinder - factored out of
-// disk_hittable/cylinder_hittable (previously two hand-duplicated copies of
-// this exact logic, caught by a code-review pass on the commit that first
-// added it) so a future fix to the degenerate-matrix handling, or an
-// extension of this motion-blur idiom to a third shape, needs only one edit.
-// This codebase has already shipped a real bug once from the analogous
-// duplicated-with-a-comment-pointer pattern in bvh_aggregate_hittable - see
-// that file's own history for the "silently dropped ~50% of medium scatter
-// events" incident this precedent warns against.
-// Two disclosed, accepted limitations, both raised and deliberately left
-// unfixed by a code-review pass on the commit that added this class -
-// narrow enough in practice, and big enough to fix properly, that they were
-// scoped out rather than papered over:
+// Two disclosed, accepted limitations of MotionState (motion_state.h),
+// both raised and deliberately left unfixed by a code-review pass on the
+// commit that added it here - narrow enough in practice, and big enough to
+// fix properly, that they were scoped out rather than papered over:
 //   - The two keyframes are always t0=0.0/t1=1.0 here, regardless of the
 //     scene's own TransformTimes directive (pbrt_scene::Scene::
 //     transformTimeStart/transformTimeEnd) - camera motion blur detects and
@@ -107,99 +82,6 @@ inline pbrt_scene::Matrix4 fromAnimMat(const AT_Mat44 &m) {
 //     against BSDF sampling partially self-corrects this, same as it
 //     already does for sphere. A real fix needs a time parameter on the
 //     whole hittable::random()/pdf_value() interface, not just this class.
-class MotionState {
-  public:
-	MotionState(const pbrt_scene::Matrix4 &object_to_world,
-				const pbrt_scene::Matrix4 &object_to_world_end)
-		: anim_(toAnimMat(object_to_world), 0.0, toAnimMat(object_to_world_end), 1.0),
-		  o2wStart_(object_to_world)
-	{
-		startValid_ = o2wStart_.inverseAffine(w2oStart_);
-	}
-
-	// True iff the StartTime pose itself is invertible. Only gates the
-	// STATIC fast path and NEE sampling (both of which use exactly this
-	// pose, cached) - deliberately NOT the animated hit()-time path, whose
-	// own validity is checked per-ray by resolve() instead. A shape whose
-	// StartTime keyframe is a legitimate degenerate matrix (e.g. a "grow
-	// from nothing" Scale 0 0 0 opening keyframe, a real pbrt authoring
-	// idiom) must still render correctly once the interpolated matrix
-	// becomes non-degenerate - gating the animated path on THIS flag too
-	// (an earlier version of this code did) made such a shape permanently
-	// invisible for its entire lifetime, caught by a code-review pass.
-	bool startValid() const { return startValid_; }
-
-	// The StartTime pose, precomputed once at construction regardless of
-	// whether this shape is animated - the single source both the static
-	// fast path AND NEE sampling (random()/pdf_value(), which always wants
-	// time=0 - see this file's own header comment) read directly, with no
-	// per-call interpolation or inversion either way.
-	const pbrt_scene::Matrix4 &o2wStart() const { return o2wStart_; }
-	const pbrt_scene::Matrix4 &w2oStart() const { return w2oStart_; }
-
-	// Resolves the real object<->world transform pair for a ray at the
-	// given time. STATIC shape: the cached StartTime pose, true no-op cost
-	// - fails only if that pose is itself degenerate (startValid() false).
-	// ANIMATED shape: real per-ray TRS interpolation (AnimatedTransform)
-	// composed via a closed-form AFFINE inverse (Matrix4::inverseAffine()),
-	// not the generic 4x4 Gauss-Jordan at_invert() - the interpolated
-	// matrix is always a pure affine transform (no perspective row), so the
-	// same cheaper affine-specific inverse the static path already relies
-	// on applies here too, at a fraction of the cost. Gated ONLY on this
-	// time's own interpolated matrix being invertible, never on
-	// startValid() - see that accessor's own comment for why.
-	bool resolve(double time, pbrt_scene::Matrix4 &o2w, pbrt_scene::Matrix4 &w2o) const {
-		if (!anim_.IsAnimated()) {
-			if (!startValid_) return false;
-			o2w = o2wStart_;
-			w2o = w2oStart_;
-			return true;
-		}
-		o2w = fromAnimMat(anim_.Interpolate(time));
-		return o2w.inverseAffine(w2o);
-	}
-
-	// World-space bounding box across the shape's full swept motion, given
-	// a callback that returns transformed_bbox() for a specific
-	// object<->world matrix (the shape-specific object-space extent is the
-	// caller's, not this class's, concern). A static shape needs only its
-	// one pose. An animated one samples the interpolated pose at several
-	// points across [0,1], not just the two endpoints, and unions all of
-	// them: unioning only the two ENDPOINT boxes underestimates the true
-	// swept volume whenever the motion includes rotation - e.g. a disk
-	// rotating from 45 to 135 degrees about an axis in its own plane sweeps
-	// through 90 degrees at the midpoint, extending further along that axis
-	// than either endpoint alone. A code-review pass on the commit that
-	// first added animated Disk/Cylinder motion blur (translation-only
-	// union of two boxes) caught this as a real gap: BVH traversal could
-	// cull rays that should hit the shape mid-rotation, since
-	// bounding_box() feeds it directly. This is a conservative
-	// approximation, not an exact analytic bound (pbrt-v4's own
-	// AnimatedTransform::BoundPointMotion solves for the true per-axis
-	// rotational extremum) - kMotionSamples samples closes the gap for any
-	// realistic single-frame shutter rotation without that extra
-	// complexity; a rotation whipping through more than a full turn within
-	// one shutter interval (vanishingly rare in practice) could still poke
-	// outside between samples.
-	template <typename BoxForTransform>
-	aabb motionBoundingBox(BoxForTransform boxForTransform) const {
-		if (!anim_.IsAnimated()) return boxForTransform(o2wStart_);
-		aabb box = boxForTransform(o2wStart_);
-		constexpr int kMotionSamples = 17;
-		for (int i = 1; i < kMotionSamples; ++i) {
-			const double t = static_cast<double>(i) / (kMotionSamples - 1);
-			box = aabb(box, boxForTransform(fromAnimMat(anim_.Interpolate(t))));
-		}
-		return box;
-	}
-
-  private:
-	AnimatedTransform anim_;
-	pbrt_scene::Matrix4 o2wStart_, w2oStart_;
-	bool startValid_ = false;
-};
-
-} // namespace disk_cylinder_detail
 
 
 class disk_hittable : public hittable {
@@ -283,7 +165,7 @@ class disk_hittable : public hittable {
   private:
 	DiskShape<double> shape_;
 	shared_ptr<material> mat_;
-	disk_cylinder_detail::MotionState motion_;
+	MotionState motion_;
 	aabb bbox_;
 };
 
@@ -446,6 +328,6 @@ class cylinder_hittable : public hittable {
   private:
 	CylinderShape<double> shape_;
 	shared_ptr<material> mat_;
-	disk_cylinder_detail::MotionState motion_;
+	MotionState motion_;
 	aabb bbox_;
 };

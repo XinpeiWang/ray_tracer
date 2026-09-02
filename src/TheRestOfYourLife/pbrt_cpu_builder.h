@@ -39,6 +39,7 @@
 #include "sphere.h"
 #include "triangle.h"
 #include "transform_instance.h"
+#include "animated_transform_instance.h"
 
 namespace pbrt_cpu {
 
@@ -772,7 +773,22 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 								  const std::vector<pbrt_flatten::Curve> &curveDecls,
 								  hittable_list &world, hittable_list &lights) {
 	// ---- triangles -------------------------------------------------------
-	if (!tris.empty()) {
+	// Triangle::gpuOnlyStaticFallback entries (a StartTime-pose duplicate of
+	// a mesh that's also in scene.animatedTriangleMeshes - see that field's
+	// own comment) exist purely so GPU's own separate builder, which has no
+	// concept of that list, doesn't lose the shape entirely. CPU gets its
+	// real motion blur from animatedTriangleMeshes instead (built by this
+	// same function's own animated-mesh call site below in
+	// pbrt_cpu_builder.h's caller), so building a second, static `triangle`
+	// hittable here too would double-render it - filtered out up front so
+	// every loop below (vertex dedup, mesh_data population, per-triangle
+	// hittable construction) only ever sees the real, CPU-facing entries.
+	std::vector<const pbrt_flatten::Triangle *> cpuTris;
+	cpuTris.reserve(tris.size());
+	for (const pbrt_flatten::Triangle &t : tris)
+		if (!t.gpuOnlyStaticFallback) cpuTris.push_back(&t);
+
+	if (!cpuTris.empty()) {
 		auto mesh = std::make_shared<triangle_mesh_data>();
 		std::map<VertexKey, int> seen;
 
@@ -782,9 +798,9 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// `has_uvs()` (triangle.h) is the same all-or-nothing gate.
 		bool anyNormals = false;
 		bool anyUVs = false;
-		for (const pbrt_flatten::Triangle &t : tris) {
-			if (t.hasNormals) anyNormals = true;
-			if (t.hasUVs) anyUVs = true;
+		for (const pbrt_flatten::Triangle *t : cpuTris) {
+			if (t->hasNormals) anyNormals = true;
+			if (t->hasUVs) anyUVs = true;
 		}
 
 		const auto vertexIndex = [&](const double *p, const double *n, const double *uv) {
@@ -810,8 +826,9 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// it - triangle's constructor reads the positions immediately to
 		// precompute its normal and area.
 		std::vector<std::pair<int, int>> perTriangleMaterial;
-		perTriangleMaterial.reserve(tris.size());
-		for (const pbrt_flatten::Triangle &t : tris) {
+		perTriangleMaterial.reserve(cpuTris.size());
+		for (const pbrt_flatten::Triangle *tp : cpuTris) {
+			const pbrt_flatten::Triangle &t = *tp;
 			// When any mesh in the scene has shading normals, a face without
 			// its own still needs one per vertex or the two arrays fall out of
 			// step. Its geometric normal is the honest answer - it renders
@@ -1480,6 +1497,49 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		for (int k = 0; k < 16; ++k) m.m[k] = inst.xform[k];
 		out.world->add(std::make_shared<transform_instance>(shared, m));
 		++out.instanceCount;
+	}
+
+	// ---- animated meshes --------------------------------------------------
+	// Real object motion blur (trianglemesh/plymesh/loopsubdiv) - see
+	// pbrt_flatten::AnimatedTriangleMesh's own comment. Each entry's
+	// triangles are already OBJECT space (not baked to world - that's the
+	// entire reason this list exists separately from scene.triangles), so
+	// they go through the exact same emitGeometry() reused for
+	// ObjectInstance's own object-space geometry above, into a fresh scratch
+	// hittable_list, then wrapped in animated_transform_instance (the
+	// MotionState-based sibling of transform_instance used just above,
+	// carrying a per-ray-time-resolved transform instead of one static one).
+	// No light list is passed for the same reason the ObjectInstance loop
+	// above passes a scratch one - pbrt_flatten.h already excludes an
+	// emissive mesh from ever populating this list at all (falls back to a
+	// static, StartTime-only bake instead, warned there), so passing a real
+	// one here would never receive anything, and a scratch list keeps that
+	// invariant visible rather than implying this path DOES enumerate
+	// lights when it deliberately never does.
+	if (!scene.animatedTriangleMeshes.empty()) {
+		static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
+		static const std::vector<pbrt_flatten::Disk> kNoDisks;
+		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+		static const std::vector<pbrt_flatten::Cone> kNoCones;
+		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
+		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
+		static const std::vector<pbrt_flatten::Curve> kNoCurves;
+		for (const pbrt_flatten::AnimatedTriangleMesh &atm : scene.animatedTriangleMeshes) {
+			if (atm.triangles.empty()) continue;
+			auto geometry = std::make_shared<hittable_list>();
+			hittable_list unusedLights;
+			emitGeometry(atm.triangles, kNoSpheres, kNoDisks, kNoCylinders,
+						 kNoCones, kNoParaboloids, kNoBilinearPatches, kNoCurves,
+						 *geometry, unusedLights);
+			if (geometry->objects.empty()) continue;
+			auto objectBVH = std::make_shared<bvh_node>(*geometry);
+			pbrt_scene::Matrix4 o2w, o2wEnd;
+			for (int k = 0; k < 16; ++k) {
+				o2w.m[k]    = atm.xform[k];
+				o2wEnd.m[k] = atm.xformEnd[k];
+			}
+			out.world->add(std::make_shared<animated_transform_instance>(objectBVH, o2w, o2wEnd));
+		}
 	}
 
 	// A flat list would make every ray test every primitive; these scenes are

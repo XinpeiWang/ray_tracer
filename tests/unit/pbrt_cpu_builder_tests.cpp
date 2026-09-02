@@ -2092,6 +2092,69 @@ TEST(PbrtCpuBuildTest, AcceleratorFallsBackToSahForAMovingSphereEvenIfRequested)
 	}
 }
 
+TEST(PbrtCpuBuildTest, TrianglemeshObjectMotionBlurMovesRealHitPosition) {
+	// Real per-ray-time motion blur for trianglemesh/plymesh/loopsubdiv
+	// (animated_transform_instance.h + motion_state.h, mirroring Disk/
+	// Cylinder's own MotionState-based technique) - a narrow quad
+	// (x in [-1,1] at z=0) translated 5 units along x between StartTime and
+	// EndTime should hit at x~=0 for a ray sampled at time=0, at x~=5 for
+	// one at time=1, and MISS entirely for a ray aimed at x=0 but sampled
+	// at time=1 (the quad has moved away by then) - the strongest possible
+	// proof this is real per-ray interpolation, not just two static builds
+	// that happen to differ.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 5 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"  \"point3 P\" [ -1 -10 0   1 -10 0   1 10 0   -1 10 0 ]\n");
+
+	hit_record recStart;
+	const ray rStart(point3(0, 0, -5), vec3(0, 0, 1), 0.0);
+	ASSERT_TRUE(b.world->hit(rStart, interval(0.001, infinity), recStart))
+		<< "time=0 ray should hit the quad at its StartTime pose (x~=0)";
+	EXPECT_NEAR(recStart.p.x(), 0.0, 1e-9);
+
+	hit_record recEnd;
+	const ray rEnd(point3(5, 0, -5), vec3(0, 0, 1), 1.0);
+	ASSERT_TRUE(b.world->hit(rEnd, interval(0.001, infinity), recEnd))
+		<< "time=1 ray should hit the quad at its EndTime pose (x~=5)";
+	EXPECT_NEAR(recEnd.p.x(), 5.0, 1e-9);
+
+	hit_record recMiss;
+	const ray rMiss(point3(0, 0, -5), vec3(0, 0, 1), 1.0);
+	EXPECT_FALSE(b.world->hit(rMiss, interval(0.001, infinity), recMiss))
+		<< "a time=1 ray aimed where the quad WAS at time=0 must miss - "
+		   "proof the quad's hit-time position genuinely moved, not that "
+		   "two builds just happened to differ";
+}
+
+TEST(PbrtCpuBuildTest, EmissiveTrianglemeshObjectMotionBlurStillRendersStatic) {
+	// pbrt_flatten.h excludes an emissive mesh from the animated path
+	// entirely (NEE needs enumerable world-space geometry - see
+	// pbrt_flatten::AnimatedTriangleMesh's own comment) - confirms the CPU
+	// builder still renders it, just frozen at its StartTime pose
+	// regardless of ray time, rather than the shape vanishing outright.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  ActiveTransform \"StartTime\"\n"
+		"  ActiveTransform \"EndTime\"\n"
+		"  Translate 5 0 0\n"
+		"  ActiveTransform \"All\"\n"
+		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"    \"point3 P\" [ -1 -10 0   1 -10 0   1 10 0   -1 10 0 ]\n"
+		"AttributeEnd\n");
+
+	for (double t : {0.0, 1.0}) {
+		hit_record rec;
+		const ray r(point3(0, 0, -5), vec3(0, 0, 1), t);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec)) << "t=" << t;
+		EXPECT_NEAR(rec.p.x(), 0.0, 1e-9) << "t=" << t;
+	}
+}
+
 TEST(PbrtCpuBuildTest, AcceleratorNonSahRoutesAParticipatingMediumWithoutDroppingScatterEvents) {
 	// Regression test for a real bug caught by code review: the first
 	// bvh_aggregate_hittable.h design re-queried the winning primitive's

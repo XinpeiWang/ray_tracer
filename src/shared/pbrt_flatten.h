@@ -67,6 +67,55 @@ struct Triangle {
 	bool hasUVs = false;
 	int material = -1;        // index into Scene::materials, -1 = pbrt default
 	int areaLight = -1;       // index into Scene::areaLights, -1 = not emissive
+	// True only for a StartTime-pose duplicate of a mesh that's ALSO in
+	// FlatScene::animatedTriangleMeshes (real CPU motion blur - see that
+	// struct's own comment) - gpu/optix/pbrt_gpu_builder.h has no concept
+	// of that separate list, so this duplicate exists purely to keep GPU
+	// rendering the shape at all (static at its StartTime pose, same
+	// "GPU (both backends) renders static at the StartTime position,
+	// warned" convention Disk/Cylinder's own motion blur already
+	// established), rather than the shape silently vanishing from GPU
+	// renders because its geometry moved to a list GPU never reads.
+	// pbrt_cpu_builder.h's own emitGeometry() skips any triangle with this
+	// set - CPU gets its real motion blur from the animatedTriangleMeshes
+	// entry instead, so building an extra static `triangle` hittable here
+	// too would double-render it.
+	bool gpuOnlyStaticFallback = false;
+};
+
+// A trianglemesh/plymesh/loopsubdiv shape under real object motion blur
+// (pbrt-v4 ActiveTransform "StartTime"/"EndTime" around one of these Shape
+// types) - CPU only. Unlike Triangle above (baked once to WORLD space at
+// flatten() time, the overwhelmingly common static case), every triangle
+// here is OBJECT space (v[9]/n[9] straight from the shape's own "P"/"N",
+// no CTM applied) - real per-ray-time motion needs the geometry to stay in
+// its own frame so a wrapper (src/TheRestOfYourLife/
+// animated_transform_instance.h) can carry the ray into it at each ray's
+// own resolved time (mirrors Disk/Cylinder's own MotionState-based
+// technique, motion_state.h - see that file's own comment for why: a mesh
+// bakes to world-space vertices at load time in the static case, so real
+// per-ray motion needs the SAME "keep geometry, move the ray" trick
+// transform_instance.h already uses for pbrt's ObjectInstance, just with a
+// second (EndTime) transform interpolated per ray instead of one static
+// one).
+//
+// Only ever populated when a shape's own xformEnd genuinely differs from
+// xform (real inequality, not ActiveTransform directive presence - same
+// convention as every other animated-shape field in this file); the
+// overwhelming common static case keeps using the plain Triangle list
+// above completely unchanged, at zero overhead. An EMISSIVE animated mesh
+// is deliberately excluded from this path (falls back to a static,
+// StartTime-only bake instead, warned) - NEE sampling needs enumerable
+// world-space geometry (see the comment on the ObjectInstance-definition
+// case just above InstanceGroup for the same rule already established
+// there), which an object-space-transform-wrapped hittable can't give it;
+// see pbrt_cpu_builder.h's own animated-mesh dispatch for the exact
+// warning. curve/bilinearmesh are structurally identical candidates for
+// this same treatment, not done this round.
+struct AnimatedTriangleMesh {
+	std::vector<Triangle> triangles;  // OBJECT space (not world space - see above)
+	double xform[16]    = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	double xformEnd[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 };
 
 struct Sphere {
@@ -1494,6 +1543,10 @@ struct Instance {
 
 struct FlatScene {
 	std::vector<Triangle> triangles;
+	// See AnimatedTriangleMesh's own comment - real object motion blur for
+	// trianglemesh/plymesh/loopsubdiv, CPU only, populated only when a
+	// shape's xformEnd genuinely differs from xform.
+	std::vector<AnimatedTriangleMesh> animatedTriangleMeshes;
 	std::vector<Sphere> spheres;
 	std::vector<Disk> disks;
 	std::vector<Cylinder> cylinders;
@@ -3924,6 +3977,21 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 		if (shape.type == "trianglemesh" || shape.type == "plymesh"
 				|| shape.type == "loopsubdiv") {
+			// Real object motion blur (AnimatedTriangleMesh's own comment) -
+			// gated on w.triangles pointing at the top-level scene list (not
+			// an ObjectInstance DEFINITION's own object-space geometry list,
+			// InstanceGroup::triangles - that case has no xformEnd concept
+			// at all and keeps baking to xform only, unaffected by this
+			// entire feature; a genuinely rare "animated mesh nested inside
+			// an instance definition" combination, scoped out rather than
+			// adding motion blur to the instancing system too). An emissive
+			// mesh is excluded even when this gate passes - see
+			// AnimatedTriangleMesh's own comment for why - and warned below,
+			// once P/indices/N have actually been resolved (so the warning
+			// can't fire for a shape that's about to be skipped anyway for
+			// an unrelated parse failure).
+			const bool meshCouldAnimate =
+				(w.triangles == &out.triangles) && xform.differsFrom(w.xformEnd);
 			// A MediumInterface on a mesh shape is silently dropped - Triangle
 			// (unlike Sphere/Disk/Cylinder) has no `medium` field to carry it,
 			// and neither CPU's addMediumIfPresent() nor GPU's sphere-only
@@ -4093,10 +4161,31 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				warn("a mesh has an index count that is not a multiple of 3; "
 					 "the trailing indices are ignored");
 
+			// Real object motion blur (AnimatedTriangleMesh's own comment,
+			// meshCouldAnimate's own comment above) - excluded for an
+			// emissive mesh (NEE needs enumerable world-space geometry);
+			// falls back to a static, StartTime-only bake instead, same as
+			// every mesh got before this feature existed, just now with an
+			// explicit diagnostic instead of silent StartTime-only behavior.
+			const bool meshAnimated = meshCouldAnimate && shape.areaLightIndex < 0;
+			if (meshCouldAnimate && shape.areaLightIndex >= 0) {
+				warn("an emissive '" + shape.type + "' has an ActiveTransform "
+					 "\"StartTime\"/\"EndTime\" pair, but this loader's mesh motion "
+					 "blur excludes emissive shapes (NEE sampling needs enumerable "
+					 "world-space geometry); it will render static at its "
+					 "StartTime pose");
+			}
+
 			// Transform once per vertex rather than once per index: a shared
 			// vertex is referenced by several triangles, and transforming it
 			// repeatedly is both slower and a source of tiny inconsistencies
-			// between the same point on adjacent faces.
+			// between the same point on adjacent faces. Always computed in
+			// WORLD space, animated or not - a meshAnimated shape still needs
+			// this for its own GPU-fallback duplicate (Triangle::
+			// gpuOnlyStaticFallback's own comment): GPU has no concept of
+			// AnimatedTriangleMesh's separate object-space list at all, so
+			// without a world-space bake here too the shape would silently
+			// vanish from GPU renders instead of rendering static.
 			std::vector<double> world(vertexCount * 3);
 			for (std::size_t v = 0; v < vertexCount; ++v)
 				transformPoint(xform, P[v * 3], P[v * 3 + 1], P[v * 3 + 2],
@@ -4115,6 +4204,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			} else if (!N.empty()) {
 				warn("a mesh supplied fewer normals than vertices; "
 					 "they are ignored and it will render flat-shaded");
+			}
+
+			// meshAnimated only: the SAME vertices/normals, but left in
+			// OBJECT space (no CTM applied) - what animated_transform_
+			// instance.h's real per-ray motion-blur wrapper actually needs
+			// (AnimatedTriangleMesh's own comment). `objP`/`objN` mirror
+			// `world`/`worldN`'s exact shape (empty objN when worldN is
+			// empty) so the per-face loop below can build both a world-space
+			// and an object-space Triangle from the same index triple with
+			// no extra branching on "does this mesh have normals".
+			std::vector<double> objP, objN;
+			if (meshAnimated) {
+				objP = P;
+				if (!worldN.empty()) objN = N;
 			}
 
 			// UV: real per-vertex "point2 uv" when given (same "refused
@@ -4169,6 +4272,14 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// position and barycentric-N interpolation are order-invariant.
 			const bool flip = shape.reverseOrientation ^ matrixSwapsHandedness(xform);
 
+			// meshAnimated: accumulated here instead of pushed straight into
+			// *w.triangles (which, for the animated case, would otherwise
+			// mean OBJECT-space triangles leaking into the world-space list
+			// every other consumer of FlatScene::triangles assumes) - moved
+			// into a single AnimatedTriangleMesh below once the face loop
+			// finishes, carrying the shape's own xform/xformEnd along with it.
+			std::vector<Triangle> animTris;
+
 			bool reportedRange = false;
 			for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
 				const int a = indices[i], b0 = indices[i + 1], c0 = indices[i + 2];
@@ -4212,7 +4323,53 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 				t.material = shape.materialIndex;
 				t.areaLight = shape.areaLightIndex;
+				// meshAnimated: `t` above (world-space, StartTime pose) is
+				// still pushed - it's GPU's own fallback duplicate (Triangle::
+				// gpuOnlyStaticFallback's own comment), not the CPU-facing
+				// triangle - so it's flagged rather than skipped.
+				// pbrt_cpu_builder.h's emitGeometry() is what actually skips
+				// building a CPU `triangle` hittable for a flagged entry.
+				if (meshAnimated) t.gpuOnlyStaticFallback = true;
 				w.triangles->push_back(t);
+
+				if (meshAnimated) {
+					// The real, OBJECT-space triangle animated_transform_
+					// instance.h's wrapper needs (AnimatedTriangleMesh's own
+					// comment) - same index triple, same material/areaLight,
+					// built from objP/objN instead of world/worldN.
+					Triangle tObj;
+					for (int k = 0; k < 3; ++k) {
+						tObj.v[0 + k] = objP[static_cast<std::size_t>(a) * 3 + k];
+						tObj.v[3 + k] = objP[static_cast<std::size_t>(b) * 3 + k];
+						tObj.v[6 + k] = objP[static_cast<std::size_t>(c) * 3 + k];
+					}
+					if (!objN.empty()) {
+						for (int k = 0; k < 3; ++k) {
+							tObj.n[0 + k] = objN[static_cast<std::size_t>(a) * 3 + k];
+							tObj.n[3 + k] = objN[static_cast<std::size_t>(b) * 3 + k];
+							tObj.n[6 + k] = objN[static_cast<std::size_t>(c) * 3 + k];
+						}
+						tObj.hasNormals = true;
+					}
+					if (!worldUV.empty()) {
+						for (int k = 0; k < 2; ++k) {
+							tObj.uv[0 + k] = worldUV[static_cast<std::size_t>(a) * 2 + k];
+							tObj.uv[2 + k] = worldUV[static_cast<std::size_t>(b) * 2 + k];
+							tObj.uv[4 + k] = worldUV[static_cast<std::size_t>(c) * 2 + k];
+						}
+						tObj.hasUVs = true;
+					}
+					tObj.material = shape.materialIndex;
+					tObj.areaLight = shape.areaLightIndex;
+					animTris.push_back(tObj);
+				}
+			}
+			if (meshAnimated && !animTris.empty()) {
+				AnimatedTriangleMesh atm;
+				atm.triangles = std::move(animTris);
+				fromMatrix4(xform, atm.xform);
+				fromMatrix4(w.xformEnd, atm.xformEnd);
+				out.animatedTriangleMeshes.push_back(std::move(atm));
 			}
 			continue;
 		}
@@ -4504,6 +4661,16 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (xformArrayDiffers(c.xform, c.xformEnd)) { hasMotion = true; break; }
 				}
 			}
+			// Mesh motion blur (trianglemesh/plymesh/loopsubdiv - see
+			// AnimatedTriangleMesh's own comment) is the same "hit() resolves
+			// a per-ray-time transform internally" shape as Sphere/Disk/
+			// Cylinder above, via animated_transform_instance.h's own
+			// MotionState::resolve() - the same non-SAH-BVH gap applies.
+			// (Every entry in this list is animated by construction -
+			// pbrt_cpu_builder.h only ever populates it when xform genuinely
+			// differs from xformEnd - so presence alone is enough, no
+			// per-entry xformArrayDiffers scan needed.)
+			if (!hasMotion && !out.animatedTriangleMeshes.empty()) hasMotion = true;
 			if (hasMotion) {
 				warn("Accelerator \"bvh\" \"string splitmethod\" \"" + sm +
 					 "\" is not supported together with object motion blur "

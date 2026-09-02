@@ -91,7 +91,8 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Motion blur (object: Sphere) | Y / Y / Y | N/A |
 | Cameras | Motion blur (object: Disk/Cylinder) | Y (CPU) | GPU (both backends) renders static at the StartTime position, warned |
 | Cameras | Motion blur (camera, alt camera models: Orthographic/Spherical/Realistic) | Y (CPU) | GPU has no alt-camera-plus-motion-blur support; falls back to static, warned |
-| Cameras | Motion blur (object: mesh/curve/bilinear patch) | N | No fallback — static transform only |
+| Cameras | Motion blur (object: trianglemesh/plymesh/loopsubdiv) | Y (CPU) | GPU renders static at the StartTime position, warned; an emissive mesh always renders static (CPU too), warned |
+| Cameras | Motion blur (object: curve/bilinear patch) | N | No fallback — static transform only |
 | Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA or Shape) | Y / Y / Y | Real directives, all three backends, for both camera and the shapes above |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
@@ -458,11 +459,37 @@ before investing in real implementation - both blocked attempts above
 were caught this way in under 10 minutes each rather than after a full
 implementation.
 
-Triangle meshes/bilinear patches/curves have no
-motion-blur representation at all on any backend (a mesh bakes to static
-world-space vertices at load time - real per-vertex motion would need a
-second vertex-position keyframe carried all the way through, a separate,
-larger feature).
+Trianglemesh/plymesh/loopsubdiv now have real object motion blur, CPU only
+- unlike Sphere/Disk/Cylinder (which keep the object-to-world transform
+separate from the geometry and carry the ray into object space, so
+`AnimatedTransform` interpolation just slots in), a mesh bakes to static
+world-space vertices at load time, losing any object-space representation
+to interpolate against. `pbrt_flatten::AnimatedTriangleMesh` (`src/shared/
+pbrt_flatten.h`) is a new, separate list of OBJECT-space triangles (not
+merged into the plain `FlatScene::triangles`), populated only when a
+shape's own `xformEnd` genuinely differs from `xform`; `pbrt_cpu_builder.h`
+builds each entry's triangles into its own object-space BVH and wraps it in
+a new `animated_transform_instance` (`src/TheRestOfYourLife/
+animated_transform_instance.h`) - the same "carry the ray into object
+space" trick `transform_instance.h` already uses for `ObjectInstance`, just
+with a per-ray-time-resolved transform (`MotionState`, factored out of
+`disk_cylinder_hittable.h` into a new shared `motion_state.h` so both
+features reuse the identical TRS-interpolation/swept-AABB logic) instead of
+one static one. An **emissive** animated mesh is deliberately excluded
+(falls back to a static, StartTime-only bake, warned) - NEE sampling needs
+enumerable world-space geometry, which an object-space-wrapped hittable
+can't give it (the same rule `ObjectInstance`'s own emissive-shape handling
+already established). A non-`"sah"` `Accelerator` splitmethod also falls
+back to `"sah"` when a scene has mesh motion blur, extending the existing
+Sphere/Disk/Cylinder check (same "non-SAH `BvhTree` has no ray-time
+channel" reason). GPU has no concept of `animatedTriangleMeshes` at all -
+each animated mesh also gets a `Triangle::gpuOnlyStaticFallback`-flagged
+duplicate pushed into the ordinary world-space `FlatScene::triangles` list
+(StartTime pose only, skipped by CPU's own builder), so GPU still renders
+the shape - static, matching Disk/Cylinder's own "GPU renders static,
+warned" precedent - rather than it silently vanishing because its geometry
+moved to a list GPU never reads. Curves/bilinear patches are structurally
+identical candidates for this same treatment, not done this round.
 
 The three **alternate** camera models (`src/shared/cameras.h`'s
 Orthographic/Spherical/Realistic classes) now have real motion blur too,
@@ -676,16 +703,21 @@ relative to it specifically).
    identical 100x+ `optixModuleCreate` slowdown described in §6's own
    note. Blocked by the same undiagnosed module-wide issue - not attempted
    further.
-4. ~~No object motion blur~~ — **narrowed further**. Sphere has real object
-   motion blur on all three backends (`Sphere::center1`); Disk/Cylinder now
-   do too on **CPU** (`AnimatedTransform`, real TRS interpolation, §6) — GPU
-   (both backends) still renders a moving Disk/Cylinder static, warned. The
-   default perspective camera's own motion blur (`AnimatedTransform`,
-   previously wholly orphaned, now wired into `camera::get_ray()` and
-   `GpuCameraParams::animated`) — and now the three **alternate** camera
-   models too (Orthographic/Spherical/Realistic, CPU only, §6) — is
-   unaffected by any of this. Meshes/curves/bilinear patches remain the one
-   fully untouched case, on every backend.
+4. ~~No object motion blur~~ — **narrowed further still**. Sphere has real
+   object motion blur on all three backends (`Sphere::center1`);
+   Disk/Cylinder and now trianglemesh/plymesh/loopsubdiv (`animated_
+   transform_instance.h`, §6 - an emissive mesh excluded, falls back to
+   static+warned) do too on **CPU** — GPU (both backends) still renders a
+   moving Disk/Cylinder or mesh static, warned (a mesh's own GPU-fallback
+   duplicate is real geometry, not a missing-shape regression - see §6's
+   own comment). The default perspective camera's own motion blur
+   (`AnimatedTransform`, previously wholly orphaned, now wired into
+   `camera::get_ray()` and `GpuCameraParams::animated`) — and now the three
+   **alternate** camera models too (Orthographic/Spherical/Realistic, CPU
+   only, §6) — is unaffected by any of this. Curves/bilinear patches remain
+   the one fully untouched case, on every backend - structurally identical
+   candidates for the same `animated_transform_instance.h` treatment, not
+   done this round.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
 6. ~~`Accelerator` pbrt directive not parsed~~ — **closed**. `Accelerator

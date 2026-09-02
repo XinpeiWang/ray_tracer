@@ -1582,6 +1582,93 @@ TEST(FlattenTest, DiskAndCylinderWithoutActiveTransformHaveNoMotion) {
 	}
 }
 
+TEST(FlattenTest, TrianglemeshObjectMotionBlurPopulatesAnimatedTriangleMeshes) {
+	// Object motion blur (pbrt-v4 ActiveTransform "StartTime"/"EndTime") for
+	// trianglemesh/plymesh/loopsubdiv - see pbrt_flatten::
+	// AnimatedTriangleMesh's own comment. Unlike Disk/Cylinder (an unbaked
+	// xform/xformEnd pair on the same struct), a mesh explodes into many
+	// Triangle entries, so real motion blur routes through a SEPARATE list
+	// (animatedTriangleMeshes) of OBJECT-space triangles, and out.triangles
+	// gets a GPU-only static-fallback duplicate instead (Triangle::
+	// gpuOnlyStaticFallback's own comment) - both checked here.
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		+ std::string(kQuadMesh));
+
+	ASSERT_EQ(s.animatedTriangleMeshes.size(), 1u);
+	EXPECT_EQ(s.animatedTriangleMeshes[0].triangles.size(), 2u);
+	// Object space: untouched by the Translate above (only xform/xformEnd
+	// carry the placement now) - the first vertex is still exactly (0,0,0),
+	// not (2,0,0).
+	EXPECT_DOUBLE_EQ(s.animatedTriangleMeshes[0].triangles[0].v[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.animatedTriangleMeshes[0].triangles[0].v[1], 0.0);
+	EXPECT_DOUBLE_EQ(s.animatedTriangleMeshes[0].triangles[0].v[2], 0.0);
+	EXPECT_TRUE(s.animatedTriangleMeshes[0].xform[3] != s.animatedTriangleMeshes[0].xformEnd[3])
+		<< "xform.tx=" << s.animatedTriangleMeshes[0].xform[3]
+		<< " xformEnd.tx=" << s.animatedTriangleMeshes[0].xformEnd[3];
+
+	// GPU-fallback duplicate: real world-space triangles at the StartTime
+	// pose - identity here (the Translate above only applies between
+	// ActiveTransform "EndTime" and "All", same convention the Disk/
+	// Cylinder motion-blur tests already use) - flagged so CPU's own
+	// builder skips them.
+	ASSERT_EQ(s.triangles.size(), 2u);
+	EXPECT_TRUE(s.triangles[0].gpuOnlyStaticFallback);
+	EXPECT_DOUBLE_EQ(s.triangles[0].v[0], 0.0);
+}
+
+TEST(FlattenTest, TrianglemeshWithoutActiveTransformHasNoMotion) {
+	// The default: a mesh that never sat inside an ActiveTransform pair
+	// keeps using the plain, zero-overhead world-space bake - no
+	// AnimatedTriangleMesh entry, no gpuOnlyStaticFallback duplicate.
+	const FlatScene s = flattenSource(kQuadMesh);
+	EXPECT_TRUE(s.animatedTriangleMeshes.empty());
+	ASSERT_EQ(s.triangles.size(), 2u);
+	EXPECT_FALSE(s.triangles[0].gpuOnlyStaticFallback);
+}
+
+TEST(FlattenTest, EmissiveTrianglemeshObjectMotionBlurFallsBackToStaticAndWarns) {
+	// NEE sampling needs enumerable world-space geometry (this loader's own
+	// established rule - see AnimatedTriangleMesh's own comment and the
+	// ObjectInstance-definition precedent it cites) - an emissive mesh is
+	// excluded from the animated path entirely, falling back to the exact
+	// pre-existing static bake (StartTime pose only), with a warning rather
+	// than silently dropping real motion.
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  ActiveTransform \"StartTime\"\n"
+		"  ActiveTransform \"EndTime\"\n"
+		"  Translate 2 0 0\n"
+		"  ActiveTransform \"All\"\n"
+		+ std::string(kQuadMesh) +
+		"AttributeEnd\n");
+	EXPECT_TRUE(s.animatedTriangleMeshes.empty());
+	ASSERT_EQ(s.triangles.size(), 2u);
+	EXPECT_FALSE(s.triangles[0].gpuOnlyStaticFallback);
+	EXPECT_GE(s.triangles[0].areaLight, 0);
+	EXPECT_TRUE(warnedAbout(s, "emissive"));
+}
+
+TEST(FlattenTest, AcceleratorNonSahWithTrianglemeshMotionBlurFallsBackToSah) {
+	// See AcceleratorNonSahWithObjectMotionBlurFallsBackToSah's own comment
+	// (Sphere) - the identical non-SAH-BVH-has-no-ray-time-channel gap
+	// applies to animated_transform_instance.h's mesh motion blur too.
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n"
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.animatedTriangleMeshes.size(), 1u);
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+	EXPECT_TRUE(warnedAbout(s, "motion blur"));
+}
+
 TEST(FlattenTest, AcceleratorNonSahWithoutMotionBlurIsNotAffectedByTheMotionCheck) {
 	const FlatScene s = flattenSource(
 		"Accelerator \"bvh\" \"string splitmethod\" \"middle\"\n"
