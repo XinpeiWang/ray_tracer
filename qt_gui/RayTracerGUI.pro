@@ -57,6 +57,8 @@ SOURCES += \
 
 HEADERS += \
 	mainwindow.h \
+	mainwindow_widgets.h \
+	mainwindow_jobtypes.h \
 	camera_math.h \
 	icon_tint.h \
 	palette_data.h \
