@@ -147,7 +147,9 @@
            implicitly while main.cpp sat at the root; now that it lives
            beside this project the root has to be on the include path. -->
       <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      
+      <!-- Matches tests/ray_tracer_tests.vcxproj and optix_renderer.vcxproj,
+           which already had this - this project was just missed. -->
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -174,7 +176,7 @@
            implicitly while main.cpp sat at the root; now that it lives
            beside this project the root has to be on the include path. -->
       <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

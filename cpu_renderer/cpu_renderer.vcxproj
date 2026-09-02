@@ -53,6 +53,11 @@
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>4312</DisableSpecificWarnings>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <!-- Matches tests/ray_tracer_tests.vcxproj and optix_renderer.vcxproj,
+           which already had this - this project was just missed. Compiles
+           this lib's handful of .cpp/.c translation units concurrently
+           instead of one at a time. -->
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -68,6 +73,7 @@
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>4312</DisableSpecificWarnings>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
