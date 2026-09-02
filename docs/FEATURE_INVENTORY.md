@@ -87,8 +87,10 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Spherical (equirect + equal-area) | Y / Y / Y | N/A |
 | Cameras | Realistic (lens-file simulation) | Y / Y / Y | Missing/unreadable lens file → falls back to perspective, warned |
 | Cameras | Motion blur (camera, default perspective camera) | Y / Y / Y | N/A |
-| Cameras | Motion blur (object; or camera, alt camera models) | N | No fallback — static transform only |
-| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA) | Y / Y / Y | Real directives, all three backends. Object motion blur via the same directives still N (Shape/Material/... only ever read the "StartTime" CTM slot) |
+| Cameras | Motion blur (object: Sphere) | Y / Y / Y | N/A |
+| Cameras | Motion blur (object: Disk/Cylinder) | Y (CPU) | GPU (both backends) renders static at the StartTime position, warned |
+| Cameras | Motion blur (object: mesh/curve/bilinear patch; or camera, alt camera models) | N | No fallback — static transform only |
+| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA or Shape) | Y / Y / Y | Real directives, all three backends, for both camera and the shapes above |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
 | Samplers | Independent | Y (CPU) | N/A |
@@ -380,16 +382,32 @@ following the wrong one. Verified end-to-end via a real `.pbrt` scene
 (`ActiveTransform`-authored camera pan): CPU and both GPU backends all show
 genuine motion-blur streaking.
 
-**Gap**: the three **alternate** camera models
-(`src/shared/cameras.h`'s Orthographic/Spherical/Realistic classes still
-have a static `camera_to_world`, unaffected by this - "No motion blur" is
-still literally true for those three, on both CPU and GPU); and **object/shape** motion blur
-(`pbrt_scene.h`'s `ShapeDecl::xform` is still a single static `Matrix4` -
-`ActiveTransform`'s own new "EndTime" CTM slot is deliberately consumed by
-Camera's own `WorldBegin` capture ONLY, not by Shape/Material/LightSource/...,
-which still only ever read the "StartTime" slot - `AttributeBegin`/
-`ObjectBegin`-scoped object motion blur, real pbrt-v4 syntax, stays
-unsupported).
+**Object motion blur** (this is where the stale phrasing this doc used to
+carry - "`ShapeDecl::xform` is still a single static `Matrix4`" - has been
+corrected): `ActiveTransform "StartTime"/"EndTime"` around a `Shape` is a
+real, recognized directive (`pbrt_scene.h`'s `ShapeDecl::xformEnd`, a second
+CTM slot alongside the existing one), and both Sphere and Disk/Cylinder
+resolve their real end-time transform at each ray's own sampled time -
+**CPU only** for Disk/Cylinder (`disk_cylinder_hittable.h`'s `AnimatedTransform`
+use - real TRS decomposition, not a naive per-element matrix lerp, so a
+rotating keyframe pair doesn't visibly shear); Sphere has this on **all
+three backends** (`Sphere::center1`, a simpler world-space-point lerp since
+a sphere is rotation-invariant - see this doc's own earlier note on that).
+**Gap**: GPU (both backends) renders a moving Disk/Cylinder **static**, at
+its StartTime position, warned explicitly
+(`BuildStats::animatedDiskCylinderCount`, `gpu/optix/scene_builder.cpp`) -
+porting this to GPU means every intersection/closest-hit/NEE-sampling call
+site that reads `DiskData`/`CylinderData`'s `o2w`/`w2o` (several sites, both
+backends, since each has its own separately-compiled intersection program)
+becoming per-ray-time-aware, a materially bigger port than Sphere's single
+`center1` field ever needed. Triangle meshes/bilinear patches/curves have no
+motion-blur representation at all on any backend (a mesh bakes to static
+world-space vertices at load time - real per-vertex motion would need a
+second vertex-position keyframe carried all the way through, a separate,
+larger feature). The three **alternate** camera models
+(`src/shared/cameras.h`'s Orthographic/Spherical/Realistic classes) still
+have a static `camera_to_world`, unaffected by any of this - "No motion
+blur" is still literally true for those three, on both CPU and GPU.
 
 No other camera gap.
 
@@ -563,13 +581,15 @@ relative to it specifically).
    continuous hero-wavelength sampling) rather than porting
    `SampledWavelengths` into that backend's own separate OptiX module - a
    real chromatic fan, just coarser than the other two backends'.
-4. **No motion blur for object transforms or alt camera models, on any
-   backend** (§6) — the default perspective camera now has real motion
-   blur on CPU and both GPU backends (`AnimatedTransform`, previously
+4. ~~No object motion blur~~ — **narrowed**. Sphere has real object motion
+   blur on all three backends (`Sphere::center1`); Disk/Cylinder now do too
+   on **CPU** (`AnimatedTransform`, real TRS interpolation, §6) — GPU (both
+   backends) still renders a moving Disk/Cylinder static, warned. Meshes/
+   curves/bilinear patches, and the Orthographic/Spherical/Realistic alt
+   camera classes, remain untouched on every backend — the default
+   perspective camera's own motion blur (`AnimatedTransform`, previously
    wholly orphaned, now wired into `camera::get_ray()` and
-   `GpuCameraParams::animated`); object/shape transforms and the
-   Orthographic/Spherical/Realistic alt camera classes remain untouched
-   on every backend.
+   `GpuCameraParams::animated`) is unaffected by any of this.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
 6. ~~`Accelerator` pbrt directive not parsed~~ — **closed**. `Accelerator
@@ -604,6 +624,9 @@ all of them, and it's worth knowing which is which before relying on one.
 - `MakeNamedMedium "nanovdb"` on **GPU** → falls back to a flat homogeneous
   medium filling the boundary shape, with a warning (CPU renders the real
   grid - see §5).
+- A moving Disk/Cylinder (`ActiveTransform` motion) on **GPU** → falls back
+  to its StartTime position, static, with a warning (CPU renders the real
+  motion blur - see §6).
 - An unrecognized `--sampler` name → silently falls back to Sobol
   (`independent` is now a real, recognized name — see §7).
 - An unrecognized pbrt `Material` kind → falls back to flat Lambertian

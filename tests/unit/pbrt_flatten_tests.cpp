@@ -1468,6 +1468,53 @@ TEST(FlattenTest, AcceleratorNonSahWithObjectMotionBlurFallsBackToSah) {
 	EXPECT_TRUE(warnedAbout(s, "motion blur"));
 }
 
+TEST(FlattenTest, DiskObjectMotionBlurBakesXformEnd) {
+	// Object motion blur (pbrt-v4 ActiveTransform "StartTime"/"EndTime") for
+	// disk/cylinder - see pbrt_flatten::Disk::xformEnd's own comment. Mirrors
+	// AcceleratorNonSahWithObjectMotionBlurFallsBackToSah's own sphere check
+	// just above, for the disk/cylinder unbaked-transform representation.
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(s.disks.size(), 1u);
+	EXPECT_TRUE(s.disks[0].xform[3] != s.disks[0].xformEnd[3])
+		<< "xform.tx=" << s.disks[0].xform[3] << " xformEnd.tx=" << s.disks[0].xformEnd[3];
+}
+
+TEST(FlattenTest, CylinderObjectMotionBlurBakesXformEnd) {
+	// See DiskObjectMotionBlurBakesXformEnd's own comment - identical idiom.
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	ASSERT_EQ(s.cylinders.size(), 1u);
+	EXPECT_TRUE(s.cylinders[0].xform[3] != s.cylinders[0].xformEnd[3])
+		<< "xform.tx=" << s.cylinders[0].xform[3] << " xformEnd.tx=" << s.cylinders[0].xformEnd[3];
+}
+
+TEST(FlattenTest, DiskAndCylinderWithoutActiveTransformHaveNoMotion) {
+	// The default: a disk/cylinder that never sat inside an ActiveTransform
+	// pair must render exactly as before this feature existed - xformEnd
+	// equal to xform, bit for bit (see the bake sites' own "real inequality"
+	// gate, matching Sphere::center1's identical convention).
+	const FlatScene s = flattenSource(
+		"Shape \"disk\" \"float radius\" [ 1 ]\n"
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	ASSERT_EQ(s.disks.size(), 1u);
+	ASSERT_EQ(s.cylinders.size(), 1u);
+	for (int i = 0; i < 16; ++i) {
+		EXPECT_EQ(s.disks[0].xform[i], s.disks[0].xformEnd[i]) << "disk index " << i;
+		EXPECT_EQ(s.cylinders[0].xform[i], s.cylinders[0].xformEnd[i]) << "cylinder index " << i;
+	}
+}
+
 TEST(FlattenTest, AcceleratorNonSahWithoutMotionBlurIsNotAffectedByTheMotionCheck) {
 	const FlatScene s = flattenSource(
 		"Accelerator \"bvh\" \"string splitmethod\" \"middle\"\n"

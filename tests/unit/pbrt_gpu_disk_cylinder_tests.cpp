@@ -190,6 +190,42 @@ TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceResolvesToRealMediumMateria
 	EXPECT_EQ(scene.materials[scene.cylinders[0].materialIdx].type, MaterialType::Medium);
 }
 
+TEST(PbrtGpuDiskCylinderTest, ObjectMotionBlurIsCountedAsUnsupportedAndRendersStatic) {
+	// See BuildStats::animatedDiskCylinderCount's own comment - CPU has real
+	// object motion blur for disk/cylinder (disk_cylinder_hittable.h's
+	// AnimatedTransform use), neither GPU backend does yet. o2w must resolve
+	// to the StartTime position (unaffected by xformEnd), and the shape must
+	// be counted so scene_builder.cpp can warn instead of silently dropping
+	// the motion.
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 5 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n"
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	SceneData scene;
+	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(flat, scene);
+	EXPECT_EQ(stats.animatedDiskCylinderCount, 2);
+	ASSERT_EQ(scene.disks.size(), 1u);
+	ASSERT_EQ(scene.cylinders.size(), 1u);
+	// StartTime translation column is 0 (no shift) - EndTime's Translate 5 0 0
+	// must NOT have been picked up.
+	EXPECT_NEAR(scene.disks[0].o2w[3], 0.0f, 1e-6f);
+	EXPECT_NEAR(scene.cylinders[0].o2w[3], 0.0f, 1e-6f);
+}
+
+TEST(PbrtGpuDiskCylinderTest, StaticDiskAndCylinderAreNotCountedAsAnimated) {
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"Shape \"disk\" \"float radius\" [ 1 ]\n"
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	SceneData scene;
+	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(flat, scene);
+	EXPECT_EQ(stats.animatedDiskCylinderCount, 0);
+}
+
 // ---------------------------------------------------------------------------
 // Real GPU render (skipped when no OptiX-capable device is present) - both
 // backends, since Phase 4c ports Disk/Cylinder to wavefront on top of

@@ -1232,7 +1232,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	for (const pbrt_flatten::Disk &d : disks) {
 		auto mat = cachedMaterial(d.material, d.areaLight);
 		auto disk = std::make_shared<disk_hittable>(
-			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg), toMatrix4(d.xform), mat);
+			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg),
+			toMatrix4(d.xform), toMatrix4(d.xformEnd), mat);
 		world.add(disk);
 		if (d.areaLight >= 0) lights.add(disk);
 		addMediumIfPresent(disk, d.medium);
@@ -1242,7 +1243,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	for (const pbrt_flatten::Cylinder &c : cylinders) {
 		auto mat = cachedMaterial(c.material, c.areaLight);
 		auto cyl = std::make_shared<cylinder_hittable>(
-			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg), toMatrix4(c.xform), mat);
+			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg),
+			toMatrix4(c.xform), toMatrix4(c.xformEnd), mat);
 		world.add(cyl);
 		if (c.areaLight >= 0) lights.add(cyl);
 		addMediumIfPresent(cyl, c.medium);

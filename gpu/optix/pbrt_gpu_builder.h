@@ -133,6 +133,19 @@ struct BuildStats {
 	// "altitude" code-review finding on the nanovdb medium round for why
 	// that hand-sync was a real risk for the next unsupported type added.
 	std::map<std::string, int> unsupportedMediumTypeCounts;
+	// How many disk/cylinder shapes carry real object motion blur (pbrt-v4
+	// ActiveTransform "StartTime"/"EndTime" - see pbrt_flatten::Disk::
+	// xformEnd's own comment) that this builder renders STATIC (at the
+	// StartTime position) rather than animated. CPU has real per-ray TRS
+	// interpolation for this (disk_cylinder_hittable.h's AnimatedTransform
+	// use); porting that to GPU means every intersection/closest-hit/NEE-
+	// sampling site that reads DiskData::o2w/w2o (both backends, several
+	// files each) becoming per-ray-time-aware - out of scope for the round
+	// that added CPU support, so both GPU backends keep the pre-existing
+	// "ignore xformEnd" behavior, now surfaced as a loud warning instead of
+	// a silent one. Sphere's own object motion blur is unaffected - it has
+	// real support on both GPU backends already (SphereData::center1).
+	int animatedDiskCylinderCount = 0;
 };
 
 namespace detail {
@@ -1653,6 +1666,14 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		for (int i = 0; i < 16; ++i) o2w.m[i] = d.xform[i];
 		pbrt_scene::Matrix4 w2o;
 		if (!o2w.inverseAffine(w2o)) continue;  // singular - drop, matching disk_hittable's own valid_ guard
+		// See BuildStats::animatedDiskCylinderCount's own comment - GPU
+		// renders this disk static at its StartTime position (o2w above),
+		// same as if xformEnd were never baked.
+		{
+			pbrt_scene::Matrix4 o2wEnd;
+			for (int i = 0; i < 16; ++i) o2wEnd.m[i] = d.xformEnd[i];
+			if (o2w.differsFrom(o2wEnd)) ++stats.animatedDiskCylinderCount;
+		}
 
 		DiskData dd = {};
 		dd.radius = static_cast<float>(d.radius);
@@ -1675,6 +1696,14 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		for (int i = 0; i < 16; ++i) o2w.m[i] = c.xform[i];
 		pbrt_scene::Matrix4 w2o;
 		if (!o2w.inverseAffine(w2o)) continue;
+		// See BuildStats::animatedDiskCylinderCount's own comment - GPU
+		// renders this cylinder static at its StartTime position (o2w
+		// above), same as if xformEnd were never baked.
+		{
+			pbrt_scene::Matrix4 o2wEnd;
+			for (int i = 0; i < 16; ++i) o2wEnd.m[i] = c.xformEnd[i];
+			if (o2w.differsFrom(o2wEnd)) ++stats.animatedDiskCylinderCount;
+		}
 
 		CylinderData cd = {};
 		cd.radius = static_cast<float>(c.radius);

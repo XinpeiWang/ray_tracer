@@ -352,6 +352,82 @@ TEST(PbrtCpuBuildTest, CylinderIsBuiltAtItsTransformedPositionAndRadius) {
 	EXPECT_NEAR(t, 9.0, 1e-6);
 }
 
+TEST(PbrtCpuBuildTest, CylinderObjectMotionBlurMovesWithRayTime) {
+	// Object motion blur (pbrt-v4 ActiveTransform "StartTime"/"EndTime") for
+	// disk/cylinder - see pbrt_flatten::Disk::xformEnd's own comment and
+	// disk_cylinder_hittable.h's header comment for the AnimatedTransform
+	// mechanism this exercises end-to-end.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 5 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	EXPECT_EQ(b.cylinderCount, 1u);
+
+	{
+		hit_record rec;
+		const ray r(point3(-5, 0, 0), vec3(1, 0, 0), 0.0);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "time=0 should hit the cylinder at its StartTime position (axis at x=0)";
+		EXPECT_NEAR(rec.t, 4.0, 1e-6);
+	}
+	{
+		hit_record rec;
+		const ray r(point3(-5, 0, 0), vec3(1, 0, 0), 1.0);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "time=1 should hit the cylinder at its EndTime position (axis at x=5)";
+		EXPECT_NEAR(rec.t, 9.0, 1e-6);
+	}
+}
+
+TEST(PbrtCpuBuildTest, CylinderRotatedObjectMotionBlurMovesWithRayTime) {
+	// A Rotate baked into BOTH keyframes (a real .pbrt authoring idiom),
+	// rather than pure translation - closes the gap the translation-only
+	// test above leaves about whether a rotated keyframe pair is handled
+	// correctly for cylinder specifically (disk's own rotation handling is
+	// covered by DiskObjectMotionBlurMovesWithRayTime below).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"Translate -6 -1.5 0\n"
+		"Rotate 90 1 0 0\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 0 -1.5 0\n"
+		"Rotate 90 1 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"cylinder\" \"float radius\" [ 0.6 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	EXPECT_EQ(b.cylinderCount, 1u);
+
+	// Rotate 90 about X maps the cylinder's object-space Z axis to world Y,
+	// so the tube's lateral wall now runs vertically at world (x, [-2.5,
+	// -0.5], 0) with radius 0.6 in the XZ plane - fire straight down +Z at
+	// y=-1.5 (mid-tube) and the given x, hitting the near wall at z=-0.6.
+	{
+		hit_record rec;
+		const ray r(point3(-6, -1.5, -5), vec3(0, 0, 1), 0.0);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "time=0 should hit the cylinder at its StartTime position (axis at x=-6)";
+		EXPECT_NEAR(rec.t, 4.4, 1e-6);
+	}
+	{
+		hit_record rec;
+		const ray r(point3(0, -1.5, -5), vec3(0, 0, 1), 1.0);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "time=1 should hit the cylinder at its EndTime position (axis at x=0)";
+		EXPECT_NEAR(rec.t, 4.4, 1e-6);
+	}
+	// Cross-check: at time=0, the EndTime position (x=0) must NOT be hit -
+	// proves the shape genuinely moved rather than always covering both.
+	{
+		hit_record rec;
+		const ray r(point3(0, -1.5, -5), vec3(0, 0, 1), 0.0);
+		EXPECT_FALSE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "at time=0 the cylinder should still be at x=-6, not covering x=0 too";
+	}
+}
+
 TEST(PbrtCpuBuildTest, CylinderHasNoEndCaps) {
 	// pbrt's cylinder (and this project's CylinderShape<T> port) is an open
 	// tube, not a capped can - matching DiskShape/CylinderShape's own
@@ -387,6 +463,40 @@ TEST(PbrtCpuBuildTest, DiskUnderRotationHitsAtTheExactTransformedPosition) {
 	// keeps x=0.5 under the rotation, landing in the world-space y=0 plane.
 	ASSERT_TRUE(castRay(b, point3(0.5, -5, 0), vec3(0, 1, 0), t));
 	EXPECT_NEAR(t, 5.0, 1e-6);
+}
+
+TEST(PbrtCpuBuildTest, DiskObjectMotionBlurMovesWithRayTime) {
+	// Object motion blur (pbrt-v4 ActiveTransform "StartTime"/"EndTime") for
+	// disk - see CylinderObjectMotionBlurMovesWithRayTime's own comment for
+	// the mechanism this exercises; same idiom, disk instead of cylinder.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 5 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n");
+	EXPECT_EQ(b.diskCount, 1u);
+
+	{
+		hit_record rec;
+		const ray r(point3(0, 0, -5), vec3(0, 0, 1), 0.0);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "time=0 should hit the disk at its StartTime position (centre at x=0)";
+		EXPECT_NEAR(rec.t, 5.0, 1e-6);
+	}
+	{
+		hit_record rec;
+		const ray r(point3(5, 0, -5), vec3(0, 0, 1), 1.0);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "time=1 should hit the disk at its EndTime position (centre at x=5)";
+		EXPECT_NEAR(rec.t, 5.0, 1e-6);
+	}
+	{
+		hit_record rec;
+		const ray r(point3(5, 0, -5), vec3(0, 0, 1), 0.0);
+		EXPECT_FALSE(b.world->hit(r, interval(0.001, infinity), rec))
+			<< "at time=0 the disk should still be at x=0, not covering x=5 too";
+	}
 }
 
 TEST(PbrtCpuBuildTest, CurveIsBuiltAtItsTransformedPositionAndWidth) {

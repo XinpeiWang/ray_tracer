@@ -160,6 +160,21 @@ struct Disk {
 	// converted to radians at the CPU/GPU builders' point of use, not here.
 	double phiMaxDeg = 360.0;
 	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	// Object-motion-blur end-time transform (pbrt-v4 ActiveTransform
+	// "EndTime" around this Shape) - see Sphere::center1's own comment for
+	// the general idiom. Unlike Sphere (which bakes a single lerp-able
+	// world-space point), a Disk keeps its FULL transform unbaked already
+	// (xform above), so the natural motion representation is a SECOND full
+	// transform rather than a second point: both CPU (disk_cylinder_
+	// hittable.h) and GPU resolve the real object<->world affine at each
+	// ray's own time via AnimatedTransform's TRS decomposition (src/shared/
+	// animated_transform.h - translation lerp, rotation slerp, scale lerp),
+	// not a naive per-element matrix lerp, which would visibly shear a
+	// rotating disk. Defaults to `xform` (no motion) whenever this shape
+	// never sat inside an ActiveTransform pair - real-inequality checked at
+	// this field's sole bake site (pbrt_flatten.h's disk-building branch),
+	// same `Matrix4::differsFrom()` convention as Sphere::center1.
+	double xformEnd[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 	int material = -1;
 	int areaLight = -1;
 	int medium = -1;
@@ -169,6 +184,8 @@ struct Cylinder {
 	double radius = 1.0, zMin = -1.0, zMax = 1.0;
 	double phiMaxDeg = 360.0;
 	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	// See Disk::xformEnd's own comment - identical idiom.
+	double xformEnd[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 	int material = -1;
 	int areaLight = -1;
 	int medium = -1;
@@ -3745,6 +3762,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			d.innerRadius = shape.params.getFloat("innerradius", 0.0);
 			d.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
 			fromMatrix4(xform, d.xform);
+			// Object motion blur - see Disk::xformEnd's own comment. Same
+			// real-inequality gate as Sphere::center1's bake site.
+			fromMatrix4(xform.differsFrom(w.xformEnd) ? w.xformEnd : xform, d.xformEnd);
 			d.material = shape.materialIndex;
 			d.areaLight = shape.areaLightIndex;
 			d.medium = shape.insideMedium;
@@ -3759,6 +3779,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			c.zMax = shape.params.getFloat("zmax", 1.0);
 			c.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
 			fromMatrix4(xform, c.xform);
+			// See Disk's own ActiveTransform comment just above - identical.
+			fromMatrix4(xform.differsFrom(w.xformEnd) ? w.xformEnd : xform, c.xformEnd);
 			c.material = shape.materialIndex;
 			c.areaLight = shape.areaLightIndex;
 			c.medium = shape.insideMedium;
