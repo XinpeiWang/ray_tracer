@@ -1497,6 +1497,31 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceMixAmountCheckerboardBuildsARealNestedB
 		   "real second-level nested texture, not the flat-scalar fallback";
 }
 
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceMixAmountCheckerboardBuildsARealNestedBlend) {
+	// Same as DiffuseReflectanceMixAmountCheckerboardBuildsARealNestedBlend
+	// above, but for CoatedDiffuse's own hand-duplicated copy of the
+	// hasMixReflectance/mixAmountNested block (pbrt_cpu_builder.h's
+	// CoatedDiffuse case) - the two call sites aren't shared, so a
+	// divergence between them would otherwise go untested.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"texture amount\" [ \"chk\" ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *coated = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(coated, nullptr);
+	auto *mix = dynamic_cast<mix_texture *>(coated->get_texture().get());
+	ASSERT_NE(mix, nullptr);
+	EXPECT_NE(dynamic_cast<uv_checker_texture *>(mix->get_amount_texture().get()), nullptr)
+		<< "a coateddiffuse mix reflectance with a checkerboard-bound amount "
+		   "must build a real second-level nested texture, not the "
+		   "flat-scalar fallback";
+}
+
 TEST_F(CpuBuilderTempTree, DisplacementWithARealGrayscaleBumpMapWrapsInBumpMapMaterial) {
 	// Round 5 Phase 1: Material::displacementTextureFilename (see that
 	// field's own comment) must reach the CPU builder's materialFor()

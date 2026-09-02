@@ -523,6 +523,39 @@ inline LoadResult loadFile(const std::string &path) {
 	resolveNestedTextureField(&pbrt_flatten::Material::mixTex2Filename, "mix tex2");
 	resolveNestedTextureField(&pbrt_flatten::Material::mixAmountTextureFilename, "mix amount");
 
+	// Same, but for the raw filenames captured *inside* a second-level
+	// nested checkerboard/mix (Material::checkerTex1Nested's own comment) -
+	// pbrt_flatten.h's resolveNestedProcedural() captures these with no
+	// path resolution of their own, same relative-path fragility as every
+	// field resolveNestedTextureField above already handles.
+	auto resolveNestedProceduralFilenames =
+		[&](pbrt_flatten::NestedProceduralTexture pbrt_flatten::Material::*field, const char *what) {
+		for (pbrt_flatten::Material &m : r.scene.materials) {
+			pbrt_flatten::NestedProceduralTexture &n = m.*field;
+			if (n.kind.empty()) continue;
+			auto resolveOne = [&](std::string &f, const char *slot) {
+				if (f.empty()) return;
+				const std::string resolved = resolveExistingPath(sceneDir, f);
+				if (resolved.empty()) {
+					r.scene.warnings.push_back(
+						{0, path, std::string("material's ") + what + " " + slot +
+							" texture image '" + f + "' could not be found; falling back to a constant colour instead"});
+					f.clear();
+					return;
+				}
+				f = resolved;
+			};
+			resolveOne(n.tex1Filename, "tex1");
+			resolveOne(n.tex2Filename, "tex2");
+			resolveOne(n.amountFilename, "amount");
+		}
+	};
+	resolveNestedProceduralFilenames(&pbrt_flatten::Material::checkerTex1Nested, "nested checkerboard tex1's");
+	resolveNestedProceduralFilenames(&pbrt_flatten::Material::checkerTex2Nested, "nested checkerboard tex2's");
+	resolveNestedProceduralFilenames(&pbrt_flatten::Material::mixTex1Nested, "nested mix tex1's");
+	resolveNestedProceduralFilenames(&pbrt_flatten::Material::mixTex2Nested, "nested mix tex2's");
+	resolveNestedProceduralFilenames(&pbrt_flatten::Material::mixAmountNested, "nested mix amount's");
+
 	// AreaLightSource "diffuse"'s "filename" (spatially-varying image
 	// emission - Emission::filename's own comment). Same resolution
 	// convention as textureFilename/alphaTextureFilename/

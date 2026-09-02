@@ -536,13 +536,18 @@ struct BilinearPatch {
 // CurveShape<T>, CPU builder) / a tessellated tube of bilinear patches (GPU
 // builder, since neither GPU backend has a native curve-intersection program -
 // see src/shared/curve_tessellate.h's own comment, and pbrt-v4 itself makes
-// the identical choice on its own GPU path). Only cubic ("integer degree" 3,
-// the CurveShape/pbrt-v4 default) Bezier-basis ("string basis" "bezier", also
-// the default) curves are built; b-spline basis or a non-cubic degree falls
-// through to flatten()'s generic "shape not supported" warning rather than
-// attempting the basis-conversion math pbrt-v4's own Curve::Create does
-// (shapes.cpp's ElevateQuadraticBezierToCubic/CubicBSplineToBezier) - no
-// scene this loader has actually seen needs it.
+// the identical choice on its own GPU path). CurveShape itself is always
+// exactly cubic Bezier (cp[4][3] per segment), so every "integer degree"/
+// "string basis" combination is converted down to that representation before
+// reaching it: degree 3 + "bezier" needs no conversion; degree 2 + "bezier"
+// is exactly degree-elevated (curveDegreeElevateQuadratic(), below); basis
+// "bspline" (degree 3 only - pbrt-v4 has no quadratic B-spline curve either)
+// is exactly converted via curveBsplineSegmentToBezierCubic(), below -
+// mirroring pbrt-v4's own shapes.cpp ElevateQuadraticBezierToCubic/
+// CubicBSplineToBezier. Any other degree/basis combination (degree 2 +
+// "bspline", or a degree outside {2,3}) falls through to flatten()'s generic
+// "shape not supported" warning - no scene this loader has actually seen
+// needs it.
 //
 // World-space control points, one segment's worth (4 points = 12 doubles)
 // per contiguous block - mirrors pbrt-v4's own Curve::Create segment-
@@ -4497,9 +4502,14 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				continue;
 			}
 			const std::size_t numPoints = pp->numbers.size() / 3;
-			std::vector<std::array<double, 3>> pts(numPoints);
-			for (std::size_t i = 0; i < numPoints; ++i)
-				pts[i] = {pp->numbers[i * 3], pp->numbers[i * 3 + 1], pp->numbers[i * 3 + 2]};
+			// pp->numbers is already numPoints*3 contiguous doubles in the
+			// exact (x,y,z)-per-point layout curveDegreeElevateQuadratic/
+			// curveBsplineSegmentToBezierCubic/the cubic branch below all
+			// want - indexed directly (&pts(i) below) rather than copied
+			// into an intermediate std::vector<array<double,3>>, since a
+			// hair/fur scene can have very many curves and this runs once
+			// per curve at scene-load time.
+			const auto pt = [&](std::size_t i) { return &pp->numbers[i * 3]; };
 
 			// Object-space (pre-CTM) cubic Bezier control points, one 4-point
 			// segment at a time, from whichever degree/basis conversion
@@ -4523,8 +4533,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				objCp.resize(static_cast<std::size_t>(nSegments) * 4 * 3);
 				for (int seg = 0; seg < nSegments; ++seg) {
 					double seg4[12];
-					curveBsplineSegmentToBezierCubic(pts[seg].data(), pts[seg + 1].data(),
-													  pts[seg + 2].data(), pts[seg + 3].data(), seg4);
+					curveBsplineSegmentToBezierCubic(pt(static_cast<std::size_t>(seg)), pt(static_cast<std::size_t>(seg) + 1),
+													  pt(static_cast<std::size_t>(seg) + 2), pt(static_cast<std::size_t>(seg) + 3), seg4);
 					for (int j = 0; j < 12; ++j) objCp[static_cast<std::size_t>(seg) * 12 + j] = seg4[j];
 				}
 			} else if (degree == 2) {
@@ -4542,9 +4552,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				objCp.resize(static_cast<std::size_t>(nSegments) * 4 * 3);
 				for (int seg = 0; seg < nSegments; ++seg) {
 					double seg4[12];
-					curveDegreeElevateQuadratic(pts[static_cast<std::size_t>(seg) * 2].data(),
-												 pts[static_cast<std::size_t>(seg) * 2 + 1].data(),
-												 pts[static_cast<std::size_t>(seg) * 2 + 2].data(), seg4);
+					curveDegreeElevateQuadratic(pt(static_cast<std::size_t>(seg) * 2),
+												 pt(static_cast<std::size_t>(seg) * 2 + 1),
+												 pt(static_cast<std::size_t>(seg) * 2 + 2), seg4);
 					for (int j = 0; j < 12; ++j) objCp[static_cast<std::size_t>(seg) * 12 + j] = seg4[j];
 				}
 			} else {
@@ -4561,7 +4571,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					for (int i = 0; i < 4; ++i)
 						for (int k = 0; k < 3; ++k)
 							objCp[(static_cast<std::size_t>(seg) * 4 + i) * 3 + k] =
-								pts[static_cast<std::size_t>(seg) * 3 + i][k];
+								pt(static_cast<std::size_t>(seg) * 3 + static_cast<std::size_t>(i))[k];
 			}
 
 			Curve c;

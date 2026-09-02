@@ -1422,9 +1422,10 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	out.bilinearPatchCount += patches.size();
 
 	// ---- curves ------------------------------------------------------------
-	// Shape "curve" - see pbrt_flatten::Curve's own comment for scope (cubic
-	// Bezier, "bezier" basis only, already split into independent per-segment
-	// 4-control-point Bezier curves by flatten()). One CurveShape<double> per
+	// Shape "curve" - see pbrt_flatten::Curve's own comment for scope (degree
+	// 2/3 Bezier and cubic B-spline all convert down to cubic Bezier before
+	// reaching here, already split into independent per-segment 4-control-
+	// point Bezier curves by flatten()). One CurveShape<double> per
 	// segment, wrapped in the existing curve_shape_hittable. width0/width1 are
 	// re-lerped per segment (matching pbrt-v4's own Curve::Create,
 	// shapes.cpp:894-895 exactly: Lerp(seg/nSegments, width0,width1)) so a

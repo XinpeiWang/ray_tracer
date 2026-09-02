@@ -789,9 +789,10 @@ all of them, and it's worth knowing which is which before relying on one.
   invisible. This is the one case in the whole loader with no safety net:
   everything else either substitutes something visible or forces a backend/
   flag change loudly; an unsupported light just disappears.
-- A `Shape` type this loader can't build (e.g. a non-cubic/non-Bezier
-  `curve`) → dropped with a "shape not supported" warning; nothing is
-  rendered in its place.
+- A `Shape` type this loader can't build (e.g. a `curve` combining
+  quadratic degree with `"bspline"` basis, or a degree outside `{2,3}`)
+  → dropped with a "shape not supported" warning; nothing is rendered in
+  its place.
 - The orphaned scaffolding (§11: `UniformLightSampler`, `BVHLightSampler2`,
   `ExhaustiveLightSampler`, `PowerLightSampler` (scaffold), ReSTIR,
   `PixelSensor`/`SpectralFilm`) — these aren't fallbacks *for* anything and

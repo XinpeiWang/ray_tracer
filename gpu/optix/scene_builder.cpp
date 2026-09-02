@@ -3863,7 +3863,8 @@ static bool build_loaded_pbrt_scene(
 				(!m.checkerTex1Nested.kind.empty() || !m.checkerTex2Nested.kind.empty()))
 				++nestedCount;
 			if (m.hasMixReflectance &&
-				(!m.mixTex1Nested.kind.empty() || !m.mixTex2Nested.kind.empty()))
+				(!m.mixTex1Nested.kind.empty() || !m.mixTex2Nested.kind.empty() ||
+				 !m.mixAmountNested.kind.empty()))
 				++nestedCount;
 		}
 		if (nestedCount > 0) {
