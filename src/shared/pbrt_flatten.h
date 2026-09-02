@@ -1715,6 +1715,51 @@ inline void transformPoint(const pbrt_scene::Matrix4 &m,
 	out[2] = m.m[8] * x + m.m[9] * y + m.m[10] * z + m.m[11];
 }
 
+// Splits a row-major affine Matrix4 into a flat 3x3 double[9] (rotation/
+// scale block) plus a flat double[3] translation - the shape every grid
+// medium type's toMediumMat/toMediumTranslate pair (Medium's own comment)
+// and grid_medium_hittable/rgb_grid_medium_hittable's own mat_/translate_
+// members want. Shared so a caller doesn't hand-copy the same m[i*4+j]/
+// m[i*4+3] indexing convention a second time - see this codebase's own
+// "reuse" code-review finding on the nanovdb medium block, which
+// originally re-derived this by hand instead of calling here.
+inline void splitAffine(const pbrt_scene::Matrix4 &m, double mat9[9], double translate3[3]) {
+	for (int i = 0; i < 3; ++i)
+		for (int j = 0; j < 3; ++j)
+			mat9[i * 3 + j] = m.m[i * 4 + j];
+	translate3[0] = m.m[3];
+	translate3[1] = m.m[7];
+	translate3[2] = m.m[11];
+}
+
+// World-space AABB of a local-space box [lo,hi] under an arbitrary affine
+// transform `worldFromLocal`: transforms all 8 corners and takes the
+// axis-aligned min/max, so a rotated/non-uniformly-scaled placement still
+// gets a correct (if conservatively larger) world bound rather than a
+// naive diagonal scale. Shared for the same reason as splitAffine above -
+// every grid medium type needs exactly this (cloud/rgbgrid/uniformgrid
+// call it with lo=p0/hi=p1/worldFromLocal=the medium's own CTM; nanovdb
+// calls it with lo=(0,0,0)/hi=(1,1,1)/worldFromLocal=its own reconstructed
+// worldFromMedium, since its "box" is the unit cube in its own baked
+// coordinate space, not a p0/p1 pair).
+inline void aabbOfTransformedBox(const pbrt_scene::Matrix4 &worldFromLocal,
+								  const double lo[3], const double hi[3],
+								  double outMin[3], double outMax[3]) {
+	outMin[0] = outMin[1] = outMin[2] = 1e300;
+	outMax[0] = outMax[1] = outMax[2] = -1e300;
+	for (int c = 0; c < 8; ++c) {
+		const double cx = (c & 1) ? hi[0] : lo[0];
+		const double cy = (c & 2) ? hi[1] : lo[1];
+		const double cz = (c & 4) ? hi[2] : lo[2];
+		double w[3];
+		transformPoint(worldFromLocal, cx, cy, cz, w);
+		for (int a = 0; a < 3; ++a) {
+			outMin[a] = std::fmin(outMin[a], w[a]);
+			outMax[a] = std::fmax(outMax[a], w[a]);
+		}
+	}
+}
+
 // Normals do NOT transform by the matrix that transforms points. Under a
 // non-uniform scale, transforming a normal directly tilts it off the surface -
 // squash a sphere and its normals stop being perpendicular to it. The correct
@@ -2913,38 +2958,18 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// comment).
 			pbrt_scene::Matrix4 worldToMedium;
 			if (md.xform.inverseAffine(worldToMedium)) {
-				for (int i = 0; i < 3; ++i)
-					for (int j = 0; j < 3; ++j)
-						medium.toMediumMat[i*3+j] = worldToMedium.m[i*4+j];
-				medium.toMediumTranslate[0] = worldToMedium.m[3];
-				medium.toMediumTranslate[1] = worldToMedium.m[7];
-				medium.toMediumTranslate[2] = worldToMedium.m[11];
+				splitAffine(worldToMedium, medium.toMediumMat, medium.toMediumTranslate);
 			} else {
 				warn("medium '" + md.name + "' has a singular transform "
 					 "(zero scale on some axis); it will not render correctly");
 			}
 
-			// World-space AABB: transform all 8 corners of the medium-space
-			// box [p0,p1] by the medium's own declared CTM (world_from_
-			// medium - the INVERSE of the transform just computed above) and
-			// take the axis-aligned min/max, so a rotated/non-uniformly-
-			// scaled MakeNamedMedium placement still gets a correct (if
-			// conservatively larger) world bound, not just a naive diagonal
-			// scale.
-			double worldMin[3] = {1e300, 1e300, 1e300};
-			double worldMax[3] = {-1e300, -1e300, -1e300};
-			for (int c = 0; c < 8; ++c) {
-				const double cx = (c & 1) ? p1.x : p0.x;
-				const double cy = (c & 2) ? p1.y : p0.y;
-				const double cz = (c & 4) ? p1.z : p0.z;
-				double w[3];
-				transformPoint(md.xform, cx, cy, cz, w);
-				for (int a = 0; a < 3; ++a) {
-					worldMin[a] = std::fmin(worldMin[a], w[a]);
-					worldMax[a] = std::fmax(worldMax[a], w[a]);
-				}
-			}
-			for (int a = 0; a < 3; ++a) { medium.worldMin[a] = worldMin[a]; medium.worldMax[a] = worldMax[a]; }
+			// World-space AABB: the medium-space box [p0,p1] under the
+			// medium's own declared CTM (world_from_medium - the INVERSE of
+			// the transform just computed above).
+			const double p0arr[3] = {p0.x, p0.y, p0.z};
+			const double p1arr[3] = {p1.x, p1.y, p1.z};
+			aabbOfTransformedBox(md.xform, p0arr, p1arr, medium.worldMin, medium.worldMax);
 		}
 
 		// "Le"/"Lescale" (Medium::Le's own comment) - homogeneous only this

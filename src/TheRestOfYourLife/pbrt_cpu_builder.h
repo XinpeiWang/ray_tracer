@@ -9,6 +9,7 @@
 // counterpart, which consume the same FlatScene.
 
 #include <cmath>
+#include <cstdint>    // std::int64_t - see addMediumIfPresent()'s nanovdb voxel-count overflow guard
 #include <iostream>   // std::cerr - see addMediumIfPresent()'s nanovdb read-failure diagnostic, this file's one deliberate exception to its own no-console-output convention
 #include <map>
 #include <memory>
@@ -732,6 +733,20 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		return mask;
 	};
 
+	// addMediumIfPresent()'s own nanovdb branch (below) reads the .nvdb file
+	// from disk and bakes its active region into a dense array EVERY time
+	// it's called - unlike cloud/rgbgrid/uniformgrid (procedural or already
+	// in-memory on `md`), a real file read plus an O(voxel count) bake is
+	// expensive enough to be worth caching. Keyed on mediumIndex (matching
+	// materialCache/alphaMaskCache's own per-index keying just above) rather
+	// than the shape, since the built hittable doesn't depend on which
+	// shape triggered it - see addMediumIfPresent()'s own comment on why
+	// cloud/rgbgrid/uniformgrid/nanovdb all add an independent world-space
+	// hittable rather than wrapping `shape` (only the homogeneous fallback
+	// does that). A scene where N shapes share one MediumInterface
+	// (a normal pbrt pattern) now reads+bakes the file once, not N times.
+	std::map<int, std::shared_ptr<hittable>> nanovdbMediumCache;
+
 	// RGB-to-scalar collapse (Rec.709 weights) for a homogeneous medium's
 	// sigma_a/sigma_s - used both by emitGeometry()'s own per-shape medium
 	// handling below (captured by reference into that lambda) and by the
@@ -910,16 +925,29 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			// sigma_a is always forced to 0 below (pure scattering), same
 			// convention/reason as cloud and rgbgrid above.
 			const Bounds3<double> bounds(md.p0[0], md.p0[1], md.p0[2], md.p1[0], md.p1[1], md.p1[2]);
-			const GridMediumData<double> grid(
+			// Not const: moved into grid_medium_hittable below (its own
+			// constructor comment) rather than deep-copied a second time.
+			GridMediumData<double> grid(
 				md.gridDensity, md.nx, md.ny, md.nz, bounds,
 				/*sa=*/0.0, luminance(md.sigma_s), md.g);
 			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
 			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
 			world.add(std::make_shared<grid_medium_hittable>(
-				grid, color(1,1,1), md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate));
+				std::move(grid), color(1,1,1), md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate));
 			return;
 		}
 		if (md.type == "nanovdb") {
+			// Cache keyed on mediumIndex (nanovdbMediumCache's own comment,
+			// defined above alongside materialCache/alphaMaskCache) - the
+			// file read + bake below is genuinely expensive, and the built
+			// hittable doesn't depend on `shape`, so a second shape sharing
+			// this medium reuses the first shape's already-built hittable
+			// instead of re-reading/re-baking the identical file.
+			const auto cacheIt = nanovdbMediumCache.find(mediumIndex);
+			if (cacheIt != nanovdbMediumCache.end()) {
+				if (cacheIt->second) world.add(cacheIt->second);
+				return;
+			}
 			// Real NanoVDB file support (Medium::nanovdbFilename's own
 			// comment) - bakes the grid's active index region into a DENSE
 			// flat array reusing GridMediumData<double>/grid_medium_
@@ -931,8 +959,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			// worldMax/toMediumMat/toMediumTranslate's local equivalents
 			// itself, from md.nanovdbXform (the raw, unbaked scene CTM),
 			// instead of reading them pre-computed off `md` the way cloud/
-			// rgbgrid/uniformgrid do.
-			if (md.nanovdbFilename.empty()) return;
+			// rgbgrid/uniformgrid do. Wrapped in an immediately-invoked
+			// lambda returning the built hittable (or nullptr) rather than
+			// calling world.add()/return directly, so every exit path also
+			// populates nanovdbMediumCache above.
+			const std::shared_ptr<hittable> nanovdbBuilt = [&]() -> std::shared_ptr<hittable> {
+			if (md.nanovdbFilename.empty()) return nullptr;
 
 			std::vector<double> density;
 			int nx = 0, ny = 0, nz = 0;
@@ -941,15 +973,44 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			try {
 				auto handle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbGridName);
 				const auto* grid = handle.grid<float>();
-				if (grid) {
+				if (!grid) {
+					// The named grid exists in the file but isn't a plain
+					// float build (Vec3f/Mask/Fp4/Fp8/Fp16/FpN/etc - this
+					// loader only reads float grids, disclosed in
+					// docs/PBRT_SUPPORT.md). Unlike a corrupt/unreadable
+					// file, readGrid() doesn't throw for this case, so
+					// without an explicit message here the medium would
+					// silently vanish with nothing in the log to explain
+					// why - the exact gap the catch block below's own
+					// "this file's one deliberate exception" comment claims
+					// is already closed.
+					std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
+							  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
+							  << "\" is not a plain float grid (only float grids are "
+								 "supported); the medium will render as empty (invisible)\n";
+				} else {
 					const auto bbox = grid->indexBBox();
 					const auto bmin = bbox.min();
 					const auto bmax = bbox.max();
-					nx = static_cast<int>(bmax[0] - bmin[0]) + 1;
-					ny = static_cast<int>(bmax[1] - bmin[1]) + 1;
-					nz = static_cast<int>(bmax[2] - bmin[2]) + 1;
-					// Sanity cap, checked BEFORE any multiplication: a real
-					// .nvdb grid's active bounding box is at most a few
+					// bmin/bmax components are int32_t (nanovdb::Coord) read
+					// straight from the file with no min<=max validation -
+					// a corrupt/adversarial file can claim any individually
+					// representable int32 pair, including a degenerate one
+					// (e.g. bmin > bmax). Subtracting in int32 itself (the
+					// prior version of this code did `bmax[0]-bmin[0]` before
+					// ever casting) is signed-overflow UB for such a pair,
+					// which could wrap to a small value that slips past the
+					// kMaxVoxelsPerAxis cap below meant to reject exactly
+					// this input - promoting to int64_t before subtracting
+					// closes that off; the true difference of two int32
+					// values always fits in int64_t, so this is exact, not
+					// just "less wrong".
+					const std::int64_t nx64 = static_cast<std::int64_t>(bmax[0]) - static_cast<std::int64_t>(bmin[0]) + 1;
+					const std::int64_t ny64 = static_cast<std::int64_t>(bmax[1]) - static_cast<std::int64_t>(bmin[1]) + 1;
+					const std::int64_t nz64 = static_cast<std::int64_t>(bmax[2]) - static_cast<std::int64_t>(bmin[2]) + 1;
+					// Sanity cap, checked BEFORE any multiplication and
+					// entirely in int64_t (so it can't itself overflow): a
+					// real .nvdb grid's active bounding box is at most a few
 					// thousand voxels per axis even for large production
 					// assets, but a corrupt or maliciously crafted file
 					// could in principle claim an extreme (still
@@ -963,9 +1024,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 					// (512^3 already safely fits in size_t with enormous
 					// headroom) while still being far more generous than
 					// any real or bundled test asset needs.
-					constexpr int kMaxVoxelsPerAxis = 512;
-					if (nx > 0 && ny > 0 && nz > 0 &&
-						nx <= kMaxVoxelsPerAxis && ny <= kMaxVoxelsPerAxis && nz <= kMaxVoxelsPerAxis) {
+					constexpr std::int64_t kMaxVoxelsPerAxis = 512;
+					if (nx64 > 0 && ny64 > 0 && nz64 > 0 &&
+						nx64 <= kMaxVoxelsPerAxis && ny64 <= kMaxVoxelsPerAxis && nz64 <= kMaxVoxelsPerAxis) {
+						nx = static_cast<int>(nx64);
+						ny = static_cast<int>(ny64);
+						nz = static_cast<int>(nz64);
 						const auto& tree = grid->tree();
 						// A cached accessor, not tree.getValue() directly -
 						// this bake loop's access pattern is spatially
@@ -1003,6 +1067,21 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 						mapCorner(0, 1, 0, cornerY);
 						mapCorner(0, 0, 1, cornerZ);
 						ok = true;
+					} else {
+						// Either a degenerate bbox (bmin > bmax on some axis
+						// - possible for a corrupt/adversarial file even
+						// after the int64_t-safe subtraction above, which
+						// only guarantees the VALUE is exact, not positive)
+						// or a real, oversized active region past the
+						// kMaxVoxelsPerAxis cap. Same "explain every nanovdb
+						// degradation" rationale as the grid<float>() check
+						// above and the catch block below.
+						std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
+								  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
+								  << "\" has an active bounding box of " << nx64 << "x" << ny64
+								  << "x" << nz64 << " voxels, which is degenerate or exceeds the "
+								  << kMaxVoxelsPerAxis << "-voxels-per-axis cap this loader "
+								  << "enforces; the medium will render as empty (invisible)\n";
 					}
 				}
 			} catch (...) {
@@ -1033,7 +1112,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 							 "the medium will render as empty (invisible)\n";
 				ok = false;
 			}
-			if (!ok || density.empty()) return;
+			if (!ok || density.empty()) return nullptr;
 
 			// world = worldFromMedium * (u,v,w) + corner00 - worldFromMedium's
 			// columns are the 3 sampled basis differences, matching
@@ -1046,29 +1125,22 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				worldFromMedium.m[r * 4 + 3] = corner00[r];
 			}
 			pbrt_scene::Matrix4 mediumFromWorld;
-			if (!worldFromMedium.inverseAffine(mediumFromWorld)) return;
+			if (!worldFromMedium.inverseAffine(mediumFromWorld)) return nullptr;
 
-			// World-space AABB: 8 corners of [0,1]^3 through worldFromMedium -
-			// same "transform all 8 corners, take the axis-aligned min/max"
-			// technique pbrt_flatten.h's own p0/p1 block already uses for
-			// every other grid medium type.
-			double worldMin[3] = {1e300, 1e300, 1e300};
-			double worldMax[3] = {-1e300, -1e300, -1e300};
-			for (int c = 0; c < 8; ++c) {
-				const double u = (c & 1) ? 1.0 : 0.0, v = (c & 2) ? 1.0 : 0.0, w = (c & 4) ? 1.0 : 0.0;
-				double wc[3];
-				pbrt_flatten::flatten_detail::transformPoint(worldFromMedium, u, v, w, wc);
-				for (int a = 0; a < 3; ++a) {
-					worldMin[a] = std::fmin(worldMin[a], wc[a]);
-					worldMax[a] = std::fmax(worldMax[a], wc[a]);
-				}
-			}
+			// World-space AABB of the unit cube [0,1]^3 (this medium's own
+			// index-space bounds) under worldFromMedium, and the world<-
+			// >medium matrix split - same shared helpers pbrt_flatten.h's
+			// own cloud/rgbgrid/uniformgrid AABB/transform block uses
+			// (pbrt_flatten::flatten_detail::aabbOfTransformedBox/
+			// splitAffine), rather than each re-deriving the "transform 8
+			// corners, take axis-aligned min/max" and "slice an affine
+			// Matrix4 into mat9+translate3" logic by hand a second time.
+			double worldMin[3], worldMax[3];
+			const double unitLo[3] = {0.0, 0.0, 0.0}, unitHi[3] = {1.0, 1.0, 1.0};
+			pbrt_flatten::flatten_detail::aabbOfTransformedBox(worldFromMedium, unitLo, unitHi, worldMin, worldMax);
 
 			double toMediumMat[9], toMediumTranslate[3];
-			for (int i = 0; i < 3; ++i)
-				for (int j = 0; j < 3; ++j)
-					toMediumMat[i * 3 + j] = mediumFromWorld.m[i * 4 + j];
-			for (int i = 0; i < 3; ++i) toMediumTranslate[i] = mediumFromWorld.m[i * 4 + 3];
+			pbrt_flatten::flatten_detail::splitAffine(mediumFromWorld, toMediumMat, toMediumTranslate);
 
 			// sigma_a is always forced to 0 below (pure scattering), same
 			// convention/reason as uniformgrid above - flatten() already
@@ -1076,15 +1148,22 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			const Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
 			// std::move: `density` is a disposable local (unlike
 			// uniformgrid's own md.gridDensity above, a persistent member
-			// it can't move out of) - for a large baked grid this avoids
-			// doubling peak memory for no reason.
-			const GridMediumData<double> grid(
+			// it can't move out of) - for a large baked grid this avoids a
+			// copy here. Not const: `grid` itself is moved into
+			// grid_medium_hittable below (that constructor's own comment)
+			// rather than deep-copied a second time - for a grid near the
+			// 512-voxel-per-axis cap (up to ~1GB of doubles) that second
+			// copy was a real, avoidable allocation spike.
+			GridMediumData<double> grid(
 				std::move(density), nx, ny, nz, bounds,
 				/*sa=*/0.0, luminance(md.sigma_s), md.g);
 			const point3 world_min(worldMin[0], worldMin[1], worldMin[2]);
 			const point3 world_max(worldMax[0], worldMax[1], worldMax[2]);
-			world.add(std::make_shared<grid_medium_hittable>(
-				grid, color(1,1,1), md.g, world_min, world_max, toMediumMat, toMediumTranslate));
+			return std::make_shared<grid_medium_hittable>(
+				std::move(grid), color(1,1,1), md.g, world_min, world_max, toMediumMat, toMediumTranslate);
+			}();
+			nanovdbMediumCache.emplace(mediumIndex, nanovdbBuilt);
+			if (nanovdbBuilt) world.add(nanovdbBuilt);
 			return;
 		}
 

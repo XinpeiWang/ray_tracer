@@ -28,6 +28,8 @@
 // the same way.
 //==============================================================================================
 
+#include <utility>  // std::move
+
 #include "hittable.h"
 #include "constant_medium.h"  // hg_phase_material
 #include "../shared/sampled_grid.h"
@@ -36,15 +38,22 @@ class grid_medium_hittable : public hittable {
   public:
     // medium: built with bounds = unit cube (matches rgb_grid_medium_
     // hittable's own convention - the world<->medium affine transform is
-    // this hittable's own responsibility). albedo: constant scattering
-    // tint for every scatter event (no per-voxel colour - see file
-    // comment). phase_g/world_to_medium_mat/translate: same conventions as
-    // rgb_grid_medium_hittable's own constructor.
-    grid_medium_hittable(const GridMediumData<double>& medium, const color& albedo,
+    // this hittable's own responsibility). Taken BY VALUE (not const&) and
+    // moved into `grid` below - a GridMediumData<double> can carry a large
+    // dense density array (up to ~1GB for a nanovdb-sourced grid near
+    // pbrt_cpu_builder.h's 512-voxel-per-axis cap), so a caller passing an
+    // rvalue (e.g. std::move(local_grid)) avoids a full second deep copy on
+    // top of whatever copy already got the data into `medium` in the first
+    // place; a caller passing an lvalue still works exactly as before
+    // (one copy, same as this constructor always did). albedo: constant
+    // scattering tint for every scatter event (no per-voxel colour - see
+    // file comment). phase_g/world_to_medium_mat/translate: same
+    // conventions as rgb_grid_medium_hittable's own constructor.
+    grid_medium_hittable(GridMediumData<double> medium, const color& albedo,
                           double phase_g, const point3& world_min, const point3& world_max,
                           const double* world_to_medium_mat,
                           const double* world_to_medium_translate)
-        : grid(medium), albedo(albedo), phase_g(phase_g),
+        : grid(std::move(medium)), albedo(albedo), phase_g(phase_g),
           world_min(world_min), world_max(world_max) {
         for (int i = 0; i < 9; ++i) mat_[i] = world_to_medium_mat[i];
         for (int i = 0; i < 3; ++i) translate_[i] = world_to_medium_translate[i];

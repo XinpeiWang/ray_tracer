@@ -27,6 +27,9 @@ enum RenderErrorCode {
 	ERR_FILE_NOT_FOUND = 3,
 	ERR_FILE_READ_FAILED = 4,
 	ERR_FILE_WRITE_FAILED = 5,
+	// Reserved, not currently returned by any code path (see
+	// docs/ERROR_CODE_REFERENCE.md) - kept rather than removed so the
+	// numeric code stays stable for anything checking the CLI's exit code.
 	ERR_FILE_COPY_FAILED = 6,
 	ERR_DIRECTORY_CREATE_FAILED = 7,
 	ERR_INVALID_DIMENSIONS = 8,
@@ -89,7 +92,7 @@ inline const std::map<int, std::string>& error_message_table() {
 		{ERR_FILE_NOT_FOUND, "Required file not found"},
 		{ERR_FILE_READ_FAILED, "Failed to read file"},
 		{ERR_FILE_WRITE_FAILED, "Failed to write output file"},
-		{ERR_FILE_COPY_FAILED, "Failed to copy output file"},
+		{ERR_FILE_COPY_FAILED, "Failed to copy output file"},  // reserved, unreachable - see the enum's own comment
 		{ERR_DIRECTORY_CREATE_FAILED, "Failed to create output directory"},
 		{ERR_INVALID_DIMENSIONS, "Invalid image dimensions (must be > 0)"},
 		{ERR_INVALID_SAMPLE_COUNT, "Invalid sample count (must be > 0)"},

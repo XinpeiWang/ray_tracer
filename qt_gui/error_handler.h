@@ -89,6 +89,13 @@ inline QString getErrorTitle(int errorCode) {
 		{ERR_FILE_NOT_FOUND, "File Not Found"},
 		{ERR_FILE_READ_FAILED, "File Read Failed"},
 		{ERR_FILE_WRITE_FAILED, "File Write Failed"},
+		// ERR_FILE_COPY_FAILED: kept for numeric-code stability (a script
+		// checking the CLI's exit code shouldn't have code 6 silently
+		// change meaning), but no code path returns it anymore - the
+		// Desktop-write-then-copy step that used to produce it was removed
+		// (see docs/ERROR_CODE_REFERENCE.md's own entry for the full story;
+		// a total CPU write failure now returns ERR_FILE_WRITE_FAILED
+		// above instead).
 		{ERR_FILE_COPY_FAILED, "File Copy Failed"},
 		{ERR_DIRECTORY_CREATE_FAILED, "Directory Creation Failed"},
 		{ERR_INVALID_DIMENSIONS, "Invalid Image Dimensions"},

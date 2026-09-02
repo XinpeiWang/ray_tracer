@@ -168,14 +168,6 @@ class camera {
     // output path ends in ".exr"; false (PPM) is the pre-existing default
     // and behavior for every other extension is unchanged.
     bool   exr_output = false;
-    // Where render() writes the final image. Set by cpu_interface.cpp to the
-    // caller's real requested path before render() runs - matches every
-    // other integrator/backend (BDPT/MLT/SPPM/GPU), which already write
-    // straight to their caller-supplied path with no detour. Empty (the
-    // default) is only a defensive fallback for a caller that predates this
-    // field - see render()'s own comment for what happens then; in normal
-    // use through cpu_interface.cpp this is never empty.
-    std::string output_path;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
     // pbrt-v4 windowed/portal infinite light ("point3 portal[4]") - visible
@@ -234,21 +226,30 @@ class camera {
     int    image_height = 0;         // Rendered image height (set by initialize())
     point3 center;                   // Camera center (set by initialize())
 
-    void render(const hittable& world, const hittable& lights) {
+    // output_path: the caller's real requested output path - matches every
+    // other integrator/backend in this codebase (BDPT/MLT/randomwalk in
+    // cpu_interface_bdpt.cpp, GPU's optix_render_main), which all take
+    // output path as an explicit render-entry parameter rather than a
+    // field the caller must remember to set on the object first; a
+    // parameter also means a caller that forgets it is a compile error,
+    // not a silent CWD-relative image.ppm/image.exr. Empty (the default) is
+    // only a defensive fallback for the same "requested path not writable"
+    // case that used to be render()'s own everyday first choice.
+    //
+    // Returns false if no output file could be written anywhere (requested
+    // path, cwd, and TEMP all failed, or the EXR encoder itself failed) -
+    // the caller (cpu_interface.cpp) turns that into ERR_FILE_WRITE_FAILED
+    // instead of reporting SUCCESS with no file actually on disk.
+    bool render(const hittable& world, const hittable& lights,
+                const std::string& output_path = std::string()) {
         initialize();
 
-        // Write directly to output_path (set by cpu_interface.cpp to the
-        // caller's real requested path) - matches every other integrator/
-        // backend, which already write straight to their caller-supplied
-        // path with no detour. A prior version of this function instead
-        // always wrote to the user's Desktop and relied on cpu_interface.cpp
-        // to guess that location and copy the file out to the real
-        // destination afterward - fragile (the guess could disagree with
-        // this function's own fallback chain) and a needless side effect
-        // (a stray Desktop file on every render). output_path empty is only
-        // a defensive fallback for a caller that predates this field - the
-        // plain filename (exr_output-gated, CWD-relative) matches this
-        // function's own original last-resort fallback.
+        // A prior version of this function instead always wrote to the
+        // user's Desktop and relied on cpu_interface.cpp to guess that
+        // location and copy the file out to the real destination afterward
+        // - fragile (the guess could disagree with this function's own
+        // fallback chain) and a needless side effect (a stray Desktop file
+        // on every render).
         const std::string filename = exr_output ? "image.exr" : "image.ppm";
         std::string out_path = output_path.empty() ? filename : output_path;
 
@@ -289,7 +290,7 @@ class camera {
 
         if (!out) {
             std::cerr << "Failed to open any output file (tried the requested path, cwd, TEMP)" << std::endl;
-            return;
+            return false;
         }
 
         std::clog << "Writing image to: " << out_path << std::endl;
@@ -554,6 +555,7 @@ class camera {
 
         for (auto &th : threads) th.join();
 
+        bool wrote_ok = true;
         if (exr_output) {
             // `out` was only opened to validate out_path is writable (see
             // the comment where it was opened above) - close it unused and
@@ -564,6 +566,7 @@ class camera {
                 std::clog << "\rWrote EXR: " << out_path << "\n";
             } else {
                 std::cerr << "Failed to write EXR '" << out_path << "': " << exr_error << std::endl;
+                wrote_ok = false;
             }
         } else {
             // Write buffered scanlines in order
@@ -574,6 +577,7 @@ class camera {
         }
 
         std::clog << "\rDone.                 \n";
+        return wrote_ok;
     }
 
   private:

@@ -119,6 +119,20 @@ struct BuildStats {
 	// wavefront_sky_light.h), mirroring src/TheRestOfYourLife/sky_light.h
 	// exactly instead of approximating it with a flat wash.
 	float3 backgroundColor = make_float3(0.0f, 0.0f, 0.0f);
+	// pbrt_flatten::Medium::type values this builder has no real branch for
+	// (mediumMaterialIndex()'s own cloud/rgbgrid/uniformgrid if-chain, below)
+	// and so silently fell through to the generic homogeneous-medium path
+	// (MaterialType::Medium) - keyed by type name, counting how many media
+	// of that type fell through. "homogeneous" itself is never recorded
+	// here (that's the real, intended destination for this path, not a
+	// gap). scene_builder.cpp reads this to warn generically about
+	// whichever type(s) actually appeared in THIS scene, rather than
+	// independently re-scanning the scene for one hardcoded type name
+	// (e.g. "nanovdb") that has to be kept in sync by hand with whatever
+	// mediumMaterialIndex() actually handles - see this codebase's own
+	// "altitude" code-review finding on the nanovdb medium round for why
+	// that hand-sync was a real risk for the next unsupported type added.
+	std::map<std::string, int> unsupportedMediumTypeCounts;
 };
 
 namespace detail {
@@ -1406,6 +1420,13 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			mediumCache.emplace(medIdx, idx);
 			return idx;
 		}
+
+		// Every branch above returns for the type it actually builds; any
+		// OTHER type reaching here falls through to the generic
+		// homogeneous-medium path below - "homogeneous" itself is the
+		// intended destination, everything else is a real gap (see
+		// BuildStats::unsupportedMediumTypeCounts's own comment).
+		if (md.type != "homogeneous") ++stats.unsupportedMediumTypeCounts[md.type];
 
 		MaterialData d = {};
 		d.type = MaterialType::Medium;
