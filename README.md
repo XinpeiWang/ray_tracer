@@ -472,12 +472,15 @@ Follow semantic versioning: `vMAJOR.MINOR.PATCH`
 
 ```
 ray_tracer/
-├── src/                          # Ray tracing library (based on "Ray Tracing in One Weekend" series)
-│   ├── InOneWeekend/             # Book 1: Basic ray tracer
-│   ├── TheNextWeek/              # Book 2: BVH, textures, volumes
-│   ├── TheRestOfYourLife/        # Book 3+: path tracing, PDFs, materials, scenes (ACTIVE CODEBASE)
-│   ├── shared/                   # CPU/GPU-shared headers: pbrt-v4-style BxDFs, cameras, lights, sampling
-│   └── external/                 # Third-party headers (stb_image, etc.)
+├── src/                          # Ray tracing library
+│   ├── TheRestOfYourLife/        # The primary CPU path tracer (materials, lights, cameras, scenes,
+│   │                              #   pbrt-v4 builders, BDPT/MLT/SPPM integrators). Named for its origin
+│   │                              #   in the "Ray Tracing in One Weekend" book series - it has long since
+│   │                              #   outgrown that book's own scope; see the directory's own README.
+│   ├── shared/                   # CPU/GPU-shared headers: pbrt-v4-style BxDFs, cameras, lights, sampling,
+│   │                              #   the pbrt scene loader/flattener
+│   ├── data/                     # Precomputed lookup tables (sampling sequences, spectral data)
+│   └── external/                 # Third-party headers (stb_image, NanoVDB, etc.)
 │
 ├── launcher/                     # Unified launcher: the ray_tracer.exe entry point
 │   ├── main.cpp                  # CPU/GPU/SPPM/video dispatch
@@ -489,26 +492,33 @@ ray_tracer/
 │   ├── cpu_interface.cpp/.h      # C API for CPU rendering
 │   └── cpu_renderer.vcxproj      # Visual Studio project
 │
-├── optix_renderer/                # OptiX GPU renderer (static library)
-│   └── optix_renderer.vcxproj    # Visual Studio project (auto-deploys PTX)
+├── optix_renderer/                # OptiX GPU renderer (static library, thin VS-project wrapper -
+│   └── optix_renderer.vcxproj    #   the real GPU implementation lives in gpu/optix/ below)
 │
-├── gpu/optix/                     # OptiX GPU implementation
-│   ├── optix_programs.cu         # Recursive (mega-kernel) OptiX ray tracing kernels
+├── gpu/optix/                     # OptiX GPU implementation - all three GPU backends share this one
+│   │                              #   flat directory (a single OptiX pipeline/PTX build), distinguished
+│   │                              #   by filename prefix rather than subdirectory:
+│   ├── optix_programs.cu         # Recursive (mega-kernel) backend - bare names, no prefix
+│   ├── optix_device_helpers.h    # Recursive backend's shared __device__ helpers (material shading, NEE)
 │   ├── wavefront_*.cu/.h         # Queue-based wavefront path tracer (alt. GPU backend)
 │   ├── sppm_*.cu/.h              # GPU SPPM (photon mapping) backend
-│   ├── optix_renderer.cpp/.h     # OptiX host-side renderer
+│   ├── optix_renderer*.cpp/.h    # OptiX host-side renderer (init/scene/render split across 3 files)
 │   ├── optix_interface.cpp/.h    # C API wrapper
-│   ├── scene_builder.cpp/.h      # Scene conversion to OptiX format (all 78 scenes)
+│   ├── scene_builder.cpp/.h      # Native demo-scene + pbrt-loaded-scene conversion to OptiX format
+│   ├── pbrt_gpu_builder.h        # Flattened pbrt scene -> GPU SceneData (the loader's GPU-side half)
 │   └── optix_types.h             # Shared structures (materials, geometry, launch params)
 │
 ├── qt_gui/                        # Qt 6 graphical interface
 │   ├── RayTracerGUI.pro          # Qt project file
-│   ├── mainwindow.cpp/.h         # Main GUI window
+│   ├── mainwindow.h/.cpp         # Main window class + construction
+│   ├── mainwindow_tabs.cpp       # Tab-page construction (Basic/Advanced/Render/Preview/Video/...)
+│   ├── mainwindow_slots.cpp      # Signal/slot handlers
+│   ├── mainwindow_style.cpp      # Theme/QSS application
 │   └── (Qt build output)         # Builds to RayTracer_Package/
 │
 ├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
 │
-├── tests/                         # Google Test suite (~3,300 tests)
+├── tests/                         # Google Test suite (~3,800 tests)
 │   ├── unit/                     # Unit tests
 │   └── integration/              # Integration tests
 │
@@ -519,7 +529,9 @@ ray_tracer/
 │   ├── deploy_qt_gui.ps1         # Qt dependency deployment
 │   └── setup_env.bat/.ps1        # Environment setup
 │
-├── docs/                          # Feature guides, migration notes, architecture docs
+├── docs/                          # Feature guides, migration notes, architecture docs -
+│   │                              #   see FEATURE_INVENTORY.md for what exists per backend and
+│   │                              #   PBRT_SUPPORT.md for per-directive loader fidelity
 │
 ├── RayTracer_Package/              # Deployment output (single canonical location)
 │   ├── RayTracerGUI.exe          # Qt GUI (built from qt_gui/)
@@ -536,7 +548,7 @@ ray_tracer/
 
 **Key Directories:**
 - **src/TheRestOfYourLife/** and **src/shared/** - Active production codebase (materials, lights, cameras, scenes)
-- **gpu/optix/** - GPU implementation, mirrors the CPU feature set (see [Known Limitations](#-known-limitations) for gaps)
+- **gpu/optix/** - GPU implementation, mirrors most of the CPU feature set (see [Known Limitations](#-known-limitations) for gaps)
 - **models/** - External mesh/texture assets (Git LFS)
 - **RayTracer_Package/** - Single canonical deployment directory (auto-populated by builds)
 - **scripts/** - All build/deploy automation
