@@ -1124,7 +1124,7 @@ __device__ __forceinline__ ProbeHit trace_probe_ray(
 // max distance (t_max). Returns false if the light contributes nothing here
 // (e.g. outside a spot's cone) so the caller can skip the shadow ray.
 // Equal-area sphere->square mapping, used by the goniometric light's image
-// lookup. Direct copy of src/shared/sampling_patched.h's EqualAreaSphereToSquare
+// lookup. Direct copy of src/shared/sampling_extra.h's EqualAreaSphereToSquare
 // (CPU_GPU-tagged there too, but that header pulls in ~1400 lines of mostly
 // CPU-only sampling code not needed here - duplicated locally instead,
 // matching this file's existing pattern of small self-contained device

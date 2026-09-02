@@ -1,6 +1,6 @@
 #pragma once
 // ---------------------------------------------------------------------------
-// sampling_patched.h -- sampling_helpers.h + additional pbrt-v4 sampling
+// sampling_extra.h -- sampling_helpers.h + additional pbrt-v4 sampling
 // utilities (bilinear/piecewise-linear distributions, closed-form inversions,
 // Halton-based function inversion) used by tests/unit/sampling_inversion_tests.cpp
 // and tests/unit/sample_function_tests.cpp.

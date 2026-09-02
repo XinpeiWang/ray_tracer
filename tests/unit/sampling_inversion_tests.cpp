@@ -21,7 +21,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "../../src/shared/sampling_patched.h"
+#include "../../src/shared/sampling_extra.h"
 
 // ---------------------------------------------------------------------------
 // LCG for reproducible random numbers
@@ -40,7 +40,7 @@ struct LCG {
 // ---------------------------------------------------------------------------
 
 // SampleSphericalRectangle returns a world-space point on the rectangle.
-// We use the version from sampling_patched.h (double-precision).
+// We use the version from sampling_extra.h (double-precision).
 static void fwd_rect(double px, double py, double pz,
 					 double sx, double sy, double sz,
 					 double exx, double exy, double exz,

@@ -26,7 +26,7 @@
 #include <vector>
 #include <limits>
 
-#include "../../src/shared/sampling_patched.h"
+#include "../../src/shared/sampling_extra.h"
 
 // ---------------------------------------------------------------------------
 // Helpers

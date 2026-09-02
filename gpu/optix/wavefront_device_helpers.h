@@ -1081,7 +1081,7 @@ __device__ float3 wf_sample_cylinder_light(const CylinderData& cyl, const float3
 
 // Equal-area sphere->square mapping for the goniometric light's image
 // lookup. Duplicated from optix_device_helpers.h's dev_equal_area_sphere_to_square
-// (itself a local copy of src/shared/sampling_patched.h's EqualAreaSphereToSquare -
+// (itself a local copy of src/shared/sampling_extra.h's EqualAreaSphereToSquare -
 // see that comment for why it's not shared via #include).
 __device__ __forceinline__ void wf_equal_area_sphere_to_square(
 	double wx, double wy, double wz, double& u, double& v
