@@ -18,8 +18,11 @@ using namespace render_output;
 // moving.
 //
 // Every literal below was copied from an ACTUAL run of ray_tracer.exe
-// (--cpu, 80x80, 4spp, scene 0), not written from memory, so these tests
-// describe what the renderer really emits.
+// (--cpu, 80x80, 4spp, scene A1), not written from memory, so these tests
+// describe what the renderer really emits. Re-copied after the scene id
+// scheme moved from flat integers to category-letter+number strings - the
+// earlier "scene 0"/"scene_id=0" literals had gone stale, no longer
+// matching real output, silently undermining this file's whole premise.
 // ============================================================================
 
 namespace {
@@ -27,11 +30,11 @@ namespace {
 // Verbatim lines from a real CPU render.
 const char *kRealScanline      = "Scanlines remaining: 70 ";  // note trailing space
 const char *kRealLauncherCpu   = "Launching renderer (CPU mode)...";
-const char *kRealCpuInterface  = "[cpu_interface] Building scene 0 (Cornell Box)...";
+const char *kRealCpuInterface  = "[cpu_interface] Building scene A1 (Cornell Box)...";
 const char *kRealTech          = "[TECH] Integrator     : Iterative path tracer  (pbrt-v4 PathIntegrator::Li style)";
 const char *kRealRenderTime    = "RENDER TIME: 216 ms";
 const char *kRealPngSaved      = "\xE2\x9C\x93 PNG saved: \"C:/tmp/fixture.png\"";  // real line starts with U+2713
-const char *kRealSettings      = "Using command-line settings: width=80 height=80 spp=4 max_depth=4 scene_id=0 camera=(278,278,-800)";
+const char *kRealSettings      = "Using command-line settings: width=80 height=80 spp=4 max_depth=4 scene_id=A1 camera=(278,278,-800)";
 const char *kRealWritingOutput = "Writing output to: C:/tmp/fixture.ppm";
 const char *kRealBanner        = "========================================";
 

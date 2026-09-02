@@ -358,8 +358,11 @@ TEST_F(WavefrontRenderTest, ZeroLightSceneThenLitSceneDoesNotCrash) {
 	ASSERT_TRUE(img2.valid) << "Scene A1 render after scene A6 (zero lights) failed";
 }
 
-// Regression test for task #107: scene 8 (Final Scene) rendered solid black
-// on the wavefront backend because WavefrontPathTracer::initialize() set
+// Regression test for task #107: scene 8 (Final Scene, now id "A9" after the
+// scene-id scheme moved from flat integers to category-letter+number
+// strings - kept as "scene 8" below since that's how the bug was actually
+// found and described at the time) rendered solid black on the wavefront
+// backend because WavefrontPathTracer::initialize() set
 // pipelineCompileOptions_.usesMotionBlur=false while tracing against the
 // SAME IAS/GAS the recursive backend builds via OptiXRenderer::buildScene() -
 // which gets motionOptions.numKeys=2 (see its sceneHasMotion_ detection)
@@ -379,7 +382,7 @@ TEST_F(WavefrontRenderTest, Scene8FinalSceneIsNotBlack) {
 	float bf = wf_black_fraction(img);
 	EXPECT_LT(bf, 0.95f)
 		<< "More than 95% of pixels are black (black fraction=" << bf
-		<< "). Scene 8's motion-blur/traversable mismatch may have regressed.";
+		<< "). Scene A9's (formerly scene 8) motion-blur/traversable mismatch may have regressed.";
 }
 
 // Test 2: Correct output dimensions
