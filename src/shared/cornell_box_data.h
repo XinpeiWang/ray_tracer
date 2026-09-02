@@ -1,6 +1,6 @@
 #pragma once
 // cornell_box_data.h - shared geometry/material data for the classic Cornell
-// box scene (scene 0: 5 walls, 1 ceiling light, a rotated white box, a glass
+// box scene (A1: 5 walls, 1 ceiling light, a rotated white box, a glass
 // sphere), consumed by BOTH:
 //   - src/TheRestOfYourLife/scenes_book.h::build_cornell_box() (CPU)
 //   - gpu/optix/scene_builder.cpp::build_cornell_box() (GPU)

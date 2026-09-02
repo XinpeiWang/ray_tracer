@@ -1471,10 +1471,12 @@ struct FlatScene {
 	// uses real per-shape media, a combination this loader doesn't model
 	// yet): homogeneous only (media[cameraMediumIndex].type must be
 	// "homogeneous" - matching this loader's own "close the homogeneous
-	// case first" precedent for other pbrt-v4 medium features), CPU only
-	// (src/TheRestOfYourLife/camera.h's ray_color() - see camera::
-	// camera_medium's own comment; ray_color_spectral()/BDPT/MLT/SPPM and
-	// both GPU backends don't consume this field at all yet).
+	// case first" precedent for other pbrt-v4 medium features). Consumed on
+	// CPU (src/TheRestOfYourLife/camera.h's ray_color() - see camera::
+	// camera_medium's own comment) and on GPU-recursive
+	// (gpu/optix/scene_builder.cpp resolves it into out_camera_extra,
+	// consumed by optix_raygen.h) - ray_color_spectral()/BDPT/MLT/SPPM on
+	// CPU and the GPU-wavefront backend still don't consume this field.
 	int cameraMediumIndex = -1;
 	InfiniteLight infiniteLight;        // present=false if the scene has none
 	std::vector<PunctualLight> punctualLights;   // LightSource point/spot/distant/goniometric/projection

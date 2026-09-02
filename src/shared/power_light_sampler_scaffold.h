@@ -14,7 +14,12 @@
 // optix_types.h, implements the same Vose-alias-table algorithm natively
 // rather than through this class) - matching this file's existing peers
 // in the same "present but not wired in" category (UniformLightSampler,
-// BVHLightSampler2, ExhaustiveLightSampler), not a gap to close here.
+// ExhaustiveLightSampler), not a gap to close here. BVHLightSampler2
+// (src/shared/bvh_light_sampler2.h) is NOT in this category despite
+// looking similar - it IS instantiated in production
+// (optix_renderer_scene.cpp builds a real tree from it); only its
+// downstream device-side consumption is separately disabled (unrelated
+// crash, tracked elsewhere), not orphaned scaffolding like this file.
 //
 // Mirrors pbrt-v4 PowerLightSampler (src/pbrt/lightsamplers.h/cpp).
 //

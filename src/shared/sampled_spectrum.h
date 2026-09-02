@@ -22,10 +22,11 @@
 //   SWL swl = SWL::SampleVisible(rng_u);
 //   SS  L(0.f);   // zero-initialised
 //
-// NOTE: ToXYZ / ToRGB / y() require CIE XYZ LUTs that live in the full
-//       DenselySampledSpectrum system -- not yet ported. Those methods are
-//       therefore excluded here. They can be added once spectrum data tables
-//       are available.
+// NOTE: unlike pbrt-v4's own SampledSpectrum, ToXYZ/ToRGB/y() are not member
+//       functions here - SampledSpectrumToXYZ() below is the free-function
+//       equivalent, CPU_GPU-tagged so it can run on both host and device; it
+//       takes the CIE X/Y/Z LUTs (cie_data.h on host, __constant__ copies on
+//       device) as explicit parameters rather than reaching for a global.
 //
 // Dependencies:
 //   scalar_math.h            -- Clamp, SafeSqrt, FastExp, Lerp

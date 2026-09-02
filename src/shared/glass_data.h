@@ -12,8 +12,9 @@
 // "glass-SF5" etc.), even though the underlying glass and C array name both
 // really are Schott SF5/SF10/SF11.
 //
-// This codebase's dielectric BSDF (bxdfs_dielectric.h, both GPU backends)
-// takes a single scalar IOR, not a full per-wavelength spectrum - no
+// This codebase's dielectric BSDF (DielectricBxDF, src/shared/bxdfs_simple.h,
+// shared by both GPU backends) takes a single scalar IOR, not a full
+// per-wavelength spectrum - no
 // spectral upsample is needed here, matching conductor_data.h's own
 // RGB-flattened (not full-spectral) precedent for named metal presets. Each
 // value below is the refractive index at the visual "d-line" reference

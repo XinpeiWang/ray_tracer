@@ -7,7 +7,7 @@
 // warp sampler and MeasuredBxDF::f/Sample_f/PDF faithfully - what was
 // missing was actually getting real data INTO a MeasuredBRDFData from a
 // gonioreflectometer-measured .bsdf file on disk, rather than the synthetic
-// tables scenes_advanced.h's "Scene 34" placeholder builds by hand.
+// tables scenes_advanced.h's "B14" placeholder builds by hand.
 //
 // This is CPU-only (std::ifstream, exceptions-free error propagation via a
 // bool return + out-parameter, matching pbrt_load.h's own LoadResult
@@ -45,7 +45,7 @@
 // comment above), so this file's own correctness does not depend on
 // Build() at all. Build() itself is left exactly as-is: fixing it is a
 // separate, separately-verifiable change against scenes_advanced.h's
-// existing "Scene 34" demo and its tests, not part of this loader.
+// existing "B14" demo and its tests, not part of this loader.
 // ---------------------------------------------------------------------------
 
 #include <cmath>
