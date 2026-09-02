@@ -209,6 +209,68 @@ TEST(GridMediumData, ZeroDensityRegion) {
 }
 
 // ============================================================
+// GridMediumData::set_emission/is_emissive/sample_emission (nanovdb
+// "temperaturename" blackbody emission - see pbrt_flatten::Medium::
+// nanovdbTemperatureGridName's own comment)
+// ============================================================
+
+TEST(GridMediumData, NotEmissiveByDefault) {
+	const int N = 2;
+	std::vector<double> density(N * N * N, 0.5);
+	Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	GridMediumData<double> gm(density, N, N, N, bounds, 1.0, 1.0, 0.0);
+	EXPECT_FALSE(gm.is_emissive());
+	double le[3];
+	gm.sample_emission(0.5, 0.5, 0.5, le);
+	EXPECT_DOUBLE_EQ(le[0], 0.0);
+	EXPECT_DOUBLE_EQ(le[1], 0.0);
+	EXPECT_DOUBLE_EQ(le[2], 0.0);
+}
+
+TEST(GridMediumData, SetEmissionMakesItEmissiveAndScalesSample) {
+	const int N = 2;
+	std::vector<double> density(N * N * N, 0.5);
+	Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	GridMediumData<double> gm(density, N, N, N, bounds, 1.0, 1.0, 0.0);
+
+	std::vector<double> le_r(N * N * N, 1.0), le_g(N * N * N, 0.5), le_b(N * N * N, 0.25);
+	gm.set_emission(le_r, le_g, le_b, /*le_scale=*/2.0);
+
+	EXPECT_TRUE(gm.is_emissive());
+	double le[3];
+	gm.sample_emission(0.5, 0.5, 0.5, le);
+	EXPECT_NEAR(le[0], 2.0, 1e-9);
+	EXPECT_NEAR(le[1], 1.0, 1e-9);
+	EXPECT_NEAR(le[2], 0.5, 1e-9);
+}
+
+TEST(GridMediumData, SetEmissionZeroScaleIsNotEmissive) {
+	// pbrt-v4: IsEmissive() requires LeScale > 0, not just a present grid -
+	// matches RGBGridMediumData::is_emissive()'s own convention.
+	const int N = 2;
+	std::vector<double> density(N * N * N, 0.5);
+	Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	GridMediumData<double> gm(density, N, N, N, bounds, 1.0, 1.0, 0.0);
+
+	std::vector<double> le(N * N * N, 1.0);
+	gm.set_emission(le, le, le, /*le_scale=*/0.0);
+	EXPECT_FALSE(gm.is_emissive());
+}
+
+TEST(GridMediumData, SetEmissionAllEmptyClearsIt) {
+	const int N = 2;
+	std::vector<double> density(N * N * N, 0.5);
+	Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	GridMediumData<double> gm(density, N, N, N, bounds, 1.0, 1.0, 0.0);
+
+	std::vector<double> le(N * N * N, 1.0);
+	gm.set_emission(le, le, le, 1.0);
+	ASSERT_TRUE(gm.is_emissive());
+	gm.set_emission({}, {}, {}, 1.0);
+	EXPECT_FALSE(gm.is_emissive());
+}
+
+// ============================================================
 // GridMediumData — majorant grid correctness
 // ============================================================
 

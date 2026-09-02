@@ -415,14 +415,42 @@ struct Medium {
 	// falling back to homogeneous the way an UNRECOGNIZED medium type
 	// would (this type IS recognized here; only GPU can't build it).
 	//
-	// Real pbrt-v4 also supports a "string temperaturename" grid for
-	// real blackbody emission (glowing fire/smoke) - deliberately NOT
-	// implemented this round (a separable feature; this loader's existing
-	// homogeneous/rgbgrid emission paths already establish the pattern to
-	// extend later). A scene naming one gets a warning, not silent
-	// emission loss disguised as "it just didn't glow".
+	// Real pbrt-v4 also supports a "string temperaturename" grid for real
+	// blackbody emission (glowing fire/smoke) - IMPLEMENTED: see
+	// nanovdbTemperatureGridName's own comment below.
 	std::string nanovdbFilename;
 	std::string nanovdbGridName = "density";
+	// "string temperaturename" - a second named grid in the same .nvdb file
+	// (pbrt_cpu_builder.h's nanovdb path reads it the same way as
+	// nanovdbGridName's own density grid), whose per-voxel values are real
+	// Kelvin temperatures converted to RGB emission via
+	// blackbodyKelvinToRGB() (this file, used by resolveEmissionColor() too)
+	// and attached to GridMediumData<double> as a real per-voxel Le_grids
+	// (GridMediumData::set_emission(), mirroring RGBGridMediumData<T>'s own
+	// Le_grids/Le_scale). Empty (the default) means no emission - matches
+	// this loader's existing "absent grid = no glow" convention for
+	// rgbgrid's own "Le" array. A structural note: this loader's volumetric
+	// emission model everywhere (constant_medium.h/rgb_grid_medium_
+	// hittable.h) weights emission by sigma_a/sigma_t at the scatter event,
+	// so a nonzero temperature grid is only physically meaningful alongside
+	// a REAL (nonzero) sigma_a - unlike every OTHER nanovdb medium (which
+	// stays pure-scattering, sigma_a forced to 0; see the warning just below
+	// this struct), pbrt_cpu_builder.h lets sigma_a through unforced
+	// specifically when this field is non-empty.
+	std::string nanovdbTemperatureGridName;
+	// "float Lescale" - scalar multiplier on the per-voxel blackbody-
+	// converted RGB emission, applied at GridMediumData::sample_emission()
+	// time (same "keep the scale un-baked, apply at sample time" convention
+	// as RGBGridMediumData::Le_scale/rgbgrid's own "Lescale" - see
+	// Medium::Le_r's own comment). Has no effect unless
+	// nanovdbTemperatureGridName is non-empty. Note this is NOT the same
+	// knob as pbrt-v4's real NanoVDB "temperaturescale"/"temperaturecutoff"
+	// (which rescale the raw grid value into Kelvin before blackbody
+	// conversion) - this loader assumes the named grid's values are already
+	// real Kelvin temperatures and only lets a scene dim/brighten the
+	// resulting colour afterward; a disclosed scope simplification, not an
+	// oversight.
+	double nanovdbLeScale = 1.0;
 	// The CTM captured at MakeNamedMedium declaration time (pbrt_scene::
 	// MediumDecl::xform), UNBAKED - mirrors this loader's own "object-space-
 	// plus-unbaked-CTM" technique used for disk/cylinder/cone/paraboloid
@@ -1087,25 +1115,37 @@ inline std::string glassElementFromSpectrumName(const std::string &name) {
 // - that scale is applied afterward by the existing `L * scale` multiply
 // every consumer (CPU/GPU builder) already does downstream, unchanged, so
 // this function's return value slots into that exact same pattern.
+// Converts a single Kelvin temperature to sRGB via this codebase's own
+// already-ported pbrt-v4 spectral pipeline - the same normalize-to-~1-nit-
+// photometric-integral technique resolveEmissionColor() (just below) uses
+// for a scene's "blackbody L"/"I" param, factored out here so a per-voxel
+// caller (pbrt_cpu_builder.h's nanovdb "temperaturename" grid bake, the
+// motivating case - see Medium::nanovdbTemperatureGridName's own comment)
+// doesn't need a fake single-number ParamList to reuse it.
+inline pbrt_scene::Vec3 blackbodyKelvinToRGB(float T,
+                                              const RGBColorSpace &colorSpace = RGBColorSpace::sRGB()) {
+	if (T <= 0.0f) return pbrt_scene::Vec3{0.0, 0.0, 0.0};
+	const BlackbodySpectrum bb(T);
+	const XYZ xyz = SpectrumToXYZ(bb);
+	const float photometric = InnerProduct(GetCIE_Y(), bb);
+	const float norm = (photometric > 0.0f) ? (1.0f / photometric) : 0.0f;
+	float r, g, b;
+	colorSpace.FromXYZ(xyz.X * norm, xyz.Y * norm, xyz.Z * norm, r, g, b);
+	// Small negative components are possible near the edge of the sRGB
+	// gamut even for a physically real source - clamp rather than let a
+	// negative emission subtract light, matching every other colour path in
+	// this loader's own convention of clamping at the edges.
+	return pbrt_scene::Vec3{ std::fmax(0.0, static_cast<double>(r)),
+							  std::fmax(0.0, static_cast<double>(g)),
+							  std::fmax(0.0, static_cast<double>(b)) };
+}
+
 inline pbrt_scene::Vec3 resolveEmissionColor(const pbrt_scene::ParamList &params,
                                               const char *name, pbrt_scene::Vec3 def,
                                               const RGBColorSpace &colorSpace = RGBColorSpace::sRGB()) {
 	const pbrt_scene::Param *p = params.find(name);
 	if (p && p->type == "blackbody" && !p->numbers.empty()) {
-		const float T = static_cast<float>(p->numbers[0]);
-		const BlackbodySpectrum bb(T);
-		const XYZ xyz = SpectrumToXYZ(bb);
-		const float photometric = InnerProduct(GetCIE_Y(), bb);
-		const float norm = (photometric > 0.0f) ? (1.0f / photometric) : 0.0f;
-		float r, g, b;
-		colorSpace.FromXYZ(xyz.X * norm, xyz.Y * norm, xyz.Z * norm, r, g, b);
-		// Small negative components are possible near the edge of the sRGB
-		// gamut even for a physically real source - clamp rather than let a
-		// negative emission subtract light, matching every other colour
-		// path in this loader's own convention of clamping at the edges.
-		return pbrt_scene::Vec3{ std::fmax(0.0, static_cast<double>(r)),
-								  std::fmax(0.0, static_cast<double>(g)),
-								  std::fmax(0.0, static_cast<double>(b)) };
+		return blackbodyKelvinToRGB(static_cast<float>(p->numbers[0]), colorSpace);
 	}
 	return params.getVec3(name, def);
 }
@@ -3012,15 +3052,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// "nanovdb"'s own real emission mechanism is a SEPARATE named grid
 		// ("string temperaturename", real blackbody emission from that
 		// grid's values) - not the flat "Le" the check just above already
-		// covers. Not implemented this round (Medium::nanovdbFilename's own
-		// comment) - warn by the param name a scene author would actually
-		// use, since the generic "Le" warning above would stay silent for a
-		// scene that only ever sets "temperaturename".
-		if (isNanoVdb && !md.params.getString("temperaturename", "").empty()) {
-			warn("nanovdb medium '" + md.name + "' has a \"temperaturename\" grid, but "
-				 "blackbody emission from it is not supported in this loader; the medium "
-				 "renders as a non-emissive density field only");
-		}
+		// covers. IMPLEMENTED (see Medium::nanovdbTemperatureGridName's own
+		// comment) - parsed in the isNanoVdb block below, alongside
+		// nanovdbFilename/nanovdbGridName.
 
 		if (isCloud) {
 			// pbrt-v4's real per-param defaults (media.cpp's
@@ -3172,18 +3206,24 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					 "(pbrt-v4 requires one); treated as empty (invisible)");
 			}
 			medium.nanovdbGridName = md.params.getString("gridname", "density");
+			// See Medium::nanovdbTemperatureGridName's own comment.
+			medium.nanovdbTemperatureGridName = md.params.getString("temperaturename", "");
+			medium.nanovdbLeScale = md.params.getFloat("Lescale", 1.0);
 			// See Medium::nanovdbXform's own comment for why this is passed
 			// through unbaked instead of pre-composing world<->medium here
 			// the way every other medium type's p0/p1 block above does.
 			for (int i = 0; i < 16; ++i) medium.nanovdbXform[i] = md.xform.m[i];
-			// pbrt_cpu_builder.h's nanovdb path reuses grid_medium_hittable.h
-			// completely unchanged (Medium::nanovdbFilename's own comment),
-			// which forces sigma_a to 0 (pure scattering) - same convention/
-			// reason as uniformgrid just above.
-			if (isNonzeroRGB(medium.sigma_a)) {
+			// pbrt_cpu_builder.h's nanovdb path forces sigma_a to 0 (pure
+			// scattering) UNLESS a "temperaturename" grid is present (see
+			// Medium::nanovdbTemperatureGridName's own comment - real
+			// blackbody emission needs a real, nonzero sigma_a to be
+			// anything other than a physical no-op) - same convention/
+			// reason as uniformgrid just above for the plain-scattering
+			// case.
+			if (isNonzeroRGB(medium.sigma_a) && medium.nanovdbTemperatureGridName.empty()) {
 				warn("nanovdb medium '" + md.name + "' has a nonzero sigma_a; "
 					 "this loader's nanovdb media only model scattering (sigma_a is "
-					 "forced to 0)");
+					 "forced to 0) unless a \"temperaturename\" grid is also given");
 			}
 		}
 

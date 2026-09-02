@@ -1065,13 +1065,47 @@ TEST(FlattenTest, NanoVdbNonzeroSigmaAWarns) {
 	EXPECT_TRUE(warnedAbout(s, "nanovdb medium 'fog' has a nonzero sigma_a"));
 }
 
-TEST(FlattenTest, NanoVdbTemperatureNameWarnsEmissionNotSupported) {
+TEST(FlattenTest, NanoVdbTemperatureNameIsParsedNoWarning) {
+	// See Medium::nanovdbTemperatureGridName's own comment - real blackbody
+	// emission, no longer a "not supported" warn-and-drop.
 	const FlatScene s = flattenSource(
 		"MakeNamedMedium \"fire\" \"string type\" [ \"nanovdb\" ] "
 		"\"string filename\" [ \"fire.nvdb\" ] "
 		"\"string temperaturename\" [ \"temperature\" ]\n");
 	ASSERT_EQ(s.media.size(), 1u);
-	EXPECT_TRUE(warnedAbout(s, "temperaturename"));
+	EXPECT_EQ(s.media[0].nanovdbTemperatureGridName, "temperature");
+	EXPECT_FALSE(warnedAbout(s, "temperaturename"));
+}
+
+TEST(FlattenTest, NanoVdbNonzeroSigmaAWithTemperatureNameDoesNotWarn) {
+	// A real sigma_a alongside "temperaturename" is exactly what makes
+	// blackbody emission non-zero (see Medium::nanovdbTemperatureGridName's
+	// own comment) - unlike a plain nanovdb medium (no temperature grid),
+	// which still forces sigma_a to 0 and warns.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fire\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"fire.nvdb\" ] "
+		"\"string temperaturename\" [ \"temperature\" ] "
+		"\"rgb sigma_a\" [ 1 1 1 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_FALSE(warnedAbout(s, "sigma_a"));
+}
+
+TEST(FlattenTest, NanoVdbNonzeroSigmaAWithoutTemperatureNameStillWarns) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"clouds.nvdb\" ] "
+		"\"rgb sigma_a\" [ 1 1 1 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_TRUE(warnedAbout(s, "sigma_a"));
+}
+
+TEST(FlattenTest, NanoVdbLescaleDefaultsToOne) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fire\" \"string type\" [ \"nanovdb\" ] "
+		"\"string filename\" [ \"fire.nvdb\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.media[0].nanovdbLeScale, 1.0);
 }
 
 TEST(FlattenTest, NanoVdbCapturesSceneCtmUnbaked) {
@@ -2879,6 +2913,42 @@ TEST(FlattenMaterialTest, BlackbodyEmissionIsConvertedToARealColour) {
 		<< "must not be the pre-fix flat-white {1,1,1} fallback";
 	EXPECT_GT(warm[0] / warm[2], cool[0] / cool[2])
 		<< "a 2500K light must read warmer (redder relative to blue) than a 9000K light";
+}
+
+TEST(FlattenMaterialTest, BlackbodyKelvinToRGBMatchesResolveEmissionColor) {
+	// pbrt_flatten::blackbodyKelvinToRGB() is the factored-out core of
+	// resolveEmissionColor()'s own "blackbody" branch (see that function's
+	// own comment) - used directly by pbrt_cpu_builder.h's per-voxel
+	// nanovdb "temperaturename" bake, which has no ParamList to hand
+	// resolveEmissionColor(). Confirms the two stay in exact agreement for
+	// the same temperature, and that the helper alone reproduces the same
+	// warm-vs-cool physical relationship as the test just above.
+	using pbrt_flatten::blackbodyKelvinToRGB;
+	using pbrt_flatten::resolveEmissionColor;
+
+	const pbrt_scene::Vec3 direct2500 = blackbodyKelvinToRGB(2500.0f);
+	const pbrt_scene::Vec3 direct9000 = blackbodyKelvinToRGB(9000.0f);
+
+	pbrt_scene::ParamList params;
+	pbrt_scene::Param p;
+	p.name = "L"; p.type = "blackbody"; p.numbers = {2500.0};
+	params.items.push_back(p);
+	const pbrt_scene::Vec3 viaResolve =
+		resolveEmissionColor(params, "L", pbrt_scene::Vec3{1, 1, 1});
+
+	EXPECT_DOUBLE_EQ(direct2500.x, viaResolve.x);
+	EXPECT_DOUBLE_EQ(direct2500.y, viaResolve.y);
+	EXPECT_DOUBLE_EQ(direct2500.z, viaResolve.z);
+
+	EXPECT_GT(direct2500.x / direct2500.z, direct9000.x / direct9000.z)
+		<< "2500K must read warmer than 9000K";
+}
+
+TEST(FlattenMaterialTest, BlackbodyKelvinToRGBZeroForNonPositiveTemperature) {
+	const pbrt_scene::Vec3 rgb = pbrt_flatten::blackbodyKelvinToRGB(0.0f);
+	EXPECT_DOUBLE_EQ(rgb.x, 0.0);
+	EXPECT_DOUBLE_EQ(rgb.y, 0.0);
+	EXPECT_DOUBLE_EQ(rgb.z, 0.0);
 }
 
 TEST(FlattenMaterialTest, ColorSpaceDirectiveChangesBlackbodyConversion) {

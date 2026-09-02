@@ -18,14 +18,21 @@
 // candidate is `density * (sigma_a+sigma_s)`, not `sa+ss` directly the way
 // rgb_grid_medium_hittable reads per-channel sa/ss straight from the grid.
 //
-// sigma_a is fixed at 0 (pure scattering) - same convention and same reason
-// as cloud_medium_hittable.h/rgb_grid_medium_hittable.h/constant_medium.h:
-// an absorption event needs to terminate the path with zero contribution,
-// which none of this codebase's medium hittables model (their hit()->bool
-// interface has no way to say "hit, but absorbed" vs "no hit"). A scene
-// that gave a real sigma_a silently loses it - flatten() already warns
-// about this for cloud; pbrt_cpu_builder.h's own uniformgrid branch warns
-// the same way.
+// sigma_a is fixed at 0 (pure scattering) for "uniformgrid" - same
+// convention and same reason as cloud_medium_hittable.h/rgb_grid_medium_
+// hittable.h/constant_medium.h: an absorption event needs to terminate the
+// path with zero contribution, which none of this codebase's medium
+// hittables model (their hit()->bool interface has no way to say "hit, but
+// absorbed" vs "no hit"). A scene that gave a real sigma_a silently loses
+// it - flatten() already warns about this for cloud; pbrt_cpu_builder.h's
+// own uniformgrid branch warns the same way. "nanovdb" is the one
+// exception: pbrt_cpu_builder.h passes a REAL nonzero sigma_a through when
+// the medium has a "temperaturename" grid (see pbrt_flatten::Medium::
+// nanovdbTemperatureGridName's own comment for why blackbody emission needs
+// one) - the same "hit==absorbed-vs-scattered ambiguity" limitation still
+// applies (an "absorption" collision here still scatters, just also emits),
+// but this is what lets that emission be anything other than a physical
+// no-op.
 //==============================================================================================
 
 #include <utility>  // std::move
@@ -81,8 +88,27 @@ class grid_medium_hittable : public hittable {
                 rec.p = r.at(tt);
                 rec.normal     = vec3(1, 0, 0);  // arbitrary (volume has no surface normal)
                 rec.front_face = true;
+
+                // Real per-voxel nanovdb "temperaturename" blackbody
+                // emission (GridMediumData::Le_grids/Le_scale, see that
+                // struct's own comment) - weighted by sigma_a/sigma_t at
+                // this exact scatter point, matching rgb_grid_medium_
+                // hittable.h's own hit() (see that file's comment for the
+                // full physical derivation); `> 1e-9` not `> 0` for the
+                // same trilinear-interpolation-noise-near-zero reason that
+                // file's own guard uses. is_emissive() short-circuits the
+                // extra sample_emission() call entirely for the (default,
+                // far more common) non-emissive case.
+                color emission(0, 0, 0);
+                if (grid.is_emissive() && sigma_t_local > 1e-9) {
+                    double le[3];
+                    grid.sample_emission(px, py, pz, le);
+                    const double frac = sa / sigma_t_local;
+                    emission = color(le[0]*frac, le[1]*frac, le[2]*frac);
+                }
                 rec.mat = make_shared<hg_phase_material>(albedo, phase_g,
-                    [this](const ray& sr, double t_max) { return shadow_transmittance_impl(sr, t_max); });
+                    [this](const ray& sr, double t_max) { return shadow_transmittance_impl(sr, t_max); },
+                    emission);
                 got_hit = true;
                 return true;  // real scatter event: stop marching
             }

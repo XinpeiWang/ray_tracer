@@ -22,7 +22,9 @@
 #include "grid_medium.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -197,6 +199,17 @@ struct GridMediumData {
 	T sigma_s;                      // base scattering coefficient
 	T g;                            // HG asymmetry parameter
 
+	// Optional per-voxel RGB blackbody emission (pbrt-v4's nanovdb "string
+	// temperaturename" grid, converted Kelvin->RGB by the caller - see
+	// pbrt_flatten::Medium::nanovdbTemperatureGridName's own comment) -
+	// mirrors RGBGridMediumData<T>::Le_grids/Le_scale (rgb_grid_medium.h)
+	// exactly, just attached after construction via set_emission() below
+	// rather than through a constructor parameter, since density_grid (and
+	// therefore this grid's own resolution) already exists by the time a
+	// caller knows whether a temperature grid was even present.
+	std::optional<std::array<SampledGrid<T>, 3>> Le_grids;
+	T Le_scale = T(0);
+
 	GridMediumData() : sigma_a(T(0)), sigma_s(T(0)), g(T(0)) {}
 
 	// Construct from a flat density array and world-space bounds.
@@ -237,6 +250,43 @@ struct GridMediumData {
 		T d = sample_point(px, py, pz);
 		sa_out = sigma_a * d;
 		ss_out = sigma_s * d;
+	}
+
+	// Attach optional per-voxel RGB emission (pbrt-v4: RGBGridMedium::
+	// LeGrid/LeScale, see this struct's own Le_grids comment). le_r/g/b are
+	// flat voxel arrays at THIS grid's own resolution (density_grid's own
+	// XSize()/YSize()/ZSize()) or all empty to clear/omit emission -
+	// mirrors RGBGridMediumData<T>::build()'s own "all three channels empty
+	// -> Le_grids stays nullopt" convention.
+	void set_emission(std::vector<T> le_r, std::vector<T> le_g, std::vector<T> le_b, T le_scale) {
+		if (le_r.empty() && le_g.empty() && le_b.empty()) {
+			Le_grids.reset();
+			Le_scale = T(0);
+			return;
+		}
+		const int gx = density_grid.XSize(), gy = density_grid.YSize(), gz = density_grid.ZSize();
+		Le_grids = std::array<SampledGrid<T>, 3>{
+			SampledGrid<T>(std::move(le_r), gx, gy, gz),
+			SampledGrid<T>(std::move(le_g), gx, gy, gz),
+			SampledGrid<T>(std::move(le_b), gx, gy, gz)
+		};
+		Le_scale = le_scale;
+	}
+
+	// pbrt-v4: bool IsEmissive() const { return LeGrid && LeScale > 0; }
+	CPU_GPU bool is_emissive() const {
+		return Le_grids.has_value() && Le_scale > T(0);
+	}
+
+	// Sample emission at a normalized point in [0,1]^3 - grid_medium_
+	// hittable.h's hit() weights this by sigma_a/sigma_t at the scatter
+	// event itself (mirrors rgb_grid_medium_hittable.h's own hit(), see
+	// that file's comment for the full derivation); this call returns the
+	// raw (Le_scale-applied) per-voxel value only.
+	CPU_GPU void sample_emission(T px, T py, T pz, T Le_out[3]) const {
+		for (int c = 0; c < 3; ++c) {
+			Le_out[c] = Le_grids.has_value() ? Le_scale * (*Le_grids)[c].lookup(px, py, pz) : T(0);
+		}
 	}
 
 	// sample_ray / intersect_ray -- same shape as RGBGridMediumData<T>'s own

@@ -967,6 +967,10 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			if (md.nanovdbFilename.empty()) return nullptr;
 
 			std::vector<double> density;
+			// Kelvin per voxel, same layout/resolution as density - filled
+			// below only when md.nanovdbTemperatureGridName is non-empty
+			// (see that field's own comment); empty means "no emission".
+			std::vector<double> temperature;
 			int nx = 0, ny = 0, nz = 0;
 			double corner00[3] = {0,0,0}, cornerX[3] = {0,0,0}, cornerY[3] = {0,0,0}, cornerZ[3] = {0,0,0};
 			bool ok = false;
@@ -1045,6 +1049,49 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 									density[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
 										static_cast<double>(acc.getValue(ijk));
 								}
+
+						// Real blackbody emission (Medium::
+						// nanovdbTemperatureGridName's own comment): a
+						// SECOND named grid in the same file, sampled at the
+						// SAME index-space voxel coordinates as density
+						// above (bmin[]+x/y/z) rather than re-deriving its
+						// own active bbox - a real .nvdb fire/smoke asset's
+						// temperature and density grids share the same
+						// active region in practice, and nanovdb's own
+						// accessor already degrades gracefully (returns the
+						// grid's background value, typically 0) for any
+						// index outside whatever active region the
+						// temperature grid actually has, so a mismatched
+						// bbox just means "no emission at the mismatched
+						// voxels" rather than a crash or garbage read.
+						if (!md.nanovdbTemperatureGridName.empty()) {
+							try {
+								auto tHandle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbTemperatureGridName);
+								const auto* tGrid = tHandle.grid<float>();
+								if (!tGrid) {
+									std::cerr << "[pbrt_cpu_builder] nanovdb medium: temperature grid \""
+											  << md.nanovdbTemperatureGridName << "\" in \"" << md.nanovdbFilename
+											  << "\" is not a plain float grid (only float grids are "
+												 "supported); blackbody emission is dropped\n";
+								} else {
+									auto tAcc = tGrid->getAccessor();
+									temperature.resize(static_cast<std::size_t>(nx) * ny * nz);
+									for (int z = 0; z < nz; ++z)
+										for (int y = 0; y < ny; ++y)
+											for (int x = 0; x < nx; ++x) {
+												const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
+												temperature[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
+													static_cast<double>(tAcc.getValue(ijk));
+											}
+								}
+							} catch (...) {
+								std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read temperature "
+											 "grid \"" << md.nanovdbTemperatureGridName << "\" from \""
+										  << md.nanovdbFilename << "\" (corrupt file or wrong gridname); "
+											 "blackbody emission is dropped\n";
+								temperature.clear();
+							}
+						}
 
 						// Reconstruct the composed (index-[0,1]-space ->
 						// world) affine map by sampling its origin + 3
@@ -1142,9 +1189,14 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			double toMediumMat[9], toMediumTranslate[3];
 			pbrt_flatten::flatten_detail::splitAffine(mediumFromWorld, toMediumMat, toMediumTranslate);
 
-			// sigma_a is always forced to 0 below (pure scattering), same
-			// convention/reason as uniformgrid above - flatten() already
-			// warned if the scene gave a nonzero one.
+			// sigma_a is forced to 0 (pure scattering) UNLESS a real
+			// temperature grid was just baked above - same convention/
+			// reason as uniformgrid above otherwise (flatten() already
+			// warned if the scene gave a nonzero sigma_a with no
+			// "temperaturename"); see Medium::nanovdbTemperatureGridName's
+			// own comment for why blackbody emission needs a real sigma_a
+			// to be anything other than a physical no-op.
+			const bool hasEmission = !temperature.empty();
 			const Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
 			// std::move: `density` is a disposable local (unlike
 			// uniformgrid's own md.gridDensity above, a persistent member
@@ -1156,7 +1208,22 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			// copy was a real, avoidable allocation spike.
 			GridMediumData<double> grid(
 				std::move(density), nx, ny, nz, bounds,
-				/*sa=*/0.0, luminance(md.sigma_s), md.g);
+				/*sa=*/hasEmission ? luminance(md.sigma_a) : 0.0, luminance(md.sigma_s), md.g);
+			if (hasEmission) {
+				// Per-voxel Kelvin -> RGB (pbrt_flatten::blackbodyKelvinToRGB,
+				// the same spectral pipeline resolveEmissionColor() uses for
+				// a scene's flat "blackbody L"/"I"), de-interleaved into
+				// three flat channel arrays matching GridMediumData::
+				// set_emission()'s own expected shape (mirrors
+				// RGBGridMediumData<T>::build()'s le_r/le_g/le_b split).
+				std::vector<double> le_r(temperature.size()), le_g(temperature.size()), le_b(temperature.size());
+				for (std::size_t i = 0; i < temperature.size(); ++i) {
+					const pbrt_scene::Vec3 rgb =
+						pbrt_flatten::blackbodyKelvinToRGB(static_cast<float>(temperature[i]));
+					le_r[i] = rgb.x; le_g[i] = rgb.y; le_b[i] = rgb.z;
+				}
+				grid.set_emission(std::move(le_r), std::move(le_g), std::move(le_b), md.nanovdbLeScale);
+			}
 			const point3 world_min(worldMin[0], worldMin[1], worldMin[2]);
 			const point3 world_max(worldMax[0], worldMax[1], worldMax[2]);
 			return std::make_shared<grid_medium_hittable>(
