@@ -1,5 +1,16 @@
 #pragma once
 
+// NOTE: this whole strategy-pattern abstraction (PathTracingStrategy,
+// createPathTracingStrategy() below) is dead code - never called anywhere
+// in the codebase. OptiXRenderer implements the recursive strategy inline
+// instead, and real wavefront-vs-recursive selection is a runtime flag
+// (OptiXRenderer::enableWavefront()/useWavefront_, see
+// optix_renderer_render.cpp), not this class hierarchy - see
+// recursive_path_tracer.h's own note on the same dead-code status. Both
+// the wavefront path tracer (wavefront_path_tracer.cpp, wavefront_kernels.cu,
+// etc.) and GPU SPPM are fully implemented elsewhere; this file's "not yet
+// implemented"/"(future)" phrasing describes an old, superseded design.
+
 #include "optix_types.h"
 #include <optix.h>
 #include <vector>
@@ -11,8 +22,9 @@ namespace optix_renderer {
  * @brief Rendering mode selection
  */
 enum class PathTracingMode {
-	RECURSIVE,   // Traditional recursive path tracing (current implementation)
-	WAVEFRONT    // Queue-based wavefront path tracing (future)
+	RECURSIVE,   // Traditional recursive path tracing
+	WAVEFRONT    // Queue-based wavefront path tracing (real elsewhere - see
+	             // this file's own top-of-file dead-code note)
 };
 
 /**

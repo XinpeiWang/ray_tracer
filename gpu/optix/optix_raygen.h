@@ -190,10 +190,14 @@ extern "C" __global__ void __raygen__rg() {
 			payload.depth = depth;
 			payload.scattered = false;
 
-			// Trace ray - pack 16 payload registers (13 original + p13-p15,
-			// added for MaterialType::Subsurface's explicit next-ray-origin
-			// override - see optix_types.h's RAY_TYPE_PROBE comment and
-			// shade_material()'s out_bssrdf_exit/out_bssrdf_exit_pos).
+			// Trace ray - pack 25 payload registers total (p0-p24; grown
+			// from an original 13 over several additions: p13-p15 for
+			// MaterialType::Subsurface's explicit next-ray-origin override
+			// - see optix_types.h's RAY_TYPE_PROBE comment and
+			// shade_material()'s out_bssrdf_exit/out_bssrdf_exit_pos - then
+			// p16-p21 for denoiser AOVs, p22 for eta, p23 for regularize,
+			// p24 for rgbChannel; see numPayloadValues in
+			// optix_renderer_init.cpp for the authoritative current count).
 			unsigned int p0 = __float_as_uint(payload.attenuation.x);
 			unsigned int p1 = __float_as_uint(payload.attenuation.y);
 			unsigned int p2 = __float_as_uint(payload.attenuation.z);
@@ -269,7 +273,7 @@ extern "C" __global__ void __raygen__rg() {
 				p16, p17, p18, p19, p20, p21, p22, p23, p24
 			);
 
-			// Unpack payload (16 registers)
+			// Unpack payload (25 registers, p0-p24 - see the trace call above)
 			payload.attenuation.x = __uint_as_float(p0);
 			payload.attenuation.y = __uint_as_float(p1);
 			payload.attenuation.z = __uint_as_float(p2);

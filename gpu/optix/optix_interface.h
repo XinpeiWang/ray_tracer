@@ -1,5 +1,6 @@
 // OptiX renderer C API
-// Matches the signature of gpu/cuda/gpu_interface.h for drop-in replacement
+// Matches the signature of cpu_renderer/cpu_interface.h so the launcher can
+// call either backend through the same shape of call.
 
 #pragma once
 

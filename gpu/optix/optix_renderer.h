@@ -173,10 +173,11 @@ public:
 	/// @details When enabled, render() runs the built-in OptiX denoiser model
 	///          on the accumulated framebuffer, on-device, right after the
 	///          main path-tracing launch completes and before the result is
-	///          copied back to host memory. Recursive backend only (see
-	///          render()'s own call site) - wavefront mode ignores this flag,
-	///          same scope-reduction pattern as enableWavefront() being
-	///          recursive-only in reverse. Guided by albedo + world-space
+	///          copied back to host memory. Shared by both backends -
+	///          render() forwards this flag to the wavefront tracer too
+	///          (optix_renderer_render.cpp sets wavefrontTracer_->
+	///          setDenoiseEnabled(denoiseEnabled_)), which has its own full
+	///          AOV/denoiser pipeline. Guided by albedo + world-space
 	///          normal AOV buffers: render() allocates d_albedo/d_normal (via
 	///          ensureAovBuffers(), persisted across calls like the denoiser's
 	///          own state) and every closest-hit/miss program packs them into

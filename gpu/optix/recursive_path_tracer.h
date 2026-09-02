@@ -36,7 +36,8 @@ public:
 	// NOTE: this class is currently dead code (createPathTracingStrategy(),
 	// the only place that would instantiate it, is itself never called -
 	// OptiXRenderer implements the recursive strategy inline instead, see
-	// optix_renderer.cpp). Bilinear patches are accepted here for interface
+	// optix_renderer_init.cpp/_scene.cpp/_render.cpp). Bilinear patches are
+	// accepted here for interface
 	// compatibility but not wired to any program groups/GAS of this class's
 	// own - matches this class's existing scope (it was already a stale
 	// duplicate of OptiXRenderer's logic before this parameter existed).

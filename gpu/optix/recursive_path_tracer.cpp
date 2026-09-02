@@ -30,7 +30,7 @@ bool RecursivePathTracer::initialize(
 	// layer AOVs, p16-p21) + 1 (eta, p22, pbrt-v4 etaScale RR correction) +
 	// 1 (anyNonSpecularBounces, p23, Integrator "bool regularize") + 1
 	// (rgbChannel, p24, dispersive-dielectric wavelength tracking) -
-	// see optix_renderer.cpp's own numPayloadValues for the authoritative
+	// see optix_renderer_init.cpp's own numPayloadValues for the authoritative
 	// count/breakdown; kept in sync here since this class shares the same
 	// optix_raygen.h/closest-hit headers, which now unconditionally pack
 	// all 25 registers regardless of which pipeline compiled them).
@@ -299,7 +299,7 @@ bool RecursivePathTracer::render(
 	// Setup launch params. Zero-initialised: LaunchParams gained
 	// albedoBuffer/normalBuffer pointer fields this project never assigns
 	// here (this class doesn't support denoiser AOVs) - `= {}` keeps them
-	// null instead of stack garbage, matching optix_renderer.cpp's own
+	// null instead of stack garbage, matching optix_renderer_render.cpp's own
 	// render() (the pattern this class was already meant to mirror).
 	LaunchParams params = {};
 	params.framebuffer = reinterpret_cast<float3*>(d_framebuffer);

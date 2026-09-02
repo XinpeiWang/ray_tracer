@@ -1,3 +1,9 @@
+// This whole file is dead code - see path_tracing_strategy.h's own
+// top-of-file note. createPathTracingStrategy() below is never called; the
+// "Wavefront not implemented" fallback it performs does NOT describe real
+// --wavefront behavior (that's OptiXRenderer::enableWavefront(), a
+// different, real code path in optix_renderer_render.cpp).
+
 #include "path_tracing_strategy.h"
 #include "recursive_path_tracer.h"
 #include "wavefront_path_tracer.h"

@@ -1,7 +1,8 @@
 // gpu_portal_light_shared.h -- Device-side real windowed-portal infinite
 // light math (LightSource "infinite" with a "portal[4]" quad), shared
-// between the GPU-recursive backend (optix_portal_light.h) and the GPU-
-// wavefront backend (wavefront_portal_light.h). Same split rationale as
+// between the GPU-recursive backend (optix_sky_light.h, which also holds
+// the recursive backend's sky-light code) and the GPU-wavefront backend
+// (wavefront_sky_light.h, likewise). Same split rationale as
 // gpu_sky_light_shared.h (see that file's own header comment): every
 // function here takes its data as plain explicit parameters, no OptiX
 // intrinsic and no `params`/`wf_params` global read, so both backends

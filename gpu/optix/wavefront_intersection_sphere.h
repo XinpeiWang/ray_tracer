@@ -11,7 +11,7 @@
 // AABB primitives need *some* intersection program, and wavefront_programs.cu
 // never defined its own) - but OptiX rejects combining intersection/
 // closest-hit programs from two separately-compiled modules with different
-// pipelineCompileOptions.numPayloadValues (12 registers for the recursive
+// pipelineCompileOptions.numPayloadValues (25 registers for the recursive
 // path's PathTracingPayload vs 2 here) into the same hit group: "could not
 // be resolved to a common payloadType". Compiling our own copies here, under
 // this module's own pipeline options, sidesteps the mismatch entirely -

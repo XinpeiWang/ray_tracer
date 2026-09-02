@@ -37,12 +37,12 @@
 // - no new module/pipeline/build-system plumbing needed, matching how the
 // existing shadow pass already reuses wfModule_ with its own SBT.
 
-// PCG RNG - duplicated from wavefront_kernels.cu's wf_pcg()/wf_rand() (same
-// algorithm, same name is safe: wavefront_kernels.cu and this file/
-// wavefront_programs.cu are compiled as completely separate translation
-// units/OptiX modules, so there is no link-time collision - matches this
-// file's own established duplicate-not-share convention for every other
-// device helper).
+// PCG RNG - duplicated from wavefront_device_helpers.h's wf_pcg()/wf_rand()
+// (same algorithm, same name is safe: this file/wavefront_programs.cu are
+// compiled as a completely separate translation unit/OptiX module from
+// wherever wavefront_device_helpers.h gets included, so there is no
+// link-time collision - matches this file's own established
+// duplicate-not-share convention for every other device helper).
 __device__ __forceinline__ unsigned int wf_pcg(unsigned int seed) {
 	unsigned int state = seed * 747796405u + 2891336453u;
 	unsigned int word  = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;

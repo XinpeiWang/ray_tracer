@@ -1,5 +1,5 @@
 // OptiX Interface Implementation
-// C API wrapper matching gpu/cuda/gpu_interface.h signature
+// C API wrapper matching cpu_renderer/cpu_interface.h's signature
 
 #include "optix_interface.h"
 #include "optix_renderer.h"
@@ -501,7 +501,8 @@ static std::string sppm_gpu_unsupported_reason(const SceneData& scene, const Gpu
 		       "intersection/hit-group support for (spheres and quads only)";
 	}
 	if (!scene.disks.empty() || !scene.cylinders.empty()) {
-		return "uses disk/cylinder geometry (Phase 4b, recursive backend only) -- GPU "
+		return "uses disk/cylinder geometry (supported on both the recursive and "
+		       "wavefront path tracing backends, but not GPU SPPM) -- GPU "
 		       "SPPM's OptiX programs have no intersection/hit-group support for either "
 		       "shape (spheres and quads only)";
 	}
