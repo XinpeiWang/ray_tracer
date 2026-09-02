@@ -63,7 +63,7 @@
 // ============================================================================
 // ExpandingTabBar / ExpandingTabWidget
 // ============================================================================
-// Makes the main tab strip's 7 tabs fill the window's full width instead of
+// Makes the main tab strip's 8 tabs fill the window's full width instead of
 // sitting left-aligned with blank space to the right of "Diagnostics" once
 // the window is wider than the tabs' own natural size.
 //
@@ -375,7 +375,7 @@ private:
 	QString integratorSettingsSummary(const IntegratorOptions &opts);
 	// Combines integratorDescription() with the two settings summaries
 	// above into the Preview tab's technique-box HTML (see
-	// updatePreviewSidebarForActiveTab(), mainwindow_tabs.cpp) - computed
+	// updatePreviewSidebarForActiveTab(), mainwindow_tabs_render.cpp) - computed
 	// once per tab at creation time (see PreviewTechniqueInfo below), not
 	// live, since a completed render's own settings never change.
 	QString renderTechniqueHtml(const IntegratorOptions &integratorOptions, const AdvancedRenderFlags &advancedFlags);
@@ -502,7 +502,7 @@ private:
 	// m_statsCheck are default-path-tracer-only (inert, not rejected,
 	// under any alternate integrator). Enabled state kept in sync with
 	// m_renderModeCombo/m_gpuBackendCombo/m_integratorCombo by
-	// updateRenderOptionsEnabled() (mainwindow_tabs.cpp), the single
+	// updateRenderOptionsEnabled() (mainwindow_tabs_render.cpp), the single
 	// source of truth for this cross-product - called from all four
 	// controls' own change handlers.
 	QComboBox *m_samplerCombo;          // --sampler (CPU default path tracer only)

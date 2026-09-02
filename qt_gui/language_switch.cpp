@@ -23,7 +23,9 @@
 // the constructor, with no Designer-generated retranslateUi() split between
 // "build the widget tree" and "set its text" that would let a second pass
 // safely re-run just the text-setting half. Retrofitting that split across
-// ~1,750 lines of mainwindow_tabs.cpp for true live switching is possible
+// the ~2,400 combined lines of mainwindow_tabs.cpp/mainwindow_tabs_render.cpp/
+// mainwindow_tabs_output.cpp (all still build-once create*Tab() functions,
+// just split across three files now) for true live switching is possible
 // but a much larger, separate undertaking.
 //
 // What changed: the app now does the restart itself. switchLanguage()

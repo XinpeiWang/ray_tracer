@@ -266,7 +266,7 @@ void MainWindow::clearLog() {
 
 // ----------------------------------------------------------------------------
 // Diagnostics commands - shared by the Diagnostics tab's buttons (see
-// createDiagnosticsTab(), mainwindow_tabs.cpp). Same shape as the Log
+// createDiagnosticsTab(), mainwindow_tabs_output.cpp). Same shape as the Log
 // commands above, minus the history-replay concern (a diagnostics report
 // isn't re-themed the way the log's classified lines are).
 // ----------------------------------------------------------------------------

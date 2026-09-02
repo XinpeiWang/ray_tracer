@@ -722,7 +722,7 @@ void MainWindow::setupUI() {
 	QWidget *centralWidget = new QWidget(this);
 	QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
 
-	// Create tab widget - ExpandingTabWidget (mainwindow.h) stretches the 7
+	// Create tab widget - ExpandingTabWidget (mainwindow.h) stretches the 8
 	// tabs to fill the bar's full width when their natural content width
 	// leaves room, rather than left-aligning them with blank space to the
 	// right of "Diagnostics". See that class's own comment for why a plain

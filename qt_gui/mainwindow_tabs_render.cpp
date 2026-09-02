@@ -1,11 +1,15 @@
 // Render Options tab, Preview tab (and its sub-tab management), and Video
 // Settings tab - split out of mainwindow_tabs.cpp to keep that file to the
 // Basic/Advanced settings tabs and their scene-list helpers. Video Settings
-// lives here too even though it sits after Progress/Log/Diagnostics in the
-// tab order and in the original file's function order - it's grouped with
-// Render Options/Preview by KIND (render-configuration tabs) rather than by
-// its old physical position; see mainwindow_tabs_output.cpp for the
-// Progress/Log/Diagnostics tabs that sit between them in the UI.
+// lives here too even though it sat between createRenderOptionsTab() and
+// createPreviewTab() in the original file's function order - between
+// Render Options and Preview, not after Progress/Log/Diagnostics as an
+// earlier version of this comment incorrectly claimed (verified against
+// mainwindow.cpp's actual setupUI() call order: Basic, Advanced, Render
+// Options, Video Settings, Preview, Progress, Log, Diagnostics) - it's
+// grouped with Render Options/Preview here by KIND (render-configuration
+// tabs), which happens to match its original physical position too; see
+// mainwindow_tabs_output.cpp for the Progress/Log/Diagnostics tabs.
 #include "mainwindow.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"

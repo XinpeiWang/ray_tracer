@@ -18,9 +18,10 @@
 // Recent Renders persistence
 // ============================================================================
 // Lets the Preview tab's empty-state list (createPreviewTab(),
-// mainwindow_tabs.cpp) reopen a past render after an app restart - closing
-// a preview sub-tab never deletes its underlying file (closePreviewSubTab(),
-// mainwindow_tabs.cpp), so the only thing missing across sessions was
+// mainwindow_tabs_render.cpp) reopen a past render after an app restart -
+// closing a preview sub-tab never deletes its underlying file
+// (closePreviewSubTab(), mainwindow_tabs_render.cpp), so the only thing
+// missing across sessions was
 // knowing the file existed at all. Same QSettings(settings_keys::kOrg,
 // settings_keys::kApp) location as the theme/font/language prefs
 // (theme_switch.cpp etc.), but its own array group
@@ -314,9 +315,9 @@ QString MainWindow::describeRecentRenderEntry(const RecentRenderEntry &entry) co
 }
 
 // Rebuilds m_recentRendersList from a fresh loadRecentRenders() call - see
-// createPreviewTab() (mainwindow_tabs.cpp), which calls this once to build
-// the list initially, and the saveRecentRender() call sites
-// (mainwindow_slots.cpp) / closePreviewSubTab() (mainwindow_tabs.cpp),
+// createPreviewTab() (mainwindow_tabs_render.cpp), which calls this once to
+// build the list initially, and the saveRecentRender() call sites
+// (mainwindow_slots.cpp) / closePreviewSubTab() (mainwindow_tabs_render.cpp),
 // which call it again so a render completed - or a tab closed - earlier
 // this session shows up without an app restart. Text-only rows, no
 // thumbnail decode - the real image only loads on demand, on double-click,

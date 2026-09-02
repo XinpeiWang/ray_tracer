@@ -12,15 +12,16 @@
 //
 // Camera System:
 //   - Camera position (lookfrom) is configurable via command-line args
-//   - Camera target (lookat) is fixed at Cornell box center: (278, 278, 278)
-//   - Default camera position: (278, 278, -800) - outside front of box
+//   - Camera target (lookat)/up/field of view come from the selected
+//     scene's own CameraConfig (scene_registry.h) unless overridden
+//   - Default camera position for the Cornell Box scene: (278, 278, -800)
 //
 // Command-line format:
-//   ray_tracer.exe [--gpu|--cpu] [--output path] [width] [spp] [depth] [cam_x] [cam_y] [cam_z]
+//   ray_tracer.exe [--gpu|--cpu] [--output path] width spp depth scene_id [cam_x cam_y cam_z]
 //
 // Example:
-//   ray_tracer.exe --gpu 800 100 50 278 500 200
-//   (GPU mode, 800x800 pixels, 100 samples/pixel, 50 ray depth, camera at (278,500,200))
+//   ray_tracer.exe --gpu --output out.png 800 100 50 A1 278 500 200
+//   (GPU mode, 800x800 pixels, 100 samples/pixel, 50 ray depth, Cornell Box, camera at (278,500,200))
 // ============================================================================
 
 #include <cstdlib>

@@ -1258,7 +1258,7 @@ QString MainWindow::integratorSettingsSummary(const IntegratorOptions &opts) {
 }
 
 // The Preview tab's technique-box HTML (see updatePreviewSidebarForActiveTab(),
-// mainwindow_tabs.cpp) - the integrator's own description, plus whichever
+// mainwindow_tabs_render.cpp) - the integrator's own description, plus whichever
 // settings were actually customized for this specific render. Computed
 // once per tab at creation time (see PreviewTechniqueInfo, mainwindow.h),
 // not live, since a completed render's settings never change afterward.

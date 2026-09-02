@@ -753,7 +753,7 @@ public:
 
 	// Removes the tab/page pair at index without deleting the page - same
 	// ownership contract as QTabWidget::removeTab(), so closePreviewSubTab()
-	// (mainwindow_tabs.cpp) still does its own deleteLater() afterward.
+	// (mainwindow_tabs_render.cpp) still does its own deleteLater() afterward.
 	// The tab bar's own removeTab() can auto-select and emit currentChanged
 	// before the stack has caught up (index i+1's old page still sitting at
 	// index i) - blocked here and re-emitted once both sides agree.
