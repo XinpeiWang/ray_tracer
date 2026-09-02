@@ -114,7 +114,7 @@ numbered sections below for the narrative detail behind any row.
 | Acceleration | CPU SAH/HLBVH BVH (`bvh_aggregate.h`) | Y | N/A |
 | Acceleration | GPU hardware BVH (OptiX `OptixTraversableHandle`) | Y | N/A |
 | Acceleration | Light BVH on GPU | N | Falls back to the flat `PowerLightSampler` (see Light sampling row above) — permanent, not degraded |
-| Acceleration | `kd_tree.h` | Present, primary consumer unconfirmed from a source scan | N/A — worth a follow-up to confirm live vs orphaned |
+| Acceleration | CPU SAH kd-tree (`kd_tree.h`) | Y | N/A — wired via `kd_tree_hittable.h`; `Accelerator "kdtree"` now real, see §10 |
 | Tooling | Interactive/real-time progressive preview | N | No fallback — Qt GUI only launches the CLI as a subprocess and parses output; pbrt-v4's own reference implementation also lacks this, so it tracks upstream |
 | Tooling | Tone mapping (ACES / Reinhard / none) | Y | N/A |
 | Tooling | Video generation (`--video`) | Y | N/A |
@@ -615,13 +615,30 @@ splitmethod with object motion blur (`Sphere::center1 != center`) falls
 back to `"sah"`/`bvh_node` instead (warned, not silently frozen at time 0).
 GPU uses OptiX's own hardware-accelerated BVH (`OptixTraversableHandle`)
 for primitive traversal — not this project's own BVH code, and has no
-`Accelerator`-directive concept at all. Light-sampling BVH exists
+`Accelerator`-directive concept at all (an explicit `Accelerator "kdtree"`
+is silently ignored on GPU the same way a non-`"sah"` splitmethod already
+is — always OptiX's own hardware BVH regardless). Light-sampling BVH exists
 (`bvh_light_sampler.h`) but CPU-only (see §4's gap).
 
-A `kd_tree.h` also exists in `src/shared/`; not confirmed as load-bearing
-in the primary render path from a source scan alone — worth a targeted
-follow-up if it turns out to be dead code too, matching the light-sampler
-orphans in §11.
+`Accelerator "kdtree"` — pbrt-v4's real second accelerator type (verified
+against pbrt-v4's own `cpu/aggregates.cpp`: `CreateAccelerator` genuinely
+dispatches `"kdtree"` to a complete `KdTreeAggregate`, not a legacy/stub
+option) — is now real on CPU too, not just parsed-and-discarded:
+`src/shared/kd_tree.h`'s own `KdTree<T,Prim>` (a faithful, previously-
+unwired port of pbrt-v4's `KdTreeAggregate`, §7.3) is wired via
+`kd_tree_hittable.h`'s adapter, mirroring `bvh_aggregate_hittable.h`'s own
+design (including its identical stochastic-hittable single-query-cache
+fix — see that file's own top comment) almost exactly. Same disclosed
+limitation as the non-`"sah"` BVH splitmethod case: no ray-time channel, so
+`"kdtree"` combined with object motion blur falls back to `"bvh"`/`"sah"`
+instead (warned, not silently frozen at time 0) — `FlatScene::
+acceleratorType`'s own comment covers the resolution rule for both cases
+together. Fixing this also surfaced (and fixed) a real, independent
+pre-existing gap: `emitter_discovery.h`'s BDPT/MLT/SPPM emitter scan never
+learned to unwrap `bvh_aggregate_hittable` either, so an area light inside
+a non-default BVH splitmethod build was already silently invisible to
+those integrators before this round — both that gap and the identical one
+for the new `kd_tree_hittable` are now fixed together.
 
 ## 11. Present But Not Wired In (orphaned scaffolding)
 
@@ -737,8 +754,14 @@ relative to it specifically).
    parameterized test renders an identical scattered-sphere scene through
    all 4 split methods and asserts pixel-identical hit results), since
    split method only changes build strategy/tree shape, never rendering
-   behavior. GPU is untouched (no `Accelerator` concept there - OptiX
-   builds its own hardware BVH regardless).
+   behavior. `Accelerator "kdtree"` — pbrt-v4's own real second accelerator
+   type, previously rejected outright with a warn-and-fall-back-to-`"bvh"` —
+   is now real too, via a new `kd_tree_hittable.h` wrapper around the
+   previously-orphaned `src/shared/kd_tree.h` (see §10 for the full story,
+   including a real pre-existing BDPT/MLT/SPPM emitter-discovery bug this
+   surfaced and fixed along the way). GPU is untouched (no `Accelerator`
+   concept there - OptiX builds its own hardware BVH regardless, for
+   `"kdtree"` exactly as it already did for a non-`"sah"` splitmethod).
 7. **BDPT/MLT/debug integrators CPU-only** — arguably tracks pbrt-v4's own
    GPU scope (path/volpath only), so more a parity-with-upstream item than
    a true gap.

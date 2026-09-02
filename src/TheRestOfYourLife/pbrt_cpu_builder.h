@@ -24,6 +24,7 @@
 
 #include "bvh.h"
 #include "bvh_aggregate_hittable.h"
+#include "kd_tree_hittable.h"
 #include "constant_medium.h"
 #include "curve_shape_hittable.h"
 #include "disk_cylinder_hittable.h"
@@ -1564,17 +1565,23 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	}
 
 	// A flat list would make every ray test every primitive; these scenes are
-	// the reason the BVH exists. scene.acceleratorSplitMethod is already
-	// fully resolved by flatten() (falls back to "sah" for anything
-	// unrecognized, or combined with object motion blur - see that field's
-	// own comment) - bvh_node (real SAH, this project's pre-existing
-	// default) for "sah"; bvh_aggregate_hittable.h's BvhTree<double,...>
-	// wrapper for an explicit "middle"/"equal"/"hlbvh" only. Both produce
-	// the same converged image over the same primitives - this only changes
-	// build strategy/tree shape, not rendering behavior.
+	// the reason the BVH/kd-tree exists. scene.acceleratorType/
+	// acceleratorSplitMethod are already fully resolved by flatten() (falls
+	// back to "bvh"/"sah" for anything unrecognized, or combined with
+	// object motion blur - see FlatScene::acceleratorType's own comment) -
+	// kd_tree_hittable.h's KdTree<double,...> wrapper for "kdtree"; for
+	// "bvh", bvh_node (real SAH, this project's pre-existing default) for
+	// "sah", bvh_aggregate_hittable.h's BvhTree<double,...> wrapper for an
+	// explicit "middle"/"equal"/"hlbvh". All produce the same converged
+	// image over the same primitives - this only changes build strategy/
+	// acceleration structure, not rendering behavior.
 	if (!out.world->objects.empty()) {
 		auto accelerated = std::make_shared<hittable_list>();
-		if (scene.acceleratorSplitMethod == "middle") {
+		if (scene.acceleratorType == "kdtree") {
+			accelerated->add(std::make_shared<kd_tree_hittable>(
+				*out.world, scene.acceleratorKdIntersectCost, scene.acceleratorKdTraversalCost,
+				scene.acceleratorKdEmptyBonus, scene.acceleratorKdMaxPrims, scene.acceleratorKdMaxDepth));
+		} else if (scene.acceleratorSplitMethod == "middle") {
 			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
 				*out.world, BvhSplitMethod::Middle, scene.acceleratorMaxNodePrims));
 		} else if (scene.acceleratorSplitMethod == "equal") {

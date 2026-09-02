@@ -1542,11 +1542,78 @@ TEST(FlattenTest, AcceleratorHlbvhIsHonoredOnAStaticScene) {
 }
 
 TEST(FlattenTest, AcceleratorUnrecognizedTypeWarnsAndFallsBackToBvh) {
-	const FlatScene s = flattenSource("Accelerator \"kdtree\"\nShape \"sphere\"\n");
-	EXPECT_TRUE(warnedAbout(s, "kdtree"));
+	// "grid"/"octree" - genuinely never-implemented historical pbrt
+	// accelerator kinds (unlike "kdtree", pbrt-v4's own real second option -
+	// see AcceleratorKdtreeIsAcceptedWithNoWarning below).
+	const FlatScene s = flattenSource("Accelerator \"octree\"\nShape \"sphere\"\n");
+	EXPECT_TRUE(warnedAbout(s, "octree"));
+	EXPECT_EQ(s.acceleratorType, "bvh");
 	// The type falls back, but splitmethod/maxnodeprims still resolve
 	// normally from whatever params were given (none here -> defaults).
 	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+}
+
+TEST(FlattenTest, AcceleratorDefaultsToBvhTypeWithNoWarning) {
+	const FlatScene s = flattenSource("Shape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorType, "bvh");
+	EXPECT_FALSE(warnedAbout(s, "Accelerator"));
+}
+
+TEST(FlattenTest, AcceleratorKdtreeIsAcceptedWithNoWarning) {
+	// pbrt-v4's real second Accelerator option (see src/shared/kd_tree.h's
+	// own top comment - a genuine, complete port of pbrt-v4's own
+	// KdTreeAggregate) - must resolve, not warn-and-fall-back like a truly
+	// unrecognized type does (AcceleratorUnrecognizedTypeWarnsAndFallsBackToBvh
+	// above).
+	const FlatScene s = flattenSource("Accelerator \"kdtree\"\nShape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorType, "kdtree");
+	EXPECT_FALSE(warnedAbout(s, "Accelerator"));
+}
+
+TEST(FlattenTest, AcceleratorKdtreeParamsResolveToPbrtV4Defaults) {
+	// pbrt-v4's real KdTreeAggregate::Create defaults (aggregates.cpp):
+	// intersectcost=5, traversalcost=1, emptybonus=0.5, maxprims=1,
+	// maxdepth=-1 - src/shared/kd_tree.h's own KdTree::Params mirrors these
+	// exactly (see that struct's own comment).
+	const FlatScene s = flattenSource("Accelerator \"kdtree\"\nShape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorKdIntersectCost, 5);
+	EXPECT_EQ(s.acceleratorKdTraversalCost, 1);
+	EXPECT_DOUBLE_EQ(s.acceleratorKdEmptyBonus, 0.5);
+	EXPECT_EQ(s.acceleratorKdMaxPrims, 1);
+	EXPECT_EQ(s.acceleratorKdMaxDepth, -1);
+}
+
+TEST(FlattenTest, AcceleratorKdtreeParamsAreReadWhenGiven) {
+	const FlatScene s = flattenSource(
+		"Accelerator \"kdtree\" \"integer intersectcost\" [ 8 ] "
+		"\"integer traversalcost\" [ 2 ] \"float emptybonus\" [ 0.25 ] "
+		"\"integer maxprims\" [ 3 ] \"integer maxdepth\" [ 12 ]\n"
+		"Shape \"sphere\"\n");
+	EXPECT_EQ(s.acceleratorKdIntersectCost, 8);
+	EXPECT_EQ(s.acceleratorKdTraversalCost, 2);
+	EXPECT_DOUBLE_EQ(s.acceleratorKdEmptyBonus, 0.25);
+	EXPECT_EQ(s.acceleratorKdMaxPrims, 3);
+	EXPECT_EQ(s.acceleratorKdMaxDepth, 12);
+}
+
+TEST(FlattenTest, AcceleratorKdtreeWithObjectMotionBlurFallsBackToBvh) {
+	// kd_tree_hittable.h's KdTree wrapper has no ray-time channel, the exact
+	// same gap as bvh_aggregate_hittable.h's own non-"sah" splitmethod
+	// wrapper (see AcceleratorNonSahWithObjectMotionBlurFallsBackToSah
+	// below) - a scene combining "kdtree" with a moving sphere must not
+	// silently render that sphere frozen at time 0.
+	const FlatScene s = flattenSource(
+		"Accelerator \"kdtree\"\n"
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_TRUE(s.spheres[0].center1[0] != s.spheres[0].center[0])
+		<< "sanity check: the scene really does describe a moving sphere";
+	EXPECT_EQ(s.acceleratorType, "bvh");
+	EXPECT_TRUE(warnedAbout(s, "motion blur"));
 }
 
 TEST(FlattenTest, AcceleratorUnrecognizedSplitMethodWarnsAndFallsBackToSah) {

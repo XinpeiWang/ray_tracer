@@ -1613,17 +1613,26 @@ struct FlatScene {
 	// would want to casually override between a preview and a final
 	// render.
 	bool regularize = false;
-	// Accelerator "bvh" "string splitmethod"/"integer maxnodeprims" - see
-	// pbrt_scene::Scene::acceleratorSplitMethod's own comment. Applied
-	// unconditionally like PixelFilter/regularize above (not CLI-
-	// overridable): unlike samplerType/maxDepth, which of these two BVH
-	// builds runs isn't something a user would want to casually override
-	// per-render, and both builds produce the same converged image, so
-	// there's no correctness reason to gate it behind a flag either.
-	// "sah" (the default, both here and in real pbrt-v4) keeps using
-	// bvh_node - the CPU builder's own pre-existing, already-real SAH BVH -
-	// unchanged; only an explicit "middle"/"equal"/"hlbvh" routes through
-	// BvhTree<double,...> instead (bvh_aggregate_hittable.h).
+	// Accelerator "bvh"/"kdtree" - see pbrt_scene::Scene::acceleratorType's
+	// own comment. Applied unconditionally like PixelFilter/regularize
+	// above (not CLI-overridable): which acceleration structure/build
+	// strategy runs isn't something a user would want to casually override
+	// per-render, and all of them produce the same converged image, so
+	// there's no correctness reason to gate any of this behind a flag.
+	// "bvh" (the default, both here and in real pbrt-v4) keeps using
+	// bvh_node/bvh_aggregate_hittable.h as resolved by
+	// acceleratorSplitMethod below; "kdtree" routes through
+	// kd_tree_hittable.h's KdTree<double,...> instead - see flatten()'s own
+	// motion-blur fallback (both this and a non-"sah" splitmethod share the
+	// identical "no ray-time channel" limitation, so both fall back to
+	// "bvh"/"sah" together on a scene with object motion blur).
+	std::string acceleratorType = "bvh";
+	// "string splitmethod"/"integer maxnodeprims" - only consulted when
+	// acceleratorType is "bvh" (kdtree has its own, separate param set
+	// below). "sah" keeps using bvh_node - the CPU builder's own pre-
+	// existing, already-real SAH BVH - unchanged; only an explicit
+	// "middle"/"equal"/"hlbvh" routes through BvhTree<double,...> instead
+	// (bvh_aggregate_hittable.h).
 	std::string acceleratorSplitMethod = "sah";
 	// NOTE: BvhTree<T,Prim>::build() (src/shared/bvh_aggregate.h, untouched
 	// by this loader) only actually consults max_prims_in_node for "sah" and
@@ -1634,6 +1643,15 @@ struct FlatScene {
 	// introduces or could easily change - passed through honestly rather
 	// than silently clamped/ignored at this layer.
 	int acceleratorMaxNodePrims = 4;
+	// Accelerator "kdtree"'s own params - see
+	// pbrt_scene::Scene::acceleratorKdIntersectCost's own comment for the
+	// real pbrt-v4 defaults this mirrors. Only consulted when
+	// acceleratorType is "kdtree".
+	int acceleratorKdIntersectCost = 5;
+	int acceleratorKdTraversalCost = 1;
+	double acceleratorKdEmptyBonus = 0.5;
+	int acceleratorKdMaxPrims = 1;
+	int acceleratorKdMaxDepth = -1;
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds", resolved to a
 	// single NDC-fraction rectangle [cropX0,cropX1) x [cropY0,cropY1) in
 	// [0,1] - see flatten()'s own computation for the exact rule. Kept as
@@ -4786,9 +4804,67 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 	out.regularize = scene.regularize;
 
-	if (scene.acceleratorType != "bvh" && !scene.acceleratorType.empty()) {
-		warn("Accelerator \"" + scene.acceleratorType + "\" is not supported "
-			 "(only \"bvh\" is) - falling back to \"bvh\"");
+	// Whether the scene has any object motion blur that bvh_aggregate_
+	// hittable.h's BvhTree wrapper AND kd_tree_hittable.h's KdTree wrapper
+	// both cannot correctly render: neither wrapper's intersect() has a
+	// ray-time channel (see each file's own top comment), so a moving
+	// sphere (center1 != center, baked by an ActiveTransform "EndTime"
+	// pair - see Sphere::center1's own comment)/disk/cylinder/mesh would
+	// silently render frozen at time 0 through either. Computed once, used
+	// below to gate both the non-"sah" splitmethod fallback and the
+	// "kdtree" accelerator-type fallback identically.
+	bool hasAcceleratorIncompatibleMotion = false;
+	{
+		for (const Sphere &s : out.spheres) {
+			if (s.center1[0] != s.center[0] || s.center1[1] != s.center[1] ||
+				s.center1[2] != s.center[2]) { hasAcceleratorIncompatibleMotion = true; break; }
+		}
+		// Disk/Cylinder gained the same per-ray-time-channel motion blur as
+		// Sphere above (see Disk::xformEnd's own comment) - the same "no
+		// ray-time channel" gap applies to them too, so this check has to
+		// cover both, not just Sphere.
+		auto xformArrayDiffers = [](const double (&a)[16], const double (&b)[16]) {
+			pbrt_scene::Matrix4 ma, mb;
+			for (int i = 0; i < 16; ++i) { ma.m[i] = a[i]; mb.m[i] = b[i]; }
+			return ma.differsFrom(mb);
+		};
+		if (!hasAcceleratorIncompatibleMotion) {
+			for (const Disk &d : out.disks) {
+				if (xformArrayDiffers(d.xform, d.xformEnd)) { hasAcceleratorIncompatibleMotion = true; break; }
+			}
+		}
+		if (!hasAcceleratorIncompatibleMotion) {
+			for (const Cylinder &c : out.cylinders) {
+				if (xformArrayDiffers(c.xform, c.xformEnd)) { hasAcceleratorIncompatibleMotion = true; break; }
+			}
+		}
+		// Mesh motion blur (trianglemesh/plymesh/loopsubdiv - see
+		// AnimatedTriangleMesh's own comment) is the same "hit() resolves a
+		// per-ray-time transform internally" shape as Sphere/Disk/Cylinder
+		// above, via animated_transform_instance.h's own MotionState::
+		// resolve() - the same non-SAH-BVH gap applies. (Every entry in
+		// this list is animated by construction - pbrt_cpu_builder.h only
+		// ever populates it when xform genuinely differs from xformEnd - so
+		// presence alone is enough, no per-entry xformArrayDiffers scan
+		// needed.)
+		if (!hasAcceleratorIncompatibleMotion && !out.animatedTriangleMeshes.empty())
+			hasAcceleratorIncompatibleMotion = true;
+	}
+
+	{
+		std::string at = scene.acceleratorType.empty() ? "bvh" : scene.acceleratorType;
+		if (at != "bvh" && at != "kdtree") {
+			warn("Accelerator \"" + at + "\" is not supported (only \"bvh\"/"
+				 "\"kdtree\" are) - falling back to \"bvh\"");
+			at = "bvh";
+		}
+		if (at == "kdtree" && hasAcceleratorIncompatibleMotion) {
+			warn("Accelerator \"kdtree\" is not supported together with "
+				 "object motion blur (kd_tree_hittable.h's KdTree wrapper "
+				 "has no ray-time channel) - falling back to \"bvh\"");
+			at = "bvh";
+		}
+		out.acceleratorType = at;
 	}
 	{
 		std::string sm = scene.acceleratorSplitMethod.empty()
@@ -4801,59 +4877,26 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		}
 		// A non-"sah" split method routes through bvh_aggregate_hittable.h's
 		// BvhTree<double,...> wrapper (pbrt_cpu_builder.h) instead of this
-		// project's own pre-existing bvh_node - but that wrapper's
-		// intersect() has no ray-time channel (see its own top comment), so
-		// it cannot correctly render a moving sphere (center1 != center,
-		// baked by an ActiveTransform "EndTime" pair - see Sphere::center1's
-		// own comment). Fall back to "sah" (bvh_node, which DOES carry ray
-		// time correctly) rather than silently freezing every moving object
-		// at time 0.
-		if (sm != "sah") {
-			bool hasMotion = false;
-			for (const Sphere &s : out.spheres) {
-				if (s.center1[0] != s.center[0] || s.center1[1] != s.center[1] ||
-					s.center1[2] != s.center[2]) { hasMotion = true; break; }
-			}
-			// Disk/Cylinder gained the same per-ray-time-channel motion blur
-			// as Sphere above (see Disk::xformEnd's own comment) - the same
-			// "non-SAH BvhTree has no ray-time channel" gap applies to them
-			// too, so this check has to cover both, not just Sphere.
-			auto xformArrayDiffers = [](const double (&a)[16], const double (&b)[16]) {
-				pbrt_scene::Matrix4 ma, mb;
-				for (int i = 0; i < 16; ++i) { ma.m[i] = a[i]; mb.m[i] = b[i]; }
-				return ma.differsFrom(mb);
-			};
-			if (!hasMotion) {
-				for (const Disk &d : out.disks) {
-					if (xformArrayDiffers(d.xform, d.xformEnd)) { hasMotion = true; break; }
-				}
-			}
-			if (!hasMotion) {
-				for (const Cylinder &c : out.cylinders) {
-					if (xformArrayDiffers(c.xform, c.xformEnd)) { hasMotion = true; break; }
-				}
-			}
-			// Mesh motion blur (trianglemesh/plymesh/loopsubdiv - see
-			// AnimatedTriangleMesh's own comment) is the same "hit() resolves
-			// a per-ray-time transform internally" shape as Sphere/Disk/
-			// Cylinder above, via animated_transform_instance.h's own
-			// MotionState::resolve() - the same non-SAH-BVH gap applies.
-			// (Every entry in this list is animated by construction -
-			// pbrt_cpu_builder.h only ever populates it when xform genuinely
-			// differs from xformEnd - so presence alone is enough, no
-			// per-entry xformArrayDiffers scan needed.)
-			if (!hasMotion && !out.animatedTriangleMeshes.empty()) hasMotion = true;
-			if (hasMotion) {
-				warn("Accelerator \"bvh\" \"string splitmethod\" \"" + sm +
-					 "\" is not supported together with object motion blur "
-					 "(this loader's non-SAH BVH build has no ray-time "
-					 "channel) - falling back to \"sah\"");
-				sm = "sah";
-			}
+		// project's own pre-existing bvh_node - see
+		// hasAcceleratorIncompatibleMotion's own comment just above for why
+		// that wrapper falls back to "sah" (bvh_node, which DOES carry ray
+		// time correctly) on a scene with object motion blur, rather than
+		// silently freezing every moving object at time 0.
+		if (sm != "sah" && hasAcceleratorIncompatibleMotion) {
+			warn("Accelerator \"bvh\" \"string splitmethod\" \"" + sm +
+				 "\" is not supported together with object motion blur "
+				 "(this loader's non-SAH BVH build has no ray-time "
+				 "channel) - falling back to \"sah\"");
+			sm = "sah";
 		}
 		out.acceleratorSplitMethod = sm;
 	}
 	out.acceleratorMaxNodePrims = scene.acceleratorMaxNodePrims;
+	out.acceleratorKdIntersectCost = scene.acceleratorKdIntersectCost;
+	out.acceleratorKdTraversalCost = scene.acceleratorKdTraversalCost;
+	out.acceleratorKdEmptyBonus = scene.acceleratorKdEmptyBonus;
+	out.acceleratorKdMaxPrims = scene.acceleratorKdMaxPrims;
+	out.acceleratorKdMaxDepth = scene.acceleratorKdMaxDepth;
 
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds" -> a single
 	// NDC-fraction rectangle. pbrt-v4's own rule: start from the full

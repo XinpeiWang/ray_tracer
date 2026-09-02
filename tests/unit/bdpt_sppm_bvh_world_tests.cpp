@@ -15,12 +15,22 @@
  * collectEmitterCandidates() - including its deliberate scope boundary
  * (translate/rotate_y are NOT unwrapped, since doing so would silently
  * return world-space-incorrect samples - see that header's own comment).
+ *
+ * The BvhAggregate/KdTree sections below cover the identical gap for
+ * Accelerator "bvh" "string splitmethod" "middle"/"equal"/"hlbvh"
+ * (bvh_aggregate_hittable.h) and Accelerator "kdtree" (kd_tree_hittable.h) -
+ * both were found missing from collectEmitterCandidates() entirely while
+ * wiring the latter in, so a light inside either aggregate kind was
+ * previously silently invisible under BDPT/MLT/SPPM too (the plain BVH
+ * fix above never covered these two, only bvh_node/bvh_leaf).
  */
 
 #include <gtest/gtest.h>
 #include "rtweekend.h"
 #include "hittable_list.h"
 #include "bvh.h"
+#include "bvh_aggregate_hittable.h"
+#include "kd_tree_hittable.h"
 #include "sphere.h"
 #include "triangle.h"
 #include "material.h"
@@ -77,6 +87,33 @@ shared_ptr<hittable_list> makeDeeplySplitBvhWorldWithTwoLights() {
 	}
 	auto wrapped = make_shared<hittable_list>();
 	wrapped->add(make_shared<bvh_node>(*flat));
+	return wrapped;
+}
+
+// Same shape as makeBvhWrappedWorldWithOneLight() above, but wrapped in
+// bvh_aggregate_hittable.h's BvhTree adapter instead of bvh_node - the
+// aggregate an explicit non-"sah" Accelerator "bvh" splitmethod produces.
+shared_ptr<hittable_list> makeBvhAggregateWrappedWorldWithOneLight() {
+	auto flat = make_shared<hittable_list>();
+	auto light = make_shared<diffuse_light>(color(6, 6, 6), /*two_sided=*/false);
+	flat->add(make_shared<sphere>(point3(0, 5, 0), 1.0, light));
+	flat->add(make_shared<sphere>(point3(0, 0, 0), 1.0, make_shared<lambertian>(color(0.5, 0.5, 0.5))));
+
+	auto wrapped = make_shared<hittable_list>();
+	wrapped->add(make_shared<bvh_aggregate_hittable>(*flat, BvhSplitMethod::HLBVH, 4));
+	return wrapped;
+}
+
+// Same shape again, wrapped in kd_tree_hittable.h's KdTree adapter instead -
+// the aggregate an explicit Accelerator "kdtree" produces.
+shared_ptr<hittable_list> makeKdTreeWrappedWorldWithOneLight() {
+	auto flat = make_shared<hittable_list>();
+	auto light = make_shared<diffuse_light>(color(6, 6, 6), /*two_sided=*/false);
+	flat->add(make_shared<sphere>(point3(0, 5, 0), 1.0, light));
+	flat->add(make_shared<sphere>(point3(0, 0, 0), 1.0, make_shared<lambertian>(color(0.5, 0.5, 0.5))));
+
+	auto wrapped = make_shared<hittable_list>();
+	wrapped->add(make_shared<kd_tree_hittable>(*flat, 5, 1, 0.5, 1, -1));
 	return wrapped;
 }
 
@@ -188,6 +225,76 @@ TEST(SPPMAdapterBvhWorld, ConstructsWithoutLosingTheEmitterInsideAWrappedBvhNode
 TEST(SPPMAdapterBvhWorld, ConstructsWithATriangleMeshLightThroughTheWrapper) {
 	camera cam;
 	auto world = makeBvhWrappedWorldWithATriangleLight();
+	auto nee_lights = make_shared<hittable_list>();
+	EXPECT_NO_THROW({
+		SPPMSceneAdapter adapter(*world, *nee_lights, cam);
+	});
+}
+
+// ===========================================================================
+// bvh_aggregate_hittable.h (Accelerator "bvh" "string splitmethod" non-"sah")
+// - previously entirely missing from collectEmitterCandidates(), same class
+// of bug as the plain bvh_node gap this file's header comment describes.
+// ===========================================================================
+
+TEST(BDPTAdapterBvhWorld, FindsAnEmitterInsideAWrappedBvhAggregateHittable) {
+	camera cam;
+	auto world = makeBvhAggregateWrappedWorldWithOneLight();
+	ASSERT_EQ(world->objects.size(), 1u) << "sanity check: this really is aggregate-wrapped, not flat";
+
+	BDPTSceneAdapter adapter(*world, cam);
+	EXPECT_EQ(adapter.EmitterCount(), 1)
+		<< "the light is real geometry inside the wrapped bvh_aggregate_hittable - it must still be found";
+}
+
+TEST(SPPMAdapterBvhWorld, ConstructsWithoutLosingTheEmitterInsideAWrappedBvhAggregateHittable) {
+	camera cam;
+	auto world = makeBvhAggregateWrappedWorldWithOneLight();
+	auto nee_lights = make_shared<hittable_list>();
+	EXPECT_NO_THROW({
+		SPPMSceneAdapter adapter(*world, *nee_lights, cam);
+	});
+}
+
+// ===========================================================================
+// kd_tree_hittable.h (Accelerator "kdtree") - same gap, newly introduced by
+// this round's own kd-tree wiring; covered from day one rather than left to
+// be found by a later review pass the way the bvh_aggregate_hittable gap
+// above was.
+// ===========================================================================
+
+TEST(BDPTAdapterBvhWorld, FindsAnEmitterInsideAWrappedKdTreeHittable) {
+	camera cam;
+	auto world = makeKdTreeWrappedWorldWithOneLight();
+	ASSERT_EQ(world->objects.size(), 1u) << "sanity check: this really is kd-tree-wrapped, not flat";
+
+	BDPTSceneAdapter adapter(*world, cam);
+	EXPECT_EQ(adapter.EmitterCount(), 1)
+		<< "the light is real geometry inside the wrapped kd_tree_hittable - it must still be found";
+}
+
+TEST(BDPTAdapterBvhWorld, SampleLightStillWorksThroughTheKdTreeWrapper) {
+	camera cam;
+	auto world = makeKdTreeWrappedWorldWithOneLight();
+	BDPTSceneAdapter adapter(*world, cam);
+	ASSERT_EQ(adapter.EmitterCount(), 1);
+
+	const double ref_p[3] = {0.0, 0.0, 0.0};
+	BDPTLightSample<double> ls;
+	bool sawSample = false;
+	for (int i = 0; i < 30; ++i) {
+		if (adapter.SampleLight(random_double(), ref_p, ls)) {
+			sawSample = true;
+			EXPECT_GT(ls.pdf, 0.0);
+			EXPECT_GT(ls.L[0], 0.0);
+		}
+	}
+	EXPECT_TRUE(sawSample) << "the previously-invisible light must now actually contribute radiance";
+}
+
+TEST(SPPMAdapterBvhWorld, ConstructsWithoutLosingTheEmitterInsideAWrappedKdTreeHittable) {
+	camera cam;
+	auto world = makeKdTreeWrappedWorldWithOneLight();
 	auto nee_lights = make_shared<hittable_list>();
 	EXPECT_NO_THROW({
 		SPPMSceneAdapter adapter(*world, *nee_lights, cam);

@@ -434,18 +434,35 @@ struct Scene {
 	std::string filterType = "gaussian";
 	ParamList filterParams;
 	// Accelerator directive's type name (pbrt-v4's real default is "bvh" -
-	// "kdtree" is pbrt-v4's only other option, a legacy structure this
-	// project has never had reason to add) plus its real splitmethod/
-	// maxnodeprims params. Unlike lightSamplerType above (purely advisory),
-	// this one IS actually read by the CPU builder (pbrt_cpu_builder.h) -
-	// but only to choose WHICH of two BVH builds over the exact same
-	// primitive list runs (SAH's own bvh_node vs BvhTree<double,...> for
-	// middle/equal/hlbvh), a build-speed/tree-shape choice with zero effect
-	// on the converged image, not a rendering-behavior toggle like
-	// PixelFilter's filterType.
+	// "kdtree" is pbrt-v4's only other real option, a genuine, complete SAH
+	// kd-tree - see src/shared/kd_tree.h's own comment for the port) plus
+	// its real splitmethod/maxnodeprims (bvh) or intersectcost/
+	// traversalcost/emptybonus/maxprims/maxdepth (kdtree) params. Unlike
+	// lightSamplerType above (purely advisory), this one IS actually read
+	// by the CPU builder (pbrt_cpu_builder.h): for "bvh" it chooses WHICH
+	// of two BVH builds over the exact same primitive list runs (SAH's own
+	// bvh_node vs BvhTree<double,...> for middle/equal/hlbvh - a build-
+	// speed/tree-shape choice with zero effect on the converged image,
+	// like PixelFilter's filterType is NOT); for "kdtree" it swaps the
+	// whole acceleration structure for kd_tree_hittable.h's KdTree<double,
+	// ...> instead - again zero effect on the converged image, just a
+	// different traversal structure over the same primitives.
 	std::string acceleratorType = "bvh";
 	std::string acceleratorSplitMethod = "sah";
 	int acceleratorMaxNodePrims = 4;  // pbrt-v4's real Accelerator "bvh" default
+	// Accelerator "kdtree"'s own params (pbrt-v4's real defaults - see
+	// aggregates.cpp's KdTreeAggregate::Create: intersectcost=5,
+	// traversalcost=1, emptybonus=0.5, maxprims=1, maxdepth=-1 meaning
+	// "auto" - src/shared/kd_tree.h's KdTree::Params mirrors these exactly).
+	// Distinct param names from splitmethod/maxnodeprims above because
+	// that's what pbrt-v4 itself calls them - kdtree and bvh are two
+	// separate Accelerator types with their own independent parameter sets,
+	// not two variants sharing one.
+	int acceleratorKdIntersectCost = 5;
+	int acceleratorKdTraversalCost = 1;
+	double acceleratorKdEmptyBonus = 0.5;
+	int acceleratorKdMaxPrims = 1;
+	int acceleratorKdMaxDepth = -1;
 
 	std::vector<MaterialDecl> materials;
 	std::vector<TextureDecl> textures;
@@ -1066,6 +1083,11 @@ private:
 			const ParamList p = readParams();
 			s_.acceleratorSplitMethod = p.getString("splitmethod", s_.acceleratorSplitMethod);
 			s_.acceleratorMaxNodePrims = p.getInt("maxnodeprims", s_.acceleratorMaxNodePrims);
+			s_.acceleratorKdIntersectCost = p.getInt("intersectcost", s_.acceleratorKdIntersectCost);
+			s_.acceleratorKdTraversalCost = p.getInt("traversalcost", s_.acceleratorKdTraversalCost);
+			s_.acceleratorKdEmptyBonus = p.getFloat("emptybonus", s_.acceleratorKdEmptyBonus);
+			s_.acceleratorKdMaxPrims = p.getInt("maxprims", s_.acceleratorKdMaxPrims);
+			s_.acceleratorKdMaxDepth = p.getInt("maxdepth", s_.acceleratorKdMaxDepth);
 			return true;
 		}
 

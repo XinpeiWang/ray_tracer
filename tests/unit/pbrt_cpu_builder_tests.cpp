@@ -2237,3 +2237,100 @@ TEST(PbrtCpuBuildTest, AcceleratorNonSahRoutesAParticipatingMediumWithoutDroppin
 			   "and lost, not that this particular ray genuinely escaped";
 	}
 }
+
+// ===========================================================================
+// Accelerator "kdtree" - kd_tree_hittable.h's KdTree<double,...> wrapper.
+// Mirrors AcceleratorParityTest/AcceleratorFallsBackToSahForAMovingSphere...
+// AcceleratorNonSahRoutesAParticipatingMediumWithoutDroppingScatterEvents
+// above exactly - same claims, same failure modes, different accelerator.
+// ===========================================================================
+
+TEST(PbrtCpuBuildTest, AcceleratorKdtreeMatchesBvhExactlyOverTheSameScene) {
+	const pbrt_cpu::BuildResult bvh = buildFrom(kScatteredSpheres);
+	const pbrt_cpu::BuildResult kd = buildFrom(
+		"Accelerator \"kdtree\"\n" + kScatteredSpheres);
+
+	const struct { point3 origin; vec3 dir; } rays[] = {
+		{point3(-4, 0, -10), vec3(0, 0, 1)},
+		{point3(4, 0, -10), vec3(0, 0, 1)},
+		{point3(0, 4, -10), vec3(0, 0, 1)},
+		{point3(0, -4, -10), vec3(0, 0, 1)},
+		{point3(-10, 0, 4), vec3(1, 0, 0)},
+		{point3(0, 0, -10), vec3(0, 0, 1)},
+		{point3(20, 20, 20), vec3(1, 0, 0)},
+	};
+	int rayIdx = 0;
+	for (const auto &rd : rays) {
+		SCOPED_TRACE(::testing::Message() << "rayIdx=" << rayIdx++);
+		hit_record recBvh, recKd;
+		const ray r(rd.origin, rd.dir);
+		bool hitBvh = bvh.world->hit(r, interval(0.001, infinity), recBvh);
+		bool hitKd = kd.world->hit(r, interval(0.001, infinity), recKd);
+		ASSERT_EQ(hitBvh, hitKd);
+		if (!hitBvh) continue;
+		EXPECT_NEAR(recBvh.t, recKd.t, 1e-9);
+		EXPECT_NEAR(recBvh.normal.x(), recKd.normal.x(), 1e-9);
+		EXPECT_NEAR(recBvh.normal.y(), recKd.normal.y(), 1e-9);
+		EXPECT_NEAR(recBvh.normal.z(), recKd.normal.z(), 1e-9);
+		EXPECT_NEAR(recBvh.u, recKd.u, 1e-9);
+		EXPECT_NEAR(recBvh.v, recKd.v, 1e-9);
+		ASSERT_NE(recKd.mat, nullptr);
+		EXPECT_NE(dynamic_cast<lambertian *>(recKd.mat.get()), nullptr);
+	}
+}
+
+TEST(PbrtCpuBuildTest, AcceleratorKdtreeFallsBackToBvhForAMovingSphereEvenIfRequested) {
+	// flatten() already forces acceleratorType back to "bvh" when the scene
+	// has object motion blur (pbrt_flatten_tests.cpp's
+	// AcceleratorKdtreeWithObjectMotionBlurFallsBackToBvh pins this) - this
+	// confirms the CPU builder actually honors that resolved value end to
+	// end, same as AcceleratorFallsBackToSahForAMovingSphereEvenIfRequested
+	// does for the non-"sah" splitmethod case.
+	const std::string kMovingSphere =
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 4 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n";
+	const pbrt_cpu::BuildResult plain = buildFrom(kMovingSphere);
+	const pbrt_cpu::BuildResult withOverride = buildFrom(
+		"Accelerator \"kdtree\"\n" + kMovingSphere);
+
+	for (double t : {0.0, 0.5, 1.0}) {
+		hit_record recPlain, recOverride;
+		const ray r(point3(1, 0, -10), vec3(0, 0, 1), t);
+		bool hitPlain = plain.world->hit(r, interval(0.001, infinity), recPlain);
+		bool hitOverride = withOverride.world->hit(r, interval(0.001, infinity), recOverride);
+		ASSERT_EQ(hitPlain, hitOverride) << "t=" << t;
+		if (!hitPlain) continue;
+		EXPECT_NEAR(recPlain.t, recOverride.t, 1e-9) << "t=" << t;
+	}
+}
+
+TEST(PbrtCpuBuildTest, AcceleratorKdtreeRoutesAParticipatingMediumWithoutDroppingScatterEvents) {
+	// Same stochastic-hittable regression coverage as
+	// AcceleratorNonSahRoutesAParticipatingMediumWithoutDroppingScatterEvents
+	// above - kd_tree_hittable.h's HittablePrim::intersect() caches the
+	// ORIGINAL hit_record instead of re-querying, for the identical reason
+	// bvh_aggregate_hittable.h's own HittablePrim does (see that file's top
+	// comment).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Accelerator \"kdtree\"\n"
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0 0 0 ] \"rgb sigma_s\" [ 500 500 500 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.sphereCount, 1u);
+	for (int i = 0; i < 200; ++i) {
+		hit_record rec;
+		ASSERT_TRUE(b.world->hit(ray(point3(0, 0, -5), vec3(0, 0, 1)),
+								 interval(0.001, infinity), rec))
+			<< "iteration " << i << ": a sigma_s=500 medium across a "
+			   "radius-1 sphere (optical depth ~1000) must scatter on "
+			   "essentially every ray - a missed hit here means the "
+			   "medium's random free-path sample got silently re-drawn "
+			   "and lost, not that this particular ray genuinely escaped";
+	}
+}

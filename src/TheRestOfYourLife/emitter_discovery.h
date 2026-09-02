@@ -17,8 +17,16 @@
 //
 // collectEmitterCandidates() below fixes this by recursively unwrapping
 // PURELY STRUCTURAL/organizational containers - hittable_list, bvh_node,
-// bvh_leaf, triangle_mesh, triangle_mesh_mtl - to find the real leaf shapes
-// underneath. `world` itself is never touched (this only reads through it
+// bvh_leaf, bvh_aggregate_hittable, kd_tree_hittable, triangle_mesh,
+// triangle_mesh_mtl - to find the real leaf shapes underneath. The latter
+// two (an explicit non-"sah" Accelerator "bvh" splitmethod, or "kdtree")
+// were a real, live gap until this comment was updated: unwrapping them was
+// missing entirely, so any area light inside one of those two aggregate
+// kinds was silently invisible to BDPT/MLT/SPPM (though not to ordinary
+// path tracing, which reaches lights through hit() directly, not this
+// discovery scan) - both expose the same get_prims() accessor bvh_leaf
+// does, so they unwrap identically. `world` itself is never touched (this
+// only reads through it
 // into a separate output vector), so it keeps the real BVH's O(log n) ray-
 // intersection performance for actual rendering; this is purely a
 // discovery-time helper.
@@ -46,6 +54,8 @@
 #include "hittable.h"
 #include "hittable_list.h"
 #include "bvh.h"
+#include "bvh_aggregate_hittable.h"
+#include "kd_tree_hittable.h"
 #include "mesh.h"
 
 #include <memory>
@@ -65,6 +75,14 @@ inline void collectEmitterCandidates(const shared_ptr<hittable>& h,
 	}
 	if (auto leaf = std::dynamic_pointer_cast<bvh_leaf>(h)) {
 		for (const auto& obj : leaf->get_prims()) collectEmitterCandidates(obj, out);
+		return;
+	}
+	if (auto agg = std::dynamic_pointer_cast<bvh_aggregate_hittable>(h)) {
+		for (const auto& obj : agg->get_prims()) collectEmitterCandidates(obj, out);
+		return;
+	}
+	if (auto kd = std::dynamic_pointer_cast<kd_tree_hittable>(h)) {
+		for (const auto& obj : kd->get_prims()) collectEmitterCandidates(obj, out);
 		return;
 	}
 	if (auto m = std::dynamic_pointer_cast<triangle_mesh>(h)) {

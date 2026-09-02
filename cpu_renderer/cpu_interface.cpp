@@ -30,6 +30,7 @@
 #include "../src/TheRestOfYourLife/error_codes.h"
 #include "../src/TheRestOfYourLife/bvh.h"
 #include "../src/TheRestOfYourLife/bvh_aggregate_hittable.h"
+#include "../src/TheRestOfYourLife/kd_tree_hittable.h"
 #include "../src/TheRestOfYourLife/triangle.h"
 #include "../src/TheRestOfYourLife/disk_cylinder_hittable.h"
 #include "../src/TheRestOfYourLife/sphere_clipped_hittable.h"
@@ -145,6 +146,11 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 	}
 	if (const auto* agg = dynamic_cast<const bvh_aggregate_hittable*>(h)) {
 		for (const auto& p : agg->get_prims())
+			if (!spectral_scan_hittable(p.get(), error_out)) return false;
+		return true;
+	}
+	if (const auto* kd = dynamic_cast<const kd_tree_hittable*>(h)) {
+		for (const auto& p : kd->get_prims())
 			if (!spectral_scan_hittable(p.get(), error_out)) return false;
 		return true;
 	}
