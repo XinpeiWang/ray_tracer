@@ -247,24 +247,21 @@ bool OptiXRenderer::render(
 	params.numLights = numLights_;
 	params.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds_);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_aliasTable_);
-	// pbrt-v4 bounding-cone light BVH - KNOWN UNRESOLVED BUG, deliberately
-	// NOT wired into the live launch (see gpu_light_bvh_sample_index()/
-	// gpu_light_bvh_pmf()'s own comment, optix_device_helpers.h, for the
-	// full diagnosis). OptiXRenderer::buildScene() still builds and uploads
-	// the real tree (d_lightBvhNodes_/d_lightBvhBitTrail_/lightBvhNodeCount_
-	// are all real, tested, non-zero after a successful build) so that
-	// machinery stays exercised, but `params.lightBvhNodeCount` is left at
-	// its zero-init default here rather than set from lightBvhNodeCount_ -
-	// every device NEE call site already falls back to the alias table
-	// whenever lightBvhNodeCount<=0, so this is a clean, total disable, not
-	// a partial one. Re-enable by uncommenting the 5 lines below ONLY after
-	// the crash documented at gpu_light_bvh_sample_index() is actually
-	// root-caused and fixed.
-	//     params.lightBvhNodes = reinterpret_cast<LightBVHNode*>(d_lightBvhNodes_);
-	//     params.lightBvhBitTrail = reinterpret_cast<unsigned int*>(d_lightBvhBitTrail_);
-	//     params.lightBvhNodeCount = lightBvhNodeCount_;
-	//     params.lightBvhAllBMinX = lightBvhAllBMinX_; params.lightBvhAllBMinY = lightBvhAllBMinY_; params.lightBvhAllBMinZ = lightBvhAllBMinZ_;
-	//     params.lightBvhAllBMaxX = lightBvhAllBMaxX_; params.lightBvhAllBMaxY = lightBvhAllBMaxY_; params.lightBvhAllBMaxZ = lightBvhAllBMaxZ_;
+	// pbrt-v4 bounding-cone light BVH - now wired into the live launch. See
+	// gpu_light_bvh_sample_index()/gpu_light_bvh_pmf()'s own header comment
+	// (optix_device_helpers_lighting.h) for the full history: this used to
+	// be deliberately disabled (params.lightBvhNodeCount left at its
+	// zero-init default, so every device NEE call site fell back to the
+	// alias table) because of a real, then-unresolved illegal-memory-access
+	// crash. Real bounds guards in both traversal functions now make it
+	// safe to enable for real - if one of those guards ever fires on real
+	// hardware, that specific NEE decision falls back to zero light-BVH
+	// contribution rather than crashing.
+	params.lightBvhNodes = reinterpret_cast<LightBVHNode*>(d_lightBvhNodes_);
+	params.lightBvhBitTrail = reinterpret_cast<unsigned int*>(d_lightBvhBitTrail_);
+	params.lightBvhNodeCount = lightBvhNodeCount_;
+	params.lightBvhAllBMinX = lightBvhAllBMinX_; params.lightBvhAllBMinY = lightBvhAllBMinY_; params.lightBvhAllBMinZ = lightBvhAllBMinZ_;
+	params.lightBvhAllBMaxX = lightBvhAllBMaxX_; params.lightBvhAllBMaxY = lightBvhAllBMaxY_; params.lightBvhAllBMaxZ = lightBvhAllBMaxZ_;
 
 	// Punctual (delta) lights
 	params.punctualLights = reinterpret_cast<PunctualLightGPU*>(d_punctualLights_);

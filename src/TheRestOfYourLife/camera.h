@@ -18,6 +18,7 @@
 #include "material.h"
 #include "../shared/cpu_gpu.h"  // kMaxMediumBoundaryCrossings
 #include "../shared/tone_map.h"
+#include "../shared/film.h"     // clamp_sensor_rgb - camera::max_component_value's own comment
 #include "sky_light.h"
 #include "../shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData<double>
 #include "punctual_light_objects.h"
@@ -142,6 +143,22 @@ class camera {
     double filter_C          = 1.0 / 3.0;
     double filter_sigma      = 0.5;
     double filter_tau        = 3.0;
+
+    // pbrt-v4 Film "float maxcomponentvalue" - per-sample firefly clamp:
+    // if the largest of a sample's r/g/b exceeds this, all three are
+    // scaled down so the max component lands exactly at the threshold
+    // (src/shared/film.h's clamp_sensor_rgb() - a pre-existing, tested,
+    // but previously totally unwired helper; nothing constructed this
+    // codebase's own Film classes from a real scene value before this
+    // field existed). Defaults to pbrt-v4's own real default (effectively
+    // unbounded), matching what an unset Film "maxcomponentvalue" means -
+    // same "auto-applied from a loaded pbrt scene's own directive" shape
+    // as filter_kind above. CPU default path tracer only (ray_color()/
+    // ray_color_spectral()), matching filter_kind/regularize's own scope
+    // cut - GPU has no equivalent clamp at all yet, warned about
+    // separately (gpu/optix/scene_builder.cpp) the same way a real,
+    // non-default PixelFilter radius already is.
+    double max_component_value = 1e9;
 
     // pbrt-v4's real Integrator "bool regularize" (defaults false, matching
     // pbrt-v4's own default) - widens a rough BSDF's GGX alpha after the
@@ -522,6 +539,17 @@ class camera {
                                 if (std::isnan(sample.x()) || std::isnan(sample.y()) || std::isnan(sample.z()) ||
                                     std::isinf(sample.x()) || std::isinf(sample.y()) || std::isinf(sample.z()))
                                     sample = color(0, 0, 0);
+                                // Film "float maxcomponentvalue" firefly clamp
+                                // (max_component_value's own comment) - default
+                                // CPU path tracer only; --spectral accumulates
+                                // in CIE XYZ at this exact point in the loop
+                                // (the "if (spectral)" pixel_color conversion
+                                // below), not RGB, so this per-sample RGB clamp
+                                // doesn't apply there.
+                                if (!spectral) {
+                                    clamp_sensor_rgb(sample[0], sample[1], sample[2],
+                                                      static_cast<float>(max_component_value));
+                                }
                                 // Reconstruction filter weight (pbrt-v4 filterWeight) -
                                 // fs.weight = f(p)/pdf(p), which for correct filter
                                 // importance sampling is (nearly) constant across samples

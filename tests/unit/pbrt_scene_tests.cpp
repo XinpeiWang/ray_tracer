@@ -519,6 +519,19 @@ TEST(PbrtSettingsTest, FilmPixelBoundsIsRead) {
 	EXPECT_EQ(s.pixelBounds[3], 550);
 }
 
+TEST(PbrtSettingsTest, MaxComponentValueDefaultsToEffectivelyUnbounded) {
+	const Scene s = parseOk("WorldBegin\nShape \"sphere\"\n");
+	EXPECT_DOUBLE_EQ(s.maxComponentValue, 1e9);
+}
+
+TEST(PbrtSettingsTest, FilmMaxComponentValueIsRead) {
+	const Scene s = parseOk(
+		"Film \"rgb\" \"float maxcomponentvalue\" [ 10 ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_DOUBLE_EQ(s.maxComponentValue, 10.0);
+}
+
 TEST(PbrtSettingsTest, LightSamplerDefaultsToBvhWithNoDirective) {
 	const Scene s = parseOk("WorldBegin\nShape \"sphere\"\n");
 	EXPECT_EQ(s.lightSamplerType, "bvh");

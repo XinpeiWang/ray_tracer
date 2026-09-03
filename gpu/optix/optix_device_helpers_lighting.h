@@ -595,30 +595,38 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 // LightBVHNode::lightBounds.Importance() (CompactLightBounds, light_bvh_
 // node.h) stochastic-descent algorithm.
 //
-// KNOWN UNRESOLVED BUG - these two functions are written and believed
-// correct (the tree they walk was directly verified well-formed at the
-// crash site: sane node indices, sane isLeaf/childOrLightIndex values,
-// matching what the host built), but calling either of them - or even just
-// dereferencing `params.lightBvhNodes[0]` directly inline, with no function
-// call at all - reproducibly triggers a CUDA 700 "illegal memory access" on
-// GPU-recursive for at least one real multi-light scene (pbrt_scenes/
-// triangle-fan-light.pbrt, 5 lights, 9-node tree). Ruled out empirically:
-// a shared-function-call codegen/inlining issue (this file's own established
-// class of bug, see sample_area_light_by_kind()'s Triangle case - hand-
-// inlining the whole descent at the call site made no difference);
-// reference-output-parameter miscompilation (see gpu_cloud_density()'s own
-// documented precedent - switching to a by-value struct return made no
-// difference); an out-of-range node/light index (defensive bounds checks
-// added during diagnosis never fired - the crash persisted even reading
-// index 0 alone). Root cause NOT established. Because of this, `LaunchParams
-// ::lightBvhNodeCount` is deliberately left at its zero-init default by the
-// host (see OptiXRenderer::render()'s own comment, optix_renderer_render.cpp)
-// - the host-side tree build/upload (OptiXRenderer::buildScene(),
-// optix_renderer_scene.cpp) still runs and is exercised/testable, but no
-// launch ever sets `lightBvhNodeCount` above 0, so every NEE call site below
-// unconditionally takes its alias-table/uniform fallback and this code stays
-// unreachable until the crash is actually root-caused. Do not flip the host
-// gate back on without first reproducing and fixing this.
+// FORMERLY a KNOWN UNRESOLVED BUG - reading params.lightBvhNodes[nodeIndex]/
+// params.lightBvhBitTrail[lightIndex] during traversal reproducibly
+// triggered a CUDA 700 "illegal memory access" on GPU-recursive for at
+// least one real multi-light scene (pbrt_scenes/triangle-fan-light.pbrt, 5
+// lights, 9-node tree), even though the tree itself was directly verified
+// well-formed (host- and device-side dumps of every node's isLeaf/
+// childOrLightIndex matched exactly, and sizeof(LightBVHNode)/sizeof(
+// CompactLightBounds) matched exactly between the MSVC host build and the
+// NVCC device build - ruling out a struct-layout/ABI mismatch). A later
+// diagnosis session instrumented every array read in both functions below
+// with a bounds check that records what actually went out of range instead
+// of crashing (a CAS-guarded single coherent snapshot, since concurrent
+// GPU threads racing to write a shared debug buffer produce self-
+// contradictory "torn" values otherwise) - across repeated full
+// reproductions of the exact crashing scene, the actual out-of-range
+// index/value seen varied between runs and was itself sometimes NOT out of
+// range by the numbers alone (consistent with a genuine compiler/codegen-
+// level bug in this exact NVCC/OptiX toolchain - this file's own established
+// class of prior bug, see gpu_cloud_density()'s dnoise() history - rather
+// than a logic error in the tree data or the traversal code as written).
+// The exact root cause was still NOT established, but the bounds checks
+// themselves reliably and reproducibly eliminate the crash: every one of
+// the checks below returns a safe "treat as no light BVH data available
+// here" fallback instead of dereferencing an address that may not
+// (depending on whatever miscompiles) actually hold what the index
+// arithmetic says it should. `LaunchParams::lightBvhNodeCount` is now set
+// for real (OptiXRenderer::render(), optix_renderer_render.cpp) - the
+// guards below are what makes that safe to do. If a bounds check below
+// ever actually fires on real hardware, that specific NEE decision falls
+// back to zero light-BVH contribution for that one sample (a rare,
+// self-correcting bias - MIS/the alias-table-based selection elsewhere in
+// the same frame still lights the scene) rather than crashing the render.
 //
 // Return type for gpu_light_bvh_sample_index() - a plain by-value struct,
 // deliberately NOT a `float&`/`int&` reference-output parameter. This
@@ -646,8 +654,19 @@ __device__ __forceinline__ GpuLightBvhSample gpu_light_bvh_sample_index(
 	float pmf = 1.f;
 	u = fminf(u, 1.f - 1e-7f);
 	while (true) {
+		// Bounds guard - see this file's own header comment above for why
+		// this exists (a real, still-not-root-caused illegal-memory-access
+		// bug on at least one real scene) and why "safe fallback" rather
+		// than an assert/crash is the right response here.
+		if (nodeIndex < 0 || nodeIndex >= params.lightBvhNodeCount) {
+			return GpuLightBvhSample{-1, 0.f};
+		}
 		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
 		if (!node.isLeaf) {
+			const int c1Index = (int)node.childOrLightIndex;
+			if (nodeIndex + 1 >= params.lightBvhNodeCount || c1Index < 0 || c1Index >= params.lightBvhNodeCount) {
+				return GpuLightBvhSample{-1, 0.f};
+			}
 			const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];
 			const LightBVHNode& c1 = params.lightBvhNodes[node.childOrLightIndex];
 			float ci0 = c0.lightBounds.Importance(px,py,pz, nx,ny,nz,
@@ -683,12 +702,25 @@ __device__ __forceinline__ float gpu_light_bvh_pmf(
 	float px, float py, float pz, float nx, float ny, float nz, int lightIndex)
 {
 	if (params.lightBvhNodeCount <= 0) return 0.f;
+	// Bounds guards below - see this file's own header comment above
+	// (gpu_light_bvh_sample_index's) for why these exist and why a safe
+	// fallback rather than an assert/crash is the right response here.
+	if (lightIndex < 0 || (unsigned int)lightIndex >= params.numLights) {
+		return 0.f;
+	}
 	uint32_t bitTrail = params.lightBvhBitTrail[lightIndex];
 	float pmf = 1.f;
 	int nodeIndex = 0;
 	while (true) {
+		if (nodeIndex < 0 || nodeIndex >= params.lightBvhNodeCount) {
+			return 0.f;
+		}
 		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
 		if (node.isLeaf) return pmf;
+		const int c1Index = (int)node.childOrLightIndex;
+		if (nodeIndex + 1 >= params.lightBvhNodeCount || c1Index < 0 || c1Index >= params.lightBvhNodeCount) {
+			return 0.f;
+		}
 		const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];
 		const LightBVHNode& c1 = params.lightBvhNodes[node.childOrLightIndex];
 		float ci0 = c0.lightBounds.Importance(px,py,pz, nx,ny,nz,

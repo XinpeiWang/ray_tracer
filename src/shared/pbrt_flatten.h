@@ -1756,6 +1756,12 @@ struct FlatScene {
 	// "genuine scene-authored behavior" precedent); no directive at all
 	// resolves to the full frame {0, 1, 0, 1}.
 	double cropX0 = 0.0, cropX1 = 1.0, cropY0 = 0.0, cropY1 = 1.0;
+	// Film "float maxcomponentvalue" - pbrt-v4's own real default
+	// (effectively unbounded), a straight pass-through of pbrt_scene::
+	// Scene::maxComponentValue - see that field's own comment. Applied
+	// unconditionally, same "genuine scene-authored behavior" shape as
+	// cropX0 above, not maxDepth/samplerType's CLI-overridable one.
+	double maxComponentValue = 1e9;
 	std::vector<pbrt_scene::Warning> warnings;
 
 	bool empty() const {
@@ -5074,6 +5080,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	}
 	out.acceleratorMaxNodePrims = scene.acceleratorMaxNodePrims;
 	out.acceleratorKdParams = scene.acceleratorKdParams;
+	out.maxComponentValue = scene.maxComponentValue;
 
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds" -> a single
 	// NDC-fraction rectangle. pbrt-v4's own rule: start from the full

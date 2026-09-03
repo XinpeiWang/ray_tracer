@@ -3727,6 +3727,23 @@ static bool build_loaded_pbrt_scene(
 		warn_if_filter_radius_mismatches_gpu(pf.kind, pf.radius);
 	}
 
+	// Film "float maxcomponentvalue" - CPU's own per-sample firefly clamp
+	// (camera::max_component_value, camera.h) has no GPU equivalent at all
+	// yet. Unlike PixelFilter radius above, this needs no native-scene
+	// counterpart warning: CPU's own class-level default (1e9, effectively
+	// unbounded) already matches GPU's "no clamp" behavior exactly, so the
+	// only real divergence is a loaded .pbrt scene that explicitly
+	// requests a real, restrictive value - which only this function's own
+	// scene ever can.
+	if (loaded.scene.maxComponentValue < 1e8) {
+		std::cerr << "[OptiX] Warning: this scene's Film \"maxcomponentvalue\" ("
+			  << loaded.scene.maxComponentValue << ") clamps CPU's per-sample "
+				 "firefly outliers, but GPU has no equivalent clamp yet - GPU "
+				 "may render visibly noisier/brighter fireflies than CPU for "
+				 "this scene; use --cpu instead if the requested clamp matters "
+				 "for this render.\n";
+	}
+
 	// Integrator "bool regularize" - same unconditional-from-the-scene shape
 	// as PixelFilter just above. See GpuCameraParams::regularize's own comment.
 	if (out_camera_extra) out_camera_extra->regularize = loaded.scene.regularize ? 1 : 0;

@@ -148,3 +148,47 @@ TEST(BVHLightSampler2, UnknownLightPMFIsZero) {
     BVHLightSampler2 s(&lb, 1);
     EXPECT_EQ(s.PMF(0.5f,0.5f,5.f, 0,0,0, 99), 0.f);
 }
+
+// ---------------------------------------------------------------------------
+// 8. Node array invariants (GPU-side traversal contract)
+//
+// buildBVH()'s recursive shape (allocate an interior placeholder, then
+// recurse left-then-right, each recursion's own first action allocating
+// its node at whatever nodes_.size() is at that moment) means the LAST
+// node index in the flat array is always reached at the bottom of the
+// right-most recursion chain - i.e. it must always be a leaf, for any
+// light count/tree shape. gpu_light_bvh_sample_index()/gpu_light_bvh_pmf()
+// (optix_device_helpers_lighting.h) both traverse via nodeIndex+1 (left,
+// implicit) / node.childOrLightIndex (right, explicit) exactly like
+// BVHLightSampler2's own host-side Sample()/PMF() below - this invariant
+// is what a code-review round's own GPU diagnosis (a real, previously-
+// unresolved illegal-memory-access crash, pbrt_scenes/triangle-fan-light.
+// pbrt) empirically confirmed on real hardware for a 5-light/9-node tree
+// (the host- and device-side node dumps matched, ruling out a struct-
+// layout/ABI mismatch) - kept here as a permanent regression test for the
+// invariant the traversal code relies on, independent of the GPU crash
+// itself (which the device-side bounds guards now handle defensively).
+// ---------------------------------------------------------------------------
+
+TEST(BVHLightSampler2, LastNodeIsAlwaysALeaf) {
+    for (int n = 1; n <= 12; ++n) {
+        std::vector<LightBounds> lights;
+        for (int i = 0; i < n; ++i)
+            lights.push_back(MakeLB(static_cast<float>(i) * 2.f, 0.f, 0.f, 5.f + static_cast<float>(i)));
+        BVHLightSampler2 s(lights.data(), n);
+        ASSERT_GT(s.NodeCount(), 0) << "n=" << n;
+        EXPECT_TRUE(s.Nodes()[s.NodeCount() - 1].isLeaf)
+            << "n=" << n << " nodeCount=" << s.NodeCount();
+    }
+}
+
+TEST(BVHLightSampler2, FiveLightNodeCountMatchesTheRealCrashScene) {
+    // pbrt_scenes/triangle-fan-light.pbrt has exactly 5 lights; a full
+    // binary tree over N leaves has 2N-1 nodes total.
+    std::vector<LightBounds> lights;
+    for (int i = 0; i < 5; ++i)
+        lights.push_back(MakeLB(static_cast<float>(i) * 2.f, 0.f, 0.f, 5.f + static_cast<float>(i)));
+    BVHLightSampler2 s(lights.data(), 5);
+    EXPECT_EQ(s.NodeCount(), 9);
+    EXPECT_TRUE(s.Nodes()[8].isLeaf);
+}

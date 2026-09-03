@@ -389,6 +389,13 @@ struct Scene {
 	double cropWindow[4] = {0.0, 1.0, 0.0, 1.0};
 	int pixelBounds[4] = {0, 0, 0, 0};
 	bool hasPixelBounds = false;
+	// Film "float maxcomponentvalue" - per-sample/per-splat firefly clamp,
+	// pbrt-v4's own real default (effectively unbounded). The clamp
+	// mechanism itself already existed in src/shared/film.h (every Film
+	// class constructor there takes this as a parameter, defaulting to the
+	// same 1e9f) - this field is what actually threads a scene-authored
+	// value through to it, via pbrt_flatten.h/FlatScene::maxComponentValue.
+	double maxComponentValue = 1e9;
 	std::string integrator = "volpath";
 	// Sampler directive's type name (e.g. "sobol", "zsobol", "halton") -
 	// like `integrator` above, purely informational: nothing in this parser
@@ -1059,6 +1066,7 @@ private:
 					warn(line, "Film \"pixelbounds\" needs 4 numbers (x0 x1 y0 y1); ignored");
 				}
 			}
+			s_.maxComponentValue = p.getFloat("maxcomponentvalue", s_.maxComponentValue);
 			return true;
 		}
 		if (d == "Sampler") {

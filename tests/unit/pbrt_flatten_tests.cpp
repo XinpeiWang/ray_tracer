@@ -2254,6 +2254,19 @@ TEST(FlattenTest, RegularizeIsCarriedThroughFromTheIntegratorDirective) {
 	EXPECT_TRUE(s.regularize);
 }
 
+TEST(FlattenTest, MaxComponentValueDefaultsToEffectivelyUnbounded) {
+	const FlatScene s = flattenSource(
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_DOUBLE_EQ(s.maxComponentValue, 1e9);
+}
+
+TEST(FlattenTest, MaxComponentValueIsCarriedThroughFromTheFilmDirective) {
+	const FlatScene s = flattenSource(
+		"Film \"rgb\" \"float maxcomponentvalue\" [ 25 ]\n"
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_DOUBLE_EQ(s.maxComponentValue, 25.0);
+}
+
 TEST(FlattenTest, CropWindowDefaultsToFullFrame) {
 	const FlatScene s = flattenSource(
 		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));

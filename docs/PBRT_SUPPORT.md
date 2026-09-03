@@ -104,6 +104,8 @@ file's own "separate translation unit" convention) is the device-side gate.
 |---|---|---|---|
 | `"float[4] cropwindow"` / `"integer[4] pixelbounds"` | Approx | Approx | Restricts rendering to a sub-rectangle of the frame - pbrt-v4 allows both together (cropwindow as an NDC fraction, pixelbounds in pixel space), each independently narrowing the region via intersection; both resolve here to one NDC-fraction rectangle (`pbrt_flatten::FlatScene::cropX0`/`X1`/`Y0`/`Y1`) rather than pixel indices, since `xresolution`/`yresolution` are only advisory in this codebase (a CLI width/height argument wins, same as `maxdepth`/`Sampler` type above) - a pixel-space bound resolved against the wrong resolution would be wrong, where a fraction stays correct. **Approx, not Full, on every integrator/backend**: real pbrt-v4 writes a smaller *output image* sized to just the crop rectangle; this codebase instead still writes the full `xresolution`×`yresolution` frame, with every pixel outside the crop rectangle left explicit black rather than sampled/traced - CPU via the existing per-pixel filter-weight-sum-of-zero path (default path tracer) or an equivalent per-pixel/per-splat crop gate (BDPT/MLT/RandomWalk/AO/SimplePath/SimpleVolPath/LightPath/SPPM, see below), GPU via an early-return in each backend's own primary-ray-generation kernel (`__raygen__rg`'s explicit black write; `generate_camera_rays`'s skip-the-enqueue; GPU SPPM's `__raygen__sppm_camera_pass` early-return, relying on its own pixel buffer's one-time zero-init) - a real, deliberate simplification everywhere, chosen to avoid rippling a genuinely different output image size through the PPM/EXR writers, the PNG conversion step, and the Qt GUI's preview, all of which currently assume the output image is `image_width`×`image_height`. **Now honored by every CPU integrator and both main GPU backends, plus GPU SPPM** - `--bdpt`/`--mlt`/`--randomwalk`/`--ao`/`--simplepath`/`--simplevolpath` skip the whole per-pixel loop body for an out-of-crop pixel (`bdpt_adapter.h`'s `*_render_with_adapter()` drivers); `--lightpath` and BDPT's own t==1 light-tracing strategy have no per-pixel loop to skip (samples land at essentially arbitrary pixels), so `SplatFilm` itself gates each splat against the crop rect instead; `--mlt`'s own Markov-chain splat lambda does the identical gate inline, since chain mutations aren't pixel-indexed either - none of this needs renormalization, since each accepted splat already carries its own correct weight regardless of how many other splats were dropped. CPU `--sppm` (`sppm_adapter.h`'s `sppm_camera_pass_with_sky()`) skips the camera pass for an out-of-crop pixel every iteration, leaving its visible point permanently invalid (`SPPMFinalImage()` already reconstructs an untouched pixel as black with no divide-by-zero risk, since `radius` stays at its nonzero initial value). GPU SPPM's own `SPPMLaunchParams::camera` is a direct copy of the same `GpuCameraParams` the other two GPU backends already use, so it already carried a resolved crop rectangle with nothing reading it - `__raygen__sppm_camera_pass` now does. The wavefront backend's own `generate_camera_rays` kernel (launched once per SAMPLE, unlike the recursive backend's single whole-render launch) goes further than an early-return: `wf_launch_generate_camera_rays` (`wavefront_launch.cu`) sizes its CUDA launch grid to just the crop rectangle when one is active, so a cropped-out pixel's GPU thread is never scheduled at all on that backend, not merely skipped after the fact. |
 
+| `"float maxcomponentvalue"` | Full | Unsupported | Per-sample firefly clamp: if the largest of a sample's r/g/b exceeds this, all three are scaled down so the max component lands exactly at the threshold (pbrt-v4's own real default is effectively unbounded, `1e9`). CPU: `pbrt_scene.h` parses it into `Scene::maxComponentValue`, `pbrt_flatten.h` carries it through to `FlatScene::maxComponentValue`, and `scene_registry.h` wires it onto `camera::max_component_value`, applied unconditionally in `camera.h`'s per-sample loop via `src/shared/film.h`'s `clamp_sensor_rgb()` - a pre-existing, independently-tested helper that had no caller anywhere in the codebase until this. Default CPU path tracer only (same scope cut as `PixelFilter`/`regularize`) - `--spectral` accumulates in CIE XYZ at the point in the loop this clamp needs to run in RGB, so it's skipped there; BDPT/MLT/SPPM/the debug integrators have no equivalent clamp either. **GPU has no equivalent clamp at all** - a loaded scene requesting a real (non-default) value warns (`scene_builder.cpp`) rather than silently diverging. |
+
 ## Integrator
 
 CPU: `src/TheRestOfYourLife/camera.h` (`ray_color()`/`ray_color_spectral()`).
@@ -200,7 +202,22 @@ loader and no longer match the code:
   homogeneous medium's entry/exit pair to bound, so this is structurally
   not meaningful, not merely unimplemented, and isn't planned.
 
-- `Shape "cone"`/`Shape "paraboloid"` are now supported, **CPU only**
+- **`Shape "cone"`/`Shape "paraboloid"`/`Shape "hyperboloid"` are not pbrt-v4
+  shapes at all.** pbrt-v4 itself removed all three from pbrt-v3's shape set
+  ("the rarely-used and occasionally-buggy 'cone', 'hyperboloid', and
+  'paraboloid' Shapes have been removed" - pbrt-v4's own "Differences from
+  pbrt-v3" notes; confirmed against the real upstream `mmp/pbrt-v4` source,
+  whose `shapes.h`/`shapes.cpp` has no Cone/Paraboloid/Hyperboloid class at
+  all - real pbrt-v4's only shapes are sphere/disk/cylinder/trianglemesh/
+  curve/bilinearmesh). Cone and Paraboloid are kept here anyway as a
+  deliberate pbrt-v3-compatibility extension, not a pbrt-v4 gap being
+  closed - every "matches pbrt-v4" phrase below refers to shared parameter-
+  naming/clipping conventions pbrt-v4's own surviving shapes still use the
+  same way (radius/zmin/zmax/phimax), not a claim that pbrt-v4 has these
+  shapes. Hyperboloid was never added here and, since it isn't a real
+  pbrt-v4 gap either, isn't planned.
+
+  `Shape "cone"`/`Shape "paraboloid"` are supported, **CPU only**
   (`ConeShape<T>`/`ParaboloidShape<T>`, `src/shared/shapes.h`, wrapped by
   `cone_hittable`/`paraboloid_hittable`,
   `src/TheRestOfYourLife/cone_paraboloid_hittable.h` - same object-space-plus-
@@ -208,13 +225,13 @@ loader and no longer match the code:
   the ray into object space at intersection time rather than baking to
   world-space, so both are exactly correct under arbitrary rotation). Real
   `"radius"`/`"height"`/`"phimax"` (cone) and `"radius"`/`"zmin"`/`"zmax"`/
-  `"phimax"` (paraboloid) parameters, matching pbrt-v4's own defaults and
-  clipping semantics. Real `AreaLightSource` support (both shapes gained
+  `"phimax"` (paraboloid) parameters, matching pbrt-v3's own defaults and
+  clipping semantics (the last version of pbrt to have these shapes). Real `AreaLightSource` support (both shapes gained
   `random()`/`pdf_value()` overrides in `cone_paraboloid_hittable.h`, backed
   by `ConeShape<T>`/`ParaboloidShape<T>`'s own new `sample()`/`sample_from()`/
-  `pdf_from()` in `shapes.h` - a deliberately simpler-than-pbrt-v4 uniform-in-z
+  `pdf_from()` in `shapes.h` - a deliberately simpler-than-pbrt-v3 uniform-in-z
   sampling technique with a real, position-dependent `dA/dz` pdf rather than
-  pbrt-v4's own exact closed-form inverse-CDF, still statistically unbiased)
+  pbrt-v3's own exact closed-form inverse-CDF, still statistically unbiased)
   and real `MediumInterface` support (wrapped in a `constant_medium` via the
   same shape-agnostic `addMediumIfPresent()` helper Sphere/Disk/Cylinder
   already use). **AreaLightSource reach, precisely**: `random()`/
@@ -236,12 +253,11 @@ loader and no longer match the code:
   paraboloid's own symmetry axis (`dx=dy=0`) degenerates the intersection's
   quadratic to a linear equation and is not handled - an accepted limitation
   matching `CylinderShape<T>`'s own identical precedent for a ray exactly
-  parallel to its axis. `Shape "hyperboloid"` (a twisted ruled surface
-  between two arbitrary 3D points) was deliberately not attempted - a
-  meaningfully harder shape (no simple implicit quadric the way cone/
-  paraboloid/cylinder have) that's also rare in practice; still falls
-  through to the generic "shape not supported" warning like any other
-  unimplemented pbrt-v4 shape.
+  parallel to its axis. `Shape "hyperboloid"` was never added here (see this
+  bullet's opening note - not a real pbrt-v4 gap, and a meaningfully harder
+  shape than cone/paraboloid to begin with, no simple implicit quadric the
+  way those and cylinder have) - a scene using it falls through to the
+  generic "shape not supported" warning like any other unimplemented type.
 
 - pbrt-v4's own **"camera medium"**: a `MediumInterface` declared before the
   `Camera` directive (its "outside" name, real pbrt-v4's own convention -

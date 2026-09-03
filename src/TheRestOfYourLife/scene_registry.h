@@ -348,7 +348,8 @@ namespace pbrt_scene_registry {
         const bool pregularize = d.regularize;
         const double pcropX0 = d.cropX0, pcropX1 = d.cropX1;
         const double pcropY0 = d.cropY0, pcropY1 = d.cropY1;
-        s.setup_camera = [ux, uy, uz, pcam, pfilter, pregularize, pcropX0, pcropX1, pcropY0, pcropY1, path](camera_t& cam) {
+        const double pmaxComponentValue = d.maxComponentValue;
+        s.setup_camera = [ux, uy, uz, pcam, pfilter, pregularize, pcropX0, pcropX1, pcropY0, pcropY1, pmaxComponentValue, path](camera_t& cam) {
             cam.vup = vec3(ux, uy, uz);
             // PixelFilter - see that struct's own comment (pbrt_flatten.h)
             // for why this is applied unconditionally (unlike sampler_kind)
@@ -360,6 +361,11 @@ namespace pbrt_scene_registry {
             cam.filter_C      = pfilter.C;
             cam.filter_sigma  = pfilter.sigma;
             cam.filter_tau    = pfilter.tau;
+
+            // Film "float maxcomponentvalue" - same "applied unconditionally
+            // from the scene's own declaration" shape as PixelFilter above
+            // (see camera::max_component_value's own comment).
+            cam.max_component_value = pmaxComponentValue;
 
             // Integrator "bool regularize" - same "applied unconditionally"
             // shape as PixelFilter above (see pbrt_discover::Discovered::

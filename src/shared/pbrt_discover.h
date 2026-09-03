@@ -59,6 +59,10 @@ struct Discovered {
 	// as a fraction (resolution-independent) rather than a pixel range.
 	// No directive at all resolves to the full frame {0, 1, 0, 1}.
 	double cropX0 = 0.0, cropX1 = 1.0, cropY0 = 0.0, cropY1 = 1.0;
+	// Film "float maxcomponentvalue" - same "already resolved by flatten(),
+	// IS applied at render time" shape as filter/regularize/cropX0 above.
+	// See pbrt_flatten::FlatScene::maxComponentValue's own comment.
+	double maxComponentValue = 1e9;
 	int samplesPerPixel = 16;
 	int xResolution = 1280;
 	int yResolution = 720;
@@ -207,6 +211,7 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	d.regularize = flat.regularize;
 	d.cropX0 = flat.cropX0; d.cropX1 = flat.cropX1;
 	d.cropY0 = flat.cropY0; d.cropY1 = flat.cropY1;
+	d.maxComponentValue = flat.maxComponentValue;
 	d.ok = true;
 	return d;
 }
