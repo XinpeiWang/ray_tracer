@@ -272,8 +272,12 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="306"/>
+        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;136 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un traceur de chemins physiquement réaliste avec des backends parallèles CPU et GPU (OptiX), construit à partir de la série &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; jusqu&apos;à un ensemble de fonctionnalités façon pbrt-v4.&lt;/p&gt;&lt;p&gt;136 scènes, une vaste bibliothèque de BxDF, plusieurs types de lumières et de caméras, prise en charge des maillages de triangles et des textures, accélération BVH, volumétrie, et un choix d&apos;intégrateurs en plus du traceur de chemins standard - le photon mapping SPPM, le path tracing bidirectionnel (BDPT), le Metropolis Light Transport, et plusieurs intégrateurs de référence/débogage (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Cette fenêtre pilote &lt;code&gt;%1&lt;/code&gt; en tant que sous-processus.&lt;/p&gt;</translation>
+    </message>
+    <message>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;123 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un traceur de chemins basé sur la physique, avec des moteurs parallèles CPU et GPU (OptiX), développé à partir de la série &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; jusqu&apos;à devenir un ensemble de fonctionnalités de style pbrt-v4.&lt;/p&gt;&lt;p&gt;123 scènes, une vaste bibliothèque de BxDF, plusieurs types de lumières et de caméras, la prise en charge des maillages triangulaires et des textures, l&apos;accélération par BVH, des effets volumétriques, et un choix d&apos;intégrateurs en plus du tracé de chemins standard - le photon mapping SPPM, le tracé de chemins bidirectionnel (BDPT), le Metropolis Light Transport, et plusieurs intégrateurs de référence/débogage (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Cette fenêtre pilote &lt;code&gt;%1&lt;/code&gt; en tant que sous-processus.&lt;/p&gt;</translation>
+        <translation type="vanished">&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un traceur de chemins basé sur la physique, avec des moteurs parallèles CPU et GPU (OptiX), développé à partir de la série &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; jusqu&apos;à devenir un ensemble de fonctionnalités de style pbrt-v4.&lt;/p&gt;&lt;p&gt;123 scènes, une vaste bibliothèque de BxDF, plusieurs types de lumières et de caméras, la prise en charge des maillages triangulaires et des textures, l&apos;accélération par BVH, des effets volumétriques, et un choix d&apos;intégrateurs en plus du tracé de chemins standard - le photon mapping SPPM, le tracé de chemins bidirectionnel (BDPT), le Metropolis Light Transport, et plusieurs intégrateurs de référence/débogage (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Cette fenêtre pilote &lt;code&gt;%1&lt;/code&gt; en tant que sous-processus.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;113 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and an SPPM photon-mapping integrator alongside standard path tracing.&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
@@ -2469,431 +2473,511 @@ CPU uniquement. Luminaires surfaciques uniquement.</translation>
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../scene_technique_notes.h" line="37"/>
+        <location filename="../scene_technique_notes.h" line="44"/>
         <source>Builds the box from shared Cornell-box data: five lambertian walls, a diffuse_light ceiling quad, a rotated axis-aligned box in plain white lambertian, and a sphere with a dielectric BSDF doing full Fresnel-weighted reflection/refraction. It&apos;s the renderer&apos;s canonical convergence test - diffuse interreflection off the walls, a specular/transmissive object for BSDF-sampling correctness, and an area light quad that exercises next-event estimation, so most cross-cutting material or light-sampling regressions show up here first.</source>
         <translation>Construit la boîte à partir des données partagées de la boîte de Cornell : cinq murs lambertiens, un quad diffuse_light au plafond, une boîte alignée sur les axes et tournée, en lambertien blanc uni, et une sphère avec un BSDF dielectric assurant une réflexion/réfraction complète pondérée par Fresnel. C&apos;est le test de convergence canonique du moteur de rendu - l&apos;interréflexion diffuse entre les murs, un objet spéculaire/transmissif pour vérifier l&apos;échantillonnage du BSDF, et un quad de lumière surfacique qui exerce l&apos;estimation par événement suivant (NEE) - de sorte que la plupart des régressions transversales liées aux matériaux ou à l&apos;échantillonnage de la lumière apparaissent ici en premier.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="38"/>
+        <location filename="../scene_technique_notes.h" line="45"/>
         <source>The classic &quot;Ray Tracing in One Weekend&quot; closer: a checker-textured lambertian ground sphere under a BVH-accelerated field of small spheres, most diffuse but some built with a second center offset in time so the sphere itself carries linear motion blur, some metal with per-sphere random fuzz radius, and a few dielectric. Three large feature spheres - a sharp dielectric, a flat lambertian, and a zero-fuzz mirror-perfect metal - sit in front as reference specular/diffuse endpoints. Primarily a stress test for the BVH build and for motion-blurred ray-sphere intersection alongside the fuzzy-metal reflection model.</source>
         <translation>Le grand final classique de « Ray Tracing in One Weekend » : une sphère-sol lambertienne à damier sous un champ de petites sphères accéléré par BVH, majoritairement diffuses mais certaines construites avec un second centre décalé dans le temps pour que la sphère elle-même porte un flou de mouvement linéaire, certaines en métal avec un rayon de flou (fuzz) aléatoire par sphère, et quelques-unes dielectric. Trois grandes sphères vedettes - une dielectric nette, une lambertienne plate, et un métal parfaitement miroir sans flou - se tiennent devant comme points de référence spéculaire/diffus. Il s&apos;agit surtout d&apos;un test de charge pour la construction du BVH et pour l&apos;intersection rayon-sphère avec flou de mouvement, aux côtés du modèle de réflexion du métal flouté.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="39"/>
+        <location filename="../scene_technique_notes.h" line="46"/>
         <source>Two enormous spheres (radius 10, one above and one below the origin) share a single procedural checker texture sampled through spherical UV coordinates and shaded with plain lambertian - the pattern is generated analytically from 3D position, not an image lookup. A handful of smaller accent spheres (diffuse, glossy metal with slight fuzz, and a dielectric) sit on the lower sphere&apos;s cap for scale and to give the frame real specular/refractive behavior. Mostly a test of the procedural texture&apos;s 3D-to-checker mapping holding up at large sphere-surface curvature.</source>
         <translation>Deux sphères immenses (rayon 10, l&apos;une au-dessus et l&apos;autre en dessous de l&apos;origine) partagent une unique texture procédurale à damier échantillonnée via des coordonnées UV sphériques et ombrée en lambertien uni - le motif est généré analytiquement à partir de la position 3D, pas d&apos;une image lue. Une poignée de petites sphères d&apos;accent (diffuse, métal glacé avec un léger flou, et une dielectric) se posent sur la calotte de la sphère inférieure, pour l&apos;échelle et pour donner à l&apos;image un vrai comportement spéculaire/réfractif. Ce test vérifie surtout que le mappage 3D-vers-damier de la texture procédurale tient bien face à la forte courbure de la surface sphérique.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="40"/>
+        <location filename="../scene_technique_notes.h" line="47"/>
         <source>Ground and a large sphere both use a Perlin/turbulence-based procedural marble texture evaluated directly from world-space position and fed through lambertian - no image texture involved. Two smaller companion spheres reuse the same technique at a higher noise frequency for contrast, lit by a diffuse_light quad sampled via next-event estimation. Tests the Perlin-noise turbulence/marble output feeding correctly into the BSDF pipeline under real NEE lighting rather than flat ambient.</source>
         <translation>Le sol et une grande sphère utilisent tous deux une texture de marbre procédurale à base de bruit de Perlin/turbulence, évaluée directement à partir de la position dans l&apos;espace monde et alimentant un lambertien - aucune texture image n&apos;intervient. Deux sphères compagnes plus petites reprennent la même technique à une fréquence de bruit plus élevée pour le contraste, éclairées par un quad diffuse_light échantillonné via l&apos;estimation par événement suivant. Ce test vérifie que la sortie de turbulence/marbre en bruit de Perlin alimente correctement le pipeline BSDF sous un éclairage NEE réel plutôt qu&apos;un ambiant plat.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="41"/>
+        <location filename="../scene_technique_notes.h" line="48"/>
         <source>Five quad primitives, each spanning a different orientation (front-facing, side-facing, top-facing) via distinct basis vectors, each with a flat lambertian color - this exercises the quad hittable&apos;s plane-intersection and per-orientation normal/UV computation rather than shading complexity. A separate diffuse_light quad floats in the room as the scene&apos;s only emitter, giving next-event estimation something concrete to importance-sample. Mainly a correctness check for quad geometry and orientation-dependent normals under real area-light sampling.</source>
         <translation>Cinq primitives quad, chacune orientée différemment (face avant, face latérale, face supérieure) via des vecteurs de base distincts, chacune avec une couleur lambertienne plate - ceci exerce l&apos;intersection plan de la primitive quad et le calcul de la normale/des UV selon l&apos;orientation, plutôt que la complexité de l&apos;ombrage. Un quad diffuse_light séparé flotte dans la pièce comme unique émetteur de la scène, donnant à l&apos;estimation par événement suivant quelque chose de concret à échantillonner par importance. Il s&apos;agit surtout d&apos;une vérification de correction pour la géométrie des quads et les normales dépendantes de l&apos;orientation, sous un échantillonnage réel de lumière surfacique.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="42"/>
+        <location filename="../scene_technique_notes.h" line="49"/>
         <source>Reuses the Perlin-noise ground/sphere setup from the marble-texture scenes, but the real subject is emission: a sphere given a diffuse_light material (warm tint) acts as a curved, non-planar area-light emitter, alongside a separate cool-toned diffuse_light quad. Having both a spherical and a quad emitter live in the same scene tests that light-sampling handles solid-angle sampling correctly across different emitter geometries, not just the usual flat quad case - the color-temperature split makes it easy to see which light contributes where.</source>
         <translation>Reprend le sol/la sphère en bruit de Perlin des scènes à texture de marbre, mais le vrai sujet ici est l&apos;émission : une sphère dotée d&apos;un matériau diffuse_light (teinte chaude) agit comme un émetteur de lumière surfacique courbe, non planaire, aux côtés d&apos;un quad diffuse_light séparé de teinte froide. Le fait d&apos;avoir à la fois un émetteur sphérique et un émetteur quad dans la même scène vérifie que l&apos;échantillonnage de la lumière gère correctement l&apos;échantillonnage en angle solide selon différentes géométries d&apos;émetteur, et pas seulement le cas habituel du quad plat - la répartition des températures de couleur permet de voir facilement quelle lumière contribue où.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="43"/>
+        <location filename="../scene_technique_notes.h" line="50"/>
         <source>Rebuilds the standard Cornell walls plus its own oversized ceiling diffuse_light quad, then replaces the usual solid boxes with two rotated/translated boxes wrapped in constant_medium - a homogeneous isotropic-scattering participating medium with low density and its own tint, instead of the classic monochrome smoke. This is the volumetric-medium test: box geometry used elsewhere as solid lambertian surfaces here instead defines the boundary of an isotropic in-scattering volume, checking that medium sampling and boundary-shape intersection cooperate correctly.</source>
         <translation>Reconstruit les murs de Cornell standard avec son propre quad diffuse_light surdimensionné au plafond, puis remplace les boîtes solides habituelles par deux boîtes tournées/translatées enveloppées d&apos;un constant_medium - un milieu participatif homogène à diffusion isotrope, de faible densité et à teinte propre, au lieu de la fumée monochrome classique. C&apos;est le test du milieu volumétrique : une géométrie de boîte utilisée ailleurs comme surface lambertienne solide définit ici plutôt la frontière d&apos;un volume à diffusion isotrope, vérifiant que l&apos;échantillonnage du milieu et l&apos;intersection avec la forme englobante coopèrent correctement.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="44"/>
+        <location filename="../scene_technique_notes.h" line="51"/>
         <source>The most feature-dense scene in the set: a grid of randomly-heighted lambertian boxes forming undulating BVH-built ground, a ceiling-quad area light, a motion-blurred lambertian sphere, a dielectric glass sphere, a fuzzy metal sphere, a colored constant_medium bounded inside a dielectric sphere (a self-contained volumetric fog pocket), a second near-zero-density constant_medium wrapped around a giant enclosing sphere as faint global atmosphere, a mipmapped image-textured earth sphere, a Perlin-noise marble sphere, and a cluster of small white spheres packed into a rotated BVH sub-tree. Exercises motion blur, dielectric/metal/lambertian BSDFs, bounded and global participating media, image-texture mip-mapping, and multi-level BVH construction all in one render.</source>
         <translation>La scène la plus dense en fonctionnalités de l&apos;ensemble : une grille de boîtes lambertiennes de hauteurs aléatoires formant un sol ondulé construit en BVH, une lumière surfacique en quad au plafond, une sphère lambertienne à flou de mouvement, une sphère de verre dielectric, une sphère métallique floutée, un constant_medium coloré confiné dans une sphère dielectric (une poche de brouillard volumétrique autonome), un second constant_medium de densité quasi nulle enveloppant une sphère englobante géante en guise de faible atmosphère globale, une sphère terrestre texturée par image avec mip-mapping, une sphère de marbre en bruit de Perlin, et un amas de petites sphères blanches regroupées dans un sous-arbre BVH tourné. Exerce en un seul rendu le flou de mouvement, les BSDF dielectric/metal/lambertian, les milieux participatifs bornés et globaux, le mip-mapping des textures image, et la construction de BVH multi-niveaux.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="49"/>
+        <location filename="../scene_technique_notes.h" line="56"/>
         <source>A row of five spheres running through pure roughness values on the same gold-tinted rough_metal material (GGX/Trowbridge-Reitz microfacet distribution with a simple RGB-tinted reflectance, not full complex-IOR Fresnel). Isolated on a ground plane under one area light, so the only variable in frame is how the specular highlight spreads and dims as roughness increases.</source>
         <translation>Une rangée de cinq sphères parcourant des valeurs de rugosité pures sur le même matériau rough_metal teinté or (distribution de microfacettes GGX/Trowbridge-Reitz avec une réflectance teintée RVB simple, pas un Fresnel à IOR complexe complet). Isolées sur un plan de sol sous une seule lumière surfacique, de sorte que la seule variable dans l&apos;image est la façon dont le reflet spéculaire s&apos;étale et s&apos;atténue à mesure que la rugosité augmente.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="50"/>
+        <location filename="../scene_technique_notes.h" line="57"/>
         <source>The same rough_metal GGX BxDF as the rough-metal-spheres scene (brushed aluminium box, brushed gold sphere at a different roughness) but dropped into the familiar Cornell box instead of an open studio setup, so glossy microfacet reflection has to hold up under real indirect bounce lighting and colored wall bleed rather than a single overhead light.</source>
         <translation>Le même BxDF rough_metal GGX que la scène des sphères en métal rugueux (boîte en aluminium brossé, sphère en or brossé à une rugosité différente) mais placé dans la boîte de Cornell familière plutôt que dans un décor de studio ouvert, de sorte que la réflexion glacée par microfacettes doit tenir sous un véritable éclairage indirect rebondi et les débordements colorés des murs, plutôt que sous une seule lumière zénithale.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="51"/>
+        <location filename="../scene_technique_notes.h" line="58"/>
         <source>A Cornell box glass sphere swapped from perfect dielectric to rough_dielectric - GGX microfacets applied to both the reflection and the transmission lobe, so refracted light scatters into a frosted blur instead of a sharp Snell-law ray, while still respecting Fresnel&apos;s reflect/transmit split per microfacet.</source>
         <translation>Une sphère de verre de la boîte de Cornell, passée d&apos;un dielectric parfait à un rough_dielectric - des microfacettes GGX appliquées à la fois au lobe de réflexion et au lobe de transmission, de sorte que la lumière réfractée se disperse en un flou dépoli au lieu d&apos;un rayon net obéissant à la loi de Snell, tout en respectant la répartition réflexion/transmission de Fresnel par microfacette.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="52"/>
+        <location filename="../scene_technique_notes.h" line="59"/>
         <source>Polished gold and aluminium surfaces using the conductor material with real per-channel complex Fresnel from measured eta/k spectra, rather than an RGB-albedo approximation - so the metal color comes from actual reflectance spectra, not an artist-picked tint.</source>
         <translation>Des surfaces d&apos;or et d&apos;aluminium polies utilisant le matériau conductor avec un véritable Fresnel complexe par canal issu de spectres eta/k mesurés, plutôt qu&apos;une approximation d&apos;albédo RVB - la couleur du métal provient donc de spectres de réflectance réels, pas d&apos;une teinte choisie par un artiste.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="53"/>
+        <location filename="../scene_technique_notes.h" line="60"/>
         <source>A coated-diffuse sphere and box using coated_diffuse: a rough dielectric coat layered over a Lambertian base. Exercises the layered-BSDF solve - light can specularly reflect off the coat, or transmit through and pick up the diffuse base color, with internal reflection between the two layers.</source>
         <translation>Une sphère et une boîte en coated-diffuse utilisant coated_diffuse : un revêtement dielectric rugueux superposé à une base lambertienne. Exerce la résolution du BSDF en couches - la lumière peut se réfléchir spéculairement sur le revêtement, ou le traverser et prendre la couleur de base diffuse, avec réflexion interne entre les deux couches.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="54"/>
+        <location filename="../scene_technique_notes.h" line="61"/>
         <source>A vertical glass panel using thin_dielectric splitting the Cornell box in two: zero-thickness glass with the analytic multi-bounce Fresnel formula instead of a real refractive interface, so transmitted rays pass straight through with no bending. The panel is tilted deliberately, since IOR-1.5 Fresnel reflectance only becomes visible near grazing incidence.</source>
         <translation>Un panneau de verre vertical utilisant thin_dielectric, divisant la boîte de Cornell en deux : un verre d&apos;épaisseur nulle avec la formule de Fresnel analytique à rebonds multiples au lieu d&apos;une véritable interface réfractive, si bien que les rayons transmis passent tout droit sans déviation. Le panneau est délibérément incliné, car la réflectance de Fresnel pour un IOR de 1,5 ne devient visible qu&apos;à incidence rasante.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="55"/>
+        <location filename="../scene_technique_notes.h" line="62"/>
         <source>Lacquered-metal look via coated_conductor: a gold sphere and copper box, each a rough dielectric coat over a GGX conductor base with per-channel complex Fresnel. The most stacked BxDF in this category - it combines spectral metal reflectance underneath an achromatic glossy coat, showing the coat&apos;s Fresnel sheen sitting on top of the metal&apos;s own tint.</source>
         <translation>Un aspect métal laqué via coated_conductor : une sphère en or et une boîte en cuivre, chacune avec un revêtement dielectric rugueux sur une base conductor GGX avec Fresnel complexe par canal. Le BxDF le plus empilé de cette catégorie - il combine une réflectance métallique spectrale sous un revêtement glacé achromatique, montrant le lustre de Fresnel du revêtement se superposer à la teinte propre du métal.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="56"/>
+        <location filename="../scene_technique_notes.h" line="63"/>
         <source>A wax-like sphere using diffuse_transmission with separate reflectance and transmittance colors - light scatters diffusely into both the same hemisphere (reflection) and the opposite one (transmission), a cheap two-parameter stand-in for translucency that needs no volumetric random walk, unlike the subsurface-slab scene&apos;s approach to the same visual goal.</source>
         <translation>Une sphère d&apos;aspect cireux utilisant diffuse_transmission avec des couleurs de réflectance et de transmittance distinctes - la lumière se diffuse à la fois dans le même hémisphère (réflexion) et dans l&apos;hémisphère opposé (transmission), un substitut économique à deux paramètres pour la translucidité, qui ne nécessite aucune marche aléatoire volumétrique, contrairement à l&apos;approche de la scène de dalle à diffusion sous-surfacique pour le même objectif visuel.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="57"/>
+        <location filename="../scene_technique_notes.h" line="64"/>
         <source>A crystal sphere using normalized_fresnel - Fresnel-weighted diffuse exitance where the BSDF value rises toward grazing angles (where Fresnel transmittance is low, so more internally-scattered light escapes). Sampling stays cosine-hemisphere, but the scattering PDF carries the Fresnel weighting itself, normalized so total reflected energy stays correct under MIS.</source>
         <translation>Une sphère de cristal utilisant normalized_fresnel - une exitance diffuse pondérée par Fresnel où la valeur du BSDF augmente vers les angles rasants (où la transmittance de Fresnel est faible, laissant échapper davantage de lumière diffusée en interne). L&apos;échantillonnage reste hémisphérique en cosinus, mais la PDF de diffusion porte elle-même la pondération de Fresnel, normalisée pour que l&apos;énergie totale réfléchie reste correcte sous l&apos;échantillonnage multiple (MIS).</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="58"/>
+        <location filename="../scene_technique_notes.h" line="65"/>
         <source>Seven spheres sweeping the principled material&apos;s parameter space in one row: matte diffuse, low-roughness plastic, clearcoated plastic, semi-metallic, rough near-metallic, smooth full metal, and a clearcoated full metal - varying metallic, roughness, and clearcoat independently to show how one unified BSDF spans the whole dielectric-to-conductor range that separate materials elsewhere in this category cover individually.</source>
         <translation>Sept sphères parcourant sur une seule rangée l&apos;espace des paramètres du matériau « principled » : diffus mat, plastique à faible rugosité, plastique verni (clearcoat), semi-métallique, quasi-métallique rugueux, métal plein lisse, et métal plein verni - en faisant varier indépendamment le paramètre métallique, la rugosité et le vernis pour montrer comment un unique BSDF unifié couvre toute la plage allant du dielectric au conductor que des matériaux séparés couvrent individuellement ailleurs dans cette catégorie.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="59"/>
+        <location filename="../scene_technique_notes.h" line="66"/>
         <source>Five spheres using the hair material (HairBxDF) with distinct absorption/roughness parameters, tuned for a strongly forward/specular-scattering fiber BSDF rather than a diffuse one - the light had to be recalibrated far dimmer than other scenes in this set because hair&apos;s peak BSDF response blows out under normal area-light intensity. Applied to sphere surfaces rather than real curve geometry, isolating the BxDF&apos;s shading behavior from the curve-intersection machinery (see the Curve Fibers scene for that half).</source>
         <translation>Cinq sphères utilisant le matériau hair (HairBxDF) avec des paramètres d&apos;absorption/rugosité distincts, réglés pour un BSDF de fibre fortement spéculaire/vers l&apos;avant plutôt que diffus - la lumière a dû être recalibrée bien plus faible que dans les autres scènes de cet ensemble, car le pic de réponse du BSDF des cheveux sature sous une intensité de lumière surfacique normale. Appliqué à des surfaces sphériques plutôt qu&apos;à une véritable géométrie de courbe, isolant le comportement d&apos;ombrage du BxDF de la mécanique d&apos;intersection de courbes (voir la scène Fibres capillaires pour cette autre moitié).</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="60"/>
+        <location filename="../scene_technique_notes.h" line="67"/>
         <source>Two perturbation techniques on plain Lambertian surfaces: bump mapping displaces shading normals from a Perlin marble noise texture (back wall and box), while normal mapping perturbs them from a checker pattern (sphere) - the geometric surface stays flat/spherical but the shading normal used for lighting is bent to fake fine surface detail.</source>
         <translation>Deux techniques de perturbation sur des surfaces lambertiennes simples : le bump mapping déplace les normales d&apos;ombrage à partir d&apos;une texture de bruit de marbre de Perlin (mur du fond et boîte), tandis que le normal mapping les perturbe à partir d&apos;un motif à damier (sphère) - la surface géométrique reste plate/sphérique mais la normale d&apos;ombrage utilisée pour l&apos;éclairage est infléchie pour simuler de fins détails de surface.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="61"/>
+        <location filename="../scene_technique_notes.h" line="68"/>
         <source>Not a true BSSRDF - light entering the milky wax slab and jade sphere passes through a dielectric shell into a constant_medium (homogeneous participating medium with its own density and tint), so the translucent glow comes from a real volumetric random walk inside the object bounded by refractive Fresnel at the surface, rather than a diffusion-based subsurface term.</source>
         <translation>Pas un véritable BSSRDF - la lumière pénétrant dans la dalle de cire laiteuse et la sphère de jade traverse une coque dielectric pour entrer dans un constant_medium (milieu participatif homogène avec sa propre densité et sa propre teinte), de sorte que la lueur translucide provient d&apos;une véritable marche aléatoire volumétrique à l&apos;intérieur de l&apos;objet, délimitée par le Fresnel réfractif en surface, plutôt que d&apos;un terme sous-surfacique basé sur la diffusion.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="62"/>
+        <location filename="../scene_technique_notes.h" line="69"/>
         <source>Exercises the pbrt-v4 measured-BRDF data pipeline - synthetically generated tabulated NDF, sigma, VNDF, luminance and per-wavelength spectral tables (rather than a real captured material) across a row of five spheres. BSDF evaluation itself is simplified to cosine-hemisphere sampling with a flat tint rather than the full 5D importance-sampling warp chain, so this scene tests the tabulated-data plumbing more than a realistic measured-material result.</source>
         <translation>Exerce le pipeline de données de BRDF mesurée de pbrt-v4 - des tables tabulées générées synthétiquement pour la NDF, sigma, la VNDF, la luminance et des tables spectrales par longueur d&apos;onde (plutôt qu&apos;un matériau réellement capturé) sur une rangée de cinq sphères. L&apos;évaluation du BSDF elle-même est simplifiée en un échantillonnage hémisphérique en cosinus avec une teinte plate, plutôt que la chaîne complète de déformation par échantillonnage d&apos;importance en 5D - cette scène teste donc surtout la plomberie des données tabulées, plus qu&apos;un résultat réaliste de matériau mesuré.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="63"/>
+        <location filename="../scene_technique_notes.h" line="70"/>
         <source>A literal triangular glass prism using a dispersive dielectric - a Cauchy-equation index of refraction that varies with wavelength, matching real crown glass - instead of a flat IOR. White light entering the prism splits by wavelength on exit, fanning across a catcher screen the way a physical glass prism does, but only under --spectral, which tracks per-wavelength rays through the renderer; without it, each RGB channel just refracts by a fixed, slightly different amount rather than a continuous spread.</source>
         <translation>Un véritable prisme de verre triangulaire utilisant un dielectric dispersif - un indice de réfraction selon l&apos;équation de Cauchy qui varie avec la longueur d&apos;onde, correspondant au verre crown réel - au lieu d&apos;un IOR plat. La lumière blanche entrant dans le prisme se décompose par longueur d&apos;onde à la sortie, s&apos;étalant en éventail sur un écran récepteur comme le ferait un vrai prisme de verre, mais uniquement sous --spectral, qui suit des rayons par longueur d&apos;onde à travers le moteur de rendu ; sans cela, chaque canal RVB se réfracte simplement d&apos;une quantité fixe et légèrement différente, plutôt qu&apos;un étalement continu.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="64"/>
+        <location filename="../scene_technique_notes.h" line="71"/>
         <source>The same dispersive prism as B23, ground to frosted glass (rough_dielectric) instead of polished smooth. Under --spectral, the same rainbow fan appears on the catcher screen, blurred by the surface roughness rather than sharp - the underlying physics (wavelength-dependent index of refraction) is identical, only the microfacet scattering added on top differs. Frosted glass needed more than a flat re-skin of B23 to disperse correctly: unlike smooth glass, a rough surface&apos;s light sampling has to reach an off-axis light (like this scene&apos;s directional beam) through explicit next-event estimation, so that sampling itself had to become wavelength-aware too, not just the initial refraction.</source>
         <translation>Le même prisme dispersif que B23, mais poli en verre dépoli (rough_dielectric) au lieu de verre lisse. Avec --spectral, le même éventail arc-en-ciel apparaît sur l&apos;écran récepteur, flouté par la rugosité de la surface plutôt que net - la physique sous-jacente (indice de réfraction dépendant de la longueur d&apos;onde) est identique, seule la diffusion par microfacettes ajoutée par-dessus diffère. Le verre dépoli nécessitait plus qu&apos;un simple habillage de B23 pour disperser correctement : contrairement au verre lisse, l&apos;échantillonnage de la lumière d&apos;une surface rugueuse doit atteindre une lumière hors axe (comme le faisceau directionnel de cette scène) via une estimation par événement suivant explicite, si bien que cet échantillonnage lui-même a dû devenir sensible à la longueur d&apos;onde, pas seulement la réfraction initiale.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="69"/>
+        <location filename="../scene_technique_notes.h" line="76"/>
         <source>pbrt&apos;s &quot;mix&quot; material blends two materials per shading point using real per-sample stochastic selection - a probability-weighted choice at each hit, not a flat blended color - so a mix of matte diffuse and a metallic conductor shows up as genuine speckled grain: some samples land pure diffuse, others pure specular, averaging out correctly over many samples. Exercised identically on CPU, GPU-recursive, and GPU-wavefront.</source>
         <translation>Le matériau « mix » de pbrt mélange deux matériaux par point d&apos;ombrage via une véritable sélection stochastique par échantillon - un choix pondéré par probabilité à chaque impact, pas une couleur mélangée à plat - de sorte qu&apos;un mélange de diffus mat et de conductor métallique apparaît comme un véritable grain moucheté : certains échantillons tombent en diffus pur, d&apos;autres en spéculaire pur, la moyenne se faisant correctement sur un grand nombre d&apos;échantillons. Exercé de façon identique sur CPU, GPU récursif et GPU wavefront.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="70"/>
+        <location filename="../scene_technique_notes.h" line="77"/>
         <source>Four material kinds bundled nowhere else in this app: thindielectric (a zero-thickness glass sheet that refracts without displacing the ray, unlike ordinary dielectric), coatedconductor (a clear coat over a metal base), diffusetransmission (light passes through as well as scattering back, like a thin leaf or paper), and subsurface scattering via a named preset (&quot;Marble&quot;) - real subsurface parameters without needing an external measured-data file.</source>
         <translation>Quatre types de matériaux regroupés nulle part ailleurs dans cette application : thindielectric (une feuille de verre d&apos;épaisseur nulle qui réfracte sans déplacer le rayon, contrairement au dielectric ordinaire), coatedconductor (un revêtement transparent sur une base métallique), diffusetransmission (la lumière traverse aussi bien qu&apos;elle est diffusée en retour, comme une feuille fine ou du papier), et la diffusion sous-surfacique via un préréglage nommé (« Marble ») - de véritables paramètres sous-surfaciques sans avoir besoin d&apos;un fichier de données mesurées externe.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="71"/>
+        <location filename="../scene_technique_notes.h" line="78"/>
         <source>pbrt&apos;s CoatedDiffuse material (a diffuse base under a clear dielectric coat, like varnished wood) reading its reflectance from an actual image texture instead of a flat color - this exact combination used to silently ignore the texture and fall back to solid grey on both backends.</source>
         <translation>Le matériau CoatedDiffuse de pbrt (une base diffuse sous un revêtement dielectric transparent, comme du bois verni) lisant sa réflectance depuis une véritable texture image plutôt qu&apos;une couleur plate - cette combinaison précise ignorait autrefois silencieusement la texture et retombait sur un gris uni, sur les deux backends.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="72"/>
+        <location filename="../scene_technique_notes.h" line="79"/>
         <source>A conductor material driven by explicit RGB eta/k (the complex index of refraction that gives metals their tinted, wavelength-dependent reflectance) rather than a named preset - plus the same complex-IOR math applied through a coatedconductor&apos;s metal base layer, producing accurate colored specular highlights instead of a flat mirror tint.</source>
         <translation>Un matériau conductor piloté par des valeurs eta/k RVB explicites (l&apos;indice de réfraction complexe qui donne aux métaux leur réflectance teintée et dépendante de la longueur d&apos;onde) plutôt qu&apos;un préréglage nommé - plus les mêmes calculs d&apos;IOR complexe appliqués à travers la couche métallique de base d&apos;un coatedconductor, produisant des reflets spéculaires colorés précis au lieu d&apos;une teinte de miroir plate.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="73"/>
+        <location filename="../scene_technique_notes.h" line="80"/>
         <source>DiffuseTransmission (light both reflects and transmits diffusely, the model for something like a thin leaf or lampshade) with its reflectance and transmittance each bound to a real texture instead of flat colors, on both backends.</source>
         <translation>DiffuseTransmission (la lumière est à la fois réfléchie et transmise de façon diffuse, le modèle adapté à une feuille fine ou un abat-jour) dont la réflectance et la transmittance sont chacune liées à une véritable texture au lieu de couleurs plates, sur les deux backends.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="74"/>
+        <location filename="../scene_technique_notes.h" line="81"/>
         <source>pbrt&apos;s Material &quot;hair&quot; - the Marschner/Chiang fiber-scattering model, the same physically-based hair BSDF real film production renderers use - applied to plain spheres here for a controlled, side-by-side comparison against this project&apos;s own native Hair Fibers demo.</source>
         <translation>Le matériau « hair » de pbrt - le modèle de diffusion de fibre de Marschner/Chiang, le même BSDF capillaire physiquement réaliste utilisé par les moteurs de rendu de production cinématographique réels - appliqué ici à de simples sphères pour une comparaison contrôlée, côte à côte, avec la démo native de fibres capillaires (Hair Fibers) propre à ce projet.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="75"/>
+        <location filename="../scene_technique_notes.h" line="82"/>
         <source>A pbrt checkerboard texture whose two colors are themselves each bound to a real image (an imagemap texture nested one level inside the checker/mix texture), not just flat literal colors - tests that texture references can compose, not just appear standalone.</source>
         <translation>Une texture à damier de pbrt dont les deux couleurs sont elles-mêmes chacune liées à une véritable image (une texture imagemap imbriquée un niveau à l&apos;intérieur de la texture checker/mix), et non de simples couleurs littérales plates - ce test vérifie que les références de texture peuvent se composer, pas seulement apparaître de façon isolée.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="76"/>
+        <location filename="../scene_technique_notes.h" line="83"/>
         <source>pbrt&apos;s NamedMaterial referenced directly on a shape (declared once, reused by name, rather than only appearing as a &quot;mix&quot; material&apos;s sub-ingredient) plus a texture bound to one of that material&apos;s parameters, and an AreaLightSource with its twosided flag set so both faces emit.</source>
         <translation>Le NamedMaterial de pbrt référencé directement sur une forme (déclaré une fois, réutilisé par nom, plutôt que d&apos;apparaître seulement comme sous-ingrédient d&apos;un matériau « mix ») plus une texture liée à l&apos;un des paramètres de ce matériau, et un AreaLightSource avec son indicateur twosided activé pour que les deux faces émettent.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="81"/>
+        <location filename="../scene_technique_notes.h" line="84"/>
+        <source>Seven spheres, one per named glass IOR preset (BK7, BAF10, FK51A, LASF9, F5, F10, F11) resolved via FindGlassPreset() into a fixed dielectric IOR at the render&apos;s reference wavelength - the same lookup table real optical-glass catalogs use, previously reachable only from unit tests, never actually rendered before this scene.</source>
+        <translation>Sept sphères, une par préréglage d&apos;IOR de verre nommé (BK7, BAF10, FK51A, LASF9, F5, F10, F11) résolu via FindGlassPreset() en un IOR dielectric fixe à la longueur d&apos;onde de référence du rendu - la même table de correspondance qu&apos;utilisent les véritables catalogues de verres optiques, auparavant accessible uniquement depuis les tests unitaires, jamais réellement rendue avant cette scène.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="85"/>
+        <source>Four quads, same source image and UV scale, each isolating one imagemap texture option: default sRGB decode and wrap-repeat as the reference case, a linear-decode quad reading the same bytes as brighter (skipping the gamma curve that normally compresses mid-tones), a clamp-wrap quad that holds its edge texel instead of tiling past [0,1], and an inverted-channel quad - none of these paths were reachable via any other bundled scene&apos;s default texture settings.</source>
+        <translation>Quatre quads, même image source et même échelle UV, chacun isolant une option de texture imagemap : décodage sRGB par défaut et répétition en wrap comme cas de référence, un quad à décodage linéaire lisant les mêmes octets de façon plus lumineuse (en sautant la courbe gamma qui compresse normalement les tons moyens), un quad en clamp-wrap qui conserve son texel de bord au lieu de se répéter au-delà de [0,1], et un quad à canal inversé - aucun de ces chemins n&apos;était accessible via les réglages de texture par défaut d&apos;une autre scène fournie.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="86"/>
+        <source>Four quads, left to right, each driven by a different pbrt-v4 procedural texture class wired into the builder but never previously used by any bundled scene: windy (parameterless turbulence), wrinkled (Perlin turbulence with tunable octaves/roughness), dots (two flat colors split by a Perlin-noise boundary), and bilerp (four corner colors blended smoothly across UV).</source>
+        <translation>Quatre quads, de gauche à droite, chacun piloté par une classe de texture procédurale pbrt-v4 différente, câblée dans le générateur mais jamais utilisée auparavant par aucune scène fournie : windy (turbulence sans paramètre), wrinkled (turbulence de Perlin avec octaves/rugosité réglables), dots (deux couleurs plates séparées par une frontière de bruit de Perlin), et bilerp (quatre couleurs de coin mélangées en douceur à travers les UV).</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="87"/>
+        <source>Two quads compare a texture nested TWO levels deep (an outer checkerboard whose own tex1 is ANOTHER checkerboard, whose own tex1 is a real image) against the simpler one-level case reproduced alongside it. Real on CPU - two different checker frequencies of the same photo genuinely tile inside each other; GPU intentionally flattens the whole nested tree into one average color and warns instead, a documented approximation rather than a bug, so rendering this scene both ways shows the real divergence.</source>
+        <translation>Deux quads comparent une texture imbriquée sur DEUX niveaux de profondeur (un damier extérieur dont le propre tex1 est UN AUTRE damier, dont le propre tex1 est une véritable image) au cas plus simple à un seul niveau reproduit à côté. Réel sur CPU - deux fréquences de damier différentes de la même photo se répètent véritablement l&apos;une dans l&apos;autre ; le GPU aplatit délibérément tout l&apos;arbre imbriqué en une seule couleur moyenne et affiche un avertissement à la place, une approximation documentée plutôt qu&apos;un bug, de sorte que rendre cette scène des deux façons montre la véritable divergence.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="92"/>
         <source>An open scene lit purely by a procedural HDR sky gradient (blue zenith fading to a warm horizon) wired in as an image-based infinite light, rather than any local emitter. A diffuse sphere, a near-mirror metal sphere, and a dielectric sphere sit under it to show how that environment illumination reads across different BSDFs, from soft ambient-occlusion-like shading to sharp reflected/refracted copies of the sky gradient.</source>
         <translation>Une scène ouverte éclairée uniquement par un dégradé de ciel HDR procédural (zénith bleu s&apos;estompant vers un horizon chaud) intégré comme lumière infinie basée sur image, plutôt que par un quelconque émetteur local. Une sphère diffuse, une sphère métallique quasi miroir et une sphère dielectric se trouvent en dessous pour montrer comment cet éclairage d&apos;environnement se lit à travers différents BSDF, d&apos;un ombrage doux façon occlusion ambiante à des copies nettes, réfléchies/réfractées, du dégradé de ciel.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="82"/>
+        <location filename="../scene_technique_notes.h" line="93"/>
         <source>Bare Cornell walls lit entirely by a single spotlight-style punctual light aimed straight down from the ceiling, with a wide total cone width and a narrower inner falloff start, giving it a smooth penumbra rather than a hard-edged disc of light. Unlike the area-light Cornell scenes, this is a delta light with no surface to sample - the cone shape and falloff are the whole point.</source>
         <translation>Des murs de Cornell nus, éclairés entièrement par une seule lumière ponctuelle de type projecteur, dirigée droit vers le bas depuis le plafond, avec une large largeur de cône totale et un début d&apos;atténuation interne plus étroit, ce qui lui donne une pénombre douce plutôt qu&apos;un disque de lumière aux bords durs. Contrairement aux scènes de Cornell à lumière surfacique, il s&apos;agit ici d&apos;une lumière delta sans surface à échantillonner - la forme du cône et son atténuation sont tout l&apos;intérêt de cette scène.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="83"/>
+        <location filename="../scene_technique_notes.h" line="94"/>
         <source>Bare Cornell walls lit by a parallel, sun-like distant light: a fixed direction vector with no 1/r-squared falloff, so the radiance scale directly is the incident irradiance rather than an intensity compensating for distance. A deliberate contrast case for verifying the punctual-light pipeline handles directional, non-attenuating lights correctly alongside the point/spot/gonio lights that do fall off.</source>
         <translation>Des murs de Cornell nus, éclairés par une lumière distante parallèle façon soleil : un vecteur de direction fixe sans atténuation en 1/r², de sorte que l&apos;échelle de radiance est directement l&apos;éclairement incident plutôt qu&apos;une intensité compensant la distance. Un cas de contraste délibéré pour vérifier que le pipeline des lumières ponctuelles gère correctement les lumières directionnelles, non atténuées, aux côtés des lumières point/spot/gonio qui, elles, s&apos;atténuent.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="84"/>
+        <location filename="../scene_technique_notes.h" line="95"/>
         <source>Cornell walls lit by a single overhead isotropic point light with classic 1/r-squared intensity falloff - the simplest punctual emitter in this category, with no cone, no directional profile, no parallel rays, just distance-based attenuation from one location near the ceiling.</source>
         <translation>Des murs de Cornell éclairés par une seule lumière ponctuelle isotrope au plafond, avec l&apos;atténuation classique d&apos;intensité en 1/r² - l&apos;émetteur ponctuel le plus simple de cette catégorie, sans cône, sans profil directionnel, sans rayons parallèles, juste une atténuation basée sur la distance depuis un emplacement proche du plafond.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="85"/>
+        <location filename="../scene_technique_notes.h" line="96"/>
         <source>Cornell walls lit by a goniometric light: a point light whose intensity varies by direction according to a tabulated image rather than emitting uniformly, combined with the same 1/r-squared falloff as an ordinary point light and an explicit rotation orienting the profile in world space. The arbitrary-directional-intensity case, as opposed to a spotlight&apos;s simple cone or a point light&apos;s uniform emission.</source>
         <translation>Des murs de Cornell éclairés par une lumière goniométrique : une lumière ponctuelle dont l&apos;intensité varie selon la direction d&apos;après une image tabulée, plutôt que d&apos;émettre uniformément, combinée à la même atténuation en 1/r² qu&apos;une lumière ponctuelle ordinaire et à une rotation explicite orientant le profil dans l&apos;espace monde. Le cas d&apos;une intensité directionnelle arbitraire, par opposition au simple cône d&apos;un projecteur ou à l&apos;émission uniforme d&apos;une lumière ponctuelle.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="86"/>
+        <location filename="../scene_technique_notes.h" line="97"/>
         <source>Cornell walls lit by a projection light: a punctual light that projects a checkerboard slide image through a perspective frustum, casting a sharp patterned beam onto the scene like a real slide projector rather than emitting a plain cone or uniform sphere of light.</source>
         <translation>Des murs de Cornell éclairés par une lumière de projection : une lumière ponctuelle qui projette une image de diapositive à damier à travers un frustum en perspective, projetant sur la scène un faisceau à motif net, comme un véritable projecteur de diapositives, plutôt que d&apos;émettre un simple cône ou une sphère uniforme de lumière.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="87"/>
+        <location filename="../scene_technique_notes.h" line="98"/>
         <source>A Cornell-style room with no ceiling light quad at all - instead the back wall has an actual rectangular hole cut into it, and a sky light is visible only through that window. Exercises portal-sampled infinite lighting: the environment light&apos;s sampling is restricted to directions actually visible through the portal aperture rather than the full sphere, the harder, more failure-prone case for infinite-light next-event estimation.</source>
         <translation>Une pièce de style Cornell sans aucun quad de lumière au plafond - à la place, le mur du fond comporte un véritable trou rectangulaire découpé, et une lumière de ciel n&apos;est visible qu&apos;à travers cette fenêtre. Exerce l&apos;éclairage infini échantillonné par portail : l&apos;échantillonnage de la lumière d&apos;environnement est restreint aux directions réellement visibles à travers l&apos;ouverture du portail plutôt qu&apos;à la sphère complète - le cas le plus difficile et le plus sujet aux erreurs pour l&apos;estimation par événement suivant d&apos;une lumière infinie.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="92"/>
+        <location filename="../scene_technique_notes.h" line="103"/>
         <source>All five of pbrt-v4&apos;s punctual (delta-distribution) light kinds in one scene: point, spot, distant, goniometric, and projection - a single reference scene for comparing every zero-area light type side by side.</source>
         <translation>Les cinq types de lumières ponctuelles (à distribution delta) de pbrt-v4 réunis dans une seule scène : point, spot, distant, goniometric et projection - une scène de référence unique pour comparer côte à côte tous les types de lumière sans surface.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="93"/>
+        <location filename="../scene_technique_notes.h" line="104"/>
         <source>Real image decoding for pbrt&apos;s goniometric and projection lights, which previously silently ignored their own filename parameter and fell back to a uniform beam - this scene is the regression check that they now actually read and apply the image.</source>
         <translation>Un véritable décodage d&apos;image pour les lumières goniometric et projection de pbrt, qui ignoraient auparavant silencieusement leur propre paramètre filename et retombaient sur un faisceau uniforme - cette scène est le test de non-régression vérifiant qu&apos;elles lisent et appliquent désormais réellement l&apos;image.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="94"/>
+        <location filename="../scene_technique_notes.h" line="105"/>
         <source>pbrt&apos;s &quot;blackbody L&quot; light color, specified as a temperature in Kelvin rather than an RGB triple, converted through real Planckian-locus blackbody-to-RGB math. Two otherwise-identical panels at a warm, incandescent-like temperature and a cool, overcast-sky-like one sit side by side so a color regression would be immediately visible as both panels going flat white.</source>
         <translation>La couleur de lumière « blackbody L » de pbrt, spécifiée comme une température en Kelvin plutôt qu&apos;un triplet RVB, convertie via un véritable calcul du lieu de Planck du corps noir vers le RVB. Deux panneaux par ailleurs identiques, l&apos;un à une température chaude façon incandescente, l&apos;autre froide façon ciel couvert, sont placés côte à côte, de sorte qu&apos;une régression de couleur serait immédiatement visible : les deux panneaux deviendraient blanc uni.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="95"/>
+        <location filename="../scene_technique_notes.h" line="106"/>
         <source>An AreaLightSource on a non-triangle shape (sphere or quad) that&apos;s both filename-textured (its emission pattern comes from an image, not a flat color) and twosided (emits from both faces, not just the one its surface normal points toward) - on both backends.</source>
         <translation>Un AreaLightSource sur une forme non triangulaire (sphère ou quad) à la fois texturée par filename (son motif d&apos;émission provient d&apos;une image, pas d&apos;une couleur plate) et twosided (émet des deux faces, pas seulement celle vers laquelle pointe sa normale de surface) - sur les deux backends.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="96"/>
+        <location filename="../scene_technique_notes.h" line="107"/>
         <source>pbrt&apos;s &quot;infinite&quot; light - a constant-color light with no shape at all, illuminating the scene from every direction at once, the simplest possible substitute for a sky. Needs open geometry to see the effect, since a closed room would block it from every side anyway.</source>
         <translation>La lumière « infinite » de pbrt - une lumière de couleur constante sans aucune forme, illuminant la scène depuis toutes les directions à la fois, le substitut le plus simple possible à un ciel. Nécessite une géométrie ouverte pour voir l&apos;effet, car une pièce fermée le bloquerait de toute façon de tous les côtés.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="97"/>
+        <location filename="../scene_technique_notes.h" line="108"/>
         <source>Disk and cylinder shapes acting as real next-event-estimation light sources - solid-angle sampling toward the light on every bounce, not just accidentally hitting it - on both GPU backends, converging as cleanly as the CPU path instead of the noisier &quot;hope a ray hits it&quot; fallback non-NEE lights get.</source>
         <translation>Des formes disk et cylinder agissant comme de véritables sources lumineuses pour l&apos;estimation par événement suivant - un échantillonnage en angle solide vers la lumière à chaque rebond, et non un simple impact accidentel - sur les deux backends GPU, convergeant aussi proprement que le chemin CPU au lieu du repli plus bruité « espérer qu&apos;un rayon la touche » réservé aux lumières sans NEE.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="98"/>
+        <location filename="../scene_technique_notes.h" line="109"/>
         <source>Two separate sphere area lights in one scene - a minimal case that once pinned a real GPU bug where a light-type lookup table was sized for only one light, so every light past the first silently misread its own type and rendered wrong.</source>
         <translation>Deux lumières surfaciques sphériques distinctes dans une seule scène - un cas minimal qui a permis autrefois d&apos;identifier un véritable bug GPU où une table de correspondance des types de lumière n&apos;était dimensionnée que pour une seule lumière, de sorte que chaque lumière au-delà de la première interprétait silencieusement mal son propre type et se rendait de façon erronée.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="99"/>
+        <location filename="../scene_technique_notes.h" line="110"/>
         <source>An area light shaped as an irregular 5-triangle fan - not a simple parallelogram, and not something the renderer&apos;s quad-merge optimization (which re-joins two triangles into one quad for cheaper sampling) can rejoin - so this exercises genuine per-triangle light sampling on the GPU instead of the more common quad shortcut.</source>
         <translation>Une lumière surfacique en forme d&apos;éventail irrégulier de 5 triangles - pas un simple parallélogramme, et pas quelque chose que l&apos;optimisation de fusion en quad du moteur de rendu (qui rejoint deux triangles en un seul quad pour un échantillonnage moins coûteux) peut refusionner - ceci exerce donc un véritable échantillonnage de lumière par triangle sur le GPU, au lieu du raccourci en quad plus courant.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="100"/>
+        <location filename="../scene_technique_notes.h" line="111"/>
         <source>pbrt&apos;s &quot;ColorSpace&quot; directive, choosing the working RGB color space (here, Rec.2020&apos;s wider primaries instead of the sRGB default) that a &quot;blackbody&quot; temperature converts through. Identical geometry and identical 2500K/9000K temperatures to the Blackbody Light example - only the declared color space differs - so the two scenes&apos; panel colors are a direct side-by-side proof the directive is actually applied, not just parsed and ignored.</source>
         <translation>La directive « ColorSpace » de pbrt, qui choisit l&apos;espace colorimétrique RVB de travail (ici, les primaires plus larges de Rec.2020 au lieu du sRGB par défaut) à travers lequel une température « blackbody » est convertie. Géométrie identique et mêmes températures de 2500K/9000K que l&apos;exemple Blackbody Light - seul l&apos;espace colorimétrique déclaré diffère - de sorte que les couleurs des panneaux des deux scènes constituent une preuve directe, côte à côte, que la directive est réellement appliquée, et non simplement analysée puis ignorée.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="105"/>
+        <location filename="../scene_technique_notes.h" line="112"/>
+        <source>The real pbrt-v4 PortalImageInfiniteLight: an equal-area environment-map infinite light restricted to a window quad, so only that opening shows real sky detail rather than the whole environment leaking in from every direction. The native &quot;Portal Infinite Light&quot; scene (C7) only cuts a geometric hole in a wall behind a flat sky_light and never actually builds this class - this is the first bundled scene that does.</source>
+        <translation>Le véritable PortalImageInfiniteLight de pbrt-v4 : une lumière infinie en carte d&apos;environnement à aire égale, restreinte à un quad-fenêtre, de sorte que seule cette ouverture montre de vrais détails de ciel plutôt que l&apos;environnement entier s&apos;infiltrant depuis toutes les directions. La scène native « Portal Infinite Light » (C7) se contente de découper un trou géométrique dans un mur derrière un sky_light plat et ne construit en réalité jamais cette classe - c&apos;est ici la première scène fournie qui le fait.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="113"/>
+        <source>Three otherwise-identical spheres, each lit by only one light type - point, spot, and area - specifying its brightness as &quot;float power&quot; (total flux in watts) instead of the usual intensity/radiance directly. The renderer has to invert the power-to-intensity conversion through a different solid-angle formula for each light kind (4*pi for the point light, the spot&apos;s cone solid angle, and area*pi for the Lambertian emitter), so a wrong conversion for any one type shows up as a visibly mismatched sphere brightness, not a uniformly wrong scene.</source>
+        <translation>Trois sphères par ailleurs identiques, chacune éclairée par un seul type de lumière - point, spot et area - spécifiant sa luminosité via « float power » (flux total en watts) plutôt que directement via l&apos;intensité/radiance habituelle. Le moteur de rendu doit inverser la conversion de puissance en intensité via une formule d&apos;angle solide différente pour chaque type de lumière (4*pi pour la lumière point, l&apos;angle solide du cône pour le spot, et area*pi pour l&apos;émetteur lambertien), de sorte qu&apos;une conversion erronée pour l&apos;un de ces types se traduit par une luminosité de sphère visiblement décalée, et non par une scène uniformément fausse.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="114"/>
+        <source>A projection light slide image that is deliberately non-square (8x4, not the usual square uv-checker.bmp every other projection-light scene uses), the first bundled scene to exercise a real aspect-ratio mismatch between the image and the light&apos;s own field of view. A correctly aspect-preserving projection casts a clearly wide rectangular footprint matching the image&apos;s own 2:1 shape; a bug here would squish it to square or stretch it to fill the light&apos;s fov instead.</source>
+        <translation>Une image de diapositive pour lumière de projection délibérément non carrée (8x4, et non le uv-checker.bmp carré habituel utilisé par toutes les autres scènes à lumière de projection), la première scène fournie à exercer un véritable décalage de rapport d&apos;aspect entre l&apos;image et le champ de vision propre de la lumière. Une projection préservant correctement le rapport d&apos;aspect projette une empreinte rectangulaire clairement large, correspondant à la forme 2:1 propre de l&apos;image ; un bug ici l&apos;écraserait en carré ou l&apos;étirerait pour remplir le fov de la lumière à la place.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="115"/>
+        <source>Three saturated, close-range colored lights over a plain diffuse surface, positioned so their overlap regions sit right at the sRGB gamut boundary under --spectral rendering. This is the exact condition a real per-sample XYZ-to-RGB gamut-clamp bug used to darken and desaturate incorrectly - the fix defers that conversion to per-pixel instead of per-sample, so overlap regions should blend smoothly toward white/pastel here, not show banding or a muddy under-saturated patch.</source>
+        <translation>Trois lumières colorées saturées à courte portée au-dessus d&apos;une surface diffuse plate, positionnées de sorte que leurs zones de chevauchement se situent juste à la frontière du gamut sRGB en rendu --spectral. C&apos;est exactement la condition qu&apos;un véritable bug d&apos;écrêtage de gamut XYZ-vers-RVB par échantillon assombrissait et désaturait de façon incorrecte - le correctif reporte cette conversion au niveau par pixel plutôt que par échantillon, de sorte que les zones de chevauchement doivent ici se fondre en douceur vers du blanc/pastel, sans bandes ni tache terne et sous-saturée.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="120"/>
         <source>An open scene (checker ground plus spheres at several depths, one glass, one metal) rendered with the default perspective camera&apos;s built-in thin-lens defocus blur, so only the sphere at the focus distance renders sharp while the near and far spheres blur out - the straightforward aperture-plus-focus-distance depth-of-field path, no alternate camera class involved.</source>
         <translation>Une scène ouverte (sol à damier plus des sphères à plusieurs profondeurs, une en verre, une en métal) rendue avec le flou de défocalisation à lentille mince intégré à la caméra perspective par défaut, de sorte que seule la sphère à la distance de mise au point est rendue nette tandis que les sphères proches et lointaines sont floues - le chemin direct de profondeur de champ ouverture-plus-distance-de-mise-au-point, sans classe de caméra alternative en jeu.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="106"/>
+        <location filename="../scene_technique_notes.h" line="121"/>
         <source>A row of spheres over a checker ground, rendered through an explicit orthographic camera. Rays are cast parallel rather than converging from a single eye point, so the spheres show no perspective foreshortening - equal-size spheres stay equal-size regardless of depth, the defining visual signature of parallel projection.</source>
         <translation>Une rangée de sphères sur un sol à damier, rendue via une caméra orthographic explicite. Les rayons sont lancés parallèlement plutôt que de converger depuis un unique point de vue, si bien que les sphères ne présentent aucun raccourci en perspective - des sphères de même taille restent de même taille quelle que soit leur profondeur, la signature visuelle caractéristique de la projection parallèle.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="107"/>
+        <location filename="../scene_technique_notes.h" line="122"/>
         <source>A ring of colored spheres around a central emissive sphere, captured by an explicit spherical (equirectangular) camera, so the whole 360-degree surroundings are mapped into one panoramic image rather than a bounded field-of-view frustum.</source>
         <translation>Un anneau de sphères colorées autour d&apos;une sphère émissive centrale, capturé par une caméra spherical (équirectangulaire) explicite, de sorte que l&apos;environnement complet à 360 degrés est mappé en une seule image panoramique plutôt que dans un frustum à champ de vision borné.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="108"/>
+        <location filename="../scene_technique_notes.h" line="123"/>
         <source>Five spheres at increasing depth over a checker ground, rendered through an explicit realistic camera built from a real multi-element lens prescription (per-surface curvature, thickness, IOR, and aperture) rather than an idealized thin lens - rays are traced element-by-element through the lens stack, producing genuine lens-induced bokeh and vignetting instead of a closed-form defocus-disc approximation.</source>
         <translation>Cinq sphères à profondeur croissante sur un sol à damier, rendues via une caméra realistic explicite construite à partir d&apos;une véritable formule optique multi-éléments (courbure, épaisseur, IOR et ouverture par surface) plutôt qu&apos;une lentille mince idéalisée - les rayons sont tracés élément par élément à travers l&apos;empilement de lentilles, produisant un véritable bokeh et un vignetage induits par l&apos;optique, au lieu d&apos;une approximation en forme close du disque de défocalisation.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="109"/>
+        <location filename="../scene_technique_notes.h" line="124"/>
         <source>The same classic Cornell box geometry as the plain Cornell Box scene and the other camera-comparison Cornell scenes, rendered with the default perspective camera&apos;s thin-lens defocus blur rather than an alternate camera class. Isolates depth-of-field as the one variable against the same room the other camera-comparison scenes also use, so the technique&apos;s effect can be compared directly rather than confounded with different geometry.</source>
         <translation>La même géométrie de boîte de Cornell classique que la scène Cornell Box simple et les autres scènes de comparaison de caméras de Cornell, rendue avec le flou de défocalisation à lentille mince de la caméra perspective par défaut, plutôt qu&apos;une classe de caméra alternative. Isole la profondeur de champ comme unique variable, sur la même pièce que celle utilisée par les autres scènes de comparaison, afin que l&apos;effet de la technique puisse être comparé directement plutôt que confondu avec une géométrie différente.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="110"/>
+        <location filename="../scene_technique_notes.h" line="125"/>
         <source>The same shared Cornell box as the other camera-comparison scenes, rendered through an explicit orthographic camera, viewed dead-on down the box&apos;s depth axis. Because projection is parallel rather than perspective, the box&apos;s edges stay parallel all the way to the frame edges instead of converging the way the perspective/depth-of-field version does - the same room used specifically to make that contrast legible.</source>
         <translation>La même boîte de Cornell partagée que les autres scènes de comparaison de caméras, rendue via une caméra orthographic explicite, vue de face le long de l&apos;axe de profondeur de la boîte. Comme la projection est parallèle plutôt qu&apos;en perspective, les arêtes de la boîte restent parallèles jusqu&apos;aux bords de l&apos;image au lieu de converger comme le fait la version perspective/profondeur de champ - la même pièce utilisée spécifiquement pour rendre ce contraste lisible.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="111"/>
+        <location filename="../scene_technique_notes.h" line="126"/>
         <source>The same shared Cornell box, toured with an explicit spherical (equirectangular) camera positioned at the box&apos;s center. The panorama wraps all five walls, the ceiling light, and the glass sphere into one 360-degree image from a single interior vantage point - the same technique as the standalone Spherical Camera scene, now applied to the shared comparison geometry.</source>
         <translation>La même boîte de Cornell partagée, visitée avec une caméra spherical (équirectangulaire) explicite positionnée au centre de la boîte. Le panorama enveloppe les cinq murs, la lumière du plafond et la sphère de verre en une seule image à 360 degrés depuis un unique point de vue intérieur - la même technique que la scène autonome Caméra sphérique, désormais appliquée à la géométrie de comparaison partagée.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="112"/>
+        <location filename="../scene_technique_notes.h" line="127"/>
         <source>The same shared Cornell box, rendered through the identical multi-element realistic-camera lens prescription used in the standalone Realistic Camera scene, but with its aperture scaled up to suit the box&apos;s much larger scale - keeping the defocus cone&apos;s angular size, and thus the visible lens bokeh, comparable despite the different scene scale.</source>
         <translation>La même boîte de Cornell partagée, rendue avec la formule optique multi-éléments identique de la caméra realistic utilisée dans la scène autonome Caméra réaliste, mais avec son ouverture mise à l&apos;échelle pour s&apos;adapter à l&apos;échelle bien plus grande de la boîte - conservant la taille angulaire du cône de défocalisation, et donc le bokeh optique visible, comparable malgré l&apos;échelle de scène différente.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="113"/>
+        <location filename="../scene_technique_notes.h" line="128"/>
         <source>The same shared Cornell box, but the camera itself moves during the exposure - keyframed from one side to the other via real AnimatedTransform interpolation (pbrt-v4&apos;s motion-blur technique), with each ray sampling its own time within the shutter interval instead of a single fixed camera position. Applies only under the default path tracer and SPPM (not BDPT/MLT/the debug integrators, which render a static first-keyframe frame instead). GPU also renders a static frame at the first keyframe.</source>
         <translation>La même Cornell Box partagée, mais la caméra elle-même se déplace pendant l&apos;exposition - avec des images clés d&apos;un côté à l&apos;autre via une véritable interpolation AnimatedTransform (la technique de flou de mouvement de pbrt-v4), chaque rayon échantillonnant son propre instant dans l&apos;intervalle d&apos;obturation au lieu d&apos;une position de caméra fixe unique. S&apos;applique uniquement sous le traceur de chemins par défaut et SPPM (pas BDPT/MLT/les intégrateurs de débogage, qui rendent à la place une image statique de la première image clé). Le GPU rend également une image statique à la première image clé.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="118"/>
+        <location filename="../scene_technique_notes.h" line="133"/>
         <source>A perspective camera&apos;s thin-lens depth-of-field - lens radius and focus distance - loaded straight from a pbrt file&apos;s Camera directive, on both backends. The same optical model as this project&apos;s own native Depth of Field scene, exercising the file-loading path instead.</source>
         <translation>La profondeur de champ à lentille mince d&apos;une caméra perspective - rayon de lentille et distance de mise au point - chargée directement depuis la directive Camera d&apos;un fichier pbrt, sur les deux backends. Le même modèle optique que la scène native Profondeur de champ propre à ce projet, mais exerçant cette fois le chemin de chargement de fichier.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="119"/>
+        <location filename="../scene_technique_notes.h" line="134"/>
         <source>pbrt&apos;s orthographic (parallel-projection) camera loaded from a file - rays are all parallel instead of converging at an eye point, so two same-size spheres at different depths read as the same size on screen rather than the nearer one looking bigger, the opposite of ordinary perspective foreshortening.</source>
         <translation>La caméra orthographic (projection parallèle) de pbrt chargée depuis un fichier - tous les rayons sont parallèles au lieu de converger vers un point de vue, de sorte que deux sphères de même taille à des profondeurs différentes apparaissent de la même taille à l&apos;écran, plutôt que la plus proche paraissant plus grande - l&apos;inverse du raccourci en perspective ordinaire.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="120"/>
+        <location filename="../scene_technique_notes.h" line="135"/>
         <source>pbrt&apos;s spherical (equal-area) camera loaded from a file - rays fan out in every direction from a single point rather than through a flat image plane, so one render can capture a full 360-degree surround. Placed inside an enclosed room so every direction actually has something to see.</source>
         <translation>La caméra spherical (à aires égales) de pbrt chargée depuis un fichier - les rayons rayonnent dans toutes les directions depuis un unique point plutôt qu&apos;à travers un plan image plat, de sorte qu&apos;un seul rendu peut capturer un environnement complet à 360 degrés. Placée à l&apos;intérieur d&apos;une pièce fermée pour que chaque direction ait effectivement quelque chose à voir.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="121"/>
+        <location filename="../scene_technique_notes.h" line="136"/>
         <source>pbrt&apos;s realistic camera - a real multi-element lens system, not the idealized thin-lens/pinhole model every other camera scene uses - loaded from a lens-prescription file, tracing rays through actual glass elements for authentic depth-of-field and lens aberrations, including the lensfile-loading path a compiled-in scene never exercised.</source>
         <translation>La caméra realistic de pbrt - un véritable système optique multi-éléments, et non le modèle idéalisé de lentille mince/sténopé utilisé par toutes les autres scènes de caméra - chargée depuis un fichier de formule optique, traçant les rayons à travers de véritables éléments en verre pour une profondeur de champ et des aberrations optiques authentiques, incluant le chemin de chargement de fichier de lentille qu&apos;aucune scène compilée en dur n&apos;exerçait auparavant.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="126"/>
+        <location filename="../scene_technique_notes.h" line="141"/>
         <source>Fills a Cornell box with a homogeneous participating medium - a boundary box with a uniform scattering coefficient and Henyey-Greenstein phase function. Every point inside the boundary has identical density, so this tests the basic free-flight-sampling / single-scattering-coefficient medium path rather than any spatially-varying density model.</source>
         <translation>Remplit une boîte de Cornell d&apos;un milieu participatif homogène - une boîte englobante avec un coefficient de diffusion uniforme et une fonction de phase de Henyey-Greenstein. Chaque point à l&apos;intérieur de la frontière a une densité identique, ce qui teste le chemin de milieu basique d&apos;échantillonnage en vol libre / coefficient de diffusion unique, plutôt qu&apos;un modèle de densité spatialement variable.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="127"/>
+        <location filename="../scene_technique_notes.h" line="142"/>
         <source>A real heterogeneous volume whose density is evaluated procedurally per-point via multi-octave Perlin noise with a wispiness perturbation and an altitude falloff, rather than a lookup into baked voxel data. Rendering uses delta tracking (null-collision sampling) to handle the non-uniform density field, giving a denser base and thinning top the way a real cloud does.</source>
         <translation>Un véritable volume hétérogène dont la densité est évaluée procéduralement point par point via un bruit de Perlin multi-octaves avec une perturbation de filandrosité et une atténuation en altitude, plutôt que par une lecture dans des données voxel précalculées. Le rendu utilise le delta tracking (échantillonnage par collisions nulles) pour gérer ce champ de densité non uniforme, donnant une base plus dense et un sommet qui s&apos;amincit, comme un vrai nuage.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="128"/>
+        <location filename="../scene_technique_notes.h" line="143"/>
         <source>Shows the dielectric-plus-internal-medium combination as its own subject: glass spheres, each built from a refractive dielectric surface with a homogeneous participating medium of a different density packed inside it. Exercises the case where a scattering medium is bounded by a real refracting surface rather than an opaque shell, so rays must refract in, scatter/absorb through the internal fog, and refract back out.</source>
         <translation>Montre la combinaison dielectric plus milieu interne comme sujet à part entière : des sphères de verre, chacune construite à partir d&apos;une surface dielectric réfractive avec, à l&apos;intérieur, un milieu participatif homogène d&apos;une densité différente. Exerce le cas où un milieu diffusant est délimité par une véritable surface réfractive plutôt qu&apos;une coque opaque, de sorte que les rayons doivent se réfracter en entrant, diffuser/s&apos;absorber à travers le brouillard interne, puis se réfracter en sortant.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="129"/>
+        <location filename="../scene_technique_notes.h" line="144"/>
         <source>A heterogeneous medium with real per-voxel scattering data baked into a 3D grid, with independent red/green/blue channels generated at different frequencies so the color decorrelates spatially instead of reading as a uniformly tinted cloud - sampled via majorant-grid-accelerated delta tracking. Unlike a procedural medium evaluated analytically per point, this is discrete voxel data mapped from the render-space box onto the grid&apos;s own coordinate space.</source>
         <translation>Un milieu hétérogène avec de véritables données de diffusion par voxel précalculées dans une grille 3D, avec des canaux rouge/vert/bleu indépendants générés à des fréquences différentes, de sorte que la couleur se décorrèle spatialement au lieu de se lire comme un nuage uniformément teinté - échantillonné via un delta tracking accéléré par grille majorante. Contrairement à un milieu procédural évalué analytiquement point par point, il s&apos;agit ici de données voxel discrètes mappées de la boîte en espace de rendu vers l&apos;espace de coordonnées propre à la grille.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="134"/>
+        <location filename="../scene_technique_notes.h" line="149"/>
         <source>pbrt&apos;s MakeNamedMedium &quot;cloud&quot; - a heterogeneous scattering volume whose density comes from 3D Perlin noise, the same noise-driven approach real cloud rendering uses to avoid a flat, obviously-fake fog block - loaded from a file, on both backends.</source>
         <translation>Le MakeNamedMedium « cloud » de pbrt - un volume diffusant hétérogène dont la densité provient d&apos;un bruit de Perlin 3D, la même approche pilotée par bruit qu&apos;utilise le rendu réel de nuages pour éviter un bloc de brouillard plat, manifestement factice - chargé depuis un fichier, sur les deux backends.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="135"/>
+        <location filename="../scene_technique_notes.h" line="150"/>
         <source>A homogeneous participating medium (uniform fog/scattering density) attached to a cylinder shape - this combination used to silently render as ordinary empty geometry with no fog effect at all on the GPU backends; this scene is the regression check that the medium is now real there too.</source>
         <translation>Un milieu participatif homogène (densité de brouillard/diffusion uniforme) attaché à une forme cylinder - cette combinaison se rendait autrefois silencieusement comme une géométrie vide ordinaire, sans aucun effet de brouillard, sur les backends GPU ; cette scène est le test de non-régression vérifiant que le milieu y est désormais lui aussi réel.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="136"/>
+        <location filename="../scene_technique_notes.h" line="151"/>
         <source>pbrt&apos;s MakeNamedMedium &quot;rgbgrid&quot; - a 3D voxel grid where each cell carries its own RGB scattering color, not just a density scalar - rendering as a soft, coloured nebula-like volume, on both backends.</source>
         <translation>Le MakeNamedMedium « rgbgrid » de pbrt - une grille voxel 3D où chaque cellule porte sa propre couleur de diffusion RVB, pas seulement un scalaire de densité - se rendant comme un volume doux, coloré, façon nébuleuse, sur les deux backends.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="137"/>
+        <location filename="../scene_technique_notes.h" line="152"/>
         <source>pbrt&apos;s MakeNamedMedium &quot;uniformgrid&quot; - a single-channel density voxel grid, no per-voxel color, unlike the RGB grid medium scene - rendering as a soft glowing blob, the simpler sibling of that scene.</source>
         <translation>Le MakeNamedMedium « uniformgrid » de pbrt - une grille voxel de densité à canal unique, sans couleur par voxel, contrairement à la scène de milieu en grille RVB - se rendant comme une masse floue et lumineuse, la variante plus simple de cette scène.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="142"/>
+        <location filename="../scene_technique_notes.h" line="153"/>
+        <source>pbrt&apos;s MakeNamedMedium &quot;nanovdb&quot;: a real NanoVDB-format sparse density grid read from an external .nvdb file, rendering as a soft fog-volume sphere - the biggest single pbrt-v4 gap this project closed, since sparse voxel data needs a fundamentally different lookup than the dense grids the other medium scenes use. CPU only; GPU doesn&apos;t implement the NanoVDB lookup at all and falls back to flat homogeneous fog instead, a documented approximation rather than a bug.</source>
+        <translation>Le MakeNamedMedium « nanovdb » de pbrt : une véritable grille de densité éparse au format NanoVDB, lue depuis un fichier .nvdb externe, se rendant comme une sphère de volume de brouillard doux - la plus grande lacune pbrt-v4 unique que ce projet ait comblée, car les données voxel éparses nécessitent une recherche fondamentalement différente des grilles denses utilisées par les autres scènes de milieu. CPU uniquement ; le GPU n&apos;implémente pas du tout la recherche NanoVDB et retombe à la place sur un brouillard homogène plat, une approximation documentée plutôt qu&apos;un bug.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="154"/>
+        <source>pbrt-v4&apos;s camera-medium idiom: a MediumInterface directive issued BEFORE the Camera directive puts the camera itself inside a fog with no boundary shape at all, a genuinely different mechanism from every other bundled medium scene (which all attach their MediumInterface to a shape the camera looks at from outside). Implemented as an explicit post-hit step in the camera code rather than a BVH hittable, since this renderer has no ray-carried medium state. Real on CPU and GPU-recursive; GPU-wavefront doesn&apos;t implement it at all and silently renders without the fog, a real backend gap significant enough to need its own tolerance carve-out in the CPU/GPU parity tests.</source>
+        <translation>L&apos;idiome de milieu-caméra de pbrt-v4 : une directive MediumInterface émise AVANT la directive Camera place la caméra elle-même à l&apos;intérieur d&apos;un brouillard sans aucune forme de délimitation, un mécanisme véritablement différent de toutes les autres scènes de milieu fournies (qui attachent toutes leur MediumInterface à une forme que la caméra observe depuis l&apos;extérieur). Implémenté comme une étape explicite post-impact dans le code de la caméra plutôt que comme un hittable BVH, puisque ce moteur de rendu ne possède aucun état de milieu porté par le rayon. Réel sur CPU et GPU récursif ; GPU wavefront ne l&apos;implémente pas du tout et rend silencieusement sans le brouillard, une véritable lacune de backend suffisamment significative pour nécessiter sa propre tolérance dédiée dans les tests de parité CPU/GPU.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="159"/>
         <source>Tests the bilinear patch primitive - a true 4-corner curved surface defined by its own intersection routine, not a pair of triangles - by placing two patches whose corners are offset in height to form a hyperbolic-paraboloid saddle and a curved ramp. A soft-roughness metal material is used deliberately so the shading gradient traces the surface&apos;s continuous curvature - a mirror finish would only show a single sharp highlight and hide the fact that the surface isn&apos;t flat.</source>
         <translation>Teste la primitive de patch bilinéaire - une véritable surface courbe à 4 coins définie par sa propre routine d&apos;intersection, et non une paire de triangles - en plaçant deux patchs dont les coins sont décalés en hauteur pour former une selle en paraboloïde hyperbolique et une rampe courbe. Un matériau métallique à rugosité douce est utilisé délibérément pour que le dégradé d&apos;ombrage trace la courbure continue de la surface - une finition miroir ne montrerait qu&apos;un seul reflet net et masquerait le fait que la surface n&apos;est pas plate.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="143"/>
+        <location filename="../scene_technique_notes.h" line="160"/>
         <source>Builds a procedural icosahedron as a real indexed triangle mesh, exercising the mesh&apos;s watertight ray-triangle intersection path used by every loaded mesh in the renderer. No per-vertex normals are supplied, so each triangle falls back to its flat per-face geometric normal, giving the faceted low-poly look rather than smooth-shaded interpolated normals.</source>
         <translation>Construit un icosaèdre procédural sous forme de véritable maillage de triangles indexé, exerçant le chemin d&apos;intersection rayon-triangle étanche du maillage, utilisé par tous les maillages chargés dans le moteur de rendu. Aucune normale par sommet n&apos;est fournie, si bien que chaque triangle retombe sur sa normale géométrique plate par face, donnant l&apos;aspect facetté low-poly plutôt que des normales interpolées en ombrage lissé.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="144"/>
+        <location filename="../scene_technique_notes.h" line="161"/>
         <source>Exercises real curve geometry with its own ray-curve intersection test, unlike the separate Hair Fibers scene which shades plain spheres with a hair BSDF instead of curving the surface itself. Bezier strands with root-to-tip taper are rooted across the surface in a scattered pattern, so this tests the curve primitive&apos;s actual swept-ribbon geometry rather than the hair shading model.</source>
         <translation>Exerce une véritable géométrie de courbe avec son propre test d&apos;intersection rayon-courbe, contrairement à la scène distincte Fibres capillaires, qui ombre de simples sphères avec un BSDF hair au lieu de courber la surface elle-même. Des mèches de Bézier avec un effilement de la racine à la pointe sont enracinées à travers la surface selon un motif dispersé, ce qui teste la véritable géométrie en ruban balayé de la primitive curve, plutôt que le modèle d&apos;ombrage capillaire.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="149"/>
+        <location filename="../scene_technique_notes.h" line="166"/>
         <source>pbrt&apos;s Shape &quot;plymesh&quot; real per-vertex UV data, threaded through both backends - previously GPU-recursive rendered this exact scene solid black because those UVs were silently dropped.</source>
         <translation>De véritables données UV par sommet pour la forme « plymesh » de pbrt, acheminées à travers les deux backends - auparavant, le GPU récursif rendait cette scène exacte en noir uni parce que ces UV étaient silencieusement abandonnées.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="150"/>
+        <location filename="../scene_technique_notes.h" line="167"/>
         <source>pbrt&apos;s Shape &quot;plymesh&quot; loading a real external .ply mesh file end to end, including fan-triangulating a face in the source file that isn&apos;t already a triangle - the loader can&apos;t assume every face is pre-triangulated.</source>
         <translation>La forme « plymesh » de pbrt chargeant de bout en bout un véritable fichier de maillage .ply externe, y compris la triangulation en éventail d&apos;une face du fichier source qui n&apos;est pas déjà un triangle - le chargeur ne peut pas supposer que chaque face est déjà pré-triangulée.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="151"/>
+        <location filename="../scene_technique_notes.h" line="168"/>
         <source>pbrt&apos;s Shape &quot;curve&quot; - true cubic-Bezier fiber geometry, tessellated into GPU-friendly triangles under the hood, rather than any triangle-mesh approximation - compared directly against this project&apos;s own native curve-tuft demo built the same way.</source>
         <translation>La forme « curve » de pbrt - une véritable géométrie de fibre en Bézier cubique, tessellée en coulisses en triangles adaptés au GPU, plutôt qu&apos;une quelconque approximation par maillage de triangles - comparée directement à la propre démo native de touffe de courbes (curve-tuft) de ce projet, construite de la même façon.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="152"/>
+        <location filename="../scene_technique_notes.h" line="169"/>
         <source>Real curve geometry paired with Material &quot;hair&quot; for the first time in this project - exactly the combination that exposed a bug where the hair BSDF was using a flat-surface normal instead of the fiber&apos;s own tangent direction, which is what makes the highlight along each strand look like a strand instead of matte fuzz.</source>
         <translation>Une véritable géométrie de courbe associée au matériau « hair » pour la première fois dans ce projet - exactement la combinaison qui a mis au jour un bug où le BSDF capillaire utilisait la normale d&apos;une surface plate au lieu de la propre direction tangente de la fibre, ce qui est précisément ce qui donne au reflet le long de chaque mèche l&apos;apparence d&apos;une mèche plutôt que d&apos;un flou mat.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="153"/>
+        <location filename="../scene_technique_notes.h" line="170"/>
         <source>pbrt&apos;s Shape &quot;trianglemesh&quot; &quot;point2 uv&quot; parameter - explicit per-vertex texture coordinates on a triangle mesh - threaded through both backends; GPU-recursive used to render this exact scene solid black before that plumbing existed.</source>
         <translation>Le paramètre « point2 uv » de la forme « trianglemesh » de pbrt - des coordonnées de texture explicites par sommet sur un maillage de triangles - acheminé à travers les deux backends ; le GPU récursif rendait autrefois cette scène exacte en noir uni avant que cette plomberie n&apos;existe.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="154"/>
+        <location filename="../scene_technique_notes.h" line="171"/>
         <source>pbrt&apos;s PixelFilter directive selecting a box filter - every sample within a pixel counted equally, a hard cutoff at the pixel boundary - instead of the smoother default Gaussian. Compare the more aliased, harder-edged silhouettes here against any other scene&apos;s default-filtered render.</source>
         <translation>La directive PixelFilter de pbrt sélectionnant un filtre box - chaque échantillon d&apos;un pixel compté également, avec une coupure nette à la frontière du pixel - au lieu du gaussien plus doux par défaut. Comparez ici les silhouettes plus crénelées, aux bords plus durs, avec le rendu filtré par défaut de n&apos;importe quelle autre scène.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="159"/>
+        <location filename="../scene_technique_notes.h" line="172"/>
+        <source>A sphere&apos;s ActiveTransform StartTime/EndTime bracket bakes two different world-space centers into the same shape, sampled per-ray by the camera&apos;s own shutter interval - the moving sphere should render as a soft directional streak, not a crisp or doubled copy, next to a static reference sphere with no bracketing at all. Real on all three backends (CPU, GPU-recursive, GPU-wavefront), unlike the disk/cylinder case below.</source>
+        <translation>La paire StartTime/EndTime d&apos;ActiveTransform d&apos;une sphère intègre deux centres différents en espace monde dans la même forme, échantillonnés par rayon selon l&apos;intervalle d&apos;obturateur propre à la caméra - la sphère en mouvement doit se rendre comme une traînée directionnelle douce, et non comme une copie nette ou dédoublée, à côté d&apos;une sphère de référence statique sans aucun encadrement temporel. Réel sur les trois backends (CPU, GPU récursif, GPU wavefront), contrairement au cas disk/cylinder ci-dessous.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="173"/>
+        <source>The same ActiveTransform motion-blur technique as the Object Motion Blur scene, but applied to Shape &quot;disk&quot;/&quot;cylinder&quot; instead of a sphere - a different code path internally (baked into the shape&apos;s own start/end transform rather than a sphere&apos;s center1/center2 pair). CPU only: both GPU backends render these shapes frozen at their start pose and warn instead of blurring, unlike sphere motion blur, which GPU does support.</source>
+        <translation>La même technique de flou de mouvement par ActiveTransform que la scène Flou de mouvement d&apos;objet, mais appliquée à la forme « disk »/« cylinder » plutôt qu&apos;à une sphère - un chemin de code interne différent (intégré dans la transformation de début/fin propre à la forme plutôt que dans la paire center1/center2 d&apos;une sphère). CPU uniquement : les deux backends GPU rendent ces formes figées dans leur pose de départ et affichent un avertissement au lieu de les flouter, contrairement au flou de mouvement de sphère, que le GPU prend bien en charge.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="174"/>
+        <source>Two quads share the identical point array and index winding, which by itself produces a normal facing away from the camera - a one-sided area light with that winding is invisible from the front. The bare ReverseOrientation directive, issued immediately before the second quad, flips its effective normal to face the camera instead, so one quad stays dark and the other lights up; a bug in ReverseOrientation would show up as both quads dark or both lit, never exactly one of each.</source>
+        <translation>Deux quads partagent le même tableau de points et le même sens d&apos;enroulement des indices, ce qui produit à lui seul une normale tournée à l&apos;opposé de la caméra - une lumière surfacique à une seule face avec cet enroulement est invisible depuis l&apos;avant. La directive ReverseOrientation seule, émise juste avant le second quad, inverse à la place sa normale effective pour qu&apos;elle fasse face à la caméra, de sorte qu&apos;un quad reste sombre tandis que l&apos;autre s&apos;allume ; un bug dans ReverseOrientation se traduirait par les deux quads sombres ou les deux allumés, jamais exactement l&apos;un de chaque.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="175"/>
+        <source>Four shapes exercising this project&apos;s own pbrt-v3-compatibility extension (Shape &quot;cone&quot;/&quot;paraboloid&quot;, not part of real pbrt-v4): a plain diffuse cone and paraboloid as base shapes, a cone used as an AreaLightSource emitter instead of a normal material, and a paraboloid used as a MediumInterface fog boundary with its open rim facing the camera so rays enter the medium through the open end rather than the solid surface. CPU only - GPU (both backends) warns and drops any cone/paraboloid shape entirely.</source>
+        <translation>Quatre formes exerçant la propre extension de compatibilité pbrt-v3 de ce projet (formes « cone »/« paraboloid », qui ne font pas partie du véritable pbrt-v4) : un cône et un paraboloïde diffus simples comme formes de base, un cône utilisé comme émetteur AreaLightSource au lieu d&apos;un matériau normal, et un paraboloïde utilisé comme délimitation de brouillard MediumInterface avec son rebord ouvert face à la caméra, de sorte que les rayons entrent dans le milieu par l&apos;extrémité ouverte plutôt que par la surface pleine. CPU uniquement - le GPU (les deux backends) affiche un avertissement et abandonne entièrement toute forme cone/paraboloid.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="180"/>
         <source>The classic pbrt-v4 &quot;killeroo&quot; statue example scene - a full end-to-end scene loaded from its own .pbrt file (geometry, materials, lights, camera all file-driven) rather than compiled directly into this renderer, the same file format and loading path a user&apos;s own custom pbrt scenes go through.</source>
         <translation>La scène d&apos;exemple classique de la statue « killeroo » de pbrt-v4 - une scène complète chargée de bout en bout depuis son propre fichier .pbrt (géométrie, matériaux, lumières, caméra, tout piloté par fichier) plutôt que compilée directement dans ce moteur de rendu - le même format de fichier et le même chemin de chargement que suivent les propres scènes pbrt personnalisées d&apos;un utilisateur.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="164"/>
+        <location filename="../scene_technique_notes.h" line="185"/>
         <source>The exact same Cornell box as A1, rendered at a deliberately low 16 samples per pixel instead of the usual 100 - too few to converge cleanly. Switch Sampler on the Render Options tab (Sobol, Z-Sobol, Padded Sobol, Stratified, PMJ02BN, Halton) and re-render: every choice is a different low-discrepancy sequence for spreading those 16 samples across the pixel and the light, so the noise/clumping pattern in the soft shadow&apos;s penumbra changes with it even though nothing else about the scene does. CPU default path tracer only - the Sampler control has no effect on GPU.</source>
         <translation>La même Cornell Box que A1, rendue avec un nombre délibérément bas de 16 échantillons par pixel au lieu des 100 habituels - trop peu pour converger proprement. Changez l&apos;Échantillonneur dans l&apos;onglet Options de rendu (Sobol, Z-Sobol, Padded Sobol, Stratified, PMJ02BN, Halton) et relancez le rendu : chaque choix est une séquence à faible discrépance différente pour répartir ces 16 échantillons sur le pixel et la lumière, de sorte que le motif de bruit/regroupement dans la pénombre de l&apos;ombre douce change en conséquence, même si rien d&apos;autre dans la scène ne change. Concerne uniquement le traceur de chemins par défaut sur CPU - le contrôle Échantillonneur n&apos;a aucun effet sur GPU.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="165"/>
+        <location filename="../scene_technique_notes.h" line="186"/>
         <source>The same glass prism as B23 (Spectral Dispersion), re-framed here as the Spectral rendering checkbox&apos;s own demo. With Spectral rendering (Render Options tab) switched off, the renderer tracks only red/green/blue and every wavelength bends by the same fixed amount through the glass; switched on, the renderer tracks real per-ray wavelengths and the prism&apos;s index of refraction genuinely varies with wavelength, fanning white light into a visible spectrum the same way a physical prism does. CPU default path tracer only.</source>
         <translation>Le même prisme de verre que B23 (Dispersion spectrale), recadré ici comme démonstration propre de la case à cocher Rendu spectral. Avec le rendu spectral (onglet Options de rendu) désactivé, le moteur de rendu ne suit que le rouge/vert/bleu et chaque longueur d&apos;onde est déviée de la même quantité fixe en traversant le verre ; activé, le moteur de rendu suit de véritables longueurs d&apos;onde par rayon et l&apos;indice de réfraction du prisme varie réellement avec la longueur d&apos;onde, dispersant la lumière blanche en un spectre visible de la même manière qu&apos;un prisme physique. Concerne uniquement le traceur de chemins par défaut sur CPU.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="166"/>
+        <location filename="../scene_technique_notes.h" line="187"/>
         <source>The same HDR sky gradient as C1 (HDRI Sky): a bright procedural sky behind a diffuse sphere sitting in its own shadow - real brightness values from near-black to far past what a screen can display in one image. Two Render Options tab controls act on that range differently: Exposure is a flat multiplier applied before anything else, so raising it brightens the whole image evenly, sphere and sky alike; Tone mapping is the curve applied after that multiplier to compress the result into a displayable range - ACES rolls the sky&apos;s brightest highlights off gently, Reinhard compresses harder, and None just clips them to flat white. Try each Tone mapping choice at a couple of different Exposure values to see the two controls act independently. Works on both CPU and GPU.</source>
         <translation>Le même dégradé de ciel HDR que C1 (Ciel HDRI) : un ciel procédural lumineux derrière une sphère diffuse assise dans sa propre ombre - de vraies valeurs de luminosité allant du quasi-noir à bien au-delà de ce qu&apos;un écran peut afficher dans une seule image. Deux contrôles de l&apos;onglet Options de rendu agissent différemment sur cette plage : l&apos;Exposition est un multiplicateur uniforme appliqué avant tout le reste, donc l&apos;augmenter éclaircit toute l&apos;image de manière égale, sphère et ciel confondus ; le Mappage tonal est la courbe appliquée après ce multiplicateur pour compresser le résultat dans une plage affichable - ACES adoucit en douceur les tons les plus clairs du ciel, Reinhard compresse plus fort, et Aucun les écrête simplement en blanc uni. Essayez chaque choix de Mappage tonal à plusieurs valeurs d&apos;Exposition différentes pour voir les deux contrôles agir indépendamment. Fonctionne à la fois sur CPU et sur GPU.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="167"/>
+        <location filename="../scene_technique_notes.h" line="188"/>
         <source>The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it&apos;s genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene&apos;s own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU only - both the recursive and wavefront backends have their own denoiser. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there&apos;s nothing to visually compare for that one.</source>
         <translation>La même Cornell Box que A1, rendue avec un nombre délibérément bas de 32 échantillons par pixel afin qu&apos;elle soit vraiment granuleuse avant tout nettoyage - rendez-la une fois avec le débruiteur IA OptiX (onglet Options de rendu) désactivé, puis une fois avec lui activé. Le débruiteur est un modèle d&apos;apprentissage automatique qui reconnaît ce motif de grain (guidé par les tampons d&apos;albédo et de normales propres à la scène) et le lisse sans tracer un seul rayon supplémentaire, échangeant un peu de détail fin contre une image nettement plus propre pour le même nombre d&apos;échantillons. GPU uniquement - les backends récursif et wavefront ont chacun leur propre débruiteur. La case à cocher voisine du mode de validation OptiX est aussi un type de contrôle différent qu&apos;il vaut la peine de connaître ici : elle active uniquement des vérifications supplémentaires côté périphérique avec un coût réel en performance - elle ne modifie jamais l&apos;image rendue, il n&apos;y a donc rien à comparer visuellement pour ce réglage-là.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="189"/>
+        <source>The same frosted-glass Cornell box as B3 (Cornell Rough Glass), re-framed as the Integrator dropdown&apos;s own SPPM demo. Render once with the default Path Tracer and once with SPPM (Render Options tab) at the same sample count: the floor caustic under the rough-dielectric sphere - exactly the hard, high-frequency indirect-light case ordinary path tracing struggles to converge on - should visibly clean up much faster under SPPM&apos;s photon-mapping approach, which is built for precisely this kind of light transport.</source>
+        <translation>La même Cornell Box en verre dépoli que B3 (Cornell Verre rugueux), recadrée ici comme démonstration propre du menu déroulant Intégrateur pour SPPM. Rendez-la une fois avec le traceur de chemins par défaut, puis une fois avec SPPM (onglet Options de rendu) pour le même nombre d&apos;échantillons : la caustique au sol sous la sphère dielectric rugueuse - exactement le cas difficile de lumière indirecte à haute fréquence sur lequel le traceur de chemins ordinaire peine à converger - devrait visiblement s&apos;éclaircir bien plus vite avec l&apos;approche de photon mapping de SPPM, conçue précisément pour ce type de transport lumineux.</translation>
+    </message>
+    <message>
+        <location filename="../scene_technique_notes.h" line="190"/>
+        <source>The same Cornell box as A1, re-framed as the Integrator dropdown&apos;s own BDPT/MLT demo. Try BDPT or MLT (Render Options tab) instead of the default Path Tracer: both trace light paths from the camera AND from the light source and connect them partway, rather than only tracing from the camera the way the default integrator and SPPM do - a fundamentally different strategy that can converge differently (sometimes better, sometimes with different noise character) on scenes with meaningful indirect lighting like this one.</source>
+        <translation>La même Cornell Box que A1, recadrée ici comme démonstration propre du menu déroulant Intégrateur pour BDPT/MLT. Essayez BDPT ou MLT (onglet Options de rendu) au lieu du traceur de chemins par défaut : tous deux tracent des chemins lumineux à la fois depuis la caméra ET depuis la source de lumière, puis les connectent à mi-parcours, plutôt que de ne tracer que depuis la caméra comme le font l&apos;intégrateur par défaut et SPPM - une stratégie fondamentalement différente qui peut converger différemment (parfois mieux, parfois avec un grain de bruit différent) sur des scènes à éclairage indirect significatif comme celle-ci.</translation>
     </message>
     <message>
         <source>The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it&apos;s genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene&apos;s own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU recursive backend only. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there&apos;s nothing to visually compare for that one.</source>
         <translation type="vanished">La même Cornell Box que A1, rendue avec un nombre délibérément bas de 32 échantillons par pixel afin qu&apos;elle soit vraiment granuleuse avant tout nettoyage - rendez-la une fois avec le débruiteur IA d&apos;OptiX (onglet Options de rendu) désactivé, puis une fois avec lui activé. Le débruiteur est un modèle d&apos;apprentissage automatique qui reconnaît ce motif de grain (guidé par les tampons d&apos;albédo et de normales propres à la scène) et le lisse sans tracer un seul rayon supplémentaire, échangeant un peu de détail fin contre une image nettement plus propre pour le même nombre d&apos;échantillons. Réservé au moteur récursif GPU. La case à cocher voisine du mode de validation OptiX est aussi un type de contrôle différent qu&apos;il vaut la peine de connaître ici : elle active uniquement des vérifications de correction supplémentaires côté matériel avec un coût réel en performance - elle ne modifie jamais l&apos;image rendue, il n&apos;y a donc rien à comparer visuellement pour ce réglage-là.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="188"/>
+        <location filename="../scene_technique_notes.h" line="211"/>
         <source>Select a scene to see the rendering technique it demonstrates.</source>
         <translation>Sélectionnez une scène pour voir la technique de rendu qu&apos;elle illustre.</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="193"/>
+        <location filename="../scene_technique_notes.h" line="216"/>
         <source>No rendering-technique note is written for this scene yet - these are only authored for the self-contained scene set (the &quot;Self-Contained&quot; tab above) so far.</source>
         <translation>Aucune note sur la technique de rendu n&apos;a encore été rédigée pour cette scène - elles ne sont pour l&apos;instant écrites que pour l&apos;ensemble de scènes autonomes (l&apos;onglet « Autonome » ci-dessus).</translation>
     </message>
