@@ -112,6 +112,25 @@ TEST(BvhTest, NearestHitIsReturned) {
 	EXPECT_NEAR(rec.p.z(), 2.0, 0.01);
 }
 
+TEST(BvhTest, AxisAlignedRayOriginExactlyOnBboxFaceStillHits) {
+	// Regression test: a ray whose origin coordinate on some axis exactly
+	// equals the bbox face on that axis, with the ray direction's component
+	// on that same axis exactly 0, used to compute (0)*(1/0) = NaN in
+	// aabb::hit()'s slab test. NaN compares false everywhere, which
+	// corrupted the interval instead of tripping the ray_t.max<=ray_t.min
+	// rejection, and bvh_node::hit() silently reported a miss even though
+	// the wrapped primitive itself would have reported a real hit.
+	hittable_list world;
+	auto mat = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	world.add(make_shared<sphere>(point3(0, 0, 1), 1.0, mat));  // bbox z in [0,2]
+	bvh_node bvh(world);
+
+	// Origin z=0 exactly equals the bbox's z.min; direction has z=0 too.
+	ray r(point3(-5, 0, 0), vec3(1, 0, 0));
+	hit_record rec;
+	EXPECT_TRUE(bvh.hit(r, interval(0.001, infinity), rec));
+}
+
 // ---------------------------------------------------------------------------
 // Leaf vs interior node tests
 // ---------------------------------------------------------------------------

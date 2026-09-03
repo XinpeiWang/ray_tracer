@@ -316,6 +316,116 @@ TEST(CameraTest, MaximumParameters) {
  * Film "cropwindow"/"pixelbounds" - crop_x1/crop_y1 default to -1 (unset),
  * which initialize() must resolve to the full frame when nothing set them.
  */
+// ============================================================================
+// Screen Window Tests (pbrt-v4 Camera "perspective" "float screenwindow")
+// ============================================================================
+
+namespace {
+camera makeScreenWindowTestCamera() {
+	camera cam;
+	cam.lookfrom = point3(0, 0, 0);
+	cam.lookat = point3(0, 0, 1);
+	cam.vfov = 90;
+	cam.image_width = 400;
+	cam.aspect_ratio = 1.0;  // square, so x/y widening are directly comparable
+	cam.samples_per_pixel = 1;
+	cam.max_depth = 5;
+	cam.background = color(0, 0, 0);
+	return cam;
+}
+} // namespace
+
+TEST(CameraTest, ExplicitDefaultScreenWindowMatchesNoScreenWindow) {
+	// has_screen_window=true with the exact default extent ([-1,1,-1,1],
+	// this class's own default) must produce byte-identical rays to
+	// has_screen_window=false - the "isDefaultWindow" fast path in
+	// initialize() exists specifically so a scene that never set
+	// screenwindow at all (has_screen_window stays false) is provably
+	// unaffected by this feature.
+	camera plain = makeScreenWindowTestCamera();
+	plain.initialize();
+
+	camera explicitDefault = makeScreenWindowTestCamera();
+	explicitDefault.has_screen_window = true;
+	explicitDefault.screen_window[0] = -1.0; explicitDefault.screen_window[1] = 1.0;
+	explicitDefault.screen_window[2] = -1.0; explicitDefault.screen_window[3] = 1.0;
+	explicitDefault.initialize();
+
+	for (int x : {0, 200, 399}) {
+		for (int y : {0, 200, 399}) {
+			ray rPlain = plain.get_ray(x, y, 0, 0);
+			ray rExplicit = explicitDefault.get_ray(x, y, 0, 0);
+			EXPECT_NEAR(rPlain.direction().x(), rExplicit.direction().x(), 1e-12);
+			EXPECT_NEAR(rPlain.direction().y(), rExplicit.direction().y(), 1e-12);
+			EXPECT_NEAR(rPlain.direction().z(), rExplicit.direction().z(), 1e-12);
+		}
+	}
+}
+
+TEST(CameraTest, WidenedScreenWindowGivesACornerRayFartherFromCenterRay) {
+	// A screenwindow twice as wide/tall as the default ([-2,2,-2,2] instead
+	// of [-1,1,-1,1]) doubles the effective FOV - the corner ray's
+	// direction should diverge from the center ray's direction MORE than
+	// the default-window corner ray does, in the same (positive x)
+	// direction.
+	camera plain = makeScreenWindowTestCamera();
+	plain.initialize();
+	camera widened = makeScreenWindowTestCamera();
+	widened.has_screen_window = true;
+	widened.screen_window[0] = -2.0; widened.screen_window[1] = 2.0;
+	widened.screen_window[2] = -2.0; widened.screen_window[3] = 2.0;
+	widened.initialize();
+
+	const vec3 centerDirPlain = plain.get_ray(200, 200, 0, 0).direction();
+	const vec3 cornerDirPlain = plain.get_ray(399, 200, 0, 0).direction();
+	const vec3 centerDirWidened = widened.get_ray(200, 200, 0, 0).direction();
+	const vec3 cornerDirWidened = widened.get_ray(399, 200, 0, 0).direction();
+
+	// Center ray is APPROXIMATELY unaffected by a symmetric widening (still
+	// points close to straight down -w) - not exactly, now that get_ray()
+	// routes sub-pixel offsets through FilterSampler's tabulated CDF
+	// inversion (filterSampler_'s own comment, camera.h): the table's own
+	// 32-cell quantization means an input this close to u=0.5 doesn't land
+	// at EXACTLY filter-center 0.0, so that tiny residual offset - scaled
+	// by the (now 2x wider) viewport_width - shows up as a small but
+	// nonzero difference here. Loose tolerance catches a genuine framing
+	// bug (which would be orders of magnitude larger) without being
+	// fragile against expected quantization noise.
+	EXPECT_NEAR(centerDirPlain.x(), centerDirWidened.x(), 0.5);
+
+	const double plainOffset = std::abs(cornerDirPlain.x() - centerDirPlain.x());
+	const double widenedOffset = std::abs(cornerDirWidened.x() - centerDirWidened.x());
+	EXPECT_GT(widenedOffset, plainOffset)
+		<< "a wider screenwindow must give a more divergent corner ray, not "
+		   "an identical FOV silently ignoring the requested window";
+}
+
+TEST(CameraTest, OffCenterScreenWindowShiftsTheFrame) {
+	// A genuinely off-center window (xmin=0,xmax=2 instead of the symmetric
+	// xmin=-1,xmax=1 default) shifts the whole frame by exactly one NDC
+	// unit's worth of world distance (h*focus_dist, since the window's own
+	// center moved from x=0 to x=1) - the CENTER pixel's ray should no
+	// longer point straight down -w. (Which world-space AXIS that shift
+	// lands on depends on this camera's own u=cross(vup,w) - for this
+	// lookfrom/lookat/vup it's -x, not +x - so this checks the shift's
+	// MAGNITUDE, not an assumed world-space sign.)
+	camera plain = makeScreenWindowTestCamera();
+	plain.initialize();
+	camera shifted = makeScreenWindowTestCamera();
+	shifted.has_screen_window = true;
+	shifted.screen_window[0] = 0.0; shifted.screen_window[1] = 2.0;
+	shifted.screen_window[2] = -1.0; shifted.screen_window[3] = 1.0;
+	shifted.initialize();
+
+	const vec3 centerDirPlain = plain.get_ray(200, 200, 0, 0).direction();
+	const vec3 centerDirShifted = shifted.get_ray(200, 200, 0, 0).direction();
+	// h=tan(45deg)=1, focus_dist=10 (camera's own default) -> a 1-NDC-unit
+	// shift moves the center ray by exactly 10 world units along u.
+	EXPECT_NEAR(std::abs(centerDirShifted.x() - centerDirPlain.x()), 10.0, 1e-6)
+		<< "an off-center screenwindow must shift the frame by exactly the "
+		   "requested amount, not just resize it or leave it centered";
+}
+
 TEST(CameraTest, CropDefaultsToFullFrameWhenUnset) {
 	camera cam;
 	cam.lookfrom = point3(0, 0, 0);

@@ -8,12 +8,15 @@
 // header comment for the full rationale on why these aren't baked to
 // world-space parameters the way Sphere is).
 //
-// v1 scope, geometry-only: no random()/pdf_value() override (base class
-// hittable's own defaults - pdf_value=0, random=an arbitrary unit vector -
-// are exactly right for "this shape is never sampled as a light", matching
-// pbrt_flatten.h's Cone/Paraboloid structs never carrying an areaLight
-// field at all). No medium-boundary support either, for the identical
-// reason bilinearmesh/trianglemesh don't have one.
+// Real AreaLightSource support (random()/pdf_value() below, solid-angle NEE
+// sampling via ConeShape/ParaboloidShape's own sample_from()/pdf_from() -
+// see those functions' own comments in shapes.h) and real MediumInterface
+// support (via constant_medium, wired the identical way Sphere/Disk/
+// Cylinder already are - pbrt_cpu_builder.h's addMediumIfPresent()) -
+// mirrors disk_hittable's own random()/pdf_value() pattern exactly, minus
+// the motion-blur MotionState indirection (Cone::xform/Paraboloid::xform
+// don't carry object motion blur, unlike Disk/Cylinder - a static o2w_/w2o_
+// pair is always valid to sample against here).
 
 #include "hittable.h"
 #include "material.h"
@@ -84,6 +87,26 @@ class cone_hittable : public hittable {
 	}
 
 	aabb bounding_box() const override { return bbox_; }
+
+	// Solid-angle NEE sampling - see this file's own header comment.
+	vec3 random(const point3& origin) const override {
+		if (!valid_) return vec3(1, 0, 0);
+		using namespace affine_transform;
+		const point3 ctx_obj = apply_point(w2o_, origin);
+		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
+		const auto ss = shape_.sample_from(ctx, random_double(), random_double());
+		const point3 p_world = apply_point(o2w_, point3(ss.px, ss.py, ss.pz));
+		return p_world - origin;
+	}
+
+	double pdf_value(const point3& origin, const vec3& direction) const override {
+		if (!valid_) return 0.0;
+		using namespace affine_transform;
+		const point3 ctx_obj = apply_point(w2o_, origin);
+		const vec3 dir_obj = apply_vector(w2o_, direction);
+		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
+		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
+	}
 
 	shared_ptr<material> get_material() const { return mat_; }
 
@@ -156,6 +179,26 @@ class paraboloid_hittable : public hittable {
 	}
 
 	aabb bounding_box() const override { return bbox_; }
+
+	// Solid-angle NEE sampling - see this file's own header comment.
+	vec3 random(const point3& origin) const override {
+		if (!valid_) return vec3(1, 0, 0);
+		using namespace affine_transform;
+		const point3 ctx_obj = apply_point(w2o_, origin);
+		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
+		const auto ss = shape_.sample_from(ctx, random_double(), random_double());
+		const point3 p_world = apply_point(o2w_, point3(ss.px, ss.py, ss.pz));
+		return p_world - origin;
+	}
+
+	double pdf_value(const point3& origin, const vec3& direction) const override {
+		if (!valid_) return 0.0;
+		using namespace affine_transform;
+		const point3 ctx_obj = apply_point(w2o_, origin);
+		const vec3 dir_obj = apply_vector(w2o_, direction);
+		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
+		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
+	}
 
 	shared_ptr<material> get_material() const { return mat_; }
 

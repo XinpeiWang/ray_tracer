@@ -62,12 +62,16 @@ __device__ __constant__ float kRgbChannelWavelengthNm[3] = { 612.0f, 549.0f, 465
 
 // Pixel reconstruction filter weight for a sample at sub-pixel offset
 // (ox, oy) in [-0.5, 0.5] - device-side port of src/shared/filter.h's
-// PixelFilterDispatch::evaluate(), same 5 shapes, same hardcoded radius=0.5
-// (see that class's own comment for why: no cross-pixel splatting in this
-// renderer's per-pixel-only sampling loop). kind: 0=gaussian 1=box
-// 2=triangle 3=mitchell 4=sinc (GpuCameraParams::filterKind). Shared by
-// both GPU backends (optix_raygen.h, wavefront_kernels.cu's
-// generate_camera_rays).
+// PixelFilterDispatch::evaluate(), same 5 shapes. STILL hardcoded to
+// radius=0.5 here, unlike CPU's own PixelFilterDispatch (camera.h's
+// FilterSampler now honors the scene's real requested radius, including
+// cross-pixel reach for a filter wider than one pixel) - GPU was
+// deliberately left at the old, narrower behavior (this project's usual
+// "CPU real, GPU disclosed static/approximate fallback" scope pattern -
+// see scene_builder.cpp's own warning for a scene whose real filter radius
+// differs meaningfully from this). kind: 0=gaussian 1=box 2=triangle
+// 3=mitchell 4=sinc (GpuCameraParams::filterKind). Shared by both GPU
+// backends (optix_raygen.h, wavefront_kernels.cu's generate_camera_rays).
 __device__ __forceinline__ float gpu_filter_evaluate(
 		int kind, float B, float C, float sigma, float tau, float ox, float oy) {
 	const float radius = 0.5f;

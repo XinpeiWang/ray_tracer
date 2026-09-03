@@ -94,7 +94,7 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Motion blur (object: Disk/Cylinder) | Y (CPU) | GPU (both backends) renders static at the StartTime position, warned |
 | Cameras | Motion blur (camera, alt camera models: Orthographic/Spherical/Realistic) | Y (CPU) | GPU has no alt-camera-plus-motion-blur support; falls back to static, warned |
 | Cameras | Motion blur (object: trianglemesh/plymesh/loopsubdiv) | Y (CPU) | GPU renders static at the StartTime position, warned; an emissive mesh always renders static (CPU too), warned |
-| Cameras | Motion blur (object: curve/bilinear patch) | N | No fallback — static transform only |
+| Cameras | Motion blur (object: curve/bilinear patch) | Y (CPU) | GPU renders static at the StartTime position, warned; an emissive OR ribbon-type curve, or an emissive bilinear patch, always renders static (CPU too), warned |
 | Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA or Shape) | Y / Y / Y | Real directives, all three backends, for both camera and the shapes above |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
@@ -142,8 +142,8 @@ numbered sections below for the narrative detail behind any row.
 | OBJ mesh loader | Y | Y | Y | `mesh.h` (+ `mesh_mtl.h` for `.mtl`) — hand-written parser. |
 | PLY mesh loader | Y | Y | Y | `src/shared/ply_mesh.h` — ASCII + binary LE/BE, arbitrary vertex properties. |
 | Instancing (`ObjectInstance`) | Y | Y | Y | `transform_instance.h` + `pbrt_scene.h`'s `ObjectBegin/End/ObjectInstance`. |
-| Cone | Y | N | N | `src/shared/shapes.h`'s `ConeShape<T>`, wrapped by `cone_hittable` (`cone_paraboloid_hittable.h`). Geometry-only (no `AreaLightSource`/`MediumInterface`); GPU warns and drops the shape at load time. |
-| Paraboloid | Y | N | N | `ParaboloidShape<T>`, wrapped by `paraboloid_hittable` (`cone_paraboloid_hittable.h`). Same v1 scope as Cone. A ray exactly on the symmetry axis is an accepted miss, matching Cylinder's identical parallel-ray limitation. |
+| Cone | Y | N | N | `src/shared/shapes.h`'s `ConeShape<T>`, wrapped by `cone_hittable` (`cone_paraboloid_hittable.h`). Real `AreaLightSource` (solid-angle NEE via `sample_from()`/`pdf_from()`) and `MediumInterface` support, matching Sphere/Disk/Cylinder's own pattern; GPU warns and drops the shape entirely at load time. |
+| Paraboloid | Y | N | N | `ParaboloidShape<T>`, wrapped by `paraboloid_hittable` (`cone_paraboloid_hittable.h`). Same real `AreaLightSource`/`MediumInterface` support as Cone. A ray exactly on the symmetry axis is an accepted miss, matching Cylinder's identical parallel-ray limitation. |
 | Hyperboloid | N | N | N | Not implemented — a twisted ruled surface between two arbitrary points, meaningfully harder than the other quadrics and rare in practice; falls through to the generic "shape not supported" warning. |
 
 Shape gap versus pbrt-v4's own set: Hyperboloid (unimplemented on every
@@ -489,8 +489,12 @@ duplicate pushed into the ordinary world-space `FlatScene::triangles` list
 (StartTime pose only, skipped by CPU's own builder), so GPU still renders
 the shape - static, matching Disk/Cylinder's own "GPU renders static,
 warned" precedent - rather than it silently vanishing because its geometry
-moved to a list GPU never reads. Curves/bilinear patches are structurally
-identical candidates for this same treatment, not done this round.
+moved to a list GPU never reads. Curve/bilinear-patch motion blur now uses
+the identical mechanism (`AnimatedCurve`/`AnimatedBilinearPatch`,
+`Curve::gpuOnlyStaticFallback`/`BilinearPatch::gpuOnlyStaticFallback`) -
+same emissive exclusion, plus a ribbon-type exclusion for curves specifically
+(their per-segment shading normals have no per-ray-time transform yet, a
+narrower, disclosed scope cut).
 
 The three **alternate** camera models (`src/shared/cameras.h`'s
 Orthographic/Spherical/Realistic classes) now have real motion blur too,
@@ -721,21 +725,20 @@ relative to it specifically).
    identical 100x+ `optixModuleCreate` slowdown described in §6's own
    note. Blocked by the same undiagnosed module-wide issue - not attempted
    further.
-4. ~~No object motion blur~~ — **narrowed further still**. Sphere has real
-   object motion blur on all three backends (`Sphere::center1`);
-   Disk/Cylinder and now trianglemesh/plymesh/loopsubdiv (`animated_
-   transform_instance.h`, §6 - an emissive mesh excluded, falls back to
-   static+warned) do too on **CPU** — GPU (both backends) still renders a
-   moving Disk/Cylinder or mesh static, warned (a mesh's own GPU-fallback
-   duplicate is real geometry, not a missing-shape regression - see §6's
-   own comment). The default perspective camera's own motion blur
+4. ~~No object motion blur~~ — **closed**. Sphere has real object motion
+   blur on all three backends (`Sphere::center1`); Disk/Cylinder,
+   trianglemesh/plymesh/loopsubdiv, and now curve/bilinear-patch
+   (`animated_transform_instance.h`, §6 - an emissive shape excluded,
+   ribbon-type curves also excluded, both fall back to static+warned) all
+   do too on **CPU** — GPU (all backends) still renders a moving
+   Disk/Cylinder/mesh/curve/bilinear-patch static, warned (a shape's own
+   GPU-fallback duplicate is real geometry, not a missing-shape regression -
+   see §6's own comment). The default perspective camera's own motion blur
    (`AnimatedTransform`, previously wholly orphaned, now wired into
    `camera::get_ray()` and `GpuCameraParams::animated`) — and now the three
    **alternate** camera models too (Orthographic/Spherical/Realistic, CPU
-   only, §6) — is unaffected by any of this. Curves/bilinear patches remain
-   the one fully untouched case, on every backend - structurally identical
-   candidates for the same `animated_transform_instance.h` treatment, not
-   done this round.
+   only, §6) — is unaffected by any of this. Every pbrt-v4 shape kind this
+   loader builds at all now has real object motion blur on CPU.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
 6. ~~`Accelerator` pbrt directive not parsed~~ — **closed**. `Accelerator

@@ -159,6 +159,17 @@ struct BuildStats {
 	// not per triangle, matching animatedDiskCylinderCount's own per-shape
 	// granularity.
 	int animatedMeshCount = 0;
+	// Same idea again, for Shape "bilinearmesh"/"curve" (pbrt_flatten::
+	// AnimatedBilinearPatch/AnimatedCurve, CPU-only real motion blur) -
+	// GPU has no concept of either separate object-space list; each
+	// animated patch/curve's BilinearPatch::gpuOnlyStaticFallback/
+	// Curve::gpuOnlyStaticFallback-flagged duplicate (already in the
+	// ordinary scene.bilinearPatches/scene.curves lists this builder reads)
+	// renders static at its StartTime pose with no special handling needed
+	// here, disclosed the same way. Counted per SHAPE, matching
+	// animatedMeshCount's own granularity.
+	int animatedBilinearPatchCount = 0;
+	int animatedCurveCount = 0;
 };
 
 namespace detail {
@@ -920,6 +931,9 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	stats.instancePlacements = out.instancePlacements.size();
 	// See BuildStats::animatedMeshCount's own comment.
 	stats.animatedMeshCount = static_cast<int>(scene.animatedTriangleMeshes.size());
+	// See BuildStats::animatedBilinearPatchCount/animatedCurveCount's own comment.
+	stats.animatedBilinearPatchCount = static_cast<int>(scene.animatedBilinearPatches.size());
+	stats.animatedCurveCount = static_cast<int>(scene.animatedCurves.size());
 
 	// ---- infinite/sky light, flat-colour GPU approximation ----------------
 	if (scene.infiniteLight.present) {

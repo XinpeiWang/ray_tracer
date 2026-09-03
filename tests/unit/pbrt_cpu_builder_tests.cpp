@@ -14,6 +14,7 @@
 #include "pbrt_flatten.h"
 #include "pbrt_load.h"
 #include "pbrt_scene.h"
+#include "cone_paraboloid_hittable.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2205,6 +2206,119 @@ TEST(PbrtCpuBuildTest, EmissiveTrianglemeshObjectMotionBlurStillRendersStatic) {
 	}
 }
 
+TEST(PbrtCpuBuildTest, BilinearmeshObjectMotionBlurMovesRealHitPosition) {
+	// Real per-ray-time motion blur for bilinearmesh - mirrors
+	// TrianglemeshObjectMotionBlurMovesRealHitPosition above exactly, same
+	// narrow-quad-translated-5-units-along-x setup, same 3-way proof (hits
+	// at the StartTime pose, hits at the EndTime pose, MISSES a ray aimed
+	// where it WAS at StartTime but sampled at time=1).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 5 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"bilinearmesh\" \"point3 P\" [ -1 -10 0   1 -10 0   -1 10 0   1 10 0 ]\n");
+
+	hit_record recStart;
+	const ray rStart(point3(0, 0, -5), vec3(0, 0, 1), 0.0);
+	ASSERT_TRUE(b.world->hit(rStart, interval(0.001, infinity), recStart))
+		<< "time=0 ray should hit the patch at its StartTime pose (x~=0)";
+	EXPECT_NEAR(recStart.p.x(), 0.0, 1e-9);
+
+	hit_record recEnd;
+	const ray rEnd(point3(5, 0, -5), vec3(0, 0, 1), 1.0);
+	ASSERT_TRUE(b.world->hit(rEnd, interval(0.001, infinity), recEnd))
+		<< "time=1 ray should hit the patch at its EndTime pose (x~=5)";
+	EXPECT_NEAR(recEnd.p.x(), 5.0, 1e-9);
+
+	hit_record recMiss;
+	const ray rMiss(point3(0, 0, -5), vec3(0, 0, 1), 1.0);
+	EXPECT_FALSE(b.world->hit(rMiss, interval(0.001, infinity), recMiss))
+		<< "a time=1 ray aimed where the patch WAS at time=0 must miss - "
+		   "proof the patch's hit-time position genuinely moved";
+}
+
+TEST(PbrtCpuBuildTest, EmissiveBilinearmeshObjectMotionBlurStillRendersStatic) {
+	// pbrt_flatten.h excludes an emissive patch from the animated path
+	// entirely (same rule as trianglemesh - see
+	// EmissiveTrianglemeshObjectMotionBlurStillRendersStatic above) -
+	// confirms the CPU builder still renders it, frozen at its StartTime
+	// pose regardless of ray time.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  ActiveTransform \"StartTime\"\n"
+		"  ActiveTransform \"EndTime\"\n"
+		"  Translate 5 0 0\n"
+		"  ActiveTransform \"All\"\n"
+		"  Shape \"bilinearmesh\" \"point3 P\" [ -1 -10 0   1 -10 0   -1 10 0   1 10 0 ]\n"
+		"AttributeEnd\n");
+
+	for (double t : {0.0, 1.0}) {
+		hit_record rec;
+		const ray r(point3(0, 0, -5), vec3(0, 0, 1), t);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec)) << "t=" << t;
+		EXPECT_NEAR(rec.p.x(), 0.0, 1e-9) << "t=" << t;
+	}
+}
+
+TEST(PbrtCpuBuildTest, CurveObjectMotionBlurMovesRealHitPosition) {
+	// Real per-ray-time motion blur for curve - mirrors
+	// TrianglemeshObjectMotionBlurMovesRealHitPosition above, same 3-way
+	// proof. A straight strand along x in [0,3] (default width 1.0)
+	// translated 5 units along x between StartTime/EndTime; a ray aimed at
+	// its spine midpoint (x=1.5) should hit near x~=1.5 at time=0, near
+	// x~=6.5 at time=1, and MISS at x=1.5/time=1 (the strand has moved
+	// away by then).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 5 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"curve\" \"point3 P\" [ 0 0 0  1 0 0  2 0 0  3 0 0 ]\n");
+
+	hit_record recStart;
+	const ray rStart(point3(1.5, 0, -5), vec3(0, 0, 1), 0.0);
+	ASSERT_TRUE(b.world->hit(rStart, interval(0.001, infinity), recStart))
+		<< "time=0 ray should hit the strand at its StartTime pose (x~=1.5)";
+	EXPECT_NEAR(recStart.p.x(), 1.5, 1e-6);
+
+	hit_record recEnd;
+	const ray rEnd(point3(6.5, 0, -5), vec3(0, 0, 1), 1.0);
+	ASSERT_TRUE(b.world->hit(rEnd, interval(0.001, infinity), recEnd))
+		<< "time=1 ray should hit the strand at its EndTime pose (x~=6.5)";
+	EXPECT_NEAR(recEnd.p.x(), 6.5, 1e-6);
+
+	hit_record recMiss;
+	const ray rMiss(point3(1.5, 0, -5), vec3(0, 0, 1), 1.0);
+	EXPECT_FALSE(b.world->hit(rMiss, interval(0.001, infinity), recMiss))
+		<< "a time=1 ray aimed where the strand WAS at time=0 must miss - "
+		   "proof the strand's hit-time position genuinely moved";
+}
+
+TEST(PbrtCpuBuildTest, EmissiveCurveObjectMotionBlurStillRendersStatic) {
+	// pbrt_flatten.h excludes an emissive curve from the animated path
+	// entirely (same rule as trianglemesh) - confirms the CPU builder
+	// still renders it, frozen at its StartTime pose regardless of ray
+	// time.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  ActiveTransform \"StartTime\"\n"
+		"  ActiveTransform \"EndTime\"\n"
+		"  Translate 5 0 0\n"
+		"  ActiveTransform \"All\"\n"
+		"  Shape \"curve\" \"point3 P\" [ 0 0 0  1 0 0  2 0 0  3 0 0 ]\n"
+		"AttributeEnd\n");
+
+	for (double t : {0.0, 1.0}) {
+		hit_record rec;
+		const ray r(point3(1.5, 0, -5), vec3(0, 0, 1), t);
+		ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec)) << "t=" << t;
+		EXPECT_NEAR(rec.p.x(), 1.5, 1e-6) << "t=" << t;
+	}
+}
+
 TEST(PbrtCpuBuildTest, AcceleratorNonSahRoutesAParticipatingMediumWithoutDroppingScatterEvents) {
 	// Regression test for a real bug caught by code review: the first
 	// bvh_aggregate_hittable.h design re-queried the winning primitive's
@@ -2352,3 +2466,113 @@ TEST(PbrtCpuBuildTest, AcceleratorKdtreeRoutesAParticipatingMediumWithoutDroppin
 // behavior unobservable through pbrt_cpu::build()'s output. Testing
 // kd_tree_hittable directly (bypassing the loader's default-opaque-
 // boundary behavior) is the only way to actually isolate this.
+
+// ===========================================================================
+// Cone/Paraboloid real AreaLightSource/MediumInterface support - see
+// pbrt_flatten::Cone/Paraboloid's own comment for the feature this
+// round closed.
+// ===========================================================================
+
+TEST(PbrtCpuBuildTest, ConeWithAreaLightIsAddedToLightsAndIsSampleable) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 4 4 4 ]\n"
+		"  Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 2 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.lights->objects.size(), 1u);
+	auto cone = std::dynamic_pointer_cast<cone_hittable>(b.lights->objects[0]);
+	ASSERT_NE(cone, nullptr);
+
+	// Real solid-angle NEE sampling (ConeShape::sample_from/pdf_from, see
+	// their own comments in shapes.h) - a point well outside the cone must
+	// get a real, positive pdf both ways (sample and re-query).
+	const point3 origin(-5, 0, 1);
+	bool sawPositivePdf = false;
+	for (int i = 0; i < 20; ++i) {
+		const vec3 dir = cone->random(origin);
+		const double pdf = cone->pdf_value(origin, dir);
+		if (pdf > 0.0) sawPositivePdf = true;
+	}
+	EXPECT_TRUE(sawPositivePdf);
+}
+
+TEST(PbrtCpuBuildTest, ConeWithMediumScattersReliably) {
+	// Material "none" (a real Interface material - MaterialKind::Interface's
+	// own comment, pbrt_flatten.h) keeps the cone's own boundary invisible,
+	// so the medium's own scatter event (not the opaque boundary surface)
+	// is what a ray actually observes - see kd_tree_hittable_tests.cpp's own
+	// top comment for why this matters (an opaque boundary always wins the
+	// closest-hit race over a scatter event drawn from inside the volume).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0 0 0 ] \"rgb sigma_s\" [ 500 500 500 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Material \"none\"\n"
+		"  Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 2 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.coneCount, 1u);
+	// A ray along the base circle's own diameter (z=0, matching
+	// ShapesCone.IntersectAtBase's identical setup in shapes_tests.cpp) -
+	// crosses the hollow lateral surface TWICE (x=-1 entering, x=+1
+	// exiting), the real [t0,t1] entry/exit pair constant_medium's own
+	// hit() needs. A ray parallel to the axis instead (e.g. straight along
+	// +z) only ever crosses this open, uncapped shell ONCE - not a valid
+	// medium interval at all, not a real test of scattering.
+	for (int i = 0; i < 200; ++i) {
+		hit_record rec;
+		ASSERT_TRUE(b.world->hit(ray(point3(-5, 0, 0), vec3(1, 0, 0)),
+								 interval(0.001, infinity), rec))
+			<< "iteration " << i << ": a sigma_s=500 medium across the cone's "
+			   "own radius-1 base (optical depth ~1000) must scatter on "
+			   "essentially every ray";
+	}
+}
+
+TEST(PbrtCpuBuildTest, ParaboloidWithAreaLightIsAddedToLightsAndIsSampleable) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 4 4 4 ]\n"
+		"  Shape \"paraboloid\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.lights->objects.size(), 1u);
+	auto para = std::dynamic_pointer_cast<paraboloid_hittable>(b.lights->objects[0]);
+	ASSERT_NE(para, nullptr);
+
+	const point3 origin(-5, 0, 0.5);
+	bool sawPositivePdf = false;
+	for (int i = 0; i < 20; ++i) {
+		const vec3 dir = para->random(origin);
+		const double pdf = para->pdf_value(origin, dir);
+		if (pdf > 0.0) sawPositivePdf = true;
+	}
+	EXPECT_TRUE(sawPositivePdf);
+}
+
+TEST(PbrtCpuBuildTest, ParaboloidWithMediumScattersReliably) {
+	// See ConeWithMediumScattersReliably's own comment - identical reasoning.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0 0 0 ] \"rgb sigma_s\" [ 500 500 500 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Material \"none\"\n"
+		"  Shape \"paraboloid\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.paraboloidCount, 1u);
+	// A ray along the rim's own diameter (z=zmax=1, matching
+	// ShapesParaboloid.IntersectAtRimMatchesRadius's identical setup) -
+	// crosses the hollow surface TWICE (x=-1 entering, x=+1 exiting), the
+	// real [t0,t1] entry/exit pair constant_medium's own hit() needs - see
+	// ConeWithMediumScattersReliably's own comment for why a ray parallel
+	// to the axis instead would never produce a valid interval at all.
+	for (int i = 0; i < 200; ++i) {
+		hit_record rec;
+		ASSERT_TRUE(b.world->hit(ray(point3(-5, 0, 1), vec3(1, 0, 0)),
+								 interval(0.001, infinity), rec))
+			<< "iteration " << i << ": a sigma_s=500 medium across the "
+			   "paraboloid's own radius-1 rim (optical depth ~1000) must "
+			   "scatter on essentially every ray";
+	}
+}
+

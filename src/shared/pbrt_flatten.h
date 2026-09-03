@@ -246,18 +246,18 @@ struct Cylinder {
 // generic "shape not supported" warning, nothing rendered in their place -
 // see flatten()'s own trailing warning for that fallback). Same unbaked-
 // object-space-plus-CTM technique as Disk/Cylinder above, for the identical
-// reason (not rotation-invariant). v1 scope, CPU-only, geometry-only: no
-// AreaLightSource (not registered as a light even if the scene declares one
-// - see flatten()'s own warning at the dispatch site) and no MediumInterface
-// (same "no medium field, would silently drop it" gap as bilinearmesh/
-// trianglemesh - warned the same way) - these are used as ordinary
-// decorative/architectural geometry in real scenes far more often than as
-// either, so closing the "nothing renders at all" gap for that common case
-// first is the higher-value v1 cut; GPU support is a separate, not-yet-
-// attempted follow-up (both backends warn and drop, same as every other
-// CPU-only feature in this codebase). Shape "hyperboloid" (the 3rd quadric)
-// is deliberately NOT covered here - pbrt-v4's real hyperboloid is a
-// TWISTED ruled surface (ah/ch quadric coefficients derived from two
+// reason (not rotation-invariant). Now also carry a real AreaLightSource
+// (areaLight below - registered as a real, NEE-samplable light, matching
+// Disk/Cylinder's own identical field exactly) and a real MediumInterface
+// (medium below - a real participating-medium boundary, same
+// addMediumIfPresent() path Sphere/Disk/Cylinder already use), CPU only -
+// GPU support is a separate, not-yet-attempted follow-up (both backends
+// warn and drop this geometry entirely already, same as every other CPU-
+// only shape kind in this codebase; that pre-existing "shape unsupported on
+// GPU" warning covers the area-light/medium case too, since there's no
+// shape at all on GPU to attach either to). Shape "hyperboloid" (the 3rd
+// quadric) is deliberately NOT covered here - pbrt-v4's real hyperboloid is
+// a TWISTED ruled surface (ah/ch quadric coefficients derived from two
 // arbitrary 3D points, not a plain surface of revolution the way cone/
 // paraboloid/cylinder are), meaningfully harder to get right than these two
 // and the rarest of the three in practice - left as a future addition
@@ -267,6 +267,12 @@ struct Cone {
 	double phiMaxDeg = 360.0;
 	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 	int material = -1;
+	// AreaLightSource/MediumInterface - see this shape's own top comment
+	// (just above Cone) for the real, non-geometry-only support these two
+	// fields now carry (matching Disk/Cylinder's own identical fields
+	// exactly), CPU only.
+	int areaLight = -1;
+	int medium = -1;
 };
 
 struct Paraboloid {
@@ -274,6 +280,9 @@ struct Paraboloid {
 	double phiMaxDeg = 360.0;
 	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 	int material = -1;
+	// See Cone::areaLight/medium's own comment - identical.
+	int areaLight = -1;
+	int medium = -1;
 };
 
 // "Is this RGB triple effectively nonzero" - the same per-channel epsilon
@@ -530,6 +539,39 @@ struct BilinearPatch {
 	double p[4][3] = {{0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}};
 	int material = -1;
 	int areaLight = -1;
+	// True only for a StartTime-pose duplicate of a patch that's ALSO in
+	// FlatScene::animatedBilinearPatches (real CPU motion blur - see that
+	// struct's own comment) - mirrors Triangle::gpuOnlyStaticFallback's own
+	// identical purpose and comment exactly: GPU has no concept of the
+	// separate animated list, so this duplicate exists purely to keep GPU
+	// rendering the shape at all (static at its StartTime pose), while
+	// pbrt_cpu_builder.h skips building a CPU hittable for a flagged entry
+	// (CPU gets its real motion blur from the animatedBilinearPatches entry
+	// instead).
+	bool gpuOnlyStaticFallback = false;
+};
+
+// A bilinearmesh shape under real object motion blur (pbrt-v4
+// ActiveTransform "StartTime"/"EndTime" around Shape "bilinearmesh") - CPU
+// only. Mirrors AnimatedTriangleMesh's own design exactly (see that struct's
+// own comment for the full rationale) - a single patch's 4 corners are
+// small enough that, unlike a whole mesh, there's no benefit to a separate
+// "flattened object-space list"; the OBJECT-space corners here (unlike
+// BilinearPatch::p above, baked to WORLD space at flatten() time) are handed
+// straight to bilinear_patch_hittable (which has no transform concept of
+// its own - it just uses whatever 4 points it's given), then the whole
+// hittable is wrapped in animated_transform_instance.h for real per-ray-time
+// motion. Only ever populated when a shape's own xformEnd genuinely differs
+// from xform (same "real inequality" convention as every other animated-
+// shape field), and never for an emissive patch (NEE needs enumerable
+// world-space geometry - same rule AnimatedTriangleMesh's own comment
+// documents) - both excluded cases fall back to the existing static,
+// StartTime-only bake instead, warned.
+struct AnimatedBilinearPatch {
+	double p[4][3] = {{0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}};  // OBJECT space
+	int material = -1;
+	double xform[16]    = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	double xformEnd[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 };
 
 // Shape "curve" - a cubic Bezier hair/fiber strand (src/shared/shapes.h's
@@ -575,6 +617,41 @@ struct Curve {
 	std::vector<double> n;    // (nSegments+1)*3 doubles, ribbon only
 	int material = -1;
 	int areaLight = -1;
+	// True only for a StartTime-pose duplicate of a curve that's ALSO in
+	// FlatScene::animatedCurves (real CPU motion blur) - mirrors
+	// Triangle::gpuOnlyStaticFallback/BilinearPatch::gpuOnlyStaticFallback's
+	// own identical purpose exactly (see either's own comment).
+	bool gpuOnlyStaticFallback = false;
+};
+
+// A curve shape under real object motion blur (pbrt-v4 ActiveTransform
+// "StartTime"/"EndTime" around Shape "curve") - CPU only. Mirrors
+// AnimatedTriangleMesh's own design (see that struct's own comment for the
+// full rationale): `cp` here is OBJECT space (the same already-degree/basis-
+// converted cubic Bezier control points Curve::cp above holds, just before
+// the final transformPoint-to-world-space loop - flatten()'s own curve
+// branch already computes this as `objCp` regardless of degree/basis, so no
+// new conversion math is needed here, only skipping the bake). All of a
+// curve declaration's segments share ONE xform/xformEnd pair (unlike a
+// mesh's many triangles, still cheap enough to wrap as a single group - see
+// pbrt_cpu_builder.h's own animated-curve build site), so this holds every
+// segment's object-space control points together, not one struct per
+// segment. Only ever populated when a shape's own xformEnd genuinely
+// differs from xform, and never for an emissive OR ribbon-type curve
+// (emissive: NEE needs enumerable world-space geometry, same rule as
+// AnimatedTriangleMesh's own comment; ribbon: its per-segment-endpoint
+// shading normals - Curve::n above - would need their own per-ray-time
+// transform too, a real but narrower feature scoped out here) - both
+// excluded cases fall back to the existing static, StartTime-only bake
+// instead, warned.
+struct AnimatedCurve {
+	std::vector<double> cp;   // nSegments * 4 * 3 doubles, OBJECT space
+	int nSegments = 0;
+	double width0 = 1.0, width1 = 1.0;
+	std::string curveType = "flat";   // never "ribbon" - see this struct's own comment
+	int material = -1;
+	double xform[16]    = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	double xformEnd[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 };
 
 // pbrt's material set and ours are the same set under the same names - the
@@ -1431,6 +1508,15 @@ struct PixelFilter {
 	double B = 1.0 / 3.0, C = 1.0 / 3.0;   // mitchell
 	double sigma = 0.5;                     // gaussian
 	double tau = 3.0;                       // sinc (LanczosSinc)
+	// "float xradius"/"float yradius" - pbrt-v4's real per-kind default
+	// (NOT a single shared default - see flatten()'s own resolution site):
+	// box=0.5, gaussian=1.5, mitchell=2.0, sinc=4.0, triangle=2.0. This
+	// project's filter classes (src/shared/filter.h) only carry one scalar
+	// radius for both axes (no existing asymmetric-radius support to plug
+	// an independent yradius into), so xradius/yradius are read as ONE
+	// value - whichever was actually given (matching real scenes, which
+	// essentially always set both to the same number).
+	double radius = 1.5;
 };
 
 // Our camera is described the way camera.h wants it - an eye point, a target
@@ -1576,7 +1662,15 @@ struct FlatScene {
 	std::vector<Cone> cones;
 	std::vector<Paraboloid> paraboloids;
 	std::vector<BilinearPatch> bilinearPatches;
+	// See AnimatedBilinearPatch's own comment - real object motion blur for
+	// bilinearmesh, CPU only, populated only when a shape's xformEnd
+	// genuinely differs from xform (and it's not emissive).
+	std::vector<AnimatedBilinearPatch> animatedBilinearPatches;
 	std::vector<Curve> curves;
+	// See AnimatedCurve's own comment - real object motion blur for curve,
+	// CPU only, populated only when a shape's xformEnd genuinely differs
+	// from xform (and it's not emissive or ribbon-type).
+	std::vector<AnimatedCurve> animatedCurves;
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
 	std::vector<Medium> media;          // parallel to Scene::media
@@ -3988,40 +4082,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		}
 
 		if (shape.type == "cone" && w.cones) {
-			if (shape.areaLightIndex >= 0) {
-				warn("Shape \"cone\" has an AreaLightSource, but this loader's "
-					 "cone support is geometry-only (v1 scope) - the cone will "
-					 "render as ordinary (non-emissive) geometry with no light "
-					 "contribution");
-			}
-			if (shape.insideMedium >= 0) {
-				warn("Shape \"cone\" has a MediumInterface, but this loader's "
-					 "cone support has no medium field (v1 scope, matching "
-					 "trianglemesh/bilinearmesh's own identical gap) - the "
-					 "medium will be dropped");
-			}
 			Cone cn;
 			cn.radius = shape.params.getFloat("radius", 1.0);
 			cn.height = shape.params.getFloat("height", 1.0);
 			cn.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
 			fromMatrix4(xform, cn.xform);
 			cn.material = shape.materialIndex;
+			cn.areaLight = shape.areaLightIndex;
+			cn.medium = shape.insideMedium;
 			w.cones->push_back(cn);
 			continue;
 		}
 
 		if (shape.type == "paraboloid" && w.paraboloids) {
-			if (shape.areaLightIndex >= 0) {
-				warn("Shape \"paraboloid\" has an AreaLightSource, but this "
-					 "loader's paraboloid support is geometry-only (v1 scope) - "
-					 "the paraboloid will render as ordinary (non-emissive) "
-					 "geometry with no light contribution");
-			}
-			if (shape.insideMedium >= 0) {
-				warn("Shape \"paraboloid\" has a MediumInterface, but this "
-					 "loader's paraboloid support has no medium field (v1 "
-					 "scope) - the medium will be dropped");
-			}
 			Paraboloid pb;
 			pb.radius = shape.params.getFloat("radius", 1.0);
 			pb.zMin = shape.params.getFloat("zmin", 0.0);
@@ -4029,6 +4102,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			pb.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
 			fromMatrix4(xform, pb.xform);
 			pb.material = shape.materialIndex;
+			pb.areaLight = shape.areaLightIndex;
+			pb.medium = shape.insideMedium;
 			w.paraboloids->push_back(pb);
 			continue;
 		}
@@ -4050,10 +4125,18 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// same as every other shape kind this file does not build.
 			const pbrt_scene::Param *P = shape.params.find("P");
 			if (w.bilinearPatches && P && P->numbers.size() == 12) {
-				BilinearPatch bp;
-				for (int i = 0; i < 4; ++i)
-					transformPoint(xform, P->numbers[i * 3 + 0], P->numbers[i * 3 + 1],
-								   P->numbers[i * 3 + 2], bp.p[i]);
+				// OBJECT-space corners first (needed either way: the world
+				// bake below always runs, and the animated case just below
+				// needs these unbaked) - the ReverseOrientation swap is a
+				// pure relabelling of which corner is "p10" vs "p01",
+				// transform-independent, so applying it here (before the
+				// bake) gives the identical result as applying it after.
+				double objP[4][3];
+				for (int i = 0; i < 4; ++i) {
+					objP[i][0] = P->numbers[i * 3 + 0];
+					objP[i][1] = P->numbers[i * 3 + 1];
+					objP[i][2] = P->numbers[i * 3 + 2];
+				}
 				// pbrt-v4 ReverseOrientation, same reverseOrientation XOR
 				// transformSwapsHandedness rule as the trianglemesh branch
 				// below (see its own comment) - a bilinear patch's
@@ -4068,12 +4151,42 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// negate/keep in sync here, unlike trianglemesh - a bilinear
 				// patch carries neither.
 				if (shape.reverseOrientation ^ matrixSwapsHandedness(xform)) {
-					double tmp[3] = {bp.p[1][0], bp.p[1][1], bp.p[1][2]};
-					bp.p[1][0] = bp.p[2][0]; bp.p[1][1] = bp.p[2][1]; bp.p[1][2] = bp.p[2][2];
-					bp.p[2][0] = tmp[0]; bp.p[2][1] = tmp[1]; bp.p[2][2] = tmp[2];
+					double tmp[3] = {objP[1][0], objP[1][1], objP[1][2]};
+					objP[1][0] = objP[2][0]; objP[1][1] = objP[2][1]; objP[1][2] = objP[2][2];
+					objP[2][0] = tmp[0]; objP[2][1] = tmp[1]; objP[2][2] = tmp[2];
 				}
+
+				BilinearPatch bp;
+				for (int i = 0; i < 4; ++i)
+					transformPoint(xform, objP[i][0], objP[i][1], objP[i][2], bp.p[i]);
 				bp.material = shape.materialIndex;
 				bp.areaLight = shape.areaLightIndex;
+
+				// Real object motion blur (AnimatedBilinearPatch's own
+				// comment) - same isTopLevelScene/real-inequality gate as
+				// mesh motion blur, and the same emissive exclusion, warned
+				// the identical way.
+				const bool bpCouldAnimate =
+					w.isTopLevelScene && xform.differsFrom(w.xformEnd);
+				const bool bpAnimated = bpCouldAnimate && shape.areaLightIndex < 0;
+				if (bpCouldAnimate && shape.areaLightIndex >= 0) {
+					warn("an emissive '" + shape.type + "' has an ActiveTransform "
+						 "\"StartTime\"/\"EndTime\" pair, but this loader's bilinear-"
+						 "patch motion blur excludes emissive shapes (NEE sampling "
+						 "needs enumerable world-space geometry); it will render "
+						 "static at its StartTime pose instead");
+				}
+				if (bpAnimated) {
+					bp.gpuOnlyStaticFallback = true;
+					AnimatedBilinearPatch abp;
+					for (int i = 0; i < 4; ++i) {
+						abp.p[i][0] = objP[i][0]; abp.p[i][1] = objP[i][1]; abp.p[i][2] = objP[i][2];
+					}
+					abp.material = shape.materialIndex;
+					fromMatrix4(xform, abp.xform);
+					fromMatrix4(w.xformEnd, abp.xformEnd);
+					out.animatedBilinearPatches.push_back(std::move(abp));
+				}
 				w.bilinearPatches->push_back(bp);
 				continue;
 			}
@@ -4628,6 +4741,44 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 			c.material = shape.materialIndex;
 			c.areaLight = shape.areaLightIndex;
+
+			// Real object motion blur (AnimatedCurve's own comment) - same
+			// isTopLevelScene/real-inequality gate as mesh/bilinear-patch
+			// motion blur, plus the same emissive exclusion (warned the
+			// identical way) and a ribbon-type exclusion (its per-segment
+			// shading normals have no per-ray-time transform of their own -
+			// AnimatedCurve's own comment).
+			const bool curveCouldAnimate =
+				w.isTopLevelScene && xform.differsFrom(w.xformEnd);
+			const bool curveAnimated =
+				curveCouldAnimate && shape.areaLightIndex < 0 && c.curveType != "ribbon";
+			if (curveCouldAnimate && shape.areaLightIndex >= 0) {
+				warn("an emissive '" + shape.type + "' has an ActiveTransform "
+					 "\"StartTime\"/\"EndTime\" pair, but this loader's curve motion "
+					 "blur excludes emissive shapes (NEE sampling needs enumerable "
+					 "world-space geometry); it will render static at its StartTime "
+					 "pose instead");
+			}
+			if (curveCouldAnimate && shape.areaLightIndex < 0 && c.curveType == "ribbon") {
+				warn("a ribbon curve has an ActiveTransform \"StartTime\"/\"EndTime\" "
+					 "pair, but this loader's curve motion blur excludes ribbon-type "
+					 "curves (their per-segment shading normals have no per-ray-time "
+					 "transform yet); it will render static at its StartTime pose "
+					 "instead");
+			}
+			if (curveAnimated) {
+				c.gpuOnlyStaticFallback = true;
+				AnimatedCurve ac;
+				ac.cp = objCp;
+				ac.nSegments = nSegments;
+				ac.width0 = c.width0;
+				ac.width1 = c.width1;
+				ac.curveType = c.curveType;
+				ac.material = c.material;
+				fromMatrix4(xform, ac.xform);
+				fromMatrix4(w.xformEnd, ac.xformEnd);
+				out.animatedCurves.push_back(std::move(ac));
+			}
 			w.curves->push_back(std::move(c));
 			continue;
 		}
@@ -4692,17 +4843,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	// which just finished above.
 	//
 	// Triangle/unclipped-Sphere/BilinearPatch carry a plain world-space area
-	// formula. Disk/Cylinder are excluded: unlike Sphere, they are never
-	// baked to world space (see Disk/Cylinder's own struct comment) - their
-	// radius/height fields are object-space, and getting a world-space area
-	// right would need the attached `xform`'s own scale factored in, per
-	// axis, which their non-uniform-scale-tolerant intersection path doesn't
-	// reduce to a single number the way Sphere's "warn and use the largest
-	// axis" approximation does. A clipped Sphere is excluded for the same
-	// reason (its radiusLocal/xform are object-space too). Curve is excluded
-	// because no closed-form area() exists anywhere in this codebase for it.
-	// Each exclusion warns rather than silently mis-stating the light's
-	// total power.
+	// formula. Disk/Cylinder/Cone/Paraboloid are excluded: unlike Sphere,
+	// they are never baked to world space (see Disk/Cylinder's own struct
+	// comment) - their radius/height fields are object-space, and getting a
+	// world-space area right would need the attached `xform`'s own scale
+	// factored in, per axis, which their non-uniform-scale-tolerant
+	// intersection path doesn't reduce to a single number the way Sphere's
+	// "warn and use the largest axis" approximation does. A clipped Sphere
+	// is excluded for the same reason (its radiusLocal/xform are object-
+	// space too). Curve is excluded because no closed-form area() exists
+	// anywhere in this codebase for it. Each exclusion warns rather than
+	// silently mis-stating the light's total power.
 	if (std::any_of(out.areaLights.begin(), out.areaLights.end(),
 					 [](const Emission &e) { return e.hasPower; })) {
 		std::vector<double> area(out.areaLights.size(), 0.0);
@@ -4742,6 +4893,14 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		for (const Curve &c : out.curves) {
 			if (c.areaLight >= 0) excluded[c.areaLight] = true;
 		}
+		// Cone/Paraboloid - same object-space-radius-plus-unbaked-xform
+		// exclusion reason as Disk/Cylinder above.
+		for (const Cone &cn : out.cones) {
+			if (cn.areaLight >= 0) excluded[cn.areaLight] = true;
+		}
+		for (const Paraboloid &pb : out.paraboloids) {
+			if (pb.areaLight >= 0) excluded[pb.areaLight] = true;
+		}
 
 		for (std::size_t i = 0; i < out.areaLights.size(); ++i) {
 			Emission &e = out.areaLights[i];
@@ -4767,15 +4926,15 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			if (excluded[i]) {
 				if (area[i] > 1e-12) {
 					warn("area light \"power\" is not supported: attached to a "
-						 "mix of a measurable shape and a disk/cylinder/"
-						 "clipped-sphere/curve shape sharing the same "
+						 "mix of a measurable shape and a disk/cylinder/cone/"
+						 "paraboloid/clipped-sphere/curve shape sharing the same "
 						 "AreaLightSource - the measurable shape's own area "
 						 "cannot be used on its own without mis-stating the "
 						 "light's total power; \"scale\"/L used as given instead");
 				} else {
 					warn("area light \"power\" is not supported when attached to a "
-						 "disk/cylinder/clipped-sphere/curve shape; \"scale\"/L "
-						 "used as given instead");
+						 "disk/cylinder/cone/paraboloid/clipped-sphere/curve "
+						 "shape; \"scale\"/L used as given instead");
 				}
 				continue;
 			}
@@ -4789,14 +4948,29 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		}
 	}
 
-	// PixelFilter - see PixelFilter's own struct comment for why only these
-	// four params are read (no radius) and why "gaussian" is the right
-	// fallback for an absent/unrecognized kind.
+	// PixelFilter - see PixelFilter's own struct comment for radius, and
+	// why "gaussian" is the right fallback for an absent/unrecognized kind.
 	out.filter.kind = scene.filterType.empty() ? "gaussian" : scene.filterType;
 	out.filter.B = scene.filterParams.getFloat("B", out.filter.B);
 	out.filter.C = scene.filterParams.getFloat("C", out.filter.C);
 	out.filter.sigma = scene.filterParams.getFloat("sigma", out.filter.sigma);
 	out.filter.tau = scene.filterParams.getFloat("tau", out.filter.tau);
+	// pbrt-v4's real per-kind default radius (PixelFilter::radius's own
+	// comment) - resolved AFTER out.filter.kind above, since the default
+	// itself depends on which kind was requested. "xradius"/"yradius" (an
+	// explicit scene override) both fall back to whichever of the two was
+	// actually given, defaulting to this kind's own real default when
+	// neither is present.
+	{
+		const double kindDefault =
+			(out.filter.kind == "box") ? 0.5
+			: (out.filter.kind == "mitchell") ? 2.0
+			: (out.filter.kind == "sinc") ? 4.0
+			: (out.filter.kind == "triangle") ? 2.0
+			: 1.5;  // "gaussian", or any unrecognized kind
+		out.filter.radius = scene.filterParams.getFloat("xradius",
+			scene.filterParams.getFloat("yradius", kindDefault));
+	}
 
 	out.regularize = scene.regularize;
 
@@ -4844,6 +5018,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// presence alone is enough, no per-entry xformArrayDiffers scan
 		// needed.)
 		if (!hasAcceleratorIncompatibleMotion && !out.animatedTriangleMeshes.empty())
+			hasAcceleratorIncompatibleMotion = true;
+		// Bilinear-patch/curve motion blur (AnimatedBilinearPatch/
+		// AnimatedCurve's own comments) - the identical gap, via the same
+		// animated_transform_instance.h wrapper mesh motion blur uses.
+		if (!hasAcceleratorIncompatibleMotion &&
+			(!out.animatedBilinearPatches.empty() || !out.animatedCurves.empty()))
 			hasAcceleratorIncompatibleMotion = true;
 	}
 

@@ -1491,25 +1491,33 @@ TEST(FlattenTest, ConeCarriesMaterialAndTransform) {
 	EXPECT_DOUBLE_EQ(s.cones[0].xform[11], 3.0);
 }
 
-TEST(FlattenTest, ConeWithAreaLightSourceWarnsAndStillBuildsGeometry) {
+TEST(FlattenTest, ConeWithAreaLightSourceIsRealAndDoesNotWarn) {
+	// Real AreaLightSource support now (Cone::areaLight's own comment) - no
+	// longer the old geometry-only v1 scope this test's own name used to
+	// describe.
 	const FlatScene s = flattenSource(
 		"AttributeBegin\n"
 		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
 		"  Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 1 ]\n"
 		"AttributeEnd\n");
-	ASSERT_EQ(s.cones.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
-	EXPECT_TRUE(warnedAbout(s, "AreaLightSource"));
+	ASSERT_EQ(s.cones.size(), 1u);
+	EXPECT_GE(s.cones[0].areaLight, 0);
+	EXPECT_FALSE(warnedAbout(s, "AreaLightSource"));
 }
 
-TEST(FlattenTest, ConeWithMediumInterfaceWarnsAndStillBuildsGeometry) {
+TEST(FlattenTest, ConeWithMediumInterfaceIsRealAndDoesNotWarn) {
+	// Real MediumInterface support now (Cone::medium's own comment) - no
+	// longer the old geometry-only v1 scope this test's own name used to
+	// describe.
 	const FlatScene s = flattenSource(
 		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
 		"AttributeBegin\n"
 		"  MediumInterface \"fog\" \"\"\n"
 		"  Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 1 ]\n"
 		"AttributeEnd\n");
-	ASSERT_EQ(s.cones.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
-	EXPECT_TRUE(warnedAbout(s, "MediumInterface"));
+	ASSERT_EQ(s.cones.size(), 1u);
+	EXPECT_GE(s.cones[0].medium, 0);
+	EXPECT_FALSE(warnedAbout(s, "MediumInterface"));
 }
 
 // ===========================================================================
@@ -1818,6 +1826,152 @@ TEST(FlattenTest, AcceleratorNonSahWithoutMotionBlurIsNotAffectedByTheMotionChec
 	EXPECT_FALSE(warnedAbout(s, "motion blur"));
 }
 
+// ===========================================================================
+// Bilinear-patch/curve object motion blur - mirrors the trianglemesh motion
+// blur tests just above exactly, via AnimatedBilinearPatch/AnimatedCurve.
+// ===========================================================================
+
+TEST(FlattenTest, BilinearmeshObjectMotionBlurPopulatesAnimatedBilinearPatches) {
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"bilinearmesh\" \"point3 P\" [ -1 -1 0  1 -1 0  -1 1 0  1 1 0 ]\n");
+
+	ASSERT_EQ(s.animatedBilinearPatches.size(), 1u);
+	// Object space: untouched by the Translate above (only xform/xformEnd
+	// carry the placement now) - the first corner is still exactly (-1,-1,0).
+	EXPECT_DOUBLE_EQ(s.animatedBilinearPatches[0].p[0][0], -1.0);
+	EXPECT_DOUBLE_EQ(s.animatedBilinearPatches[0].p[0][1], -1.0);
+	EXPECT_DOUBLE_EQ(s.animatedBilinearPatches[0].p[0][2], 0.0);
+	EXPECT_TRUE(s.animatedBilinearPatches[0].xform[3] != s.animatedBilinearPatches[0].xformEnd[3])
+		<< "xform.tx=" << s.animatedBilinearPatches[0].xform[3]
+		<< " xformEnd.tx=" << s.animatedBilinearPatches[0].xformEnd[3];
+
+	// GPU-fallback duplicate: real world-space corners at the StartTime
+	// pose (identity here), flagged so CPU's own builder skips it.
+	ASSERT_EQ(s.bilinearPatches.size(), 1u);
+	EXPECT_TRUE(s.bilinearPatches[0].gpuOnlyStaticFallback);
+	EXPECT_DOUBLE_EQ(s.bilinearPatches[0].p[0][0], -1.0);
+}
+
+TEST(FlattenTest, BilinearmeshWithoutActiveTransformHasNoMotion) {
+	const FlatScene s = flattenSource(
+		"Shape \"bilinearmesh\" \"point3 P\" [ -1 -1 0  1 -1 0  -1 1 0  1 1 0 ]\n");
+	EXPECT_TRUE(s.animatedBilinearPatches.empty());
+	ASSERT_EQ(s.bilinearPatches.size(), 1u);
+	EXPECT_FALSE(s.bilinearPatches[0].gpuOnlyStaticFallback);
+}
+
+TEST(FlattenTest, EmissiveBilinearmeshObjectMotionBlurFallsBackToStaticAndWarns) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  ActiveTransform \"StartTime\"\n"
+		"  ActiveTransform \"EndTime\"\n"
+		"  Translate 2 0 0\n"
+		"  ActiveTransform \"All\"\n"
+		"  Shape \"bilinearmesh\" \"point3 P\" [ -1 -1 0  1 -1 0  -1 1 0  1 1 0 ]\n"
+		"AttributeEnd\n");
+	EXPECT_TRUE(s.animatedBilinearPatches.empty());
+	ASSERT_EQ(s.bilinearPatches.size(), 1u);
+	EXPECT_FALSE(s.bilinearPatches[0].gpuOnlyStaticFallback);
+	EXPECT_GE(s.bilinearPatches[0].areaLight, 0);
+	EXPECT_TRUE(warnedAbout(s, "emissive"));
+}
+
+TEST(FlattenTest, CurveObjectMotionBlurPopulatesAnimatedCurves) {
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"curve\" \"point3 P\" [ 0 0 0  1 0 0  2 0 0  3 0 0 ]\n");
+
+	ASSERT_EQ(s.animatedCurves.size(), 1u);
+	EXPECT_EQ(s.animatedCurves[0].nSegments, 1);
+	// Object space: untouched by the Translate above.
+	EXPECT_DOUBLE_EQ(s.animatedCurves[0].cp[0], 0.0);
+	EXPECT_TRUE(s.animatedCurves[0].xform[3] != s.animatedCurves[0].xformEnd[3])
+		<< "xform.tx=" << s.animatedCurves[0].xform[3]
+		<< " xformEnd.tx=" << s.animatedCurves[0].xformEnd[3];
+
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_TRUE(s.curves[0].gpuOnlyStaticFallback);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[0], 0.0);
+}
+
+TEST(FlattenTest, CurveWithoutActiveTransformHasNoMotion) {
+	const FlatScene s = flattenSource(
+		"Shape \"curve\" \"point3 P\" [ 0 0 0  1 0 0  2 0 0  3 0 0 ]\n");
+	EXPECT_TRUE(s.animatedCurves.empty());
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_FALSE(s.curves[0].gpuOnlyStaticFallback);
+}
+
+TEST(FlattenTest, EmissiveCurveObjectMotionBlurFallsBackToStaticAndWarns) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  ActiveTransform \"StartTime\"\n"
+		"  ActiveTransform \"EndTime\"\n"
+		"  Translate 2 0 0\n"
+		"  ActiveTransform \"All\"\n"
+		"  Shape \"curve\" \"point3 P\" [ 0 0 0  1 0 0  2 0 0  3 0 0 ]\n"
+		"AttributeEnd\n");
+	EXPECT_TRUE(s.animatedCurves.empty());
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_FALSE(s.curves[0].gpuOnlyStaticFallback);
+	EXPECT_GE(s.curves[0].areaLight, 0);
+	EXPECT_TRUE(warnedAbout(s, "emissive"));
+}
+
+TEST(FlattenTest, RibbonCurveObjectMotionBlurFallsBackToStaticAndWarns) {
+	// AnimatedCurve's own comment: ribbon-type curves are excluded from
+	// motion blur (their per-segment shading normals have no per-ray-time
+	// transform yet) - a separate exclusion from the emissive one above.
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"curve\" \"point3 P\" [ 0 0 0  1 0 0  2 0 0  3 0 0 ] "
+		"\"string type\" [ \"ribbon\" ] "
+		"\"normal N\" [ 0 1 0  0 1 0 ]\n");
+	EXPECT_TRUE(s.animatedCurves.empty());
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_FALSE(s.curves[0].gpuOnlyStaticFallback);
+	EXPECT_EQ(s.curves[0].curveType, "ribbon");
+	EXPECT_TRUE(warnedAbout(s, "ribbon"));
+}
+
+TEST(FlattenTest, AcceleratorNonSahWithBilinearmeshMotionBlurFallsBackToSah) {
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n"
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"bilinearmesh\" \"point3 P\" [ -1 -1 0  1 -1 0  -1 1 0  1 1 0 ]\n");
+	ASSERT_EQ(s.animatedBilinearPatches.size(), 1u);
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+	EXPECT_TRUE(warnedAbout(s, "motion blur"));
+}
+
+TEST(FlattenTest, AcceleratorNonSahWithCurveMotionBlurFallsBackToSah) {
+	const FlatScene s = flattenSource(
+		"Accelerator \"bvh\" \"string splitmethod\" \"hlbvh\"\n"
+		"ActiveTransform \"StartTime\"\n"
+		"ActiveTransform \"EndTime\"\n"
+		"Translate 2 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"Shape \"curve\" \"point3 P\" [ 0 0 0  1 0 0  2 0 0  3 0 0 ]\n");
+	ASSERT_EQ(s.animatedCurves.size(), 1u);
+	EXPECT_EQ(s.acceleratorSplitMethod, "sah");
+	EXPECT_TRUE(warnedAbout(s, "motion blur"));
+}
+
 TEST(FlattenTest, ParaboloidDefaultParamsMatchPbrt) {
 	const FlatScene s = flattenSource("Shape \"paraboloid\" \n");
 	ASSERT_EQ(s.paraboloids.size(), 1u);
@@ -1838,25 +1992,31 @@ TEST(FlattenTest, ParaboloidExplicitParamsAreRead) {
 	EXPECT_DOUBLE_EQ(s.paraboloids[0].phiMaxDeg, 180.0);
 }
 
-TEST(FlattenTest, ParaboloidWithAreaLightSourceWarnsAndStillBuildsGeometry) {
+TEST(FlattenTest, ParaboloidWithAreaLightSourceIsRealAndDoesNotWarn) {
+	// See ConeWithAreaLightSourceIsRealAndDoesNotWarn's own comment -
+	// identical, for Paraboloid::areaLight.
 	const FlatScene s = flattenSource(
 		"AttributeBegin\n"
 		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
 		"  Shape \"paraboloid\" \"float radius\" [ 1 ]\n"
 		"AttributeEnd\n");
-	ASSERT_EQ(s.paraboloids.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
-	EXPECT_TRUE(warnedAbout(s, "AreaLightSource"));
+	ASSERT_EQ(s.paraboloids.size(), 1u);
+	EXPECT_GE(s.paraboloids[0].areaLight, 0);
+	EXPECT_FALSE(warnedAbout(s, "AreaLightSource"));
 }
 
-TEST(FlattenTest, ParaboloidWithMediumInterfaceWarnsAndStillBuildsGeometry) {
+TEST(FlattenTest, ParaboloidWithMediumInterfaceIsRealAndDoesNotWarn) {
+	// See ConeWithMediumInterfaceIsRealAndDoesNotWarn's own comment -
+	// identical, for Paraboloid::medium.
 	const FlatScene s = flattenSource(
 		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
 		"AttributeBegin\n"
 		"  MediumInterface \"fog\" \"\"\n"
 		"  Shape \"paraboloid\" \"float radius\" [ 1 ]\n"
 		"AttributeEnd\n");
-	ASSERT_EQ(s.paraboloids.size(), 1u) << "geometry-only v1 scope: still built, not dropped";
-	EXPECT_TRUE(warnedAbout(s, "MediumInterface"));
+	ASSERT_EQ(s.paraboloids.size(), 1u);
+	EXPECT_GE(s.paraboloids[0].medium, 0);
+	EXPECT_FALSE(warnedAbout(s, "MediumInterface"));
 }
 
 TEST(FlattenTest, ParserWarningsAreCarriedThrough) {
@@ -1968,6 +2128,35 @@ TEST(FlattenTest, SincPixelFilterTauIsCarriedThrough) {
 		std::string("PixelFilter \"sinc\" \"float tau\" [ 2.5 ]\nWorldBegin\n") + kQuadMesh);
 	EXPECT_EQ(s.filter.kind, "sinc");
 	EXPECT_DOUBLE_EQ(s.filter.tau, 2.5);
+}
+
+// ===========================================================================
+// PixelFilter radius - pbrt-v4's real per-kind default (PixelFilter::radius's
+// own comment, pbrt_flatten.h) - previously not parsed at all (see this
+// feature's own commit).
+// ===========================================================================
+
+TEST(FlattenTest, PixelFilterRadiusDefaultsPerKind) {
+	// box=0.5, gaussian=1.5, mitchell=2.0, sinc=4.0, triangle=2.0 - pbrt-v4's
+	// own real defaults (confirmed against pbrt-v4/src/pbrt/filters.cpp),
+	// NOT a single shared default.
+	EXPECT_DOUBLE_EQ(flattenSource("PixelFilter \"box\"\nWorldBegin\n" + std::string(kQuadMesh)).filter.radius, 0.5);
+	EXPECT_DOUBLE_EQ(flattenSource("WorldBegin\n" + std::string(kQuadMesh)).filter.radius, 1.5);
+	EXPECT_DOUBLE_EQ(flattenSource("PixelFilter \"mitchell\"\nWorldBegin\n" + std::string(kQuadMesh)).filter.radius, 2.0);
+	EXPECT_DOUBLE_EQ(flattenSource("PixelFilter \"sinc\"\nWorldBegin\n" + std::string(kQuadMesh)).filter.radius, 4.0);
+	EXPECT_DOUBLE_EQ(flattenSource("PixelFilter \"triangle\"\nWorldBegin\n" + std::string(kQuadMesh)).filter.radius, 2.0);
+}
+
+TEST(FlattenTest, PixelFilterExplicitXradiusOverridesTheKindDefault) {
+	const FlatScene s = flattenSource(
+		std::string("PixelFilter \"mitchell\" \"float xradius\" [ 3.0 ]\nWorldBegin\n") + kQuadMesh);
+	EXPECT_DOUBLE_EQ(s.filter.radius, 3.0);
+}
+
+TEST(FlattenTest, PixelFilterExplicitYradiusOverridesTheKindDefaultWhenXradiusIsAbsent) {
+	const FlatScene s = flattenSource(
+		std::string("PixelFilter \"mitchell\" \"float yradius\" [ 3.5 ]\nWorldBegin\n") + kQuadMesh);
+	EXPECT_DOUBLE_EQ(s.filter.radius, 3.5);
 }
 
 TEST(FlattenCameraTest, ScreenWindowOverrideIsCarriedThrough) {

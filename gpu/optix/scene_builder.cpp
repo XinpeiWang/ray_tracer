@@ -3679,6 +3679,23 @@ static bool build_loaded_pbrt_scene(
 		out_camera_extra->filterC = static_cast<float>(pf.C);
 		out_camera_extra->filterSigma = static_cast<float>(pf.sigma);
 		out_camera_extra->filterTau = static_cast<float>(pf.tau);
+		// See gpu_filter_evaluate()'s own comment (optix_device_helpers.h) -
+		// GPU's own per-sample filter weighting is still hardcoded to
+		// radius=0.5, unlike CPU's now-real pbrt-v4-default radius
+		// (pf.radius - PixelFilter::radius's own comment). A scene relying
+		// on a real, wider footprint (any non-default PixelFilter, or even
+		// the plain default Gaussian's own real radius of 1.5) renders
+		// visibly sharper/noisier on GPU than CPU - disclosed here rather
+		// than silently diverging with nothing in the log to explain why.
+		if (std::abs(pf.radius - 0.5) > 1e-6) {
+			std::cerr << "[OptiX] Warning: this scene's PixelFilter \"" << pf.kind
+				  << "\" has a real radius of " << pf.radius << " pixels, but GPU's "
+					 "own reconstruction filter is still hardcoded to a 0.5-pixel "
+					 "radius (no cross-pixel splatting there yet) - GPU will render "
+					 "visibly sharper/noisier than CPU for this scene; use --cpu "
+					 "instead if the requested filter width matters for this "
+					 "render.\n";
+		}
 	}
 
 	// Integrator "bool regularize" - same unconditional-from-the-scene shape
@@ -3943,6 +3960,25 @@ static bool build_loaded_pbrt_scene(
 			     "GPU has no real support for - rendered static at their "
 			     "StartTime position instead of blurred; use --cpu instead if "
 			     "that motion matters for this render.\n";
+	}
+	// See BuildStats::animatedBilinearPatchCount/animatedCurveCount's own
+	// comment - real on CPU (animated_transform_instance.h), not yet ported
+	// to either GPU backend.
+	if (stats.animatedBilinearPatchCount > 0) {
+		std::cerr << "[OptiX] Warning: " << stats.animatedBilinearPatchCount
+			  << " bilinearmesh shape(s) have an ActiveTransform \"StartTime\"/"
+			     "\"EndTime\" motion pair, which GPU has no real support for - "
+			     "rendered static at their StartTime position instead of "
+			     "blurred; use --cpu instead if that motion matters for this "
+			     "render.\n";
+	}
+	if (stats.animatedCurveCount > 0) {
+		std::cerr << "[OptiX] Warning: " << stats.animatedCurveCount
+			  << " curve shape(s) have an ActiveTransform \"StartTime\"/"
+			     "\"EndTime\" motion pair, which GPU has no real support for - "
+			     "rendered static at their StartTime position instead of "
+			     "blurred; use --cpu instead if that motion matters for this "
+			     "render.\n";
 	}
 
 	// The scene's own camera, unless the user moved it.

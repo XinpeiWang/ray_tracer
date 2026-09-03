@@ -209,12 +209,15 @@ loader and no longer match the code:
   world-space, so both are exactly correct under arbitrary rotation). Real
   `"radius"`/`"height"`/`"phimax"` (cone) and `"radius"`/`"zmin"`/`"zmax"`/
   `"phimax"` (paraboloid) parameters, matching pbrt-v4's own defaults and
-  clipping semantics. Geometry-only (v1 scope): no `AreaLightSource` (warns
-  and renders as ordinary non-emissive geometry, matching this loader's
-  general "unsupported-in-this-context but not dropped" convention) and no
-  `MediumInterface` (warns and drops the medium, the same gap trianglemesh/
-  bilinearmesh already have, since neither shape carries a `medium` field).
-  **GPU (both backends) does not support either shape at all** - a scene
+  clipping semantics. Real `AreaLightSource` support (both shapes gained
+  `random()`/`pdf_value()` overrides in `cone_paraboloid_hittable.h`, backed
+  by `ConeShape<T>`/`ParaboloidShape<T>`'s own new `sample()`/`sample_from()`/
+  `pdf_from()` in `shapes.h` - a deliberately simpler-than-pbrt-v4 uniform-in-z
+  sampling technique with a real, position-dependent `dA/dz` pdf rather than
+  pbrt-v4's own exact closed-form inverse-CDF, still statistically unbiased)
+  and real `MediumInterface` support (wrapped in a `constant_medium` via the
+  same shape-agnostic `addMediumIfPresent()` helper Sphere/Disk/Cylinder
+  already use). **GPU (both backends) does not support either shape at all** - a scene
   using one warns at load time and the shape is silently absent from the
   GPU render (`scene_builder.cpp`), matching how this loader already handles
   every other CPU-only shape gap. One ray direction exactly on the

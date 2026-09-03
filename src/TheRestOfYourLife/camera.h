@@ -31,6 +31,7 @@
 #include "../shared/halton_sampler.h"
 #include "../shared/independent_sampler.h"
 #include "../shared/filter.h"
+#include "../shared/filter_sampler.h"
 #include "../shared/cameras.h"
 #include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
 #include "../shared/exr_writer.h"
@@ -124,15 +125,19 @@ class camera {
     // before this is ever consulted if the loaded scene uses anything else.
     bool spectral = false;
     // Which pixel reconstruction filter shape ray_color()'s samples are
-    // weighted by - see PixelFilterDispatch's own comment (filter.h) for
-    // why this drives the SHAPE only, always at this renderer's fixed
-    // 0.5-pixel radius. Unlike sampler_kind above (CLI-only, never
-    // auto-applied from a loaded scene's own Sampler directive - see that
-    // field's own comment), this one IS set from a loaded pbrt scene's
-    // PixelFilter directive automatically - see scene_registry.h's setup
-    // for a loaded pbrt scene. Defaults to pbrt-v4's own real default
-    // ("gaussian"), matching what an unset PixelFilter directive means.
+    // weighted by, and how wide (filter_radius - pbrt-v4's real per-kind
+    // default, or an explicit xradius/yradius override; see
+    // pbrt_flatten::PixelFilter::radius's own comment) - see
+    // filterSampler()'s own comment for how a radius wider than one pixel
+    // actually reaches neighboring pixels. Unlike sampler_kind above
+    // (CLI-only, never auto-applied from a loaded scene's own Sampler
+    // directive - see that field's own comment), this one IS set from a
+    // loaded pbrt scene's PixelFilter directive automatically - see
+    // scene_registry.h's setup for a loaded pbrt scene. Defaults to
+    // pbrt-v4's own real default ("gaussian", radius 1.5), matching what an
+    // unset PixelFilter directive means.
     std::string filter_kind  = "gaussian";
+    double filter_radius     = 1.5;
     double filter_B          = 1.0 / 3.0;
     double filter_C          = 1.0 / 3.0;
     double filter_sigma      = 0.5;
@@ -191,6 +196,21 @@ class camera {
     point3 lookfrom = point3(0,0,0);   // Point camera is looking from
     point3 lookat   = point3(0,0,-1);  // Point camera is looking at
     vec3   vup      = vec3(0,1,0);     // Camera-relative "up" direction
+
+    // pbrt-v4 Camera "perspective" "float screenwindow" (xmin,xmax,ymin,ymax,
+    // in NDC units where the default, unset window already matches this
+    // class's own vfov/aspect-derived viewport exactly - see initialize()'s
+    // own comment). Real pbrt-v4 use: anamorphic/cropped/off-center framing
+    // - e.g. xmin=-2,xmax=2,ymin=-1,ymax=1 for a 2:1 anamorphic crop wider
+    // than a plain aspect-ratio resize would give. scene_registry.h's alt-
+    // camera dispatch (Orthographic/Spherical/Realistic) already reads and
+    // honors an explicit screenwindow for Orthographic; this is the
+    // identical directive, just for the DEFAULT perspective camera this
+    // class itself renders, previously silently discarded (see this
+    // field's own set site, scene_registry.h, for the historical bug this
+    // closes).
+    bool has_screen_window = false;
+    double screen_window[4] = {-1.0, 1.0, -1.0, 1.0};  // xmin, xmax, ymin, ymax
 
     double defocus_angle = 0;  // Variation angle of rays through each pixel
     double focus_dist = 10;    // Distance from camera lookfrom point to plane of perfect focus
@@ -383,21 +403,23 @@ class camera {
                     // skipping the whole sampling loop here is both the
                     // compute-saving and the correctness fix in one place.
                     const bool in_crop = i >= crop_x0 && i < crop_x1 && j >= crop_y0 && j < crop_y1;
-                    // Reconstruction filter (pbrt-v4 style), shape driven by
-                    // filter_kind/filter_B/filter_C/filter_sigma/filter_tau -
-                    // see PixelFilterDispatch's own comment (filter.h) for
-                    // why radius stays fixed at 0.5 (within one pixel, no
-                    // film buffer for cross-pixel splatting) regardless of
-                    // which shape was requested.
-                    const PixelFilterDispatch filter(filter_kind, filter_B, filter_C, filter_sigma, filter_tau);
                     if (in_crop)
                     for (int s_j = 0; s_j < sqrt_spp; s_j++) {
                             for (int s_i = 0; s_i < sqrt_spp; s_i++) {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum
                                     int sample_idx = s_j * sqrt_spp + s_i;
-                                    // Compute sub-pixel offset once; use for both the ray
-                                    // origin and the filter weight (pbrt-v4: FilterSample).
-                                    vec3 offset = sample_square_stratified(s_i, s_j, sample_idx, i, j);
+                                    // Draw this stratum's [0,1)^2 sample, then CDF-invert it
+                                    // through the real requested filter (filterSampler, built
+                                    // once per worker thread above) - the returned position
+                                    // can legitimately land outside [-0.5,0.5] for any filter
+                                    // wider than one pixel, reaching a neighboring pixel's
+                                    // film-plane area via get_ray()'s own offset-onto-pixel-
+                                    // index math (pbrt-v4: FilterSample). fs.weight is this
+                                    // sample's already-correct reconstruction weight
+                                    // (f(p)/pdf(p) - filter_sampler.h's own comment).
+                                    vec3 u = sample_unit_square_stratified(s_i, s_j, sample_idx, i, j);
+                                    const FilterSample<double> fs = filterSampler_->sample(u.x(), u.y());
+                                    vec3 offset(fs.p_x, fs.p_y, 0);
                                     double camera_weight = 1.0;
                                     ray r = get_ray(i, j, s_i, s_j, offset, &camera_weight);
                                     // Dispatch to whichever sampler this render asked for
@@ -500,8 +522,16 @@ class camera {
                                 if (std::isnan(sample.x()) || std::isnan(sample.y()) || std::isnan(sample.z()) ||
                                     std::isinf(sample.x()) || std::isinf(sample.y()) || std::isinf(sample.z()))
                                     sample = color(0, 0, 0);
-                                // Mitchell-Netravali filter weight (pbrt-v4 filterWeight)
-                                double w = filter.evaluate(offset.x(), offset.y());
+                                // Reconstruction filter weight (pbrt-v4 filterWeight) -
+                                // fs.weight = f(p)/pdf(p), which for correct filter
+                                // importance sampling is (nearly) constant across samples
+                                // (filter_sampler.h's own comment) - dividing by weight_sum
+                                // below instead of a plain sample count is still a valid,
+                                // self-normalized Monte Carlo estimator of the same
+                                // Integral(f*L)/Integral(f) target (a standard technique,
+                                // not a formula this feature needed to change), and
+                                // auto-corrects for the table's own quantization noise.
+                                double w = fs.weight;
                                 weighted_color += w * sample;
                                 weight_sum    += w;
                             }
@@ -591,6 +621,20 @@ class camera {
     vec3   defocus_disk_u;       // Defocus disk horizontal radius
     vec3   defocus_disk_v;       // Defocus disk vertical radius
 
+    // Reconstruction filter (pbrt-v4 style) - built ONCE in initialize(),
+    // not per pixel/ray/thread: FilterSampler's own constructor does real
+    // work (tabulates the filter on a 32x32 grid and builds CDFs,
+    // filter_sampler.h's own comment), and is read-only afterward, so
+    // sharing one instance read-only across worker threads is both correct
+    // and the cheapest option - matching pixel00_loc/pixel_delta_u above's
+    // own "precompute once in initialize(), never touched again" contract.
+    // Shape/radius driven by filter_kind/filter_radius/filter_B/filter_C/
+    // filter_sigma/filter_tau - see filter_radius's own comment for why
+    // radius is no longer hardcoded to 0.5. std::optional because
+    // FilterSampler has no default constructor (it always needs a real
+    // Filter to tabulate).
+    std::optional<FilterSampler<double, 32>> filterSampler_;
+
     // Camera motion blur (camera_is_animated only) - the SAME quantities
     // as pixel00_loc/pixel_delta_u/v/defocus_disk_u/v above, but expressed
     // in local camera space (canonical axes, identity camera-to-world)
@@ -626,12 +670,21 @@ class camera {
             double viewport_width, double viewport_height, double focus_dist,
             double defocus_radius, int image_width, int image_height,
             point3& out_pixel00_loc, vec3& out_pixel_delta_u, vec3& out_pixel_delta_v,
-            vec3& out_defocus_disk_u, vec3& out_defocus_disk_v) {
+            vec3& out_defocus_disk_u, vec3& out_defocus_disk_v,
+            // World-space shift of the viewport's own center away from the
+            // look direction, along u (screen +x) and v (screen +y) - zero
+            // for the overwhelming common case (a centered viewport). Real
+            // use: an off-center "float screenwindow" (initialize()'s own
+            // comment) - e.g. xmin=0,xmax=2 (instead of the symmetric
+            // xmin=-1,xmax=1 default) shifts the frame one full half-width
+            // to the right rather than just widening it.
+            double center_shift_u = 0.0, double center_shift_v = 0.0) {
         vec3 viewport_u = viewport_width * u;
         vec3 viewport_v = viewport_height * -v;
         out_pixel_delta_u = viewport_u / image_width;
         out_pixel_delta_v = viewport_v / image_height;
-        auto viewport_upper_left = center - (focus_dist * w) - viewport_u/2 - viewport_v/2;
+        auto viewport_upper_left = center - (focus_dist * w) - viewport_u/2 - viewport_v/2
+                                    + center_shift_u * u + center_shift_v * v;
         out_pixel00_loc = viewport_upper_left + 0.5 * (out_pixel_delta_u + out_pixel_delta_v);
         out_defocus_disk_u = u * defocus_radius;
         out_defocus_disk_v = v * defocus_radius;
@@ -641,6 +694,15 @@ class camera {
     void initialize() {
         image_height = int(image_width / aspect_ratio);
         image_height = (image_height < 1) ? 1 : image_height;
+
+        // Reconstruction filter (pbrt-v4 style) - see filterSampler_'s own
+        // comment for why this builds once here rather than per pixel/
+        // ray/thread.
+        {
+            const PixelFilterDispatch filterDispatch(filter_kind, filter_radius,
+                                                      filter_B, filter_C, filter_sigma, filter_tau);
+            filterSampler_.emplace(filterDispatch);
+        }
 
         // Resolve crop_x1/crop_y1's "-1 = unset" sentinel now that
         // image_width/image_height are final - scene_registry.h sets these
@@ -682,6 +744,31 @@ class camera {
         auto h = std::tan(theta/2);
         auto viewport_height = 2 * h * focus_dist;
         auto viewport_width = viewport_height * (double(image_width)/image_height);
+        double center_shift_u = 0.0, center_shift_v = 0.0;
+        if (has_screen_window) {
+            // pbrt-v4 Camera "perspective" "float screenwindow" - see this
+            // field's own comment. h*focus_dist is exactly the world-space
+            // distance one NDC unit already covers in the default (unset)
+            // case above (default y always spans [-1,1], giving
+            // viewport_height=2*h*focus_dist there) - reused directly here
+            // so an unset/default-valued screenwindow ([-1,1,-1,1], this
+            // class's own default) still needs the aspect-ratio scaling on
+            // x the plain vfov-only path above already applies; an
+            // EXPLICITLY-given window instead takes both extents verbatim
+            // (matching scene_registry.h's own Orthographic-camera
+            // precedent - the user's numbers are used as-is, not re-scaled
+            // by aspect), including a genuinely off-center one (xmin/xmax
+            // not symmetric around 0) via the center_shift_u/v this
+            // function's own caller (compute_viewport_geometry) applies.
+            const bool isDefaultWindow = screen_window[0] == -1.0 && screen_window[1] == 1.0
+                && screen_window[2] == -1.0 && screen_window[3] == 1.0;
+            if (!isDefaultWindow) {
+                viewport_width  = (screen_window[1] - screen_window[0]) * h * focus_dist;
+                viewport_height = (screen_window[3] - screen_window[2]) * h * focus_dist;
+                center_shift_u  = (screen_window[0] + screen_window[1]) * 0.5 * h * focus_dist;
+                center_shift_v  = (screen_window[2] + screen_window[3]) * 0.5 * h * focus_dist;
+            }
+        }
 
         // Calculate the u,v,w unit basis vectors for the camera coordinate frame.
         compute_lookat_basis(lookfrom, lookat, vup, u, v, w);
@@ -694,7 +781,8 @@ class camera {
         compute_viewport_geometry(u, v, w, center, viewport_width, viewport_height,
                                    focus_dist, defocus_radius, image_width, image_height,
                                    pixel00_loc, pixel_delta_u, pixel_delta_v,
-                                   defocus_disk_u, defocus_disk_v);
+                                   defocus_disk_u, defocus_disk_v,
+                                   center_shift_u, center_shift_v);
 
         if (camera_is_animated) {
             // Same 5 quantities as above, but in local camera space
@@ -710,7 +798,8 @@ class camera {
                                        viewport_width, viewport_height, focus_dist,
                                        defocus_radius, image_width, image_height,
                                        local_pixel00_loc, local_pixel_delta_u, local_pixel_delta_v,
-                                       local_defocus_disk_u, local_defocus_disk_v);
+                                       local_defocus_disk_u, local_defocus_disk_v,
+                                       center_shift_u, center_shift_v);
 
             // Two camera-to-world keyframes, built via compute_lookat_basis()
             // (the exact same u,v,w derivation the static path above uses),
@@ -771,7 +860,14 @@ class camera {
         // Construct a camera ray originating from the defocus disk and directed at a randomly
         // sampled point around the pixel location i, j for stratified sample square s_i, s_j.
         // sample_idx + pixel coords drive Halton per-pixel decorrelation (pbrt-v4 pattern).
-        auto offset = sample_square_stratified(s_i, s_j, sample_idx, px, py);
+        // Filter-importance-warped the same way the render loop's own call
+        // site is (sample_unit_square_stratified/filterSampler_'s own
+        // comment) - requires initialize() to have run first (filterSampler_
+        // is only set there), same precondition get_ray() already has for
+        // pixel00_loc/pixel_delta_u/v.
+        vec3 u = sample_unit_square_stratified(s_i, s_j, sample_idx, px, py);
+        const FilterSample<double> fs = filterSampler_->sample(u.x(), u.y());
+        vec3 offset(fs.p_x, fs.p_y, 0);
         return get_ray(i, j, s_i, s_j, offset);
     }
 
@@ -878,25 +974,35 @@ class camera {
         return r;
     }
 
-    vec3 sample_square_stratified(int s_i, int s_j, int sample_idx = 0,
-                                   int pixel_x = 0, int pixel_y = 0) const {
-        // Returns the vector to a random point in the square sub-pixel specified by grid
-        // indices s_i and s_j, for an idealized unit square pixel [-.5,-.5] to [+.5,+.5].
-        //
-        // Jitter uses Halton low-discrepancy sequences (pbrt-v4 HaltonSampler pattern):
-        //   x <- base-2 radical inverse, per-pixel decorrelated
-        //   y <- base-3 radical inverse, per-pixel decorrelated
-        // Pixel coordinates are mixed into the index so adjacent pixels use different
-        // sub-sequences, avoiding the structured grid artifact from shared Halton offsets.
+    // Stratified [0,1)^2 draw for sub-pixel grid stratum (s_i, s_j) - feeds
+    // FilterSampler::sample() (filter_sampler.h) at both ray_color() and
+    // ray_color_spectral()'s own call sites, which CDF-inverts it into the
+    // real requested filter's [-filter_radius,+filter_radius]^2 support
+    // (weighted appropriately) - replacing this project's own former
+    // "always exactly [-0.5,0.5], regardless of what radius a scene
+    // requested" mapping (see camera::filter_radius's own comment for why
+    // that was a real, previously-undisclosed gap: get_ray()'s own
+    // pixel_sample computation already adds this offset straight onto the
+    // pixel index, so a wider offset already reaches a neighboring pixel's
+    // film-plane area correctly - filter importance sampling just needed
+    // to be allowed to draw one).
+    //
+    // Jitter uses Halton low-discrepancy sequences (pbrt-v4 HaltonSampler pattern):
+    //   x <- base-2 radical inverse, per-pixel decorrelated
+    //   y <- base-3 radical inverse, per-pixel decorrelated
+    // Pixel coordinates are mixed into the index so adjacent pixels use different
+    // sub-sequences, avoiding the structured grid artifact from shared Halton offsets.
+    vec3 sample_unit_square_stratified(int s_i, int s_j, int sample_idx = 0,
+                                        int pixel_x = 0, int pixel_y = 0) const {
         unsigned int ui = (unsigned int)sample_idx;
         unsigned int ux = (unsigned int)pixel_x;
         unsigned int uy = (unsigned int)pixel_y;
         auto ox = (double)halton2(ui, ux, uy);
         auto oy = (double)halton3(ui, ux, uy);
-        auto px = ((s_i + ox) * recip_sqrt_spp) - 0.5;
-        auto py = ((s_j + oy) * recip_sqrt_spp) - 0.5;
+        auto u1 = (s_i + ox) * recip_sqrt_spp;
+        auto u2 = (s_j + oy) * recip_sqrt_spp;
 
-        return vec3(px, py, 0);
+        return vec3(u1, u2, 0);
     }
 
     vec3 sample_square() const {

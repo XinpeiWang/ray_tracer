@@ -354,11 +354,12 @@ namespace pbrt_scene_registry {
             // for why this is applied unconditionally (unlike sampler_kind)
             // and regardless of camera type, unlike the ortho/spherical/
             // realistic dispatch below.
-            cam.filter_kind  = pfilter.kind;
-            cam.filter_B     = pfilter.B;
-            cam.filter_C     = pfilter.C;
-            cam.filter_sigma = pfilter.sigma;
-            cam.filter_tau   = pfilter.tau;
+            cam.filter_kind   = pfilter.kind;
+            cam.filter_radius = pfilter.radius;
+            cam.filter_B      = pfilter.B;
+            cam.filter_C      = pfilter.C;
+            cam.filter_sigma  = pfilter.sigma;
+            cam.filter_tau    = pfilter.tau;
 
             // Integrator "bool regularize" - same "applied unconditionally"
             // shape as PixelFilter above (see pbrt_discover::Discovered::
@@ -414,7 +415,25 @@ namespace pbrt_scene_registry {
                     mat4_to_at_mat44(ctw1), cam.shutter_close);
             }
 
-            if (pcam.type == "perspective") return;
+            if (pcam.type == "perspective") {
+                // Camera "perspective" "float screenwindow" - previously
+                // parsed by pbrt_flatten.h (pcam.hasScreenWindow/
+                // screenWindow) but silently discarded here: this function
+                // returned before ever consulting it, so only the
+                // Orthographic branch below ever honored an explicit
+                // screenwindow, even though real pbrt-v4 scenes (anamorphic/
+                // cropped/off-center framing) can bind it to a perspective
+                // camera just as validly - see camera::has_screen_window's
+                // own comment (camera.h) for how it's actually applied.
+                if (pcam.hasScreenWindow) {
+                    cam.has_screen_window = true;
+                    cam.screen_window[0] = pcam.screenWindow[0];
+                    cam.screen_window[1] = pcam.screenWindow[1];
+                    cam.screen_window[2] = pcam.screenWindow[2];
+                    cam.screen_window[3] = pcam.screenWindow[3];
+                }
+                return;
+            }
 
             Mat4<double> ctw = make_look_at<double>(
                 cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),

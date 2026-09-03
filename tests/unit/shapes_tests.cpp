@@ -656,6 +656,59 @@ TEST(ShapesCone, UVAtApexEnd) {
 	EXPECT_NEAR(hit->v, 0.9, 1e-9);  // v = z/height = 1.8/2
 }
 
+// ---------------------------------------------------------------------------
+// ConeShape<double> real AreaLightSource sampling (sample/sample_from/
+// pdf_from - see that function's own comment in shapes.h for the
+// deliberately-simpler-than-pbrt-v4 "uniform in z, position-dependent
+// pdf" technique).
+// ---------------------------------------------------------------------------
+
+TEST(ShapesCone, SampleReturnsPointOnTheLateralSurface) {
+	auto c = unit_cone();  // radius=1, height=2, k=0.5
+	for (double u0 : {0.0, 0.3, 0.7, 0.999}) {
+		for (double u1 : {0.0, 0.25, 0.6, 0.999}) {
+			auto ss = c.sample(u0, u1);
+			EXPECT_GE(ss.pz, 0.0);
+			EXPECT_LE(ss.pz, 2.0);
+			const double r_local = 1.0 - 0.5 * ss.pz;  // radius - k*z
+			const double r_actual = std::sqrt(ss.px*ss.px + ss.py*ss.py);
+			EXPECT_NEAR(r_actual, r_local, 1e-9)
+				<< "u0=" << u0 << " u1=" << u1;
+		}
+	}
+}
+
+TEST(ShapesCone, SampleNormalIsUnitLengthAndPdfPositive) {
+	auto c = unit_cone();
+	auto ss = c.sample(0.4, 0.6);
+	const double nlen = std::sqrt(ss.nx*ss.nx + ss.ny*ss.ny + ss.nz*ss.nz);
+	EXPECT_NEAR(nlen, 1.0, 1e-9);
+	EXPECT_GT(ss.pdf, 0.0);
+}
+
+TEST(ShapesCone, SampleFromConvertsToSolidAngle) {
+	auto c = unit_cone();
+	SamplingContext<double> ctx{-5.0, 0.0, 1.0, 0, 0, 0};
+	auto ss = c.sample_from(ctx, 0.5, 0.5);
+	EXPECT_GT(ss.pdf, 0.0);
+}
+
+TEST(ShapesCone, PdfFromMatchesASuccessfulIntersection) {
+	auto c = unit_cone();
+	SamplingContext<double> ctx{-5.0, 0.0, 1.0, 0, 0, 0};
+	// A ray straight at the cone's own axis-aligned side (z=1, local
+	// radius=0.5) must hit and report a real, positive solid-angle pdf.
+	const double pdf = c.pdf_from(ctx, 1.0, 0.0, 0.0);
+	EXPECT_GT(pdf, 0.0);
+}
+
+TEST(ShapesCone, PdfFromZeroForMiss) {
+	auto c = unit_cone();
+	SamplingContext<double> ctx{-5.0, 0.0, 1.0, 0, 0, 0};
+	const double pdf = c.pdf_from(ctx, 0.0, 1.0, 0.0);  // parallel to the cone's own axis-perpendicular miss direction
+	EXPECT_DOUBLE_EQ(pdf, 0.0);
+}
+
 // ===========================================================================
 // ParaboloidShape<double> tests
 // pbrt-v4 reference: Paraboloid in shapes.h. z = k*(x^2+y^2), k=zmax/radius^2.
@@ -744,6 +797,53 @@ TEST(ShapesParaboloid, NormalPointsAwayFromAxis) {
 	auto hit = p.intersect(0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 1e-4, 1e6);
 	ASSERT_TRUE(hit.has_value());
 	EXPECT_GT(hit->nx, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// ParaboloidShape<double> real AreaLightSource sampling - see ConeShape's
+// own identical block just above for the shared technique/rationale.
+// ---------------------------------------------------------------------------
+
+TEST(ShapesParaboloid, SampleReturnsPointOnTheSurface) {
+	auto p = unit_paraboloid();  // radius=1, zmax=1, zmin=0, k=1: z=x^2+y^2
+	for (double u0 : {0.0, 0.3, 0.7, 0.999}) {
+		for (double u1 : {0.0, 0.25, 0.6, 0.999}) {
+			auto ss = p.sample(u0, u1);
+			EXPECT_GE(ss.pz, 0.0);
+			EXPECT_LE(ss.pz, 1.0);
+			const double r2 = ss.px*ss.px + ss.py*ss.py;
+			EXPECT_NEAR(r2, ss.pz, 1e-9) << "u0=" << u0 << " u1=" << u1;
+		}
+	}
+}
+
+TEST(ShapesParaboloid, SampleNormalIsUnitLengthAndPdfPositive) {
+	auto p = unit_paraboloid();
+	auto ss = p.sample(0.4, 0.6);
+	const double nlen = std::sqrt(ss.nx*ss.nx + ss.ny*ss.ny + ss.nz*ss.nz);
+	EXPECT_NEAR(nlen, 1.0, 1e-9);
+	EXPECT_GT(ss.pdf, 0.0);
+}
+
+TEST(ShapesParaboloid, SampleFromConvertsToSolidAngle) {
+	auto p = unit_paraboloid();
+	SamplingContext<double> ctx{-5.0, 0.0, 0.5, 0, 0, 0};
+	auto ss = p.sample_from(ctx, 0.5, 0.5);
+	EXPECT_GT(ss.pdf, 0.0);
+}
+
+TEST(ShapesParaboloid, PdfFromMatchesASuccessfulIntersection) {
+	auto p = unit_paraboloid();
+	SamplingContext<double> ctx{-5.0, 0.0, 0.5, 0, 0, 0};
+	const double pdf = p.pdf_from(ctx, 1.0, 0.0, 0.0);
+	EXPECT_GT(pdf, 0.0);
+}
+
+TEST(ShapesParaboloid, PdfFromZeroForMiss) {
+	auto p = unit_paraboloid();
+	SamplingContext<double> ctx{-5.0, 0.0, 0.5, 0, 0, 0};
+	const double pdf = p.pdf_from(ctx, 0.0, 1.0, 0.0);
+	EXPECT_DOUBLE_EQ(pdf, 0.0);
 }
 
 // ===========================================================================

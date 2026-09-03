@@ -238,59 +238,71 @@ TEST(TriangleFilterTest, IntegralMatchesPbrtV4) {
 // ===========================================================================
 // PixelFilterDispatch -- runtime kind-string -> filter-class routing (see
 // pbrt_flatten::PixelFilter's own comment for why kind stays a string, not
-// an enum, and why radius is always fixed at 0.5)
+// an enum, and for radius's own real per-kind pbrt-v4 default - no longer
+// hardcoded to 0.5, so these tests deliberately exercise a non-0.5 radius
+// too, not just the "matches direct construction at 0.5" shape the old
+// hardcoded-radius version could only ever test).
 // ===========================================================================
 
 TEST(PixelFilterDispatchTest, BoxMatchesDirectConstruction) {
-	PixelFilterDispatch d("box");
+	PixelFilterDispatch d("box", 0.5);
 	BoxFilter f(0.5);
 	for (double ox : {-0.4, 0.0, 0.3})
 		for (double oy : {-0.2, 0.1, 0.45})
 			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+	EXPECT_DOUBLE_EQ(d.radius(), 0.5);
 }
 
-TEST(PixelFilterDispatchTest, TriangleMatchesDirectConstruction) {
-	PixelFilterDispatch d("triangle");
-	TriangleFilter f(0.5);
-	for (double ox : {-0.4, 0.0, 0.3})
-		for (double oy : {-0.2, 0.1, 0.45})
+TEST(PixelFilterDispatchTest, TriangleMatchesDirectConstructionAtANonDefaultRadius) {
+	PixelFilterDispatch d("triangle", 2.0);
+	TriangleFilter f(2.0);
+	for (double ox : {-1.5, 0.0, 1.3})
+		for (double oy : {-0.8, 0.1, 1.9})
 			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+	EXPECT_DOUBLE_EQ(d.radius(), 2.0);
 }
 
-TEST(PixelFilterDispatchTest, SincMatchesDirectConstructionWithTau) {
-	PixelFilterDispatch d("sinc", 1.0/3.0, 1.0/3.0, 0.5, 2.5);
-	LanczosSincFilter f(0.5, 2.5);
-	for (double ox : {-0.4, 0.0, 0.3})
-		for (double oy : {-0.2, 0.1, 0.45})
+TEST(PixelFilterDispatchTest, SincMatchesDirectConstructionWithTauAtANonDefaultRadius) {
+	PixelFilterDispatch d("sinc", 4.0, 1.0/3.0, 1.0/3.0, 0.5, 2.5);
+	LanczosSincFilter f(4.0, 2.5);
+	for (double ox : {-3.4, 0.0, 2.3})
+		for (double oy : {-1.2, 0.1, 3.45})
 			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+	EXPECT_DOUBLE_EQ(d.radius(), 4.0);
 }
 
-TEST(PixelFilterDispatchTest, MitchellMatchesDirectConstructionWithBC) {
-	PixelFilterDispatch d("mitchell", 0.2, 0.4);
-	MitchellFilter f(0.5, 0.2, 0.4);
-	for (double ox : {-0.4, 0.0, 0.3})
-		for (double oy : {-0.2, 0.1, 0.45})
+TEST(PixelFilterDispatchTest, MitchellMatchesDirectConstructionWithBCAtANonDefaultRadius) {
+	PixelFilterDispatch d("mitchell", 2.0, 0.2, 0.4);
+	MitchellFilter f(2.0, 0.2, 0.4);
+	for (double ox : {-1.4, 0.0, 1.3})
+		for (double oy : {-1.2, 0.1, 1.45})
 			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+	EXPECT_DOUBLE_EQ(d.radius(), 2.0);
 }
 
-TEST(PixelFilterDispatchTest, GaussianMatchesDirectConstructionWithSigma) {
-	PixelFilterDispatch d("gaussian", 1.0/3.0, 1.0/3.0, 0.7);
-	GaussianFilter f(0.5, 0.7);
-	for (double ox : {-0.4, 0.0, 0.3})
-		for (double oy : {-0.2, 0.1, 0.45})
+TEST(PixelFilterDispatchTest, GaussianMatchesDirectConstructionWithSigmaAtANonDefaultRadius) {
+	PixelFilterDispatch d("gaussian", 1.5, 1.0/3.0, 1.0/3.0, 0.7);
+	GaussianFilter f(1.5, 0.7);
+	for (double ox : {-1.4, 0.0, 1.3})
+		for (double oy : {-1.2, 0.1, 1.45})
 			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+	EXPECT_DOUBLE_EQ(d.radius(), 1.5);
 }
 
 TEST(PixelFilterDispatchTest, UnrecognizedKindFallsBackToGaussian) {
 	// pbrt-v4's real default (confirmed against pbrt-v4/src/pbrt/scene.cpp),
 	// not box/triangle/mitchell - an easy default to assume wrong.
-	PixelFilterDispatch d("not-a-real-filter", 1.0/3.0, 1.0/3.0, 0.5);
-	GaussianFilter f(0.5, 0.5);
+	PixelFilterDispatch d("not-a-real-filter", 1.5, 1.0/3.0, 1.0/3.0, 0.5);
+	GaussianFilter f(1.5, 0.5);
 	EXPECT_DOUBLE_EQ(d.evaluate(0.1, -0.2), f.evaluate(0.1, -0.2));
 }
 
-TEST(PixelFilterDispatchTest, DefaultConstructedIsGaussian) {
+TEST(PixelFilterDispatchTest, DefaultConstructedIsGaussianAtPbrtV4RealDefaultRadius) {
+	// pbrt-v4's real default GaussianFilter radius is 1.5, not this
+	// codebase's own old hardcoded 0.5 - see PixelFilter::radius's own
+	// comment (pbrt_flatten.h).
 	PixelFilterDispatch d;
-	GaussianFilter f(0.5, 0.5);
+	GaussianFilter f(1.5, 0.5);
 	EXPECT_DOUBLE_EQ(d.evaluate(0.1, -0.2), f.evaluate(0.1, -0.2));
+	EXPECT_DOUBLE_EQ(d.radius(), 1.5);
 }

@@ -54,6 +54,19 @@ class aabb {
 
         for (int axis = 0; axis < 3; axis++) {
             const interval& ax = axis_interval(axis);
+
+            // A ray direction component of exactly 0 makes 1/dir infinite; if the
+            // origin also lies exactly on this axis's slab boundary, the next line
+            // computes (0)*(inf) = NaN, and NaN compares false everywhere, which
+            // silently corrupts ray_t instead of tripping the ray_t.max<=ray_t.min
+            // rejection below. Handle the axis-aligned case directly: an origin
+            // inside the slab passes it through unbounded, outside it is a miss.
+            if (ray_dir[axis] == 0.0) {
+                if (ray_orig[axis] < ax.min || ray_orig[axis] > ax.max)
+                    return false;
+                continue;
+            }
+
             const double adinv = 1.0 / ray_dir[axis];
 
             auto t0 = (ax.min - ray_orig[axis]) * adinv;

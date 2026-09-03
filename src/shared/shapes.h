@@ -837,9 +837,14 @@ struct CylinderShape {
 // Implicit surface: x^2 + y^2 - (radius - k*z)^2 = 0, k = radius/height,
 // for z in [0, height] - matches pbrt-v4 Cone semantics exactly.
 //
-// v1 scope: intersect() + area() only - no sample()/sample_from()/pdf_from()
-// (this loader's Cone support is geometry-only, never an area light - see
-// pbrt_flatten.h's Cone struct comment for why).
+// sample()/sample_from()/pdf_from() below support a real AreaLightSource
+// (pbrt_flatten.h's Cone struct comment) via a deliberately simpler-than-
+// pbrt-v4 technique: z is drawn UNIFORMLY over [0,height] (not area-
+// uniform - the lateral surface's true density is linear in z, heaviest at
+// the wide base) but each sample's own pdf is the REAL, position-dependent
+// area density it was actually drawn from, so the estimator stays unbiased
+// even though it isn't pbrt-v4's own variance-optimal closed-form inverse
+// CDF - see sample()'s own comment.
 //
 // Reference: pbrt-v4 src/pbrt/shapes.h/.cpp  Cone class
 // ===========================================================================
@@ -913,6 +918,85 @@ struct ConeShape {
 		if (hit) return hit;
 		return check(t1);
 	}
+
+	// -----------------------------------------------------------------------
+	// Area-uniform-ISH surface sample: z drawn uniformly over [0,height]
+	// (NOT area-uniform - the lateral surface's true area density is
+	// LINEAR in z, dA/dz = phi_max*r(z)*sqrt(1+k^2), heaviest at the wide
+	// base and zero at the apex), but ss.pdf below is the REAL, position-
+	// dependent area density this sample was actually drawn from - a
+	// smaller, guaranteed-correct (if not variance-optimal) alternative to
+	// deriving this shape's own closed-form inverse CDF. Reference: no
+	// direct pbrt-v4 equivalent (pbrt-v4 does derive the exact inverse CDF
+	// for Cone::Sample) - this is a deliberately simpler, still-unbiased
+	// substitute for this loader's own v1 NEE support.
+	// -----------------------------------------------------------------------
+	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
+		using namespace shapes_detail;
+		const T k = radius / height;
+		T z = u0 * height;
+		T phi = u1 * phi_max;
+		T r_local = radius - k*z;
+		T lx = r_local*std::cos(phi), ly = r_local*std::sin(phi);
+		T nx = lx, ny = ly, nz = k*r_local;
+		T nlen = safe_sqrt(nx*nx + ny*ny + nz*nz);
+		if (nlen > T(0)) { nx /= nlen; ny /= nlen; nz /= nlen; }
+		// dA/dz (this shape's own header comment) times the uniform-in-z
+		// sampling density (1/height) inverted gives this SPECIFIC sample's
+		// own area pdf - not a shape-wide constant.
+		T dAdz = phi_max * r_local * std::sqrt(T(1) + k*k);
+		T pdfArea = (dAdz > T(0)) ? (T(1) / height) / dAdz : T(0);
+		T uv = phi / phi_max, vv = z / height;
+		return ShapeSample<T>{lx, ly, z, nx, ny, nz, uv, vv, pdfArea};
+	}
+
+	// -----------------------------------------------------------------------
+	// Solid-angle sample from a shading point (area sample + Jacobian) -
+	// same shape as CylinderShape::sample_from, EXCEPT this reuses the
+	// per-sample ss.pdf sample() already computed (a shape CONSTANT
+	// pdf_area() doesn't exist here - this shape's area density genuinely
+	// varies with z, unlike Cylinder's own uniform one).
+	// -----------------------------------------------------------------------
+	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
+	                                    T u0, T u1) const {
+		using namespace shapes_detail;
+		ShapeSample<T> ss = sample(u0, u1);
+		T wix=ss.px-ctx.px, wiy=ss.py-ctx.py, wiz=ss.pz-ctx.pz;
+		T dist2=wix*wix+wiy*wiy+wiz*wiz;
+		if (dist2==T(0)) { ss.pdf=T(0); return ss; }
+		T inv_d=T(1)/std::sqrt(dist2);
+		T cos_t=std::abs(dot3(ss.nx,ss.ny,ss.nz,-wix*inv_d,-wiy*inv_d,-wiz*inv_d));
+		if (cos_t==T(0)) { ss.pdf=T(0); return ss; }
+		ss.pdf = ss.pdf * dist2 / cos_t;
+		return ss;
+	}
+
+	// -----------------------------------------------------------------------
+	// Solid-angle PDF from a shading point (intersect + recompute the SAME
+	// per-point area density sample() would have drawn, evaluated at the
+	// hit instead of a fresh random draw - matches sample_from()'s own
+	// distribution exactly, required for MIS to be unbiased).
+	// -----------------------------------------------------------------------
+	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
+	                    T wi_dx, T wi_dy, T wi_dz) const {
+		using namespace shapes_detail;
+		T wi_len=len3(wi_dx,wi_dy,wi_dz);
+		if (wi_len==T(0)) return T(0);
+		T wix=wi_dx/wi_len, wiy=wi_dy/wi_len, wiz=wi_dz/wi_len;
+		auto hit=intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
+		                   T(1e-4),std::numeric_limits<T>::max());
+		if(!hit) return T(0);
+		const T k = radius / height;
+		T z = hit->v * height;
+		T r_local = radius - k*z;
+		T dAdz = phi_max * r_local * std::sqrt(T(1) + k*k);
+		T pdfAreaAtHit = (dAdz > T(0)) ? (T(1) / height) / dAdz : T(0);
+		T dist2=hit->t*hit->t;
+		T cos_t=std::abs(dot3(hit->nx,hit->ny,hit->nz,-wix,-wiy,-wiz));
+		if(cos_t==T(0)) return T(0);
+		T pdf=pdfAreaAtHit*dist2/cos_t;
+		return std::isfinite(pdf)?pdf:T(0);
+	}
 };
 
 
@@ -926,7 +1010,10 @@ struct ConeShape {
 // "radius is measured at zmax" convention). phi_max is the azimuthal sweep
 // in radians.
 //
-// v1 scope: intersect() + area() only - see ConeShape's own comment for why.
+// sample()/sample_from()/pdf_from() below support a real AreaLightSource
+// the identical way ConeShape's own do (that shape's own comment) - z drawn
+// uniformly over [z_min,z_max], each sample's pdf is its own real,
+// position-dependent area density.
 //
 // Reference: pbrt-v4 src/pbrt/shapes.h/.cpp  Paraboloid class
 // ===========================================================================
@@ -1010,6 +1097,75 @@ struct ParaboloidShape {
 		auto hit = check(t0);
 		if (hit) return hit;
 		return check(t1);
+	}
+
+	// -----------------------------------------------------------------------
+	// Area-uniform-ISH surface sample: z drawn uniformly over [z_min,z_max] -
+	// see ConeShape::sample()'s own comment for the identical "position-
+	// dependent ss.pdf, not a shape-wide constant" technique and rationale.
+	// -----------------------------------------------------------------------
+	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
+		using namespace shapes_detail;
+		if (radius == T(0)) return ShapeSample<T>{0,0,0, 0,0,1, 0,0, T(0)};
+		const T k = z_max / (radius*radius);
+		T z = z_min + u0*(z_max - z_min);
+		T phi = u1 * phi_max;
+		T r = safe_sqrt(z / k);
+		T lx = r*std::cos(phi), ly = r*std::sin(phi);
+		T nx = lx, ny = ly, nz = -T(1) / (T(2)*k);
+		T nlen = safe_sqrt(nx*nx + ny*ny + nz*nz);
+		if (nlen > T(0)) { nx /= nlen; ny /= nlen; nz /= nlen; }
+		// dA/dz (this shape's own header comment - the exact same
+		// integrand its own closed-form area() already integrates) times
+		// the uniform-in-z sampling density (1/(z_max-z_min)) inverted
+		// gives this SPECIFIC sample's own area pdf.
+		T dAdz = (phi_max / k) * safe_sqrt(k*z + T(0.25));
+		T pdfArea = (dAdz > T(0)) ? (T(1) / (z_max - z_min)) / dAdz : T(0);
+		T uv = phi / phi_max, vv = (z - z_min) / (z_max - z_min);
+		return ShapeSample<T>{lx, ly, z, nx, ny, nz, uv, vv, pdfArea};
+	}
+
+	// -----------------------------------------------------------------------
+	// Solid-angle sample from a shading point - see ConeShape::sample_from()'s
+	// own comment (identical shape/rationale).
+	// -----------------------------------------------------------------------
+	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
+	                                    T u0, T u1) const {
+		using namespace shapes_detail;
+		ShapeSample<T> ss = sample(u0, u1);
+		T wix=ss.px-ctx.px, wiy=ss.py-ctx.py, wiz=ss.pz-ctx.pz;
+		T dist2=wix*wix+wiy*wiy+wiz*wiz;
+		if (dist2==T(0)) { ss.pdf=T(0); return ss; }
+		T inv_d=T(1)/std::sqrt(dist2);
+		T cos_t=std::abs(dot3(ss.nx,ss.ny,ss.nz,-wix*inv_d,-wiy*inv_d,-wiz*inv_d));
+		if (cos_t==T(0)) { ss.pdf=T(0); return ss; }
+		ss.pdf = ss.pdf * dist2 / cos_t;
+		return ss;
+	}
+
+	// -----------------------------------------------------------------------
+	// Solid-angle PDF from a shading point - see ConeShape::pdf_from()'s own
+	// comment (identical shape/rationale).
+	// -----------------------------------------------------------------------
+	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
+	                    T wi_dx, T wi_dy, T wi_dz) const {
+		using namespace shapes_detail;
+		if (radius == T(0)) return T(0);
+		T wi_len=len3(wi_dx,wi_dy,wi_dz);
+		if (wi_len==T(0)) return T(0);
+		T wix=wi_dx/wi_len, wiy=wi_dy/wi_len, wiz=wi_dz/wi_len;
+		auto hit=intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
+		                   T(1e-4),std::numeric_limits<T>::max());
+		if(!hit) return T(0);
+		const T k = z_max / (radius*radius);
+		T z = z_min + hit->v * (z_max - z_min);
+		T dAdz = (phi_max / k) * safe_sqrt(k*z + T(0.25));
+		T pdfAreaAtHit = (dAdz > T(0)) ? (T(1) / (z_max - z_min)) / dAdz : T(0);
+		T dist2=hit->t*hit->t;
+		T cos_t=std::abs(dot3(hit->nx,hit->ny,hit->nz,-wix,-wiy,-wiz));
+		if(cos_t==T(0)) return T(0);
+		T pdf=pdfAreaAtHit*dist2/cos_t;
+		return std::isfinite(pdf)?pdf:T(0);
 	}
 };
 

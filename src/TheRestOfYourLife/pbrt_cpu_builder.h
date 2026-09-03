@@ -1384,23 +1384,26 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 	// ---- cones / paraboloids -----------------------------------------------
 	// Shape "cone"/"paraboloid" - same unbaked-CTM technique as disk/cylinder
-	// above. v1 scope (see pbrt_flatten::Cone/Paraboloid's own comment):
-	// geometry-only, so no lights.add()/addMediumIfPresent() call - neither
-	// struct carries an areaLight or medium field at all (flatten() already
-	// warns and drops both at parse time if the scene requested them).
+	// above. Real AreaLightSource/MediumInterface support now (see
+	// pbrt_flatten::Cone/Paraboloid's own comment) - lights.add()/
+	// addMediumIfPresent() the identical way disk/cylinder already are.
 	for (const pbrt_flatten::Cone &cn : cones) {
-		auto mat = cachedMaterial(cn.material, -1);
+		auto mat = cachedMaterial(cn.material, cn.areaLight);
 		auto cone = std::make_shared<cone_hittable>(
 			cn.radius, cn.height, degrees_to_radians(cn.phiMaxDeg), toMatrix4(cn.xform), mat);
 		world.add(cone);
+		if (cn.areaLight >= 0) lights.add(cone);
+		addMediumIfPresent(cone, cn.medium);
 	}
 	out.coneCount += cones.size();
 
 	for (const pbrt_flatten::Paraboloid &pb : paraboloids) {
-		auto mat = cachedMaterial(pb.material, -1);
+		auto mat = cachedMaterial(pb.material, pb.areaLight);
 		auto para = std::make_shared<paraboloid_hittable>(
 			pb.radius, pb.zMin, pb.zMax, degrees_to_radians(pb.phiMaxDeg), toMatrix4(pb.xform), mat);
 		world.add(para);
+		if (pb.areaLight >= 0) lights.add(para);
+		addMediumIfPresent(para, pb.medium);
 	}
 	out.paraboloidCount += paraboloids.size();
 
@@ -1410,6 +1413,13 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// (scenes_advanced.h) now overrides pdf_value()/random() the same way
 	// quad does, so an emissive one is NEE-samplable, not just hittable.
 	for (const pbrt_flatten::BilinearPatch &bp : patches) {
+		// gpuOnlyStaticFallback's own comment: this entry is a StartTime-pose
+		// duplicate of a patch CPU already renders for real via
+		// scene.animatedBilinearPatches (below) - GPU has no concept of that
+		// separate list, so the duplicate exists purely to keep GPU
+		// rendering the shape at all; skip it here or it would double-render
+		// on CPU.
+		if (bp.gpuOnlyStaticFallback) continue;
 		auto mat = cachedMaterial(bp.material, bp.areaLight);
 		auto patch = std::make_shared<bilinear_patch_hittable>(
 			point3(bp.p[0][0], bp.p[0][1], bp.p[0][2]),
@@ -1433,6 +1443,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// multi-segment strand tapers smoothly across its whole length rather than
 	// each segment re-tapering its own full width0->width1 range.
 	for (const pbrt_flatten::Curve &cd : curveDecls) {
+		// gpuOnlyStaticFallback's own comment: this entry is a StartTime-pose
+		// duplicate of a curve CPU already renders for real via
+		// scene.animatedCurves (below, fed back through this SAME
+		// emitGeometry lambda with object-space cp - see that block's own
+		// comment) - skip it here or it would double-render on CPU.
+		if (cd.gpuOnlyStaticFallback) continue;
 		// forCurve=true: see hair_material's own tangentIsDpdu comment - real
 		// curve geometry has a genuine fiber tangent (dpdu) available, unlike
 		// every other shape here, which only offers the shading normal as a
@@ -1559,6 +1575,95 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			for (int k = 0; k < 16; ++k) {
 				o2w.m[k]    = atm.xform[k];
 				o2wEnd.m[k] = atm.xformEnd[k];
+			}
+			out.world->add(std::make_shared<animated_transform_instance>(objectBVH, o2w, o2wEnd));
+		}
+	}
+
+	// ---- animated bilinear patches -----------------------------------------
+	// Real object motion blur (Shape "bilinearmesh") - see pbrt_flatten::
+	// AnimatedBilinearPatch's own comment. Each entry's corners are already
+	// OBJECT space, so - exactly like the animated-mesh block above - it's
+	// fed back through this SAME emitGeometry() (as a synthetic, one-entry
+	// BilinearPatch list; emitGeometry has no opinion on whether `.p` holds
+	// object- or world-space points) into a scratch hittable_list, then
+	// wrapped in animated_transform_instance. Never emissive (AnimatedBilinearPatch's
+	// own comment - flatten() excludes an emissive patch from this list
+	// entirely), so a scratch (never-populated) light list, same reasoning
+	// as the animated-mesh block above.
+	if (!scene.animatedBilinearPatches.empty()) {
+		static const std::vector<pbrt_flatten::Triangle> kNoTriangles;
+		static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
+		static const std::vector<pbrt_flatten::Disk> kNoDisks;
+		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+		static const std::vector<pbrt_flatten::Cone> kNoCones;
+		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
+		static const std::vector<pbrt_flatten::Curve> kNoCurves;
+		for (const pbrt_flatten::AnimatedBilinearPatch &abp : scene.animatedBilinearPatches) {
+			pbrt_flatten::BilinearPatch bp;
+			for (int i = 0; i < 4; ++i) {
+				bp.p[i][0] = abp.p[i][0]; bp.p[i][1] = abp.p[i][1]; bp.p[i][2] = abp.p[i][2];
+			}
+			bp.material = abp.material;
+			const std::vector<pbrt_flatten::BilinearPatch> oneBp{bp};
+			auto geometry = std::make_shared<hittable_list>();
+			hittable_list unusedLights;
+			emitGeometry(kNoTriangles, kNoSpheres, kNoDisks, kNoCylinders,
+						 kNoCones, kNoParaboloids, oneBp, kNoCurves,
+						 *geometry, unusedLights);
+			if (geometry->objects.empty()) continue;
+			pbrt_scene::Matrix4 o2w, o2wEnd;
+			for (int k = 0; k < 16; ++k) {
+				o2w.m[k]    = abp.xform[k];
+				o2wEnd.m[k] = abp.xformEnd[k];
+			}
+			out.world->add(std::make_shared<animated_transform_instance>(
+				geometry->objects[0], o2w, o2wEnd));
+		}
+	}
+
+	// ---- animated curves ----------------------------------------------------
+	// Real object motion blur (Shape "curve") - see pbrt_flatten::
+	// AnimatedCurve's own comment. Each entry's control points are already
+	// OBJECT space; unlike a single bilinear patch, a curve can have several
+	// segments, so - exactly like the animated-mesh block above - they're
+	// fed back through this SAME emitGeometry() (as a synthetic, one-entry
+	// Curve list) into a scratch hittable_list, wrapped in ONE bvh_node
+	// (matching the animated-mesh block's own reasoning: several segments
+	// sharing one xform/xformEnd pair, cheaper as one small tree than one
+	// animated_transform_instance per segment), then wrapped in
+	// animated_transform_instance. Never emissive or ribbon-type
+	// (AnimatedCurve's own comment - flatten() excludes both from this
+	// list), so a scratch light list, same reasoning as the animated-mesh
+	// block above.
+	if (!scene.animatedCurves.empty()) {
+		static const std::vector<pbrt_flatten::Triangle> kNoTriangles;
+		static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
+		static const std::vector<pbrt_flatten::Disk> kNoDisks;
+		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+		static const std::vector<pbrt_flatten::Cone> kNoCones;
+		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
+		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
+		for (const pbrt_flatten::AnimatedCurve &ac : scene.animatedCurves) {
+			pbrt_flatten::Curve c;
+			c.cp = ac.cp;
+			c.nSegments = ac.nSegments;
+			c.width0 = ac.width0;
+			c.width1 = ac.width1;
+			c.curveType = ac.curveType;
+			c.material = ac.material;
+			const std::vector<pbrt_flatten::Curve> oneCurve{std::move(c)};
+			auto geometry = std::make_shared<hittable_list>();
+			hittable_list unusedLights;
+			emitGeometry(kNoTriangles, kNoSpheres, kNoDisks, kNoCylinders,
+						 kNoCones, kNoParaboloids, kNoBilinearPatches, oneCurve,
+						 *geometry, unusedLights);
+			if (geometry->objects.empty()) continue;
+			auto objectBVH = std::make_shared<bvh_node>(*geometry);
+			pbrt_scene::Matrix4 o2w, o2wEnd;
+			for (int k = 0; k < 16; ++k) {
+				o2w.m[k]    = ac.xform[k];
+				o2wEnd.m[k] = ac.xformEnd[k];
 			}
 			out.world->add(std::make_shared<animated_transform_instance>(objectBVH, o2w, o2wEnd));
 		}
