@@ -17,16 +17,23 @@
 // renderer behavior - the same reasoning every other info-icon tooltip is
 // GUI-only text, never round-tripped through the DLL.
 //
-// Scoped to self-contained scenes only (requires_files == false): the 50
-// compiled-in procedural scenes (src/TheRestOfYourLife/scenes*.h, including
-// the 4 Education entries and B24, all of which reuse another scene's
-// geometry - see their own comments in scene_registry.h) plus the 31
-// curated pbrt-example scenes (bundled pbrt_scenes/*.pbrt files,
+// Scoped to self-contained scenes only (requires_files == false): every
+// compiled-in procedural scene (src/TheRestOfYourLife/scenes*.h, including
+// the Education entries and B24, all of which reuse another scene's
+// geometry - see their own comments in scene_registry.h) plus every
+// curated pbrt-example scene (bundled pbrt_scenes/*.pbrt files,
 // registered via pbrt_scene_registry::build_curated_pbrt_scene_descriptor()
 // in scene_registry.h, which hardcodes requires_files=false). A scene id
 // with no entry here - every "Requires External Files" scene - falls back
 // to an honest "not written yet" message in forScene() below, rather than
 // silently showing nothing or stale content.
+//
+// This table has drifted out of sync with the registry more than once
+// already (found via a user report, not warnIfOutOfSync() below - that
+// guard only fires in debug builds, so a Release build silently ships the
+// fallback text for a while before anyone notices). Whenever a new
+// self-contained scene is added to scene_registry_data.h, add its note
+// here in the SAME session, don't rely on spotting the fallback later.
 namespace scene_technique_notes {
 
 inline const QHash<QString, QString>& notes() {
@@ -64,7 +71,7 @@ inline const QHash<QString, QString>& notes() {
 		{"B24", QObject::tr(R"note(The same dispersive prism as B23, ground to frosted glass (rough_dielectric) instead of polished smooth. Under --spectral, the same rainbow fan appears on the catcher screen, blurred by the surface roughness rather than sharp - the underlying physics (wavelength-dependent index of refraction) is identical, only the microfacet scattering added on top differs. Frosted glass needed more than a flat re-skin of B23 to disperse correctly: unlike smooth glass, a rough surface's light sampling has to reach an off-axis light (like this scene's directional beam) through explicit next-event estimation, so that sampling itself had to become wavelength-aware too, not just the initial refraction.)note")},
 
 		// ---------------------------------------------------------------
-		// Materials (B15-B22) - curated pbrt examples
+		// Materials (B15-B22, B25-B28) - curated pbrt examples
 		// ---------------------------------------------------------------
 		{"B15", QObject::tr(R"note(pbrt's "mix" material blends two materials per shading point using real per-sample stochastic selection - a probability-weighted choice at each hit, not a flat blended color - so a mix of matte diffuse and a metallic conductor shows up as genuine speckled grain: some samples land pure diffuse, others pure specular, averaging out correctly over many samples. Exercised identically on CPU, GPU-recursive, and GPU-wavefront.)note")},
 		{"B16", QObject::tr(R"note(Four material kinds bundled nowhere else in this app: thindielectric (a zero-thickness glass sheet that refracts without displacing the ray, unlike ordinary dielectric), coatedconductor (a clear coat over a metal base), diffusetransmission (light passes through as well as scattering back, like a thin leaf or paper), and subsurface scattering via a named preset ("Marble") - real subsurface parameters without needing an external measured-data file.)note")},
@@ -74,6 +81,10 @@ inline const QHash<QString, QString>& notes() {
 		{"B20", QObject::tr(R"note(pbrt's Material "hair" - the Marschner/Chiang fiber-scattering model, the same physically-based hair BSDF real film production renderers use - applied to plain spheres here for a controlled, side-by-side comparison against this project's own native Hair Fibers demo.)note")},
 		{"B21", QObject::tr(R"note(A pbrt checkerboard texture whose two colors are themselves each bound to a real image (an imagemap texture nested one level inside the checker/mix texture), not just flat literal colors - tests that texture references can compose, not just appear standalone.)note")},
 		{"B22", QObject::tr(R"note(pbrt's NamedMaterial referenced directly on a shape (declared once, reused by name, rather than only appearing as a "mix" material's sub-ingredient) plus a texture bound to one of that material's parameters, and an AreaLightSource with its twosided flag set so both faces emit.)note")},
+		{"B25", QObject::tr(R"note(Seven spheres, one per named glass IOR preset (BK7, BAF10, FK51A, LASF9, F5, F10, F11) resolved via FindGlassPreset() into a fixed dielectric IOR at the render's reference wavelength - the same lookup table real optical-glass catalogs use, previously reachable only from unit tests, never actually rendered before this scene.)note")},
+		{"B26", QObject::tr(R"note(Four quads, same source image and UV scale, each isolating one imagemap texture option: default sRGB decode and wrap-repeat as the reference case, a linear-decode quad reading the same bytes as brighter (skipping the gamma curve that normally compresses mid-tones), a clamp-wrap quad that holds its edge texel instead of tiling past [0,1], and an inverted-channel quad - none of these paths were reachable via any other bundled scene's default texture settings.)note")},
+		{"B27", QObject::tr(R"note(Four quads, left to right, each driven by a different pbrt-v4 procedural texture class wired into the builder but never previously used by any bundled scene: windy (parameterless turbulence), wrinkled (Perlin turbulence with tunable octaves/roughness), dots (two flat colors split by a Perlin-noise boundary), and bilerp (four corner colors blended smoothly across UV).)note")},
+		{"B28", QObject::tr(R"note(Two quads compare a texture nested TWO levels deep (an outer checkerboard whose own tex1 is ANOTHER checkerboard, whose own tex1 is a real image) against the simpler one-level case reproduced alongside it. Real on CPU - two different checker frequencies of the same photo genuinely tile inside each other; GPU intentionally flattens the whole nested tree into one average color and warns instead, a documented approximation rather than a bug, so rendering this scene both ways shows the real divergence.)note")},
 
 		// ---------------------------------------------------------------
 		// Lights (C1-C7) - procedural
@@ -87,7 +98,7 @@ inline const QHash<QString, QString>& notes() {
 		{"C7", QObject::tr(R"note(A Cornell-style room with no ceiling light quad at all - instead the back wall has an actual rectangular hole cut into it, and a sky light is visible only through that window. Exercises portal-sampled infinite lighting: the environment light's sampling is restricted to directions actually visible through the portal aperture rather than the full sphere, the harder, more failure-prone case for infinite-light next-event estimation.)note")},
 
 		// ---------------------------------------------------------------
-		// Lights (C8-C15) - curated pbrt examples
+		// Lights (C8-C20) - curated pbrt examples
 		// ---------------------------------------------------------------
 		{"C8", QObject::tr(R"note(All five of pbrt-v4's punctual (delta-distribution) light kinds in one scene: point, spot, distant, goniometric, and projection - a single reference scene for comparing every zero-area light type side by side.)note")},
 		{"C9", QObject::tr(R"note(Real image decoding for pbrt's goniometric and projection lights, which previously silently ignored their own filename parameter and fell back to a uniform beam - this scene is the regression check that they now actually read and apply the image.)note")},
@@ -98,6 +109,10 @@ inline const QHash<QString, QString>& notes() {
 		{"C14", QObject::tr(R"note(Two separate sphere area lights in one scene - a minimal case that once pinned a real GPU bug where a light-type lookup table was sized for only one light, so every light past the first silently misread its own type and rendered wrong.)note")},
 		{"C15", QObject::tr(R"note(An area light shaped as an irregular 5-triangle fan - not a simple parallelogram, and not something the renderer's quad-merge optimization (which re-joins two triangles into one quad for cheaper sampling) can rejoin - so this exercises genuine per-triangle light sampling on the GPU instead of the more common quad shortcut.)note")},
 		{"C16", QObject::tr(R"note(pbrt's "ColorSpace" directive, choosing the working RGB color space (here, Rec.2020's wider primaries instead of the sRGB default) that a "blackbody" temperature converts through. Identical geometry and identical 2500K/9000K temperatures to the Blackbody Light example - only the declared color space differs - so the two scenes' panel colors are a direct side-by-side proof the directive is actually applied, not just parsed and ignored.)note")},
+		{"C17", QObject::tr(R"note(The real pbrt-v4 PortalImageInfiniteLight: an equal-area environment-map infinite light restricted to a window quad, so only that opening shows real sky detail rather than the whole environment leaking in from every direction. The native "Portal Infinite Light" scene (C7) only cuts a geometric hole in a wall behind a flat sky_light and never actually builds this class - this is the first bundled scene that does.)note")},
+		{"C18", QObject::tr(R"note(Three otherwise-identical spheres, each lit by only one light type - point, spot, and area - specifying its brightness as "float power" (total flux in watts) instead of the usual intensity/radiance directly. The renderer has to invert the power-to-intensity conversion through a different solid-angle formula for each light kind (4*pi for the point light, the spot's cone solid angle, and area*pi for the Lambertian emitter), so a wrong conversion for any one type shows up as a visibly mismatched sphere brightness, not a uniformly wrong scene.)note")},
+		{"C19", QObject::tr(R"note(A projection light slide image that is deliberately non-square (8x4, not the usual square uv-checker.bmp every other projection-light scene uses), the first bundled scene to exercise a real aspect-ratio mismatch between the image and the light's own field of view. A correctly aspect-preserving projection casts a clearly wide rectangular footprint matching the image's own 2:1 shape; a bug here would squish it to square or stretch it to fill the light's fov instead.)note")},
+		{"C20", QObject::tr(R"note(Three saturated, close-range colored lights over a plain diffuse surface, positioned so their overlap regions sit right at the sRGB gamut boundary under --spectral rendering. This is the exact condition a real per-sample XYZ-to-RGB gamut-clamp bug used to darken and desaturate incorrectly - the fix defers that conversion to per-pixel instead of per-sample, so overlap regions should blend smoothly toward white/pastel here, not show banding or a muddy under-saturated patch.)note")},
 
 		// ---------------------------------------------------------------
 		// Cameras (D1-D8) - procedural
@@ -129,12 +144,14 @@ inline const QHash<QString, QString>& notes() {
 		{"E4", QObject::tr(R"note(A heterogeneous medium with real per-voxel scattering data baked into a 3D grid, with independent red/green/blue channels generated at different frequencies so the color decorrelates spatially instead of reading as a uniformly tinted cloud - sampled via majorant-grid-accelerated delta tracking. Unlike a procedural medium evaluated analytically per point, this is discrete voxel data mapped from the render-space box onto the grid's own coordinate space.)note")},
 
 		// ---------------------------------------------------------------
-		// Volumes (E5-E8) - curated pbrt examples
+		// Volumes (E5-E10) - curated pbrt examples
 		// ---------------------------------------------------------------
 		{"E5", QObject::tr(R"note(pbrt's MakeNamedMedium "cloud" - a heterogeneous scattering volume whose density comes from 3D Perlin noise, the same noise-driven approach real cloud rendering uses to avoid a flat, obviously-fake fog block - loaded from a file, on both backends.)note")},
 		{"E6", QObject::tr(R"note(A homogeneous participating medium (uniform fog/scattering density) attached to a cylinder shape - this combination used to silently render as ordinary empty geometry with no fog effect at all on the GPU backends; this scene is the regression check that the medium is now real there too.)note")},
 		{"E7", QObject::tr(R"note(pbrt's MakeNamedMedium "rgbgrid" - a 3D voxel grid where each cell carries its own RGB scattering color, not just a density scalar - rendering as a soft, coloured nebula-like volume, on both backends.)note")},
 		{"E8", QObject::tr(R"note(pbrt's MakeNamedMedium "uniformgrid" - a single-channel density voxel grid, no per-voxel color, unlike the RGB grid medium scene - rendering as a soft glowing blob, the simpler sibling of that scene.)note")},
+		{"E9", QObject::tr(R"note(pbrt's MakeNamedMedium "nanovdb": a real NanoVDB-format sparse density grid read from an external .nvdb file, rendering as a soft fog-volume sphere - the biggest single pbrt-v4 gap this project closed, since sparse voxel data needs a fundamentally different lookup than the dense grids the other medium scenes use. CPU only; GPU doesn't implement the NanoVDB lookup at all and falls back to flat homogeneous fog instead, a documented approximation rather than a bug.)note")},
+		{"E10", QObject::tr(R"note(pbrt-v4's camera-medium idiom: a MediumInterface directive issued BEFORE the Camera directive puts the camera itself inside a fog with no boundary shape at all, a genuinely different mechanism from every other bundled medium scene (which all attach their MediumInterface to a shape the camera looks at from outside). Implemented as an explicit post-hit step in the camera code rather than a BVH hittable, since this renderer has no ray-carried medium state. Real on CPU and GPU-recursive; GPU-wavefront doesn't implement it at all and silently renders without the fog, a real backend gap significant enough to need its own tolerance carve-out in the CPU/GPU parity tests.)note")},
 
 		// ---------------------------------------------------------------
 		// Geometry (F1, F2, F4) - procedural
@@ -144,7 +161,7 @@ inline const QHash<QString, QString>& notes() {
 		{"F4", QObject::tr(R"note(Exercises real curve geometry with its own ray-curve intersection test, unlike the separate Hair Fibers scene which shades plain spheres with a hair BSDF instead of curving the surface itself. Bezier strands with root-to-tip taper are rooted across the surface in a scattered pattern, so this tests the curve primitive's actual swept-ribbon geometry rather than the hair shading model.)note")},
 
 		// ---------------------------------------------------------------
-		// Geometry (F5-F10) - curated pbrt examples
+		// Geometry (F5-F14) - curated pbrt examples
 		// ---------------------------------------------------------------
 		{"F5", QObject::tr(R"note(pbrt's Shape "plymesh" real per-vertex UV data, threaded through both backends - previously GPU-recursive rendered this exact scene solid black because those UVs were silently dropped.)note")},
 		{"F6", QObject::tr(R"note(pbrt's Shape "plymesh" loading a real external .ply mesh file end to end, including fan-triangulating a face in the source file that isn't already a triangle - the loader can't assume every face is pre-triangulated.)note")},
@@ -152,6 +169,10 @@ inline const QHash<QString, QString>& notes() {
 		{"F8", QObject::tr(R"note(Real curve geometry paired with Material "hair" for the first time in this project - exactly the combination that exposed a bug where the hair BSDF was using a flat-surface normal instead of the fiber's own tangent direction, which is what makes the highlight along each strand look like a strand instead of matte fuzz.)note")},
 		{"F9", QObject::tr(R"note(pbrt's Shape "trianglemesh" "point2 uv" parameter - explicit per-vertex texture coordinates on a triangle mesh - threaded through both backends; GPU-recursive used to render this exact scene solid black before that plumbing existed.)note")},
 		{"F10", QObject::tr(R"note(pbrt's PixelFilter directive selecting a box filter - every sample within a pixel counted equally, a hard cutoff at the pixel boundary - instead of the smoother default Gaussian. Compare the more aliased, harder-edged silhouettes here against any other scene's default-filtered render.)note")},
+		{"F11", QObject::tr(R"note(A sphere's ActiveTransform StartTime/EndTime bracket bakes two different world-space centers into the same shape, sampled per-ray by the camera's own shutter interval - the moving sphere should render as a soft directional streak, not a crisp or doubled copy, next to a static reference sphere with no bracketing at all. Real on all three backends (CPU, GPU-recursive, GPU-wavefront), unlike the disk/cylinder case below.)note")},
+		{"F12", QObject::tr(R"note(The same ActiveTransform motion-blur technique as the Object Motion Blur scene, but applied to Shape "disk"/"cylinder" instead of a sphere - a different code path internally (baked into the shape's own start/end transform rather than a sphere's center1/center2 pair). CPU only: both GPU backends render these shapes frozen at their start pose and warn instead of blurring, unlike sphere motion blur, which GPU does support.)note")},
+		{"F13", QObject::tr(R"note(Two quads share the identical point array and index winding, which by itself produces a normal facing away from the camera - a one-sided area light with that winding is invisible from the front. The bare ReverseOrientation directive, issued immediately before the second quad, flips its effective normal to face the camera instead, so one quad stays dark and the other lights up; a bug in ReverseOrientation would show up as both quads dark or both lit, never exactly one of each.)note")},
+		{"F14", QObject::tr(R"note(Four shapes exercising this project's own pbrt-v3-compatibility extension (Shape "cone"/"paraboloid", not part of real pbrt-v4): a plain diffuse cone and paraboloid as base shapes, a cone used as an AreaLightSource emitter instead of a normal material, and a paraboloid used as a MediumInterface fog boundary with its open rim facing the camera so rays enter the medium through the open end rather than the solid surface. CPU only - GPU (both backends) warns and drops any cone/paraboloid shape entirely.)note")},
 
 		// ---------------------------------------------------------------
 		// Models (G25) - curated pbrt example
@@ -159,12 +180,14 @@ inline const QHash<QString, QString>& notes() {
 		{"G25", QObject::tr(R"note(The classic pbrt-v4 "killeroo" statue example scene - a full end-to-end scene loaded from its own .pbrt file (geometry, materials, lights, camera all file-driven) rather than compiled directly into this renderer, the same file format and loading path a user's own custom pbrt scenes go through.)note")},
 
 		// ---------------------------------------------------------------
-		// Education (I1-I4) - Render Options tab demos
+		// Education (I1-I6) - Render Options tab demos
 		// ---------------------------------------------------------------
 		{"I1", QObject::tr(R"note(The exact same Cornell box as A1, rendered at a deliberately low 16 samples per pixel instead of the usual 100 - too few to converge cleanly. Switch Sampler on the Render Options tab (Sobol, Z-Sobol, Padded Sobol, Stratified, PMJ02BN, Halton) and re-render: every choice is a different low-discrepancy sequence for spreading those 16 samples across the pixel and the light, so the noise/clumping pattern in the soft shadow's penumbra changes with it even though nothing else about the scene does. CPU default path tracer only - the Sampler control has no effect on GPU.)note")},
 		{"I2", QObject::tr(R"note(The same glass prism as B23 (Spectral Dispersion), re-framed here as the Spectral rendering checkbox's own demo. With Spectral rendering (Render Options tab) switched off, the renderer tracks only red/green/blue and every wavelength bends by the same fixed amount through the glass; switched on, the renderer tracks real per-ray wavelengths and the prism's index of refraction genuinely varies with wavelength, fanning white light into a visible spectrum the same way a physical prism does. CPU default path tracer only.)note")},
 		{"I3", QObject::tr(R"note(The same HDR sky gradient as C1 (HDRI Sky): a bright procedural sky behind a diffuse sphere sitting in its own shadow - real brightness values from near-black to far past what a screen can display in one image. Two Render Options tab controls act on that range differently: Exposure is a flat multiplier applied before anything else, so raising it brightens the whole image evenly, sphere and sky alike; Tone mapping is the curve applied after that multiplier to compress the result into a displayable range - ACES rolls the sky's brightest highlights off gently, Reinhard compresses harder, and None just clips them to flat white. Try each Tone mapping choice at a couple of different Exposure values to see the two controls act independently. Works on both CPU and GPU.)note")},
 		{"I4", QObject::tr(R"note(The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it's genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene's own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU only - both the recursive and wavefront backends have their own denoiser. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there's nothing to visually compare for that one.)note")},
+		{"I5", QObject::tr(R"note(The same frosted-glass Cornell box as B3 (Cornell Rough Glass), re-framed as the Integrator dropdown's own SPPM demo. Render once with the default Path Tracer and once with SPPM (Render Options tab) at the same sample count: the floor caustic under the rough-dielectric sphere - exactly the hard, high-frequency indirect-light case ordinary path tracing struggles to converge on - should visibly clean up much faster under SPPM's photon-mapping approach, which is built for precisely this kind of light transport.)note")},
+		{"I6", QObject::tr(R"note(The same Cornell box as A1, re-framed as the Integrator dropdown's own BDPT/MLT demo. Try BDPT or MLT (Render Options tab) instead of the default Path Tracer: both trace light paths from the camera AND from the light source and connect them partway, rather than only tracing from the camera the way the default integrator and SPPM do - a fundamentally different strategy that can converge differently (sometimes better, sometimes with different noise character) on scenes with meaningful indirect lighting like this one.)note")},
 	};
 	return kNotes;
 }
