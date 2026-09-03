@@ -1,0 +1,35 @@
+# projection-light-nonsquare.pbrt -- exercises LightSource "projection"
+# with a NON-square slide image (nonsquare-checker.bmp, 8x4, hand-authored
+# alongside this scene - the existing goniometric-projection.pbrt only ever
+# used the square 4x4 uv-checker.bmp, so a real aspect-ratio mismatch
+# between the image and the light's own fov/screen window was never
+# exercised by any bundled scene). The image has a white 1px border on its
+# left/top edges (visible as thin white lines along two sides of the
+# projected footprint) so orientation and aspect distortion are both
+# readable at a glance: a correct aspect-preserving projection should show
+# a clearly WIDE rectangular footprint (2:1, matching the image's own 8x4
+# shape) with 4 solid color quadrants (red/green top, blue/yellow bottom),
+# not a squished-to-square or stretched-to-fill-fov distortion.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints. nonsquare-checker.bmp is likewise hand-authored,
+# same convention as uv-checker.bmp/gonio-profile.bmp.
+
+LookAt  0 6 7    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.55 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -10 0 -6   10 0 -6   10 0 6   -10 0 6 ]
+
+AttributeBegin
+  Translate 0 4 0
+  Rotate 90 1 0 0
+  LightSource "projection" "float scale" [ 300 ] "float fov" [ 35 ]
+    "string filename" [ "nonsquare-checker.bmp" ]
+AttributeEnd

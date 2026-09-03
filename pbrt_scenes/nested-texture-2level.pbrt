@@ -1,0 +1,53 @@
+# nested-texture-2level.pbrt -- exercises a SECOND level of procedural
+# texture nesting: "checkerboard" tex1 bound to ANOTHER "checkerboard"
+# whose OWN tex1 is bound to a real imagemap (level2 -> level1 -> image),
+# real on CPU per docs/FEATURE_INVENTORY.md's own "2nd level" row - GPU
+# approximates the whole nested tree as a single flat average colour and
+# warns, so render this scene BOTH ways to see the real divergence: --cpu
+# should show two different checker frequencies of the same photo tiled
+# inside each other, --gpu should show a flat, uniform average colour
+# instead (that GPU behaviour is the documented, expected fallback, not a
+# bug - see nested-checker-texture.pbrt for the simpler 1-level case, which
+# GPU renders identically to CPU).
+#
+#  - Left quad: 2-level nest - outer checkerboard (tex2 = flat magenta)
+#    alternating with an inner checkerboard (itself tex1 = imagemap,
+#    tex2 = flat green) at a different, higher UV frequency.
+#  - Right quad: 1-level nest reproduced for a direct frequency/behaviour
+#    comparison, same imagemap.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  1 0.5 3    1 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 320 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1.0 1.0 1.0 ]
+
+AttributeBegin
+  Translate 0.5 0.5 3.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]
+AttributeEnd
+
+Texture "leaf" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+Texture "chk-level1" "spectrum" "checkerboard" "texture tex1" [ "leaf" ]
+  "rgb tex2" [ 0 0.6 0 ] "float uscale" [ 6 ] "float vscale" [ 6 ]
+Texture "chk-level2" "spectrum" "checkerboard" "texture tex1" [ "chk-level1" ]
+  "rgb tex2" [ 0.6 0 0.5 ] "float uscale" [ 2 ] "float vscale" [ 2 ]
+Material "diffuse" "texture reflectance" [ "chk-level2" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   1 0 0   1 1 0   0 1 0 ]
+
+Texture "chk-level1-ref" "spectrum" "checkerboard" "texture tex1" [ "leaf" ]
+  "rgb tex2" [ 0 0.6 0 ] "float uscale" [ 3 ] "float vscale" [ 3 ]
+Material "diffuse" "texture reflectance" [ "chk-level1-ref" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 1.2 0 0   2.2 0 0   2.2 1 0   1.2 1 0 ]

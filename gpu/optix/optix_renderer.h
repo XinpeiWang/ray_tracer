@@ -519,8 +519,8 @@ private:
 	// only, this round) reuses the existing, previously-dead-code
 	// BVHLightSampler2 (src/shared/bvh_light_sampler2.h) to build the tree
 	// host-side, then uploads the flat node/bit-trail arrays here for
-	// gpu_light_bvh_sample()/gpu_light_bvh_pmf() (optix_device_helpers.h) to
-	// traverse device-side. lightBvhNodeCount_==0 (default) means "no light
+	// gpu_light_bvh_sample_index()/gpu_light_bvh_pmf() (optix_device_helpers_
+	// lighting.h) to traverse device-side. lightBvhNodeCount_==0 (default) means "no light
 	// BVH built" - every NEE call site falls back to the alias table exactly
 	// as before this feature existed, same zero-init-safe convention as
 	// every other optional GPU feature in this codebase.

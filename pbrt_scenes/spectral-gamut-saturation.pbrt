@@ -1,0 +1,54 @@
+# spectral-gamut-saturation.pbrt -- exercises the spectral film accumulation
+# fix (a real per-sample XYZ->RGB gamut-clamp bias, fixed by deferring the
+# XYZ->RGB conversion to per-PIXEL instead of per-sample - see
+# docs/PBRT_SUPPORT.md's spectral rendering section). Every other bundled
+# --spectral scene (glass-prism-dispersion, the SpectralDispersionEducation
+# native scene) is dominated by a dielectric's refraction, not saturated
+# direct illumination - this scene instead puts three separately-colored,
+# very bright, close-range lights on a plain white diffuse surface so their
+# OVERLAP regions sit right at or past the sRGB gamut boundary, exactly the
+# condition the per-sample-clamp bug used to darken/desaturate incorrectly.
+# Render with --spectral - overlap regions should blend smoothly toward
+# white/pastel, not show visible banding or an undersaturated "muddy" patch
+# where two primaries meet.
+#
+# Only uses "diffuse" and "diffuse_light" materials, both on the --spectral
+# support whitelist.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2 7    0 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 360 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+Material "diffuse" "rgb reflectance" [ 0.85 0.85 0.85 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -5 0 -3   5 0 -3   5 0 5   -5 0 5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -5 0 -3   -5 6 -3   5 6 -3   5 0 -3 ]
+
+AttributeBegin
+  Translate -1.4 2.2 1
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 30 1 1 ]
+  Shape "sphere" "float radius" [ 0.6 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 1.4 2.2 1
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 1 30 1 ]
+  Shape "sphere" "float radius" [ 0.6 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 0 3.4 -0.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 1 1 30 ]
+  Shape "sphere" "float radius" [ 0.6 ]
+AttributeEnd

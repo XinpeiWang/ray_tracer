@@ -1,0 +1,441 @@
+# bvh-aggregate-splitmethod.pbrt -- exercises the Accelerator "bvh"
+# "string splitmethod" directive (BvhAggregate wiring, pbrt_flatten.h's
+# FlatScene::acceleratorSplitMethod, real Accelerator::SplitMethod dispatch
+# via bvh_aggregate_hittable), previously parsed-but-never-set by any
+# bundled scene (every other scene relies on the SAH default implicitly).
+# Uses "middle" here specifically, a different split heuristic from the
+# default "sah" - a grid of 100 spheres gives the BVH builder enough
+# primitives for the chosen split method to matter structurally, though the
+# final RENDERED IMAGE should look identical to the SAH default either way
+# (splitmethod only changes tree shape/traversal performance, not visible
+# results) - this scene is a real-directive-doesn't-crash-or-warn
+# regression check, not a visual difference demo.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+Accelerator "bvh" "string splitmethod" [ "middle" ]
+
+LookAt  4.5 6 13    4.5 0 4.5    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 48 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.5 0.5 0.55 ]
+
+AttributeBegin
+  Translate 4.5 10 4.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 8 8 8 ]
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.4 0.4 0.45 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -2   11 0 -2   11 0 11   -2 0 11 ]
+
+Material "conductor" "spectrum eta" [ "metal-Cu-eta" ] "spectrum k" [ "metal-Cu-k" ] "float roughness" [ 0.25 ]
+
+AttributeBegin
+  Translate 0.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 0.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 1.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 2.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 3.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 4.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 5.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 6.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 7.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 8.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 0.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 1.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 2.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 3.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 4.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 5.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 6.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 7.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 8.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd
+AttributeBegin
+  Translate 9.0 0.35 9.0
+  Shape "sphere" "float radius" [ 0.35 ]
+AttributeEnd

@@ -73,8 +73,8 @@ numbered sections below for the narrative detail behind any row.
 | Lights | Image infinite (HDRI, importance-sampled) | Y / Y / Y | N/A |
 | Lights | Portal light | Y / Y / Y | N/A |
 | Lights | Unrecognized pbrt light kind | N | Dropped, **no fallback rendered** — the one case in the whole loader with no safety net |
-| Light sampling | BVH light sampler (spatial + power) | CPU default, and now real on GPU-recursive (`BVHLightSampler2`, see §4) | GPU-wavefront's counterpart is still the flat `PowerLightSampler` — a real, permanent substitute for that one backend, not a degraded fallback |
-| Light sampling | Power light sampler (flat) | CPU (superseded) / GPU-wavefront (default) | N/A |
+| Light sampling | BVH light sampler (spatial + power) | CPU default only | Was briefly enabled on GPU-recursive (`BVHLightSampler2`) but found to render real scenes ~24x too dark (`MaterialCpuGpuParityTest`'s B22 case) and to fail on multiple hand-built multi-light test scenes despite passing its own bounds guards — a real, unresolved GPU-recursive bug (see `gpu_light_bvh_sample_index()`'s own header comment, `optix_device_helpers_lighting.h`), not a false positive. Deliberately re-disabled (`params.lightBvhNodeCount` forced to 0) — GPU-recursive, GPU-wavefront, and GPU-SPPM all fall back to the flat `PowerLightSampler`, a real, permanent substitute, not a degraded one |
+| Light sampling | Power light sampler (flat) | CPU (superseded) / GPU-wavefront and GPU-SPPM (default) | N/A |
 | Light sampling | `UniformLightSampler` | Dead code, zero callers | N/A — orphaned, not part of any fallback chain |
 | Light sampling | `ExhaustiveLightSampler` | Dead code (only reachable from unwired `restir.h`) | N/A — orphaned |
 | Light sampling | `PowerLightSampler` (`src/shared/power_light_sampler_scaffold.h`) | Dead code, zero callers | N/A — orphaned; not the same file as `src/TheRestOfYourLife/power_light_sampler.h`, which is real and CPU-default (see row above) |
@@ -145,23 +145,14 @@ numbered sections below for the narrative detail behind any row.
 | Paraboloid *(not a pbrt-v4 shape — see note)* | Y | N | N | `ParaboloidShape<T>`, wrapped by `paraboloid_hittable` (`cone_paraboloid_hittable.h`). Same real `AreaLightSource`/`MediumInterface` support as Cone, including the identical BDPT/MLT/SPPM-photon `sample_area()` gap. A ray exactly on the symmetry axis is an accepted miss, matching Cylinder's identical parallel-ray limitation. |
 | Hyperboloid *(not a pbrt-v4 shape — see note)* | N | N | N | Not implemented on any backend. |
 
-**Cone/Paraboloid/Hyperboloid are not pbrt-v4 shapes.** pbrt-v4 itself
-removed all three from pbrt-v3's shape set ("the rarely-used and
-occasionally-buggy 'cone', 'hyperboloid', and 'paraboloid' Shapes have been
-removed" — pbrt-v4's own "Differences from pbrt-v3" notes; confirmed
-against the real upstream `mmp/pbrt-v4` source, which has no Cone/
-Paraboloid/Hyperboloid class at all). This project kept Cone and
-Paraboloid anyway as a deliberate pbrt-v3-compatibility extension — earlier
-rounds' doc language describing them as "matching pbrt-v4" was about their
-per-shape math/parameter conventions (radius/height/zmin/zmax/phimax,
-which pbrt-v3 and pbrt-v4's OTHER shapes share the same style for), not a
-claim that pbrt-v4 itself has these shapes. Hyperboloid was never added
-here and, given it isn't a real pbrt-v4 gap either, isn't planned — a scene
-using `Shape "hyperboloid"` falls through to the generic "shape not
-supported" warning like any other unimplemented type. The one genuine
-pbrt-v4 shape gap in the table above is none: every real pbrt-v4 shape
-(sphere/disk/cylinder/trianglemesh/curve/bilinearmesh, plus loopsubdiv/
-plymesh which convert to triangles) is fully supported on every backend.
+**Cone/Paraboloid/Hyperboloid are not pbrt-v4 shapes** — see
+[`PBRT_SUPPORT.md`](PBRT_SUPPORT.md)'s own note under `Shape "cone"` for
+the full explanation (pbrt-v4 removed all three from pbrt-v3's shape set;
+this project kept Cone/Paraboloid anyway as a deliberate extension, not a
+pbrt-v4 gap being closed). The one genuine pbrt-v4 shape gap in the table
+above is none: every real pbrt-v4 shape (sphere/disk/cylinder/trianglemesh/
+curve/bilinearmesh, plus loopsubdiv/plymesh which convert to triangles) is
+fully supported on every backend.
 
 ## 2. Materials / BxDFs
 
@@ -263,48 +254,43 @@ infinite light).
 | `power_light_sampler` (`src/TheRestOfYourLife/`) | CPU, superseded by the BVH sampler as default |
 | pbrt-v4's PowerLightSampler algorithm (flat, power-only) | **GPU default (both recursive and wavefront)** - implemented natively in `gpu/optix/optix_renderer_scene.cpp`/`optix_types.h`, NOT via the C++ class below despite the shared algorithm name |
 | `UniformLightSampler` | present, **zero callers** — dead code |
-| `BVHLightSampler2` | **real end-to-end on GPU-recursive** - host-side tree build/upload (`OptiXRenderer::buildScene()`) plus real device-side traversal (`gpu_light_bvh_sample_index()`/`gpu_light_bvh_pmf()`, `optix_device_helpers_lighting.h`), now actually wired into the live launch. GPU-wavefront untouched (still the flat power sampler). |
+| `BVHLightSampler2` | Host-side tree build/upload (`OptiXRenderer::buildScene()`) and device-side traversal code (`gpu_light_bvh_sample_index()`/`gpu_light_bvh_pmf()`, `optix_device_helpers_lighting.h`) both exist and compile, but are **deliberately NOT wired into the live launch** (`LaunchParams::lightBvhNodeCount` forced to 0, `optix_renderer_render.cpp`) — see the gap writeup below for why. GPU-wavefront and GPU-SPPM never had a light-BVH path at all (both still the flat power sampler - GPU-SPPM's own `SPPMLaunchParams` has no light-BVH fields at all, only `aliasTable`). |
 | `ExhaustiveLightSampler` | only referenced by the unwired `restir.h` (see §11) — not reachable from any render path |
 | `PowerLightSampler<MaxLights>` class (`src/shared/power_light_sampler_scaffold.h`) | present, **zero callers** — dead code; not the GPU row above despite the name |
 
-**Was a gap, now closed on GPU-recursive**: GPU-wavefront still always uses
-the flat power-weighted sampler; GPU-recursive now has the same real
-spatial+power light BVH CPU's own `bvh_light_sampler` already uses by
-default.
+**Still a real gap, NOT closed**: GPU-recursive, GPU-wavefront, and
+GPU-SPPM all use the flat power-weighted sampler; none has a working
+spatial+power light BVH. A real port of `BVHLightSampler2` to GPU-recursive
+was attempted and reached the point of compiling, uploading a verified-
+correct tree, and passing its own bounds/monotonicity guards on paper -
+but was found, via `MaterialCpuGpuParityTest`'s own B22 case ("Named
+Material & Texture"), to render real scenes roughly 24x too dark on
+GPU-recursive specifically (CPU and GPU-wavefront agree with each other;
+GPU-recursive alone goes near-black) whenever it was live-wired in. The
+same near-black failure was independently reproduced on 3 different
+hand-built multi-light scenes (5, 7, and 12 lights). Device-side printf
+tracing showed `gpu_light_bvh_sample_index()`'s own bounds/monotonicity
+guard rejecting a demonstrably valid, in-range, monotonic node index - the
+printf's own operands, printed at the exact point of the failing `if`, do
+not satisfy the condition being taken. Multiple structural mitigations
+were tried (by-value node reads instead of references, splitting the
+combined guard condition into sequential checks, marking both functions
+`__noinline__`) and NONE resolved it - not explainable by the guard logic
+itself under any of the three tried structures. This looks like a genuine
+NVCC/OptiX codegen bug specific to this exact recursive mega-kernel under
+real interior-node tree depth (this file's own established class of prior
+toolchain bug, see §9's `gpu_cloud_density()`/`dnoise()` history), but
+unlike that precedent, this one is NOT resolved.
 
-A prior round attempted this port and hit a genuine, reproducible CUDA 700
-illegal-memory-access reading the uploaded tree on device, on at least one
-real multi-light scene (`pbrt_scenes/triangle-fan-light.pbrt`, 5 lights) -
-even though the host-built tree was independently verified correct (a
-node-by-node host/device dump matched exactly, and `sizeof(LightBVHNode)`/
-`sizeof(CompactLightBounds)` matched exactly between the MSVC host build
-and the NVCC device build, ruling out a struct-layout/ABI mismatch). A
-shared-function-call codegen/inlining issue and a reference-output-
-parameter miscompilation were both ruled out (this codebase's own
-established fix for each symptom class made no difference); an out-of-
-range index was suspected but an earlier bounds-check attempt reportedly
-never fired while the crash still happened.
-
-A later diagnosis session instrumented every array read in both traversal
-functions with a bounds check that records what actually went out of range
-via a CAS-guarded device debug buffer (needed because concurrent GPU
-threads racing to write a shared buffer produce self-contradictory "torn"
-snapshots otherwise). Across repeated full reproductions of the exact
-crashing scene, the specific out-of-range value seen varied between runs -
-consistent with a genuine compiler/codegen-level bug in this exact
-NVCC/OptiX toolchain (this file's own established class of prior bug, see
-§9's `gpu_cloud_density()`/`dnoise()` history) rather than a logic error in
-the tree data or the traversal code as written. The exact root cause was
-still NOT established, but the bounds checks themselves reliably and
-reproducibly eliminate the crash across every repeated test (the same
-scene that crashed 100% of the time before now completes 100% of the time
-after) - `LaunchParams::lightBvhNodeCount` is now set for real
-(`OptiXRenderer::render()`, `optix_renderer_render.cpp`), and every device
-array read in `gpu_light_bvh_sample_index()`/`gpu_light_bvh_pmf()`
-(`optix_device_helpers_lighting.h`) is bounds-checked, falling back to "no
-light BVH contribution for this one NEE decision" (a rare, self-correcting
-bias, not a crash) rather than dereferencing an address that may not
-actually hold what the index arithmetic says it should.
+Given the confirmed, reproducible, ~24x-too-dark failure on a real
+already-shipped scene, this feature was re-disabled rather than shipped in
+a known-broken state: `LaunchParams::lightBvhNodeCount` is forced to 0 in
+`optix_renderer_render.cpp`, so every device NEE call site falls back to
+the alias table unconditionally, same as before this port was attempted.
+The host-side build/upload machinery is left in place (harmless, unused)
+so re-enabling is a one-line change once someone establishes the actual
+root cause with proper tooling (Nsight Compute / compute-sanitizer
+racecheck, not printf).
 
 ## 5. Media / Volumes
 
@@ -769,11 +755,12 @@ relative to it specifically).
    **alternate** camera models too (Orthographic/Spherical/Realistic, CPU
    only, §6) — is unaffected by any of this. Every pbrt-v4 shape kind this
    loader builds at all now has real object motion blur on CPU.
-5. ~~No GPU light BVH~~ (§4) — **closed on GPU-recursive**. Real device-side
-   traversal, guarded by bounds checks that survived a genuine, previously-
-   unresolved illegal-memory-access crash (root cause not established, but
-   the crash is reliably eliminated - see §4's own full account).
-   GPU-wavefront still always uses the flat power sampler.
+5. No GPU light BVH (§4) — **still open, NOT closed**. A real port to
+   GPU-recursive was built and compiles, but was found to render real
+   scenes ~24x too dark and was deliberately re-disabled rather than
+   shipped broken - see §4's own full account of the confirmed regression
+   and the mitigations that did not fix it.
+   GPU-wavefront and GPU-SPPM still always use the flat power sampler.
 6. ~~`Accelerator` pbrt directive not parsed~~ — **closed**. `Accelerator
    "bvh" "string splitmethod"/"integer maxnodeprims"` is now real, parsed
    input (`pbrt_scene.h`); `pbrt_flatten.h` resolves it to `FlatScene::
@@ -872,10 +859,10 @@ all of them, and it's worth knowing which is which before relying on one.
 **Working counterpart already in place (not a degraded fallback — just the
 permanent behavior):**
 
-- No GPU-wavefront light BVH → that backend always uses the flat
+- No GPU-wavefront/GPU-SPPM light BVH → both backends always use the flat
   `PowerLightSampler` instead. That's a real, working counterpart, not a
-  failure mode — it's the permanent wavefront default, just with worse
-  scaling on many-light scenes than GPU-recursive's now-real spatial BVH
+  failure mode — it's the permanent default for those two backends, just
+  with worse scaling on many-light scenes than GPU-recursive's now-real spatial BVH
   sampler (or CPU's).
 - No real spectral film accumulation → CPU `--spectral` reduces to RGB
   every sample rather than accumulating spectral radiance. This isn't a

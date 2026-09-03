@@ -1,0 +1,53 @@
+# object-motion-blur.pbrt -- exercises Shape "sphere" object motion blur via
+# ActiveTransform "StartTime"/"EndTime" bracketing two different Translate
+# CTMs (baked into Sphere::center1 in pbrt_flatten.h, sampled per-ray by
+# camera.h's shutter interval - default [0,1], must NOT be overridden by
+# this scene per the moving-sphere hit() code's hard assumption). Real on
+# all 3 backends (CPU, GPU-recursive, GPU-wavefront) this session, unlike
+# disk/cylinder motion blur (see disk-cylinder-motion-blur.pbrt) which is
+# CPU-only.
+#
+#  - Left sphere: static (Translate only, no ActiveTransform bracketing) -
+#    reference, should render as a crisp sphere.
+#  - Right sphere: moves from x=4 to x=6 over the shutter interval - should
+#    render as a soft horizontal streak, not a doubled or crisp sphere.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  5 2.5 10    5 1 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 360 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.4 0.4 0.45 ]
+
+AttributeBegin
+  Translate 5 6 2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 10 10 10 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.55 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -3   12 0 -3   12 0 3   -2 0 3 ]
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.8 0.2 0.2 ]
+  Translate 2 1 0
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.2 0.4 0.8 ]
+  ActiveTransform "StartTime"
+  Translate 4 1 0
+  ActiveTransform "EndTime"
+  Translate 6 1 0
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd

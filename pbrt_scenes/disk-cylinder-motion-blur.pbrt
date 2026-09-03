@@ -1,0 +1,61 @@
+# disk-cylinder-motion-blur.pbrt -- exercises Shape "disk"/Shape "cylinder"
+# object motion blur via ActiveTransform "StartTime"/"EndTime" (baked into
+# the shape's own xformEnd in pbrt_flatten.h, unlike the moving sphere's
+# center1/center2 pair). CPU-only: GPU (both backends) renders these shapes
+# frozen at their StartTime pose and warns instead of blurring - render
+# this scene with --cpu, a GPU render is expected to look different (static)
+# and is not a bug.
+#
+#  - Left: a disk translating from x=1 to x=1.6 over the shutter - should
+#    render as a soft streaked oval, not a crisp circle.
+#  - Right: a cylinder translating from x=5 to x=5.7 (a smaller motion, less
+#    likely to fully separate two crisp copies) while also rotating -
+#    should render as a soft blurred tube, not a crisp double-exposure.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  3.5 2.5 10    3.5 1 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 360 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.4 0.4 0.45 ]
+
+AttributeBegin
+  Translate 3.5 6 2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 10 10 10 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.55 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -3   10 0 -3   10 0 3   -2 0 3 ]
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.8 0.5 0.1 ]
+  ActiveTransform "StartTime"
+  Translate 1 1 0
+  Rotate 90 0 1 0
+  ActiveTransform "EndTime"
+  Translate 1.6 1 0
+  Rotate 90 0 1 0
+  ActiveTransform "All"
+  Shape "disk" "float radius" [ 0.9 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.1 0.6 0.5 ]
+  ActiveTransform "StartTime"
+  Translate 5 0.5 0
+  Rotate 90 1 0 0
+  ActiveTransform "EndTime"
+  Translate 5.7 0.5 0
+  Rotate 130 1 0 0
+  ActiveTransform "All"
+  Shape "cylinder" "float radius" [ 0.5 ] "float zmin" [ -0.7 ] "float zmax" [ 0.7 ]
+AttributeEnd

@@ -461,7 +461,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "C7", 35, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
-            "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
+            "Room scene with a sky visible through a windowed wall aperture (a flat sky_light behind a geometric hole, NOT the real pbrt-v4 PortalImageInfiniteLight class - see pbrt_scenes/portal-light.pbrt for that)",
             "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_portal_light_scene,

@@ -172,6 +172,12 @@ RayTracer_Package/styles/
 # reasoning as images/*.png above, not generated render output.
 !pbrt_scenes/uv-checker.bmp
 
+# ...and the hand-generated 8x4 non-square checker texture used by
+# pbrt_scenes/projection-light-nonsquare.pbrt to verify aspect-correct
+# LightSource "projection" image handling - same reasoning as
+# uv-checker.bmp above.
+!pbrt_scenes/nonsquare-checker.bmp
+
 # Test output
 test_*.ppm
 test_*.png

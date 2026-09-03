@@ -26,9 +26,10 @@
 // (see light_bvh_node.h's own comment) - already exercised on the host by
 // src/shared/bvh_light_sampler2.h (the tree BUILDER, used only host-side to
 // construct LaunchParams::lightBvhNodes below), and now also compiled for
-// device code here so gpu_light_bvh_sample()/gpu_light_bvh_pmf() (optix_
-// device_helpers.h) can traverse the already-built tree directly - no
-// device-side reimplementation of Importance()'s cone-angle math needed.
+// device code here so gpu_light_bvh_sample_index()/gpu_light_bvh_pmf()
+// (optix_device_helpers_lighting.h) can traverse the already-built tree
+// directly - no device-side reimplementation of Importance()'s cone-angle
+// math needed.
 #include "../../src/shared/light_bvh_node.h"
 
 #ifndef __CUDACC__
@@ -1742,9 +1743,10 @@ struct LaunchParams {
 	// own comment for the host build/upload). lightBvhNodeCount<=0 (the
 	// zero-init default, same "no in-class initializer" __constant__
 	// constraint as every other optional field on this struct) means "no
-	// light BVH built" - gpu_light_bvh_sample()/gpu_light_bvh_pmf() (optix_
-	// device_helpers.h) both check this first and fall back to the flat
-	// alias table above, unchanged, for every scene that doesn't build one
+	// light BVH built" - gpu_light_bvh_sample_index()/gpu_light_bvh_pmf()
+	// (optix_device_helpers_lighting.h) both check this first and fall
+	// back to the flat alias table above, unchanged, for every scene that
+	// doesn't build one
 	// (currently: every scene under any backend other than GPU-recursive).
 	// lightBvhBitTrail has numLights entries (0 for any light NOT present in
 	// the tree - BVHLightSampler2 excludes phi<=0 lights, matching the alias

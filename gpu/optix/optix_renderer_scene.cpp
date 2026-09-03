@@ -798,8 +798,9 @@ bool OptiXRenderer::buildScene(
 		// Light BVH (see OptiXRenderer::d_lightBvhNodes_'s own comment) -
 		// built host-side from lightBoundsArr above via the previously-dead-
 		// code BVHLightSampler2 (src/shared/bvh_light_sampler2.h), then its
-		// flat node/bit-trail arrays are uploaded for gpu_light_bvh_sample()/
-		// gpu_light_bvh_pmf() (optix_device_helpers.h) to traverse. A
+		// flat node/bit-trail arrays are uploaded for gpu_light_bvh_sample_
+		// index()/gpu_light_bvh_pmf() (optix_device_helpers_lighting.h) to
+		// traverse. A
 		// zero-node tree (e.g. every light had phi<=0, which the power loop
 		// above already floors away from - so this is only reachable if
 		// numLights_ were 0, already excluded by this else-branch) leaves

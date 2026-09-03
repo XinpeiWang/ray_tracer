@@ -1,0 +1,65 @@
+# texture-encoding-wrap-invert.pbrt -- exercises Texture "imagemap"'s
+# "string encoding"/"string wrap"/"bool invert" params (pbrt_flatten.h's
+# TextureDecodeOptions), previously only reachable via default values in
+# every bundled scene. Four quads, same uv-checker.bmp source image and
+# uscale/vscale (so cells tile past the image edge, making "wrap" visible),
+# each isolating one option:
+#
+#  - Quad 1 (default): "encoding" omitted (defaults sRGB/gamma 2.2), "wrap"
+#    omitted (defaults repeat) - tiled checker, reference case.
+#  - Quad 2: "string encoding" "linear" - skips the sRGB->linear decode
+#    (which normally REDUCES a mid-tone byte's numeric value, since sRGB
+#    encoding boosts mid-tones for perceptual reasons), so the same stored
+#    bytes are read as a larger, brighter linear value than quad 1's
+#    correctly-decoded one.
+#  - Quad 3: "string wrap" "clamp" - UVs pushed past [0,1] by a large uscale
+#    hold the edge texel instead of tiling, so the pattern stops repeating
+#    and smears the border color outward.
+#  - Quad 4: "bool invert" [ true ] - same image, colors flipped
+#    (1-channel) versus quad 1.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints. uv-checker.bmp is likewise hand-authored (already
+# bundled, used by goniometric-projection.pbrt and others).
+
+LookAt  2.1 0.5 4    2.1 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 800 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1.0 1.0 1.0 ]
+
+AttributeBegin
+  Translate 2.1 0.5 4.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]
+AttributeEnd
+
+Texture "tex-default" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+  "float uscale" [ 3 ] "float vscale" [ 3 ]
+Material "diffuse" "texture reflectance" [ "tex-default" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0.9 0 0   0.9 0.9 0   0 0.9 0 ]
+
+Texture "tex-linear" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+  "float uscale" [ 3 ] "float vscale" [ 3 ] "string encoding" [ "linear" ]
+Material "diffuse" "texture reflectance" [ "tex-linear" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 1.1 0 0   2.0 0 0   2.0 0.9 0   1.1 0.9 0 ]
+
+Texture "tex-clamp" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+  "float uscale" [ 3 ] "float vscale" [ 3 ] "string wrap" [ "clamp" ]
+Material "diffuse" "texture reflectance" [ "tex-clamp" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 2.2 0 0   3.1 0 0   3.1 0.9 0   2.2 0.9 0 ]
+
+Texture "tex-invert" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+  "float uscale" [ 3 ] "float vscale" [ 3 ] "bool invert" [ true ]
+Material "diffuse" "texture reflectance" [ "tex-invert" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 3.3 0 0   4.2 0 0   4.2 0.9 0   3.3 0.9 0 ]

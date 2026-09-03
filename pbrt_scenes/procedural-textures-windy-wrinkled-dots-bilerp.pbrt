@@ -1,0 +1,51 @@
+# procedural-textures-windy-wrinkled-dots-bilerp.pbrt -- exercises 4 pbrt-v4
+# procedural Texture classes wired into pbrt_cpu_builder.h but never used by
+# any bundled scene: "windy" (parameterless turbulence), "wrinkled" (Perlin
+# turbulence with "integer octaves"/"float roughness"), "dots" (two flat
+# colors split by a Perlin-noise boundary), and "bilerp" (four corner colors
+# bilinearly interpolated across UV, "rgb v00"/"v01"/"v10"/"v11").
+#
+# Four quads left to right: windy, wrinkled, dots, bilerp.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  2.1 0.5 4    2.1 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 800 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1.0 1.0 1.0 ]
+
+AttributeBegin
+  Translate 2.1 0.5 4.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]
+AttributeEnd
+
+Texture "tex-windy" "spectrum" "windy"
+Material "diffuse" "texture reflectance" [ "tex-windy" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0.9 0 0   0.9 0.9 0   0 0.9 0 ]
+
+Texture "tex-wrinkled" "spectrum" "wrinkled" "integer octaves" [ 6 ] "float roughness" [ 0.6 ]
+Material "diffuse" "texture reflectance" [ "tex-wrinkled" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 1.1 0 0   2.0 0 0   2.0 0.9 0   1.1 0.9 0 ]
+
+Texture "tex-dots" "spectrum" "dots" "rgb inside" [ 0.85 0.15 0.2 ] "rgb outside" [ 0.05 0.05 0.1 ]
+Material "diffuse" "texture reflectance" [ "tex-dots" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 2.2 0 0   3.1 0 0   3.1 0.9 0   2.2 0.9 0 ]
+
+Texture "tex-bilerp" "spectrum" "bilerp"
+  "rgb v00" [ 0.9 0.1 0.1 ] "rgb v01" [ 0.1 0.9 0.1 ]
+  "rgb v10" [ 0.1 0.1 0.9 ] "rgb v11" [ 0.9 0.9 0.1 ]
+Material "diffuse" "texture reflectance" [ "tex-bilerp" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 3.3 0 0   4.2 0 0   4.2 0.9 0   3.3 0.9 0 ]

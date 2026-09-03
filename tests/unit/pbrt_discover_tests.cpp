@@ -44,6 +44,33 @@ TEST(PbrtDiscover, ReadsCameraAndFilmFromTheHeader) {
 	EXPECT_NEAR(d.camera.lookfrom[2], 5.0, 1e-9);
 }
 
+TEST(PbrtDiscover, ReadsMaxComponentValueFromTheFilmDirective) {
+	// Regression test for a code-review finding: no test exercised the
+	// wiring one hop closer to real usage than pbrt_flatten_tests.cpp's own
+	// FlatScene-level check - scene_registry.h's wire_pbrt_backed_scene()
+	// reads camera::max_component_value from THIS struct (Discovered), not
+	// from FlatScene directly, so a break here (e.g. forgetting to copy the
+	// field in describe()) would compile and pass every parsing-level test
+	// while still silently losing the real, live camera field.
+	const char *kWithMaxComponentValue = R"PBRT(
+LookAt 0 0 5   0 0 0   0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Film "rgb" "float maxcomponentvalue" [ 12.5 ]
+WorldBegin
+)PBRT";
+	const pbrt_discover::Discovered d =
+		pbrt_discover::describe("scenes/maxcomponentvalue-scene.pbrt", kWithMaxComponentValue);
+	ASSERT_TRUE(d.ok) << d.error;
+	EXPECT_NEAR(d.maxComponentValue, 12.5, 1e-9);
+}
+
+TEST(PbrtDiscover, MaxComponentValueDefaultsToEffectivelyUnboundedWithNoDirective) {
+	const pbrt_discover::Discovered d =
+		pbrt_discover::describe("scenes/plain.pbrt", kHeaderAndWorld);
+	ASSERT_TRUE(d.ok) << d.error;
+	EXPECT_NEAR(d.maxComponentValue, 1e9, 1.0);
+}
+
 TEST(PbrtDiscover, ReadsIntegratorTypeAndMaxDepthFromTheHeader) {
 	const char *kWithIntegrator = R"PBRT(
 LookAt 0 0 5   0 0 0   0 1 0

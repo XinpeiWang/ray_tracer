@@ -1,0 +1,55 @@
+# portal-light.pbrt -- exercises the REAL pbrt-v4 PortalImageInfiniteLight
+# (LightSource "infinite" "point3 portal" [4 corner points] "string
+# filename" [equal-area env image], pbrt_flatten.h/pbrt_cpu_builder.h),
+# which restricts an environment-map infinite light's visible directions to
+# a window quad instead of illuminating from everywhere. Previously this
+# real class was never instantiated by any bundled scene - native "Scene 35"
+# (id C7) claims to demo a portal light in its description but actually
+# just cuts a geometric hole in a wall in front of a flat sky_light, never
+# building this class at all on either backend (see docs' correction).
+#
+# Reuses this repo's own existing equal-area (octahedral) environment image
+# (pbrt_scenes/sssdragon/textures/small_rural_road_equiarea.exr, already
+# used as a plain infinite-light filename by the sssdragon benchmark
+# scenes - its name literally flags it equal-area, required by
+# PortalImageInfiniteLight; an equirectangular/angular image like this
+# repo's other .exr files would not orient correctly through this path).
+#
+# A room with one wall opening (the portal quad) - the visible sky through
+# that opening should show the environment image's real content oriented
+# through the portal, not a flat placeholder color and not light leaking in
+# from anywhere else in the room.
+#
+# Scene geometry is original, not derived from any distributed scene, so it
+# carries no licence constraints; the referenced .exr is bundled to this
+# repo already as noted above.
+
+LookAt  0 1.5 6    0 1.5 0    0 1 0
+Camera "perspective" "float fov" [ 50 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 96 ]
+
+WorldBegin
+
+LightSource "infinite" "point3 portal" [ -1.5 0.2 -3   1.5 0.2 -3   1.5 2.8 -3   -1.5 2.8 -3 ]
+  "string filename" [ "sssdragon/textures/small_rural_road_equiarea.exr" ]
+
+Material "diffuse" "rgb reflectance" [ 0.55 0.5 0.45 ]
+
+# Back wall with a rectangular hole where the portal window sits.
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -4 0 -3   -1.5 0 -3   -1.5 3.5 -3   -4 3.5 -3 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 1.5 0 -3   4 0 -3   4 3.5 -3   1.5 3.5 -3 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -4 0 -3   4 0 -3   4 0.2 -3   -4 0.2 -3 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -4 2.8 -3   4 2.8 -3   4 3.5 -3   -4 3.5 -3 ]
+
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -4 0 -3   4 0 -3   4 0 6   -4 0 6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -4 0 -3   -4 3.5 -3   -4 3.5 6   -4 0 6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 4 0 6   4 3.5 6   4 3.5 -3   4 0 -3 ]

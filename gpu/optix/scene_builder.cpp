@@ -3734,8 +3734,12 @@ static bool build_loaded_pbrt_scene(
 	// unbounded) already matches GPU's "no clamp" behavior exactly, so the
 	// only real divergence is a loaded .pbrt scene that explicitly
 	// requests a real, restrictive value - which only this function's own
-	// scene ever can.
-	if (loaded.scene.maxComponentValue < 1e8) {
+	// scene ever can. Compared against the real default (1e9) with a small
+	// epsilon, not an order-of-magnitude gap - a code-review pass found the
+	// original `< 1e8` threshold silently left the whole [1e8, 1e9) range
+	// unwarned even though a value there is just as real and restrictive
+	// (and just as undisclosed a GPU/CPU divergence) as a much smaller one.
+	if (loaded.scene.maxComponentValue < 1e9 - 1.0) {
 		std::cerr << "[OptiX] Warning: this scene's Film \"maxcomponentvalue\" ("
 			  << loaded.scene.maxComponentValue << ") clamps CPU's per-sample "
 				 "firefly outliers, but GPU has no equivalent clamp yet - GPU "

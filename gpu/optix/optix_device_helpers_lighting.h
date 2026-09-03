@@ -628,6 +628,78 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 // self-correcting bias - MIS/the alias-table-based selection elsewhere in
 // the same frame still lights the scene) rather than crashing the render.
 //
+// Bounds+monotonicity guards - both gpu_light_bvh_sample_index() and
+// gpu_light_bvh_pmf() below hand-duplicate the same two checks at their own
+// 2 call sites each (4 total), rather than sharing them via a helper
+// function - matching this file's own established "hand-duplicate at the
+// call site" convention for this exact recursive mega-kernel (see the
+// "shared-function-call codegen/inlining issue" ruled-out theory above,
+// and GpuLightBvhSample's own by-value-return precedent below, both from
+// the ORIGINAL crash diagnosis). NOTE: while fixing this, `optixModuleCreate`
+// was observed taking ~2 minutes regardless of whether these checks were
+// shared or duplicated, or even present at all - traced to something
+// unrelated to this specific change (the byte-identical, already-shipped
+// baseline showed the same delay) rather than caused by this fix; kept the
+// duplicated form anyway since it costs nothing extra and matches this
+// file's own established convention. See this file's own header comment
+// above for the crash-diagnosis history these checks exist to guard
+// against. A code-review pass on the first version
+// of this fix found it caught out-of-range indices but not two other real
+// gaps, both fixed at each of the 4 sites below: (1) the interior-node
+// child check now rejects not just an out-of-range c1Index but also one
+// that doesn't strictly follow the current node - the forward-progress
+// invariant a well-formed flattened BVH always guarantees (see
+// BVHLightSampler2::buildBVH()'s own `nodeIndex + 1 == i0` assertion,
+// src/shared/bvh_light_sampler2.h: the right child always comes strictly
+// after the ENTIRE left subtree, which itself occupies at least node
+// nodeIndex+1, so a genuine right-child index can never be <= nodeIndex+1).
+// Catching this - not just range - is what prevents a corrupted-but-in-
+// range index (this file's own comment above notes the observed
+// corruption "was itself sometimes NOT out of range by the numbers alone")
+// from turning either traversal's `while(true)` loop into an infinite loop
+// (a GPU hang / driver TDR) instead of the safe fallback a pure range
+// check alone does not guarantee. (2) gpu_light_bvh_sample_index()'s own
+// leaf branch now bounds-checks `childOrLightIndex` before returning it -
+// a LIGHT index (into `params.lightIndices`/`lightKinds`), a completely
+// different range than node indices, that a caller dereferences those
+// arrays with unchecked otherwise.
+//
+// KNOWN UNRESOLVED BUG (found while authoring pbrt_scenes/gpu-light-bvh-
+// many-lights.pbrt, the first scene with a real multi-level tree - 12
+// lights, 23 nodes; every scene this feature had been verified against
+// before that had either a single trivial leaf-only tree or a shallow
+// 9-node one): on a tree this size, the monotonicity guard below was
+// observed - via device-side printf tracing - REJECTING a demonstrably
+// valid, in-range, monotonic c1Index at the tree's own root, producing a
+// fully black render (NEE silently returning "no light" on every call)
+// despite the host-side BVHLightSampler2::Sample() (the exact same
+// algorithm, same built tree, called from scene_builder.cpp) handling the
+// identical query correctly. Multiple independent mitigations were tried
+// and NONE resolved it: (1) reading `params.lightBvhNodes[nodeIndex]` into
+// a by-value `LightBVHNode` local instead of a `const LightBVHNode&`
+// reference, (2) splitting the combined `a || b` guard condition into two
+// separate sequential `if` statements, (3) marking both functions
+// `__noinline__` instead of `__forceinline__` (the fix pattern that
+// resolved the unrelated "member-call stall" precedent elsewhere in this
+// codebase). A printf placed immediately before the failing `if`, printing
+// its own pre-computed operands, showed values that do not satisfy the
+// condition being taken (e.g. `c1Index=18 nodeCount=23` failing a
+// `c1Index >= nodeCount` check) - not explainable by the guard logic
+// itself under any of the three tried structures. This looks like a
+// genuine NVCC/OptiX codegen bug specific to this exact recursive mega-
+// kernel under real interior-node depth, in the same toolchain-fragility
+// family as GpuLightBvhSample's own by-value-return fix below and the
+// "member-call stall" precedent - but unlike those, NOT resolved here.
+// Re-verified the SAME build still renders a previously-working 5-light/
+// 9-node scene (triangle-fan-light.pbrt) correctly, so this is not a
+// blanket regression - it is specific to deeper/larger trees, exact
+// trigger unknown. Left as `__forceinline__`/reference/combined-guard (the
+// last VERIFIED-correct form) rather than keeping an unverified "fix" that
+// demonstrably did not fix the reproducer. Anyone picking this up next
+// should reach for compute-sanitizer or Nsight Compute rather than printf -
+// see this file's own earlier crash-diagnosis history for the CAS-guarded-
+// debug-buffer technique that worked for a different symptom.
+
 // Return type for gpu_light_bvh_sample_index() - a plain by-value struct,
 // deliberately NOT a `float&`/`int&` reference-output parameter. This
 // codebase's own memory of a prior GPU recursive-backend miscompile
@@ -654,17 +726,17 @@ __device__ __forceinline__ GpuLightBvhSample gpu_light_bvh_sample_index(
 	float pmf = 1.f;
 	u = fminf(u, 1.f - 1e-7f);
 	while (true) {
-		// Bounds guard - see this file's own header comment above for why
-		// this exists (a real, still-not-root-caused illegal-memory-access
-		// bug on at least one real scene) and why "safe fallback" rather
-		// than an assert/crash is the right response here.
+		// Bounds guard - see this file's own header comment above.
 		if (nodeIndex < 0 || nodeIndex >= params.lightBvhNodeCount) {
 			return GpuLightBvhSample{-1, 0.f};
 		}
 		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
 		if (!node.isLeaf) {
 			const int c1Index = (int)node.childOrLightIndex;
-			if (nodeIndex + 1 >= params.lightBvhNodeCount || c1Index < 0 || c1Index >= params.lightBvhNodeCount) {
+			// Range AND forward-progress guard - see this file's own
+			// header comment above for why `c1Index <= nodeIndex + 1` is
+			// rejected too, not just an out-of-range one.
+			if (c1Index <= nodeIndex + 1 || c1Index >= params.lightBvhNodeCount) {
 				return GpuLightBvhSample{-1, 0.f};
 			}
 			const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];
@@ -684,6 +756,13 @@ __device__ __forceinline__ GpuLightBvhSample gpu_light_bvh_sample_index(
 			pmf *= nodePMF;
 			nodeIndex = (child == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
 		} else {
+			// Leaf's own bounds guard - childOrLightIndex here is a LIGHT
+			// index (into params.lightIndices/lightKinds), a completely
+			// different range than node indices - see this file's own
+			// header comment above.
+			if (node.childOrLightIndex >= (unsigned int)params.numLights) {
+				return GpuLightBvhSample{-1, 0.f};
+			}
 			return GpuLightBvhSample{(int)node.childOrLightIndex, pmf};
 		}
 	}
@@ -712,13 +791,17 @@ __device__ __forceinline__ float gpu_light_bvh_pmf(
 	float pmf = 1.f;
 	int nodeIndex = 0;
 	while (true) {
+		// Bounds guard - see this file's own header comment above.
 		if (nodeIndex < 0 || nodeIndex >= params.lightBvhNodeCount) {
 			return 0.f;
 		}
 		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
 		if (node.isLeaf) return pmf;
 		const int c1Index = (int)node.childOrLightIndex;
-		if (nodeIndex + 1 >= params.lightBvhNodeCount || c1Index < 0 || c1Index >= params.lightBvhNodeCount) {
+		// Range AND forward-progress guard - see this file's own header
+		// comment above for why `c1Index <= nodeIndex + 1` is rejected
+		// too, not just an out-of-range one.
+		if (c1Index <= nodeIndex + 1 || c1Index >= params.lightBvhNodeCount) {
 			return 0.f;
 		}
 		const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];

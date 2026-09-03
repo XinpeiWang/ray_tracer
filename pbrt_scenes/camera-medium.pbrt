@@ -1,0 +1,56 @@
+# camera-medium.pbrt -- exercises pbrt-v4's "camera medium" idiom: a plain
+# MediumInterface directive issued BEFORE the Camera directive, naming the
+# homogeneous medium the camera itself sits inside via its SECOND ("outside")
+# argument - `MediumInterface "" "fog"`, not `"fog" ""` (Scene::
+# cameraMediumIndex captures gs_.outsideMedium specifically, pbrt_scene.h) -
+# a genuinely different mechanism from every other
+# bundled medium scene (cloud/rgbgrid/uniformgrid/cylinder-medium.pbrt),
+# which all attach MediumInterface to a SHAPE the camera looks at from
+# outside. Here there is no boundary shape at all - the fog is simply
+# everywhere the camera can see, applied as an explicit post-hit step in
+# camera.h rather than a BVH hittable (this codebase has no ray-carried
+# medium state). Real on CPU default path tracer and GPU-recursive;
+# GPU-wavefront support is deferred - render this scene with --cpu or
+# --gpu (recursive, the default) rather than --gpu --wavefront.
+#
+# A bright area light at the far end of an otherwise-plain room, seen
+# through ambient fog that thickens with distance - should render soft and
+# hazy overall (the whole frame desaturates/lightens with depth), not a
+# crisp render with an isolated foggy shape.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+MakeNamedMedium "fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0.015 0.015 0.015 ] "rgb sigma_s" [ 0.09 0.09 0.1 ]
+MediumInterface "" "fog"
+LookAt  0 1.5 9    0 1.5 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 360 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 5.5 -8
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 25 25 25 ]
+  Shape "sphere" "float radius" [ 1.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.55 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -6 0 -10   6 0 -10   6 0 4   -6 0 4 ]
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.75 0.2 0.2 ]
+  Translate -2 1 -3
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.2 0.3 0.75 ]
+  Translate 2 1 -6
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

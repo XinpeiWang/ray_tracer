@@ -247,19 +247,34 @@ bool OptiXRenderer::render(
 	params.numLights = numLights_;
 	params.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds_);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_aliasTable_);
-	// pbrt-v4 bounding-cone light BVH - now wired into the live launch. See
-	// gpu_light_bvh_sample_index()/gpu_light_bvh_pmf()'s own header comment
-	// (optix_device_helpers_lighting.h) for the full history: this used to
-	// be deliberately disabled (params.lightBvhNodeCount left at its
-	// zero-init default, so every device NEE call site fell back to the
-	// alias table) because of a real, then-unresolved illegal-memory-access
-	// crash. Real bounds guards in both traversal functions now make it
-	// safe to enable for real - if one of those guards ever fires on real
-	// hardware, that specific NEE decision falls back to zero light-BVH
-	// contribution rather than crashing.
+	// pbrt-v4 bounding-cone light BVH - DELIBERATELY DISABLED again
+	// (params.lightBvhNodeCount forced to 0, so every device NEE call site
+	// falls back to the alias table below, unconditionally). It was briefly
+	// enabled for real (commit 77acc16), on the theory that the bounds
+	// guards added to gpu_light_bvh_sample_index()/gpu_light_bvh_pmf()
+	// (optix_device_helpers_lighting.h - see that file's own header comment
+	// for the full history) made the earlier illegal-memory-access crash
+	// safe to re-enable. That theory was wrong: MaterialCpuGpuParityTest's
+	// own B22 case ("Named Material & Texture") started failing with
+	// GPU-recursive rendering ~24x too dark (CPU/GPU-wavefront agree with
+	// each other; GPU-recursive alone goes near-black) - confirmed via
+	// bisection that forcing lightBvhNodeCount to 0 here, and only that,
+	// makes the test pass again. Separately, pbrt_scenes/gpu-light-bvh-
+	// many-lights.pbrt (a scene authored specifically to exercise a real
+	// multi-level tree) reproduced the same near-black failure at 3
+	// different light counts (5, 7, 12), while device-side printf tracing
+	// showed gpu_light_bvh_sample_index()'s own guard taking its reject
+	// branch on operands that, printed at that exact point, do not satisfy
+	// the branch condition - not explainable by the guard logic itself.
+	// This is a real, unresolved GPU-recursive bug, not a false positive:
+	// leave disabled until someone can pin down the actual mechanism with
+	// proper tooling (Nsight Compute / compute-sanitizer racecheck, not
+	// printf) rather than re-enabling on a guess. The upload/build machinery
+	// in optix_renderer_scene.cpp is left in place (harmless, just unused)
+	// so re-enabling is a one-line change once the underlying bug is fixed.
 	params.lightBvhNodes = reinterpret_cast<LightBVHNode*>(d_lightBvhNodes_);
 	params.lightBvhBitTrail = reinterpret_cast<unsigned int*>(d_lightBvhBitTrail_);
-	params.lightBvhNodeCount = lightBvhNodeCount_;
+	params.lightBvhNodeCount = 0;
 	params.lightBvhAllBMinX = lightBvhAllBMinX_; params.lightBvhAllBMinY = lightBvhAllBMinY_; params.lightBvhAllBMinZ = lightBvhAllBMinZ_;
 	params.lightBvhAllBMaxX = lightBvhAllBMaxX_; params.lightBvhAllBMaxY = lightBvhAllBMaxY_; params.lightBvhAllBMaxZ = lightBvhAllBMaxZ_;
 

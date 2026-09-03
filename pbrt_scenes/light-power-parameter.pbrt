@@ -1,0 +1,70 @@
+# light-power-parameter.pbrt -- exercises the pbrt-v4 "float power" param on
+# LightSource "point"/"spot" and AreaLightSource "diffuse" (real total-flux
+# specification, inverted into an intensity/radiance scale - pbrt_flatten.h),
+# previously implemented but never exercised by any bundled scene (every
+# other scene specifies lights via "I"/"L"/"scale" directly).
+#
+#  - Left sphere: lit only by a point light given "float power" [100] (100
+#    watts total flux) instead of "rgb I" - default I=(1,1,1) direction, so
+#    the renderer must derive the actual intensity from power alone.
+#  - Middle sphere: lit only by a spot light, "float power" [60], narrow
+#    30-degree cone - same power-to-intensity inversion but through the
+#    cone-solid-angle formula instead of the point light's simple 4*pi.
+#  - Right sphere: lit only by a rectangular AreaLightSource "diffuse" given
+#    "float power" [40] instead of "rgb L" - inverted through emitter area
+#    and pi steradians (Lambertian emission).
+#
+# All three spheres are otherwise identical (same material, same distance
+# from their light) so a real bug in the power->intensity conversion for
+# any one light type would show up as a visibly mismatched brightness
+# between spheres, not just a uniformly-wrong scene.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  3 2 9    3 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 700 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -3 0 -3   9 0 -3   9 0 3   -3 0 3 ]
+
+AttributeBegin
+  Translate 0 3 1
+  LightSource "point" "float power" [ 100 ]
+AttributeEnd
+AttributeBegin
+  Translate 0 1 0
+  Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 3 3 1
+  Rotate 90 1 0 0
+  LightSource "spot" "float power" [ 60 ] "float coneangle" [ 30 ]
+AttributeEnd
+AttributeBegin
+  Translate 3 1 0
+  Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 6 3 1
+  Rotate 90 1 0 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "float power" [ 40 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -0.6 -0.6 0   0.6 -0.6 0   0.6 0.6 0   -0.6 0.6 0 ]
+AttributeEnd
+AttributeBegin
+  Translate 6 1 0
+  Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

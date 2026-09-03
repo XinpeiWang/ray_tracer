@@ -1,0 +1,52 @@
+# maxcomponentvalue-firefly-clamp.pbrt -- exercises Film "float
+# maxcomponentvalue" (camera.h's clamp_sensor_rgb(), gated on scene_registry
+# .h's cam.max_component_value), previously implemented but never exercised
+# by any bundled scene. CPU default path tracer only - no GPU equivalent
+# (warns if set to a non-default value on GPU, so render this with --cpu).
+#
+# A small, very bright area light seen only through a low-roughness
+# "conductor" floor's glossy reflection, at a deliberately low sample count
+# (16spp) - a classic firefly setup, since the light itself is a tiny solid
+# angle from most floor points, so occasional samples land a near-delta
+# glossy lobe directly on it and spike to a huge unclamped radiance.
+# "float maxcomponentvalue" [ 4 ] caps every per-sample RGB component before
+# accumulation, so this scene should render with mostly-suppressed
+# fireflies despite the low sample count, not the sharp, isolated bright
+# pixels an unclamped render at this sample count would show.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2.5 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 360 ]
+  "float maxcomponentvalue" [ 4 ]
+Sampler "halton" "integer pixelsamples" [ 16 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.1 0.1 0.12 ]
+
+Material "conductor" "spectrum eta" [ "metal-Ag-eta" ] "spectrum k" [ "metal-Ag-k" ] "float roughness" [ 0.04 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -6 0 -6   6 0 -6   6 0 6   -6 0 6 ]
+
+AttributeBegin
+  Translate 0 1.2 -3
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 400 400 400 ]
+  Shape "sphere" "float radius" [ 0.15 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.6 0.2 0.2 ]
+  Translate -2 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.2 0.5 0.6 ]
+  Translate 2 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

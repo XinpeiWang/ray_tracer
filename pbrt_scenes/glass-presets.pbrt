@@ -1,0 +1,76 @@
+# glass-presets.pbrt -- exercises Material "dielectric"'s named glass IOR
+# presets ("spectrum eta" "glass-<NAME>"), resolved via FindGlassPreset()
+# (src/shared/glass_data.h). Previously untested by any bundled scene - only
+# unit tests in pbrt_flatten_tests.cpp exercised the lookup, nothing
+# rendered. All 7 supported presets (BK7, BAF10, FK51A, LASF9, F5, F10, F11)
+# get their own sphere so the real per-preset dispersion/IOR differences are
+# at least indirectly visible (each preset is a fixed IOR at the render's
+# reference wavelength - true chromatic dispersion needs --spectral, see
+# the dispersion feature's own dedicated scenes for that).
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  5.4 1.6 8    5.4 0.6 0    0 1 0
+Camera "perspective" "float fov" [ 48 ]
+
+Film "rgb" "integer xresolution" [ 900 ] "integer yresolution" [ 340 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.5 0.5 0.55 ]
+
+AttributeBegin
+  Translate 5.4 1.6 8.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -6 -1 0   6 -1 0   6 1 0   -6 1 0 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -3 0 -4   13 0 -4   13 0 4   -3 0 4 ]
+
+AttributeBegin
+  Translate 0 0.7 0
+  Material "dielectric" "spectrum eta" "glass-BK7"
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 1.8 0.7 0
+  Material "dielectric" "spectrum eta" "glass-BAF10"
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 3.6 0.7 0
+  Material "dielectric" "spectrum eta" "glass-FK51A"
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 5.4 0.7 0
+  Material "dielectric" "spectrum eta" "glass-LASF9"
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 7.2 0.7 0
+  Material "dielectric" "spectrum eta" "glass-F5"
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 9.0 0.7 0
+  Material "dielectric" "spectrum eta" "glass-F10"
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 10.8 0.7 0
+  Material "dielectric" "spectrum eta" "glass-F11"
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
