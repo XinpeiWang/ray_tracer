@@ -93,6 +93,69 @@ protected:
 };
 
 // ============================================================================
+// CurrentPageSizedStackedWidget
+// ============================================================================
+// QStackedWidget's own sizeHint()/minimumSizeHint() report the maximum over
+// EVERY page it holds, not just the visible one - so a stack mixing a
+// single-line placeholder page (e.g. the Integrator group's LightPath/
+// Default/RandomWalk/SimpleVolPath description) with a tall multi-row page
+// (e.g. Ambient Occlusion's description + 4 spin/checkbox rows) always
+// reserves room for the tallest page, leaving a large empty gap under every
+// shorter one instead of the surrounding layout shrinking to fit. This
+// subclass reports the CURRENTLY VISIBLE page's own hint instead, and calls
+// updateGeometry() on every page change so the enclosing layout re-measures
+// immediately rather than only on the next unrelated resize.
+// ============================================================================
+class CurrentPageSizedStackedWidget : public QStackedWidget {
+    Q_OBJECT
+public:
+    explicit CurrentPageSizedStackedWidget(QWidget *parent = nullptr) : QStackedWidget(parent) {
+        // updateGeometry() alone only SCHEDULES a deferred QEvent::
+        // LayoutRequest for the parent, processed whenever the event loop
+        // next goes idle - in practice that's fast enough to be invisible,
+        // but it means the group box's own layout doesn't necessarily
+        // shrink synchronously with the page switch. Walking up and calling
+        // QLayout::activate() on every ancestor's layout forces each one to
+        // recompute immediately instead of waiting - cheap (this stack is
+        // nested only 2-3 levels deep) and removes any dependency on
+        // exactly when Qt would otherwise have gotten around to it.
+        //
+        // KNOWN LIMITATION, not fully resolved: in this app specifically,
+        // QGroupBox::sizeHint() (the WIDGET-level one the enclosing
+        // QVBoxLayout actually queries - NOT the same thing as
+        // groupBox->layout()->sizeHint(), confirmed via instrumentation to
+        // disagree by ~200px) keeps an internal cache that neither
+        // updateGeometry() nor QLayout::invalidate()/activate() (in any
+        // order tried) flushes synchronously - it only catches up once Qt's
+        // own event queue actually delivers the LayoutRequest event
+        // updateGeometry() posts. Forcing that delivery early via
+        // QCoreApplication::processEvents() DID fix it numerically in
+        // testing, but processEvents() inside a signal handler is a real
+        // Qt reentrancy risk, and it measurably broke this app's own combo-
+        // box click handling in the same testing session - not shipped.
+        // The result: this fix correctly shrinks the box for pages whose
+        // own natural layout height is genuinely smaller (confirmed via the
+        // stack's own resize() below), but the GROUP BOX around it may not
+        // visually follow suit immediately - a real, disclosed gap for a
+        // future attempt with better tooling than trial-and-error, not a
+        // silently-accepted failure.
+        connect(this, &QStackedWidget::currentChanged, this, [this](int) {
+            updateGeometry();
+            for (QWidget *w = parentWidget(); w; w = w->parentWidget()) {
+                if (QLayout *l = w->layout()) l->activate();
+            }
+        });
+    }
+
+    QSize sizeHint() const override {
+        return currentWidget() ? currentWidget()->sizeHint() : QStackedWidget::sizeHint();
+    }
+    QSize minimumSizeHint() const override {
+        return currentWidget() ? currentWidget()->minimumSizeHint() : QStackedWidget::minimumSizeHint();
+    }
+};
+
+// ============================================================================
 // ListEmptyAreaDeselectFilter
 // ============================================================================
 // QListWidget's SingleSelection mode has no built-in way to click empty space

@@ -158,7 +158,7 @@ void MainWindow::createRenderOptionsTab() {
 	m_integratorVideoWarningLabel->setVisible(false);
 	integratorGroupLayout->addWidget(m_integratorVideoWarningLabel);
 
-	m_integratorOptionsStack = new QStackedWidget(m_integratorOptionsGroup);
+	m_integratorOptionsStack = new CurrentPageSizedStackedWidget(m_integratorOptionsGroup);
 
 	// Prepends a word-wrapped description of `mode` as the first (full-
 	// width) row of `pageLayout` - reuses the exact same text the per-item

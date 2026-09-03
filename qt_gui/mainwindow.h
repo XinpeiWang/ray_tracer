@@ -550,7 +550,12 @@ private:
 	// RenderController::start()'s switch, so a stale value from a hidden
 	// page is never emitted.
 	QGroupBox *m_integratorOptionsGroup;
-	QStackedWidget *m_integratorOptionsStack;
+	// CurrentPageSizedStackedWidget, not a plain QStackedWidget - see that
+	// class's own comment (mainwindow_widgets.h): this group's shortest page
+	// (the shared placeholder) and tallest (Ambient Occlusion) differ by
+	// several form rows, and a plain QStackedWidget always reserves the
+	// tallest page's height even while showing the shortest one.
+	CurrentPageSizedStackedWidget *m_integratorOptionsStack;
 	QLabel *m_integratorNoOptionsLabel; // Placeholder page text, swapped per-mode
 	QSpinBox *m_sppmIterationsSpin;
 	QSpinBox *m_sppmPhotonsSpin;
