@@ -35,6 +35,9 @@ struct DllHandle {
 	StringByIdFn performanceFn = nullptr;
 	IntByIdFn recommendedSppFn = nullptr;
 	IntByIdFn requiresFilesFn = nullptr;
+	StringByIdFn recommendedIntegratorFn = nullptr;
+	StringByIdFn recommendedSamplerFn = nullptr;
+	StringByIdFn recommendedLightSamplerFn = nullptr;
 };
 
 #ifdef Q_OS_WIN
@@ -100,6 +103,12 @@ DllHandle& handle() {
 			lookupSymbol(h.module, "scene_metadata_recommended_spp"));
 		h.requiresFilesFn = reinterpret_cast<IntByIdFn>(
 			lookupSymbol(h.module, "scene_metadata_requires_files"));
+		h.recommendedIntegratorFn = reinterpret_cast<StringByIdFn>(
+			lookupSymbol(h.module, "scene_metadata_recommended_integrator"));
+		h.recommendedSamplerFn = reinterpret_cast<StringByIdFn>(
+			lookupSymbol(h.module, "scene_metadata_recommended_sampler"));
+		h.recommendedLightSamplerFn = reinterpret_cast<StringByIdFn>(
+			lookupSymbol(h.module, "scene_metadata_recommended_light_sampler"));
 
 		// Every export is required, including newer ones: a library missing
 		// any of them is a stale build sitting next to a newer exe, and
@@ -108,7 +117,8 @@ DllHandle& handle() {
 		// already handles.
 		if (!h.gpuCompatibleFn || !h.recommendedCameraFn || !h.countFn || !h.idAtIndexFn ||
 			!h.nameFn || !h.categoryFn || !h.descriptionFn || !h.performanceFn ||
-			!h.recommendedSppFn || !h.requiresFilesFn) {
+			!h.recommendedSppFn || !h.requiresFilesFn || !h.recommendedIntegratorFn ||
+			!h.recommendedSamplerFn || !h.recommendedLightSamplerFn) {
 			closeLibrary(h.module);
 			h = DllHandle{};
 		}
@@ -176,6 +186,21 @@ int sceneRecommendedSpp(const QString& scene_id) {
 bool sceneRequiresFiles(const QString& scene_id) {
 	if (!ensureLoaded()) return false;
 	return handle().requiresFilesFn(scene_id.toUtf8().constData()) != 0;
+}
+
+QString sceneRecommendedIntegrator(const QString& scene_id) {
+	if (!ensureLoaded()) return QString();
+	return QString::fromUtf8(handle().recommendedIntegratorFn(scene_id.toUtf8().constData()));
+}
+
+QString sceneRecommendedSampler(const QString& scene_id) {
+	if (!ensureLoaded()) return QString();
+	return QString::fromUtf8(handle().recommendedSamplerFn(scene_id.toUtf8().constData()));
+}
+
+QString sceneRecommendedLightSampler(const QString& scene_id) {
+	if (!ensureLoaded()) return QString();
+	return QString::fromUtf8(handle().recommendedLightSamplerFn(scene_id.toUtf8().constData()));
 }
 
 } // namespace SceneMetadataClient

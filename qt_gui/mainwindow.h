@@ -361,6 +361,19 @@ private:
 	// Rewrites m_sceneTechInfoIcon's tooltip for `sceneId` (see
 	// scene_technique_notes.h) - called from refreshSceneInfoLabel().
 	void updateSceneTechInfoIcon(const QString &sceneId);
+	// Shows/hides m_sceneRecommendedSettingsHint for `sceneId` - visible iff
+	// the loaded scene's own recommended Sampler/Integrator/light-sampler
+	// (SceneMetadataClient::sceneRecommended*(), sourced from
+	// SceneDescriptor::recommended_* in scene_registry.h) differs from what
+	// m_samplerCombo/m_integratorCombo/m_lightSamplerCombo currently have
+	// selected. Mirrors cpu_render_main()'s own mismatch check
+	// (cpu_interface.cpp) exactly - same "only when the default/no-flag
+	// value is in effect" scope, same "volpath"/"sobol"/"bvh" skip values -
+	// so the GUI never claims a mismatch the CLI itself wouldn't warn about.
+	// Called from onSceneChanged() AND from each of those three combos' own
+	// change handlers, so switching Sampler/Integrator/Light Sampler after
+	// picking the scene updates the hint live instead of leaving it stale.
+	void updateSceneRecommendedSettingsHint(const QString &sceneId);
 	// Plain-text description of `mode` - used by createBasicTab()'s
 	// per-item combo tooltips (each Integrator dropdown row's own "(i)").
 	QString integratorDescription(IntegratorMode mode);
@@ -694,6 +707,10 @@ private:
 	// one's tooltip is rewritten per selection by refreshSceneInfoLabel() -
 	// see scene_technique_notes.h for the per-scene content it reads from.
 	QToolButton *m_sceneTechInfoIcon = nullptr;
+	// Hidden unless the current scene's own recommended Sampler/Integrator/
+	// light-sampler differs from the Render Options tab's current
+	// selection - see updateSceneRecommendedSettingsHint()'s own comment.
+	QLabel *m_sceneRecommendedSettingsHint = nullptr;
 
 	// Rebuilds m_sceneInfoLabel's text (description/performance/SPP/GPU-
 	// support, plus the requires-files/CPU-only warning badges) for

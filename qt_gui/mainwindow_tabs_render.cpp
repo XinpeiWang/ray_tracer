@@ -414,6 +414,9 @@ void MainWindow::createRenderOptionsTab() {
 		"tracer - switch Renderer to CPU on the Basic Settings tab to "
 		"use it.")),
 		m_samplerCombo);
+	connect(m_samplerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+		if (m_sceneCombo) updateSceneRecommendedSettingsHint(m_sceneCombo->currentData().toString());
+	});
 
 	// Same "(i)" mark + per-row tooltip pattern as m_samplerCombo just
 	// above - see that combo's construction comment.
@@ -467,6 +470,9 @@ void MainWindow::createRenderOptionsTab() {
 		"default path tracer - switch Renderer to CPU on the Basic "
 		"Settings tab to use it.")),
 		m_lightSamplerCombo);
+	connect(m_lightSamplerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+		if (m_sceneCombo) updateSceneRecommendedSettingsHint(m_sceneCombo->currentData().toString());
+	});
 
 	m_spectralCheck = new QCheckBox(tr("Spectral rendering (--spectral)"), optionsTab);
 	m_spectralCheck->setToolTip(

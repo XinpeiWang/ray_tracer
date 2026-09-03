@@ -763,6 +763,58 @@ void MainWindow::refreshSceneInfoLabel() {
 	m_sceneInfoLabel->setText(infoText);
 }
 
+// Mirrors cpu_render_main()'s own recommended-settings mismatch check
+// (cpu_interface.cpp) - same skip values ("volpath"/"sobol"/"bvh", each
+// integrator/sampler/light-sampler's own real default) and the same "only
+// when the default/no-flag value is actually in effect" scope (a recommendation
+// the user already matched, or already overrode with a DIFFERENT explicit
+// choice, is not a mismatch either way - same as the CLI only warning when
+// no --sampler/--lightsampler was passed at all, and only when running the
+// plain default path tracer for the integrator check), so this never claims
+// a mismatch the CLI itself wouldn't warn about. Purely informational - like
+// the CLI's own warning, this never changes the user's current selection.
+void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId) {
+	if (!m_sceneRecommendedSettingsHint) return;
+	if (sceneId.isEmpty() || !m_integratorCombo || !m_samplerCombo || !m_lightSamplerCombo) {
+		m_sceneRecommendedSettingsHint->setVisible(false);
+		return;
+	}
+
+	QStringList mismatches;
+
+	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
+	if (integrator == IntegratorMode::Default) {
+		const QString recommended = SceneMetadataClient::sceneRecommendedIntegrator(sceneId);
+		if (!recommended.isEmpty() && recommended != QLatin1String("volpath"))
+			mismatches << tr("Integrator \"%1\"").arg(recommended);
+	}
+
+	if (m_samplerCombo->currentData().toString().isEmpty()) {
+		const QString recommended = SceneMetadataClient::sceneRecommendedSampler(sceneId);
+		if (!recommended.isEmpty() && recommended != QLatin1String("sobol"))
+			mismatches << tr("Sampler \"%1\"").arg(recommended);
+	}
+
+	if (m_lightSamplerCombo->currentData().toString().isEmpty()) {
+		const QString recommended = SceneMetadataClient::sceneRecommendedLightSampler(sceneId);
+		if (!recommended.isEmpty() && recommended != QLatin1String("bvh"))
+			mismatches << tr("Light Sampler \"%1\"").arg(recommended);
+	}
+
+	if (mismatches.isEmpty()) {
+		m_sceneRecommendedSettingsHint->setVisible(false);
+		return;
+	}
+
+	m_sceneRecommendedSettingsHint->setText(
+		tr("⚠ This scene's file recommends %1, but the Render Options tab "
+		   "is currently set to the default(s) instead - not applied "
+		   "automatically, change it there if you want to match the scene's "
+		   "own settings.")
+			.arg(mismatches.join(tr(", "))));
+	m_sceneRecommendedSettingsHint->setVisible(true);
+}
+
 void MainWindow::onSceneChanged(int index) {
 	if (index < 0) {
 		// The only realistic way to reach this once scenes have loaded is
@@ -823,6 +875,7 @@ void MainWindow::onSceneChanged(int index) {
 	int recommendedSpp = SceneMetadataClient::sceneRecommendedSpp(scene_id);
 
 	refreshSceneInfoLabel();
+	updateSceneRecommendedSettingsHint(scene_id);
 	// Same description text, shown in the Preview tab's sidebar too - see
 	// createPreviewTab()'s own comment on why this is kept in sync here
 	// rather than only refreshed on render completion.
@@ -1411,6 +1464,8 @@ void MainWindow::onIntegratorChanged(int) {
 
 	refreshStatusBarInfo();
 	onLogMessage(tr("Integrator changed to: %1").arg(m_integratorCombo->currentText()));
+
+	if (m_sceneCombo) updateSceneRecommendedSettingsHint(m_sceneCombo->currentData().toString());
 }
 
 void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const RenderJob &job) {

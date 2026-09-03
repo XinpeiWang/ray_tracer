@@ -505,6 +505,19 @@ void MainWindow::createBasicTab() {
 		sceneGroupLayout->addWidget(techRow);
 	}
 
+	// Non-blocking heads-up when a loaded .pbrt scene's own Sampler/
+	// Integrator/light-sampler directive differs from what's currently
+	// selected on the Render Options tab - see updateSceneRecommendedSettingsHint()'s
+	// own comment (mainwindow_slots.cpp) for the exact mismatch logic, kept
+	// in lockstep with cpu_render_main()'s own (console-only) warning.
+	// Same objectName/wordWrap/hidden-by-default shape as
+	// m_integratorVideoWarningLabelBasic just above.
+	m_sceneRecommendedSettingsHint = new QLabel(basicTab);
+	m_sceneRecommendedSettingsHint->setObjectName("statusWarning");
+	m_sceneRecommendedSettingsHint->setWordWrap(true);
+	m_sceneRecommendedSettingsHint->setVisible(false);
+	sceneGroupLayout->addWidget(m_sceneRecommendedSettingsHint);
+
 	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onSceneChanged);
 

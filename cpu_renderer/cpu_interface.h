@@ -496,6 +496,17 @@ int cpu_scene_legacy_id_by_id(const char* scene_id);
 const char* cpu_scene_performance_by_id(const char* scene_id);
 int cpu_scene_recommended_spp_by_id(const char* scene_id);
 int cpu_scene_requires_files_by_id(const char* scene_id);
+/// For a scene loaded from a .pbrt file that itself declares a Sampler/
+/// Integrator/light sampler directive (SceneDescriptor::recommended_*,
+/// see scene_registry.h) - "" for every hand-built scene, and for a
+/// loaded scene whose file doesn't declare that particular directive.
+/// NOT auto-applied anywhere - cpu_render_main() only warns to stderr
+/// when the actual render settings differ (cpu_interface.cpp's own
+/// comment on that warning block); this lets the GUI show the same
+/// mismatch as a visible hint instead of a buried console line.
+const char* cpu_scene_recommended_integrator_by_id(const char* scene_id);
+const char* cpu_scene_recommended_sampler_by_id(const char* scene_id);
+const char* cpu_scene_recommended_light_sampler_by_id(const char* scene_id);
 
 #ifdef __cplusplus
 }

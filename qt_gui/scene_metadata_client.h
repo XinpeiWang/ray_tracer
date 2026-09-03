@@ -82,6 +82,17 @@ int sceneRecommendedSpp(const QString& scene_id);
 // rather than surfacing a spurious warning.
 bool sceneRequiresFiles(const QString& scene_id);
 
+// scene_id's recommended Sampler/Integrator/light sampler, as raw pbrt
+// directive strings (e.g. "halton", "bdpt", "power") directly comparable
+// to m_samplerCombo/m_integratorCombo/m_lightSamplerCombo's own
+// currentData() values - or "" if not loaded/found/the scene's file
+// doesn't declare that directive (every hand-built scene always returns
+// ""). Not auto-applied anywhere; see cpu_interface.cpp's own comment on
+// why the CLI only warns rather than switching settings for the user.
+QString sceneRecommendedIntegrator(const QString& scene_id);
+QString sceneRecommendedSampler(const QString& scene_id);
+QString sceneRecommendedLightSampler(const QString& scene_id);
+
 } // namespace SceneMetadataClient
 
 #endif // SCENE_METADATA_CLIENT_H

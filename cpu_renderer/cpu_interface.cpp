@@ -911,3 +911,18 @@ extern "C" int cpu_scene_requires_files_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return (s && s->requires_files) ? 1 : 0;
 }
+
+extern "C" const char* cpu_scene_recommended_integrator_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->recommended_integrator.c_str() : "";
+}
+
+extern "C" const char* cpu_scene_recommended_sampler_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->recommended_sampler.c_str() : "";
+}
+
+extern "C" const char* cpu_scene_recommended_light_sampler_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->recommended_light_sampler.c_str() : "";
+}

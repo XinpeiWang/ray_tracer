@@ -82,3 +82,15 @@ SCENE_METADATA_API int scene_metadata_recommended_spp(const char* scene_id) {
 SCENE_METADATA_API int scene_metadata_requires_files(const char* scene_id) {
 	return cpu_scene_requires_files_by_id(scene_id);
 }
+
+SCENE_METADATA_API const char* scene_metadata_recommended_integrator(const char* scene_id) {
+	return cpu_scene_recommended_integrator_by_id(scene_id);
+}
+
+SCENE_METADATA_API const char* scene_metadata_recommended_sampler(const char* scene_id) {
+	return cpu_scene_recommended_sampler_by_id(scene_id);
+}
+
+SCENE_METADATA_API const char* scene_metadata_recommended_light_sampler(const char* scene_id) {
+	return cpu_scene_recommended_light_sampler_by_id(scene_id);
+}
