@@ -150,6 +150,10 @@ namespace SceneNames {
     constexpr const char* HairMaterialPbrtExample             = "Hair Material (pbrt example)";
     constexpr const char* NestedCheckerTexturePbrtExample     = "Nested Checker Texture (pbrt example)";
     constexpr const char* NamedMaterialAndTexturePbrtExample  = "Named Material & Texture (pbrt example)";
+    constexpr const char* GlassPresetsPbrtExample              = "Glass Presets (pbrt example)";
+    constexpr const char* TextureEncodingWrapInvertPbrtExample = "Texture Encoding & Wrap (pbrt example)";
+    constexpr const char* ProceduralTextureGalleryPbrtExample  = "Procedural Texture Gallery (pbrt example)";
+    constexpr const char* NestedTexture2LevelPbrtExample       = "Nested Texture: 2 Levels (pbrt example)";
 
     constexpr const char* PunctualLightsPbrtExample           = "Punctual Lights (pbrt example)";
     constexpr const char* GoniometricProjectionPbrtExample    = "Goniometric & Projection Lights (pbrt example)";
@@ -160,6 +164,10 @@ namespace SceneNames {
     constexpr const char* DiskCylinderLightPbrtExample        = "Disk & Cylinder Lights (pbrt example)";
     constexpr const char* TwoSphereLightsPbrtExample          = "Two Sphere Lights (pbrt example)";
     constexpr const char* TriangleFanLightPbrtExample         = "Triangle Fan Light (pbrt example)";
+    constexpr const char* PortalLightPbrtExample               = "Portal Light (pbrt example)";
+    constexpr const char* LightPowerParameterPbrtExample       = "Light Power Parameter (pbrt example)";
+    constexpr const char* ProjectionLightNonSquarePbrtExample  = "Projection Light: Non-Square (pbrt example)";
+    constexpr const char* SpectralGamutSaturationPbrtExample   = "Spectral Gamut Saturation (pbrt example)";
 
     constexpr const char* DepthOfFieldPbrtExample             = "Depth of Field (pbrt example)";
     constexpr const char* OrthographicCameraPbrtExample       = "Orthographic Camera (pbrt example)";
@@ -171,6 +179,7 @@ namespace SceneNames {
     constexpr const char* RgbGridMediumPbrtExample            = "RGB Grid Medium (pbrt example)";
     constexpr const char* UniformGridMediumPbrtExample        = "Uniform Grid Medium (pbrt example)";
     constexpr const char* NanoVdbMediumPbrtExample             = "NanoVDB Medium (pbrt example)";
+    constexpr const char* CameraMediumPbrtExample              = "Camera Medium (pbrt example)";
 
     constexpr const char* PlymeshUvPbrtExample                = "PLY Mesh UV (pbrt example)";
     constexpr const char* PlymeshGeometryPbrtExample          = "PLY Mesh Geometry (pbrt example)";
@@ -178,6 +187,10 @@ namespace SceneNames {
     constexpr const char* CurveHairTuftPbrtExample            = "Curve + Hair Tuft (pbrt example)";
     constexpr const char* TrianglemeshUvPbrtExample           = "Triangle Mesh UV (pbrt example)";
     constexpr const char* PixelFilterBoxPbrtExample           = "Pixel Filter: Box (pbrt example)";
+    constexpr const char* ObjectMotionBlurPbrtExample         = "Object Motion Blur (pbrt example)";
+    constexpr const char* DiskCylinderMotionBlurPbrtExample   = "Disk & Cylinder Motion Blur (pbrt example)";
+    constexpr const char* ReverseOrientationPbrtExample       = "ReverseOrientation (pbrt example)";
+    constexpr const char* ConeParaboloidGalleryPbrtExample    = "Cone & Paraboloid Gallery (pbrt example)";
 
     constexpr const char* KillerooSimplePbrtExample           = "Killeroo (pbrt example)";
 

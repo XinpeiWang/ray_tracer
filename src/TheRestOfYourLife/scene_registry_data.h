@@ -1353,6 +1353,22 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B22", 107, SceneNames::NamedMaterialAndTexturePbrtExample, SceneCategories::Materials,
             "pbrt's NamedMaterial referenced directly for a shape (not just as a \"mix\" sub-material), plus a texture-bound material parameter and AreaLightSource's twosided flag.",
             "Fast", "named-material-and-texture.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B25", 146, SceneNames::GlassPresetsPbrtExample, SceneCategories::Materials,
+            "All seven of Material \"dielectric\"'s named glass IOR presets (BK7, BAF10, FK51A, LASF9, F5, F10, F11) as separate spheres, resolved via FindGlassPreset() -- previously exercised only by unit tests, never rendered.",
+            "Fast", "glass-presets.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B26", 147, SceneNames::TextureEncodingWrapInvertPbrtExample, SceneCategories::Materials,
+            "Four quads isolating Texture \"imagemap\"'s \"encoding\"/\"wrap\"/\"invert\" params one at a time -- linear vs. sRGB decode, clamp vs. repeat past [0,1], and inverted channel values, none reachable via any other bundled scene's defaults.",
+            "Fast", "texture-encoding-wrap-invert.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B27", 148, SceneNames::ProceduralTextureGalleryPbrtExample, SceneCategories::Materials,
+            "Four pbrt-v4 procedural texture classes wired into the CPU builder but never used by any other bundled scene: windy turbulence, wrinkled (Perlin-octave) turbulence, dots, and bilerp corner-blend.",
+            "Fast", "procedural-textures-windy-wrinkled-dots-bilerp.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B28", 149, SceneNames::NestedTexture2LevelPbrtExample, SceneCategories::Materials,
+            "A second level of checkerboard-texture nesting (checker of a checker of a real image) -- real on CPU, GPU intentionally approximates the whole nested tree as one flat average colour and warns; compare both to see the documented divergence.",
+            "Fast", "nested-texture-2level.pbrt"),
 
         // -- Lights --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
@@ -1391,6 +1407,22 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "C16", 137, SceneNames::ColorSpaceBlackbodyPbrtExample, SceneCategories::Lights,
             "Identical to the Blackbody Light example except for one added \"ColorSpace rec2020\" directive -- the same 2500K/9000K temperatures resolve to visibly different RGB under Rec.2020's wider primaries than the sRGB default.",
             "Fast", "colorspace-blackbody.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C17", 142, SceneNames::PortalLightPbrtExample, SceneCategories::Lights,
+            "The real pbrt-v4 PortalImageInfiniteLight -- an equal-area environment map restricted to a single window quad, so only that opening shows real sky detail. The native \"Portal Infinite Light\" scene (C7) only cuts a geometric hole in a wall behind a flat sky_light; this is the class it doesn't actually build.",
+            "Fast", "portal-light.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C18", 143, SceneNames::LightPowerParameterPbrtExample, SceneCategories::Lights,
+            "pbrt-v4's \"float power\" parameter on point, spot, and area lights -- three otherwise-identical spheres, each lit only by one light type specifying total flux instead of intensity/radiance directly, so a wrong power-to-intensity conversion shows up as a visibly mismatched brightness.",
+            "Fast", "light-power-parameter.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C19", 144, SceneNames::ProjectionLightNonSquarePbrtExample, SceneCategories::Lights,
+            "LightSource \"projection\" with a non-square (8x4) slide image, the first bundled scene to exercise a real aspect-ratio mismatch between the image and the light's own field of view -- a correct render shows a clearly wide rectangular footprint, not a squished or stretched one.",
+            "Fast", "projection-light-nonsquare.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C20", 145, SceneNames::SpectralGamutSaturationPbrtExample, SceneCategories::Lights,
+            "Three saturated, close-range colored lights on a plain diffuse surface under --spectral rendering, chosen so their overlap sits right at the sRGB gamut boundary -- exactly the condition a per-sample XYZ->RGB gamut-clamp bug used to darken and desaturate incorrectly.",
+            "Fast", "spectral-gamut-saturation.pbrt"),
 
         // -- Cameras --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
@@ -1431,6 +1463,10 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "E9", 141, SceneNames::NanoVdbMediumPbrtExample, SceneCategories::Volumes,
             "pbrt's MakeNamedMedium \"nanovdb\" (a real NanoVDB-format sparse density grid read from an external .nvdb file) rendering as a soft fog-volume sphere - CPU only, GPU falls back to flat homogeneous fog.",
             "Fast", "nanovdb-medium.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E10", 154, SceneNames::CameraMediumPbrtExample, SceneCategories::Volumes,
+            "pbrt-v4's camera-medium idiom -- a MediumInterface issued before the Camera directive puts the camera itself inside a fog with no boundary shape at all, unlike every other bundled medium scene. Real on CPU and GPU-recursive; GPU-wavefront support is deferred.",
+            "Fast", "camera-medium.pbrt"),
 
         // -- Geometry --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
@@ -1457,6 +1493,22 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "F10", 129, SceneNames::PixelFilterBoxPbrtExample, SceneCategories::Geometry,
             "pbrt's PixelFilter directive end-to-end on both backends -- a box filter's harder, more aliased silhouette edges compared to the default Gaussian.",
             "Fast", "pixel-filter-box.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F11", 150, SceneNames::ObjectMotionBlurPbrtExample, SceneCategories::Geometry,
+            "Shape \"sphere\" object motion blur via ActiveTransform StartTime/EndTime -- a moving sphere renders as a soft directional streak instead of a crisp or doubled sphere, real on all three backends (CPU, GPU-recursive, GPU-wavefront).",
+            "Fast", "object-motion-blur.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F12", 151, SceneNames::DiskCylinderMotionBlurPbrtExample, SceneCategories::Geometry,
+            "Shape \"disk\"/\"cylinder\" object motion blur via ActiveTransform -- CPU only, both GPU backends render these shapes frozen at their start pose and warn instead of blurring.",
+            "Fast", "disk-cylinder-motion-blur.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F13", 152, SceneNames::ReverseOrientationPbrtExample, SceneCategories::Geometry,
+            "The bare ReverseOrientation directive on two identical-winding quads -- one stays dark (normal facing away from the camera), the other is flipped visible by ReverseOrientation, so a mistake shows up as both quads dark or both lit.",
+            "Fast", "reverseorientation.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F14", 153, SceneNames::ConeParaboloidGalleryPbrtExample, SceneCategories::Geometry,
+            "Shape \"cone\"/\"paraboloid\" (this project's own pbrt-v3-compatibility extension) as plain diffuse shapes, an area-light emitter, and a medium boundary in one gallery -- CPU only, GPU drops cone/paraboloid shapes entirely.",
+            "Fast", "cone-paraboloid-gallery.pbrt"),
 
         // -- Models --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(

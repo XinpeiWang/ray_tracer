@@ -85,7 +85,11 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// 122 -> 123: E9 added, pbrt's MakeNamedMedium "nanovdb" (a real
 	// NanoVDB-format sparse density grid read from an external .nvdb file)
 	// under Volumes - CPU only, see scene_registry.h's E9 entry.
-	EXPECT_EQ(builtin_scene_count(), 123);
+	//
+	// 123 -> 136: 13 curated pbrt-example entries added (B25-B28, C17-C20,
+	// E10, F11-F14) for self-contained pbrt_scenes/*.pbrt files that were
+	// previously only discoverable via the generic Custom Scenes tab.
+	EXPECT_EQ(builtin_scene_count(), 136);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -614,7 +618,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 123;
+	constexpr int kGuiSceneCount = 136;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
