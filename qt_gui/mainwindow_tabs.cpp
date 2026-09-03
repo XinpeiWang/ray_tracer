@@ -353,6 +353,12 @@ void MainWindow::createBasicTab() {
 	m_sceneSearchBox->setPlaceholderText(tr("Search scenes by name or id..."));
 	m_sceneSearchBox->setClearButtonEnabled(true);
 	searchRow->addWidget(m_sceneSearchBox, 1);
+	searchRow->addWidget(createInfoIcon(
+		tr("Narrows the scene list/grid below by substring match against "
+		"each scene's name, id, or description - on top of, not instead "
+		"of, the availability and category tabs above.\n\n"
+		"Clear it (the small \"x\" inside the field) to see every scene "
+		"in the current category again.")));
 
 	m_sceneViewToggle = new QToolButton(basicTab);
 	m_sceneViewToggle->setCheckable(true);
@@ -522,7 +528,18 @@ void MainWindow::createBasicTab() {
 	styleComboBox(m_modeCombo);
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onModeChanged);
-	renderLayout->addRow(tr("Output Mode:"), m_modeCombo);
+	renderLayout->addRow(labelWithInfo(tr("Output Mode:"),
+		tr("Whether this render produces a single still frame, or a "
+		"sequence of frames stitched into a video.\n\n"
+		"Single Image renders the scene once, from the camera set on "
+		"this tab (or Advanced Settings). Generate Video instead moves "
+		"the camera along a path (Video Settings, on the Render Options "
+		"tab) and renders one frame per step, then assembles them into "
+		"an MP4 - taking roughly Frame Count times as long as a single "
+		"image.\n\nGenerate Video cannot be combined with an alternate "
+		"Integrator - see the warning below if that combination is "
+		"picked.")),
+		m_modeCombo);
 
 	// See m_integratorVideoWarningLabelBasic's own comment (mainwindow.h) -
 	// a second copy of the Render Options tab's warning, here next to the
@@ -542,8 +559,19 @@ void MainWindow::createBasicTab() {
 	m_renderModeCombo = new QComboBox(basicTab);
 #ifdef RT_GUI_HAVE_GPU
 	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (CUDA) - Fast"), true, m_activeTheme.textBody);
+	m_renderModeCombo->setItemData(m_renderModeCombo->count() - 1, wrapTooltipHtml(
+		tr("NVIDIA OptiX hardware ray tracing. Typically orders of "
+		"magnitude faster than CPU, but needs a CUDA-capable NVIDIA GPU "
+		"and doesn't yet implement every material the CPU path does.")),
+		Qt::ToolTipRole);
 #endif
 	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", tr("CPU - High Quality"), false, m_activeTheme.textBody);
+	m_renderModeCombo->setItemData(m_renderModeCombo->count() - 1, wrapTooltipHtml(
+		tr("The full importance-sampled path tracer. Runs on any machine "
+		"and supports every scene and material this app implements, "
+		"including the handful the GPU backend hasn't caught up to yet - "
+		"at the cost of being much slower.")),
+		Qt::ToolTipRole);
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
@@ -573,7 +601,18 @@ void MainWindow::createBasicTab() {
 #ifdef RT_GUI_HAVE_GPU
 	m_gpuBackendCombo = new QComboBox(basicTab);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Recursive (Default)"), false, m_activeTheme.textBody);
+	m_gpuBackendCombo->setItemData(m_gpuBackendCombo->count() - 1, wrapTooltipHtml(
+		tr("One thread per pixel, tracing each ray recursively bounce by "
+		"bounce. The default GPU path tracer - broad, battle-tested "
+		"coverage of scenes and materials.")),
+		Qt::ToolTipRole);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Wavefront (Experimental)"), true, m_activeTheme.textBody);
+	m_gpuBackendCombo->setItemData(m_gpuBackendCombo->count() - 1, wrapTooltipHtml(
+		tr("Splits each bounce into separate queue-passed kernel launches, "
+		"batching rays doing the same kind of work together. Better GPU "
+		"utilization on complex, divergent scenes - but a newer, less "
+		"exercised code path.")),
+		Qt::ToolTipRole);
 	m_gpuBackendCombo->setCurrentIndex(0);
 	styleComboBox(m_gpuBackendCombo);
 	m_gpuBackendCombo->setToolTip(

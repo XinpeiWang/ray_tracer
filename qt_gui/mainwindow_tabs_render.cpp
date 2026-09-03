@@ -348,13 +348,50 @@ void MainWindow::createRenderOptionsTab() {
 	samplingLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_samplerCombo = new QComboBox(optionsTab);
-	m_samplerCombo->addItem(tr("Sobol (default)"), QString());
-	m_samplerCombo->addItem(tr("Z-Sobol"), QStringLiteral("zsobol"));
-	m_samplerCombo->addItem(tr("Padded Sobol"), QStringLiteral("paddedsobol"));
-	m_samplerCombo->addItem(tr("Stratified"), QStringLiteral("stratified"));
-	m_samplerCombo->addItem(tr("PMJ02BN"), QStringLiteral("pmj02bn"));
-	m_samplerCombo->addItem(tr("Halton"), QStringLiteral("halton"));
-	m_samplerCombo->addItem(tr("Independent (no stratification)"), QStringLiteral("independent"));
+	// Same "(i)" mark + per-row tooltip as m_integratorCombo's own items -
+	// see that combo's construction comment for why icon_tint::addItem()
+	// (not a plain addItem()) plus setItemData(Qt::ToolTipRole).
+	{
+		struct SamplerEntry { QString label; QString value; QString tooltip; };
+		const SamplerEntry entries[] = {
+			{tr("Sobol (default)"), QString(), tr(
+				"A low-discrepancy sequence based on Sobol sequences, "
+				"scrambled per pixel. The best general-purpose default - "
+				"fast convergence with no visible structure.")},
+			{tr("Z-Sobol"), QStringLiteral("zsobol"), tr(
+				"A variant of Sobol reordered along a Morton (Z-order) "
+				"curve. Converges at least as well as plain Sobol, with "
+				"better behavior under adaptive/progressive sampling.")},
+			{tr("Padded Sobol"), QStringLiteral("paddedsobol"), tr(
+				"Sobol sequence with extra padding dimensions, avoiding "
+				"correlation artifacts when a pixel needs more random "
+				"dimensions than base Sobol comfortably covers (e.g. "
+				"paths with many bounces).")},
+			{tr("Stratified"), QStringLiteral("stratified"), tr(
+				"Splits each pixel into a grid of sub-cells and takes one "
+				"sample per cell. Simple, predictable coverage - less "
+				"sophisticated than Sobol/Halton, but useful as a "
+				"reference/comparison sampler.")},
+			{tr("PMJ02BN"), QStringLiteral("pmj02bn"), tr(
+				"Progressive multi-jittered (0,2) sequence with blue-noise "
+				"ordering. Especially even spatial (blue-noise) "
+				"distribution of samples across neighboring pixels.")},
+			{tr("Halton"), QStringLiteral("halton"), tr(
+				"A classic low-discrepancy sequence built from a "
+				"different prime base per dimension. Well-tested, avoids "
+				"the axis-aligned clustering plain stratified sampling "
+				"can show.")},
+			{tr("Independent (no stratification)"), QStringLiteral("independent"), tr(
+				"Plain uncorrelated pseudo-random numbers, no low-"
+				"discrepancy structure at all. Included for fidelity to a "
+				"loaded .pbrt scene's own Sampler directive, not a "
+				"recommended choice for its own sake.")},
+		};
+		for (const SamplerEntry &entry : entries) {
+			icon_tint::addItem(m_samplerCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
+			m_samplerCombo->setItemData(m_samplerCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
+		}
+	}
 	m_samplerCombo->setToolTip(
 		tr("Which sampler drives random decisions (all but Independent are\n"
 		"low-discrepancy). CPU default path tracer only - no effect on GPU\n"

@@ -8,44 +8,44 @@
         <translation type="vanished">语言已设置为 %1 - 重启后生效。</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="104"/>
+        <location filename="../language_switch.cpp" line="106"/>
         <source>stop the current render</source>
         <translation>停止当前渲染</translation>
     </message>
     <message numerus="yes">
-        <location filename="../language_switch.cpp" line="106"/>
+        <location filename="../language_switch.cpp" line="108"/>
         <source>discard %n queued job(s)</source>
         <translation>
             <numerusform>丢弃 %n 个排队中的渲染任务</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="107"/>
+        <location filename="../language_switch.cpp" line="109"/>
         <source>Switch Language</source>
         <translation>切换语言</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="108"/>
+        <location filename="../language_switch.cpp" line="110"/>
         <source>Switching languages restarts the app now, which will %1. Continue?</source>
         <translation>切换语言将立即重启应用程序，这将%1。是否继续？</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="109"/>
+        <location filename="../language_switch.cpp" line="111"/>
         <source> and </source>
         <translation>并</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="124"/>
+        <location filename="../language_switch.cpp" line="126"/>
         <source>Language set to %1 - restarting...</source>
         <translation>语言已设置为 %1 - 正在重启...</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="140"/>
+        <location filename="../language_switch.cpp" line="142"/>
         <source>Could not restart automatically - please close and reopen the app to finish switching languages.</source>
         <translation>无法自动重启 - 请关闭并重新打开应用程序以完成语言切换。</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="152"/>
+        <location filename="../language_switch.cpp" line="154"/>
         <source>&amp;Language</source>
         <translation>语言(&amp;L)</translation>
     </message>
@@ -110,7 +110,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="74"/>
-        <location filename="../mainwindow_tabs.cpp" line="1609"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="713"/>
         <source>Open Output &amp;Folder</source>
         <translation>打开输出文件夹(&amp;F)</translation>
     </message>
@@ -121,7 +121,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="84"/>
-        <location filename="../mainwindow_tabs.cpp" line="1621"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="725"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>用默认查看器打开(&amp;V)</translation>
     </message>
@@ -142,7 +142,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="99"/>
-        <location filename="../mainwindow_tabs.cpp" line="1994"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="153"/>
         <source>&amp;Save Log…</source>
         <translation>保存日志(&amp;S)…</translation>
     </message>
@@ -153,7 +153,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="110"/>
-        <location filename="../mainwindow_tabs.cpp" line="1999"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="158"/>
         <source>C&amp;lear Log</source>
         <translation>清空日志(&amp;L)</translation>
     </message>
@@ -580,7 +580,7 @@
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1355"/>
-        <location filename="../mainwindow_tabs.cpp" line="1905"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="64"/>
         <source>Ready to render</source>
         <translation>已就绪，可开始渲染</translation>
     </message>
@@ -722,23 +722,23 @@ The render may have failed to create output.</source>
         <translation>正在内嵌播放视频：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="272"/>
-        <location filename="../mainwindow_tabs.cpp" line="276"/>
+        <location filename="../mainwindow_tabs.cpp" line="278"/>
+        <location filename="../mainwindow_tabs.cpp" line="282"/>
         <source>Scene Metadata Unavailable</source>
         <translation>场景元数据不可用</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="273"/>
+        <location filename="../mainwindow_tabs.cpp" line="279"/>
         <source>Could not load scene_metadata.dll, so the scene list is empty. Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.</source>
         <translation>无法加载 scene_metadata.dll，因此场景列表为空。请确保 scene_metadata.dll 与 RayTracerGUI.exe 位于同一目录下。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="277"/>
+        <location filename="../mainwindow_tabs.cpp" line="283"/>
         <source>Could not load scene_metadata.dylib/.so, so the scene list is empty. Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI.</source>
         <translation>无法加载 scene_metadata.dylib/.so，因此场景列表为空。请确保 scene_metadata.dylib/.so 与 RayTracerGUI 位于同一目录下。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="302"/>
+        <location filename="../mainwindow_tabs.cpp" line="308"/>
         <source>Self-Contained</source>
         <translation>自包含</translation>
     </message>
@@ -747,7 +747,7 @@ The render may have failed to create output.</source>
         <translation type="vanished">%1 个场景%2 - 无需额外下载</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="305"/>
+        <location filename="../mainwindow_tabs.cpp" line="311"/>
         <source>Requires External Files</source>
         <translation>需要外部文件</translation>
     </message>
@@ -756,48 +756,57 @@ The render may have failed to create output.</source>
         <translation type="vanished">%1 个场景%2 - 需要全新检出版本中未包含的资源文件</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="242"/>
+        <location filename="../mainwindow_tabs.cpp" line="248"/>
         <source>%n scene(s)</source>
         <translation>
             <numerusform>%n 个场景</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="304"/>
+        <location filename="../mainwindow_tabs.cpp" line="310"/>
         <source>%n scene(s) - no extra downloads needed</source>
         <translation>
             <numerusform>%n 个场景 - 无需额外下载</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="307"/>
+        <location filename="../mainwindow_tabs.cpp" line="313"/>
         <source>%n scene(s) - needs assets not included in a fresh checkout</source>
         <translation>
             <numerusform>%n 个场景 - 需要新检出版本中未包含的资源</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="347"/>
+        <location filename="../mainwindow_tabs.cpp" line="353"/>
         <source>Search scenes by name or id...</source>
         <translation>按名称或 ID 搜索场景…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="353"/>
+        <location filename="../mainwindow_tabs.cpp" line="357"/>
+        <source>Narrows the scene list/grid below by substring match against each scene&apos;s name, id, or description - on top of, not instead of, the availability and category tabs above.
+
+Clear it (the small &quot;x&quot; inside the field) to see every scene in the current category again.</source>
+        <translation>按名称、ID 或描述中的子字符串匹配来缩小下方场景列表/网格的范围——这是在上方的可用性和分类标签页基础上的叠加,而非替代。
+
+清空该字段(点击字段内的小 &quot;x&quot;)即可重新看到当前分类下的所有场景。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="365"/>
         <source>Grid</source>
         <translation>网格视图</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="354"/>
+        <location filename="../mainwindow_tabs.cpp" line="366"/>
         <source>Switch between the dropdown list and a thumbnail gallery grid</source>
         <translation>在下拉列表与缩略图网格视图之间切换</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="365"/>
+        <location filename="../mainwindow_tabs.cpp" line="377"/>
         <source>Scene:</source>
         <translation>场景：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="367"/>
+        <location filename="../mainwindow_tabs.cpp" line="379"/>
         <source>Every render starts from a scene - a description of what&apos;s in the world: the geometry (shapes and meshes), materials (what surfaces are made of), lights, and a camera.
 
 This app ships with dozens of built-in scenes covering the basics (a simple Cornell box) up through complex conductor/dielectric materials, volumetric fog, and real photogrammetry-scale models - pick one to render, or browse by category using the tabs above.</source>
@@ -806,66 +815,79 @@ This app ships with dozens of built-in scenes covering the basics (a simple Corn
 本应用内置了数十个场景，从基础场景（简单的康奈尔盒）到复杂的导体/电介质材质、体积雾效，以及真实照片级测量规模的模型都有涵盖 - 选一个来渲染，或使用上方标签页按分类浏览。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="391"/>
+        <location filename="../mainwindow_tabs.cpp" line="403"/>
         <source>Generate Thumbnails</source>
         <translation>生成缩略图</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="393"/>
+        <location filename="../mainwindow_tabs.cpp" line="405"/>
         <source>Renders a small preview image for each self-contained Basics/Materials/Cameras
 scene not already cached. CPU-only, low resolution - takes a while the first time.</source>
         <translation>为每个尚未缓存的自包含“基础/材质/相机”场景渲染一张小型预览图。
 仅使用 CPU、分辨率较低 - 首次运行需要一些时间。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="489"/>
+        <location filename="../mainwindow_tabs.cpp" line="501"/>
         <source>Rendering Technique:</source>
         <translation>渲染技术：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="490"/>
+        <location filename="../mainwindow_tabs.cpp" line="502"/>
         <source>Select a scene to see the rendering technique it demonstrates.</source>
         <translation>选择一个场景以查看它所演示的渲染技术。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="505"/>
+        <location filename="../mainwindow_tabs.cpp" line="517"/>
         <source>Render Settings</source>
         <translation>渲染设置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="513"/>
+        <location filename="../mainwindow_tabs.cpp" line="525"/>
         <source>Render Single Image</source>
         <translation>渲染单张图像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="514"/>
+        <location filename="../mainwindow_tabs.cpp" line="526"/>
         <source>Generate Video</source>
         <translation>生成视频</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="519"/>
+        <location filename="../mainwindow_tabs.cpp" line="531"/>
         <source>Output Mode:</source>
         <translation>输出模式：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="533"/>
+        <location filename="../mainwindow_tabs.cpp" line="532"/>
+        <source>Whether this render produces a single still frame, or a sequence of frames stitched into a video.
+
+Single Image renders the scene once, from the camera set on this tab (or Advanced Settings). Generate Video instead moves the camera along a path (Video Settings, on the Render Options tab) and renders one frame per step, then assembles them into an MP4 - taking roughly Frame Count times as long as a single image.
+
+Generate Video cannot be combined with an alternate Integrator - see the warning below if that combination is picked.</source>
+        <translation>决定本次渲染生成的是单帧静态画面,还是拼接成视频的一系列帧。
+
+“单张图像”会使用本标签页(或“高级设置”)中设定的相机,将场景渲染一次。“生成视频”则会让相机沿路径移动(见“渲染选项”标签页中的“视频设置”),每一步渲染一帧,再将这些帧合成为 MP4——耗时大约是单张图像的“帧数”倍。
+
+“生成视频”无法与备选积分器组合使用——若选择了这种组合,请参见下方的警告提示。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="556"/>
         <source>Single Image renders one frame.
 Generate Video renders a camera path frame by frame and assembles an MP4.</source>
         <translation>“单张图像”渲染一帧画面。
 “生成视频”逐帧渲染相机路径并合成为 MP4。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="538"/>
+        <location filename="../mainwindow_tabs.cpp" line="561"/>
         <source>GPU (CUDA) - Fast</source>
         <translation>GPU（CUDA）- 快速</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="540"/>
+        <location filename="../mainwindow_tabs.cpp" line="568"/>
         <source>CPU - High Quality</source>
         <translation>CPU - 高质量</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="546"/>
+        <location filename="../mainwindow_tabs.cpp" line="580"/>
         <source>GPU: OptiX hardware ray tracing — typically orders of magnitude faster.
 CPU: importance-sampled path tracer — supports every scene and material,
 including the handful the GPU backend does not implement.</source>
@@ -874,19 +896,19 @@ CPU：重要性采样路径追踪器 — 支持所有场景和材质，
 包括少数 GPU 后端尚未实现的材质。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="554"/>
+        <location filename="../mainwindow_tabs.cpp" line="588"/>
         <source>Importance-sampled CPU path tracer — supports every scene and material.
 GPU rendering is not available in this build.</source>
         <translation>重要性采样 CPU 路径追踪器 — 支持所有场景和材质。
 此构建版本不支持 GPU 渲染。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="557"/>
+        <location filename="../mainwindow_tabs.cpp" line="591"/>
         <source>Renderer:</source>
         <translation>渲染器：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="558"/>
+        <location filename="../mainwindow_tabs.cpp" line="592"/>
         <source>Both trace the exact same rays and produce the same image - the difference is speed and hardware, not physics.
 
 GPU (OptiX) uses NVIDIA&apos;s dedicated ray-tracing cores to trace thousands of rays in parallel, typically far faster. CPU uses ordinary processor cores instead: much slower, but works on any machine and supports every material this app implements, including a couple the GPU path hasn&apos;t caught up to yet.</source>
@@ -895,17 +917,17 @@ GPU (OptiX) uses NVIDIA&apos;s dedicated ray-tracing cores to trace thousands of
 GPU（OptiX）使用 NVIDIA 专用的光线追踪核心并行追踪成千上万条光线，通常速度快得多。CPU 则使用普通的处理器核心：速度慢得多，但可在任何机器上运行，并支持本应用实现的所有材质，包括少数几种 GPU 路径尚未跟进实现的材质。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="569"/>
+        <location filename="../mainwindow_tabs.cpp" line="603"/>
         <source>Recursive (Default)</source>
         <translation>递归式（默认）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="570"/>
+        <location filename="../mainwindow_tabs.cpp" line="609"/>
         <source>Wavefront (Experimental)</source>
         <translation>Wavefront（实验性）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="574"/>
+        <location filename="../mainwindow_tabs.cpp" line="619"/>
         <source>Recursive: one thread per pixel, the default GPU path tracer — broad, battle-tested coverage.
 Wavefront: splits each bounce into separate queue-passed kernel launches — better GPU
 utilization on complex/divergent scenes, but a newer, less exercised code path.
@@ -916,12 +938,12 @@ Wavefront：将每次反弹拆分为独立的、通过队列传递的内核启�
 仅在渲染器设置为 GPU 时生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="582"/>
+        <location filename="../mainwindow_tabs.cpp" line="627"/>
         <source>GPU Backend:</source>
         <translation>GPU 后端：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="583"/>
+        <location filename="../mainwindow_tabs.cpp" line="628"/>
         <source>Two different ways of organizing the SAME ray-tracing work on the GPU.
 
 Recursive traces one ray per thread from start to finish, bouncing recursively - simple and battle-tested. Wavefront instead groups all rays currently doing the same kind of work (e.g. &quot;just hit glass&quot;) into a batch and processes them together - better use of the GPU&apos;s parallel hardware on complex scenes with lots of different materials, at the cost of being a newer, less-tested code path.</source>
@@ -930,52 +952,52 @@ Recursive traces one ray per thread from start to finish, bouncing recursively -
 递归式让每个线程从头到尾追踪一条光线，递归式地反弹 - 简单且经过充分验证。Wavefront 则将当前执行同类工作的所有光线（例如“刚击中玻璃”）归为一批，一起处理 - 在材质种类繁多的复杂场景上能更好地利用 GPU 的并行硬件，代价是这是一条较新、测试较少的代码路径。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1009"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="74"/>
         <source>Integrator</source>
         <translation>积分器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1035"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="100"/>
         <source>Path Tracer (default)</source>
         <translation>路径追踪器(默认)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1035"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="100"/>
         <source>SPPM (Photon Mapping)</source>
         <translation>SPPM(光子映射)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1035"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="100"/>
         <source>BDPT (Bidirectional)</source>
         <translation>BDPT(双向)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1036"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="101"/>
         <source>MLT (Metropolis Light Transport)</source>
         <translation>MLT(Metropolis 光传输)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1036"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="101"/>
         <source>RandomWalk (reference, unbiased)</source>
         <translation>RandomWalk(参考,无偏)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1037"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="102"/>
         <source>Ambient Occlusion (debug)</source>
         <translation>环境光遮蔽(调试)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1037"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="102"/>
         <source>SimplePath (reference)</source>
         <translation>SimplePath(参考)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1038"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="103"/>
         <source>SimpleVolPath (reference, volumetric)</source>
         <translation>SimpleVolPath(参考,体积)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1038"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="103"/>
         <source>LightPath (light tracer)</source>
         <translation>LightPath(光源追踪器)</translation>
     </message>
@@ -994,12 +1016,12 @@ default Path Tracer - see each control&apos;s own tooltip.</source>
 上方的采样器/光谱/曝光/色调映射/统计信息仅对默认路径追踪器生效——具体请参见各控件自身的提示。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1071"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="136"/>
         <source>Integrator:</source>
         <translation>积分器:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1072"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="137"/>
         <source>The rendering algorithm itself, not just how fast it runs. Path Tracer (the default) is the general-purpose, well-tested choice used everywhere else in this app.
 
 SPPM (Stochastic Progressive Photon Mapping) handles hard caustics/glass scenes path tracing struggles with. BDPT and MLT (built on BDPT) trace light paths from both the camera and the light source and connect them - better for some difficult lighting, area lights only. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, and LightPath are reference/debug integrators - simpler, often noisier or narrower in scope (e.g. Ambient Occlusion isn&apos;t a lit render at all), useful for isolating what a specific technique contributes.
@@ -1012,49 +1034,69 @@ SPPM(随机渐进光子映射)能处理路径追踪难以应对的强焦散/玻�
 将鼠标悬停在下拉列表的任意项上可查看该积分器的详细说明。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="525"/>
-        <location filename="../mainwindow_tabs.cpp" line="1089"/>
+        <location filename="../mainwindow_tabs.cpp" line="548"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="154"/>
         <source>⚠ Generate Video cannot be combined with an alternate integrator - switch back to Path Tracer, or to Single Image output.</source>
         <translation>⚠ 生成视频模式无法与备选积分器组合使用——请切换回路径追踪器,或改用单张图像输出。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="608"/>
+        <location filename="../mainwindow_tabs.cpp" line="563"/>
+        <source>NVIDIA OptiX hardware ray tracing. Typically orders of magnitude faster than CPU, but needs a CUDA-capable NVIDIA GPU and doesn&apos;t yet implement every material the CPU path does.</source>
+        <translation>NVIDIA OptiX 硬件光线追踪。通常比 CPU 快上几个数量级,但需要支持 CUDA 的 NVIDIA GPU,且尚未实现 CPU 路径支持的全部材质。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="570"/>
+        <source>The full importance-sampled path tracer. Runs on any machine and supports every scene and material this app implements, including the handful the GPU backend hasn&apos;t caught up to yet - at the cost of being much slower.</source>
+        <translation>完整的重要性采样路径追踪器。可在任何机器上运行,支持本应用实现的所有场景和材质,包括少数几种 GPU 后端尚未跟进实现的材质——代价是速度慢得多。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="605"/>
+        <source>One thread per pixel, tracing each ray recursively bounce by bounce. The default GPU path tracer - broad, battle-tested coverage of scenes and materials.</source>
+        <translation>每像素一个线程,逐次反弹递归式地追踪每条光线。默认的 GPU 路径追踪器——覆盖面广,场景和材质均经过充分验证。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="611"/>
+        <source>Splits each bounce into separate queue-passed kernel launches, batching rays doing the same kind of work together. Better GPU utilization on complex, divergent scenes - but a newer, less exercised code path.</source>
+        <translation>将每次反弹拆分为独立的、通过队列传递的内核启动,把执行同类工作的光线归批处理。在复杂、发散度高的场景上能更好地利用 GPU——但这是一条较新、测试较少的代码路径。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="653"/>
         <source>Draft (Very Fast)</source>
         <translation>草稿（极快）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="609"/>
+        <location filename="../mainwindow_tabs.cpp" line="654"/>
         <source>Preview (Fast)</source>
         <translation>预览（快速）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="610"/>
+        <location filename="../mainwindow_tabs.cpp" line="655"/>
         <source>Good (Balanced)</source>
         <translation>良好（均衡）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="611"/>
+        <location filename="../mainwindow_tabs.cpp" line="656"/>
         <source>High (Slow)</source>
         <translation>高质量（较慢）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="612"/>
+        <location filename="../mainwindow_tabs.cpp" line="657"/>
         <source>Ultra (Very Slow)</source>
         <translation>极致（很慢）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="613"/>
+        <location filename="../mainwindow_tabs.cpp" line="658"/>
         <source>Maximum (Extreme)</source>
         <translation>最高（极慢）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="614"/>
-        <location filename="../mainwindow_tabs.cpp" line="880"/>
+        <location filename="../mainwindow_tabs.cpp" line="659"/>
+        <location filename="../mainwindow_tabs.cpp" line="932"/>
         <source>Custom</source>
         <translation>自定义</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="623"/>
+        <location filename="../mainwindow_tabs.cpp" line="668"/>
         <source>Samples per pixel / max ray depth:
   Draft    25 spp,  depth 10
   Preview  50 spp,  depth 20
@@ -1075,12 +1117,12 @@ Render time scales roughly linearly with samples per pixel.</source>
 渲染时间大致与每像素采样数呈线性关系。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="632"/>
+        <location filename="../mainwindow_tabs.cpp" line="677"/>
         <source>Quality:</source>
         <translation>质量：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="633"/>
+        <location filename="../mainwindow_tabs.cpp" line="678"/>
         <source>A shortcut that sets both Samples per Pixel and Max Ray Depth together, since they&apos;re the two dials that trade render time for image quality.
 
 Each step up roughly doubles the render time in exchange for a cleaner, less noisy image - Draft is for quickly checking a scene looks right, Ultra/Maximum are for a final image you&apos;d actually want to look at closely.</source>
@@ -1089,87 +1131,87 @@ Each step up roughly doubles the render time in exchange for a cleaner, less noi
 每提高一档，渲染时间大致翻倍，以换取更干净、噪点更少的图像 - 草稿档用于快速检查场景是否正确，极致/最高档则用于制作值得细看的最终图像。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="644"/>
+        <location filename="../mainwindow_tabs.cpp" line="689"/>
         <source>100 x 100 (Tiny)</source>
         <translation>100 x 100（极小）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="645"/>
+        <location filename="../mainwindow_tabs.cpp" line="690"/>
         <source>200 x 200</source>
         <translation>200 x 200</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="646"/>
+        <location filename="../mainwindow_tabs.cpp" line="691"/>
         <source>400 x 400</source>
         <translation>400 x 400</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="647"/>
+        <location filename="../mainwindow_tabs.cpp" line="692"/>
         <source>512 x 512</source>
         <translation>512 x 512</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="648"/>
+        <location filename="../mainwindow_tabs.cpp" line="693"/>
         <source>600 x 600</source>
         <translation>600 x 600</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="649"/>
+        <location filename="../mainwindow_tabs.cpp" line="694"/>
         <source>800 x 800</source>
         <translation>800 x 800</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="650"/>
+        <location filename="../mainwindow_tabs.cpp" line="695"/>
         <source>1024 x 1024 (1K)</source>
         <translation>1024 x 1024（1K）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="651"/>
+        <location filename="../mainwindow_tabs.cpp" line="696"/>
         <source>1080 x 1080 (Full HD)</source>
         <translation>1080 x 1080（全高清）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="652"/>
+        <location filename="../mainwindow_tabs.cpp" line="697"/>
         <source>1200 x 1200</source>
         <translation>1200 x 1200</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="653"/>
+        <location filename="../mainwindow_tabs.cpp" line="698"/>
         <source>1440 x 1440</source>
         <translation>1440 x 1440</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="654"/>
+        <location filename="../mainwindow_tabs.cpp" line="699"/>
         <source>1920 x 1920</source>
         <translation>1920 x 1920</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="655"/>
+        <location filename="../mainwindow_tabs.cpp" line="700"/>
         <source>2048 x 2048 (2K)</source>
         <translation>2048 x 2048（2K）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="656"/>
+        <location filename="../mainwindow_tabs.cpp" line="701"/>
         <source>2560 x 2560</source>
         <translation>2560 x 2560</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="657"/>
+        <location filename="../mainwindow_tabs.cpp" line="702"/>
         <source>3840 x 3840 (4K)</source>
         <translation>3840 x 3840（4K）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="658"/>
+        <location filename="../mainwindow_tabs.cpp" line="703"/>
         <source>4096 x 4096</source>
         <translation>4096 x 4096</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="661"/>
+        <location filename="../mainwindow_tabs.cpp" line="706"/>
         <source>Resolution:</source>
         <translation>分辨率：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="662"/>
+        <location filename="../mainwindow_tabs.cpp" line="707"/>
         <source>How many pixels wide and tall the final image is.
 
 Higher resolution means more individual pixels to trace - each one independently sampled - so render time scales up roughly in proportion to the pixel count (double the width AND height and you&apos;re tracing about 4x as many pixels), independent of the Samples per Pixel or Max Ray Depth settings.</source>
@@ -1178,40 +1220,40 @@ Higher resolution means more individual pixels to trace - each one independently
 分辨率越高，需要追踪的独立像素就越多 - 每个像素都单独采样 - 因此渲染时间大致与像素数量成正比（宽和高都翻倍，追踪的像素数约为原来的 4 倍），这与“每像素采样数”或“最大光线深度”的设置无关。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="673"/>
-        <location filename="../mainwindow_tabs.cpp" line="1360"/>
+        <location filename="../mainwindow_tabs.cpp" line="718"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="462"/>
         <source>Output</source>
         <translation>输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="688"/>
+        <location filename="../mainwindow_tabs.cpp" line="740"/>
         <source>Where the rendered image is written. A .png is always saved alongside
 the raw .ppm, and it is the .png the Preview tab displays.</source>
         <translation>渲染图像的写入位置。系统总会在原始 .ppm 文件旁
 额外保存一份 .png，预览标签页显示的正是这份 .png。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="693"/>
+        <location filename="../mainwindow_tabs.cpp" line="745"/>
         <source>&amp;Browse…</source>
         <translation>浏览(&amp;B)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="694"/>
+        <location filename="../mainwindow_tabs.cpp" line="746"/>
         <source>Choose the output file name and location</source>
         <translation>选择输出文件名和位置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="696"/>
+        <location filename="../mainwindow_tabs.cpp" line="748"/>
         <source>Save Render Output</source>
         <translation>保存渲染输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="697"/>
+        <location filename="../mainwindow_tabs.cpp" line="749"/>
         <source>PNG Image (*.png);;PPM Image (*.ppm)</source>
         <translation>PNG 图像 (*.png);;PPM 图像 (*.ppm)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="704"/>
+        <location filename="../mainwindow_tabs.cpp" line="756"/>
         <source>Where the finished image is saved.
 
 A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.</source>
@@ -1220,22 +1262,22 @@ A raw .ppm file is always written, and a .png copy is generated alongside it aut
 系统总会写入一份原始 .ppm 文件，并自动在旁边生成一份 .png 副本 - 预览标签页始终显示这份 .png，因为大多数图像查看器（包括本应用自身的预览功能）都无法直接打开 .ppm 文件。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="731"/>
+        <location filename="../mainwindow_tabs.cpp" line="783"/>
         <source>Basic Settings</source>
         <translation>基本设置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="740"/>
+        <location filename="../mainwindow_tabs.cpp" line="792"/>
         <source>Advanced Parameters</source>
         <translation>高级参数</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="752"/>
+        <location filename="../mainwindow_tabs.cpp" line="804"/>
         <source>Width:</source>
         <translation>宽度：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="753"/>
+        <location filename="../mainwindow_tabs.cpp" line="805"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height below to set the resolution manually, overriding whatever the Quality preset on the Basic tab would otherwise use.</source>
@@ -1244,12 +1286,12 @@ Paired with Height below to set the resolution manually, overriding whatever the
 与下方的“高度”配合，可手动设置分辨率，覆盖“基本”标签页中“质量”预设原本会使用的数值。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="764"/>
+        <location filename="../mainwindow_tabs.cpp" line="816"/>
         <source>Height:</source>
         <translation>高度：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="765"/>
+        <location filename="../mainwindow_tabs.cpp" line="817"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width above - together they set the resolution manually, overriding the Basic tab&apos;s Quality preset.</source>
@@ -1258,7 +1300,7 @@ Paired with Width above - together they set the resolution manually, overriding 
 与上方的“宽度”配合 - 二者共同手动设置分辨率，覆盖“基本”标签页的“质量”预设。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="776"/>
+        <location filename="../mainwindow_tabs.cpp" line="828"/>
         <source>Rays traced per pixel. This is the main quality/time dial: noise falls
 as the square root of this value, so halving the noise costs about 4x
 the render time. Setting it here switches Quality to Custom.</source>
@@ -1267,12 +1309,12 @@ the render time. Setting it here switches Quality to Custom.</source>
 “质量”切换为“自定义”。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="779"/>
+        <location filename="../mainwindow_tabs.cpp" line="831"/>
         <source>Samples per Pixel:</source>
         <translation>每像素采样数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="780"/>
+        <location filename="../mainwindow_tabs.cpp" line="832"/>
         <source>Ray tracing estimates each pixel&apos;s color by firing many random rays and averaging the results, like polling a lot of people and averaging their guesses.
 
 More samples means a more accurate average, which shows up as less speckly &quot;noise&quot; in the image - but each extra sample costs render time. Doubling this value roughly halves the noise, but takes about twice as long to render.</source>
@@ -1281,19 +1323,19 @@ More samples means a more accurate average, which shows up as less speckly &quot
 样本数越多,平均值就越准确,画面上表现为“噪点”更少——但每多一个样本都要花费渲染时间。将该值加倍大致可将噪点减半,但渲染时间也会随之翻倍。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="795"/>
+        <location filename="../mainwindow_tabs.cpp" line="847"/>
         <source>How many times a ray may bounce before it is terminated. Low values
 darken glass and mirrors, which need many bounces to resolve; scenes
 of plain diffuse surfaces look the same well below the maximum.</source>
         <translation>光线在被终止前最多可以反弹的次数。数值过低会使玻璃和镜面变暗,因为它们需要多次反弹才能正确成像;而纯漫反射表面构成的场景,远低于最大值时看起来就已经没有差别。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="798"/>
+        <location filename="../mainwindow_tabs.cpp" line="850"/>
         <source>Max Ray Depth:</source>
         <translation>最大光线深度:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="799"/>
+        <location filename="../mainwindow_tabs.cpp" line="851"/>
         <source>A depth of 1 means a ray only sees what it hits directly, with no bounced light at all - like a scene with no reflections or indirect lighting.
 
 Each extra bounce lets light travel one more surface before giving up, which is what makes glass, mirrors, and soft indirect lighting look correct. Most scenes look &quot;finished&quot; well before the maximum - beyond that, extra depth mostly traces light too dim to matter.</source>
@@ -1302,53 +1344,53 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 每多一次反弹,光就能多经过一个表面才被放弃,这正是玻璃、镜面和柔和间接光照能正确呈现的原因。大多数场景在远未达到最大深度时就已经“渲染完整”——超过这个点之后,多出来的深度大多只是在追踪暗到无关紧要的光线。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="830"/>
+        <location filename="../mainwindow_tabs.cpp" line="882"/>
         <source>Camera Position</source>
         <translation>相机位置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="863"/>
+        <location filename="../mainwindow_tabs.cpp" line="915"/>
         <source>Front View (Outside)</source>
         <translation>正面视图(外部)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="866"/>
+        <location filename="../mainwindow_tabs.cpp" line="918"/>
         <source>Inside Front</source>
         <translation>内部前方</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="867"/>
+        <location filename="../mainwindow_tabs.cpp" line="919"/>
         <source>Inside Back</source>
         <translation>内部后方</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="868"/>
+        <location filename="../mainwindow_tabs.cpp" line="920"/>
         <source>Right Wall (Green)</source>
         <translation>右墙(绿色)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="869"/>
+        <location filename="../mainwindow_tabs.cpp" line="921"/>
         <source>Left Wall (Red)</source>
         <translation>左墙(红色)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="872"/>
+        <location filename="../mainwindow_tabs.cpp" line="924"/>
         <source>Floor Corner</source>
         <translation>地面角落</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="873"/>
+        <location filename="../mainwindow_tabs.cpp" line="925"/>
         <source>Ceiling Corner</source>
         <translation>天花板角落</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="883"/>
-        <location filename="../mainwindow_tabs.cpp" line="2113"/>
+        <location filename="../mainwindow_tabs.cpp" line="935"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1039"/>
         <source>Preset:</source>
         <translation>预设:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="884"/>
+        <location filename="../mainwindow_tabs.cpp" line="936"/>
         <source>A handful of hand-picked camera positions for this scene, framed to show off something specific (e.g. looking in through the front, or from inside a Cornell-box-style enclosure).
 
 Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the camera anywhere you like instead.</source>
@@ -1357,12 +1399,12 @@ Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the ca
 选择“自定义”会解锁下方的 X/Y/Z 字段,让你可以将相机移动到任意位置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="901"/>
+        <location filename="../mainwindow_tabs.cpp" line="953"/>
         <source>Camera X:</source>
         <translation>相机 X:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="902"/>
+        <location filename="../mainwindow_tabs.cpp" line="954"/>
         <source>The camera&apos;s position along the world&apos;s X axis (left/right).
 
 Only editable when the preset above is set to Custom - the camera always looks toward the scene&apos;s own fixed look-at point, so moving X/Y/Z changes the viewing angle and distance, not just a straight left-right pan.</source>
@@ -1371,12 +1413,12 @@ Only editable when the preset above is set to Custom - the camera always looks t
 仅当上方预设设为“自定义”时才可编辑——相机始终朝向场景自身固定的注视点,因此移动 X/Y/Z 改变的是观察角度和距离,而不只是简单的左右平移。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="915"/>
+        <location filename="../mainwindow_tabs.cpp" line="967"/>
         <source>Camera Y:</source>
         <translation>相机 Y:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="916"/>
+        <location filename="../mainwindow_tabs.cpp" line="968"/>
         <source>The camera&apos;s position along the world&apos;s Y axis (up/down).
 
 Same Custom-preset-only editing rule as Camera X - the camera keeps looking at the scene&apos;s fixed look-at point as you move it.</source>
@@ -1385,12 +1427,12 @@ Same Custom-preset-only editing rule as Camera X - the camera keeps looking at t
 与相机 X 一样,只有在预设为“自定义”时才可编辑——移动时相机会始终保持注视场景固定的目标点。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="928"/>
+        <location filename="../mainwindow_tabs.cpp" line="980"/>
         <source>Camera Z:</source>
         <translation>相机 Z:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="929"/>
+        <location filename="../mainwindow_tabs.cpp" line="981"/>
         <source>The camera&apos;s position along the world&apos;s Z axis (forward/back, into or out of the scene).
 
 Same Custom-preset-only editing rule as Camera X/Y.</source>
@@ -1399,12 +1441,12 @@ Same Custom-preset-only editing rule as Camera X/Y.</source>
 与相机 X/Y 一样,只有在预设为“自定义”时才可编辑。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="947"/>
+        <location filename="../mainwindow_tabs.cpp" line="999"/>
         <source>Distance from Center:</source>
         <translation>距中心距离:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="948"/>
+        <location filename="../mainwindow_tabs.cpp" line="1000"/>
         <source>Moves the camera directly toward or away from the scene&apos;s look-at point along whatever direction it&apos;s currently facing, without changing which way it&apos;s pointed.
 
 The quickest way to zoom in or pull back once you&apos;ve already found an angle you like via the X/Y/Z fields or a preset.</source>
@@ -1413,7 +1455,7 @@ The quickest way to zoom in or pull back once you&apos;ve already found an angle
 当你已经通过 X/Y/Z 字段或预设找到满意的角度后,这是放大或拉远画面最快捷的方式。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="983"/>
+        <location filename="../mainwindow_tabs.cpp" line="1035"/>
         <source>Advanced Settings</source>
         <translation>高级设置</translation>
     </message>
@@ -1422,175 +1464,210 @@ The quickest way to zoom in or pull back once you&apos;ve already found an angle
         <translation type="vanished">积分器选项</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1116"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="181"/>
         <source>The default Path Tracer has no integrator-specific options here - see the Render Options above.</source>
         <translation>默认路径追踪器在此处没有专属选项——请参见上方的渲染选项。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1130"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="195"/>
         <source>Iterations:</source>
         <translation>迭代次数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1131"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="196"/>
         <source>How many camera-pass + photon-pass rounds SPPM runs. More iterations converge to a cleaner result, at a roughly linear cost in render time.</source>
         <translation>SPPM 运行的相机遍历 + 光子遍历轮数。迭代次数越多,结果收敛得越干净,渲染时间大致呈线性增长。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1139"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="204"/>
         <source>Photons per iteration:</source>
         <translation>每次迭代的光子数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1140"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="205"/>
         <source>How many photons are shot from the lights each iteration. More photons reduce noise in indirect/caustic lighting at the cost of a slower photon pass.</source>
         <translation>每次迭代从光源发射的光子数量。光子数越多,间接光照/焦散中的噪点越少,但光子遍历阶段也会相应变慢。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1156"/>
-        <location filename="../mainwindow_tabs.cpp" line="1190"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="221"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="255"/>
         <source>Max path depth:</source>
         <translation>最大路径深度:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1157"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="222"/>
         <source>Maximum bounces for each of the two subpaths (camera side and light side) that BDPT connects together.</source>
         <translation>BDPT 连接的两条子路径(相机侧与光源侧)各自允许的最大反弹次数。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1172"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="237"/>
         <source>Bootstrap samples:</source>
         <translation>引导采样数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1173"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="238"/>
         <source>How many candidate light paths MLT samples up front, per depth, to seed its Markov chains - more gives a better-informed starting distribution.</source>
         <translation>MLT 在每个深度上预先采样的候选光路数量,用于为其马尔可夫链提供初始分布——数值越大,初始分布的信息量越充分。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1181"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="246"/>
         <source>Mutations:</source>
         <translation>变异次数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1182"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="247"/>
         <source>Total Metropolis mutations across all chains combined - the main knob for render time/quality, analogous to samples per pixel in the default path tracer.</source>
         <translation>所有链条上 Metropolis 变异的总次数——是控制渲染时间/质量的主要参数,类似于默认路径追踪器中的每像素采样数。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1191"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="256"/>
         <source>Same meaning as BDPT&apos;s max path depth (MLT is built directly on BDPT&apos;s subpath machinery).</source>
         <translation>含义与 BDPT 的最大路径深度相同(MLT 直接构建在 BDPT 的子路径机制之上)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1207"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="272"/>
         <source>Max occlusion distance:</source>
         <translation>最大遮蔽距离:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1208"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="273"/>
         <source>How far an occlusion test ray can reach before counting as unoccluded. The default (10 billion) is effectively unbounded - lower it to only count nearby geometry as occluding.</source>
         <translation>一条遮蔽测试光线在被判定为未遮蔽之前可以到达的最远距离。默认值(100 亿)实际上相当于无限远——调低该值可让只有附近的几何体才计入遮蔽。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1212"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="277"/>
         <source>Uniform-hemisphere sampling (instead of cosine)</source>
         <translation>均匀半球采样(而非余弦分布)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1215"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="280"/>
         <source>The default samples occlusion rays weighted toward the surface normal (cosine-hemisphere), matching how a Lambertian surface would actually be lit. Uniform-hemisphere spreads samples evenly instead - a different, unweighted estimator.</source>
         <translation>默认情况下,遮蔽光线按朝向表面法线加权采样(余弦半球分布),这与朗伯表面实际受光的方式一致。均匀半球分布则改为在半球上均匀撒点——是一种不同的、无权重的估计方式。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1223"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="288"/>
         <source>Illumination scale:</source>
         <translation>照明强度倍率:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1224"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="289"/>
         <source>Flat multiplier on the occlusion color below.</source>
         <translation>作用于下方遮蔽颜色的整体倍率。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1240"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="305"/>
         <source>Occlusion color (R, G, B):</source>
         <translation>遮蔽颜色(R, G, B):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1241"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="306"/>
         <source>The color ambient occlusion is visualized in - not a lit render, so this is a visualization choice, not a light color. Default is white (1, 1, 1).</source>
         <translation>环境光遮蔽用于可视化的颜色——这不是一次真实光照渲染,因此这只是一个可视化选择,而非光源颜色。默认值为白色 (1, 1, 1)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1253"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="318"/>
         <source>Disable next-event estimation (direct light sampling)</source>
         <translation>关闭下一事件估计(直接光源采样)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1256"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="321"/>
         <source>On by default. Direct light sampling explicitly aims shadow rays at lights each bounce, sharply reducing noise on scenes with small/bright lights. Disabling it falls back to finding lights only by chance, the way a purely unbiased path tracer would.</source>
         <translation>默认开启。直接光源采样会在每次反弹时显式地将阴影光线指向光源,能大幅降低小/亮光源场景中的噪点。关闭后将退化为仅凭随机反弹碰巧找到光源,与纯粹无偏的路径追踪器行为一致。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1261"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="326"/>
         <source>Disable BSDF importance sampling</source>
         <translation>关闭 BSDF 重要性采样</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1264"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="329"/>
         <source>On by default. Samples each bounce&apos;s new direction weighted toward where the surface&apos;s material actually reflects light. Disabling it falls back to uniform hemisphere sampling.</source>
         <translation>默认开启。会按表面材质实际反射光线更集中的方向,对每次反弹的新方向进行加权采样。关闭后将退化为均匀半球采样。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1278"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="343"/>
         <source>Sampling &amp;&amp; Spectral</source>
         <translation>采样与光谱</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1286"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="357"/>
         <source>Sobol (default)</source>
         <translation>Sobol(默认)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1287"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="357"/>
+        <source>A low-discrepancy sequence based on Sobol sequences, scrambled per pixel. The best general-purpose default - fast convergence with no visible structure.</source>
+        <translation>一种基于 Sobol 序列的低差异序列,按像素打乱(scrambled)。是最佳的通用默认选择——收敛快,且不会出现可见的结构性伪影。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="361"/>
         <source>Z-Sobol</source>
         <translation>Z-Sobol</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1288"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="361"/>
+        <source>A variant of Sobol reordered along a Morton (Z-order) curve. Converges at least as well as plain Sobol, with better behavior under adaptive/progressive sampling.</source>
+        <translation>一种沿 Morton(Z 序)曲线重新排序的 Sobol 变体。收敛速度至少与普通 Sobol 相当,在自适应/渐进式采样下表现更好。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
         <source>Padded Sobol</source>
         <translation>Padded Sobol</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1289"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
+        <source>Sobol sequence with extra padding dimensions, avoiding correlation artifacts when a pixel needs more random dimensions than base Sobol comfortably covers (e.g. paths with many bounces).</source>
+        <translation>带有额外填充维度的 Sobol 序列,当某像素所需的随机维度超出基础 Sobol 能舒适覆盖的范围时(例如反弹次数很多的路径),可避免出现相关性伪影。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="370"/>
         <source>Stratified</source>
         <translation>分层采样(Stratified)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1290"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="370"/>
+        <source>Splits each pixel into a grid of sub-cells and takes one sample per cell. Simple, predictable coverage - less sophisticated than Sobol/Halton, but useful as a reference/comparison sampler.</source>
+        <translation>将每个像素划分为一个子网格,每个格子取一个样本。覆盖方式简单、可预测——不如 Sobol/Halton 精细,但可用作参考/对比用的采样器。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="375"/>
         <source>PMJ02BN</source>
         <translation>PMJ02BN</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1291"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="375"/>
+        <source>Progressive multi-jittered (0,2) sequence with blue-noise ordering. Especially even spatial (blue-noise) distribution of samples across neighboring pixels.</source>
+        <translation>渐进式多重抖动(0,2)序列,采用蓝噪声排序。相邻像素之间的采样点在空间上的分布(蓝噪声)尤其均匀。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="379"/>
         <source>Halton</source>
         <translation>Halton</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1292"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="379"/>
+        <source>A classic low-discrepancy sequence built from a different prime base per dimension. Well-tested, avoids the axis-aligned clustering plain stratified sampling can show.</source>
+        <translation>一种经典的低差异序列,每个维度采用不同的质数作为基数构建。经过充分验证,能避免普通分层采样可能出现的轴对齐聚簇现象。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="384"/>
         <source>Independent (no stratification)</source>
         <translation>独立采样(无分层)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1294"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="384"/>
+        <source>Plain uncorrelated pseudo-random numbers, no low-discrepancy structure at all. Included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive, not a recommended choice for its own sake.</source>
+        <translation>纯粹不相关的伪随机数,完全不具备低差异结构。加入它是为了忠实还原加载的 .pbrt 场景自身的 Sampler 指令,而非作为推荐选项本身。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="396"/>
         <source>Which sampler drives random decisions (all but Independent are
 low-discrepancy). CPU default path tracer only - no effect on GPU
 or under BDPT/MLT/SPPM/the debug integrators.</source>
         <translation>决定驱动随机决策所用的采样器(除 Independent 外均为低差异序列)。仅对 CPU 默认路径追踪器生效——对 GPU,以及 BDPT/MLT/SPPM/调试积分器均无影响。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1299"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="401"/>
         <source>Ray tracing needs a lot of random numbers - which direction to bounce a ray, which point on a light to sample, and so on - and HOW those &quot;random&quot; numbers are generated changes how quickly the image converges to a clean result.
 
 A naive random-number generator clusters and leaves gaps; most samplers here (Sobol, Halton, etc.) are low-discrepancy sequences, deliberately spread out to cover the sampling space more evenly, which converges to a clean image faster than true randomness would for the same sample count. Independent is the exception - plain uncorrelated random numbers, included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive rather than as a recommended choice.
@@ -1603,6 +1680,20 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 显示为灰色不可用?这是因为该选项只影响 CPU 渲染器的默认路径追踪器——请在基础设置标签页中将渲染器切换为 CPU 以使用它。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="502"/>
+        <source>OptiX AI denoiser (GPU only)</source>
+        <translation>OptiX AI 降噪器(仅限 GPU)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="504"/>
+        <source>Run the OptiX AI denoiser on the finished render, guided by
+albedo + normal buffers. GPU only, both backends (recursive
+and wavefront each have their own denoiser).</source>
+        <translation>对渲染完成的图像运行 OptiX AI 降噪器,由
+反照率(albedo)与法线缓冲引导。仅限 GPU,两种后端
+(递归式与 Wavefront)各自都有自己的降噪器。</translation>
+    </message>
+    <message>
         <source>Which low-discrepancy sampler drives random decisions.
 CPU default path tracer only - no effect on GPU or under
 BDPT/MLT/SPPM/the debug integrators.</source>
@@ -1611,7 +1702,7 @@ BDPT/MLT/SPPM/the debug integrators.</source>
 BDPT/MLT/SPPM/调试积分器均无影响。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1298"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="400"/>
         <source>Sampler:</source>
         <translation>采样器:</translation>
     </message>
@@ -1628,7 +1719,7 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 显示为灰色?这只影响 CPU 渲染器的默认路径追踪器——请在“基本设置”标签页中将渲染器切换为 CPU 以使用它。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1049"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="114"/>
         <source>Which rendering algorithm to use. Path Tracer (the default) is the
 well-tested, general-purpose choice - the alternates below trade
 generality for a specific technique (photon mapping, bidirectional/
@@ -1643,12 +1734,12 @@ default Path Tracer - see each control&apos;s own tooltip.</source>
 下方的采样器/光谱/曝光/色调映射/统计信息仅对默认路径追踪器生效——具体请参见各控件自身的提示。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1316"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="418"/>
         <source>Spectral rendering (--spectral)</source>
         <translation>光谱渲染(--spectral)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1318"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="420"/>
         <source>Real hero-wavelength spectral rendering instead of flat RGB.
 CPU default path tracer only. Only lambertian, metal, dielectric,
 rough_dielectric, conductor, and diffuse_light materials are
@@ -1660,7 +1751,7 @@ rough_dielectric、conductor 和 diffuse_light 材质——使用其他材质的
 会直接渲染失败,而不是悄悄渲染出错误的颜色。单样本耗时明显更长。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1325"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="427"/>
         <source>Ordinary rendering tracks light as three numbers - red, green, blue - the same way a screen displays color.
 
 Real light is a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths refract by different amounts - RGB alone can&apos;t represent that. Spectral rendering tracks a handful of actual wavelengths per ray instead of just RGB, at the cost of being noisier and slower per sample.
@@ -1673,19 +1764,19 @@ Grayed out? This only exists on the CPU renderer&apos;s default path tracer - sw
 显示为灰色?这项功能只存在于 CPU 渲染器的默认路径追踪器中——请在“基本设置”标签页中将渲染器切换为 CPU 以使用它。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1343"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="445"/>
         <source>Flat multiplier on linear color before tone-mapping (1.0 = no-op).
 Both CPU and GPU default path tracer only.</source>
         <translation>在色调映射之前对线性颜色施加的统一乘数(1.0 表示不生效)。
 仅对 CPU 和 GPU 的默认路径追踪器生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1346"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="448"/>
         <source>Exposure:</source>
         <translation>曝光:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1347"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="449"/>
         <source>A flat brightness multiplier applied to the whole image, the same knob a camera&apos;s exposure setting is.
 
 1.0 leaves the image unchanged; below 1.0 darkens it, above 1.0 brightens it - useful for a scene that&apos;s rendering correctly but is just too dark or too bright to see clearly, without changing any actual light in the scene.</source>
@@ -1694,22 +1785,22 @@ Both CPU and GPU default path tracer only.</source>
 1.0 保持画面不变;小于 1.0 会使画面变暗,大于 1.0 会使画面变亮——适用于场景本身渲染正确、只是太暗或太亮而看不清细节的情况,而无需改动场景中任何真实的光照。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1368"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="470"/>
         <source>ACES (default)</source>
         <translation>ACES(默认)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1369"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="471"/>
         <source>Reinhard</source>
         <translation>Reinhard</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1370"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="472"/>
         <source>None</source>
         <translation>无</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1372"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="474"/>
         <source>Which tone-mapping operator to apply before the sRGB curve.
 Applies to both CPU and GPU (recursive and wavefront) - no
 effect under BDPT/MLT/SPPM/the debug integrators.</source>
@@ -1718,12 +1809,12 @@ effect under BDPT/MLT/SPPM/the debug integrators.</source>
 BDPT/MLT/SPPM/调试积分器无影响。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1376"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="478"/>
         <source>Tone mapping:</source>
         <translation>色调映射:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1377"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="479"/>
         <source>A raytraced scene&apos;s true brightness values are unbounded - a light bulb might be a hundred times brighter than a wall - but a screen can only display a fixed range. Tone mapping is the curve that compresses that huge range down into something displayable.
 
 ACES rolls off bright highlights gently, the way film does; Reinhard is a simpler, older compression; None just clips anything too bright to flat white, which can look harsh.</source>
@@ -1732,12 +1823,12 @@ ACES rolls off bright highlights gently, the way film does; Reinhard is a simple
 ACES 会像胶片那样柔和地压低高光;Reinhard 是一种更简单、更早期的压缩方式;“无”则直接将过亮的部分裁剪为纯白,效果可能显得生硬。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1387"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="489"/>
         <source>Print render stats</source>
         <translation>打印渲染统计信息</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1389"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="491"/>
         <source>Print a small end-of-render stats block (rays cast, bounces,
 shadow rays, samples/sec) to the Log tab. Observation-only -
 never changes the rendered image.</source>
@@ -1746,7 +1837,7 @@ never changes the rendered image.</source>
 不会改变渲染出的图像。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1394"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="496"/>
         <source>Prints a short summary after the render finishes - how many rays were cast, how many bounces happened, how many shadow rays were traced, and samples per second.
 
 Purely informational: it never changes the rendered image, just tells you what the renderer actually did.</source>
@@ -1755,21 +1846,19 @@ Purely informational: it never changes the rendered image, just tells you what t
 纯粹是信息展示:它不会改变渲染出的图像,只是告诉你渲染器实际做了什么。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1400"/>
         <source>OptiX AI denoiser (GPU recursive only)</source>
-        <translation>OptiX AI 降噪器(仅限 GPU 递归式)</translation>
+        <translation type="vanished">OptiX AI 降噪器(仅限 GPU 递归式)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1402"/>
         <source>Run the OptiX AI denoiser on the finished render, guided by
 albedo + normal buffers. GPU recursive backend only - silently
 has no effect under the wavefront backend.</source>
-        <translation>对渲染完成的图像运行 OptiX AI 降噪器,由
+        <translation type="vanished">对渲染完成的图像运行 OptiX AI 降噪器,由
 反照率(albedo)与法线缓冲引导。仅限 GPU 递归式后端——
 在波前式后端下不会生效,也不会给出提示。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1407"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="509"/>
         <source>Ray tracing is noisy by nature - low sample counts leave a grainy, speckled image, which is why more samples usually means a cleaner picture.
 
 A denoiser is a machine-learning model trained to recognize that speckle pattern and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail.
@@ -1782,19 +1871,19 @@ Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and G
 显示为灰色?此功能需要 GPU 递归式后端——请在“基本设置”标签页中将渲染器切换为 GPU(并将 GPU 后端切换为“递归式”)以使用它。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1418"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="520"/>
         <source>OptiX validation mode (slower, debugging only)</source>
         <translation>OptiX 验证模式(速度较慢,仅供调试)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1420"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="522"/>
         <source>Enable OptiX validation mode - extra device-side checks with a
 real per-launch cost. GPU only, for debugging, not routine use.</source>
         <translation>启用 OptiX 验证模式——增加设备端检查,
 每次启动都会产生实际开销。仅限 GPU,用于调试,不建议日常使用。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1424"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="526"/>
         <source>Turns on extra correctness checks inside the GPU ray-tracing pipeline itself, catching certain classes of bugs that would otherwise silently produce a wrong image or crash unpredictably.
 
 It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
@@ -1807,125 +1896,125 @@ Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab 
 显示为灰色?此功能仅限 GPU——请在“基本设置”标签页中将渲染器切换为 GPU 以使用它。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1453"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
         <source>Render Options</source>
         <translation>渲染选项</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1612"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="716"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>在资源管理器中显示当前标签页渲染结果所在的文件夹</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1624"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="728"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>使用系统查看器打开当前标签页的渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1650"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="754"/>
         <source>Preview</source>
         <translation>预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1681"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="785"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;为什么看起来是这样&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1786"/>
-        <location filename="../mainwindow_tabs.cpp" line="1799"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="890"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="903"/>
         <source>Pause</source>
         <translation>暂停</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1799"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="903"/>
         <source>Play</source>
         <translation>播放</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1809"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="913"/>
         <source>Video playback error (%1): %2</source>
         <translation>视频播放错误 (%1):%2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1888"/>
-        <location filename="../mainwindow_tabs.cpp" line="1960"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="47"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="119"/>
         <source>Progress</source>
         <translation>进度</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1928"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="87"/>
         <source>Render Queue</source>
         <translation>渲染队列</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1940"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="99"/>
         <source>Re&amp;move Selected</source>
         <translation>移除所选(&amp;M)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1941"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="100"/>
         <source>Remove the selected job from the render queue</source>
         <translation>从渲染队列中移除所选任务</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1946"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="105"/>
         <source>Clear &amp;Queue</source>
         <translation>清空队列(&amp;Q)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1948"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="107"/>
         <source>Remove every job from the render queue</source>
         <translation>从渲染队列中移除所有任务</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1989"/>
-        <location filename="../mainwindow_tabs.cpp" line="2043"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="148"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="202"/>
         <source>&amp;Copy All</source>
         <translation>全部复制(&amp;C)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2010"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="169"/>
         <source>Log Output</source>
         <translation>日志输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2027"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="186"/>
         <source>Click &quot;Run Diagnostics&quot; to check GPU/CUDA/OptiX availability, CPU/RAM, disk space, and scene asset availability.</source>
         <translation>点击“运行诊断”以检查 GPU/CUDA/OptiX 可用性、CPU/内存、磁盘空间以及场景资源的可用性。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2038"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="197"/>
         <source>&amp;Run Diagnostics</source>
         <translation>运行诊断(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2048"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="207"/>
         <source>&amp;Save Report…</source>
         <translation>保存报告(&amp;S)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2059"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="218"/>
         <source>Diagnostics</source>
         <translation>诊断</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2078"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1004"/>
         <source>⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to &quot;Generate Video&quot;.</source>
         <translation>⚠ 只有当“基本设置”标签页中的输出模式设为“生成视频”时,这些设置才会生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2086"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1012"/>
         <source>Video Generation Settings</source>
         <translation>视频生成设置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2099"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1025"/>
         <source>(custom - choose settings below)</source>
         <translation>(自定义——请在下方选择设置)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2105"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1031"/>
         <source>Famous ray-tracing reference scenes and motions, pre-tuned so you don&apos;t
 have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the scene on the Basic tab too. Choosing any of the
@@ -1937,7 +2026,7 @@ the preset, the same as if you had built the same settings by hand.</source>
 它们只是不再与该预设匹配,就好比这些设置本就是你手动配置的一样。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2114"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1040"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the scene on the Basic tab) - you can still change anything afterward, it just stops matching the preset once you do.</source>
@@ -1946,27 +2035,27 @@ Picking one fills in every field below (and the scene on the Basic tab) - you ca
 选择其中一项会自动填好下方的所有字段(以及“基本设置”标签页中的场景)——之后你仍可以随意更改任意项,只是一旦更改就不再与该预设匹配。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2124"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1050"/>
         <source>Orbit (Circular rotation)</source>
         <translation>环绕(圆周旋转)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2125"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1051"/>
         <source>Linear (Straight path)</source>
         <translation>直线(直线路径)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2126"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1052"/>
         <source>Figure-8 (Lemniscate)</source>
         <translation>8 字形(双纽线)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2127"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1053"/>
         <source>Spiral (Zoom-in)</source>
         <translation>螺旋(推近)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2129"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1055"/>
         <source>How the camera moves over the frame sequence:
   Orbit     — full circle around the scene, always looking at its centre
   Linear    — straight sweep past the scene
@@ -1981,12 +2070,12 @@ Every path starts from the camera position on the Advanced tab.</source>
 所有路径均从“高级设置”标签页中的相机位置开始。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2137"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1063"/>
         <source>Camera Path:</source>
         <translation>相机路径:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2138"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1064"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Every path starts from wherever the camera is positioned on the Advanced tab.</source>
@@ -1995,17 +2084,17 @@ Orbit circles fully around the scene, always facing its center - the classic &qu
 “环绕”会绕场景转满一整圈,始终面朝中心——这是经典的“转台”式镜头。“直线”沿一条直线掠过场景。“8 字形”描出一条双纽线,反复穿过场景中部。“螺旋”则一边环绕一边持续靠近。所有路径都从“高级设置”标签页中设定的相机位置开始。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2151"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1077"/>
         <source> frames</source>
         <translation> 帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2153"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1079"/>
         <source>Frame Count:</source>
         <translation>帧数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2154"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1080"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second below to determine the video&apos;s total length in seconds.</source>
@@ -2014,17 +2103,17 @@ Paired with Frames Per Second below to determine the video&apos;s total length i
 与下方的“每秒帧数”配合,共同决定视频的总时长(秒)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2166"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1092"/>
         <source> fps</source>
         <translation> fps</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2168"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1094"/>
         <source>Frames Per Second:</source>
         <translation>每秒帧数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2169"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1095"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
@@ -2033,17 +2122,17 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above)
 不会改变渲染的帧数(那由上方的“帧数”决定)——只影响播放速度,进而决定最终视频的时长(秒数 = 帧数 ÷ 帧率)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2189"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1115"/>
         <source>x</source>
         <translation>x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2191"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1117"/>
         <source>Movement Speed:</source>
         <translation>移动速度:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2192"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1118"/>
         <source>A multiplier on how many frames the camera&apos;s full path is spread across - not a change to the path itself, which always completes the same full sweep.
 
 Speed 0.5x renders twice as many frames to cover the same journey more slowly and smoothly; speed 2x renders half as many frames, covering the same journey faster.</source>
@@ -2052,47 +2141,47 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
 速度为 0.5x 时会渲染两倍的帧数,让同样的路程走得更慢、更平滑;速度为 2x 时渲染的帧数减半,让同样的路程走得更快。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2221"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1147"/>
         <source>%1 frames</source>
         <translation>%1 帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2222"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1148"/>
         <source>%1 frames (base %2 × 1/%3x speed)%4</source>
         <translation>%1 帧(基础 %2 × 1/%3x 速度)%4</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2224"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1150"/>
         <source> - capped at 5000</source>
         <translation> ——上限为 5000</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2226"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1152"/>
         <source>&lt;b&gt;Video Duration:&lt;/b&gt; %1 seconds (%2)&lt;br&gt;&lt;b&gt;Camera Path:&lt;/b&gt; %3, always completes its full sweep regardless of speed&lt;br&gt;&lt;b&gt;Output:&lt;/b&gt; Frames will be saved to &lt;code&gt;output/frames/&lt;/code&gt;</source>
         <translation>&lt;b&gt;视频时长:&lt;/b&gt; %1 秒(%2)&lt;br&gt;&lt;b&gt;相机路径:&lt;/b&gt; %3,无论速度如何都会完整走完全程&lt;br&gt;&lt;b&gt;输出:&lt;/b&gt; 帧图像将保存到 &lt;code&gt;output/frames/&lt;/code&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2244"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1170"/>
         <source>ℹ️ Requirements</source>
         <translation>ℹ️ 依赖要求</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2249"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1175"/>
         <source>&lt;b&gt;Requires ffmpeg:&lt;/b&gt; Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.&lt;br&gt;&lt;small&gt;Get it from &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; if the render log reports it&apos;s missing.&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Automatic Assembly:&lt;/b&gt; After rendering all frames, the video will be automatically assembled and opened.</source>
         <translation>&lt;b&gt;需要 ffmpeg:&lt;/b&gt; 视频编码使用 ffmpeg(libx264),必须已安装并配置到 PATH 中。&lt;br&gt;&lt;small&gt;如果渲染日志提示缺失,请前往 &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; 获取。&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;自动合成:&lt;/b&gt; 所有帧渲染完成后,视频会被自动合成并打开。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2261"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1187"/>
         <source>Usage Instructions</source>
         <translation>使用说明</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2266"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1192"/>
         <source>&lt;b&gt;Step 1:&lt;/b&gt; Configure video settings (camera path, frames, FPS)&lt;br&gt;&lt;b&gt;Step 2:&lt;/b&gt; Configure quality settings in Basic/Advanced tabs&lt;br&gt;&lt;b&gt;Step 3:&lt;/b&gt; Click START VIDEO RENDER and wait&lt;br&gt;&lt;b&gt;Step 4:&lt;/b&gt; Video automatically assembles and opens when done!&lt;br&gt;&lt;br&gt;&lt;b&gt;Tips:&lt;/b&gt;&lt;br&gt;• Use GPU mode for faster rendering&lt;br&gt;• Lower samples/pixel for quick previews (10-50)&lt;br&gt;• Higher samples/pixel for production quality (100-500)&lt;br&gt;• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)</source>
         <translation>&lt;b&gt;第 1 步:&lt;/b&gt; 配置视频设置(相机路径、帧数、帧率)&lt;br&gt;&lt;b&gt;第 2 步:&lt;/b&gt; 在“基本设置”/“高级设置”标签页中配置画质设置&lt;br&gt;&lt;b&gt;第 3 步:&lt;/b&gt; 点击“开始视频渲染”并等待&lt;br&gt;&lt;b&gt;第 4 步:&lt;/b&gt; 完成后视频会自动合成并打开!&lt;br&gt;&lt;br&gt;&lt;b&gt;小贴士:&lt;/b&gt;&lt;br&gt;• 使用 GPU 模式可加快渲染速度&lt;br&gt;• 快速预览可降低每像素样本数(10-50)&lt;br&gt;• 正式成片可提高每像素样本数(100-500)&lt;br&gt;• 典型渲染时间:1-5 分钟(GPU)、15-60 分钟(CPU)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2297"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1223"/>
         <source>Video Settings</source>
         <translation>视频设置</translation>
     </message>
@@ -2142,7 +2231,7 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
         <translation>字体(&amp;O)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1141"/>
+        <location filename="../mainwindow_style.cpp" line="1114"/>
         <source>The general-purpose importance-sampled path tracer used everywhere else in this app - next-event estimation plus BSDF importance sampling, combined via the power heuristic (MIS). The well-tested default; start here unless you have a specific reason not to.
 
 The alternates below trade that generality for a specific technique - photon mapping, bidirectional/Metropolis light transport, or a handful of unbiased reference and debug integrators. All are CPU-only except SPPM, and none can be combined with Generate Video mode. Sampler/Spectral/Exposure/Tonemap/Stats above only affect this default Path Tracer.</source>
@@ -2151,7 +2240,7 @@ The alternates below trade that generality for a specific technique - photon map
 下方的备选项以牺牲这种通用性为代价换取特定技术——光子映射、双向/Metropolis 光传输,或若干无偏的参考/调试积分器。除 SPPM 外均仅限 CPU,且都无法与生成视频模式组合使用。上方的采样器/光谱/曝光/色调映射/统计信息仅对默认路径追踪器生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1154"/>
+        <location filename="../mainwindow_style.cpp" line="1127"/>
         <source>Stochastic Progressive Photon Mapping (pbrt-v4 style). Best for hard caustic/glass scenes ordinary path tracing struggles to resolve.
 
 CPU: verified end-to-end on the Cornell Rough Glass scene; other scenes are unverified and only support lambertian + delta-BSDF materials.
@@ -2164,7 +2253,7 @@ CPU:已在康奈尔毛玻璃场景上完成端到端验证;其他场景尚未验
 GPU:按场景逐一检查支持能力——支持 Lambertian/DiffuseLight、RoughDielectric、Metal、Dielectric、Conductor、RoughMetal 以及 DiffuseTransmission(仅限面光源);不受支持的场景会回退为报错——此时请改用 CPU 版 SPPM。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1167"/>
+        <location filename="../mainwindow_style.cpp" line="1140"/>
         <source>Bidirectional Path Tracing - traces subpaths from both the camera and the light source and connects every pair, better for some difficult lighting configurations path tracing alone struggles with.
 
 CPU only. Area lights only (no punctual/sky-light NEE yet). Verified end-to-end on the Cornell Box scene only; other scenes are unverified.</source>
@@ -2173,7 +2262,7 @@ CPU only. Area lights only (no punctual/sky-light NEE yet). Verified end-to-end 
 仅限 CPU。仅支持面光源(尚不支持点光源/天空光的 NEE)。仅在康奈尔盒场景上完成端到端验证;其他场景尚未验证。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1176"/>
+        <location filename="../mainwindow_style.cpp" line="1149"/>
         <source>Metropolis Light Transport, built directly on BDPT&apos;s subpath machinery - uses a Markov chain to concentrate samples on light paths that already contribute, useful for scenes with hard-to-find bright paths.
 
 CPU only. Same area-lights-only scope and single-scene (Cornell Box) verification as BDPT.</source>
@@ -2182,7 +2271,7 @@ CPU only. Same area-lights-only scope and single-scene (Cornell Box) verificatio
 仅限 CPU。与 BDPT 相同,仅支持面光源,且仅在康奈尔盒单一场景上完成验证。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1184"/>
+        <location filename="../mainwindow_style.cpp" line="1157"/>
         <source>pbrt-v4&apos;s unbiased reference path tracer - uniform-sphere sampling, no next-event estimation or multiple importance sampling. Simpler and noisier than the default path tracer; useful as a ground-truth reference to check other integrators against.
 
 CPU only.</source>
@@ -2191,7 +2280,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1192"/>
+        <location filename="../mainwindow_style.cpp" line="1165"/>
         <source>A visualization/debug mode, not a lit render - measures how occluded each point is by nearby geometry, ignoring material color and indirect lighting entirely.
 
 CPU only.</source>
@@ -2200,7 +2289,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1198"/>
+        <location filename="../mainwindow_style.cpp" line="1171"/>
         <source>pbrt-v4&apos;s canonical reference path tracer - optional next-event estimation and optional BSDF importance sampling, both on by default (see the toggles below).
 
 CPU only. NEE, when enabled, is area-lights-only, the same scope as BDPT/MLT.</source>
@@ -2209,7 +2298,7 @@ CPU only. NEE, when enabled, is area-lights-only, the same scope as BDPT/MLT.</s
 仅限 CPU。启用时的 NEE 仅支持面光源,与 BDPT/MLT 的范围相同。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1205"/>
+        <location filename="../mainwindow_style.cpp" line="1178"/>
         <source>pbrt-v4&apos;s simplest volumetric path tracer - pure delta tracking, no NEE/MIS/surface BSDFs.
 
 Reachable but medium-free in this integration, so it renders mostly black on ordinary solid-geometry scenes except where a camera ray lands directly on a light - matches pbrt-v4&apos;s own upstream behavior on medium-free scenes.
@@ -2222,7 +2311,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1214"/>
+        <location filename="../mainwindow_style.cpp" line="1187"/>
         <source>A pure light tracer - the opposite direction of every other integrator here: every sample starts at a light and splats camera-connection contributions into the film, instead of starting at the camera.
 
 CPU only. Area lights only.</source>
@@ -2231,139 +2320,139 @@ CPU only. Area lights only.</source>
 仅限 CPU。仅支持面光源。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1231"/>
+        <location filename="../mainwindow_style.cpp" line="1204"/>
         <source>Denoiser: on</source>
         <translation>降噪器: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1232"/>
+        <location filename="../mainwindow_style.cpp" line="1205"/>
         <source>Stats: on</source>
         <translation>统计信息: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1233"/>
+        <location filename="../mainwindow_style.cpp" line="1206"/>
         <source>OptiX validation: on</source>
         <translation>OptiX 验证: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1234"/>
+        <location filename="../mainwindow_style.cpp" line="1207"/>
         <source>Exposure: %1</source>
         <translation>曝光: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1240"/>
+        <location filename="../mainwindow_style.cpp" line="1213"/>
         <source>Sampler: %1</source>
         <translation>采样器: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1241"/>
+        <location filename="../mainwindow_style.cpp" line="1214"/>
         <source>Spectral: on</source>
         <translation>光谱: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1242"/>
+        <location filename="../mainwindow_style.cpp" line="1215"/>
         <source>Tonemap: %1</source>
         <translation>色调映射: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1253"/>
+        <location filename="../mainwindow_style.cpp" line="1226"/>
         <source>Iterations: %1</source>
         <translation>迭代次数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1254"/>
+        <location filename="../mainwindow_style.cpp" line="1227"/>
         <source>Photons/iter: %1</source>
         <translation>每次迭代光子数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1257"/>
-        <location filename="../mainwindow_style.cpp" line="1262"/>
+        <location filename="../mainwindow_style.cpp" line="1230"/>
+        <location filename="../mainwindow_style.cpp" line="1235"/>
         <source>Max depth: %1</source>
         <translation>最大深度: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1260"/>
+        <location filename="../mainwindow_style.cpp" line="1233"/>
         <source>Bootstrap: %1</source>
         <translation>引导采样数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1261"/>
+        <location filename="../mainwindow_style.cpp" line="1234"/>
         <source>Mutations: %1</source>
         <translation>变异次数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1268"/>
+        <location filename="../mainwindow_style.cpp" line="1241"/>
         <source>Max distance: %1</source>
         <translation>最大距离: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1269"/>
+        <location filename="../mainwindow_style.cpp" line="1242"/>
         <source>Uniform-hemisphere sampling</source>
         <translation>均匀半球采样</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1270"/>
+        <location filename="../mainwindow_style.cpp" line="1243"/>
         <source>Illumination scale: %1</source>
         <translation>照明强度倍率: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1272"/>
+        <location filename="../mainwindow_style.cpp" line="1245"/>
         <source>Occlusion color: (%1, %2, %3)</source>
         <translation>遮蔽颜色: (%1, %2, %3)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1275"/>
+        <location filename="../mainwindow_style.cpp" line="1248"/>
         <source>NEE disabled</source>
         <translation>已禁用 NEE</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1276"/>
+        <location filename="../mainwindow_style.cpp" line="1249"/>
         <source>BSDF importance sampling disabled</source>
         <translation>已禁用 BSDF 重要性采样</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1293"/>
+        <location filename="../mainwindow_style.cpp" line="1266"/>
         <source>&lt;b&gt;Rendering technique&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;渲染技术&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1303"/>
+        <location filename="../mainwindow_style.cpp" line="1276"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Settings used&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;使用的设置&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="276"/>
+        <location filename="../recent_renders.cpp" line="289"/>
         <source>just now</source>
         <translation>just now</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="277"/>
+        <location filename="../recent_renders.cpp" line="290"/>
         <source>%1 min ago</source>
         <translation>%1 分钟前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="278"/>
+        <location filename="../recent_renders.cpp" line="291"/>
         <source>%1 hr ago</source>
         <translation>%1 小时前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="279"/>
+        <location filename="../recent_renders.cpp" line="292"/>
         <source>%1 days ago</source>
         <translation>%1 天前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="286"/>
+        <location filename="../recent_renders.cpp" line="299"/>
         <source>%1%2 — %3</source>
         <translation>%1%2 — %3</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="288"/>
-        <location filename="../recent_renders.cpp" line="293"/>
+        <location filename="../recent_renders.cpp" line="301"/>
+        <location filename="../recent_renders.cpp" line="306"/>
         <source> · Video</source>
         <translation> · 视频</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="296"/>
+        <location filename="../recent_renders.cpp" line="309"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7 — %8</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7 — %8</translation>
     </message>
@@ -2782,8 +2871,12 @@ CPU only. Area lights only.</source>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="167"/>
+        <source>The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it&apos;s genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene&apos;s own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU only - both the recursive and wavefront backends have their own denoiser. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there&apos;s nothing to visually compare for that one.</source>
+        <translation>与 A1 相同的康奈尔盒场景,但故意以较低的每像素 32 采样渲染,使其在做任何后处理之前就带有明显的颗粒感——分别在关闭和开启 OptiX AI 降噪器(“渲染选项”标签页)的情况下各渲染一次。降噪器是一个机器学习模型,能够识别这种斑点噪声模式(由场景自身的反照率与法线缓冲引导)并将其抹平,而无需追踪哪怕一条额外的光线——以损失少量细节为代价,在相同采样数下换来明显更干净的画面。仅限 GPU——递归式与 Wavefront 两种后端各自都有自己的降噪器。旁边的“OptiX 验证模式”复选框也是这里值得了解的另一类控件:它只是开启额外的、有实际性能开销的设备端正确性检查——绝不会改变渲染出的图像,所以这一项没有什么画面可供直观对比。</translation>
+    </message>
+    <message>
         <source>The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it&apos;s genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene&apos;s own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU recursive backend only. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there&apos;s nothing to visually compare for that one.</source>
-        <translation>与 A1 相同的康奈尔盒场景,但故意以较低的每像素 32 次采样进行渲染,因此在任何后处理之前画面本身就明显颗粒感十足——分别在关闭和开启 OptiX AI 降噪器(渲染选项标签页)的情况下各渲染一次。该降噪器是一个机器学习模型,能识别出这种斑点噪声模式(并借助场景自身的反照率与法线缓冲区加以引导),在不追加任何一条光线的情况下将其平滑消除,以牺牲少量细节为代价,在相同采样数下换来明显更干净的画面。仅限 GPU 递归后端。旁边的 OptiX 验证模式复选框则是另一类值得了解的控件:它只会开启带有真实性能开销的额外设备端正确性检查,不会改变渲染出的图像本身,因此这一项没有任何视觉效果可供对比。</translation>
+        <translation type="vanished">与 A1 相同的康奈尔盒场景,但故意以较低的每像素 32 次采样进行渲染,因此在任何后处理之前画面本身就明显颗粒感十足——分别在关闭和开启 OptiX AI 降噪器(渲染选项标签页)的情况下各渲染一次。该降噪器是一个机器学习模型,能识别出这种斑点噪声模式(并借助场景自身的反照率与法线缓冲区加以引导),在不追加任何一条光线的情况下将其平滑消除,以牺牲少量细节为代价,在相同采样数下换来明显更干净的画面。仅限 GPU 递归后端。旁边的 OptiX 验证模式复选框则是另一类值得了解的控件:它只会开启带有真实性能开销的额外设备端正确性检查,不会改变渲染出的图像本身,因此这一项没有任何视觉效果可供对比。</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="188"/>
@@ -2799,12 +2892,12 @@ CPU only. Area lights only.</source>
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow.h" line="587"/>
+        <location filename="../mainwindow_widgets.h" line="733"/>
         <source>No renders yet</source>
         <translation>尚无渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow.h" line="595"/>
+        <location filename="../mainwindow_widgets.h" line="741"/>
         <source>Start a render from Basic Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>
