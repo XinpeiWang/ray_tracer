@@ -182,6 +182,49 @@ struct ShapeSample {
 	T pdf;          // probability density (per unit area or per unit solid angle)
 };
 
+// Converts an area-measure pdf to the solid-angle measure every shape's own
+// sample_from()/pdf_from() below needs to return (pbrt-v4's "convert to
+// solid angle" step, pdf *= dist^2/cos_theta) - factored out because
+// Disk/Cylinder/Cone/Paraboloid each independently reimplemented this exact
+// formula, and a code-review pass found the copies had already begun
+// drifting: some guarded the final result with std::isfinite (a genuinely
+// degenerate area/distance ratio can produce inf or NaN) and others didn't.
+// Two entry points, matching the two call shapes this formula appears in:
+//  - solid_angle_pdf_from_sample(): sample_from()'s own case - a freshly-
+//    drawn ShapeSample position/normal and a raw (unnormalized) vector to
+//    the reference point ctx, not yet known to be nonzero-length.
+//  - solid_angle_pdf_from_hit(): pdf_from()'s own case - intersect() has
+//    already returned a hit with its own normal, and the caller already
+//    has the query direction as a UNIT vector plus the hit's own distance
+//    (hit->t) - reusing those avoids a second, redundant normalize/sqrt
+//    over the same points solid_angle_pdf_from_sample() would otherwise
+//    repeat.
+template<typename T>
+CPU_GPU T solid_angle_pdf_from_sample(T sample_px, T sample_py, T sample_pz,
+                                        T sample_nx, T sample_ny, T sample_nz,
+                                        const SamplingContext<T>& ctx, T pdf_area) {
+	using namespace shapes_detail;
+	T wix = sample_px - ctx.px, wiy = sample_py - ctx.py, wiz = sample_pz - ctx.pz;
+	T dist2 = wix*wix + wiy*wiy + wiz*wiz;
+	if (dist2 == T(0)) return T(0);
+	T inv_d = T(1) / std::sqrt(dist2);
+	T cos_theta = std::abs(dot3(sample_nx, sample_ny, sample_nz,
+	                             -wix*inv_d, -wiy*inv_d, -wiz*inv_d));
+	if (cos_theta == T(0)) return T(0);
+	T pdf = pdf_area * dist2 / cos_theta;
+	return std::isfinite(pdf) ? pdf : T(0);
+}
+
+template<typename T>
+CPU_GPU T solid_angle_pdf_from_hit(T hit_nx, T hit_ny, T hit_nz,
+                                     T wi_ux, T wi_uy, T wi_uz, T hit_t, T pdf_area) {
+	using namespace shapes_detail;
+	T cos_theta = std::abs(dot3(hit_nx, hit_ny, hit_nz, -wi_ux, -wi_uy, -wi_uz));
+	if (cos_theta == T(0)) return T(0);
+	T pdf = pdf_area * (hit_t * hit_t) / cos_theta;
+	return std::isfinite(pdf) ? pdf : T(0);
+}
+
 
 // ===========================================================================
 // SphereShape<T>
@@ -654,17 +697,8 @@ struct DiskShape {
 	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
 									   T u0, T u1) const {
 		ShapeSample<T> ss = sample(u0, u1);
-		T wix = ss.px - ctx.px;
-		T wiy = ss.py - ctx.py;
-		T wiz = ss.pz - ctx.pz;
-		T wi_len2 = wix*wix + wiy*wiy + wiz*wiz;
-		if (wi_len2 == T(0)) { ss.pdf = T(0); return ss; }
-		T wi_len = std::sqrt(wi_len2);
-		T wi_nx = wix/wi_len, wi_ny = wiy/wi_len, wi_nz = wiz/wi_len;
-		T cos_theta_n = std::abs(shapes_detail::dot3(ss.nx, ss.ny, ss.nz,
-													 -wi_nx, -wi_ny, -wi_nz));
-		if (cos_theta_n == T(0)) { ss.pdf = T(0); return ss; }
-		ss.pdf = ss.pdf * wi_len2 / cos_theta_n;
+		ss.pdf = solid_angle_pdf_from_sample(ss.px, ss.py, ss.pz,
+		                                      ss.nx, ss.ny, ss.nz, ctx, ss.pdf);
 		return ss;
 	}
 
@@ -673,16 +707,13 @@ struct DiskShape {
 		// Intersect the wi ray with the disk and compute Jacobian
 		T wi_len = shapes_detail::len3(wi_dx, wi_dy, wi_dz);
 		if (wi_len == T(0)) return T(0);
+		T wix = wi_dx/wi_len, wiy = wi_dy/wi_len, wiz = wi_dz/wi_len;
 		// Ray from ctx in direction wi
-		auto hit = intersect(ctx.px, ctx.py, ctx.pz,
-							 wi_dx/wi_len, wi_dy/wi_len, wi_dz/wi_len,
+		auto hit = intersect(ctx.px, ctx.py, ctx.pz, wix, wiy, wiz,
 							 T(1e-4), std::numeric_limits<T>::max());
 		if (!hit) return T(0);
-		T dist = hit->t;
-		T cos_theta_n = std::abs(shapes_detail::dot3(hit->nx, hit->ny, hit->nz,
-													 -wi_dx/wi_len, -wi_dy/wi_len, -wi_dz/wi_len));
-		if (cos_theta_n == T(0)) return T(0);
-		return pdf_area() * dist*dist / cos_theta_n;
+		return solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
+		                                 wix, wiy, wiz, hit->t, pdf_area());
 	}
 };
 
@@ -794,14 +825,8 @@ struct CylinderShape {
 	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
 	                                    T u0, T u1) const {
 		ShapeSample<T> ss=sample(u0,u1);
-		T wix=ss.px-ctx.px, wiy=ss.py-ctx.py, wiz=ss.pz-ctx.pz;
-		T dist2=wix*wix+wiy*wiy+wiz*wiz;
-		if(dist2==T(0)){ss.pdf=T(0);return ss;}
-		T inv_d=T(1)/std::sqrt(dist2);
-		T cos_t=std::abs(shapes_detail::dot3(ss.nx,ss.ny,ss.nz,
-		                                      -wix*inv_d,-wiy*inv_d,-wiz*inv_d));
-		if(cos_t==T(0)){ss.pdf=T(0);return ss;}
-		ss.pdf=pdf_area()*dist2/cos_t;
+		ss.pdf = solid_angle_pdf_from_sample(ss.px, ss.py, ss.pz,
+		                                      ss.nx, ss.ny, ss.nz, ctx, ss.pdf);
 		return ss;
 	}
 
@@ -818,11 +843,8 @@ struct CylinderShape {
 		auto hit=intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
 		                   T(1e-4),std::numeric_limits<T>::max());
 		if(!hit) return T(0);
-		T dist2=hit->t*hit->t;
-		T cos_t=std::abs(dot3(hit->nx,hit->ny,hit->nz,-wix,-wiy,-wiz));
-		if(cos_t==T(0)) return T(0);
-		T pdf=pdf_area()*dist2/cos_t;
-		return std::isfinite(pdf)?pdf:T(0);
+		return solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
+		                                 wix, wiy, wiz, hit->t, pdf_area());
 	}
 };
 
@@ -933,6 +955,14 @@ struct ConeShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
 		using namespace shapes_detail;
+		// Mirrors intersect()'s own "height==0 -> return {}" guard just
+		// above, and ParaboloidShape::sample()'s identical "radius==0"
+		// guard below - without it, k=radius/height=inf and r_local below
+		// becomes inf*0=NaN, propagating a NaN sample/pdf all the way out
+		// through sample_from() (a code-review pass found this reachable
+		// from an ordinary pbrt scene: `Shape "cone" "float height" [0]`
+		// under an `AreaLightSource` has no clamp anywhere in the loader).
+		if (height == T(0)) return ShapeSample<T>{0,0,0, 0,0,1, 0,0, T(0)};
 		const T k = radius / height;
 		T z = u0 * height;
 		T phi = u1 * phi_max;
@@ -959,15 +989,9 @@ struct ConeShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
 	                                    T u0, T u1) const {
-		using namespace shapes_detail;
 		ShapeSample<T> ss = sample(u0, u1);
-		T wix=ss.px-ctx.px, wiy=ss.py-ctx.py, wiz=ss.pz-ctx.pz;
-		T dist2=wix*wix+wiy*wiy+wiz*wiz;
-		if (dist2==T(0)) { ss.pdf=T(0); return ss; }
-		T inv_d=T(1)/std::sqrt(dist2);
-		T cos_t=std::abs(dot3(ss.nx,ss.ny,ss.nz,-wix*inv_d,-wiy*inv_d,-wiz*inv_d));
-		if (cos_t==T(0)) { ss.pdf=T(0); return ss; }
-		ss.pdf = ss.pdf * dist2 / cos_t;
+		ss.pdf = solid_angle_pdf_from_sample(ss.px, ss.py, ss.pz,
+		                                      ss.nx, ss.ny, ss.nz, ctx, ss.pdf);
 		return ss;
 	}
 
@@ -991,11 +1015,8 @@ struct ConeShape {
 		T r_local = radius - k*z;
 		T dAdz = phi_max * r_local * std::sqrt(T(1) + k*k);
 		T pdfAreaAtHit = (dAdz > T(0)) ? (T(1) / height) / dAdz : T(0);
-		T dist2=hit->t*hit->t;
-		T cos_t=std::abs(dot3(hit->nx,hit->ny,hit->nz,-wix,-wiy,-wiz));
-		if(cos_t==T(0)) return T(0);
-		T pdf=pdfAreaAtHit*dist2/cos_t;
-		return std::isfinite(pdf)?pdf:T(0);
+		return solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
+		                                 wix, wiy, wiz, hit->t, pdfAreaAtHit);
 	}
 };
 
@@ -1131,15 +1152,9 @@ struct ParaboloidShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
 	                                    T u0, T u1) const {
-		using namespace shapes_detail;
 		ShapeSample<T> ss = sample(u0, u1);
-		T wix=ss.px-ctx.px, wiy=ss.py-ctx.py, wiz=ss.pz-ctx.pz;
-		T dist2=wix*wix+wiy*wiy+wiz*wiz;
-		if (dist2==T(0)) { ss.pdf=T(0); return ss; }
-		T inv_d=T(1)/std::sqrt(dist2);
-		T cos_t=std::abs(dot3(ss.nx,ss.ny,ss.nz,-wix*inv_d,-wiy*inv_d,-wiz*inv_d));
-		if (cos_t==T(0)) { ss.pdf=T(0); return ss; }
-		ss.pdf = ss.pdf * dist2 / cos_t;
+		ss.pdf = solid_angle_pdf_from_sample(ss.px, ss.py, ss.pz,
+		                                      ss.nx, ss.ny, ss.nz, ctx, ss.pdf);
 		return ss;
 	}
 
@@ -1161,11 +1176,8 @@ struct ParaboloidShape {
 		T z = z_min + hit->v * (z_max - z_min);
 		T dAdz = (phi_max / k) * safe_sqrt(k*z + T(0.25));
 		T pdfAreaAtHit = (dAdz > T(0)) ? (T(1) / (z_max - z_min)) / dAdz : T(0);
-		T dist2=hit->t*hit->t;
-		T cos_t=std::abs(dot3(hit->nx,hit->ny,hit->nz,-wix,-wiy,-wiz));
-		if(cos_t==T(0)) return T(0);
-		T pdf=pdfAreaAtHit*dist2/cos_t;
-		return std::isfinite(pdf)?pdf:T(0);
+		return solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
+		                                 wix, wiy, wiz, hit->t, pdfAreaAtHit);
 	}
 };
 

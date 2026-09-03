@@ -751,23 +751,31 @@ class camera {
             // distance one NDC unit already covers in the default (unset)
             // case above (default y always spans [-1,1], giving
             // viewport_height=2*h*focus_dist there) - reused directly here
-            // so an unset/default-valued screenwindow ([-1,1,-1,1], this
-            // class's own default) still needs the aspect-ratio scaling on
-            // x the plain vfov-only path above already applies; an
-            // EXPLICITLY-given window instead takes both extents verbatim
+            // so an EXPLICITLY-given window takes both extents verbatim
             // (matching scene_registry.h's own Orthographic-camera
             // precedent - the user's numbers are used as-is, not re-scaled
             // by aspect), including a genuinely off-center one (xmin/xmax
             // not symmetric around 0) via the center_shift_u/v this
             // function's own caller (compute_viewport_geometry) applies.
-            const bool isDefaultWindow = screen_window[0] == -1.0 && screen_window[1] == 1.0
-                && screen_window[2] == -1.0 && screen_window[3] == 1.0;
-            if (!isDefaultWindow) {
-                viewport_width  = (screen_window[1] - screen_window[0]) * h * focus_dist;
-                viewport_height = (screen_window[3] - screen_window[2]) * h * focus_dist;
-                center_shift_u  = (screen_window[0] + screen_window[1]) * 0.5 * h * focus_dist;
-                center_shift_v  = (screen_window[2] + screen_window[3]) * 0.5 * h * focus_dist;
-            }
+            //
+            // Applied unconditionally whenever has_screen_window is true,
+            // with NO special case for a window that happens to equal
+            // [-1,1,-1,1] - a code-review pass found an earlier version of
+            // this code silently treated that specific explicit value as
+            // if no screenwindow had been given at all (routing it through
+            // the aspect-scaled default path instead), which diverges from
+            // real pbrt-v4 semantics on a non-square-aspect image: real
+            // pbrt-v4's own auto-computed default is aspect-scaled (e.g.
+            // [-aspect,aspect,-1,1] for aspect>1), genuinely different from
+            // a literal [-1,1,-1,1] - has_screen_window (set only when the
+            // scene text actually contained a screenwindow directive, see
+            // scene_registry.h) already correctly distinguishes "the user
+            // wrote this" from "nothing was written" - there is no reason
+            // to re-derive that distinction from the numeric value here.
+            viewport_width  = (screen_window[1] - screen_window[0]) * h * focus_dist;
+            viewport_height = (screen_window[3] - screen_window[2]) * h * focus_dist;
+            center_shift_u  = (screen_window[0] + screen_window[1]) * 0.5 * h * focus_dist;
+            center_shift_v  = (screen_window[2] + screen_window[3]) * 0.5 * h * focus_dist;
         }
 
         // Calculate the u,v,w unit basis vectors for the camera coordinate frame.

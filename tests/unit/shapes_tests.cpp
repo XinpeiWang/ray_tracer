@@ -686,6 +686,32 @@ TEST(ShapesCone, SampleNormalIsUnitLengthAndPdfPositive) {
 	EXPECT_GT(ss.pdf, 0.0);
 }
 
+TEST(ShapesCone, SampleWithZeroHeightReturnsAFiniteZeroPdfSampleNotNaN) {
+	// Regression test for a code-review finding: sample() used to have no
+	// height==0 guard (unlike intersect(), and unlike ParaboloidShape::
+	// sample()'s own radius==0 guard) - k=radius/height would be inf, and
+	// r_local=radius-k*z became inf*0=NaN for every u0, propagating a NaN
+	// position/pdf out through sample_from() too. A degenerate
+	// `Shape "cone" "float height" [0]` under an AreaLightSource is a real,
+	// reachable scene (nothing in the loader clamps height away from 0).
+	auto c = ConeShape<double>::make(1.0, 0.0, 2.0 * PI);
+	for (double u0 : {0.0, 0.3, 0.999}) {
+		for (double u1 : {0.0, 0.5, 0.999}) {
+			auto ss = c.sample(u0, u1);
+			EXPECT_TRUE(std::isfinite(ss.px)) << "u0=" << u0 << " u1=" << u1;
+			EXPECT_TRUE(std::isfinite(ss.py)) << "u0=" << u0 << " u1=" << u1;
+			EXPECT_TRUE(std::isfinite(ss.pz)) << "u0=" << u0 << " u1=" << u1;
+			EXPECT_TRUE(std::isfinite(ss.pdf)) << "u0=" << u0 << " u1=" << u1;
+			EXPECT_EQ(ss.pdf, 0.0) << "u0=" << u0 << " u1=" << u1;
+		}
+	}
+
+	SamplingContext<double> ctx{-5.0, 0.0, 0.0, 0, 0, 0};
+	auto ss_from = c.sample_from(ctx, 0.5, 0.5);
+	EXPECT_TRUE(std::isfinite(ss_from.pdf));
+	EXPECT_EQ(ss_from.pdf, 0.0);
+}
+
 TEST(ShapesCone, SampleFromConvertsToSolidAngle) {
 	auto c = unit_cone();
 	SamplingContext<double> ctx{-5.0, 0.0, 1.0, 0, 0, 0};

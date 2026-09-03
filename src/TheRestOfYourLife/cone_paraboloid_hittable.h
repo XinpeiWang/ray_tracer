@@ -108,6 +108,67 @@ class cone_hittable : public hittable {
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
 	}
 
+	// Real entry/exit interval for a MediumInterface-wrapped cone - see
+	// hittable::volume_bounds()'s own comment for why this is needed at
+	// all (the generic constant_medium two-hit() fallback is wrong for
+	// this shape's open base). Same "infinite quadric surface intersected
+	// with a z-slab" technique as cylinder_hittable::volume_bounds()
+	// (disk_cylinder_hittable.h), just with the cone's own a/b/c quadratic
+	// coefficients - identical to intersect()'s own (this shape's
+	// unclipped-by-z/phi roots), and the z-slab is [0, height] rather than
+	// an independent [z_min, z_max] since a cone's base is always at z=0.
+	bool supports_volume_bounds() const override { return true; }
+
+	bool volume_bounds(const ray& r, double& out_t0, double& out_t1) const override {
+		if (!valid_ || shape_.height == 0.0) return false;
+		using namespace affine_transform;
+		const point3 ro = apply_point(w2o_, r.origin());
+		const vec3   rd = apply_vector(w2o_, r.direction());   // NOT normalised - see file comment
+
+		const double k = shape_.radius / shape_.height;
+		const double a = rd.x()*rd.x() + rd.y()*rd.y() - k*k*rd.z()*rd.z();
+		const double b = 2.0*(ro.x()*rd.x() + ro.y()*rd.y()) - 2.0*k*k*ro.z()*rd.z()
+		               + 2.0*shape_.radius*k*rd.z();
+		const double c = ro.x()*ro.x() + ro.y()*ro.y() - shape_.radius*shape_.radius
+		               + 2.0*shape_.radius*k*ro.z() - k*k*ro.z()*ro.z();
+
+		double tube_t0 = -infinity, tube_t1 = infinity;
+		bool hasTube;
+		if (a == 0.0) {
+			// Matches ConeShape::intersect()'s own "a==0 -> no hit" precedent
+			// (see that function's comment) - a ray exactly parallel to a
+			// generator line's slope, rare enough to accept as a clean miss.
+			hasTube = false;
+		} else {
+			const double discrim = b*b - 4.0*a*c;
+			if (discrim < 0.0) {
+				hasTube = false;
+			} else {
+				const double sqrt_disc = std::sqrt(discrim);
+				const double q = (b < 0.0) ? -0.5*(b - sqrt_disc) : -0.5*(b + sqrt_disc);
+				tube_t0 = q / a;
+				tube_t1 = c / q;
+				if (tube_t0 > tube_t1) std::swap(tube_t0, tube_t1);
+				hasTube = true;
+			}
+		}
+
+		double z_t0 = -infinity, z_t1 = infinity;
+		bool hasZSlab = true;
+		if (rd.z() == 0.0) {
+			hasZSlab = (ro.z() >= 0.0 && ro.z() <= shape_.height);
+		} else {
+			const double za = (0.0 - ro.z()) / rd.z();
+			const double zb = (shape_.height - ro.z()) / rd.z();
+			z_t0 = std::min(za, zb);
+			z_t1 = std::max(za, zb);
+		}
+
+		out_t0 = std::max(tube_t0, z_t0);
+		out_t1 = std::min(tube_t1, z_t1);
+		return hasTube && hasZSlab && out_t0 < out_t1;
+	}
+
 	shared_ptr<material> get_material() const { return mat_; }
 
   private:
@@ -198,6 +259,64 @@ class paraboloid_hittable : public hittable {
 		const vec3 dir_obj = apply_vector(w2o_, direction);
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
+	}
+
+	// Real entry/exit interval for a MediumInterface-wrapped paraboloid -
+	// see cone_hittable::volume_bounds()'s own comment (identical
+	// "infinite quadric intersected with a z-slab" rationale and
+	// technique, cylinder_hittable::volume_bounds() in disk_cylinder_
+	// hittable.h). a/b/c mirror intersect()'s own unclipped-by-z/phi
+	// quadratic coefficients; the z-slab is this shape's own independent
+	// [z_min, z_max] (unlike a cone, a paraboloid's near end need not be
+	// z=0/the apex).
+	bool supports_volume_bounds() const override { return true; }
+
+	bool volume_bounds(const ray& r, double& out_t0, double& out_t1) const override {
+		if (!valid_ || shape_.radius == 0.0) return false;
+		using namespace affine_transform;
+		const point3 ro = apply_point(w2o_, r.origin());
+		const vec3   rd = apply_vector(w2o_, r.direction());   // NOT normalised - see file comment
+
+		const double k = shape_.z_max / (shape_.radius*shape_.radius);
+		const double a = k*(rd.x()*rd.x() + rd.y()*rd.y());
+		const double b = 2.0*k*(ro.x()*rd.x() + ro.y()*rd.y()) - rd.z();
+		const double c = k*(ro.x()*ro.x() + ro.y()*ro.y()) - ro.z();
+
+		double tube_t0 = -infinity, tube_t1 = infinity;
+		bool hasTube;
+		if (a == 0.0) {
+			// Matches ParaboloidShape::intersect()'s own "a==0 -> no hit"
+			// precedent (see that function's comment) - a ray exactly on
+			// the symmetry axis, rare enough to accept as a clean miss.
+			hasTube = false;
+		} else {
+			const double discrim = b*b - 4.0*a*c;
+			if (discrim < 0.0) {
+				hasTube = false;
+			} else {
+				const double sqrt_disc = std::sqrt(discrim);
+				const double q = (b < 0.0) ? -0.5*(b - sqrt_disc) : -0.5*(b + sqrt_disc);
+				tube_t0 = q / a;
+				tube_t1 = c / q;
+				if (tube_t0 > tube_t1) std::swap(tube_t0, tube_t1);
+				hasTube = true;
+			}
+		}
+
+		double z_t0 = -infinity, z_t1 = infinity;
+		bool hasZSlab = true;
+		if (rd.z() == 0.0) {
+			hasZSlab = (ro.z() >= shape_.z_min && ro.z() <= shape_.z_max);
+		} else {
+			const double za = (shape_.z_min - ro.z()) / rd.z();
+			const double zb = (shape_.z_max - ro.z()) / rd.z();
+			z_t0 = std::min(za, zb);
+			z_t1 = std::max(za, zb);
+		}
+
+		out_t0 = std::max(tube_t0, z_t0);
+		out_t1 = std::min(tube_t1, z_t1);
+		return hasTube && hasZSlab && out_t0 < out_t1;
 	}
 
 	shared_ptr<material> get_material() const { return mat_; }

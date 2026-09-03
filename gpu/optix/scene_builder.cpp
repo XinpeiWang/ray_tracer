@@ -12,6 +12,7 @@
 #include "../../cpu_renderer/cpu_interface.h"
 #include "pbrt_gpu_builder.h"
 #include "../../src/shared/pbrt_load.h"
+#include "../../src/shared/scene_descriptor.h"
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
@@ -469,14 +470,33 @@ namespace {
 	// - see camera.h's own viewport_height = 2*h*focus_dist formula. When a
 	// caller additionally needs the camera basis vectors (u, v, w) - e.g.
 	// for defocus-disk sampling setup - pass non-null out_u/out_v/out_w.
+	// screen_window (optional): pbrt-v4 Camera "perspective" "float
+	// screenwindow" as [xmin,xmax,ymin,ymax], or nullptr (every call site
+	// but the one that actually wires this - build_loaded_pbrt_scene()'s
+	// own perspective-camera branch) for the plain vfov-only viewport
+	// below. Mirrors CPU's own camera::initialize() (camera.h) - a code-
+	// review pass found this was silently unsupported on GPU (unlike this
+	// same round's other CPU-only gaps, which all warn) even though CPU
+	// wires it for exactly this camera type.
 	void build_pinhole_camera_params(
 		const float3& lookfrom, const float3& lookat, const float3& vup,
 		float vfov_degrees, float aspect, float focus_dist,
 		float* camera_params,
-		float3* out_u = nullptr, float3* out_v = nullptr, float3* out_w = nullptr
+		float3* out_u = nullptr, float3* out_v = nullptr, float3* out_w = nullptr,
+		const float* screen_window = nullptr
 	) {
 		float viewport_width, viewport_height;
-		compute_viewport_dims_gpu(vfov_degrees, aspect, focus_dist, viewport_width, viewport_height);
+		float center_shift_u = 0.0f, center_shift_v = 0.0f;
+		if (screen_window) {
+			constexpr float kPi = 3.14159265358979323846f;
+			const float h = tanf((vfov_degrees * kPi / 180.0f) / 2.0f);
+			viewport_width  = (screen_window[1] - screen_window[0]) * h * focus_dist;
+			viewport_height = (screen_window[3] - screen_window[2]) * h * focus_dist;
+			center_shift_u  = (screen_window[0] + screen_window[1]) * 0.5f * h * focus_dist;
+			center_shift_v  = (screen_window[2] + screen_window[3]) * 0.5f * h * focus_dist;
+		} else {
+			compute_viewport_dims_gpu(vfov_degrees, aspect, focus_dist, viewport_width, viewport_height);
+		}
 
 		float3 u, v, w;
 		compute_lookat_basis_gpu(lookfrom, lookat, vup, u, v, w);
@@ -484,9 +504,9 @@ namespace {
 		const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
 		const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
 		const float3 lower_left_corner = make_float3(
-			lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - focus_dist * w.x,
-			lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - focus_dist * w.y,
-			lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - focus_dist * w.z
+			lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - focus_dist * w.x + center_shift_u * u.x + center_shift_v * v.x,
+			lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - focus_dist * w.y + center_shift_u * u.y + center_shift_v * v.y,
+			lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - focus_dist * w.z + center_shift_u * u.z + center_shift_v * v.z
 		);
 
 		camera_params[0] = lookfrom.x;           camera_params[1] = lookfrom.y;           camera_params[2] = lookfrom.z;
@@ -3619,6 +3639,31 @@ void build_final_scene_gpu(SceneData& scene) {
 }
 
 
+// See gpu_filter_evaluate()'s own comment (optix_device_helpers.h) - GPU's
+// own per-sample filter weighting is still hardcoded to radius=0.5, unlike
+// CPU's now-real pbrt-v4-default radius (camera::filter_radius's own
+// comment, src/TheRestOfYourLife/camera.h). A scene relying on a real,
+// wider footprint (any non-default PixelFilter, or even the plain default
+// Gaussian's own real radius of 1.5 - CPU's class-level default, so this
+// applies to EVERY scene that doesn't explicitly request a narrower one,
+// native/built-in scenes included) renders visibly sharper/noisier on GPU
+// than CPU - disclosed here rather than silently diverging with nothing in
+// the log to explain why. Shared by both call sites below (a loaded .pbrt
+// scene's own resolved PixelFilter, and every native scene's fixed
+// "gaussian"/1.5 class default) so the two can't drift out of sync.
+static void warn_if_filter_radius_mismatches_gpu(const std::string& kind, double radius) {
+	if (std::abs(radius - 0.5) > 1e-6) {
+		std::cerr << "[OptiX] Warning: this scene's PixelFilter \"" << kind
+			  << "\" has a real radius of " << radius << " pixels, but GPU's "
+				 "own reconstruction filter is still hardcoded to a 0.5-pixel "
+				 "radius (no cross-pixel splatting there yet) - GPU will render "
+				 "visibly sharper/noisier than CPU for this scene; use --cpu "
+				 "instead if the requested filter width matters for this "
+				 "render.\n";
+	}
+}
+
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -3679,23 +3724,7 @@ static bool build_loaded_pbrt_scene(
 		out_camera_extra->filterC = static_cast<float>(pf.C);
 		out_camera_extra->filterSigma = static_cast<float>(pf.sigma);
 		out_camera_extra->filterTau = static_cast<float>(pf.tau);
-		// See gpu_filter_evaluate()'s own comment (optix_device_helpers.h) -
-		// GPU's own per-sample filter weighting is still hardcoded to
-		// radius=0.5, unlike CPU's now-real pbrt-v4-default radius
-		// (pf.radius - PixelFilter::radius's own comment). A scene relying
-		// on a real, wider footprint (any non-default PixelFilter, or even
-		// the plain default Gaussian's own real radius of 1.5) renders
-		// visibly sharper/noisier on GPU than CPU - disclosed here rather
-		// than silently diverging with nothing in the log to explain why.
-		if (std::abs(pf.radius - 0.5) > 1e-6) {
-			std::cerr << "[OptiX] Warning: this scene's PixelFilter \"" << pf.kind
-				  << "\" has a real radius of " << pf.radius << " pixels, but GPU's "
-					 "own reconstruction filter is still hardcoded to a 0.5-pixel "
-					 "radius (no cross-pixel splatting there yet) - GPU will render "
-					 "visibly sharper/noisier than CPU for this scene; use --cpu "
-					 "instead if the requested filter width matters for this "
-					 "render.\n";
-		}
+		warn_if_filter_radius_mismatches_gpu(pf.kind, pf.radius);
 	}
 
 	// Integrator "bool regularize" - same unconditional-from-the-scene shape
@@ -4043,11 +4072,26 @@ static bool build_loaded_pbrt_scene(
 			camera_params, out_camera_extra);
 		return true;
 	}
+	// pbrt-v4 Camera "perspective" "float screenwindow" - mirrors CPU's own
+	// camera::has_screen_window/screen_window (camera.h). float sw[4] (not
+	// double) matches build_pinhole_camera_params()'s own screen_window
+	// param type; screenWindowPtr stays null for the overwhelmingly common
+	// "no screenwindow directive" case, exactly like CPU's has_screen_window
+	// gate.
+	float sw[4];
+	const float* screenWindowPtr = nullptr;
+	if (c.hasScreenWindow) {
+		sw[0] = static_cast<float>(c.screenWindow[0]);
+		sw[1] = static_cast<float>(c.screenWindow[1]);
+		sw[2] = static_cast<float>(c.screenWindow[2]);
+		sw[3] = static_cast<float>(c.screenWindow[3]);
+		screenWindowPtr = sw;
+	}
 	if (defocus_angle_deg > 0.0f) {
 		float3 dof_u, dof_v;
 		build_pinhole_camera_params(
 			lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
-			focus_dist_world, camera_params, &dof_u, &dof_v);
+			focus_dist_world, camera_params, &dof_u, &dof_v, nullptr, screenWindowPtr);
 		if (out_camera_extra) {
 			// A nonzero defocus disk opts this scene out of
 			// optix_interface.cpp's generic camera_params->cameraExtra
@@ -4068,7 +4112,7 @@ static bool build_loaded_pbrt_scene(
 	} else {
 		build_pinhole_camera_params(
 			lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
-			1.0f, camera_params);
+			1.0f, camera_params, nullptr, nullptr, nullptr, screenWindowPtr);
 	}
 
 	// Route non-perspective Camera directives to their GPU camera model, the
@@ -4205,6 +4249,26 @@ bool build_scene(
 ) {
 	if (camera_params == nullptr) {
 		return false;  // Invalid camera parameter buffer
+	}
+
+	// A native/built-in scene's CPU camera is built entirely by
+	// scene_registry.h/scene_registry_data.h, which never overrides
+	// camera::filter_kind/filter_radius away from their class-level
+	// defaults ("gaussian", 1.5) - unlike a loaded .pbrt scene, which can
+	// carry its own PixelFilter directive (checked below, inside
+	// build_loaded_pbrt_scene()). So the same GPU-vs-CPU filter-radius
+	// mismatch this file discloses for a loaded scene applies, always and
+	// unconditionally, to every native scene too - warn here, once, up
+	// front, rather than leaving this whole other category of scene with
+	// no disclosure at all. Native scenes are every category except
+	// CustomScenes (scenes discovered from a .pbrt file on disk, letter
+	// 'J' by default - see SceneCategories::letter_for_category's own
+	// comment for why the letter isn't hardcoded here).
+	if (out_camera_extra) {
+		const std::string category = cpu_scene_category_by_id(scene_id);
+		if (category != SceneCategories::CustomScenes) {
+			warn_if_filter_radius_mismatches_gpu("gaussian", 1.5);
+		}
 	}
 
 	// The switch below still keys on the OLD flat 0..68 int id (unchanged,

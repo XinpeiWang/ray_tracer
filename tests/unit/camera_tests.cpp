@@ -336,12 +336,15 @@ camera makeScreenWindowTestCamera() {
 } // namespace
 
 TEST(CameraTest, ExplicitDefaultScreenWindowMatchesNoScreenWindow) {
-	// has_screen_window=true with the exact default extent ([-1,1,-1,1],
-	// this class's own default) must produce byte-identical rays to
-	// has_screen_window=false - the "isDefaultWindow" fast path in
-	// initialize() exists specifically so a scene that never set
-	// screenwindow at all (has_screen_window stays false) is provably
-	// unaffected by this feature.
+	// At a SQUARE aspect ratio only, an explicit [-1,1,-1,1] screenwindow
+	// and no screenwindow at all happen to resolve to the identical
+	// viewport (both formulas reduce to viewport_width==viewport_height
+	// with zero center shift) - this is a coincidence of the square case,
+	// not a special "isDefaultWindow" fast path (removed - a code-review
+	// pass found it wrongly discarded a genuinely different, explicitly-
+	// requested [-1,1,-1,1] window on a NON-square image; see
+	// ScreenWindowNegOneToOneIsHonoredVerbatimOnNonSquareAspect below for
+	// the case where the two diverge).
 	camera plain = makeScreenWindowTestCamera();
 	plain.initialize();
 
@@ -360,6 +363,40 @@ TEST(CameraTest, ExplicitDefaultScreenWindowMatchesNoScreenWindow) {
 			EXPECT_NEAR(rPlain.direction().z(), rExplicit.direction().z(), 1e-12);
 		}
 	}
+}
+
+TEST(CameraTest, ScreenWindowNegOneToOneIsHonoredVerbatimOnNonSquareAspect) {
+	// Regression test for a code-review finding: on a NON-square aspect
+	// ratio, an explicit "float screenwindow" [-1 1 -1 1] must NOT match
+	// having no screenwindow at all. Real pbrt-v4's own auto-computed
+	// default is aspect-scaled (wider in x for aspect>1); an EXPLICIT
+	// [-1,1,-1,1] is a genuinely square, unstretched window instead - the
+	// two only coincide at aspect==1 (ExplicitDefaultScreenWindowMatches
+	// NoScreenWindow above). An earlier version of initialize() silently
+	// treated this specific explicit value as "no screenwindow", making it
+	// take the aspect-scaled path too - discarding the user's literal
+	// directive with no warning.
+	camera plain = makeScreenWindowTestCamera();
+	plain.aspect_ratio = 2.0;  // non-square
+	plain.initialize();
+
+	camera explicitDefault = makeScreenWindowTestCamera();
+	explicitDefault.aspect_ratio = 2.0;
+	explicitDefault.has_screen_window = true;
+	explicitDefault.screen_window[0] = -1.0; explicitDefault.screen_window[1] = 1.0;
+	explicitDefault.screen_window[2] = -1.0; explicitDefault.screen_window[3] = 1.0;
+	explicitDefault.initialize();
+
+	// plain's viewport is aspect-scaled (viewport_width = viewport_height*2);
+	// explicit's is square (viewport_width == viewport_height) - a corner
+	// ray's x-direction should be about twice as wide for plain as for
+	// explicit. If the bug were still present, these would match exactly.
+	const vec3 cornerDirPlain = plain.get_ray(plain.image_width - 1, plain.image_height / 2, 0, 0).direction();
+	const vec3 cornerDirExplicit = explicitDefault.get_ray(explicitDefault.image_width - 1, explicitDefault.image_height / 2, 0, 0).direction();
+	EXPECT_GT(std::abs(cornerDirPlain.x()), std::abs(cornerDirExplicit.x()) * 1.5)
+		<< "plain (aspect-scaled) corner ray x-direction should be substantially "
+		   "wider than explicit [-1,1,-1,1]'s (square, unstretched) - if these "
+		   "match, the explicit window is being silently treated as unset";
 }
 
 TEST(CameraTest, WidenedScreenWindowGivesACornerRayFartherFromCenterRay) {

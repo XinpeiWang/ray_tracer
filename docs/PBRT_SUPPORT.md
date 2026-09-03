@@ -82,7 +82,7 @@ loaded pbrt scenes. GPU: `gpu/optix/scene_builder.cpp`'s
 
 | pbrt camera | CPU | GPU | Note |
 |---|---|---|---|
-| `perspective` (pinhole) | Full | Full | |
+| `perspective` (pinhole) | Full | Full | Both honor an explicit `screenwindow` too (anamorphic/off-center framing), falling back to the normal aspect-scaled viewport otherwise - CPU via `camera::has_screen_window`/`screen_window` (`camera.h`), GPU via `build_pinhole_camera_params()`'s own `screen_window` param (`scene_builder.cpp`), the identical viewport-width/height/center-shift formula on both. A code-review pass found GPU initially had no equivalent at all here (silently ignored, unlike this same round's other CPU-only gaps, which all warn) - closed by wiring the real math into GPU's camera builder rather than adding a disclosure warning, since (unlike animated curves/PixelFilter's real cross-pixel radius) the underlying math was cheap to mirror exactly. |
 | `perspective` + `lensradius` (depth of field) | Full | Full | Both convert pbrt's `lensradius` (a world-space lens radius) through the same shared `defocusAngleDegreesFor()`/`focusDistanceFor()` helpers before applying it, so there's no unit mismatch between them. |
 | `orthographic` | Full | Full | Both honor an explicit `screenwindow`, and fall back to the same computed default window otherwise. |
 | `spherical` — equirectangular | Full | Full | `"environment"` accepted as an alias for `"spherical"` on both. |
@@ -217,7 +217,19 @@ loader and no longer match the code:
   pbrt-v4's own exact closed-form inverse-CDF, still statistically unbiased)
   and real `MediumInterface` support (wrapped in a `constant_medium` via the
   same shape-agnostic `addMediumIfPresent()` helper Sphere/Disk/Cylinder
-  already use). **GPU (both backends) does not support either shape at all** - a scene
+  already use). **AreaLightSource reach, precisely**: `random()`/
+  `pdf_value()` are enough for the default CPU path tracer's own NEE (and
+  CPU SPPM's direct-lighting pass), but neither shape overrides
+  `hittable::sample_area()` - so an emissive cone/paraboloid is invisible to
+  BDPT/MLT's own light-sampling (`bdpt_adapter.h` builds its light
+  distribution strictly from `sample_area()`, with no NEE-only fallback)
+  and to SPPM's photon-emission pass (`sppm_adapter.h`'s identical filter) -
+  a --bdpt/--mlt render of such a scene shows zero contribution from that
+  light, and SPPM gets direct lighting from it but no caustic/photon
+  contribution. This is not a new limitation specific to Cone/Paraboloid -
+  `disk_hittable`/`cylinder_hittable` have had the identical gap since
+  their own AreaLightSource support landed - but it now applies to two more
+  shapes. **GPU (both backends) does not support either shape at all** - a scene
   using one warns at load time and the shape is silently absent from the
   GPU render (`scene_builder.cpp`), matching how this loader already handles
   every other CPU-only shape gap. One ray direction exactly on the

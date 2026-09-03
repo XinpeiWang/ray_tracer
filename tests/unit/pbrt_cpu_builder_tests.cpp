@@ -2529,6 +2529,43 @@ TEST(PbrtCpuBuildTest, ConeWithMediumScattersReliably) {
 	}
 }
 
+TEST(PbrtCpuBuildTest, ConeWithMediumScattersReliablyEnteringThroughTheOpenBase) {
+	// Regression test for the medium-boundary bug a code-review pass found:
+	// constant_medium's generic "two sequential hit() calls" technique
+	// needs TWO lateral-surface crossings, but a ray entering through the
+	// cone's own open base (no cap there - intersect() only ever models
+	// the lateral surface) and exiting through the lateral wall produces
+	// only ONE such crossing, so the old code silently reported "no medium
+	// here" for exactly this ray shape - the case
+	// ConeWithMediumScattersReliably's own ray (crossing the lateral wall
+	// twice) can't exercise. Now handled by cone_hittable::volume_bounds()
+	// (a real "infinite quadric intersected with a z-slab" solve,
+	// mirroring cylinder_hittable's own identical fix for its own open
+	// ends - see hittable::volume_bounds()'s own comment).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0 0 0 ] \"rgb sigma_s\" [ 500 500 500 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Material \"none\"\n"
+		"  Shape \"cone\" \"float radius\" [ 1 ] \"float height\" [ 2 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.coneCount, 1u);
+	// Enters the volume through the open base (z=0, x=0.3 - well inside
+	// the radius-1 base disk, no surface hit there) travelling straight up
+	// the +z axis, and exits through the lateral wall at z=1.4 (where
+	// radius-k*z == 0.3, k=radius/height=0.5) - exactly ONE lateral-
+	// surface crossing.
+	for (int i = 0; i < 200; ++i) {
+		hit_record rec;
+		ASSERT_TRUE(b.world->hit(ray(point3(0.3, 0, -5), vec3(0, 0, 1)),
+								 interval(0.001, infinity), rec))
+			<< "iteration " << i << ": a sigma_s=500 medium across ~1.4 units "
+			   "of the cone's interior (optical depth ~700) must scatter on "
+			   "essentially every ray, even entering through the open base";
+	}
+}
+
 TEST(PbrtCpuBuildTest, ParaboloidWithAreaLightIsAddedToLightsAndIsSampleable) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"AttributeBegin\n"
@@ -2573,6 +2610,41 @@ TEST(PbrtCpuBuildTest, ParaboloidWithMediumScattersReliably) {
 			<< "iteration " << i << ": a sigma_s=500 medium across the "
 			   "paraboloid's own radius-1 rim (optical depth ~1000) must "
 			   "scatter on essentially every ray";
+	}
+}
+
+TEST(PbrtCpuBuildTest, ParaboloidWithMediumScattersReliablyEnteringThroughTheOpenRim) {
+	// See ConeWithMediumScattersReliablyEnteringThroughTheOpenBase's own
+	// comment - identical reasoning, mirrored for a paraboloid's own open
+	// end (its rim, at z=zmax; the apex at z=zmin=0 is a single point, not
+	// an opening, matching a cone's apex).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0 0 0 ] \"rgb sigma_s\" [ 500 500 500 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Material \"none\"\n"
+		"  Shape \"paraboloid\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.paraboloidCount, 1u);
+	// Enters the volume through the open rim (z=zmax=1, x=0.5, y=0.4 - well
+	// inside the radius-1 rim, no surface hit there) and exits through the
+	// lateral wall around z=0.455 (where x^2+y^2 == z/k, k=zmax/radius^2=1)
+	// - exactly ONE lateral-surface crossing. A small (0, 0.1, -1)
+	// direction rather than a pure (0,0,-1) axis-parallel one deliberately
+	// avoids ParaboloidShape::intersect()'s own separate, pre-existing
+	// "a==0 when dx=dy=0" degenerate-miss branch (its own comment, shapes.h)
+	// - unrelated to the open-rim case this test targets, and would
+	// otherwise mask it by returning a miss for a completely different
+	// reason.
+	for (int i = 0; i < 200; ++i) {
+		hit_record rec;
+		ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0, 5), vec3(0, 0.1, -1)),
+								 interval(0.001, infinity), rec))
+			<< "iteration " << i << ": a sigma_s=500 medium across ~0.55 "
+			   "units of the paraboloid's interior (optical depth ~270) "
+			   "must scatter on essentially every ray, even entering "
+			   "through the open rim";
 	}
 }
 

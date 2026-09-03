@@ -278,7 +278,9 @@ class cylinder_hittable : public hittable {
 	// already inside the medium) - matching hit()'s own rec1.t/rec2.t, the
 	// caller is responsible for the same ray_t.min/max clamping it already
 	// does for other boundary shapes.
-	bool volume_bounds(const ray& r, double& out_t0, double& out_t1) const {
+	bool supports_volume_bounds() const override { return true; }
+
+	bool volume_bounds(const ray& r, double& out_t0, double& out_t1) const override {
 		using namespace affine_transform;
 		pbrt_scene::Matrix4 o2w, w2o;
 		if (!motion_.resolve(r.time(), o2w, w2o)) return false;

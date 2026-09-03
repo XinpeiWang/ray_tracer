@@ -84,6 +84,39 @@ class hittable {
     virtual bool sample_area(double u1, double u2, AreaLightSample& out) const {
         return false;
     }
+
+    // Whether volume_bounds() below is meaningfully implemented for this
+    // shape at all - a SEPARATE query from volume_bounds()'s own bool
+    // return (which means "does `r` actually enter this shape's volume",
+    // a real per-ray miss). constant_medium (constant_medium.h) needs to
+    // tell "this shape doesn't support the exact technique, fall back to
+    // the generic one" apart from "this shape supports it, and this
+    // particular ray misses" - collapsing both into one bool would make
+    // constant_medium wrongly re-try the (wrong-for-this-shape) generic
+    // fallback on every genuine miss from a shape that DOES support the
+    // real technique. Default false (mirrors sample_area()'s default-false
+    // pattern above). Overridden (returning true unconditionally) by
+    // cylinder_hittable/cone_hittable/paraboloid_hittable.
+    virtual bool supports_volume_bounds() const {
+        return false;
+    }
+
+    // Exact entry/exit interval [out_t0, out_t1] (unclamped - may be
+    // negative, e.g. an origin already inside the volume; caller clamps)
+    // that `r` spends INSIDE this shape's own solid volume, returning false
+    // for a ray that never enters it at all. Only meaningful when
+    // supports_volume_bounds() is true - see that method's own comment.
+    // Needed by constant_medium (constant_medium.h) for any shape whose
+    // surface is open/uncapped, where the generic "two sequential hit()
+    // calls" technique is wrong - see that file's own hit() comment for
+    // the full derivation of why (a ray entering through an open end and
+    // exiting through the shape's lateral wall, or vice versa, gets only
+    // ONE hit() crossing, not two). Overridden by cylinder_hittable/
+    // cone_hittable/paraboloid_hittable, the open/uncapped quadric-of-
+    // revolution shapes this codebase supports as medium boundaries.
+    virtual bool volume_bounds(const ray& r, double& out_t0, double& out_t1) const {
+        return false;
+    }
 };
 
 
