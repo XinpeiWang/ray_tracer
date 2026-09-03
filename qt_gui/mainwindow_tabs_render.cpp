@@ -415,6 +415,59 @@ void MainWindow::createRenderOptionsTab() {
 		"use it.")),
 		m_samplerCombo);
 
+	// Same "(i)" mark + per-row tooltip pattern as m_samplerCombo just
+	// above - see that combo's construction comment.
+	m_lightSamplerCombo = new QComboBox(optionsTab);
+	{
+		struct LightSamplerEntry { QString label; QString value; QString tooltip; };
+		const LightSamplerEntry entries[] = {
+			{tr("BVH (default)"), QString(), tr(
+				"Builds a spatial hierarchy over the scene's lights and "
+				"weighs each one by both power and proximity to the "
+				"shading point, adapting per bounce rather than using one "
+				"global weighting. pbrt-v4's own default - generally the "
+				"best convergence, at a small extra bookkeeping cost.")},
+			{tr("Power"), QStringLiteral("power"), tr(
+				"Picks a light with probability weighted by its total "
+				"emitted power - bright lights get sampled more often "
+				"than dim ones. Converges faster than uniform in scenes "
+				"with a wide range of light brightness, but ignores "
+				"distance and occlusion.")},
+			{tr("Uniform"), QStringLiteral("uniform"), tr(
+				"Picks a light uniformly at random from every light in "
+				"the scene, regardless of how bright or how far away it "
+				"is. Simple and unbiased, but converges slowly in scenes "
+				"with many lights of very different brightness - a dim "
+				"light gets sampled just as often as a bright one.")},
+		};
+		for (const LightSamplerEntry &entry : entries) {
+			icon_tint::addItem(m_lightSamplerCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
+			m_lightSamplerCombo->setItemData(m_lightSamplerCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
+		}
+	}
+	m_lightSamplerCombo->setToolTip(
+		tr("Which strategy picks the light to sample at each next-event-\n"
+		"estimation bounce. Affects noise/convergence speed, not the\n"
+		"converged image. CPU default path tracer only - no effect on GPU\n"
+		"or under BDPT/MLT/SPPM/the debug integrators."));
+	styleComboBox(m_lightSamplerCombo);
+	samplingLayout->addRow(labelWithInfo(tr("Light Sampler:"),
+		tr("Every diffuse/glossy bounce needs to pick ONE light (out of "
+		"potentially many) to sample directly for next-event estimation "
+		"- which light gets picked, and how fairly, changes how quickly "
+		"the image converges, though never what it converges TO.\n\n"
+		"BVH (the default, matching pbrt-v4 itself) builds a spatial "
+		"hierarchy over the scene's lights and adapts its weighting per "
+		"shading point - both bright AND nearby lights get preferred. "
+		"Power picks by brightness alone, ignoring position - simpler, "
+		"worse in scenes where light distance varies a lot. Uniform "
+		"ignores both - every light equally likely regardless of "
+		"brightness or distance, included mainly for comparison/"
+		"debugging.\n\nGrayed out? This only affects the CPU renderer's "
+		"default path tracer - switch Renderer to CPU on the Basic "
+		"Settings tab to use it.")),
+		m_lightSamplerCombo);
+
 	m_spectralCheck = new QCheckBox(tr("Spectral rendering (--spectral)"), optionsTab);
 	m_spectralCheck->setToolTip(
 		tr("Real hero-wavelength spectral rendering instead of flat RGB.\n"
@@ -555,7 +608,8 @@ void MainWindow::createRenderOptionsTab() {
 	m_tabWidget->addTab(scrollArea, tr("Render Options"));
 }
 
-// Single source of truth for m_samplerCombo/m_spectralCheck/m_exposureSpin/
+// Single source of truth for m_samplerCombo/m_lightSamplerCombo/
+// m_spectralCheck/m_exposureSpin/
 // m_tonemapCombo/m_statsCheck/m_denoiseCheck/m_optixValidateCheck/
 // m_gpuBackendCombo's enabled state, replacing what used to be a
 // hand-duplicated 2-input (GPU/CPU x wavefront/recursive) condition
@@ -572,6 +626,7 @@ void MainWindow::updateRenderOptionsEnabled() {
 
 	if (m_gpuBackendCombo) m_gpuBackendCombo->setEnabled(isDefault && gpuSelected);
 	m_samplerCombo->setEnabled(isDefault && !gpuSelected);
+	m_lightSamplerCombo->setEnabled(isDefault && !gpuSelected);
 	m_spectralCheck->setEnabled(isDefault && !gpuSelected);
 	m_exposureSpin->setEnabled(isDefault);
 	m_tonemapCombo->setEnabled(isDefault);

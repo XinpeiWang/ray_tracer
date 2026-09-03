@@ -207,6 +207,7 @@ void RenderController::start() {
 	if (m_advancedFlags.optixValidate) args << render_flags::kOptixValidate;
 	if (m_advancedFlags.exposure != 1.0) args << render_flags::kExposure << QString::number(m_advancedFlags.exposure);
 	if (!m_advancedFlags.sampler.isEmpty()) args << render_flags::kSampler << m_advancedFlags.sampler;
+	if (!m_advancedFlags.lightSampler.isEmpty()) args << render_flags::kLightSampler << m_advancedFlags.lightSampler;
 	if (m_advancedFlags.spectral)       args << render_flags::kSpectral;
 	if (!m_advancedFlags.tonemap.isEmpty()) args << render_flags::kTonemap << m_advancedFlags.tonemap;
 

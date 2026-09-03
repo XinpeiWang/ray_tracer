@@ -76,6 +76,7 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("optixValidate", entry.advancedFlags.optixValidate);
 	settings.setValue("exposure", entry.advancedFlags.exposure);
 	settings.setValue("sampler", entry.advancedFlags.sampler);
+	settings.setValue("lightSampler", entry.advancedFlags.lightSampler);
 	settings.setValue("spectral", entry.advancedFlags.spectral);
 	settings.setValue("tonemap", entry.advancedFlags.tonemap);
 	settings.setValue("timestampEpochSecs", entry.timestampEpochSecs);
@@ -161,6 +162,7 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	if (settings.contains("optixValidate")) entry.advancedFlags.optixValidate = settings.value("optixValidate").toBool();
 	if (settings.contains("exposure")) entry.advancedFlags.exposure = settings.value("exposure").toDouble();
 	if (settings.contains("sampler")) entry.advancedFlags.sampler = settings.value("sampler").toString();
+	if (settings.contains("lightSampler")) entry.advancedFlags.lightSampler = settings.value("lightSampler").toString();
 	if (settings.contains("spectral")) entry.advancedFlags.spectral = settings.value("spectral").toBool();
 	if (settings.contains("tonemap")) entry.advancedFlags.tonemap = settings.value("tonemap").toString();
 	entry.timestampEpochSecs = settings.value("timestampEpochSecs").toLongLong();

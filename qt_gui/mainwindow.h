@@ -177,8 +177,8 @@ private:
 	void createBasicTab();
 	void createAdvancedTab();
 	void createRenderOptionsTab();
-	// Single source of truth for m_samplerCombo/m_spectralCheck/
-	// m_exposureSpin/m_tonemapCombo/m_statsCheck/m_denoiseCheck/
+	// Single source of truth for m_samplerCombo/m_lightSamplerCombo/
+	// m_spectralCheck/m_exposureSpin/m_tonemapCombo/m_statsCheck/m_denoiseCheck/
 	// m_optixValidateCheck/m_gpuBackendCombo's enabled state - depends on
 	// m_renderModeCombo (GPU/CPU), m_gpuBackendCombo (recursive/wavefront),
 	// and m_integratorCombo (Default vs an alternate integrator), so it's
@@ -495,8 +495,8 @@ private:
 
 	// Render Options tab (createRenderOptionsTab()) - one widget per CLI
 	// flag RenderController::start() can emit; see setAdvancedFlags()'s own
-	// comment. m_samplerCombo/m_spectralCheck are CPU-default-path-tracer
-	// only; m_denoiseCheck/m_optixValidateCheck are GPU-only (both GPU
+	// comment. m_samplerCombo/m_lightSamplerCombo/m_spectralCheck are
+	// CPU-default-path-tracer only; m_denoiseCheck/m_optixValidateCheck are GPU-only (both GPU
 	// backends have their own real denoiser - see WavefrontPathTracer::
 	// denoise()); m_exposureSpin/m_tonemapCombo/
 	// m_statsCheck are default-path-tracer-only (inert, not rejected,
@@ -506,6 +506,7 @@ private:
 	// source of truth for this cross-product - called from all four
 	// controls' own change handlers.
 	QComboBox *m_samplerCombo;          // --sampler (CPU default path tracer only)
+	QComboBox *m_lightSamplerCombo;     // --lightsampler (CPU default path tracer only)
 	QCheckBox *m_spectralCheck;         // --spectral (CPU default path tracer only)
 	QDoubleSpinBox *m_exposureSpin;     // --exposure (default path tracer only)
 	QComboBox *m_tonemapCombo;          // --tonemap (default path tracer only)

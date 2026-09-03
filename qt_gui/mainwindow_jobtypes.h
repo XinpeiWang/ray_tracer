@@ -91,14 +91,15 @@
 // start()'s own arg-building); defaults here match the CLI's own
 // defaults, so code that never touches this (ThumbnailGenerator, in
 // particular, via a default-constructed RenderJob) renders exactly as it
-// always has. sampler/tonemap empty = use the CLI's own default (sobol/
-// aces) rather than passing the flag at all.
+// always has. sampler/lightSampler/tonemap empty = use the CLI's own
+// default (sobol/bvh/aces) rather than passing the flag at all.
 struct AdvancedRenderFlags {
 	bool denoise = false;
 	bool stats = false;
 	bool optixValidate = false;
 	double exposure = 1.0;
 	QString sampler;
+	QString lightSampler;
 	bool spectral = false;
 	QString tonemap;
 };

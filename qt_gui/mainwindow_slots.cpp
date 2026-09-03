@@ -187,6 +187,7 @@ RenderJob MainWindow::captureRenderJob() {
 	job.advancedFlags.optixValidate = m_optixValidateCheck->isEnabled() && m_optixValidateCheck->isChecked();
 	job.advancedFlags.exposure = m_exposureSpin->isEnabled() ? m_exposureSpin->value() : 1.0;
 	job.advancedFlags.sampler = m_samplerCombo->isEnabled() ? m_samplerCombo->currentData().toString() : QString();
+	job.advancedFlags.lightSampler = m_lightSamplerCombo->isEnabled() ? m_lightSamplerCombo->currentData().toString() : QString();
 	job.advancedFlags.spectral = m_spectralCheck->isEnabled() && m_spectralCheck->isChecked();
 	job.advancedFlags.tonemap = m_tonemapCombo->isEnabled() ? m_tonemapCombo->currentData().toString() : QString();
 

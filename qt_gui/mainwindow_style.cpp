@@ -1211,6 +1211,7 @@ QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
 	// a hand-edited or corrupted config value could otherwise inject
 	// markup into renderTechniqueHtml()'s rich-text output.
 	if (!flags.sampler.isEmpty()) parts << tr("Sampler: %1").arg(flags.sampler.toHtmlEscaped());
+	if (!flags.lightSampler.isEmpty()) parts << tr("Light Sampler: %1").arg(flags.lightSampler.toHtmlEscaped());
 	if (flags.spectral) parts << tr("Spectral: on");
 	if (!flags.tonemap.isEmpty()) parts << tr("Tonemap: %1").arg(flags.tonemap.toHtmlEscaped());
 	return parts.join(" · ");
