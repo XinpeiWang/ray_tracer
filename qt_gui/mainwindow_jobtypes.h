@@ -92,7 +92,10 @@
 // defaults, so code that never touches this (ThumbnailGenerator, in
 // particular, via a default-constructed RenderJob) renders exactly as it
 // always has. sampler/lightSampler/tonemap empty = use the CLI's own
-// default (sobol/bvh/aces) rather than passing the flag at all.
+// default (sobol/bvh/aces) rather than passing the flag at all; regularize
+// false/maxComponentValue 0.0/cropEnabled false are the equivalent
+// "don't pass --regularize/--maxcomponentvalue/--crop at all" sentinels
+// for those three.
 struct AdvancedRenderFlags {
 	bool denoise = false;
 	bool stats = false;
@@ -102,6 +105,16 @@ struct AdvancedRenderFlags {
 	QString lightSampler;
 	bool spectral = false;
 	QString tonemap;
+	bool regularize = false;
+	// 0.0 = "not requested" (the GUI's own sentinel, distinct from the
+	// CLI's "1e9" - see m_maxComponentValueCheck's own comment,
+	// mainwindow.h); RenderController::start() only emits --maxcomponentvalue
+	// when this is > 0.
+	double maxComponentValue = 0.0;
+	// cropEnabled false = "not requested"; the four fractions below are
+	// only meaningful (and only emitted as --crop) when true.
+	bool cropEnabled = false;
+	double cropX0 = 0.0, cropY0 = 0.0, cropX1 = 1.0, cropY1 = 1.0;
 };
 
 // Which alternate integrator (--sppm/--bdpt/--mlt/--randomwalk/--ao/

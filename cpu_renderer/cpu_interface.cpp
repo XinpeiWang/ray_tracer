@@ -544,6 +544,24 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		if (scene_desc->setup_camera)
 			scene_desc->setup_camera(cam);
 
+		// --regularize/--maxcomponentvalue/--crop: an explicit CLI request,
+		// applied AFTER setup_camera() so a loaded .pbrt scene's own
+		// directives (set inside that same call - scene_registry.h's
+		// setup_camera lambda) are the starting point, not silently
+		// clobbered by these fields' own neutral defaults. regularize only
+		// ever forces ON (never turns a scene's own true back off, see
+		// RenderOptions::regularize's own comment); max_component_value/
+		// crop only override when the CLI value differs from its neutral
+		// default, same "explicit value wins outright" shape as exposure.
+		if (options.regularize) cam.regularize = true;
+		if (options.max_component_value != 1e9) cam.max_component_value = options.max_component_value;
+		if (options.crop_x0 != 0.0 || options.crop_y0 != 0.0 || options.crop_x1 != 1.0 || options.crop_y1 != 1.0) {
+			cam.crop_x0 = static_cast<int>(std::lround(options.crop_x0 * cam.image_width));
+			cam.crop_x1 = static_cast<int>(std::lround(options.crop_x1 * cam.image_width));
+			cam.crop_y0 = static_cast<int>(std::lround(options.crop_y0 * cam.image_height));
+			cam.crop_y1 = static_cast<int>(std::lround(options.crop_y1 * cam.image_height));
+		}
+
 		// ====================================================================
 		// Output Path Handling
 		// ====================================================================

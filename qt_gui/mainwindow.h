@@ -178,7 +178,8 @@ private:
 	void createAdvancedTab();
 	void createRenderOptionsTab();
 	// Single source of truth for m_samplerCombo/m_lightSamplerCombo/
-	// m_spectralCheck/m_exposureSpin/m_tonemapCombo/m_statsCheck/m_denoiseCheck/
+	// m_spectralCheck/m_exposureSpin/m_tonemapCombo/m_statsCheck/
+	// m_regularizeCheck/m_maxComponentValueCheck/m_cropCheck/m_denoiseCheck/
 	// m_optixValidateCheck/m_gpuBackendCombo's enabled state - depends on
 	// m_renderModeCombo (GPU/CPU), m_gpuBackendCombo (recursive/wavefront),
 	// and m_integratorCombo (Default vs an alternate integrator), so it's
@@ -537,6 +538,22 @@ private:
 	QCheckBox *m_statsCheck;            // --stats (default path tracer only)
 	QCheckBox *m_denoiseCheck;          // --denoise (GPU only, both backends)
 	QCheckBox *m_optixValidateCheck;    // --optix-validate (GPU only)
+	QCheckBox *m_regularizeCheck;       // --regularize (default path tracer only, both backends)
+	// --maxcomponentvalue (CPU default path tracer only) - spinbox only
+	// enabled/emitted when the checkbox is checked, since the CLI's own
+	// "1e9 = not requested" sentinel would be a confusing default value to
+	// show in a spinbox (see m_maxComponentValueSpin's own construction
+	// comment, mainwindow_tabs_render.cpp).
+	QCheckBox *m_maxComponentValueCheck;
+	QDoubleSpinBox *m_maxComponentValueSpin;
+	// --crop (default path tracer only, both backends) - four fractional
+	// [0,1] spinboxes, only enabled/emitted when the checkbox is checked,
+	// same "avoid showing a confusing sentinel" reasoning as maxcomponentvalue.
+	QCheckBox *m_cropCheck;
+	QDoubleSpinBox *m_cropX0Spin;
+	QDoubleSpinBox *m_cropY0Spin;
+	QDoubleSpinBox *m_cropX1Spin;
+	QDoubleSpinBox *m_cropY1Spin;
 
 	// "Integrator" group (createRenderOptionsTab()): the algorithm selector
 	// itself, plus sub-flag widgets for the 5 alternate integrators that

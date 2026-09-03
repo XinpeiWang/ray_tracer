@@ -1214,6 +1214,12 @@ QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
 	if (!flags.lightSampler.isEmpty()) parts << tr("Light Sampler: %1").arg(flags.lightSampler.toHtmlEscaped());
 	if (flags.spectral) parts << tr("Spectral: on");
 	if (!flags.tonemap.isEmpty()) parts << tr("Tonemap: %1").arg(flags.tonemap.toHtmlEscaped());
+	if (flags.regularize) parts << tr("Regularize: on");
+	if (flags.maxComponentValue > 0.0) parts << tr("Firefly clamp: %1").arg(flags.maxComponentValue);
+	if (flags.cropEnabled) {
+		parts << tr("Crop: (%1,%2)-(%3,%4)")
+			.arg(flags.cropX0).arg(flags.cropY0).arg(flags.cropX1).arg(flags.cropY1);
+	}
 	return parts.join(" · ");
 }
 

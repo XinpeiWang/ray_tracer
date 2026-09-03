@@ -104,6 +104,33 @@ struct LaunchArgs {
 	// "bvh". Empty (default) means "use bvh", pbrt-v4's own real default -
 	// same "CPU default path tracer only" scope cut as sampler above.
 	std::string lightsampler = "";
+	// pbrt-v4 Integrator "bool regularize" (camera.h's camera_t::regularize)
+	// as an explicit CLI request. A loaded .pbrt scene can already set this
+	// itself via its own directive - this flag ONLY ever forces it ON, on
+	// top of whatever the scene requested; it never turns a scene's own
+	// "true" back off, since (unlike sampler/lightsampler/exposure above)
+	// this is a genuine scene-authored behavior toggle, not a pure perf/
+	// debug knob meant to be freely overridden either direction. Default
+	// path tracer only, both backends (see render_options.h's own comment).
+	bool regularize = false;
+	// pbrt-v4 Film "maxcomponentvalue" (camera.h's camera_t::
+	// max_component_value) - the firefly-clamp threshold. 1e9 (the
+	// class's own default, "effectively unbounded") means "not explicitly
+	// requested", so a scene's own Film directive still applies unless
+	// this differs from 1e9 - same "explicit CLI value wins outright"
+	// shape as --exposure, unlike --regularize's OR-only shape above,
+	// since a numeric clamp threshold has an unambiguous "more/less
+	// aggressive" ordering a boolean toggle doesn't. CPU default path
+	// tracer only - GPU has no equivalent clamp at all (warns instead).
+	double max_component_value = 1e9;
+	// pbrt-v4 Film "cropwindow" - four NDC fractions in [0,1] (x0 y0 x1 y1)
+	// restricting which pixels actually render; {0,0,1,1} (the full frame)
+	// means "not explicitly requested", same "differs from the neutral
+	// default" convention as max_component_value above, so a scene's own
+	// cropwindow/pixelbounds directive still applies unless this differs.
+	// Default path tracer only, both backends (crop is real on GPU too,
+	// unlike max_component_value).
+	double crop_x0 = 0.0, crop_y0 = 0.0, crop_x1 = 1.0, crop_y1 = 1.0;
 	// Real hero-wavelength spectral rendering (camera.h's ray_color_spectral(),
 	// see its own comment) instead of the default flat-RGB ray_color() -
 	// CPU default path tracer only, same scope cut as exposure/sampler
@@ -307,6 +334,46 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == render_flags::kRegularize) {
+			out.regularize = true;
+			consumed_args.insert(i);
+		} else if (arg == render_flags::kMaxComponentValue && i + 1 < argc) {
+			try {
+				out.max_component_value = std::stod(argv[i + 1]);
+				if (out.max_component_value <= 0.0) {
+					std::cerr << "Warning: --maxcomponentvalue " << out.max_component_value
+							  << " is <= 0, every sample will clamp to black\n";
+				}
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --maxcomponentvalue value, using default\n";
+			}
+		} else if (arg == render_flags::kCrop && i + 4 < argc) {
+			try {
+				const double x0 = std::stod(argv[i + 1]);
+				const double y0 = std::stod(argv[i + 2]);
+				const double x1 = std::stod(argv[i + 3]);
+				const double y1 = std::stod(argv[i + 4]);
+				if (x0 < 0.0 || y0 < 0.0 || x1 > 1.0 || y1 > 1.0 || x0 >= x1 || y0 >= y1) {
+					std::cerr << "Invalid --crop " << x0 << " " << y0 << " " << x1 << " " << y1
+							  << " (need 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1), using full frame\n";
+				} else {
+					out.crop_x0 = x0;
+					out.crop_y0 = y0;
+					out.crop_x1 = x1;
+					out.crop_y1 = y1;
+				}
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				consumed_args.insert(i + 2);
+				consumed_args.insert(i + 3);
+				consumed_args.insert(i + 4);
+				i += 4;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --crop value, using full frame\n";
+			}
 		} else if (arg == render_flags::kTonemap && i + 1 < argc) {
 			std::string name = argv[i + 1];
 			std::transform(name.begin(), name.end(), name.begin(),
@@ -536,6 +603,25 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"
 					  << "               power, bvh. Affects convergence/variance, not the converged\n"
 					  << "               image. CPU default path tracer only.\n"
+					  << "  " << render_flags::kRegularize << " : pbrt-v4 Integrator \"bool regularize\" - widens a rough BSDF's\n"
+					  << "               GGX alpha after the path's first non-specular bounce, taming\n"
+					  << "               fireflies from hard caustic paths at the cost of some blur.\n"
+					  << "               A loaded .pbrt scene requesting this itself already gets it\n"
+					  << "               regardless of this flag - this only ever forces it ON, never\n"
+					  << "               off. Default path tracer only, both backends.\n"
+					  << "  " << render_flags::kMaxComponentValue << " VALUE: pbrt-v4 Film \"maxcomponentvalue\" - clamps any\n"
+					  << "               pixel sample whose brightest channel exceeds VALUE, scaling\n"
+					  << "               all channels down to preserve hue (default effectively\n"
+					  << "               unbounded). Only overrides a loaded scene's own request when\n"
+					  << "               explicitly passed. CPU default path tracer only - no GPU\n"
+					  << "               equivalent exists yet.\n"
+					  << "  " << render_flags::kCrop << " X0 Y0 X1 Y1: pbrt-v4 Film \"cropwindow\" - renders only the\n"
+					  << "               rectangle from (X0,Y0) to (X1,Y1), each a fraction of the full\n"
+					  << "               frame in [0,1] (e.g. \"0 0 0.5 0.5\" is the top-left quadrant).\n"
+					  << "               Pixels outside the rectangle write black rather than shrinking\n"
+					  << "               the output file. Only overrides a loaded scene's own\n"
+					  << "               cropwindow/pixelbounds when explicitly passed. Default path\n"
+					  << "               tracer only, both backends.\n"
 					  << "  " << render_flags::kSpectral << " : Real hero-wavelength spectral rendering instead of flat RGB.\n"
 					  << "               CPU default path tracer only. Only lambertian, metal,\n"
 					  << "               dielectric, rough_dielectric, conductor, and diffuse_light\n"

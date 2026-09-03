@@ -191,6 +191,15 @@ RenderJob MainWindow::captureRenderJob() {
 	job.advancedFlags.lightSampler = m_lightSamplerCombo->isEnabled() ? m_lightSamplerCombo->currentData().toString() : QString();
 	job.advancedFlags.spectral = m_spectralCheck->isEnabled() && m_spectralCheck->isChecked();
 	job.advancedFlags.tonemap = m_tonemapCombo->isEnabled() ? m_tonemapCombo->currentData().toString() : QString();
+	job.advancedFlags.regularize = m_regularizeCheck->isEnabled() && m_regularizeCheck->isChecked();
+	job.advancedFlags.maxComponentValue =
+		(m_maxComponentValueCheck->isEnabled() && m_maxComponentValueCheck->isChecked())
+			? m_maxComponentValueSpin->value() : 0.0;
+	job.advancedFlags.cropEnabled = m_cropCheck->isEnabled() && m_cropCheck->isChecked();
+	job.advancedFlags.cropX0 = m_cropX0Spin->value();
+	job.advancedFlags.cropY0 = m_cropY0Spin->value();
+	job.advancedFlags.cropX1 = m_cropX1Spin->value();
+	job.advancedFlags.cropY1 = m_cropY1Spin->value();
 
 	// Integrator combo + its sub-flags, both in the "Integrator" group on
 	// the Render Options tab - see

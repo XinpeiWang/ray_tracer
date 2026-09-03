@@ -79,6 +79,13 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("lightSampler", entry.advancedFlags.lightSampler);
 	settings.setValue("spectral", entry.advancedFlags.spectral);
 	settings.setValue("tonemap", entry.advancedFlags.tonemap);
+	settings.setValue("regularize", entry.advancedFlags.regularize);
+	settings.setValue("maxComponentValue", entry.advancedFlags.maxComponentValue);
+	settings.setValue("cropEnabled", entry.advancedFlags.cropEnabled);
+	settings.setValue("cropX0", entry.advancedFlags.cropX0);
+	settings.setValue("cropY0", entry.advancedFlags.cropY0);
+	settings.setValue("cropX1", entry.advancedFlags.cropX1);
+	settings.setValue("cropY1", entry.advancedFlags.cropY1);
 	settings.setValue("timestampEpochSecs", entry.timestampEpochSecs);
 	settings.setValue("metadataKnown", entry.metadataKnown);
 }
@@ -165,6 +172,13 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	if (settings.contains("lightSampler")) entry.advancedFlags.lightSampler = settings.value("lightSampler").toString();
 	if (settings.contains("spectral")) entry.advancedFlags.spectral = settings.value("spectral").toBool();
 	if (settings.contains("tonemap")) entry.advancedFlags.tonemap = settings.value("tonemap").toString();
+	if (settings.contains("regularize")) entry.advancedFlags.regularize = settings.value("regularize").toBool();
+	if (settings.contains("maxComponentValue")) entry.advancedFlags.maxComponentValue = settings.value("maxComponentValue").toDouble();
+	if (settings.contains("cropEnabled")) entry.advancedFlags.cropEnabled = settings.value("cropEnabled").toBool();
+	if (settings.contains("cropX0")) entry.advancedFlags.cropX0 = settings.value("cropX0").toDouble();
+	if (settings.contains("cropY0")) entry.advancedFlags.cropY0 = settings.value("cropY0").toDouble();
+	if (settings.contains("cropX1")) entry.advancedFlags.cropX1 = settings.value("cropX1").toDouble();
+	if (settings.contains("cropY1")) entry.advancedFlags.cropY1 = settings.value("cropY1").toDouble();
 	entry.timestampEpochSecs = settings.value("timestampEpochSecs").toLongLong();
 	// Default true (not the QVariant-invalid-default false) when the key
 	// is absent - an entry saved by a version of this app before

@@ -51,35 +51,35 @@
         <translation>&amp;Idioma</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="616"/>
+        <location filename="../mainwindow.cpp" line="624"/>
         <source>Ray Tracer - Path Tracing Renderer</source>
         <translation>Ray Tracer - Renderizador de Path Tracing</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="671"/>
+        <location filename="../mainwindow.cpp" line="679"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="822"/>
-        <location filename="../mainwindow_slots.cpp" line="1475"/>
+        <location filename="../mainwindow.cpp" line="830"/>
+        <location filename="../mainwindow_slots.cpp" line="1484"/>
         <source>START &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="832"/>
+        <location filename="../mainwindow.cpp" line="840"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>Renderiza la escena seleccionada con la configuración actual
 (se pondrá en cola si ya hay un renderizado en curso)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="843"/>
+        <location filename="../mainwindow.cpp" line="851"/>
         <source>S&amp;TOP RENDER</source>
         <translation>DE&amp;TENER RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="850"/>
+        <location filename="../mainwindow.cpp" line="858"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>Detiene el renderizado en curso y descarta su resultado</translation>
@@ -111,7 +111,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="74"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="774"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="912"/>
         <source>Open Output &amp;Folder</source>
         <translation>Abrir &amp;carpeta de salida</translation>
     </message>
@@ -122,7 +122,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="84"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="786"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="924"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Abrir en el &amp;visor predeterminado</translation>
     </message>
@@ -220,7 +220,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="191"/>
-        <location filename="../mainwindow_slots.cpp" line="418"/>
+        <location filename="../mainwindow_slots.cpp" line="427"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
@@ -284,72 +284,72 @@
         <translation type="vanished">&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un path tracer físicamente basado con backends paralelos de CPU y GPU (OptiX), construido a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta alcanzar un conjunto de funciones al estilo de pbrt-v4.&lt;/p&gt;&lt;p&gt;113 escenas, una amplia biblioteca de BxDF, múltiples tipos de luces y cámaras, soporte para mallas de triángulos y texturas, aceleración mediante BVH, volumétricos y un integrador de mapeo de fotones SPPM junto con el path tracing estándar.&lt;/p&gt;&lt;p&gt;Esta ventana ejecuta &lt;code&gt;%1&lt;/code&gt; como subproceso.&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="367"/>
+        <location filename="../mainwindow_slots.cpp" line="376"/>
         <source>Rendering video frames...</source>
         <translation>Renderizando fotogramas de vídeo…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="367"/>
+        <location filename="../mainwindow_slots.cpp" line="376"/>
         <source>Rendering...</source>
         <translation>Renderizando…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="368"/>
+        <location filename="../mainwindow_slots.cpp" line="377"/>
         <source> (%1 more queued)</source>
         <translation> (%1 más en cola)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="405"/>
+        <location filename="../mainwindow_slots.cpp" line="414"/>
         <source> · SPPM</source>
         <translation> · SPPM</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="406"/>
+        <location filename="../mainwindow_slots.cpp" line="415"/>
         <source> · BDPT</source>
         <translation> · BDPT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="407"/>
+        <location filename="../mainwindow_slots.cpp" line="416"/>
         <source> · MLT</source>
         <translation> · MLT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="408"/>
+        <location filename="../mainwindow_slots.cpp" line="417"/>
         <source> · RandomWalk</source>
         <translation> · RandomWalk</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="409"/>
+        <location filename="../mainwindow_slots.cpp" line="418"/>
         <source> · AO</source>
         <translation> · AO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="410"/>
+        <location filename="../mainwindow_slots.cpp" line="419"/>
         <source> · SimplePath</source>
         <translation> · SimplePath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="411"/>
+        <location filename="../mainwindow_slots.cpp" line="420"/>
         <source> · SimpleVolPath</source>
         <translation> · SimpleVolPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="412"/>
+        <location filename="../mainwindow_slots.cpp" line="421"/>
         <source> · LightPath</source>
         <translation> · LightPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="418"/>
+        <location filename="../mainwindow_slots.cpp" line="427"/>
         <source>GPU-WF</source>
         <translation>GPU-WF</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="418"/>
+        <location filename="../mainwindow_slots.cpp" line="427"/>
         <source>GPU</source>
         <translation>GPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="423"/>
+        <location filename="../mainwindow_slots.cpp" line="432"/>
         <source> · Video (%1f)</source>
         <translation> · Vídeo (%1f)</translation>
     </message>
@@ -358,12 +358,12 @@
         <translation type="vanished">%1 — %2×%3 · %4spp · %5%6</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="442"/>
+        <location filename="../mainwindow_slots.cpp" line="451"/>
         <source>Render Queue (%1)</source>
         <translation>Cola de renderizado (%1)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="460"/>
+        <location filename="../mainwindow_slots.cpp" line="469"/>
         <source>Clear Render Queue</source>
         <translation>Vaciar cola de renderizado</translation>
     </message>
@@ -372,12 +372,12 @@
         <translation type="vanished">¿Eliminar los %1 renderizado%2 en cola? Esta acción no se puede deshacer.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="429"/>
+        <location filename="../mainwindow_slots.cpp" line="438"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="461"/>
+        <location filename="../mainwindow_slots.cpp" line="470"/>
         <source>Remove all %n queued render(s)? This can&apos;t be undone.</source>
         <translation>
             <numerusform>¿Eliminar el %n renderizado en cola? Esto no se puede deshacer.</numerusform>
@@ -385,12 +385,12 @@
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="477"/>
+        <location filename="../mainwindow_slots.cpp" line="486"/>
         <source>Running diagnostics...</source>
         <translation>Ejecutando diagnóstico…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="514"/>
+        <location filename="../mainwindow_slots.cpp" line="523"/>
         <source>Diagnostics failed:
 
 %1</source>
@@ -399,67 +399,67 @@
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="575"/>
+        <location filename="../mainwindow_slots.cpp" line="584"/>
         <source>Thumbnail generation finished.</source>
         <translation>Generación de miniaturas finalizada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="583"/>
+        <location filename="../mainwindow_slots.cpp" line="592"/>
         <source>Stopping render...</source>
         <translation>Deteniendo renderizado…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="748"/>
+        <location filename="../mainwindow_slots.cpp" line="757"/>
         <source>&lt;b&gt;Description:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Descripción:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="749"/>
+        <location filename="../mainwindow_slots.cpp" line="758"/>
         <source>&lt;b&gt;Performance:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Rendimiento:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="750"/>
+        <location filename="../mainwindow_slots.cpp" line="759"/>
         <source>&lt;b&gt;Recommended SPP:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;SPP recomendado:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="751"/>
+        <location filename="../mainwindow_slots.cpp" line="760"/>
         <source>&lt;b&gt;GPU Support:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Compatibilidad con GPU:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="751"/>
+        <location filename="../mainwindow_slots.cpp" line="760"/>
         <source>Yes</source>
         <translation>Sí</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="751"/>
+        <location filename="../mainwindow_slots.cpp" line="760"/>
         <source>CPU only</source>
         <translation>Solo CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="759"/>
+        <location filename="../mainwindow_slots.cpp" line="768"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requires external files&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requiere archivos externos&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="762"/>
+        <location filename="../mainwindow_slots.cpp" line="771"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; CPU renderer only&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Solo renderizador CPU&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="791"/>
+        <location filename="../mainwindow_slots.cpp" line="800"/>
         <source>Integrator &quot;%1&quot;</source>
         <translation>Integrador &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="797"/>
+        <location filename="../mainwindow_slots.cpp" line="806"/>
         <source>Sampler &quot;%1&quot;</source>
         <translation>Muestreador &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="803"/>
+        <location filename="../mainwindow_slots.cpp" line="812"/>
         <source>Light Sampler &quot;%1&quot;</source>
         <translation>Muestreador de luces &quot;%1&quot;</translation>
     </message>
@@ -468,37 +468,37 @@
         <translation type="vanished">⚠ El archivo de esta escena recomienda %1, pero la pestaña Opciones de renderizado está actualmente configurada con los valores predeterminados en su lugar - no se aplica automáticamente, cámbialo allí si quieres coincidir con la configuración propia de la escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="816"/>
+        <location filename="../mainwindow_slots.cpp" line="825"/>
         <source>, </source>
         <translation>, </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="898"/>
+        <location filename="../mainwindow_slots.cpp" line="907"/>
         <source>No scenes in this category.</source>
         <translation>No hay escenas en esta categoría.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="899"/>
+        <location filename="../mainwindow_slots.cpp" line="908"/>
         <source>No scenes match &quot;%1&quot; in this category.</source>
         <translation>Ninguna escena coincide con &quot;%1&quot; en esta categoría.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1026"/>
+        <location filename="../mainwindow_slots.cpp" line="1035"/>
         <source>Rendering... %1%</source>
         <translation>Renderizando… %1%</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1060"/>
+        <location filename="../mainwindow_slots.cpp" line="1069"/>
         <source>✅ %1 - Total time: %2 seconds</source>
         <translation>✅ %1 - Tiempo total: %2 segundos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1063"/>
+        <location filename="../mainwindow_slots.cpp" line="1072"/>
         <source>Video frames rendered successfully. Starting video assembly...</source>
         <translation>Los fotogramas de vídeo se renderizaron correctamente. Iniciando el ensamblado del vídeo…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1064"/>
+        <location filename="../mainwindow_slots.cpp" line="1073"/>
         <source>⚙️ Assembling video from frames...</source>
         <translation>⚙️ Ensamblando el vídeo a partir de los fotogramas…</translation>
     </message>
@@ -507,165 +507,165 @@
         <translation type="vanished">%1  •  %2×%3  •  %4 KB  •  %5s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="813"/>
+        <location filename="../mainwindow_slots.cpp" line="822"/>
         <source>⚠ This scene&apos;s file recommends %1, but the Render Options tab is currently set to the default(s) instead - click Apply, or change it there yourself, to match the scene&apos;s own settings.</source>
         <translation>⚠ El archivo de esta escena recomienda %1, pero la pestaña Opciones de renderizado está actualmente configurada con los valores predeterminados en su lugar - haz clic en Aplicar, o cámbialo allí tú mismo, para coincidir con la configuración propia de la escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1095"/>
+        <location filename="../mainwindow_slots.cpp" line="1104"/>
         <source>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</source>
         <translation>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1110"/>
         <location filename="../mainwindow_slots.cpp" line="1119"/>
+        <location filename="../mainwindow_slots.cpp" line="1128"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ Renderizado completo (%1s)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1111"/>
+        <location filename="../mainwindow_slots.cpp" line="1120"/>
         <source>Warning: preview image failed to load at %1</source>
         <translation>Advertencia: no se pudo cargar la imagen de vista previa en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1120"/>
+        <location filename="../mainwindow_slots.cpp" line="1129"/>
         <source>Warning: output file not found at %1</source>
         <translation>Advertencia: no se encontró el archivo de salida en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1134"/>
+        <location filename="../mainwindow_slots.cpp" line="1143"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1138"/>
-        <location filename="../mainwindow_slots.cpp" line="1602"/>
+        <location filename="../mainwindow_slots.cpp" line="1147"/>
+        <location filename="../mainwindow_slots.cpp" line="1611"/>
         <source>Render Failed</source>
         <translation>Error de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1157"/>
+        <location filename="../mainwindow_slots.cpp" line="1166"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>Detenido - %1 más en cola (haz clic en Iniciar renderizado para continuar)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1279"/>
+        <location filename="../mainwindow_slots.cpp" line="1288"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>Renderizando  ·  %1%  ·  transcurrido %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1289"/>
+        <location filename="../mainwindow_slots.cpp" line="1298"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1297"/>
+        <location filename="../mainwindow_slots.cpp" line="1306"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  ETA %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1300"/>
+        <location filename="../mainwindow_slots.cpp" line="1309"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  ETA --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1323"/>
+        <location filename="../mainwindow_slots.cpp" line="1332"/>
         <source>Render complete</source>
         <translation>Renderizado completo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1324"/>
+        <location filename="../mainwindow_slots.cpp" line="1333"/>
         <source>Render stopped</source>
         <translation>Renderizado detenido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1324"/>
+        <location filename="../mainwindow_slots.cpp" line="1333"/>
         <source>Render failed</source>
         <translation>Renderizado fallido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1326"/>
+        <location filename="../mainwindow_slots.cpp" line="1335"/>
         <source>Finished in %1 seconds</source>
         <translation>Finalizado en %1 segundos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1341"/>
+        <location filename="../mainwindow_slots.cpp" line="1350"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1350"/>
+        <location filename="../mainwindow_slots.cpp" line="1359"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[DEBUG] No hay bandeja del sistema disponible; se omite la notificación de finalización</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1354"/>
+        <location filename="../mainwindow_slots.cpp" line="1363"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[DEBUG] La bandeja del sistema no admite mensajes; se omite la notificación</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1470"/>
+        <location filename="../mainwindow_slots.cpp" line="1479"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO DE VÍDEO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1473"/>
+        <location filename="../mainwindow_slots.cpp" line="1482"/>
         <source>Ready to render video frames</source>
         <translation>Listo para renderizar fotogramas de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1478"/>
+        <location filename="../mainwindow_slots.cpp" line="1487"/>
         <location filename="../mainwindow_tabs_output.cpp" line="64"/>
         <source>Ready to render</source>
         <translation>Listo para renderizar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1482"/>
+        <location filename="../mainwindow_slots.cpp" line="1491"/>
         <source>Mode changed to: %1</source>
         <translation>Modo cambiado a: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1482"/>
+        <location filename="../mainwindow_slots.cpp" line="1491"/>
         <source>Video Generation</source>
         <translation>Generación de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1482"/>
+        <location filename="../mainwindow_slots.cpp" line="1491"/>
         <source>Single Image</source>
         <translation>Imagen única</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1535"/>
+        <location filename="../mainwindow_slots.cpp" line="1544"/>
         <source>Integrator changed to: %1</source>
         <translation>Integrador cambiado a: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1583"/>
+        <location filename="../mainwindow_slots.cpp" line="1592"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ No se encontró el archivo de vídeo; buscando fotogramas…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1584"/>
+        <location filename="../mainwindow_slots.cpp" line="1593"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>ADVERTENCIA: no se encontró el archivo de vídeo en ninguna de las ubicaciones esperadas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1593"/>
+        <location filename="../mainwindow_slots.cpp" line="1602"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ Se encontraron %1 fotogramas pero ningún archivo de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1594"/>
+        <location filename="../mainwindow_slots.cpp" line="1603"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>Los fotogramas se renderizaron (%1 archivos), pero es posible que el ensamblado del vídeo haya fallado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1595"/>
+        <location filename="../mainwindow_slots.cpp" line="1604"/>
         <source>Video Not Created</source>
         <translation>Vídeo no creado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1596"/>
+        <location filename="../mainwindow_slots.cpp" line="1605"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -678,17 +678,17 @@ Vídeo esperado en: %2
 Revisa el registro de renderizado para ver errores de ffmpeg.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1600"/>
+        <location filename="../mainwindow_slots.cpp" line="1609"/>
         <source>❌ No frames or video found</source>
         <translation>❌ No se encontraron fotogramas ni vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1601"/>
+        <location filename="../mainwindow_slots.cpp" line="1610"/>
         <source>ERROR: No frames or video file found</source>
         <translation>ERROR: no se encontraron fotogramas ni archivo de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1603"/>
+        <location filename="../mainwindow_slots.cpp" line="1612"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -697,22 +697,22 @@ Please check the render log for errors.</source>
 Revisa el registro de renderizado para ver los errores.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1606"/>
+        <location filename="../mainwindow_slots.cpp" line="1615"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ No se encontró el directorio de fotogramas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1607"/>
+        <location filename="../mainwindow_slots.cpp" line="1616"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>ERROR: no se encontró el directorio de fotogramas: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1608"/>
+        <location filename="../mainwindow_slots.cpp" line="1617"/>
         <source>Directory Not Found</source>
         <translation>Directorio no encontrado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1609"/>
+        <location filename="../mainwindow_slots.cpp" line="1618"/>
         <source>Frames directory not found:
 %1
 
@@ -723,27 +723,27 @@ The render may have failed to create output.</source>
 Es posible que el renderizado no haya podido generar la salida.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1615"/>
+        <location filename="../mainwindow_slots.cpp" line="1624"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ ¡Vídeo creado correctamente!</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1616"/>
+        <location filename="../mainwindow_slots.cpp" line="1625"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ Vídeo ensamblado correctamente: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1617"/>
+        <location filename="../mainwindow_slots.cpp" line="1626"/>
         <source>Video size: %1 MB</source>
         <translation>Tamaño del vídeo: %1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1638"/>
+        <location filename="../mainwindow_slots.cpp" line="1647"/>
         <source>%1 (Video)</source>
         <translation>%1 (Vídeo)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1640"/>
+        <location filename="../mainwindow_slots.cpp" line="1649"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3 fotogramas  •  %4spp · %5%6</translation>
     </message>
@@ -752,7 +752,7 @@ Es posible que el renderizado no haya podido generar la salida.</translation>
         <translation type="vanished">%1  •  %2 MB  •  %3 fotogramas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1652"/>
+        <location filename="../mainwindow_slots.cpp" line="1661"/>
         <source>Playing video inline: %1</source>
         <translation>Reproduciendo vídeo insertado: %1</translation>
     </message>
@@ -1269,7 +1269,7 @@ Una resolución mayor implica más píxeles individuales que trazar (cada uno mu
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="748"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="521"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="591"/>
         <source>Output</source>
         <translation>Salida</translation>
     </message>
@@ -1435,7 +1435,7 @@ Cada rebote adicional permite que la luz recorra una superficie más antes de de
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="965"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1100"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1238"/>
         <source>Preset:</source>
         <translation>Preajuste:</translation>
     </message>
@@ -1789,12 +1789,72 @@ BVH (el predeterminado, igual que el propio pbrt-v4) construye una jerarquía es
 ¿Aparece en gris? Esto solo afecta al trazador de rayos predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Configuración básica para usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="561"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="516"/>
+        <source>Path regularization (--regularize)</source>
+        <translation>Regularización de rutas (--regularize)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="518"/>
+        <source>Widens a rough BSDF&apos;s GGX alpha after the path&apos;s first
+non-specular bounce - tames fireflies from hard caustic paths,
+at the cost of some blur. Both CPU and GPU default path tracer
+only. A scene that already requests this itself is unaffected -
+this checkbox only ever adds the request, never removes it.</source>
+        <translation>Amplía el alpha GGX de un BSDF rugoso tras el primer
+rebote no especular de la ruta - controla los píxeles atípicos de
+rutas cáusticas difíciles, a costa de algo de desenfoque. Solo en el
+path tracer predeterminado de CPU y GPU. Una escena que ya solicita
+esto por sí misma no se ve afectada - esta casilla solo puede añadir
+la solicitud, nunca quitarla.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="525"/>
+        <source>Some light paths are genuinely hard for a path tracer to find cleanly - light that bounces off a rough (but not perfectly specular) surface, through another rough surface, into a small bright light. Those paths show up as bright, isolated speckle (&quot;fireflies&quot;) that take a very long time to average away.
+
+Path regularization deliberately blurs a surface&apos;s roughness a little more with each non-specular bounce a path has already taken - it introduces a small bias (technically a wrong answer), but in exchange fireflies convergence dramatically faster, which is usually the better trade for how a render actually looks.
+
+Off by default, matching pbrt-v4&apos;s own default. If a loaded .pbrt scene&apos;s file already requests this itself, it&apos;s applied either way - this checkbox can only add the request on top, never take it away.</source>
+        <translation>Algunas rutas de luz son genuinamente difíciles de encontrar con precisión para un path tracer: luz que rebota en una superficie rugosa (pero no perfectamente especular), atraviesa otra superficie rugosa y llega a una luz pequeña y brillante. Esas rutas aparecen como motas brillantes y aisladas (&quot;píxeles atípicos&quot;) que tardan muchísimo tiempo en promediarse y desaparecer.
+
+La regularización de rutas desenfoca deliberadamente un poco más la rugosidad de una superficie con cada rebote no especular que la ruta ya ha realizado - introduce un pequeño sesgo (técnicamente una respuesta incorrecta), pero a cambio los píxeles atípicos convergen mucho más rápido, lo cual suele ser el mejor compromiso para el aspecto final del render.
+
+Desactivado por defecto, igual que el valor predeterminado de pbrt-v4. Si el archivo de una escena .pbrt cargada ya solicita esto por sí misma, se aplica de todos modos - esta casilla solo puede añadir la solicitud, nunca quitarla.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="541"/>
+        <source>Firefly clamp (--maxcomponentvalue)</source>
+        <translation>Límite de píxeles atípicos (--maxcomponentvalue)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="543"/>
+        <source>Clamps any pixel sample whose brightest channel exceeds the
+value below, scaling all channels down together to preserve hue.
+CPU default path tracer only - no GPU equivalent exists.</source>
+        <translation>Limita cualquier muestra de píxel cuyo canal más brillante supere
+el valor indicado abajo, reduciendo todos los canales juntos para
+preservar el tono. Solo en el path tracer predeterminado de CPU -
+no existe un equivalente en GPU.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="570"/>
+        <source>A Monte Carlo path tracer occasionally samples a path that&apos;s individually correct but extremely bright - a ray that happens to graze a small, intense light at just the right angle - and one such sample can dominate a pixel&apos;s average for a long time before enough other samples arrive to smooth it out. These show up as bright, isolated speckle (&quot;fireflies&quot;).
+
+This clamp caps how bright any single sample&apos;s brightest channel is allowed to be before it&apos;s averaged in, trading a small, controlled bias for a dramatically cleaner-looking image at the same sample count - lower values clean up more aggressively but risk visibly dimming genuinely bright small lights, not just outlier noise.
+
+Off by default (effectively unbounded, matching pbrt-v4&apos;s own default). CPU default path tracer only.</source>
+        <translation>Un path tracer de Monte Carlo a veces muestrea una ruta que es individualmente correcta pero extremadamente brillante - un rayo que roza una luz pequeña e intensa justo en el ángulo preciso - y una sola muestra así puede dominar el promedio de un píxel durante mucho tiempo, hasta que llegan suficientes muestras adicionales para suavizarlo. Esto aparece como motas brillantes y aisladas (&quot;píxeles atípicos&quot;).
+
+Este límite acota cuán brillante puede llegar a ser el canal más brillante de una sola muestra antes de promediarse, cambiando un pequeño sesgo controlado por una imagen notablemente más limpia con el mismo número de muestras - valores más bajos limpian de forma más agresiva, pero corren el riesgo de oscurecer visiblemente luces pequeñas genuinamente brillantes, no solo el ruido atípico.
+
+Desactivado por defecto (sin límite efectivo, igual que el valor predeterminado de pbrt-v4). Solo en el path tracer predeterminado de CPU.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="631"/>
         <source>OptiX AI denoiser (GPU only)</source>
         <translation>Eliminador de ruido con IA de OptiX (solo GPU)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="563"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="633"/>
         <source>Run the OptiX AI denoiser on the finished render, guided by
 albedo + normal buffers. GPU only, both backends (recursive
 and wavefront each have their own denoiser).</source>
@@ -1895,22 +1955,22 @@ Solo en el trazador de rutas predeterminado, tanto de CPU como de GPU.</translat
 1.0 deja la imagen sin cambios; por debajo de 1.0 la oscurece, por encima de 1.0 la aclara - útil para una escena que se renderiza correctamente pero resulta demasiado oscura o demasiado brillante para verse con claridad, sin cambiar ninguna luz real de la escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="529"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="599"/>
         <source>ACES (default)</source>
         <translation>ACES (predeterminado)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="530"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="600"/>
         <source>Reinhard</source>
         <translation>Reinhard</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="531"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="601"/>
         <source>None</source>
         <translation>Ninguno</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="533"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="603"/>
         <source>Which tone-mapping operator to apply before the sRGB curve.
 Applies to both CPU and GPU (recursive and wavefront) - no
 effect under BDPT/MLT/SPPM/the debug integrators.</source>
@@ -1919,12 +1979,12 @@ Se aplica tanto en CPU como en GPU (recursivo y wavefront) - sin
 efecto bajo BDPT/MLT/SPPM/los integradores de depuración.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="537"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="607"/>
         <source>Tone mapping:</source>
         <translation>Mapeo de tonos:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="538"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="608"/>
         <source>A raytraced scene&apos;s true brightness values are unbounded - a light bulb might be a hundred times brighter than a wall - but a screen can only display a fixed range. Tone mapping is the curve that compresses that huge range down into something displayable.
 
 ACES rolls off bright highlights gently, the way film does; Reinhard is a simpler, older compression; None just clips anything too bright to flat white, which can look harsh.</source>
@@ -1933,12 +1993,12 @@ ACES rolls off bright highlights gently, the way film does; Reinhard is a simple
 ACES atenúa las altas luces brillantes de forma suave, como lo hace la película fotográfica; Reinhard es una compresión más simple y antigua; Ninguno simplemente recorta cualquier cosa demasiado brillante a blanco plano, lo que puede verse duro.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="548"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="618"/>
         <source>Print render stats</source>
         <translation>Imprimir estadísticas de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="550"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="620"/>
         <source>Print a small end-of-render stats block (rays cast, bounces,
 shadow rays, samples/sec) to the Log tab. Observation-only -
 never changes the rendered image.</source>
@@ -1947,7 +2007,7 @@ rayos de sombra, muestras/seg) en la pestaña de Registro. Es solo informativo -
 nunca cambia la imagen renderizada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="625"/>
         <source>Prints a short summary after the render finishes - how many rays were cast, how many bounces happened, how many shadow rays were traced, and samples per second.
 
 Purely informational: it never changes the rendered image, just tells you what the renderer actually did.</source>
@@ -1968,7 +2028,7 @@ por los búferes de albedo y normales. Solo en el backend recursivo de GPU - no 
 efecto (de forma silenciosa) bajo el backend wavefront.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="568"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="638"/>
         <source>Ray tracing is noisy by nature - low sample counts leave a grainy, speckled image, which is why more samples usually means a cleaner picture.
 
 A denoiser is a machine-learning model trained to recognize that speckle pattern and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail.
@@ -1981,19 +2041,19 @@ Un eliminador de ruido es un modelo de aprendizaje automático entrenado para re
 ¿Está atenuado? Esto necesita el backend recursivo de GPU - cambia Renderizador a GPU (y Backend de GPU a Recursivo) en la pestaña de Configuración Básica para usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="579"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="649"/>
         <source>OptiX validation mode (slower, debugging only)</source>
         <translation>Modo de validación de OptiX (más lento, solo para depuración)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="581"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="651"/>
         <source>Enable OptiX validation mode - extra device-side checks with a
 real per-launch cost. GPU only, for debugging, not routine use.</source>
         <translation>Activa el modo de validación de OptiX - comprobaciones adicionales del lado del
 dispositivo con un coste real por lanzamiento. Solo GPU, para depuración, no para uso habitual.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="655"/>
         <source>Turns on extra correctness checks inside the GPU ray-tracing pipeline itself, catching certain classes of bugs that would otherwise silently produce a wrong image or crash unpredictably.
 
 It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
@@ -2006,43 +2066,95 @@ Es una ayuda de depuración para quienes trabajan en el propio código de GPU de
 ¿Está atenuado? Esto es exclusivo de GPU - cambia Renderizador a GPU en la pestaña de Configuración Básica para usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="614"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="671"/>
+        <source>Crop Window</source>
+        <translation>Ventana de recorte</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="678"/>
+        <source>Render only part of the frame (--crop)</source>
+        <translation>Renderizar solo una parte del cuadro (--crop)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="680"/>
+        <source>Restricts rendering to a rectangle of the frame, given as
+fractions of the full image in [0,1]. Both CPU and GPU default
+path tracer only.</source>
+        <translation>Restringe el renderizado a un rectángulo del cuadro, indicado como
+fracciones de la imagen completa en [0,1]. Solo en el path tracer
+predeterminado de CPU y GPU.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="685"/>
+        <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
+
+Useful for iterating faster on one troublesome part of a large, slow scene - the same total sample count converges much faster when it only has to cover a corner of the frame instead of the whole thing.
+
+Off by default (the full frame). If a loaded .pbrt scene&apos;s file already requests its own cropwindow/pixelbounds, checking this overrides it with the rectangle below; leaving it unchecked lets the scene&apos;s own request (if any) stand.</source>
+        <translation>Renderiza solo una porción rectangular del cuadro completo - todo lo que queda fuera se deja en negro - en lugar de la imagen entera. El rectángulo se indica como cuatro fracciones del ancho/alto del cuadro completo, de 0 (borde izquierdo/superior) a 1 (borde derecho/inferior), de modo que conserva la misma forma sin importar la resolución.
+
+Útil para iterar más rápido sobre una parte problemática de una escena grande y lenta - el mismo número total de muestras converge mucho más rápido cuando solo tiene que cubrir una esquina del cuadro en lugar de todo él.
+
+Desactivado por defecto (el cuadro completo). Si el archivo de una escena .pbrt cargada ya solicita su propio cropwindow/pixelbounds, activar esto lo sustituye por el rectángulo indicado abajo; dejarlo desactivado permite que la solicitud propia de la escena (si existe) prevalezca.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="720"/>
+        <source>Left (X0):</source>
+        <translation>Izquierda (X0):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="721"/>
+        <source>Top (Y0):</source>
+        <translation>Arriba (Y0):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="722"/>
+        <source>Right (X1):</source>
+        <translation>Derecha (X1):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="723"/>
+        <source>Bottom (Y1):</source>
+        <translation>Abajo (Y1):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="743"/>
         <source>Render Options</source>
         <translation>Opciones de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="777"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="915"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>Muestra en el Explorador la carpeta que contiene el renderizado de la pestaña activa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="789"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="927"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>Abre el renderizado de la pestaña activa en el visor del sistema</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="815"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="953"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="846"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="984"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Por qué se ve así&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="951"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="964"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1089"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1102"/>
         <source>Pause</source>
         <translation>Pausar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="964"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1102"/>
         <source>Play</source>
         <translation>Reproducir</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="974"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1112"/>
         <source>Video playback error (%1): %2</source>
         <translation>Error de reproducción de video (%1): %2</translation>
     </message>
@@ -2109,22 +2221,22 @@ Es una ayuda de depuración para quienes trabajan en el propio código de GPU de
         <translation>Diagnóstico</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1065"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1203"/>
         <source>⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to &quot;Generate Video&quot;.</source>
         <translation>⚠ Esta configuración solo tiene efecto cuando el Modo de Salida (pestaña de Configuración Básica) está establecido en &quot;Generar video&quot;.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1073"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1211"/>
         <source>Video Generation Settings</source>
         <translation>Configuración de generación de video</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1086"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1224"/>
         <source>(custom - choose settings below)</source>
         <translation>(personalizado - elige la configuración abajo)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1092"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1230"/>
         <source>Famous ray-tracing reference scenes and motions, pre-tuned so you don&apos;t
 have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the scene on the Basic tab too. Choosing any of the
@@ -2137,7 +2249,7 @@ los demás controles de esta pestaña después - simplemente dejan de coincidir 
 el preajuste, igual que si hubieras configurado esos mismos ajustes a mano.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1101"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1239"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the scene on the Basic tab) - you can still change anything afterward, it just stops matching the preset once you do.</source>
@@ -2146,27 +2258,27 @@ Picking one fills in every field below (and the scene on the Basic tab) - you ca
 Elegir uno rellena todos los campos de abajo (y la escena en la pestaña Básica) - aún puedes cambiar cualquier cosa después, simplemente deja de coincidir con el preajuste al hacerlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1111"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1249"/>
         <source>Orbit (Circular rotation)</source>
         <translation>Órbita (rotación circular)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1112"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1250"/>
         <source>Linear (Straight path)</source>
         <translation>Lineal (trayectoria recta)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1113"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1251"/>
         <source>Figure-8 (Lemniscate)</source>
         <translation>Ocho (lemniscata)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1114"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1252"/>
         <source>Spiral (Zoom-in)</source>
         <translation>Espiral (acercamiento)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1116"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1254"/>
         <source>How the camera moves over the frame sequence:
   Orbit     — full circle around the scene, always looking at its centre
   Linear    — straight sweep past the scene
@@ -2181,12 +2293,12 @@ Every path starts from the camera position on the Advanced tab.</source>
 Cada trayectoria empieza desde la posición de cámara de la pestaña Avanzada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1124"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1262"/>
         <source>Camera Path:</source>
         <translation>Trayectoria de cámara:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1125"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1263"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Every path starts from wherever the camera is positioned on the Advanced tab.</source>
@@ -2195,17 +2307,17 @@ Orbit circles fully around the scene, always facing its center - the classic &qu
 Órbita gira completamente alrededor de la escena, mirando siempre hacia su centro - la clásica toma de &quot;plato giratorio&quot;. Lineal barre en línea recta. Ocho traza una lemniscata, cruzando de vuelta por el centro. Espiral orbita mientras se acerca de forma constante. Cada trayectoria empieza desde donde esté posicionada la cámara en la pestaña Avanzada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1138"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1276"/>
         <source> frames</source>
         <translation> fotogramas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1140"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1278"/>
         <source>Frame Count:</source>
         <translation>Número de fotogramas:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1141"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1279"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second below to determine the video&apos;s total length in seconds.</source>
@@ -2214,17 +2326,17 @@ Paired with Frames Per Second below to determine the video&apos;s total length i
 Se combina con Fotogramas Por Segundo, abajo, para determinar la duración total del video en segundos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1153"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1291"/>
         <source> fps</source>
         <translation> fps</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1155"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1293"/>
         <source>Frames Per Second:</source>
         <translation>Fotogramas por segundo:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1156"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1294"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
@@ -2233,17 +2345,17 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above)
 No cambia cuántos fotogramas se renderizan (eso es Número de Fotogramas, arriba) - solo la velocidad de reproducción, y por tanto cuántos segundos dura el video terminado (Número de Fotogramas dividido entre FPS).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1176"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1314"/>
         <source>x</source>
         <translation>x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1178"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1316"/>
         <source>Movement Speed:</source>
         <translation>Velocidad de movimiento:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1179"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1317"/>
         <source>A multiplier on how many frames the camera&apos;s full path is spread across - not a change to the path itself, which always completes the same full sweep.
 
 Speed 0.5x renders twice as many frames to cover the same journey more slowly and smoothly; speed 2x renders half as many frames, covering the same journey faster.</source>
@@ -2252,47 +2364,47 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
 Una velocidad de 0.5x renderiza el doble de fotogramas para cubrir el mismo recorrido de forma más lenta y suave; una velocidad de 2x renderiza la mitad de fotogramas, cubriendo el mismo recorrido más rápido.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1208"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1346"/>
         <source>%1 frames</source>
         <translation>%1 fotogramas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1209"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1347"/>
         <source>%1 frames (base %2 × 1/%3x speed)%4</source>
         <translation>%1 fotogramas (base %2 × 1/%3x velocidad)%4</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1211"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1349"/>
         <source> - capped at 5000</source>
         <translation> - limitado a 5000</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1213"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1351"/>
         <source>&lt;b&gt;Video Duration:&lt;/b&gt; %1 seconds (%2)&lt;br&gt;&lt;b&gt;Camera Path:&lt;/b&gt; %3, always completes its full sweep regardless of speed&lt;br&gt;&lt;b&gt;Output:&lt;/b&gt; Frames will be saved to &lt;code&gt;output/frames/&lt;/code&gt;</source>
         <translation>&lt;b&gt;Duración del video:&lt;/b&gt; %1 segundos (%2)&lt;br&gt;&lt;b&gt;Trayectoria de cámara:&lt;/b&gt; %3, siempre completa su recorrido completo sin importar la velocidad&lt;br&gt;&lt;b&gt;Salida:&lt;/b&gt; Los fotogramas se guardarán en &lt;code&gt;output/frames/&lt;/code&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1231"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1369"/>
         <source>ℹ️ Requirements</source>
         <translation>ℹ️ Requisitos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1236"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1374"/>
         <source>&lt;b&gt;Requires ffmpeg:&lt;/b&gt; Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.&lt;br&gt;&lt;small&gt;Get it from &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; if the render log reports it&apos;s missing.&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Automatic Assembly:&lt;/b&gt; After rendering all frames, the video will be automatically assembled and opened.</source>
         <translation>&lt;b&gt;Requiere ffmpeg:&lt;/b&gt; La codificación de video usa ffmpeg (libx264), que debe estar instalado y en tu PATH.&lt;br&gt;&lt;small&gt;Consíguelo en &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; si el registro de renderizado indica que falta.&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Montaje automático:&lt;/b&gt; Después de renderizar todos los fotogramas, el video se montará y abrirá automáticamente.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1248"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1386"/>
         <source>Usage Instructions</source>
         <translation>Instrucciones de uso</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1253"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1391"/>
         <source>&lt;b&gt;Step 1:&lt;/b&gt; Configure video settings (camera path, frames, FPS)&lt;br&gt;&lt;b&gt;Step 2:&lt;/b&gt; Configure quality settings in Basic/Advanced tabs&lt;br&gt;&lt;b&gt;Step 3:&lt;/b&gt; Click START VIDEO RENDER and wait&lt;br&gt;&lt;b&gt;Step 4:&lt;/b&gt; Video automatically assembles and opens when done!&lt;br&gt;&lt;br&gt;&lt;b&gt;Tips:&lt;/b&gt;&lt;br&gt;• Use GPU mode for faster rendering&lt;br&gt;• Lower samples/pixel for quick previews (10-50)&lt;br&gt;• Higher samples/pixel for production quality (100-500)&lt;br&gt;• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)</source>
         <translation>&lt;b&gt;Paso 1:&lt;/b&gt; Configura los ajustes de video (trayectoria de cámara, fotogramas, FPS)&lt;br&gt;&lt;b&gt;Paso 2:&lt;/b&gt; Configura los ajustes de calidad en las pestañas Básica/Avanzada&lt;br&gt;&lt;b&gt;Paso 3:&lt;/b&gt; Haz clic en INICIAR RENDERIZADO DE VIDEO y espera&lt;br&gt;&lt;b&gt;Paso 4:&lt;/b&gt; ¡El video se monta y abre automáticamente al terminar!&lt;br&gt;&lt;br&gt;&lt;b&gt;Consejos:&lt;/b&gt;&lt;br&gt;• Usa el modo GPU para un renderizado más rápido&lt;br&gt;• Baja las muestras/píxel para vistas previas rápidas (10-50)&lt;br&gt;• Sube las muestras/píxel para calidad de producción (100-500)&lt;br&gt;• Tiempo de renderizado típico: 1-5 minutos (GPU), 15-60 minutos (CPU)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1284"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1422"/>
         <source>Video Settings</source>
         <translation>Configuración de video</translation>
     </message>
@@ -2471,104 +2583,119 @@ Solo CPU. Solo luces de área.</translation>
         <translation>Mapeo tonal: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1227"/>
+        <location filename="../mainwindow_style.cpp" line="1217"/>
+        <source>Regularize: on</source>
+        <translation>Regularización: activada</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1218"/>
+        <source>Firefly clamp: %1</source>
+        <translation>Límite de píxeles atípicos: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1220"/>
+        <source>Crop: (%1,%2)-(%3,%4)</source>
+        <translation>Recorte: (%1,%2)-(%3,%4)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1233"/>
         <source>Iterations: %1</source>
         <translation>Iteraciones: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1228"/>
+        <location filename="../mainwindow_style.cpp" line="1234"/>
         <source>Photons/iter: %1</source>
         <translation>Fotones/iteración: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1231"/>
-        <location filename="../mainwindow_style.cpp" line="1236"/>
+        <location filename="../mainwindow_style.cpp" line="1237"/>
+        <location filename="../mainwindow_style.cpp" line="1242"/>
         <source>Max depth: %1</source>
         <translation>Profundidad máxima: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1234"/>
+        <location filename="../mainwindow_style.cpp" line="1240"/>
         <source>Bootstrap: %1</source>
         <translation>Muestras de arranque: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1235"/>
+        <location filename="../mainwindow_style.cpp" line="1241"/>
         <source>Mutations: %1</source>
         <translation>Mutaciones: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1242"/>
+        <location filename="../mainwindow_style.cpp" line="1248"/>
         <source>Max distance: %1</source>
         <translation>Distancia máxima: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1243"/>
+        <location filename="../mainwindow_style.cpp" line="1249"/>
         <source>Uniform-hemisphere sampling</source>
         <translation>Muestreo de hemisferio uniforme</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1244"/>
+        <location filename="../mainwindow_style.cpp" line="1250"/>
         <source>Illumination scale: %1</source>
         <translation>Escala de iluminación: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1246"/>
+        <location filename="../mainwindow_style.cpp" line="1252"/>
         <source>Occlusion color: (%1, %2, %3)</source>
         <translation>Color de oclusión: (%1, %2, %3)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1249"/>
+        <location filename="../mainwindow_style.cpp" line="1255"/>
         <source>NEE disabled</source>
         <translation>NEE desactivada</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1250"/>
+        <location filename="../mainwindow_style.cpp" line="1256"/>
         <source>BSDF importance sampling disabled</source>
         <translation>Muestreo por importancia del BSDF desactivado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1267"/>
+        <location filename="../mainwindow_style.cpp" line="1273"/>
         <source>&lt;b&gt;Rendering technique&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Técnica de renderizado&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1277"/>
+        <location filename="../mainwindow_style.cpp" line="1283"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Settings used&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;Ajustes utilizados&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="291"/>
+        <location filename="../recent_renders.cpp" line="305"/>
         <source>just now</source>
         <translation>ahora mismo</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="292"/>
+        <location filename="../recent_renders.cpp" line="306"/>
         <source>%1 min ago</source>
         <translation>hace %1 min</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="293"/>
+        <location filename="../recent_renders.cpp" line="307"/>
         <source>%1 hr ago</source>
         <translation>hace %1 h</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="294"/>
+        <location filename="../recent_renders.cpp" line="308"/>
         <source>%1 days ago</source>
         <translation>hace %1 días</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="301"/>
+        <location filename="../recent_renders.cpp" line="315"/>
         <source>%1%2 — %3</source>
         <translation>%1%2 — %3</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="303"/>
-        <location filename="../recent_renders.cpp" line="308"/>
+        <location filename="../recent_renders.cpp" line="317"/>
+        <location filename="../recent_renders.cpp" line="322"/>
         <source> · Video</source>
         <translation> · Vídeo</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="311"/>
+        <location filename="../recent_renders.cpp" line="325"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7 — %8</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7 — %8</translation>
     </message>

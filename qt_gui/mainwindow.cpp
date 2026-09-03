@@ -210,6 +210,14 @@ void RenderController::start() {
 	if (!m_advancedFlags.lightSampler.isEmpty()) args << render_flags::kLightSampler << m_advancedFlags.lightSampler;
 	if (m_advancedFlags.spectral)       args << render_flags::kSpectral;
 	if (!m_advancedFlags.tonemap.isEmpty()) args << render_flags::kTonemap << m_advancedFlags.tonemap;
+	if (m_advancedFlags.regularize)    args << render_flags::kRegularize;
+	if (m_advancedFlags.maxComponentValue > 0.0)
+		args << render_flags::kMaxComponentValue << QString::number(m_advancedFlags.maxComponentValue);
+	if (m_advancedFlags.cropEnabled) {
+		args << render_flags::kCrop
+			 << QString::number(m_advancedFlags.cropX0) << QString::number(m_advancedFlags.cropY0)
+			 << QString::number(m_advancedFlags.cropX1) << QString::number(m_advancedFlags.cropY1);
+	}
 
 	// Video mode flags (if enabled)
 	if (m_videoMode) {

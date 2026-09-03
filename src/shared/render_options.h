@@ -29,6 +29,22 @@ struct RenderOptions {
 	// path tracer only - affects convergence/variance, not the converged
 	// image, same perf/quality-knob shape as `sampler` above.
 	const char* lightsampler = nullptr;
+	// pbrt-v4 Integrator "bool regularize" as an explicit CLI request -
+	// see LaunchArgs::regularize's own comment (launcher_args.h) for the
+	// full "only ever forces ON, never overrides a scene's own true back
+	// off" reasoning. Both backends, default path tracer only.
+	bool regularize = false;
+	// pbrt-v4 Film "maxcomponentvalue" (the firefly-clamp threshold) as an
+	// explicit CLI request - 1e9 (matching camera_t::max_component_value's
+	// own class default) means "not explicitly requested", so a scene's
+	// own Film directive still applies unless this differs. CPU default
+	// path tracer only - GPU has no equivalent clamp.
+	double max_component_value = 1e9;
+	// pbrt-v4 Film "cropwindow" (NDC fractions in [0,1]) as an explicit CLI
+	// request - {0,0,1,1} (the full frame) means "not explicitly
+	// requested", so a scene's own cropwindow/pixelbounds directive still
+	// applies unless this differs. Both backends, default path tracer only.
+	double crop_x0 = 0.0, crop_y0 = 0.0, crop_x1 = 1.0, crop_y1 = 1.0;
 	// Real hero-wavelength spectral rendering instead of flat RGB. CPU
 	// default path tracer only, 6-material whitelist (see camera.h's
 	// ray_color_spectral()'s own comment).

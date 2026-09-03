@@ -72,6 +72,12 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     render_opts.exposure = args.exposure;
     render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
     render_opts.lightsampler = args.lightsampler.empty() ? nullptr : args.lightsampler.c_str();
+    render_opts.regularize = args.regularize;
+    render_opts.max_component_value = args.max_component_value;
+    render_opts.crop_x0 = args.crop_x0;
+    render_opts.crop_y0 = args.crop_y0;
+    render_opts.crop_x1 = args.crop_x1;
+    render_opts.crop_y1 = args.crop_y1;
     render_opts.spectral = args.spectral;
     render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
     render_opts.denoise = args.denoise;

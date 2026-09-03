@@ -121,6 +121,30 @@ extern "C" int optix_render_main(
 			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
 		}
 
+		// --regularize/--maxcomponentvalue/--crop: an explicit CLI request,
+		// applied AFTER build_scene() so a loaded .pbrt scene's own
+		// directives (set inside that same call, for regularize/crop -
+		// scene_builder.cpp) are the starting point, not silently clobbered
+		// by these fields' own neutral defaults - same reasoning and same
+		// "regularize only ever forces ON" / "crop only overrides when it
+		// differs from the full frame" shape as cpu_interface.cpp's mirror
+		// of this same block. max_component_value has no GPU equivalent at
+		// all (see camera_t::max_component_value's own comment) - warn
+		// rather than silently doing nothing, matching how a loaded scene's
+		// own non-default request already warns just below in this file.
+		if (options.regularize) cameraExtra.regularize = 1;
+		if (options.max_component_value != 1e9) {
+			std::cerr << "[OptiX] Warning: --maxcomponentvalue " << options.max_component_value
+					  << " has no effect on GPU - this firefly clamp is CPU-only; use --cpu instead "
+						 "if it matters for this render.\n";
+		}
+		if (options.crop_x0 != 0.0 || options.crop_y0 != 0.0 || options.crop_x1 != 1.0 || options.crop_y1 != 1.0) {
+			cameraExtra.cropX0 = static_cast<int>(std::lround(options.crop_x0 * image_width));
+			cameraExtra.cropX1 = static_cast<int>(std::lround(options.crop_x1 * image_width));
+			cameraExtra.cropY0 = static_cast<int>(std::lround(options.crop_y0 * image_height));
+			cameraExtra.cropY1 = static_cast<int>(std::lround(options.crop_y1 * image_height));
+		}
+
 		// buildScene() only touches geometry/material/light device memory -
 		// it never sees camera state (that's render()'s cameraExtra param,
 		// computed fresh above on every call regardless) - so re-uploading

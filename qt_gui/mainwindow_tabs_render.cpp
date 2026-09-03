@@ -513,6 +513,76 @@ void MainWindow::createRenderOptionsTab() {
 		"changing any actual light in the scene.")),
 		m_exposureSpin);
 
+	m_regularizeCheck = new QCheckBox(tr("Path regularization (--regularize)"), optionsTab);
+	m_regularizeCheck->setToolTip(
+		tr("Widens a rough BSDF's GGX alpha after the path's first\n"
+		"non-specular bounce - tames fireflies from hard caustic paths,\n"
+		"at the cost of some blur. Both CPU and GPU default path tracer\n"
+		"only. A scene that already requests this itself is unaffected -\n"
+		"this checkbox only ever adds the request, never removes it."));
+	styleCheckBox(m_regularizeCheck);
+	samplingLayout->addRow(checkboxWithInfo(m_regularizeCheck,
+		tr("Some light paths are genuinely hard for a path tracer to find "
+		"cleanly - light that bounces off a rough (but not perfectly "
+		"specular) surface, through another rough surface, into a small "
+		"bright light. Those paths show up as bright, isolated speckle "
+		"(\"fireflies\") that take a very long time to average away.\n\n"
+		"Path regularization deliberately blurs a surface's roughness a "
+		"little more with each non-specular bounce a path has already "
+		"taken - it introduces a small bias (technically a wrong "
+		"answer), but in exchange fireflies convergence dramatically "
+		"faster, which is usually the better trade for how a render "
+		"actually looks.\n\n"
+		"Off by default, matching pbrt-v4's own default. If a loaded "
+		".pbrt scene's file already requests this itself, it's applied "
+		"either way - this checkbox can only add the request on top, "
+		"never take it away.")));
+
+	m_maxComponentValueCheck = new QCheckBox(tr("Firefly clamp (--maxcomponentvalue)"), optionsTab);
+	m_maxComponentValueCheck->setToolTip(
+		tr("Clamps any pixel sample whose brightest channel exceeds the\n"
+		"value below, scaling all channels down together to preserve hue.\n"
+		"CPU default path tracer only - no GPU equivalent exists."));
+	styleCheckBox(m_maxComponentValueCheck);
+	m_maxComponentValueSpin = new QDoubleSpinBox(optionsTab);
+	// Range/step/default chosen for a typical 0-a-few-dozen linear-light
+	// scene, not the CLI's own "1e9 = unbounded" sentinel - showing that
+	// literal value in a spinbox would read as a bug, not "off". 10.0 is a
+	// commonly-cited reasonable starting clamp for a first attempt; the
+	// checkbox itself (not a magic spinbox value) is what actually decides
+	// whether --maxcomponentvalue is emitted at all - see the connect()
+	// lambda just below, which enables/disables this spinbox with the
+	// checkbox.
+	m_maxComponentValueSpin->setRange(0.01, 10000.0);
+	m_maxComponentValueSpin->setValue(10.0);
+	m_maxComponentValueSpin->setSingleStep(1.0);
+	m_maxComponentValueSpin->setEnabled(false);
+	m_maxComponentValueSpin->setToolTip(m_maxComponentValueCheck->toolTip());
+	styleSpinBox(m_maxComponentValueSpin);
+	connect(m_maxComponentValueCheck, &QCheckBox::toggled, m_maxComponentValueSpin, &QDoubleSpinBox::setEnabled);
+	{
+		QWidget *clampRow = new QWidget(optionsTab);
+		QHBoxLayout *clampRowLayout = new QHBoxLayout(clampRow);
+		clampRowLayout->setContentsMargins(0, 0, 0, 0);
+		clampRowLayout->addWidget(m_maxComponentValueCheck);
+		clampRowLayout->addWidget(m_maxComponentValueSpin, 1);
+		samplingLayout->addRow(checkboxWithInfo(m_maxComponentValueCheck,
+			tr("A Monte Carlo path tracer occasionally samples a path that's "
+			"individually correct but extremely bright - a ray that happens "
+			"to graze a small, intense light at just the right angle - and "
+			"one such sample can dominate a pixel's average for a long "
+			"time before enough other samples arrive to smooth it out. "
+			"These show up as bright, isolated speckle (\"fireflies\").\n\n"
+			"This clamp caps how bright any single sample's brightest "
+			"channel is allowed to be before it's averaged in, trading a "
+			"small, controlled bias for a dramatically cleaner-looking "
+			"image at the same sample count - lower values clean up more "
+			"aggressively but risk visibly dimming genuinely bright small "
+			"lights, not just outlier noise.\n\n"
+			"Off by default (effectively unbounded, matching pbrt-v4's own "
+			"default). CPU default path tracer only.")), clampRow);
+	}
+
 	layout->addWidget(samplingGroup);
 
 	// ------------------------------------------------------------------
@@ -594,6 +664,65 @@ void MainWindow::createRenderOptionsTab() {
 		"the Basic Settings tab to use it.")));
 
 	layout->addWidget(outputGroup);
+
+	// ------------------------------------------------------------------
+	// Crop Window group
+	// ------------------------------------------------------------------
+	QGroupBox *cropGroup = new QGroupBox(tr("Crop Window"), optionsTab);
+	styleGroupBox(cropGroup);
+	QFormLayout *cropLayout = new QFormLayout(cropGroup);
+	cropLayout->setVerticalSpacing(10);
+	cropLayout->setHorizontalSpacing(10);
+	cropLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_cropCheck = new QCheckBox(tr("Render only part of the frame (--crop)"), optionsTab);
+	m_cropCheck->setToolTip(
+		tr("Restricts rendering to a rectangle of the frame, given as\n"
+		"fractions of the full image in [0,1]. Both CPU and GPU default\n"
+		"path tracer only."));
+	styleCheckBox(m_cropCheck);
+	cropLayout->addRow(checkboxWithInfo(m_cropCheck,
+		tr("Renders only a rectangular slice of the full frame - "
+		"everything outside it is left black - instead of the whole "
+		"image. The rectangle is given as four fractions of the full "
+		"frame width/height, from 0 (left/top edge) to 1 (right/bottom "
+		"edge), so it stays the same shape regardless of resolution.\n\n"
+		"Useful for iterating faster on one troublesome part of a large, "
+		"slow scene - the same total sample count converges much faster "
+		"when it only has to cover a corner of the frame instead of the "
+		"whole thing.\n\n"
+		"Off by default (the full frame). If a loaded .pbrt scene's file "
+		"already requests its own cropwindow/pixelbounds, checking this "
+		"overrides it with the rectangle below; leaving it unchecked "
+		"lets the scene's own request (if any) stand.")));
+
+	const auto makeCropSpin = [this, optionsTab]() {
+		QDoubleSpinBox *spin = new QDoubleSpinBox(optionsTab);
+		spin->setRange(0.0, 1.0);
+		spin->setSingleStep(0.05);
+		spin->setDecimals(2);
+		spin->setEnabled(false);
+		styleSpinBox(spin);
+		return spin;
+	};
+	m_cropX0Spin = makeCropSpin();
+	m_cropX0Spin->setValue(0.0);
+	m_cropY0Spin = makeCropSpin();
+	m_cropY0Spin->setValue(0.0);
+	m_cropX1Spin = makeCropSpin();
+	m_cropX1Spin->setValue(1.0);
+	m_cropY1Spin = makeCropSpin();
+	m_cropY1Spin->setValue(1.0);
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropX0Spin, &QDoubleSpinBox::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropY0Spin, &QDoubleSpinBox::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropX1Spin, &QDoubleSpinBox::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropY1Spin, &QDoubleSpinBox::setEnabled);
+	cropLayout->addRow(tr("Left (X0):"), m_cropX0Spin);
+	cropLayout->addRow(tr("Top (Y0):"), m_cropY0Spin);
+	cropLayout->addRow(tr("Right (X1):"), m_cropX1Spin);
+	cropLayout->addRow(tr("Bottom (Y1):"), m_cropY1Spin);
+
+	layout->addWidget(cropGroup);
 	layout->addStretch();
 
 	// Initial enabled state matches whatever m_renderModeCombo/
@@ -642,6 +771,15 @@ void MainWindow::updateRenderOptionsEnabled() {
 	// !wavefrontSelected.
 	m_denoiseCheck->setEnabled(isDefault && gpuSelected);
 	m_optixValidateCheck->setEnabled(isDefault && gpuSelected);
+	m_regularizeCheck->setEnabled(isDefault);
+	m_maxComponentValueCheck->setEnabled(isDefault && !gpuSelected);
+	m_maxComponentValueSpin->setEnabled(isDefault && !gpuSelected && m_maxComponentValueCheck->isChecked());
+	m_cropCheck->setEnabled(isDefault);
+	const bool cropSpinsEnabled = isDefault && m_cropCheck->isChecked();
+	m_cropX0Spin->setEnabled(cropSpinsEnabled);
+	m_cropY0Spin->setEnabled(cropSpinsEnabled);
+	m_cropX1Spin->setEnabled(cropSpinsEnabled);
+	m_cropY1Spin->setEnabled(cropSpinsEnabled);
 }
 
 void MainWindow::createPreviewTab() {
