@@ -511,12 +511,29 @@ void MainWindow::createBasicTab() {
 	// own comment (mainwindow_slots.cpp) for the exact mismatch logic, kept
 	// in lockstep with cpu_render_main()'s own (console-only) warning.
 	// Same objectName/wordWrap/hidden-by-default shape as
-	// m_integratorVideoWarningLabelBasic just above.
-	m_sceneRecommendedSettingsHint = new QLabel(basicTab);
+	// m_integratorVideoWarningLabelBasic just above, plus a one-click Apply
+	// button (applyRecommendedSettings(), mainwindow_slots.cpp) - the one
+	// deliberate exception to this hint's own "not applied automatically"
+	// text, since clicking it is a real user action, not an automatic
+	// override. Both widgets share one row so Apply sits right next to the
+	// text it applies, and both toggle visibility together.
+	QWidget *recommendedSettingsRow = new QWidget(basicTab);
+	QHBoxLayout *recommendedSettingsLayout = new QHBoxLayout(recommendedSettingsRow);
+	recommendedSettingsLayout->setContentsMargins(0, 0, 0, 0);
+	m_sceneRecommendedSettingsHint = new QLabel(recommendedSettingsRow);
 	m_sceneRecommendedSettingsHint->setObjectName("statusWarning");
 	m_sceneRecommendedSettingsHint->setWordWrap(true);
 	m_sceneRecommendedSettingsHint->setVisible(false);
-	sceneGroupLayout->addWidget(m_sceneRecommendedSettingsHint);
+	recommendedSettingsLayout->addWidget(m_sceneRecommendedSettingsHint, 1);
+	m_applyRecommendedSettingsButton = new QPushButton(tr("Apply"), recommendedSettingsRow);
+	m_applyRecommendedSettingsButton->setToolTip(
+		tr("Set Sampler/Integrator/Light Sampler (Render Options tab) to "
+		"this scene's own recommended values."));
+	m_applyRecommendedSettingsButton->setVisible(false);
+	connect(m_applyRecommendedSettingsButton, &QPushButton::clicked,
+			this, &MainWindow::applyRecommendedSettings);
+	recommendedSettingsLayout->addWidget(m_applyRecommendedSettingsButton, 0, Qt::AlignTop);
+	sceneGroupLayout->addWidget(recommendedSettingsRow);
 
 	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onSceneChanged);

@@ -374,6 +374,17 @@ private:
 	// change handlers, so switching Sampler/Integrator/Light Sampler after
 	// picking the scene updates the hint live instead of leaving it stale.
 	void updateSceneRecommendedSettingsHint(const QString &sceneId);
+	// m_applyRecommendedSettingsButton's slot - sets m_integratorCombo/
+	// m_samplerCombo/m_lightSamplerCombo to the CURRENT scene's recommended
+	// values (SceneMetadataClient::sceneRecommended*()), skipping any one
+	// of the three that's empty or doesn't match a real combo entry (e.g.
+	// an Integrator directive string this GUI's IntegratorMode enum has no
+	// mapping for - see this function's own definition, mainwindow_slots.cpp).
+	// The one deliberate exception to this file's "not auto-applied,
+	// warn rather than switch" rule (see updateSceneRecommendedSettingsHint's
+	// own comment) - here the user explicitly clicked Apply, so it's a real
+	// action, not an automatic override of an unrelated selection.
+	void applyRecommendedSettings();
 	// Plain-text description of `mode` - used by createBasicTab()'s
 	// per-item combo tooltips (each Integrator dropdown row's own "(i)").
 	QString integratorDescription(IntegratorMode mode);
@@ -711,6 +722,9 @@ private:
 	// light-sampler differs from the Render Options tab's current
 	// selection - see updateSceneRecommendedSettingsHint()'s own comment.
 	QLabel *m_sceneRecommendedSettingsHint = nullptr;
+	// Shown/hidden together with m_sceneRecommendedSettingsHint - see
+	// applyRecommendedSettings()'s own comment.
+	QPushButton *m_applyRecommendedSettingsButton = nullptr;
 
 	// Rebuilds m_sceneInfoLabel's text (description/performance/SPP/GPU-
 	// support, plus the requires-files/CPU-only warning badges) for

@@ -21,6 +21,7 @@
 #include <QIcon>
 #include <QStyle>
 #include <QThread>
+#include <QHash>
 #include <array>
 #include <cmath>
 #include <optional>
@@ -777,6 +778,7 @@ void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId) {
 	if (!m_sceneRecommendedSettingsHint) return;
 	if (sceneId.isEmpty() || !m_integratorCombo || !m_samplerCombo || !m_lightSamplerCombo) {
 		m_sceneRecommendedSettingsHint->setVisible(false);
+		if (m_applyRecommendedSettingsButton) m_applyRecommendedSettingsButton->setVisible(false);
 		return;
 	}
 
@@ -803,16 +805,83 @@ void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId) {
 
 	if (mismatches.isEmpty()) {
 		m_sceneRecommendedSettingsHint->setVisible(false);
+		if (m_applyRecommendedSettingsButton) m_applyRecommendedSettingsButton->setVisible(false);
 		return;
 	}
 
 	m_sceneRecommendedSettingsHint->setText(
 		tr("⚠ This scene's file recommends %1, but the Render Options tab "
-		   "is currently set to the default(s) instead - not applied "
-		   "automatically, change it there if you want to match the scene's "
-		   "own settings.")
+		   "is currently set to the default(s) instead - click Apply, or "
+		   "change it there yourself, to match the scene's own settings.")
 			.arg(mismatches.join(tr(", "))));
 	m_sceneRecommendedSettingsHint->setVisible(true);
+	if (m_applyRecommendedSettingsButton) m_applyRecommendedSettingsButton->setVisible(true);
+}
+
+// integratorModeForPbrtName(): the one place this GUI maps a pbrt-v4
+// Integrator directive TYPE STRING (as loaded verbatim from a .pbrt file's
+// own Integrator directive, SceneDescriptor::recommended_integrator) onto
+// this GUI's own IntegratorMode enum - deliberately local to
+// applyRecommendedSettings() rather than a shared table, since nothing
+// else in this codebase needs the reverse of this mapping (a loaded pbrt
+// file's Integrator directive is never auto-applied to an actual render -
+// see docs/PBRT_SUPPORT.md's own note that only --bdpt/--sppm/--mlt/
+// default CLI flags ever decide that). "path" is accepted as a synonym
+// for "volpath" - pre-pbrt-v4 scenes and some hand-written ones still use
+// the old name. Returns false (mode left unchanged) for an unrecognized
+// string - includes this project's own "lightpath" (light-tracer)
+// extension, not a real pbrt-v4 integrator type name, alongside the 8
+// real ones.
+static bool integratorModeForPbrtName(const QString &name, IntegratorMode &outMode) {
+	static const QHash<QString, IntegratorMode> kByName = {
+		{QStringLiteral("volpath"), IntegratorMode::Default},
+		{QStringLiteral("path"), IntegratorMode::Default},
+		{QStringLiteral("sppm"), IntegratorMode::Sppm},
+		{QStringLiteral("bdpt"), IntegratorMode::Bdpt},
+		{QStringLiteral("mlt"), IntegratorMode::Mlt},
+		{QStringLiteral("randomwalk"), IntegratorMode::RandomWalk},
+		{QStringLiteral("ambientocclusion"), IntegratorMode::Ao},
+		{QStringLiteral("simplepath"), IntegratorMode::SimplePath},
+		{QStringLiteral("simplevolpath"), IntegratorMode::SimpleVolPath},
+		{QStringLiteral("lightpath"), IntegratorMode::LightPath},
+	};
+	const auto it = kByName.constFind(name);
+	if (it == kByName.constEnd()) return false;
+	outMode = it.value();
+	return true;
+}
+
+void MainWindow::applyRecommendedSettings() {
+	if (!m_sceneCombo || !m_integratorCombo || !m_samplerCombo || !m_lightSamplerCombo) return;
+	const QString sceneId = m_sceneCombo->currentData().toString();
+	if (sceneId.isEmpty()) return;
+
+	const QString recommendedIntegrator = SceneMetadataClient::sceneRecommendedIntegrator(sceneId);
+	IntegratorMode mode;
+	if (!recommendedIntegrator.isEmpty() && integratorModeForPbrtName(recommendedIntegrator, mode)) {
+		const int idx = m_integratorCombo->findData(static_cast<int>(mode));
+		if (idx >= 0) m_integratorCombo->setCurrentIndex(idx);
+	}
+
+	const QString recommendedSampler = SceneMetadataClient::sceneRecommendedSampler(sceneId);
+	if (!recommendedSampler.isEmpty()) {
+		const int idx = m_samplerCombo->findData(recommendedSampler);
+		if (idx >= 0) m_samplerCombo->setCurrentIndex(idx);
+	}
+
+	const QString recommendedLightSampler = SceneMetadataClient::sceneRecommendedLightSampler(sceneId);
+	if (!recommendedLightSampler.isEmpty()) {
+		const int idx = m_lightSamplerCombo->findData(recommendedLightSampler);
+		if (idx >= 0) m_lightSamplerCombo->setCurrentIndex(idx);
+	}
+
+	// Each setCurrentIndex() above already re-ran
+	// updateSceneRecommendedSettingsHint() via its own change handler (the
+	// Integrator combo's onIntegratorChanged(), the Sampler/Light Sampler
+	// combos' own lambdas - mainwindow_tabs_render.cpp), but calling it once
+	// more here is cheap and guarantees the hint reflects the FINAL state
+	// of all three rather than whatever it was after just the first change.
+	updateSceneRecommendedSettingsHint(sceneId);
 }
 
 void MainWindow::onSceneChanged(int index) {
