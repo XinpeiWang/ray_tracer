@@ -1001,6 +1001,38 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	return (occluded == 0);
 }
 
+// Beer-Lambert transmittance of the camera medium (GpuCameraParams::
+// cameraMediumSigmaT) over a shadow ray's own real distance to its target -
+// closes the gap this feature's own scope comment used to document ("no
+// shadow-ray/NEE attenuation through it yet ... a light behind the fog
+// isn't dimmed by it on the way to a shadow-ray target"), matching CPU's
+// identical fix (camera.h's own camera_medium_trans lambda, ray_color()).
+// The camera medium is untraced geometry (see sample_camera_medium()'s own
+// comment for why it isn't a hittable/BVH entry), so trace_shadow_ray()'s
+// optixTrace() call never sees it - every NEE call site that fires a
+// trace_shadow_ray() has to apply this separately (both the per-material
+// NEE blocks in optix_device_helpers.h AND medium_phase_nee_mis() just
+// below - a scatter event INSIDE the camera medium still has more of that
+// same unbounded medium between it and the light), each mirroring its own
+// already-computed shadow-ray distance argument. Defined here, before
+// medium_phase_nee_mis(), specifically so that function can call it.
+//
+// `max_distance` mirrors the SAME value already passed as trace_shadow_ray()'s
+// own third argument at every call site, including the `1e30f` sentinel
+// every sky-NEE block uses for "infinite distance" - treated here as an
+// exact 0 transmittance for any positive sigma_t (nothing is visible
+// arbitrarily far through an unbounded absorbing/scattering medium),
+// matching CPU's transmittance_over(infinity) exactly, rather than letting
+// expf(-sigma_t * 1e30f) do it implicitly (correct in IEEE754 for any real
+// sigma_t here, but explicit is clearer and matches CPU's own dedicated
+// infinity branch).
+__device__ __forceinline__ float camera_medium_shadow_trans(float max_distance) {
+	const float sigma_t = params.camera.cameraMediumSigmaT;
+	if (sigma_t <= 0.0f) return 1.0f;
+	if (max_distance >= 1e29f) return 0.0f;
+	return expf(-sigma_t * max_distance);
+}
+
 // Real NEE+MIS at a Henyey-Greenstein phase-function scatter event inside a
 // participating medium - the volumetric counterpart of a diffuse/glossy
 // BSDF's own NEE block, reused by every medium-interior scatter case in this
@@ -1096,7 +1128,8 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 				if (trace_shadow_ray(medium_point, to_light, max_dist)) {
 					float mis_weight = mis_power_heuristic(light_pdf, phase_val);
 					medium_emission = medium_emission +
-						(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission;
+						(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission
+						* camera_medium_shadow_trans(max_dist);
 				}
 			}
 		}
@@ -1111,7 +1144,8 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 				if (trace_shadow_ray(medium_point, sky_dir, 1e30f)) {
 					float mis_weight = mis_power_heuristic(pdf_sky, phase_val_sky);
 					medium_emission = medium_emission +
-						(mis_weight * phase_val_sky / pdf_sky) * attenuation * sky_Le_val;
+						(mis_weight * phase_val_sky / pdf_sky) * attenuation * sky_Le_val
+						* camera_medium_shadow_trans(1e30f);
 				}
 			}
 		}
@@ -1155,35 +1189,6 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 // exists there the way it does inside a closest-hit program) - confirmed by
 // a real OptiX module-compile failure ("Illegal call to optixGetRayTime in
 // function __raygen__rg") the first time this call chain read it implicitly.
-// Beer-Lambert transmittance of the camera medium (GpuCameraParams::
-// cameraMediumSigmaT) over a shadow ray's own real distance to its target -
-// closes the gap this feature's own scope comment used to document ("no
-// shadow-ray/NEE attenuation through it yet ... a light behind the fog
-// isn't dimmed by it on the way to a shadow-ray target"), matching CPU's
-// identical fix (camera.h's own camera_medium_trans lambda, ray_color()).
-// The camera medium is untraced geometry (see sample_camera_medium()'s own
-// comment for why it isn't a hittable/BVH entry), so trace_shadow_ray()'s
-// optixTrace() call never sees it - every NEE call site in
-// optix_device_helpers.h has to apply this separately, once per light
-// strategy, exactly mirroring each one's own already-computed shadow-ray
-// distance argument.
-//
-// `max_distance` mirrors the SAME value already passed as trace_shadow_ray()'s
-// own third argument at every call site, including the `1e30f` sentinel
-// every sky-NEE block uses for "infinite distance" - treated here as an
-// exact 0 transmittance for any positive sigma_t (nothing is visible
-// arbitrarily far through an unbounded absorbing/scattering medium),
-// matching CPU's transmittance_over(infinity) exactly, rather than letting
-// expf(-sigma_t * 1e30f) do it implicitly (correct in IEEE754 for any real
-// sigma_t here, but explicit is clearer and matches CPU's own dedicated
-// infinity branch).
-__device__ __forceinline__ float camera_medium_shadow_trans(float max_distance) {
-	const float sigma_t = params.camera.cameraMediumSigmaT;
-	if (sigma_t <= 0.0f) return 1.0f;
-	if (max_distance >= 1e29f) return 0.0f;
-	return expf(-sigma_t * max_distance);
-}
-
 __device__ __forceinline__ bool sample_camera_medium(
 	const float3& ray_orig, const float3& ray_dir, float surface_t, unsigned int& seed,
 	float3& out_scatter_point, float3& out_scatter_dir, float& out_brdf_pdf_override,

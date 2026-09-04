@@ -104,15 +104,20 @@ extern "C" __global__ void __intersection__wf_sphere() {
 		// of optix_intersection_sphere.h's own ClippedSphere branch (same
 		// reason wf_sphere/wf_quad/wf_triangle are duplicated rather than
 		// shared - see this file's header comment). This shape carries its
-		// own object<->world affine (sphere.o2w/w2o), same as Disk/Cylinder,
-		// so the ray is read in WORLD space and transformed in by hand via
-		// wf_dc_apply_point/wf_dc_apply_vector rather than via ray_orig/
-		// ray_dir above (those stay OBJECT-space via the OptiX instance
-		// transform, for the plain-Sphere/Box branches only).
-		const float3 ray_orig_w = optixGetWorldRayOrigin();
-		const float3 ray_dir_w  = optixGetWorldRayDirection();
-		const float3 oro = wf_dc_apply_point(sphere.w2o, ray_orig_w);
-		const float3 ord = wf_dc_apply_vector(sphere.w2o, ray_dir_w);
+		// own further object<->object affine (sphere.o2w/w2o, in the SAME
+		// space as center/center1/radius above), on top of whatever OptiX
+		// instance/placement transform is in effect (identity for a
+		// top-level sphere) - composed through the already-computed
+		// OBJECT-space ray_orig/ray_dir above (which already undo the
+		// instance transform), THEN through sphere.w2o via
+		// wf_dc_apply_point/wf_dc_apply_vector for this shape's own further
+		// clip-local space. NOT the raw WORLD-space ray directly (a real bug
+		// this replaced: applying sphere.w2o to the world ray alone silently
+		// skipped an INSTANCED clipped sphere's own placement transform -
+		// harmless for the top-level case only because its own instance
+		// transform is always identity).
+		const float3 oro = wf_dc_apply_point(sphere.w2o, ray_orig);
+		const float3 ord = wf_dc_apply_vector(sphere.w2o, ray_dir);
 		const float r = sphere.radiusLocal;
 
 		const float qa = dot(ord, ord);
@@ -253,11 +258,17 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// motion-interpolated attribute.
 	const bool is_box = (sph.shapeKind == GpuMediumShapeKind::Box);
 	// See __intersection__wf_sphere's own ClippedSphere comment: this shape
-	// carries its own object<->world affine (sph.o2w/w2o) rather than an
-	// OptiX instance transform, same as Disk/Cylinder - so its object-space
-	// hit point/normal/dpdu below are derived through that affine directly,
-	// never through instBase/optixTransform*FromWorldToObjectSpace (which
-	// stay meaningful only for the plain-Sphere/Box branches).
+	// carries its own further object<->object affine (sph.o2w/w2o) on top of
+	// whatever OptiX instance transform placed it (identity for a top-level
+	// sphere) - so its hit point/normal/dpdu below compose BOTH:
+	// optixTransformPointFromWorldToObjectSpace() first (undoing the
+	// instance placement, gated on instBase >= 0 exactly like the
+	// plain-Sphere/Box branch below - optixGetObjectRay*() is illegal in a
+	// closest-hit program), THEN sph.w2o/o2w for this shape's own further
+	// clip-local space. Applying sph.w2o to the raw WORLD hit point directly
+	// (skipping the instance-transform undo) was a real bug for an
+	// INSTANCED clipped sphere - harmless for the top-level case only
+	// because its own instance transform is always identity.
 	const bool is_clipped = (sph.shapeKind == GpuMediumShapeKind::ClippedSphere);
 
 	// Object (per-primitive) motion blur: the plain-Sphere intersection
@@ -274,7 +285,9 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	float3 obj_hit = hit_point;
 	float3 obj_normal;
 	if (is_clipped) {
-		obj_hit = wf_dc_apply_point(sph.w2o, hit_point);
+		const float3 hit_in_instance_space = (instBase >= 0)
+			? optixTransformPointFromWorldToObjectSpace(hit_point) : hit_point;
+		obj_hit = wf_dc_apply_point(sph.w2o, hit_in_instance_space);
 		const float rl = sph.radiusLocal;
 		obj_normal = (rl > 0.0f) ? (obj_hit / rl) : make_float3(0.0f, 0.0f, 1.0f);
 	} else {
@@ -289,10 +302,14 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 			: normalize(obj_hit - sphere_center);
 	}
 	float3 outward_normal = obj_normal;
-	if (is_clipped)
-		outward_normal = normalize(wf_dc_apply_normal_from_w2o(sph.w2o, obj_normal));
-	else if (instBase >= 0)
+	if (is_clipped) {
+		const float3 normal_in_instance_space = wf_dc_apply_normal_from_w2o(sph.w2o, obj_normal);
+		outward_normal = (instBase >= 0)
+			? normalize(optixTransformNormalFromObjectToWorldSpace(normal_in_instance_space))
+			: normalize(normal_in_instance_space);
+	} else if (instBase >= 0) {
 		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
+	}
 	// Flip to face the ray
 	bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	float3 normal = front_face ? outward_normal : -outward_normal;
@@ -363,7 +380,9 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 				const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
 				sphere_dpdu = dir * (sph.phiMax * sph.radiusLocal * sinf(sphere_theta));
 			}
-			sphere_dpdu = normalize(wf_dc_apply_vector(sph.o2w, sphere_dpdu));
+			sphere_dpdu = wf_dc_apply_vector(sph.o2w, sphere_dpdu);
+			if (instBase >= 0) sphere_dpdu = optixTransformVectorFromObjectToWorldSpace(sphere_dpdu);
+			sphere_dpdu = normalize(sphere_dpdu);
 		} else {
 			const float sin_theta = sinf(sphere_theta);
 			const float sin_phi = sinf(sphere_phi), cos_phi = cosf(sphere_phi);

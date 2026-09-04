@@ -61,10 +61,20 @@ extern "C" __global__ void __closesthit__probe_sphere() {
 	const bool is_box = (sphere.shapeKind == GpuMediumShapeKind::Box);
 	const bool is_clipped = (sphere.shapeKind == GpuMediumShapeKind::ClippedSphere);
 
+	// ClippedSphere carries its own further object<->object affine
+	// (sphere.o2w/w2o) on top of whatever OptiX instance transform placed it
+	// (identity for a top-level sphere) - see optix_intersection_sphere.h's
+	// __closesthit__sphere for the full reasoning (this probe program is a
+	// deliberately minimal twin of it). Compose optixTransformPointFrom
+	// WorldToObjectSpace() first (undoing the instance placement), THEN
+	// sphere.w2o - applying sphere.w2o to the raw world hit point alone
+	// silently skipped an INSTANCED clipped sphere's own placement.
 	float3 obj_hit = hit_point;
 	float3 obj_normal;
 	if (is_clipped) {
-		obj_hit = dc_apply_point(sphere.w2o, hit_point);
+		const float3 hit_in_instance_space = (instBase >= 0)
+			? optixTransformPointFromWorldToObjectSpace(hit_point) : hit_point;
+		obj_hit = dc_apply_point(sphere.w2o, hit_in_instance_space);
 		const float rl = sphere.radiusLocal;
 		obj_normal = (rl > 0.0f) ? (obj_hit / rl) : make_float3(0.0f, 0.0f, 1.0f);
 	} else {
@@ -74,8 +84,14 @@ extern "C" __global__ void __closesthit__probe_sphere() {
 			: (obj_hit - sphere_center) / sphere_radius;
 	}
 	float3 outward_normal = obj_normal;
-	if (is_clipped) outward_normal = normalize(dc_apply_normal_from_w2o(sphere.w2o, obj_normal));
-	else if (instBase >= 0) outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(obj_normal));
+	if (is_clipped) {
+		const float3 normal_in_instance_space = dc_apply_normal_from_w2o(sphere.w2o, obj_normal);
+		outward_normal = (instBase >= 0)
+			? normalize(optixTransformNormalFromObjectToWorldSpace(normal_in_instance_space))
+			: normalize(normal_in_instance_space);
+	} else if (instBase >= 0) {
+		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(obj_normal));
+	}
 	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 

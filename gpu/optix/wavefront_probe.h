@@ -294,12 +294,11 @@ extern "C" __global__ void __closesthit__wf_probe_sphere() {
 	const float3 hit_point = ray_orig + t * ray_dir;
 
 	// ClippedSphere carries its own per-shape o2w/w2o (see GpuMediumShapeKind's
-	// comment in optix_types.h) independent of any OptiX instance transform,
-	// so the naive world-space `obj_hit - sphere.center` radial normal below
-	// is only correct under a rigid+uniform-scale transform - wrong for a
-	// non-uniformly-scaled clipped sphere, whose real (transform-exact)
-	// intersection lives in __closesthit__wf_sphere via wf_dc_apply_point/
-	// wf_dc_apply_normal_from_w2o. Mirrored here the same way.
+	// comment in optix_types.h), so the naive world-space `obj_hit -
+	// sphere.center` radial normal below would be wrong for it regardless of
+	// placement - the real (transform-exact) derivation is below, mirroring
+	// __closesthit__wf_sphere's own (see that function's comment for the
+	// full instance-transform-composition reasoning).
 	const bool is_clipped = (sphere.shapeKind == GpuMediumShapeKind::ClippedSphere);
 	// Object (per-primitive) motion blur: this hit group's intersection
 	// program is __intersection__wf_sphere itself (see this file's own
@@ -312,10 +311,20 @@ extern "C" __global__ void __closesthit__wf_probe_sphere() {
 	// duplicate the 3-line unpack) instead of the raw sphere.center.
 	// Meaningless/unused when is_clipped (that branch never reads it).
 	const float3 sphere_center = wf_read_hit_sphere_center();
+	// ClippedSphere carries its own further object<->object affine
+	// (sphere.o2w/w2o) on top of whatever OptiX instance transform placed it
+	// (identity for a top-level sphere) - see wavefront_intersection_sphere.h's
+	// __closesthit__wf_sphere for the full reasoning (this probe program is a
+	// deliberately minimal twin of it). Compose optixTransformPointFrom
+	// WorldToObjectSpace() first (undoing the instance placement), THEN
+	// sphere.w2o - applying sphere.w2o to the raw world hit point alone
+	// silently skipped an INSTANCED clipped sphere's own placement.
 	float3 obj_hit = hit_point;
 	float3 obj_normal;
 	if (is_clipped) {
-		obj_hit = wf_dc_apply_point(sphere.w2o, hit_point);
+		const float3 hit_in_instance_space = (instBase >= 0)
+			? optixTransformPointFromWorldToObjectSpace(hit_point) : hit_point;
+		obj_hit = wf_dc_apply_point(sphere.w2o, hit_in_instance_space);
 		const float rl = sphere.radiusLocal;
 		obj_normal = (rl > 0.0f) ? (obj_hit / rl) : make_float3(0.0f, 0.0f, 1.0f);
 	} else {
@@ -323,8 +332,14 @@ extern "C" __global__ void __closesthit__wf_probe_sphere() {
 		obj_normal = normalize(obj_hit - sphere_center);
 	}
 	float3 outward_normal = obj_normal;
-	if (is_clipped) outward_normal = normalize(wf_dc_apply_normal_from_w2o(sphere.w2o, obj_normal));
-	else if (instBase >= 0) outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
+	if (is_clipped) {
+		const float3 normal_in_instance_space = wf_dc_apply_normal_from_w2o(sphere.w2o, obj_normal);
+		outward_normal = (instBase >= 0)
+			? normalize(optixTransformNormalFromObjectToWorldSpace(normal_in_instance_space))
+			: normalize(normal_in_instance_space);
+	} else if (instBase >= 0) {
+		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
+	}
 	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 
