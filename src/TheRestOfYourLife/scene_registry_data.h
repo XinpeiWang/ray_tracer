@@ -1217,6 +1217,25 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "H14", 160, SceneNames::BarcelonaPavilionPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a reconstruction of Mies van der Rohe's Barcelona Pavilion, glass-and-marble architecture surrounded by dense foliage - the other major scene this project's own pbrt-v4 parser was verified against during development (its foliage is what motivated real diffusetransmission texture-binding support). Renders the daytime lighting variant.",
             "Very Slow", "barcelona-pavilion/pavilion-day.pbrt"),
+        // H15-H17: three more real pbrt-v4-scenes bundles, same
+        // build_curated_external_pbrt_scene_descriptor() mechanism as H13/H14
+        // above - already sitting locally as parser-verification fixtures,
+        // now given a proper curated entry. Download into
+        // pbrt_scenes/sssdragon/, pbrt_scenes/ganesha/, pbrt_scenes/sportscar/
+        // respectively (pbrt_scenes/README.md's "Getting scenes" section) for
+        // these to render.
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H15", 161, SceneNames::SssDragonPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a dragon statue rendered as translucent skin-like subsurface scattering material lit by an HDR environment map. Three density variants ship in the same directory (dragon_10/50/250.pbrt, differing only in the subsurface scale parameter, 10 being the most translucent); this entry renders the middle one.",
+            "Very Slow", "sssdragon/dragon_50.pbrt"),
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H16", 162, SceneNames::GaneshaPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a detailed statue of Ganesha in a marble-like subsurface scattering material, lit by an HDR environment map - a second, independent subsurface-scattering showcase alongside H15's dragon, on a completely different mesh/material combination.",
+            "Very Slow", "ganesha/ganesha.pbrt"),
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H17", 163, SceneNames::SportsCarPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a studio-lit sports car with real-world car-paint (layered coated conductor), glass, chrome, and rubber materials under an HDR sky. Renders the daytime sky-lit variant (sportscar-sky.pbrt); a separate area-lit studio variant also ships in the same directory.",
+            "Very Slow", "sportscar/sportscar-sky.pbrt"),
 
         // ---------------------------------------------------------------
         // Education (I1-I6): curated demos of the Render Options tab's own

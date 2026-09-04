@@ -108,7 +108,10 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// (scene_registry.h) - requires_files=true, unlike every other
 	// pbrt-backed curated entry, since these are full downloaded bundles
 	// rather than small git-tracked example files.
-	EXPECT_EQ(builtin_scene_count(), 142);
+	// 142 -> 145: H15/H16/H17 added, three more real pbrt-v4-scenes
+	// bundles (Subsurface Dragon, Ganesha, Sports Car) curated the same
+	// way as H13/H14.
+	EXPECT_EQ(builtin_scene_count(), 145);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -643,7 +646,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 142;
+	constexpr int kGuiSceneCount = 145;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
