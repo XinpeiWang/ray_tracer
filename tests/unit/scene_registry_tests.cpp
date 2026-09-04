@@ -101,7 +101,14 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// show a light-sampler difference at all; I10 (Regularize/
 	// maxcomponentvalue firefly suppression) reuses B3 (Cornell Rough
 	// Glass, the same hard-caustic scene I5 already reuses for SPPM).
-	EXPECT_EQ(builtin_scene_count(), 140);
+	//
+	// 140 -> 142: H13/H14 added, two real pbrt-v4-scenes bundles
+	// (Contemporary Bathroom, Barcelona Pavilion) curated under Large
+	// Scenes via the new build_curated_external_pbrt_scene_descriptor()
+	// (scene_registry.h) - requires_files=true, unlike every other
+	// pbrt-backed curated entry, since these are full downloaded bundles
+	// rather than small git-tracked example files.
+	EXPECT_EQ(builtin_scene_count(), 142);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -636,7 +643,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 140;
+	constexpr int kGuiSceneCount = 142;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

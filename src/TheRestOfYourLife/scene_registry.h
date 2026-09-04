@@ -556,6 +556,57 @@ namespace pbrt_scene_registry {
         paths()[id] = path;
         return s;
     }
+
+    // Sibling of build_curated_pbrt_scene_descriptor() above for a curated
+    // entry whose .pbrt file is NOT git-tracked - a full pbrt-v4-scenes
+    // bundle (github.com/mmp/pbrt-v4-scenes), downloaded locally into its
+    // own pbrt_scenes/<name>/ subdirectory (see pbrt_scenes/README.md's
+    // "Getting scenes" section and .gitignore's own entries for those
+    // subdirectories - several GB combined across all of them, and
+    // individually licensed non-commercial/no-derivatives in some cases,
+    // so committing them isn't an option the way the ~30 small, self-
+    // contained example scenes above are). Otherwise identical: same
+    // search-path walk (these ALSO live directly under pbrt_scenes/, same
+    // as every self-contained example - collectPbrtFiles() already
+    // recurses one level into subdirectories, so these files are already
+    // where a user's own download naturally lands), same
+    // wire_pbrt_backed_scene() wiring, same "the file also auto-discovers
+    // as a generic Custom Scene too" acceptance - just requires_files=true,
+    // so the GUI's Self-Contained/Requires-External-Files toggle honestly
+    // represents that a manual download is needed first, matching how
+    // H1-H12 (the hand-written OBJ "whole environment" scenes) already
+    // disclose the same thing for their own external assets. A missing
+    // file isn't a crash either way - wire_pbrt_backed_scene()'s own
+    // ensure() lambda renders an empty world and prints why, the same
+    // graceful failure every pbrt-backed scene already has.
+    inline SceneDescriptor build_curated_external_pbrt_scene_descriptor(
+            const char* id, int legacy_id, const char* name, const char* category,
+            const char* description, const char* performance, const char* filename) {
+        std::string path;
+        for (const std::string& dir : pbrt_discover::defaultSearchPaths()) {
+            std::filesystem::path candidate = std::filesystem::path(dir) / filename;
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec)) { path = candidate.string(); break; }
+        }
+        if (path.empty()) path = std::string("pbrt_scenes/") + filename;  // not downloaded - fails gracefully below
+
+        const pbrt_discover::Discovered d = pbrt_discover::describeFile(path);
+
+        SceneDescriptor s;
+        s.id = id;
+        s.legacy_id = legacy_id;
+        s.name = name;
+        s.category = category;
+        s.description = description;
+        s.performance = performance;
+        s.requires_files = true;
+        s.gpu_compatible = true;
+
+        wire_pbrt_backed_scene(s, d, path);
+
+        paths()[id] = path;
+        return s;
+    }
 } // namespace pbrt_scene_registry
 
 // F3: Instanced Spheres. Loads pbrt_scenes/instanced-spheres.pbrt through

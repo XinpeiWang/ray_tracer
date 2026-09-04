@@ -1196,6 +1196,27 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_power_plant_sky,
             nullptr
         },
+        // H13/H14: real pbrt-v4-scenes bundles (github.com/mmp/pbrt-v4-scenes),
+        // NOT git-tracked (see build_curated_external_pbrt_scene_descriptor()'s
+        // own comment, scene_registry.h, for why) - download into
+        // pbrt_scenes/contemporary-bathroom/ and pbrt_scenes/barcelona-pavilion/
+        // respectively (pbrt_scenes/README.md's "Getting scenes" section) for
+        // these to render; both already existed locally as parser-verification
+        // fixtures (see the many pbrt_cpu_builder.h/material_pbrt.h/
+        // PBRT_SUPPORT.md comments citing them by name) well before either got
+        // a curated registry entry of its own. Unlike H1-H12's hand-written
+        // OBJ "whole environment" scenes, these load through the real pbrt-v4
+        // parser/builder like every other pbrt-backed scene in this registry -
+        // camera/lights/materials all come from the file itself, not a
+        // hand-transcribed struct.
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H13", 159, SceneNames::ContemporaryBathroomPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a fully furnished bathroom interior with real-world material variety (tile, wood, chrome, glass, fabric) and a blackbody-temperature light fixture, one of the two scenes this project's own pbrt-v4 parser was verified against most heavily during development.",
+            "Very Slow", "contemporary-bathroom/contemporary-bathroom.pbrt"),
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H14", 160, SceneNames::BarcelonaPavilionPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a reconstruction of Mies van der Rohe's Barcelona Pavilion, glass-and-marble architecture surrounded by dense foliage - the other major scene this project's own pbrt-v4 parser was verified against during development (its foliage is what motivated real diffusetransmission texture-binding support). Renders the daytime lighting variant.",
+            "Very Slow", "barcelona-pavilion/pavilion-day.pbrt"),
 
         // ---------------------------------------------------------------
         // Education (I1-I6): curated demos of the Render Options tab's own

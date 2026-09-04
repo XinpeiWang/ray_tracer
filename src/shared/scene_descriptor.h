@@ -133,6 +133,8 @@ namespace SceneNames {
     constexpr const char* LostEmpire           = "Lost Empire";
     constexpr const char* VokseliaSpawn        = "Vokselia Spawn";
     constexpr const char* PowerPlant           = "Power Plant";
+    constexpr const char* ContemporaryBathroomPbrtExample = "Contemporary Bathroom (pbrt example)";
+    constexpr const char* BarcelonaPavilionPbrtExample     = "Barcelona Pavilion (pbrt example)";
 
     // Curated entries for self-contained pbrt_scenes/*.pbrt example files
     // (see scene_registry.h's pbrt_scene_registry::build_curated_pbrt_scene_
