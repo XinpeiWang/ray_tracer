@@ -639,7 +639,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 					float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf_l);
 
 					float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
-					emission = emission + direct_light;
+					emission = emission + direct_light * camera_medium_shadow_trans(max_dist);
 				}
 			}
 		}
@@ -659,7 +659,8 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 					float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
 					float brdf_pdf_sky = brdf_val_sky * cos_sky;
 					float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-					emission = emission + mis_weight * brdf_val_sky * sky_Le_val * cos_sky / pdf_sky;
+					emission = emission + mis_weight * brdf_val_sky * sky_Le_val * cos_sky / pdf_sky
+						* camera_medium_shadow_trans(1e30f);
 				}
 			}
 		}
@@ -964,7 +965,7 @@ __device__ __forceinline__ void shade_material(
 						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
 
 						// Add to emission (raygen will apply throughput)
-						emission = emission + direct_light;
+						emission = emission + direct_light * camera_medium_shadow_trans(max_dist);
 					}
 				}
 			}
@@ -1019,7 +1020,8 @@ __device__ __forceinline__ void shade_material(
 							float brdf_pdf_sky = cosine_pdf(sky_dir, normal);
 							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							float3 brdf = attenuation / 3.14159265358979323846f;
-							emission = emission + mis_weight * brdf * sky_Le_val * cos_sky / pdf_sky;
+							emission = emission + mis_weight * brdf * sky_Le_val * cos_sky / pdf_sky
+								* camera_medium_shadow_trans(1e30f);
 						}
 					}
 				}
@@ -1358,7 +1360,8 @@ __device__ __forceinline__ void shade_material(
 							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
 							float brdf_pdf = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, cc_alpha_x, cc_alpha_y);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
+								* camera_medium_shadow_trans(max_dist);
 						}
 					}
 				}
@@ -1372,7 +1375,7 @@ __device__ __forceinline__ void shade_material(
 						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 						float fr, fg, fb;
 						cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
 					}
 				}
 
@@ -1388,7 +1391,8 @@ __device__ __forceinline__ void shade_material(
 							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
 							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, cc_alpha_x, cc_alpha_y);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
+								* camera_medium_shadow_trans(1e30f);
 						}
 					}
 				}
@@ -1569,7 +1573,8 @@ __device__ __forceinline__ void shade_material(
 							float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
 							float brdf_pdf = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fval, fval, fval) * sampled_light_emission * fabsf(llz) / light_pdf;
+							emission = emission + mis_weight * make_float3(fval, fval, fval) * sampled_light_emission * fabsf(llz) / light_pdf
+								* camera_medium_shadow_trans(max_dist);
 						}
 					}
 				}
@@ -1582,7 +1587,7 @@ __device__ __forceinline__ void shade_material(
 					if (plz == 0.0f) continue;
 					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
 						float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, plx, ply, plz);
-						emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz);
+						emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz) * camera_medium_shadow_trans(t_max_p);
 					}
 				}
 
@@ -1597,7 +1602,8 @@ __device__ __forceinline__ void shade_material(
 							float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 							float brdf_pdf_sky = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fval, fval, fval) * sky_Le_val * fabsf(skz) / pdf_sky;
+							emission = emission + mis_weight * make_float3(fval, fval, fval) * sky_Le_val * fabsf(skz) / pdf_sky
+								* camera_medium_shadow_trans(1e30f);
 						}
 					}
 				}
@@ -1667,7 +1673,8 @@ __device__ __forceinline__ void shade_material(
 							c_bxdf.f(cwi_x, cwi_y, cwi_z, llx, lly, llz, fr, fg, fb);
 							float brdf_pdf = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, llx, lly, llz);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
+								* camera_medium_shadow_trans(max_dist);
 						}
 					}
 				}
@@ -1680,7 +1687,7 @@ __device__ __forceinline__ void shade_material(
 					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
 						float fr, fg, fb;
 						c_bxdf.f(cwi_x, cwi_y, cwi_z, plx, ply, plz, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
 					}
 				}
 
@@ -1695,7 +1702,8 @@ __device__ __forceinline__ void shade_material(
 							c_bxdf.f(cwi_x, cwi_y, cwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, skx, sky_y, skz);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
+								* camera_medium_shadow_trans(1e30f);
 						}
 					}
 				}
@@ -1755,7 +1763,8 @@ __device__ __forceinline__ void shade_material(
 							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz, fr, fg, fb);
 							float brdf_pdf = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
+								* camera_medium_shadow_trans(max_dist);
 						}
 					}
 				}
@@ -1768,7 +1777,7 @@ __device__ __forceinline__ void shade_material(
 					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
 						float fr, fg, fb;
 						rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, plx, ply, plz, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
 					}
 				}
 
@@ -1783,7 +1792,8 @@ __device__ __forceinline__ void shade_material(
 							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
+								* camera_medium_shadow_trans(1e30f);
 						}
 					}
 				}
@@ -1925,7 +1935,8 @@ __device__ __forceinline__ void shade_material(
 							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
 							float brdf_pdf = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, cd_alpha_x, cd_alpha_y);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
+								* camera_medium_shadow_trans(max_dist);
 						}
 					}
 				}
@@ -1939,7 +1950,7 @@ __device__ __forceinline__ void shade_material(
 						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 						float fr, fg, fb;
 						cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
 					}
 				}
 
@@ -1955,7 +1966,8 @@ __device__ __forceinline__ void shade_material(
 							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
 							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, cd_alpha_x, cd_alpha_y);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
+								* camera_medium_shadow_trans(1e30f);
 						}
 					}
 				}

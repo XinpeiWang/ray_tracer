@@ -291,10 +291,20 @@ loader and no longer match the code:
   not just the primary ray - once inside a medium filling all of space,
   every ray segment is inside it too; this doesn't model a real "exit" via
   some other shape's own `MediumInterface` (the excluded combination above).
-  No NEE/shadow-ray attenuation through it yet either (a light behind the
-  fog isn't dimmed by it on the way to a shadow-ray target) - only primary/
-  bounce-ray transmission, on both backends that support this feature.
-  `ray_color_spectral()`, BDPT/MLT, CPU SPPM, GPU's wavefront backend, and
+  NEE/shadow-ray attenuation through it is also applied, on both backends
+  that support this feature (a light behind the fog IS dimmed by it on the
+  way to a shadow-ray target now, not just primary/bounce-ray transmission)
+  - CPU: each of `ray_color()`'s NEE strategies (area/portal/sky/punctual)
+  multiplies by `ambient_medium::transmittance_over()` at the shadow ray's
+  own real distance (`camera_medium_trans`, `camera.h`); GPU recursive:
+  every NEE call site across all 7 material-shading blocks in
+  `optix_device_helpers.h` (plus the shared punctual-light helper,
+  `optix_device_helpers_lighting.h`) multiplies by
+  `camera_medium_shadow_trans()`, the same Beer-Lambert formula against
+  `GpuCameraParams::cameraMediumSigmaT`. Both treat an infinite-distance
+  light (sky, or the portal light's own window) as fully extinguished by
+  any positive extinction - physically exact for an unbounded medium, not
+  an approximation. `ray_color_spectral()`, BDPT/MLT, CPU SPPM, GPU's wavefront backend, and
   GPU SPPM still don't consume this field at all - each warns explicitly
   (`cpu_interface.cpp`/`cpu_interface_bdpt.cpp`/`optix_renderer_render.cpp`/
   `optix_interface.cpp`'s `sppm_gpu_unsupported_reason` - the last of these

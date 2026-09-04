@@ -397,15 +397,20 @@ class constant_medium : public hittable {
 // no-scatter case can multiply `beta` directly - see ray_color()'s own call
 // site comment.
 //
-// Scope (v1, this round): default CPU path tracer only (ray_color(), not
+// Scope: default CPU path tracer only (ray_color(), not
 // ray_color_spectral()/BDPT/MLT/SPPM); homogeneous only (matching this
 // loader's own "close the homogeneous case first" precedent for other
-// pbrt-v4 medium features); no shadow-ray/NEE attenuation through it yet
-// (transmittance_fn left null below, so a light behind fog through this
-// medium is not dimmed by it - only primary/bounce-ray transmission is);
-// and no true "exit" interaction with a scene that ALSO has real per-shape
-// media (pbrt_flatten.h warns about this combination rather than modeling
-// it - see that warning's own comment for why).
+// pbrt-v4 medium features); no true "exit" interaction with a scene that
+// ALSO has real per-shape media (pbrt_flatten.h warns about this
+// combination rather than modeling it - see that warning's own comment for
+// why). Shadow-ray/NEE attenuation through it (a light behind the fog gets
+// dimmed on its way to a shadow-ray target, not just primary/bounce-ray
+// transmission) is applied by ray_color()'s own NEE strategies, each
+// multiplying by transmittance_over() at the real distance to its target -
+// NOT via transmittance_fn below (left null; that path is
+// shadow_ray_hit()'s per-SURFACE transmittance walk, which never sees this
+// untraced, unbounded medium at all - see ray_color()'s own
+// camera_medium_trans comment for why this had to be a separate step).
 // ---------------------------------------------------------------------------
 class ambient_medium {
   public:

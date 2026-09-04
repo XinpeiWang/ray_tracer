@@ -1643,6 +1643,29 @@ class camera {
             // Mirrors pbrt-v4: L += beta * SampleLd(...)  then SpawnRay(bsdf_sample)
             hittable_pdf light_pdf(lights, rec.p);
 
+            // Camera-medium shadow-ray attenuation (closes the gap
+            // ambient_medium's own "v1 scope" comment documents:
+            // "no shadow-ray/NEE attenuation through it yet ... a light
+            // behind fog through this medium is not dimmed by it"). The
+            // camera medium is untraced geometry (see camera_medium's own
+            // comment above for why it isn't a hittable), so
+            // shadow_ray_hit()'s own transmittance walk never sees it - it
+            // has to be applied here, once per NEE strategy, exactly the
+            // same Beer-Lambert transmittance_over() the primary/bounce ray
+            // already applies each iteration (see the `if (camera_medium)`
+            // block right after world.hit() above). `distance` is real
+            // world units (already ray_length-scaled, matching that same
+            // call's `surface_t * ray_length`) - `infinity` is the correct,
+            // exact answer for a light at unbounded distance (sky, or the
+            // portal light's own window, both treated as infinitely distant
+            // for this purpose): transmittance_over(infinity) is 0 for any
+            // channel with real extinction, matching this same medium's own
+            // physical model (nothing is visible arbitrarily far through an
+            // unbounded absorbing/scattering fog).
+            auto camera_medium_trans = [&](double distance) -> color {
+                return camera_medium ? camera_medium->transmittance_over(distance) : color(1, 1, 1);
+            };
+
             // Strategy A-1: NEE toward area lights (non-recursive shadow test)
             {
                 vec3   light_dir = light_pdf.generate();
@@ -1662,7 +1685,9 @@ class camera {
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0) {
                                 color atten = rec.mat->scattering_attenuation(rec, shadow_ray, srec.attenuation);
-                                L += beta * w_l * atten * trans * f_pdf * Le_d / pdf_l;
+                                color med_trans = camera_medium_trans(
+                                    light_rec.t * shadow_ray.direction().length());
+                                L += beta * w_l * atten * trans * med_trans * f_pdf * Le_d / pdf_l;
                             }
                         }
                     }
@@ -1697,7 +1722,8 @@ class camera {
                             portal->eval_Le_rgb(rec.p.x(), rec.p.y(), rec.p.z(), wx, wy, wz, lr, lg, lb);
                             color Le_portal(lr, lg, lb);
                             color atten = rec.mat->scattering_attenuation(rec, portal_shadow, srec.attenuation);
-                            L += beta * w_portal * atten * trans * f_pdf * Le_portal / pdf_portal;
+                            color med_trans = camera_medium_trans(infinity);
+                            L += beta * w_portal * atten * trans * med_trans * f_pdf * Le_portal / pdf_portal;
                         }
                     }
                 }
@@ -1718,7 +1744,8 @@ class camera {
                         if (!shadow_ray_hit(world, sky_shadow, sky_rec, infinity, &trans)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
                             color atten = rec.mat->scattering_attenuation(rec, sky_shadow, srec.attenuation);
-                            L += beta * w_sky * atten * trans * f_pdf * Le_sky / pdf_sky;
+                            color med_trans = camera_medium_trans(infinity);
+                            L += beta * w_sky * atten * trans * med_trans * f_pdf * Le_sky / pdf_sky;
                         }
                     }
                 }
@@ -1741,7 +1768,8 @@ class camera {
                     if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max, &trans)) {
                         // delta light: pdf=1, no MIS weight needed
                         color atten = rec.mat->scattering_attenuation(rec, punct_ray, srec.attenuation);
-                        L += beta * atten * trans * f_pdf * ps.Li;
+                        color med_trans = camera_medium_trans(ps.t_max);
+                        L += beta * atten * trans * med_trans * f_pdf * ps.Li;
                     }
                 });
             }
