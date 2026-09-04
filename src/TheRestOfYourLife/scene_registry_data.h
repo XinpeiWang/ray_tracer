@@ -1263,6 +1263,30 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "H18", 164, SceneNames::ZeroDayPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a highly detailed, game-level-style interior scene (an office/atrium space) shot as an animated camera fly-through. This entry renders one representative frame (frame180) of the 9 that ship in the bundle. Note: this is markedly heavier than this project's other Large Scenes - per-scanline shading cost at this camera position is high (heavy instancing, many layered materials), so treat the file's own recommended sample count as a starting point to scale down from, not a target.",
             "Very Slow", "zero-day/frame180.pbrt"),
+        // H19-H21: three more genuinely NEW downloads (same
+        // build_curated_external_pbrt_scene_descriptor() mechanism, same
+        // "download into pbrt_scenes/<name>/" convention as H18). All
+        // three author their .pbrt with Integrator "volpath" rather than
+        // the default path integrator - like every other scene here,
+        // cpu_render_main always runs the default path tracer regardless
+        // (a warning says so at render time); this only matters if the
+        // scene also declares a participating medium (crown's gem
+        // interior looks like the most likely candidate of the three) -
+        // worth checking the render for a plausible look, since a real
+        // medium under the wrong integrator can still look reasonable
+        // without necessarily matching pbrt-v4's own reference render.
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H19", 165, SceneNames::CrownPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a jeweled crown rendered with real glass/gem dispersion and refraction - a classic pbrt showcase scene, and a different material story than any other curated Large Scene here (none of H13-H18 focus on dispersion).",
+            "Very Slow", "crown/crown.pbrt"),
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H20", 166, SceneNames::VillaPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a furnished villa interior/exterior, in the same 'full building environment' vein as H13's bathroom and H14's pavilion. Renders the daylight lighting variant (villa-daylight.pbrt); a lights-on night variant also ships in the same directory.",
+            "Very Slow", "villa/villa-daylight.pbrt"),
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H21", 167, SceneNames::TransparentMachinesPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): detailed mechanical objects (gears, casings) rendered in transparent glass-like materials, shot as an animated camera fly-through. Five frames ship in the bundle (frame542/675/812/888/1266.pbrt); this entry renders a representative middle one (frame812).",
+            "Very Slow", "transparent-machines/frame812.pbrt"),
 
         // ---------------------------------------------------------------
         // Education (I1-I6): curated demos of the Render Options tab's own
