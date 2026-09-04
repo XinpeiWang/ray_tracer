@@ -121,7 +121,7 @@ struct LaunchArgs {
 	// shape as --exposure, unlike --regularize's OR-only shape above,
 	// since a numeric clamp threshold has an unambiguous "more/less
 	// aggressive" ordering a boolean toggle doesn't. CPU default path
-	// tracer only - GPU has no equivalent clamp at all (warns instead).
+	// tracer only - GPU support now exists too - recursive is an exact per-sample clamp, wavefront a per-contribution approximation (GpuCameraParams::maxComponentValue's own comment, optix_types.h).
 	double max_component_value = 1e9;
 	// pbrt-v4 Film "cropwindow" - four NDC fractions in [0,1] (x0 y0 x1 y1)
 	// restricting which pixels actually render; {0,0,1,1} (the full frame)
@@ -646,8 +646,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               pixel sample whose brightest channel exceeds VALUE, scaling\n"
 					  << "               all channels down to preserve hue (default effectively\n"
 					  << "               unbounded). Only overrides a loaded scene's own request when\n"
-					  << "               explicitly passed. CPU default path tracer only - no GPU\n"
-					  << "               equivalent exists yet.\n"
+					  << "               explicitly passed. CPU and both GPU backends -\n"
+					  << "               recursive matches CPU exactly, wavefront approximates it\n"
+					  << "               per-contribution rather than per-sample-total.\n"
 					  << "  " << render_flags::kCrop << " X0 Y0 X1 Y1: pbrt-v4 Film \"cropwindow\" - renders only the\n"
 					  << "               rectangle from (X0,Y0) to (X1,Y1), each a fraction of the full\n"
 					  << "               frame in [0,1] (e.g. \"0 0 0.5 0.5\" is the top-left quadrant).\n"

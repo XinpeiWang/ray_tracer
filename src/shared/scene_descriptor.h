@@ -203,6 +203,10 @@ namespace SceneNames {
     constexpr const char* DenoiserComparison   = "GPU Denoiser: Before & After";
     constexpr const char* SppmCausticsEducation = "SPPM: Rough Glass Caustic";
     constexpr const char* BdptMltEducation      = "BDPT / MLT: Bidirectional Light Transport";
+    constexpr const char* LightTransportStrategies = "Light Transport Strategies (NEE / BSDF / MIS)";
+    constexpr const char* LightSamplerComparison    = "Light Sampler Strategy (Uniform / Power / BVH)";
+    constexpr const char* AmbientOcclusionEducation = "Ambient Occlusion (Debug Integrator)";
+    constexpr const char* FireflySuppression        = "Firefly Suppression (Regularize / Clamp)";
 } // namespace SceneNames
 
 // -----------------------------------------------------------------------

@@ -5818,6 +5818,16 @@ bool build_scene(
 								break;
 							}
 
+							case 158: {  // I10: Firefly Suppression: Regularize / Clamp (same world as B3 Cornell Rough Glass - see that entry's own comment and I5/case 139's identical reuse)
+								build_cornell_rough_glass(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
+								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								break;
+							}
+
 							default: {
 									// A scene loaded from a .pbrt file has no case of its
 									// own - it is not known at compile time. The CPU

@@ -1309,6 +1309,83 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_cornell_box,
             build_cornell_box_lights
         },
+        {
+            // Same world/lights as A1 (Cornell Box) - deliberately CPU-only
+            // (gpu_compatible=false, matching I1's own precedent) since
+            // every alternate integrator this demonstrates is CPU-only:
+            // --randomwalk (no NEE/MIS at all - pure uniform-sphere BSDF
+            // sampling, pbrt-v4's unbiased reference), --simplepath-no-bsdf
+            // (NEE/light-sampling only), --simplepath-no-lights (BSDF
+            // importance sampling only), and the default MIS-combined
+            // path tracer - all reachable from the same Integrator
+            // dropdown (Render Options tab). This box's small ceiling
+            // light against mostly-indirect Lambertian bounces is exactly
+            // the case where NEE-only and BSDF-only converge very
+            // differently (NEE nails the direct light term cheaply, BSDF
+            // sampling instead has to get lucky and hit the small light by
+            // chance) and MIS combines both - random-walk has neither and
+            // is visibly the noisiest of the four at equal spp.
+            "I7", 155, SceneNames::LightTransportStrategies, SceneCategories::Education,
+            "Same Cornell box as A1: pick RandomWalk, SimplePath (then try its NEE/BSDF sub-checkboxes), or leave the default Path Tracer (Integrator dropdown, Render Options tab) and compare noise at the same low sample count - each includes a different subset of next-event estimation and BSDF importance sampling, and MIS (the default) is what combines both well.",
+            "Fast", 32, false, false,
+            kCornellBoxCamera,
+            build_cornell_box,
+            build_cornell_box_lights
+        },
+        {
+            // Purpose-built world (see build_light_sampler_comparison()'s
+            // own comment, cornell_box_scene.h, for the full design/power-
+            // ratio rationale) - the one Education scene not simply
+            // reusing another entry's geometry unchanged, since no
+            // existing scene has enough lights of different power to show
+            // a light-sampler-strategy difference at all. CPU-only,
+            // matching --lightsampler's own "CPU default path tracer
+            // only" scope.
+            "I8", 156, SceneNames::LightSamplerComparison, SceneCategories::Education,
+            "Cornell box with five ceiling lights of deliberately lopsided power (roughly 1:2:6:15:80) instead of one: try Uniform vs. Power vs. BVH (Light sampler, Render Options tab) at a low sample count - Uniform spends a fifth of its next-event-estimation samples on each light regardless of how much it actually contributes, so it stays noisier on the one dominant light than Power/BVH, which weight selection toward it instead.",
+            "Fast", 32, false, false,
+            kCornellBoxCamera,
+            build_light_sampler_comparison,
+            build_light_sampler_comparison_lights
+        },
+        {
+            // Same world/lights as A1 (Cornell Box) - CPU-only
+            // (gpu_compatible=false), matching --ao's own "CPU only" scope.
+            // AOIntegrator skips material color and indirect lighting
+            // entirely (pure occlusion visualization), so this renders as
+            // flat grayscale with the box/sphere's own contact shadows and
+            // crevices as the only visible structure - about as different
+            // from this same box's usual lit render as any Integrator
+            // switch in this registry produces.
+            "I9", 157, SceneNames::AmbientOcclusionEducation, SceneCategories::Education,
+            "Same Cornell box as A1: switch to Ambient Occlusion (Integrator dropdown, Render Options tab) - a debug/visualization mode with no material color or indirect light at all, just a grayscale occlusion term from nearby geometry, and compare against the default Path Tracer's full lit render of the identical scene.",
+            "Fast", 64, false, false,
+            kCornellBoxCamera,
+            build_cornell_box,
+            build_cornell_box_lights
+        },
+        {
+            // Same world/lights as B3 (Cornell Rough Glass) - the same
+            // hard-caustic scene I5 already reuses for SPPM, and for the
+            // identical reason: it's the one CPU scene launcher_args.h's
+            // own --sppm help text calls "verified end-to-end", and its
+            // frosted-glass floor caustic is specifically the kind of
+            // hard specular-then-diffuse path that produces fireflies
+            // under plain path tracing - exactly the case --regularize
+            // and --maxcomponentvalue each exist to tame, via two
+            // different mechanisms (widening the BSDF vs. clamping the
+            // sample directly). gpu_compatible=true: both --regularize and
+            // --maxcomponentvalue now work on both GPU backends (recursive
+            // exact, wavefront approximate for the clamp - see each
+            // flag's own help text), unlike --lightsampler/RandomWalk/
+            // SimplePath/AO above.
+            "I10", 158, SceneNames::FireflySuppression, SceneCategories::Education,
+            "Same rough-glass Cornell box as B3 (and I5's own SPPM demo): render once plain, once with Regularize checked, once with Firefly clamp (--maxcomponentvalue) checked instead (both on the Render Options tab) - the hard caustic through the frosted sphere is exactly the case each is built to tame, via two different mechanisms (blurring the BSDF vs. clamping the sample directly).",
+            "Medium", 200, false, true,
+            kCornellBoxCamera,
+            build_cornell_rough_glass,
+            build_cornell_box_lights
+        },
 
         // ---------------------------------------------------------------
         // Curated pbrt_scenes/*.pbrt example scenes, under their real topic

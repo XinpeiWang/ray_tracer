@@ -271,8 +271,8 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="306"/>
-        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;136 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;一款基于物理的路径追踪器，拥有并行的 CPU 与 GPU(OptiX)后端，从 &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; 系列逐步扩展为具备 pbrt-v4 风格特性集的完整渲染器。&lt;/p&gt;&lt;p&gt;136 个场景、丰富的 BxDF 材质库、多种光源与相机类型、三角网格与纹理支持、BVH 加速结构、体积渲染效果，以及在标准路径追踪之外可选的多种积分器——SPPM 光子映射、双向路径追踪(BDPT)、Metropolis 光传输(MLT)，以及若干参考/调试用积分器(RandomWalk、Ambient Occlusion、SimplePath、SimpleVolPath、LightPath)。&lt;/p&gt;&lt;p&gt;本窗口以子进程方式驱动 &lt;code&gt;%1&lt;/code&gt;。&lt;/p&gt;</translation>
+        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;140 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;一款基于物理的路径追踪器，拥有并行的 CPU 与 GPU(OptiX)后端，从 &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; 系列逐步扩展为具备 pbrt-v4 风格特性集的完整渲染器。&lt;/p&gt;&lt;p&gt;140 个场景、丰富的 BxDF 材质库、多种光源与相机类型、三角网格与纹理支持、BVH 加速结构、体积渲染效果，以及在标准路径追踪之外可选的多种积分器——SPPM 光子映射、双向路径追踪(BDPT)、Metropolis 光传输(MLT)，以及若干参考/调试用积分器(RandomWalk、Ambient Occlusion、SimplePath、SimpleVolPath、LightPath)。&lt;/p&gt;&lt;p&gt;本窗口以子进程方式驱动 &lt;code&gt;%1&lt;/code&gt;。&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;123 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
@@ -1821,10 +1821,13 @@ Off by default, matching pbrt-v4&apos;s own default. If a loaded .pbrt scene&apo
         <location filename="../mainwindow_tabs_render.cpp" line="543"/>
         <source>Clamps any pixel sample whose brightest channel exceeds the
 value below, scaling all channels down together to preserve hue.
-CPU default path tracer only - no GPU equivalent exists.</source>
+CPU and both GPU backends - recursive matches CPU exactly,
+wavefront approximates it per-contribution rather than
+per-sample-total.</source>
         <translation>将任何最亮通道超过下方数值的像素样本进行截断,
 并同时按比例缩小所有通道以保持色相不变。
-仅对 CPU 默认路径追踪器生效——GPU 没有对应实现。</translation>
+CPU 和两种 GPU 后端均支持——recursive 与 CPU 完全一致,
+wavefront 按每次贡献而非每样本总量做近似截断。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="570"/>

@@ -18,6 +18,7 @@
 #include "material.h"
 #include "power_light_sampler.h"
 #include "bvh_light_sampler.h"
+#include "../shared/cornell_box_data.h"
 
 // Build the standard Cornell box scene with a glass sphere and rotated box
 inline hittable_list build_cornell_box_scene() {
@@ -126,6 +127,80 @@ inline hittable_list build_homogeneous_medium_lights() {
 	auto empty_material = shared_ptr<material>();
 	lights.add(
 		make_shared<quad>(point3(343,554,332), vec3(-130,0,0), vec3(0,0,-105), empty_material));
+	return lights;
+}
+
+// Education (I8): same Cornell box shell (walls/rotated box/glass sphere,
+// via cornell_box_data.h - shared with the real A1/GPU builder, not the
+// standalone build_cornell_box_scene() above) as A1, but with the single
+// ceiling light replaced by FIVE small quad lights of deliberately
+// lopsided power - roughly 1 : 2 : 6 : 15 : 80 - spread around the
+// ceiling (one at the original A1 light's spot, four more in the
+// otherwise-unlit corners). --lightsampler uniform picks among all five
+// with equal 1/5 probability regardless of how much each actually
+// contributes, so at low spp it wastes most of its NEE samples on the
+// four dim lights while the one genuinely dominant light (the bright
+// corner one) is undersampled and noisy; power/bvh weight the selection
+// toward that dominant light instead, converging faster on the identical
+// scene. CPU only - see --lightsampler's own help text.
+inline hittable_list build_light_sampler_comparison() {
+	using namespace cornell_box_data;
+	hittable_list world;
+
+	// The 5 walls only (kQuads[5] is A1's own single ceiling light -
+	// skipped here, replaced by the five below).
+	for (int i = 0; i < 5; ++i) {
+		const QuadSpec& q = kQuads[i];
+		world.add(make_shared<quad>(
+			point3(q.Q.x, q.Q.y, q.Q.z),
+			vec3(q.u.x, q.u.y, q.u.z),
+			vec3(q.v.x, q.v.y, q.v.z),
+			make_shared<lambertian>(color(q.color.r, q.color.g, q.color.b))));
+	}
+
+	shared_ptr<hittable> box1 = box(
+		point3(kBox.corner_min.x, kBox.corner_min.y, kBox.corner_min.z),
+		point3(kBox.corner_max.x, kBox.corner_max.y, kBox.corner_max.z),
+		make_shared<lambertian>(color(kBox.color.r, kBox.color.g, kBox.color.b)));
+	box1 = make_shared<rotate_y>(box1, kBox.rotate_y_degrees);
+	box1 = make_shared<translate>(box1, vec3(kBox.translate.x, kBox.translate.y, kBox.translate.z));
+	world.add(box1);
+
+	world.add(make_shared<sphere>(
+		point3(kGlassSphere.center.x, kGlassSphere.center.y, kGlassSphere.center.z),
+		kGlassSphere.radius, make_shared<dielectric>(kGlassSphere.glass_ior)));
+
+	// Five lights, ~1:2:6:15:80 power ratio (quad area is uniform at
+	// 40x40, so this ratio is also each one's emission scale directly).
+	world.add(make_shared<quad>(point3(30,554,30), vec3(40,0,0), vec3(0,0,40),
+		make_shared<diffuse_light>(color(1,1,1))));
+	world.add(make_shared<quad>(point3(485,554,30), vec3(40,0,0), vec3(0,0,40),
+		make_shared<diffuse_light>(color(2,2,2))));
+	world.add(make_shared<quad>(point3(30,554,485), vec3(40,0,0), vec3(0,0,40),
+		make_shared<diffuse_light>(color(6,6,6))));
+	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105),
+		make_shared<diffuse_light>(color(15,15,15))));
+	world.add(make_shared<quad>(point3(485,554,485), vec3(40,0,0), vec3(0,0,40),
+		make_shared<diffuse_light>(color(80,80,80))));
+
+	return world;
+}
+
+// Light-sampling target list for build_light_sampler_comparison() - the
+// five ceiling lights above (as empty-material NEE targets, matching
+// build_cornell_box_lights()'s own convention) plus the glass sphere.
+inline hittable_list build_light_sampler_comparison_lights() {
+	hittable_list lights;
+	auto empty_material = shared_ptr<material>();
+	lights.add(make_shared<quad>(point3(30,554,30), vec3(40,0,0), vec3(0,0,40), empty_material));
+	lights.add(make_shared<quad>(point3(485,554,30), vec3(40,0,0), vec3(0,0,40), empty_material));
+	lights.add(make_shared<quad>(point3(30,554,485), vec3(40,0,0), vec3(0,0,40), empty_material));
+	lights.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), empty_material));
+	lights.add(make_shared<quad>(point3(485,554,485), vec3(40,0,0), vec3(0,0,40), empty_material));
+	lights.add(make_shared<sphere>(
+		point3(cornell_box_data::kGlassSphere.center.x, cornell_box_data::kGlassSphere.center.y,
+			   cornell_box_data::kGlassSphere.center.z),
+		cornell_box_data::kGlassSphere.radius, empty_material));
 	return lights;
 }
 

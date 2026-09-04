@@ -89,7 +89,19 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// 123 -> 136: 13 curated pbrt-example entries added (B25-B28, C17-C20,
 	// E10, F11-F14) for self-contained pbrt_scenes/*.pbrt files that were
 	// previously only discoverable via the generic Custom Scenes tab.
-	EXPECT_EQ(builtin_scene_count(), 136);
+	//
+	// 136 -> 140: I7-I10 added, extending the Education category to the
+	// render-transport/light-sampling/debug-integrator controls I1-I6
+	// didn't cover yet - I7 (RandomWalk/SimplePath vs. the default MIS
+	// path tracer) and I9 (Ambient Occlusion) both reuse A1 (Cornell Box);
+	// I8 (Uniform/Power/BVH light sampler) is the one genuinely new
+	// geometry in this category - a 5-lopsided-power-light variant of the
+	// Cornell box (build_light_sampler_comparison(), cornell_box_scene.h) -
+	// since no existing scene has enough lights of different power to
+	// show a light-sampler difference at all; I10 (Regularize/
+	// maxcomponentvalue firefly suppression) reuses B3 (Cornell Rough
+	// Glass, the same hard-caustic scene I5 already reuses for SPPM).
+	EXPECT_EQ(builtin_scene_count(), 140);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -624,7 +636,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 136;
+	constexpr int kGuiSceneCount = 140;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

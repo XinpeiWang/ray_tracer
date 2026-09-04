@@ -542,7 +542,9 @@ void MainWindow::createRenderOptionsTab() {
 	m_maxComponentValueCheck->setToolTip(
 		tr("Clamps any pixel sample whose brightest channel exceeds the\n"
 		"value below, scaling all channels down together to preserve hue.\n"
-		"CPU default path tracer only - no GPU equivalent exists."));
+		"CPU and both GPU backends - recursive matches CPU exactly,\n"
+		"wavefront approximates it per-contribution rather than\n"
+		"per-sample-total."));
 	styleCheckBox(m_maxComponentValueCheck);
 	m_maxComponentValueSpin = new QDoubleSpinBox(optionsTab);
 	// Range/step/default chosen for a typical 0-a-few-dozen linear-light
@@ -808,8 +810,12 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_denoiseCheck->setEnabled(isDefault && gpuSelected);
 	m_optixValidateCheck->setEnabled(isDefault && gpuSelected);
 	m_regularizeCheck->setEnabled(isDefault);
-	m_maxComponentValueCheck->setEnabled(isDefault && !gpuSelected);
-	m_maxComponentValueSpin->setEnabled(isDefault && !gpuSelected && m_maxComponentValueCheck->isChecked());
+	// Both GPU backends have real maxComponentValue support now too
+	// (GpuCameraParams::maxComponentValue's own comment, optix_types.h) -
+	// no longer gated on !gpuSelected, same fix denoise/regularize already
+	// got above/just above when their own GPU support landed.
+	m_maxComponentValueCheck->setEnabled(isDefault);
+	m_maxComponentValueSpin->setEnabled(isDefault && m_maxComponentValueCheck->isChecked());
 	m_cropCheck->setEnabled(isDefault);
 	const bool cropSpinsEnabled = isDefault && m_cropCheck->isChecked();
 	m_cropX0Spin->setEnabled(cropSpinsEnabled);

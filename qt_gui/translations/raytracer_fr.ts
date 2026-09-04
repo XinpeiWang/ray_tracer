@@ -272,8 +272,8 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="306"/>
-        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;136 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un traceur de chemins physiquement réaliste avec des backends parallèles CPU et GPU (OptiX), construit à partir de la série &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; jusqu&apos;à un ensemble de fonctionnalités façon pbrt-v4.&lt;/p&gt;&lt;p&gt;136 scènes, une vaste bibliothèque de BxDF, plusieurs types de lumières et de caméras, prise en charge des maillages de triangles et des textures, accélération BVH, volumétrie, et un choix d&apos;intégrateurs en plus du traceur de chemins standard - le photon mapping SPPM, le path tracing bidirectionnel (BDPT), le Metropolis Light Transport, et plusieurs intégrateurs de référence/débogage (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Cette fenêtre pilote &lt;code&gt;%1&lt;/code&gt; en tant que sous-processus.&lt;/p&gt;</translation>
+        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;140 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un traceur de chemins physiquement réaliste avec des backends parallèles CPU et GPU (OptiX), construit à partir de la série &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; jusqu&apos;à un ensemble de fonctionnalités façon pbrt-v4.&lt;/p&gt;&lt;p&gt;140 scènes, une vaste bibliothèque de BxDF, plusieurs types de lumières et de caméras, prise en charge des maillages de triangles et des textures, accélération BVH, volumétrie, et un choix d&apos;intégrateurs en plus du traceur de chemins standard - le photon mapping SPPM, le path tracing bidirectionnel (BDPT), le Metropolis Light Transport, et plusieurs intégrateurs de référence/débogage (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Cette fenêtre pilote &lt;code&gt;%1&lt;/code&gt; en tant que sous-processus.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;123 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
@@ -1830,10 +1830,13 @@ Désactivé par défaut, comme le réglage par défaut de pbrt-v4 lui-même. Si 
         <location filename="../mainwindow_tabs_render.cpp" line="543"/>
         <source>Clamps any pixel sample whose brightest channel exceeds the
 value below, scaling all channels down together to preserve hue.
-CPU default path tracer only - no GPU equivalent exists.</source>
+CPU and both GPU backends - recursive matches CPU exactly,
+wavefront approximates it per-contribution rather than
+per-sample-total.</source>
         <translation>Limite tout échantillon de pixel dont le canal le plus lumineux dépasse
 la valeur ci-dessous, en réduisant tous les canaux ensemble pour préserver la teinte.
-Traceur de chemins par défaut CPU uniquement - aucun équivalent GPU n&apos;existe.</translation>
+CPU et les deux backends GPU - le récursif correspond exactement au CPU,
+le wavefront l&apos;approxime par contribution plutôt que par échantillon total.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="570"/>
