@@ -95,9 +95,10 @@ ray_tracer_tests.exe --gtest_brief=1
 ### Quick dev-loop filter
 
 A full run takes ~160s, but that's extremely concentrated: one suite
-(`MaterialsAndVolumes/MaterialCpuGpuParityTest`) accounts for ~55% of it by
-itself - a legitimate but heavy per-material CPU/GPU-backend parity sweep,
-not wasted work. For fast local iteration:
+(`MaterialsAndVolumes/MaterialCpuGpuParityTest` - the name predates the
+Materials/Volumes/Textures category split, it now covers all three)
+accounts for ~55% of it by itself - a legitimate but heavy per-material
+CPU/GPU-backend parity sweep, not wasted work. For fast local iteration:
 ```powershell
 ray_tracer_tests.exe --gtest_filter=-MaterialsAndVolumes/*
 ```

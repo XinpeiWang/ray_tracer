@@ -268,20 +268,20 @@ namespace SceneCategories {
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
 
-    // One letter per category, same order as kAll, used to build scene ids
-    // like "B10" (10th Materials scene) - see scene_registry.h's SceneDescriptor::id.
-    // Parallel array rather than a struct-of-two-fields because kAll is
-    // itself already consumed as a bare array by existing GUI/test code
-    // that shouldn't need to change shape for this. Textures taking 'J'
-    // pushes CustomScenes from 'J' to 'K' - letter_for_category() below
-    // derives both purely from position, so nothing else needs to change
-    // (the same shift Education's own insertion caused CustomScenes once
-    // before, from 'I' to 'J').
-    constexpr char kAllLetters[] = {
-        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'
-    };
-    static_assert(sizeof(kAllLetters) / sizeof(kAllLetters[0]) == kAllCount,
-                  "kAllLetters must have exactly one entry per kAll category");
+    // A category's id letter (used to build scene ids like "B10", the 10th
+    // Materials scene - see scene_registry.h's SceneDescriptor::id) is just
+    // 'A' + its position in kAll: A, B, C, ... in display order, no gaps.
+    // This used to be a hand-maintained parallel kAllLetters array - real
+    // drift, twice: Education's own insertion once shifted CustomScenes
+    // from 'I' to 'J', then Textures's insertion shifted it again from 'J'
+    // to 'K', and both times at least one comment elsewhere in the codebase
+    // citing the old letter was missed and went stale (caught by code
+    // review, not by any compiler or test). Deriving the letter directly
+    // from kAll's own index removes the second array entirely, so the next
+    // category addition is purely a one-line kAll edit - there is no
+    // parallel array left to forget to update, and no letter left to go
+    // stale in a comment written against yesterday's kAll.
+    static_assert(kAllCount <= 26, "kAll has grown past 'Z' - letter_for_category() needs a two-letter or numeric id scheme");
 
     // Returns the letter for a category, or '\0' if category doesn't match
     // any entry in kAll (a typo'd category, same failure mode kAll's own
@@ -290,7 +290,8 @@ namespace SceneCategories {
     // kAll's entries happen to be the same interned string literal.
     inline char letter_for_category(const char* category) {
         for (std::size_t i = 0; i < kAllCount; ++i) {
-            if (std::strcmp(kAll[i], category) == 0) return kAllLetters[i];
+            if (std::strcmp(kAll[i], category) == 0)
+                return static_cast<char>('A' + static_cast<int>(i));
         }
         return '\0';
     }

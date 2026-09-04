@@ -854,9 +854,9 @@ This app ships with dozens of built-in scenes covering the basics (a simple Corn
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="405"/>
-        <source>Renders a small preview image for each self-contained Basics/Materials/Cameras
+        <source>Renders a small preview image for each self-contained Basics/Materials/Textures/Cameras
 scene not already cached. CPU-only, low resolution - takes a while the first time.</source>
-        <translation>キャッシュがまだない自己完結型のBasics/Materials/Camerasシーンについて、
+        <translation>キャッシュがまだない自己完結型のBasics/Materials/Textures/Camerasシーンについて、
 小さなプレビュー画像をそれぞれレンダリングします。CPUのみ・低解像度で行われるため、初回は時間がかかります。</translation>
     </message>
     <message>

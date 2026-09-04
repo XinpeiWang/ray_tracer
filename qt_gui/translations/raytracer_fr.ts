@@ -859,9 +859,9 @@ Cette application est fournie avec des dizaines de scènes intégrées, allant d
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="405"/>
-        <source>Renders a small preview image for each self-contained Basics/Materials/Cameras
+        <source>Renders a small preview image for each self-contained Basics/Materials/Textures/Cameras
 scene not already cached. CPU-only, low resolution - takes a while the first time.</source>
-        <translation>Génère une petite image d&apos;aperçu pour chaque scène autonome des catégories Bases/Matériaux/Caméras
+        <translation>Génère une petite image d&apos;aperçu pour chaque scène autonome des catégories Bases/Matériaux/Textures/Caméras
 non encore mise en cache. CPU uniquement, basse résolution - prend du temps la première fois.</translation>
     </message>
     <message>

@@ -402,7 +402,7 @@ void MainWindow::createBasicTab() {
 	gridPageLayout->addWidget(m_sceneGrid, 1);
 	m_generateThumbnailsButton = new QPushButton(tr("Generate Thumbnails"), gridPage);
 	m_generateThumbnailsButton->setToolTip(
-		tr("Renders a small preview image for each self-contained Basics/Materials/Cameras\n"
+		tr("Renders a small preview image for each self-contained Basics/Materials/Textures/Cameras\n"
 		"scene not already cached. CPU-only, low resolution - takes a while the first time."));
 	gridPageLayout->addWidget(m_generateThumbnailsButton);
 	m_sceneViewStack->addWidget(gridPage);

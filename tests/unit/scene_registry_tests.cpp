@@ -239,7 +239,7 @@ TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
 }
 
 // SceneCategories::letter_for_category() derives a category's id letter
-// from its POSITION in kAll/kAllLetters (see scene_descriptor.h) - but
+// from its POSITION in kAll (see scene_descriptor.h) - but
 // every builtin scene's id is a hand-typed literal like "B10", not computed
 // through that function (only the CustomScenes discovery loop actually calls
 // it - see scene_registry.h). Nothing previously checked that a builtin

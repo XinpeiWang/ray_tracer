@@ -4272,9 +4272,11 @@ bool build_scene(
 	// unconditionally, to every native scene too - warn here, once, up
 	// front, rather than leaving this whole other category of scene with
 	// no disclosure at all. Native scenes are every category except
-	// CustomScenes (scenes discovered from a .pbrt file on disk, letter
-	// 'J' by default - see SceneCategories::letter_for_category's own
-	// comment for why the letter isn't hardcoded here).
+	// CustomScenes (scenes discovered from a .pbrt file on disk - see
+	// SceneCategories::letter_for_category's own comment for why its
+	// letter isn't hardcoded here, or in this comment: it shifts whenever
+	// a new compiled-in category is inserted before it in kAll, e.g. from
+	// 'J' to 'K' when SceneCategories::Textures was added).
 	if (out_camera_extra) {
 		const std::string category = cpu_scene_category_by_id(scene_id);
 		if (category != SceneCategories::CustomScenes) {

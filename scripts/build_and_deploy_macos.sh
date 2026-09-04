@@ -20,8 +20,8 @@
 #     redistributing them inside an installer questionable even if the size
 #     were fine.
 # Every scene that does NOT require external files (Basics/Materials/
-# Lights/Cameras/Volumes/Geometry - the large majority of the registry,
-# procedurally generated) works out of the box from the installed .app with
+# Lights/Cameras/Volumes/Geometry/Textures - the large majority of the
+# registry, procedurally generated) works out of the box from the installed .app with
 # no extra setup. To also render the external-asset scenes, copy this
 # repo's models/ directory into the installed app bundle yourself:
 #   cp -R /path/to/ray_tracer/models "/Applications/RayTracerGUI.app/Contents/MacOS/models"

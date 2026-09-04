@@ -225,7 +225,7 @@ Output lands in `RayTracer_Package_macOS/` (`RayTracerGUI.app` and
 the `.app`/`.dmg`**: many are hundreds of MB to 1GB+, and a few (Power
 Plant) carry non-commercial-only licenses that make redistributing them in
 an installer questionable regardless of size. Every scene that doesn't
-require external files (Basics/Materials/Textures/Lights/Cameras/Volumes/Geometry —
+require external files (Basics/Materials/Lights/Cameras/Volumes/Geometry/Textures —
 most of the registry, all procedurally generated) works from the installed
 app with no extra setup. To also render the external-asset scenes after
 installing, copy this repo's `models/` directory into the installed app:
@@ -289,7 +289,8 @@ Open `ray_tracer.sln`, then **Test → Test Explorer** and click **Run All**.
 
 A full GPU-enabled run takes ~160s, but that time is extremely
 concentrated: `MaterialsAndVolumes/MaterialCpuGpuParityTest` alone accounts
-for ~55% of it (it lazily renders every Materials/Volumes scene across
+for ~55% of it (it lazily renders every Materials/Volumes/Textures scene
+(the suite name predates Textures being split out of Materials) across
 CPU, GPU-recursive, and GPU-wavefront the first time any of its
 parameterized instances runs - a deliberate, thorough per-material
 CPU/GPU parity sweep, not wasted work, just expensive). A handful of other
