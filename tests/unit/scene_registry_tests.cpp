@@ -105,15 +105,21 @@ TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem)
 		EXPECT_EQ(all[i].id, builtins[i].id);
 		EXPECT_STREQ(all[i].name, builtins[i].name);
 	}
-	// No built-in scene uses category CustomScenes ("J" - Education now
-	// takes "I", see SceneCategories::kAll), so loaded scenes start
-	// numbering at J1 - see pbrt_scene_registry::append()'s user_number
-	// comment in scene_registry.h.
+	// No built-in scene uses category CustomScenes, so loaded scenes start
+	// numbering at 1 under CustomScenes's own letter - see
+	// pbrt_scene_registry::append()'s user_number comment in
+	// scene_registry.h. Derived via letter_for_category() rather than a
+	// hardcoded literal (this used to hardcode "J" and broke the moment
+	// CustomScenes's own position in kAll shifted for an unrelated new
+	// category - the exact class of drift BuiltinIdLetterMatchesItsCategory
+	// exists to catch on the builtin side; this is that same fix applied
+	// here too).
+	const char customScenesLetter = SceneCategories::letter_for_category(SceneCategories::CustomScenes);
 	int user_number = 1;
 	for (std::size_t i = builtins.size(); i < all.size(); ++i) {
 		EXPECT_STREQ(all[i].category, SceneCategories::CustomScenes)
 			<< "a scene past the built-ins should be a loaded one";
-		EXPECT_EQ(all[i].id, "J" + std::to_string(user_number++))
+		EXPECT_EQ(all[i].id, std::string(1, customScenesLetter) + std::to_string(user_number++))
 			<< "loaded scene ids must continue the CustomScenes sequence without gaps";
 	}
 }

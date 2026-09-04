@@ -1330,25 +1330,13 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Four pbrt material kinds no other bundled example scene touches: thindielectric, coatedconductor, diffusetransmission, and subsurface via a named measured-scattering preset (\"Marble\", no external file needed).",
             "Fast", "layered-materials.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
-            "B17", 102, SceneNames::CoatedDiffuseTexturePbrtExample, SceneCategories::Materials,
-            "Real texture-bound reflectance for pbrt's CoatedDiffuse material, which previously silently dropped to a flat color on both backends.",
-            "Fast", "coateddiffuse-texture.pbrt"),
-        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B18", 103, SceneNames::ConductorRgbEtaKPbrtExample, SceneCategories::Materials,
             "Explicit RGB eta/k for pbrt's conductor material, plus named-metal-spectrum resolution for coatedconductor -- real complex-IOR GGX highlights instead of the flat fuzz-mirror/reflectance-only fallback.",
             "Fast", "conductor-rgb-eta-k.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
-            "B19", 104, SceneNames::DiffuseTransmissionTexturePbrtExample, SceneCategories::Materials,
-            "Texture-bound reflectance/transmittance for pbrt's DiffuseTransmission material, threaded through both backends.",
-            "Fast", "diffusetransmission-texture.pbrt"),
-        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B20", 105, SceneNames::HairMaterialPbrtExample, SceneCategories::Materials,
             "pbrt's Material \"hair\" (Marschner/Chiang fiber scattering) applied to ordinary spheres, matching this project's own native Hair Fibers demo for a fair comparison.",
             "Fast", "hair-material.pbrt"),
-        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
-            "B21", 106, SceneNames::NestedCheckerTexturePbrtExample, SceneCategories::Materials,
-            "One level of nested imagemap texture reference inside a pbrt checkerboard/mix texture -- tex1/tex2 bound to a real image instead of only a flat literal color.",
-            "Fast", "nested-checker-texture.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B22", 107, SceneNames::NamedMaterialAndTexturePbrtExample, SceneCategories::Materials,
             "pbrt's NamedMaterial referenced directly for a shape (not just as a \"mix\" sub-material), plus a texture-bound material parameter and AreaLightSource's twosided flag.",
@@ -1357,16 +1345,38 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B25", 146, SceneNames::GlassPresetsPbrtExample, SceneCategories::Materials,
             "All seven of Material \"dielectric\"'s named glass IOR presets (BK7, BAF10, FK51A, LASF9, F5, F10, F11) as separate spheres, resolved via FindGlassPreset() -- previously exercised only by unit tests, never rendered.",
             "Fast", "glass-presets.pbrt"),
+
+        // -- Textures --
+        // Split out of Materials once it grew past 25 scenes mixing two
+        // distinct concerns - see SceneCategories::Textures's own comment
+        // (scene_descriptor.h). Ids keep their original legacy_id (the
+        // stable internal scene_builder.cpp switch key - see
+        // SceneDescriptor::legacy_id's comment) even though their letter-id
+        // changed from B to J, matching this file's own precedent of
+        // reassigning a scene's user-facing id when its category genuinely
+        // changes rather than preserving a now-inconsistent one.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
-            "B26", 147, SceneNames::TextureEncodingWrapInvertPbrtExample, SceneCategories::Materials,
+            "J1", 102, SceneNames::CoatedDiffuseTexturePbrtExample, SceneCategories::Textures,
+            "Real texture-bound reflectance for pbrt's CoatedDiffuse material, which previously silently dropped to a flat color on both backends.",
+            "Fast", "coateddiffuse-texture.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "J2", 104, SceneNames::DiffuseTransmissionTexturePbrtExample, SceneCategories::Textures,
+            "Texture-bound reflectance/transmittance for pbrt's DiffuseTransmission material, threaded through both backends.",
+            "Fast", "diffusetransmission-texture.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "J3", 106, SceneNames::NestedCheckerTexturePbrtExample, SceneCategories::Textures,
+            "One level of nested imagemap texture reference inside a pbrt checkerboard/mix texture -- tex1/tex2 bound to a real image instead of only a flat literal color.",
+            "Fast", "nested-checker-texture.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "J4", 147, SceneNames::TextureEncodingWrapInvertPbrtExample, SceneCategories::Textures,
             "Four quads isolating Texture \"imagemap\"'s \"encoding\"/\"wrap\"/\"invert\" params one at a time -- linear vs. sRGB decode, clamp vs. repeat past [0,1], and inverted channel values, none reachable via any other bundled scene's defaults.",
             "Fast", "texture-encoding-wrap-invert.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
-            "B27", 148, SceneNames::ProceduralTextureGalleryPbrtExample, SceneCategories::Materials,
+            "J5", 148, SceneNames::ProceduralTextureGalleryPbrtExample, SceneCategories::Textures,
             "Four pbrt-v4 procedural texture classes wired into the CPU builder but never used by any other bundled scene: windy turbulence, wrinkled (Perlin-octave) turbulence, dots, and bilerp corner-blend.",
             "Fast", "procedural-textures-windy-wrinkled-dots-bilerp.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
-            "B28", 149, SceneNames::NestedTexture2LevelPbrtExample, SceneCategories::Materials,
+            "J6", 149, SceneNames::NestedTexture2LevelPbrtExample, SceneCategories::Textures,
             "A second level of checkerboard-texture nesting (checker of a checker of a real image) -- real on CPU, GPU intentionally approximates the whole nested tree as one flat average colour and warns; compare both to see the documented divergence.",
             "Fast", "nested-texture-2level.pbrt"),
 

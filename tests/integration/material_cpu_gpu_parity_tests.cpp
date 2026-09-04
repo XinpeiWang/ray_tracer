@@ -18,11 +18,13 @@
  * have caught the second bug immediately instead of costing ad hoc
  * debugging time.
  *
- * Coverage: every scene in SceneCategories::Materials (ids B1-B14) and
- * SceneCategories::Volumes (ids E1-E4), filtered from the registry by
- * category rather than hand-listed, so any future scene added to either
- * category is automatically picked up here. Between them these categories
- * cover nearly every MaterialType value in gpu/optix/optix_types.h.
+ * Coverage: every scene in SceneCategories::Materials, SceneCategories::Volumes,
+ * and SceneCategories::Textures (the last split out of Materials once it grew
+ * past 25 scenes - see SceneCategories::Textures's own comment,
+ * scene_descriptor.h), filtered from the registry by category rather than
+ * hand-listed, so any future scene added to any of the three is automatically
+ * picked up here. Between them these categories cover nearly every
+ * MaterialType value in gpu/optix/optix_types.h.
  *
  * Tolerance calibration: 30% relative difference (kRelTolerance) on average
  * brightness and on each of R/G/B channel averages, for every Materials
@@ -426,16 +428,25 @@ static void check_relative_parity(const char* sceneName, const std::string& scen
 
 // Registry positions (NOT scene ids - see CpuGpuLightParityTest's own
 // comment in cpu_gpu_comparison_tests.cpp for why registry position is
-// used as the TEST_P param) whose category is Materials or Volumes.
-// Filtering by category here means a future scene added to either category
-// is automatically picked up without touching this file.
-static std::vector<int> materials_and_volumes_indices() {
+// used as the TEST_P param) whose category is Materials, Volumes, or
+// Textures. Filtering by category here means a future scene added to any
+// of the three is automatically picked up without touching this file.
+// Textures was split out of Materials (SceneCategories::Textures's own
+// comment, scene_descriptor.h) - its scenes still exercise real BSDF/
+// texture-binding shading paths and deserve the identical CPU/GPU/wavefront
+// parity coverage they had while filed under Materials, so it's included
+// here even though the suite name below ("MaterialsAndVolumes", kept
+// unchanged for the documented `--gtest_filter=-MaterialsAndVolumes/*`
+// dev-loop shortcut in README.md/TESTING_GUIDE.md/copilot-instructions.md)
+// no longer names every category it covers.
+static std::vector<int> materials_volumes_and_textures_indices() {
 	std::vector<int> out;
 	const auto& registry = get_scene_registry();
 	for (int i = 0; i < static_cast<int>(registry.size()); ++i) {
 		const char* cat = registry[i].category;
 		if (std::strcmp(cat, SceneCategories::Materials) == 0 ||
-		    std::strcmp(cat, SceneCategories::Volumes) == 0) {
+		    std::strcmp(cat, SceneCategories::Volumes) == 0 ||
+		    std::strcmp(cat, SceneCategories::Textures) == 0) {
 			out.push_back(i);
 		}
 	}
@@ -499,13 +510,13 @@ static void spp_for(const SceneDescriptor& s, int& cpuSpp, int& gpuSpp) {
 	gpuSpp = isVolume ? 900 : 600;
 }
 
-// Every Materials/Volumes scene that would actually be exercised by the
-// TEST_P suite below (mirrors its own gpu_compatible/requires_files skips) -
-// computed once so the three render passes and the TEST_P bodies agree on
-// exactly which scenes are in play.
+// Every Materials/Volumes/Textures scene that would actually be exercised
+// by the TEST_P suite below (mirrors its own gpu_compatible/requires_files
+// skips) - computed once so the three render passes and the TEST_P bodies
+// agree on exactly which scenes are in play.
 static std::vector<const SceneDescriptor*> testable_scenes() {
 	std::vector<const SceneDescriptor*> out;
-	for (int idx : materials_and_volumes_indices()) {
+	for (int idx : materials_volumes_and_textures_indices()) {
 		const SceneDescriptor& regDesc = get_scene_registry()[idx];
 		const SceneDescriptor* s = find_scene(regDesc.id);
 		if (!s || !s->gpu_compatible || s->requires_files) continue;
@@ -697,7 +708,7 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 
 INSTANTIATE_TEST_SUITE_P(
 	MaterialsAndVolumes, MaterialCpuGpuParityTest,
-	::testing::ValuesIn(materials_and_volumes_indices()),
+	::testing::ValuesIn(materials_volumes_and_textures_indices()),
 	[](const ::testing::TestParamInfo<int>& info) {
 		const SceneDescriptor& desc = get_scene_registry()[info.param];
 		std::string name = desc.name ? desc.name : "Unknown";

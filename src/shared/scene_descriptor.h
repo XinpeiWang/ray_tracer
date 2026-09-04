@@ -235,6 +235,17 @@ namespace SceneCategories {
     // its own right, so the description/technique-note is the point: which
     // control to try, and why this particular scene shows it clearly.
     constexpr const char* Education  = "Education";
+    // Texture SYSTEM demos - encoding/wrap/invert, procedural texture
+    // classes, nested texture references - as distinct from Materials'
+    // BxDF/material-kind demos, which a texture is only ever bound INTO.
+    // Split out once Materials grew past 25 scenes mixing both concerns
+    // (a scene about "does imagemap wrap or clamp" and a scene about "what
+    // does coateddiffuse look like" answer genuinely different questions,
+    // even though both happen to declare a Material). Inserted here, after
+    // every other compiled-in category and before CustomScenes (same
+    // zero-disruption insertion point Education itself used - see kAll's
+    // own comment below), so no other category's id letter moves.
+    constexpr const char* Textures   = "Textures";
     // Scenes loaded from .pbrt files found on disk rather than compiled in.
     // Unlike every category above it, this one is populated at runtime and is
     // legitimately empty when the user has no scene collection installed -
@@ -247,12 +258,13 @@ namespace SceneCategories {
     // example is just as "yours" as anything in the other categories).
     constexpr const char* CustomScenes = "Custom Scenes";
 
-    // Display order for the GUI's category tabs. Education sits after the
-    // other compiled-in categories and before CustomScenes, which stays last
-    // so the built-in tabs never shift position when a scene folder appears.
+    // Display order for the GUI's category tabs. Education and Textures sit
+    // after the other compiled-in categories and before CustomScenes, which
+    // stays last so the built-in tabs never shift position when a scene
+    // folder appears.
     constexpr const char* kAll[] = {
         Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene,
-        Education, CustomScenes
+        Education, Textures, CustomScenes
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
 
@@ -260,11 +272,13 @@ namespace SceneCategories {
     // like "B10" (10th Materials scene) - see scene_registry.h's SceneDescriptor::id.
     // Parallel array rather than a struct-of-two-fields because kAll is
     // itself already consumed as a bare array by existing GUI/test code
-    // that shouldn't need to change shape for this. Education taking 'I'
-    // pushes CustomScenes from 'I' to 'J' - letter_for_category() below
-    // derives both purely from position, so nothing else needs to change.
+    // that shouldn't need to change shape for this. Textures taking 'J'
+    // pushes CustomScenes from 'J' to 'K' - letter_for_category() below
+    // derives both purely from position, so nothing else needs to change
+    // (the same shift Education's own insertion caused CustomScenes once
+    // before, from 'I' to 'J').
     constexpr char kAllLetters[] = {
-        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'
     };
     static_assert(sizeof(kAllLetters) / sizeof(kAllLetters[0]) == kAllCount,
                   "kAllLetters must have exactly one entry per kAll category");

@@ -551,7 +551,8 @@ void MainWindow::onGenerateThumbnailsClicked() {
 	}
 
 	static const QStringList kThumbnailCategories = {
-		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Cameras
+		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Textures,
+		SceneCategories::Cameras
 	};
 	QStringList ids;
 	const int count = SceneMetadataClient::sceneCount();
