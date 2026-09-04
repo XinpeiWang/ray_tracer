@@ -85,6 +85,24 @@ ObjectBegin "cairn"
     Material "dielectric"
     Shape "sphere" "float radius" [ 22 ]
   AttributeEnd
+
+  # Clipped sphere in the definition (a hemispherical dome, zmin=0) - exercises
+  # gpu/optix/pbrt_gpu_builder.h's instanced ClippedSphere branch. If that
+  # branch is broken (falls through to the unclipped case) this renders as a
+  # full ball, half-buried in the slab, instead of a dome sitting flush on
+  # top of it - visually obvious, especially under the rotated/scaled
+  # placements below. A sphere's zmin/zmax cut is relative to its own LOCAL
+  # z-axis (pbrt-v4's convention, matching Disk/Cylinder), not world up - the
+  # Rotate below re-points that axis at world +Y first (Translate is applied
+  # after, so the flat zmin=0 cut face ends up exactly at the slab's y=4
+  # surface) so this actually reads as a dome and not a sphere quietly
+  # clipped along the wrong axis.
+  AttributeBegin
+    Translate 30 4 -40
+    Rotate -90 1 0 0
+    Material "diffuse" "rgb reflectance" [ 0.20 0.35 0.85 ]
+    Shape "sphere" "float radius" [ 18 ] "float zmin" [ 0 ]
+  AttributeEnd
 ObjectEnd
 
 # Plain placement - the reference for the two below.

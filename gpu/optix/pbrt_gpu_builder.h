@@ -889,6 +889,54 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		// because a light has to be enumerable to be sampled.
 		gpuGroup.sphereBase = static_cast<int>(out.instanceSpheres.size());
 		for (const pbrt_flatten::Sphere &s : grp.spheres) {
+			if (s.clipped) {
+				// Real zmin/zmax/phimax clipping for an INSTANCED sphere - same
+				// gap/fix as the top-level clipped-sphere branch above (see its
+				// own comment for the full rationale). pbrt_flatten.h's shared
+				// ShapeWork loop already bakes a correct, definition-local
+				// radiusLocal/zMin/zMax/phiMaxDeg/xform for a clipped sphere
+				// declared inside ObjectBegin/ObjectEnd too (it runs uniformly
+				// over out.groups[g].spheres, exactly like the center1 fix just
+				// below) - this branch was simply never reading them, so an
+				// instanced clipped sphere silently fell through to the
+				// unclipped case and rendered as its full, unclipped shape.
+				pbrt_scene::Matrix4 o2w;
+				for (int i = 0; i < 16; ++i) o2w.m[i] = s.xform[i];
+				pbrt_scene::Matrix4 w2o;
+				if (!o2w.inverseAffine(w2o)) continue;  // singular - drop, matching the top-level branch's own guard
+
+				SphereData sd = {};
+				sd.shapeKind = GpuMediumShapeKind::ClippedSphere;
+				sd.materialIdx = materialIndex(s.material, s.areaLight);
+				sd.radiusLocal = static_cast<float>(s.radiusLocal);
+				sd.zMin = static_cast<float>(s.zMin);
+				sd.zMax = static_cast<float>(s.zMax);
+				sd.phiMax = static_cast<float>(s.phiMaxDeg * kDiskCylDegToRad);
+				flattenTransform(o2w.m, sd.o2w);
+				flattenTransform(w2o.m, sd.w2o);
+				{
+					const double r = s.radiusLocal;
+					const double thZMin = std::clamp(r > 0.0 ? s.zMin / r : -1.0, -1.0, 1.0);
+					const double thZMax = std::clamp(r > 0.0 ? s.zMax / r : 1.0, -1.0, 1.0);
+					sd.thetaZMin = static_cast<float>(std::acos(thZMax));
+					sd.thetaZMax = static_cast<float>(std::acos(thZMin));
+				}
+				// center/center1/radius otherwise unused for this shapeKind
+				// (see GpuMediumShapeKind::ClippedSphere's own comment) - left
+				// at the same definition-local baked values the unclipped
+				// branch below uses, purely so any code that reads them
+				// regardless of shapeKind (none today) sees something sane.
+				// No area-light registration here (unlike the top-level
+				// branch): instanced shapes are never emissive - flatten()
+				// bakes area lights per PLACEMENT instead, since a light has
+				// to be enumerable to be sampled (see this loop's own comment
+				// just above).
+				sd.center = f3(s.center);
+				sd.center1 = sd.center;
+				sd.radius = static_cast<float>(s.radius);
+				out.instanceSpheres.push_back(sd);
+				continue;
+			}
 			SphereData sd = {};
 			sd.center = f3(s.center);
 			// Object motion blur - same fix as the top-level sphere loop above

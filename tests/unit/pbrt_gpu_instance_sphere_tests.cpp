@@ -56,6 +56,26 @@ pbrt_flatten::FlatScene flattenInstancedSpheres() {
 	return pbrt_flatten::flatten(r.scene);
 }
 
+// A definition holding only a clipped (zmin/zmax/phimax) sphere - the
+// separate gap this file's own header comment doesn't cover: even once a
+// definition's spheres reached the GPU at all, the instanced build loop
+// never read clipped/radiusLocal/zMin/zMax/phiMax/xform off them, so an
+// instanced clipped sphere silently fell back to shapeKind's zero-init
+// default (a full, unclipped sphere) instead of ClippedSphere.
+pbrt_flatten::FlatScene flattenInstancedClippedSphere() {
+	const pbrt_scene::ParseResult r = pbrt_scene::parse(
+		"WorldBegin\n"
+		"ObjectBegin \"dome\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 20 ] \"float zmin\" [ 0 ]\n"
+		"ObjectEnd\n"
+		"AttributeBegin\n"
+		"  Translate 100 0 100\n"
+		"  ObjectInstance \"dome\"\n"
+		"AttributeEnd\n");
+	EXPECT_TRUE(r.ok) << r.error;
+	return pbrt_flatten::flatten(r.scene);
+}
+
 } // namespace
 
 TEST(PbrtGpuInstanceSphereTest, SpheresInADefinitionAreNotDropped) {
@@ -142,4 +162,37 @@ TEST(PbrtGpuInstanceSphereTest, PlacementTransformsReachTheRendererDistinctly) {
 	// a private copy of the geometry.
 	EXPECT_EQ(scene.instancePlacements[0].group, 0);
 	EXPECT_EQ(scene.instancePlacements[1].group, 0);
+}
+
+TEST(PbrtGpuInstanceSphereTest, ClippedSphereInADefinitionKeepsItsClipping) {
+	const pbrt_flatten::FlatScene flat = flattenInstancedClippedSphere();
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+
+	ASSERT_EQ(scene.instanceSpheres.size(), 1u);
+	const SphereData &s = scene.instanceSpheres[0];
+
+	// Without the fix, shapeKind stayed at its zero-init default (Sphere,
+	// meaning "full, unclipped") - the exact bug this test pins.
+	EXPECT_EQ(s.shapeKind, GpuMediumShapeKind::ClippedSphere);
+	EXPECT_NEAR(s.radiusLocal, 20.0f, 1e-4f);
+	EXPECT_NEAR(s.zMin, 0.0f, 1e-4f);
+	EXPECT_NEAR(s.zMax, 20.0f, 1e-4f);
+	EXPECT_NEAR(s.phiMax, 2.0 * M_PI, 1e-3);
+
+	// A hemisphere (zmin=0, r=zmax): the pole is at theta=0, the equatorial
+	// cut is at theta=pi/2 - see SphereData::thetaZMin/thetaZMax's own
+	// comment for why these are precomputed host-side rather than on device.
+	EXPECT_NEAR(s.thetaZMin, 0.0f, 1e-3f);
+	EXPECT_NEAR(s.thetaZMax, M_PI / 2.0, 1e-3);
+
+	// The definition itself carries no transform, so object<->world should
+	// still be identity here - the instance PLACEMENT's own transform (its
+	// own dedicated test above) is what traversal applies on top of this.
+	EXPECT_NEAR(s.o2w[0], 1.0f, 1e-4f);
+	EXPECT_NEAR(s.o2w[5], 1.0f, 1e-4f);
+	EXPECT_NEAR(s.o2w[10], 1.0f, 1e-4f);
+	EXPECT_NEAR(s.o2w[3], 0.0f, 1e-4f);
+	EXPECT_NEAR(s.o2w[7], 0.0f, 1e-4f);
+	EXPECT_NEAR(s.o2w[11], 0.0f, 1e-4f);
 }
