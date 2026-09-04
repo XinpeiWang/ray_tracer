@@ -1543,6 +1543,55 @@ struct GpuCameraParams {
 	// different, no-longer-user-chosen seed than the first.
 	int userSeed;
 
+	// "float maxcomponentvalue" (pbrt-v4 Film parameter) / --maxcomponentvalue
+	// (CLI) - CPU's own per-sample firefly clamp (camera::max_component_value,
+	// camera.h's own comment) is now real on GPU too. 1e9f (pbrt-v4's real
+	// "effectively unbounded" default, matching camera::max_component_value's
+	// own C++ default exactly - NOT the zero-init default, which would clamp
+	// every sample to black - explicitly assigned in optix_interface.cpp
+	// after GpuCameraParams cameraExtra{}, same "no in-class initializer"
+	// __constant__ constraint as every other field here) means "no clamp
+	// requested", so a render that never touches this behaves exactly as
+	// before this field existed. Recursive backend (optix_raygen.h): a real,
+	// exact clamp on the WHOLE sample's radiance right before it's
+	// filter-weighted into pixel_color, byte-for-byte matching CPU's own
+	// clamp_sensor_rgb() call site and pbrt-v4's true per-sample semantics -
+	// this backend accumulates one sample's full radiance in a single local
+	// before ever touching the framebuffer, so a true per-sample clamp is a
+	// direct, exact port. Wavefront backend (wavefront_kernels.cu): only an
+	// APPROXIMATION of the same feature, not a true port - this backend's
+	// framebuffer is a single running total shared across every sample AND
+	// bounce of the whole render, fed by 7 separate atomicAdd call sites
+	// (NEE shadow hits, direct emission, escaped/miss rays, BSSRDF exit,
+	// deferred shadow-ray accumulation) with no single point where "this
+	// one sample's total radiance" is ever known as one value - clamping the
+	// true per-sample TOTAL would need deferring every one of those adds
+	// into a per-ray accumulator until definitive path termination, a
+	// materially bigger change than this round's scope (the same class of
+	// tradeoff this codebase already discloses for GPU's area-light texture
+	// filtering - see docs/PBRT_SUPPORT.md). Instead, each of those 7 sites
+	// clamps its own individual contribution independently before adding -
+	// real firefly suppression, but NOT pbrt-v4's exact semantics (a sample
+	// whose total exceeds the threshold via several individually-under-
+	// threshold contributions isn't caught this way). Disclosed as "Approx"
+	// in docs/PBRT_SUPPORT.md, not silently presented as CPU/recursive parity.
+	//
+	// Every clamp call site (both backends) additionally guards on
+	// `maxComponentValue > 0.0f` before comparing, not just `m >
+	// maxComponentValue` - a test-only or native-scene `GpuCameraParams`
+	// built without knowing about this field (this struct has no in-class
+	// initializer) leaves it as uninitialized garbage, and a negative
+	// garbage value would otherwise clamp with a negative scale factor,
+	// producing negative/NaN pixel output (a real regression a first
+	// version of this feature caused in 3 disk/cylinder GPU render tests,
+	// found and fixed via the test suite before this shipped). Matches
+	// this same struct's own "<=0 means not requested" convention already
+	// used by cropX1/cameraMediumSigmaT above - this field's own C++
+	// default just happens to be the wrong number (0.0f, not 1e9f) for
+	// this same trick to fall out for free, so the guard is explicit here
+	// instead.
+	float maxComponentValue;
+
 	// Camera motion blur (pbrt-v4 real per-ray AnimatedTransform-based
 	// shutter-time interpolation - mirrors src/TheRestOfYourLife/camera.h's
 	// camera_is_animated path). 0 (zero-init default, matching every scene

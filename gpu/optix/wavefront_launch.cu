@@ -29,7 +29,7 @@ extern "C" __global__ void evaluate_materials(
 	const GpuGridMedium*, const float*,
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
-	float3, float, GpuSkyDistribution, GpuPortalLight, bool,
+	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
 	float3*, float3*);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
@@ -41,7 +41,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
 	int,
-	float3, float, GpuSkyDistribution, GpuPortalLight,
+	float3, float, GpuSkyDistribution, GpuPortalLight, float,
 	float3*, float3*);
 extern "C" __global__ void evaluate_materials_dielectric(
 	WorkQueue<HitWorkItem>, int,
@@ -53,11 +53,11 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
 	int,
-	float3, float, GpuSkyDistribution, GpuPortalLight, bool,
+	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
 	float3*, float3*);
-extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float3*, float3*);
+extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*);
 extern "C" __global__ void normalize_aov_buffers(float3*, float3*, unsigned int, unsigned int);
-extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*);
+extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, float);
 extern "C" __global__ void resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -67,7 +67,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	unsigned int,
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
-	float3, float, GpuSkyDistribution, GpuPortalLight);
+	float3, float, GpuSkyDistribution, GpuPortalLight, float);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, const float*);
 
@@ -142,6 +142,7 @@ extern "C" void wf_launch_evaluate_materials(
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
 	bool                         regularize,
+	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	cudaStream_t                     stream)
@@ -162,7 +163,7 @@ extern "C" void wf_launch_evaluate_materials(
 		d_gridMediums, d_gridData,
 		d_measuredTables, numMeasuredTables,
 		d_measuredParamValues, d_measuredData, d_measuredMcdf, d_measuredCcdf,
-		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize,
+		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer);
 }
 
@@ -192,6 +193,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
+	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	cudaStream_t                     stream)
@@ -207,7 +209,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels, maxDepth,
-		skyColor, shadowRayEpsilon, skyDist, portalLight,
+		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer);
 }
 
@@ -238,6 +240,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
 	bool                         regularize,
+	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	cudaStream_t                     stream)
@@ -254,31 +257,31 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels,
 		maxDepth,
-		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize,
+		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer);
 }
 
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
-	GpuPortalLight portalLight,
+	GpuPortalLight portalLight, float maxComponentValue,
 	float3* d_albedoBuffer, float3* d_normalBuffer, cudaStream_t stream)
 {
 	if (numMiss == 0) return;
 	dim3 block(256);
 	dim3 grid((numMiss + 255) / 256);
 	accumulate_miss<<<grid, block, 0, (cudaStream_t)stream>>>(mq, numMiss, d_framebuffer, backgroundColor, skyDist,
-		portalLight, d_albedoBuffer, d_normalBuffer);
+		portalLight, maxComponentValue, d_albedoBuffer, d_normalBuffer);
 }
 
 extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,
-	const bool* d_occluded, float3* d_framebuffer, cudaStream_t stream)
+	const bool* d_occluded, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream)
 {
 	if (numShadow == 0) return;
 	dim3 block(256);
 	dim3 grid((numShadow + 255) / 256);
-	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_occluded, d_framebuffer);
+	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_occluded, d_framebuffer, maxComponentValue);
 }
 
 extern "C" void wf_launch_resolve_bssrdf_exit(
@@ -306,6 +309,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
+	float                        maxComponentValue,
 	cudaStream_t                 stream)
 {
 	if (numExit == 0) return;
@@ -319,7 +323,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels,
-		skyColor, shadowRayEpsilon, skyDist, portalLight);
+		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue);
 }
 
 extern "C" void wf_launch_normalize_framebuffer(

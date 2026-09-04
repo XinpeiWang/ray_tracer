@@ -62,6 +62,7 @@ extern "C" void wf_launch_evaluate_materials(
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
 	bool                         regularize,
+	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	cudaStream_t                 stream);
@@ -92,6 +93,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
+	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	cudaStream_t                 stream);
@@ -123,6 +125,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
 	bool                         regularize,
+	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	cudaStream_t                 stream);
@@ -130,12 +133,12 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
-	GpuPortalLight portalLight,
+	GpuPortalLight portalLight, float maxComponentValue,
 	float3* d_albedoBuffer, float3* d_normalBuffer, cudaStream_t stream);
 
 extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,
-	const bool* d_occluded, float3* d_framebuffer, cudaStream_t stream);
+	const bool* d_occluded, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream);
 
 extern "C" void wf_launch_resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem> eq,
@@ -162,6 +165,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
+	float                        maxComponentValue,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_normalize_framebuffer(

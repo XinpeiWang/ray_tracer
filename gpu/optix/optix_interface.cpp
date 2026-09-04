@@ -93,6 +93,10 @@ extern "C" int optix_render_main(
 		// cropX1 do (0 is itself a valid real seed) - explicitly set here,
 		// see that field's own comment (optix_types.h).
 		cameraExtra.userSeed = -1;
+		// maxComponentValue can't rely on the zero-init default either (0
+		// would clamp every sample to black) - see that field's own
+		// comment (optix_types.h) for the real "unbounded" value.
+		cameraExtra.maxComponentValue = 1e9f;
 
 		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra, force_camera_override != 0)) {
 			// build_scene() only ever returns false for an unrecognized/
@@ -127,23 +131,21 @@ extern "C" int optix_render_main(
 
 		// --regularize/--maxcomponentvalue/--crop/--seed: an explicit CLI
 		// request, applied AFTER build_scene() so a loaded .pbrt scene's own
-		// directives (set inside that same call, for regularize/crop -
-		// scene_builder.cpp) are the starting point, not silently clobbered
-		// by these fields' own neutral defaults - same reasoning and same
-		// "regularize only ever forces ON" / "crop only overrides when it
-		// differs from the full frame" shape as cpu_interface.cpp's mirror
-		// of this same block. seed has no scene-directive equivalent to
-		// preserve (same as CPU). max_component_value has no GPU equivalent
-		// at all (see camera_t::max_component_value's own comment) - warn
-		// rather than silently doing nothing, matching how a loaded scene's
-		// own non-default request already warns just below in this file.
+		// directives (set inside that same call, for regularize/crop/
+		// maxcomponentvalue - scene_builder.cpp) are the starting point, not
+		// silently clobbered by these fields' own neutral defaults - same
+		// reasoning and same "regularize only ever forces ON" / "crop only
+		// overrides when it differs from the full frame" shape as
+		// cpu_interface.cpp's mirror of this same block. seed has no
+		// scene-directive equivalent to preserve (same as CPU).
+		// max_component_value is now real on GPU (see
+		// GpuCameraParams::maxComponentValue's own comment for the
+		// recursive-exact/wavefront-approximate split) - only overrides
+		// when the CLI value differs from the neutral "unbounded" default,
+		// same shape as cpu_interface.cpp's own mirror of this line.
 		if (options.regularize) cameraExtra.regularize = 1;
 		if (options.seed >= 0) cameraExtra.userSeed = static_cast<int>(options.seed);
-		if (options.max_component_value != 1e9) {
-			std::cerr << "[OptiX] Warning: --maxcomponentvalue " << options.max_component_value
-					  << " has no effect on GPU - this firefly clamp is CPU-only; use --cpu instead "
-						 "if it matters for this render.\n";
-		}
+		if (options.max_component_value != 1e9) cameraExtra.maxComponentValue = static_cast<float>(options.max_component_value);
 		if (options.crop_x0 != 0.0 || options.crop_y0 != 0.0 || options.crop_x1 != 1.0 || options.crop_y1 != 1.0) {
 			cameraExtra.cropX0 = static_cast<int>(std::lround(options.crop_x0 * image_width));
 			cameraExtra.cropX1 = static_cast<int>(std::lround(options.crop_x1 * image_width));

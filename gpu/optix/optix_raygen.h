@@ -543,6 +543,32 @@ extern "C" __global__ void __raygen__rg() {
 			}
 		}  // end depth loop
 
+		// "float maxcomponentvalue" per-sample firefly clamp (see
+		// GpuCameraParams::maxComponentValue's own comment) - applied to
+		// the WHOLE sample's radiance here, exactly matching CPU's own
+		// clamp_sensor_rgb() call site (camera.h) and pbrt-v4's real
+		// per-sample semantics: if the largest of r/g/b exceeds the
+		// threshold, scale all three down so the max component lands
+		// exactly at it. A no-op at the real default (1e9, far above any
+		// realistic pixel value) - applied unconditionally rather than
+		// gated on a "was this requested" check, same shape as CPU's own
+		// unconditional call site. The `> 0.0f` guard treats a non-positive
+		// value (e.g. an uninitialized GpuCameraParams built by test code
+		// or a native-scene call site that predates this field and never
+		// learned to set it - this struct has no in-class initializer, the
+		// __constant__-safety constraint every other field here already
+		// documents) as "unbounded", the same "<=0 means not requested"
+		// convention several other fields in this struct already use
+		// (cropX1, cameraMediumSigmaT) - protects every caller that never
+		// explicitly sets this field, not just the ones this round touched.
+		{
+			const float m = fmaxf(radiance.x, fmaxf(radiance.y, radiance.z));
+			if (params.camera.maxComponentValue > 0.0f && m > params.camera.maxComponentValue) {
+				const float s = params.camera.maxComponentValue / m;
+				radiance.x *= s; radiance.y *= s; radiance.z *= s;
+			}
+		}
+
 		// filter_w applied here, not folded into throughput - see this
 		// sample's own throughput-declaration comment for why.
 		pixel_color = pixel_color + filter_w * radiance;

@@ -3728,25 +3728,15 @@ static bool build_loaded_pbrt_scene(
 	}
 
 	// Film "float maxcomponentvalue" - CPU's own per-sample firefly clamp
-	// (camera::max_component_value, camera.h) has no GPU equivalent at all
-	// yet. Unlike PixelFilter radius above, this needs no native-scene
-	// counterpart warning: CPU's own class-level default (1e9, effectively
-	// unbounded) already matches GPU's "no clamp" behavior exactly, so the
-	// only real divergence is a loaded .pbrt scene that explicitly
-	// requests a real, restrictive value - which only this function's own
-	// scene ever can. Compared against the real default (1e9) with a small
-	// epsilon, not an order-of-magnitude gap - a code-review pass found the
-	// original `< 1e8` threshold silently left the whole [1e8, 1e9) range
-	// unwarned even though a value there is just as real and restrictive
-	// (and just as undisclosed a GPU/CPU divergence) as a much smaller one.
-	if (loaded.scene.maxComponentValue < 1e9 - 1.0) {
-		std::cerr << "[OptiX] Warning: this scene's Film \"maxcomponentvalue\" ("
-			  << loaded.scene.maxComponentValue << ") clamps CPU's per-sample "
-				 "firefly outliers, but GPU has no equivalent clamp yet - GPU "
-				 "may render visibly noisier/brighter fireflies than CPU for "
-				 "this scene; use --cpu instead if the requested clamp matters "
-				 "for this render.\n";
-	}
+	// (camera::max_component_value, camera.h) is now real on GPU too - see
+	// GpuCameraParams::maxComponentValue's own comment for the
+	// recursive-exact/wavefront-approximate split. Applied unconditionally
+	// from the scene's own declaration, same "PixelFilter"/"regularize"
+	// shape as the block just below this one - CPU's own class-level
+	// default (1e9, effectively unbounded) already matches this field's
+	// own default, so a scene that never declares this behaves exactly as
+	// before this feature existed.
+	if (out_camera_extra) out_camera_extra->maxComponentValue = static_cast<float>(loaded.scene.maxComponentValue);
 
 	// Integrator "bool regularize" - same unconditional-from-the-scene shape
 	// as PixelFilter just above. See GpuCameraParams::regularize's own comment.

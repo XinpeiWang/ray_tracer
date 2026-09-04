@@ -249,6 +249,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// shadow rays, the RR-kill/hit-light flush) and written unchanged into
 	// the pushed next RayWorkItem's own filterWeight.
 	float filterWeight,
+	// "float maxcomponentvalue" firefly clamp - see addToFramebuffer's own
+	// comment below and GpuCameraParams::maxComponentValue's own comment
+	// (optix_types.h). 1e9f (unbounded) when not requested.
+	float maxComponentValue,
 	const float3& normal, const float3& hit_point,
 	// World-space surface tangent (dp/du) at this shading point - real
 	// per-shape value from the caller (see HitWorkItem::objDpdu's own
@@ -338,6 +342,19 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
 		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		// "float maxcomponentvalue" firefly clamp - see
+		// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
+		// for why this is a per-CONTRIBUTION clamp here, not the true
+		// per-sample-total clamp CPU/the recursive backend apply: this
+		// atomicAdd is one of several independent partial contributions to
+		// the same sample's eventual total, with no single point on this
+		// backend where the whole sample's radiance is ever known as one
+		// value to clamp.
+		const float m = fmaxf(r, fmaxf(g, b));
+		if (maxComponentValue > 0.0f && m > maxComponentValue) {
+			const float s = maxComponentValue / m;
+			r *= s; g *= s; b *= s;
+		}
 		atomicAdd(&framebuffer[pixIdx].x, r);
 		atomicAdd(&framebuffer[pixIdx].y, g);
 		atomicAdd(&framebuffer[pixIdx].z, b);
@@ -1114,6 +1131,11 @@ extern "C" __global__ void evaluate_materials(
 	// wf_glossy_alpha()'s own comment for why the gate lives at the call
 	// sites rather than inside that shared helper).
 	bool regularize,
+	// "float maxcomponentvalue" firefly clamp - see
+	// GpuCameraParams::maxComponentValue's own comment (optix_types.h) and
+	// this kernel's own addToFramebuffer's comment below. Same "single
+	// scalar pulled out of GpuCameraParams" pattern as regularize above.
+	float maxComponentValue,
 	// Denoiser guide-layer AOVs (null unless --denoise was requested - same
 	// convention as the recursive backend's LaunchParams::albedoBuffer/
 	// normalBuffer, optix_types.h). Accumulated (atomicAdd, then divided by
@@ -1198,6 +1220,15 @@ extern "C" __global__ void evaluate_materials(
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
 		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		// "float maxcomponentvalue" firefly clamp - see
+		// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
+		// for why this is a per-CONTRIBUTION clamp, not a true
+		// per-sample-total clamp CPU/the recursive backend apply.
+		const float m = fmaxf(r, fmaxf(g, b));
+		if (maxComponentValue > 0.0f && m > maxComponentValue) {
+			const float s = maxComponentValue / m;
+			r *= s; g *= s; b *= s;
+		}
 		atomicAdd(&framebuffer[pixIdx].x, r);
 		atomicAdd(&framebuffer[pixIdx].y, g);
 		atomicAdd(&framebuffer[pixIdx].z, b);
@@ -2400,7 +2431,7 @@ extern "C" __global__ void evaluate_materials(
 
 	// eventEta was set above only on a genuine transmission (DielectricMedium's
 	// entry/exit surfaces) - see this function's own eventEta local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objDpdu, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, maxComponentValue, normal, hit_point, h.objDpdu, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -2467,6 +2498,9 @@ extern "C" __global__ void evaluate_materials_simple(
 	float shadowRayEpsilon,
 	GpuSkyDistribution skyDist,
 	GpuPortalLight portalLight,
+	// "float maxcomponentvalue" firefly clamp - see
+	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
+	float maxComponentValue,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3* albedoBuffer,
 	float3* normalBuffer
@@ -2501,6 +2535,15 @@ extern "C" __global__ void evaluate_materials_simple(
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
 		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		// "float maxcomponentvalue" firefly clamp - see
+		// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
+		// for why this is a per-CONTRIBUTION clamp, not a true
+		// per-sample-total clamp CPU/the recursive backend apply.
+		const float m = fmaxf(r, fmaxf(g, b));
+		if (maxComponentValue > 0.0f && m > maxComponentValue) {
+			const float s = maxComponentValue / m;
+			r *= s; g *= s; b *= s;
+		}
 		atomicAdd(&framebuffer[pixIdx].x, r);
 		atomicAdd(&framebuffer[pixIdx].y, g);
 		atomicAdd(&framebuffer[pixIdx].z, b);
@@ -2577,7 +2620,7 @@ extern "C" __global__ void evaluate_materials_simple(
 
 	// Lambertian/Metal never transmit - h.etaScale passes through unchanged
 	// (see RayWorkItem::etaScale's own comment).
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale, h.filterWeight, normal, hit_point, h.objDpdu, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale, h.filterWeight, maxComponentValue, normal, hit_point, h.objDpdu, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -2640,6 +2683,9 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// Integrator "bool regularize" - see evaluate_materials()'s own
 	// identical parameter comment above.
 	bool regularize,
+	// "float maxcomponentvalue" firefly clamp - see
+	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
+	float maxComponentValue,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3* albedoBuffer,
 	float3* normalBuffer
@@ -2678,6 +2724,15 @@ extern "C" __global__ void evaluate_materials_dielectric(
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
 		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		// "float maxcomponentvalue" firefly clamp - see
+		// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
+		// for why this is a per-CONTRIBUTION clamp, not a true
+		// per-sample-total clamp CPU/the recursive backend apply.
+		const float m = fmaxf(r, fmaxf(g, b));
+		if (maxComponentValue > 0.0f && m > maxComponentValue) {
+			const float s = maxComponentValue / m;
+			r *= s; g *= s; b *= s;
+		}
 		atomicAdd(&framebuffer[pixIdx].x, r);
 		atomicAdd(&framebuffer[pixIdx].y, g);
 		atomicAdd(&framebuffer[pixIdx].z, b);
@@ -2895,7 +2950,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// eventEta was set above only on a genuine transmission (Dielectric or
 	// RoughDielectric's refract branch) - see this function's own eventEta
 	// local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objDpdu, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, maxComponentValue, normal, hit_point, h.objDpdu, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -2999,7 +3054,10 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	float3 skyColor,
 	float shadowRayEpsilon,
 	GpuSkyDistribution skyDist,
-	GpuPortalLight portalLight
+	GpuPortalLight portalLight,
+	// "float maxcomponentvalue" firefly clamp - see
+	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
+	float maxComponentValue
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Same defensive capacity guard as accumulate_shadow's own version of
@@ -3034,6 +3092,15 @@ extern "C" __global__ void resolve_bssrdf_exit(
 											kDevCIEMin, kDevCIENSamples);
 			float r, g, b;
 			wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+			// "float maxcomponentvalue" firefly clamp - see
+			// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
+			// and evaluate_materials's own addToFramebuffer comment for why
+			// this is a per-contribution clamp, not a true per-sample one.
+			const float m = fmaxf(r, fmaxf(g, b));
+			if (maxComponentValue > 0.0f && m > maxComponentValue) {
+				const float s = maxComponentValue / m;
+				r *= s; g *= s; b *= s;
+			}
 			atomicAdd(&framebuffer[item.pixelIndex].x, r);
 			atomicAdd(&framebuffer[item.pixelIndex].y, g);
 			atomicAdd(&framebuffer[item.pixelIndex].z, b);
@@ -3076,6 +3143,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		// add another factor, matching CPU camera.h's entry_eta convention.
 		item.etaScale,
 		item.filterWeight,
+		maxComponentValue,
 		item.exitNormal, item.exitPos,
 		/*dpdu=*/make_float3(0.0f, 0.0f, 0.0f),  // never reaches glossy_isType - see glossyAlpha comment above
 		seed,
@@ -3108,6 +3176,9 @@ extern "C" __global__ void accumulate_miss(
 	// GpuSkyDistribution parameter comment.
 	GpuSkyDistribution      skyDist,
 	GpuPortalLight          portalLight,
+	// "float maxcomponentvalue" firefly clamp - see
+	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
+	float                   maxComponentValue,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3*                 albedoBuffer,
 	float3*                 normalBuffer
@@ -3172,6 +3243,16 @@ extern "C" __global__ void accumulate_miss(
 	auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z, kDevCIEMin, kDevCIENSamples);
 	float r, g, b;
 	wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+	// "float maxcomponentvalue" firefly clamp - see
+	// GpuCameraParams::maxComponentValue's own comment (optix_types.h) for
+	// why this is a per-contribution clamp, not a true per-sample one.
+	{
+		const float m2 = fmaxf(r, fmaxf(g, b));
+		if (maxComponentValue > 0.0f && m2 > maxComponentValue) {
+			const float s = maxComponentValue / m2;
+			r *= s; g *= s; b *= s;
+		}
+	}
 	atomicAdd(&framebuffer[m.pixelIndex].x, r);
 	atomicAdd(&framebuffer[m.pixelIndex].y, g);
 	atomicAdd(&framebuffer[m.pixelIndex].z, b);
@@ -3190,7 +3271,10 @@ extern "C" __global__ void accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> shadowQueue,
 	int                          numShadow,
 	const bool*                  occluded,   // per-item occlusion result
-	float3*                      framebuffer
+	float3*                      framebuffer,
+	// "float maxcomponentvalue" firefly clamp - see
+	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
+	float                        maxComponentValue
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Must also guard against shadowQueue.capacity, not just the host-
@@ -3222,6 +3306,15 @@ extern "C" __global__ void accumulate_shadow(
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
 		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		// "float maxcomponentvalue" firefly clamp - see
+		// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
+		// for why this is a per-contribution clamp, not a true
+		// per-sample one.
+		const float m = fmaxf(r, fmaxf(g, b));
+		if (maxComponentValue > 0.0f && m > maxComponentValue) {
+			const float s2 = maxComponentValue / m;
+			r *= s2; g *= s2; b *= s2;
+		}
 		atomicAdd(&framebuffer[s.pixelIndex].x, r);
 		atomicAdd(&framebuffer[s.pixelIndex].y, g);
 		atomicAdd(&framebuffer[s.pixelIndex].z, b);
