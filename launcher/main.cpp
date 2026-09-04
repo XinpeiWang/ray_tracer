@@ -78,6 +78,7 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     render_opts.crop_y0 = args.crop_y0;
     render_opts.crop_x1 = args.crop_x1;
     render_opts.crop_y1 = args.crop_y1;
+    render_opts.seed = args.seed;
     render_opts.spectral = args.spectral;
     render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
     render_opts.denoise = args.denoise;

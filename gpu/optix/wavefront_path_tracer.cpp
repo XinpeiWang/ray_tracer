@@ -1345,6 +1345,20 @@ bool WavefrontPathTracer::render(
 	// value at each site.
 	const bool regularize = camera.regularize != 0;
 
+	// --seed (CLI/GUI): camera.userSeed >= 0 is an explicit request for a
+	// reproducible render (see GpuCameraParams::userSeed's own comment,
+	// optix_types.h). frameNumber_ is this backend's own RNG seed input
+	// (wavefront_kernels.cu's wf_pcg(...^ frameNumber)) - unlike the
+	// recursive backend's frameNumber, which optix_renderer_render.cpp
+	// hardcodes to 0 fresh on every render() call, THIS one is a
+	// self-incrementing member (frameNumber_++ below, per sample) on a
+	// long-lived WavefrontPathTracer instance, so without this reset a
+	// second render() call in the same process would silently inherit
+	// whatever value the first render left it at, not the user-chosen
+	// seed. -1 (no --seed requested) leaves it exactly as it was -
+	// today's pre-existing behavior, whatever that happens to be.
+	if (camera.userSeed >= 0) frameNumber_ = static_cast<unsigned int>(camera.userSeed);
+
 	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
 	// project's own plan for why wavefront is the one backend that gets
 	// this for free: every field here is already a real, host-visible

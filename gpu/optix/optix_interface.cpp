@@ -89,6 +89,10 @@ extern "C" int optix_render_main(
 		SceneData scene;
 		float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
 		GpuCameraParams cameraExtra{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
+		// userSeed can't rely on the zero-init default the way regularize/
+		// cropX1 do (0 is itself a valid real seed) - explicitly set here,
+		// see that field's own comment (optix_types.h).
+		cameraExtra.userSeed = -1;
 
 		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra, force_camera_override != 0)) {
 			// build_scene() only ever returns false for an unrecognized/
@@ -121,18 +125,20 @@ extern "C" int optix_render_main(
 			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
 		}
 
-		// --regularize/--maxcomponentvalue/--crop: an explicit CLI request,
-		// applied AFTER build_scene() so a loaded .pbrt scene's own
+		// --regularize/--maxcomponentvalue/--crop/--seed: an explicit CLI
+		// request, applied AFTER build_scene() so a loaded .pbrt scene's own
 		// directives (set inside that same call, for regularize/crop -
 		// scene_builder.cpp) are the starting point, not silently clobbered
 		// by these fields' own neutral defaults - same reasoning and same
 		// "regularize only ever forces ON" / "crop only overrides when it
 		// differs from the full frame" shape as cpu_interface.cpp's mirror
-		// of this same block. max_component_value has no GPU equivalent at
-		// all (see camera_t::max_component_value's own comment) - warn
+		// of this same block. seed has no scene-directive equivalent to
+		// preserve (same as CPU). max_component_value has no GPU equivalent
+		// at all (see camera_t::max_component_value's own comment) - warn
 		// rather than silently doing nothing, matching how a loaded scene's
 		// own non-default request already warns just below in this file.
 		if (options.regularize) cameraExtra.regularize = 1;
+		if (options.seed >= 0) cameraExtra.userSeed = static_cast<int>(options.seed);
 		if (options.max_component_value != 1e9) {
 			std::cerr << "[OptiX] Warning: --maxcomponentvalue " << options.max_component_value
 					  << " has no effect on GPU - this firefly clamp is CPU-only; use --cpu instead "

@@ -200,6 +200,9 @@ RenderJob MainWindow::captureRenderJob() {
 	job.advancedFlags.cropY0 = m_cropY0Spin->value();
 	job.advancedFlags.cropX1 = m_cropX1Spin->value();
 	job.advancedFlags.cropY1 = m_cropY1Spin->value();
+	job.advancedFlags.seed =
+		(m_seedCheck->isEnabled() && m_seedCheck->isChecked())
+			? static_cast<long long>(m_seedSpin->value()) : -1;
 
 	// Integrator combo + its sub-flags, both in the "Integrator" group on
 	// the Render Options tab - see

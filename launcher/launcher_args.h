@@ -131,6 +131,11 @@ struct LaunchArgs {
 	// Default path tracer only, both backends (crop is real on GPU too,
 	// unlike max_component_value).
 	double crop_x0 = 0.0, crop_y0 = 0.0, crop_x1 = 1.0, crop_y1 = 1.0;
+	// An explicit request for reproducible renders. -1 (default) means
+	// "not requested" - see RenderOptions::seed's own comment
+	// (render_options.h) for the full CPU/GPU determinism story this
+	// fixes. Both backends, default path tracer only.
+	long long seed = -1;
 	// Real hero-wavelength spectral rendering (camera.h's ray_color_spectral(),
 	// see its own comment) instead of the default flat-RGB ray_color() -
 	// CPU default path tracer only, same scope cut as exposure/sampler
@@ -373,6 +378,19 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 				i += 4;
 			} catch (const std::exception&) {
 				std::cerr << "Invalid --crop value, using full frame\n";
+			}
+		} else if (arg == render_flags::kSeed && i + 1 < argc) {
+			try {
+				out.seed = std::stoll(argv[i + 1]);
+				if (out.seed < 0) {
+					std::cerr << "Invalid --seed " << out.seed << " (must be >= 0), ignoring\n";
+					out.seed = -1;
+				}
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --seed value, ignoring\n";
 			}
 		} else if (arg == render_flags::kTonemap && i + 1 < argc) {
 			std::string name = argv[i + 1];
@@ -622,6 +640,12 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               the output file. Only overrides a loaded scene's own\n"
 					  << "               cropwindow/pixelbounds when explicitly passed. Default path\n"
 					  << "               tracer only, both backends.\n"
+					  << "  " << render_flags::kSeed << " N: makes the render reproducible - the same scene, same\n"
+					  << "               settings, and same seed always produce the same pixels. Without\n"
+					  << "               this, CPU renders draw fresh randomness every run (never\n"
+					  << "               reproducible); GPU renders already default to a fixed internal\n"
+					  << "               seed, so this just lets you choose a different one. Default\n"
+					  << "               path tracer only, both backends.\n"
 					  << "  " << render_flags::kSpectral << " : Real hero-wavelength spectral rendering instead of flat RGB.\n"
 					  << "               CPU default path tracer only. Only lambertian, metal,\n"
 					  << "               dielectric, rough_dielectric, conductor, and diffuse_light\n"

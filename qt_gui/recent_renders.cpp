@@ -86,6 +86,7 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("cropY0", entry.advancedFlags.cropY0);
 	settings.setValue("cropX1", entry.advancedFlags.cropX1);
 	settings.setValue("cropY1", entry.advancedFlags.cropY1);
+	settings.setValue("seed", entry.advancedFlags.seed);
 	settings.setValue("timestampEpochSecs", entry.timestampEpochSecs);
 	settings.setValue("metadataKnown", entry.metadataKnown);
 }
@@ -179,6 +180,7 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	if (settings.contains("cropY0")) entry.advancedFlags.cropY0 = settings.value("cropY0").toDouble();
 	if (settings.contains("cropX1")) entry.advancedFlags.cropX1 = settings.value("cropX1").toDouble();
 	if (settings.contains("cropY1")) entry.advancedFlags.cropY1 = settings.value("cropY1").toDouble();
+	if (settings.contains("seed")) entry.advancedFlags.seed = settings.value("seed").toLongLong();
 	entry.timestampEpochSecs = settings.value("timestampEpochSecs").toLongLong();
 	// Default true (not the QVariant-invalid-default false) when the key
 	// is absent - an entry saved by a version of this app before

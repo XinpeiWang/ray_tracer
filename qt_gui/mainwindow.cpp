@@ -218,6 +218,8 @@ void RenderController::start() {
 			 << QString::number(m_advancedFlags.cropX0) << QString::number(m_advancedFlags.cropY0)
 			 << QString::number(m_advancedFlags.cropX1) << QString::number(m_advancedFlags.cropY1);
 	}
+	if (m_advancedFlags.seed >= 0)
+		args << render_flags::kSeed << QString::number(m_advancedFlags.seed);
 
 	// Video mode flags (if enabled)
 	if (m_videoMode) {

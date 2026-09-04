@@ -115,6 +115,11 @@ struct AdvancedRenderFlags {
 	// only meaningful (and only emitted as --crop) when true.
 	bool cropEnabled = false;
 	double cropX0 = 0.0, cropY0 = 0.0, cropX1 = 1.0, cropY1 = 1.0;
+	// -1 = "not requested" (matches the CLI's own sentinel exactly, unlike
+	// maxComponentValue/cropEnabled above - the CLI already rejects a
+	// negative --seed, so there's no separate GUI-only sentinel needed).
+	// RenderController::start() only emits --seed when this is >= 0.
+	long long seed = -1;
 };
 
 // Which alternate integrator (--sppm/--bdpt/--mlt/--randomwalk/--ao/

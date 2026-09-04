@@ -1527,6 +1527,22 @@ struct GpuCameraParams {
 	// cropwindow) that never sets these fields at all.
 	int cropX0, cropX1, cropY0, cropY1;
 
+	// --seed (CLI/GUI) - an explicit request for reproducible renders. Set
+	// to -1 (NOT the zero-init default - explicitly assigned right after
+	// construction in optix_interface.cpp, same "no in-class initializer"
+	// __constant__ constraint as every other field in this struct) when no
+	// --seed was requested, since unlike regularize/cropX1 above, 0 is
+	// itself a perfectly valid real seed value and can't double as "unset"
+	// the way their own zero-init defaults do. Recursive backend: read
+	// directly into LaunchParams::frameNumber (optix_renderer_render.cpp).
+	// Wavefront backend: read into WavefrontPathTracer::frameNumber_ at
+	// the start of render() (wavefront_path_tracer.cpp), overriding
+	// whatever that self-incrementing counter was left at by a PRIOR
+	// render() call on the same long-lived WavefrontPathTracer instance -
+	// otherwise a second render in the same process would silently use a
+	// different, no-longer-user-chosen seed than the first.
+	int userSeed;
+
 	// Camera motion blur (pbrt-v4 real per-ray AnimatedTransform-based
 	// shutter-time interpolation - mirrors src/TheRestOfYourLife/camera.h's
 	// camera_is_animated path). 0 (zero-init default, matching every scene

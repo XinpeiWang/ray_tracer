@@ -184,6 +184,24 @@ class camera {
     // approximation of real pbrt-v4 (which writes a smaller file).
     int crop_x0 = 0, crop_x1 = -1, crop_y0 = 0, crop_y1 = -1;
 
+    // --seed (CLI/GUI) - an explicit request for reproducible renders.
+    // -1 (default) means "not requested": render() leaves
+    // rtweekend.h's thread_rng() on its pre-existing, genuinely
+    // non-deterministic hardware-entropy seeding, and every alternate
+    // sampler below (ZSobol/PaddedSobol/Stratified/PMJ02BN/Halton) keeps
+    // using literal seed 0, exactly as before this field existed - zero
+    // behavior change for a render that never sets this. >= 0 makes BOTH
+    // of those deterministic: render() reseeds rtweekend.h's thread_rng()
+    // once per scanline via reseed_render_rng() (see that function's own
+    // comment, rtweekend.h, for why per-scanline rather than per-worker
+    // is required), and the alternate-sampler constructors below use this
+    // value instead of a hardcoded 0. No CLI equivalent existed for this
+    // at all before - unlike regularize/max_component_value/crop above,
+    // there's no "scene's own directive" to preserve, since pbrt-v4's
+    // own "Sampler \"seed\"\" isn't parsed by this project's pbrt loader
+    // either (see docs/PBRT_SUPPORT.md).
+    long long seed = -1;
+
     // When set, render() writes a linear (pre-tonemap), full-float EXR
     // instead of the tonemapped/quantized PPM it writes by default - see
     // exr_writer.h. Set by cpu_interface.cpp when the caller's requested
@@ -364,7 +382,19 @@ class camera {
         unsigned int nthreads = determine_render_thread_count();
         std::clog << "Using " << nthreads << " threads for rendering" << std::endl;
 
+        // --seed: see camera_t::seed's own comment, and reseed_render_rng()'s
+        // own comment (rtweekend.h) for why thread_rng() is reseeded PER
+        // SCANLINE below (in the worker loop) rather than once here -
+        // scanline-to-worker assignment is a work-stealing race, not
+        // reproducible run to run, so seeding by worker identity doesn't
+        // give a reproducible render the way seeding by scanline index does.
+        // Same "explicit value or today's exact literal 0" shape as
+        // regularize/max_component_value above, computed once rather than
+        // at each sampler-construction call site below.
+        const int alt_sampler_seed = (seed >= 0) ? static_cast<int>(seed) : 0;
+
         auto worker = [&](unsigned int tid) {
+            (void)tid;  // no longer used directly - see reseed_render_rng()'s own comment above
             std::ostringstream ss;
             // Construct the ONE stateful sampler this render actually asked
             // for (sampler_kind), once per worker thread rather than once
@@ -375,9 +405,10 @@ class camera {
             // rebuild per ray the way SobolSampler is (see its own case
             // below, which still constructs fresh per ray - zero behavior
             // change for this project's pre-existing default). Every ctor
-            // here seeds purely from (px, py, dim, a fixed global seed=0),
-            // never from `tid`, so which thread renders a given pixel still
-            // can't change that pixel's random sequence - same determinism
+            // here seeds purely from (px, py, dim, a fixed global seed=0
+            // unless --seed overrides it via alt_sampler_seed above), never
+            // from `tid`, so which thread renders a given pixel still can't
+            // change that pixel's random sequence - same determinism
             // SobolSampler already had.
             std::optional<ZSobolSampler>      zsobol_sampler;
             std::optional<PaddedSobolSampler> padded_sobol_sampler;
@@ -386,19 +417,20 @@ class camera {
             std::optional<halton_sampler>     halton_smp;
             switch (sampler_kind) {
                 case SamplerKind::ZSobol:
-                    zsobol_sampler.emplace(samples_per_pixel, image_width, image_height);
+                    zsobol_sampler.emplace(samples_per_pixel, image_width, image_height, alt_sampler_seed);
                     break;
                 case SamplerKind::PaddedSobol:
-                    padded_sobol_sampler.emplace(samples_per_pixel);
+                    padded_sobol_sampler.emplace(samples_per_pixel, alt_sampler_seed);
                     break;
                 case SamplerKind::Stratified:
-                    stratified_sampler.emplace(sqrt_spp, sqrt_spp);
+                    stratified_sampler.emplace(sqrt_spp, sqrt_spp, true, alt_sampler_seed);
                     break;
                 case SamplerKind::PMJ02BN:
-                    pmj02bn_sampler.emplace(samples_per_pixel);
+                    pmj02bn_sampler.emplace(samples_per_pixel, alt_sampler_seed);
                     break;
                 case SamplerKind::Halton:
-                    halton_smp.emplace(samples_per_pixel, image_width, image_height);
+                    halton_smp.emplace(samples_per_pixel, image_width, image_height,
+                                        HaltonRandomize::PermuteDigits, static_cast<uint32_t>(alt_sampler_seed));
                     break;
                 case SamplerKind::Sobol:
                 default:
@@ -407,6 +439,14 @@ class camera {
             while (true) {
                 int j = next_j.fetch_sub(1);
                 if (j < 0) break;
+
+                // --seed: reseed thread_rng() fresh for THIS scanline,
+                // keyed on the scanline index j rather than which worker
+                // happens to be running it - see reseed_render_rng()'s own
+                // comment (rtweekend.h) for why that distinction matters.
+                // No-op (and no measurable cost beyond one branch) when
+                // --seed wasn't requested.
+                if (seed >= 0) reseed_render_rng(seed, j);
 
                 // render scanline j
                 ss.str(""); ss.clear();

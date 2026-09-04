@@ -194,7 +194,14 @@ bool OptiXRenderer::render(
 	params.height = height;
 	params.samplesPerPixel = samplesPerPixel;
 	params.maxDepth = maxDepth;
-	params.frameNumber = 0;  // Could be animated
+	// --seed (CLI/GUI): gpuCam.userSeed >= 0 is an explicit request for a
+	// reproducible render (see GpuCameraParams::userSeed's own comment,
+	// optix_types.h) - frameNumber IS this backend's RNG seed input
+	// (optix_raygen.h's pcg_hash(...frameNumber*719393u)), so using it
+	// directly here needs no new plumbing. -1 (no --seed requested) keeps
+	// today's exact behavior: always 0, deterministic by construction
+	// already, just not user-chosen.
+	params.frameNumber = (gpuCam.userSeed >= 0) ? static_cast<unsigned int>(gpuCam.userSeed) : 0;
 
 	// Camera setup
 	params.camera = gpuCam;

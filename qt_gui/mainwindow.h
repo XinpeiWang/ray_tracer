@@ -179,8 +179,8 @@ private:
 	void createRenderOptionsTab();
 	// Single source of truth for m_samplerCombo/m_lightSamplerCombo/
 	// m_spectralCheck/m_exposureSpin/m_tonemapCombo/m_statsCheck/
-	// m_regularizeCheck/m_maxComponentValueCheck/m_cropCheck/m_denoiseCheck/
-	// m_optixValidateCheck/m_gpuBackendCombo's enabled state - depends on
+	// m_regularizeCheck/m_maxComponentValueCheck/m_cropCheck/m_seedCheck/
+	// m_denoiseCheck/m_optixValidateCheck/m_gpuBackendCombo's enabled state - depends on
 	// m_renderModeCombo (GPU/CPU), m_gpuBackendCombo (recursive/wavefront),
 	// and m_integratorCombo (Default vs an alternate integrator), so it's
 	// called from all of those controls' own change handlers instead of
@@ -554,6 +554,14 @@ private:
 	QDoubleSpinBox *m_cropY0Spin;
 	QDoubleSpinBox *m_cropX1Spin;
 	QDoubleSpinBox *m_cropY1Spin;
+	// --seed (both backends, default path tracer only) - an explicit
+	// request for a reproducible render. Spinbox only enabled/emitted when
+	// the checkbox is checked, same "avoid showing a confusing sentinel"
+	// reasoning as maxcomponentvalue/crop above (the CLI's own "-1 = not
+	// requested" would be a confusing default value to show in a spinbox
+	// that otherwise only accepts >= 0).
+	QCheckBox *m_seedCheck;
+	QSpinBox *m_seedSpin;
 
 	// "Integrator" group (createRenderOptionsTab()): the algorithm selector
 	// itself, plus sub-flag widgets for the 5 alternate integrators that

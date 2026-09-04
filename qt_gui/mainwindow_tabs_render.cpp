@@ -723,6 +723,42 @@ void MainWindow::createRenderOptionsTab() {
 	cropLayout->addRow(tr("Bottom (Y1):"), m_cropY1Spin);
 
 	layout->addWidget(cropGroup);
+
+	// ------------------------------------------------------------------
+	// Seed group
+	// ------------------------------------------------------------------
+	QGroupBox *seedGroup = new QGroupBox(tr("Reproducibility"), optionsTab);
+	styleGroupBox(seedGroup);
+	QFormLayout *seedLayout = new QFormLayout(seedGroup);
+	seedLayout->setVerticalSpacing(10);
+	seedLayout->setHorizontalSpacing(10);
+	seedLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_seedCheck = new QCheckBox(tr("Reproducible render (--seed)"), optionsTab);
+	m_seedCheck->setToolTip(
+		tr("Makes this render reproduce byte-for-byte on a rerun with the\n"
+		"same seed. Both CPU and GPU default path tracer only."));
+	styleCheckBox(m_seedCheck);
+	seedLayout->addRow(checkboxWithInfo(m_seedCheck,
+		tr("Renders normally use a different random sequence every time, "
+		"so two runs of the same scene never match pixel-for-pixel even "
+		"with identical settings. Checking this fixes the random seed, so "
+		"the same seed value always reproduces the exact same image - "
+		"useful for comparing before/after a scene edit, or for isolating "
+		"whether a visual difference came from a code change or just "
+		"random noise.\n\n"
+		"Off by default (genuinely random every render).")));
+
+	m_seedSpin = new QSpinBox(optionsTab);
+	m_seedSpin->setRange(0, 2147483647);
+	m_seedSpin->setValue(0);
+	m_seedSpin->setEnabled(false);
+	m_seedSpin->setToolTip(m_seedCheck->toolTip());
+	styleSpinBox(m_seedSpin);
+	connect(m_seedCheck, &QCheckBox::toggled, m_seedSpin, &QSpinBox::setEnabled);
+	seedLayout->addRow(tr("Seed:"), m_seedSpin);
+
+	layout->addWidget(seedGroup);
 	layout->addStretch();
 
 	// Initial enabled state matches whatever m_renderModeCombo/
@@ -746,7 +782,7 @@ void MainWindow::createRenderOptionsTab() {
 // Single source of truth for m_samplerCombo/m_lightSamplerCombo/
 // m_spectralCheck/m_exposureSpin/
 // m_tonemapCombo/m_statsCheck/m_denoiseCheck/m_optixValidateCheck/
-// m_gpuBackendCombo's enabled state, replacing what used to be a
+// m_seedCheck/m_gpuBackendCombo's enabled state, replacing what used to be a
 // hand-duplicated 2-input (GPU/CPU x wavefront/recursive) condition
 // copy-pasted at construction and in two separate connect() lambdas -
 // adding Integrator as a third input would have made that a 3-site
@@ -780,6 +816,8 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_cropY0Spin->setEnabled(cropSpinsEnabled);
 	m_cropX1Spin->setEnabled(cropSpinsEnabled);
 	m_cropY1Spin->setEnabled(cropSpinsEnabled);
+	m_seedCheck->setEnabled(isDefault);
+	m_seedSpin->setEnabled(isDefault && m_seedCheck->isChecked());
 }
 
 void MainWindow::createPreviewTab() {

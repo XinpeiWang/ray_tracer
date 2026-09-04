@@ -1220,6 +1220,7 @@ QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
 		parts << tr("Crop: (%1,%2)-(%3,%4)")
 			.arg(flags.cropX0).arg(flags.cropY0).arg(flags.cropX1).arg(flags.cropY1);
 	}
+	if (flags.seed >= 0) parts << tr("Seed: %1").arg(flags.seed);
 	return parts.join(" · ");
 }
 

@@ -58,4 +58,13 @@ struct RenderOptions {
 	// under GPU SPPM (launcher/main.cpp warns on --denoise --sppm --gpu)
 	// or any CPU-only integrator.
 	bool denoise = false;
+	// An explicit CLI request for reproducible renders. -1 (default) means
+	// "not requested" - both backends fall back to their own pre-existing
+	// behavior (CPU: genuinely non-deterministic, seeded from hardware
+	// entropy every run; GPU: already deterministic at frame 0, unchanged).
+	// >= 0 makes CPU deterministic too (see camera_t::seed's own comment,
+	// camera.h) and gives GPU an explicit, chosen starting seed instead of
+	// always 0. Both backends, default path tracer only - same scope cut
+	// as regularize/max_component_value/crop above.
+	long long seed = -1;
 };
