@@ -138,6 +138,7 @@ namespace SceneNames {
     constexpr const char* SssDragonPbrtExample             = "Subsurface Dragon (pbrt example)";
     constexpr const char* GaneshaPbrtExample               = "Ganesha (pbrt example)";
     constexpr const char* SportsCarPbrtExample             = "Sports Car (pbrt example)";
+    constexpr const char* ZeroDayPbrtExample                = "Zero Day (pbrt example)";
 
     // Curated entries for self-contained pbrt_scenes/*.pbrt example files
     // (see scene_registry.h's pbrt_scene_registry::build_curated_pbrt_scene_

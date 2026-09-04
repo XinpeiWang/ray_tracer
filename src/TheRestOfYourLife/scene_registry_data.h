@@ -1236,6 +1236,33 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "H17", 163, SceneNames::SportsCarPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a studio-lit sports car with real-world car-paint (layered coated conductor), glass, chrome, and rubber materials under an HDR sky. Renders the daytime sky-lit variant (sportscar-sky.pbrt); a separate area-lit studio variant also ships in the same directory.",
             "Very Slow", "sportscar/sportscar-sky.pbrt"),
+        // H18: a genuinely NEW download (not a pre-existing local fixture
+        // like H13-H17 were) - github.com/mmp/pbrt-v4-scenes' "zero-day"
+        // scene, a detailed game-level-style interior (~422MB). It's an
+        // animated camera fly-through shipped as 9 separate per-frame
+        // .pbrt files (frame25/35/52/85/120/180/210/300/380.pbrt, each
+        // Include-ing its own geometry/geometry-fNNN.pbrt subset); this
+        // entry renders frame180, a representative mid-sequence interior
+        // shot, the same "pick the reasonable middle option" call made for
+        // H15's three subsurface-dragon density variants.
+        //
+        // Measured render cost is a real outlier even among this
+        // registry's other "Very Slow" entries: a 400x400x32spp CPU render
+        // still hadn't finished after 700s (H13-H17 all finish comparable
+        // resolutions in under a minute to a few minutes), while a 100x100
+        // render at any sample count finishes in ~45s - so the cost is
+        // concentrated in per-scanline shading at this camera position
+        // (151 ObjectInstance placements plus many layered `coateddiffuse`
+        // materials), not scene loading/BVH build. The .pbrt file's own
+        // authored "1024 pixelsamples" (which recommended_spp below is
+        // honestly pulled from, like every other curated pbrt entry) would
+        // make a full render impractically slow - said so explicitly here
+        // rather than silently reusing the same "Very Slow" wording H13-H17
+        // use for renders that actually finish quickly.
+        pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
+            "H18", 164, SceneNames::ZeroDayPbrtExample, SceneCategories::LargeScene,
+            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a highly detailed, game-level-style interior scene (an office/atrium space) shot as an animated camera fly-through. This entry renders one representative frame (frame180) of the 9 that ship in the bundle. Note: this is markedly heavier than this project's other Large Scenes - per-scanline shading cost at this camera position is high (heavy instancing, many layered materials), so treat the file's own recommended sample count as a starting point to scale down from, not a target.",
+            "Very Slow", "zero-day/frame180.pbrt"),
 
         // ---------------------------------------------------------------
         // Education (I1-I6): curated demos of the Render Options tab's own

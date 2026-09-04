@@ -333,6 +333,7 @@ pbrt_scenes/barcelona-pavilion/
 pbrt_scenes/sssdragon/
 pbrt_scenes/ganesha/
 pbrt_scenes/sportscar/
+pbrt_scenes/zero-day/
 # Companion tree assets for barcelona-pavilion (referenced as ../landscape/
 # from its .pbrt files) - only the ~46 files it actually needs, not the
 # full ~1.3GB landscape/ folder from the same upstream repo.

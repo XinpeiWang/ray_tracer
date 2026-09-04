@@ -313,7 +313,7 @@ void MainWindow::showAboutDialog() {
 		// cpu_renderer.lib directly, so there's no live count to read here.
 		// Keep this in sync by hand whenever scene_registry_tests.cpp's own
 		// builtin_scene_count()/kGuiSceneCount assertions change.
-		"<p>145 scenes, a wide BxDF library, multiple light and camera types, "
+		"<p>146 scenes, a wide BxDF library, multiple light and camera types, "
 		"triangle-mesh and texture support, BVH acceleration, volumetrics, and "
 		"a choice of integrators alongside standard path tracing - SPPM photon "
 		"mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, "
