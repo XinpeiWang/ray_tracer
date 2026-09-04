@@ -192,8 +192,8 @@ class camera {
     // using literal seed 0, exactly as before this field existed - zero
     // behavior change for a render that never sets this. >= 0 makes BOTH
     // of those deterministic: render() reseeds rtweekend.h's thread_rng()
-    // once per scanline via reseed_render_rng() (see that function's own
-    // comment, rtweekend.h, for why per-scanline rather than per-worker
+    // once per scanline via the private reseed_render_rng() method below
+    // (see its own comment for why per-scanline rather than per-worker
     // is required), and the alternate-sampler constructors below use this
     // value instead of a hardcoded 0. No CLI equivalent existed for this
     // at all before - unlike regularize/max_component_value/crop above,
@@ -382,9 +382,10 @@ class camera {
         unsigned int nthreads = determine_render_thread_count();
         std::clog << "Using " << nthreads << " threads for rendering" << std::endl;
 
-        // --seed: see camera_t::seed's own comment, and reseed_render_rng()'s
-        // own comment (rtweekend.h) for why thread_rng() is reseeded PER
-        // SCANLINE below (in the worker loop) rather than once here -
+        // --seed: see camera::seed's own comment above, and the private
+        // reseed_render_rng() method's own comment (below, in this same
+        // class) for why thread_rng() is reseeded PER SCANLINE below (in
+        // the worker loop) rather than once here -
         // scanline-to-worker assignment is a work-stealing race, not
         // reproducible run to run, so seeding by worker identity doesn't
         // give a reproducible render the way seeding by scanline index does.
@@ -393,8 +394,7 @@ class camera {
         // at each sampler-construction call site below.
         const int alt_sampler_seed = (seed >= 0) ? static_cast<int>(seed) : 0;
 
-        auto worker = [&](unsigned int tid) {
-            (void)tid;  // no longer used directly - see reseed_render_rng()'s own comment above
+        auto worker = [&]() {
             std::ostringstream ss;
             // Construct the ONE stateful sampler this render actually asked
             // for (sampler_kind), once per worker thread rather than once
@@ -407,9 +407,9 @@ class camera {
             // change for this project's pre-existing default). Every ctor
             // here seeds purely from (px, py, dim, a fixed global seed=0
             // unless --seed overrides it via alt_sampler_seed above), never
-            // from `tid`, so which thread renders a given pixel still can't
-            // change that pixel's random sequence - same determinism
-            // SobolSampler already had.
+            // from which thread happens to run this worker, so which
+            // thread renders a given pixel still can't change that pixel's
+            // random sequence - same determinism SobolSampler already had.
             std::optional<ZSobolSampler>      zsobol_sampler;
             std::optional<PaddedSobolSampler> padded_sobol_sampler;
             std::optional<StratifiedSampler>  stratified_sampler;
@@ -442,10 +442,11 @@ class camera {
 
                 // --seed: reseed thread_rng() fresh for THIS scanline,
                 // keyed on the scanline index j rather than which worker
-                // happens to be running it - see reseed_render_rng()'s own
-                // comment (rtweekend.h) for why that distinction matters.
-                // No-op (and no measurable cost beyond one branch) when
-                // --seed wasn't requested.
+                // happens to be running it - see the private
+                // reseed_render_rng() method's own comment (below, in this
+                // same class) for why that distinction matters. No-op (and
+                // no measurable cost beyond one branch) when --seed wasn't
+                // requested.
                 if (seed >= 0) reseed_render_rng(seed, j);
 
                 // render scanline j
@@ -649,7 +650,7 @@ class camera {
         std::vector<std::thread> threads;
         threads.reserve(nthreads);
         for (unsigned int t = 0; t < nthreads; ++t)
-            threads.emplace_back(worker, t);
+            threads.emplace_back(worker);
 
         for (auto &th : threads) th.join();
 
@@ -679,6 +680,48 @@ class camera {
     }
 
   private:
+    // --seed support (see camera::seed's own comment above).
+    //
+    // Reseeding has to happen PER SCANLINE, not once per worker thread at
+    // startup - render()'s worker loop below pulls scanlines from a shared
+    // atomic counter (next_j.fetch_sub(1)), a work-stealing scheduler, so
+    // WHICH thread ends up rendering scanline j is itself a scheduling
+    // race, not reproducible run to run. Seeding by "which worker am I"
+    // (a first attempt at this feature, since reverted) therefore doesn't
+    // work: the same scanline can land on a different thread - and see a
+    // different RNG state - on two runs with an identical --seed, even
+    // though each individual thread's OWN sequence was internally
+    // deterministic. Keying the reseed on the scanline index j instead - a
+    // property of the WORK ITEM, never the worker - fixes this: every
+    // pixel in scanline j always sees the exact same RNG state at the
+    // start of that scanline's render, regardless of which thread got
+    // there. (Within one scanline, the same thread renders every pixel
+    // single-threaded in the same fixed order every run, so one reseed per
+    // scanline is enough - no per-pixel reseed needed.)
+    //
+    // Deliberately a private member of camera rather than a free function
+    // in the shared, generic-feeling rtweekend.h (this project's own
+    // thread_rng()/random_double() home): the invariant above is specific
+    // to render()'s own work-stealing scanline scheduler, not a general-
+    // purpose utility - a caller in some other loop shape could satisfy
+    // this function's signature while violating the assumption it depends
+    // on. Scoping it here, next to the one caller (render(), below) whose
+    // scheduling shape it was actually derived from, means extending
+    // --seed to a different render loop later (BDPT/MLT/SPPM) forces a
+    // fresh look at whether the same "key on the work item, not the
+    // worker" reasoning even applies there, rather than inviting a
+    // silent, wrong reuse of this exact function.
+    static void reseed_render_rng(int64_t seed, int64_t stream) {
+        // Hash(seed, stream) (src/shared/pbrt_hash.h's MurmurHash64A-backed
+        // variadic hasher, reachable here via rtweekend.h's own include of
+        // rng.h -> pbrt_hash.h) combines both values into a well-
+        // distributed 64-bit sequence index, matching how every other
+        // seed-derivation site in this codebase turns a work-item index
+        // into an RNG seed (e.g. RNG::SetSequence(uint64_t)'s own
+        // single-arg overload calls MixBits() for exactly this purpose).
+        thread_rng().SetSequence(Hash(seed, stream), static_cast<uint64_t>(seed));
+    }
+
     double pixel_samples_scale;  // Color scale factor for a sum of pixel samples
     int    sqrt_spp;             // Square root of number of samples per pixel
     double recip_sqrt_spp;       // 1 / sqrt_spp

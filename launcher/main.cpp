@@ -630,9 +630,12 @@ int main(int argc, char** argv) {
         // GPU mode, where the CPU is otherwise idle while the GPU renders).
         BackgroundPngConverter png_converter(frames_dir);
 
-        // Loop-invariant (args.* never changes mid-video) - built once
-        // rather than reconstructed every frame. See src/shared/
-        // render_options.h's own field comments.
+        // Built once rather than reconstructed every frame - args.* never
+        // changes mid-video, so this is loop-invariant EXCEPT for
+        // render_opts.seed, which the frame loop below deliberately
+        // mutates in place each iteration when --seed was requested (see
+        // that block's own comment for why a per-frame seed is needed).
+        // See src/shared/render_options.h's own field comments.
         RenderOptions render_opts = render_options_from_args(args);
 
         // Render each frame with animated camera position
@@ -657,6 +660,30 @@ int main(int argc, char** argv) {
 
             auto frame_start = std::chrono::high_resolution_clock::now();
             int render_result = -1;
+
+            // --seed + --video: derive a per-frame seed from the base seed
+            // and the frame index, instead of reusing the same literal
+            // seed on every frame the way render_opts (built once, above)
+            // otherwise would. Without this, every frame's RNG starts from
+            // the exact same state (CPU: camera's private reseed_render_rng()
+            // method is keyed only on scanline index, never frame number,
+            // see its own comment, camera.h; GPU: frameNumber/frameNumber_ get overwritten
+            // with the same literal seed on every render() call, see
+            // optix_renderer_render.cpp/wavefront_path_tracer.cpp) -
+            // producing a video with a visibly frozen, non-animating
+            // grain/dither pattern instead of the natural per-frame
+            // variation a video needs. Modular addition (not a re-hash)
+            // is enough here: the same downstream mixing that already
+            // decorrelates adjacent scanline/frame seeds (reseed_render_
+            // rng()'s Hash(), GPU's pcg_hash() over frameNumber) does the
+            // real work - this just needs to feed it a different starting
+            // value per frame while staying reproducible (the same base
+            // --seed always regenerates the same sequence of per-frame
+            // seeds) and staying within the [0, 2147483647] range every
+            // consumer expects (launcher_args.h's own parse-time bound).
+            if (args.seed >= 0) {
+                render_opts.seed = (args.seed + frame) % 2147483648LL;
+            }
 
             // Render frame with GPU or CPU. force_camera_override=1: some
             // scenes (currently 1 and 2) otherwise ignore cam_x/y/z and
@@ -841,6 +868,18 @@ int main(int argc, char** argv) {
         std::cerr << "Warning: --tonemap has no effect under --bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the default path tracer supports it) - rendering with aces.\n";
+    }
+    // --seed reaches the same two plain path-tracer entry points exposure/
+    // tonemap do (both backends) - same warn-instead-of-silently-drop
+    // shape. Worth calling out explicitly (rather than just matching the
+    // pattern silently): reproducibility is the entire point of this
+    // flag, so a silent drop here would be especially misleading - the
+    // render would look like it honored --seed (no error) while actually
+    // being exactly as non-reproducible as if it had never been passed.
+    if (args.seed >= 0 && (use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --seed has no effect under --bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the default path tracer supports it) - this render will not be reproducible.\n";
     }
 
     // Used by the plain path-tracer branches only (use_gpu/else below) -

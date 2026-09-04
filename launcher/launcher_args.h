@@ -134,7 +134,11 @@ struct LaunchArgs {
 	// An explicit request for reproducible renders. -1 (default) means
 	// "not requested" - see RenderOptions::seed's own comment
 	// (render_options.h) for the full CPU/GPU determinism story this
-	// fixes. Both backends, default path tracer only.
+	// fixes. Both backends, default path tracer only. parse_launch_args()
+	// (below) clamps this to [0, 2147483647] at parse time - every actual
+	// consumer (GpuCameraParams::userSeed, camera_t's alternate-sampler
+	// seeding) narrows to a 32-bit int, so a value is validated here
+	// rather than silently wrapping (possibly negative) further downstream.
 	long long seed = -1;
 	// Real hero-wavelength spectral rendering (camera.h's ray_color_spectral(),
 	// see its own comment) instead of the default flat-RGB ray_color() -
@@ -382,8 +386,19 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == render_flags::kSeed && i + 1 < argc) {
 			try {
 				out.seed = std::stoll(argv[i + 1]);
-				if (out.seed < 0) {
-					std::cerr << "Invalid --seed " << out.seed << " (must be >= 0), ignoring\n";
+				// Upper bound matches every actual consumer of this value:
+				// GpuCameraParams::userSeed (gpu/optix/optix_types.h) is a
+				// 32-bit int, and camera_t's alternate-sampler seeding
+				// (camera.h's alt_sampler_seed) also narrows to int - a
+				// seed above INT32_MAX would otherwise silently wrap to a
+				// negative value there, which then reads as "no seed
+				// requested" and gets silently dropped instead of used
+				// (the bug this bound exists to prevent). The GUI's own
+				// spinbox (mainwindow_tabs_render.cpp) already caps input
+				// at this same 2147483647, so this just brings the raw CLI
+				// path in line with it.
+				if (out.seed < 0 || out.seed > 2147483647LL) {
+					std::cerr << "Invalid --seed " << out.seed << " (must be in [0, 2147483647]), ignoring\n";
 					out.seed = -1;
 				}
 				consumed_args.insert(i);
@@ -644,8 +659,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               settings, and same seed always produce the same pixels. Without\n"
 					  << "               this, CPU renders draw fresh randomness every run (never\n"
 					  << "               reproducible); GPU renders already default to a fixed internal\n"
-					  << "               seed, so this just lets you choose a different one. Default\n"
-					  << "               path tracer only, both backends.\n"
+					  << "               seed, so this just lets you choose a different one. N must be in\n"
+					  << "               [0, 2147483647]. Default path tracer only, both backends; has no\n"
+					  << "               effect under --bdpt/--mlt/--sppm/--randomwalk/--ao/--simplepath/\n"
+					  << "               --simplevolpath/--lightpath. --video reseeds each frame from N so\n"
+					  << "               the whole video reproduces while frames still get distinct noise.\n"
 					  << "  " << render_flags::kSpectral << " : Real hero-wavelength spectral rendering instead of flat RGB.\n"
 					  << "               CPU default path tracer only. Only lambertian, metal,\n"
 					  << "               dielectric, rough_dielectric, conductor, and diffuse_light\n"
