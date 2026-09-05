@@ -213,6 +213,16 @@ struct LaunchArgs {
 	int  video_fps          = 30;
 	double video_speed      = 1.0;
 	std::string camera_path = "orbit";
+	// True if --camera-path/-p or --video-preset was actually passed (both
+	// set camera_path explicitly, below) - lets main.cpp tell "the user
+	// picked this" apart from "still sitting at the hardcoded default
+	// above", so it can fall back to the SELECTED scene's own curated
+	// recommendation (scene_registry.h's recommended_camera_path_for(),
+	// via cpu_scene_recommended_camera_path_by_id()) only when nothing
+	// more specific was requested, without ever overriding a real user
+	// choice - including an explicit `--camera-path orbit` that happens to
+	// spell out the same value the hardcoded default already has.
+	bool camera_path_explicit = false;
 	std::string custom_output_path;
 
 	int    image_width       = kDefaultWidth;
@@ -574,6 +584,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			}
 		} else if ((arg == render_flags::kCameraPath || arg == "-p") && i + 1 < argc) {
 			out.camera_path = argv[i + 1];
+			out.camera_path_explicit = true;
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
@@ -589,6 +600,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 				out.video_mode = true;
 				out.scene_id = preset->scene_id;
 				out.camera_path = preset->camera_path;
+				out.camera_path_explicit = true;
 				out.video_frames = preset->frames;
 				out.video_fps = preset->fps;
 				out.video_speed = preset->speed;
@@ -755,7 +767,8 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  " << render_flags::kFrames << ",-f: Number of frames for video (default: 120)\n"
 					  << "  " << render_flags::kFps << "      : Frames per second for video (default: 30)\n"
 					  << "  " << render_flags::kSpeed << "    : Camera movement speed multiplier for video (default: 1.0)\n"
-					  << "  " << render_flags::kCameraPath << ",-p: Camera animation path (orbit|linear|figure8|spiral)\n"
+					  << "  " << render_flags::kCameraPath << ",-p: Camera animation path (orbit|linear|figure8|spiral) - "
+				  << "defaults to the selected scene's own curated recommendation if omitted\n"
 					  << "  --video-preset ID: Sets --video plus scene_id/camera-path/frames/fps/speed\n"
 					  << "               together from one of src/shared/video_preset.h's named bundles.\n"
 					  << "               Accepts either short id or descriptive key:\n"

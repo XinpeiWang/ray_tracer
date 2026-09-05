@@ -300,6 +300,33 @@ TEST(SceneRegistryTest, AllRecommendedExposureArePositive) {
 	}
 }
 
+TEST(SceneRegistryTest, RecommendedCameraPathIsNeverEmpty) {
+	for (const auto& s : get_scene_registry()) {
+		EXPECT_STRNE(recommended_camera_path_for(s.id), "")
+			<< "Bad camera path for id " << s.id;
+	}
+}
+
+TEST(SceneRegistryTest, RecommendedCameraPathCuratedChoices) {
+	// The individual overrides (single showcase objects -> orbit/spiral)...
+	EXPECT_STREQ(recommended_camera_path_for("H15"), "spiral");
+	EXPECT_STREQ(recommended_camera_path_for("H16"), "orbit");
+	EXPECT_STREQ(recommended_camera_path_for("H17"), "orbit");
+	EXPECT_STREQ(recommended_camera_path_for("H19"), "orbit");
+	EXPECT_STREQ(recommended_camera_path_for("H21"), "spiral");
+	// ...the category-letter default (architectural walkthroughs -> linear)
+	// for every other Large Scene...
+	EXPECT_STREQ(recommended_camera_path_for("H1"), "linear");
+	EXPECT_STREQ(recommended_camera_path_for("H13"), "linear");
+	EXPECT_STREQ(recommended_camera_path_for("H20"), "linear");
+	// ...and the global default (orbit) for every other category and for
+	// an id that doesn't exist at all.
+	EXPECT_STREQ(recommended_camera_path_for("A1"), "orbit");
+	EXPECT_STREQ(recommended_camera_path_for("G6"), "orbit");
+	EXPECT_STREQ(recommended_camera_path_for("NotARealId"), "orbit");
+	EXPECT_STREQ(recommended_camera_path_for(""), "orbit");
+}
+
 TEST(SceneRegistryTest, AllBuildWorldCallbacksAreSet) {
 	for (const auto& s : get_scene_registry()) {
 		EXPECT_TRUE(static_cast<bool>(s.build_world))
@@ -565,6 +592,27 @@ TEST(CpuSceneApiTest, RecommendedExposureByIdMatchesCppRegistry) {
 	for (const auto& s : get_scene_registry()) {
 		EXPECT_DOUBLE_EQ(cpu_scene_recommended_exposure_by_id(s.id.c_str()), s.recommended_exposure)
 			<< "Exposure mismatch for id " << s.id;
+	}
+}
+
+TEST(CpuSceneApiTest, RecommendedCameraPathByIdMatchesCppRegistry) {
+	for (const auto& s : get_scene_registry()) {
+		EXPECT_STREQ(cpu_scene_recommended_camera_path_by_id(s.id.c_str()), recommended_camera_path_for(s.id))
+			<< "Camera path mismatch for id " << s.id;
+	}
+}
+
+TEST(CpuSceneApiTest, UnknownIdRecommendedCameraPathReturnsOrbit) {
+	EXPECT_STREQ(cpu_scene_recommended_camera_path_by_id("NotARealId"), "orbit");
+	EXPECT_STREQ(cpu_scene_recommended_camera_path_by_id(""), "orbit");
+}
+
+TEST(CpuSceneApiTest, MetadataSnapshotRecommendedCameraPathMatchesById) {
+	for (const auto& s : get_scene_registry()) {
+		SceneMetadataSnapshot snap{};
+		ASSERT_EQ(cpu_scene_metadata_snapshot(s.id.c_str(), &snap), 1) << "Snapshot lookup failed for id " << s.id;
+		EXPECT_STREQ(snap.recommended_camera_path, cpu_scene_recommended_camera_path_by_id(s.id.c_str()))
+			<< "Snapshot camera path mismatch for id " << s.id;
 	}
 }
 

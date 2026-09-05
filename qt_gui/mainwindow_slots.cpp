@@ -1006,6 +1006,18 @@ void MainWindow::onSceneChanged(int index) {
 	m_samplesSpinBox->setValue(meta.recommendedSpp);
 	m_exposureSpin->setValue(meta.recommendedExposure);
 
+	// Same unconditional-reset reasoning for the Video tab's camera-path
+	// combo - meta.recommendedCameraPath (scene_registry.h's
+	// recommended_camera_path_for()) is curated per scene/category (e.g.
+	// Large Scenes default to a lateral "linear" flythrough rather than an
+	// "orbit" that could circle straight through a room's walls), so a
+	// stale path left over from a previous scene is equally as wrong as a
+	// stale exposure would be.
+	if (m_cameraPathCombo) {
+		const int pathIdx = m_cameraPathCombo->findData(meta.recommendedCameraPath);
+		if (pathIdx >= 0) m_cameraPathCombo->setCurrentIndex(pathIdx);
+	}
+
 	// Auto-switch to CPU when scene doesn't support GPU
 	if (!meta.gpuCompatible && m_renderModeCombo->currentData().toBool()) {
 		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU

@@ -509,6 +509,17 @@ const char* cpu_scene_recommended_integrator_by_id(const char* scene_id);
 const char* cpu_scene_recommended_sampler_by_id(const char* scene_id);
 const char* cpu_scene_recommended_light_sampler_by_id(const char* scene_id);
 
+/// Curated default camera-animation path for video mode (one of launcher/
+/// camera_path.h's named types: "orbit"/"linear"/"figure8"/"spiral") - see
+/// scene_registry.h's recommended_camera_path_for() for the actual per-
+/// scene/category choices and why this isn't a SceneDescriptor field.
+/// UNLIKE recommended_integrator/sampler/light_sampler above, this never
+/// returns "" (falls back to "orbit") and IS used as the default: by
+/// main.cpp when --camera-path/-p isn't passed, and auto-applied in the
+/// GUI - see mainwindow_slots.cpp's onSceneChanged().
+/// @return "orbit" if scene_id is empty/unrecognized (never fails)
+const char* cpu_scene_recommended_camera_path_by_id(const char* scene_id);
+
 /// A curated flat multiplier for the Render Options tab's Exposure control
 /// (SceneDescriptor::recommended_exposure - see its own comment, scene_
 /// registry.h, for why this is a curated value rather than one derived from

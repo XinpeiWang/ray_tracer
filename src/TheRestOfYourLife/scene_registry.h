@@ -904,3 +904,51 @@ inline const SceneDescriptor* find_scene(const std::string& id) {
 inline int scene_count() {
     return static_cast<int>(get_scene_registry().size());
 }
+
+// Curated default camera-animation path (see launcher/camera_path.h's named
+// path types: orbit/linear/figure8/spiral) for video-mode generation when
+// the user hasn't picked one explicitly - auto-applied in the GUI
+// (mainwindow_slots.cpp's onSceneChanged()) and used as the CLI's own
+// default (main.cpp) when --camera-path/-p isn't passed and no
+// --video-preset already set one.
+//
+// Deliberately NOT a SceneDescriptor field: the ~65 hand-built scene
+// entries in get_builtin_scene_registry() are one large const aggregate-
+// init literal (see this file's own repeated "positional brace-init"
+// warnings on SceneDescriptor's later fields) that can't cheaply grow a
+// new per-entry value without respelling every intervening field for each
+// one. Video-mode path choice is also a purely presentational concern
+// anyway (unlike recommended_spp/exposure, it never changes what's
+// actually rendered, only how a video moves the camera through it), so it
+// lives here as its own small lookup instead - the same "separate,
+// video-specific curated table" spirit as video_preset.h.
+//
+// A category-letter default (checked before the global "orbit" fallback)
+// covers most of a category at once; individual id overrides handle the
+// exceptions within it. Reasoning behind the actual choices:
+// - H (Large Scenes) default to "linear": these are full architectural
+//   walkthroughs (Sponza, Bistro, cathedral naves, furnished rooms), and
+//   linear's lateral sweep never approaches the subject closer than the
+//   scene's own recommended camera distance (see camera_path_linear's own
+//   comment) - unlike orbit, which risks circling straight through a
+//   room's walls when shot from close up inside an enclosed space.
+// - H15 (Subsurface Dragon) and H21 (Transparent Machines) override to
+//   "spiral": a single detailed subject benefits from the zoom-in reveal,
+//   the same reasoning video_preset.h's own "glass-dragon-caustics" (V5,
+//   a spiral zoom into a different glass dragon model) already uses.
+// - H16 (Ganesha), H17 (Sports Car), and H19 (Crown) override to "orbit":
+//   these are single centered showcase objects (statue/vehicle/jewelry),
+//   better served by a classic turntable rotation than a lateral sweep or
+//   zoom - matching how video_preset.h's own "teapot-spin" (V2, G6 Utah
+//   Teapot) already uses orbit for exactly this kind of centered
+//   single-object showcase.
+inline const char* recommended_camera_path_for(const std::string& scene_id) {
+    static const std::map<std::string, const char*> kIdOverrides = {
+        {"H15", "spiral"}, {"H16", "orbit"}, {"H17", "orbit"},
+        {"H19", "orbit"}, {"H21", "spiral"},
+    };
+    const auto it = kIdOverrides.find(scene_id);
+    if (it != kIdOverrides.end()) return it->second;
+    if (!scene_id.empty() && scene_id[0] == 'H') return "linear";
+    return "orbit";
+}

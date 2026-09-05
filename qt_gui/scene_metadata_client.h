@@ -122,6 +122,11 @@ struct SceneMetadata {
 	QString recommendedLightSampler;
 	double camLookfromX = 0.0, camLookfromY = 0.0, camLookfromZ = 0.0;
 	double camLookatX = 0.0, camLookatY = 0.0, camLookatZ = 0.0;
+	// One of camera_path.h's named path types ("orbit"/"linear"/"figure8"/
+	// "spiral") - see scene_registry.h's recommended_camera_path_for() for
+	// the curated per-scene choice. Never empty - defaults to "orbit" the
+	// same way the underlying C field does.
+	QString recommendedCameraPath = QStringLiteral("orbit");
 };
 
 // Fills `out` with everything SceneMetadata holds for scene_id in one DLL

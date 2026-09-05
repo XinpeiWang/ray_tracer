@@ -53,6 +53,12 @@ struct SceneMetadataSnapshot {
 	// is known-good.
 	double cam_lookfrom_x, cam_lookfrom_y, cam_lookfrom_z;
 	double cam_lookat_x, cam_lookat_y, cam_lookat_z;
+	// One of launcher/camera_path.h's named path types ("orbit", "linear",
+	// "figure8", "spiral") - see scene_registry.h's
+	// recommended_camera_path_for() for how this is chosen and why it
+	// isn't a SceneDescriptor field. Never empty (falls back to "orbit"),
+	// unlike recommended_integrator/sampler/light_sampler above.
+	const char* recommended_camera_path;
 };
 
 #ifdef __cplusplus

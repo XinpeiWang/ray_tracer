@@ -953,6 +953,10 @@ extern "C" double cpu_scene_recommended_exposure_by_id(const char* scene_id) {
 	return s ? s->recommended_exposure : 1.0;
 }
 
+extern "C" const char* cpu_scene_recommended_camera_path_by_id(const char* scene_id) {
+	return recommended_camera_path_for(scene_id ? scene_id : "");
+}
+
 extern "C" int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSnapshot* out) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	if (!s || !out) return 0;
@@ -974,5 +978,6 @@ extern "C" int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSn
 	out->cam_lookat_x = cc.lookat_x;
 	out->cam_lookat_y = cc.lookat_y;
 	out->cam_lookat_z = cc.lookat_z;
+	out->recommended_camera_path = recommended_camera_path_for(s->id);
 	return 1;
 }

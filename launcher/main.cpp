@@ -279,7 +279,17 @@ int main(int argc, char** argv) {
 	int  video_frames       = args.video_frames;
 	int  video_fps          = args.video_fps;
 	double video_speed      = args.video_speed;
-	std::string camera_path = args.camera_path;
+	// The scene's own curated default (scene_registry.h's
+	// recommended_camera_path_for(), e.g. Large Scenes defaulting to a
+	// "linear" flythrough rather than an "orbit" that could circle through
+	// a room's walls) only when the user didn't ask for a specific path
+	// via --camera-path/-p or --video-preset - never overrides an actual
+	// choice, matches the GUI's own auto-apply (mainwindow_slots.cpp's
+	// onSceneChanged()) for the case where nothing more specific was asked
+	// for either.
+	std::string camera_path = args.camera_path_explicit
+		? args.camera_path
+		: cpu_scene_recommended_camera_path_by_id(scene_id.c_str());
 	bool use_sppm           = args.use_sppm;
 	bool use_bdpt           = args.use_bdpt;
 	bool use_mlt            = args.use_mlt;
