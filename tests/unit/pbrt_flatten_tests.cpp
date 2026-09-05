@@ -2037,6 +2037,13 @@ TEST(FlattenTest, ParserWarningsAreCarriedThrough) {
 // and a vertical fov. Getting the inversion or the fov convention wrong
 // mis-frames every scene, and does so plausibly enough to look intentional.
 
+// LookAt's target survives all the way to the flattened Camera now (see
+// pbrt_scene.h's GraphicsState::lookAtDistance/Scene::cameraLookAtDistance
+// and cameraFromWorldToCamera()'s own comments): a LookAt immediately
+// followed by Camera/WorldBegin, with nothing else touching the CTM in
+// between - the overwhelmingly common real-scene pattern, and exactly what
+// this test writes - reconstructs the EXACT declared target, not a
+// placeholder 1 unit along the view direction.
 TEST(FlattenCameraTest, EyeAndTargetAreRecoveredFromWorldToCamera) {
 	const FlatScene s = flattenSource(
 		"LookAt 0 0 -5   0 0 0   0 1 0\n"
@@ -2045,8 +2052,11 @@ TEST(FlattenCameraTest, EyeAndTargetAreRecoveredFromWorldToCamera) {
 	EXPECT_NEAR(s.camera.lookfrom[0], 0.0, 1e-9);
 	EXPECT_NEAR(s.camera.lookfrom[1], 0.0, 1e-9);
 	EXPECT_NEAR(s.camera.lookfrom[2], -5.0, 1e-9);
-	// looking toward the origin means the target is further along +z
-	EXPECT_NEAR(s.camera.lookat[2], -4.0, 1e-9);
+	// The scene declared the target as the origin - that's what should come
+	// back, not lookfrom + a unit step toward it.
+	EXPECT_NEAR(s.camera.lookat[0], 0.0, 1e-9);
+	EXPECT_NEAR(s.camera.lookat[1], 0.0, 1e-9);
+	EXPECT_NEAR(s.camera.lookat[2], 0.0, 1e-9);
 	EXPECT_NEAR(s.camera.up[1], 1.0, 1e-9);
 }
 
@@ -2059,15 +2069,83 @@ TEST(FlattenCameraTest, OffAxisEyePositionRoundTrips) {
 	EXPECT_NEAR(s.camera.lookfrom[1], 4.0, 1e-9);
 	EXPECT_NEAR(s.camera.lookfrom[2], 1.5, 1e-9);
 
-	// The view direction must point from the eye toward the stated target.
+	// The real declared target - (0.5, 0.5, 0) - round-trips exactly, not
+	// just its direction.
+	EXPECT_NEAR(s.camera.lookat[0], 0.5, 1e-9);
+	EXPECT_NEAR(s.camera.lookat[1], 0.5, 1e-9);
+	EXPECT_NEAR(s.camera.lookat[2], 0.0, 1e-9);
+}
+
+// A large eye-to-target distance (the kind a real external scene's LookAt
+// declares - e.g. a statue framed from ~245 units away) must survive
+// exactly, not just directionally - this is precisely the case that used to
+// come back as "1 unit from lookfrom" and broke every orbit-family
+// launcher/camera_path.h path pivoting around it (see cameraFromWorldToCamera()'s
+// own comment).
+TEST(FlattenCameraTest, LargeLookAtDistanceSurvivesExactly) {
+	const FlatScene s = flattenSource(
+		"LookAt 328 40.282 245   328 10 0   -0.00212272 0.998201 -0.0599264\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_NEAR(s.camera.lookat[0], 328.0, 1e-6);
+	EXPECT_NEAR(s.camera.lookat[1], 10.0, 1e-6);
+	EXPECT_NEAR(s.camera.lookat[2], 0.0, 1e-6);
+}
+
+// A Rotate between LookAt and Camera is a directive this loader deliberately
+// does not try to track a distance through (see Parser::applyCTM's own
+// comment on why every non-LookAt CTM mutation invalidates rather than
+// guessing) - it should fall back to the same placeholder "1 unit along the
+// view direction" behavior as before this fix, rather than a stale distance
+// from the LookAt that preceded it. Rotate (unlike Scale) keeps the
+// composed matrix's rotation part orthonormal, so the placeholder's "1
+// unit" is exact here rather than picking up an unrelated pre-existing
+// quirk where a non-orthonormal CTM (e.g. from a Scale) makes the
+// placeholder's implicit unit-forward-vector assumption not quite hold -
+// that quirk predates this fix and is out of scope for it.
+TEST(FlattenCameraTest, RotateAfterLookAtFallsBackToUnitPlaceholder) {
+	const FlatScene s = flattenSource(
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"Rotate 45 0 1 0\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
 	const double dx = s.camera.lookat[0] - s.camera.lookfrom[0];
 	const double dy = s.camera.lookat[1] - s.camera.lookfrom[1];
 	const double dz = s.camera.lookat[2] - s.camera.lookfrom[2];
-	const double tx = 0.5 - 3.0, ty = 0.5 - 4.0, tz = 0.0 - 1.5;
-	const double tlen = std::sqrt(tx * tx + ty * ty + tz * tz);
-	EXPECT_NEAR(dx, tx / tlen, 1e-9);
-	EXPECT_NEAR(dy, ty / tlen, 1e-9);
-	EXPECT_NEAR(dz, tz / tlen, 1e-9);
+	EXPECT_NEAR(std::sqrt(dx * dx + dy * dy + dz * dz), 1.0, 1e-9);
+}
+
+// A camera authored via a raw matrix (Translate/Transform/ConcatTransform)
+// rather than LookAt never has a target distance to recover in the first
+// place - confirms that path is untouched by this fix and still gets the
+// same "1 unit along the view direction" placeholder it always has.
+TEST(FlattenCameraTest, TransformOnlyCameraKeepsUnitPlaceholder) {
+	const FlatScene s = flattenSource(
+		"Translate 0 0 -5\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	const double dx = s.camera.lookat[0] - s.camera.lookfrom[0];
+	const double dy = s.camera.lookat[1] - s.camera.lookfrom[1];
+	const double dz = s.camera.lookat[2] - s.camera.lookfrom[2];
+	EXPECT_NEAR(std::sqrt(dx * dx + dy * dy + dz * dz), 1.0, 1e-9);
+}
+
+// The animated-camera path (see AnimatedCameraCarriesTheEndKeyframeAndShutterWindow
+// above) reconstructs the end keyframe through the same
+// cameraFromWorldToCamera() - confirm its own LookAt distance survives
+// independently of the start keyframe's.
+TEST(FlattenCameraTest, AnimatedCameraPreservesLookAtDistanceForBothKeyframes) {
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"EndTime\"\n"
+		"LookAt 3 0 -10   3 0 0   0 1 0\n"
+		"ActiveTransform \"All\"\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	ASSERT_TRUE(s.camera.isAnimated);
+	EXPECT_NEAR(s.camera.lookat[2], 0.0, 1e-9);    // start keyframe: real distance 5
+	EXPECT_NEAR(s.camera.lookat1[2], 0.0, 1e-9);   // end keyframe: real distance 10
 }
 
 TEST(FlattenCameraTest, FovIsTakenAsVerticalOnALandscapeFrame) {

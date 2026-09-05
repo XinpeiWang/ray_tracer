@@ -2271,7 +2271,21 @@ inline const SubsurfacePreset *subsurfacePresetFor(const std::string &name) {
 //
 // pbrt's camera looks down +z with +y up, which is where the row picks below
 // come from: R^T * (0,0,1) is R's third row, R^T * (0,1,0) is its second.
-inline Camera cameraFromWorldToCamera(const pbrt_scene::Matrix4 &w2c) {
+//
+// `lookAtDistance` (Scene::cameraLookAtDistance(End), positive when the
+// original LookAt survived untouched to WorldBegin - see that field's own
+// comment) restores the REAL "lookat" the scene file declared. Without it,
+// only the forward DIRECTION survives the matrix round-trip, not how far
+// along it the scene's actual subject was - lookat would land exactly 1
+// unit from lookfrom regardless of whether the file's own LookAt put its
+// target 1 unit away or 1000. That placeholder is fine for anything that
+// only needs the camera's aim (rendering itself never depends on lookat
+// specifically), but it silently breaks any consumer that treats lookat as
+// the subject's real location - focusDistanceFor()'s depth-of-field
+// fallback, and every orbit-family launcher/camera_path.h path (orbit/
+// spiral/showcase/figure8), which pivot the camera around lookat at a
+// radius derived from this same distance.
+inline Camera cameraFromWorldToCamera(const pbrt_scene::Matrix4 &w2c, double lookAtDistance = -1.0) {
 	Camera c;
 	const double *m = w2c.m;
 
@@ -2283,7 +2297,8 @@ inline Camera cameraFromWorldToCamera(const pbrt_scene::Matrix4 &w2c) {
 
 	const double fwd[3] = {m[8], m[9], m[10]};
 	c.up[0] = m[4]; c.up[1] = m[5]; c.up[2] = m[6];
-	for (int i = 0; i < 3; ++i) c.lookat[i] = c.lookfrom[i] + fwd[i];
+	const double dist = (lookAtDistance > 0.0) ? lookAtDistance : 1.0;
+	for (int i = 0; i < 3; ++i) c.lookat[i] = c.lookfrom[i] + fwd[i] * dist;
 	return c;
 }
 
@@ -3754,7 +3769,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	}
 
 	// ---- camera ----------------------------------------------------------
-	out.camera = cameraFromWorldToCamera(scene.worldToCamera);
+	out.camera = cameraFromWorldToCamera(scene.worldToCamera, scene.cameraLookAtDistance);
 	{
 		const double fov = scene.cameraFov();
 		// pbrt's fov applies to the NARROWER image axis. Ours is always
@@ -3821,7 +3836,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		out.camera.shutterClose = scene.cameraParams.getFloat("shutterclose", out.camera.shutterClose);
 		out.camera.isAnimated = scene.cameraIsAnimated();
 		if (out.camera.isAnimated) {
-			const Camera endCam = cameraFromWorldToCamera(scene.worldToCameraEnd);
+			const Camera endCam = cameraFromWorldToCamera(scene.worldToCameraEnd, scene.cameraLookAtDistanceEnd);
 			for (int i = 0; i < 3; ++i) {
 				out.camera.lookfrom1[i] = endCam.lookfrom[i];
 				out.camera.lookat1[i] = endCam.lookat[i];

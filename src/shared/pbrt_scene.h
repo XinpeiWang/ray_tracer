@@ -352,6 +352,22 @@ struct Scene {
 	// two different keyframes before WorldBegin - cameraIsAnimated() below
 	// is the real test for that, not just "this field is non-default".
 	Matrix4 worldToCameraEnd;
+	// The eye-to-look distance from the LookAt directive that produced
+	// worldToCamera/worldToCameraEnd, in world units - NOT recoverable from
+	// the matrix itself (LookAt's "look" point collapses into a matrix
+	// column no more informative than a unit direction, see pbrt_flatten.h's
+	// cameraFromWorldToCamera() for what that reconstruction actually gets
+	// back). Populated only when a LookAt directive was the last thing to
+	// touch the corresponding CTM slot before WorldBegin, with nothing else
+	// (Identity/Scale/Transform/ConcatTransform/CoordSysTransform, or a
+	// second LookAt) mutating it in between - see GraphicsState::lookAtDistance's
+	// own comment. -1.0 means "not available" (no LookAt, or something else
+	// touched the CTM afterward): cameraFromWorldToCamera() falls back to
+	// its previous "1 unit forward" placeholder in that case, so a scene
+	// built via Transform/ConcatTransform instead of LookAt renders exactly
+	// as it always has.
+	double cameraLookAtDistance = -1.0;
+	double cameraLookAtDistanceEnd = -1.0;
 	// TransformTimes directive's own two floats - pbrt-v4's real defaults
 	// (almost every real scene either omits this directive or writes [0,1]
 	// explicitly; read for real rather than assumed either way).
@@ -670,6 +686,17 @@ struct GraphicsState {
 	// 3 ("All", both) is pbrt-v4's own default and this parser's, so a
 	// scene that never declares ActiveTransform keeps ctm/ctmEnd in lockstep.
 	int activeTransformBits = 3;
+	// Mirrors ctm/ctmEnd: the eye-to-look distance of whichever LookAt call
+	// most recently wrote to that slot, or -1.0 if the slot's current value
+	// didn't come from a LookAt (never called, or overwritten since by
+	// Identity/Scale/Rotate/Translate/Transform/ConcatTransform/
+	// CoordSysTransform - see Parser::applyCTM's own comment for why every
+	// one of those invalidates rather than trying to track distance through
+	// an arbitrary transform). Copied into Scene::cameraLookAtDistance(End)
+	// at WorldBegin, the same moment ctm/ctmEnd themselves get copied into
+	// worldToCamera/worldToCameraEnd.
+	double lookAtDistance = -1.0;
+	double lookAtDistanceEnd = -1.0;
 	int materialIndex = -1;
 	int areaLightIndex = -1;
 	int insideMedium = -1;      // set by MediumInterface, inherited by Shape
@@ -765,9 +792,22 @@ private:
 	// "compose with the current CTM" semantics). One place for this pattern
 	// means a scope divergence between the two slots can't be introduced by
 	// a future directive forgetting one of the two bit checks.
-	void applyCTM(const Matrix4& m, bool replace) {
-		if (gs_.activeTransformBits & 1) gs_.ctm    = replace ? m : gs_.ctm * m;
-		if (gs_.activeTransformBits & 2) gs_.ctmEnd = replace ? m : gs_.ctmEnd * m;
+	//
+	// `newLookAtDistance` updates GraphicsState::lookAtDistance(End) the
+	// same way `m`/`replace` update ctm/ctmEnd: the LookAt call site passes
+	// its own real eye-to-look distance; every other caller (Identity/
+	// Translate/Scale/Rotate/Transform/ConcatTransform) uses the default,
+	// which invalidates it. This is deliberately conservative rather than
+	// trying to carry a real distance through an arbitrary post-LookAt
+	// transform (e.g. a Scale would change it, a Translate/Rotate wouldn't,
+	// and telling those apart isn't worth it for a pattern real scenes don't
+	// use - LookAt is essentially always immediately followed by Camera) -
+	// only the untouched-since-LookAt case gets the real distance, every
+	// other case falls back to cameraFromWorldToCamera()'s existing "1 unit
+	// forward" placeholder, exactly as before this field existed.
+	void applyCTM(const Matrix4& m, bool replace, double newLookAtDistance = -1.0) {
+		if (gs_.activeTransformBits & 1) { gs_.ctm    = replace ? m : gs_.ctm * m;    gs_.lookAtDistance    = newLookAtDistance; }
+		if (gs_.activeTransformBits & 2) { gs_.ctmEnd = replace ? m : gs_.ctmEnd * m; gs_.lookAtDistanceEnd = newLookAtDistance; }
 	}
 
 	// Errors and warnings name the file they came from. Without it, "line 12"
@@ -874,7 +914,9 @@ private:
 								   applyCTM(Matrix4::rotate(v[0], v[1], v[2], v[3]), false);
 								   return true; }
 		if (d == "LookAt")       { double v[9]; if (!readNumbers(9, v, d)) return false;
-								   applyCTM(Matrix4::lookAt(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]), false);
+								   const double eyeToLookX = v[3] - v[0], eyeToLookY = v[4] - v[1], eyeToLookZ = v[5] - v[2];
+								   const double eyeToLookDist = std::sqrt(eyeToLookX * eyeToLookX + eyeToLookY * eyeToLookY + eyeToLookZ * eyeToLookZ);
+								   applyCTM(Matrix4::lookAt(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]), false, eyeToLookDist);
 								   return true; }
 		if (d == "Transform" || d == "ConcatTransform") {
 			// Optionally bracketed; pbrt writes these column-major.
@@ -944,6 +986,8 @@ private:
 		if (d == "WorldBegin") {
 			s_.worldToCamera = gs_.ctm;
 			s_.worldToCameraEnd = gs_.ctmEnd;
+			s_.cameraLookAtDistance = gs_.lookAtDistance;
+			s_.cameraLookAtDistanceEnd = gs_.lookAtDistanceEnd;
 			// pbrt resets the CTM (and the world-local pieces of graphics
 			// state - current material/area light/medium/orientation, which
 			// only ever make sense inside the world block) to their defaults
@@ -1241,6 +1285,13 @@ private:
 			if (found >= 0) {
 				gs_.ctm = namedCoordinateSystems_[static_cast<std::size_t>(found)].second.first;
 				gs_.ctmEnd = namedCoordinateSystems_[static_cast<std::size_t>(found)].second.second;
+				// Named coordinate systems don't carry a look-at distance of
+				// their own (namedCoordinateSystems_ only snapshots the
+				// matrix pair) - see GraphicsState::lookAtDistance's own
+				// comment for why an untracked CTM mutation invalidates
+				// rather than guessing.
+				gs_.lookAtDistance = -1.0;
+				gs_.lookAtDistanceEnd = -1.0;
 			} else {
 				warn(line, "CoordSysTransform: unknown coordinate system \"" + name + "\"");
 			}

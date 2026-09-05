@@ -906,10 +906,10 @@ inline int scene_count() {
 }
 
 // Curated default camera-animation path (see launcher/camera_path.h's named
-// path types: orbit/linear/figure8/spiral) for video-mode generation when
-// the user hasn't picked one explicitly - auto-applied in the GUI
-// (mainwindow_slots.cpp's onSceneChanged()) and used as the CLI's own
-// default (main.cpp) when --camera-path/-p isn't passed and no
+// path types: orbit/linear/figure8/spiral/tour/showcase) for video-mode
+// generation when the user hasn't picked one explicitly - auto-applied in
+// the GUI (mainwindow_slots.cpp's onSceneChanged()) and used as the CLI's
+// own default (main.cpp) when --camera-path/-p isn't passed and no
 // --video-preset already set one.
 //
 // Deliberately NOT a SceneDescriptor field: the ~65 hand-built scene
@@ -926,29 +926,62 @@ inline int scene_count() {
 // A category-letter default (checked before the global "orbit" fallback)
 // covers most of a category at once; individual id overrides handle the
 // exceptions within it. Reasoning behind the actual choices:
-// - H (Large Scenes) default to "linear": these are full architectural
-//   walkthroughs (Sponza, Bistro, cathedral naves, furnished rooms), and
-//   linear's lateral sweep never approaches the subject closer than the
-//   scene's own recommended camera distance (see camera_path_linear's own
-//   comment) - unlike orbit, which risks circling straight through a
-//   room's walls when shot from close up inside an enclosed space.
-// - H15 (Subsurface Dragon) and H21 (Transparent Machines) override to
-//   "spiral": a single detailed subject benefits from the zoom-in reveal,
-//   the same reasoning video_preset.h's own "glass-dragon-caustics" (V5,
-//   a spiral zoom into a different glass dragon model) already uses.
-// - H16 (Ganesha), H17 (Sports Car), and H19 (Crown) override to "orbit":
-//   these are single centered showcase objects (statue/vehicle/jewelry),
-//   better served by a classic turntable rotation than a lateral sweep or
-//   zoom - matching how video_preset.h's own "teapot-spin" (V2, G6 Utah
-//   Teapot) already uses orbit for exactly this kind of centered
-//   single-object showcase.
+// - H (Large Scenes) default to "tour": these are full architectural
+//   walkthroughs (Sponza, Bistro, cathedral naves, furnished rooms) -
+//   camera_path_tour's lateral S-curve sway, gentle forward glide toward
+//   the subject, and independently drifting look-at read as an actual
+//   visitor moving through and looking around the space, rather than
+//   linear's simpler one-way sideways pass. Inherits linear's own safety
+//   property (never approaches closer than a bounded fraction of the
+//   original distance - see camera_path_tour's own comment for why that
+//   matters: getting too close risks ending up inside a room's walls).
+// - H16 (Ganesha) overrides to "showcase": a single centered display
+//   object (a statue) - exactly the kind of subject a product
+//   advertisement turntable shot suits, which is what camera_path_showcase
+//   is: one eased rotation that pushes in and arcs up-then-down over its
+//   course, rather than orbit's flat, mechanical, constant-radius circle.
+//   This one was verified by rendering it, not just picked by category -
+//   see below for why that verification matters and why H15/H17/H19/H21
+//   do NOT get the same treatment despite looking like similarly strong
+//   showcase/spiral candidates on paper.
+//
+// Every orbit-family path (orbit/spiral/showcase/figure8) pivots the
+// camera around "lookat" at a radius derived from the lookfrom-to-lookat
+// distance - which only works when lookat is genuinely the subject's
+// location. For an externally-loaded .pbrt scene, that is NOT guaranteed:
+// pbrt_flatten.h's cameraFromWorldToCamera() now recovers the real
+// distance a scene's own LookAt directive declared (see its own comment -
+// this used to always be a meaningless placeholder 1 unit from lookfrom,
+// which is what originally broke showcase on H17/H19 during this feature's
+// development), but "real distance the file declared" and "actually
+// centered on the subject" are two different things, and checking a
+// scene's own .pbrt source is the only way to tell them apart:
+//   - H15 (Subsurface Dragon) and H17 (Sports Car): both declare a
+//     LookAt target genuinely ~1 unit from the camera - a deliberate "look
+//     direction" reference, not the dragon/car's real location. Any
+//     orbit-family path pivots on top of the camera position instead of
+//     around the subject.
+//   - H19 (Crown): declares a real, ~34-unit LookAt target, but one that
+//     sits past the crown itself (toward the back of its display room)
+//     rather than centered on it - confirmed by rendering with the fixed
+//     distance: the crown swings dramatically toward frame edge/close-up
+//     as the camera arcs past it, even though the pivot distance itself is
+//     now accurate.
+//   - H21 (Transparent Machines): its camera is authored via
+//     Translate/Rotate/ConcatTransform, not LookAt at all - there is no
+//     declared target to recover, so it gets the same placeholder-radius
+//     problem as H15/H17.
+// All four fall through to the "tour" category default instead (a
+// translating, non-pivoting path, safe regardless of what lookat means for
+// a given scene). H16 is the one case actually confirmed - by rendering,
+// not inference - to have both a real AND subject-centered LookAt target,
+// which is why it alone gets an orbit-family override.
 inline const char* recommended_camera_path_for(const std::string& scene_id) {
     static const std::map<std::string, const char*> kIdOverrides = {
-        {"H15", "spiral"}, {"H16", "orbit"}, {"H17", "orbit"},
-        {"H19", "orbit"}, {"H21", "spiral"},
+        {"H16", "showcase"},
     };
     const auto it = kIdOverrides.find(scene_id);
     if (it != kIdOverrides.end()) return it->second;
-    if (!scene_id.empty() && scene_id[0] == 'H') return "linear";
+    if (!scene_id.empty() && scene_id[0] == 'H') return "tour";
     return "orbit";
 }

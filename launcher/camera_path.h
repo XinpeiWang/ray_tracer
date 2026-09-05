@@ -213,6 +213,146 @@ inline CameraPosition camera_path_spiral(int frame, int total_frames,
 }
 
 // ============================================================================
+// Tour Path
+// A room/interior walkthrough - a lateral S-curve sway (like linear's own
+// perpendicular offset, but sinusoidal instead of one-way, so the camera
+// swings out and back rather than only ever moving to one side) combined
+// with a gentle forward-and-back glide toward the lookat point, a subtle
+// vertical bob, and a look-at point that drifts independently (looking
+// around, the way an actual visitor's head turns while walking rather than
+// staring at one fixed spot the whole time).
+//
+// Safety: the forward glide caps at 25% of the original lookfrom-to-lookat
+// distance, so the camera never gets closer than 75% of where it started -
+// well short of the subject the original recommended camera was already
+// framing, the same "never approach closer than the original distance"
+// invariant camera_path_linear's own comment explains linear needs (see
+// there for why closing the distance to zero is unsafe: the camera ends up
+// inside whatever geometry the original view was composed around). The
+// lateral sway reuses linear's own perpendicular-offset direction, so it
+// carries the same safety property in that axis too.
+// ============================================================================
+inline CameraPosition camera_path_tour(int frame, int total_frames,
+										double lookfrom_x = 278.0, double lookfrom_y = 278.0, double lookfrom_z = -800.0,
+										double lookat_x = 278.0, double lookat_y = 278.0, double lookat_z = 278.0) {
+	CameraPosition pos;
+
+	double t = (total_frames > 1)
+		? static_cast<double>(frame) / static_cast<double>(total_frames - 1)
+		: 0.0;
+
+	double dx = lookfrom_x - lookat_x;
+	double dz = lookfrom_z - lookat_z;
+	double radius_xz = std::sqrt(dx * dx + dz * dz);
+
+	double lateral_x, lateral_z;
+	if (radius_xz > 1e-6) {
+		lateral_x = -dz / radius_xz;
+		lateral_z = dx / radius_xz;
+	} else {
+		lateral_x = 1.0;
+		lateral_z = 0.0;
+	}
+	// Unit vector from lookfrom toward lookat - "into the room".
+	double forward_x = (radius_xz > 1e-6) ? -dx / radius_xz : 0.0;
+	double forward_z = (radius_xz > 1e-6) ? -dz / radius_xz : 0.0;
+
+	// S-curve: 0 at t=0 (frame 0 lands exactly on the recommended lookfrom,
+	// same guarantee every other path here gives), swings out to +/-0.6 of
+	// the original radius and back to 0 by t=1 - "there and back", unlike
+	// linear's one-way sweep.
+	double lateral_offset = radius_xz * 0.6 * std::sin(2.0 * M_PI * t);
+	// 0 at t=0 and t=1, peaks at t=0.5 - glides toward the subject and back
+	// out, capped well short of it (see this function's own comment above).
+	double forward_offset = radius_xz * 0.25 * (0.5 - 0.5 * std::cos(2.0 * M_PI * t));
+	// Gentle rise-and-fall, scaled to the scene's own distance rather than
+	// a fixed height so it reads as subtle regardless of scene scale.
+	double height_offset = radius_xz * 0.08 * std::sin(M_PI * t);
+
+	pos.lookfrom_x = lookfrom_x + lateral_x * lateral_offset + forward_x * forward_offset;
+	pos.lookfrom_y = lookfrom_y + height_offset;
+	pos.lookfrom_z = lookfrom_z + lateral_z * lateral_offset + forward_z * forward_offset;
+
+	// The look-at point drifts too, phase-shifted a quarter cycle from the
+	// position sway, so the camera doesn't just translate - it looks around
+	// as it goes, the way an actual visitor's attention wanders.
+	double lookat_sway = radius_xz * 0.15 * std::sin(2.0 * M_PI * t + M_PI / 2.0);
+	pos.lookat_x = lookat_x + lateral_x * lookat_sway;
+	pos.lookat_y = lookat_y;
+	pos.lookat_z = lookat_z + lateral_z * lookat_sway;
+
+	pos.vup_x = 0.0;
+	pos.vup_y = 1.0;
+	pos.vup_z = 0.0;
+
+	return pos;
+}
+
+// ============================================================================
+// Showcase Path
+// An advertisement-style product reveal: an oscillating swing out to one
+// side and back, through the original front-on angle, rather than orbit's
+// full rotation - deliberately NOT a full 360, because a real product shot
+// setup (three-point studio lighting, like H19's own crown.pbrt) typically
+// only lights and frames the subject from roughly the front; a full spin
+// carries the camera around to the unlit back half, where the subject is
+// dim or genuinely out of frame (confirmed empirically: even the pre-
+// existing plain "orbit" path already has this problem on H19 - not a bug
+// specific to this path, an inherent property of a front-lit product photo
+// setup under any full-rotation path). Swinging only out to +/-45 degrees
+// and back stays within the same "front hemisphere" the original camera
+// was already composed for, while still reading as real, deliberate camera
+// movement rather than a static shot. An eased push-in (closes to 65% of
+// the original distance by the end) and a gentle height arc (rises then
+// settles back down, like a real product-shot crane move) run alongside
+// the swing, ending on a closer, marginally lower "hero shot" framed
+// exactly at the original front-on angle.
+// ============================================================================
+inline CameraPosition camera_path_showcase(int frame, int total_frames,
+											double lookfrom_x = 278.0, double lookfrom_y = 278.0, double lookfrom_z = -800.0,
+											double lookat_x = 278.0, double lookat_y = 278.0, double lookat_z = 278.0) {
+	CameraPosition pos;
+
+	double dx = lookfrom_x - lookat_x;
+	double dz = lookfrom_z - lookat_z;
+	double radius_xz = std::sqrt(dx * dx + dz * dz);
+	double start_angle = std::atan2(dz, dx);
+
+	double t = static_cast<double>(frame) / static_cast<double>(total_frames);
+
+	// Swings from 0 out to +45 degrees (t=0.25), back through 0 (t=0.5), out
+	// to -45 degrees (t=0.75), and back to 0 by t=1 - a full "there and
+	// back each way" cycle that starts and ends exactly on the original
+	// front-on angle, never venturing more than 45 degrees from it.
+	constexpr double kMaxSwingRadians = M_PI / 4.0;
+	double angle = start_angle + kMaxSwingRadians * std::sin(2.0 * M_PI * t);
+
+	// Classic smoothstep (3t^2 - 2t^3) - eases the push-in/height arc so
+	// they accelerate into and out of motion instead of moving at a
+	// constant rate, the cinematic feel real product-shot camera moves
+	// have. The angular swing above deliberately does NOT use this - it's
+	// already a smooth sinusoid, easing it further would just flatten it.
+	double ease = t * t * (3.0 - 2.0 * t);
+
+	double radius = radius_xz * (1.0 - 0.35 * ease);
+	double height_arc = radius_xz * 0.2 * std::sin(M_PI * t);
+
+	pos.lookfrom_x = lookat_x + radius * std::cos(angle);
+	pos.lookfrom_y = lookfrom_y + height_arc;
+	pos.lookfrom_z = lookat_z + radius * std::sin(angle);
+
+	pos.lookat_x = lookat_x;
+	pos.lookat_y = lookat_y;
+	pos.lookat_z = lookat_z;
+
+	pos.vup_x = 0.0;
+	pos.vup_y = 1.0;
+	pos.vup_z = 0.0;
+
+	return pos;
+}
+
+// ============================================================================
 // Get Camera Position by Path Name
 // ============================================================================
 // lookfrom_x/y/z and lookat_x/y/z are the scene's actual recommended camera
@@ -240,6 +380,9 @@ inline CameraPosition camera_path_spiral(int frame, int total_frames,
 // start point with just an angle offset, so it's scaled (via the lookfrom-
 // to-lookat distance) and centered on lookat, but doesn't start exactly at
 // lookfrom the way the other three paths do.
+// tour/showcase: passed lookfrom/lookat directly (not decomposed here) -
+// see their own comments (camera_path_tour/camera_path_showcase above) for
+// how each derives its own radius/angle/safety bounds from those.
 inline CameraPosition get_camera_position(const std::string& path_type, int frame, int total_frames,
 											double lookfrom_x = 278.0, double lookfrom_y = 278.0, double lookfrom_z = -800.0,
 											double lookat_x = 278.0, double lookat_y = 278.0, double lookat_z = 278.0) {
@@ -265,6 +408,14 @@ inline CameraPosition get_camera_position(const std::string& path_type, int fram
 			lookat_x, lookat_y, lookat_z,
 			lookfrom_y, lookat_y,
 			start_angle);
+	} else if (path_type == "tour") {
+		return camera_path_tour(frame, total_frames,
+			lookfrom_x, lookfrom_y, lookfrom_z,
+			lookat_x, lookat_y, lookat_z);
+	} else if (path_type == "showcase") {
+		return camera_path_showcase(frame, total_frames,
+			lookfrom_x, lookfrom_y, lookfrom_z,
+			lookat_x, lookat_y, lookat_z);
 	} else {
 		// Default to orbit
 		return camera_path_orbit(frame, total_frames, radius_xz, lookat_x, lookat_y, lookat_z, lookfrom_y, start_angle);

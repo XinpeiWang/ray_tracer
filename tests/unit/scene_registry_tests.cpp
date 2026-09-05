@@ -308,17 +308,25 @@ TEST(SceneRegistryTest, RecommendedCameraPathIsNeverEmpty) {
 }
 
 TEST(SceneRegistryTest, RecommendedCameraPathCuratedChoices) {
-	// The individual overrides (single showcase objects -> orbit/spiral)...
-	EXPECT_STREQ(recommended_camera_path_for("H15"), "spiral");
-	EXPECT_STREQ(recommended_camera_path_for("H16"), "orbit");
-	EXPECT_STREQ(recommended_camera_path_for("H17"), "orbit");
-	EXPECT_STREQ(recommended_camera_path_for("H19"), "orbit");
-	EXPECT_STREQ(recommended_camera_path_for("H21"), "spiral");
-	// ...the category-letter default (architectural walkthroughs -> linear)
-	// for every other Large Scene...
-	EXPECT_STREQ(recommended_camera_path_for("H1"), "linear");
-	EXPECT_STREQ(recommended_camera_path_for("H13"), "linear");
-	EXPECT_STREQ(recommended_camera_path_for("H20"), "linear");
+	// H16 is the one individual override - confirmed by rendering (not just
+	// inferred from category) to have a real, subject-centered LookAt
+	// target, which is what makes an orbit-family path (showcase) safe for
+	// it. See recommended_camera_path_for()'s own comment for why H15/H17/
+	// H19/H21 do NOT get the same treatment despite looking like similarly
+	// strong candidates on paper - each has a LookAt that is either too
+	// close to the camera to be a real subject location, real but not
+	// centered on the subject, or not declared via LookAt at all.
+	EXPECT_STREQ(recommended_camera_path_for("H16"), "showcase");
+	// ...the category-letter default (architectural walkthroughs, plus
+	// every Large Scene not individually confirmed safe for an
+	// orbit-family path -> tour) for every other Large Scene...
+	EXPECT_STREQ(recommended_camera_path_for("H1"), "tour");
+	EXPECT_STREQ(recommended_camera_path_for("H13"), "tour");
+	EXPECT_STREQ(recommended_camera_path_for("H15"), "tour");
+	EXPECT_STREQ(recommended_camera_path_for("H17"), "tour");
+	EXPECT_STREQ(recommended_camera_path_for("H19"), "tour");
+	EXPECT_STREQ(recommended_camera_path_for("H20"), "tour");
+	EXPECT_STREQ(recommended_camera_path_for("H21"), "tour");
 	// ...and the global default (orbit) for every other category and for
 	// an id that doesn't exist at all.
 	EXPECT_STREQ(recommended_camera_path_for("A1"), "orbit");

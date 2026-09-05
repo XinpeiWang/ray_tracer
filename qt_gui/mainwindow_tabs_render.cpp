@@ -1294,12 +1294,16 @@ void MainWindow::createVideoTab() {
 	m_cameraPathCombo->addItem(tr("Linear (Straight path)"), "linear");
 	m_cameraPathCombo->addItem(tr("Figure-8 (Lemniscate)"), "figure8");
 	m_cameraPathCombo->addItem(tr("Spiral (Zoom-in)"), "spiral");
+	m_cameraPathCombo->addItem(tr("Tour (Room walkthrough)"), "tour");
+	m_cameraPathCombo->addItem(tr("Showcase (Product reveal)"), "showcase");
 	m_cameraPathCombo->setToolTip(
 		tr("How the camera moves over the frame sequence:\n"
 		"  Orbit     — full circle around the scene, always looking at its centre\n"
 		"  Linear    — straight sweep past the scene\n"
 		"  Figure-8  — lemniscate, crossing back through the middle\n"
 		"  Spiral    — orbits while moving steadily closer\n"
+		"  Tour      — sways side to side and glides forward while looking around, like walking through a room\n"
+		"  Showcase  — one eased turn that pushes in and arcs up-then-down, like a product ad\n"
 		"Every path starts from the camera position on the Advanced tab."));
 	m_cameraPathCombo->setCurrentIndex(0);
 	styleComboBox(m_cameraPathCombo);
@@ -1309,8 +1313,12 @@ void MainWindow::createVideoTab() {
 		"- the classic \"turntable\" shot. Linear sweeps past in a "
 		"straight line. Figure-8 traces a lemniscate, crossing back "
 		"through the middle. Spiral orbits while steadily moving closer. "
-		"Every path starts from wherever the camera is positioned on "
-		"the Advanced tab.")),
+		"Tour sways side to side and glides forward while its look-at "
+		"point drifts too, like an actual visitor walking through and "
+		"looking around a room. Showcase turns once around the subject "
+		"with an eased push-in and a gentle rise-and-fall, like a "
+		"product advertisement's hero shot. Every path starts from "
+		"wherever the camera is positioned on the Advanced tab.")),
 		m_cameraPathCombo);
 
 	// Frame count
