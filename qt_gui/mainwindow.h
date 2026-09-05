@@ -59,6 +59,12 @@
 #include "mainwindow_widgets.h"
 #include "mainwindow_jobtypes.h"
 
+// Forward-declared rather than #include "scene_metadata_client.h" here -
+// only used below as an optional pointer parameter type, so callers of
+// this header don't need the full declaration (or its QString/DLL-loading
+// machinery) dragged in just to see these two function signatures.
+namespace SceneMetadataClient { struct SceneMetadata; }
+
 
 // ============================================================================
 // ExpandingTabBar / ExpandingTabWidget
@@ -374,7 +380,15 @@ private:
 	// Called from onSceneChanged() AND from each of those three combos' own
 	// change handlers, so switching Sampler/Integrator/Light Sampler after
 	// picking the scene updates the hint live instead of leaving it stale.
-	void updateSceneRecommendedSettingsHint(const QString &sceneId);
+	// `preloaded` lets a caller that already fetched this scene's
+	// SceneMetadata (onSceneChanged() does, for its own other needs) pass
+	// it straight through instead of this function re-querying the DLL for
+	// the same scene_id a second time; every other caller (the three combo
+	// change handlers, applyRecommendedSettings()) has no snapshot handy
+	// and leaves this null, which queries once internally exactly as
+	// before.
+	void updateSceneRecommendedSettingsHint(const QString &sceneId,
+		const SceneMetadataClient::SceneMetadata* preloaded = nullptr);
 	// m_applyRecommendedSettingsButton's slot - sets m_integratorCombo/
 	// m_samplerCombo/m_lightSamplerCombo to the CURRENT scene's recommended
 	// values (SceneMetadataClient::sceneRecommended*()), skipping any one
@@ -759,8 +773,14 @@ private:
 	// at build time (QSS can't reach them), so without a way to rebuild just
 	// the label, an already-shown badge would keep the previous theme's
 	// colour until the user reselected a scene. No-op if nothing is selected
-	// or the scene's metadata can't be queried.
-	void refreshSceneInfoLabel();
+	// or the scene's metadata can't be queried. `preloaded` mirrors
+	// updateSceneRecommendedSettingsHint()'s own parameter - onSceneChanged()
+	// passes its own already-fetched SceneMetadata through here instead of
+	// this function re-querying the DLL a second time for the same
+	// scene_id; the theme-switch caller (theme_switch.cpp) has none handy
+	// and leaves this null, which queries once internally exactly as
+	// before.
+	void refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata* preloaded = nullptr);
 
 	// Video Tab
 	QComboBox *m_videoPresetCombo;      // Named scene+path+frames/fps/speed bundle - see video_preset.h

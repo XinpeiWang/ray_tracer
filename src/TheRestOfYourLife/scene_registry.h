@@ -98,6 +98,17 @@ struct SceneDescriptor {
     const char* category;
     const char* description;
     const char* performance;   // "Fast" | "Medium" | "Slow" | "Very Slow"
+    // recommended_spp, recommended_exposure (further below) and `camera`
+    // just below are all AUTO-APPLIED the moment this scene is selected in
+    // the GUI (mainwindow_slots.cpp's onSceneChanged()) - a stale value
+    // left over from whatever scene was selected before is treated as
+    // actively wrong for the new one, not merely a default worth keeping.
+    // This is the one bucket of "recommended" fields in this struct that
+    // behaves this way; contrast with recommended_max_depth/integrator/
+    // sampler/light_sampler further down, which are NEVER auto-applied -
+    // see their own comments for why (CLI parity: cpu_interface.cpp only
+    // warns about those, so the GUI mirrors a warning rather than a
+    // setting change).
     int         recommended_spp;
     bool        requires_files;
     // Every field above and this one are queried live by the Qt GUI via
@@ -117,7 +128,10 @@ struct SceneDescriptor {
     std::function<std::shared_ptr<punctual_light_list>()> build_punct;   // nullptr = none
     std::function<void(camera_t&)>                       setup_camera;   // nullptr = default perspective
 
-    // A pbrt-loaded scene's own Integrator directive - 0/empty for every
+    // Everything from here down through recommended_light_sampler is the
+    // OTHER bucket of "recommended" fields - NEVER auto-applied, unlike
+    // recommended_spp/recommended_exposure/camera above. A pbrt-loaded
+    // scene's own Integrator directive - 0/empty for every
     // hand-built scene above (none of them were ever declared via an
     // Integrator directive to read in the first place). Deliberately last:
     // the ~65 hand-built entries in get_builtin_scene_registry() below

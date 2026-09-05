@@ -20,6 +20,31 @@ typedef const char* (*StringByIdFn)(const char*);
 typedef int (*IntByIdFn)(const char*);
 typedef double (*DoubleByIdFn)(const char*);
 
+// Raw mirror of cpu_interface.h's SceneMetadataSnapshot - field-for-field,
+// same order, same types. Both sides are plain data (ints/doubles/const
+// char*), so this is standard-layout and safe across the DLL boundary the
+// same way every individual int/double/const char* parameter above already
+// is (see this file's own top-of-file ABI comment) - there's no shared
+// header between the MSVC-built DLL and this MinGW-built client to enforce
+// that agreement, so keep this in sync by hand if SceneMetadataSnapshot
+// ever changes.
+struct RawSceneMetadataSnapshot {
+	const char* name;
+	const char* category;
+	const char* description;
+	const char* performance;
+	int recommended_spp;
+	int requires_files;
+	int gpu_compatible;
+	double recommended_exposure;
+	const char* recommended_integrator;
+	const char* recommended_sampler;
+	const char* recommended_light_sampler;
+	double cam_lookfrom_x, cam_lookfrom_y, cam_lookfrom_z;
+	double cam_lookat_x, cam_lookat_y, cam_lookat_z;
+};
+typedef int (*SnapshotFn)(const char*, RawSceneMetadataSnapshot*);
+
 struct DllHandle {
 	// HMODULE (Windows) and dlopen()'s return type are both opaque handles
 	// that fit in a void* - stored as void* here so the struct itself needs
@@ -40,6 +65,7 @@ struct DllHandle {
 	StringByIdFn recommendedSamplerFn = nullptr;
 	StringByIdFn recommendedLightSamplerFn = nullptr;
 	DoubleByIdFn recommendedExposureFn = nullptr;
+	SnapshotFn snapshotFn = nullptr;
 };
 
 #ifdef Q_OS_WIN
@@ -113,6 +139,8 @@ DllHandle& handle() {
 			lookupSymbol(h.module, "scene_metadata_recommended_light_sampler"));
 		h.recommendedExposureFn = reinterpret_cast<DoubleByIdFn>(
 			lookupSymbol(h.module, "scene_metadata_recommended_exposure"));
+		h.snapshotFn = reinterpret_cast<SnapshotFn>(
+			lookupSymbol(h.module, "scene_metadata_snapshot"));
 
 		// Every export is required, including newer ones: a library missing
 		// any of them is a stale build sitting next to a newer exe, and
@@ -122,7 +150,8 @@ DllHandle& handle() {
 		if (!h.gpuCompatibleFn || !h.recommendedCameraFn || !h.countFn || !h.idAtIndexFn ||
 			!h.nameFn || !h.categoryFn || !h.descriptionFn || !h.performanceFn ||
 			!h.recommendedSppFn || !h.requiresFilesFn || !h.recommendedIntegratorFn ||
-			!h.recommendedSamplerFn || !h.recommendedLightSamplerFn || !h.recommendedExposureFn) {
+			!h.recommendedSamplerFn || !h.recommendedLightSamplerFn || !h.recommendedExposureFn ||
+			!h.snapshotFn) {
 			closeLibrary(h.module);
 			h = DllHandle{};
 		}
@@ -210,6 +239,31 @@ QString sceneRecommendedLightSampler(const QString& scene_id) {
 double sceneRecommendedExposure(const QString& scene_id) {
 	if (!ensureLoaded()) return 1.0;
 	return handle().recommendedExposureFn(scene_id.toUtf8().constData());
+}
+
+bool sceneMetadata(const QString& scene_id, SceneMetadata& out) {
+	if (!ensureLoaded()) return false;
+	RawSceneMetadataSnapshot raw{};
+	if (!handle().snapshotFn(scene_id.toUtf8().constData(), &raw)) return false;
+
+	out.name = QString::fromUtf8(raw.name);
+	out.category = QString::fromUtf8(raw.category);
+	out.description = QString::fromUtf8(raw.description);
+	out.performance = QString::fromUtf8(raw.performance);
+	out.recommendedSpp = raw.recommended_spp;
+	out.requiresFiles = raw.requires_files != 0;
+	out.gpuCompatible = raw.gpu_compatible != 0;
+	out.recommendedExposure = raw.recommended_exposure;
+	out.recommendedIntegrator = QString::fromUtf8(raw.recommended_integrator);
+	out.recommendedSampler = QString::fromUtf8(raw.recommended_sampler);
+	out.recommendedLightSampler = QString::fromUtf8(raw.recommended_light_sampler);
+	out.camLookfromX = raw.cam_lookfrom_x;
+	out.camLookfromY = raw.cam_lookfrom_y;
+	out.camLookfromZ = raw.cam_lookfrom_z;
+	out.camLookatX = raw.cam_lookat_x;
+	out.camLookatY = raw.cam_lookat_y;
+	out.camLookatZ = raw.cam_lookat_z;
+	return true;
 }
 
 } // namespace SceneMetadataClient

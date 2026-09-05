@@ -746,32 +746,35 @@ void MainWindow::refreshCameraDistanceDisplay() {
 	m_cameraDistance->setValue(dist);
 }
 
-void MainWindow::refreshSceneInfoLabel() {
+void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata* preloaded) {
 	if (!m_sceneCombo || !m_sceneInfoLabel) return;
 	const int index = m_sceneCombo->currentIndex();
 	if (index < 0) return;
 	const QString scene_id = m_sceneCombo->itemData(index).toString();
 	updateSceneTechInfoIcon(scene_id);
-	const QString description = SceneMetadataClient::sceneDescription(scene_id);
-	if (description.isEmpty()) return;
 
-	bool gpuSupported = true;
-	SceneMetadataClient::gpuCompatible(scene_id, gpuSupported);
+	SceneMetadataClient::SceneMetadata local;
+	const SceneMetadataClient::SceneMetadata* meta = preloaded;
+	if (!meta) {
+		if (!SceneMetadataClient::sceneMetadata(scene_id, local)) return;
+		meta = &local;
+	}
+	if (meta->description.isEmpty()) return;
 
-	QString infoText = tr("<b>Description:</b> %1<br>").arg(description);
-	infoText += tr("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::scenePerformance(scene_id));
-	infoText += tr("<b>Recommended SPP:</b> %1<br>").arg(SceneMetadataClient::sceneRecommendedSpp(scene_id));
-	infoText += tr("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? tr("Yes") : tr("CPU only"));
+	QString infoText = tr("<b>Description:</b> %1<br>").arg(meta->description);
+	infoText += tr("<b>Performance:</b> %1<br>").arg(meta->performance);
+	infoText += tr("<b>Recommended SPP:</b> %1<br>").arg(meta->recommendedSpp);
+	infoText += tr("<b>GPU Support:</b> %1<br>").arg(meta->gpuCompatible ? tr("Yes") : tr("CPU only"));
 	// These two warnings are the only coloured text in the label, so they take
 	// their colours from the theme's log severities rather than fixed hex - a
 	// gold-on-cream warning is unreadable on the light schemes. Rebuilt fresh
 	// on every call (rather than cached) specifically so restyleThemedWidgets()
 	// calling this on a theme switch picks up the new theme's colours instead
 	// of leaving an already-shown badge stuck in the old one.
-	if (SceneMetadataClient::sceneRequiresFiles(scene_id))
+	if (meta->requiresFiles)
 		infoText += tr("<br><b style='color: %1;'>&#9888; Requires external files</b>")
 			.arg(m_activeTheme.logWarning.name());
-	if (!gpuSupported)
+	if (!meta->gpuCompatible)
 		infoText += tr("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
 			.arg(m_activeTheme.logError.name());
 	m_sceneInfoLabel->setText(infoText);
@@ -787,7 +790,8 @@ void MainWindow::refreshSceneInfoLabel() {
 // plain default path tracer for the integrator check), so this never claims
 // a mismatch the CLI itself wouldn't warn about. Purely informational - like
 // the CLI's own warning, this never changes the user's current selection.
-void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId) {
+void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId,
+		const SceneMetadataClient::SceneMetadata* preloaded) {
 	if (!m_sceneRecommendedSettingsHint) return;
 	if (sceneId.isEmpty() || !m_integratorCombo || !m_samplerCombo || !m_lightSamplerCombo) {
 		m_sceneRecommendedSettingsHint->setVisible(false);
@@ -795,25 +799,35 @@ void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId) {
 		return;
 	}
 
+	// Not found (or DLL unavailable) leaves `local` at its default-
+	// constructed empty recommendedIntegrator/Sampler/LightSampler - the
+	// same "" every mismatch check below already treats as "no
+	// recommendation, so no mismatch", matching what the old individual
+	// sceneRecommended*() calls did on a failed lookup. Deliberately not
+	// checking this call's return value for that reason.
+	SceneMetadataClient::SceneMetadata local;
+	const SceneMetadataClient::SceneMetadata* meta = preloaded;
+	if (!meta) {
+		SceneMetadataClient::sceneMetadata(sceneId, local);
+		meta = &local;
+	}
+
 	QStringList mismatches;
 
 	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
 	if (integrator == IntegratorMode::Default) {
-		const QString recommended = SceneMetadataClient::sceneRecommendedIntegrator(sceneId);
-		if (!recommended.isEmpty() && recommended != QLatin1String("volpath"))
-			mismatches << tr("Integrator \"%1\"").arg(recommended);
+		if (!meta->recommendedIntegrator.isEmpty() && meta->recommendedIntegrator != QLatin1String("volpath"))
+			mismatches << tr("Integrator \"%1\"").arg(meta->recommendedIntegrator);
 	}
 
 	if (m_samplerCombo->currentData().toString().isEmpty()) {
-		const QString recommended = SceneMetadataClient::sceneRecommendedSampler(sceneId);
-		if (!recommended.isEmpty() && recommended != QLatin1String("sobol"))
-			mismatches << tr("Sampler \"%1\"").arg(recommended);
+		if (!meta->recommendedSampler.isEmpty() && meta->recommendedSampler != QLatin1String("sobol"))
+			mismatches << tr("Sampler \"%1\"").arg(meta->recommendedSampler);
 	}
 
 	if (m_lightSamplerCombo->currentData().toString().isEmpty()) {
-		const QString recommended = SceneMetadataClient::sceneRecommendedLightSampler(sceneId);
-		if (!recommended.isEmpty() && recommended != QLatin1String("bvh"))
-			mismatches << tr("Light Sampler \"%1\"").arg(recommended);
+		if (!meta->recommendedLightSampler.isEmpty() && meta->recommendedLightSampler != QLatin1String("bvh"))
+			mismatches << tr("Light Sampler \"%1\"").arg(meta->recommendedLightSampler);
 	}
 
 	if (mismatches.isEmpty()) {
@@ -939,47 +953,43 @@ void MainWindow::onSceneChanged(int index) {
 		if (!found) m_sceneGrid->setCurrentRow(-1);
 	}
 
-	// Every field here is queried live from scene_metadata.dll (see
-	// scene_metadata_client.h) instead of a locally-duplicated table, so it
-	// can't drift from scene_registry.h the way scene_descriptor.h's old
-	// copy already had once. An empty description means the DLL couldn't
-	// be queried or scene_id wasn't found.
-	QString description = SceneMetadataClient::sceneDescription(scene_id);
-	if (description.isEmpty()) return;
+	// One call fetches everything below (description, GPU support,
+	// recommended SPP/exposure, recommended camera) instead of the ~7
+	// separate scene_metadata.dll round-trips (each its own registry scan)
+	// this used to make - see SceneMetadataClient::SceneMetadata's own
+	// comment. Still the single source of truth scene_metadata.dll always
+	// was; this just stops asking it the same question several times over.
+	// Not found (DLL missing, or scene_id doesn't exist) means there's
+	// nothing to show - leave the UI exactly as it was for the previous
+	// scene rather than blanking it out.
+	SceneMetadataClient::SceneMetadata meta;
+	if (!SceneMetadataClient::sceneMetadata(scene_id, meta)) return;
+	if (meta.description.isEmpty()) return;
 
-	// GPU-compatibility defaults to "supported" if the DLL can't be
-	// queried (missing, wrong architecture, etc.) - the worse outcome
-	// there is an avoidable GPU render failure, not a misleadingly-blocked
-	// CPU-only scene.
-	bool gpuSupported = true;
-	SceneMetadataClient::gpuCompatible(scene_id, gpuSupported);
-
-	int recommendedSpp = SceneMetadataClient::sceneRecommendedSpp(scene_id);
-
-	refreshSceneInfoLabel();
-	updateSceneRecommendedSettingsHint(scene_id);
+	refreshSceneInfoLabel(&meta);
+	updateSceneRecommendedSettingsHint(scene_id, &meta);
 	// Same description text, shown in the Preview tab's sidebar too - see
 	// createPreviewTab()'s own comment on why this is kept in sync here
 	// rather than only refreshed on render completion.
-	m_previewSceneDescLabel->setText(description);
-	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
-		m_samplesSpinBox->setValue(recommendedSpp);
+	m_previewSceneDescLabel->setText(meta.description);
 
-	// Unconditionally reset Exposure to this scene's curated recommendation
-	// (SceneDescriptor::recommended_exposure - scene_registry.h) - unlike
-	// the SPP auto-apply above, which only fires from a handful of sentinel
-	// "still probably untouched" values, a stale exposure carried over from
-	// a previous scene is actively wrong in BOTH directions: it would leave
-	// a scene like H19 (Crown) looking near-black at the neutral default,
-	// or wash out a normal scene to solid white if a high value from a
-	// previous Crown-like scene were left in place. Same reasoning as the
-	// camera-position reset a little further down this function, which is
-	// also unconditional for the same "stale value is actively wrong, not
-	// just suboptimal" reason.
-	m_exposureSpin->setValue(SceneMetadataClient::sceneRecommendedExposure(scene_id));
+	// Unconditionally reset Samples/Exposure to this scene's curated
+	// recommendation - a stale value carried over from a previous scene is
+	// actively wrong, not just suboptimal (an unrelated scene's exposure
+	// left in place can wash a normal render out to solid white; its SPP
+	// left in place under- or over-samples a scene of very different
+	// complexity). Same reasoning as the camera-position reset below, which
+	// was already unconditional for exactly this reason - Samples used to
+	// be the odd one out, gated behind a "still probably untouched"
+	// 100/200/500 sentinel check that could both wrongly clobber a
+	// deliberately-chosen 200 and wrongly leave a stale 512 in place;
+	// unifying it here removes that inconsistency rather than adding a new
+	// one.
+	m_samplesSpinBox->setValue(meta.recommendedSpp);
+	m_exposureSpin->setValue(meta.recommendedExposure);
 
 	// Auto-switch to CPU when scene doesn't support GPU
-	if (!gpuSupported && m_renderModeCombo->currentData().toBool()) {
+	if (!meta.gpuCompatible && m_renderModeCombo->currentData().toBool()) {
 		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
 	}
 
@@ -997,27 +1007,29 @@ void MainWindow::onSceneChanged(int index) {
 	// own comment). The user can still freely adjust the camera afterward,
 	// same as for every other scene.
 	//
-	// Also queried live from scene_metadata.dll rather than a duplicated
-	// table - if the query fails, leave the camera spinboxes exactly as
-	// they were (skip the reset) rather than falling back to a stale or
-	// wrong-scale default.
-	double cam_x, cam_y, cam_z, lookat_x, lookat_y, lookat_z;
-	if (SceneMetadataClient::recommendedCamera(scene_id, cam_x, cam_y, cam_z, lookat_x, lookat_y, lookat_z)) {
+	// meta's camera fields are unconditionally valid here (unlike the old
+	// separate SceneMetadataClient::recommendedCamera() call, which could
+	// fail independently of the description lookup above) - the
+	// sceneMetadata() call already returned true, and every SceneDescriptor
+	// has a real camera, never an optional one.
+	{
 		m_cameraPresetCombo->setCurrentIndex(7);
-		m_currentLookatX = lookat_x;
-		m_currentLookatY = lookat_y;
-		m_currentLookatZ = lookat_z;
+		m_currentLookatX = meta.camLookatX;
+		m_currentLookatY = meta.camLookatY;
+		m_currentLookatZ = meta.camLookatZ;
 		// This scene's own default viewing distance - the reference every
 		// named preset in m_cameraPresetCombo scales against (see its setup
 		// comment). Falls back to the Cornell-scale default (1078) if the
 		// recommended camera sits exactly on its own lookat (distance 0),
 		// which would otherwise collapse every preset to the lookat point.
-		double dx = cam_x - lookat_x, dy = cam_y - lookat_y, dz = cam_z - lookat_z;
+		double dx = meta.camLookfromX - meta.camLookatX;
+		double dy = meta.camLookfromY - meta.camLookatY;
+		double dz = meta.camLookfromZ - meta.camLookatZ;
 		double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
 		m_currentSceneCamDistance = (dist > 1e-6) ? dist : 1078.0;
-		m_cameraPosX->setValue(cam_x);
-		m_cameraPosY->setValue(cam_y);
-		m_cameraPosZ->setValue(cam_z);
+		m_cameraPosX->setValue(meta.camLookfromX);
+		m_cameraPosY->setValue(meta.camLookfromY);
+		m_cameraPosZ->setValue(meta.camLookfromZ);
 		refreshCameraDistanceDisplay();
 
 		// Scale the spinboxes' arrow-key/scroll step to this scene's scale

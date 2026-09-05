@@ -518,6 +518,53 @@ const char* cpu_scene_recommended_light_sampler_by_id(const char* scene_id);
 /// @return 1.0 if scene_id isn't found
 double cpu_scene_recommended_exposure_by_id(const char* scene_id);
 
+/// A single-call bundle of every by-id field above that a scene-selection UI
+/// refresh needs, for callers (the Qt GUI, via scene_metadata.dll) that want
+/// more than one or two fields at once. Before this existed, the GUI's own
+/// onSceneChanged()/refreshSceneInfoLabel()/updateSceneRecommendedSettings-
+/// Hint() (mainwindow_slots.cpp) made ~15 separate accessor calls per scene
+/// selection - each its own find_scene() linear scan - to assemble what is
+/// really one scene's metadata. Plain data only (ints/doubles/const char*),
+/// same standard-layout requirement as every other type crossing the
+/// scene_metadata.dll boundary (see that file's own ABI comment) - every
+/// const char* here has the same lifetime as the individual by-id
+/// accessors' own return values (points into the static scene registry,
+/// valid for the process lifetime, never owned by the caller).
+///
+/// This does NOT replace the individual accessors above: they stay for
+/// call sites that only need one field (e.g. cpu_scene_name_by_id in a
+/// context that never touches the rest), and every one of them still has
+/// its own unit test pinning its by-id parity with the registry. Use
+/// whichever shape fits the call site - one field, call the specific
+/// accessor; several fields together, call this once instead of several
+/// times.
+struct SceneMetadataSnapshot {
+	const char* name;
+	const char* category;
+	const char* description;
+	const char* performance;
+	int recommended_spp;
+	int requires_files;              // 1/0, C-bool
+	int gpu_compatible;               // 1/0, C-bool
+	double recommended_exposure;
+	const char* recommended_integrator;    // "" if the scene doesn't declare one
+	const char* recommended_sampler;       // ""
+	const char* recommended_light_sampler; // ""
+	// Same fields cpu_scene_recommended_camera() returns, unconditionally
+	// populated here (unlike that function, which leaves its out-params
+	// untouched on failure) - safe because this whole struct is only valid
+	// when cpu_scene_metadata_snapshot() itself returned 1, at which point
+	// every SceneDescriptor's camera (never optional - see CameraConfig)
+	// is known-good.
+	double cam_lookfrom_x, cam_lookfrom_y, cam_lookfrom_z;
+	double cam_lookat_x, cam_lookat_y, cam_lookat_z;
+};
+
+/// @param scene_id  registry id to look up
+/// @param out       populated on success; left untouched on failure
+/// @return 1 on success, 0 if scene_id isn't found
+int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSnapshot* out);
+
 #ifdef __cplusplus
 }
 #endif

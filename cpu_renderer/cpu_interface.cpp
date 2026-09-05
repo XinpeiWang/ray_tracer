@@ -952,3 +952,27 @@ extern "C" double cpu_scene_recommended_exposure_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->recommended_exposure : 1.0;
 }
+
+extern "C" int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSnapshot* out) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	if (!s || !out) return 0;
+	out->name = s->name;
+	out->category = s->category;
+	out->description = s->description;
+	out->performance = s->performance;
+	out->recommended_spp = s->recommended_spp;
+	out->requires_files = s->requires_files ? 1 : 0;
+	out->gpu_compatible = s->gpu_compatible ? 1 : 0;
+	out->recommended_exposure = s->recommended_exposure;
+	out->recommended_integrator = s->recommended_integrator.c_str();
+	out->recommended_sampler = s->recommended_sampler.c_str();
+	out->recommended_light_sampler = s->recommended_light_sampler.c_str();
+	const CameraConfig& cc = s->camera;
+	out->cam_lookfrom_x = cc.lookfrom_x;
+	out->cam_lookfrom_y = cc.lookfrom_y;
+	out->cam_lookfrom_z = cc.lookfrom_z;
+	out->cam_lookat_x = cc.lookat_x;
+	out->cam_lookat_y = cc.lookat_y;
+	out->cam_lookat_z = cc.lookat_z;
+	return 1;
+}

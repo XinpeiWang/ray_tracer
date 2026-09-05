@@ -98,3 +98,12 @@ SCENE_METADATA_API const char* scene_metadata_recommended_light_sampler(const ch
 SCENE_METADATA_API double scene_metadata_recommended_exposure(const char* scene_id) {
 	return cpu_scene_recommended_exposure_by_id(scene_id);
 }
+
+// Bundles every field above, plus the same camera fields
+// scene_metadata_recommended_camera() returns, into one call - for callers
+// that want more than a couple of fields at once. See SceneMetadataSnapshot's
+// own comment (cpu_interface.h) for why this exists alongside, not instead
+// of, every single-field export above.
+SCENE_METADATA_API int scene_metadata_snapshot(const char* scene_id, SceneMetadataSnapshot* out) {
+	return cpu_scene_metadata_snapshot(scene_id, out);
+}

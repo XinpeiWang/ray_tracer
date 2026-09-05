@@ -99,6 +99,41 @@ QString sceneRecommendedLightSampler(const QString& scene_id);
 // meant to be auto-applied - see onSceneChanged()'s call site.
 double sceneRecommendedExposure(const QString& scene_id);
 
+// Qt-friendly mirror of cpu_interface.h's SceneMetadataSnapshot (the raw C
+// struct scene_metadata_snapshot() fills in across the DLL boundary) - one
+// call's worth of everything a scene-selection UI refresh needs, instead of
+// calling several of the single-field functions above in a row. Every
+// string/bool/int/double field here defaults to the same "not found"
+// fallback its single-field equivalent above uses, so a caller that gets
+// `false` back can still use a default-constructed SceneMetadata safely
+// (e.g. treating its empty recommendedIntegrator as "no recommendation",
+// exactly like sceneRecommendedIntegrator()'s own "" fallback already
+// means).
+struct SceneMetadata {
+	QString name;
+	QString category;
+	QString description;
+	QString performance;
+	int recommendedSpp = 100;
+	bool requiresFiles = false;
+	bool gpuCompatible = true;
+	double recommendedExposure = 1.0;
+	QString recommendedIntegrator;
+	QString recommendedSampler;
+	QString recommendedLightSampler;
+	double camLookfromX = 0.0, camLookfromY = 0.0, camLookfromZ = 0.0;
+	double camLookatX = 0.0, camLookatY = 0.0, camLookatZ = 0.0;
+};
+
+// Fills `out` with everything SceneMetadata holds for scene_id in one DLL
+// call and one registry lookup, instead of the several separate calls (each
+// its own lookup) the individual accessors above would take together. See
+// SceneMetadata's own comment for the "not found" fallback shape.
+// @return true on success (out fully populated), false if not loaded/found
+//         (out left at whatever it already held - same "don't crash, don't
+//         silently reset" contract every other query in this file follows)
+bool sceneMetadata(const QString& scene_id, SceneMetadata& out);
+
 } // namespace SceneMetadataClient
 
 #endif // SCENE_METADATA_CLIENT_H
