@@ -294,6 +294,12 @@ TEST(SceneRegistryTest, AllRecommendedSppArePositive) {
 	}
 }
 
+TEST(SceneRegistryTest, AllRecommendedExposureArePositive) {
+	for (const auto& s : get_scene_registry()) {
+		EXPECT_GT(s.recommended_exposure, 0.0) << "Bad exposure for id " << s.id;
+	}
+}
+
 TEST(SceneRegistryTest, AllBuildWorldCallbacksAreSet) {
 	for (const auto& s : get_scene_registry()) {
 		EXPECT_TRUE(static_cast<bool>(s.build_world))
@@ -555,6 +561,13 @@ TEST(CpuSceneApiTest, RecommendedSppByIndexMatchesCppRegistry) {
 	}
 }
 
+TEST(CpuSceneApiTest, RecommendedExposureByIdMatchesCppRegistry) {
+	for (const auto& s : get_scene_registry()) {
+		EXPECT_DOUBLE_EQ(cpu_scene_recommended_exposure_by_id(s.id.c_str()), s.recommended_exposure)
+			<< "Exposure mismatch for id " << s.id;
+	}
+}
+
 TEST(CpuSceneApiTest, RequiresFilesByIndexMatchesCppRegistry) {
 	for (int i = 0; i < cpu_scene_count(); ++i) {
 		int expected = get_scene_registry()[i].requires_files ? 1 : 0;
@@ -586,6 +599,11 @@ TEST(CpuSceneApiTest, OutOfRangeSppReturnsZero) {
 	// The original implementation returns 100 as the safe default for out-of-range
 	EXPECT_EQ(cpu_scene_recommended_spp(-1), 100);
 	EXPECT_EQ(cpu_scene_recommended_spp(cpu_scene_count()), 100);
+}
+
+TEST(CpuSceneApiTest, UnknownIdRecommendedExposureReturnsNeutral) {
+	EXPECT_DOUBLE_EQ(cpu_scene_recommended_exposure_by_id("NotARealId"), 1.0);
+	EXPECT_DOUBLE_EQ(cpu_scene_recommended_exposure_by_id(""), 1.0);
 }
 
 // ===========================================================================

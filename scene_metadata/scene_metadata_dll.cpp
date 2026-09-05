@@ -94,3 +94,7 @@ SCENE_METADATA_API const char* scene_metadata_recommended_sampler(const char* sc
 SCENE_METADATA_API const char* scene_metadata_recommended_light_sampler(const char* scene_id) {
 	return cpu_scene_recommended_light_sampler_by_id(scene_id);
 }
+
+SCENE_METADATA_API double scene_metadata_recommended_exposure(const char* scene_id) {
+	return cpu_scene_recommended_exposure_by_id(scene_id);
+}

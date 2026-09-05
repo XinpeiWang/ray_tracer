@@ -947,3 +947,8 @@ extern "C" const char* cpu_scene_recommended_light_sampler_by_id(const char* sce
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->recommended_light_sampler.c_str() : "";
 }
+
+extern "C" double cpu_scene_recommended_exposure_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->recommended_exposure : 1.0;
+}

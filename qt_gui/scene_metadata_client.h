@@ -93,6 +93,12 @@ QString sceneRecommendedIntegrator(const QString& scene_id);
 QString sceneRecommendedSampler(const QString& scene_id);
 QString sceneRecommendedLightSampler(const QString& scene_id);
 
+// scene_id's curated recommended Exposure multiplier, or 1.0 (neutral, same
+// fallback cpu_interface.cpp's own accessor uses) if not loaded/found.
+// UNLIKE sceneRecommendedIntegrator/Sampler/LightSampler above, this one IS
+// meant to be auto-applied - see onSceneChanged()'s call site.
+double sceneRecommendedExposure(const QString& scene_id);
+
 } // namespace SceneMetadataClient
 
 #endif // SCENE_METADATA_CLIENT_H

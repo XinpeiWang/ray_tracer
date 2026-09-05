@@ -171,6 +171,35 @@ struct SceneDescriptor {
     // this at its default (empty std::function = nullptr), since none of
     // them are pbrt-loaded camera-medium scenes.
     std::function<std::shared_ptr<ambient_medium>()> build_camera_medium;
+
+    // A CURATED (not derived from the .pbrt file - see the comment below on
+    // why not) flat multiplier auto-applied to the Render Options tab's
+    // Exposure control when this scene is selected, the same way
+    // recommended_spp is auto-applied to the Samples field (mainwindow_
+    // slots.cpp's onSceneChanged()). Defaults to 1.0 (no-op) for every
+    // hand-built scene and the vast majority of pbrt-backed ones.
+    //
+    // pbrt-v4 files that DO specify exposure-relevant metadata (Film's
+    // "float iso", occasionally paired with a camera shutter time) encode
+    // it for pbrt-v4's own PixelSensor model - a real, but partial, physical
+    // camera response pipeline this project's tone-mapping does not
+    // reproduce. Computing pbrt's own imagingRatio = exposureTime * ISO/100
+    // from those fields was tried and rejected: for H19 (Crown, iso 150) it
+    // works out to 1.5x, but the render needs roughly 30x to look like
+    // anything other than a near-black silhouette - the gap is dominated by
+    // something else entirely (most likely this renderer's blackbody-arealight
+    // radiance scale not matching pbrt-v4's own convention, though that
+    // wasn't tracked down further - out of scope for a scene-registry
+    // addition). A formula-derived value here would therefore be
+    // confidently wrong; an empirically-found one that actually produces a
+    // viewable image is more honest, even though it can't be traced back to
+    // a specific line in the source file the way recommended_spp can.
+    // Set only for H13/H14/H19/H20 so far (the four curated pbrt-v4-scenes
+    // bundles found to render unusably dark at the engine's neutral
+    // exposure=1.0) - see their own build_curated_external_pbrt_scene_
+    // descriptor() call sites in scene_registry_data.h for the values and
+    // how each was determined.
+    double recommended_exposure = 1.0;
 };
 
 // Dummy sphere light used by scenes that have no explicit light geometry
@@ -581,7 +610,8 @@ namespace pbrt_scene_registry {
     // graceful failure every pbrt-backed scene already has.
     inline SceneDescriptor build_curated_external_pbrt_scene_descriptor(
             const char* id, int legacy_id, const char* name, const char* category,
-            const char* description, const char* performance, const char* filename) {
+            const char* description, const char* performance, const char* filename,
+            double recommended_exposure = 1.0) {
         std::string path;
         for (const std::string& dir : pbrt_discover::defaultSearchPaths()) {
             std::filesystem::path candidate = std::filesystem::path(dir) / filename;
@@ -603,6 +633,11 @@ namespace pbrt_scene_registry {
         s.gpu_compatible = true;
 
         wire_pbrt_backed_scene(s, d, path);
+
+        // Set after wire_pbrt_backed_scene() (which only touches the
+        // recommended_spp/max_depth/integrator/sampler/light_sampler fields
+        // it derives from `d`) so a caller's curated override always wins.
+        s.recommended_exposure = recommended_exposure;
 
         paths()[id] = path;
         return s;

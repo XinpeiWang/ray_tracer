@@ -18,6 +18,7 @@ typedef int (*CountFn)();
 typedef const char* (*IdAtIndexFn)(int);
 typedef const char* (*StringByIdFn)(const char*);
 typedef int (*IntByIdFn)(const char*);
+typedef double (*DoubleByIdFn)(const char*);
 
 struct DllHandle {
 	// HMODULE (Windows) and dlopen()'s return type are both opaque handles
@@ -38,6 +39,7 @@ struct DllHandle {
 	StringByIdFn recommendedIntegratorFn = nullptr;
 	StringByIdFn recommendedSamplerFn = nullptr;
 	StringByIdFn recommendedLightSamplerFn = nullptr;
+	DoubleByIdFn recommendedExposureFn = nullptr;
 };
 
 #ifdef Q_OS_WIN
@@ -109,6 +111,8 @@ DllHandle& handle() {
 			lookupSymbol(h.module, "scene_metadata_recommended_sampler"));
 		h.recommendedLightSamplerFn = reinterpret_cast<StringByIdFn>(
 			lookupSymbol(h.module, "scene_metadata_recommended_light_sampler"));
+		h.recommendedExposureFn = reinterpret_cast<DoubleByIdFn>(
+			lookupSymbol(h.module, "scene_metadata_recommended_exposure"));
 
 		// Every export is required, including newer ones: a library missing
 		// any of them is a stale build sitting next to a newer exe, and
@@ -118,7 +122,7 @@ DllHandle& handle() {
 		if (!h.gpuCompatibleFn || !h.recommendedCameraFn || !h.countFn || !h.idAtIndexFn ||
 			!h.nameFn || !h.categoryFn || !h.descriptionFn || !h.performanceFn ||
 			!h.recommendedSppFn || !h.requiresFilesFn || !h.recommendedIntegratorFn ||
-			!h.recommendedSamplerFn || !h.recommendedLightSamplerFn) {
+			!h.recommendedSamplerFn || !h.recommendedLightSamplerFn || !h.recommendedExposureFn) {
 			closeLibrary(h.module);
 			h = DllHandle{};
 		}
@@ -201,6 +205,11 @@ QString sceneRecommendedSampler(const QString& scene_id) {
 QString sceneRecommendedLightSampler(const QString& scene_id) {
 	if (!ensureLoaded()) return QString();
 	return QString::fromUtf8(handle().recommendedLightSamplerFn(scene_id.toUtf8().constData()));
+}
+
+double sceneRecommendedExposure(const QString& scene_id) {
+	if (!ensureLoaded()) return 1.0;
+	return handle().recommendedExposureFn(scene_id.toUtf8().constData());
 }
 
 } // namespace SceneMetadataClient

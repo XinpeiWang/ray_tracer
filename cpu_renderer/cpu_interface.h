@@ -508,6 +508,16 @@ const char* cpu_scene_recommended_integrator_by_id(const char* scene_id);
 const char* cpu_scene_recommended_sampler_by_id(const char* scene_id);
 const char* cpu_scene_recommended_light_sampler_by_id(const char* scene_id);
 
+/// A curated flat multiplier for the Render Options tab's Exposure control
+/// (SceneDescriptor::recommended_exposure - see its own comment, scene_
+/// registry.h, for why this is a curated value rather than one derived from
+/// the .pbrt file). 1.0 (no-op) for every scene except a handful of real
+/// pbrt-v4-scenes bundles found to render unusably dark otherwise. UNLIKE
+/// recommended_integrator/sampler above, this IS auto-applied - see
+/// mainwindow_slots.cpp's onSceneChanged().
+/// @return 1.0 if scene_id isn't found
+double cpu_scene_recommended_exposure_by_id(const char* scene_id);
+
 #ifdef __cplusplus
 }
 #endif

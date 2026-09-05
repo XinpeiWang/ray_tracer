@@ -965,6 +965,19 @@ void MainWindow::onSceneChanged(int index) {
 	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
 		m_samplesSpinBox->setValue(recommendedSpp);
 
+	// Unconditionally reset Exposure to this scene's curated recommendation
+	// (SceneDescriptor::recommended_exposure - scene_registry.h) - unlike
+	// the SPP auto-apply above, which only fires from a handful of sentinel
+	// "still probably untouched" values, a stale exposure carried over from
+	// a previous scene is actively wrong in BOTH directions: it would leave
+	// a scene like H19 (Crown) looking near-black at the neutral default,
+	// or wash out a normal scene to solid white if a high value from a
+	// previous Crown-like scene were left in place. Same reasoning as the
+	// camera-position reset a little further down this function, which is
+	// also unconditional for the same "stale value is actively wrong, not
+	// just suboptimal" reason.
+	m_exposureSpin->setValue(SceneMetadataClient::sceneRecommendedExposure(scene_id));
+
 	// Auto-switch to CPU when scene doesn't support GPU
 	if (!gpuSupported && m_renderModeCombo->currentData().toBool()) {
 		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU

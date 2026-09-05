@@ -1209,14 +1209,22 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // parser/builder like every other pbrt-backed scene in this registry -
         // camera/lights/materials all come from the file itself, not a
         // hand-transcribed struct.
+        //
+        // Both (and H19/H20 further below) pass a trailing curated
+        // recommended_exposure argument - see SceneDescriptor::
+        // recommended_exposure's own comment (scene_registry.h) for why
+        // these four specifically needed one: at this engine's neutral
+        // exposure=1.0 they rendered as a near-black silhouette rather
+        // than the furnished/architectural scene the geometry actually
+        // contains.
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H13", 159, SceneNames::ContemporaryBathroomPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a fully furnished bathroom interior with real-world material variety (tile, wood, chrome, glass, fabric) and a blackbody-temperature light fixture, one of the two scenes this project's own pbrt-v4 parser was verified against most heavily during development.",
-            "Very Slow", "contemporary-bathroom/contemporary-bathroom.pbrt"),
+            "Very Slow", "contemporary-bathroom/contemporary-bathroom.pbrt", 15.0),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H14", 160, SceneNames::BarcelonaPavilionPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a reconstruction of Mies van der Rohe's Barcelona Pavilion, glass-and-marble architecture surrounded by dense foliage - the other major scene this project's own pbrt-v4 parser was verified against during development (its foliage is what motivated real diffusetransmission texture-binding support). Renders the daytime lighting variant.",
-            "Very Slow", "barcelona-pavilion/pavilion-day.pbrt"),
+            "Very Slow", "barcelona-pavilion/pavilion-day.pbrt", 15.0),
         // H15-H17: three more real pbrt-v4-scenes bundles, same
         // build_curated_external_pbrt_scene_descriptor() mechanism as H13/H14
         // above - already sitting locally as parser-verification fixtures,
@@ -1278,11 +1286,11 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H19", 165, SceneNames::CrownPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a jeweled crown rendered with real glass/gem dispersion and refraction - a classic pbrt showcase scene, and a different material story than any other curated Large Scene here (none of H13-H18 focus on dispersion).",
-            "Very Slow", "crown/crown.pbrt"),
+            "Very Slow", "crown/crown.pbrt", 30.0),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H20", 166, SceneNames::VillaPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a furnished villa interior/exterior, in the same 'full building environment' vein as H13's bathroom and H14's pavilion. Renders the daylight lighting variant (villa-daylight.pbrt); a lights-on night variant also ships in the same directory.",
-            "Very Slow", "villa/villa-daylight.pbrt"),
+            "Very Slow", "villa/villa-daylight.pbrt", 15.0),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H21", 167, SceneNames::TransparentMachinesPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): detailed mechanical objects (gears, casings) rendered in transparent glass-like materials, shot as an animated camera fly-through. Five frames ship in the bundle (frame542/675/812/888/1266.pbrt); this entry renders a representative middle one (frame812).",
