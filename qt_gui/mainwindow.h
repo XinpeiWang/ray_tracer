@@ -640,8 +640,9 @@ private:
 	// Camera position (lookfrom) can be set via presets or custom X/Y/Z
 	// values; lookat is fixed per-scene in the renderer (not the same point
 	// for every scene - see scene_registry.h's CameraConfig::lookat_x/y/z,
-	// queried live via SceneMetadataClient::recommendedCamera() and
-	// mirrored into m_currentLookatX/Y/Z below whenever the scene changes).
+	// queried live via SceneMetadataClient::sceneMetadata()'s cam_lookat_*
+	// fields and mirrored into m_currentLookatX/Y/Z below whenever the
+	// scene changes).
 	QComboBox *m_cameraPresetCombo;     // Preset camera positions (includes "Custom" option)
 	QDoubleSpinBox *m_cameraPosX;       // Camera X position (enabled only for "Custom" preset)
 	QDoubleSpinBox *m_cameraPosY;       // Camera Y position (enabled only for "Custom" preset)

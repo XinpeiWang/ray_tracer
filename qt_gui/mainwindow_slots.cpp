@@ -246,10 +246,15 @@ RenderJob MainWindow::captureRenderJob() {
 	// Camera position (lookfrom) - read from spinboxes
 	// These reflect either the selected preset or custom user input
 	job.sceneId = m_sceneCombo->currentData().toString();
-	job.displayTitle = SceneMetadataClient::sceneName(job.sceneId);
+	// One fetch for name/description below AND the recommended-camera
+	// comparison further down, instead of three separate scene_metadata.dll
+	// round-trips (each its own find_scene() scan) for the same sceneId.
+	SceneMetadataClient::SceneMetadata jobMeta;
+	const bool jobMetaFound = SceneMetadataClient::sceneMetadata(job.sceneId, jobMeta);
+	job.displayTitle = jobMeta.name;
 	if (job.displayTitle.isEmpty())
 		job.displayTitle = job.sceneId.isEmpty() ? QStringLiteral("Render") : job.sceneId;
-	job.sceneDescription = SceneMetadataClient::sceneDescription(job.sceneId);
+	job.sceneDescription = jobMeta.description;
 
 	// Output file path - the field's own placeholder text promises a
 	// timestamp "to avoid overwriting", but that timestamp was only ever
@@ -284,8 +289,7 @@ RenderJob MainWindow::captureRenderJob() {
 	// harmless, since it'd be the same value anyway) cam_x/y/z on the
 	// command line, not a silently wrong camera.
 	job.camExplicit = true;
-	double recCamX = 0.0, recCamY = 0.0, recCamZ = 0.0, recLookatX = 0.0, recLookatY = 0.0, recLookatZ = 0.0;
-	if (SceneMetadataClient::recommendedCamera(job.sceneId, recCamX, recCamY, recCamZ, recLookatX, recLookatY, recLookatZ)) {
+	if (jobMetaFound) {
 		// m_cameraPosX/Y/Z are QDoubleSpinBoxes with the default 2 decimal
 		// places, so a recommended value round-trips through setValue()/
 		// value() rounded to the nearest 0.01 - the epsilon has to be
@@ -294,9 +298,9 @@ RenderJob MainWindow::captureRenderJob() {
 		// never compare equal, permanently forcing camExplicit=true (still
 		// harmless, just pointlessly defeats this check for that scene).
 		constexpr double kEpsilon = 0.005;
-		job.camExplicit = std::abs(job.camX - recCamX) > kEpsilon
-			|| std::abs(job.camY - recCamY) > kEpsilon
-			|| std::abs(job.camZ - recCamZ) > kEpsilon;
+		job.camExplicit = std::abs(job.camX - jobMeta.camLookfromX) > kEpsilon
+			|| std::abs(job.camY - jobMeta.camLookfromY) > kEpsilon
+			|| std::abs(job.camZ - jobMeta.camLookfromZ) > kEpsilon;
 	}
 
 	job.videoMode = m_videoMode;
@@ -746,6 +750,24 @@ void MainWindow::refreshCameraDistanceDisplay() {
 	m_cameraDistance->setValue(dist);
 }
 
+// Shared by refreshSceneInfoLabel() and updateSceneRecommendedSettingsHint()
+// below: use `preloaded` if the caller already fetched one (onSceneChanged()/
+// applyRecommendedSettings() do, to share a single sceneMetadata() call
+// across several functions for the same scene), otherwise fetch into
+// `local` and return that instead. The fetch's own success/failure is
+// deliberately not surfaced here - both callers already treat a "not
+// found" SceneMetadata's default-constructed empty/neutral fields
+// (description=="", recommendedIntegrator=="", etc.) as "nothing to show"
+// on their own, the same way every individual accessor's own "" fallback
+// always meant before this helper existed.
+static const SceneMetadataClient::SceneMetadata* resolveSceneMeta(
+		const SceneMetadataClient::SceneMetadata* preloaded, const QString& sceneId,
+		SceneMetadataClient::SceneMetadata& local) {
+	if (preloaded) return preloaded;
+	SceneMetadataClient::sceneMetadata(sceneId, local);
+	return &local;
+}
+
 void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata* preloaded) {
 	if (!m_sceneCombo || !m_sceneInfoLabel) return;
 	const int index = m_sceneCombo->currentIndex();
@@ -754,11 +776,7 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 	updateSceneTechInfoIcon(scene_id);
 
 	SceneMetadataClient::SceneMetadata local;
-	const SceneMetadataClient::SceneMetadata* meta = preloaded;
-	if (!meta) {
-		if (!SceneMetadataClient::sceneMetadata(scene_id, local)) return;
-		meta = &local;
-	}
+	const SceneMetadataClient::SceneMetadata* meta = resolveSceneMeta(preloaded, scene_id, local);
 	if (meta->description.isEmpty()) return;
 
 	QString infoText = tr("<b>Description:</b> %1<br>").arg(meta->description);
@@ -803,14 +821,9 @@ void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId,
 	// constructed empty recommendedIntegrator/Sampler/LightSampler - the
 	// same "" every mismatch check below already treats as "no
 	// recommendation, so no mismatch", matching what the old individual
-	// sceneRecommended*() calls did on a failed lookup. Deliberately not
-	// checking this call's return value for that reason.
+	// sceneRecommended*() calls did on a failed lookup.
 	SceneMetadataClient::SceneMetadata local;
-	const SceneMetadataClient::SceneMetadata* meta = preloaded;
-	if (!meta) {
-		SceneMetadataClient::sceneMetadata(sceneId, local);
-		meta = &local;
-	}
+	const SceneMetadataClient::SceneMetadata* meta = resolveSceneMeta(preloaded, sceneId, local);
 
 	QStringList mismatches;
 
@@ -883,22 +896,26 @@ void MainWindow::applyRecommendedSettings() {
 	const QString sceneId = m_sceneCombo->currentData().toString();
 	if (sceneId.isEmpty()) return;
 
-	const QString recommendedIntegrator = SceneMetadataClient::sceneRecommendedIntegrator(sceneId);
+	// One fetch for all three recommended-setting lookups below AND the
+	// updateSceneRecommendedSettingsHint() call at the bottom, instead of
+	// four separate scene_metadata.dll round-trips (each its own
+	// find_scene() scan) for the same sceneId.
+	SceneMetadataClient::SceneMetadata meta;
+	SceneMetadataClient::sceneMetadata(sceneId, meta); // failure leaves meta at its empty/neutral defaults, same as each individual accessor's own "not found" fallback
+
 	IntegratorMode mode;
-	if (!recommendedIntegrator.isEmpty() && integratorModeForPbrtName(recommendedIntegrator, mode)) {
+	if (!meta.recommendedIntegrator.isEmpty() && integratorModeForPbrtName(meta.recommendedIntegrator, mode)) {
 		const int idx = m_integratorCombo->findData(static_cast<int>(mode));
 		if (idx >= 0) m_integratorCombo->setCurrentIndex(idx);
 	}
 
-	const QString recommendedSampler = SceneMetadataClient::sceneRecommendedSampler(sceneId);
-	if (!recommendedSampler.isEmpty()) {
-		const int idx = m_samplerCombo->findData(recommendedSampler);
+	if (!meta.recommendedSampler.isEmpty()) {
+		const int idx = m_samplerCombo->findData(meta.recommendedSampler);
 		if (idx >= 0) m_samplerCombo->setCurrentIndex(idx);
 	}
 
-	const QString recommendedLightSampler = SceneMetadataClient::sceneRecommendedLightSampler(sceneId);
-	if (!recommendedLightSampler.isEmpty()) {
-		const int idx = m_lightSamplerCombo->findData(recommendedLightSampler);
+	if (!meta.recommendedLightSampler.isEmpty()) {
+		const int idx = m_lightSamplerCombo->findData(meta.recommendedLightSampler);
 		if (idx >= 0) m_lightSamplerCombo->setCurrentIndex(idx);
 	}
 
@@ -908,7 +925,8 @@ void MainWindow::applyRecommendedSettings() {
 	// combos' own lambdas - mainwindow_tabs_render.cpp), but calling it once
 	// more here is cheap and guarantees the hint reflects the FINAL state
 	// of all three rather than whatever it was after just the first change.
-	updateSceneRecommendedSettingsHint(sceneId);
+	// Passes `meta` through rather than letting it self-fetch a 5th time.
+	updateSceneRecommendedSettingsHint(sceneId, &meta);
 }
 
 void MainWindow::onSceneChanged(int index) {

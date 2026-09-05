@@ -13,12 +13,10 @@
 namespace {
 
 typedef int (*GpuCompatibleFn)(const char*);
-typedef int (*RecommendedCameraFn)(const char*, double*, double*, double*, double*, double*, double*);
 typedef int (*CountFn)();
 typedef const char* (*IdAtIndexFn)(int);
 typedef const char* (*StringByIdFn)(const char*);
 typedef int (*IntByIdFn)(const char*);
-typedef double (*DoubleByIdFn)(const char*);
 
 // Raw mirror of cpu_interface.h's SceneMetadataSnapshot - field-for-field,
 // same order, same types. Both sides are plain data (ints/doubles/const
@@ -52,19 +50,12 @@ struct DllHandle {
 	// below do.
 	void* module = nullptr;
 	GpuCompatibleFn gpuCompatibleFn = nullptr;
-	RecommendedCameraFn recommendedCameraFn = nullptr;
 	CountFn countFn = nullptr;
 	IdAtIndexFn idAtIndexFn = nullptr;
 	StringByIdFn nameFn = nullptr;
 	StringByIdFn categoryFn = nullptr;
 	StringByIdFn descriptionFn = nullptr;
-	StringByIdFn performanceFn = nullptr;
-	IntByIdFn recommendedSppFn = nullptr;
 	IntByIdFn requiresFilesFn = nullptr;
-	StringByIdFn recommendedIntegratorFn = nullptr;
-	StringByIdFn recommendedSamplerFn = nullptr;
-	StringByIdFn recommendedLightSamplerFn = nullptr;
-	DoubleByIdFn recommendedExposureFn = nullptr;
 	SnapshotFn snapshotFn = nullptr;
 };
 
@@ -113,8 +104,6 @@ DllHandle& handle() {
 
 		h.gpuCompatibleFn = reinterpret_cast<GpuCompatibleFn>(
 			lookupSymbol(h.module, "scene_metadata_gpu_compatible"));
-		h.recommendedCameraFn = reinterpret_cast<RecommendedCameraFn>(
-			lookupSymbol(h.module, "scene_metadata_recommended_camera"));
 		h.countFn = reinterpret_cast<CountFn>(
 			lookupSymbol(h.module, "scene_metadata_count"));
 		h.idAtIndexFn = reinterpret_cast<IdAtIndexFn>(
@@ -125,20 +114,8 @@ DllHandle& handle() {
 			lookupSymbol(h.module, "scene_metadata_category"));
 		h.descriptionFn = reinterpret_cast<StringByIdFn>(
 			lookupSymbol(h.module, "scene_metadata_description"));
-		h.performanceFn = reinterpret_cast<StringByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_performance"));
-		h.recommendedSppFn = reinterpret_cast<IntByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_recommended_spp"));
 		h.requiresFilesFn = reinterpret_cast<IntByIdFn>(
 			lookupSymbol(h.module, "scene_metadata_requires_files"));
-		h.recommendedIntegratorFn = reinterpret_cast<StringByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_recommended_integrator"));
-		h.recommendedSamplerFn = reinterpret_cast<StringByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_recommended_sampler"));
-		h.recommendedLightSamplerFn = reinterpret_cast<StringByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_recommended_light_sampler"));
-		h.recommendedExposureFn = reinterpret_cast<DoubleByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_recommended_exposure"));
 		h.snapshotFn = reinterpret_cast<SnapshotFn>(
 			lookupSymbol(h.module, "scene_metadata_snapshot"));
 
@@ -146,12 +123,17 @@ DllHandle& handle() {
 		// any of them is a stale build sitting next to a newer exe, and
 		// half-working metadata (a scene list with no categories, say) is
 		// harder to diagnose than the outright "couldn't load" the caller
-		// already handles.
-		if (!h.gpuCompatibleFn || !h.recommendedCameraFn || !h.countFn || !h.idAtIndexFn ||
-			!h.nameFn || !h.categoryFn || !h.descriptionFn || !h.performanceFn ||
-			!h.recommendedSppFn || !h.requiresFilesFn || !h.recommendedIntegratorFn ||
-			!h.recommendedSamplerFn || !h.recommendedLightSamplerFn || !h.recommendedExposureFn ||
-			!h.snapshotFn) {
+		// already handles. Only resolves/checks the DLL exports this client
+		// still actually calls - scene_metadata_dll.cpp exports several more
+		// (recommended_camera/performance/spp/integrator/sampler/light_
+		// sampler/exposure) that used to have a matching Fn pointer here too,
+		// removed once scene_metadata_snapshot() below covered the same
+		// fields and their last individual caller was converted to it (see
+		// this file's header for why) - those DLL exports themselves are
+		// untouched, just no longer resolved on this side.
+		if (!h.gpuCompatibleFn || !h.countFn || !h.idAtIndexFn ||
+			!h.nameFn || !h.categoryFn || !h.descriptionFn ||
+			!h.requiresFilesFn || !h.snapshotFn) {
 			closeLibrary(h.module);
 			h = DllHandle{};
 		}
@@ -171,14 +153,6 @@ bool gpuCompatible(const QString& scene_id, bool& out_compatible) {
 	if (!ensureLoaded()) return false;
 	out_compatible = handle().gpuCompatibleFn(scene_id.toUtf8().constData()) != 0;
 	return true;
-}
-
-bool recommendedCamera(const QString& scene_id,
-	double& cam_x, double& cam_y, double& cam_z,
-	double& lookat_x, double& lookat_y, double& lookat_z) {
-	if (!ensureLoaded()) return false;
-	return handle().recommendedCameraFn(scene_id.toUtf8().constData(),
-		&cam_x, &cam_y, &cam_z, &lookat_x, &lookat_y, &lookat_z) != 0;
 }
 
 int sceneCount() {
@@ -206,39 +180,9 @@ QString sceneDescription(const QString& scene_id) {
 	return QString::fromUtf8(handle().descriptionFn(scene_id.toUtf8().constData()));
 }
 
-QString scenePerformance(const QString& scene_id) {
-	if (!ensureLoaded()) return QString();
-	return QString::fromUtf8(handle().performanceFn(scene_id.toUtf8().constData()));
-}
-
-int sceneRecommendedSpp(const QString& scene_id) {
-	if (!ensureLoaded()) return 100;
-	return handle().recommendedSppFn(scene_id.toUtf8().constData());
-}
-
 bool sceneRequiresFiles(const QString& scene_id) {
 	if (!ensureLoaded()) return false;
 	return handle().requiresFilesFn(scene_id.toUtf8().constData()) != 0;
-}
-
-QString sceneRecommendedIntegrator(const QString& scene_id) {
-	if (!ensureLoaded()) return QString();
-	return QString::fromUtf8(handle().recommendedIntegratorFn(scene_id.toUtf8().constData()));
-}
-
-QString sceneRecommendedSampler(const QString& scene_id) {
-	if (!ensureLoaded()) return QString();
-	return QString::fromUtf8(handle().recommendedSamplerFn(scene_id.toUtf8().constData()));
-}
-
-QString sceneRecommendedLightSampler(const QString& scene_id) {
-	if (!ensureLoaded()) return QString();
-	return QString::fromUtf8(handle().recommendedLightSamplerFn(scene_id.toUtf8().constData()));
-}
-
-double sceneRecommendedExposure(const QString& scene_id) {
-	if (!ensureLoaded()) return 1.0;
-	return handle().recommendedExposureFn(scene_id.toUtf8().constData());
 }
 
 bool sceneMetadata(const QString& scene_id, SceneMetadata& out) {

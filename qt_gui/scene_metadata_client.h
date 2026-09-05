@@ -28,14 +28,13 @@ namespace SceneMetadataClient {
 bool ensureLoaded();
 
 // Returns true and sets out_compatible if scene_id's GPU-compatibility
-// could be queried; false (out_compatible left untouched) otherwise.
+// could be queried; false (out_compatible left untouched) otherwise. Kept
+// as its own accessor (unlike recommendedCamera/scenePerformance/etc.,
+// folded into SceneMetadata below once their last individual caller was
+// converted to it) because error_handler.h's build-a-warning-list use is a
+// genuine single-field need, not part of a "several fields, one scene"
+// cluster.
 bool gpuCompatible(const QString& scene_id, bool& out_compatible);
-
-// Returns true and fills every output if scene_id's recommended camera
-// could be queried; false (all outputs left untouched) otherwise.
-bool recommendedCamera(const QString& scene_id,
-	double& cam_x, double& cam_y, double& cam_z,
-	double& lookat_x, double& lookat_y, double& lookat_z);
 
 // Presentational scene metadata (name/description/performance/recommended
 // SPP/requires_files) - the sole source now for what used to be a separate
@@ -47,7 +46,7 @@ bool recommendedCamera(const QString& scene_id,
 // (see scene_registry.h's SceneDescriptor::id comment).
 // All return their type's "empty" value (0 / "" / false) if the DLL isn't
 // loaded or scene_id isn't found - same "fail quiet, let the caller's
-// existing state stand" contract as gpuCompatible/recommendedCamera above.
+// existing state stand" contract as gpuCompatible above.
 
 // Total number of registered scenes, or 0 if the DLL isn't loaded.
 int sceneCount();
@@ -69,35 +68,35 @@ QString sceneCategory(const QString& scene_id);
 // scene_id's short description, or "" if not loaded/found.
 QString sceneDescription(const QString& scene_id);
 
-// scene_id's performance hint ("Fast"/"Medium"/"Slow"/"Very Slow"), or ""
-// if not loaded/found.
-QString scenePerformance(const QString& scene_id);
-
-// scene_id's recommended samples-per-pixel, or 100 (the same fallback
-// cpu_interface.cpp's own accessors use) if not loaded/found.
-int sceneRecommendedSpp(const QString& scene_id);
-
 // True if scene_id requires external asset files (e.g. earthmap.jpg);
 // false if not loaded/found - erring toward "no special files needed"
-// rather than surfacing a spurious warning.
+// rather than surfacing a spurious warning. Kept standalone: every
+// remaining caller (mainwindow_tabs.cpp's category/search filtering,
+// mainwindow_slots.cpp's thumbnail-generation loop) checks this ALONE for
+// many scenes in a loop, not alongside other fields for one scene, so
+// folding it into SceneMetadata would add a full bulk fetch's cost to a
+// tight loop for no benefit.
 bool sceneRequiresFiles(const QString& scene_id);
 
-// scene_id's recommended Sampler/Integrator/light sampler, as raw pbrt
-// directive strings (e.g. "halton", "bdpt", "power") directly comparable
-// to m_samplerCombo/m_integratorCombo/m_lightSamplerCombo's own
-// currentData() values - or "" if not loaded/found/the scene's file
-// doesn't declare that directive (every hand-built scene always returns
-// ""). Not auto-applied anywhere; see cpu_interface.cpp's own comment on
-// why the CLI only warns rather than switching settings for the user.
-QString sceneRecommendedIntegrator(const QString& scene_id);
-QString sceneRecommendedSampler(const QString& scene_id);
-QString sceneRecommendedLightSampler(const QString& scene_id);
-
-// scene_id's curated recommended Exposure multiplier, or 1.0 (neutral, same
-// fallback cpu_interface.cpp's own accessor uses) if not loaded/found.
-// UNLIKE sceneRecommendedIntegrator/Sampler/LightSampler above, this one IS
-// meant to be auto-applied - see onSceneChanged()'s call site.
-double sceneRecommendedExposure(const QString& scene_id);
+// scenePerformance/sceneRecommendedSpp/sceneRecommendedExposure/
+// recommendedCamera/sceneRecommendedIntegrator/sceneRecommendedSampler/
+// sceneRecommendedLightSampler used to live here as their own individual
+// accessors, mirroring cpu_interface.h's by-id functions of the same
+// names/shapes one-for-one. Removed once SceneMetadata (below) covered
+// every one of their fields AND their own last individual caller was
+// converted to fetch a SceneMetadata once instead (onSceneChanged(),
+// applyRecommendedSettings(), captureRenderJob(), updateSceneRecommended-
+// SettingsHint() - all in mainwindow_slots.cpp) - keeping them as an
+// unused parallel API alongside SceneMetadata would have been exactly the
+// "two APIs to keep in sync, only one of which anything still calls"
+// problem a design review flagged this file for. The underlying
+// cpu_interface.h/.cpp accessors and scene_metadata_dll.cpp exports these
+// used to wrap are UNTOUCHED - they're still real, tested, general-purpose
+// C API surface (scene_registry_tests.cpp exercises them directly), this
+// removal is scoped to this GUI-side client's own now-dead wrappers only.
+// If a future single-field-only need for one of them comes back, add a
+// thin one-line wrapper here again rather than reintroducing the whole
+// Fn-pointer/DllHandle/lookupSymbol/required-check machinery for it.
 
 // Qt-friendly mirror of cpu_interface.h's SceneMetadataSnapshot (the raw C
 // struct scene_metadata_snapshot() fills in across the DLL boundary) - one
@@ -107,8 +106,8 @@ double sceneRecommendedExposure(const QString& scene_id);
 // fallback its single-field equivalent above uses, so a caller that gets
 // `false` back can still use a default-constructed SceneMetadata safely
 // (e.g. treating its empty recommendedIntegrator as "no recommendation",
-// exactly like sceneRecommendedIntegrator()'s own "" fallback already
-// means).
+// the same "empty means none declared" meaning every recommended_* field
+// on SceneDescriptor itself already carries - scene_registry.h).
 struct SceneMetadata {
 	QString name;
 	QString category;
