@@ -92,6 +92,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cpu_interface.h" />
+    <ClInclude Include="scene_metadata_snapshot.h" />
     <ClInclude Include="..\src\TheRestOfYourLife\*.h" />
     <ClCompile Include="..\src\external\stb_image_impl.cpp" />
     <ClCompile Include="..\src\external\tinyexr_impl.cpp" />

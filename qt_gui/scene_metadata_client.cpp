@@ -1,4 +1,5 @@
 #include "scene_metadata_client.h"
+#include "../cpu_renderer/scene_metadata_snapshot.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -17,31 +18,7 @@ typedef int (*CountFn)();
 typedef const char* (*IdAtIndexFn)(int);
 typedef const char* (*StringByIdFn)(const char*);
 typedef int (*IntByIdFn)(const char*);
-
-// Raw mirror of cpu_interface.h's SceneMetadataSnapshot - field-for-field,
-// same order, same types. Both sides are plain data (ints/doubles/const
-// char*), so this is standard-layout and safe across the DLL boundary the
-// same way every individual int/double/const char* parameter above already
-// is (see this file's own top-of-file ABI comment) - there's no shared
-// header between the MSVC-built DLL and this MinGW-built client to enforce
-// that agreement, so keep this in sync by hand if SceneMetadataSnapshot
-// ever changes.
-struct RawSceneMetadataSnapshot {
-	const char* name;
-	const char* category;
-	const char* description;
-	const char* performance;
-	int recommended_spp;
-	int requires_files;
-	int gpu_compatible;
-	double recommended_exposure;
-	const char* recommended_integrator;
-	const char* recommended_sampler;
-	const char* recommended_light_sampler;
-	double cam_lookfrom_x, cam_lookfrom_y, cam_lookfrom_z;
-	double cam_lookat_x, cam_lookat_y, cam_lookat_z;
-};
-typedef int (*SnapshotFn)(const char*, RawSceneMetadataSnapshot*);
+typedef int (*SnapshotFn)(const char*, SceneMetadataSnapshot*);
 
 struct DllHandle {
 	// HMODULE (Windows) and dlopen()'s return type are both opaque handles
@@ -187,7 +164,7 @@ bool sceneRequiresFiles(const QString& scene_id) {
 
 bool sceneMetadata(const QString& scene_id, SceneMetadata& out) {
 	if (!ensureLoaded()) return false;
-	RawSceneMetadataSnapshot raw{};
+	SceneMetadataSnapshot raw{};
 	if (!handle().snapshotFn(scene_id.toUtf8().constData(), &raw)) return false;
 
 	out.name = QString::fromUtf8(raw.name);

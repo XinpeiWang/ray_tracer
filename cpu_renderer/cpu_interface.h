@@ -21,6 +21,7 @@
 #define CPU_INTERFACE_H
 
 #include "../src/shared/render_options.h"
+#include "scene_metadata_snapshot.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -524,12 +525,13 @@ double cpu_scene_recommended_exposure_by_id(const char* scene_id);
 /// onSceneChanged()/refreshSceneInfoLabel()/updateSceneRecommendedSettings-
 /// Hint() (mainwindow_slots.cpp) made ~15 separate accessor calls per scene
 /// selection - each its own find_scene() linear scan - to assemble what is
-/// really one scene's metadata. Plain data only (ints/doubles/const char*),
-/// same standard-layout requirement as every other type crossing the
-/// scene_metadata.dll boundary (see that file's own ABI comment) - every
-/// const char* here has the same lifetime as the individual by-id
-/// accessors' own return values (points into the static scene registry,
-/// valid for the process lifetime, never owned by the caller).
+/// really one scene's metadata.
+///
+/// SceneMetadataSnapshot itself (the struct returned here) lives in
+/// scene_metadata_snapshot.h, #include-d by both this file (MSVC) and
+/// qt_gui/scene_metadata_client.cpp (MinGW) directly - see that header's own
+/// comment for why a shared plain-data header, not a hand-mirrored copy on
+/// each side, is safe across this ABI boundary.
 ///
 /// This does NOT replace the individual accessors above: they stay for
 /// call sites that only need one field (e.g. cpu_scene_name_by_id in a
@@ -538,28 +540,7 @@ double cpu_scene_recommended_exposure_by_id(const char* scene_id);
 /// whichever shape fits the call site - one field, call the specific
 /// accessor; several fields together, call this once instead of several
 /// times.
-struct SceneMetadataSnapshot {
-	const char* name;
-	const char* category;
-	const char* description;
-	const char* performance;
-	int recommended_spp;
-	int requires_files;              // 1/0, C-bool
-	int gpu_compatible;               // 1/0, C-bool
-	double recommended_exposure;
-	const char* recommended_integrator;    // "" if the scene doesn't declare one
-	const char* recommended_sampler;       // ""
-	const char* recommended_light_sampler; // ""
-	// Same fields cpu_scene_recommended_camera() returns, unconditionally
-	// populated here (unlike that function, which leaves its out-params
-	// untouched on failure) - safe because this whole struct is only valid
-	// when cpu_scene_metadata_snapshot() itself returned 1, at which point
-	// every SceneDescriptor's camera (never optional - see CameraConfig)
-	// is known-good.
-	double cam_lookfrom_x, cam_lookfrom_y, cam_lookfrom_z;
-	double cam_lookat_x, cam_lookat_y, cam_lookat_z;
-};
-
+///
 /// @param scene_id  registry id to look up
 /// @param out       populated on success; left untouched on failure
 /// @return 1 on success, 0 if scene_id isn't found
