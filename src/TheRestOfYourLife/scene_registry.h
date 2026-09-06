@@ -976,12 +976,93 @@ inline int scene_count() {
 // a given scene). H16 is the one case actually confirmed - by rendering,
 // not inference - to have both a real AND subject-centered LookAt target,
 // which is why it alone gets an orbit-family override.
+//
+// Categories A-G/I/J (everything except H) are a completely different risk
+// profile from the above: every one of their CameraConfig lookat values is
+// either a literal hand-typed number in get_builtin_scene_registry() (never
+// passes through cameraFromWorldToCamera()'s matrix reconstruction at all)
+// or comes from one of this project's OWN small git-tracked pbrt example
+// files under pbrt_scenes/*.pbrt (as opposed to H's large, third-party
+// pbrt-v4-scenes downloads) - spot-checked a representative dozen of the
+// latter directly against their LookAt directives (hair-material.pbrt,
+// killeroo-simple.pbrt, uniformgrid-medium.pbrt, ...) and every one declares
+// a real, non-placeholder eye-to-target distance (ranging 3 to ~1078 units),
+// unlike H15/H17/H19/H21's "look direction reference point" convention.
+// So unlike H, a scene's shape - what it actually shows - is the only thing
+// that decides its path here, not a lookat-trustworthiness concern:
+//   - "single centered object" (a statue/mesh/sphere-cluster on a plain
+//     background) suits "showcase" the same way H16 does - confirmed by the
+//     same reasoning, not a separate render-and-check pass per scene, given
+//     the lookat data itself is already established as trustworthy above.
+//   - "side-by-side comparison row" (several small objects/panels
+//     demonstrating a parameter sweep - roughness, IOR, light power, ...)
+//     suits "linear": a straight sweep past the row keeps every item
+//     legible in turn, where an orbit-family path would pivot tightly
+//     around ONE point and cut the row's ends out of frame.
+//   - "Cornell-box-style enclosed room" keeps the global "orbit" default -
+//     a slow full rotation around a small box viewed from its open front is
+//     already the classic, iconic "beauty shot" for this exact scene shape
+//     (unlike H's large architectural interiors, which is why THOSE default
+//     to "tour" instead - a box this small has no interior to walk through).
+//   - "volumetric/fog" (nebulae, cloud media, glowing density blobs) gets
+//     its own category default, "spiral": a slow push-in orbit resolves
+//     noisy density and reveals depth better than showcase's punchier single
+//     arc, the same "longer, more contemplative look at fine detail"
+//     reasoning this file used for H15/H21 before their lookat data turned
+//     out to be untrustworthy (E's own data was individually confirmed
+//     trustworthy above, so the reasoning that motivated spiral there
+//     finally gets to apply to scenes it actually fits).
+// G (Models) and F (Geometry) get "showcase" as their own category default
+// rather than individual overrides, since single-object is their dominant
+// shape (24/25 and 8/14 scenes respectively) - individual entries below
+// handle the rest of each category (a comparison row, a Cornell-box variant,
+// a spread-out multi-instance scene) same as any other category's
+// exceptions.
 inline const char* recommended_camera_path_for(const std::string& scene_id) {
     static const std::map<std::string, const char*> kIdOverrides = {
+        // H (Large Scenes) - see above for the pbrt-LookAt investigation.
         {"H16", "showcase"},
+
+        // A (Basics) - single centered subject (category default: orbit).
+        {"A3", "showcase"}, {"A4", "showcase"}, {"A5", "showcase"},
+
+        // B (Materials) - single/clustered subject or a comparison row
+        // (category default: orbit).
+        {"B1", "linear"}, {"B10", "linear"}, {"B11", "showcase"},
+        {"B14", "showcase"}, {"B20", "showcase"}, {"B25", "linear"},
+
+        // C (Lights) - comparison rows/panels (category default: orbit).
+        {"C8", "linear"}, {"C10", "linear"}, {"C16", "linear"}, {"C18", "linear"},
+
+        // D (Cameras) - comparison rows (category default: orbit).
+        {"D1", "linear"}, {"D4", "linear"},
+
+        // E (Volumes, category default: spiral) - exceptions: E1 is a
+        // Cornell box (orbit, matching every other enclosed-room scene);
+        // E3/E10 are a comparison row and a boundary-less camera-in-fog
+        // scene respectively, neither of which has one coherent subject to
+        // spiral in on.
+        {"E1", "orbit"}, {"E3", "linear"}, {"E10", "linear"},
+
+        // F (Geometry, category default: showcase) - exceptions: F1 is a
+        // Cornell box (orbit); F3/F14 are a spread-out multi-instance scene
+        // and a comparison row, both better served by a straight sweep.
+        {"F1", "orbit"}, {"F3", "linear"}, {"F14", "linear"},
+
+        // G (Models, category default: showcase) - the one comparison row.
+        {"G12", "linear"},
+
+        // J (Textures) - comparison rows (category default: orbit).
+        {"J4", "linear"}, {"J5", "linear"},
     };
     const auto it = kIdOverrides.find(scene_id);
     if (it != kIdOverrides.end()) return it->second;
-    if (!scene_id.empty() && scene_id[0] == 'H') return "tour";
-    return "orbit";
+    if (scene_id.empty()) return "orbit";
+    switch (scene_id[0]) {
+        case 'H': return "tour";
+        case 'E': return "spiral";
+        case 'F': return "showcase";
+        case 'G': return "showcase";
+        default:  return "orbit";
+    }
 }

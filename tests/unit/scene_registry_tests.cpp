@@ -327,10 +327,61 @@ TEST(SceneRegistryTest, RecommendedCameraPathCuratedChoices) {
 	EXPECT_STREQ(recommended_camera_path_for("H19"), "tour");
 	EXPECT_STREQ(recommended_camera_path_for("H20"), "tour");
 	EXPECT_STREQ(recommended_camera_path_for("H21"), "tour");
-	// ...and the global default (orbit) for every other category and for
-	// an id that doesn't exist at all.
-	EXPECT_STREQ(recommended_camera_path_for("A1"), "orbit");
-	EXPECT_STREQ(recommended_camera_path_for("G6"), "orbit");
+
+	// A-G/I/J: unlike H, every one of these scenes' lookat data is already
+	// established as trustworthy (hand-typed CameraConfig literals, or this
+	// project's own small git-tracked pbrt example files - see
+	// recommended_camera_path_for()'s own comment), so shape alone decides
+	// the path. Single centered subject -> showcase.
+	EXPECT_STREQ(recommended_camera_path_for("A3"), "showcase");   // CheckeredSpheres
+	EXPECT_STREQ(recommended_camera_path_for("A4"), "showcase");   // Earth
+	EXPECT_STREQ(recommended_camera_path_for("A5"), "showcase");   // PerlinSpheres
+	EXPECT_STREQ(recommended_camera_path_for("B11"), "showcase");  // HairFibers (sphere cluster)
+	EXPECT_STREQ(recommended_camera_path_for("B14"), "showcase");  // MeasuredBrdf (sphere cluster)
+	EXPECT_STREQ(recommended_camera_path_for("B20"), "showcase");  // HairMaterialPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("G6"), "showcase");   // UtahTeapot - G's own category default
+	EXPECT_STREQ(recommended_camera_path_for("G25"), "showcase");  // KillerooSimplePbrtExample
+
+	// Comparison row (a parameter sweep across several small objects/panels)
+	// -> linear, so a straight sweep keeps every item in frame rather than
+	// an orbit-family path pivoting tightly around one point.
+	EXPECT_STREQ(recommended_camera_path_for("B1"), "linear");    // RoughMetalSpheres
+	EXPECT_STREQ(recommended_camera_path_for("B10"), "linear");   // PrincipledShowcase
+	EXPECT_STREQ(recommended_camera_path_for("B25"), "linear");   // GlassPresetsPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("C8"), "linear");    // PunctualLightsPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("C10"), "linear");   // BlackbodyLightPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("C16"), "linear");   // ColorSpaceBlackbodyPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("C18"), "linear");   // LightPowerParameterPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("D1"), "linear");    // DepthOfField
+	EXPECT_STREQ(recommended_camera_path_for("D4"), "linear");    // RealisticCamera
+	EXPECT_STREQ(recommended_camera_path_for("E3"), "linear");    // DielectricMediumShowcase
+	EXPECT_STREQ(recommended_camera_path_for("E10"), "linear");   // CameraMediumPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("F3"), "linear");    // InstancedSpheres
+	EXPECT_STREQ(recommended_camera_path_for("F14"), "linear");   // ConeParaboloidGalleryPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("G12"), "linear");   // TrophyRoom
+	EXPECT_STREQ(recommended_camera_path_for("J4"), "linear");    // TextureEncodingWrapInvertPbrtExample
+	EXPECT_STREQ(recommended_camera_path_for("J5"), "linear");    // ProceduralTextureGalleryPbrtExample
+
+	// Volumes (category default: spiral) - a slow push-in orbit for
+	// nebula/fog-like subjects, except E1 (a Cornell box, orbit like every
+	// other enclosed room).
+	EXPECT_STREQ(recommended_camera_path_for("E1"), "orbit");     // HomogeneousMedium (Cornell box)
+	EXPECT_STREQ(recommended_camera_path_for("E2"), "spiral");    // CloudMedium
+	EXPECT_STREQ(recommended_camera_path_for("E8"), "spiral");    // UniformGridMediumPbrtExample
+
+	// Geometry (category default: showcase) - except F1, a Cornell box.
+	EXPECT_STREQ(recommended_camera_path_for("F1"), "orbit");     // BilinearPatchScene (Cornell box)
+	EXPECT_STREQ(recommended_camera_path_for("F5"), "showcase");  // PlymeshUvPbrtExample
+
+	// Cornell-box-style enclosed rooms keep the plain global default - a
+	// slow full rotation around a small box viewed from its open front is
+	// the classic beauty shot for this shape, unlike H's large interiors.
+	EXPECT_STREQ(recommended_camera_path_for("A1"), "orbit");     // CornellBox itself
+	EXPECT_STREQ(recommended_camera_path_for("B2"), "orbit");     // CornellRoughMetal
+	EXPECT_STREQ(recommended_camera_path_for("I1"), "orbit");     // SamplerComparison (=A1)
+
+	// ...and the global default (orbit) for a category with no curation at
+	// all and for an id that doesn't exist.
 	EXPECT_STREQ(recommended_camera_path_for("NotARealId"), "orbit");
 	EXPECT_STREQ(recommended_camera_path_for(""), "orbit");
 }
