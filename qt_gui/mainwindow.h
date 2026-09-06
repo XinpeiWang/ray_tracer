@@ -203,7 +203,6 @@ private:
 	// called from all of those controls' own change handlers instead of
 	// hand-duplicating the same condition at each call site.
 	void updateRenderOptionsEnabled();
-	void createVideoTab();
 	void createPreviewTab();
 	void createProgressTab();
 	void createLogTab();
@@ -539,7 +538,6 @@ private:
 	QLabel *m_statusWarningLabel;
 	QLabel *m_currentJobLabel;          // Which job is actually rendering - see startRenderJob()/describeRenderJob()
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
-	int m_videoTabIndex = -1;           // Index of the Video Settings tab within m_tabWidget (see createVideoTab()/onModeChanged())
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides
 	QSpinBox *m_widthSpinBox;           // Custom width
@@ -798,17 +796,19 @@ private:
 	// before.
 	void refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata* preloaded = nullptr);
 
-	// Video Tab
+	// Settings Tab (cont'd) - Video Generation Settings
 	QComboBox *m_videoPresetCombo;      // Named scene+path+frames/fps/speed bundle - see video_preset.h
 	QComboBox *m_cameraPathCombo;       // Camera animation path selector
 	QSpinBox *m_videoFramesSpinBox;     // Number of frames to render
 	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
 	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
 	QLabel *m_videoInfoLabel;           // Video duration and path info
-	// Visible whenever Output Mode (Settings tab) isn't "Generate Video" -
-	// see createVideoTab()'s own comment for why this tab stays enabled and
-	// clickable rather than being disabled outright. Toggled by onModeChanged().
-	QLabel *m_videoModeWarningLabel = nullptr;
+	// The whole "Video Generation Settings" group - disabled outright
+	// (rather than just showing a warning) whenever Output Mode isn't
+	// "Generate Video", via onModeChanged(). See createSettingsTab()'s own
+	// comment for why a banner is no longer needed now that this group sits
+	// right below the Output Mode control that governs it.
+	QGroupBox *m_videoSettingsGroup = nullptr;
 
 	// Preview tab - each completed render gets its own closable sub-tab
 	// (see addImagePreviewTab()/addVideoPreviewTab()) instead of a single

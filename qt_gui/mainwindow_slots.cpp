@@ -753,8 +753,9 @@ void MainWindow::onCameraPresetChanged(int index) {
 // ============================================================================
 // MainWindow::onVideoPresetChanged
 // ============================================================================
-// Called when the user picks a named bundle from the Video tab's Preset
-// combo (see video_preset.h and createVideoTab()'s own setup comment).
+// Called when the user picks a named bundle from the Video Generation
+// Settings group's Preset combo (see video_preset.h and createSettingsTab()'s
+// own setup comment).
 // Index 0 is the always-present "(custom)" placeholder with empty itemData -
 // selecting it is a no-op, since its whole point is "I'm choosing the four
 // controls below myself" rather than pointing at anything to apply.
@@ -1089,8 +1090,8 @@ void MainWindow::onSceneChanged(int index) {
 	m_samplesSpinBox->setValue(meta.recommendedSpp);
 	m_exposureSpin->setValue(meta.recommendedExposure);
 
-	// Same unconditional-reset reasoning for the Video tab's camera-path
-	// combo - meta.recommendedCameraPath (scene_registry.h's
+	// Same unconditional-reset reasoning for the Video Generation Settings'
+	// camera-path combo - meta.recommendedCameraPath (scene_registry.h's
 	// recommended_camera_path_for()) is curated per scene/category (e.g.
 	// Large Scenes default to a lateral "linear" flythrough rather than an
 	// "orbit" that could circle straight through a room's walls), so a
@@ -1607,12 +1608,12 @@ void MainWindow::onElapsedTick() {
 void MainWindow::onModeChanged(int index) {
 	m_videoMode = (index == 1); // 0 = Image, 1 = Video
 
-	// Every control on Video Settings is inert unless Output Mode is
-	// "Generate Video" - the banner (see createVideoTab()'s own comment) is
-	// what surfaces that, rather than disabling the tab outright and
-	// blocking the user from browsing/configuring it ahead of switching
-	// modes.
-	if (m_videoModeWarningLabel) m_videoModeWarningLabel->setVisible(!m_videoMode);
+	// Every control in Video Generation Settings is inert unless Output Mode
+	// is "Generate Video" - greying out the whole group (one call, since
+	// QGroupBox::setEnabled() cascades to every child) makes that obvious on
+	// its own, now that the group sits right below Output Mode instead of on
+	// its own separate tab.
+	if (m_videoSettingsGroup) m_videoSettingsGroup->setEnabled(m_videoMode);
 
 	// --video hard-rejects any non-Default integrator (see
 	// m_integratorVideoWarningLabel's own comment, mainwindow.h) - also

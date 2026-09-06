@@ -630,7 +630,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			font-style: italic;
 			padding: 10px;
 		}
-		/* Shared by the long help/requirements blurbs on the Video tab. */
+		/* Shared by the Settings tab's Video Generation Settings help/requirements blurbs. */
 		QLabel#mutedInfo {
 			color: %TEXT_MUTED%;
 			padding: 10px;
@@ -646,19 +646,6 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		   field just for this one label. */
 		QLabel#statusWarning {
 			color: %WARNING%;
-			font-size: %FS_M1%;
-		}
-		/* Video Settings' "these controls are currently ignored" banner - see
-		   createVideoTab()'s own comment. Same %WARNING%/%SURFACE1%/%RADIUS%
-		   tokens the rest of the app's warning/surface treatment already
-		   uses, just with a border and padding since this sits at the top of
-		   a whole tab rather than trailing a status line. */
-		QLabel#videoModeWarning {
-			color: %WARNING%;
-			background-color: %SURFACE1%;
-			border: 1px solid %WARNING%;
-			border-radius: %RADIUS%;
-			padding: 8px 12px;
 			font-size: %FS_M1%;
 		}
 		ScaledImageLabel {

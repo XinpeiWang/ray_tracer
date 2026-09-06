@@ -1,11 +1,13 @@
-// The Settings tab (scene selection, render mode/quality/resolution, manual
-// width/height/samples/depth overrides, camera position, output path -
-// formerly split across separate "Basic Settings" and "Advanced Settings"
-// tabs with no documented reason for the split; merged into one scrollable
-// tab), plus the scene-list helpers it uses (filteredSceneIds/
-// populateSceneCombo/populateSceneGrid/populateSceneViews/thumbnailCachePath/
-// selectSceneById/rebuildCategoryTabs) - split out into
-// mainwindow_tabs_render.cpp (Render Options/Preview/Video) and
+// The Settings tab (scene selection, render mode/quality/resolution, video
+// generation settings, manual width/height/samples/depth overrides, camera
+// position, output path - formerly split across separate "Basic Settings",
+// "Advanced Settings", and "Video Settings" tabs with no documented reason
+// for the split; merged into one scrollable tab - Video Generation Settings
+// is disabled as a whole, via m_videoSettingsGroup, whenever Output Mode
+// isn't "Generate Video"), plus the scene-list helpers it uses
+// (filteredSceneIds/populateSceneCombo/populateSceneGrid/populateSceneViews/
+// thumbnailCachePath/selectSceneById/rebuildCategoryTabs) - split out into
+// mainwindow_tabs_render.cpp (Render Options/Preview) and
 // mainwindow_tabs_output.cpp (Progress/Log/Diagnostics), which used to live
 // in this same file.
 #include "mainwindow.h"
@@ -747,6 +749,220 @@ void MainWindow::createSettingsTab() {
 		m_resolutionCombo);
 
 	layout->addWidget(renderGroup);
+
+	// --- Video Generation Settings: only meaningful when Output Mode above
+	// is "Generate Video" - formerly its own "Video Settings" tab that
+	// stayed fully interactive regardless of mode (with a banner explaining
+	// why), folded in here and disabled as a whole (m_videoSettingsGroup->
+	// setEnabled()) via onModeChanged() instead - now that it sits right
+	// below the Output Mode control that governs it, a greyed-out group
+	// reads as "not applicable right now" on its own, without a banner.
+	m_videoSettingsGroup = new QGroupBox(tr("Video Generation Settings"), basicTab);
+	styleGroupBox(m_videoSettingsGroup);
+	m_videoSettingsGroup->setEnabled(m_videoMode);
+	QFormLayout *videoLayout = new QFormLayout(m_videoSettingsGroup);
+	videoLayout->setVerticalSpacing(10);
+	videoLayout->setHorizontalSpacing(10);
+	videoLayout->setContentsMargins(15, 22, 15, 12);
+
+	// Preset selector - sets the scene picker above, camera path, and the
+	// three spinboxes below all at once from one of video_preset.h's named
+	// bundles. First row, above Camera Path, since picking one is meant to
+	// replace tuning the other four controls, not sit alongside them as a
+	// fifth independent setting.
+	m_videoPresetCombo = new QComboBox();
+	m_videoPresetCombo->addItem(tr("(custom - choose settings below)"), QString());
+	for (const video_preset::VideoPreset& p : video_preset::kAll)
+		m_videoPresetCombo->addItem(
+			QString("[%1] %2").arg(QString::fromUtf8(p.id), QString::fromUtf8(p.name)),
+			QString::fromUtf8(p.id));
+	m_videoPresetCombo->setToolTip(
+		tr("Famous ray-tracing reference scenes and motions, pre-tuned so you don't\n"
+		"have to set the scene, camera path, frame count, fps, and speed by hand.\n"
+		"Selecting one changes the Scene above too. Choosing any of the\n"
+		"other controls on this tab afterward is fine - they simply stop matching\n"
+		"the preset, the same as if you had built the same settings by hand."));
+	styleComboBox(m_videoPresetCombo);
+	connect(m_videoPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onVideoPresetChanged);
+	videoLayout->addRow(labelWithInfo(tr("Preset:"),
+		tr("A ready-made bundle of scene + camera path + frame count + fps "
+		"+ speed, tuned so the resulting video actually looks good "
+		"without hand-picking every setting yourself.\n\n"
+		"Picking one fills in every field below (and the Scene above) - "
+		"you can still change anything afterward, it just "
+		"stops matching the preset once you do.")),
+		m_videoPresetCombo);
+
+	// Camera path selector
+	m_cameraPathCombo = new QComboBox();
+	m_cameraPathCombo->addItem(tr("Orbit (Circular rotation)"), "orbit");
+	m_cameraPathCombo->addItem(tr("Linear (Straight path)"), "linear");
+	m_cameraPathCombo->addItem(tr("Figure-8 (Lemniscate)"), "figure8");
+	m_cameraPathCombo->addItem(tr("Spiral (Zoom-in)"), "spiral");
+	m_cameraPathCombo->addItem(tr("Tour (Room walkthrough)"), "tour");
+	m_cameraPathCombo->addItem(tr("Showcase (Product reveal)"), "showcase");
+	m_cameraPathCombo->setToolTip(
+		tr("How the camera moves over the frame sequence:\n"
+		"  Orbit     — full circle around the scene, always looking at its centre\n"
+		"  Linear    — straight sweep past the scene\n"
+		"  Figure-8  — lemniscate, crossing back through the middle\n"
+		"  Spiral    — orbits while moving steadily closer\n"
+		"  Tour      — sways side to side and glides forward while looking around, like walking through a room\n"
+		"  Showcase  — one eased turn that pushes in and arcs up-then-down, like a product ad\n"
+		"Every path starts from the camera position set below."));
+	m_cameraPathCombo->setCurrentIndex(0);
+	styleComboBox(m_cameraPathCombo);
+	videoLayout->addRow(labelWithInfo(tr("Camera Path:"),
+		tr("How the camera moves across the sequence of frames.\n\n"
+		"Orbit circles fully around the scene, always facing its center "
+		"- the classic \"turntable\" shot. Linear sweeps past in a "
+		"straight line. Figure-8 traces a lemniscate, crossing back "
+		"through the middle. Spiral orbits while steadily moving closer. "
+		"Tour sways side to side and glides forward while its look-at "
+		"point drifts too, like an actual visitor walking through and "
+		"looking around a room. Showcase turns once around the subject "
+		"with an eased push-in and a gentle rise-and-fall, like a "
+		"product advertisement's hero shot. Every path starts from "
+		"wherever the camera is positioned further down this tab.")),
+		m_cameraPathCombo);
+
+	// Frame count
+	m_videoFramesSpinBox = new QSpinBox();
+	m_videoFramesSpinBox->setRange(10, 1000);
+	m_videoFramesSpinBox->setValue(60);
+	m_videoFramesSpinBox->setSuffix(tr(" frames"));
+	styleSpinBox(m_videoFramesSpinBox);
+	videoLayout->addRow(labelWithInfo(tr("Frame Count:"),
+		tr("How many individual images make up the video - each one is a "
+		"full, independent render, so this multiplies total render time "
+		"directly (100 frames takes roughly 100x as long as one image "
+		"at the same settings).\n\n"
+		"Paired with Frames Per Second below to determine the video's "
+		"total length in seconds.")),
+		m_videoFramesSpinBox);
+
+	// FPS (frames per second)
+	m_videoFPSSpinBox = new QSpinBox();
+	m_videoFPSSpinBox->setRange(15, 120);
+	m_videoFPSSpinBox->setValue(30);
+	m_videoFPSSpinBox->setSuffix(tr(" fps"));
+	styleSpinBox(m_videoFPSSpinBox);
+	videoLayout->addRow(labelWithInfo(tr("Frames Per Second:"),
+		tr("How many of the rendered frames play per second of video.\n\n"
+		"Doesn't change how many frames get rendered (that's Frame "
+		"Count above) - only how fast they play back, and therefore how "
+		"many seconds long the finished video is (Frame Count divided "
+		"by FPS).")),
+		m_videoFPSSpinBox);
+
+	// Movement speed multiplier - does NOT change the camera path itself (it
+	// always completes the exact same full sweep: 1 rotation for
+	// orbit/figure8, 2 for spiral, the whole start->end traversal for
+	// linear). Instead it expands the actual number of rendered frames:
+	// speed 0.5x renders 2x the Frame Count above, spreading the same
+	// journey over more frames (and more real video time at the same fps),
+	// so it looks slower without ever cutting the path short. speed 2x
+	// renders half as many frames, covering the same journey faster.
+	m_videoSpeedSpinBox = new QDoubleSpinBox();
+	m_videoSpeedSpinBox->setRange(0.1, 5.0);
+	m_videoSpeedSpinBox->setSingleStep(0.1);
+	m_videoSpeedSpinBox->setDecimals(2);
+	m_videoSpeedSpinBox->setValue(1.0);
+	m_videoSpeedSpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_videoSpeedSpinBox);
+	videoLayout->addRow(labelWithInfo(tr("Movement Speed:"),
+		tr("A multiplier on how many frames the camera's full path is "
+		"spread across - not a change to the path itself, which always "
+		"completes the same full sweep.\n\n"
+		"Speed 0.5x renders twice as many frames to cover the same "
+		"journey more slowly and smoothly; speed 2x renders half as "
+		"many frames, covering the same journey faster.")),
+		m_videoSpeedSpinBox);
+
+	// Video duration info (calculated from frames/fps)
+	m_videoInfoLabel = new QLabel();
+	m_videoInfoLabel->setWordWrap(true);
+	m_videoInfoLabel->setObjectName("videoInfo");
+
+	// Update duration display when frames, FPS, speed, or path changes
+	auto updateVideoDuration = [this]() {
+		int baseFrames = m_videoFramesSpinBox->value();
+		int fps = m_videoFPSSpinBox->value();
+		double speed = m_videoSpeedSpinBox->value();
+		QString cameraPath = m_cameraPathCombo->currentData().toString();
+
+		// Mirrors main.cpp's render_frame_count derivation exactly, so this
+		// preview matches what will actually be rendered.
+		int actualFrames = qMax(1, static_cast<int>(std::llround(baseFrames / speed)));
+		const int kMaxVideoFrames = 5000;
+		bool capped = actualFrames > kMaxVideoFrames;
+		if (capped) actualFrames = kMaxVideoFrames;
+		double duration = static_cast<double>(actualFrames) / fps;
+
+		QString framesLine = (actualFrames == baseFrames)
+			? tr("%1 frames").arg(actualFrames)
+			: tr("%1 frames (base %2 × 1/%3x speed)%4")
+				.arg(actualFrames).arg(baseFrames).arg(QString::number(speed, 'f', 2))
+				.arg(capped ? tr(" - capped at 5000") : QString());
+
+		m_videoInfoLabel->setText(tr(
+			"<b>Video Duration:</b> %1 seconds (%2)<br>"
+			"<b>Camera Path:</b> %3, always completes its full sweep regardless of speed<br>"
+			"<b>Output:</b> Frames will be saved to <code>output/frames/</code>"
+		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath));
+	};
+
+	connect(m_videoFramesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
+	connect(m_videoFPSSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
+	connect(m_videoSpeedSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), updateVideoDuration);
+	connect(m_cameraPathCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateVideoDuration);
+	updateVideoDuration();
+
+	videoLayout->addRow("", m_videoInfoLabel);
+
+	layout->addWidget(m_videoSettingsGroup);
+
+	// Requirements info - left enabled/visible regardless of Output Mode,
+	// same as Usage Instructions below: reference material someone might
+	// want to read before ever switching to Generate Video, not a setting.
+	QGroupBox *requirementsGroup = new QGroupBox(tr("ℹ️ Requirements"), basicTab);
+	styleGroupBox(requirementsGroup);
+	QVBoxLayout *requirementsLayout = new QVBoxLayout(requirementsGroup);
+
+	QLabel *requirementsInfo = new QLabel(
+		tr("<b>Requires ffmpeg:</b> Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.<br>"
+		"<small>Get it from <a href=\"https://ffmpeg.org/download.html\">ffmpeg.org</a> if the render log reports it's missing.</small><br><br>"
+		"<b>Automatic Assembly:</b> After rendering all frames, the video will be automatically assembled and opened.")
+	);
+	requirementsInfo->setOpenExternalLinks(true);
+	requirementsInfo->setWordWrap(true);
+	requirementsInfo->setObjectName("mutedInfo");
+	requirementsLayout->addWidget(requirementsInfo);
+
+	layout->addWidget(requirementsGroup);
+
+	// Usage instructions
+	QGroupBox *usageGroup = new QGroupBox(tr("Usage Instructions"), basicTab);
+	styleGroupBox(usageGroup);
+	QVBoxLayout *usageLayout = new QVBoxLayout(usageGroup);
+
+	QLabel *usageText = new QLabel(
+		tr("<b>Step 1:</b> Set Output Mode above to Generate Video, then configure the Video Generation Settings (camera path, frames, FPS)<br>"
+		"<b>Step 2:</b> Configure quality settings further down this tab<br>"
+		"<b>Step 3:</b> Click START VIDEO RENDER and wait<br>"
+		"<b>Step 4:</b> Video automatically assembles and opens when done!<br><br>"
+		"<b>Tips:</b><br>"
+		"• Use GPU mode for faster rendering<br>"
+		"• Lower samples/pixel for quick previews (10-50)<br>"
+		"• Higher samples/pixel for production quality (100-500)<br>"
+		"• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)")
+	);
+	usageText->setWordWrap(true);
+	usageText->setObjectName("mutedInfo");
+	usageLayout->addWidget(usageText);
+
+	layout->addWidget(usageGroup);
 
 	// --- Advanced Parameters: manual width/height/samples/depth overrides ---
 	// Formerly its own "Advanced Settings" tab - folded in here since there

@@ -25,8 +25,8 @@ qt_gui/
 │                                 #   toast notifications, scaled image label, ...)
 ├── mainwindow_jobtypes.h        # Render job/controller/diagnostics data types
 ├── mainwindow.cpp                     # MainWindow construction, top-level wiring
-├── mainwindow_tabs.cpp                # Settings tab (scene/render/camera/output)
-├── mainwindow_tabs_render.cpp         # Render Options, Preview, Video Settings tabs
+├── mainwindow_tabs.cpp                # Settings tab (scene/render/video/camera/output)
+├── mainwindow_tabs_render.cpp         # Render Options, Preview tabs
 ├── mainwindow_tabs_output.cpp         # Progress, Log Output, Diagnostics tabs
 ├── mainwindow_actions.cpp             # Menu actions
 ├── mainwindow_slots.cpp               # Render lifecycle slots (start/stop/complete)

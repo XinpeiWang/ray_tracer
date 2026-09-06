@@ -1,7 +1,7 @@
 // Progress, Log, and Diagnostics tabs - split out of mainwindow_tabs.cpp;
-// see mainwindow_tabs_render.cpp for the Render Options/Preview/Video tabs
-// this file's content used to sit between, in both the old file's function
-// order and the tab bar's own left-to-right order.
+// see mainwindow_tabs_render.cpp for the Render Options/Preview tabs this
+// file's content used to sit between, in both the old file's function order
+// and the tab bar's own left-to-right order.
 #include "mainwindow.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"

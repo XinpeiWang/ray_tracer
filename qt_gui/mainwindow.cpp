@@ -831,7 +831,6 @@ void MainWindow::setupUI() {
 	m_tabWidget = new ExpandingTabWidget(this);
 	createSettingsTab();
 	createRenderOptionsTab();
-	createVideoTab();
 	createPreviewTab();
 	createProgressTab();
 	createLogTab();
