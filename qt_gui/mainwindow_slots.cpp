@@ -356,6 +356,7 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	connect(m_renderController, &RenderController::progressUpdate, this, &MainWindow::onProgressUpdate);
 	connect(m_renderController, &RenderController::renderComplete, this, &MainWindow::onRenderComplete);
 	connect(m_renderController, &RenderController::logMessage, this, &MainWindow::onLogMessage);
+	connect(m_renderController, &RenderController::pauseStateChanged, this, &MainWindow::onControllerPauseStateChanged);
 
 	// The controller is done once it reports completion; drop it so
 	// m_renderController is only non-null while a render is actually active.
@@ -376,6 +377,19 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	// to click while a render is running, since doing so now just queues
 	// another job instead of starting one immediately.
 	m_stopButton->setEnabled(true);
+	m_pauseButton->setEnabled(true);
+	m_abandonButton->setEnabled(true);
+	// Always starts in "Pause" state regardless of how the previous job
+	// ended - a paused job is never left running unattended when
+	// onRenderComplete() fires (it only fires once the process has actually
+	// exited), so there is no leftover "Resume" state to inherit.
+	m_pauseButton->setText(tr("&PAUSE RENDER"));
+	icon_tint::apply(m_pauseButton, ":/icons/pause.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	if (m_actPause) {
+		m_actPause->setText(tr("&Pause Render"));
+		icon_tint::apply(m_actPause, ":/icons/pause.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	}
+	m_pauseStartedAt = QDateTime();
 	updateActionStates();
 	refreshStatusBarInfo();
 	m_progressBar->setValue(0);
@@ -599,11 +613,80 @@ void MainWindow::onStopClicked() {
 
 	m_statusLabel->setText(tr("Stopping render..."));
 	m_stopButton->setEnabled(false);
+	m_pauseButton->setEnabled(false);
+	m_abandonButton->setEnabled(false);
 
 	m_renderController->stopRender();
 
 	// The controller emits renderComplete once the process actually exits,
 	// which resets the UI.
+}
+
+void MainWindow::onPauseClicked() {
+	if (!m_isRendering || !m_renderController) return;
+
+	// A single button toggles both directions - isPaused() (not a locally
+	// tracked bool) is the source of truth, so this can never drift out of
+	// sync with what the process is actually doing.
+	if (m_renderController->isPaused()) {
+		m_renderController->resumeRender();
+	} else {
+		m_renderController->pauseRender();
+	}
+	// onControllerPauseStateChanged() (connected in startRenderJob()) flips
+	// the button's own label/icon and the status text once the controller
+	// confirms the change.
+}
+
+void MainWindow::onAbandonClicked() {
+	if (!m_isRendering || !m_renderController) return;
+
+	m_statusLabel->setText(tr("Abandoning render..."));
+	m_stopButton->setEnabled(false);
+	m_pauseButton->setEnabled(false);
+	m_abandonButton->setEnabled(false);
+
+	m_renderController->abandonRender();
+
+	// onRenderComplete() picks this up once the process actually exits -
+	// unlike a plain Stop, it advances straight to the next queued job
+	// (see that method's own stoppedByUser/abandonedByUser comment) instead
+	// of leaving the queue waiting.
+}
+
+void MainWindow::onControllerPauseStateChanged(bool paused) {
+	if (!m_pauseButton) return;
+
+	if (paused) {
+		m_pauseStartedAt = QDateTime::currentDateTime();
+		if (m_elapsedTimer) m_elapsedTimer->stop();
+		m_pauseButton->setText(tr("&RESUME RENDER"));
+		icon_tint::apply(m_pauseButton, ":/icons/render.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+		m_pauseButton->setToolTip(tr("Resume the paused render from the exact same pixels"));
+		if (m_actPause) {
+			m_actPause->setText(tr("&Resume Render"));
+			icon_tint::apply(m_actPause, ":/icons/render.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+		}
+		m_statusLabel->setText(tr("⏸ Paused"));
+	} else {
+		// Shifts the elapsed-time origin forward by however long the pause
+		// lasted, so onElapsedTick()'s plain wall-clock formula
+		// (m_renderStartTime to now) keeps reading correctly without needing
+		// its own separate paused-time bookkeeping - the same trick
+		// RenderController uses for the totalTime it reports on completion.
+		if (m_pauseStartedAt.isValid()) {
+			m_renderStartTime = m_renderStartTime.addMSecs(m_pauseStartedAt.msecsTo(QDateTime::currentDateTime()));
+			m_pauseStartedAt = QDateTime();
+		}
+		if (m_elapsedTimer) m_elapsedTimer->start(1000);
+		m_pauseButton->setText(tr("&PAUSE RENDER"));
+		icon_tint::apply(m_pauseButton, ":/icons/pause.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+		m_pauseButton->setToolTip(tr("Pause the running render in place - Resume continues from the exact same pixels"));
+		if (m_actPause) {
+			m_actPause->setText(tr("&Pause Render"));
+			icon_tint::apply(m_actPause, ":/icons/pause.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+		}
+	}
 }
 
 void MainWindow::onQualityPresetChanged(int index) {
@@ -1105,6 +1188,9 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	m_isRendering = false;
 	m_renderButton->setEnabled(true);
 	m_stopButton->setEnabled(false);
+	m_pauseButton->setEnabled(false);
+	m_abandonButton->setEnabled(false);
+	m_pauseStartedAt = QDateTime();
 	if (m_elapsedTimer) m_elapsedTimer->stop();
 	updateActionStates();
 	// Cleared unconditionally, before either branch below runs: a warning
@@ -1114,6 +1200,12 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	stopProgressGlow();
 
 	const bool stoppedByUser = !success && message.contains("stopped by user", Qt::CaseInsensitive);
+	// See RenderController::abandonRender()'s own comment: same "process was
+	// killed on purpose, not a real failure" shape as stoppedByUser, but the
+	// queue-advance decision at the bottom of this function treats the two
+	// oppositely - a plain Stop pauses the queue, an Abandon skips ahead.
+	const bool abandonedByUser = !success && message.contains("abandoned by user", Qt::CaseInsensitive);
+	const bool userEndedWithoutFailure = stoppedByUser || abandonedByUser;
 
 	// A failed render leaves the taskbar button red so the outcome is visible
 	// without switching to the window; anything else clears it. Leaving a
@@ -1190,10 +1282,11 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 			}
 		}
 	} else {
-		// A user-requested stop isn't a failure, so it clears back to neutral;
-		// a genuine failure leaves the bar where it died and turns it red, so
-		// the outcome is still readable after the dialog is dismissed.
-		if (stoppedByUser) {
+		// A user-requested stop or abandon isn't a failure, so it clears back
+		// to neutral; a genuine failure leaves the bar where it died and turns
+		// it red, so the outcome is still readable after the dialog is
+		// dismissed.
+		if (userEndedWithoutFailure) {
 			m_progressBar->setValue(0);
 			setProgressResultState("");
 		} else {
@@ -1201,8 +1294,9 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		}
 		m_statusLabel->setText(tr("❌ %1").arg(message));
 
-		// Only show error popup for actual failures, not for user-stopped renders
-		if (!stoppedByUser) {
+		// Only show error popup for actual failures, not for user-stopped/
+		// abandoned renders.
+		if (!userEndedWithoutFailure) {
 			QMessageBox::critical(this, tr("Render Failed"), message);
 		}
 	}
@@ -1215,8 +1309,9 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	m_currentJobLabel->clear();
 
 	// Continue automatically on natural completion (success or a genuine
-	// failure); a user-requested Stop pauses the queue instead of skipping
-	// straight to the next job. The remaining jobs stay queued, and the next
+	// failure) AND on an explicit Abandon - the whole point of "Abandon &
+	// Next" is skipping straight ahead. A plain Stop is the one case that
+	// pauses the queue instead: the remaining jobs stay queued, and the next
 	// click of Start Render both resumes them and appends whatever's in the
 	// form as one more job at the back - see onRenderClicked()'s own comment.
 	if (!stoppedByUser) {

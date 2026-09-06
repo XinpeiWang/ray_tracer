@@ -6,6 +6,8 @@
     <qresource prefix="/">
         <file>icons/render.svg</file>
         <file>icons/stop.svg</file>
+        <file>icons/pause.svg</file>
+        <file>icons/skip_next.svg</file>
         <file>icons/video.svg</file>
         <file>icons/image.svg</file>
         <file>icons/folder.svg</file>

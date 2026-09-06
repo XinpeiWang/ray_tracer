@@ -148,6 +148,16 @@ public:
 private slots:
 	void onRenderClicked();
 	void onStopClicked();
+	// Toggles pause/resume on the running job - see RenderController::
+	// pauseRender()'s own comment for what "pause" actually means here.
+	void onPauseClicked();
+	// Kills the running job like onStopClicked(), but advances the queue to
+	// the next job instead of leaving it waiting - see RenderController::
+	// abandonRender()'s own comment.
+	void onAbandonClicked();
+	// Flips m_pauseButton's label/icon between Pause and Resume - connected
+	// to RenderController::pauseStateChanged() from startRenderJob().
+	void onControllerPauseStateChanged(bool paused);
 	void onQualityPresetChanged(int index);
 	void onCameraPresetChanged(int index);  // Updates camera spinboxes when preset changes
 	void onVideoPresetChanged(int index);   // Points scene/camera-path/frames/fps/speed at a named preset
@@ -215,6 +225,8 @@ private:
 	QAction *m_actRender = nullptr;
 	QAction *m_actRenderVideo = nullptr;
 	QAction *m_actStop = nullptr;
+	QAction *m_actPause = nullptr;    // Label toggles Pause/Resume - see onControllerPauseStateChanged()
+	QAction *m_actAbandon = nullptr;
 	QAction *m_actOpenFolder = nullptr;
 	QAction *m_actOpenViewer = nullptr;
 	QAction *m_actCopyLog = nullptr;
@@ -506,6 +518,8 @@ private:
 	QPushButton *m_browseButton;
 	QPushButton *m_renderButton;
 	QPushButton *m_stopButton;
+	QPushButton *m_pauseButton;    // Toggles Pause/Resume - see onPauseClicked()
+	QPushButton *m_abandonButton;  // "Abandon & Next" - see onAbandonClicked()
 	QProgressBar *m_progressBar;
 	// See applyGlow()/startProgressGlow()'s own comments. Both lazily
 	// created on first use, not at construction - the progress bar's
@@ -906,6 +920,10 @@ private:
 	// Elapsed render timer
 	QTimer *m_elapsedTimer;             // fires every second during render
 	QDateTime m_renderStartTime;        // wall-clock time when render began
+	// When the current pause began (invalid/default when not paused) - see
+	// onControllerPauseStateChanged()'s own comment for how this keeps
+	// onElapsedTick()'s status-label ticker correct across a pause/resume.
+	QDateTime m_pauseStartedAt;
 
 	// ------------------------------------------------------------------
 	// Progress sampling for the time-remaining estimate

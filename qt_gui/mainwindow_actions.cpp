@@ -71,6 +71,20 @@ void MainWindow::createActions() {
 	m_actStop->setStatusTip(tr("Stop the running render and discard its output"));
 	connect(m_actStop, &QAction::triggered, this, &MainWindow::onStopClicked);
 
+	// No shortcut on either of these two - unlike Stop's bare Escape, there
+	// is no similarly obvious universal key for "pause" or "abandon", and
+	// guessing one risks colliding with a dialog's own Escape/Enter handling
+	// more than it helps.
+	m_actPause = new QAction(tr("&Pause Render"), this);
+	icon_tint::apply(m_actPause, ":/icons/pause.svg", kBody, m_activeTheme.textBody);
+	m_actPause->setStatusTip(tr("Pause the running render in place - Resume continues from the exact same pixels"));
+	connect(m_actPause, &QAction::triggered, this, &MainWindow::onPauseClicked);
+
+	m_actAbandon = new QAction(tr("&Abandon && Start Next"), this);
+	icon_tint::apply(m_actAbandon, ":/icons/skip_next.svg", kBody, m_activeTheme.textBody);
+	m_actAbandon->setStatusTip(tr("Discard the running render's output and immediately start the next queued job"));
+	connect(m_actAbandon, &QAction::triggered, this, &MainWindow::onAbandonClicked);
+
 	m_actOpenFolder = new QAction(tr("Open Output &Folder"), this);
 	icon_tint::apply(m_actOpenFolder, ":/icons/folder.svg", kBody, m_activeTheme.textBody);
 	m_actOpenFolder->setShortcut(QKeySequence("Ctrl+Shift+O"));
@@ -143,6 +157,8 @@ void MainWindow::createMenus() {
 	renderMenu->addAction(m_actRenderVideo);
 	renderMenu->addSeparator();
 	renderMenu->addAction(m_actStop);
+	renderMenu->addAction(m_actPause);
+	renderMenu->addAction(m_actAbandon);
 
 	QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
 	// Tab switching by name, so the menu documents the shortcuts rather than
@@ -218,6 +234,8 @@ void MainWindow::updateActionStates() {
 	// Esc only exists while there's something to cancel - see the header
 	// comment in this file.
 	if (m_actStop)        m_actStop->setEnabled(m_isRendering);
+	if (m_actPause)       m_actPause->setEnabled(m_isRendering);
+	if (m_actAbandon)     m_actAbandon->setEnabled(m_isRendering);
 	// Reflect whichever Preview sub-tab is currently active, not just the
 	// most recent render - see currentPreviewProperty().
 	if (m_actOpenFolder)  m_actOpenFolder->setEnabled(!currentPreviewProperty("outputPath").isEmpty());

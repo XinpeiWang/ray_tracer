@@ -35,6 +35,44 @@
 #include <QFile>
 #include <QFileInfo>
 
+// Windows has no single "suspend/resume a whole process" API - see
+// setProcessThreadsSuspended() below, which is the documented way to build
+// one out of per-thread primitives. Scoped to this .cpp (not needed by any
+// other translation unit) rather than added to a shared header.
+#include <windows.h>
+#include <tlhelp32.h>
+
+namespace {
+// Suspends (or resumes) every thread currently belonging to process `pid`.
+// This is RenderController::pauseRender()/resumeRender()'s entire
+// implementation - Windows doesn't expose a documented "suspend this whole
+// process" call (unlike, say, SIGSTOP on POSIX), so the closest supported
+// equivalent is walking a thread snapshot and suspending each thread that
+// belongs to the target process individually. A thread created by the
+// target AFTER this snapshot is taken (rare for an already-paused steady-
+// state render, since ray_tracer.exe spins up its worker pool once at
+// startup) would not be caught, but that's an acceptable gap for a
+// best-effort pause rather than a correctness-critical one.
+void setProcessThreadsSuspended(DWORD pid, bool suspend) {
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (snapshot == INVALID_HANDLE_VALUE) return;
+
+	THREADENTRY32 entry;
+	entry.dwSize = sizeof(entry);
+	if (Thread32First(snapshot, &entry)) {
+		do {
+			if (entry.th32OwnerProcessID != pid) continue;
+			HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, entry.th32ThreadID);
+			if (!thread) continue;
+			if (suspend) SuspendThread(thread);
+			else ResumeThread(thread);
+			CloseHandle(thread);
+		} while (Thread32Next(snapshot, &entry));
+	}
+	CloseHandle(snapshot);
+}
+} // namespace
+
 // RenderController Implementation
 RenderController::RenderController(QObject *parent)
 	: QObject(parent), m_useGPU(true), m_useWavefront(false), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
@@ -85,7 +123,36 @@ void RenderController::stopRender() {
 	m_stopRequested = true;
 	// Everything lives on the GUI thread now, so the process can be killed
 	// directly here - onProcessFinished() will pick it up from the event loop.
+	// kill() (TerminateProcess on Windows) works regardless of whether the
+	// process is currently paused - terminating a process doesn't require
+	// its threads to be running.
 	m_renderProcess->kill();
+}
+
+void RenderController::abandonRender() {
+	if (!isRunning()) return;
+	emit logMessage("Abandoning render, moving to next queued job...");
+	m_abandonRequested = true;
+	m_renderProcess->kill();
+}
+
+void RenderController::pauseRender() {
+	if (!isRunning() || m_isPaused) return;
+	setProcessThreadsSuspended(static_cast<DWORD>(m_renderProcess->processId()), true);
+	m_isPaused = true;
+	m_pauseStartMs = QDateTime::currentMSecsSinceEpoch();
+	emit logMessage("Render paused.");
+	emit pauseStateChanged(true);
+}
+
+void RenderController::resumeRender() {
+	if (!isRunning() || !m_isPaused) return;
+	setProcessThreadsSuspended(static_cast<DWORD>(m_renderProcess->processId()), false);
+	m_isPaused = false;
+	m_pausedAccumMs += QDateTime::currentMSecsSinceEpoch() - m_pauseStartMs;
+	m_pauseStartMs = -1;
+	emit logMessage("Render resumed.");
+	emit pauseStateChanged(false);
 }
 
 void RenderController::start() {
@@ -382,7 +449,13 @@ void RenderController::onProcessErrorOccurred(QProcess::ProcessError error) {
 void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
 	if (m_finished) return;
 
-	const double totalTime = m_elapsed.elapsed() / 1000.0;
+	// Excludes time spent paused - see m_pauseStartMs's own comment. Still
+	// counts a pause that was never resumed (the process was killed while
+	// paused, e.g. Stop/Abandon clicked mid-pause) up to this moment, so
+	// that time isn't counted as render time either.
+	qint64 pausedMs = m_pausedAccumMs;
+	if (m_isPaused) pausedMs += QDateTime::currentMSecsSinceEpoch() - m_pauseStartMs;
+	const double totalTime = (m_elapsed.elapsed() - pausedMs) / 1000.0;
 
 	// Drain whatever is left, then flush any final partial line.
 	handleOutputChunk(QString::fromUtf8(m_renderProcess->readAll()));
@@ -410,6 +483,13 @@ void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exit
 	if (m_stopRequested) {
 		emit logMessage("Result: STOPPED BY USER");
 		finish(false, "Render stopped by user", QString());
+	} else if (m_abandonRequested) {
+		emit logMessage("Result: ABANDONED BY USER");
+		// Distinct message text from the stopRender() branch above is the
+		// whole mechanism - onRenderComplete() tells the two apart purely by
+		// matching "abandoned by user" vs "stopped by user", which is what
+		// decides whether the queue advances to the next job or waits.
+		finish(false, "Render abandoned by user", QString());
 	} else if (exitCode == 0) {
 		// Determine actual output path (default if not specified)
 		QString actualOutputPath = m_outputPath;
@@ -863,10 +943,47 @@ void MainWindow::setupUI() {
 	m_stopButton->installEventFilter(
 		new HoverLiftFilter(m_stopButton, 14, 22, 6, /*idlePulse=*/false, m_stopButton));
 
+	// Pause/Resume - an ordinary (non-danger) action, since unlike Stop it
+	// discards nothing: it freezes the running process's threads in place
+	// (RenderController::pauseRender()'s own comment) and a second click
+	// (onPauseClicked() toggles based on isPaused()) picks up exactly where
+	// it left off. Label/icon are flipped at runtime by
+	// onControllerPauseStateChanged() - initial state here is always
+	// "Pause", matching m_stopButton's own "always starts disabled" pattern.
+	m_pauseButton = new QPushButton(tr("&PAUSE RENDER"), this);
+	icon_tint::apply(m_pauseButton, ":/icons/pause.svg",
+	                 icon_tint::Role::Body, m_activeTheme.textBody);
+	m_pauseButton->setMinimumHeight(50);
+	m_pauseButton->setIconSize(QSize(20, 20));
+	m_pauseButton->setEnabled(false);
+	m_pauseButton->setToolTip(tr("Pause the running render in place - Resume continues from the exact same pixels"));
+	connect(m_pauseButton, &QPushButton::clicked, this, &MainWindow::onPauseClicked);
+	applyElevation(m_pauseButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
+	m_pauseButton->installEventFilter(
+		new HoverLiftFilter(m_pauseButton, 14, 22, 6, /*idlePulse=*/false, m_pauseButton));
+
+	// Abandon & Next - a destructive action like Stop (discards the running
+	// render's output), but additionally advances the queue instead of
+	// leaving it waiting - see onAbandonClicked()'s own comment.
+	m_abandonButton = new QPushButton(tr("ABANDON && &NEXT"), this);
+	icon_tint::apply(m_abandonButton, ":/icons/skip_next.svg",
+	                 icon_tint::Role::Danger, m_activeTheme.error);
+	m_abandonButton->setObjectName("dangerAction");
+	m_abandonButton->setMinimumHeight(50);
+	m_abandonButton->setIconSize(QSize(20, 20));
+	m_abandonButton->setEnabled(false);
+	m_abandonButton->setToolTip(tr("Discard the running render's output and immediately start the next queued job"));
+	connect(m_abandonButton, &QPushButton::clicked, this, &MainWindow::onAbandonClicked);
+	applyElevation(m_abandonButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
+	m_abandonButton->installEventFilter(
+		new HoverLiftFilter(m_abandonButton, 14, 22, 6, /*idlePulse=*/false, m_abandonButton));
+
 	// Button layout
 	QHBoxLayout *buttonLayout = new QHBoxLayout();
 	buttonLayout->addWidget(m_renderButton);
 	buttonLayout->addWidget(m_stopButton);
+	buttonLayout->addWidget(m_pauseButton);
+	buttonLayout->addWidget(m_abandonButton);
 	mainLayout->addLayout(buttonLayout);
 
 	setCentralWidget(centralWidget);

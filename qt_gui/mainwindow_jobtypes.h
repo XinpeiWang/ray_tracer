@@ -197,15 +197,42 @@ public:
 	// everything after this point is driven by the process's own signals.
 	void start();
 
-	// Kill the render process. Safe to call when nothing is running.
+	// Kill the render process outright. Safe to call when nothing is
+	// running. The queue does NOT auto-advance after this - see
+	// MainWindow::onRenderComplete()'s own comment on stoppedByUser.
 	void stopRender();
 
+	// Kill the render process the same way stopRender() does, but tagged so
+	// onRenderComplete() advances straight to the next queued job instead of
+	// leaving the queue paused - "give up on this one, don't wait for it."
+	void abandonRender();
+
+	// Freezes every thread of the child process in place via the Windows
+	// thread-suspend API (see setProcessThreadsSuspended() in mainwindow.cpp) -
+	// NOT a kill, so its accumulated pixel buffer and progress are untouched
+	// in memory. There is no IPC channel to the child for a cooperative
+	// pause, and no on-disk checkpoint format either (see this repo's own
+	// investigation before this was added) - suspending its OS threads
+	// directly is what lets Resume continue instantly with zero lost work,
+	// at the cost of only working while this GUI process (and the paused
+	// child) stays alive. Safe to call when nothing is running or already
+	// paused (no-op).
+	void pauseRender();
+
+	// Un-suspends a process paused via pauseRender(). Safe to call when
+	// nothing is running or not currently paused (no-op).
+	void resumeRender();
+
 	bool isRunning() const;
+	bool isPaused() const { return m_isPaused; }
 
 signals:
 	void progressUpdate(int percentage);
 	void renderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void logMessage(const QString &message);
+	// Fired from pauseRender()/resumeRender() so MainWindow can flip the
+	// Pause/Resume button's label and icon without polling isPaused().
+	void pauseStateChanged(bool paused);
 
 private slots:
 	void onReadyRead();
@@ -256,6 +283,25 @@ private:
 	// can't tell the two apart and used to mislabel genuine crashes as
 	// "stopped by user", hiding the error dialog.
 	bool m_stopRequested = false;
+
+	// Same idea as m_stopRequested, for abandonRender() - kept as a separate
+	// flag (rather than reusing m_stopRequested with an extra bool) so
+	// onProcessFinished()'s message text alone tells MainWindow::
+	// onRenderComplete() which of the two happened, without either method
+	// having to know about the other's field.
+	bool m_abandonRequested = false;
+
+	// True while the child process's threads are suspended - see
+	// pauseRender()'s own comment.
+	bool m_isPaused = false;
+
+	// Wall-clock timestamp (ms since epoch) when the current pause began, or
+	// -1 when not paused. Combined with m_pausedAccumMs to exclude paused
+	// time from the totalTime reported in renderComplete() - otherwise a
+	// render paused over lunch would report a multi-hour "render time" for
+	// what was actually a few minutes of real work.
+	qint64 m_pauseStartMs = -1;
+	qint64 m_pausedAccumMs = 0;
 
 	// Guards against emitting renderComplete twice when both errorOccurred
 	// and finished fire for the same run.
