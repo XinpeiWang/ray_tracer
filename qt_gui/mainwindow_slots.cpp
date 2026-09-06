@@ -227,9 +227,9 @@ RenderJob MainWindow::captureRenderJob() {
 	job.integratorOptions.simplepathNoLights = m_simplepathNoLightsCheck->isChecked();
 	job.integratorOptions.simplepathNoBsdf = m_simplepathNoBsdfCheck->isChecked();
 
-	// Resolution: either from preset dropdown or custom values from Advanced tab
+	// Resolution: either from preset dropdown or the manual Advanced Parameters fields
 	if (m_qualityPresetCombo->currentIndex() == 6) {
-		// Custom quality preset - use manual width/height from Advanced tab
+		// Custom quality preset - use manual width/height from Advanced Parameters
 		job.width = m_widthSpinBox->value();
 		job.height = m_heightSpinBox->value();
 	} else {
@@ -1609,11 +1609,13 @@ void MainWindow::onModeChanged(int index) {
 	m_videoMode = (index == 1); // 0 = Image, 1 = Video
 
 	// Every control in Video Generation Settings is inert unless Output Mode
-	// is "Generate Video" - greying out the whole group (one call, since
-	// QGroupBox::setEnabled() cascades to every child) makes that obvious on
-	// its own, now that the group sits right below Output Mode instead of on
-	// its own separate tab.
-	if (m_videoSettingsGroup) m_videoSettingsGroup->setEnabled(m_videoMode);
+	// is "Generate Video" - the warning label (see its own comment,
+	// mainwindow.h) surfaces that, rather than disabling the group outright
+	// and blocking browsing/configuring it ahead of switching modes (which
+	// would also silently break onVideoPresetChanged()'s auto-switch-to-
+	// Video-mode behavior below, since a disabled combo can't be opened to
+	// pick a preset from in the first place).
+	if (m_videoModeWarningLabel) m_videoModeWarningLabel->setVisible(!m_videoMode);
 
 	// --video hard-rejects any non-Default integrator (see
 	// m_integratorVideoWarningLabel's own comment, mainwindow.h) - also

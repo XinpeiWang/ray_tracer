@@ -3,8 +3,10 @@
 // position, output path - formerly split across separate "Basic Settings",
 // "Advanced Settings", and "Video Settings" tabs with no documented reason
 // for the split; merged into one scrollable tab - Video Generation Settings
-// is disabled as a whole, via m_videoSettingsGroup, whenever Output Mode
-// isn't "Generate Video"), plus the scene-list helpers it uses
+// stays fully interactive regardless of Output Mode, same as it always has,
+// with m_videoModeWarningLabel explaining when it takes effect rather than
+// disabling it outright - see that group's own construction comment for
+// why), plus the scene-list helpers it uses
 // (filteredSceneIds/populateSceneCombo/populateSceneGrid/populateSceneViews/
 // thumbnailCachePath/selectSceneById/rebuildCategoryTabs) - split out into
 // mainwindow_tabs_render.cpp (Render Options/Preview) and
@@ -569,10 +571,10 @@ void MainWindow::createSettingsTab() {
 		"sequence of frames stitched into a video.\n\n"
 		"Single Image renders the scene once, from the camera set on "
 		"this tab. Generate Video instead moves "
-		"the camera along a path (Video Settings, on the Render Options "
-		"tab) and renders one frame per step, then assembles them into "
-		"an MP4 - taking roughly Frame Count times as long as a single "
-		"image.\n\nGenerate Video cannot be combined with an alternate "
+		"the camera along a path (Video Generation Settings, further "
+		"down this tab) and renders one frame per step, then assembles "
+		"them into an MP4 - taking roughly Frame Count times as long as "
+		"a single image.\n\nGenerate Video cannot be combined with an alternate "
 		"Integrator - see the warning below if that combination is "
 		"picked.")),
 		m_modeCombo);
@@ -751,19 +753,30 @@ void MainWindow::createSettingsTab() {
 	layout->addWidget(renderGroup);
 
 	// --- Video Generation Settings: only meaningful when Output Mode above
-	// is "Generate Video" - formerly its own "Video Settings" tab that
-	// stayed fully interactive regardless of mode (with a banner explaining
-	// why), folded in here and disabled as a whole (m_videoSettingsGroup->
-	// setEnabled()) via onModeChanged() instead - now that it sits right
-	// below the Output Mode control that governs it, a greyed-out group
-	// reads as "not applicable right now" on its own, without a banner.
-	m_videoSettingsGroup = new QGroupBox(tr("Video Generation Settings"), basicTab);
-	styleGroupBox(m_videoSettingsGroup);
-	m_videoSettingsGroup->setEnabled(m_videoMode);
-	QFormLayout *videoLayout = new QFormLayout(m_videoSettingsGroup);
+	// is "Generate Video" - formerly its own "Video Settings" tab, kept
+	// fully interactive regardless of mode rather than disabled outright
+	// (an earlier version of this app DID disable it, and that turned out
+	// to block browsing/configuring these settings ahead of switching modes
+	// - see commit 9e1c7df8's own message - which also silently breaks
+	// onVideoPresetChanged()'s auto-switch-to-Video-mode behavior below,
+	// since a disabled combo can't be opened to pick a preset from in the
+	// first place). m_videoModeWarningLabel is the same warning-banner
+	// pattern that fix introduced, just now scoped to this group instead of
+	// a whole standalone tab.
+	QGroupBox *videoGroup = new QGroupBox(tr("Video Generation Settings"), basicTab);
+	styleGroupBox(videoGroup);
+	QFormLayout *videoLayout = new QFormLayout(videoGroup);
 	videoLayout->setVerticalSpacing(10);
 	videoLayout->setHorizontalSpacing(10);
 	videoLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_videoModeWarningLabel = new QLabel(
+		tr("⚠ These settings only take effect when Output Mode above is set to \"Generate Video\"."),
+		videoGroup);
+	m_videoModeWarningLabel->setObjectName("videoModeWarning");
+	m_videoModeWarningLabel->setWordWrap(true);
+	m_videoModeWarningLabel->setVisible(!m_videoMode);
+	videoLayout->addRow(m_videoModeWarningLabel);
 
 	// Preset selector - sets the scene picker above, camera path, and the
 	// three spinboxes below all at once from one of video_preset.h's named
@@ -921,7 +934,7 @@ void MainWindow::createSettingsTab() {
 
 	videoLayout->addRow("", m_videoInfoLabel);
 
-	layout->addWidget(m_videoSettingsGroup);
+	layout->addWidget(videoGroup);
 
 	// Requirements info - left enabled/visible regardless of Output Mode,
 	// same as Usage Instructions below: reference material someone might
@@ -948,7 +961,7 @@ void MainWindow::createSettingsTab() {
 	QVBoxLayout *usageLayout = new QVBoxLayout(usageGroup);
 
 	QLabel *usageText = new QLabel(
-		tr("<b>Step 1:</b> Set Output Mode above to Generate Video, then configure the Video Generation Settings (camera path, frames, FPS)<br>"
+		tr("<b>Step 1:</b> Configure Video Generation Settings above (camera path, frames, FPS) and set Output Mode to Generate Video<br>"
 		"<b>Step 2:</b> Configure quality settings further down this tab<br>"
 		"<b>Step 3:</b> Click START VIDEO RENDER and wait<br>"
 		"<b>Step 4:</b> Video automatically assembles and opens when done!<br><br>"

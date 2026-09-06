@@ -648,6 +648,20 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			color: %WARNING%;
 			font-size: %FS_M1%;
 		}
+		/* Video Generation Settings' "these controls are currently ignored"
+		   note - see m_videoModeWarningLabel's own comment (mainwindow.h).
+		   Same %WARNING%/%SURFACE1%/%RADIUS% tokens the rest of the app's
+		   warning/surface treatment already uses, just with a border and
+		   padding since this sits at the top of its own group box rather
+		   than trailing a status line. */
+		QLabel#videoModeWarning {
+			color: %WARNING%;
+			background-color: %SURFACE1%;
+			border: 1px solid %WARNING%;
+			border-radius: %RADIUS%;
+			padding: 8px 12px;
+			font-size: %FS_M1%;
+		}
 		ScaledImageLabel {
 			background-color: %SURFACE0%;
 			border: 1px solid %BORDER%;

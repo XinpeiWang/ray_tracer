@@ -803,12 +803,13 @@ private:
 	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
 	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
 	QLabel *m_videoInfoLabel;           // Video duration and path info
-	// The whole "Video Generation Settings" group - disabled outright
-	// (rather than just showing a warning) whenever Output Mode isn't
-	// "Generate Video", via onModeChanged(). See createSettingsTab()'s own
-	// comment for why a banner is no longer needed now that this group sits
-	// right below the Output Mode control that governs it.
-	QGroupBox *m_videoSettingsGroup = nullptr;
+	// Visible whenever Output Mode isn't "Generate Video" - the group stays
+	// fully interactive either way (disabling it outright used to block
+	// browsing/configuring these settings ahead of switching modes, and
+	// silently broke onVideoPresetChanged()'s auto-switch-to-Video-mode
+	// behavior - see createSettingsTab()'s own comment). Toggled by
+	// onModeChanged().
+	QLabel *m_videoModeWarningLabel = nullptr;
 
 	// Preview tab - each completed render gets its own closable sub-tab
 	// (see addImagePreviewTab()/addVideoPreviewTab()) instead of a single

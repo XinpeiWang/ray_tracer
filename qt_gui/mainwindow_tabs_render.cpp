@@ -9,7 +9,6 @@
 #include "scene_technique_notes.h"
 
 #include "../src/shared/scene_descriptor.h"
-#include "../src/shared/video_preset.h"
 
 #include <QTabBar>
 #include "scene_metadata_client.h"
