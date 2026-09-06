@@ -547,7 +547,7 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 // Fills in m_sceneGrid's preview tiles for the curated, self-contained,
 // fast-rendering subset (Basics/Materials/Textures/Cameras) - see the scene-gallery
 // plan's phased-coverage decision for why the rest of the ~154-scene
-// registry isn't covered yet. Disabled (see createBasicTab()'s button
+// registry isn't covered yet. Disabled (see createSettingsTab()'s button
 // tooltip) while a real render is in flight so thumbnail generation can
 // never compete with the user's own queued work - m_thumbnailGenerator owns
 // a private RenderController instead of reusing m_renderController/

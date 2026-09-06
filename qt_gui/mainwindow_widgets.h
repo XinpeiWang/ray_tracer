@@ -738,7 +738,7 @@ public:
 		m_emptyTitle->setFont(titleFont);
 		emptyLayout->addWidget(m_emptyTitle);
 		m_emptySubtitle = new QLabel(
-			tr("Start a render from Basic Settings - each finished image\n"
+			tr("Start a render from Settings - each finished image\n"
 			   "or video opens in its own tab here, so past renders stay\n"
 			   "around while you compare or tweak settings."),
 			m_emptyState);

@@ -829,8 +829,7 @@ void MainWindow::setupUI() {
 	// padding already pushes that fallback well past this app's normal
 	// window sizes, so it wasn't worth chasing further.
 	m_tabWidget = new ExpandingTabWidget(this);
-	createBasicTab();
-	createAdvancedTab();
+	createSettingsTab();
 	createRenderOptionsTab();
 	createVideoTab();
 	createPreviewTab();

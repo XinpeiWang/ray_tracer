@@ -7,7 +7,7 @@
 #include <QStringList>
 
 // scene_technique_notes.h -- per-scene "what rendering technique does this
-// demonstrate" text for the Basic Settings tab's dynamic info icon (see
+// demonstrate" text for the Settings tab's dynamic info icon (see
 // MainWindow::updateSceneTechInfoIcon(), mainwindow_style.cpp).
 //
 // Unlike the ~27 other info-icon tooltips in this app (fixed text, written
@@ -207,7 +207,7 @@ inline const QHash<QString, QString>& notes() {
 // explaining why, rather than silently showing nothing or stale text.
 // Whether an authored note exists for `sceneId`, distinct from forScene()
 // having *some* text to return - forScene()'s own fallback text for a
-// not-yet-authored scene is written for the Basic Settings tab ("the tab
+// not-yet-authored scene is written for the Settings tab ("the tab
 // above"), so callers elsewhere (e.g. the Preview tab) that want to hide
 // rather than show that fallback should gate on this first.
 inline bool hasNote(const QString &sceneId) {
@@ -227,7 +227,7 @@ inline QString forScene(const QString &sceneId) {
 		"tab above) so far.");
 }
 
-// Debug-only drift guard, called once from createBasicTab() (mainwindow_tabs.cpp)
+// Debug-only drift guard, called once from createSettingsTab() (mainwindow_tabs.cpp)
 // after it enumerates the live scene list. scene_registry.h already lost one
 // GUI-facing mirror table to exactly this failure mode once (see that file's
 // own comment on scene_descriptor.h's old kScenes[]) and this table is the

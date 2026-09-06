@@ -49,7 +49,7 @@ void MainWindow::createProgressTab() {
 
 	// Which job is actually running (scene/resolution/samples/renderer, same
 	// one-line format as a queue row) - set from m_currentJob in
-	// startRenderJob(), not the live Basic Settings form, since the user may
+	// startRenderJob(), not the live Settings form, since the user may
 	// have already changed the form for a job queued behind this one.
 	m_currentJobLabel = new QLabel(progressGroup);
 	m_currentJobLabel->setAlignment(Qt::AlignCenter);

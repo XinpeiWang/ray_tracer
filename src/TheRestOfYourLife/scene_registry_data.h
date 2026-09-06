@@ -1299,7 +1299,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // ---------------------------------------------------------------
         // Education (I1-I6): curated demos of the Render Options tab's own
         // controls (Sampler, Spectral rendering, Exposure, Tone mapping,
-        // OptiX AI denoiser) and, as of I5/I6, the Basic Settings tab's
+        // OptiX AI denoiser) and, as of I5/I6, the Settings tab's
         // Integrator selector (SPPM; BDPT/MLT). Each reuses an existing
         // scene's build functions and CameraConfig verbatim - same
         // technique B23/F3 use to share content with another entry - rather

@@ -1096,7 +1096,7 @@ void MainWindow::updateSceneTechInfoIcon(const QString &sceneId) {
 }
 
 // Plain-text (not HTML-wrapped) description of what `mode` does - used by
-// createBasicTab()'s populateSceneCombo()-style per-item tooltips (one
+// createSettingsTab()'s populateSceneCombo()-style per-item tooltips (one
 // fixed entry per combo row, mirroring how the Scene combo gives each of
 // its own rows an "(i)" icon + tooltip via icon_tint::addItem()/
 // setItemData(Qt::ToolTipRole)).

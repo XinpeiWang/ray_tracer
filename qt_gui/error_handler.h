@@ -200,7 +200,7 @@ inline QString getTroubleshootingHint(int errorCode) {
 	// scenes are GPU-supported), so they're built here instead of hardcoded
 	// in the static map below.
 	if (errorCode == 11) {
-		return QString("• Check the Scene dropdown in the Basic Settings tab for a valid scene id\n"
+		return QString("• Check the Scene dropdown in the Settings tab for a valid scene id\n"
 			"• Use CPU renderer for scenes that are not GPU-supported");
 	}
 	if (errorCode == 211) {

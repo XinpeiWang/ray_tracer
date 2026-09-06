@@ -769,7 +769,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 
 // The Qt GUI builds its scene dropdown dynamically from
 // SceneMetadataClient::sceneCount()/sceneName() (qt_gui/mainwindow_tabs.cpp
-// createBasicTab()), which query scene_metadata.dll -> this registry live,
+// createSettingsTab()), which query scene_metadata.dll -> this registry live,
 // not a hardcoded array, so it can't drift out of sync with the registry
 // on its own. This constant exists as a tripwire: if it stops matching
 // scene_count(), something changed the registry size and it's worth

@@ -50,7 +50,7 @@ which is exactly what happened to the previous version of this file).
 
 ## GUI Usage
 
-The scene selector lives on the **Basic Settings** tab, in the "Scene"
+The scene selector lives on the **Settings** tab, in the "Scene"
 group box:
 1. **Availability tabs** - "Self-Contained" vs "Requires External Files"
    (mesh/texture scenes that need assets not guaranteed to be on disk)

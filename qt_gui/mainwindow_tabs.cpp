@@ -1,9 +1,13 @@
-// Basic Settings and Advanced Settings tabs, plus the scene-list helpers
-// they share (filteredSceneIds/populateSceneCombo/populateSceneGrid/
-// populateSceneViews/thumbnailCachePath/selectSceneById/rebuildCategoryTabs)
-// - split out into mainwindow_tabs_render.cpp (Render Options/Preview/Video)
-// and mainwindow_tabs_output.cpp (Progress/Log/Diagnostics), which used to
-// live in this same file.
+// The Settings tab (scene selection, render mode/quality/resolution, manual
+// width/height/samples/depth overrides, camera position, output path -
+// formerly split across separate "Basic Settings" and "Advanced Settings"
+// tabs with no documented reason for the split; merged into one scrollable
+// tab), plus the scene-list helpers it uses (filteredSceneIds/
+// populateSceneCombo/populateSceneGrid/populateSceneViews/thumbnailCachePath/
+// selectSceneById/rebuildCategoryTabs) - split out into
+// mainwindow_tabs_render.cpp (Render Options/Preview/Video) and
+// mainwindow_tabs_output.cpp (Progress/Log/Diagnostics), which used to live
+// in this same file.
 #include "mainwindow.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"
@@ -217,7 +221,7 @@ void MainWindow::selectSceneById(const QString &id) {
 // design. Tries to keep the same letter category selected across a rebuild
 // (e.g. toggling availability while on "Geometry" should land back on
 // "Geometry" if it still has a qualifying scene), falling back to index 0
-// otherwise - mirrors createBasicTab()'s own initial-fill fallback.
+// otherwise - mirrors createSettingsTab()'s own initial-fill fallback.
 void MainWindow::rebuildCategoryTabs(bool requiresFiles) {
 	if (!m_sceneCategoryTabs) return;
 
@@ -253,7 +257,7 @@ void MainWindow::rebuildCategoryTabs(bool requiresFiles) {
 		m_sceneCategoryTabs->setCurrentIndex(restoredTab >= 0 ? restoredTab : 0);
 }
 
-void MainWindow::createBasicTab() {
+void MainWindow::createSettingsTab() {
 	QWidget *basicTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(basicTab);
 	layout->setSpacing(12);
@@ -335,7 +339,7 @@ void MainWindow::createBasicTab() {
 	// the order categories happen to first appear in the registry).
 	// Categories with no scenes IN THE CURRENT AVAILABILITY BUCKET are
 	// skipped rather than shown as an empty tab - same reasoning
-	// createBasicTab() already applied for categories with zero scenes at
+	// createSettingsTab() already applied for categories with zero scenes at
 	// all (see rebuildCategoryTabs()'s own comment), just re-evaluated
 	// per bucket instead of once.
 	rebuildCategoryTabs(/*requiresFiles=*/false);
@@ -562,7 +566,7 @@ void MainWindow::createBasicTab() {
 		tr("Whether this render produces a single still frame, or a "
 		"sequence of frames stitched into a video.\n\n"
 		"Single Image renders the scene once, from the camera set on "
-		"this tab (or Advanced Settings). Generate Video instead moves "
+		"this tab. Generate Video instead moves "
 		"the camera along a path (Video Settings, on the Render Options "
 		"tab) and renders one frame per step, then assembles them into "
 		"an MP4 - taking roughly Frame Count times as long as a single "
@@ -702,7 +706,7 @@ void MainWindow::createBasicTab() {
 		"  High    500 spp,  depth 50\n"
 		"  Ultra  1000 spp,  depth 100\n"
 		"  Maximum 5000 spp, depth 100\n"
-		"Custom leaves the Advanced tab values untouched.\n"
+		"Custom leaves the Samples/Max Depth fields below untouched.\n"
 		"Render time scales roughly linearly with samples per pixel."));
 	renderLayout->addRow(labelWithInfo(tr("Quality:"),
 		tr("A shortcut that sets both Samples per Pixel and Max Ray Depth "
@@ -743,6 +747,239 @@ void MainWindow::createBasicTab() {
 		m_resolutionCombo);
 
 	layout->addWidget(renderGroup);
+
+	// --- Advanced Parameters: manual width/height/samples/depth overrides ---
+	// Formerly its own "Advanced Settings" tab - folded in here since there
+	// was never a documented reason for the split (see git history), and
+	// keeping the Quality preset above and the exact values it writes into
+	// Width/Height/Samples/Max Depth below on the same tab reads more like
+	// one coherent "how big and how clean" decision than two.
+	QGroupBox *advancedGroup = new QGroupBox(tr("Advanced Parameters"), basicTab);
+	styleGroupBox(advancedGroup);
+	QFormLayout *formLayout = new QFormLayout(advancedGroup);
+	formLayout->setVerticalSpacing(10);
+	formLayout->setHorizontalSpacing(10);
+	formLayout->setContentsMargins(15, 22, 15, 12);
+
+	// Width
+	m_widthSpinBox = new QSpinBox(basicTab);
+	m_widthSpinBox->setRange(100, 4096);
+	m_widthSpinBox->setValue(800);
+	styleSpinBox(m_widthSpinBox);
+	formLayout->addRow(labelWithInfo(tr("Width:"),
+		tr("The image's pixel width.\n\n"
+		"Paired with Height below to set the resolution manually, "
+		"overriding whatever the Quality preset above would "
+		"otherwise use.")),
+		m_widthSpinBox);
+
+	// Height
+	m_heightSpinBox = new QSpinBox(basicTab);
+	m_heightSpinBox->setRange(100, 4096);
+	m_heightSpinBox->setValue(800);
+	styleSpinBox(m_heightSpinBox);
+	formLayout->addRow(labelWithInfo(tr("Height:"),
+		tr("The image's pixel height.\n\n"
+		"Paired with Width above - together they set the resolution "
+		"manually, overriding the Quality preset above.")),
+		m_heightSpinBox);
+
+	// Samples
+	m_samplesSpinBox = new QSpinBox(basicTab);
+	m_samplesSpinBox->setRange(1, 10000);
+	m_samplesSpinBox->setValue(100);
+	styleSpinBox(m_samplesSpinBox);
+	m_samplesSpinBox->setToolTip(
+		tr("Rays traced per pixel. This is the main quality/time dial: noise falls\n"
+		"as the square root of this value, so halving the noise costs about 4x\n"
+		"the render time. Setting it here switches Quality to Custom."));
+	formLayout->addRow(labelWithInfo(tr("Samples per Pixel:"),
+		tr("Ray tracing estimates each pixel's color by firing many random "
+		"rays and averaging the results, like polling a lot of people and "
+		"averaging their guesses.\n\n"
+		"More samples means a more accurate average, which shows up as "
+		"less speckly \"noise\" in the image - but each extra sample "
+		"costs render time. Doubling this value roughly halves the "
+		"noise, but takes about twice as long to render.")),
+		m_samplesSpinBox);
+
+	// Max depth
+	m_maxDepthSpinBox = new QSpinBox(basicTab);
+	m_maxDepthSpinBox->setRange(1, 100);
+	m_maxDepthSpinBox->setValue(50);
+	styleSpinBox(m_maxDepthSpinBox);
+	m_maxDepthSpinBox->setToolTip(
+		tr("How many times a ray may bounce before it is terminated. Low values\n"
+		"darken glass and mirrors, which need many bounces to resolve; scenes\n"
+		"of plain diffuse surfaces look the same well below the maximum."));
+	formLayout->addRow(labelWithInfo(tr("Max Ray Depth:"),
+		tr("A depth of 1 means a ray only sees what it hits directly, with "
+		"no bounced light at all - like a scene with no reflections or "
+		"indirect lighting.\n\n"
+		"Each extra bounce lets light travel one more surface before "
+		"giving up, which is what makes glass, mirrors, and soft "
+		"indirect lighting look correct. Most scenes look \"finished\" "
+		"well before the maximum - beyond that, extra depth mostly "
+		"traces light too dim to matter.")),
+		m_maxDepthSpinBox);
+
+	layout->addWidget(advancedGroup);
+
+	// ============================================================================
+	// Camera Position Group
+	// ============================================================================
+	// The Cornell box scene has fixed geometry:
+	//   - Box dimensions: X[0,555], Y[0,555], Z[0,555]
+	//   - Center point: (278, 278, 278)
+	//   - Front opening: Z=0 (no wall, viewer can look in from outside)
+	//   - Back wall: Z=555 (white)
+	//   - Left wall: X=0 (red)
+	//   - Right wall: X=555 (green)
+	//   - Floor: Y=0 (white)
+	//   - Ceiling: Y=555 (white), with light source at center
+	//
+	// Camera system:
+	//   - lookfrom: camera position in 3D space (set by user via presets or custom values)
+	//   - lookat: always points to center (278, 278, 278) - fixed in renderer
+	//   - The camera can be positioned anywhere, inside or outside the box
+	// ============================================================================
+
+	QGroupBox *cameraGroup = new QGroupBox(tr("Camera Position"), basicTab);
+	styleGroupBox(cameraGroup);
+	QFormLayout *cameraLayout = new QFormLayout(cameraGroup);
+	cameraLayout->setVerticalSpacing(10);
+	cameraLayout->setHorizontalSpacing(10);
+	cameraLayout->setContentsMargins(15, 22, 15, 12);
+
+	// Camera preset combo box
+	// Each preset stores a direction*ratio QVector3D, NOT an absolute world
+	// position: onCameraPresetChanged() scales it by m_currentSceneCamDistance
+	// (the CURRENT scene's own recommended-camera distance from its lookat)
+	// and offsets it from m_currentLookat*, so "Right Wall" lands at a
+	// sensible position for whatever scene is active. These vectors were
+	// derived from Cornell Box's own original hardcoded positions - e.g.
+	// "Front View (Outside)" used to be the literal point (278,278,-800),
+	// which is offset (0,0,-1078) from Cornell's lookat (278,278,278); divide
+	// by Cornell's own recommended-camera distance (1078, the default
+	// m_currentSceneCamDistance below) to get this preset's direction*ratio
+	// vector (0,0,-1.0) - a pure "straight back, at 1x the scene's own
+	// default viewing distance" direction that means the same thing
+	// regardless of scene scale. The others below were derived the same way,
+	// which is why "Front View" ends up at ratio 1.0 (it WAS the reference
+	// distance) while the inside/corner views are fractions of it. Previously
+	// every preset stored its literal Cornell-Box position directly, so
+	// selecting e.g. "Right Wall" while viewing a much smaller scene (like
+	// scene 1's spheres, which sit within roughly +-15 units of the origin)
+	// put the camera at a literal (500,278,278) - wildly outside that
+	// scene's geometry.
+	m_cameraPresetCombo = new QComboBox(basicTab);
+
+	// Default view: straight back from lookat, at the scene's own default
+	// viewing distance (ratio 1.0) - matches Cornell Box's own recommended
+	// camera exactly, since that's what this ratio was derived from.
+	m_cameraPresetCombo->addItem(tr("Front View (Outside)"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
+
+	// Inside views: camera positioned near walls, all looking toward center
+	m_cameraPresetCombo->addItem(tr("Inside Front"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -0.211503f)));   // Near Z=0 opening
+	m_cameraPresetCombo->addItem(tr("Inside Back"), QVariant::fromValue(QVector3D(0.0f, 0.0f, 0.205937f)));     // Near Z=555 back wall
+	m_cameraPresetCombo->addItem(tr("Right Wall (Green)"), QVariant::fromValue(QVector3D(0.205937f, 0.0f, 0.0f))); // Near X=555 green wall
+	m_cameraPresetCombo->addItem(tr("Left Wall (Red)"), QVariant::fromValue(QVector3D(-0.211503f, 0.0f, 0.0f)));   // Near X=0 red wall
+
+	// Corner views: diagonal perspectives from inside the box
+	m_cameraPresetCombo->addItem(tr("Floor Corner"), QVariant::fromValue(QVector3D(-0.165121f, -0.211503f, -0.165121f)));  // Low angle, near floor
+	m_cameraPresetCombo->addItem(tr("Ceiling Corner"), QVariant::fromValue(QVector3D(0.159555f, 0.205937f, 0.159555f)));   // High angle, near ceiling
+
+	// Custom: allows manual X/Y/Z input via spinboxes below. Its itemData is
+	// never read (onCameraPresetChanged skips the overwrite for Custom - see
+	// its own comment), so this value is unused, but keep it a plausible
+	// starting direction rather than leaving it as leftover absolute-position
+	// data of a different shape than every other item now stores.
+	m_cameraPresetCombo->addItem(tr("Custom"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
+
+	styleComboBox(m_cameraPresetCombo);
+	cameraLayout->addRow(labelWithInfo(tr("Preset:"),
+		tr("A handful of hand-picked camera positions for this scene, framed "
+		"to show off something specific (e.g. looking in through the "
+		"front, or from inside a Cornell-box-style enclosure).\n\n"
+		"Choosing \"Custom\" unlocks the X/Y/Z fields below so you can "
+		"fly the camera anywhere you like instead.")),
+		m_cameraPresetCombo);
+
+	// Camera position spinboxes (X, Y, Z coordinates)
+	// These are disabled by default; only enabled when "Custom" preset is selected
+	// Range: -2000 to 2000 allows positioning far outside the box if needed
+
+	m_cameraPosX = new QDoubleSpinBox(basicTab);
+	m_cameraPosX->setRange(-2000, 2000);
+	m_cameraPosX->setValue(278);  // Default X: centered horizontally
+	m_cameraPosX->setSingleStep(10);
+	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraPosX);
+	cameraLayout->addRow(labelWithInfo(tr("Camera X:"),
+		tr("The camera's position along the world's X axis (left/right).\n\n"
+		"Only editable when the preset above is set to Custom - the "
+		"camera always looks toward the scene's own fixed look-at point, "
+		"so moving X/Y/Z changes the viewing angle and distance, not "
+		"just a straight left-right pan.")),
+		m_cameraPosX);
+
+	m_cameraPosY = new QDoubleSpinBox(basicTab);
+	m_cameraPosY->setRange(-2000, 2000);
+	m_cameraPosY->setValue(278);  // Default Y: centered vertically
+	m_cameraPosY->setSingleStep(10);
+	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraPosY);
+	cameraLayout->addRow(labelWithInfo(tr("Camera Y:"),
+		tr("The camera's position along the world's Y axis (up/down).\n\n"
+		"Same Custom-preset-only editing rule as Camera X - the camera "
+		"keeps looking at the scene's fixed look-at point as you move "
+		"it.")),
+		m_cameraPosY);
+
+	m_cameraPosZ = new QDoubleSpinBox(basicTab);
+	m_cameraPosZ->setRange(-2000, 2000);
+	m_cameraPosZ->setValue(-800);  // Default Z: far back view to match default preset
+	m_cameraPosZ->setSingleStep(10);
+	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraPosZ);
+	cameraLayout->addRow(labelWithInfo(tr("Camera Z:"),
+		tr("The camera's position along the world's Z axis (forward/back, "
+		"into or out of the scene).\n\n"
+		"Same Custom-preset-only editing rule as Camera X/Y.")),
+		m_cameraPosZ);
+
+	// Distance from the current scene's look-at point. Adjusting this moves
+	// the camera along its EXISTING viewing direction to the new distance
+	// (see onCameraDistanceChanged) - a quick way to zoom in/out without
+	// having to work out new X/Y/Z coordinates by hand. Only meaningful (and
+	// only enabled) alongside the X/Y/Z spinboxes for "Custom"; its value is
+	// kept in sync (not user-editable-then-stale) whenever the scene or
+	// preset changes, via refreshCameraDistanceDisplay().
+	m_cameraDistance = new QDoubleSpinBox(basicTab);
+	m_cameraDistance->setRange(0.01, 5000);
+	m_cameraDistance->setValue(1078);  // Matches the default preset's distance from Cornell Box's lookat
+	m_cameraDistance->setSingleStep(10);
+	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraDistance);
+	cameraLayout->addRow(labelWithInfo(tr("Distance from Center:"),
+		tr("Moves the camera directly toward or away from the scene's "
+		"look-at point along whatever direction it's currently facing, "
+		"without changing which way it's pointed.\n\n"
+		"The quickest way to zoom in or pull back once you've already "
+		"found an angle you like via the X/Y/Z fields or a preset.")),
+		m_cameraDistance);
+
+	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
+	// Connection made AFTER all widgets are created to avoid null pointer issues
+	connect(m_cameraPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onCameraPresetChanged);
+	connect(m_cameraDistance, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+			this, &MainWindow::onCameraDistanceChanged);
+
+	// Initialize the spinboxes with the default preset (index 0: "Front View (Outside)")
+	onCameraPresetChanged(0);
+
+	layout->addWidget(cameraGroup);
 
 	// Output group
 	QGroupBox *outputGroup = new QGroupBox(tr("Output"), basicTab);
@@ -810,257 +1047,6 @@ void MainWindow::createBasicTab() {
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-	m_tabWidget->addTab(scrollArea, tr("Basic Settings"));
+	m_tabWidget->addTab(scrollArea, tr("Settings"));
 }
 
-void MainWindow::createAdvancedTab() {
-	QWidget *advancedTab = new QWidget();
-	QVBoxLayout *layout = new QVBoxLayout(advancedTab);
-	layout->setSpacing(14);  // Space between group boxes
-	layout->setContentsMargins(12, 12, 12, 12);
-
-	QGroupBox *advancedGroup = new QGroupBox(tr("Advanced Parameters"), advancedTab);
-	styleGroupBox(advancedGroup);
-	QFormLayout *formLayout = new QFormLayout(advancedGroup);
-	formLayout->setVerticalSpacing(10);
-	formLayout->setHorizontalSpacing(10);
-	formLayout->setContentsMargins(15, 22, 15, 12);
-
-	// Width
-	m_widthSpinBox = new QSpinBox(advancedTab);
-	m_widthSpinBox->setRange(100, 4096);
-	m_widthSpinBox->setValue(800);
-	styleSpinBox(m_widthSpinBox);
-	formLayout->addRow(labelWithInfo(tr("Width:"),
-		tr("The image's pixel width.\n\n"
-		"Paired with Height below to set the resolution manually, "
-		"overriding whatever the Quality preset on the Basic tab would "
-		"otherwise use.")),
-		m_widthSpinBox);
-
-	// Height
-	m_heightSpinBox = new QSpinBox(advancedTab);
-	m_heightSpinBox->setRange(100, 4096);
-	m_heightSpinBox->setValue(800);
-	styleSpinBox(m_heightSpinBox);
-	formLayout->addRow(labelWithInfo(tr("Height:"),
-		tr("The image's pixel height.\n\n"
-		"Paired with Width above - together they set the resolution "
-		"manually, overriding the Basic tab's Quality preset.")),
-		m_heightSpinBox);
-
-	// Samples
-	m_samplesSpinBox = new QSpinBox(advancedTab);
-	m_samplesSpinBox->setRange(1, 10000);
-	m_samplesSpinBox->setValue(100);
-	styleSpinBox(m_samplesSpinBox);
-	m_samplesSpinBox->setToolTip(
-		tr("Rays traced per pixel. This is the main quality/time dial: noise falls\n"
-		"as the square root of this value, so halving the noise costs about 4x\n"
-		"the render time. Setting it here switches Quality to Custom."));
-	formLayout->addRow(labelWithInfo(tr("Samples per Pixel:"),
-		tr("Ray tracing estimates each pixel's color by firing many random "
-		"rays and averaging the results, like polling a lot of people and "
-		"averaging their guesses.\n\n"
-		"More samples means a more accurate average, which shows up as "
-		"less speckly \"noise\" in the image - but each extra sample "
-		"costs render time. Doubling this value roughly halves the "
-		"noise, but takes about twice as long to render.")),
-		m_samplesSpinBox);
-
-	// Max depth
-	m_maxDepthSpinBox = new QSpinBox(advancedTab);
-	m_maxDepthSpinBox->setRange(1, 100);
-	m_maxDepthSpinBox->setValue(50);
-	styleSpinBox(m_maxDepthSpinBox);
-	m_maxDepthSpinBox->setToolTip(
-		tr("How many times a ray may bounce before it is terminated. Low values\n"
-		"darken glass and mirrors, which need many bounces to resolve; scenes\n"
-		"of plain diffuse surfaces look the same well below the maximum."));
-	formLayout->addRow(labelWithInfo(tr("Max Ray Depth:"),
-		tr("A depth of 1 means a ray only sees what it hits directly, with "
-		"no bounced light at all - like a scene with no reflections or "
-		"indirect lighting.\n\n"
-		"Each extra bounce lets light travel one more surface before "
-		"giving up, which is what makes glass, mirrors, and soft "
-		"indirect lighting look correct. Most scenes look \"finished\" "
-		"well before the maximum - beyond that, extra depth mostly "
-		"traces light too dim to matter.")),
-		m_maxDepthSpinBox);
-
-	layout->addWidget(advancedGroup);
-
-	// ============================================================================
-	// Camera Position Group
-	// ============================================================================
-	// The Cornell box scene has fixed geometry:
-	//   - Box dimensions: X[0,555], Y[0,555], Z[0,555]
-	//   - Center point: (278, 278, 278)
-	//   - Front opening: Z=0 (no wall, viewer can look in from outside)
-	//   - Back wall: Z=555 (white)
-	//   - Left wall: X=0 (red)
-	//   - Right wall: X=555 (green)
-	//   - Floor: Y=0 (white)
-	//   - Ceiling: Y=555 (white), with light source at center
-	//
-	// Camera system:
-	//   - lookfrom: camera position in 3D space (set by user via presets or custom values)
-	//   - lookat: always points to center (278, 278, 278) - fixed in renderer
-	//   - The camera can be positioned anywhere, inside or outside the box
-	// ============================================================================
-
-	QGroupBox *cameraGroup = new QGroupBox(tr("Camera Position"), advancedTab);
-	styleGroupBox(cameraGroup);
-	QFormLayout *cameraLayout = new QFormLayout(cameraGroup);
-	cameraLayout->setVerticalSpacing(10);
-	cameraLayout->setHorizontalSpacing(10);
-	cameraLayout->setContentsMargins(15, 22, 15, 12);
-
-	// Camera preset combo box
-	// Each preset stores a direction*ratio QVector3D, NOT an absolute world
-	// position: onCameraPresetChanged() scales it by m_currentSceneCamDistance
-	// (the CURRENT scene's own recommended-camera distance from its lookat)
-	// and offsets it from m_currentLookat*, so "Right Wall" lands at a
-	// sensible position for whatever scene is active. These vectors were
-	// derived from Cornell Box's own original hardcoded positions - e.g.
-	// "Front View (Outside)" used to be the literal point (278,278,-800),
-	// which is offset (0,0,-1078) from Cornell's lookat (278,278,278); divide
-	// by Cornell's own recommended-camera distance (1078, the default
-	// m_currentSceneCamDistance below) to get this preset's direction*ratio
-	// vector (0,0,-1.0) - a pure "straight back, at 1x the scene's own
-	// default viewing distance" direction that means the same thing
-	// regardless of scene scale. The others below were derived the same way,
-	// which is why "Front View" ends up at ratio 1.0 (it WAS the reference
-	// distance) while the inside/corner views are fractions of it. Previously
-	// every preset stored its literal Cornell-Box position directly, so
-	// selecting e.g. "Right Wall" while viewing a much smaller scene (like
-	// scene 1's spheres, which sit within roughly +-15 units of the origin)
-	// put the camera at a literal (500,278,278) - wildly outside that
-	// scene's geometry.
-	m_cameraPresetCombo = new QComboBox(advancedTab);
-
-	// Default view: straight back from lookat, at the scene's own default
-	// viewing distance (ratio 1.0) - matches Cornell Box's own recommended
-	// camera exactly, since that's what this ratio was derived from.
-	m_cameraPresetCombo->addItem(tr("Front View (Outside)"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
-
-	// Inside views: camera positioned near walls, all looking toward center
-	m_cameraPresetCombo->addItem(tr("Inside Front"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -0.211503f)));   // Near Z=0 opening
-	m_cameraPresetCombo->addItem(tr("Inside Back"), QVariant::fromValue(QVector3D(0.0f, 0.0f, 0.205937f)));     // Near Z=555 back wall
-	m_cameraPresetCombo->addItem(tr("Right Wall (Green)"), QVariant::fromValue(QVector3D(0.205937f, 0.0f, 0.0f))); // Near X=555 green wall
-	m_cameraPresetCombo->addItem(tr("Left Wall (Red)"), QVariant::fromValue(QVector3D(-0.211503f, 0.0f, 0.0f)));   // Near X=0 red wall
-
-	// Corner views: diagonal perspectives from inside the box
-	m_cameraPresetCombo->addItem(tr("Floor Corner"), QVariant::fromValue(QVector3D(-0.165121f, -0.211503f, -0.165121f)));  // Low angle, near floor
-	m_cameraPresetCombo->addItem(tr("Ceiling Corner"), QVariant::fromValue(QVector3D(0.159555f, 0.205937f, 0.159555f)));   // High angle, near ceiling
-
-	// Custom: allows manual X/Y/Z input via spinboxes below. Its itemData is
-	// never read (onCameraPresetChanged skips the overwrite for Custom - see
-	// its own comment), so this value is unused, but keep it a plausible
-	// starting direction rather than leaving it as leftover absolute-position
-	// data of a different shape than every other item now stores.
-	m_cameraPresetCombo->addItem(tr("Custom"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
-
-	styleComboBox(m_cameraPresetCombo);
-	cameraLayout->addRow(labelWithInfo(tr("Preset:"),
-		tr("A handful of hand-picked camera positions for this scene, framed "
-		"to show off something specific (e.g. looking in through the "
-		"front, or from inside a Cornell-box-style enclosure).\n\n"
-		"Choosing \"Custom\" unlocks the X/Y/Z fields below so you can "
-		"fly the camera anywhere you like instead.")),
-		m_cameraPresetCombo);
-
-	// Camera position spinboxes (X, Y, Z coordinates)
-	// These are disabled by default; only enabled when "Custom" preset is selected
-	// Range: -2000 to 2000 allows positioning far outside the box if needed
-
-	m_cameraPosX = new QDoubleSpinBox(advancedTab);
-	m_cameraPosX->setRange(-2000, 2000);
-	m_cameraPosX->setValue(278);  // Default X: centered horizontally
-	m_cameraPosX->setSingleStep(10);
-	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
-	styleSpinBox(m_cameraPosX);
-	cameraLayout->addRow(labelWithInfo(tr("Camera X:"),
-		tr("The camera's position along the world's X axis (left/right).\n\n"
-		"Only editable when the preset above is set to Custom - the "
-		"camera always looks toward the scene's own fixed look-at point, "
-		"so moving X/Y/Z changes the viewing angle and distance, not "
-		"just a straight left-right pan.")),
-		m_cameraPosX);
-
-	m_cameraPosY = new QDoubleSpinBox(advancedTab);
-	m_cameraPosY->setRange(-2000, 2000);
-	m_cameraPosY->setValue(278);  // Default Y: centered vertically
-	m_cameraPosY->setSingleStep(10);
-	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
-	styleSpinBox(m_cameraPosY);
-	cameraLayout->addRow(labelWithInfo(tr("Camera Y:"),
-		tr("The camera's position along the world's Y axis (up/down).\n\n"
-		"Same Custom-preset-only editing rule as Camera X - the camera "
-		"keeps looking at the scene's fixed look-at point as you move "
-		"it.")),
-		m_cameraPosY);
-
-	m_cameraPosZ = new QDoubleSpinBox(advancedTab);
-	m_cameraPosZ->setRange(-2000, 2000);
-	m_cameraPosZ->setValue(-800);  // Default Z: far back view to match default preset
-	m_cameraPosZ->setSingleStep(10);
-	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
-	styleSpinBox(m_cameraPosZ);
-	cameraLayout->addRow(labelWithInfo(tr("Camera Z:"),
-		tr("The camera's position along the world's Z axis (forward/back, "
-		"into or out of the scene).\n\n"
-		"Same Custom-preset-only editing rule as Camera X/Y.")),
-		m_cameraPosZ);
-
-	// Distance from the current scene's look-at point. Adjusting this moves
-	// the camera along its EXISTING viewing direction to the new distance
-	// (see onCameraDistanceChanged) - a quick way to zoom in/out without
-	// having to work out new X/Y/Z coordinates by hand. Only meaningful (and
-	// only enabled) alongside the X/Y/Z spinboxes for "Custom"; its value is
-	// kept in sync (not user-editable-then-stale) whenever the scene or
-	// preset changes, via refreshCameraDistanceDisplay().
-	m_cameraDistance = new QDoubleSpinBox(advancedTab);
-	m_cameraDistance->setRange(0.01, 5000);
-	m_cameraDistance->setValue(1078);  // Matches the default preset's distance from Cornell Box's lookat
-	m_cameraDistance->setSingleStep(10);
-	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
-	styleSpinBox(m_cameraDistance);
-	cameraLayout->addRow(labelWithInfo(tr("Distance from Center:"),
-		tr("Moves the camera directly toward or away from the scene's "
-		"look-at point along whatever direction it's currently facing, "
-		"without changing which way it's pointed.\n\n"
-		"The quickest way to zoom in or pull back once you've already "
-		"found an angle you like via the X/Y/Z fields or a preset.")),
-		m_cameraDistance);
-
-	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
-	// Connection made AFTER all widgets are created to avoid null pointer issues
-	connect(m_cameraPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-			this, &MainWindow::onCameraPresetChanged);
-	connect(m_cameraDistance, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-			this, &MainWindow::onCameraDistanceChanged);
-
-	// Initialize the spinboxes with the default preset (index 0: "Front View (Outside)")
-	onCameraPresetChanged(0);
-
-	layout->addWidget(cameraGroup);
-	layout->addStretch();
-
-	// Wrap the tab content in a scroll area for better responsiveness
-	ThemedScrollArea *scrollArea = new ThemedScrollArea();  // theme motif support - see that class's own comment
-	scrollArea->setWidget(advancedTab);
-	scrollArea->setWidgetResizable(true);
-	scrollArea->setFrameShape(QFrame::NoFrame);
-	// Named so the global stylesheet can paint a theme's decorative motif here.
-	// It has to be the scroll area rather than QTabWidget::pane: the pane is
-	// covered edge to edge by this widget, so a background set on it is never
-	// seen. QAbstractScrollArea is also the one thing Qt documents as
-	// supporting background-attachment, which is what keeps the motif still
-	// while the settings scroll past.
-	scrollArea->setObjectName("tabScroll");
-	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-
-	m_tabWidget->addTab(scrollArea, tr("Advanced Settings"));
-}

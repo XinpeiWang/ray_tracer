@@ -124,8 +124,10 @@ public:
 // MainWindow
 // ============================================================================
 // Main GUI window with tabbed interface for render controls
-// Basic Tab: Quick presets and render mode selection
-// Advanced Tab: Detailed controls including camera position presets
+// Settings Tab: scene selection, render mode/quality/resolution, manual
+// width/height/samples/depth overrides, camera position, output path -
+// formerly two separate tabs ("Basic Settings", "Advanced Settings") with no
+// documented reason for the split, merged into one scrollable tab.
 // ============================================================================
 class MainWindow : public QMainWindow {
 	Q_OBJECT
@@ -190,8 +192,7 @@ private slots:
 
 private:
 	void setupUI();
-	void createBasicTab();
-	void createAdvancedTab();
+	void createSettingsTab();
 	void createRenderOptionsTab();
 	// Single source of truth for m_samplerCombo/m_lightSamplerCombo/
 	// m_spectralCheck/m_exposureSpin/m_tonemapCombo/m_statsCheck/
@@ -412,7 +413,7 @@ private:
 	// own comment) - here the user explicitly clicked Apply, so it's a real
 	// action, not an automatic override of an unrelated selection.
 	void applyRecommendedSettings();
-	// Plain-text description of `mode` - used by createBasicTab()'s
+	// Plain-text description of `mode` - used by createSettingsTab()'s
 	// per-item combo tooltips (each Integrator dropdown row's own "(i)").
 	QString integratorDescription(IntegratorMode mode);
 	// " · "-joined list of only the AdvancedRenderFlags/IntegratorOptions
@@ -509,7 +510,7 @@ private:
 	// Mode selector (Image vs Video)
 	QComboBox *m_modeCombo;             // Render mode: Image or Video
 
-	// Basic Tab
+	// Settings Tab
 	QComboBox *m_renderModeCombo;       // GPU vs CPU selection
 	QComboBox *m_gpuBackendCombo;       // Recursive vs wavefront GPU path tracer (only meaningful under GPU)
 	QComboBox *m_qualityPresetCombo;    // Quality preset dropdown
@@ -540,7 +541,7 @@ private:
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
 	int m_videoTabIndex = -1;           // Index of the Video Settings tab within m_tabWidget (see createVideoTab()/onModeChanged())
 
-	// Advanced Tab - Manual Controls
+	// Settings Tab (cont'd) - manual width/height/samples/depth overrides
 	QSpinBox *m_widthSpinBox;           // Custom width
 	QSpinBox *m_heightSpinBox;          // Custom height
 	QSpinBox *m_samplesSpinBox;         // Samples per pixel
@@ -614,7 +615,7 @@ private:
 	// label adds a non-blocking heads-up before that happens, toggled by
 	// both onModeChanged() and onIntegratorChanged().
 	QLabel *m_integratorVideoWarningLabel;
-	// Second copy of the same warning, on Basic Settings directly under
+	// Second copy of the same warning, on the Settings tab directly under
 	// m_modeCombo (Output Mode) - that's the control that actually
 	// triggers the conflict, but it's on a different tab from
 	// m_integratorVideoWarningLabel above (which lives in the Integrator
@@ -720,7 +721,7 @@ private:
 	// (true = only scenes with sceneRequiresFiles()==true, false = only
 	// scenes with sceneRequiresFiles()==false), skipping any letter category
 	// left with zero matching scenes - same skip-if-empty rule
-	// createBasicTab() already applies for categories with zero scenes at
+	// createSettingsTab() already applies for categories with zero scenes at
 	// all. Does not touch m_sceneCombo; callers follow up with
 	// populateSceneCombo() for whichever category tab ends up selected.
 	void rebuildCategoryTabs(bool requiresFiles);
@@ -744,7 +745,7 @@ private:
 	// scene (Qt::UserRole holds the scene id, mirroring the combo's item-data
 	// convention), icon set to the cached thumbnail if thumbnailCachePath(id)
 	// exists on disk, else a shared placeholder built once in
-	// createBasicTab(). Does NOT emit itemSelectionChanged - callers behave
+	// createSettingsTab(). Does NOT emit itemSelectionChanged - callers behave
 	// like populateSceneCombo()'s own callers.
 	void populateSceneGrid(const QString &category);
 
@@ -804,7 +805,7 @@ private:
 	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
 	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
 	QLabel *m_videoInfoLabel;           // Video duration and path info
-	// Visible whenever Output Mode (Basic Settings) isn't "Generate Video" -
+	// Visible whenever Output Mode (Settings tab) isn't "Generate Video" -
 	// see createVideoTab()'s own comment for why this tab stays enabled and
 	// clickable rather than being disabled outright. Toggled by onModeChanged().
 	QLabel *m_videoModeWarningLabel = nullptr;

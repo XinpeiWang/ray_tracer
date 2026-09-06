@@ -1,14 +1,15 @@
 // Render Options tab, Preview tab (and its sub-tab management), and Video
 // Settings tab - split out of mainwindow_tabs.cpp to keep that file to the
-// Basic/Advanced settings tabs and their scene-list helpers. Video Settings
+// Settings tab (formerly separate Basic/Advanced settings tabs, merged - see
+// that file's own header comment) and its scene-list helpers. Video Settings
 // lives here too even though it sat between createRenderOptionsTab() and
 // createPreviewTab() in the original file's function order - between
 // Render Options and Preview, not after Progress/Log/Diagnostics as an
 // earlier version of this comment incorrectly claimed (verified against
-// mainwindow.cpp's actual setupUI() call order: Basic, Advanced, Render
-// Options, Video Settings, Preview, Progress, Log, Diagnostics) - it's
-// grouped with Render Options/Preview here by KIND (render-configuration
-// tabs), which happens to match its original physical position too; see
+// mainwindow.cpp's actual setupUI() call order: Settings, Render Options,
+// Video Settings, Preview, Progress, Log, Diagnostics) - it's grouped with
+// Render Options/Preview here by KIND (render-configuration tabs), which
+// happens to match its original physical position too; see
 // mainwindow_tabs_output.cpp for the Progress/Log/Diagnostics tabs.
 #include "mainwindow.h"
 #include "icon_tint.h"
@@ -54,10 +55,9 @@
 // Exposes CLI flags RenderController::start() (mainwindow.cpp) already knows
 // how to emit but that no earlier tab surfaced: --sampler, --spectral,
 // --exposure, --tonemap, --stats, --denoise, --optix-validate. Deliberately
-// a separate tab from "Advanced Settings" above (resolution/samples/depth/
-// camera) rather than folded into it, since that name already means
-// something else and this tab is exclusively about render BEHAVIOR flags,
-// not image/camera parameters.
+// a separate tab from Settings (resolution/samples/depth/camera, among
+// other things) rather than folded into it, since this tab is exclusively
+// about render BEHAVIOR flags, not image/camera parameters.
 void MainWindow::createRenderOptionsTab() {
 	QWidget *optionsTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(optionsTab);
@@ -125,7 +125,7 @@ void MainWindow::createRenderOptionsTab() {
 	integratorSelectorLayout->setVerticalSpacing(10);
 	integratorSelectorLayout->setHorizontalSpacing(10);
 	// Same two-column labelWithInfo() row shape every sibling control on
-	// the Basic Settings tab uses (Renderer/GPU Backend/Quality/
+	// the Settings tab uses (Renderer/GPU Backend/Quality/
 	// Resolution), so the label column stays aligned across all of them. A
 	// SEPARATE dynamic icon here (an earlier version of this row) turned
 	// out to duplicate the per-item icon Qt already shows natively inside
@@ -411,7 +411,7 @@ void MainWindow::createRenderOptionsTab() {
 		"loaded .pbrt scene's own Sampler directive rather than as a "
 		"recommended choice.\n\n"
 		"Grayed out? This only affects the CPU renderer's default path "
-		"tracer - switch Renderer to CPU on the Basic Settings tab to "
+		"tracer - switch Renderer to CPU on the Settings tab to "
 		"use it.")),
 		m_samplerCombo);
 	connect(m_samplerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -493,7 +493,7 @@ void MainWindow::createRenderOptionsTab() {
 		"wavelengths per ray instead of just RGB, at the cost of "
 		"being noisier and slower per sample.\n\n"
 		"Grayed out? This only exists on the CPU renderer's default "
-		"path tracer - switch Renderer to CPU on the Basic Settings "
+		"path tracer - switch Renderer to CPU on the Settings "
 		"tab to use it.")));
 
 	m_exposureSpin = new QDoubleSpinBox(optionsTab);
@@ -663,7 +663,7 @@ void MainWindow::createRenderOptionsTab() {
 		"it has a real performance cost and doesn't change what a "
 		"correct render looks like.\n\n"
 		"Grayed out? This is GPU-only - switch Renderer to GPU on "
-		"the Basic Settings tab to use it.")));
+		"the Settings tab to use it.")));
 
 	layout->addWidget(outputGroup);
 
@@ -910,7 +910,7 @@ void MainWindow::createPreviewTab() {
 	m_previewInfoLabel->setObjectName("previewInfo");
 	sideLayout->addWidget(m_previewInfoLabel);
 
-	// Selected scene's description - same text/source as the Basic Settings
+	// Selected scene's description - same text/source as the Settings
 	// tab's #sceneInfo box (see onSceneChanged()), kept in sync with the
 	// scene combo rather than tied to a completed render, so it's already
 	// showing what you're about to render before the first click.
@@ -1244,7 +1244,7 @@ void MainWindow::createVideoTab() {
 	// (false - see the MainWindow constructor), so no extra sync call is
 	// needed here.
 	m_videoModeWarningLabel = new QLabel(
-		tr("⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to \"Generate Video\"."),
+		tr("⚠ These settings only take effect when Output Mode (Settings tab) is set to \"Generate Video\"."),
 		videoTab);
 	m_videoModeWarningLabel->setObjectName("videoModeWarning");
 	m_videoModeWarningLabel->setWordWrap(true);
