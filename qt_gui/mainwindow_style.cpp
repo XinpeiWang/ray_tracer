@@ -630,11 +630,6 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			font-style: italic;
 			padding: 10px;
 		}
-		/* Shared by the Settings tab's Video Generation Settings help/requirements blurbs. */
-		QLabel#mutedInfo {
-			color: %TEXT_MUTED%;
-			padding: 10px;
-		}
 		QLabel#statusInfo {
 			color: %TEXT_MUTED%;
 			padding: 0 8px;

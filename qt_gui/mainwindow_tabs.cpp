@@ -936,46 +936,40 @@ void MainWindow::createSettingsTab() {
 
 	layout->addWidget(videoGroup);
 
-	// Requirements info - left enabled/visible regardless of Output Mode,
-	// same as Usage Instructions below: reference material someone might
-	// want to read before ever switching to Generate Video, not a setting.
-	QGroupBox *requirementsGroup = new QGroupBox(tr("ℹ️ Requirements"), basicTab);
-	styleGroupBox(requirementsGroup);
-	QVBoxLayout *requirementsLayout = new QVBoxLayout(requirementsGroup);
+	// Requirements + Usage Instructions - a single compact row with an
+	// info icon instead of two permanently-visible QGroupBoxes, matching
+	// this app's own established "(i)" hover-tooltip convention
+	// (createInfoIcon()) rather than being a one-off exception now that
+	// there's a much longer Settings tab for these two boxes' worth of
+	// reference text to sit inline in. The clickable ffmpeg.org link the
+	// old Requirements box carried as a real QLabel hyperlink doesn't
+	// survive the move - a QToolTip popup renders basic HTML but never
+	// makes a link clickable, and createInfoIcon()'s helpText is plain
+	// text (HTML-escaped before display) besides - so the tooltip spells
+	// the URL out as plain text instead.
+	QWidget *videoHelpRow = new QWidget(basicTab);
+	QHBoxLayout *videoHelpLayout = new QHBoxLayout(videoHelpRow);
+	videoHelpLayout->setContentsMargins(0, 0, 0, 0);
+	videoHelpLayout->setSpacing(4);
+	videoHelpLayout->addWidget(new QLabel(tr("Video render requirements & usage:"), videoHelpRow));
+	videoHelpLayout->addWidget(createInfoIcon(
+		tr("Requires ffmpeg: video encoding uses ffmpeg (libx264), which must "
+		"be installed and on your PATH - get it from ffmpeg.org if the "
+		"render log reports it's missing.\n\n"
+		"After rendering all frames, the video is automatically assembled "
+		"and opened.\n\n"
+		"Step 1: Configure Video Generation Settings above (camera path, "
+		"frames, FPS) and set Output Mode to Generate Video.\n\n"
+		"Step 2: Configure quality settings further down this tab.\n\n"
+		"Step 3: Click START VIDEO RENDER and wait.\n\n"
+		"Step 4: Video automatically assembles and opens when done!\n\n"
+		"Tips: use GPU mode for faster rendering. Lower samples/pixel "
+		"(10-50) for quick previews, higher (100-500) for production "
+		"quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes "
+		"on CPU.")));
+	videoHelpLayout->addStretch();
 
-	QLabel *requirementsInfo = new QLabel(
-		tr("<b>Requires ffmpeg:</b> Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.<br>"
-		"<small>Get it from <a href=\"https://ffmpeg.org/download.html\">ffmpeg.org</a> if the render log reports it's missing.</small><br><br>"
-		"<b>Automatic Assembly:</b> After rendering all frames, the video will be automatically assembled and opened.")
-	);
-	requirementsInfo->setOpenExternalLinks(true);
-	requirementsInfo->setWordWrap(true);
-	requirementsInfo->setObjectName("mutedInfo");
-	requirementsLayout->addWidget(requirementsInfo);
-
-	layout->addWidget(requirementsGroup);
-
-	// Usage instructions
-	QGroupBox *usageGroup = new QGroupBox(tr("Usage Instructions"), basicTab);
-	styleGroupBox(usageGroup);
-	QVBoxLayout *usageLayout = new QVBoxLayout(usageGroup);
-
-	QLabel *usageText = new QLabel(
-		tr("<b>Step 1:</b> Configure Video Generation Settings above (camera path, frames, FPS) and set Output Mode to Generate Video<br>"
-		"<b>Step 2:</b> Configure quality settings further down this tab<br>"
-		"<b>Step 3:</b> Click START VIDEO RENDER and wait<br>"
-		"<b>Step 4:</b> Video automatically assembles and opens when done!<br><br>"
-		"<b>Tips:</b><br>"
-		"• Use GPU mode for faster rendering<br>"
-		"• Lower samples/pixel for quick previews (10-50)<br>"
-		"• Higher samples/pixel for production quality (100-500)<br>"
-		"• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)")
-	);
-	usageText->setWordWrap(true);
-	usageText->setObjectName("mutedInfo");
-	usageLayout->addWidget(usageText);
-
-	layout->addWidget(usageGroup);
+	layout->addWidget(videoHelpRow);
 
 	// --- Advanced Parameters: manual width/height/samples/depth overrides ---
 	// Formerly its own "Advanced Settings" tab - folded in here since there

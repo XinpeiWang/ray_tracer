@@ -80,7 +80,7 @@ void MainWindow::createThemeMenu() {
 //
 // Everything that CAN be expressed as a rule in the global sheet lives there
 // instead, addressed by object name (QLabel#sceneInfo, #previewInfo, #videoInfo,
-// #mutedInfo, #statusInfo) or class name (ScaledImageLabel). Those re-theme for
+// #statusInfo) or class name (ScaledImageLabel). Those re-theme for
 // free when applyTheme() rebuilds the sheet, and nothing has to be listed here.
 // What remains are the two categories that genuinely cannot: widgets Qt styles
 // outside the global sheet, and pixmaps that have to be regenerated.
