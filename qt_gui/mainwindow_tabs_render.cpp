@@ -16,6 +16,7 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QApplication>
@@ -711,10 +712,22 @@ void MainWindow::createRenderOptionsTab() {
 	connect(m_cropCheck, &QCheckBox::toggled, m_cropY0Spin, &QDoubleSpinBox::setEnabled);
 	connect(m_cropCheck, &QCheckBox::toggled, m_cropX1Spin, &QDoubleSpinBox::setEnabled);
 	connect(m_cropCheck, &QCheckBox::toggled, m_cropY1Spin, &QDoubleSpinBox::setEnabled);
-	cropLayout->addRow(tr("Left (X0):"), m_cropX0Spin);
-	cropLayout->addRow(tr("Top (Y0):"), m_cropY0Spin);
-	cropLayout->addRow(tr("Right (X1):"), m_cropX1Spin);
-	cropLayout->addRow(tr("Bottom (Y1):"), m_cropY1Spin);
+	// A 4-column grid (label, field, label, field) instead of QFormLayout's
+	// one-pair-per-row - the top-left corner (X0/Y0) and bottom-right
+	// corner (X1/Y1) pack two fields per row, halving this group's height.
+	QGridLayout *cropCornersGrid = new QGridLayout();
+	cropCornersGrid->setHorizontalSpacing(10);
+	cropCornersGrid->setColumnStretch(1, 1);
+	cropCornersGrid->setColumnStretch(3, 1);
+	cropCornersGrid->addWidget(new QLabel(tr("Left (X0):")), 0, 0);
+	cropCornersGrid->addWidget(m_cropX0Spin, 0, 1);
+	cropCornersGrid->addWidget(new QLabel(tr("Top (Y0):")), 0, 2);
+	cropCornersGrid->addWidget(m_cropY0Spin, 0, 3);
+	cropCornersGrid->addWidget(new QLabel(tr("Right (X1):")), 1, 0);
+	cropCornersGrid->addWidget(m_cropX1Spin, 1, 1);
+	cropCornersGrid->addWidget(new QLabel(tr("Bottom (Y1):")), 1, 2);
+	cropCornersGrid->addWidget(m_cropY1Spin, 1, 3);
+	cropLayout->addRow(cropCornersGrid);
 
 	layout->addWidget(cropGroup);
 
