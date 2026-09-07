@@ -460,8 +460,8 @@ void MainWindow::createRenderOptionsTab() {
 		"ignores both - every light equally likely regardless of "
 		"brightness or distance, included mainly for comparison/"
 		"debugging.\n\nGrayed out? This only affects the CPU renderer's "
-		"default path tracer - switch Renderer to CPU on the Basic "
-		"Settings tab to use it.")),
+		"default path tracer - switch Renderer to CPU on the Settings "
+		"tab to use it.")),
 		m_lightSamplerCombo);
 	connect(m_lightSamplerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
 		if (m_sceneCombo) updateSceneRecommendedSettingsHint(m_sceneCombo->currentData().toString());
@@ -638,8 +638,8 @@ void MainWindow::createRenderOptionsTab() {
 		"without needing to trace additional rays - a way to get a "
 		"clean-looking image faster, at some cost in fine detail.\n\n"
 		"Grayed out? This needs the GPU recursive backend - switch "
-		"Renderer to GPU (and GPU Backend to Recursive) on the Basic "
-		"Settings tab to use it.")));
+		"Renderer to GPU (and GPU Backend to Recursive) on the Settings "
+		"tab to use it.")));
 
 	m_optixValidateCheck = new QCheckBox(tr("OptiX validation mode (slower, debugging only)"), optionsTab);
 	m_optixValidateCheck->setToolTip(
