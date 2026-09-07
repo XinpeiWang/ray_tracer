@@ -802,7 +802,12 @@ private:
 	QSpinBox *m_videoFramesSpinBox;     // Number of frames to render
 	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
 	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
-	QLabel *m_videoInfoLabel;           // Video duration and path info
+	// Info icon whose tooltip is rewritten on every recompute (duration/
+	// camera path/output) rather than an always-visible text block - same
+	// pattern m_sceneTechInfoIcon uses. Default-constructed nullptr like
+	// that icon too, though createSettingsTab() always assigns it a real
+	// QToolButton before this could ever be read.
+	QToolButton *m_videoInfoIcon = nullptr;
 	// Visible whenever Output Mode isn't "Generate Video" - the group stays
 	// fully interactive either way (disabling it outright used to block
 	// browsing/configuring these settings ahead of switching modes, and

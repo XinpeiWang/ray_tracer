@@ -79,7 +79,7 @@ void MainWindow::createThemeMenu() {
 // The parts of the UI the global stylesheet cannot reach on its own.
 //
 // Everything that CAN be expressed as a rule in the global sheet lives there
-// instead, addressed by object name (QLabel#sceneInfo, #previewInfo, #videoInfo,
+// instead, addressed by object name (QLabel#sceneInfo, #previewInfo,
 // #statusInfo) or class name (ScaledImageLabel). Those re-theme for
 // free when applyTheme() rebuilds the sheet, and nothing has to be listed here.
 // What remains are the two categories that genuinely cannot: widgets Qt styles

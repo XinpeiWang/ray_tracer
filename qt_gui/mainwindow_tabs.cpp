@@ -893,10 +893,20 @@ void MainWindow::createSettingsTab() {
 		"many frames, covering the same journey faster.")),
 		m_videoSpeedSpinBox);
 
-	// Video duration info (calculated from frames/fps)
-	m_videoInfoLabel = new QLabel();
-	m_videoInfoLabel->setWordWrap(true);
-	m_videoInfoLabel->setObjectName("videoInfo");
+	// Video duration/summary info (calculated from frames/fps) - a compact
+	// row with an info icon whose tooltip is rewritten on every recompute,
+	// rather than an always-visible text block, same "(i)" convention as
+	// the Requirements/Usage row above and the same "content changes after
+	// construction" pattern m_sceneTechInfoIcon already uses
+	// (updateSceneTechInfoIcon(), mainwindow_style.cpp).
+	QWidget *videoInfoRow = new QWidget();
+	QHBoxLayout *videoInfoRowLayout = new QHBoxLayout(videoInfoRow);
+	videoInfoRowLayout->setContentsMargins(0, 0, 0, 0);
+	videoInfoRowLayout->setSpacing(4);
+	videoInfoRowLayout->addWidget(new QLabel(tr("Video summary:"), videoInfoRow));
+	m_videoInfoIcon = createInfoIcon(QString());
+	videoInfoRowLayout->addWidget(m_videoInfoIcon);
+	videoInfoRowLayout->addStretch();
 
 	// Update duration display when frames, FPS, speed, or path changes
 	auto updateVideoDuration = [this]() {
@@ -915,15 +925,19 @@ void MainWindow::createSettingsTab() {
 
 		QString framesLine = (actualFrames == baseFrames)
 			? tr("%1 frames").arg(actualFrames)
-			: tr("%1 frames (base %2 × 1/%3x speed)%4")
+			: tr("%1 frames (base %2 x 1/%3x speed)%4")
 				.arg(actualFrames).arg(baseFrames).arg(QString::number(speed, 'f', 2))
 				.arg(capped ? tr(" - capped at 5000") : QString());
 
-		m_videoInfoLabel->setText(tr(
-			"<b>Video Duration:</b> %1 seconds (%2)<br>"
-			"<b>Camera Path:</b> %3, always completes its full sweep regardless of speed<br>"
-			"<b>Output:</b> Frames will be saved to <code>output/frames/</code>"
-		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath));
+		// Plain text, not HTML - createInfoIcon()'s helpText is escaped
+		// before display (see wrapTooltipHtml()'s own comment), so the
+		// <b>/<code> tags the old always-visible label used would show up
+		// as literal text here instead of formatting.
+		m_videoInfoIcon->setToolTip(wrapTooltipHtml(tr(
+			"Video Duration: %1 seconds (%2)\n\n"
+			"Camera Path: %3, always completes its full sweep regardless of speed\n\n"
+			"Output: frames will be saved to output/frames/"
+		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath)));
 	};
 
 	connect(m_videoFramesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
@@ -932,7 +946,7 @@ void MainWindow::createSettingsTab() {
 	connect(m_cameraPathCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateVideoDuration);
 	updateVideoDuration();
 
-	videoLayout->addRow("", m_videoInfoLabel);
+	videoLayout->addRow(videoInfoRow);
 
 	layout->addWidget(videoGroup);
 

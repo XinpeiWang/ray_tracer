@@ -625,11 +625,6 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		QScrollArea#previewTechniqueScroll > QWidget {
 			background: transparent;
 		}
-		QLabel#videoInfo {
-			color: %TEXT_MUTED%;
-			font-style: italic;
-			padding: 10px;
-		}
 		QLabel#statusInfo {
 			color: %TEXT_MUTED%;
 			padding: 0 8px;
