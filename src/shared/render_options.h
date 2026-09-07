@@ -24,10 +24,13 @@ struct RenderOptions {
 	const char* sampler = nullptr;
 	// pbrt-v4 Integrator "string lightsampler" - which of this project's
 	// own light-sampler classes selects the next-event-estimation light to
-	// sample - one of "uniform"/"power"/"bvh"; nullptr/empty/unrecognized
-	// all fall back to "bvh" (pbrt-v4's own real default). CPU default
-	// path tracer only - affects convergence/variance, not the converged
-	// image, same perf/quality-knob shape as `sampler` above.
+	// sample - one of "uniform"/"power"/"bvh", or "auto" (resolved in
+	// cpu_interface.cpp to the loaded scene's own Integrator "string
+	// lightsampler" request, falling back to "bvh" if it made none);
+	// nullptr/empty/unrecognized all fall back to "bvh" (pbrt-v4's own real
+	// default). CPU default path tracer only - affects convergence/variance,
+	// not the converged image, same perf/quality-knob shape as `sampler`
+	// above.
 	const char* lightsampler = nullptr;
 	// pbrt-v4 Integrator "bool regularize" as an explicit CLI request -
 	// see LaunchArgs::regularize's own comment (launcher_args.h) for the

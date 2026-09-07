@@ -101,8 +101,11 @@ struct LaunchArgs {
 	// sampling scheme already).
 	std::string sampler     = "";
 	// pbrt-v4 Integrator "string lightsampler" - one of "uniform"/"power"/
-	// "bvh". Empty (default) means "use bvh", pbrt-v4's own real default -
-	// same "CPU default path tracer only" scope cut as sampler above.
+	// "bvh", or "auto" (resolved per-scene in cpu_interface.cpp to the
+	// loaded scene's own recommendation, falling back to bvh if it made
+	// none - see that resolution's own comment). Empty (default) means
+	// "use bvh", pbrt-v4's own real default - same "CPU default path
+	// tracer only" scope cut as sampler above.
 	std::string lightsampler = "";
 	// pbrt-v4 Integrator "bool regularize" (camera.h's camera_t::regularize)
 	// as an explicit CLI request. A loaded .pbrt scene can already set this
@@ -343,12 +346,24 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			std::string name = argv[i + 1];
 			std::transform(name.begin(), name.end(), name.begin(),
 							[](unsigned char c) { return std::tolower(c); });
-			static const std::set<std::string> kValidLightSamplers = {"uniform", "power", "bvh"};
+			// "auto" isn't a real light-sampler implementation - it means
+			// "use whatever the scene's own Integrator \"string lightsampler\"
+			// parameter requested" (falling back to bvh if it made no
+			// request), resolved per-scene in cpu_render_main() once the
+			// scene's own recommendation is known. See that resolution's own
+			// comment for why this is opt-in rather than the default: an
+			// explicit --lightsampler (or none at all) still always wins,
+			// matching maxdepth/samplerType's own "CLI decides, scene's
+			// request is only advisory" precedent - "auto" is what lets a
+			// CLI user opt into the scene's request instead, the same
+			// convenience the GUI's "Apply recommended settings" button
+			// already gives GUI users.
+			static const std::set<std::string> kValidLightSamplers = {"uniform", "power", "bvh", "auto"};
 			if (kValidLightSamplers.count(name)) {
 				out.lightsampler = name;
 			} else {
 				std::cerr << "Invalid --lightsampler \"" << argv[i + 1] << "\", using default (bvh). "
-							 "Valid: uniform, power, bvh\n";
+							 "Valid: uniform, power, bvh, auto\n";
 			}
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
@@ -646,8 +661,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --lightsampler NAME: pbrt-v4 Integrator \"string lightsampler\" - which light\n"
 					  << "               sampler picks the next-event-estimation light to sample\n"
 					  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"
-					  << "               power, bvh. Affects convergence/variance, not the converged\n"
-					  << "               image. CPU default path tracer only.\n"
+					  << "               power, bvh, auto. Affects convergence/variance, not the\n"
+					  << "               converged image. \"auto\" uses whatever the loaded scene's own\n"
+					  << "               Integrator \"string lightsampler\" parameter requested (bvh if\n"
+					  << "               it made no request) instead of a fixed default. CPU default\n"
+					  << "               path tracer only.\n"
 					  << "  " << render_flags::kRegularize << " : pbrt-v4 Integrator \"bool regularize\" - widens a rough BSDF's\n"
 					  << "               GGX alpha after the path's first non-specular bounce, taming\n"
 					  << "               fireflies from hard caustic paths at the cost of some blur.\n"

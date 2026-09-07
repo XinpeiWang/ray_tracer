@@ -363,17 +363,38 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// both pbrt-v4's own real default AND this project's own prior
 		// hardcoded choice, so an empty --lightsampler reports/behaves the
 		// same as before this option existed.
+		//
+		// "auto" is the one explicit value that does NOT mean "use this
+		// literal implementation" - it means "use whatever the scene's own
+		// Integrator lightsampler parameter requested, whatever that turns
+		// out to be" (bvh if it made no request), resolved here rather than
+		// at CLI-parse time since only this function has the scene's own
+		// recommendation in hand. This is deliberately opt-in rather than
+		// the default for a bare --lightsampler-less invocation - an
+		// explicit choice (or none at all, "bvh") still always wins
+		// otherwise, unchanged from before "auto" existed - "auto" is just
+		// what lets a CLI user ask for the scene's own request instead,
+		// the same convenience the GUI's "Apply recommended settings"
+		// button already gives GUI users for this exact setting.
 		const bool has_explicit_lightsampler = options.lightsampler != nullptr && options.lightsampler[0] != '\0';
+		const bool wants_auto_lightsampler = has_explicit_lightsampler && std::strcmp(options.lightsampler, "auto") == 0;
 		if (!has_explicit_lightsampler) {
 			if (!scene_desc->recommended_light_sampler.empty() && scene_desc->recommended_light_sampler != "bvh") {
 				std::cerr << "Warning: scene '" << scene_id << "' requests Integrator lightsampler \""
 						  << scene_desc->recommended_light_sampler
 						  << "\" but no --lightsampler was passed, so this render uses bvh - "
 							 "pass --lightsampler " << scene_desc->recommended_light_sampler
-						  << " explicitly if that's what the scene wants.\n";
+						  << " (or --lightsampler auto) explicitly if that's what the scene wants.\n";
 			}
+		} else if (wants_auto_lightsampler && !scene_desc->recommended_light_sampler.empty()
+				   && scene_desc->recommended_light_sampler != "bvh") {
+			std::cerr << "[cpu_interface] --lightsampler auto: scene '" << scene_id
+					  << "' requested Integrator lightsampler \"" << scene_desc->recommended_light_sampler
+					  << "\", using it.\n";
 		}
-		const std::string light_sampler_choice = has_explicit_lightsampler ? options.lightsampler : "bvh";
+		const std::string light_sampler_choice = wants_auto_lightsampler
+			? (scene_desc->recommended_light_sampler.empty() ? "bvh" : scene_desc->recommended_light_sampler)
+			: (has_explicit_lightsampler ? options.lightsampler : "bvh");
 
 		// For Cornell box scenes use explicitly-weighted light sampling
 		// (pbrt-v4 Â§12.6's bounding-cone importance sampler for "bvh", or

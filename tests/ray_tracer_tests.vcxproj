@@ -257,6 +257,7 @@
     <ClCompile Include="unit\bdpt_adapter_two_sided_tests.cpp" />
     <ClCompile Include="unit\mlt_tests.cpp" />
     <ClCompile Include="unit\launcher_args_bdpt_mlt_tests.cpp" />
+    <ClCompile Include="unit\launcher_args_lightsampler_tests.cpp" />
     <ClCompile Include="unit\camera_path_tests.cpp" />
     <ClCompile Include="unit\sppm_adapter_bsdf_tests.cpp" />
     <ClCompile Include="unit\sppm_tests.cpp" />
