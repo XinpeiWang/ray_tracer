@@ -93,6 +93,25 @@ public:
 	explicit ExpandingTabBar(QWidget *parent = nullptr) : QTabBar(parent) {}
 
 protected:
+	// tabSizeHint() below depends on parentWidget()->width() - state entirely
+	// external to QTabBar, which it has no way to know changed on its own.
+	// Qt only re-invokes tabSizeHint() for a tab when its internal per-tab
+	// size cache is marked dirty (tab insert/remove, setShape(), setElideMode(),
+	// a style/font change, ...) - a plain resize does NOT dirty that cache by
+	// itself, so resizeEvent() alone just re-lays-out the tabs using their
+	// STALE cached widths from whenever the cache was last valid (typically
+	// once, right after the tabs were first added). That's exactly the
+	// "expands right after startup, then stops keeping up with later manual
+	// window resizes" symptom this override fixes: re-asserting the tab
+	// bar's own (unchanged) shape is a harmless way to force the same
+	// internal refresh Qt's own setShape() triggers, so every tab's width
+	// gets recomputed from tabSizeHint() on every resize instead of reusing
+	// whatever was cached before.
+	void resizeEvent(QResizeEvent *event) override {
+		setShape(shape());
+		QTabBar::resizeEvent(event);
+	}
+
 	QSize tabSizeHint(int index) const override {
 		QSize hint = QTabBar::tabSizeHint(index);
 		const int n = count();
