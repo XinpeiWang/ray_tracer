@@ -1095,10 +1095,16 @@ void MainWindow::createSettingsTab() {
 
 	QGroupBox *cameraGroup = new QGroupBox(tr("Camera Position"), basicTab);
 	styleGroupBox(cameraGroup);
-	QFormLayout *cameraLayout = new QFormLayout(cameraGroup);
+	// Same 4-column grid as Advanced Parameters above: X/Y and Z/Distance
+	// pack two fields per row instead of QFormLayout's one-pair-per-row.
+	// Preset spans the field columns on its own row since there's nothing
+	// to pair it with.
+	QGridLayout *cameraLayout = new QGridLayout(cameraGroup);
 	cameraLayout->setVerticalSpacing(10);
 	cameraLayout->setHorizontalSpacing(10);
 	cameraLayout->setContentsMargins(15, 22, 15, 12);
+	cameraLayout->setColumnStretch(1, 1);
+	cameraLayout->setColumnStretch(3, 1);
 
 	// Camera preset combo box
 	// Each preset stores a direction*ratio QVector3D, NOT an absolute world
@@ -1146,13 +1152,14 @@ void MainWindow::createSettingsTab() {
 	m_cameraPresetCombo->addItem(tr("Custom"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
 
 	styleComboBox(m_cameraPresetCombo);
-	cameraLayout->addRow(labelWithInfo(tr("Preset:"),
+	cameraLayout->addWidget(labelWithInfo(tr("Preset:"),
 		tr("A handful of hand-picked camera positions for this scene, framed "
 		"to show off something specific (e.g. looking in through the "
 		"front, or from inside a Cornell-box-style enclosure).\n\n"
 		"Choosing \"Custom\" unlocks the X/Y/Z fields below so you can "
 		"fly the camera anywhere you like instead.")),
-		m_cameraPresetCombo);
+		0, 0);
+	cameraLayout->addWidget(m_cameraPresetCombo, 0, 1, 1, 3);
 
 	// Camera position spinboxes (X, Y, Z coordinates)
 	// These are disabled by default; only enabled when "Custom" preset is selected
@@ -1164,13 +1171,14 @@ void MainWindow::createSettingsTab() {
 	m_cameraPosX->setSingleStep(10);
 	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosX);
-	cameraLayout->addRow(labelWithInfo(tr("Camera X:"),
+	cameraLayout->addWidget(labelWithInfo(tr("Camera X:"),
 		tr("The camera's position along the world's X axis (left/right).\n\n"
 		"Only editable when the preset above is set to Custom - the "
 		"camera always looks toward the scene's own fixed look-at point, "
 		"so moving X/Y/Z changes the viewing angle and distance, not "
 		"just a straight left-right pan.")),
-		m_cameraPosX);
+		1, 0);
+	cameraLayout->addWidget(m_cameraPosX, 1, 1);
 
 	m_cameraPosY = new QDoubleSpinBox(basicTab);
 	m_cameraPosY->setRange(-2000, 2000);
@@ -1178,12 +1186,13 @@ void MainWindow::createSettingsTab() {
 	m_cameraPosY->setSingleStep(10);
 	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosY);
-	cameraLayout->addRow(labelWithInfo(tr("Camera Y:"),
+	cameraLayout->addWidget(labelWithInfo(tr("Camera Y:"),
 		tr("The camera's position along the world's Y axis (up/down).\n\n"
 		"Same Custom-preset-only editing rule as Camera X - the camera "
 		"keeps looking at the scene's fixed look-at point as you move "
 		"it.")),
-		m_cameraPosY);
+		1, 2);
+	cameraLayout->addWidget(m_cameraPosY, 1, 3);
 
 	m_cameraPosZ = new QDoubleSpinBox(basicTab);
 	m_cameraPosZ->setRange(-2000, 2000);
@@ -1191,11 +1200,12 @@ void MainWindow::createSettingsTab() {
 	m_cameraPosZ->setSingleStep(10);
 	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosZ);
-	cameraLayout->addRow(labelWithInfo(tr("Camera Z:"),
+	cameraLayout->addWidget(labelWithInfo(tr("Camera Z:"),
 		tr("The camera's position along the world's Z axis (forward/back, "
 		"into or out of the scene).\n\n"
 		"Same Custom-preset-only editing rule as Camera X/Y.")),
-		m_cameraPosZ);
+		2, 0);
+	cameraLayout->addWidget(m_cameraPosZ, 2, 1);
 
 	// Distance from the current scene's look-at point. Adjusting this moves
 	// the camera along its EXISTING viewing direction to the new distance
@@ -1210,13 +1220,14 @@ void MainWindow::createSettingsTab() {
 	m_cameraDistance->setSingleStep(10);
 	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraDistance);
-	cameraLayout->addRow(labelWithInfo(tr("Distance from Center:"),
+	cameraLayout->addWidget(labelWithInfo(tr("Distance from Center:"),
 		tr("Moves the camera directly toward or away from the scene's "
 		"look-at point along whatever direction it's currently facing, "
 		"without changing which way it's pointed.\n\n"
 		"The quickest way to zoom in or pull back once you've already "
 		"found an angle you like via the X/Y/Z fields or a preset.")),
-		m_cameraDistance);
+		2, 2);
+	cameraLayout->addWidget(m_cameraDistance, 2, 3);
 
 	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
 	// Connection made AFTER all widgets are created to avoid null pointer issues
