@@ -423,6 +423,14 @@ void MainWindow::createRenderOptionsTab() {
 				"shading point, adapting per bounce rather than using one "
 				"global weighting. pbrt-v4's own default - generally the "
 				"best convergence, at a small extra bookkeeping cost.")},
+			{tr("Auto (use scene's own request)"), QStringLiteral("auto"), tr(
+				"Uses whatever this scene's own Integrator \"string "
+				"lightsampler\" parameter requested (BVH if it made no "
+				"request, or requested something this project doesn't "
+				"implement) instead of a fixed choice - matches the CLI's "
+				"own --lightsampler auto. Picking this once and leaving it "
+				"is the one choice here that stays correct as you switch "
+				"between scenes with different recommendations.")},
 			{tr("Power"), QStringLiteral("power"), tr(
 				"Picks a light with probability weighted by its total "
 				"emitted power - bright lights get sampled more often "
@@ -455,6 +463,8 @@ void MainWindow::createRenderOptionsTab() {
 		"BVH (the default, matching pbrt-v4 itself) builds a spatial "
 		"hierarchy over the scene's lights and adapts its weighting per "
 		"shading point - both bright AND nearby lights get preferred. "
+		"Auto instead uses whatever the loaded scene's own Integrator "
+		"parameter requested (BVH if it made no request). "
 		"Power picks by brightness alone, ignoring position - simpler, "
 		"worse in scenes where light distance varies a lot. Uniform "
 		"ignores both - every light equally likely regardless of "
