@@ -25,6 +25,7 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QApplication>
@@ -993,33 +994,42 @@ void MainWindow::createSettingsTab() {
 	// one coherent "how big and how clean" decision than two.
 	QGroupBox *advancedGroup = new QGroupBox(tr("Advanced Parameters"), basicTab);
 	styleGroupBox(advancedGroup);
-	QFormLayout *formLayout = new QFormLayout(advancedGroup);
-	formLayout->setVerticalSpacing(10);
-	formLayout->setHorizontalSpacing(10);
-	formLayout->setContentsMargins(15, 22, 15, 12);
+	// A 4-column grid (label+info, field, label+info, field) instead of
+	// QFormLayout's one-pair-per-row - two related dials per line (Width/
+	// Height, then Samples/Max Depth) halves this group's height without
+	// losing anything: each field keeps its own label, info icon, and
+	// tooltip exactly as before, just packed two to a row.
+	QGridLayout *advancedGrid = new QGridLayout(advancedGroup);
+	advancedGrid->setVerticalSpacing(10);
+	advancedGrid->setHorizontalSpacing(10);
+	advancedGrid->setContentsMargins(15, 22, 15, 12);
+	advancedGrid->setColumnStretch(1, 1);
+	advancedGrid->setColumnStretch(3, 1);
 
 	// Width
 	m_widthSpinBox = new QSpinBox(basicTab);
 	m_widthSpinBox->setRange(100, 4096);
 	m_widthSpinBox->setValue(800);
 	styleSpinBox(m_widthSpinBox);
-	formLayout->addRow(labelWithInfo(tr("Width:"),
+	advancedGrid->addWidget(labelWithInfo(tr("Width:"),
 		tr("The image's pixel width.\n\n"
-		"Paired with Height below to set the resolution manually, "
+		"Paired with Height to set the resolution manually, "
 		"overriding whatever the Quality preset above would "
 		"otherwise use.")),
-		m_widthSpinBox);
+		0, 0);
+	advancedGrid->addWidget(m_widthSpinBox, 0, 1);
 
 	// Height
 	m_heightSpinBox = new QSpinBox(basicTab);
 	m_heightSpinBox->setRange(100, 4096);
 	m_heightSpinBox->setValue(800);
 	styleSpinBox(m_heightSpinBox);
-	formLayout->addRow(labelWithInfo(tr("Height:"),
+	advancedGrid->addWidget(labelWithInfo(tr("Height:"),
 		tr("The image's pixel height.\n\n"
-		"Paired with Width above - together they set the resolution "
+		"Paired with Width - together they set the resolution "
 		"manually, overriding the Quality preset above.")),
-		m_heightSpinBox);
+		0, 2);
+	advancedGrid->addWidget(m_heightSpinBox, 0, 3);
 
 	// Samples
 	m_samplesSpinBox = new QSpinBox(basicTab);
@@ -1030,7 +1040,7 @@ void MainWindow::createSettingsTab() {
 		tr("Rays traced per pixel. This is the main quality/time dial: noise falls\n"
 		"as the square root of this value, so halving the noise costs about 4x\n"
 		"the render time. Setting it here switches Quality to Custom."));
-	formLayout->addRow(labelWithInfo(tr("Samples per Pixel:"),
+	advancedGrid->addWidget(labelWithInfo(tr("Samples per Pixel:"),
 		tr("Ray tracing estimates each pixel's color by firing many random "
 		"rays and averaging the results, like polling a lot of people and "
 		"averaging their guesses.\n\n"
@@ -1038,7 +1048,8 @@ void MainWindow::createSettingsTab() {
 		"less speckly \"noise\" in the image - but each extra sample "
 		"costs render time. Doubling this value roughly halves the "
 		"noise, but takes about twice as long to render.")),
-		m_samplesSpinBox);
+		1, 0);
+	advancedGrid->addWidget(m_samplesSpinBox, 1, 1);
 
 	// Max depth
 	m_maxDepthSpinBox = new QSpinBox(basicTab);
@@ -1049,7 +1060,7 @@ void MainWindow::createSettingsTab() {
 		tr("How many times a ray may bounce before it is terminated. Low values\n"
 		"darken glass and mirrors, which need many bounces to resolve; scenes\n"
 		"of plain diffuse surfaces look the same well below the maximum."));
-	formLayout->addRow(labelWithInfo(tr("Max Ray Depth:"),
+	advancedGrid->addWidget(labelWithInfo(tr("Max Ray Depth:"),
 		tr("A depth of 1 means a ray only sees what it hits directly, with "
 		"no bounced light at all - like a scene with no reflections or "
 		"indirect lighting.\n\n"
@@ -1058,7 +1069,8 @@ void MainWindow::createSettingsTab() {
 		"indirect lighting look correct. Most scenes look \"finished\" "
 		"well before the maximum - beyond that, extra depth mostly "
 		"traces light too dim to matter.")),
-		m_maxDepthSpinBox);
+		1, 2);
+	advancedGrid->addWidget(m_maxDepthSpinBox, 1, 3);
 
 	layout->addWidget(advancedGroup);
 
