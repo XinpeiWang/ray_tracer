@@ -745,9 +745,33 @@ per-`MaterialKind` behavior.)
   `color1`/`color2`/`tex1ImageIdx`/`tex2ImageIdx` (the same fields
   `FBm`/`Mix` already use), `Bilerp` adding two new corner fields
   (`bilerpV10`/`bilerpV11` - `color1`/`color2` carry `v00`/`v01`). `"ptex"`
-  remains unsupported (needs an external library) and falls back to the
-  generic "texture not supported" warning like any other unrecognized
-  class, unchanged.
+  remains unsupported and falls back to the generic "texture not
+  supported" warning like any other unrecognized class, unchanged.
+  **This is a genuinely larger gap than "needs an external library"
+  suggests** - investigated properly once (vendored Disney's Ptex
+  v2.5.4 source and built its libdeflate dependency via vcpkg to check;
+  both since removed/left uninstalled again, no trace in the build).
+  Real per-face Ptex lookup needs to know WHICH MESH FACE a shading
+  point belongs to, and that index does not survive to texture-
+  evaluation time anywhere in this codebase today - closing that gap
+  needs four separate changes, not one: (1) a new field on
+  `hit_record` (`src/TheRestOfYourLife/hittable.h`), (2) `triangle::hit()`
+  (`src/TheRestOfYourLife/triangle.h`) actually writing it in - it already
+  computes `tri_idx` internally but never copies it out, (3) extending
+  `texture::value()`/`value_diff()`'s signature
+  (`src/TheRestOfYourLife/texture.h`) and every call site across
+  `material_simple.h`/`material_pbrt.h`/`principled_material.h`/
+  `normal_map_materials.h`, and (4) fixing `pbrt_flatten.h`/
+  `pbrt_cpu_builder.h` itself - every `Shape "trianglemesh"`/`"plymesh"`/
+  `"loopsubdiv"` in a scene currently gets merged into ONE global,
+  vertex-deduplicated triangle list (`emitGeometry`,
+  `pbrt_cpu_builder.h`), discarding per-shape face-order boundaries, so
+  even a correctly-plumbed index would point into the wrong (merged)
+  numbering for any multi-mesh scene - nearly all real ones. This is a
+  real architectural change to the core intersection/shading pipeline
+  touching every material and texture in the renderer, not a contained
+  texture-kind addition - tracked here as a deliberately deferred gap,
+  not a quick follow-up.
   **Note**: `src/shared/procedural_textures.h`/`src/shared/textures.h`
   contain a SEPARATE, more general (anti-aliased, `TextureEvalContext`-based)
   procedural texture library that already has its own tested
