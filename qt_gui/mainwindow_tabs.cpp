@@ -940,15 +940,20 @@ void MainWindow::createSettingsTab() {
 
 	// Video duration/summary info (calculated from frames/fps) - a compact
 	// row with an info icon whose tooltip is rewritten on every recompute,
-	// rather than an always-visible text block, same "(i)" convention as
-	// the Requirements/Usage row above and the same "content changes after
+	// rather than an always-visible text block, same "content changes after
 	// construction" pattern m_sceneTechInfoIcon already uses
-	// (updateSceneTechInfoIcon(), mainwindow_style.cpp).
+	// (updateSceneTechInfoIcon(), mainwindow_style.cpp). Also carries the
+	// static ffmpeg-requirement/step-by-step usage text a separate
+	// "Video render requirements & usage:" row used to show below this
+	// group - folded into this icon's tooltip (appended in
+	// updateVideoDuration() below) instead of a second icon/row, so the
+	// group has exactly one place to check for info about it rather than
+	// two rows a user has to notice are both worth hovering.
 	QWidget *videoInfoRow = new QWidget();
 	QHBoxLayout *videoInfoRowLayout = new QHBoxLayout(videoInfoRow);
 	videoInfoRowLayout->setContentsMargins(0, 0, 0, 0);
 	videoInfoRowLayout->setSpacing(4);
-	videoInfoRowLayout->addWidget(new QLabel(tr("Video summary:"), videoInfoRow));
+	videoInfoRowLayout->addWidget(new QLabel(tr("Video info:"), videoInfoRow));
 	m_videoInfoIcon = createInfoIcon(QString());
 	videoInfoRowLayout->addWidget(m_videoInfoIcon);
 	videoInfoRowLayout->addStretch();
@@ -978,10 +983,28 @@ void MainWindow::createSettingsTab() {
 		// before display (see wrapTooltipHtml()'s own comment), so the
 		// <b>/<code> tags the old always-visible label used would show up
 		// as literal text here instead of formatting.
+		// The Requirements/Usage half below never changes, only the Duration/
+		// Camera Path/Output half above does - re-concatenated on every
+		// recompute rather than split into two tooltips/icons (see this
+		// icon's own comment above for why one icon covers both).
 		m_videoInfoIcon->setToolTip(wrapTooltipHtml(tr(
 			"Video Duration: %1 seconds (%2)\n\n"
 			"Camera Path: %3, always completes its full sweep regardless of speed\n\n"
-			"Output: frames will be saved to output/frames/"
+			"Output: frames will be saved to output/frames/\n\n"
+			"Requires ffmpeg: video encoding uses ffmpeg (libx264), which must "
+			"be installed and on your PATH - get it from ffmpeg.org if the "
+			"render log reports it's missing.\n\n"
+			"After rendering all frames, the video is automatically assembled "
+			"and opened.\n\n"
+			"Step 1: Configure Video Generation Settings above (camera path, "
+			"frames, FPS) and set Output Mode to Generate Video.\n\n"
+			"Step 2: Configure quality settings further down this tab.\n\n"
+			"Step 3: Click START VIDEO RENDER and wait.\n\n"
+			"Step 4: Video automatically assembles and opens when done!\n\n"
+			"Tips: use GPU mode for faster rendering. Lower samples/pixel "
+			"(10-50) for quick previews, higher (100-500) for production "
+			"quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes "
+			"on CPU."
 		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath)));
 	};
 
@@ -994,41 +1017,6 @@ void MainWindow::createSettingsTab() {
 	videoLayout->addRow(videoInfoRow);
 
 	layout->addWidget(m_videoGroupBox);
-
-	// Requirements + Usage Instructions - a single compact row with an
-	// info icon instead of two permanently-visible QGroupBoxes, matching
-	// this app's own established "(i)" hover-tooltip convention
-	// (createInfoIcon()) rather than being a one-off exception now that
-	// there's a much longer Settings tab for these two boxes' worth of
-	// reference text to sit inline in. The clickable ffmpeg.org link the
-	// old Requirements box carried as a real QLabel hyperlink doesn't
-	// survive the move - a QToolTip popup renders basic HTML but never
-	// makes a link clickable, and createInfoIcon()'s helpText is plain
-	// text (HTML-escaped before display) besides - so the tooltip spells
-	// the URL out as plain text instead.
-	QWidget *videoHelpRow = new QWidget(basicTab);
-	QHBoxLayout *videoHelpLayout = new QHBoxLayout(videoHelpRow);
-	videoHelpLayout->setContentsMargins(0, 0, 0, 0);
-	videoHelpLayout->setSpacing(4);
-	videoHelpLayout->addWidget(new QLabel(tr("Video render requirements & usage:"), videoHelpRow));
-	videoHelpLayout->addWidget(createInfoIcon(
-		tr("Requires ffmpeg: video encoding uses ffmpeg (libx264), which must "
-		"be installed and on your PATH - get it from ffmpeg.org if the "
-		"render log reports it's missing.\n\n"
-		"After rendering all frames, the video is automatically assembled "
-		"and opened.\n\n"
-		"Step 1: Configure Video Generation Settings above (camera path, "
-		"frames, FPS) and set Output Mode to Generate Video.\n\n"
-		"Step 2: Configure quality settings further down this tab.\n\n"
-		"Step 3: Click START VIDEO RENDER and wait.\n\n"
-		"Step 4: Video automatically assembles and opens when done!\n\n"
-		"Tips: use GPU mode for faster rendering. Lower samples/pixel "
-		"(10-50) for quick previews, higher (100-500) for production "
-		"quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes "
-		"on CPU.")));
-	videoHelpLayout->addStretch();
-
-	layout->addWidget(videoHelpRow);
 
 	// --- Advanced Parameters: manual width/height/samples/depth overrides ---
 	// Formerly its own "Advanced Settings" tab - folded in here since there
