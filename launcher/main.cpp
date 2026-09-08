@@ -72,6 +72,8 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     RenderOptions render_opts;
     render_opts.exposure = args.exposure;
     render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
+    render_opts.adaptive_sampling = args.adaptive_sampling;
+    render_opts.adaptive_threshold = args.adaptive_threshold;
     render_opts.lightsampler = args.lightsampler.empty() ? nullptr : args.lightsampler.c_str();
     render_opts.regularize = args.regularize;
     render_opts.max_component_value = args.max_component_value;
@@ -434,6 +436,11 @@ int main(int argc, char** argv) {
     }
     if (!args.lightsampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
         std::cerr << "Warning: --lightsampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
+    if (args.adaptive_sampling && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --adaptive has no effect under --gpu/--bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the CPU default path tracer supports it) - ignoring.\n";
     }
@@ -1192,15 +1199,26 @@ int main(int argc, char** argv) {
     // RAY_TRACER_STATS env var set above) - this block only covers CPU,
     // whose counters (render_stats.h) are only reachable from here.
     if (args.stats && !use_gpu && !use_bdpt && !use_mlt && !use_sppm && !use_debug_integrator) {
-        const long long primary_rays = (long long)image_width * image_height * samples_per_pixel;
+        // render_stats::primary_rays() is the REAL count of samples actually
+        // taken - always equal to width*height*spp unless --adaptive stopped
+        // some pixels early (camera::adaptive_sampling's own comment), in
+        // which case using the old width*height*spp calculation here would
+        // overstate the work actually done (and Samples/sec along with it).
+        const uint64_t primary_rays = render_stats::primary_rays().load(std::memory_order_relaxed);
+        const long long theoretical_max_rays = (long long)image_width * image_height * samples_per_pixel;
         const uint64_t total_rays = render_stats::bounce_rays().load(std::memory_order_relaxed);
         const uint64_t shadow_rays = render_stats::shadow_rays().load(std::memory_order_relaxed);
         std::cout << "[STATS] ── Render Statistics ──────────────────────────\n";
         std::cout << "[STATS] Primary rays          : " << primary_rays << "\n";
+        if (args.adaptive_sampling && theoretical_max_rays > 0) {
+            const double saved_pct = 100.0 * (1.0 - (double)primary_rays / (double)theoretical_max_rays);
+            std::cout << "[STATS] Adaptive sampling     : " << saved_pct << "% fewer samples than the "
+                       << theoretical_max_rays << " a fixed " << samples_per_pixel << " spp would have taken\n";
+        }
         std::cout << "[STATS] Total rays (incl. bounces): " << total_rays << "\n";
         std::cout << "[STATS] Shadow rays (NEE)     : " << shadow_rays << "\n";
         std::cout << "[STATS] Samples/sec           : "
-                   << (seconds > 0.0 ? (double)image_width * image_height * samples_per_pixel / seconds : 0.0)
+                   << (seconds > 0.0 ? (double)primary_rays / seconds : 0.0)
                    << "\n";
         std::cout << "[STATS] ─────────────────────────────────────────────\n";
     }

@@ -41,6 +41,18 @@ inline std::atomic<uint64_t> &shadow_rays() {
 	return v;
 }
 
+// Actual primary (camera) rays cast - always equal to width*height*spp
+// UNLESS --adaptive stopped some pixels early (camera::adaptive_sampling's
+// own comment), in which case it's the real, smaller number of samples
+// actually taken. main.cpp's "[STATS]" block uses this instead of the old
+// width*height*spp calculation so Samples/sec (and the reported ray count
+// itself) stays accurate under adaptive sampling instead of overstating
+// the work actually done.
+inline std::atomic<uint64_t> &primary_rays() {
+	static std::atomic<uint64_t> v{0};
+	return v;
+}
+
 // Call once before a render starts - these are process-lifetime statics, so
 // a leftover count from an earlier render (e.g. the GUI's render queue,
 // or main.cpp's own per-frame video loop) would otherwise bleed into the
@@ -48,6 +60,7 @@ inline std::atomic<uint64_t> &shadow_rays() {
 inline void reset() {
 	bounce_rays().store(0, std::memory_order_relaxed);
 	shadow_rays().store(0, std::memory_order_relaxed);
+	primary_rays().store(0, std::memory_order_relaxed);
 }
 
 } // namespace render_stats

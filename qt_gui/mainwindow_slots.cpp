@@ -191,6 +191,8 @@ RenderJob MainWindow::captureRenderJob() {
 	job.advancedFlags.lightSampler = m_lightSamplerCombo->isEnabled() ? m_lightSamplerCombo->currentData().toString() : QString();
 	job.advancedFlags.accelerator = m_acceleratorCombo->isEnabled() ? m_acceleratorCombo->currentData().toString() : QString();
 	job.advancedFlags.splitMethod = m_splitMethodCombo->isEnabled() ? m_splitMethodCombo->currentData().toString() : QString();
+	job.advancedFlags.adaptiveSampling = m_adaptiveSamplingCheck->isEnabled() && m_adaptiveSamplingCheck->isChecked();
+	job.advancedFlags.adaptiveThreshold = m_adaptiveThresholdSpin->value();
 	job.advancedFlags.spectral = m_spectralCheck->isEnabled() && m_spectralCheck->isChecked();
 	job.advancedFlags.tonemap = m_tonemapCombo->isEnabled() ? m_tonemapCombo->currentData().toString() : QString();
 	job.advancedFlags.regularize = m_regularizeCheck->isEnabled() && m_regularizeCheck->isChecked();

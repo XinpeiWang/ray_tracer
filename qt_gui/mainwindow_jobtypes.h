@@ -112,6 +112,13 @@ struct AdvancedRenderFlags {
 	// emitted.
 	QString accelerator;
 	QString splitMethod;
+	// adaptiveSampling false (default) = don't emit --adaptive at all,
+	// matching the CLI's own default (render exactly `samples` per pixel).
+	// adaptiveThreshold is only meaningful (and only emitted as
+	// --adaptive-threshold) when adaptiveSampling is true - same
+	// "checkbox gates a spinbox" shape as maxComponentValue below.
+	bool adaptiveSampling = false;
+	double adaptiveThreshold = 0.01;
 	bool spectral = false;
 	QString tonemap;
 	bool regularize = false;

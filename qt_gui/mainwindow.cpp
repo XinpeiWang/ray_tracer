@@ -277,6 +277,11 @@ void RenderController::start() {
 	if (!m_advancedFlags.lightSampler.isEmpty()) args << render_flags::kLightSampler << m_advancedFlags.lightSampler;
 	if (!m_advancedFlags.accelerator.isEmpty()) args << render_flags::kAccelerator << m_advancedFlags.accelerator;
 	if (!m_advancedFlags.splitMethod.isEmpty()) args << render_flags::kSplitMethod << m_advancedFlags.splitMethod;
+	if (m_advancedFlags.adaptiveSampling) {
+		args << render_flags::kAdaptive;
+		if (m_advancedFlags.adaptiveThreshold != 0.01)
+			args << render_flags::kAdaptiveThreshold << QString::number(m_advancedFlags.adaptiveThreshold);
+	}
 	if (m_advancedFlags.spectral)       args << render_flags::kSpectral;
 	if (!m_advancedFlags.tonemap.isEmpty()) args << render_flags::kTonemap << m_advancedFlags.tonemap;
 	if (m_advancedFlags.regularize)    args << render_flags::kRegularize;

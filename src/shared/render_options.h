@@ -22,6 +22,17 @@ struct RenderOptions {
 	// nullptr/empty/unrecognized all fall back to "sobol". CPU default
 	// path tracer only.
 	const char* sampler = nullptr;
+	// Stops sampling a pixel early once it's converged, instead of always
+	// spending the full samples-per-pixel budget on every pixel - see
+	// camera::adaptive_sampling's own comment (camera.h) and
+	// src/shared/adaptive_sampling.h. Off (default) renders exactly
+	// samples_per_pixel samples per pixel, unchanged. CPU default path
+	// tracer only, same scope cut as `sampler` above.
+	bool adaptive_sampling = false;
+	// Target relative standard error of a pixel's running luminance mean -
+	// only consulted when adaptive_sampling is true. 0.01 (default) matches
+	// Blender Cycles' own adaptive_threshold default.
+	double adaptive_threshold = 0.01;
 	// pbrt-v4 Integrator "string lightsampler" - which of this project's
 	// own light-sampler classes selects the next-event-estimation light to
 	// sample - one of "uniform"/"power"/"bvh", or "auto" (resolved by

@@ -602,6 +602,11 @@ private:
 	QComboBox *m_acceleratorCombo;
 	QComboBox *m_splitMethodCombo;       // enabled only when m_acceleratorCombo != kdtree
 	QCheckBox *m_spectralCheck;         // --spectral (CPU default path tracer only)
+	// --adaptive/--adaptive-threshold (CPU default path tracer only) -
+	// spinbox only enabled/emitted when the checkbox is checked, same
+	// enable-a-sibling-spinbox pattern as m_maxComponentValueCheck/Spin below.
+	QCheckBox *m_adaptiveSamplingCheck;
+	QDoubleSpinBox *m_adaptiveThresholdSpin;
 	QDoubleSpinBox *m_exposureSpin;     // --exposure (default path tracer only)
 	QComboBox *m_tonemapCombo;          // --tonemap (default path tracer only)
 	QCheckBox *m_statsCheck;            // --stats (default path tracer only)

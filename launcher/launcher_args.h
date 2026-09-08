@@ -118,6 +118,20 @@ struct LaunchArgs {
 	// sampler-selection exists yet, and BDPT/MLT/SPPM each have their own
 	// sampling scheme already).
 	std::string sampler     = "";
+	// Stops sampling a pixel early once camera.h's pixel_convergence::
+	// has_converged() decides its running luminance estimate has converged,
+	// instead of always spending the full samples_per_pixel budget on every
+	// pixel - see camera::adaptive_sampling's own comment (camera.h) and
+	// src/shared/adaptive_sampling.h. Off by default: renders exactly
+	// samples_per_pixel samples per pixel, unchanged from before this
+	// existed. Same "CPU default path tracer only" scope cut as sampler
+	// above - relies on that integrator's own stratified sampling loop.
+	bool adaptive_sampling  = false;
+	// Target relative standard error of a pixel's running luminance mean -
+	// see pixel_convergence::has_converged()'s own comment. Only consulted
+	// when adaptive_sampling is true. 0.01 matches Blender Cycles' own
+	// adaptive_threshold default.
+	double adaptive_threshold = 0.01;
 	// pbrt-v4 Integrator "string lightsampler" - one of "uniform"/"power"/
 	// "bvh", or "auto" (resolved per-scene in cpu_interface.cpp to the
 	// loaded scene's own recommendation, falling back to bvh if it made
@@ -368,6 +382,24 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == render_flags::kAdaptive) {
+			out.adaptive_sampling = true;
+			consumed_args.insert(i);
+		} else if (arg == render_flags::kAdaptiveThreshold && i + 1 < argc) {
+			try {
+				out.adaptive_threshold = std::stod(argv[i + 1]);
+				if (out.adaptive_threshold <= 0.0) {
+					std::cerr << "Warning: --adaptive-threshold " << out.adaptive_threshold
+							  << " is <= 0, every pixel would need a perfectly zero-variance "
+								 "estimate to ever stop early - using default (0.01)\n";
+					out.adaptive_threshold = 0.01;
+				}
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --adaptive-threshold value, using default (0.01)\n";
+			}
 		} else if (arg == "--lightsampler" && i + 1 < argc) {
 			// "auto" isn't a real light-sampler implementation - it means
 			// "use whatever the scene's own Integrator \"string lightsampler\"
@@ -693,6 +725,14 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton,\n"
 					  << "               independent.\n"
 					  << "               CPU default path tracer only.\n"
+					  << "  " << render_flags::kAdaptive << " : Stop sampling a pixel once it's converged instead of\n"
+					  << "               always spending the full samples-per-pixel budget on every\n"
+					  << "               pixel - samples_per_pixel becomes a ceiling, not a fixed count.\n"
+					  << "               Off by default. CPU default path tracer only.\n"
+					  << "  " << render_flags::kAdaptiveThreshold << " VALUE: Target relative noise level for\n"
+					  << "               " << render_flags::kAdaptive << " to consider a pixel converged (default 0.01,\n"
+					  << "               matching Blender Cycles' own default). Lower = cleaner but\n"
+					  << "               slower; only consulted when " << render_flags::kAdaptive << " is passed.\n"
 					  << "  --lightsampler NAME: pbrt-v4 Integrator \"string lightsampler\" - which light\n"
 					  << "               sampler picks the next-event-estimation light to sample\n"
 					  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"

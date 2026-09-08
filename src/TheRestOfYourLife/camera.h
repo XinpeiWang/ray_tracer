@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include "material.h"
+#include "../shared/adaptive_sampling.h"  // pixel_convergence::has_converged - camera::adaptive_sampling's own comment
 #include "../shared/cpu_gpu.h"  // kMaxMediumBoundaryCrossings
 #include "../shared/tone_map.h"
 #include "../shared/film.h"     // clamp_sensor_rgb - camera::max_component_value's own comment
@@ -201,6 +202,24 @@ class camera {
     // own "Sampler \"seed\"\" isn't parsed by this project's pbrt loader
     // either (see docs/PBRT_SUPPORT.md).
     long long seed = -1;
+
+    // --adaptive/--adaptive-threshold (CLI/GUI) - stops sampling a pixel
+    // once its running luminance estimate has converged well enough,
+    // instead of always spending the full samples_per_pixel budget on
+    // every pixel regardless of how quickly it converged - see
+    // src/shared/adaptive_sampling.h's own comment for the stopping rule.
+    // samples_per_pixel becomes a ceiling rather than a fixed count when
+    // this is on; off (default) renders exactly sqrt_spp*sqrt_spp samples
+    // per pixel like before this field existed. CPU default path tracer
+    // only, same scope cut as spectral/sampler_kind above - the stratified
+    // sqrt_spp x sqrt_spp sampling loop this relies on (render()'s own
+    // comment) doesn't exist in BDPT/MLT/SPPM's own sampling loops.
+    bool adaptive_sampling = false;
+    // Target relative standard error of a pixel's running luminance mean -
+    // see adaptive_sampling::has_converged()'s own comment. Cycles' own
+    // adaptive_threshold default (0.01) is reused here as a familiar
+    // starting point for anyone coming from that renderer.
+    double adaptive_threshold = 0.01;
 
     // When set, render() writes a linear (pre-tonemap), full-float EXR
     // instead of the tonemapped/quantized PPM it writes by default - see
@@ -454,6 +473,12 @@ class camera {
                 for (int i = 0; i < image_width; i++) {
                     color  weighted_color(0,0,0);
                     double weight_sum = 0.0;
+                    // --adaptive: tracks this pixel's running luminance
+                    // estimate across samples so far - see camera::
+                    // adaptive_sampling's own comment and
+                    // pixel_convergence::has_converged(). Unused (and free)
+                    // when adaptive_sampling is off.
+                    VarianceEstimator<double> luminance_estimator;
                     // Film "cropwindow"/"pixelbounds" (crop_x0/x1/y0/y1,
                     // resolved in initialize()): a pixel outside the crop
                     // rectangle is left at weight_sum=0, which the existing
@@ -463,6 +488,17 @@ class camera {
                     const bool in_crop = i >= crop_x0 && i < crop_x1 && j >= crop_y0 && j < crop_y1;
                     if (in_crop)
                     for (int s_j = 0; s_j < sqrt_spp; s_j++) {
+                            // --adaptive: only consider stopping once at
+                            // least 2 full stratified rows (2*sqrt_spp
+                            // samples) have been taken - Welford's variance
+                            // is undefined below n=2 (pixel_convergence::
+                            // has_converged() already guards that), and a
+                            // single row's worth of samples is too small a
+                            // sample to trust a variance ESTIMATE itself,
+                            // let alone the pixel's true noise level.
+                            if (adaptive_sampling && s_j >= 2 &&
+                                pixel_convergence::has_converged(luminance_estimator, adaptive_threshold))
+                                break;
                             for (int s_i = 0; s_i < sqrt_spp; s_i++) {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum
                                     int sample_idx = s_j * sqrt_spp + s_i;
@@ -591,6 +627,21 @@ class camera {
                                     clamp_sensor_rgb(sample[0], sample[1], sample[2],
                                                       static_cast<float>(max_component_value));
                                 }
+                                // --adaptive: feed this sample's luminance into the
+                                // pixel's running estimate - see camera::
+                                // adaptive_sampling's own comment. In spectral mode
+                                // `sample` already holds CIE XYZ (see ray_color_spectral()'s
+                                // own comment), whose Y channel IS luminance by
+                                // definition - no separate RGB-weighted reduction needed
+                                // there, unlike the final per-pixel XYZ->RGB conversion
+                                // below.
+                                if (adaptive_sampling) {
+                                    const double lum = spectral ? sample.y()
+                                        : pixel_convergence::luminance(sample.x(), sample.y(), sample.z());
+                                    luminance_estimator.Add(lum);
+                                }
+                                if (render_stats::enabled())
+                                    render_stats::primary_rays().fetch_add(1, std::memory_order_relaxed);
                                 // Reconstruction filter weight (pbrt-v4 filterWeight) -
                                 // fs.weight = f(p)/pdf(p), which for correct filter
                                 // importance sampling is (nearly) constant across samples

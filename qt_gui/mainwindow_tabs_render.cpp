@@ -497,6 +497,45 @@ void MainWindow::createRenderOptionsTab() {
 		"path tracer - switch Renderer to CPU on the Settings "
 		"tab to use it.")));
 
+	m_adaptiveSamplingCheck = new QCheckBox(tr("Adaptive sampling (--adaptive)"), optionsTab);
+	m_adaptiveSamplingCheck->setToolTip(
+		tr("Stops sampling a pixel early once it's converged, instead of\n"
+		"always spending the full Samples budget on every pixel - Samples\n"
+		"becomes a ceiling, not a fixed count. CPU default path tracer only."));
+	styleCheckBox(m_adaptiveSamplingCheck);
+	m_adaptiveThresholdSpin = new QDoubleSpinBox(optionsTab);
+	m_adaptiveThresholdSpin->setRange(0.0001, 1.0);
+	m_adaptiveThresholdSpin->setDecimals(4);
+	m_adaptiveThresholdSpin->setValue(0.01);
+	m_adaptiveThresholdSpin->setSingleStep(0.005);
+	m_adaptiveThresholdSpin->setEnabled(false);
+	m_adaptiveThresholdSpin->setToolTip(
+		tr("Target relative noise level to consider a pixel converged.\n"
+		"Lower = cleaner but slower. 0.01 matches Blender Cycles' own default."));
+	styleSpinBox(m_adaptiveThresholdSpin);
+	connect(m_adaptiveSamplingCheck, &QCheckBox::toggled, m_adaptiveThresholdSpin, &QDoubleSpinBox::setEnabled);
+	{
+		QWidget *adaptiveRow = new QWidget(optionsTab);
+		QHBoxLayout *adaptiveRowLayout = new QHBoxLayout(adaptiveRow);
+		adaptiveRowLayout->setContentsMargins(0, 0, 0, 0);
+		adaptiveRowLayout->addWidget(m_adaptiveSamplingCheck);
+		adaptiveRowLayout->addWidget(m_adaptiveThresholdSpin, 1);
+		samplingLayout->addRow(checkboxWithInfo(m_adaptiveSamplingCheck,
+			tr("A Monte Carlo path tracer's noise comes from randomness - some "
+			"pixels (a bright, evenly-lit wall) converge to a clean estimate "
+			"in just a few samples, while others (a dim corner lit only by a "
+			"small window) need far more before the noise settles down. "
+			"Spending the same fixed sample count on both wastes time on the "
+			"pixels that were already done.\n\n"
+			"Adaptive sampling tracks each pixel's own running noise estimate "
+			"and stops early once it drops below the threshold below, "
+			"letting Samples act as a ceiling rather than a flat quota - "
+			"the same idea as Blender Cycles' own adaptive sampling.\n\n"
+			"Grayed out? This only affects the CPU renderer's default path "
+			"tracer - switch Renderer to CPU on the Settings tab to "
+			"use it.")), adaptiveRow);
+	}
+
 	m_exposureSpin = new QDoubleSpinBox(optionsTab);
 	m_exposureSpin->setRange(0.01, 100.0);
 	m_exposureSpin->setValue(1.0);
@@ -915,6 +954,8 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_samplerCombo->setEnabled(isDefault && !gpuSelected);
 	m_lightSamplerCombo->setEnabled(isDefault && !gpuSelected);
 	m_spectralCheck->setEnabled(isDefault && !gpuSelected);
+	m_adaptiveSamplingCheck->setEnabled(isDefault && !gpuSelected);
+	m_adaptiveThresholdSpin->setEnabled(isDefault && !gpuSelected && m_adaptiveSamplingCheck->isChecked());
 	m_exposureSpin->setEnabled(isDefault);
 	m_tonemapCombo->setEnabled(isDefault);
 	m_statsCheck->setEnabled(isDefault);
