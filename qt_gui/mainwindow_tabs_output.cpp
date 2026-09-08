@@ -44,7 +44,11 @@ void MainWindow::createProgressTab() {
 	QWidget *progressWidget = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(progressWidget);
 
-	QGroupBox *progressGroup = new QGroupBox(tr("Progress"), progressWidget);
+	InfoGroupBox *progressGroup = new InfoGroupBox(tr("Progress"), progressWidget);
+	progressGroup->setInfoIcon(createInfoIcon(
+		tr("Live status for whichever job is currently rendering - which "
+		"job it is, percent complete, and elapsed/estimated time. Pause, "
+		"Stop, and Abandon act on this job specifically.")));
 	QVBoxLayout *progressLayout = new QVBoxLayout(progressGroup);
 
 	// Which job is actually running (scene/resolution/samples/renderer, same
@@ -84,7 +88,12 @@ void MainWindow::createProgressTab() {
 	// outside the tabs alongside other always-on controls, hiding it here
 	// would leave the Progress tab looking like it lost a section every
 	// time the queue drains, rather than like a stable panel).
-	m_queueGroup = new QGroupBox(tr("Render Queue"), progressWidget);
+	m_queueGroup = new InfoGroupBox(tr("Render Queue"), progressWidget);
+	m_queueGroup->setInfoIcon(createInfoIcon(
+		tr("Jobs queued behind the one currently rendering - clicking "
+		"Render while a job is already in progress adds another here "
+		"instead of interrupting it. Renders in order, automatically, as "
+		"each one finishes.")));
 	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
 
 	m_queueListWidget = new QListWidget(m_queueGroup);

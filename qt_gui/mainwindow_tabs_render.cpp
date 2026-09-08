@@ -92,8 +92,13 @@ void MainWindow::createRenderOptionsTab() {
 	// choice, not a separate axis - everything below only applies to
 	// whichever integrator is picked here.
 	// ------------------------------------------------------------------
-	m_integratorOptionsGroup = new QGroupBox(tr("Integrator"), optionsTab);
+	m_integratorOptionsGroup = new InfoGroupBox(tr("Integrator"), optionsTab);
 	styleGroupBox(m_integratorOptionsGroup);
+	m_integratorOptionsGroup->setInfoIcon(createInfoIcon(
+		tr("Choose the light-transport algorithm - the default path tracer, "
+		"or an alternate like SPPM/BDPT/MLT/AO with its own sub-options "
+		"shown below once picked. Alternate integrators are CPU-only and "
+		"can't be combined with Video mode.")));
 	QVBoxLayout *integratorGroupLayout = new QVBoxLayout(m_integratorOptionsGroup);
 	integratorGroupLayout->setContentsMargins(15, 22, 15, 12);
 
@@ -361,8 +366,12 @@ void MainWindow::createRenderOptionsTab() {
 	// "&&" (not "&") - a single "&" is a Qt mnemonic-accelerator marker,
 	// which would eat the "&" and underline the next letter instead of
 	// showing a literal ampersand.
-	QGroupBox *samplingGroup = new QGroupBox(tr("Sampling && Spectral"), optionsTab);
+	InfoGroupBox *samplingGroup = new InfoGroupBox(tr("Sampling && Spectral"), optionsTab);
 	styleGroupBox(samplingGroup);
+	samplingGroup->setInfoIcon(createInfoIcon(
+		tr("Sampler algorithm, spectral rendering, adaptive sampling, and a "
+		"time-limit alternative to a fixed sample count. These control HOW "
+		"samples are drawn, separately from HOW MANY (Settings tab).")));
 	QFormLayout *samplingLayout = new QFormLayout(samplingGroup);
 	samplingLayout->setVerticalSpacing(10);
 	samplingLayout->setHorizontalSpacing(10);
@@ -691,8 +700,13 @@ void MainWindow::createRenderOptionsTab() {
 	// updateRenderOptionsEnabled()'s own comment for why this combo pair's
 	// enabled condition differs from every other CPU-only control here.
 	// ------------------------------------------------------------------
-	QGroupBox *acceleratorGroup = new QGroupBox(tr("Accelerator"), optionsTab);
+	InfoGroupBox *acceleratorGroup = new InfoGroupBox(tr("Accelerator"), optionsTab);
 	styleGroupBox(acceleratorGroup);
+	acceleratorGroup->setInfoIcon(createInfoIcon(
+		tr("CPU-only spatial acceleration structure and split heuristic "
+		"used to speed up ray-scene intersection tests. Applies to every "
+		"integrator, not just the default path tracer - the defaults work "
+		"well for almost every scene.")));
 	QFormLayout *acceleratorLayout = new QFormLayout(acceleratorGroup);
 	acceleratorLayout->setVerticalSpacing(10);
 	acceleratorLayout->setHorizontalSpacing(10);
@@ -788,8 +802,12 @@ void MainWindow::createRenderOptionsTab() {
 	// ------------------------------------------------------------------
 	// Output group
 	// ------------------------------------------------------------------
-	QGroupBox *outputGroup = new QGroupBox(tr("Output"), optionsTab);
+	InfoGroupBox *outputGroup = new InfoGroupBox(tr("Output"), optionsTab);
 	styleGroupBox(outputGroup);
+	outputGroup->setInfoIcon(createInfoIcon(
+		tr("Tone mapping curve, whether to print render statistics, GPU "
+		"denoising, and OptiX validation mode - behavior flags for how the "
+		"final image is processed and reported, not what to render.")));
 	QFormLayout *outputLayout = new QFormLayout(outputGroup);
 	outputLayout->setVerticalSpacing(10);
 	outputLayout->setHorizontalSpacing(10);
@@ -893,8 +911,12 @@ void MainWindow::createRenderOptionsTab() {
 	// ------------------------------------------------------------------
 	// Crop Window group
 	// ------------------------------------------------------------------
-	QGroupBox *cropGroup = new QGroupBox(tr("Crop Window"), optionsTab);
+	InfoGroupBox *cropGroup = new InfoGroupBox(tr("Crop Window"), optionsTab);
 	styleGroupBox(cropGroup);
+	cropGroup->setInfoIcon(createInfoIcon(
+		tr("Render only a rectangular sub-region of the full frame, given "
+		"as normalized 0-1 coordinates - useful for quickly test-rendering "
+		"one area of a scene without paying for the whole image.")));
 	QFormLayout *cropLayout = new QFormLayout(cropGroup);
 	cropLayout->setVerticalSpacing(10);
 	cropLayout->setHorizontalSpacing(10);
@@ -964,8 +986,12 @@ void MainWindow::createRenderOptionsTab() {
 	// ------------------------------------------------------------------
 	// Seed group
 	// ------------------------------------------------------------------
-	QGroupBox *seedGroup = new QGroupBox(tr("Reproducibility"), optionsTab);
+	InfoGroupBox *seedGroup = new InfoGroupBox(tr("Reproducibility"), optionsTab);
 	styleGroupBox(seedGroup);
+	seedGroup->setInfoIcon(createInfoIcon(
+		tr("Fix the random seed so a render can be reproduced exactly, "
+		"pixel-for-pixel, on a later run - useful for comparing settings "
+		"changes without random noise differences confusing the comparison.")));
 	QFormLayout *seedLayout = new QFormLayout(seedGroup);
 	seedLayout->setVerticalSpacing(10);
 	seedLayout->setHorizontalSpacing(10);

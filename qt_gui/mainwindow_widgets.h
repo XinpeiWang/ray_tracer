@@ -95,6 +95,56 @@ protected:
 };
 
 // ============================================================================
+// InfoGroupBox
+// ============================================================================
+// A QGroupBox with an (i) info icon pinned to the top-right corner of its
+// title bar. QGroupBox's title is drawn by the style engine (see the
+// ::title QSS subcontrol, mainwindow_style.cpp) - there is no way to embed
+// a real widget inside that native rendering, so the icon is instead a
+// separate child widget positioned there manually and kept pinned on every
+// resize. Anchored to this box's own WIDTH (right edge), not to the title
+// text's rendered width - the title's length varies with content and
+// translation, and QSS's font-weight/size overrides on ::title aren't
+// reliably reflected back in QWidget::font()/fontMetrics(), so measuring
+// "right after the text" would be guesswork; anchoring to the box's own
+// width is exact and needs no font measurement at all.
+// ============================================================================
+class InfoGroupBox : public QGroupBox {
+	Q_OBJECT
+public:
+	explicit InfoGroupBox(const QString &title, QWidget *parent = nullptr) : QGroupBox(title, parent) {}
+
+	// Takes ownership by reparenting `icon` onto this box - call once,
+	// right after building the icon (MainWindow::createInfoIcon()).
+	void setInfoIcon(QToolButton *icon) {
+		m_infoIcon = icon;
+		m_infoIcon->setParent(this);
+		m_infoIcon->raise();
+		repositionInfoIcon();
+	}
+
+protected:
+	void resizeEvent(QResizeEvent *event) override {
+		QGroupBox::resizeEvent(event);
+		repositionInfoIcon();
+	}
+
+private:
+	void repositionInfoIcon() {
+		if (!m_infoIcon) return;
+		// kTopMargin roughly matches the title's own "top: 2px" QSS offset
+		// (mainwindow_style.cpp) plus half its padding, so the icon reads
+		// as vertically aligned with the title text rather than floating
+		// above or below it.
+		constexpr int kRightMargin = 10;
+		constexpr int kTopMargin = 4;
+		m_infoIcon->move(width() - m_infoIcon->width() - kRightMargin, kTopMargin);
+	}
+
+	QToolButton *m_infoIcon = nullptr;
+};
+
+// ============================================================================
 // CurrentPageSizedStackedWidget
 // ============================================================================
 // QStackedWidget's own sizeHint()/minimumSizeHint() report the maximum over

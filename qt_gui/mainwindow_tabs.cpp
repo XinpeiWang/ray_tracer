@@ -273,8 +273,13 @@ void MainWindow::createSettingsTab() {
 	layout->setContentsMargins(12, 12, 12, 12);
 
 	// --- Scene selection ---
-	QGroupBox *sceneGroup = new QGroupBox("Scene", basicTab);
+	InfoGroupBox *sceneGroup = new InfoGroupBox("Scene", basicTab);
 	styleGroupBox(sceneGroup);
+	sceneGroup->setInfoIcon(createInfoIcon(
+		tr("Pick which scene to render. Scenes are grouped by category and "
+		"searchable; switch to the grid view for thumbnail previews. "
+		"Selecting a scene here also seeds its recommended camera/settings "
+		"hint below, if it has one.")));
 	QVBoxLayout *sceneGroupLayout = new QVBoxLayout(sceneGroup);
 	sceneGroupLayout->setContentsMargins(12, 20, 12, 10);
 	sceneGroupLayout->setSpacing(8);
@@ -557,8 +562,14 @@ void MainWindow::createSettingsTab() {
 	// One group instead of separate "Render Mode" + "Render Settings" boxes -
 	// they're all "how do I want this rendered" and splitting them just cost
 	// an extra group box's worth of border/title chrome for no real benefit.
-	QGroupBox *renderGroup = new QGroupBox(tr("Render Settings"), basicTab);
+	InfoGroupBox *renderGroup = new InfoGroupBox(tr("Render Settings"), basicTab);
 	styleGroupBox(renderGroup);
+	renderGroup->setInfoIcon(createInfoIcon(
+		tr("Choose Output Mode (Single Image, Video, or Live Preview) and "
+		"the renderer (GPU or CPU) here, plus a Quality/Resolution preset "
+		"or a manual override further down. Video- and Live-Preview-only "
+		"fields stay visible and editable even in Image mode, dimmed with "
+		"a note - so you can pre-configure them before switching modes.")));
 	QFormLayout *renderLayout = new QFormLayout(renderGroup);
 	renderLayout->setVerticalSpacing(10);
 	renderLayout->setHorizontalSpacing(10);
@@ -805,8 +816,14 @@ void MainWindow::createSettingsTab() {
 	// first place). m_videoModeWarningLabel is the same warning-banner
 	// pattern that fix introduced, just now scoped to this group instead of
 	// a whole standalone tab.
-	m_videoGroupBox = new QGroupBox(tr("Video Generation Settings"), basicTab);
+	m_videoGroupBox = new InfoGroupBox(tr("Video Generation Settings"), basicTab);
 	styleGroupBox(m_videoGroupBox);
+	m_videoGroupBox->setInfoIcon(createInfoIcon(
+		tr("Configure the camera path, frame count/FPS, and playback speed "
+		"for a rendered video. Pick a named Preset for a ready-made "
+		"combination, or set each field yourself. Only takes effect when "
+		"Output Mode above is \"Generate Video\", but stays editable in "
+		"any mode so you can set it up in advance.")));
 	// Dimmed (not disabled - see setGroupDimmed()'s own comment) whenever
 	// Output Mode isn't "Generate Video", alongside the existing warning
 	// banner right below - the banner explains WHY, the dim reinforces AT A
@@ -1024,8 +1041,13 @@ void MainWindow::createSettingsTab() {
 	// above (banner + setGroupDimmed() on the group itself, both keyed on
 	// isLiveMode() instead of isVideoMode()) rather than living inline in
 	// Render Settings, so it's as discoverable as Video's own settings are.
-	m_liveModeSettingsGroupBox = new QGroupBox(tr("Live Preview Settings"), basicTab);
+	m_liveModeSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), basicTab);
 	styleGroupBox(m_liveModeSettingsGroupBox);
+	m_liveModeSettingsGroupBox->setInfoIcon(createInfoIcon(
+		tr("Tune how responsive click-drag-to-orbit, scroll-to-zoom, and "
+		"the Arrow/+/- keys feel in Live Preview. Only takes effect when "
+		"Output Mode above is \"Live Preview (interactive)\", but stays "
+		"editable in any mode.")));
 	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
 	QFormLayout *liveModeSettingsLayout = new QFormLayout(m_liveModeSettingsGroupBox);
 	liveModeSettingsLayout->setVerticalSpacing(10);
@@ -1085,8 +1107,14 @@ void MainWindow::createSettingsTab() {
 	// keeping the Quality preset above and the exact values it writes into
 	// Width/Height/Samples/Max Depth below on the same tab reads more like
 	// one coherent "how big and how clean" decision than two.
-	m_advancedParamsGroupBox = new QGroupBox(tr("Advanced Parameters"), basicTab);
+	m_advancedParamsGroupBox = new InfoGroupBox(tr("Advanced Parameters"), basicTab);
 	styleGroupBox(m_advancedParamsGroupBox);
+	m_advancedParamsGroupBox->setInfoIcon(createInfoIcon(
+		tr("Manually override resolution, samples per pixel, and max ray "
+		"depth instead of using the Quality/Resolution presets above. "
+		"Shared by Image and Video (Video reuses these as its per-frame "
+		"settings) - Live Preview always uses its own fixed, small "
+		"resolution instead.")));
 	// Dimmed (not disabled) whenever Live Preview is selected - see
 	// m_liveModeWarningLabel's own comment for why these specifically don't
 	// apply there, and setGroupDimmed()'s comment for why dim rather than
@@ -1193,8 +1221,13 @@ void MainWindow::createSettingsTab() {
 	//   - The camera can be positioned anywhere, inside or outside the box
 	// ============================================================================
 
-	QGroupBox *cameraGroup = new QGroupBox(tr("Camera Position"), basicTab);
+	InfoGroupBox *cameraGroup = new InfoGroupBox(tr("Camera Position"), basicTab);
 	styleGroupBox(cameraGroup);
+	cameraGroup->setInfoIcon(createInfoIcon(
+		tr("Set the camera's world position directly, or pick a named "
+		"preset. Used as-is for Image mode, as the starting point Video's "
+		"camera path animates from, and as Live Preview's initial "
+		"position before you orbit/zoom it interactively.")));
 	// Same 4-column grid as Advanced Parameters above: X/Y and Z/Distance
 	// pack two fields per row instead of QFormLayout's one-pair-per-row.
 	// Preset spans the field columns on its own row since there's nothing
@@ -1353,8 +1386,12 @@ void MainWindow::createSettingsTab() {
 	layout->addWidget(cameraGroup);
 
 	// Output group
-	QGroupBox *outputGroup = new QGroupBox(tr("Output"), basicTab);
+	InfoGroupBox *outputGroup = new InfoGroupBox(tr("Output"), basicTab);
 	styleGroupBox(outputGroup);
+	outputGroup->setInfoIcon(createInfoIcon(
+		tr("Where the rendered file is saved. Video mode appends the "
+		"correct extension automatically; Live Preview ignores this "
+		"entirely since it never writes a file.")));
 	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
 	outputLayout->setSpacing(8);
 	outputLayout->setContentsMargins(15, 20, 15, 12);

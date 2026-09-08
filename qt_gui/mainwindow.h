@@ -731,7 +731,7 @@ private:
 	// resolution/quality - see captureRenderJob()) - only Live Preview
 	// excludes them, hence m_liveModeWarningLabel rather than a Video-only
 	// warning here, and dimming keyed on isLiveMode() rather than isVideoMode().
-	QGroupBox *m_advancedParamsGroupBox = nullptr;
+	InfoGroupBox *m_advancedParamsGroupBox = nullptr;
 	QSpinBox *m_widthSpinBox;           // Custom width
 	QSpinBox *m_heightSpinBox;          // Custom height
 	QSpinBox *m_samplesSpinBox;         // Samples per pixel
@@ -842,7 +842,7 @@ private:
 	// the currently-selected integrator's own fields are ever read by
 	// RenderController::start()'s switch, so a stale value from a hidden
 	// page is never emitted.
-	QGroupBox *m_integratorOptionsGroup;
+	InfoGroupBox *m_integratorOptionsGroup;
 	// CurrentPageSizedStackedWidget, not a plain QStackedWidget - see that
 	// class's own comment (mainwindow_widgets.h): this group's shortest page
 	// (the shared placeholder) and tallest (Ambient Occlusion) differ by
@@ -1016,7 +1016,7 @@ private:
 	// The group box itself, stored (unlike most groups in this tab) so
 	// onModeChanged() can dim it when it doesn't apply - see
 	// setGroupDimmed()'s own comment for why dimming, not hiding/disabling.
-	QGroupBox *m_videoGroupBox = nullptr;
+	InfoGroupBox *m_videoGroupBox = nullptr;
 	QComboBox *m_videoPresetCombo;      // Named scene+path+frames/fps/speed bundle - see video_preset.h
 	QComboBox *m_cameraPathCombo;       // Camera animation path selector
 	QSpinBox *m_videoFramesSpinBox;     // Number of frames to render
@@ -1051,7 +1051,7 @@ private:
 	// warning banner (visible when NOT relevant) plus setGroupDimmed() on
 	// the group itself (dimmed when NOT relevant), both keyed on
 	// isLiveMode() here instead of isVideoMode().
-	QGroupBox *m_liveModeSettingsGroupBox = nullptr;
+	InfoGroupBox *m_liveModeSettingsGroupBox = nullptr;
 	QLabel *m_liveModeSettingsWarningLabel = nullptr;
 #endif
 
@@ -1207,7 +1207,7 @@ private:
 	// can queue, the user may have already changed the scene/mode combo for
 	// the *next* job by the time an earlier one's completion signal arrives.
 	RenderJob m_currentJob;
-	QGroupBox *m_queueGroup = nullptr;       // Hidden whenever m_renderQueue is empty
+	InfoGroupBox *m_queueGroup = nullptr;       // Hidden whenever m_renderQueue is empty
 	QListWidget *m_queueListWidget = nullptr;
 	RenderJob captureRenderJob();             // Snapshots every render field currently in the UI
 	void startRenderJob(const RenderJob &job); // Builds a RenderController for `job` and starts it
