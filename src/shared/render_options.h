@@ -98,7 +98,9 @@ struct RenderOptions {
 	// linearly interpolated in between. Only consulted when `denoise` is
 	// true. Same GPU-only, both-backends, "no effect under GPU SPPM" scope
 	// as `denoise` above - see gpu/optix/optix_denoiser.h's runDenoiser()
-	// for where this actually reaches the OptiX API.
+	// for where this actually reaches the OptiX API. Interpolates in the
+	// linear, pre-tonemap HDR color buffer the denoiser itself operates on,
+	// not the final tonemapped/gamma-corrected image.
 	float denoise_blend = 0.0f;
 	// An explicit CLI request for reproducible renders. -1 (default) means
 	// "not requested" - both backends fall back to their own pre-existing

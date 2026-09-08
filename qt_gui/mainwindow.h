@@ -579,8 +579,9 @@ private:
 
 	// Render Options tab (createRenderOptionsTab()) - one widget per CLI
 	// flag RenderController::start() can emit; see setAdvancedFlags()'s own
-	// comment. m_samplerCombo/m_lightSamplerCombo/m_spectralCheck are
-	// CPU-default-path-tracer only; m_denoiseCheck/m_optixValidateCheck are GPU-only (both GPU
+	// comment. m_samplerCombo/m_lightSamplerCombo/m_spectralCheck/
+	// m_timeLimitCheck/m_timeLimitSpin are CPU-default-path-tracer only;
+	// m_denoiseCheck/m_denoiseBlendSpin/m_optixValidateCheck are GPU-only (both GPU
 	// backends have their own real denoiser - see WavefrontPathTracer::
 	// denoise()); m_exposureSpin/m_tonemapCombo/
 	// m_statsCheck are default-path-tracer-only (inert, not rejected,

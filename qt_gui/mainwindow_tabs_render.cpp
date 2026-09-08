@@ -570,6 +570,9 @@ void MainWindow::createRenderOptionsTab() {
 			"got started is written black rather than left out, so the "
 			"image stays a valid (if incomplete) render instead of a "
 			"corrupted file.\n\n"
+			"Generating a video? This is a budget for the WHOLE video, not "
+			"each frame - later frames get whatever's left of it, and any "
+			"frames still remaining once it runs out are skipped.\n\n"
 			"Grayed out? This only affects the CPU renderer's default path "
 			"tracer - switch Renderer to CPU on the Settings tab to "
 			"use it.")), timeLimitRow);
@@ -998,8 +1001,8 @@ void MainWindow::createRenderOptionsTab() {
 }
 
 // Single source of truth for m_samplerCombo/m_lightSamplerCombo/
-// m_spectralCheck/m_exposureSpin/
-// m_tonemapCombo/m_statsCheck/m_denoiseCheck/m_optixValidateCheck/
+// m_spectralCheck/m_timeLimitCheck/m_timeLimitSpin/m_exposureSpin/
+// m_tonemapCombo/m_statsCheck/m_denoiseCheck/m_denoiseBlendSpin/m_optixValidateCheck/
 // m_seedCheck/m_gpuBackendCombo/m_acceleratorCombo/m_splitMethodCombo's
 // enabled state, replacing what used to be a
 // hand-duplicated 2-input (GPU/CPU x wavefront/recursive) condition

@@ -102,7 +102,10 @@ inline void ensureAovBuffers(DenoiserResources& r, unsigned int width, unsigned 
 /// @param blendFactor OptiX's own blend between the noisy input and the
 ///                 fully denoised output: 0.0 (default) = 100% denoised,
 ///                 1.0 = the original noisy image unchanged, linearly
-///                 interpolated in between - see --denoise-blend
+///                 interpolated in between. Operates on d_buffer directly,
+///                 i.e. the linear, pre-tonemap HDR color this denoiser
+///                 pass runs on - not the final tonemapped/gamma-corrected
+///                 image. See --denoise-blend
 ///                 (render_options.h's own comment) for why this is
 ///                 exposed at all: full-strength denoising can over-smooth
 ///                 fine texture/grain into a flat, "plasticky" look, and

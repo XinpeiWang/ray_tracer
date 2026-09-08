@@ -696,6 +696,35 @@ int main(int argc, char** argv) {
 
         // Render each frame with animated camera position
         for (int frame = 0; frame < render_frame_count; ++frame) {
+            // --time-limit + --video: args.time_limit_seconds is a WHOLE-
+            // VIDEO budget, not a per-frame one - re-derive each frame's
+            // own render_opts.time_limit_seconds as whatever's LEFT of that
+            // budget rather than reusing the same full value on every
+            // frame (which would let an N-frame video take up to N times
+            // the requested budget, since camera::render() captures its
+            // own fresh render_start_time on every call and has no idea
+            // this is frame K of a longer video). Skips (rather than
+            // renders with an ~0 budget) any frame once the whole video's
+            // time is already up, since a --time-limit-truncated frame is
+            // mostly/entirely black and not worth spending a render call
+            // on just to produce that.
+            // CPU only - --time-limit has no effect under --gpu at all
+            // (warned about separately, above, before video_mode dispatch),
+            // so applying this per-frame budget logic under --gpu would
+            // incorrectly cut a GPU video short based on a flag GPU never
+            // actually consults.
+            if (args.time_limit_seconds > 0.0 && !use_gpu) {
+                const double elapsed = std::chrono::duration<double>(
+                    std::chrono::high_resolution_clock::now() - video_start_time).count();
+                const double remaining = args.time_limit_seconds - elapsed;
+                if (remaining <= 0.0) {
+                    std::cout << "\nTime limit (" << args.time_limit_seconds << "s) reached after "
+                              << frame << " of " << render_frame_count
+                              << " frames - stopping video early.\n";
+                    break;
+                }
+                render_opts.time_limit_seconds = remaining;
+            }
             // Currently a no-op in practice - this branch always returns
             // before ever reaching the "[STATS]" print block below, which
             // is the only reader of these counters - but reset() here

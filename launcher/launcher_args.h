@@ -11,6 +11,7 @@
 #include <set>
 #include <algorithm>
 #include <cctype>
+#include <functional>
 
 #include "../src/shared/video_preset.h"
 #include "../src/shared/render_flag_names.h"
@@ -64,6 +65,40 @@ namespace {
 		} else {
 			std::cerr << "Invalid " << flagName << " \"" << rawValue << "\", " << invalidMessage << "\n";
 		}
+	}
+
+	// Shared by --denoise-blend/--exposure/--adaptive-threshold/--time-limit/
+	// --maxcomponentvalue below: parse a single double-valued flag argument
+	// (argv[i+1]) via std::stod, always consuming both argv[i] and argv[i+1]
+	// (even on a parse failure, so an invalid value doesn't fall through into
+	// positional argument parsing and shift width/spp/max_depth/scene_id),
+	// and advancing i past the consumed value. Consolidates what was 5
+	// independently hand-copied ~15-line try/std::stod/catch blocks (one per
+	// flag) into one.
+	//
+	// `validate` receives the raw parsed value and returns the value to
+	// actually store - either it unchanged, or a substituted fallback (after
+	// printing its own "Warning: ..." message, matching this project's
+	// existing "warn and use a sane default" convention rather than
+	// rejecting the whole render). On a parse failure (non-numeric
+	// argv[i+1]), `validate` is never called: `parseFailureMessage` is
+	// printed, and outField is reset to `failureDefault` only if
+	// `resetOnFailure` is true - some flags (--exposure/--maxcomponentvalue)
+	// intentionally leave a prior successful value alone on a later failed
+	// re-parse, matching their pre-existing behavior.
+	inline void parseDoubleFlag(char **argv, int &i, std::set<int> &consumed_args,
+								 double &outField, const std::string &parseFailureMessage,
+								 bool resetOnFailure, double failureDefault,
+								 const std::function<double(double)> &validate) {
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		try {
+			outField = validate(std::stod(argv[i + 1]));
+		} catch (const std::exception&) {
+			std::cerr << parseFailureMessage;
+			if (resetOnFailure) outField = failureDefault;
+		}
+		++i;
 	}
 }
 
@@ -366,44 +401,34 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			out.denoise = true;
 			consumed_args.insert(i);
 		} else if (arg == render_flags::kDenoiseBlend && i + 1 < argc) {
-			try {
-				out.denoise_blend = std::stod(argv[i + 1]);
-				if (out.denoise_blend < 0.0 || out.denoise_blend > 1.0) {
-					std::cerr << "Warning: --denoise-blend " << out.denoise_blend
-							  << " is outside [0,1] (0 = fully denoised, 1 = original noisy "
-								 "image) - using default (0.0)\n";
-					out.denoise_blend = 0.0;
-				}
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --denoise-blend value, using default (0.0)\n";
-				out.denoise_blend = 0.0;
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			}
+			parseDoubleFlag(argv, i, consumed_args, out.denoise_blend,
+							"Invalid --denoise-blend value, using default (0.0)\n", true, 0.0,
+							[](double v) {
+								if (v < 0.0 || v > 1.0) {
+									std::cerr << "Warning: --denoise-blend " << v
+											  << " is outside [0,1] (0 = fully denoised, 1 = original noisy "
+												 "image) - using default (0.0)\n";
+									return 0.0;
+								}
+								return v;
+							});
 		} else if (arg == render_flags::kStats) {
 			out.stats = true;
 			consumed_args.insert(i);
 		} else if (arg == render_flags::kExposure && i + 1 < argc) {
-			try {
-				out.exposure = std::stod(argv[i + 1]);
-				// exposure <= 0 is a valid double but not a valid exposure -
-				// linear_to_srgb clamps non-positive input to 0, so this
-				// would otherwise silently render solid black with nothing
-				// telling the user their value was nonsensical.
-				if (out.exposure <= 0.0) {
-					std::cerr << "Warning: --exposure " << out.exposure
-							  << " is <= 0, image will render solid black\n";
-				}
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --exposure value, using default\n";
-			}
+			// exposure <= 0 is a valid double but not a valid exposure -
+			// linear_to_srgb clamps non-positive input to 0, so this would
+			// otherwise silently render solid black with nothing telling
+			// the user their value was nonsensical.
+			parseDoubleFlag(argv, i, consumed_args, out.exposure,
+							"Invalid --exposure value, using default\n", false, 0.0,
+							[](double v) {
+								if (v <= 0.0) {
+									std::cerr << "Warning: --exposure " << v
+											  << " is <= 0, image will render solid black\n";
+								}
+								return v;
+							});
 		} else if (arg == render_flags::kSampler && i + 1 < argc) {
 			static const std::set<std::string> kValidSamplers = {
 				"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton", "independent"};
@@ -417,51 +442,32 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			out.adaptive_sampling = true;
 			consumed_args.insert(i);
 		} else if (arg == render_flags::kAdaptiveThreshold && i + 1 < argc) {
-			try {
-				out.adaptive_threshold = std::stod(argv[i + 1]);
-				if (out.adaptive_threshold <= 0.0) {
-					std::cerr << "Warning: --adaptive-threshold " << out.adaptive_threshold
-							  << " is <= 0, every pixel would need a perfectly zero-variance "
-								 "estimate to ever stop early - using default (0.01)\n";
-					out.adaptive_threshold = 0.01;
-				}
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --adaptive-threshold value, using default (0.01)\n";
-				// Actually reset to the default the message above claims
-				// (a prior --adaptive-threshold's value must not survive
-				// this one failing to parse), and mark both tokens
-				// consumed so the invalid value doesn't fall through into
-				// positional argument parsing and shift width/spp/
-				// max_depth/scene_id - same "on failure, still consume
-				// what was clearly meant as this flag's value" shape the
-				// success path above already has.
-				out.adaptive_threshold = 0.01;
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			}
+			// On a parse failure, still reset to the default the error
+			// message claims (a prior --adaptive-threshold's value must not
+			// survive this one failing to parse) - resetOnFailure=true.
+			parseDoubleFlag(argv, i, consumed_args, out.adaptive_threshold,
+							"Invalid --adaptive-threshold value, using default (0.01)\n", true, 0.01,
+							[](double v) {
+								if (v <= 0.0) {
+									std::cerr << "Warning: --adaptive-threshold " << v
+											  << " is <= 0, every pixel would need a perfectly zero-variance "
+												 "estimate to ever stop early - using default (0.01)\n";
+									return 0.01;
+								}
+								return v;
+							});
 		} else if (arg == render_flags::kTimeLimit && i + 1 < argc) {
-			try {
-				out.time_limit_seconds = std::stod(argv[i + 1]);
-				if (out.time_limit_seconds <= 0.0) {
-					std::cerr << "Warning: --time-limit " << out.time_limit_seconds
-							  << " is <= 0, disabling the time limit (renders until every "
-								 "scanline is done)\n";
-					out.time_limit_seconds = 0.0;
-				}
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --time-limit value, disabling the time limit\n";
-				out.time_limit_seconds = 0.0;
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			}
+			parseDoubleFlag(argv, i, consumed_args, out.time_limit_seconds,
+							"Invalid --time-limit value, disabling the time limit\n", true, 0.0,
+							[](double v) {
+								if (v <= 0.0) {
+									std::cerr << "Warning: --time-limit " << v
+											  << " is <= 0, disabling the time limit (renders until every "
+												 "scanline is done)\n";
+									return 0.0;
+								}
+								return v;
+							});
 		} else if (arg == "--lightsampler" && i + 1 < argc) {
 			// "auto" isn't a real light-sampler implementation - it means
 			// "use whatever the scene's own Integrator \"string lightsampler\"
@@ -501,18 +507,15 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			out.regularize = true;
 			consumed_args.insert(i);
 		} else if (arg == render_flags::kMaxComponentValue && i + 1 < argc) {
-			try {
-				out.max_component_value = std::stod(argv[i + 1]);
-				if (out.max_component_value <= 0.0) {
-					std::cerr << "Warning: --maxcomponentvalue " << out.max_component_value
-							  << " is <= 0, every sample will clamp to black\n";
-				}
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --maxcomponentvalue value, using default\n";
-			}
+			parseDoubleFlag(argv, i, consumed_args, out.max_component_value,
+							"Invalid --maxcomponentvalue value, using default\n", false, 0.0,
+							[](double v) {
+								if (v <= 0.0) {
+									std::cerr << "Warning: --maxcomponentvalue " << v
+											  << " is <= 0, every sample will clamp to black\n";
+								}
+								return v;
+							});
 		} else if (arg == render_flags::kCrop && i + 4 < argc) {
 			try {
 				const double x0 = std::stod(argv[i + 1]);
@@ -778,8 +781,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  " << render_flags::kDenoiseBlend << " VALUE: Blend between the noisy input and the fully\n"
 					  << "               denoised output (default 0.0 = 100% denoised, 1.0 = original\n"
 					  << "               noisy image unchanged). Full-strength denoising can over-smooth\n"
-					  << "               fine texture/grain; lower this to preserve more of it. Only\n"
-					  << "               consulted when " << render_flags::kDenoise << " is passed. Same scope as " << render_flags::kDenoise << " above.\n"
+					  << "               fine texture/grain; lower this to preserve more of it. Blends in\n"
+					  << "               the linear, pre-tonemap HDR color, not the final tonemapped\n"
+					  << "               image. Only consulted when " << render_flags::kDenoise << " is passed. Same scope as " << render_flags::kDenoise << " above.\n"
 					  << "  " << render_flags::kStats << "    : Print a small end-of-render stats block (rays cast, bounces,\n"
 					  << "               shadow rays, samples/sec) after the normal RENDER TIME output.\n"
 					  << "               Observation-only - never changes the rendered image.\n"
@@ -805,8 +809,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               done - useful for previews or a fixed render-farm time budget.\n"
 					  << "               Scanline-granular: whatever rows were already in flight at the\n"
 					  << "               deadline finish normally; any never-started row is written\n"
-					  << "               black rather than left out. Off by default (no limit). CPU\n"
-					  << "               default path tracer only.\n"
+					  << "               black rather than left out. Under --video, this is a budget for\n"
+					  << "               the WHOLE video, not each frame - later frames get whatever's\n"
+					  << "               left of it, and rendering stops (skipping any remaining frames)\n"
+					  << "               once it runs out. Off by default (no limit). CPU default path\n"
+					  << "               tracer only.\n"
 					  << "  --lightsampler NAME: pbrt-v4 Integrator \"string lightsampler\" - which light\n"
 					  << "               sampler picks the next-event-estimation light to sample\n"
 					  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"
