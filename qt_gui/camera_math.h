@@ -77,6 +77,52 @@ inline Vec3 presetPosition(const Vec3 &direction, const Vec3 &lookAt, double sce
 				lookAt.z + direction.z * sceneDistance};
 }
 
+// Spherical coordinates of a camera around a look-at point: distance
+// (radius), horizontal angle (azimuth, radians, measured from +Z rotating
+// toward +X), and vertical angle (elevation, radians - positive is above
+// the look-at point's horizontal plane). Used by the Live Preview tab's
+// mouse-drag orbit control (MainWindow::onLivePreviewOrbitDragged()/
+// onLivePreviewZoomRequested()): dragging changes azimuth/elevation, the
+// wheel changes radius, and orbitToCartesian() below converts the result
+// back into an actual camera position on every step.
+struct OrbitCoordinates {
+	double radius = 0.0;
+	double azimuth = 0.0;
+	double elevation = 0.0;
+};
+
+// Decomposes an absolute camera position into spherical coordinates around
+// lookAt - the inverse of orbitToCartesian() below (round-trips exactly,
+// away from the poles - see camera_math_tests.cpp).
+//
+// Same degenerate case as repositionAtDistance(): a camera sitting exactly
+// on the look-at point has no direction to decompose at all (both azimuth
+// and elevation would be feeding a zero-length vector into atan2/asin) -
+// falls back to a fixed radius/angle pair rather than propagating NaN,
+// matching repositionAtDistance()'s own fallback shape.
+inline OrbitCoordinates cartesianToOrbit(const Vec3 &camera, const Vec3 &lookAt) {
+	const double dx = camera.x - lookAt.x;
+	const double dy = camera.y - lookAt.y;
+	const double dz = camera.z - lookAt.z;
+	const double radius = std::sqrt(dx * dx + dy * dy + dz * dz);
+	if (radius < 1e-6) {
+		return OrbitCoordinates{1.0, 0.0, 0.0};
+	}
+	double sinElevation = dy / radius;
+	if (sinElevation > 1.0) sinElevation = 1.0;
+	if (sinElevation < -1.0) sinElevation = -1.0;
+	return OrbitCoordinates{radius, std::atan2(dx, dz), std::asin(sinElevation)};
+}
+
+// The inverse of cartesianToOrbit() above: turns spherical coordinates
+// around lookAt back into an absolute camera position.
+inline Vec3 orbitToCartesian(const OrbitCoordinates &orbit, const Vec3 &lookAt) {
+	const double cosElevation = std::cos(orbit.elevation);
+	return Vec3{lookAt.x + orbit.radius * cosElevation * std::sin(orbit.azimuth),
+				lookAt.y + orbit.radius * std::sin(orbit.elevation),
+				lookAt.z + orbit.radius * cosElevation * std::cos(orbit.azimuth)};
+}
+
 } // namespace camera_math
 
 #endif // CAMERA_MATH_H

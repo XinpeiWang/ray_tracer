@@ -245,10 +245,18 @@ private:
 	// Called from the camera spinboxes' valueChanged handlers - forwards to
 	// the running session (no-op if the preview isn't currently running,
 	// see RealtimePreviewWorker::setCamera()'s own comment). Also
-	// re-derives m_orbitRadius/Azimuth/Elevation from the new position (see
-	// their own comment) so a later mouse-orbit drag continues smoothly
-	// from wherever this manual edit left the camera, instead of jumping
-	// back to a stale orbit state.
+	// re-derives m_orbit from the new position (see its own comment) so a
+	// later mouse-orbit drag continues smoothly from wherever this manual
+	// edit left the camera, instead of jumping back to a stale orbit
+	// state. NOTE: this only defends against a manual spinbox edit WHILE
+	// orbiting - it does not (and today cannot: m_cameraPosX/Y/Z live on
+	// the separate Settings tab, which the createLivePreviewTab() tab-
+	// switch handler always stops Live Preview before reaching) protect
+	// against reading a stale value from one of the three spinboxes while
+	// the other two were already changed elsewhere. If the camera controls
+	// are ever made reachable at the same time as Live Preview (e.g. a
+	// docked sidebar), this read-three-spinboxes-at-once approach would
+	// need revisiting.
 	void onLivePreviewCameraChanged();
 	// OrbitPreviewLabel::orbitDragged()/zoomRequested() handlers - see
 	// mainwindow_widgets.h's own class comment for why the widget only
@@ -256,19 +264,10 @@ private:
 	// move. No-ops if the preview isn't currently running.
 	void onLivePreviewOrbitDragged(int dxPixels, int dyPixels);
 	void onLivePreviewZoomRequested(int angleDeltaY);
-	// Recomputes m_orbitRadius/Azimuth/Elevation (spherical coordinates
-	// around the current scene's lookAt point, m_currentLookatX/Y/Z) from
-	// an explicit camera position - called once when Live Preview starts
-	// (seeding orbit state from the camera spinboxes' current values) and
-	// again whenever onLivePreviewCameraChanged() moves the camera some
-	// other way, so orbiting always continues from the camera's ACTUAL
-	// current position rather than assuming nothing else ever moves it.
-	void deriveLivePreviewOrbitFromCamera(double camX, double camY, double camZ);
-	// Converts the current m_orbitRadius/Azimuth/Elevation back into a
-	// camera position around m_currentLookatX/Y/Z and forwards it to the
-	// running RealtimePreviewSession - the inverse of
-	// deriveLivePreviewOrbitFromCamera() above, called after every orbit
-	// drag/zoom step.
+	// Converts m_orbit (spherical coordinates around currentLookAt()) back
+	// into an absolute camera position (camera_math::orbitToCartesian())
+	// and forwards it to the running RealtimePreviewSession - called after
+	// every orbit drag/zoom step.
 	void updateLivePreviewCameraFromOrbit();
 #endif
 
@@ -627,18 +626,16 @@ private:
 	QLabel *m_livePreviewStatusLabel = nullptr;
 	bool m_livePreviewRunning = false;
 	// Spherical coordinates of the live-preview camera around the current
-	// scene's lookAt point (m_currentLookatX/Y/Z) - radius (world units),
-	// azimuth/elevation (radians). This is the live-preview feature's OWN
-	// camera representation, deliberately decoupled from m_cameraPosX/Y/Z
-	// (those stay whatever they were before orbiting started - orbiting
-	// never writes back to them, see onLivePreviewOrbitDragged()'s own
-	// comment) - kept in sync with the ACTUAL camera position via
-	// deriveLivePreviewOrbitFromCamera(), called both when Live Preview
-	// starts and whenever onLivePreviewCameraChanged() moves the camera
-	// some other way.
-	double m_orbitRadius = 0.0;
-	double m_orbitAzimuth = 0.0;
-	double m_orbitElevation = 0.0;
+	// scene's lookAt point (currentLookAt()) - see camera_math.h's
+	// OrbitCoordinates for the field meanings. This is the live-preview
+	// feature's OWN camera representation, deliberately decoupled from
+	// m_cameraPosX/Y/Z (those stay whatever they were before orbiting
+	// started - orbiting never writes back to them, see
+	// onLivePreviewOrbitDragged()'s own comment) - kept in sync with the
+	// ACTUAL camera position via camera_math::cartesianToOrbit(), called
+	// both when Live Preview starts and whenever onLivePreviewCameraChanged()
+	// moves the camera some other way.
+	camera_math::OrbitCoordinates m_orbit;
 #endif
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides

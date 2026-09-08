@@ -473,6 +473,19 @@ public:
 		setCursor(Qt::OpenHandCursor);
 	}
 
+	// Defensively ends an in-progress drag without waiting for a
+	// mouseReleaseEvent that may never arrive - called by MainWindow's
+	// Live-Preview-tab-switch handler, since switching tabs while the
+	// mouse button is still held (e.g. via a keyboard tab-switch shortcut
+	// mid-drag) is not a scenario Qt is documented to guarantee cleans up
+	// an active grabMouse() on its own. Safe to call even when not
+	// currently dragging - releaseMouse() on a widget that isn't the
+	// current mouse grabber is a harmless no-op.
+	void cancelDrag() {
+		setCursor(Qt::OpenHandCursor);
+		releaseMouse();
+	}
+
 signals:
 	// Raw pixel deltas since the last mouse-move event during an active
 	// drag - not accumulated, not scaled by any sensitivity here (that's
@@ -488,21 +501,22 @@ signals:
 protected:
 	void mousePressEvent(QMouseEvent *event) override {
 		if (event->button() == Qt::LeftButton) {
-			m_dragging = true;
 			m_lastPos = event->pos();
 			setCursor(Qt::ClosedHandCursor);
 			// grabMouse() (not just setMouseTracking()) is what keeps
 			// delivering move/release events to THIS widget even once the
 			// cursor leaves its bounds mid-drag - a fast orbit drag
-			// routinely does, and losing the drag there would leave
-			// m_dragging stuck true with no matching release.
+			// routinely does. No separate "am I dragging" flag needed:
+			// mouseTracking is never enabled on this widget, so
+			// mouseMoveEvent is only ever delivered at all while a grab is
+			// held - mouseGrabber() == this already IS that flag.
 			grabMouse();
 		}
 		ScaledImageLabel::mousePressEvent(event);
 	}
 
 	void mouseMoveEvent(QMouseEvent *event) override {
-		if (m_dragging) {
+		if (mouseGrabber() == this) {
 			const QPoint delta = event->pos() - m_lastPos;
 			m_lastPos = event->pos();
 			if (!delta.isNull()) emit orbitDragged(delta.x(), delta.y());
@@ -511,10 +525,8 @@ protected:
 	}
 
 	void mouseReleaseEvent(QMouseEvent *event) override {
-		if (event->button() == Qt::LeftButton && m_dragging) {
-			m_dragging = false;
-			setCursor(Qt::OpenHandCursor);
-			releaseMouse();
+		if (event->button() == Qt::LeftButton && mouseGrabber() == this) {
+			cancelDrag();
 		}
 		ScaledImageLabel::mouseReleaseEvent(event);
 	}
@@ -525,7 +537,6 @@ protected:
 	}
 
 private:
-	bool m_dragging = false;
 	QPoint m_lastPos;
 };
 

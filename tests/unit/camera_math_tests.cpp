@@ -104,3 +104,58 @@ TEST(CameraMathTest, DistanceThenRepositionIsAnIdentity) {
 	const double d = distanceFromTarget(camera, kCornellLookAt);
 	expectVec3Near(repositionAtDistance(camera, kCornellLookAt, d), camera, 1e-9);
 }
+
+// Round trip: decompose a camera position into spherical coordinates, then
+// rebuild the position from them. The Live Preview tab's mouse-drag orbit
+// control does exactly this every time it seeds orbit state from the camera
+// spinboxes (MainWindow::onLivePreviewToggled()/onLivePreviewCameraChanged()).
+TEST(CameraMathTest, CartesianToOrbitThenBackIsAnIdentity) {
+	// Straight along +Z from the target - a plain, on-axis case.
+	expectVec3Near(
+		orbitToCartesian(cartesianToOrbit(Vec3{278.0, 278.0, 278.0 + 500.0}, kCornellLookAt), kCornellLookAt),
+		Vec3{278.0, 278.0, 278.0 + 500.0});
+
+	// An oblique position with all three axes offset from the target,
+	// including a nonzero elevation.
+	const Vec3 oblique{278.0 + 300.0, 278.0 + 150.0, 278.0 - 200.0};
+	expectVec3Near(orbitToCartesian(cartesianToOrbit(oblique, kCornellLookAt), kCornellLookAt), oblique);
+
+	// A different look-at point than Cornell Box's, to confirm the
+	// conversion doesn't secretly assume a fixed target.
+	const Vec3 smallSceneLookAt{0.0, 0.0, 0.0};
+	const Vec3 nearSmallScene{5.0, -3.0, 7.0};
+	expectVec3Near(orbitToCartesian(cartesianToOrbit(nearSmallScene, smallSceneLookAt), smallSceneLookAt),
+				   nearSmallScene);
+}
+
+TEST(CameraMathTest, CartesianToOrbitRadiusMatchesDistanceFromTarget) {
+	const Vec3 camera{278.0, 278.0, -800.0};
+	EXPECT_NEAR(cartesianToOrbit(camera, kCornellLookAt).radius,
+				distanceFromTarget(camera, kCornellLookAt), 1e-9);
+}
+
+// Same degenerate case repositionAtDistance() guards against: a camera
+// sitting exactly on the look-at point has no direction to decompose into
+// azimuth/elevation. Must not NaN.
+TEST(CameraMathTest, CartesianToOrbitFromTheTargetItselfDoesNotNaN) {
+	const OrbitCoordinates orbit = cartesianToOrbit(kCornellLookAt, kCornellLookAt);
+	EXPECT_FALSE(std::isnan(orbit.radius));
+	EXPECT_FALSE(std::isnan(orbit.azimuth));
+	EXPECT_FALSE(std::isnan(orbit.elevation));
+
+	const Vec3 rebuilt = orbitToCartesian(orbit, kCornellLookAt);
+	EXPECT_FALSE(std::isnan(rebuilt.x));
+	EXPECT_FALSE(std::isnan(rebuilt.y));
+	EXPECT_FALSE(std::isnan(rebuilt.z));
+}
+
+// A camera directly "above" the look-at point (elevation = +90 degrees) is
+// the other edge case worth naming explicitly - asin's domain is [-1, 1],
+// and dy/radius lands exactly on that boundary here.
+TEST(CameraMathTest, CartesianToOrbitHandlesStraightUp) {
+	const Vec3 straightUp{278.0, 278.0 + 100.0, 278.0};
+	const OrbitCoordinates orbit = cartesianToOrbit(straightUp, kCornellLookAt);
+	EXPECT_FALSE(std::isnan(orbit.elevation));
+	EXPECT_NEAR(orbit.elevation, 1.5707963267948966, 1e-9);  // +90 degrees, in radians
+	expectVec3Near(orbitToCartesian(orbit, kCornellLookAt), straightUp);
+}
