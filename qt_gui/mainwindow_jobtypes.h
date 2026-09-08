@@ -160,6 +160,18 @@ enum class IntegratorMode {
 	Default = 0, Sppm, Bdpt, Mlt, RandomWalk, Ao, SimplePath, SimpleVolPath, LightPath
 };
 
+// MainWindow's Output Mode combo (mainwindow_tabs.cpp's m_modeCombo) -
+// what kind of thing the pinned Render/Stop button pair drives right now.
+// LivePreview is GPU-only (see RT_GUI_HAVE_GPU) and, unlike Image/Video,
+// never produces a RenderJob at all - it runs through RealtimePreviewSession
+// (an in-process QThread calling realtime_renderer.dll directly) instead of
+// RenderController's QProcess/ray_tracer.exe pipeline, has no output file,
+// and no completion state. See MainWindow::isVideoMode()/isLiveMode() and
+// onRenderClicked()'s own early branch for where that split actually
+// matters - everywhere else in the render queue/RenderController/Preview-
+// tab pipeline stays unaware this third mode exists.
+enum class OutputMode { Image, Video, LivePreview };
+
 // "Integrator Options" group's per-integrator sub-flags - one struct
 // instead of growing AdvancedRenderFlags or setParameters() further, same
 // reasoning as AdvancedRenderFlags's own comment. Defaults match
@@ -457,6 +469,10 @@ struct RenderJob {
 	double camY = 0.0;
 	double camZ = 0.0;
 	bool camExplicit = true;
+	// Image-vs-video only, deliberately still a bool: a RenderJob is always
+	// a RenderController/QProcess batch job with a completion state, and a
+	// Live Preview session never produces one (see OutputMode's own
+	// comment) - this field never needs a third value.
 	bool videoMode = false;
 	int videoFrames = 0;
 	int videoFPS = 0;

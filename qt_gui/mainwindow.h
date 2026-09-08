@@ -239,7 +239,15 @@ private:
 	// project's own real-time-preview plan for the progressive-refinement
 	// design (accumulate low-spp samples, reset on camera change).
 	void createLivePreviewTab();
-	void onLivePreviewToggled();
+	// Starts/stops the running RealtimePreviewSession - called from
+	// onRenderClicked()/onStopClicked() when Output Mode is LivePreview
+	// (a shared Render/Stop button pair can't drive a toggle the way the
+	// old, since-removed standalone "Start/Stop Live Preview" button
+	// could), and stopLivePreview() also from onModeChanged() (switching
+	// away from LivePreview) and the Live Preview tab's own
+	// currentChanged handler (navigating away from its tab).
+	void startLivePreview();
+	void stopLivePreview();
 	void onLivePreviewFrameReady(QImage image, int sampleCount);
 	void onLivePreviewStatus(QString text);
 	// Called from the camera spinboxes' valueChanged handlers - forwards to
@@ -615,13 +623,12 @@ private:
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
 #ifdef RT_GUI_HAVE_GPU
 	// Live Preview tab (createLivePreviewTab()) - GPU progressive-refinement
-	// preview, separate from the normal Render/Stop flow and its
-	// RenderController subprocess entirely (see realtime_preview_session.h's
-	// own header comment for why: this needs an in-process render call, not
-	// a fresh ray_tracer.exe launch every frame).
+	// preview, driven by the same pinned Render/Stop button pair as Image/
+	// Video mode (see OutputMode's own comment) but NOT by RenderController/
+	// QProcess: this needs an in-process render call (RealtimePreviewSession),
+	// not a fresh ray_tracer.exe launch every frame.
 	int m_livePreviewTabIndex = -1;
 	RealtimePreviewSession *m_livePreviewSession = nullptr;
-	QPushButton *m_livePreviewToggleButton = nullptr;
 	OrbitPreviewLabel *m_livePreviewLabel = nullptr;
 	QLabel *m_livePreviewStatusLabel = nullptr;
 	bool m_livePreviewRunning = false;
@@ -938,6 +945,17 @@ private:
 	// behavior - see createSettingsTab()'s own comment). Toggled by
 	// onModeChanged().
 	QLabel *m_videoModeWarningLabel = nullptr;
+#ifdef RT_GUI_HAVE_GPU
+	// Same "banner, don't hide" convention as m_videoModeWarningLabel above -
+	// visible only when Output Mode is LivePreview, explaining that
+	// Resolution/Samples/Max Depth/Output Path don't apply to Live
+	// Preview's fixed-resolution, no-output-file interactive mode. Lives in
+	// the Render Settings group, right where m_modeCombo itself is.
+	QLabel *m_liveModeWarningLabel = nullptr;
+	// Same purpose, at the top of the Render Options tab - none of that
+	// tab's settings apply to Live Preview's own GPU path tracer either.
+	QLabel *m_liveModeOptionsWarningLabel = nullptr;
+#endif
 
 	// Preview tab - each completed render gets its own closable sub-tab
 	// (see addImagePreviewTab()/addVideoPreviewTab()) instead of a single
@@ -1016,7 +1034,36 @@ private:
 
 	// State
 	bool m_isRendering;                 // true when a render is in progress
-	bool m_videoMode;                   // true = video generation mode, false = single image mode
+	// What the pinned Render/Stop button pair currently drives - see
+	// OutputMode's own comment (mainwindow_jobtypes.h). isVideoMode()/
+	// isLiveMode() below are what almost every call site actually wants
+	// ("is this specifically video/live", never "is this not image").
+	OutputMode m_outputMode = OutputMode::Image;
+	bool isVideoMode() const { return m_outputMode == OutputMode::Video; }
+	bool isLiveMode() const { return m_outputMode == OutputMode::LivePreview; }
+	// Sets m_modeCombo (by itemData, not index - the LivePreview item may
+	// not exist at all on a non-GPU build, or may exist but be disabled
+	// when realtime_renderer.dll isn't found) and updates m_outputMode to
+	// match, same as picking it from the combo would - a no-op if the
+	// requested mode's item isn't present. Replaces the old "setCurrentIndex(0/1)"
+	// literal-index call sites (Render/Render-Video actions, the video
+	// preset auto-switch), which broke the moment a third item could exist
+	// at all.
+	void selectOutputMode(OutputMode mode);
+#ifdef RT_GUI_HAVE_GPU
+	// Single source of truth for the pinned Render/Stop/Pause/Abandon
+	// buttons' enabled state whenever Live Preview is (or was just)
+	// involved - called from onModeChanged(), startRenderJob(),
+	// onRenderComplete(), and both startLivePreview()/stopLivePreview().
+	// Live Preview and a batch render are mutually exclusive (both want
+	// the same GPU; running both wouldn't corrupt anything but would make
+	// the preview stutter and the render slower, and a single Stop button
+	// driving two different things at once is its own hazard) - enforced
+	// here purely through enablement, no separate "which one is allowed to
+	// start" state. Declared/defined only under RT_GUI_HAVE_GPU since
+	// every call site already is (Live Preview doesn't exist otherwise).
+	void updateTransportButtons();
+#endif
 
 	// ------------------------------------------------------------------
 	// Render queue

@@ -49,8 +49,7 @@ void MainWindow::createActions() {
 	m_actRender->setShortcuts({QKeySequence(Qt::Key_F12), QKeySequence("Ctrl+R")});
 	m_actRender->setStatusTip(tr("Render the selected scene with the current settings"));
 	connect(m_actRender, &QAction::triggered, this, [this]() {
-		if (m_modeCombo && m_modeCombo->currentIndex() != 0)
-			m_modeCombo->setCurrentIndex(0);   // single image
+		selectOutputMode(OutputMode::Image);
 		onRenderClicked();
 	});
 
@@ -59,8 +58,7 @@ void MainWindow::createActions() {
 	m_actRenderVideo->setShortcut(QKeySequence("Ctrl+F12"));
 	m_actRenderVideo->setStatusTip(tr("Render the camera path frame by frame and assemble a video"));
 	connect(m_actRenderVideo, &QAction::triggered, this, [this]() {
-		if (m_modeCombo && m_modeCombo->currentIndex() != 1)
-			m_modeCombo->setCurrentIndex(1);   // video
+		selectOutputMode(OutputMode::Video);
 		onRenderClicked();
 	});
 
@@ -232,8 +230,14 @@ void MainWindow::updateActionStates() {
 	if (m_actRender)      m_actRender->setEnabled(true);
 	if (m_actRenderVideo) m_actRenderVideo->setEnabled(true);
 	// Esc only exists while there's something to cancel - see the header
-	// comment in this file.
+	// comment in this file. A running Live Preview is cancellable too, even
+	// though it's not a RenderController job (m_isRendering stays false for
+	// it - see OutputMode's own comment).
+#ifdef RT_GUI_HAVE_GPU
+	if (m_actStop)        m_actStop->setEnabled(m_isRendering || m_livePreviewRunning);
+#else
 	if (m_actStop)        m_actStop->setEnabled(m_isRendering);
+#endif
 	if (m_actPause)       m_actPause->setEnabled(m_isRendering);
 	if (m_actAbandon)     m_actAbandon->setEnabled(m_isRendering);
 	// Reflect whichever Preview sub-tab is currently active, not just the

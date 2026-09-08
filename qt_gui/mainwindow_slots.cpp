@@ -137,6 +137,23 @@ void MainWindow::onRenderClicked() {
 		onLogMessage("Paused background thumbnail generation to start this render.");
 	}
 
+#ifdef RT_GUI_HAVE_GPU
+	// Live Preview never becomes a RenderJob - it has no output file, no
+	// completion state, and runs in-process rather than as a
+	// RenderController/QProcess job (see OutputMode's own comment). Branch
+	// away before touching captureRenderJob()/m_renderQueue at all, rather
+	// than giving RenderJob a "kind" field: the queue is a full user-facing
+	// feature (its own panel, describeRenderJob(), ETA sampler, recent-
+	// renders list) built entirely around concepts a live session has none
+	// of, and "queued but instantly started" is self-contradictory anyway -
+	// a live preview queued behind a real render would sit inert, the
+	// opposite of what clicking the button asked for.
+	if (isLiveMode()) {
+		startLivePreview();
+		return;
+	}
+#endif
+
 	// Always enqueue, then start the front of the queue if nothing is
 	// currently running - the everyday single-render case is just "enqueue
 	// one job into an empty, immediately-idle queue", so there is no
@@ -278,8 +295,8 @@ RenderJob MainWindow::captureRenderJob() {
 	{
 		QFileInfo prevInfo(m_outputPathEdit->text());
 		QString dir = prevInfo.absolutePath();
-		QString ext = m_videoMode ? "ppm" : (prevInfo.suffix().isEmpty() ? "png" : prevInfo.suffix());
-		QString base = m_videoMode ? "video" : "render";
+		QString ext = isVideoMode() ? "ppm" : (prevInfo.suffix().isEmpty() ? "png" : prevInfo.suffix());
+		QString base = isVideoMode() ? "video" : "render";
 		QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss_zzz");
 		QString newName = QString("%1_%2_%3.%4").arg(base, job.sceneId, timestamp, ext);
 		m_outputPathEdit->setText(QDir::toNativeSeparators(dir + "/" + newName));
@@ -310,8 +327,8 @@ RenderJob MainWindow::captureRenderJob() {
 			|| std::abs(job.camZ - jobMeta.camLookfromZ) > kEpsilon;
 	}
 
-	job.videoMode = m_videoMode;
-	if (m_videoMode) {
+	job.videoMode = isVideoMode();
+	if (isVideoMode()) {
 		job.videoFrames = m_videoFramesSpinBox->value();
 		job.videoFPS = m_videoFPSSpinBox->value();
 		job.videoSpeed = m_videoSpeedSpinBox->value();
@@ -382,10 +399,17 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	m_isRendering = true;
 	// m_renderButton stays enabled (unlike m_stopButton) - it's still valid
 	// to click while a render is running, since doing so now just queues
-	// another job instead of starting one immediately.
+	// another job instead of starting one immediately. (Not true in Live
+	// Preview mode, which has no queue - updateTransportButtons() below
+	// overrides this when that's the currently-selected mode, e.g. if this
+	// job was queued while Image/Video was selected and only started
+	// executing after the user switched to Live Preview.)
 	m_stopButton->setEnabled(true);
 	m_pauseButton->setEnabled(true);
 	m_abandonButton->setEnabled(true);
+#ifdef RT_GUI_HAVE_GPU
+	updateTransportButtons();
+#endif
 	// Always starts in "Pause" state regardless of how the previous job
 	// ended - a paused job is never left running unattended when
 	// onRenderComplete() fires (it only fires once the process has actually
@@ -614,6 +638,16 @@ void MainWindow::onThumbnailsAllDone() {
 }
 
 void MainWindow::onStopClicked() {
+#ifdef RT_GUI_HAVE_GPU
+	// Checked first (though §3's mutual-exclusion rule means m_isRendering
+	// and m_livePreviewRunning are never both true, so the order isn't
+	// actually load-bearing) - RenderController::stopRender() exists to
+	// kill a QProcess, which doesn't apply to an in-process live session.
+	if (m_livePreviewRunning) {
+		stopLivePreview();
+		return;
+	}
+#endif
 	if (!m_isRendering || !m_renderController) {
 		return;
 	}
@@ -777,8 +811,7 @@ void MainWindow::onVideoPresetChanged(int index) {
 	// (render button text/icon, status label) should already be in place
 	// before selectSceneById() below runs onSceneChanged(), which also
 	// touches status-adjacent labels.
-	if (m_modeCombo && m_modeCombo->currentIndex() != 1)
-		m_modeCombo->setCurrentIndex(1);
+	selectOutputMode(OutputMode::Video);
 
 	selectSceneById(QString::fromUtf8(preset->scene_id));
 
@@ -1198,6 +1231,9 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	m_stopButton->setEnabled(false);
 	m_pauseButton->setEnabled(false);
 	m_abandonButton->setEnabled(false);
+#ifdef RT_GUI_HAVE_GPU
+	updateTransportButtons();
+#endif
 	m_pauseStartedAt = QDateTime();
 	if (m_elapsedTimer) m_elapsedTimer->stop();
 	updateActionStates();
@@ -1612,8 +1648,25 @@ void MainWindow::onElapsedTick() {
 	m_statusLabel->setText(formatProgressStatus(elapsedMs, m_progressBar->value()));
 }
 
+void MainWindow::selectOutputMode(OutputMode mode) {
+	const int index = m_modeCombo->findData(static_cast<int>(mode));
+	if (index < 0) return;  // e.g. LivePreview's item doesn't exist on a non-GPU build
+	if (m_modeCombo->currentIndex() != index) m_modeCombo->setCurrentIndex(index);
+}
+
 void MainWindow::onModeChanged(int index) {
-	m_videoMode = (index == 1); // 0 = Image, 1 = Video
+#ifdef RT_GUI_HAVE_GPU
+	// Live Preview only ever runs while it's the selected mode - leaving it
+	// stops any in-progress session, the same "only costs anything while
+	// actually being watched" intent the Live Preview tab's own
+	// currentChanged handler already applies to navigating away from its
+	// tab. This also means starting a batch render (which forces the mode
+	// combo to Image/Video first, via m_actRender/m_actRenderVideo) always
+	// cleanly stops a running preview first, with no separate error/prompt.
+	if (m_livePreviewRunning && static_cast<OutputMode>(m_modeCombo->itemData(index).toInt()) != OutputMode::LivePreview)
+		stopLivePreview();
+#endif
+	m_outputMode = static_cast<OutputMode>(m_modeCombo->itemData(index).toInt());
 
 	// Every control in Video Generation Settings is inert unless Output Mode
 	// is "Generate Video" - the warning label (see its own comment,
@@ -1621,39 +1674,106 @@ void MainWindow::onModeChanged(int index) {
 	// and blocking browsing/configuring it ahead of switching modes (which
 	// would also silently break onVideoPresetChanged()'s auto-switch-to-
 	// Video-mode behavior below, since a disabled combo can't be opened to
-	// pick a preset from in the first place).
-	if (m_videoModeWarningLabel) m_videoModeWarningLabel->setVisible(!m_videoMode);
+	// pick a preset from in the first place). Same convention for Live
+	// Preview's own warning label(s).
+	if (m_videoModeWarningLabel) m_videoModeWarningLabel->setVisible(!isVideoMode());
+#ifdef RT_GUI_HAVE_GPU
+	if (m_liveModeWarningLabel) m_liveModeWarningLabel->setVisible(isLiveMode());
+	if (m_liveModeOptionsWarningLabel) m_liveModeOptionsWarningLabel->setVisible(isLiveMode());
+#endif
 
 	// --video hard-rejects any non-Default integrator (see
 	// m_integratorVideoWarningLabel's own comment, mainwindow.h) - also
 	// toggled from onIntegratorChanged() below, since either control can
 	// create or resolve the conflict.
 	const auto currentIntegrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
-	const bool showIntegratorVideoWarning = m_videoMode && currentIntegrator != IntegratorMode::Default;
+	const bool showIntegratorVideoWarning = isVideoMode() && currentIntegrator != IntegratorMode::Default;
 	m_integratorVideoWarningLabel->setVisible(showIntegratorVideoWarning);
 	m_integratorVideoWarningLabelBasic->setVisible(showIntegratorVideoWarning);
 
-	// Update render button text based on mode
-	if (m_videoMode) {
-		// Keep the same Alt+R mnemonic as the single-image label below, so the
-		// keyboard shortcut doesn't move when the output mode changes. The
-		// leading glyph is gone from both labels: the button carries a real
-		// QIcon now, and a text-embedded emoji would sit next to it as a
-		// second, differently-styled icon.
+	// Update the pinned Render button's label/icon/tooltip and the status
+	// line to match the selected mode. Every label below keeps the same
+	// Alt+R mnemonic, so the keyboard shortcut doesn't move when the
+	// output mode changes.
+	switch (m_outputMode) {
+	case OutputMode::Video:
 		m_renderButton->setText(tr("START VIDEO &RENDER"));
 		icon_tint::apply(m_renderButton, ":/icons/video.svg",
 		                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
+		m_renderButton->setToolTip(tr("Renders the camera path frame by frame and assembles a video. "
+		                              "Queues behind it instead if a render is already running."));
 		m_statusLabel->setText(tr("Ready to render video frames"));
-	} else {
+		break;
+#ifdef RT_GUI_HAVE_GPU
+	case OutputMode::LivePreview:
+		m_renderButton->setText(tr("START LIVE &PREVIEW"));
+		icon_tint::apply(m_renderButton, ":/icons/gpu.svg",
+		                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
+		m_renderButton->setToolTip(tr("Starts an interactive GPU preview you can orbit/zoom with the mouse. "
+		                              "Disabled while a batch render is running."));
+		m_statusLabel->setText(tr("Ready to start live preview"));
+		break;
+#endif
+	case OutputMode::Image:
+	default:
 		m_renderButton->setText(tr("START &RENDER"));
 		icon_tint::apply(m_renderButton, ":/icons/render.svg",
 		                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
+		m_renderButton->setToolTip(tr("Renders the selected scene with the current settings. "
+		                              "Queues behind it instead if a render is already running."));
 		m_statusLabel->setText(tr("Ready to render"));
+		break;
 	}
 
+#ifdef RT_GUI_HAVE_GPU
+	updateTransportButtons();
+#endif
+
 	// Log mode change
-	onLogMessage(tr("Mode changed to: %1").arg(m_videoMode ? tr("Video Generation") : tr("Single Image")));
+	QString modeName = tr("Single Image");
+	if (isVideoMode()) modeName = tr("Video Generation");
+#ifdef RT_GUI_HAVE_GPU
+	else if (isLiveMode()) modeName = tr("Live Preview");
+#endif
+	onLogMessage(tr("Mode changed to: %1").arg(modeName));
 }
+
+#ifdef RT_GUI_HAVE_GPU
+// Single source of truth for the pinned Render/Stop/Pause/Abandon buttons'
+// enabled state whenever Live Preview is (or was just) involved - called
+// from onModeChanged(), startRenderJob(), onRenderComplete(), and both
+// startLivePreview()/stopLivePreview(). Image/Video mode's own existing
+// enablement rules (m_renderButton always stays enabled to queue another
+// job; Stop/Pause/Abandon follow m_isRendering) are untouched and set
+// directly at their own call sites - this function only needs to add the
+// Live-Preview-aware overrides on top, and only actually changes anything
+// when Live Preview is the selected mode or a preview is still running.
+void MainWindow::updateTransportButtons() {
+	if (isLiveMode()) {
+		// No queue for Live Preview: only one preview can run, and it can't
+		// even start while a batch render (queued from before the mode was
+		// switched) still owns the GPU.
+		m_renderButton->setEnabled(!m_isRendering && !m_livePreviewRunning);
+		m_stopButton->setEnabled(m_livePreviewRunning);
+		m_pauseButton->setEnabled(false);
+		m_abandonButton->setEnabled(false);
+		return;
+	}
+	if (m_livePreviewRunning) {
+		// Image/Video mode is selected (or just switched to) but a preview
+		// from before the mode change hasn't finished stopping yet -
+		// shouldn't normally be observable, since onModeChanged() stops it
+		// synchronously, but stay consistent regardless.
+		m_renderButton->setEnabled(false);
+		m_stopButton->setEnabled(true);
+		m_pauseButton->setEnabled(false);
+		m_abandonButton->setEnabled(false);
+	}
+	// Otherwise: Image/Video mode, no preview involved - leave whatever
+	// startRenderJob()/onStopClicked()/onPauseClicked()/onRenderComplete()
+	// already set.
+}
+#endif
 
 void MainWindow::onIntegratorChanged(int) {
 	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
@@ -1700,7 +1820,7 @@ void MainWindow::onIntegratorChanged(int) {
 
 	// See onModeChanged()'s own comment - either control can create or
 	// resolve the --video + non-Default-integrator conflict.
-	const bool showIntegratorVideoWarning = m_videoMode && integrator != IntegratorMode::Default;
+	const bool showIntegratorVideoWarning = isVideoMode() && integrator != IntegratorMode::Default;
 	m_integratorVideoWarningLabel->setVisible(showIntegratorVideoWarning);
 	m_integratorVideoWarningLabelBasic->setVisible(showIntegratorVideoWarning);
 

@@ -705,7 +705,7 @@ void ThumbnailGenerator::startNext() {
 
 // MainWindow Implementation
 MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
-	: QMainWindow(parent), m_renderController(nullptr), m_isRendering(false), m_videoMode(false),
+	: QMainWindow(parent), m_renderController(nullptr), m_isRendering(false),
 	  m_elapsedTimer(nullptr) {
 
 	// Cached once so createLanguageMenu() (called from setupUI() below) reads

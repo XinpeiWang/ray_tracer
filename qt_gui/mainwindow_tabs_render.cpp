@@ -72,6 +72,20 @@ void MainWindow::createRenderOptionsTab() {
 	layout->setSpacing(14);
 	layout->setContentsMargins(12, 12, 12, 12);
 
+#ifdef RT_GUI_HAVE_GPU
+	// Same "banner, don't hide" convention as the Settings tab's own
+	// m_videoModeWarningLabel/m_liveModeWarningLabel - see their comments
+	// (mainwindow.h). None of this tab's settings apply to Live Preview,
+	// which always renders via the GPU wavefront path tracer directly.
+	m_liveModeOptionsWarningLabel = new QLabel(
+		tr("⚠ Live Preview uses the GPU progressive path tracer directly - none of the "
+		"settings on this tab apply to it."), optionsTab);
+	m_liveModeOptionsWarningLabel->setObjectName("videoModeWarning");
+	m_liveModeOptionsWarningLabel->setWordWrap(true);
+	m_liveModeOptionsWarningLabel->setVisible(false);
+	layout->addWidget(m_liveModeOptionsWarningLabel);
+#endif
+
 	// ------------------------------------------------------------------
 	// Integrator group - the algorithm selector itself, plus sub-flags for
 	// whichever alternate integrator it selects. Comes first (rather than
@@ -1235,18 +1249,23 @@ void MainWindow::createPreviewTab() {
 
 #ifdef RT_GUI_HAVE_GPU
 // Live Preview tab - GPU progressive-refinement preview (see this project's
-// own real-time-preview plan). One Start/Stop button, the accumulating
-// image, and a one-line status - none of the full Preview tab's sub-tabs/
-// sidebar/recent-renders machinery, since this isn't a completed, saved
-// render the way that tab's renders are. Camera comes from the existing
-// m_cameraPosX/Y/Z spinboxes (read at Start time, and live-forwarded via
-// onLivePreviewCameraChanged() while running) as a starting point, PLUS
-// click-drag-to-orbit/wheel-to-zoom directly in the preview image
-// (OrbitPreviewLabel, mainwindow_widgets.h) - see m_orbit's own comment
-// (mainwindow.h) for how those two camera representations stay in sync.
-// The actual spherical-coordinate math lives in camera_math.h (Qt-free,
-// unit-tested - see tests/unit/camera_math_tests.cpp), matching this
-// codebase's own existing convention for camera arithmetic
+// own real-time-preview plan), now just another Output Mode (see that
+// enum's own comment, mainwindow_jobtypes.h) driven by the same pinned
+// Render/Stop button pair every other mode uses - no button of its own.
+// The accumulating image and a one-line status - none of the full Preview
+// tab's sub-tabs/sidebar/recent-renders machinery, since this isn't a
+// completed, saved render the way that tab's renders are, and it deliberately
+// stays its own tab rather than merging into Progress (whose progress-bar/
+// ETA/queue layout doesn't apply to a no-completion mode) or the Preview
+// tab's sub-tabs (whose pages assume a real output file on disk). Camera
+// comes from the existing m_cameraPosX/Y/Z spinboxes (read at Start time,
+// and live-forwarded via onLivePreviewCameraChanged() while running) as a
+// starting point, PLUS click-drag-to-orbit/wheel-to-zoom directly in the
+// preview image (OrbitPreviewLabel, mainwindow_widgets.h) - see m_orbit's
+// own comment (mainwindow.h) for how those two camera representations stay
+// in sync. The actual spherical-coordinate math lives in camera_math.h
+// (Qt-free, unit-tested - see tests/unit/camera_math_tests.cpp), matching
+// this codebase's own existing convention for camera arithmetic
 // (onCameraDistanceChanged()'s own comment, mainwindow_slots.cpp); the
 // functions here are just plumbing that reads/writes m_orbit and forwards
 // the result to RealtimePreviewSession.
@@ -1258,7 +1277,9 @@ void MainWindow::createLivePreviewTab() {
 	if (!RealtimePreviewSession::isAvailable()) {
 		// Same "fail quiet, explain why" pattern as every scene_metadata.dll
 		// query - realtime_renderer.dll missing/wrong-arch/etc. shouldn't
-		// crash the GUI, just leave this tab inert.
+		// crash the GUI, just leave this tab inert. The Output Mode combo's
+		// own "Live Preview" item is separately disabled with a matching
+		// tooltip - see createSettingsTab()'s own comment.
 		QLabel *unavailable = new QLabel(
 			tr("Live Preview isn't available - realtime_renderer.dll wasn't found "
 			   "next to the application."), tab);
@@ -1275,13 +1296,10 @@ void MainWindow::createLivePreviewTab() {
 	connect(m_livePreviewSession, &RealtimePreviewSession::statusChanged,
 	        this, &MainWindow::onLivePreviewStatus);
 
-	m_livePreviewToggleButton = new QPushButton(tr("Start Live Preview"), tab);
-	connect(m_livePreviewToggleButton, &QPushButton::clicked, this, &MainWindow::onLivePreviewToggled);
-	layout->addWidget(m_livePreviewToggleButton);
-
 	m_livePreviewLabel = new OrbitPreviewLabel(tab);
 	m_livePreviewLabel->setMinimumSize(200, 200);
-	m_livePreviewLabel->setPlaceholderText(tr("Click Start Live Preview to begin"));
+	m_livePreviewLabel->setPlaceholderText(
+		tr("Select Live Preview as the Output Mode (Settings tab) and click START LIVE PREVIEW."));
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::orbitDragged, this, &MainWindow::onLivePreviewOrbitDragged);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::zoomRequested, this, &MainWindow::onLivePreviewZoomRequested);
 	layout->addWidget(m_livePreviewLabel, /*stretch=*/1);
@@ -1294,29 +1312,28 @@ void MainWindow::createLivePreviewTab() {
 
 	// Stop the render loop (rather than let it keep burning GPU cycles
 	// unseen) whenever the user navigates away from this tab - restarted
-	// fresh (Start button) when they come back, matching this feature's own
-	// "only costs anything while actually being watched" intent. Also
+	// fresh (Render button) when they come back, matching this feature's
+	// own "only costs anything while actually being watched" intent. This
+	// also protects onLivePreviewCameraChanged()'s own "read all three
+	// camera spinboxes at once" approach (see its comment, mainwindow.h) -
+	// the Settings tab stays unreachable while a preview runs. Also
 	// defensively cancels any in-progress orbit drag (e.g. a keyboard tab
 	// switch while the mouse button is still held) - see
 	// OrbitPreviewLabel::cancelDrag()'s own comment.
 	connect(m_tabWidget, &QTabWidget::currentChanged, this, [this](int index) {
 		if (index != m_livePreviewTabIndex) m_livePreviewLabel->cancelDrag();
-		if (m_livePreviewRunning && index != m_livePreviewTabIndex) onLivePreviewToggled();
+		if (m_livePreviewRunning && index != m_livePreviewTabIndex) stopLivePreview();
 	});
 }
 
-void MainWindow::onLivePreviewToggled() {
-	if (!m_livePreviewSession) return;
-	if (m_livePreviewRunning) {
-		m_livePreviewSession->stop();
-		m_livePreviewRunning = false;
-		m_livePreviewToggleButton->setText(tr("Start Live Preview"));
-		m_livePreviewStatusLabel->setText(tr("Stopped"));
-		return;
-	}
+void MainWindow::startLivePreview() {
+	if (!m_livePreviewSession || m_livePreviewRunning) return;
 
 	const QString sceneId = m_sceneCombo->currentData().toString();
-	if (sceneId.isEmpty()) return;
+	if (sceneId.isEmpty()) {
+		m_livePreviewStatusLabel->setText(tr("Select a scene first"));
+		return;
+	}
 	// Fixed, modest resolution - keeps per-frame cost low regardless of the
 	// Settings tab's own width/height fields (this preview is about
 	// interactive feedback, not a final-quality render at the requested
@@ -1333,8 +1350,22 @@ void MainWindow::onLivePreviewToggled() {
 	m_orbit = camera_math::cartesianToOrbit(camera, currentLookAt());
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z);
 	m_livePreviewRunning = true;
-	m_livePreviewToggleButton->setText(tr("Stop Live Preview"));
 	m_livePreviewStatusLabel->setText(tr("Starting..."));
+	updateTransportButtons();
+	updateActionStates();  // Escape (m_actStop) becomes enabled - see its own comment
+	// Same "click Render -> land where you watch it happen" behavior every
+	// other Output Mode already gets from startRenderJob()'s own switch to
+	// the Progress tab - just a different destination tab for this mode.
+	if (m_livePreviewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_livePreviewTabIndex);
+}
+
+void MainWindow::stopLivePreview() {
+	if (!m_livePreviewSession || !m_livePreviewRunning) return;
+	m_livePreviewSession->stop();
+	m_livePreviewRunning = false;
+	m_livePreviewStatusLabel->setText(tr("Stopped"));
+	updateTransportButtons();
+	updateActionStates();  // Escape (m_actStop) becomes disabled again
 }
 
 void MainWindow::onLivePreviewFrameReady(QImage image, int sampleCount) {

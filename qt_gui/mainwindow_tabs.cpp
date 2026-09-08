@@ -21,6 +21,10 @@
 
 #include <QTabBar>
 #include "scene_metadata_client.h"
+#ifdef RT_GUI_HAVE_GPU
+#include "realtime_preview_session.h"
+#endif
+#include <QStandardItemModel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -561,21 +565,46 @@ void MainWindow::createSettingsTab() {
 	renderLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_modeCombo = new QComboBox(basicTab);
-	icon_tint::addItem(m_modeCombo, ":/icons/image.svg", tr("Render Single Image"), {}, m_activeTheme.textBody);
-	icon_tint::addItem(m_modeCombo, ":/icons/video.svg", tr("Generate Video"), {}, m_activeTheme.textBody);
+	icon_tint::addItem(m_modeCombo, ":/icons/image.svg", tr("Render Single Image"),
+					   static_cast<int>(OutputMode::Image), m_activeTheme.textBody);
+	icon_tint::addItem(m_modeCombo, ":/icons/video.svg", tr("Generate Video"),
+					   static_cast<int>(OutputMode::Video), m_activeTheme.textBody);
+#ifdef RT_GUI_HAVE_GPU
+	// Added even when realtime_renderer.dll isn't found (RealtimePreviewSession::
+	// isAvailable() == false) - disabled with an explanatory tooltip instead
+	// of omitted, so the feature is at least discoverable rather than
+	// silently missing. Same "fail quiet, explain why" convention
+	// createLivePreviewTab()'s own placeholder-tab path already uses.
+	icon_tint::addItem(m_modeCombo, ":/icons/gpu.svg", tr("Live Preview (interactive)"),
+					   static_cast<int>(OutputMode::LivePreview), m_activeTheme.textBody);
+	if (!RealtimePreviewSession::isAvailable()) {
+		const int liveIndex = m_modeCombo->count() - 1;
+		// QComboBox uses a QStandardItemModel by default - disabling the
+		// underlying QStandardItem (not just adding a tooltip) is what
+		// actually greys the row out and blocks selecting it.
+		if (auto *model = qobject_cast<QStandardItemModel *>(m_modeCombo->model())) {
+			if (QStandardItem *item = model->item(liveIndex)) item->setEnabled(false);
+		}
+		m_modeCombo->setItemData(liveIndex, tr("realtime_renderer.dll wasn't found next to the application."), Qt::ToolTipRole);
+	}
+#endif
 	m_modeCombo->setCurrentIndex(0);
 	styleComboBox(m_modeCombo);
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onModeChanged);
 	renderLayout->addRow(labelWithInfo(tr("Output Mode:"),
-		tr("Whether this render produces a single still frame, or a "
-		"sequence of frames stitched into a video.\n\n"
+		tr("Whether this render produces a single still frame, a "
+		"sequence of frames stitched into a video, or an interactive GPU "
+		"preview.\n\n"
 		"Single Image renders the scene once, from the camera set on "
 		"this tab. Generate Video instead moves "
 		"the camera along a path (Video Generation Settings, further "
 		"down this tab) and renders one frame per step, then assembles "
 		"them into an MP4 - taking roughly Frame Count times as long as "
-		"a single image.\n\nGenerate Video cannot be combined with an alternate "
+		"a single image. Live Preview instead renders continuously at a "
+		"fixed, small resolution so you can click-drag/scroll to orbit "
+		"the camera and see the result converge in real time - it never "
+		"writes an output file.\n\nGenerate Video cannot be combined with an alternate "
 		"Integrator - see the warning below if that combination is "
 		"picked.")),
 		m_modeCombo);
@@ -591,9 +620,24 @@ void MainWindow::createSettingsTab() {
 	m_integratorVideoWarningLabelBasic->setVisible(false);
 	renderLayout->addRow(QString(), m_integratorVideoWarningLabelBasic);
 
+#ifdef RT_GUI_HAVE_GPU
+	// Same "banner, don't hide" convention as m_videoModeWarningLabel below -
+	// see its own comment (mainwindow.h) for why nothing here gets disabled
+	// instead. Visible only in Live Preview mode; toggled by onModeChanged().
+	m_liveModeWarningLabel = new QLabel(
+		tr("⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no "
+		"output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path "
+		"don't apply. Scene and Camera Position do."), basicTab);
+	m_liveModeWarningLabel->setObjectName("videoModeWarning");
+	m_liveModeWarningLabel->setWordWrap(true);
+	m_liveModeWarningLabel->setVisible(false);
+	renderLayout->addRow(QString(), m_liveModeWarningLabel);
+#endif
+
 	m_modeCombo->setToolTip(
 		tr("Single Image renders one frame.\n"
-		"Generate Video renders a camera path frame by frame and assembles an MP4."));
+		"Generate Video renders a camera path frame by frame and assembles an MP4.\n"
+		"Live Preview renders continuously with an orbitable camera - GPU only."));
 
 	m_renderModeCombo = new QComboBox(basicTab);
 #ifdef RT_GUI_HAVE_GPU
@@ -776,7 +820,7 @@ void MainWindow::createSettingsTab() {
 		videoGroup);
 	m_videoModeWarningLabel->setObjectName("videoModeWarning");
 	m_videoModeWarningLabel->setWordWrap(true);
-	m_videoModeWarningLabel->setVisible(!m_videoMode);
+	m_videoModeWarningLabel->setVisible(!isVideoMode());
 	videoLayout->addRow(m_videoModeWarningLabel);
 
 	// Preset selector - sets the scene picker above, camera path, and the
