@@ -277,14 +277,7 @@ int main(int argc, char** argv) {
 	// accelerator_override.h's own comment for why this needs to be a
 	// process-global rather than threaded through RenderOptions (BDPT/MLT/
 	// SPPM/the debug integrators take no RenderOptions parameter at all).
-	{
-		accelerator_override::Override o;
-		o.has_type = !args.accelerator.empty();
-		o.type = args.accelerator;
-		o.has_split_method = !args.splitmethod.empty();
-		o.split_method = args.splitmethod;
-		accelerator_override::set(o);
-	}
+	accelerator_override::set({args.accelerator, args.splitmethod});
 	double cam_x            = args.cam_x;
 	double cam_y            = args.cam_y;
 	double cam_z            = args.cam_z;

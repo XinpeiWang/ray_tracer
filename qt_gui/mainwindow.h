@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <initializer_list>
 #include <QMainWindow>
 #include <QTabWidget>
 #include <QComboBox>
@@ -371,6 +372,18 @@ private:
 	// (mainwindow_style.cpp) for the full design rationale.
 	QToolButton* createInfoIcon(const QString &helpText);
 	QWidget* labelWithInfo(const QString &labelText, const QString &helpText);
+	// One row for populateComboEntries() below - value is the combo item's
+	// data (QString() for "no CLI value/use the default"), tooltip is plain
+	// text run through wrapTooltipHtml(). Was 4 independently hand-copied
+	// local struct+loop pairs (Sampler/LightSampler/Accelerator/SplitMethod
+	// combos, mainwindow_tabs_render.cpp) before being factored into this
+	// one shared type + method.
+	struct ComboEntry { QString label; QString value; QString tooltip; };
+	// Appends each entry to `combo` via icon_tint::addItem() (the "(i)" mark
+	// + per-row tooltip pattern every enum-valued combo on the Render
+	// Options tab uses) and sets its Qt::ToolTipRole data from
+	// wrapTooltipHtml(entry.tooltip).
+	void populateComboEntries(QComboBox *combo, std::initializer_list<ComboEntry> entries);
 	QWidget* checkboxWithInfo(QCheckBox *checkBox, const QString &helpText);
 	// Escapes and wraps plain, blank-line-separated paragraphs into `<p>`
 	// tags - the shared core of wrapTooltipHtml() below and the Preview

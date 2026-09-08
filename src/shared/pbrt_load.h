@@ -326,12 +326,19 @@ inline LoadResult loadFile(const std::string &path,
 	// Scene's own Accelerator directive fields BEFORE flatten() runs, so it
 	// is resolved by flatten()'s existing validation/fallback/motion-blur-
 	// compatibility logic exactly as if the scene file itself had asked for
-	// it - see accelerator_override.h's own comment.
-	pbrt_scene::Scene sceneToFlatten = parsed.scene;
-	if (accelOverride.has_type) sceneToFlatten.acceleratorType = accelOverride.type;
-	if (accelOverride.has_split_method) sceneToFlatten.acceleratorSplitMethod = accelOverride.split_method;
-
-	r.scene = pbrt_flatten::flatten(sceneToFlatten, meshes);
+	// it - see accelerator_override.h's own comment. Only copies `parsed.scene`
+	// (a real cost - Scene holds every shape/material/texture/light in the
+	// file) when an override is actually present; the overwhelming majority
+	// of loads (--accelerator/--splitmethod are opt-in) flatten the parsed
+	// scene directly, same as before this override parameter existed.
+	if (!accelOverride.type.empty() || !accelOverride.split_method.empty()) {
+		pbrt_scene::Scene sceneToFlatten = parsed.scene;
+		if (!accelOverride.type.empty()) sceneToFlatten.acceleratorType = accelOverride.type;
+		if (!accelOverride.split_method.empty()) sceneToFlatten.acceleratorSplitMethod = accelOverride.split_method;
+		r.scene = pbrt_flatten::flatten(sceneToFlatten, meshes);
+	} else {
+		r.scene = pbrt_flatten::flatten(parsed.scene, meshes);
+	}
 	r.ok = true;
 
 	// Infinite light's image, if it has one. Resolved the same

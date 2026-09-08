@@ -47,6 +47,24 @@ namespace {
 	// no O(maxDepth^2) cost blowup to defend against the way BDPT/MLT have.
 	constexpr double kDefaultAoMaxDist = 1e10;   // pbrt-v4's own "effectively unbounded" default
 	constexpr double kDefaultAoIllumScale = 1.0;
+
+	// Shared by --sampler/--lightsampler/--accelerator/--splitmethod below:
+	// lowercase the raw argv value, check it against the flag's own valid
+	// set, assign on a hit or print an "invalid, falling back to X" warning
+	// naming every valid value on a miss. Consolidates what was 4
+	// independently hand-copied ~8-line blocks (one per flag) into one.
+	inline void parseEnumFlag(const std::string &rawValue, const std::set<std::string> &validValues,
+							   std::string &outField, const std::string &flagName,
+							   const std::string &invalidMessage) {
+		std::string name = rawValue;
+		std::transform(name.begin(), name.end(), name.begin(),
+					   [](unsigned char c) { return std::tolower(c); });
+		if (validValues.count(name)) {
+			outField = name;
+		} else {
+			std::cerr << "Invalid " << flagName << " \"" << rawValue << "\", " << invalidMessage << "\n";
+		}
+	}
 }
 
 struct LaunchArgs {
@@ -342,24 +360,15 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 				std::cerr << "Invalid --exposure value, using default\n";
 			}
 		} else if (arg == render_flags::kSampler && i + 1 < argc) {
-			std::string name = argv[i + 1];
-			std::transform(name.begin(), name.end(), name.begin(),
-							[](unsigned char c) { return std::tolower(c); });
 			static const std::set<std::string> kValidSamplers = {
 				"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton", "independent"};
-			if (kValidSamplers.count(name)) {
-				out.sampler = name;
-			} else {
-				std::cerr << "Invalid --sampler \"" << argv[i + 1] << "\", using default (sobol). "
-							 "Valid: sobol, zsobol, paddedsobol, stratified, pmj02bn, halton, independent\n";
-			}
+			parseEnumFlag(argv[i + 1], kValidSamplers, out.sampler, "--sampler",
+						  "using default (sobol). Valid: sobol, zsobol, paddedsobol, stratified, "
+						  "pmj02bn, halton, independent");
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
 		} else if (arg == "--lightsampler" && i + 1 < argc) {
-			std::string name = argv[i + 1];
-			std::transform(name.begin(), name.end(), name.begin(),
-							[](unsigned char c) { return std::tolower(c); });
 			// "auto" isn't a real light-sampler implementation - it means
 			// "use whatever the scene's own Integrator \"string lightsampler\"
 			// parameter requested" (falling back to bvh if it made no
@@ -373,40 +382,24 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			// convenience the GUI's "Apply recommended settings" button
 			// already gives GUI users.
 			static const std::set<std::string> kValidLightSamplers = {"uniform", "power", "bvh", "auto"};
-			if (kValidLightSamplers.count(name)) {
-				out.lightsampler = name;
-			} else {
-				std::cerr << "Invalid --lightsampler \"" << argv[i + 1] << "\", using default (bvh). "
-							 "Valid: uniform, power, bvh, auto\n";
-			}
+			parseEnumFlag(argv[i + 1], kValidLightSamplers, out.lightsampler, "--lightsampler",
+						  "using default (bvh). Valid: uniform, power, bvh, auto");
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
 		} else if (arg == render_flags::kAccelerator && i + 1 < argc) {
-			std::string name = argv[i + 1];
-			std::transform(name.begin(), name.end(), name.begin(),
-							[](unsigned char c) { return std::tolower(c); });
 			static const std::set<std::string> kValidAccelerators = {"bvh", "kdtree"};
-			if (kValidAccelerators.count(name)) {
-				out.accelerator = name;
-			} else {
-				std::cerr << "Invalid --accelerator \"" << argv[i + 1] << "\", leaving the scene's own "
-							 "Accelerator directive (or its bvh default) untouched. Valid: bvh, kdtree\n";
-			}
+			parseEnumFlag(argv[i + 1], kValidAccelerators, out.accelerator, "--accelerator",
+						  "leaving the scene's own Accelerator directive (or its bvh default) "
+						  "untouched. Valid: bvh, kdtree");
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
 		} else if (arg == render_flags::kSplitMethod && i + 1 < argc) {
-			std::string name = argv[i + 1];
-			std::transform(name.begin(), name.end(), name.begin(),
-							[](unsigned char c) { return std::tolower(c); });
 			static const std::set<std::string> kValidSplitMethods = {"sah", "middle", "equal", "hlbvh"};
-			if (kValidSplitMethods.count(name)) {
-				out.splitmethod = name;
-			} else {
-				std::cerr << "Invalid --splitmethod \"" << argv[i + 1] << "\", leaving the scene's own "
-							 "splitmethod (or its sah default) untouched. Valid: sah, middle, equal, hlbvh\n";
-			}
+			parseEnumFlag(argv[i + 1], kValidSplitMethods, out.splitmethod, "--splitmethod",
+						  "leaving the scene's own splitmethod (or its sah default) untouched. "
+						  "Valid: sah, middle, equal, hlbvh");
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;

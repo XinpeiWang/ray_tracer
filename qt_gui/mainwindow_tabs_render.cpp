@@ -42,6 +42,18 @@
 #include <cmath>
 #include <algorithm>
 
+// The "(i)" mark + per-row tooltip pattern every enum-valued combo on the
+// Render Options tab uses (Sampler/LightSampler/Accelerator/SplitMethod) -
+// was 4 independently hand-copied local struct+loop pairs before being
+// factored into this one shared method (see ComboEntry's own comment,
+// mainwindow.h).
+void MainWindow::populateComboEntries(QComboBox *combo, std::initializer_list<ComboEntry> entries) {
+	for (const ComboEntry &entry : entries) {
+		icon_tint::addItem(combo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
+		combo->setItemData(combo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
+	}
+}
+
 // ============================================================================
 // Render Options Tab
 // ============================================================================
@@ -344,47 +356,40 @@ void MainWindow::createRenderOptionsTab() {
 	// Same "(i)" mark + per-row tooltip as m_integratorCombo's own items -
 	// see that combo's construction comment for why icon_tint::addItem()
 	// (not a plain addItem()) plus setItemData(Qt::ToolTipRole).
-	{
-		struct SamplerEntry { QString label; QString value; QString tooltip; };
-		const SamplerEntry entries[] = {
-			{tr("Sobol (default)"), QString(), tr(
-				"A low-discrepancy sequence based on Sobol sequences, "
-				"scrambled per pixel. The best general-purpose default - "
-				"fast convergence with no visible structure.")},
-			{tr("Z-Sobol"), QStringLiteral("zsobol"), tr(
-				"A variant of Sobol reordered along a Morton (Z-order) "
-				"curve. Converges at least as well as plain Sobol, with "
-				"better behavior under adaptive/progressive sampling.")},
-			{tr("Padded Sobol"), QStringLiteral("paddedsobol"), tr(
-				"Sobol sequence with extra padding dimensions, avoiding "
-				"correlation artifacts when a pixel needs more random "
-				"dimensions than base Sobol comfortably covers (e.g. "
-				"paths with many bounces).")},
-			{tr("Stratified"), QStringLiteral("stratified"), tr(
-				"Splits each pixel into a grid of sub-cells and takes one "
-				"sample per cell. Simple, predictable coverage - less "
-				"sophisticated than Sobol/Halton, but useful as a "
-				"reference/comparison sampler.")},
-			{tr("PMJ02BN"), QStringLiteral("pmj02bn"), tr(
-				"Progressive multi-jittered (0,2) sequence with blue-noise "
-				"ordering. Especially even spatial (blue-noise) "
-				"distribution of samples across neighboring pixels.")},
-			{tr("Halton"), QStringLiteral("halton"), tr(
-				"A classic low-discrepancy sequence built from a "
-				"different prime base per dimension. Well-tested, avoids "
-				"the axis-aligned clustering plain stratified sampling "
-				"can show.")},
-			{tr("Independent (no stratification)"), QStringLiteral("independent"), tr(
-				"Plain uncorrelated pseudo-random numbers, no low-"
-				"discrepancy structure at all. Included for fidelity to a "
-				"loaded .pbrt scene's own Sampler directive, not a "
-				"recommended choice for its own sake.")},
-		};
-		for (const SamplerEntry &entry : entries) {
-			icon_tint::addItem(m_samplerCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
-			m_samplerCombo->setItemData(m_samplerCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
-		}
-	}
+	populateComboEntries(m_samplerCombo, {
+		{tr("Sobol (default)"), QString(), tr(
+			"A low-discrepancy sequence based on Sobol sequences, "
+			"scrambled per pixel. The best general-purpose default - "
+			"fast convergence with no visible structure.")},
+		{tr("Z-Sobol"), QStringLiteral("zsobol"), tr(
+			"A variant of Sobol reordered along a Morton (Z-order) "
+			"curve. Converges at least as well as plain Sobol, with "
+			"better behavior under adaptive/progressive sampling.")},
+		{tr("Padded Sobol"), QStringLiteral("paddedsobol"), tr(
+			"Sobol sequence with extra padding dimensions, avoiding "
+			"correlation artifacts when a pixel needs more random "
+			"dimensions than base Sobol comfortably covers (e.g. "
+			"paths with many bounces).")},
+		{tr("Stratified"), QStringLiteral("stratified"), tr(
+			"Splits each pixel into a grid of sub-cells and takes one "
+			"sample per cell. Simple, predictable coverage - less "
+			"sophisticated than Sobol/Halton, but useful as a "
+			"reference/comparison sampler.")},
+		{tr("PMJ02BN"), QStringLiteral("pmj02bn"), tr(
+			"Progressive multi-jittered (0,2) sequence with blue-noise "
+			"ordering. Especially even spatial (blue-noise) "
+			"distribution of samples across neighboring pixels.")},
+		{tr("Halton"), QStringLiteral("halton"), tr(
+			"A classic low-discrepancy sequence built from a "
+			"different prime base per dimension. Well-tested, avoids "
+			"the axis-aligned clustering plain stratified sampling "
+			"can show.")},
+		{tr("Independent (no stratification)"), QStringLiteral("independent"), tr(
+			"Plain uncorrelated pseudo-random numbers, no low-"
+			"discrepancy structure at all. Included for fidelity to a "
+			"loaded .pbrt scene's own Sampler directive, not a "
+			"recommended choice for its own sake.")},
+	});
 	m_samplerCombo->setToolTip(
 		tr("Which sampler drives random decisions (all but Independent are\n"
 		"low-discrepancy). CPU default path tracer only - no effect on GPU\n"
@@ -414,41 +419,34 @@ void MainWindow::createRenderOptionsTab() {
 	// Same "(i)" mark + per-row tooltip pattern as m_samplerCombo just
 	// above - see that combo's construction comment.
 	m_lightSamplerCombo = new QComboBox(optionsTab);
-	{
-		struct LightSamplerEntry { QString label; QString value; QString tooltip; };
-		const LightSamplerEntry entries[] = {
-			{tr("BVH (default)"), QString(), tr(
-				"Builds a spatial hierarchy over the scene's lights and "
-				"weighs each one by both power and proximity to the "
-				"shading point, adapting per bounce rather than using one "
-				"global weighting. pbrt-v4's own default - generally the "
-				"best convergence, at a small extra bookkeeping cost.")},
-			{tr("Auto (use scene's own request)"), QStringLiteral("auto"), tr(
-				"Uses whatever this scene's own Integrator \"string "
-				"lightsampler\" parameter requested (BVH if it made no "
-				"request, or requested something this project doesn't "
-				"implement) instead of a fixed choice - matches the CLI's "
-				"own --lightsampler auto. Picking this once and leaving it "
-				"is the one choice here that stays correct as you switch "
-				"between scenes with different recommendations.")},
-			{tr("Power"), QStringLiteral("power"), tr(
-				"Picks a light with probability weighted by its total "
-				"emitted power - bright lights get sampled more often "
-				"than dim ones. Converges faster than uniform in scenes "
-				"with a wide range of light brightness, but ignores "
-				"distance and occlusion.")},
-			{tr("Uniform"), QStringLiteral("uniform"), tr(
-				"Picks a light uniformly at random from every light in "
-				"the scene, regardless of how bright or how far away it "
-				"is. Simple and unbiased, but converges slowly in scenes "
-				"with many lights of very different brightness - a dim "
-				"light gets sampled just as often as a bright one.")},
-		};
-		for (const LightSamplerEntry &entry : entries) {
-			icon_tint::addItem(m_lightSamplerCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
-			m_lightSamplerCombo->setItemData(m_lightSamplerCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
-		}
-	}
+	populateComboEntries(m_lightSamplerCombo, {
+		{tr("BVH (default)"), QString(), tr(
+			"Builds a spatial hierarchy over the scene's lights and "
+			"weighs each one by both power and proximity to the "
+			"shading point, adapting per bounce rather than using one "
+			"global weighting. pbrt-v4's own default - generally the "
+			"best convergence, at a small extra bookkeeping cost.")},
+		{tr("Auto (use scene's own request)"), QStringLiteral("auto"), tr(
+			"Uses whatever this scene's own Integrator \"string "
+			"lightsampler\" parameter requested (BVH if it made no "
+			"request, or requested something this project doesn't "
+			"implement) instead of a fixed choice - matches the CLI's "
+			"own --lightsampler auto. Picking this once and leaving it "
+			"is the one choice here that stays correct as you switch "
+			"between scenes with different recommendations.")},
+		{tr("Power"), QStringLiteral("power"), tr(
+			"Picks a light with probability weighted by its total "
+			"emitted power - bright lights get sampled more often "
+			"than dim ones. Converges faster than uniform in scenes "
+			"with a wide range of light brightness, but ignores "
+			"distance and occlusion.")},
+		{tr("Uniform"), QStringLiteral("uniform"), tr(
+			"Picks a light uniformly at random from every light in "
+			"the scene, regardless of how bright or how far away it "
+			"is. Simple and unbiased, but converges slowly in scenes "
+			"with many lights of very different brightness - a dim "
+			"light gets sampled just as often as a bright one.")},
+	});
 	m_lightSamplerCombo->setToolTip(
 		tr("Which strategy picks the light to sample at each next-event-\n"
 		"estimation bounce. Affects noise/convergence speed, not the\n"
@@ -604,30 +602,23 @@ void MainWindow::createRenderOptionsTab() {
 	acceleratorLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_acceleratorCombo = new QComboBox(optionsTab);
-	{
-		struct AcceleratorEntry { QString label; QString value; QString tooltip; };
-		const AcceleratorEntry entries[] = {
-			{tr("Scene's own choice (default)"), QString(), tr(
-				"Leaves a loaded .pbrt scene's own Accelerator directive "
-				"alone (bvh if it named none, real pbrt-v4's own default). "
-				"No effect on a native (non-.pbrt) scene either way.")},
-			{tr("BVH"), QStringLiteral("bvh"), tr(
-				"A bounding volume hierarchy, built by the split method "
-				"chosen below - this project's pre-existing default "
-				"accelerator, matching pbrt-v4 itself.")},
-			{tr("Kd-tree"), QStringLiteral("kdtree"), tr(
-				"A k-d tree instead of a BVH - pbrt-v4's other real "
-				"accelerator option. Has no split-method concept of its "
-				"own (the combo below is ignored when this is chosen). "
-				"Falls back to BVH/sah on a scene with object motion blur "
-				"(this project's kd-tree wrapper has no per-ray-time "
-				"channel) - a warning is printed when that happens.")},
-		};
-		for (const AcceleratorEntry &entry : entries) {
-			icon_tint::addItem(m_acceleratorCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
-			m_acceleratorCombo->setItemData(m_acceleratorCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
-		}
-	}
+	populateComboEntries(m_acceleratorCombo, {
+		{tr("Scene's own choice (default)"), QString(), tr(
+			"Leaves a loaded .pbrt scene's own Accelerator directive "
+			"alone (bvh if it named none, real pbrt-v4's own default). "
+			"No effect on a native (non-.pbrt) scene either way.")},
+		{tr("BVH"), QStringLiteral("bvh"), tr(
+			"A bounding volume hierarchy, built by the split method "
+			"chosen below - this project's pre-existing default "
+			"accelerator, matching pbrt-v4 itself.")},
+		{tr("Kd-tree"), QStringLiteral("kdtree"), tr(
+			"A k-d tree instead of a BVH - pbrt-v4's other real "
+			"accelerator option. Has no split-method concept of its "
+			"own (the combo below is ignored when this is chosen). "
+			"Falls back to BVH/sah on a scene with object motion blur "
+			"(this project's kd-tree wrapper has no per-ray-time "
+			"channel) - a warning is printed when that happens.")},
+	});
 	m_acceleratorCombo->setToolTip(
 		tr("Which acceleration structure holds the scene's geometry. Every\n"
 		"choice renders the identical converged image - a build-strategy/\n"
@@ -654,34 +645,27 @@ void MainWindow::createRenderOptionsTab() {
 	});
 
 	m_splitMethodCombo = new QComboBox(optionsTab);
-	{
-		struct SplitMethodEntry { QString label; QString value; QString tooltip; };
-		const SplitMethodEntry entries[] = {
-			{tr("SAH (default)"), QString(), tr(
-				"Surface Area Heuristic - estimates the traversal cost of "
-				"several candidate splits and picks the cheapest. Slower "
-				"to build than Middle/Equal, but the best-traversing tree "
-				"in most scenes - this project's pre-existing BVH build.")},
-			{tr("Middle"), QStringLiteral("middle"), tr(
-				"Splits each node at the midpoint of its bounding box's "
-				"longest axis. Cheap to build, no cost estimation at all - "
-				"can traverse poorly on unevenly-distributed geometry.")},
-			{tr("Equal counts"), QStringLiteral("equal"), tr(
-				"Splits each node so an equal number of primitives fall on "
-				"each side, regardless of their spatial extent. Cheap to "
-				"build; can produce badly-shaped nodes for clustered "
-				"geometry.")},
-			{tr("HLBVH"), QStringLiteral("hlbvh"), tr(
-				"Hierarchical Linear BVH - builds bottom-up from Morton "
-				"codes, the fastest of these four to build for very large "
-				"triangle counts, at some traversal-quality cost versus "
-				"SAH.")},
-		};
-		for (const SplitMethodEntry &entry : entries) {
-			icon_tint::addItem(m_splitMethodCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
-			m_splitMethodCombo->setItemData(m_splitMethodCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
-		}
-	}
+	populateComboEntries(m_splitMethodCombo, {
+		{tr("SAH (default)"), QString(), tr(
+			"Surface Area Heuristic - estimates the traversal cost of "
+			"several candidate splits and picks the cheapest. Slower "
+			"to build than Middle/Equal, but the best-traversing tree "
+			"in most scenes - this project's pre-existing BVH build.")},
+		{tr("Middle"), QStringLiteral("middle"), tr(
+			"Splits each node at the midpoint of its bounding box's "
+			"longest axis. Cheap to build, no cost estimation at all - "
+			"can traverse poorly on unevenly-distributed geometry.")},
+		{tr("Equal counts"), QStringLiteral("equal"), tr(
+			"Splits each node so an equal number of primitives fall on "
+			"each side, regardless of their spatial extent. Cheap to "
+			"build; can produce badly-shaped nodes for clustered "
+			"geometry.")},
+		{tr("HLBVH"), QStringLiteral("hlbvh"), tr(
+			"Hierarchical Linear BVH - builds bottom-up from Morton "
+			"codes, the fastest of these four to build for very large "
+			"triangle counts, at some traversal-quality cost versus "
+			"SAH.")},
+	});
 	m_splitMethodCombo->setToolTip(
 		tr("How the BVH above is built (ignored when Accelerator is set to\n"
 		"Kd-tree). Every choice renders the identical converged image.\n"

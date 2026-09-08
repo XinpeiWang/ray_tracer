@@ -26,6 +26,7 @@
 #include "../shared/pbrt_discover.h"
 #include "../shared/pbrt_load.h"
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <deque>
 #include <filesystem>
@@ -292,9 +293,21 @@ namespace pbrt_scene_registry {
                 // Read here, not captured at lambda-creation time above -
                 // this lambda is built once per pbrt-backed scene at
                 // process-startup registry construction, long before
-                // cpu_render_main() has parsed --accelerator/--splitmethod
+                // launcher/main.cpp has parsed --accelerator/--splitmethod
                 // into this global. See accelerator_override.h's own
                 // comment for why a global is the seam at all.
+                //
+                // Debug-only ordering check: main.cpp calls
+                // accelerator_override::set() unconditionally (whether or
+                // not --accelerator/--splitmethod were actually passed),
+                // before any render entry point runs - so by the time this
+                // scene is built for the first time, set() must already
+                // have run. Tripping this means a scene got built before
+                // that call, which would silently cache a default (no
+                // override) choice for the rest of the process regardless
+                // of what was actually requested.
+                assert(accelerator_override::was_set() &&
+                       "a pbrt-backed scene was built before accelerator_override::set() ran");
                 const pbrt_load::LoadResult r =
                     pbrt_load::loadFile(path, accelerator_override::state());
                 if (!r.ok) {
