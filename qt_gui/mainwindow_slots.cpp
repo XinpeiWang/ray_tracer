@@ -1688,6 +1688,8 @@ void MainWindow::onModeChanged(int index) {
 #ifdef RT_GUI_HAVE_GPU
 	if (m_liveModeWarningLabel) m_liveModeWarningLabel->setVisible(isLiveMode());
 	if (m_liveModeOptionsWarningLabel) m_liveModeOptionsWarningLabel->setVisible(isLiveMode());
+	if (m_liveModeSettingsWarningLabel) m_liveModeSettingsWarningLabel->setVisible(!isLiveMode());
+	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
 #endif
 
 	// --video hard-rejects any non-Default integrator (see

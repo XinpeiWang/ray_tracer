@@ -1045,6 +1045,14 @@ private:
 	// Same purpose, at the top of the Render Options tab - none of that
 	// tab's settings apply to Live Preview's own GPU path tracer either.
 	QLabel *m_liveModeOptionsWarningLabel = nullptr;
+	// Live Preview's own settings group (mouse/keyboard sensitivity) - its
+	// own independent QGroupBox rather than living inline in Render
+	// Settings, matching m_videoGroupBox's own precedent exactly: a
+	// warning banner (visible when NOT relevant) plus setGroupDimmed() on
+	// the group itself (dimmed when NOT relevant), both keyed on
+	// isLiveMode() here instead of isVideoMode().
+	QGroupBox *m_liveModeSettingsGroupBox = nullptr;
+	QLabel *m_liveModeSettingsWarningLabel = nullptr;
 #endif
 
 	// Preview tab - each completed render gets its own closable sub-tab
