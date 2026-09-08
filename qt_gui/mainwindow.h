@@ -244,8 +244,32 @@ private:
 	void onLivePreviewStatus(QString text);
 	// Called from the camera spinboxes' valueChanged handlers - forwards to
 	// the running session (no-op if the preview isn't currently running,
-	// see RealtimePreviewWorker::setCamera()'s own comment).
+	// see RealtimePreviewWorker::setCamera()'s own comment). Also
+	// re-derives m_orbitRadius/Azimuth/Elevation from the new position (see
+	// their own comment) so a later mouse-orbit drag continues smoothly
+	// from wherever this manual edit left the camera, instead of jumping
+	// back to a stale orbit state.
 	void onLivePreviewCameraChanged();
+	// OrbitPreviewLabel::orbitDragged()/zoomRequested() handlers - see
+	// mainwindow_widgets.h's own class comment for why the widget only
+	// reports raw deltas and these two turn them into an actual camera
+	// move. No-ops if the preview isn't currently running.
+	void onLivePreviewOrbitDragged(int dxPixels, int dyPixels);
+	void onLivePreviewZoomRequested(int angleDeltaY);
+	// Recomputes m_orbitRadius/Azimuth/Elevation (spherical coordinates
+	// around the current scene's lookAt point, m_currentLookatX/Y/Z) from
+	// an explicit camera position - called once when Live Preview starts
+	// (seeding orbit state from the camera spinboxes' current values) and
+	// again whenever onLivePreviewCameraChanged() moves the camera some
+	// other way, so orbiting always continues from the camera's ACTUAL
+	// current position rather than assuming nothing else ever moves it.
+	void deriveLivePreviewOrbitFromCamera(double camX, double camY, double camZ);
+	// Converts the current m_orbitRadius/Azimuth/Elevation back into a
+	// camera position around m_currentLookatX/Y/Z and forwards it to the
+	// running RealtimePreviewSession - the inverse of
+	// deriveLivePreviewOrbitFromCamera() above, called after every orbit
+	// drag/zoom step.
+	void updateLivePreviewCameraFromOrbit();
 #endif
 
 	// ------------------------------------------------------------------
@@ -599,9 +623,22 @@ private:
 	int m_livePreviewTabIndex = -1;
 	RealtimePreviewSession *m_livePreviewSession = nullptr;
 	QPushButton *m_livePreviewToggleButton = nullptr;
-	ScaledImageLabel *m_livePreviewLabel = nullptr;
+	OrbitPreviewLabel *m_livePreviewLabel = nullptr;
 	QLabel *m_livePreviewStatusLabel = nullptr;
 	bool m_livePreviewRunning = false;
+	// Spherical coordinates of the live-preview camera around the current
+	// scene's lookAt point (m_currentLookatX/Y/Z) - radius (world units),
+	// azimuth/elevation (radians). This is the live-preview feature's OWN
+	// camera representation, deliberately decoupled from m_cameraPosX/Y/Z
+	// (those stay whatever they were before orbiting started - orbiting
+	// never writes back to them, see onLivePreviewOrbitDragged()'s own
+	// comment) - kept in sync with the ACTUAL camera position via
+	// deriveLivePreviewOrbitFromCamera(), called both when Live Preview
+	// starts and whenever onLivePreviewCameraChanged() moves the camera
+	// some other way.
+	double m_orbitRadius = 0.0;
+	double m_orbitAzimuth = 0.0;
+	double m_orbitElevation = 0.0;
 #endif
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides

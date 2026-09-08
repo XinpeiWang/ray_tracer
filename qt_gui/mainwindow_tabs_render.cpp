@@ -1235,14 +1235,16 @@ void MainWindow::createPreviewTab() {
 
 #ifdef RT_GUI_HAVE_GPU
 // Live Preview tab - GPU progressive-refinement preview (see this project's
-// own real-time-preview plan). Deliberately minimal for this first pass:
-// one Start/Stop button, the accumulating image, and a one-line status -
-// none of the full Preview tab's sub-tabs/sidebar/recent-renders machinery,
-// since this isn't a completed, saved render the way that tab's renders
-// are. Camera comes from the existing m_cameraPosX/Y/Z spinboxes (read at
-// Start time, and live-forwarded via onLivePreviewCameraChanged() while
-// running) - no mouse/orbit control in this pass, see the plan's own scope
-// note on why.
+// own real-time-preview plan). One Start/Stop button, the accumulating
+// image, and a one-line status - none of the full Preview tab's sub-tabs/
+// sidebar/recent-renders machinery, since this isn't a completed, saved
+// render the way that tab's renders are. Camera comes from the existing
+// m_cameraPosX/Y/Z spinboxes (read at Start time, and live-forwarded via
+// onLivePreviewCameraChanged() while running) as a starting point, PLUS
+// click-drag-to-orbit/wheel-to-zoom directly in the preview image
+// (OrbitPreviewLabel, mainwindow_widgets.h) - see
+// deriveLivePreviewOrbitFromCamera()/updateLivePreviewCameraFromOrbit()'s
+// own comments for how those two camera representations stay in sync.
 void MainWindow::createLivePreviewTab() {
 	QWidget *tab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(tab);
@@ -1272,9 +1274,11 @@ void MainWindow::createLivePreviewTab() {
 	connect(m_livePreviewToggleButton, &QPushButton::clicked, this, &MainWindow::onLivePreviewToggled);
 	layout->addWidget(m_livePreviewToggleButton);
 
-	m_livePreviewLabel = new ScaledImageLabel(tab);
+	m_livePreviewLabel = new OrbitPreviewLabel(tab);
 	m_livePreviewLabel->setMinimumSize(200, 200);
 	m_livePreviewLabel->setPlaceholderText(tr("Click Start Live Preview to begin"));
+	connect(m_livePreviewLabel, &OrbitPreviewLabel::orbitDragged, this, &MainWindow::onLivePreviewOrbitDragged);
+	connect(m_livePreviewLabel, &OrbitPreviewLabel::zoomRequested, this, &MainWindow::onLivePreviewZoomRequested);
 	layout->addWidget(m_livePreviewLabel, /*stretch=*/1);
 
 	m_livePreviewStatusLabel = new QLabel(tab);
@@ -1311,8 +1315,12 @@ void MainWindow::onLivePreviewToggled() {
 	// per-resolution controls yet" scope.
 	constexpr int kPreviewWidth = 400;
 	constexpr int kPreviewHeight = 300;
-	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight,
-	                             m_cameraPosX->value(), m_cameraPosY->value(), m_cameraPosZ->value());
+	const double camX = m_cameraPosX->value(), camY = m_cameraPosY->value(), camZ = m_cameraPosZ->value();
+	// Seed the orbit state from wherever the camera spinboxes currently
+	// point, around the CURRENT scene's own lookAt point - see this
+	// function's own comment and deriveLivePreviewOrbitFromCamera()'s.
+	deriveLivePreviewOrbitFromCamera(camX, camY, camZ);
+	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camX, camY, camZ);
 	m_livePreviewRunning = true;
 	m_livePreviewToggleButton->setText(tr("Stop Live Preview"));
 	m_livePreviewStatusLabel->setText(tr("Starting..."));
@@ -1330,7 +1338,70 @@ void MainWindow::onLivePreviewStatus(QString text) {
 
 void MainWindow::onLivePreviewCameraChanged() {
 	if (!m_livePreviewRunning || !m_livePreviewSession) return;
-	m_livePreviewSession->setCamera(m_cameraPosX->value(), m_cameraPosY->value(), m_cameraPosZ->value());
+	const double camX = m_cameraPosX->value(), camY = m_cameraPosY->value(), camZ = m_cameraPosZ->value();
+	deriveLivePreviewOrbitFromCamera(camX, camY, camZ);
+	m_livePreviewSession->setCamera(camX, camY, camZ);
+}
+
+void MainWindow::deriveLivePreviewOrbitFromCamera(double camX, double camY, double camZ) {
+	const double dx = camX - m_currentLookatX;
+	const double dy = camY - m_currentLookatY;
+	const double dz = camZ - m_currentLookatZ;
+	m_orbitRadius = std::sqrt(dx * dx + dy * dy + dz * dz);
+	if (m_orbitRadius < 1e-6) {
+		// Camera sitting exactly on the lookAt point - a degenerate,
+		// direction-less position no real scene's recommended camera would
+		// ever produce, but cheap to guard against outright rather than
+		// feed a zero-length direction into atan2/asin below.
+		m_orbitRadius = 1.0;
+		m_orbitAzimuth = 0.0;
+		m_orbitElevation = 0.0;
+		return;
+	}
+	m_orbitElevation = std::asin(std::clamp(dy / m_orbitRadius, -1.0, 1.0));
+	m_orbitAzimuth = std::atan2(dx, dz);
+}
+
+void MainWindow::updateLivePreviewCameraFromOrbit() {
+	if (!m_livePreviewRunning || !m_livePreviewSession) return;
+	const double camX = m_currentLookatX + m_orbitRadius * std::cos(m_orbitElevation) * std::sin(m_orbitAzimuth);
+	const double camY = m_currentLookatY + m_orbitRadius * std::sin(m_orbitElevation);
+	const double camZ = m_currentLookatZ + m_orbitRadius * std::cos(m_orbitElevation) * std::cos(m_orbitAzimuth);
+	m_livePreviewSession->setCamera(camX, camY, camZ);
+}
+
+void MainWindow::onLivePreviewOrbitDragged(int dxPixels, int dyPixels) {
+	if (!m_livePreviewRunning) return;
+	// Radians per pixel of drag - chosen so a full 180-degree turn takes
+	// roughly the preview panel's own width in drag distance (~400px, this
+	// pass's fixed preview resolution), a comfortable, not-too-twitchy feel
+	// for a panel this size.
+	constexpr double kRadiansPerPixel = 0.008;
+	m_orbitAzimuth += dxPixels * kRadiansPerPixel;
+	// Screen Y grows downward, so dragging UP (dyPixels negative) should
+	// raise the camera (increase elevation) - hence the subtraction.
+	m_orbitElevation -= dyPixels * kRadiansPerPixel;
+	// Clamped short of the true poles (+-90deg): AT a pole, azimuth becomes
+	// meaningless (every azimuth points the same direction), which would
+	// make the very next drag step's horizontal component do nothing/jump -
+	// matches the standard orbit-camera convention (Blender, Maya, etc.).
+	constexpr double kMaxElevation = 1.5533;  // 89 degrees in radians
+	m_orbitElevation = std::clamp(m_orbitElevation, -kMaxElevation, kMaxElevation);
+	updateLivePreviewCameraFromOrbit();
+}
+
+void MainWindow::onLivePreviewZoomRequested(int angleDeltaY) {
+	if (!m_livePreviewRunning) return;
+	// ~5.8% radius change per standard wheel notch (angleDelta of +-120) -
+	// a smooth, moderate zoom step; std::pow with a negative exponent
+	// (scrolling the other way) naturally inverts it.
+	constexpr double kZoomFactorPerUnit = 0.9995;
+	m_orbitRadius *= std::pow(kZoomFactorPerUnit, static_cast<double>(angleDeltaY));
+	// Keeps the camera from crossing through (or orbiting absurdly close
+	// to) the lookAt point, where the view direction becomes degenerate.
+	constexpr double kMinRadius = 1.0;
+	m_orbitRadius = std::max(m_orbitRadius, kMinRadius);
+	updateLivePreviewCameraFromOrbit();
 }
 #endif
 

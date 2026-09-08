@@ -35,6 +35,7 @@
 #include <QTextEdit>
 #include <QEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QTimer>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -442,6 +443,90 @@ private:
 
 	QPixmap m_original;
 	QString m_placeholderText;
+};
+
+// ============================================================================
+// OrbitPreviewLabel
+// ============================================================================
+// ScaledImageLabel plus click-drag-to-orbit and wheel-to-zoom mouse input -
+// used by the Live Preview tab (MainWindow::createLivePreviewTab()) to drive
+// the GPU progressive-refinement preview's camera interactively. Deliberately
+// dumb: this widget only reports raw drag deltas (in pixels) and wheel
+// deltas - it owns no camera/orbit state itself (no lookAt point, no
+// spherical coordinates). MainWindow (onLivePreviewOrbitDragged()/
+// onLivePreviewZoomRequested()) is what turns those deltas into an actual
+// new camera position and forwards it to RealtimePreviewSession::
+// setCamera() - keeping this widget reusable/testable independent of the
+// live-preview feature's own camera math, the same "widget stays dumb,
+// MainWindow owns the logic" split ScaledImageLabel/SplitPreviewTabs above
+// already follow.
+// ============================================================================
+class OrbitPreviewLabel : public ScaledImageLabel {
+	Q_OBJECT
+public:
+	explicit OrbitPreviewLabel(QWidget *parent = nullptr) : ScaledImageLabel(parent) {
+		// Otherwise a drag that leaves the widget's bounds (easy to do with a
+		// fast mouse move) stops delivering move events entirely until the
+		// cursor re-enters - mouseGrabber-style tracking (grabMouse() below)
+		// needs a defined release point regardless of where the button
+		// physically comes up, which setMouseTracking() alone doesn't give.
+		setCursor(Qt::OpenHandCursor);
+	}
+
+signals:
+	// Raw pixel deltas since the last mouse-move event during an active
+	// drag - not accumulated, not scaled by any sensitivity here (that's
+	// MainWindow's own concern, since it depends on the orbit radius/FOV
+	// this widget knows nothing about).
+	void orbitDragged(int dxPixels, int dyPixels);
+
+	// Positive = wheel scrolled "up/away" (this widget's own convention;
+	// MainWindow decides what that means for zoom direction), one signal
+	// per wheel event's angleDelta().y(), not normalized to a fixed step.
+	void zoomRequested(int angleDeltaY);
+
+protected:
+	void mousePressEvent(QMouseEvent *event) override {
+		if (event->button() == Qt::LeftButton) {
+			m_dragging = true;
+			m_lastPos = event->pos();
+			setCursor(Qt::ClosedHandCursor);
+			// grabMouse() (not just setMouseTracking()) is what keeps
+			// delivering move/release events to THIS widget even once the
+			// cursor leaves its bounds mid-drag - a fast orbit drag
+			// routinely does, and losing the drag there would leave
+			// m_dragging stuck true with no matching release.
+			grabMouse();
+		}
+		ScaledImageLabel::mousePressEvent(event);
+	}
+
+	void mouseMoveEvent(QMouseEvent *event) override {
+		if (m_dragging) {
+			const QPoint delta = event->pos() - m_lastPos;
+			m_lastPos = event->pos();
+			if (!delta.isNull()) emit orbitDragged(delta.x(), delta.y());
+		}
+		ScaledImageLabel::mouseMoveEvent(event);
+	}
+
+	void mouseReleaseEvent(QMouseEvent *event) override {
+		if (event->button() == Qt::LeftButton && m_dragging) {
+			m_dragging = false;
+			setCursor(Qt::OpenHandCursor);
+			releaseMouse();
+		}
+		ScaledImageLabel::mouseReleaseEvent(event);
+	}
+
+	void wheelEvent(QWheelEvent *event) override {
+		emit zoomRequested(event->angleDelta().y());
+		event->accept();
+	}
+
+private:
+	bool m_dragging = false;
+	QPoint m_lastPos;
 };
 
 // ============================================================================
