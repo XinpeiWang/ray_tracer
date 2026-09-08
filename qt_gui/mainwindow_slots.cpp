@@ -184,6 +184,7 @@ RenderJob MainWindow::captureRenderJob() {
 	// before a backend/integrator switch would otherwise survive into the
 	// CLI invocation even though the control now shows as inactive.
 	job.advancedFlags.denoise = m_denoiseCheck->isEnabled() && m_denoiseCheck->isChecked();
+	job.advancedFlags.denoiseBlend = m_denoiseBlendSpin->isEnabled() ? m_denoiseBlendSpin->value() : 0.0;
 	job.advancedFlags.stats = m_statsCheck->isEnabled() && m_statsCheck->isChecked();
 	job.advancedFlags.optixValidate = m_optixValidateCheck->isEnabled() && m_optixValidateCheck->isChecked();
 	job.advancedFlags.exposure = m_exposureSpin->isEnabled() ? m_exposureSpin->value() : 1.0;
@@ -193,6 +194,8 @@ RenderJob MainWindow::captureRenderJob() {
 	job.advancedFlags.splitMethod = m_splitMethodCombo->isEnabled() ? m_splitMethodCombo->currentData().toString() : QString();
 	job.advancedFlags.adaptiveSampling = m_adaptiveSamplingCheck->isEnabled() && m_adaptiveSamplingCheck->isChecked();
 	job.advancedFlags.adaptiveThreshold = m_adaptiveThresholdSpin->value();
+	job.advancedFlags.timeLimitSeconds =
+		(m_timeLimitCheck->isEnabled() && m_timeLimitCheck->isChecked()) ? m_timeLimitSpin->value() : 0.0;
 	job.advancedFlags.spectral = m_spectralCheck->isEnabled() && m_spectralCheck->isChecked();
 	job.advancedFlags.tonemap = m_tonemapCombo->isEnabled() ? m_tonemapCombo->currentData().toString() : QString();
 	job.advancedFlags.regularize = m_regularizeCheck->isEnabled() && m_regularizeCheck->isChecked();

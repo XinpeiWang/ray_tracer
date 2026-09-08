@@ -72,6 +72,7 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("simplepathNoBsdf", entry.integratorOptions.simplepathNoBsdf);
 	// AdvancedRenderFlags.
 	settings.setValue("denoise", entry.advancedFlags.denoise);
+	settings.setValue("denoiseBlend", entry.advancedFlags.denoiseBlend);
 	settings.setValue("stats", entry.advancedFlags.stats);
 	settings.setValue("optixValidate", entry.advancedFlags.optixValidate);
 	settings.setValue("exposure", entry.advancedFlags.exposure);
@@ -81,6 +82,7 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("splitMethod", entry.advancedFlags.splitMethod);
 	settings.setValue("adaptiveSampling", entry.advancedFlags.adaptiveSampling);
 	settings.setValue("adaptiveThreshold", entry.advancedFlags.adaptiveThreshold);
+	settings.setValue("timeLimitSeconds", entry.advancedFlags.timeLimitSeconds);
 	settings.setValue("spectral", entry.advancedFlags.spectral);
 	settings.setValue("tonemap", entry.advancedFlags.tonemap);
 	settings.setValue("regularize", entry.advancedFlags.regularize);
@@ -170,6 +172,7 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	if (settings.contains("simplepathNoLights")) entry.integratorOptions.simplepathNoLights = settings.value("simplepathNoLights").toBool();
 	if (settings.contains("simplepathNoBsdf")) entry.integratorOptions.simplepathNoBsdf = settings.value("simplepathNoBsdf").toBool();
 	if (settings.contains("denoise")) entry.advancedFlags.denoise = settings.value("denoise").toBool();
+	if (settings.contains("denoiseBlend")) entry.advancedFlags.denoiseBlend = settings.value("denoiseBlend").toDouble();
 	if (settings.contains("stats")) entry.advancedFlags.stats = settings.value("stats").toBool();
 	if (settings.contains("optixValidate")) entry.advancedFlags.optixValidate = settings.value("optixValidate").toBool();
 	if (settings.contains("exposure")) entry.advancedFlags.exposure = settings.value("exposure").toDouble();
@@ -179,6 +182,7 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	if (settings.contains("splitMethod")) entry.advancedFlags.splitMethod = settings.value("splitMethod").toString();
 	if (settings.contains("adaptiveSampling")) entry.advancedFlags.adaptiveSampling = settings.value("adaptiveSampling").toBool();
 	if (settings.contains("adaptiveThreshold")) entry.advancedFlags.adaptiveThreshold = settings.value("adaptiveThreshold").toDouble();
+	if (settings.contains("timeLimitSeconds")) entry.advancedFlags.timeLimitSeconds = settings.value("timeLimitSeconds").toDouble();
 	if (settings.contains("spectral")) entry.advancedFlags.spectral = settings.value("spectral").toBool();
 	if (settings.contains("tonemap")) entry.advancedFlags.tonemap = settings.value("tonemap").toString();
 	if (settings.contains("regularize")) entry.advancedFlags.regularize = settings.value("regularize").toBool();

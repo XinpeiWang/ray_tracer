@@ -251,6 +251,7 @@ extern "C" int optix_render_main(
 		// used to be a silent (later, warned) no-op; WavefrontPathTracer now
 		// has its own real denoiser support.
 		g_renderer->enableDenoise(options.denoise);
+		g_renderer->setDenoiseBlend(options.denoise_blend);
 
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;

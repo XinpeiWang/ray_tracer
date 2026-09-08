@@ -1303,7 +1303,7 @@ void WavefrontPathTracer::destroyDenoiser() noexcept {
 bool WavefrontPathTracer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
 	CUdeviceptr d_albedo, CUdeviceptr d_normal) {
 	return runDenoiser(denoiserResources_, context_, stream_, d_buffer, width, height,
-		d_albedo, d_normal, "[Wavefront]");
+		d_albedo, d_normal, denoiseBlend_, "[Wavefront]");
 }
 
 // ============================================================================

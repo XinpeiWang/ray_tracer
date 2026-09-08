@@ -118,6 +118,7 @@ bool OptiXRenderer::render(
 		// that class's own setDenoiseEnabled() comment for why it's not
 		// shared with this class's denoise()).
 		wavefrontTracer_->setDenoiseEnabled(denoiseEnabled_);
+		wavefrontTracer_->setDenoiseBlend(denoiseBlend_);
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
@@ -382,7 +383,7 @@ bool OptiXRenderer::render(
 bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
 	CUdeviceptr d_albedo, CUdeviceptr d_normal) {
 	return runDenoiser(denoiserResources_, context_, stream_, d_buffer, width, height,
-		d_albedo, d_normal, "[OptiX]");
+		d_albedo, d_normal, denoiseBlend_, "[OptiX]");
 }
 
 void OptiXRenderer::destroyDenoiser() noexcept {

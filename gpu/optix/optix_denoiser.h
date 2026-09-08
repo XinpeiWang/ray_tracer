@@ -99,6 +99,14 @@ inline void ensureAovBuffers(DenoiserResources& r, unsigned int width, unsigned 
 ///                 d_buffer, or 0 to denoise without an albedo guide layer.
 /// @param d_normal Same, for the world-space normal guide layer, or 0 to
 ///                 denoise without a normal guide layer.
+/// @param blendFactor OptiX's own blend between the noisy input and the
+///                 fully denoised output: 0.0 (default) = 100% denoised,
+///                 1.0 = the original noisy image unchanged, linearly
+///                 interpolated in between - see --denoise-blend
+///                 (render_options.h's own comment) for why this is
+///                 exposed at all: full-strength denoising can over-smooth
+///                 fine texture/grain into a flat, "plasticky" look, and
+///                 OptiX already supports this blend natively.
 /// @param logTag   Short prefix for failure log lines (e.g. "[OptiX]" /
 ///                 "[Wavefront]") so a denoiser failure's origin is
 ///                 distinguishable in mixed CLI output.
@@ -107,7 +115,7 @@ inline void ensureAovBuffers(DenoiserResources& r, unsigned int width, unsigned 
 ///         data untouched.
 inline bool runDenoiser(DenoiserResources& r, OptixDeviceContext context, CUstream stream,
 	CUdeviceptr d_buffer, unsigned int width, unsigned int height,
-	CUdeviceptr d_albedo, CUdeviceptr d_normal, const char* logTag) {
+	CUdeviceptr d_albedo, CUdeviceptr d_normal, float blendFactor, const char* logTag) {
 	// Every OptiX/CUDA call below can fail; unlike a render launch sequence
 	// (which throws via OPTIX_CHECK/CUDA_CHECK - a failure there means the
 	// render itself is unusable), a denoiser failure should leave the
@@ -187,7 +195,7 @@ inline bool runDenoiser(DenoiserResources& r, OptixDeviceContext context, CUstre
 
 	OptixDenoiserParams params = {};
 	params.hdrIntensity = r.intensity;
-	params.blendFactor = 0.0f;  // 100% denoised output
+	params.blendFactor = blendFactor;  // 0.0 = 100% denoised (default), 1.0 = original noisy image
 
 	// Albedo/normal guide layers - left zero-initialised (data pointer 0,
 	// the documented "not provided" state) when the caller didn't pass a

@@ -1192,7 +1192,11 @@ QString MainWindow::integratorDescription(IntegratorMode mode) {
 // field.
 QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
 	QStringList parts;
-	if (flags.denoise) parts << tr("Denoiser: on");
+	if (flags.denoise) {
+		parts << ((flags.denoiseBlend != 0.0)
+			? tr("Denoiser: on (blend %1)").arg(flags.denoiseBlend)
+			: tr("Denoiser: on"));
+	}
 	if (flags.stats) parts << tr("Stats: on");
 	if (flags.optixValidate) parts << tr("OptiX validation: on");
 	if (flags.exposure != 1.0) parts << tr("Exposure: %1").arg(flags.exposure);
@@ -1210,6 +1214,7 @@ QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
 			? tr("Adaptive sampling: on (threshold %1)").arg(flags.adaptiveThreshold)
 			: tr("Adaptive sampling: on"));
 	}
+	if (flags.timeLimitSeconds > 0.0) parts << tr("Time limit: %1s").arg(flags.timeLimitSeconds);
 	if (flags.spectral) parts << tr("Spectral: on");
 	if (!flags.tonemap.isEmpty()) parts << tr("Tonemap: %1").arg(flags.tonemap.toHtmlEscaped());
 	if (flags.regularize) parts << tr("Regularize: on");

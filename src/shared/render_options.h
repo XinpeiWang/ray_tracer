@@ -33,6 +33,13 @@ struct RenderOptions {
 	// only consulted when adaptive_sampling is true. 0.01 (default) matches
 	// Blender Cycles' own adaptive_threshold default.
 	double adaptive_threshold = 0.01;
+	// Stops claiming new scanlines once this many seconds have elapsed -
+	// see camera::time_limit_seconds's own comment (camera.h). <= 0.0
+	// (default) means "no limit", unchanged prior behavior. CPU default
+	// path tracer only, same scope cut as `sampler`/adaptive_sampling
+	// above - camera::render() is this integrator's own loop, not
+	// something BDPT/MLT/SPPM's separate render loops call into.
+	double time_limit_seconds = 0.0;
 	// pbrt-v4 Integrator "string lightsampler" - which of this project's
 	// own light-sampler classes selects the next-event-estimation light to
 	// sample - one of "uniform"/"power"/"bvh", or "auto" (resolved by
@@ -85,6 +92,14 @@ struct RenderOptions {
 	// under GPU SPPM (launcher/main.cpp warns on --denoise --sppm --gpu)
 	// or any CPU-only integrator.
 	bool denoise = false;
+	// OptiX's own blend between the noisy input and the fully denoised
+	// output - 0.0 (default) = 100% denoised (this project's prior,
+	// only-ever behavior), 1.0 = the original noisy image unchanged,
+	// linearly interpolated in between. Only consulted when `denoise` is
+	// true. Same GPU-only, both-backends, "no effect under GPU SPPM" scope
+	// as `denoise` above - see gpu/optix/optix_denoiser.h's runDenoiser()
+	// for where this actually reaches the OptiX API.
+	float denoise_blend = 0.0f;
 	// An explicit CLI request for reproducible renders. -1 (default) means
 	// "not requested" - both backends fall back to their own pre-existing
 	// behavior (CPU: genuinely non-deterministic, seeded from hardware

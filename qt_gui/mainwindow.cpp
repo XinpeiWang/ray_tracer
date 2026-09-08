@@ -269,7 +269,11 @@ void RenderController::start() {
 	// Each maps 1:1 to a CLI flag; only emitted when it differs from the
 	// CLI's own default, so a render with every toggle left untouched
 	// produces exactly the same command line this GUI always has.
-	if (m_advancedFlags.denoise)       args << render_flags::kDenoise;
+	if (m_advancedFlags.denoise) {
+		args << render_flags::kDenoise;
+		if (m_advancedFlags.denoiseBlend != 0.0)
+			args << render_flags::kDenoiseBlend << QString::number(m_advancedFlags.denoiseBlend);
+	}
 	if (m_advancedFlags.stats)         args << render_flags::kStats;
 	if (m_advancedFlags.optixValidate) args << render_flags::kOptixValidate;
 	if (m_advancedFlags.exposure != 1.0) args << render_flags::kExposure << QString::number(m_advancedFlags.exposure);
@@ -282,6 +286,8 @@ void RenderController::start() {
 		if (m_advancedFlags.adaptiveThreshold != 0.01)
 			args << render_flags::kAdaptiveThreshold << QString::number(m_advancedFlags.adaptiveThreshold);
 	}
+	if (m_advancedFlags.timeLimitSeconds > 0.0)
+		args << render_flags::kTimeLimit << QString::number(m_advancedFlags.timeLimitSeconds);
 	if (m_advancedFlags.spectral)       args << render_flags::kSpectral;
 	if (!m_advancedFlags.tonemap.isEmpty()) args << render_flags::kTonemap << m_advancedFlags.tonemap;
 	if (m_advancedFlags.regularize)    args << render_flags::kRegularize;

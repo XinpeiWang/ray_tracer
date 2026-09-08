@@ -31,12 +31,14 @@ namespace render_flags {
 	constexpr const char* kSpeed         = "--speed";
 	constexpr const char* kCameraPath    = "--camera-path";
 	constexpr const char* kDenoise       = "--denoise";
+	constexpr const char* kDenoiseBlend  = "--denoise-blend";
 	constexpr const char* kStats         = "--stats";
 	constexpr const char* kOptixValidate = "--optix-validate";
 	constexpr const char* kExposure      = "--exposure";
 	constexpr const char* kSampler       = "--sampler";
 	constexpr const char* kAdaptive      = "--adaptive";
 	constexpr const char* kAdaptiveThreshold = "--adaptive-threshold";
+	constexpr const char* kTimeLimit     = "--time-limit";
 	constexpr const char* kLightSampler  = "--lightsampler";
 	constexpr const char* kAccelerator   = "--accelerator";
 	constexpr const char* kSplitMethod   = "--splitmethod";

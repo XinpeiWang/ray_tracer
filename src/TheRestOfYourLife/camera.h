@@ -221,6 +221,26 @@ class camera {
     // starting point for anyone coming from that renderer.
     double adaptive_threshold = 0.01;
 
+    // --time-limit (CLI/GUI) - stops claiming new scanlines once this many
+    // seconds have elapsed since render() started, instead of always
+    // running until every scanline is done. <= 0.0 (default) means "no
+    // limit", this project's prior, only-ever behavior. Checked once per
+    // scanline claim (render()'s work-stealing next_j.fetch_sub(1) loop),
+    // not per-pixel/per-sample - coarser than adaptive_sampling's own
+    // per-row check, but a scanline is cheap enough relative to a whole
+    // render that the overshoot past the deadline is negligible, and it
+    // avoids adding a clock read to the hot per-sample path. Whatever
+    // scanlines are already in flight when the deadline passes still
+    // finish normally (a partial image from a hard mid-scanline cutoff
+    // would need the same kind of per-pixel weight_sum-based partial
+    // normalization adaptive_sampling's own early break relies on, which
+    // isn't worth adding just to trim a few more scanlines off a timeout).
+    // CPU default path tracer only, same scope cut as spectral/
+    // adaptive_sampling above - camera::render() is this integrator's own
+    // scanline loop, not something BDPT/MLT/SPPM's separate render loops
+    // (cpu_interface_bdpt.cpp, sppm.h) call into.
+    double time_limit_seconds = 0.0;
+
     // When set, render() writes a linear (pre-tonemap), full-float EXR
     // instead of the tonemapped/quantized PPM it writes by default - see
     // exr_writer.h. Set by cpu_interface.cpp when the caller's requested
@@ -392,6 +412,11 @@ class camera {
         std::atomic<int> next_j(image_height - 1);
         std::atomic<int> completed_lines(0);
         std::mutex log_mutex;
+        // --time-limit: see camera::time_limit_seconds's own comment.
+        // Captured once, before any worker starts, so every thread measures
+        // elapsed time against the same origin regardless of which one
+        // actually reads it first.
+        const auto render_start_time = std::chrono::steady_clock::now();
 
         // Auto-detection (when RAY_TRACER_THREADS isn't set to an explicit
         // value) samples system idle time over 200ms - see thread_count.h.
@@ -459,6 +484,45 @@ class camera {
                 int j = next_j.fetch_sub(1);
                 if (j < 0) break;
 
+                // --time-limit: stop CLAIMING new scanlines once the
+                // deadline has passed - see camera::time_limit_seconds's
+                // own comment. A second, finer-grained check inside the
+                // per-pixel loop below can also abort MID-scanline - a
+                // single scanline at very high spp can itself take several
+                // seconds, so checking only here (once per whole scanline)
+                // would let the render overshoot a short deadline by a
+                // whole scanline's duration.
+                bool time_limit_hit = false;
+                if (time_limit_seconds > 0.0) {
+                    const double elapsed = std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - render_start_time).count();
+                    time_limit_hit = (elapsed >= time_limit_seconds);
+                }
+                if (time_limit_hit) {
+                    // An abandoned scanline still needs a REAL row in the
+                    // output, not an empty one: exr_pixels is already
+                    // zero-initialized (safe as-is), but `scanlines` starts
+                    // as empty std::strings - the PPM writer below
+                    // (out << scanlines[j]) expects every row present,
+                    // so leaving one blank would silently corrupt the
+                    // file's row/column structure rather than just showing
+                    // a black scanline.
+                    if (!exr_output) {
+                        // ss is a per-worker buffer reused across scanlines,
+                        // only reset via ss.str("")/ss.clear() on the normal
+                        // per-scanline path below - without resetting it
+                        // here too, this black row would be APPENDED after
+                        // whatever this thread's last successfully-rendered
+                        // scanline already left in it, doubling up that
+                        // row's pixel count and corrupting every byte the
+                        // PPM reader parses after it.
+                        ss.str(""); ss.clear();
+                        for (int i = 0; i < image_width; i++) write_color(ss, color(0, 0, 0), tone_map);
+                        scanlines[j] = ss.str();
+                    }
+                    break;
+                }
+
                 // --seed: reseed thread_rng() fresh for THIS scanline,
                 // keyed on the scanline index j rather than which worker
                 // happens to be running it - see the private
@@ -470,7 +534,30 @@ class camera {
 
                 // render scanline j
                 ss.str(""); ss.clear();
+                // --time-limit: how many of this row's columns were
+                // actually rendered before (if) time_limit_hit fires mid-
+                // row below - image_width (every column) unless that
+                // happens. Used after the loop to fill the remaining
+                // columns black, same reasoning as the whole-scanline
+                // abort case above.
+                int columns_rendered = image_width;
                 for (int i = 0; i < image_width; i++) {
+                    // --time-limit: the finer-grained, per-pixel half of
+                    // the check above - lets a long scanline (high spp)
+                    // abort partway through instead of only ever being
+                    // checked once per whole row. Columns already rendered
+                    // (0..i-1) keep their real result; i..image_width-1
+                    // are filled black below, same reasoning as the
+                    // whole-scanline abort case just above.
+                    if (time_limit_seconds > 0.0) {
+                        const double elapsed = std::chrono::duration<double>(
+                            std::chrono::steady_clock::now() - render_start_time).count();
+                        if (elapsed >= time_limit_seconds) {
+                            time_limit_hit = true;
+                            columns_rendered = i;
+                            break;
+                        }
+                    }
                     color  weighted_color(0,0,0);
                     double weight_sum = 0.0;
                     // --adaptive: tracks this pixel's running luminance
@@ -706,12 +793,22 @@ class camera {
                     }
                 }
 
+                // --time-limit: the per-pixel loop above only stopped
+                // adding real samples at columns_rendered - the remaining
+                // columns still need filling (already-zero exr_pixels
+                // needs nothing further; the PPM row text in `ss` does)
+                // before this partial row is usable, same reasoning as the
+                // whole-scanline abort case above it.
+                if (time_limit_hit && !exr_output) {
+                    for (int i = columns_rendered; i < image_width; i++) write_color(ss, color(0, 0, 0), tone_map);
+                }
                 if (!exr_output) scanlines[j] = ss.str();
                 int done = ++completed_lines;
                 if ((done % 10) == 0 || done == image_height) {
                     std::lock_guard<std::mutex> lg(log_mutex);
                     std::clog << "\rScanlines remaining: " << (image_height - done) << ' ' << std::flush;
                 }
+                if (time_limit_hit) break;
             }
         };
 
@@ -721,6 +818,28 @@ class camera {
             threads.emplace_back(worker);
 
         for (auto &th : threads) th.join();
+
+        // --time-limit: a row that was NEVER CLAIMED by any worker at all
+        // (every thread independently observed time_limit_hit and stopped
+        // calling next_j.fetch_sub() before reaching this row's index) is
+        // NOT the same case the early-abort/mid-abort branches inside
+        // worker() handle - those only fire for a row that WAS claimed.
+        // exr_pixels is already zero-initialized so an unclaimed row is
+        // already correctly black there, but `scanlines` starts as empty
+        // std::strings - an unclaimed row would otherwise stay empty,
+        // silently corrupting the PPM row/column structure exactly like
+        // the abandoned-mid-render case those branches already guard
+        // against. Cheap to check unconditionally (a no-op loop when
+        // time_limit_seconds wasn't used, since every row would already be
+        // non-empty in that case).
+        if (!exr_output && time_limit_seconds > 0.0) {
+            std::ostringstream blackRow;
+            for (int i = 0; i < image_width; i++) write_color(blackRow, color(0, 0, 0), tone_map);
+            const std::string blackRowText = blackRow.str();
+            for (int j = 0; j < image_height; ++j) {
+                if (scanlines[j].empty()) scanlines[j] = blackRowText;
+            }
+        }
 
         bool wrote_ok = true;
         if (exr_output) {

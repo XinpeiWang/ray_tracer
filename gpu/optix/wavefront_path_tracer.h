@@ -164,6 +164,10 @@ public:
     /// --denoise previously had no effect under --wavefront at all.
     void setDenoiseEnabled(bool enabled) { denoiseEnabled_ = enabled; }
 
+    /// Mirrors OptiXRenderer::setDenoiseBlend() - see that method's own
+    /// comment. Same setter-not-render()-parameter pattern, same reasoning.
+    void setDenoiseBlend(float blend) { denoiseBlend_ = blend; }
+
 private:
     bool loadModule();
     void destroyProgramGroups();
@@ -398,6 +402,7 @@ private:
     // create/setup/3-allocations on every one of video mode's hundreds of
     // same-resolution per-frame render() calls.
     bool             denoiseEnabled_ = false;
+    float            denoiseBlend_ = 0.0f;  ///< See setDenoiseBlend()
     DenoiserResources denoiserResources_;
 };
 

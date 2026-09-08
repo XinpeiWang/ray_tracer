@@ -198,6 +198,16 @@ public:
 	/// @param enable true = denoise every render() call, false = off (default)
 	void enableDenoise(bool enable) { denoiseEnabled_ = enable; }
 
+	/// @brief OptiX's own blend between the noisy input and the fully
+	///        denoised output for every denoise() call - see
+	///        runDenoiser()'s own comment (optix_denoiser.h) for the value
+	///        range and rationale. No effect unless enableDenoise(true) was
+	///        also called. 0.0 (default) matches this project's prior,
+	///        only-ever-100%-denoised behavior exactly.
+	/// @param blend 0.0 = 100% denoised (default), 1.0 = original noisy
+	///        image unchanged.
+	void setDenoiseBlend(float blend) { denoiseBlend_ = blend; }
+
 	/// @brief Whether the OptiX device context was created with
 	///        OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL (see createContext()'s
 	///        own comment for what that buys and costs). Read once via the
@@ -294,6 +304,7 @@ private:
 	// OptiX AI Denoiser (optional post-process, recursive backend)
 	// -------------------------------------------------------------------
 	bool denoiseEnabled_ = false;  ///< See enableDenoise()
+	float denoiseBlend_ = 0.0f;    ///< See setDenoiseBlend()
 	// Persisted across render() calls rather than created/destroyed fresh
 	// each time - see denoise()'s own comment. Shared with
 	// WavefrontPathTracer's identical member (optix_denoiser.h) - each

@@ -607,10 +607,18 @@ private:
 	// enable-a-sibling-spinbox pattern as m_maxComponentValueCheck/Spin below.
 	QCheckBox *m_adaptiveSamplingCheck;
 	QDoubleSpinBox *m_adaptiveThresholdSpin;
+	// --time-limit (CPU default path tracer only) - same checkbox-gates-
+	// spinbox pattern as m_adaptiveSamplingCheck/Spin above.
+	QCheckBox *m_timeLimitCheck;
+	QDoubleSpinBox *m_timeLimitSpin;
 	QDoubleSpinBox *m_exposureSpin;     // --exposure (default path tracer only)
 	QComboBox *m_tonemapCombo;          // --tonemap (default path tracer only)
 	QCheckBox *m_statsCheck;            // --stats (default path tracer only)
 	QCheckBox *m_denoiseCheck;          // --denoise (GPU only, both backends)
+	// --denoise-blend (GPU only, both backends) - spinbox only enabled/
+	// emitted when m_denoiseCheck is checked, same enable-a-sibling-
+	// spinbox pattern as m_maxComponentValueCheck/Spin below.
+	QDoubleSpinBox *m_denoiseBlendSpin;
 	QCheckBox *m_optixValidateCheck;    // --optix-validate (GPU only)
 	QCheckBox *m_regularizeCheck;       // --regularize (default path tracer only, both backends)
 	// --maxcomponentvalue (CPU default path tracer only) - spinbox only

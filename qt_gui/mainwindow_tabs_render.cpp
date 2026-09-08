@@ -536,6 +536,45 @@ void MainWindow::createRenderOptionsTab() {
 			"use it.")), adaptiveRow);
 	}
 
+	m_timeLimitCheck = new QCheckBox(tr("Time limit (--time-limit)"), optionsTab);
+	m_timeLimitCheck->setToolTip(
+		tr("Stop rendering once this many seconds have elapsed, instead of\n"
+		"always running until every scanline is done. CPU default path\n"
+		"tracer only."));
+	styleCheckBox(m_timeLimitCheck);
+	m_timeLimitSpin = new QDoubleSpinBox(optionsTab);
+	m_timeLimitSpin->setRange(1.0, 86400.0);
+	m_timeLimitSpin->setDecimals(0);
+	m_timeLimitSpin->setValue(60.0);
+	m_timeLimitSpin->setSingleStep(10.0);
+	m_timeLimitSpin->setSuffix(tr(" s"));
+	m_timeLimitSpin->setEnabled(false);
+	m_timeLimitSpin->setToolTip(
+		tr("Seconds to render before stopping, regardless of the Samples\n"
+		"budget above."));
+	styleSpinBox(m_timeLimitSpin);
+	connect(m_timeLimitCheck, &QCheckBox::toggled, m_timeLimitSpin, &QDoubleSpinBox::setEnabled);
+	{
+		QWidget *timeLimitRow = new QWidget(optionsTab);
+		QHBoxLayout *timeLimitRowLayout = new QHBoxLayout(timeLimitRow);
+		timeLimitRowLayout->setContentsMargins(0, 0, 0, 0);
+		timeLimitRowLayout->addWidget(m_timeLimitCheck);
+		timeLimitRowLayout->addWidget(m_timeLimitSpin, 1);
+		samplingLayout->addRow(checkboxWithInfo(m_timeLimitCheck,
+			tr("Useful for a fixed preview or render-farm time budget instead "
+			"of guessing a sample count that happens to finish in time - "
+			"lets Samples above stay a generous ceiling while this decides "
+			"when to actually stop.\n\n"
+			"Scanline-granular: whatever rows were already being worked on "
+			"when the deadline passes finish normally; any row that never "
+			"got started is written black rather than left out, so the "
+			"image stays a valid (if incomplete) render instead of a "
+			"corrupted file.\n\n"
+			"Grayed out? This only affects the CPU renderer's default path "
+			"tracer - switch Renderer to CPU on the Settings tab to "
+			"use it.")), timeLimitRow);
+	}
+
 	m_exposureSpin = new QDoubleSpinBox(optionsTab);
 	m_exposureSpin->setRange(0.01, 100.0);
 	m_exposureSpin->setValue(1.0);
@@ -776,17 +815,42 @@ void MainWindow::createRenderOptionsTab() {
 		"albedo + normal buffers. GPU only, both backends (recursive\n"
 		"and wavefront each have their own denoiser)."));
 	styleCheckBox(m_denoiseCheck);
-	outputLayout->addRow(checkboxWithInfo(m_denoiseCheck,
-		tr("Ray tracing is noisy by nature - low sample counts leave a "
-		"grainy, speckled image, which is why more samples usually "
-		"means a cleaner picture.\n\n"
-		"A denoiser is a machine-learning model trained to recognize "
-		"that speckle pattern and smooth it away after the fact, "
-		"without needing to trace additional rays - a way to get a "
-		"clean-looking image faster, at some cost in fine detail.\n\n"
-		"Grayed out? This needs the GPU recursive backend - switch "
-		"Renderer to GPU (and GPU Backend to Recursive) on the Settings "
-		"tab to use it.")));
+	m_denoiseBlendSpin = new QDoubleSpinBox(optionsTab);
+	m_denoiseBlendSpin->setRange(0.0, 1.0);
+	m_denoiseBlendSpin->setDecimals(2);
+	m_denoiseBlendSpin->setValue(0.0);
+	m_denoiseBlendSpin->setSingleStep(0.05);
+	m_denoiseBlendSpin->setEnabled(false);
+	m_denoiseBlendSpin->setToolTip(
+		tr("Blend between the noisy input and the fully denoised output\n"
+		"(0.0 = 100% denoised, 1.0 = original noisy image). Lower this to\n"
+		"preserve more fine texture/grain that full-strength denoising\n"
+		"can over-smooth."));
+	styleSpinBox(m_denoiseBlendSpin);
+	connect(m_denoiseCheck, &QCheckBox::toggled, m_denoiseBlendSpin, &QDoubleSpinBox::setEnabled);
+	{
+		QWidget *denoiseRow = new QWidget(optionsTab);
+		QHBoxLayout *denoiseRowLayout = new QHBoxLayout(denoiseRow);
+		denoiseRowLayout->setContentsMargins(0, 0, 0, 0);
+		denoiseRowLayout->addWidget(m_denoiseCheck);
+		denoiseRowLayout->addWidget(m_denoiseBlendSpin, 1);
+		outputLayout->addRow(checkboxWithInfo(m_denoiseCheck,
+			tr("Ray tracing is noisy by nature - low sample counts leave a "
+			"grainy, speckled image, which is why more samples usually "
+			"means a cleaner picture.\n\n"
+			"A denoiser is a machine-learning model trained to recognize "
+			"that speckle pattern and smooth it away after the fact, "
+			"without needing to trace additional rays - a way to get a "
+			"clean-looking image faster, at some cost in fine detail. The "
+			"number to its right blends between the noisy original and "
+			"the fully denoised result - 0 is fully denoised (the "
+			"default); raising it keeps back some of the original grain, "
+			"useful when full-strength denoising smooths away texture "
+			"you wanted to keep.\n\n"
+			"Grayed out? This needs the GPU recursive backend - switch "
+			"Renderer to GPU (and GPU Backend to Recursive) on the Settings "
+			"tab to use it.")), denoiseRow);
+	}
 
 	m_optixValidateCheck = new QCheckBox(tr("OptiX validation mode (slower, debugging only)"), optionsTab);
 	m_optixValidateCheck->setToolTip(
@@ -956,6 +1020,8 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_spectralCheck->setEnabled(isDefault && !gpuSelected);
 	m_adaptiveSamplingCheck->setEnabled(isDefault && !gpuSelected);
 	m_adaptiveThresholdSpin->setEnabled(isDefault && !gpuSelected && m_adaptiveSamplingCheck->isChecked());
+	m_timeLimitCheck->setEnabled(isDefault && !gpuSelected);
+	m_timeLimitSpin->setEnabled(isDefault && !gpuSelected && m_timeLimitCheck->isChecked());
 	m_exposureSpin->setEnabled(isDefault);
 	m_tonemapCombo->setEnabled(isDefault);
 	m_statsCheck->setEnabled(isDefault);
@@ -963,6 +1029,7 @@ void MainWindow::updateRenderOptionsEnabled() {
 	// denoise(), gpu/optix/wavefront_path_tracer.cpp) - no longer gated on
 	// !wavefrontSelected.
 	m_denoiseCheck->setEnabled(isDefault && gpuSelected);
+	m_denoiseBlendSpin->setEnabled(isDefault && gpuSelected && m_denoiseCheck->isChecked());
 	m_optixValidateCheck->setEnabled(isDefault && gpuSelected);
 	m_regularizeCheck->setEnabled(isDefault);
 	// Both GPU backends have real maxComponentValue support now too

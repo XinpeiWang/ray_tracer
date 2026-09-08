@@ -455,6 +455,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.spectral          = options.spectral;
 		cam.adaptive_sampling = options.adaptive_sampling;
 		cam.adaptive_threshold = options.adaptive_threshold;
+		cam.time_limit_seconds = options.time_limit_seconds;
 		// Auto-detected from the caller's requested extension, matching how
 		// launcher/main.cpp already auto-triggers PNG conversion off the
 		// output extension rather than a separate flag - see camera.h's own

@@ -98,6 +98,11 @@
 // for those three.
 struct AdvancedRenderFlags {
 	bool denoise = false;
+	// 0.0 = "not requested" (matches the CLI's own --denoise-blend default,
+	// unlike maxComponentValue's 0.0-vs-CLI's-1e9 sentinel mismatch below) -
+	// RenderController::start() only emits --denoise-blend when this
+	// differs from 0.0, and only alongside --denoise itself.
+	double denoiseBlend = 0.0;
 	bool stats = false;
 	bool optixValidate = false;
 	double exposure = 1.0;
@@ -119,6 +124,11 @@ struct AdvancedRenderFlags {
 	// "checkbox gates a spinbox" shape as maxComponentValue below.
 	bool adaptiveSampling = false;
 	double adaptiveThreshold = 0.01;
+	// 0.0 = "not requested" (no --time-limit emitted at all) - same
+	// sentinel shape as maxComponentValue below, distinct from the CLI's
+	// own "<=0 disables it" convention since 0.0 never needs to be a real
+	// value here (the spinbox's own minimum is 1 second).
+	double timeLimitSeconds = 0.0;
 	bool spectral = false;
 	QString tonemap;
 	bool regularize = false;

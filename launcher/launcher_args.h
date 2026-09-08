@@ -86,6 +86,12 @@ struct LaunchArgs {
 	// ignored under --cpu/--sppm/--bdpt/--mlt like use_wavefront/
 	// optix_validate above.
 	bool denoise            = false;
+	// OptiX's own blend between the noisy input and the fully denoised
+	// output - see gpu/optix/optix_denoiser.h's runDenoiser() for the
+	// value range/rationale. Only consulted when denoise is true; same
+	// scope cut as denoise above. 0.0 (default) matches this project's
+	// prior, only-ever-100%-denoised behavior exactly.
+	double denoise_blend    = 0.0;
 	// Print a small end-of-render stats block (rays cast, bounces, shadow
 	// rays, samples/sec) - see main.cpp's own block right after "RENDER
 	// TIME". Observation-only: never changes what gets rendered, only what
@@ -132,6 +138,12 @@ struct LaunchArgs {
 	// when adaptive_sampling is true. 0.01 matches Blender Cycles' own
 	// adaptive_threshold default.
 	double adaptive_threshold = 0.01;
+	// Stops claiming new scanlines once this many seconds have elapsed
+	// since the render started - see camera::time_limit_seconds's own
+	// comment. <= 0.0 (default) means "no limit", unchanged prior
+	// behavior. Same "CPU default path tracer only" scope cut as
+	// adaptive_sampling above.
+	double time_limit_seconds = 0.0;
 	// pbrt-v4 Integrator "string lightsampler" - one of "uniform"/"power"/
 	// "bvh", or "auto" (resolved per-scene in cpu_interface.cpp to the
 	// loaded scene's own recommendation, falling back to bvh if it made
@@ -353,6 +365,25 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == render_flags::kDenoise) {
 			out.denoise = true;
 			consumed_args.insert(i);
+		} else if (arg == render_flags::kDenoiseBlend && i + 1 < argc) {
+			try {
+				out.denoise_blend = std::stod(argv[i + 1]);
+				if (out.denoise_blend < 0.0 || out.denoise_blend > 1.0) {
+					std::cerr << "Warning: --denoise-blend " << out.denoise_blend
+							  << " is outside [0,1] (0 = fully denoised, 1 = original noisy "
+								 "image) - using default (0.0)\n";
+					out.denoise_blend = 0.0;
+				}
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --denoise-blend value, using default (0.0)\n";
+				out.denoise_blend = 0.0;
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			}
 		} else if (arg == render_flags::kStats) {
 			out.stats = true;
 			consumed_args.insert(i);
@@ -408,6 +439,25 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 				// what was clearly meant as this flag's value" shape the
 				// success path above already has.
 				out.adaptive_threshold = 0.01;
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			}
+		} else if (arg == render_flags::kTimeLimit && i + 1 < argc) {
+			try {
+				out.time_limit_seconds = std::stod(argv[i + 1]);
+				if (out.time_limit_seconds <= 0.0) {
+					std::cerr << "Warning: --time-limit " << out.time_limit_seconds
+							  << " is <= 0, disabling the time limit (renders until every "
+								 "scanline is done)\n";
+					out.time_limit_seconds = 0.0;
+				}
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --time-limit value, disabling the time limit\n";
+				out.time_limit_seconds = 0.0;
 				consumed_args.insert(i);
 				consumed_args.insert(i + 1);
 				++i;
@@ -725,6 +775,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               albedo + normal AOV buffers. GPU-only, both backends\n"
 					  << "               (recursive and wavefront each have their own denoiser);\n"
 					  << "               ignored under --cpu/--sppm.\n"
+					  << "  " << render_flags::kDenoiseBlend << " VALUE: Blend between the noisy input and the fully\n"
+					  << "               denoised output (default 0.0 = 100% denoised, 1.0 = original\n"
+					  << "               noisy image unchanged). Full-strength denoising can over-smooth\n"
+					  << "               fine texture/grain; lower this to preserve more of it. Only\n"
+					  << "               consulted when " << render_flags::kDenoise << " is passed. Same scope as " << render_flags::kDenoise << " above.\n"
 					  << "  " << render_flags::kStats << "    : Print a small end-of-render stats block (rays cast, bounces,\n"
 					  << "               shadow rays, samples/sec) after the normal RENDER TIME output.\n"
 					  << "               Observation-only - never changes the rendered image.\n"
@@ -745,6 +800,13 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               " << render_flags::kAdaptive << " to consider a pixel converged (default 0.01,\n"
 					  << "               matching Blender Cycles' own default). Lower = cleaner but\n"
 					  << "               slower; only consulted when " << render_flags::kAdaptive << " is passed.\n"
+					  << "  " << render_flags::kTimeLimit << " SECONDS: Stop rendering once this many seconds have\n"
+					  << "               elapsed, instead of always running until every scanline is\n"
+					  << "               done - useful for previews or a fixed render-farm time budget.\n"
+					  << "               Scanline-granular: whatever rows were already in flight at the\n"
+					  << "               deadline finish normally; any never-started row is written\n"
+					  << "               black rather than left out. Off by default (no limit). CPU\n"
+					  << "               default path tracer only.\n"
 					  << "  --lightsampler NAME: pbrt-v4 Integrator \"string lightsampler\" - which light\n"
 					  << "               sampler picks the next-event-estimation light to sample\n"
 					  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"

@@ -74,6 +74,7 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
     render_opts.adaptive_sampling = args.adaptive_sampling;
     render_opts.adaptive_threshold = args.adaptive_threshold;
+    render_opts.time_limit_seconds = args.time_limit_seconds;
     render_opts.lightsampler = args.lightsampler.empty() ? nullptr : args.lightsampler.c_str();
     render_opts.regularize = args.regularize;
     render_opts.max_component_value = args.max_component_value;
@@ -85,6 +86,7 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     render_opts.spectral = args.spectral;
     render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
     render_opts.denoise = args.denoise;
+    render_opts.denoise_blend = static_cast<float>(args.denoise_blend);
     return render_opts;
 }
 
@@ -444,6 +446,11 @@ int main(int argc, char** argv) {
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the CPU default path tracer supports it) - ignoring.\n";
     }
+    if (args.time_limit_seconds > 0.0 && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --time-limit has no effect under --gpu/--bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
     if (args.spectral && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
         std::cerr << "Warning: --spectral has no effect under --gpu/--bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
@@ -476,6 +483,13 @@ int main(int argc, char** argv) {
     if (args.denoise && use_sppm && use_gpu) {
         std::cerr << "Warning: --denoise has no effect under --sppm --gpu "
                      "(GPU SPPM does not support the OptiX AI denoiser) - ignoring.\n";
+    }
+    // --denoise-blend only means anything alongside an actual --denoise
+    // pass - same "flag has no effect without its own gate" shape as
+    // --maxcomponentvalue's checkbox/spinbox pairing (GUI) has, just for
+    // the CLI's own --denoise/--denoise-blend pair.
+    if (args.denoise_blend != 0.0 && !args.denoise) {
+        std::cerr << "Warning: --denoise-blend has no effect without --denoise - ignoring.\n";
     }
 
     if (video_mode) {
