@@ -27,6 +27,7 @@
 #include <string>
 #include <vector>
 
+#include "accelerator_override.h"
 #include "pbrt_flatten.h"
 #include "pbrt_scene.h"
 #include "ply_mesh.h"
@@ -256,7 +257,12 @@ inline bool decodeInfiniteLightImage(const std::string &filename, const std::str
 } // namespace detail
 
 // Reads `path`, resolving Include and plymesh references relative to it.
-inline LoadResult loadFile(const std::string &path) {
+// `accelOverride` - normally left at its default (no-op) - lets a caller
+// override the scene's own Accelerator directive before flatten() resolves
+// it; see accelerator_override.h's own comment for why this exists as a
+// parameter here rather than a global read inside flatten() itself.
+inline LoadResult loadFile(const std::string &path,
+							const accelerator_override::Override &accelOverride = {}) {
 	using namespace detail;
 	LoadResult r;
 
@@ -316,7 +322,16 @@ inline LoadResult loadFile(const std::string &path) {
 			return true;
 		};
 
-	r.scene = pbrt_flatten::flatten(parsed.scene, meshes);
+	// A CLI --accelerator/--splitmethod override is applied onto the parsed
+	// Scene's own Accelerator directive fields BEFORE flatten() runs, so it
+	// is resolved by flatten()'s existing validation/fallback/motion-blur-
+	// compatibility logic exactly as if the scene file itself had asked for
+	// it - see accelerator_override.h's own comment.
+	pbrt_scene::Scene sceneToFlatten = parsed.scene;
+	if (accelOverride.has_type) sceneToFlatten.acceleratorType = accelOverride.type;
+	if (accelOverride.has_split_method) sceneToFlatten.acceleratorSplitMethod = accelOverride.split_method;
+
+	r.scene = pbrt_flatten::flatten(sceneToFlatten, meshes);
 	r.ok = true;
 
 	// Infinite light's image, if it has one. Resolved the same

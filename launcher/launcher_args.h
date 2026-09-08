@@ -107,6 +107,20 @@ struct LaunchArgs {
 	// "use bvh", pbrt-v4's own real default - same "CPU default path
 	// tracer only" scope cut as sampler above.
 	std::string lightsampler = "";
+	// Accelerator "bvh"/"kdtree" - overrides a loaded .pbrt scene's own
+	// Accelerator directive (empty/default leaves it at whatever the scene
+	// itself asked for, or "bvh" if it asked for nothing) - see
+	// src/shared/accelerator_override.h and render_options.h's own comment.
+	// Has no effect on a native (non-.pbrt) scene, which has no Accelerator
+	// directive to override (cpu_interface.cpp warns rather than silently
+	// ignoring it). All choices render the same converged image - a pure
+	// perf/build-strategy knob, unlike sampler/lightsampler above.
+	std::string accelerator = "";
+	// Accelerator "bvh" "string splitmethod" - one of "sah"/"middle"/
+	// "equal"/"hlbvh" - only consulted when the resolved accelerator type is
+	// "bvh" (kdtree has no split method). Same override/scope shape as
+	// `accelerator` just above.
+	std::string splitmethod = "";
 	// pbrt-v4 Integrator "bool regularize" (camera.h's camera_t::regularize)
 	// as an explicit CLI request. A loaded .pbrt scene can already set this
 	// itself via its own directive - this flag ONLY ever forces it ON, on
@@ -364,6 +378,34 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} else {
 				std::cerr << "Invalid --lightsampler \"" << argv[i + 1] << "\", using default (bvh). "
 							 "Valid: uniform, power, bvh, auto\n";
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} else if (arg == render_flags::kAccelerator && i + 1 < argc) {
+			std::string name = argv[i + 1];
+			std::transform(name.begin(), name.end(), name.begin(),
+							[](unsigned char c) { return std::tolower(c); });
+			static const std::set<std::string> kValidAccelerators = {"bvh", "kdtree"};
+			if (kValidAccelerators.count(name)) {
+				out.accelerator = name;
+			} else {
+				std::cerr << "Invalid --accelerator \"" << argv[i + 1] << "\", leaving the scene's own "
+							 "Accelerator directive (or its bvh default) untouched. Valid: bvh, kdtree\n";
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} else if (arg == render_flags::kSplitMethod && i + 1 < argc) {
+			std::string name = argv[i + 1];
+			std::transform(name.begin(), name.end(), name.begin(),
+							[](unsigned char c) { return std::tolower(c); });
+			static const std::set<std::string> kValidSplitMethods = {"sah", "middle", "equal", "hlbvh"};
+			if (kValidSplitMethods.count(name)) {
+				out.splitmethod = name;
+			} else {
+				std::cerr << "Invalid --splitmethod \"" << argv[i + 1] << "\", leaving the scene's own "
+							 "splitmethod (or its sah default) untouched. Valid: sah, middle, equal, hlbvh\n";
 			}
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
@@ -666,6 +708,17 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               Integrator \"string lightsampler\" parameter requested (bvh if\n"
 					  << "               it made no request) instead of a fixed default. CPU default\n"
 					  << "               path tracer only.\n"
+					  << "  " << render_flags::kAccelerator << " NAME: Overrides a loaded .pbrt scene's own Accelerator\n"
+					  << "               directive (default: leave the scene's own choice, or bvh if it\n"
+					  << "               named none). One of bvh, kdtree. All choices render the same\n"
+					  << "               converged image - a build-strategy/perf knob, not a quality one.\n"
+					  << "               No effect on a native (non-.pbrt) scene, which has no Accelerator\n"
+					  << "               directive to override (warns). CPU only.\n"
+					  << "  " << render_flags::kSplitMethod << " NAME: Overrides a loaded .pbrt scene's own Accelerator\n"
+					  << "               \"string splitmethod\" (default: leave the scene's own choice, or\n"
+					  << "               sah if it named none). One of sah, middle, equal, hlbvh. Only\n"
+					  << "               consulted when the resolved accelerator is bvh. Same scope/effect\n"
+					  << "               shape as --accelerator above.\n"
 					  << "  " << render_flags::kRegularize << " : pbrt-v4 Integrator \"bool regularize\" - widens a rough BSDF's\n"
 					  << "               GGX alpha after the path's first non-specular bounce, taming\n"
 					  << "               fireflies from hard caustic paths at the cost of some blur.\n"

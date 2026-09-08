@@ -591,6 +591,120 @@ void MainWindow::createRenderOptionsTab() {
 	layout->addWidget(samplingGroup);
 
 	// ------------------------------------------------------------------
+	// Accelerator group - CPU only, but (unlike Sampling & Spectral above)
+	// shared by every integrator, not just the default path tracer - see
+	// updateRenderOptionsEnabled()'s own comment for why this combo pair's
+	// enabled condition differs from every other CPU-only control here.
+	// ------------------------------------------------------------------
+	QGroupBox *acceleratorGroup = new QGroupBox(tr("Accelerator"), optionsTab);
+	styleGroupBox(acceleratorGroup);
+	QFormLayout *acceleratorLayout = new QFormLayout(acceleratorGroup);
+	acceleratorLayout->setVerticalSpacing(10);
+	acceleratorLayout->setHorizontalSpacing(10);
+	acceleratorLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_acceleratorCombo = new QComboBox(optionsTab);
+	{
+		struct AcceleratorEntry { QString label; QString value; QString tooltip; };
+		const AcceleratorEntry entries[] = {
+			{tr("Scene's own choice (default)"), QString(), tr(
+				"Leaves a loaded .pbrt scene's own Accelerator directive "
+				"alone (bvh if it named none, real pbrt-v4's own default). "
+				"No effect on a native (non-.pbrt) scene either way.")},
+			{tr("BVH"), QStringLiteral("bvh"), tr(
+				"A bounding volume hierarchy, built by the split method "
+				"chosen below - this project's pre-existing default "
+				"accelerator, matching pbrt-v4 itself.")},
+			{tr("Kd-tree"), QStringLiteral("kdtree"), tr(
+				"A k-d tree instead of a BVH - pbrt-v4's other real "
+				"accelerator option. Has no split-method concept of its "
+				"own (the combo below is ignored when this is chosen). "
+				"Falls back to BVH/sah on a scene with object motion blur "
+				"(this project's kd-tree wrapper has no per-ray-time "
+				"channel) - a warning is printed when that happens.")},
+		};
+		for (const AcceleratorEntry &entry : entries) {
+			icon_tint::addItem(m_acceleratorCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
+			m_acceleratorCombo->setItemData(m_acceleratorCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
+		}
+	}
+	m_acceleratorCombo->setToolTip(
+		tr("Which acceleration structure holds the scene's geometry. Every\n"
+		"choice renders the identical converged image - a build-strategy/\n"
+		"perf knob, not a quality one. CPU only, every integrator - no\n"
+		"effect on GPU (always its own fixed BVH) or a native (non-.pbrt)\n"
+		"scene (has no Accelerator directive to override - see the log)."));
+	styleComboBox(m_acceleratorCombo);
+	acceleratorLayout->addRow(labelWithInfo(tr("Accelerator:"),
+		tr("A flat list of triangles/spheres would make every ray test "
+		"every single primitive in the scene - the acceleration structure "
+		"is what lets a ray skip most of the scene and only test the "
+		"handful of primitives near where it actually travels.\n\n"
+		"BVH (bounding volume hierarchy) and Kd-tree are two different "
+		"real strategies for organizing the same geometry - both produce "
+		"the exact same rendered image, just at different build/traversal "
+		"speeds depending on the scene's shape.\n\n"
+		"Only a loaded .pbrt scene has an Accelerator directive to "
+		"override at all - a native (non-.pbrt) scene always uses its own "
+		"fixed BVH regardless of this choice (a warning is printed if you "
+		"pick something else anyway).")),
+		m_acceleratorCombo);
+	connect(m_acceleratorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+		updateRenderOptionsEnabled();
+	});
+
+	m_splitMethodCombo = new QComboBox(optionsTab);
+	{
+		struct SplitMethodEntry { QString label; QString value; QString tooltip; };
+		const SplitMethodEntry entries[] = {
+			{tr("SAH (default)"), QString(), tr(
+				"Surface Area Heuristic - estimates the traversal cost of "
+				"several candidate splits and picks the cheapest. Slower "
+				"to build than Middle/Equal, but the best-traversing tree "
+				"in most scenes - this project's pre-existing BVH build.")},
+			{tr("Middle"), QStringLiteral("middle"), tr(
+				"Splits each node at the midpoint of its bounding box's "
+				"longest axis. Cheap to build, no cost estimation at all - "
+				"can traverse poorly on unevenly-distributed geometry.")},
+			{tr("Equal counts"), QStringLiteral("equal"), tr(
+				"Splits each node so an equal number of primitives fall on "
+				"each side, regardless of their spatial extent. Cheap to "
+				"build; can produce badly-shaped nodes for clustered "
+				"geometry.")},
+			{tr("HLBVH"), QStringLiteral("hlbvh"), tr(
+				"Hierarchical Linear BVH - builds bottom-up from Morton "
+				"codes, the fastest of these four to build for very large "
+				"triangle counts, at some traversal-quality cost versus "
+				"SAH.")},
+		};
+		for (const SplitMethodEntry &entry : entries) {
+			icon_tint::addItem(m_splitMethodCombo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
+			m_splitMethodCombo->setItemData(m_splitMethodCombo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
+		}
+	}
+	m_splitMethodCombo->setToolTip(
+		tr("How the BVH above is built (ignored when Accelerator is set to\n"
+		"Kd-tree). Every choice renders the identical converged image.\n"
+		"Falls back to sah on a scene with object motion blur (this\n"
+		"project's non-sah BVH build has no per-ray-time channel) - a\n"
+		"warning is printed when that happens."));
+	styleComboBox(m_splitMethodCombo);
+	acceleratorLayout->addRow(labelWithInfo(tr("BVH split method:"),
+		tr("Only consulted when the accelerator above resolves to BVH "
+		"(ignored for Kd-tree, which has no split-method concept). All "
+		"four build the same tree shape family from a different "
+		"strategy - SAH spends more time building in exchange for a "
+		"better-traversing tree; Middle/Equal are cheap, simple "
+		"fallbacks; HLBVH trades some traversal quality for the fastest "
+		"build on very large scenes.")),
+		m_splitMethodCombo);
+	connect(m_splitMethodCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+		updateRenderOptionsEnabled();
+	});
+
+	layout->addWidget(acceleratorGroup);
+
+	// ------------------------------------------------------------------
 	// Output group
 	// ------------------------------------------------------------------
 	QGroupBox *outputGroup = new QGroupBox(tr("Output"), optionsTab);
@@ -799,7 +913,8 @@ void MainWindow::createRenderOptionsTab() {
 // Single source of truth for m_samplerCombo/m_lightSamplerCombo/
 // m_spectralCheck/m_exposureSpin/
 // m_tonemapCombo/m_statsCheck/m_denoiseCheck/m_optixValidateCheck/
-// m_seedCheck/m_gpuBackendCombo's enabled state, replacing what used to be a
+// m_seedCheck/m_gpuBackendCombo/m_acceleratorCombo/m_splitMethodCombo's
+// enabled state, replacing what used to be a
 // hand-duplicated 2-input (GPU/CPU x wavefront/recursive) condition
 // copy-pasted at construction and in two separate connect() lambdas -
 // adding Integrator as a third input would have made that a 3-site
@@ -839,6 +954,14 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_cropY1Spin->setEnabled(cropSpinsEnabled);
 	m_seedCheck->setEnabled(isDefault);
 	m_seedSpin->setEnabled(isDefault && m_seedCheck->isChecked());
+	// Unlike every field above, NOT gated on isDefault - accelerator/
+	// splitmethod affect scene construction, shared by every integrator
+	// (default path tracer, BDPT/MLT, SPPM), not one integrator's own logic.
+	// Still CPU-only (GPU always builds its own fixed BVH).
+	m_acceleratorCombo->setEnabled(!gpuSelected);
+	const bool splitMethodMeaningful =
+		!gpuSelected && m_acceleratorCombo->currentData().toString() != QStringLiteral("kdtree");
+	m_splitMethodCombo->setEnabled(splitMethodMeaningful);
 }
 
 void MainWindow::createPreviewTab() {

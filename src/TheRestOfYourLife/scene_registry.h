@@ -15,6 +15,7 @@
 //   it, the GUI) pick it up automatically, no other file to touch unless
 //   you're also adding GPU support (see gpu/optix/scene_builder.cpp).
 
+#include "../shared/accelerator_override.h"
 #include "../shared/scene_descriptor.h"
 #include "scenes.h"
 #include "cornell_box_scene.h"
@@ -214,6 +215,20 @@ struct SceneDescriptor {
     // descriptor() call sites in scene_registry_data.h for the values and
     // how each was determined.
     double recommended_exposure = 1.0;
+
+    // Whether this scene is backed by a loaded .pbrt file (true for every
+    // curated/auto-discovered entry wired through wire_pbrt_backed_scene()
+    // below) versus a native, hand-written C++ builder (scenes_book.h/
+    // scenes_advanced.h/mesh.h, false, the default). Only pbrt-backed scenes
+    // have an Accelerator directive at all, so this is what cpu_interface.cpp
+    // consults to decide whether a --accelerator/--splitmethod CLI value has
+    // any effect on the selected scene or should warn "has no effect for
+    // this scene", matching this project's established convention for a
+    // flag that doesn't apply to every scene (see render_options.h's
+    // top-of-file comment). Deliberately LAST, same positional-brace-init
+    // fragility reasoning as every other field added here after the
+    // struct's own initial fields.
+    bool is_pbrt_backed = false;
 };
 
 // Dummy sphere light used by scenes that have no explicit light geometry
@@ -274,7 +289,14 @@ namespace pbrt_scene_registry {
         const auto ensure = [state, path]() -> pbrt_cpu::BuildResult& {
             if (!state->attempted) {
                 state->attempted = true;
-                const pbrt_load::LoadResult r = pbrt_load::loadFile(path);
+                // Read here, not captured at lambda-creation time above -
+                // this lambda is built once per pbrt-backed scene at
+                // process-startup registry construction, long before
+                // cpu_render_main() has parsed --accelerator/--splitmethod
+                // into this global. See accelerator_override.h's own
+                // comment for why a global is the seam at all.
+                const pbrt_load::LoadResult r =
+                    pbrt_load::loadFile(path, accelerator_override::state());
                 if (!r.ok) {
                     std::cerr << "error: " << r.error << "\n";
                 } else {
@@ -298,6 +320,7 @@ namespace pbrt_scene_registry {
         s.recommended_integrator = d.integrator;
         s.recommended_sampler = d.samplerType;
         s.recommended_light_sampler = d.lightSamplerType;
+        s.is_pbrt_backed = true;
         s.camera = CameraConfig{
             d.camera.vfov,
             d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],

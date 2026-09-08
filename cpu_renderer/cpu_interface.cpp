@@ -885,6 +885,16 @@ extern "C" int cpu_scene_camera_is_animated_by_id(const char* scene_id) {
 	return s->camera.animated ? 1 : 0;
 }
 
+// Lets launcher/main.cpp warn that --accelerator/--splitmethod has no effect
+// when the selected scene is a native (non-.pbrt) builder - see
+// SceneDescriptor::is_pbrt_backed's own comment (scene_registry.h) for why
+// only pbrt-backed scenes have an Accelerator directive to override at all.
+extern "C" int cpu_scene_is_pbrt_backed_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	if (!s) return 0;
+	return s->is_pbrt_backed ? 1 : 0;
+}
+
 extern "C" const char* cpu_scene_name_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->name : "";

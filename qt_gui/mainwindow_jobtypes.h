@@ -103,6 +103,15 @@ struct AdvancedRenderFlags {
 	double exposure = 1.0;
 	QString sampler;
 	QString lightSampler;
+	// accelerator/splitMethod empty = leave a loaded .pbrt scene's own
+	// Accelerator directive untouched (same "empty = use the CLI's own
+	// default" shape as sampler/lightSampler above) - see
+	// src/shared/accelerator_override.h. Unlike sampler/lightSampler, these
+	// two apply under every integrator, not just the default path tracer -
+	// see RenderController::start()'s own comment on where these get
+	// emitted.
+	QString accelerator;
+	QString splitMethod;
 	bool spectral = false;
 	QString tonemap;
 	bool regularize = false;

@@ -33,6 +33,18 @@ struct RenderOptions {
 	// not the converged image, same perf/quality-knob shape as `sampler`
 	// above.
 	const char* lightsampler = nullptr;
+	// NOTE: --accelerator/--splitmethod are deliberately NOT fields here.
+	// Unlike every field above (each read by cpu_render_main(), the CPU
+	// default path tracer's own RenderOptions consumer), accelerator/
+	// splitmethod affect scene CONSTRUCTION itself (scene_registry.h's
+	// build_world(), shared by every CPU integrator - default path tracer,
+	// BDPT/MLT, and SPPM all call it, and none of the latter take a
+	// RenderOptions parameter at all - see launcher/main.cpp's own comment
+	// on render_options_from_args()). Threading them through here would
+	// only reach the default path tracer, silently missing the others.
+	// Instead launcher/main.cpp sets src/shared/accelerator_override.h's
+	// process-global directly, once, before any entry point's first scene
+	// lookup - see that header's own comment for the full reasoning.
 	// pbrt-v4 Integrator "bool regularize" as an explicit CLI request -
 	// see LaunchArgs::regularize's own comment (launcher_args.h) for the
 	// full "only ever forces ON, never overrides a scene's own true back

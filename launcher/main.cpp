@@ -56,6 +56,7 @@ extern char** environ;
 #include "src/external/image_writer.h"
 #include "src/TheRestOfYourLife/error_codes.h"
 #include "src/TheRestOfYourLife/thread_count.h"
+#include "src/shared/accelerator_override.h"
 #include "src/shared/exr_writer.h"
 #include "src/shared/render_stats.h"
 #include "launcher/camera_path.h"
@@ -272,6 +273,18 @@ int main(int argc, char** argv) {
 	int  samples_per_pixel  = args.samples_per_pixel;
 	int  max_ray_depth      = args.max_ray_depth;
 	std::string scene_id    = args.scene_id;
+	// Set once, here, before any entry point's first scene lookup - see
+	// accelerator_override.h's own comment for why this needs to be a
+	// process-global rather than threaded through RenderOptions (BDPT/MLT/
+	// SPPM/the debug integrators take no RenderOptions parameter at all).
+	{
+		accelerator_override::Override o;
+		o.has_type = !args.accelerator.empty();
+		o.type = args.accelerator;
+		o.has_split_method = !args.splitmethod.empty();
+		o.split_method = args.splitmethod;
+		accelerator_override::set(o);
+	}
 	double cam_x            = args.cam_x;
 	double cam_y            = args.cam_y;
 	double cam_z            = args.cam_z;
@@ -435,6 +448,25 @@ int main(int argc, char** argv) {
         std::cerr << "Warning: --spectral has no effect under --gpu/--bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
+    // Unlike --sampler/--lightsampler/--spectral above, --accelerator/
+    // --splitmethod affect scene CONSTRUCTION (scene_registry.h's
+    // build_world(), shared by every CPU integrator - default path tracer,
+    // BDPT/MLT, and SPPM all call it) rather than one integrator's own
+    // light-sampling logic, so they are NOT scoped to "CPU default path
+    // tracer only" - only GPU (which always builds its own fixed BVH,
+    // never touching this scene-registry path at all) has no use for them.
+    if ((!args.accelerator.empty() || !args.splitmethod.empty()) && use_gpu) {
+        std::cerr << "Warning: --accelerator/--splitmethod have no effect under --gpu "
+                     "(GPU always builds its own fixed BVH) - ignoring.\n";
+    }
+    // A native (non-.pbrt) scene has no Accelerator directive to override at
+    // all - see SceneDescriptor::is_pbrt_backed's own comment.
+    if ((!args.accelerator.empty() || !args.splitmethod.empty()) && !use_gpu &&
+        !cpu_scene_is_pbrt_backed_by_id(scene_id.c_str())) {
+        std::cerr << "Warning: --accelerator/--splitmethod have no effect on scene '" << scene_id
+                  << "' (it is a native, non-.pbrt scene with no Accelerator directive to "
+                     "override) - ignoring.\n";
     }
     // --denoise reaches OptiXRenderer's recursive/wavefront post-process
     // step; GPU SPPM (use_sppm && use_gpu) takes a separate render entry

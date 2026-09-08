@@ -578,6 +578,16 @@ private:
 	// controls' own change handlers.
 	QComboBox *m_samplerCombo;          // --sampler (CPU default path tracer only)
 	QComboBox *m_lightSamplerCombo;     // --lightsampler (CPU default path tracer only)
+	// --accelerator/--splitmethod (CPU only, but unlike every other CPU-only
+	// control above, EVERY integrator - default path tracer, BDPT/MLT, SPPM
+	// - shares this, since it affects scene construction rather than one
+	// integrator's own logic; see accelerator_override.h. Only has a real
+	// effect on a pbrt-backed scene - a native scene has no Accelerator
+	// directive to override (the launcher warns, this combo doesn't grey
+	// out, since the GUI has no cheap way to query is_pbrt_backed per scene
+	// today - see this combo's own tooltip instead).
+	QComboBox *m_acceleratorCombo;
+	QComboBox *m_splitMethodCombo;       // enabled only when m_acceleratorCombo != kdtree
 	QCheckBox *m_spectralCheck;         // --spectral (CPU default path tracer only)
 	QDoubleSpinBox *m_exposureSpin;     // --exposure (default path tracer only)
 	QComboBox *m_tonemapCombo;          // --tonemap (default path tracer only)

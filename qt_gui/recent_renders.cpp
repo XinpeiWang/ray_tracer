@@ -77,6 +77,8 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("exposure", entry.advancedFlags.exposure);
 	settings.setValue("sampler", entry.advancedFlags.sampler);
 	settings.setValue("lightSampler", entry.advancedFlags.lightSampler);
+	settings.setValue("accelerator", entry.advancedFlags.accelerator);
+	settings.setValue("splitMethod", entry.advancedFlags.splitMethod);
 	settings.setValue("spectral", entry.advancedFlags.spectral);
 	settings.setValue("tonemap", entry.advancedFlags.tonemap);
 	settings.setValue("regularize", entry.advancedFlags.regularize);
@@ -171,6 +173,8 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	if (settings.contains("exposure")) entry.advancedFlags.exposure = settings.value("exposure").toDouble();
 	if (settings.contains("sampler")) entry.advancedFlags.sampler = settings.value("sampler").toString();
 	if (settings.contains("lightSampler")) entry.advancedFlags.lightSampler = settings.value("lightSampler").toString();
+	if (settings.contains("accelerator")) entry.advancedFlags.accelerator = settings.value("accelerator").toString();
+	if (settings.contains("splitMethod")) entry.advancedFlags.splitMethod = settings.value("splitMethod").toString();
 	if (settings.contains("spectral")) entry.advancedFlags.spectral = settings.value("spectral").toBool();
 	if (settings.contains("tonemap")) entry.advancedFlags.tonemap = settings.value("tonemap").toString();
 	if (settings.contains("regularize")) entry.advancedFlags.regularize = settings.value("regularize").toBool();
