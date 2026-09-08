@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{E4F5A6B7-C8D9-4A1B-9E2F-4A5B6C7D8E9F}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>realtime_renderer</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <!-- WholeProgramOptimization (LTCG) removed - same reason as
+         scene_metadata.vcxproj's own comment: this DLL links the whole
+         optix_renderer.lib (which bakes in device-linked CUDA .obj files -
+         see that project's own AdditionalDependencies), and LTCG+/GL
+         combinations have reproducibly hit linker fragility elsewhere in
+         this solution (tests/ray_tracer_tests.vcxproj, launcher/
+         launcher.vcxproj, scene_metadata/scene_metadata.vcxproj). This DLL
+         is a single trivial passthrough export (see
+         realtime_renderer_dll.cpp) - there's no meaningful optimization to
+         lose by dropping LTCG here. -->
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;REALTIME_RENDERER_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- $(ProjectDir).. - just the repo root, matching launcher.vcxproj's
+           own AdditionalIncludeDirectories: this project never includes a
+           CUDA/OptiX header directly (optix_interface.h is a pure-POD C
+           API, see that header's own comment), so no OptixSdkPath/
+           CudaToolkitPath include dirs are needed here at all, only what's
+           needed to resolve "../gpu/optix/optix_interface.h" and that
+           header's own "../../src/shared/render_options.h" include. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- optix_renderer.lib's own compiled objects reference CUDA runtime
+           symbols directly - these must be re-declared here since a
+           StaticLibrary ProjectReference does not propagate a referenced
+           project's external (non-project) library dependencies. Matches
+           launcher.vcxproj's own identical AdditionalDependencies/
+           AdditionalLibraryDirectories exactly (the only other consumer of
+           optix_renderer.lib in this solution). -->
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;REALTIME_RENDERER_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="realtime_renderer_dll.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- optix_renderer.lib's scene_builder.obj (build_scene(), the function
+         this DLL actually calls) has a real functional dependency on
+         cpu_renderer's own scene registry (cpu_scene_name_by_id() and
+         friends - scene metadata lookups, not just stray impl-detail
+         symbols) as well as its bundled stb_image/tinyexr/miniz decoders -
+         launcher.vcxproj (the only other consumer of optix_renderer.lib)
+         never notices because it already references both projects. This
+         DLL needs the exact same pair. -->
+    <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">
+      <Project>{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\optix_renderer\optix_renderer.vcxproj">
+      <Project>{9A3B9C2D-4E5F-6A7B-8C9D-0E1F2A3B4C5D}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+  <!-- Post-Build Event: Auto-deploy to RayTracer_Package, next to RayTracerGUI.exe -->
+  <Target Name="PostBuild" AfterTargets="Build">
+    <PropertyGroup>
+      <PackageDir>$(SolutionDir)RayTracer_Package</PackageDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(PackageDir)" Condition="!Exists('$(PackageDir)')" />
+    <Message Text="[Post-Build] Copying realtime_renderer.dll to RayTracer_Package..." Importance="high" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(PackageDir)\realtime_renderer.dll" SkipUnchangedFiles="false" />
+    <Message Text="[Post-Build] Deployed: $(PackageDir)\realtime_renderer.dll" Importance="high" />
+  </Target>
+</Project>

@@ -435,6 +435,118 @@ extern "C" int optix_render_main(
 	}
 }
 
+extern "C" bool rt_realtime_render_frame(
+	const char* scene_id,
+	int image_width,
+	int image_height,
+	int samples_per_pixel,
+	int max_depth,
+	double cam_x,
+	double cam_y,
+	double cam_z,
+	float* out_rgb_buffer
+) {
+	// Live-preview entry point (progressive-refinement mode): the first half
+	// of optix_render_main() above - init/build/upload/render - reused
+	// verbatim (same g_renderer/g_uploaded_scene_id process-lifetime cache,
+	// so a camera-only call between frames skips the GPU re-upload exactly
+	// the way --video's frame loop already does), but WITHOUT that
+	// function's tonemap/gamma/PPM-file-writing tail: the caller
+	// (RealtimePreviewSession, qt_gui) accumulates raw linear samples across
+	// many low-spp calls and tonemaps only the accumulated result once per
+	// displayed frame, not each noisy individual one. Always renders via the
+	// wavefront backend - see this project's own plan for why (the
+	// recursive backend hardcodes frameNumber=0 without an explicit --seed,
+	// which would make every call return IDENTICAL noise instead of
+	// decorrelated samples that actually converge when averaged).
+	// Deliberately quiet (no [OptiX]/[TECH] console spam) - this runs every
+	// preview frame, not once per CLI invocation.
+	if (!out_rgb_buffer || !scene_id) return false;
+
+	try {
+		if (!g_renderer) {
+			g_renderer = std::make_unique<OptiXRenderer>();
+			if (!g_renderer->initialize()) return false;
+		}
+
+		SceneData scene;
+		float camera_params[12];
+		GpuCameraParams cameraExtra{};
+		cameraExtra.userSeed = -1;
+		cameraExtra.maxComponentValue = 1e9f;
+
+		// force_camera_override=1: the live preview's whole point is letting
+		// the caller drive the camera, so cam_x/y/z must always win, the
+		// same as --video's per-frame animated camera (optix_render_main's
+		// own force_camera_override comment).
+		if (!build_scene(scene_id, image_width, image_height, scene, camera_params,
+						  cam_x, cam_y, cam_z, &cameraExtra, /*force_camera_override=*/true)) {
+			return false;
+		}
+
+		bool defocusDiskZero = cameraExtra.defocus_disk_u.x == 0.0f && cameraExtra.defocus_disk_u.y == 0.0f &&
+								cameraExtra.defocus_disk_u.z == 0.0f;
+		if (cameraExtra.kind == CameraKind::Perspective && defocusDiskZero) {
+			cameraExtra.origin = make_float3(camera_params[0], camera_params[1], camera_params[2]);
+			cameraExtra.lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+			cameraExtra.horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+		}
+
+		if (scene_id != g_uploaded_scene_id) {
+			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
+										scene.instanceGroups, scene.instancePlacements);
+			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
+										 scene.lightIndices, scene.lightKinds,
+										 scene.punctualLights, scene.bilinearPatches,
+										 scene.triangles, scene.disks, scene.cylinders,
+										 scene.lensElements,
+										 scene.exitPupilBounds, scene.textures,
+										 scene.texturePixels, scene.cloudMediums,
+										 scene.rgbGridMediums, scene.rgbGridData,
+										 scene.gridMediums, scene.gridData,
+									 scene.bssrdfTables, scene.bssrdfRhoSamples,
+									 scene.bssrdfRadiusSamples, scene.bssrdfProfile,
+									 scene.bssrdfProfileCdf,
+										 scene.measuredTables, scene.measuredParamValues,
+										 scene.measuredData, scene.measuredMcdf,
+										 scene.measuredCcdf,
+										 scene.skyImagePixels, scene.skyMarginalCdf,
+										 scene.skyMarginalFunc, scene.skyMarginalFuncInt,
+										 scene.skyConditionalCdf, scene.skyConditionalFunc,
+										 scene.skyConditionalFuncInt,
+										 scene.skyWidth, scene.skyHeight, scene.skyScale,
+									 scene.portalRectifiedImage, scene.portalDistFunc, scene.portalSatSum,
+									 scene.portalWidth, scene.portalHeight, scene.portalScale,
+									 scene.portalFrameX, scene.portalFrameY, scene.portalFrameZ,
+									 scene.portalP0, scene.portalP2)) {
+				return false;
+			}
+			g_uploaded_scene_id = scene_id;
+		}
+
+		// PTX resolved relative to CWD - matches optix_render_main()'s own
+		// no-directory-in-output_path fallback, and this project's existing
+		// convention of every DLL/PTX sitting alongside RayTracerGUI.exe in
+		// RayTracer_Package with CWD there.
+		g_renderer->enableWavefront(true, "wavefront_programs.ptx");
+		g_renderer->enableDenoise(false);
+
+		return g_renderer->render(
+			image_width,
+			image_height,
+			samples_per_pixel,
+			max_depth,
+			cameraExtra,
+			out_rgb_buffer
+		);
+	} catch (const std::exception&) {
+		return false;
+	} catch (...) {
+		return false;
+	}
+}
+
 // Human-readable name for the MaterialTypes this function's error messages
 // can name -- deliberately NOT exhaustive (optix_types.h's MaterialType has
 // ~20 enumerators); anything past this list falls back to printing the raw

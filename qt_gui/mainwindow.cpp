@@ -845,6 +845,9 @@ void MainWindow::setupUI() {
 	createSettingsTab();
 	createRenderOptionsTab();
 	createPreviewTab();
+#ifdef RT_GUI_HAVE_GPU
+	createLivePreviewTab();
+#endif
 	createProgressTab();
 	createLogTab();
 	createDiagnosticsTab();

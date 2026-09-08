@@ -395,6 +395,19 @@ private:
     unsigned int numCylinders_ = 0;
     unsigned int frameNumber_ = 0;
 
+    // Framebuffer accumulator + per-pixel filter-weight buffer (render()'s
+    // own d_fb/d_weight) - persisted across calls and only reallocated when
+    // numPixels changes, same resolution-keyed skip-reallocation pattern
+    // allocateQueues() already uses for the (much larger) per-bounce work
+    // queues above. Matters for a tight repeated-call loop (e.g. a live
+    // preview re-rendering every frame at fixed resolution): avoids a
+    // cudaMalloc/cudaFree pair on every single call for buffers that are
+    // the same size every time anyway. Zeroed at the start of every render()
+    // call regardless (these accumulate per-call, not across calls).
+    CUdeviceptr  d_fb_ = 0;
+    CUdeviceptr  d_weight_ = 0;
+    int          fbCapacity_ = 0;
+
     // --denoise support (see setDenoiseEnabled()/denoise()) - own instance
     // of the shared DenoiserResources (optix_denoiser.h), persisted across
     // render() calls (recreated only on a resolution change) for the same

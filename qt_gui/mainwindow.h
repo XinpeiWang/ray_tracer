@@ -24,6 +24,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QPixmap>
+#include <QImage>
 #include <QResizeEvent>
 #include <QSystemTrayIcon>
 #include <QStackedWidget>
@@ -65,6 +66,11 @@
 // this header don't need the full declaration (or its QString/DLL-loading
 // machinery) dragged in just to see these two function signatures.
 namespace SceneMetadataClient { struct SceneMetadata; }
+// Forward-declared for the same reason as SceneMetadataClient::SceneMetadata
+// above - only used below as an owned pointer member, so callers of this
+// header don't need realtime_preview_session.h's QThread/DLL-loading
+// machinery dragged in just to see the member declaration.
+class RealtimePreviewSession;
 
 
 // ============================================================================
@@ -227,6 +233,20 @@ private:
 	void createProgressTab();
 	void createLogTab();
 	void createDiagnosticsTab();
+#ifdef RT_GUI_HAVE_GPU
+	// GPU-only (see realtime_renderer.dll's own build - MSVC/CUDA/OptiX,
+	// same RT_GUI_HAVE_GPU scope as the "Use GPU" toggle itself). See this
+	// project's own real-time-preview plan for the progressive-refinement
+	// design (accumulate low-spp samples, reset on camera change).
+	void createLivePreviewTab();
+	void onLivePreviewToggled();
+	void onLivePreviewFrameReady(QImage image, int sampleCount);
+	void onLivePreviewStatus(QString text);
+	// Called from the camera spinboxes' valueChanged handlers - forwards to
+	// the running session (no-op if the preview isn't currently running,
+	// see RealtimePreviewWorker::setCamera()'s own comment).
+	void onLivePreviewCameraChanged();
+#endif
 
 	// ------------------------------------------------------------------
 	// Action layer
@@ -570,6 +590,19 @@ private:
 	QLabel *m_statusWarningLabel;
 	QLabel *m_currentJobLabel;          // Which job is actually rendering - see startRenderJob()/describeRenderJob()
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
+#ifdef RT_GUI_HAVE_GPU
+	// Live Preview tab (createLivePreviewTab()) - GPU progressive-refinement
+	// preview, separate from the normal Render/Stop flow and its
+	// RenderController subprocess entirely (see realtime_preview_session.h's
+	// own header comment for why: this needs an in-process render call, not
+	// a fresh ray_tracer.exe launch every frame).
+	int m_livePreviewTabIndex = -1;
+	RealtimePreviewSession *m_livePreviewSession = nullptr;
+	QPushButton *m_livePreviewToggleButton = nullptr;
+	ScaledImageLabel *m_livePreviewLabel = nullptr;
+	QLabel *m_livePreviewStatusLabel = nullptr;
+	bool m_livePreviewRunning = false;
+#endif
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides
 	QSpinBox *m_widthSpinBox;           // Custom width

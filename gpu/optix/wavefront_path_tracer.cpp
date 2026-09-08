@@ -1380,20 +1380,30 @@ bool WavefrontPathTracer::render(
 
 	if (!allocateQueues(numPixels)) return false;
 
-	// Allocate device framebuffer (float3 accumulator, zeroed each frame)
-	CUdeviceptr d_fb = 0;
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_fb), numPixels * sizeof(float3)));
+	// Framebuffer accumulator + per-pixel filter-weight buffer - persisted
+	// across calls and only reallocated when numPixels changes (same
+	// resolution-keyed skip-reallocation shape as allocateQueues() above),
+	// so a tight repeated-call loop at a fixed resolution (e.g. a live
+	// preview) isn't paying a cudaMalloc/cudaFree pair every single call.
+	// Still zeroed every render() regardless - these accumulate per-call,
+	// not across calls.
+	if (fbCapacity_ != numPixels) {
+		if (d_fb_) { cudaFree(reinterpret_cast<void*>(d_fb_)); d_fb_ = 0; }
+		if (d_weight_) { cudaFree(reinterpret_cast<void*>(d_weight_)); d_weight_ = 0; }
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_fb_), numPixels * sizeof(float3)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_weight_), numPixels * sizeof(float)));
+		fbCapacity_ = numPixels;
+	}
+	CUdeviceptr d_fb = d_fb_;
 	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_fb), 0,
 							   numPixels * sizeof(float3), stream_));
 
 	float3* d_fbPtr = reinterpret_cast<float3*>(d_fb);
 
 	// Per-pixel sum of this render's filter weights (pbrt-v4 film
-	// reconstruction formula) - same transient per-call alloc/free
-	// lifecycle as d_fb itself, zeroed each render. See generate_camera_
-	// rays's own filter_w comment and normalize_framebuffer's own comment.
-	CUdeviceptr d_weight = 0;
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_weight), numPixels * sizeof(float)));
+	// reconstruction formula). See generate_camera_rays's own filter_w
+	// comment and normalize_framebuffer's own comment.
+	CUdeviceptr d_weight = d_weight_;
 	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_weight), 0,
 							   numPixels * sizeof(float), stream_));
 	float* d_weightPtr = reinterpret_cast<float*>(d_weight);
@@ -1783,8 +1793,9 @@ bool WavefrontPathTracer::render(
 	CUDA_CHECK(cudaMemcpy(framebuffer, reinterpret_cast<void*>(d_fb),
 						  numPixels * sizeof(float3), cudaMemcpyDeviceToHost));
 
-	cudaFree(reinterpret_cast<void*>(d_fb));
-	cudaFree(reinterpret_cast<void*>(d_weight));
+	// d_fb/d_weight are no longer freed here - see fbCapacity_'s own comment
+	// above. Released in cleanup()/freeFramebuffer() instead, once this
+	// backend is actually torn down or asked to change resolution.
 
 	std::cout << "[WavefrontPathTracer] Rendered " << width << "x" << height
 			  << " (" << samples_per_pixel << " spp, " << max_depth << " bounces)\n";
@@ -1859,6 +1870,9 @@ void WavefrontPathTracer::cleanup() {
 	freeQueues();
 	destroyDenoiser();
 	destroyAovBuffers();
+	if (d_fb_) { cudaFree(reinterpret_cast<void*>(d_fb_)); d_fb_ = 0; }
+	if (d_weight_) { cudaFree(reinterpret_cast<void*>(d_weight_)); d_weight_ = 0; }
+	fbCapacity_ = 0;
 
 	if (intersectPipeline_) { optixPipelineDestroy(intersectPipeline_); intersectPipeline_ = nullptr; }
 	if (shadowPipeline_)    { optixPipelineDestroy(shadowPipeline_);    shadowPipeline_    = nullptr; }

@@ -12,6 +12,9 @@
 
 #include <QTabBar>
 #include "scene_metadata_client.h"
+#ifdef RT_GUI_HAVE_GPU
+#include "realtime_preview_session.h"
+#endif
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -1229,6 +1232,107 @@ void MainWindow::createPreviewTab() {
 
 	m_previewTabIndex = m_tabWidget->addTab(previewWidget, tr("Preview"));
 }
+
+#ifdef RT_GUI_HAVE_GPU
+// Live Preview tab - GPU progressive-refinement preview (see this project's
+// own real-time-preview plan). Deliberately minimal for this first pass:
+// one Start/Stop button, the accumulating image, and a one-line status -
+// none of the full Preview tab's sub-tabs/sidebar/recent-renders machinery,
+// since this isn't a completed, saved render the way that tab's renders
+// are. Camera comes from the existing m_cameraPosX/Y/Z spinboxes (read at
+// Start time, and live-forwarded via onLivePreviewCameraChanged() while
+// running) - no mouse/orbit control in this pass, see the plan's own scope
+// note on why.
+void MainWindow::createLivePreviewTab() {
+	QWidget *tab = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(tab);
+	layout->setContentsMargins(12, 12, 12, 12);
+
+	if (!RealtimePreviewSession::isAvailable()) {
+		// Same "fail quiet, explain why" pattern as every scene_metadata.dll
+		// query - realtime_renderer.dll missing/wrong-arch/etc. shouldn't
+		// crash the GUI, just leave this tab inert.
+		QLabel *unavailable = new QLabel(
+			tr("Live Preview isn't available - realtime_renderer.dll wasn't found "
+			   "next to the application."), tab);
+		unavailable->setWordWrap(true);
+		unavailable->setAlignment(Qt::AlignCenter);
+		layout->addWidget(unavailable, /*stretch=*/1);
+		m_tabWidget->addTab(tab, tr("Live Preview"));
+		return;
+	}
+
+	m_livePreviewSession = new RealtimePreviewSession(this);
+	connect(m_livePreviewSession, &RealtimePreviewSession::frameReady,
+	        this, &MainWindow::onLivePreviewFrameReady);
+	connect(m_livePreviewSession, &RealtimePreviewSession::statusChanged,
+	        this, &MainWindow::onLivePreviewStatus);
+
+	m_livePreviewToggleButton = new QPushButton(tr("Start Live Preview"), tab);
+	connect(m_livePreviewToggleButton, &QPushButton::clicked, this, &MainWindow::onLivePreviewToggled);
+	layout->addWidget(m_livePreviewToggleButton);
+
+	m_livePreviewLabel = new ScaledImageLabel(tab);
+	m_livePreviewLabel->setMinimumSize(200, 200);
+	m_livePreviewLabel->setPlaceholderText(tr("Click Start Live Preview to begin"));
+	layout->addWidget(m_livePreviewLabel, /*stretch=*/1);
+
+	m_livePreviewStatusLabel = new QLabel(tab);
+	m_livePreviewStatusLabel->setAlignment(Qt::AlignCenter);
+	layout->addWidget(m_livePreviewStatusLabel);
+
+	m_livePreviewTabIndex = m_tabWidget->addTab(tab, tr("Live Preview"));
+
+	// Stop the render loop (rather than let it keep burning GPU cycles
+	// unseen) whenever the user navigates away from this tab - restarted
+	// fresh (Start button) when they come back, matching this feature's own
+	// "only costs anything while actually being watched" intent.
+	connect(m_tabWidget, &QTabWidget::currentChanged, this, [this](int index) {
+		if (m_livePreviewRunning && index != m_livePreviewTabIndex) onLivePreviewToggled();
+	});
+}
+
+void MainWindow::onLivePreviewToggled() {
+	if (!m_livePreviewSession) return;
+	if (m_livePreviewRunning) {
+		m_livePreviewSession->stop();
+		m_livePreviewRunning = false;
+		m_livePreviewToggleButton->setText(tr("Start Live Preview"));
+		m_livePreviewStatusLabel->setText(tr("Stopped"));
+		return;
+	}
+
+	const QString sceneId = m_sceneCombo->currentData().toString();
+	if (sceneId.isEmpty()) return;
+	// Fixed, modest resolution - keeps per-frame cost low regardless of the
+	// Settings tab's own width/height fields (this preview is about
+	// interactive feedback, not a final-quality render at the requested
+	// output size). Matches this pass's "progressive refinement only, no
+	// per-resolution controls yet" scope.
+	constexpr int kPreviewWidth = 400;
+	constexpr int kPreviewHeight = 300;
+	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight,
+	                             m_cameraPosX->value(), m_cameraPosY->value(), m_cameraPosZ->value());
+	m_livePreviewRunning = true;
+	m_livePreviewToggleButton->setText(tr("Stop Live Preview"));
+	m_livePreviewStatusLabel->setText(tr("Starting..."));
+}
+
+void MainWindow::onLivePreviewFrameReady(QImage image, int sampleCount) {
+	if (!m_livePreviewLabel) return;
+	m_livePreviewLabel->setPreviewPixmap(QPixmap::fromImage(image));
+	m_livePreviewStatusLabel->setText(tr("%1 samples").arg(sampleCount));
+}
+
+void MainWindow::onLivePreviewStatus(QString text) {
+	if (m_livePreviewStatusLabel) m_livePreviewStatusLabel->setText(text);
+}
+
+void MainWindow::onLivePreviewCameraChanged() {
+	if (!m_livePreviewRunning || !m_livePreviewSession) return;
+	m_livePreviewSession->setCamera(m_cameraPosX->value(), m_cameraPosY->value(), m_cameraPosZ->value());
+}
+#endif
 
 QString MainWindow::uniquePreviewTabTitle(const QString &baseTitle) {
 	int &count = m_previewTitleCounts[baseTitle];

@@ -67,6 +67,32 @@ int optix_render_main(
 	const RenderOptions& options = {}
 );
 
+// Live-preview (progressive-refinement mode) entry point - see this
+// project's own real-time-preview plan. One call per preview frame: renders
+// samples_per_pixel samples via the wavefront backend and writes the raw
+// LINEAR (pre-tonemap) RGB result into out_rgb_buffer (caller-allocated,
+// >= image_width*image_height*3 floats) - no exposure/tonemap/gamma
+// applied, unlike optix_render_main() above. The caller is expected to
+// accumulate these across many low-spp calls and tonemap only the
+// accumulated result once per displayed frame. Reuses the same
+// g_renderer/g_uploaded_scene_id process-lifetime cache as
+// optix_render_main() - a repeated call with the same scene_id skips the
+// GPU re-upload, so only the camera actually needs to change between calls
+// for this to be cheap. Returns false on any failure (unsupported scene,
+// GPU error, etc.) - check it every call, don't assume out_rgb_buffer was
+// filled.
+bool rt_realtime_render_frame(
+	const char* scene_id,
+	int image_width,
+	int image_height,
+	int samples_per_pixel,
+	int max_depth,
+	double cam_x,
+	double cam_y,
+	double cam_z,
+	float* out_rgb_buffer
+);
+
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,
 // mirrors cpu_render_main_sppm()'s signature (cpu_renderer/cpu_interface.h)
 // so main.cpp's --sppm --gpu branch (sub-phase 1e) can call either with the

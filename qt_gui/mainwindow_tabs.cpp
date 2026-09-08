@@ -1207,6 +1207,17 @@ void MainWindow::createSettingsTab() {
 		2, 0);
 	cameraLayout->addWidget(m_cameraPosZ, 2, 1);
 
+#ifdef RT_GUI_HAVE_GPU
+	// Live Preview (createLivePreviewTab()) forwards a camera move onto its
+	// already-running session - a no-op whenever that session isn't running
+	// (onLivePreviewCameraChanged()'s own guard), so this connect is always
+	// safe to make here regardless of whether the Live Preview tab happens
+	// to be open right now.
+	connect(m_cameraPosX, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
+	connect(m_cameraPosY, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
+	connect(m_cameraPosZ, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
+#endif
+
 	// Distance from the current scene's look-at point. Adjusting this moves
 	// the camera along its EXISTING viewing direction to the new distance
 	// (see onCameraDistanceChanged) - a quick way to zoom in/out without

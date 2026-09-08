@@ -50,6 +50,7 @@ SOURCES += \
 	palette_file.cpp \
 	theme_load.cpp \
 	scene_metadata_client.cpp \
+	realtime_preview_session.cpp \
 	theme.cpp \
 	theme_switch.cpp \
 	language_switch.cpp \
@@ -67,6 +68,7 @@ HEADERS += \
 	palette_file.h \
 	render_output_parser.h \
 	scene_metadata_client.h \
+	realtime_preview_session.h \
 	scene_technique_notes.h \
 	theme.h \
 	win_taskbar.h
