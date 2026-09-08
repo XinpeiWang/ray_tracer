@@ -128,6 +128,15 @@ public:
 		repositionInfoIcon();
 	}
 
+	// For a group whose tooltip needs to keep changing after construction
+	// (e.g. one recomputed from live field values, the same "content
+	// changes after construction" pattern m_sceneTechInfoIcon/
+	// updateSceneTechInfoIcon() already uses) - lets the caller keep
+	// calling setToolTip() on the SAME header icon instead of also
+	// maintaining a second icon elsewhere in the group just to hold the
+	// dynamic content.
+	QToolButton *infoIcon() const { return m_infoIcon; }
+
 protected:
 	void resizeEvent(QResizeEvent *event) override {
 		QGroupBox::resizeEvent(event);

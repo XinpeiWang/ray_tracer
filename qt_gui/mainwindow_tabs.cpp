@@ -818,12 +818,9 @@ void MainWindow::createSettingsTab() {
 	// a whole standalone tab.
 	m_videoGroupBox = new InfoGroupBox(tr("Video Generation Settings"), basicTab);
 	styleGroupBox(m_videoGroupBox);
-	m_videoGroupBox->setInfoIcon(createInfoIcon(
-		tr("Configure the camera path, frame count/FPS, and playback speed "
-		"for a rendered video. Pick a named Preset for a ready-made "
-		"combination, or set each field yourself. Only takes effect when "
-		"Output Mode above is \"Generate Video\", but stays editable in "
-		"any mode so you can set it up in advance.")));
+	// Empty for now - populated (and kept up to date) by updateVideoDuration()
+	// below, which is where the fuller, dynamic version of this text lives.
+	m_videoGroupBox->setInfoIcon(createInfoIcon(QString()));
 	// Dimmed (not disabled - see setGroupDimmed()'s own comment) whenever
 	// Output Mode isn't "Generate Video", alongside the existing warning
 	// banner right below - the banner explains WHY, the dim reinforces AT A
@@ -955,25 +952,17 @@ void MainWindow::createSettingsTab() {
 		"many frames, covering the same journey faster.")),
 		m_videoSpeedSpinBox);
 
-	// Video duration/summary info (calculated from frames/fps) - a compact
-	// row with an info icon whose tooltip is rewritten on every recompute,
-	// rather than an always-visible text block, same "content changes after
-	// construction" pattern m_sceneTechInfoIcon already uses
-	// (updateSceneTechInfoIcon(), mainwindow_style.cpp). Also carries the
+	// Video duration/summary info (calculated from frames/fps), plus the
 	// static ffmpeg-requirement/step-by-step usage text a separate
 	// "Video render requirements & usage:" row used to show below this
-	// group - folded into this icon's tooltip (appended in
-	// updateVideoDuration() below) instead of a second icon/row, so the
-	// group has exactly one place to check for info about it rather than
-	// two rows a user has to notice are both worth hovering.
-	QWidget *videoInfoRow = new QWidget();
-	QHBoxLayout *videoInfoRowLayout = new QHBoxLayout(videoInfoRow);
-	videoInfoRowLayout->setContentsMargins(0, 0, 0, 0);
-	videoInfoRowLayout->setSpacing(4);
-	videoInfoRowLayout->addWidget(new QLabel(tr("Video info:"), videoInfoRow));
-	m_videoInfoIcon = createInfoIcon(QString());
-	videoInfoRowLayout->addWidget(m_videoInfoIcon);
-	videoInfoRowLayout->addStretch();
+	// group - both live on the group's OWN header icon (set up above)
+	// rather than a dedicated row/icon of their own, so there's exactly
+	// one place to check for info about this group instead of two a user
+	// has to notice are both worth hovering. Tooltip is rewritten on every
+	// recompute, same "content changes after construction" pattern
+	// m_sceneTechInfoIcon already uses (updateSceneTechInfoIcon(),
+	// mainwindow_style.cpp).
+	m_videoInfoIcon = m_videoGroupBox->infoIcon();
 
 	// Update duration display when frames, FPS, speed, or path changes
 	auto updateVideoDuration = [this]() {
@@ -1030,8 +1019,6 @@ void MainWindow::createSettingsTab() {
 	connect(m_videoSpeedSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), updateVideoDuration);
 	connect(m_cameraPathCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateVideoDuration);
 	updateVideoDuration();
-
-	videoLayout->addRow(videoInfoRow);
 
 	layout->addWidget(m_videoGroupBox);
 
