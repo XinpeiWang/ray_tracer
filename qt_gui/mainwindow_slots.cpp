@@ -1659,9 +1659,9 @@ void MainWindow::onModeChanged(int index) {
 #ifdef RT_GUI_HAVE_GPU
 	// Live Preview only ever runs while it's the selected mode - leaving it
 	// stops any in-progress session, the same "only costs anything while
-	// actually being watched" intent the Live Preview tab's own
-	// currentChanged handler already applies to navigating away from its
-	// tab. This also means starting a batch render (which forces the mode
+	// actually being watched" intent stopLivePreviewIfNavigatedAway()
+	// already applies to navigating away from the live sub-tab. This also
+	// means starting a batch render (which forces the mode
 	// combo to Image/Video first, via m_actRender/m_actRenderVideo) always
 	// cleanly stops a running preview first, with no separate error/prompt.
 	// m_outputMode is updated above, before this call, so stopLivePreview()'s

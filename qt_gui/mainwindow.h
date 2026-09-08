@@ -270,15 +270,6 @@ private:
 	// pointer, not index, since other sub-tabs opening/closing around the
 	// live one must not shift it.
 	bool isLivePreviewSubTabVisible() const;
-	// Wired to BOTH m_tabWidget::currentChanged (leaving the Preview tab
-	// entirely) and m_previewSubTabs' currentChanged (switching to a
-	// different sub-tab while staying on Preview) - either one can make
-	// the live sub-tab stop being visible. Stops the running session
-	// (rather than let it keep burning GPU cycles unseen) and cancels any
-	// in-progress orbit drag - matches this feature's own "only costs
-	// anything while actually being watched" intent. See
-	// isLivePreviewSubTabVisible()'s comment for what "visible" means here.
-	void stopLivePreviewIfNavigatedAway();
 	void onLivePreviewFrameReady(QImage image, int sampleCount);
 	void onLivePreviewStatus(QString text);
 	// Called from the camera spinboxes' valueChanged handlers - forwards to
@@ -593,10 +584,14 @@ private:
 	void assembleVideoAutomatically(const QString &baseOutputPath, const RenderJob &job);
 	void refreshCameraDistanceDisplay(); // Recomputes m_cameraDistance's shown value from X/Y/Z and m_currentLookat*, without re-triggering onCameraDistanceChanged
 
-	// Preview sub-tabs (see m_previewSubTabs's own comment). Both add*
-	// functions build a self-contained tab page, register it, and make it
-	// current; tooltip is the full scene/preset description, shown on
-	// hover since the tab bar itself only has room for a short title.
+	// Preview sub-tabs (see m_previewSubTabs's own comment). Every add*
+	// function (Image/Video/Live) builds its own self-contained tab page
+	// (the content genuinely differs - image label vs. video player vs.
+	// orbit label - so that part isn't shared), then hands it to this
+	// helper to register and select; tooltip is the full scene/preset
+	// description, shown on hover since the tab bar itself only has room
+	// for a short title.
+	void addPreviewSubTabPage(QWidget *page, const QString &title, const QString &tooltip);
 	void addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,
 							 const QString &infoText, const QString &outputPath, const QString &previewPath,
 							 const PreviewTechniqueInfo &technique);
@@ -1097,6 +1092,22 @@ private:
 		return false;
 #endif
 	}
+	// Unconditionally callable for the same reason as isLivePreviewActive()
+	// above - createPreviewTab() (built on every configuration) wires this
+	// to BOTH m_tabWidget::currentChanged (leaving the Preview tab entirely)
+	// and m_previewSubTabs' currentChanged (switching to a different
+	// sub-tab while staying on Preview) - either one can make the live
+	// sub-tab stop being visible. Stops the running session (rather than
+	// let it keep burning GPU cycles unseen) and cancels any in-progress
+	// orbit drag - matches this feature's own "only costs anything while
+	// actually being watched" intent. See isLivePreviewSubTabVisible()'s
+	// comment for what "visible" means here. A no-op on a non-GPU build,
+	// where none of this state exists.
+#ifdef RT_GUI_HAVE_GPU
+	void stopLivePreviewIfNavigatedAway();
+#else
+	void stopLivePreviewIfNavigatedAway() {}
+#endif
 	// Sets m_modeCombo (by itemData, not index - the LivePreview item may
 	// not exist at all on a non-GPU build, or may exist but be disabled
 	// when realtime_renderer.dll isn't found) and updates m_outputMode to

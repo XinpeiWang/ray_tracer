@@ -1126,9 +1126,7 @@ void MainWindow::createPreviewTab() {
 	m_previewSubTabs->setElideMode(Qt::ElideRight);
 	connect(m_previewSubTabs, &SplitPreviewTabs::currentChanged, this, [this](int) {
 		updatePreviewSidebarForActiveTab();
-#ifdef RT_GUI_HAVE_GPU
 		stopLivePreviewIfNavigatedAway();
-#endif
 	});
 	connect(m_previewSubTabs->tabBar(), &HorizontalTabBar::closeRequested,
 	        this, &MainWindow::closePreviewSubTab);
@@ -1246,15 +1244,14 @@ void MainWindow::createPreviewTab() {
 
 	m_previewTabIndex = m_tabWidget->addTab(previewWidget, tr("Preview"));
 
-#ifdef RT_GUI_HAVE_GPU
 	// Stop the running live preview (rather than let it keep burning GPU
 	// cycles unseen) whenever the live sub-tab stops being visibly active -
 	// leaving the Preview tab entirely fires here; leaving the live
 	// sub-tab for a different one while staying on Preview fires via the
-	// m_previewSubTabs::currentChanged connection just above instead. See
-	// stopLivePreviewIfNavigatedAway()'s own comment (mainwindow.h).
+	// m_previewSubTabs::currentChanged connection just above instead. A
+	// no-op on a non-GPU build - see stopLivePreviewIfNavigatedAway()'s own
+	// comment (mainwindow.h).
 	connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::stopLivePreviewIfNavigatedAway);
-#endif
 }
 
 #ifdef RT_GUI_HAVE_GPU
@@ -1299,6 +1296,19 @@ void MainWindow::initLivePreviewSession() {
 void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneName) {
 	if (!m_previewSubTabs) return;
 
+	// A previous session's sub-tab, if still open (Stop leaves it in place,
+	// showing the frozen last frame, until closed - see stopLivePreview()'s
+	// own comment), would otherwise pile up indefinitely across repeated
+	// Start/Stop cycles instead of being replaced by this one. Reuses
+	// closePreviewSubTab()'s own stop-before-clear teardown rather than
+	// duplicating it here; its stopLivePreview() call is a harmless no-op
+	// since the old session is already stopped by this point (startLivePreview()'s
+	// own guard wouldn't have let a second Start through otherwise).
+	if (m_livePreviewPage) {
+		const int oldIndex = m_previewSubTabs->indexOf(m_livePreviewPage);
+		if (oldIndex >= 0) closePreviewSubTab(oldIndex);
+	}
+
 	QWidget *page = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(page);
 	layout->setContentsMargins(12, 12, 12, 12);
@@ -1324,9 +1334,7 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 	page->setProperty("sceneId", sceneId);
 
 	m_livePreviewPage = page;
-	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(tr("Live Preview")));
-	m_previewSubTabs->setTabToolTip(index, tr("Interactive GPU preview - drag to orbit, scroll to zoom"));
-	m_previewSubTabs->setCurrentIndex(index);
+	addPreviewSubTabPage(page, tr("Live Preview"), tr("Interactive GPU preview - drag to orbit, scroll to zoom"));
 }
 
 bool MainWindow::isLivePreviewSubTabVisible() const {
@@ -1369,20 +1377,25 @@ void MainWindow::startLivePreview() {
 	const camera_math::Vec3 camera = currentCameraPosition();
 	m_orbit = camera_math::cartesianToOrbit(camera, currentLookAt());
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z);
-	m_livePreviewRunning = true;
-	// Builds the sub-tab and selects it BEFORE the m_tabWidget switch below,
-	// so isLivePreviewSubTabVisible() already reads true by the time that
-	// switch fires m_tabWidget::currentChanged -> stopLivePreviewIfNavigatedAway() -
-	// otherwise it would see "Preview is active but the live sub-tab isn't
-	// yet" and stop the session the instant it starts.
+	// m_livePreviewRunning stays false until BOTH tab switches below have
+	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
+	// call (and the m_tabWidget switch after it) synchronously re-emit
+	// currentChanged - QTabBar's own signal is direct, not queued - which
+	// reaches stopLivePreviewIfNavigatedAway() reentrantly, inside this very
+	// function call, before either switch has fully landed. Setting this
+	// flag only once both are done means that reentrant call's own
+	// "if (m_livePreviewRunning) stopLivePreview();" guard is still false
+	// and a no-op, instead of killing the session this function just
+	// started before it ever got to run.
 	addLivePreviewTab(sceneId, SceneMetadataClient::sceneName(sceneId));
-	m_livePreviewStatusLabel->setText(tr("Starting..."));
-	updateTransportButtons();
-	updateActionStates();  // Escape (m_actStop) becomes enabled - see its own comment
 	// Same "click Render -> land where you watch it happen" behavior every
 	// other Output Mode already gets from startRenderJob()'s own switch to
 	// the Progress tab - just a different destination tab for this mode.
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
+	m_livePreviewRunning = true;
+	m_livePreviewStatusLabel->setText(tr("Starting..."));
+	updateTransportButtons();
+	updateActionStates();  // Escape (m_actStop) becomes enabled - see its own comment
 }
 
 void MainWindow::stopLivePreview() {
@@ -1541,6 +1554,16 @@ void MainWindow::closePreviewSubTab(int index) {
 	refreshRecentRendersList();
 }
 
+// Trailing three lines shared by every addXPreviewTab() - the page's own
+// contents (image label / video player / orbit label) genuinely differ per
+// caller and stay in each function, but registering the finished page and
+// making it current is identical for all three.
+void MainWindow::addPreviewSubTabPage(QWidget *page, const QString &title, const QString &tooltip) {
+	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(title));
+	m_previewSubTabs->setTabToolTip(index, tooltip);
+	m_previewSubTabs->setCurrentIndex(index);
+}
+
 void MainWindow::addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,
 									 const QString &infoText, const QString &outputPath, const QString &previewPath,
 									 const PreviewTechniqueInfo &technique) {
@@ -1562,9 +1585,7 @@ void MainWindow::addImagePreviewTab(const QString &title, const QString &tooltip
 	page->setProperty("sceneId", technique.sceneId);
 	page->setProperty("techniqueHtml", technique.techniqueHtml);
 
-	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(title));
-	m_previewSubTabs->setTabToolTip(index, tooltip);
-	m_previewSubTabs->setCurrentIndex(index);
+	addPreviewSubTabPage(page, title, tooltip);
 }
 
 void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip,
@@ -1689,9 +1710,7 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 	page->setProperty("sceneId", technique.sceneId);
 	page->setProperty("techniqueHtml", technique.techniqueHtml);
 
-	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(title));
-	m_previewSubTabs->setTabToolTip(index, tooltip);
-	m_previewSubTabs->setCurrentIndex(index);
+	addPreviewSubTabPage(page, title, tooltip);
 
 	player->setSource(QUrl::fromLocalFile(videoPath));
 	player->play();

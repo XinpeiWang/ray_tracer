@@ -106,7 +106,7 @@ TEST(CameraMathTest, DistanceThenRepositionIsAnIdentity) {
 }
 
 // Round trip: decompose a camera position into spherical coordinates, then
-// rebuild the position from them. The Live Preview tab's mouse-drag orbit
+// rebuild the position from them. Live Preview's sub-tab's mouse-drag orbit
 // control does exactly this every time it seeds orbit state from the camera
 // spinboxes (MainWindow::startLivePreview()/onLivePreviewCameraChanged()).
 TEST(CameraMathTest, CartesianToOrbitThenBackIsAnIdentity) {

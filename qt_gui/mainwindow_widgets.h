@@ -908,6 +908,7 @@ public:
 	void setCurrentIndex(int index) { m_tabBar->setCurrentIndex(index); }
 	QWidget *currentWidget() const { return m_stack->currentWidget(); }
 	QWidget *widget(int index) const { return m_stack->widget(index); }
+	int indexOf(QWidget *page) const { return m_stack->indexOf(page); }
 	void setElideMode(Qt::TextElideMode mode) { m_tabBar->setElideMode(mode); }
 
 	// Removes the tab/page pair at index without deleting the page - same

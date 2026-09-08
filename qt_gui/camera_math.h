@@ -80,7 +80,7 @@ inline Vec3 presetPosition(const Vec3 &direction, const Vec3 &lookAt, double sce
 // Spherical coordinates of a camera around a look-at point: distance
 // (radius), horizontal angle (azimuth, radians, measured from +Z rotating
 // toward +X), and vertical angle (elevation, radians - positive is above
-// the look-at point's horizontal plane). Used by the Live Preview tab's
+// the look-at point's horizontal plane). Used by Live Preview's sub-tab's
 // mouse-drag orbit control (MainWindow::onLivePreviewOrbitDragged()/
 // onLivePreviewZoomRequested()): dragging changes azimuth/elevation, the
 // wheel changes radius, and orbitToCartesian() below converts the result
