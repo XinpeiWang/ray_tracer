@@ -1126,6 +1126,9 @@ void MainWindow::createPreviewTab() {
 	m_previewSubTabs->setElideMode(Qt::ElideRight);
 	connect(m_previewSubTabs, &SplitPreviewTabs::currentChanged, this, [this](int) {
 		updatePreviewSidebarForActiveTab();
+#ifdef RT_GUI_HAVE_GPU
+		stopLivePreviewIfNavigatedAway();
+#endif
 	});
 	connect(m_previewSubTabs->tabBar(), &HorizontalTabBar::closeRequested,
 	        this, &MainWindow::closePreviewSubTab);
@@ -1242,48 +1245,47 @@ void MainWindow::createPreviewTab() {
 	sidebar->setVisible(false);
 
 	m_previewTabIndex = m_tabWidget->addTab(previewWidget, tr("Preview"));
+
+#ifdef RT_GUI_HAVE_GPU
+	// Stop the running live preview (rather than let it keep burning GPU
+	// cycles unseen) whenever the live sub-tab stops being visibly active -
+	// leaving the Preview tab entirely fires here; leaving the live
+	// sub-tab for a different one while staying on Preview fires via the
+	// m_previewSubTabs::currentChanged connection just above instead. See
+	// stopLivePreviewIfNavigatedAway()'s own comment (mainwindow.h).
+	connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::stopLivePreviewIfNavigatedAway);
+#endif
 }
 
 #ifdef RT_GUI_HAVE_GPU
-// Live Preview tab - GPU progressive-refinement preview (see this project's
-// own real-time-preview plan), now just another Output Mode (see that
-// enum's own comment, mainwindow_jobtypes.h) driven by the same pinned
-// Render/Stop button pair every other mode uses - no button of its own.
-// The accumulating image and a one-line status - none of the full Preview
-// tab's sub-tabs/sidebar/recent-renders machinery, since this isn't a
-// completed, saved render the way that tab's renders are, and it deliberately
-// stays its own tab rather than merging into Progress (whose progress-bar/
-// ETA/queue layout doesn't apply to a no-completion mode) or the Preview
-// tab's sub-tabs (whose pages assume a real output file on disk). Camera
-// comes from the existing m_cameraPosX/Y/Z spinboxes (read at Start time,
-// and live-forwarded via onLivePreviewCameraChanged() while running) as a
-// starting point, PLUS click-drag-to-orbit/wheel-to-zoom directly in the
-// preview image (OrbitPreviewLabel, mainwindow_widgets.h) - see m_orbit's
-// own comment (mainwindow.h) for how those two camera representations stay
-// in sync. The actual spherical-coordinate math lives in camera_math.h
-// (Qt-free, unit-tested - see tests/unit/camera_math_tests.cpp), matching
-// this codebase's own existing convention for camera arithmetic
+// Live Preview - GPU progressive-refinement preview (see this project's own
+// real-time-preview plan), just another Output Mode (see that enum's own
+// comment, mainwindow_jobtypes.h) driven by the same pinned Render/Stop
+// button pair every other mode uses - no button of its own. Its running
+// image shows up as an ordinary sub-tab under the Preview tab, exactly like
+// a finished Image/Video render (addLivePreviewTab() mirrors
+// addImagePreviewTab()/addVideoPreviewTab()'s shape), rather than a
+// dedicated top-level tab of its own. Camera comes from the existing
+// m_cameraPosX/Y/Z spinboxes (read at Start time, and live-forwarded via
+// onLivePreviewCameraChanged() while running) as a starting point, PLUS
+// click-drag-to-orbit/wheel-to-zoom directly in the preview image
+// (OrbitPreviewLabel, mainwindow_widgets.h) - see m_orbit's own comment
+// (mainwindow.h) for how those two camera representations stay in sync.
+// The actual spherical-coordinate math lives in camera_math.h (Qt-free,
+// unit-tested - see tests/unit/camera_math_tests.cpp), matching this
+// codebase's own existing convention for camera arithmetic
 // (onCameraDistanceChanged()'s own comment, mainwindow_slots.cpp); the
 // functions here are just plumbing that reads/writes m_orbit and forwards
 // the result to RealtimePreviewSession.
-void MainWindow::createLivePreviewTab() {
-	QWidget *tab = new QWidget();
-	QVBoxLayout *layout = new QVBoxLayout(tab);
-	layout->setContentsMargins(12, 12, 12, 12);
-
+void MainWindow::initLivePreviewSession() {
 	if (!RealtimePreviewSession::isAvailable()) {
 		// Same "fail quiet, explain why" pattern as every scene_metadata.dll
 		// query - realtime_renderer.dll missing/wrong-arch/etc. shouldn't
-		// crash the GUI, just leave this tab inert. The Output Mode combo's
-		// own "Live Preview" item is separately disabled with a matching
-		// tooltip - see createSettingsTab()'s own comment.
-		QLabel *unavailable = new QLabel(
-			tr("Live Preview isn't available - realtime_renderer.dll wasn't found "
-			   "next to the application."), tab);
-		unavailable->setWordWrap(true);
-		unavailable->setAlignment(Qt::AlignCenter);
-		layout->addWidget(unavailable, /*stretch=*/1);
-		m_tabWidget->addTab(tab, tr("Live Preview"));
+		// crash the GUI, just leave the session null. The Output Mode
+		// combo's own "Live Preview" item is separately disabled with a
+		// matching tooltip - see createSettingsTab()'s own comment - so
+		// startLivePreview()'s own null guard is unreachable through
+		// normal UI in this case.
 		return;
 	}
 
@@ -1292,35 +1294,51 @@ void MainWindow::createLivePreviewTab() {
 	        this, &MainWindow::onLivePreviewFrameReady);
 	connect(m_livePreviewSession, &RealtimePreviewSession::statusChanged,
 	        this, &MainWindow::onLivePreviewStatus);
+}
 
-	m_livePreviewLabel = new OrbitPreviewLabel(tab);
+void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneName) {
+	if (!m_previewSubTabs) return;
+
+	QWidget *page = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(page);
+	layout->setContentsMargins(12, 12, 12, 12);
+
+	m_livePreviewLabel = new OrbitPreviewLabel(page);
 	m_livePreviewLabel->setMinimumSize(200, 200);
-	m_livePreviewLabel->setPlaceholderText(
-		tr("Select Live Preview as the Output Mode (Settings tab) and click START LIVE PREVIEW."));
+	m_livePreviewLabel->setPlaceholderText(tr("Waiting for first frame..."));
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::orbitDragged, this, &MainWindow::onLivePreviewOrbitDragged);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::zoomRequested, this, &MainWindow::onLivePreviewZoomRequested);
 	layout->addWidget(m_livePreviewLabel, /*stretch=*/1);
 
-	m_livePreviewStatusLabel = new QLabel(tab);
+	m_livePreviewStatusLabel = new QLabel(page);
 	m_livePreviewStatusLabel->setAlignment(Qt::AlignCenter);
 	layout->addWidget(m_livePreviewStatusLabel);
 
-	m_livePreviewTabIndex = m_tabWidget->addTab(tab, tr("Live Preview"));
+	// No outputPath/previewPath/techniqueHtml - there's no file on disk and
+	// no completed-render settings summary, so Open Folder/Open Viewer
+	// correctly stay disabled (currentPreviewProperty() on an unset
+	// property just yields an empty string) rather than needing special-
+	// casing. sceneId IS set, so updatePreviewSidebarForActiveTab()'s
+	// existing scene_technique_notes lookup works for this page too.
+	page->setProperty("infoText", tr("Live Preview — %1").arg(sceneName));
+	page->setProperty("sceneId", sceneId);
 
-	// Stop the render loop (rather than let it keep burning GPU cycles
-	// unseen) whenever the user navigates away from this tab - restarted
-	// fresh (Render button) when they come back, matching this feature's
-	// own "only costs anything while actually being watched" intent. This
-	// also protects onLivePreviewCameraChanged()'s own "read all three
-	// camera spinboxes at once" approach (see its comment, mainwindow.h) -
-	// the Settings tab stays unreachable while a preview runs. Also
-	// defensively cancels any in-progress orbit drag (e.g. a keyboard tab
-	// switch while the mouse button is still held) - see
-	// OrbitPreviewLabel::cancelDrag()'s own comment.
-	connect(m_tabWidget, &QTabWidget::currentChanged, this, [this](int index) {
-		if (index != m_livePreviewTabIndex) m_livePreviewLabel->cancelDrag();
-		if (m_livePreviewRunning && index != m_livePreviewTabIndex) stopLivePreview();
-	});
+	m_livePreviewPage = page;
+	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(tr("Live Preview")));
+	m_previewSubTabs->setTabToolTip(index, tr("Interactive GPU preview - drag to orbit, scroll to zoom"));
+	m_previewSubTabs->setCurrentIndex(index);
+}
+
+bool MainWindow::isLivePreviewSubTabVisible() const {
+	return m_tabWidget->currentIndex() == m_previewTabIndex
+		&& m_previewSubTabs && m_livePreviewPage
+		&& m_previewSubTabs->currentWidget() == m_livePreviewPage;
+}
+
+void MainWindow::stopLivePreviewIfNavigatedAway() {
+	if (isLivePreviewSubTabVisible()) return;
+	if (m_livePreviewLabel) m_livePreviewLabel->cancelDrag();
+	if (m_livePreviewRunning) stopLivePreview();
 }
 
 void MainWindow::startLivePreview() {
@@ -1328,7 +1346,12 @@ void MainWindow::startLivePreview() {
 
 	const QString sceneId = m_sceneCombo->currentData().toString();
 	if (sceneId.isEmpty()) {
-		m_livePreviewStatusLabel->setText(tr("Select a scene first"));
+		// No live sub-tab exists yet at this point (it's only created
+		// below, once a preview actually starts) - m_statusLabel is the
+		// one status surface that's always available regardless of which
+		// tab is open, matching how every other "can't start" message
+		// (Stopping/Abandoning/Paused/etc.) already reports through it.
+		m_statusLabel->setText(tr("Select a scene first"));
 		return;
 	}
 	// Fixed, modest resolution - keeps per-frame cost low regardless of the
@@ -1347,13 +1370,19 @@ void MainWindow::startLivePreview() {
 	m_orbit = camera_math::cartesianToOrbit(camera, currentLookAt());
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z);
 	m_livePreviewRunning = true;
+	// Builds the sub-tab and selects it BEFORE the m_tabWidget switch below,
+	// so isLivePreviewSubTabVisible() already reads true by the time that
+	// switch fires m_tabWidget::currentChanged -> stopLivePreviewIfNavigatedAway() -
+	// otherwise it would see "Preview is active but the live sub-tab isn't
+	// yet" and stop the session the instant it starts.
+	addLivePreviewTab(sceneId, SceneMetadataClient::sceneName(sceneId));
 	m_livePreviewStatusLabel->setText(tr("Starting..."));
 	updateTransportButtons();
 	updateActionStates();  // Escape (m_actStop) becomes enabled - see its own comment
 	// Same "click Render -> land where you watch it happen" behavior every
 	// other Output Mode already gets from startRenderJob()'s own switch to
 	// the Progress tab - just a different destination tab for this mode.
-	if (m_livePreviewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_livePreviewTabIndex);
+	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 }
 
 void MainWindow::stopLivePreview() {
@@ -1486,6 +1515,19 @@ void MainWindow::updatePreviewSidebarForActiveTab() {
 void MainWindow::closePreviewSubTab(int index) {
 	if (!m_previewSubTabs) return;
 	QWidget *page = m_previewSubTabs->widget(index);
+#ifdef RT_GUI_HAVE_GPU
+	if (page == m_livePreviewPage) {
+		// Stop BEFORE clearing the tracking pointers below - stopLivePreview()
+		// itself dereferences m_livePreviewStatusLabel, so it must run while
+		// that pointer is still valid rather than relying on removeTab()'s
+		// currentChanged -> stopLivePreviewIfNavigatedAway() to catch this
+		// indirectly (which would fire only after the pointers were already null).
+		stopLivePreview();
+		m_livePreviewPage = nullptr;
+		m_livePreviewLabel = nullptr;
+		m_livePreviewStatusLabel = nullptr;
+	}
+#endif
 	m_previewSubTabs->removeTab(index);
 	// Any QMediaPlayer/QVideoWidget a video tab owns is a CHILD of `page`
 	// (see addVideoPreviewTab()), so deleting it tears those down too

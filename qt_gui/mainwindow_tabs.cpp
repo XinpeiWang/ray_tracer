@@ -574,7 +574,7 @@ void MainWindow::createSettingsTab() {
 	// isAvailable() == false) - disabled with an explanatory tooltip instead
 	// of omitted, so the feature is at least discoverable rather than
 	// silently missing. Same "fail quiet, explain why" convention
-	// createLivePreviewTab()'s own placeholder-tab path already uses.
+	// initLivePreviewSession()'s own unavailable-session path uses.
 	icon_tint::addItem(m_modeCombo, ":/icons/gpu.svg", tr("Live Preview (interactive)"),
 					   static_cast<int>(OutputMode::LivePreview), m_activeTheme.textBody);
 	if (!RealtimePreviewSession::isAvailable()) {
@@ -1246,11 +1246,11 @@ void MainWindow::createSettingsTab() {
 	cameraLayout->addWidget(m_cameraPosZ, 2, 1);
 
 #ifdef RT_GUI_HAVE_GPU
-	// Live Preview (createLivePreviewTab()) forwards a camera move onto its
+	// Live Preview (addLivePreviewTab()) forwards a camera move onto its
 	// already-running session - a no-op whenever that session isn't running
 	// (onLivePreviewCameraChanged()'s own guard), so this connect is always
-	// safe to make here regardless of whether the Live Preview tab happens
-	// to be open right now.
+	// safe to make here regardless of whether the live sub-tab happens to
+	// be open right now.
 	connect(m_cameraPosX, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
 	connect(m_cameraPosY, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
 	connect(m_cameraPosZ, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);

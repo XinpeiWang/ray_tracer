@@ -238,16 +238,47 @@ private:
 	// same RT_GUI_HAVE_GPU scope as the "Use GPU" toggle itself). See this
 	// project's own real-time-preview plan for the progressive-refinement
 	// design (accumulate low-spp samples, reset on camera change).
-	void createLivePreviewTab();
+	// Constructs m_livePreviewSession and wires its frameReady/statusChanged
+	// signals once, for MainWindow's lifetime - just the session, no tab or
+	// widgets, since Live Preview no longer owns a dedicated tab (see
+	// addLivePreviewTab()). A no-op (session stays null) if
+	// RealtimePreviewSession::isAvailable() is false; the Output Mode
+	// combo's own "Live Preview" item is separately disabled with a
+	// matching tooltip in that case (createSettingsTab()'s own comment).
+	void initLivePreviewSession();
+	// Builds a fresh, one-shot sub-tab under the Preview tab's
+	// m_previewSubTabs for the session startLivePreview() just started -
+	// mirrors addImagePreviewTab()/addVideoPreviewTab()'s shape (a
+	// disposable QWidget page, torn down by closePreviewSubTab() the same
+	// way) rather than reusing one persistent page/tab across sessions, so
+	// every Preview sub-tab shares one disposal contract. Points
+	// m_livePreviewPage/m_livePreviewLabel/m_livePreviewStatusLabel at the
+	// new page's widgets and selects it.
+	void addLivePreviewTab(const QString &sceneId, const QString &sceneName);
 	// Starts/stops the running RealtimePreviewSession - called from
 	// onRenderClicked()/onStopClicked() when Output Mode is LivePreview
 	// (a shared Render/Stop button pair can't drive a toggle the way the
 	// old, since-removed standalone "Start/Stop Live Preview" button
 	// could), and stopLivePreview() also from onModeChanged() (switching
-	// away from LivePreview) and the Live Preview tab's own
-	// currentChanged handler (navigating away from its tab).
+	// away from LivePreview) and stopLivePreviewIfNavigatedAway() (leaving
+	// the live sub-tab some other way).
 	void startLivePreview();
 	void stopLivePreview();
+	// True while the live sub-tab is the one actually on screen - both the
+	// Preview tab must be m_tabWidget's current top-level tab AND the live
+	// page must be m_previewSubTabs' current sub-tab. Identity is by page
+	// pointer, not index, since other sub-tabs opening/closing around the
+	// live one must not shift it.
+	bool isLivePreviewSubTabVisible() const;
+	// Wired to BOTH m_tabWidget::currentChanged (leaving the Preview tab
+	// entirely) and m_previewSubTabs' currentChanged (switching to a
+	// different sub-tab while staying on Preview) - either one can make
+	// the live sub-tab stop being visible. Stops the running session
+	// (rather than let it keep burning GPU cycles unseen) and cancels any
+	// in-progress orbit drag - matches this feature's own "only costs
+	// anything while actually being watched" intent. See
+	// isLivePreviewSubTabVisible()'s comment for what "visible" means here.
+	void stopLivePreviewIfNavigatedAway();
 	void onLivePreviewFrameReady(QImage image, int sampleCount);
 	void onLivePreviewStatus(QString text);
 	// Called from the camera spinboxes' valueChanged handlers - forwards to
@@ -258,13 +289,12 @@ private:
 	// edit left the camera, instead of jumping back to a stale orbit
 	// state. NOTE: this only defends against a manual spinbox edit WHILE
 	// orbiting - it does not (and today cannot: m_cameraPosX/Y/Z live on
-	// the separate Settings tab, which the createLivePreviewTab() tab-
-	// switch handler always stops Live Preview before reaching) protect
-	// against reading a stale value from one of the three spinboxes while
-	// the other two were already changed elsewhere. If the camera controls
-	// are ever made reachable at the same time as Live Preview (e.g. a
-	// docked sidebar), this read-three-spinboxes-at-once approach would
-	// need revisiting.
+	// the separate Settings tab, which stopLivePreviewIfNavigatedAway()
+	// always stops Live Preview before reaching) protect against reading a
+	// stale value from one of the three spinboxes while the other two were
+	// already changed elsewhere. If the camera controls are ever made
+	// reachable at the same time as Live Preview (e.g. a docked sidebar),
+	// this read-three-spinboxes-at-once approach would need revisiting.
 	void onLivePreviewCameraChanged();
 	// OrbitPreviewLabel::orbitDragged()/zoomRequested() handlers - see
 	// mainwindow_widgets.h's own class comment for why the widget only
@@ -629,13 +659,20 @@ private:
 	QLabel *m_currentJobLabel;          // Which job is actually rendering - see startRenderJob()/describeRenderJob()
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
 #ifdef RT_GUI_HAVE_GPU
-	// Live Preview tab (createLivePreviewTab()) - GPU progressive-refinement
-	// preview, driven by the same pinned Render/Stop button pair as Image/
-	// Video mode (see OutputMode's own comment) but NOT by RenderController/
-	// QProcess: this needs an in-process render call (RealtimePreviewSession),
-	// not a fresh ray_tracer.exe launch every frame.
-	int m_livePreviewTabIndex = -1;
+	// Live Preview - GPU progressive-refinement preview, driven by the same
+	// pinned Render/Stop button pair as Image/Video mode (see OutputMode's
+	// own comment) but NOT by RenderController/QProcess: this needs an
+	// in-process render call (RealtimePreviewSession), not a fresh
+	// ray_tracer.exe launch every frame. Lives as a sub-tab under the
+	// Preview tab (addLivePreviewTab()) rather than a dedicated tab of its
+	// own - m_livePreviewPage identifies that sub-tab (see
+	// isLivePreviewSubTabVisible()), and m_livePreviewLabel/
+	// m_livePreviewStatusLabel point at whichever live page is currently
+	// open (or null when none is) rather than being built once - each
+	// Start creates a fresh page, exactly like every other Preview sub-tab
+	// (see addLivePreviewTab()'s own comment).
 	RealtimePreviewSession *m_livePreviewSession = nullptr;
+	QWidget *m_livePreviewPage = nullptr;
 	OrbitPreviewLabel *m_livePreviewLabel = nullptr;
 	QLabel *m_livePreviewStatusLabel = nullptr;
 	bool m_livePreviewRunning = false;

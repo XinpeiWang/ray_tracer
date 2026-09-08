@@ -449,7 +449,7 @@ private:
 // OrbitPreviewLabel
 // ============================================================================
 // ScaledImageLabel plus click-drag-to-orbit and wheel-to-zoom mouse input -
-// used by the Live Preview tab (MainWindow::createLivePreviewTab()) to drive
+// used by Live Preview's sub-tab (MainWindow::addLivePreviewTab()) to drive
 // the GPU progressive-refinement preview's camera interactively. Deliberately
 // dumb: this widget only reports raw drag deltas (in pixels) and wheel
 // deltas - it owns no camera/orbit state itself (no lookAt point, no
