@@ -19,4 +19,9 @@ constexpr const char *kLanguageKey = "ui/language";
 // Recent Renders list - see recent_renders.cpp. The first list-shaped
 // value this app persists, hence its own group rather than a scalar key.
 constexpr const char *kRecentRendersGroup = "renders/recent";
+// Live Preview's own feel preferences - a separate "livePreview/" prefix
+// rather than "ui/", since these are specific to one feature rather than
+// whole-app chrome the way theme/font/language are.
+constexpr const char *kLivePreviewMouseSensitivityKey = "livePreview/mouseSensitivity";
+constexpr const char *kLivePreviewKeyboardSensitivityKey = "livePreview/keyboardSensitivity";
 } // namespace settings_keys

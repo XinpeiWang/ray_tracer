@@ -629,6 +629,48 @@ void MainWindow::createSettingsTab() {
 		"output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path "
 		"don't apply. Scene and Camera Position do."));
 	renderLayout->addRow(QString(), m_liveModeWarningLabel);
+
+	// Live Preview's own interactive feel - one multiplier per INPUT
+	// DEVICE (not one per axis - azimuth/elevation/radius all scale
+	// together per device), loaded from/saved to QSettings immediately on
+	// change (loadSavedMouseSensitivity()/saveMouseSensitivity() etc.,
+	// mainwindow_tabs_render.cpp) the same way theme/font/language already
+	// are. Always visible regardless of Output Mode, unlike the warning
+	// banner above - these are a standing preference, not something that
+	// only makes sense while Live Preview is actually selected.
+	m_mouseSensitivitySpinBox = new QDoubleSpinBox();
+	m_mouseSensitivitySpinBox->setRange(0.25, 3.0);
+	m_mouseSensitivitySpinBox->setSingleStep(0.25);
+	m_mouseSensitivitySpinBox->setDecimals(2);
+	m_mouseSensitivitySpinBox->setValue(m_mouseSensitivity);
+	m_mouseSensitivitySpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_mouseSensitivitySpinBox);
+	connect(m_mouseSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_mouseSensitivity = value;
+		saveMouseSensitivity(value);
+	});
+	renderLayout->addRow(labelWithInfo(tr("Live Preview Mouse Sensitivity:"),
+		tr("Scales click-drag-to-orbit and scroll-to-zoom speed in Live "
+		"Preview. 1x matches the original feel; lower is gentler, higher "
+		"is more responsive.")),
+		m_mouseSensitivitySpinBox);
+
+	m_keyboardSensitivitySpinBox = new QDoubleSpinBox();
+	m_keyboardSensitivitySpinBox->setRange(0.25, 3.0);
+	m_keyboardSensitivitySpinBox->setSingleStep(0.25);
+	m_keyboardSensitivitySpinBox->setDecimals(2);
+	m_keyboardSensitivitySpinBox->setValue(m_keyboardSensitivity);
+	m_keyboardSensitivitySpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_keyboardSensitivitySpinBox);
+	connect(m_keyboardSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_keyboardSensitivity = value;
+		saveKeyboardSensitivity(value);
+	});
+	renderLayout->addRow(labelWithInfo(tr("Live Preview Keyboard Sensitivity:"),
+		tr("Scales the Arrow keys (orbit) and +/- keys (zoom) step size in "
+		"Live Preview. 1x is a moderate per-press nudge; lower is finer, "
+		"higher moves further per press.")),
+		m_keyboardSensitivitySpinBox);
 #endif
 
 	m_modeCombo->setToolTip(

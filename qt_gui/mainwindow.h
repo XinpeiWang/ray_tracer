@@ -293,6 +293,15 @@ private:
 	// move. No-ops if the preview isn't currently running.
 	void onLivePreviewOrbitDragged(int dxPixels, int dyPixels);
 	void onLivePreviewZoomRequested(int angleDeltaY);
+	// Keyboard equivalents - see OrbitPreviewLabel::keyOrbitRequested()/
+	// keyZoomRequested()'s own comments for why these are separate slots
+	// (and separate signals) from the two mouse ones above, rather than
+	// synthesizing fake deltas through them: keyboard steps scale by
+	// m_keyboardSensitivity, mouse deltas by m_mouseSensitivity, and
+	// funneling both through one pair of slots would make those two
+	// impossible to tune independently.
+	void onLivePreviewKeyOrbit(int azimuthSteps, int elevationSteps);
+	void onLivePreviewKeyZoom(int radiusSteps);
 	// Converts m_orbit (spherical coordinates around currentLookAt()) back
 	// into an absolute camera position (camera_math::orbitToCartesian())
 	// and forwards it to the running RealtimePreviewSession - called after
@@ -350,6 +359,17 @@ private:
 	void createThemeMenu();
 	QString loadSavedThemeId() const;
 	void saveThemeId(const QString &themeId) const;
+#ifdef RT_GUI_HAVE_GPU
+	// Live Preview mouse/keyboard sensitivity persistence - same
+	// QSettings(settings_keys::kOrg, settings_keys::kApp) location and
+	// "own local QSettings instance per call" shape as loadSavedThemeId()/
+	// saveThemeId() above, just under settings_keys.h's "livePreview/"
+	// prefix instead of "ui/".
+	double loadSavedMouseSensitivity() const;
+	void saveMouseSensitivity(double value) const;
+	double loadSavedKeyboardSensitivity() const;
+	void saveKeyboardSensitivity(double value) const;
+#endif
 
 	// Recent Renders persistence (recent_renders.cpp) - same
 	// QSettings(settings_keys::kOrg, settings_keys::kApp) location as the
@@ -692,6 +712,18 @@ private:
 	// both when Live Preview starts and whenever onLivePreviewCameraChanged()
 	// moves the camera some other way.
 	camera_math::OrbitCoordinates m_orbit;
+	// Multipliers on the base orbit/zoom step size for each input method -
+	// one knob per DEVICE, not one per axis (azimuth/elevation/radius all
+	// scale together per device), since "the mouse/keyboard feels too
+	// twitchy" is a single per-device complaint, not an axis-specific one.
+	// Loaded once at startup (loadSavedMouseSensitivity()/
+	// loadSavedKeyboardSensitivity()) and saved immediately on every
+	// change from their Settings-tab spinboxes - see those methods' own
+	// comments (mainwindow_tabs_render.cpp).
+	double m_mouseSensitivity = 1.0;
+	double m_keyboardSensitivity = 1.0;
+	QDoubleSpinBox *m_mouseSensitivitySpinBox = nullptr;
+	QDoubleSpinBox *m_keyboardSensitivitySpinBox = nullptr;
 #endif
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides.

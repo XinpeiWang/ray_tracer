@@ -36,6 +36,7 @@
 #include <QEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QKeyEvent>
 #include <QTimer>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -471,6 +472,12 @@ public:
 		// needs a defined release point regardless of where the button
 		// physically comes up, which setMouseTracking() alone doesn't give.
 		setCursor(Qt::OpenHandCursor);
+		// StrongFocus (not the default NoFocus, and not ClickFocus) so arrow-
+		// key/+/- navigation works the instant a preview starts - MainWindow
+		// calls setFocus() right after creating this widget (addLivePreviewTab())
+		// - without requiring an extra click first, which would itself begin
+		// an orbit drag rather than just moving focus here.
+		setFocusPolicy(Qt::StrongFocus);
 	}
 
 	// Defensively ends an in-progress drag without waiting for a
@@ -497,6 +504,17 @@ signals:
 	// MainWindow decides what that means for zoom direction), one signal
 	// per wheel event's angleDelta().y(), not normalized to a fixed step.
 	void zoomRequested(int angleDeltaY);
+
+	// Keyboard equivalents of the two signals above - kept SEPARATE from
+	// them (rather than synthesizing fake pixel/wheel deltas and reusing
+	// orbitDragged()/zoomRequested()) so MainWindow can apply an
+	// independent keyboard sensitivity multiplier instead of the mouse's -
+	// see onLivePreviewKeyOrbit()/onLivePreviewKeyZoom()'s own comments.
+	// Each step is already normalized to -1/0/+1, unlike the mouse
+	// signals' raw unnormalized deltas, since a key press has no
+	// "distance" of its own the way a mouse move does.
+	void keyOrbitRequested(int azimuthSteps, int elevationSteps);
+	void keyZoomRequested(int radiusSteps);
 
 protected:
 	void mousePressEvent(QMouseEvent *event) override {
@@ -534,6 +552,30 @@ protected:
 	void wheelEvent(QWheelEvent *event) override {
 		emit zoomRequested(event->angleDelta().y());
 		event->accept();
+	}
+
+	// Arrow keys drive the same two rotational axes the mouse drag does
+	// (Left/Right -> azimuth, Up/Down -> elevation); +/-/= zoom. No WASD
+	// alias - arrows already cover both axes this orbit-only camera model
+	// has (see camera_math.h's own comment), so a second set of keys for
+	// the same two axes would add nothing; a genuine free-fly mode, if
+	// this ever gets one, is a different feature and can claim WASD then.
+	// event->accept() on every recognized key is required so it never
+	// reaches SplitPreviewTabs/HorizontalTabBar (this widget lives inside
+	// that tab strip's stack) and gets reinterpreted as a tab-switch key.
+	void keyPressEvent(QKeyEvent *event) override {
+		switch (event->key()) {
+		case Qt::Key_Left:  emit keyOrbitRequested(-1, 0); event->accept(); return;
+		case Qt::Key_Right: emit keyOrbitRequested(+1, 0); event->accept(); return;
+		case Qt::Key_Up:    emit keyOrbitRequested(0, +1); event->accept(); return;
+		case Qt::Key_Down:  emit keyOrbitRequested(0, -1); event->accept(); return;
+		case Qt::Key_Plus: case Qt::Key_Equal:
+			emit keyZoomRequested(+1); event->accept(); return;
+		case Qt::Key_Minus:
+			emit keyZoomRequested(-1); event->accept(); return;
+		default: break;
+		}
+		ScaledImageLabel::keyPressEvent(event);
 	}
 
 private:

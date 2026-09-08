@@ -747,6 +747,14 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// is about to apply anyway.
 	m_activeTheme = theme::byId(loadSavedThemeId());
 	m_startupFontId = loadSavedFontId();
+#ifdef RT_GUI_HAVE_GPU
+	// Loaded here (not lazily on first Live Preview start) so
+	// createSettingsTab() below can read the real saved value straight into
+	// its sensitivity spinboxes' initial setValue() calls, same reasoning
+	// as m_activeTheme/m_startupFontId just above.
+	m_mouseSensitivity = loadSavedMouseSensitivity();
+	m_keyboardSensitivity = loadSavedKeyboardSensitivity();
+#endif
 	// Set before the first applyTheme() call below (not just by applyFont(),
 	// which runs after it) so that first stylesheet build already scales to
 	// the right font instead of the "cyberpunk" default and needing a second

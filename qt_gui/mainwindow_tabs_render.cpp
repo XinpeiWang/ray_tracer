@@ -7,6 +7,7 @@
 #include "mainwindow.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"
+#include "settings_keys.h"
 
 #include "../src/shared/scene_descriptor.h"
 
@@ -42,6 +43,7 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QToolButton>
+#include <QSettings>
 #include <cmath>
 #include <algorithm>
 
@@ -1318,7 +1320,16 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 	m_livePreviewLabel->setPlaceholderText(tr("Waiting for first frame..."));
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::orbitDragged, this, &MainWindow::onLivePreviewOrbitDragged);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::zoomRequested, this, &MainWindow::onLivePreviewZoomRequested);
+	connect(m_livePreviewLabel, &OrbitPreviewLabel::keyOrbitRequested, this, &MainWindow::onLivePreviewKeyOrbit);
+	connect(m_livePreviewLabel, &OrbitPreviewLabel::keyZoomRequested, this, &MainWindow::onLivePreviewKeyZoom);
 	layout->addWidget(m_livePreviewLabel, /*stretch=*/1);
+	// Grabs keyboard focus immediately so arrow-key/+/- navigation works
+	// without an extra click first (which would itself start an orbit
+	// drag) - safe to call before the page is even shown, since a fresh
+	// label is created on every Start (see this function's own guard
+	// above), so there's always exactly one live-preview label at a time
+	// that legitimately wants focus.
+	m_livePreviewLabel->setFocus();
 
 	m_livePreviewStatusLabel = new QLabel(page);
 	m_livePreviewStatusLabel->setAlignment(Qt::AlignCenter);
@@ -1437,10 +1448,10 @@ void MainWindow::onLivePreviewOrbitDragged(int dxPixels, int dyPixels) {
 	// pass's fixed preview resolution), a comfortable, not-too-twitchy feel
 	// for a panel this size.
 	constexpr double kRadiansPerPixel = 0.008;
-	m_orbit.azimuth += dxPixels * kRadiansPerPixel;
+	m_orbit.azimuth += dxPixels * kRadiansPerPixel * m_mouseSensitivity;
 	// Screen Y grows downward, so dragging UP (dyPixels negative) should
 	// raise the camera (increase elevation) - hence the subtraction.
-	m_orbit.elevation -= dyPixels * kRadiansPerPixel;
+	m_orbit.elevation -= dyPixels * kRadiansPerPixel * m_mouseSensitivity;
 	// Clamped short of the true poles (+-90deg): AT a pole, azimuth becomes
 	// meaningless (every azimuth points the same direction), which would
 	// make the very next drag step's horizontal component do nothing/jump -
@@ -1457,12 +1468,73 @@ void MainWindow::onLivePreviewZoomRequested(int angleDeltaY) {
 	// a smooth, moderate zoom step; std::pow with a negative exponent
 	// (scrolling the other way) naturally inverts it.
 	constexpr double kZoomFactorPerUnit = 0.9995;
-	m_orbit.radius *= std::pow(kZoomFactorPerUnit, static_cast<double>(angleDeltaY));
+	// Scaling the EXPONENT (not the base) by sensitivity keeps 1.0x exactly
+	// today's behavior and preserves "higher sensitivity = bigger effect,
+	// same direction" - scaling the base instead would need a second
+	// formula to keep values above/below 1.0 behaving symmetrically.
+	m_orbit.radius *= std::pow(kZoomFactorPerUnit, static_cast<double>(angleDeltaY) * m_mouseSensitivity);
 	// Keeps the camera from crossing through (or orbiting absurdly close
 	// to) the lookAt point, where the view direction becomes degenerate.
 	constexpr double kMinRadius = 1.0;
 	if (m_orbit.radius < kMinRadius) m_orbit.radius = kMinRadius;
 	updateLivePreviewCameraFromOrbit();
+}
+
+// Keyboard equivalents of the two mouse handlers above - see
+// OrbitPreviewLabel::keyOrbitRequested()/keyZoomRequested()'s own
+// comments for why these are separate slots rather than routed through
+// the mouse ones, and mainwindow.h's comment on m_keyboardSensitivity
+// for why it's one multiplier per device rather than per axis.
+void MainWindow::onLivePreviewKeyOrbit(int azimuthSteps, int elevationSteps) {
+	if (!m_livePreviewRunning) return;
+	// Deliberately coarser per-press than the mouse's per-pixel rate (which
+	// fires many times over one drag) - a single key press should be a
+	// noticeable, discrete nudge, not an imperceptible fraction of one.
+	constexpr double kRadiansPerKeyStep = 0.05;
+	m_orbit.azimuth += azimuthSteps * kRadiansPerKeyStep * m_keyboardSensitivity;
+	m_orbit.elevation += elevationSteps * kRadiansPerKeyStep * m_keyboardSensitivity;
+	// Same pole clamp as onLivePreviewOrbitDragged() - see its own comment.
+	constexpr double kMaxElevation = 1.5533;  // 89 degrees in radians
+	if (m_orbit.elevation > kMaxElevation) m_orbit.elevation = kMaxElevation;
+	if (m_orbit.elevation < -kMaxElevation) m_orbit.elevation = -kMaxElevation;
+	updateLivePreviewCameraFromOrbit();
+}
+
+void MainWindow::onLivePreviewKeyZoom(int radiusSteps) {
+	if (!m_livePreviewRunning) return;
+	// ~15% radius change per press at 1.0x - a single press should read as
+	// a deliberate zoom step, matching kRadiansPerKeyStep's own "noticeable
+	// per press" intent above rather than the mouse wheel's much finer
+	// per-notch granularity.
+	constexpr double kZoomFactorPerKeyStep = 0.85;
+	m_orbit.radius *= std::pow(kZoomFactorPerKeyStep, radiusSteps * m_keyboardSensitivity);
+	// Same degenerate-radius clamp as onLivePreviewZoomRequested().
+	constexpr double kMinRadius = 1.0;
+	if (m_orbit.radius < kMinRadius) m_orbit.radius = kMinRadius;
+	updateLivePreviewCameraFromOrbit();
+}
+
+// Live Preview mouse/keyboard sensitivity persistence - same
+// QSettings(kOrg, kApp) location and per-call-instance shape as
+// loadSavedThemeId()/saveThemeId() (theme_switch.cpp).
+double MainWindow::loadSavedMouseSensitivity() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewMouseSensitivityKey, 1.0).toDouble();
+}
+
+void MainWindow::saveMouseSensitivity(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewMouseSensitivityKey, value);
+}
+
+double MainWindow::loadSavedKeyboardSensitivity() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewKeyboardSensitivityKey, 1.0).toDouble();
+}
+
+void MainWindow::saveKeyboardSensitivity(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewKeyboardSensitivityKey, value);
 }
 #endif
 
