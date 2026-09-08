@@ -682,6 +682,16 @@ int main(int argc, char** argv) {
 
         // Render each frame with animated camera position
         for (int frame = 0; frame < render_frame_count; ++frame) {
+            // Currently a no-op in practice - this branch always returns
+            // before ever reaching the "[STATS]" print block below, which
+            // is the only reader of these counters - but reset() here
+            // keeps that true by construction rather than by accident:
+            // without it, render_stats::bounce_rays()/shadow_rays()/
+            // primary_rays() (incremented once per real sample inside
+            // camera.h's render loop) would silently accumulate across
+            // every frame of this loop, a trap for any future change that
+            // prints or reuses these counters for a video render.
+            render_stats::reset();
             // Get camera position for this frame
             CameraPosition cam_pos = get_camera_position(camera_path, frame, render_frame_count,
                                                             path_lookfrom_x, path_lookfrom_y, path_lookfrom_z,
@@ -1200,12 +1210,30 @@ int main(int argc, char** argv) {
     // whose counters (render_stats.h) are only reachable from here.
     if (args.stats && !use_gpu && !use_bdpt && !use_mlt && !use_sppm && !use_debug_integrator) {
         // render_stats::primary_rays() is the REAL count of samples actually
-        // taken - always equal to width*height*spp unless --adaptive stopped
-        // some pixels early (camera::adaptive_sampling's own comment), in
-        // which case using the old width*height*spp calculation here would
-        // overstate the work actually done (and Samples/sec along with it).
+        // taken - always equal to the render's true non-adaptive ceiling
+        // unless --adaptive stopped some pixels early (camera::
+        // adaptive_sampling's own comment), in which case using the old
+        // width*height*samples_per_pixel calculation here would overstate
+        // the work actually done (and Samples/sec along with it).
         const uint64_t primary_rays = render_stats::primary_rays().load(std::memory_order_relaxed);
-        const long long theoretical_max_rays = (long long)image_width * image_height * samples_per_pixel;
+        // The real per-pixel ceiling is sqrt_spp*sqrt_spp (camera.h's own
+        // truncating int(sqrt(samples_per_pixel)) - see that field's own
+        // comment), which is <= samples_per_pixel for any non-perfect-
+        // square spp - using samples_per_pixel directly here would report
+        // a nonzero "% fewer" purely from that truncation, even when
+        // --adaptive triggers zero real early stops. Also scaled by the
+        // requested --crop fraction (args.crop_x0/x1/y0/y1, NDC fractions,
+        // default the full [0,1] frame) so a cropped render's naturally
+        // smaller ray count isn't misattributed to adaptive sampling
+        // either - approximate (camera.h does its own pixel-rounding/
+        // empty-range fallback this can't see), but far closer than
+        // ignoring crop entirely.
+        const int sqrt_spp_stat = static_cast<int>(std::sqrt(static_cast<double>(samples_per_pixel)));
+        const double crop_fraction = std::max(0.0, std::min(1.0,
+            (args.crop_x1 - args.crop_x0) * (args.crop_y1 - args.crop_y0)));
+        const long long theoretical_max_rays = static_cast<long long>(
+            (double)image_width * (double)image_height * crop_fraction *
+            (double)sqrt_spp_stat * (double)sqrt_spp_stat);
         const uint64_t total_rays = render_stats::bounce_rays().load(std::memory_order_relaxed);
         const uint64_t shadow_rays = render_stats::shadow_rays().load(std::memory_order_relaxed);
         std::cout << "[STATS] ── Render Statistics ──────────────────────────\n";

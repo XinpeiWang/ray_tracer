@@ -399,6 +399,18 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 				++i;
 			} catch (const std::exception&) {
 				std::cerr << "Invalid --adaptive-threshold value, using default (0.01)\n";
+				// Actually reset to the default the message above claims
+				// (a prior --adaptive-threshold's value must not survive
+				// this one failing to parse), and mark both tokens
+				// consumed so the invalid value doesn't fall through into
+				// positional argument parsing and shift width/spp/
+				// max_depth/scene_id - same "on failure, still consume
+				// what was clearly meant as this flag's value" shape the
+				// success path above already has.
+				out.adaptive_threshold = 0.01;
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
 			}
 		} else if (arg == "--lightsampler" && i + 1 < argc) {
 			// "auto" isn't a real light-sampler implementation - it means

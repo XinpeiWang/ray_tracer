@@ -144,6 +144,7 @@
 #include "shadow_ray.h"
 #include "thread_count.h"        // determine_render_thread_count()
 #include "bsdf_bridge.h"         // Layer 1 -- SPPMShadingContext + BSDF bridge (shared with sppm_adapter.h)
+#include "../shared/adaptive_sampling.h"  // pixel_convergence::luminance - Luminance()'s own comment
 #include "../shared/bdpt.h"      // BDPTHit, BDPTVertex, BDPTLi, ...
 #include "../shared/mlt.h"       // MLTRenderLoop (pulls in reservoir_sampler.h's AliasTable)
 #include "../shared/exr_writer.h"
@@ -1237,8 +1238,11 @@ class BDPTSceneAdapter {
 	// measure)") -- standard Rec. 709 relative luminance, matching
 	// SPPMSceneAdapter's own emitter-power weighting formula and
 	// power_light_sampler.h's for consistency across this codebase.
+	// Delegates to the one shared implementation (src/shared/
+	// adaptive_sampling.h, also used by --adaptive's own convergence
+	// check) rather than a second hand-copied formula.
 	double Luminance(double r, double g, double b) const {
-		return 0.2126*r + 0.7152*g + 0.0722*b;
+		return pixel_convergence::luminance(r, g, b);
 	}
 
   private:

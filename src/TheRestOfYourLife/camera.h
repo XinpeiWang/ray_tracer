@@ -216,7 +216,7 @@ class camera {
     // comment) doesn't exist in BDPT/MLT/SPPM's own sampling loops.
     bool adaptive_sampling = false;
     // Target relative standard error of a pixel's running luminance mean -
-    // see adaptive_sampling::has_converged()'s own comment. Cycles' own
+    // see pixel_convergence::has_converged()'s own comment. Cycles' own
     // adaptive_threshold default (0.01) is reused here as a familiar
     // starting point for anyone coming from that renderer.
     double adaptive_threshold = 0.01;
@@ -486,18 +486,35 @@ class camera {
                     // skipping the whole sampling loop here is both the
                     // compute-saving and the correctness fix in one place.
                     const bool in_crop = i >= crop_x0 && i < crop_x1 && j >= crop_y0 && j < crop_y1;
+                    // --adaptive: the minimum sample count taken before
+                    // ever considering an early stop. Capped at a fixed 32
+                    // rather than always waiting for 2 full stratified rows
+                    // (2*sqrt_spp) - at low/moderate sqrt_spp the two agree,
+                    // but for a high-spp render (e.g. sqrt_spp=22 at
+                    // spp=500) an uncapped 2*sqrt_spp=44-sample floor would
+                    // force extra work on exactly the large-spp renders
+                    // adaptive sampling should help the most, for no
+                    // additional statistical benefit past the point a
+                    // Welford variance ESTIMATE is already trustworthy.
+                    const int min_samples_before_check = std::min(2 * sqrt_spp, 32);
                     if (in_crop)
-                    for (int s_j = 0; s_j < sqrt_spp; s_j++) {
-                            // --adaptive: only consider stopping once at
-                            // least 2 full stratified rows (2*sqrt_spp
-                            // samples) have been taken - Welford's variance
-                            // is undefined below n=2 (pixel_convergence::
-                            // has_converged() already guards that), and a
-                            // single row's worth of samples is too small a
-                            // sample to trust a variance ESTIMATE itself,
-                            // let alone the pixel's true noise level.
-                            if (adaptive_sampling && s_j >= 2 &&
-                                pixel_convergence::has_converged(luminance_estimator, adaptive_threshold))
+                    for (int row_idx = 0; row_idx < sqrt_spp; row_idx++) {
+                            // Visits stratified rows in row_visit_order(),
+                            // NOT raster order 0,1,2,... - see that
+                            // function's own comment (adaptive_sampling.h)
+                            // for why: a raster-order prefix would confine
+                            // an early-stopped pixel to only ever sampling
+                            // one contiguous, spatially-lopsided side of
+                            // the reconstruction filter's footprint instead
+                            // of a representative (if smaller) spread of
+                            // it. Has zero effect on a non-adaptive or
+                            // never-converging render - see that comment's
+                            // own "commutative sum" reasoning.
+                            const int s_j = adaptive_row_order[row_idx];
+                            if (adaptive_sampling &&
+                                luminance_estimator.Count() >= min_samples_before_check &&
+                                pixel_convergence::has_converged(luminance_estimator, adaptive_threshold,
+                                                                  1e-4, exposure))
                                 break;
                             for (int s_i = 0; s_i < sqrt_spp; s_i++) {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum
@@ -776,6 +793,14 @@ class camera {
     double pixel_samples_scale;  // Color scale factor for a sum of pixel samples
     int    sqrt_spp;             // Square root of number of samples per pixel
     double recip_sqrt_spp;       // 1 / sqrt_spp
+    // Which stratified row (s_j) render()'s sample loop visits at each
+    // iteration - see pixel_convergence::row_visit_order()'s own comment
+    // (adaptive_sampling.h) for why this must NOT be raster order 0,1,2,...
+    // when --adaptive can break out of that loop early. Computed once here
+    // (not per-pixel - it depends only on sqrt_spp, fixed for the whole
+    // render) regardless of whether adaptive_sampling is on, since sorting
+    // a handful of ints once per render is free either way.
+    std::vector<int> adaptive_row_order;
     point3 pixel00_loc;          // Location of pixel 0, 0
     vec3   pixel_delta_u;        // Offset to pixel to the right
     vec3   pixel_delta_v;        // Offset to pixel below
@@ -898,6 +923,7 @@ class camera {
         sqrt_spp = int(std::sqrt(samples_per_pixel));
         pixel_samples_scale = 1.0 / (sqrt_spp * sqrt_spp);
         recip_sqrt_spp = 1.0 / sqrt_spp;
+        adaptive_row_order = pixel_convergence::row_visit_order(sqrt_spp);
 
         center = lookfrom;
 

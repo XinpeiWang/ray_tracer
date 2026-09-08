@@ -1203,6 +1203,13 @@ QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
 	// markup into renderTechniqueHtml()'s rich-text output.
 	if (!flags.sampler.isEmpty()) parts << tr("Sampler: %1").arg(flags.sampler.toHtmlEscaped());
 	if (!flags.lightSampler.isEmpty()) parts << tr("Light Sampler: %1").arg(flags.lightSampler.toHtmlEscaped());
+	if (!flags.accelerator.isEmpty()) parts << tr("Accelerator: %1").arg(flags.accelerator.toHtmlEscaped());
+	if (!flags.splitMethod.isEmpty()) parts << tr("Split method: %1").arg(flags.splitMethod.toHtmlEscaped());
+	if (flags.adaptiveSampling) {
+		parts << ((flags.adaptiveThreshold != 0.01)
+			? tr("Adaptive sampling: on (threshold %1)").arg(flags.adaptiveThreshold)
+			: tr("Adaptive sampling: on"));
+	}
 	if (flags.spectral) parts << tr("Spectral: on");
 	if (!flags.tonemap.isEmpty()) parts << tr("Tonemap: %1").arg(flags.tonemap.toHtmlEscaped());
 	if (flags.regularize) parts << tr("Regularize: on");
