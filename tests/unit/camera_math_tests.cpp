@@ -108,7 +108,7 @@ TEST(CameraMathTest, DistanceThenRepositionIsAnIdentity) {
 // Round trip: decompose a camera position into spherical coordinates, then
 // rebuild the position from them. The Live Preview tab's mouse-drag orbit
 // control does exactly this every time it seeds orbit state from the camera
-// spinboxes (MainWindow::onLivePreviewToggled()/onLivePreviewCameraChanged()).
+// spinboxes (MainWindow::startLivePreview()/onLivePreviewCameraChanged()).
 TEST(CameraMathTest, CartesianToOrbitThenBackIsAnIdentity) {
 	// Straight along +Z from the target - a plain, on-axis case.
 	expectVec3Near(

@@ -1655,6 +1655,7 @@ void MainWindow::selectOutputMode(OutputMode mode) {
 }
 
 void MainWindow::onModeChanged(int index) {
+	m_outputMode = static_cast<OutputMode>(m_modeCombo->itemData(index).toInt());
 #ifdef RT_GUI_HAVE_GPU
 	// Live Preview only ever runs while it's the selected mode - leaving it
 	// stops any in-progress session, the same "only costs anything while
@@ -1663,10 +1664,12 @@ void MainWindow::onModeChanged(int index) {
 	// tab. This also means starting a batch render (which forces the mode
 	// combo to Image/Video first, via m_actRender/m_actRenderVideo) always
 	// cleanly stops a running preview first, with no separate error/prompt.
-	if (m_livePreviewRunning && static_cast<OutputMode>(m_modeCombo->itemData(index).toInt()) != OutputMode::LivePreview)
+	// m_outputMode is updated above, before this call, so stopLivePreview()'s
+	// own updateTransportButtons() call already sees the new mode instead of
+	// evaluating isLiveMode() against the mode being left.
+	if (m_livePreviewRunning && !isLiveMode())
 		stopLivePreview();
 #endif
-	m_outputMode = static_cast<OutputMode>(m_modeCombo->itemData(index).toInt());
 
 	// Every control in Video Generation Settings is inert unless Output Mode
 	// is "Generate Video" - the warning label (see its own comment,
@@ -1754,9 +1757,16 @@ void MainWindow::updateTransportButtons() {
 		// even start while a batch render (queued from before the mode was
 		// switched) still owns the GPU.
 		m_renderButton->setEnabled(!m_isRendering && !m_livePreviewRunning);
-		m_stopButton->setEnabled(m_livePreviewRunning);
-		m_pauseButton->setEnabled(false);
-		m_abandonButton->setEnabled(false);
+		// If a batch render from before the mode switch is still running,
+		// its own Stop/Pause/Abandon state (set by startRenderJob()) is what
+		// the buttons must reflect - Live Preview being selected doesn't
+		// mean nothing else is happening. Only override them for what Live
+		// Preview itself controls once that batch job is out of the way.
+		if (!m_isRendering) {
+			m_stopButton->setEnabled(m_livePreviewRunning);
+			m_pauseButton->setEnabled(false);
+			m_abandonButton->setEnabled(false);
+		}
 		return;
 	}
 	if (m_livePreviewRunning) {

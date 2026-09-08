@@ -77,12 +77,9 @@ void MainWindow::createRenderOptionsTab() {
 	// m_videoModeWarningLabel/m_liveModeWarningLabel - see their comments
 	// (mainwindow.h). None of this tab's settings apply to Live Preview,
 	// which always renders via the GPU wavefront path tracer directly.
-	m_liveModeOptionsWarningLabel = new QLabel(
+	m_liveModeOptionsWarningLabel = makeModeWarningBanner(optionsTab,
 		tr("⚠ Live Preview uses the GPU progressive path tracer directly - none of the "
-		"settings on this tab apply to it."), optionsTab);
-	m_liveModeOptionsWarningLabel->setObjectName("videoModeWarning");
-	m_liveModeOptionsWarningLabel->setWordWrap(true);
-	m_liveModeOptionsWarningLabel->setVisible(false);
+		"settings on this tab apply to it."));
 	layout->addWidget(m_liveModeOptionsWarningLabel);
 #endif
 

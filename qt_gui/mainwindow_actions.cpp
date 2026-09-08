@@ -233,11 +233,7 @@ void MainWindow::updateActionStates() {
 	// comment in this file. A running Live Preview is cancellable too, even
 	// though it's not a RenderController job (m_isRendering stays false for
 	// it - see OutputMode's own comment).
-#ifdef RT_GUI_HAVE_GPU
-	if (m_actStop)        m_actStop->setEnabled(m_isRendering || m_livePreviewRunning);
-#else
-	if (m_actStop)        m_actStop->setEnabled(m_isRendering);
-#endif
+	if (m_actStop)        m_actStop->setEnabled(m_isRendering || isLivePreviewActive());
 	if (m_actPause)       m_actPause->setEnabled(m_isRendering);
 	if (m_actAbandon)     m_actAbandon->setEnabled(m_isRendering);
 	// Reflect whichever Preview sub-tab is currently active, not just the

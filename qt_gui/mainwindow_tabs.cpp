@@ -624,13 +624,10 @@ void MainWindow::createSettingsTab() {
 	// Same "banner, don't hide" convention as m_videoModeWarningLabel below -
 	// see its own comment (mainwindow.h) for why nothing here gets disabled
 	// instead. Visible only in Live Preview mode; toggled by onModeChanged().
-	m_liveModeWarningLabel = new QLabel(
+	m_liveModeWarningLabel = makeModeWarningBanner(basicTab,
 		tr("⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no "
 		"output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path "
-		"don't apply. Scene and Camera Position do."), basicTab);
-	m_liveModeWarningLabel->setObjectName("videoModeWarning");
-	m_liveModeWarningLabel->setWordWrap(true);
-	m_liveModeWarningLabel->setVisible(false);
+		"don't apply. Scene and Camera Position do."));
 	renderLayout->addRow(QString(), m_liveModeWarningLabel);
 #endif
 
@@ -815,11 +812,8 @@ void MainWindow::createSettingsTab() {
 	videoLayout->setHorizontalSpacing(10);
 	videoLayout->setContentsMargins(15, 22, 15, 12);
 
-	m_videoModeWarningLabel = new QLabel(
-		tr("⚠ These settings only take effect when Output Mode above is set to \"Generate Video\"."),
-		videoGroup);
-	m_videoModeWarningLabel->setObjectName("videoModeWarning");
-	m_videoModeWarningLabel->setWordWrap(true);
+	m_videoModeWarningLabel = makeModeWarningBanner(videoGroup,
+		tr("⚠ These settings only take effect when Output Mode above is set to \"Generate Video\"."));
 	m_videoModeWarningLabel->setVisible(!isVideoMode());
 	videoLayout->addRow(m_videoModeWarningLabel);
 

@@ -419,6 +419,13 @@ private:
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
 	void styleCheckBox(QCheckBox *box);
+	// Shared construction for the "banner, don't hide" warning labels that
+	// explain when a group of settings takes effect instead of disabling
+	// them - see m_videoModeWarningLabel's own comment for the rationale.
+	// The caller still adds the returned label to its own layout, since
+	// that call (addRow vs addWidget, with/without a leading QString())
+	// varies by site, and still sets its own initial visibility.
+	QLabel *makeModeWarningBanner(QWidget *parent, const QString &text);
 	// Beginner-facing "(i)" info marks - see their own doc comments
 	// (mainwindow_style.cpp) for the full design rationale.
 	QToolButton* createInfoIcon(const QString &helpText);
@@ -1041,6 +1048,18 @@ private:
 	OutputMode m_outputMode = OutputMode::Image;
 	bool isVideoMode() const { return m_outputMode == OutputMode::Video; }
 	bool isLiveMode() const { return m_outputMode == OutputMode::LivePreview; }
+	// Unconditionally callable wrapper around m_livePreviewRunning (which
+	// only exists under RT_GUI_HAVE_GPU) - lets a call site like
+	// updateActionStates() below express "...|| a preview is running" as one
+	// line shared by both builds instead of two near-duplicate #ifdef/#else
+	// lines that could drift out of sync.
+	bool isLivePreviewActive() const {
+#ifdef RT_GUI_HAVE_GPU
+		return m_livePreviewRunning;
+#else
+		return false;
+#endif
+	}
 	// Sets m_modeCombo (by itemData, not index - the LivePreview item may
 	// not exist at all on a non-GPU build, or may exist but be disabled
 	// when realtime_renderer.dll isn't found) and updates m_outputMode to

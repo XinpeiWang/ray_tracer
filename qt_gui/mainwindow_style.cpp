@@ -835,6 +835,14 @@ void MainWindow::styleGroupBox(QGroupBox *box) {
 	applyElevation(box, /*blurRadius=*/16, /*offsetY=*/3, /*alpha=*/55);
 }
 
+QLabel *MainWindow::makeModeWarningBanner(QWidget *parent, const QString &text) {
+	QLabel *label = new QLabel(text, parent);
+	label->setObjectName("videoModeWarning");
+	label->setWordWrap(true);
+	label->setVisible(false);
+	return label;
+}
+
 void MainWindow::applyElevation(QWidget *widget, qreal blurRadius, qreal offsetY, int alpha) {
 	auto *shadow = new QGraphicsDropShadowEffect(widget);
 	shadow->setBlurRadius(blurRadius);
