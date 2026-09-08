@@ -439,6 +439,16 @@ private:
 	void applyComboPopupPalette(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
+	// Visually recedes a group whose settings don't apply to the current
+	// Output Mode, WITHOUT disabling it - every field stays clickable so it
+	// can still be browsed/pre-configured ahead of switching modes (the
+	// same reason m_videoModeWarningLabel/m_liveModeWarningLabel explain
+	// relevance with a banner instead of hiding fields outright - see that
+	// label's own comment for the two bugs disabling caused previously).
+	// Swaps the group's own elevation shadow (styleGroupBox()) for a flat,
+	// half-opacity look - QGraphicsEffect only affects painting, never
+	// event delivery, so nothing under it stops being interactive.
+	void setGroupDimmed(QGroupBox *box, bool dimmed);
 	void styleCheckBox(QCheckBox *box);
 	// Shared construction for the "banner, don't hide" warning labels that
 	// explain when a group of settings takes effect instead of disabling
@@ -684,7 +694,12 @@ private:
 	camera_math::OrbitCoordinates m_orbit;
 #endif
 
-	// Settings Tab (cont'd) - manual width/height/samples/depth overrides
+	// Settings Tab (cont'd) - manual width/height/samples/depth overrides.
+	// Shared by Image AND Video (Video reuses these as its per-frame
+	// resolution/quality - see captureRenderJob()) - only Live Preview
+	// excludes them, hence m_liveModeWarningLabel rather than a Video-only
+	// warning here, and dimming keyed on isLiveMode() rather than isVideoMode().
+	QGroupBox *m_advancedParamsGroupBox = nullptr;
 	QSpinBox *m_widthSpinBox;           // Custom width
 	QSpinBox *m_heightSpinBox;          // Custom height
 	QSpinBox *m_samplesSpinBox;         // Samples per pixel
@@ -966,6 +981,10 @@ private:
 	void refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata* preloaded = nullptr);
 
 	// Settings Tab (cont'd) - Video Generation Settings
+	// The group box itself, stored (unlike most groups in this tab) so
+	// onModeChanged() can dim it when it doesn't apply - see
+	// setGroupDimmed()'s own comment for why dimming, not hiding/disabling.
+	QGroupBox *m_videoGroupBox = nullptr;
 	QComboBox *m_videoPresetCombo;      // Named scene+path+frames/fps/speed bundle - see video_preset.h
 	QComboBox *m_cameraPathCombo;       // Camera animation path selector
 	QSpinBox *m_videoFramesSpinBox;     // Number of frames to render

@@ -805,14 +805,20 @@ void MainWindow::createSettingsTab() {
 	// first place). m_videoModeWarningLabel is the same warning-banner
 	// pattern that fix introduced, just now scoped to this group instead of
 	// a whole standalone tab.
-	QGroupBox *videoGroup = new QGroupBox(tr("Video Generation Settings"), basicTab);
-	styleGroupBox(videoGroup);
-	QFormLayout *videoLayout = new QFormLayout(videoGroup);
+	m_videoGroupBox = new QGroupBox(tr("Video Generation Settings"), basicTab);
+	styleGroupBox(m_videoGroupBox);
+	// Dimmed (not disabled - see setGroupDimmed()'s own comment) whenever
+	// Output Mode isn't "Generate Video", alongside the existing warning
+	// banner right below - the banner explains WHY, the dim reinforces AT A
+	// GLANCE that this whole group is currently inert, without blocking a
+	// user who wants to pre-configure it before switching modes.
+	setGroupDimmed(m_videoGroupBox, !isVideoMode());
+	QFormLayout *videoLayout = new QFormLayout(m_videoGroupBox);
 	videoLayout->setVerticalSpacing(10);
 	videoLayout->setHorizontalSpacing(10);
 	videoLayout->setContentsMargins(15, 22, 15, 12);
 
-	m_videoModeWarningLabel = makeModeWarningBanner(videoGroup,
+	m_videoModeWarningLabel = makeModeWarningBanner(m_videoGroupBox,
 		tr("⚠ These settings only take effect when Output Mode above is set to \"Generate Video\"."));
 	m_videoModeWarningLabel->setVisible(!isVideoMode());
 	videoLayout->addRow(m_videoModeWarningLabel);
@@ -987,7 +993,7 @@ void MainWindow::createSettingsTab() {
 
 	videoLayout->addRow(videoInfoRow);
 
-	layout->addWidget(videoGroup);
+	layout->addWidget(m_videoGroupBox);
 
 	// Requirements + Usage Instructions - a single compact row with an
 	// info icon instead of two permanently-visible QGroupBoxes, matching
@@ -1030,14 +1036,21 @@ void MainWindow::createSettingsTab() {
 	// keeping the Quality preset above and the exact values it writes into
 	// Width/Height/Samples/Max Depth below on the same tab reads more like
 	// one coherent "how big and how clean" decision than two.
-	QGroupBox *advancedGroup = new QGroupBox(tr("Advanced Parameters"), basicTab);
-	styleGroupBox(advancedGroup);
+	m_advancedParamsGroupBox = new QGroupBox(tr("Advanced Parameters"), basicTab);
+	styleGroupBox(m_advancedParamsGroupBox);
+	// Dimmed (not disabled) whenever Live Preview is selected - see
+	// m_liveModeWarningLabel's own comment for why these specifically don't
+	// apply there, and setGroupDimmed()'s comment for why dim rather than
+	// hide/disable. Image and Video both use this group, so this is keyed
+	// on isLiveMode(), not isVideoMode() - the opposite condition from
+	// m_videoGroupBox just above.
+	setGroupDimmed(m_advancedParamsGroupBox, isLiveMode());
 	// A 4-column grid (label+info, field, label+info, field) instead of
 	// QFormLayout's one-pair-per-row - two related dials per line (Width/
 	// Height, then Samples/Max Depth) halves this group's height without
 	// losing anything: each field keeps its own label, info icon, and
 	// tooltip exactly as before, just packed two to a row.
-	QGridLayout *advancedGrid = new QGridLayout(advancedGroup);
+	QGridLayout *advancedGrid = new QGridLayout(m_advancedParamsGroupBox);
 	advancedGrid->setVerticalSpacing(10);
 	advancedGrid->setHorizontalSpacing(10);
 	advancedGrid->setContentsMargins(15, 22, 15, 12);
@@ -1110,7 +1123,7 @@ void MainWindow::createSettingsTab() {
 		1, 2);
 	advancedGrid->addWidget(m_maxDepthSpinBox, 1, 3);
 
-	layout->addWidget(advancedGroup);
+	layout->addWidget(m_advancedParamsGroupBox);
 
 	// ============================================================================
 	// Camera Position Group

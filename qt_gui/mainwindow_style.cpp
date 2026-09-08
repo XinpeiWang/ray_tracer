@@ -835,6 +835,21 @@ void MainWindow::styleGroupBox(QGroupBox *box) {
 	applyElevation(box, /*blurRadius=*/16, /*offsetY=*/3, /*alpha=*/55);
 }
 
+void MainWindow::setGroupDimmed(QGroupBox *box, bool dimmed) {
+	if (!box) return;
+	if (dimmed) {
+		auto *opacity = new QGraphicsOpacityEffect(box);
+		opacity->setOpacity(0.5);
+		box->setGraphicsEffect(opacity);
+	} else {
+		// setGraphicsEffect() only ever holds one effect at a time, so
+		// dimming above replaced whatever styleGroupBox() originally set -
+		// restore that same elevation shadow rather than leaving the group
+		// permanently flat once it becomes relevant again.
+		applyElevation(box, /*blurRadius=*/16, /*offsetY=*/3, /*alpha=*/55);
+	}
+}
+
 QLabel *MainWindow::makeModeWarningBanner(QWidget *parent, const QString &text) {
 	QLabel *label = new QLabel(text, parent);
 	label->setObjectName("videoModeWarning");
