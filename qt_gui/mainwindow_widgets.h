@@ -58,6 +58,8 @@
 #include <QListWidget>
 #include <QToolButton>
 #include <QScrollArea>
+#include <QFont>
+#include <QFontMetrics>
 #include <QDebug>
 #include <QFile>
 #include <functional>
@@ -97,17 +99,20 @@ protected:
 // ============================================================================
 // InfoGroupBox
 // ============================================================================
-// A QGroupBox with an (i) info icon pinned to the top-right corner of its
-// title bar. QGroupBox's title is drawn by the style engine (see the
-// ::title QSS subcontrol, mainwindow_style.cpp) - there is no way to embed
-// a real widget inside that native rendering, so the icon is instead a
-// separate child widget positioned there manually and kept pinned on every
-// resize. Anchored to this box's own WIDTH (right edge), not to the title
-// text's rendered width - the title's length varies with content and
-// translation, and QSS's font-weight/size overrides on ::title aren't
-// reliably reflected back in QWidget::font()/fontMetrics(), so measuring
-// "right after the text" would be guesswork; anchoring to the box's own
-// width is exact and needs no font measurement at all.
+// A QGroupBox with an (i) info icon placed immediately after its title
+// text. QGroupBox's title is drawn by the style engine (see the ::title
+// QSS subcontrol, mainwindow_style.cpp) - there is no way to embed a real
+// widget inside that native rendering, so the icon is instead a separate
+// child widget positioned there manually and kept pinned on every resize.
+// Position is computed from the title's own QSS box model (subcontrol-
+// position: top left; left: 12px; top: 2px; padding: 2px 12px) plus the
+// title text's measured width - reconstructing the SAME font ::title
+// actually renders with (bold; the plain QGroupBox rule's font-size, which
+// IS reflected in QWidget::font(), but not the ::title-only "font-weight:
+// bold", so that part is applied manually here) rather than reading
+// QWidget::font() as-is. Not pixel-guaranteed to match every style's exact
+// title chrome, but tracks the title's real rendered width - unlike a
+// fixed offset, it stays correct as the title text/translation changes.
 // ============================================================================
 class InfoGroupBox : public QGroupBox {
 	Q_OBJECT
@@ -132,13 +137,20 @@ protected:
 private:
 	void repositionInfoIcon() {
 		if (!m_infoIcon) return;
-		// kTopMargin roughly matches the title's own "top: 2px" QSS offset
-		// (mainwindow_style.cpp) plus half its padding, so the icon reads
-		// as vertically aligned with the title text rather than floating
-		// above or below it.
-		constexpr int kRightMargin = 10;
-		constexpr int kTopMargin = 4;
-		m_infoIcon->move(width() - m_infoIcon->width() - kRightMargin, kTopMargin);
+		// Matches the ::title QSS subcontrol's own box model exactly
+		// (mainwindow_style.cpp) - left offset + left/right padding is
+		// where the title text itself starts.
+		constexpr int kTitleLeft = 12;
+		constexpr int kTitleTop = 2;
+		constexpr int kTitlePaddingH = 12;
+		constexpr int kTitlePaddingV = 2;
+		constexpr int kGapAfterText = 6;
+		QFont titleFont = font();
+		titleFont.setBold(true);
+		const QFontMetrics fm(titleFont);
+		const int x = kTitleLeft + kTitlePaddingH + fm.horizontalAdvance(title()) + kGapAfterText;
+		const int y = kTitleTop + kTitlePaddingV + (fm.height() - m_infoIcon->height()) / 2;
+		m_infoIcon->move(x, y);
 	}
 
 	QToolButton *m_infoIcon = nullptr;
