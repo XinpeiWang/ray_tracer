@@ -16,6 +16,7 @@
 #include <cstring>
 #include <cctype>
 #include <string>
+#include <sstream>
 
 // Global renderer instance
 static std::unique_ptr<OptiXRenderer> g_renderer;
@@ -33,6 +34,156 @@ extern "C" bool optix_is_available() {
 extern "C" bool optix_get_diagnostics(OptixDiagnostics* out) {
 	if (!out) return false;
 	return OptiXRenderer::getDiagnostics(*out);
+}
+
+// Shared by optix_render_main() and rt_realtime_render_frame(): builds
+// scene_id's CPU-side scene description (build_scene()), computes this
+// call's camera state into cameraExtra, uploads geometry to the GPU only
+// when scene_id differs from the last call (see g_uploaded_scene_id's own
+// comment), and requests wavefrontMode via enableWavefront(). Deliberately
+// does NOT apply --regularize/--seed/--maxcomponentvalue/--crop overrides
+// or call enableDenoise()/setDenoiseBlend() - those are each caller's own
+// concern (optix_render_main() has a RenderOptions to apply after this
+// returns; rt_realtime_render_frame() has none).
+//
+// `verbose` gates both the per-call [OptiX] console logging AND
+// build_scene()'s own std::cerr diagnostics (e.g. scene_builder.cpp's
+// filter-radius mismatch warning) - redirected to a discard stream rather
+// than threading a "quiet" flag through build_scene()'s own already-large
+// signature and every scene branch that might warn. On for the CLI/GUI-
+// subprocess entry point; off for the live-preview path, which calls this
+// every preview frame and explicitly wants no console spam.
+//
+// @param errorCode set to a specific ERR_* code on failure (ignored by
+//        callers, like rt_realtime_render_frame(), that only need bool).
+static bool prepareSceneAndCamera(
+	const char* scene_id,
+	int image_width,
+	int image_height,
+	double cam_x,
+	double cam_y,
+	double cam_z,
+	bool force_camera_override,
+	bool wavefrontMode,
+	const std::string& ptxPath,
+	bool verbose,
+	GpuCameraParams& cameraExtra,
+	int& errorCode
+) {
+	errorCode = 0;
+	if (verbose) {
+		std::cout << "[OptiX] Building scene " << scene_id << "...\n";
+		std::cout << "[OptiX] Camera position: (" << cam_x << ", " << cam_y << ", " << cam_z << ")\n";
+	}
+
+	SceneData scene;
+	float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
+	cameraExtra = GpuCameraParams{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
+	// userSeed can't rely on the zero-init default the way regularize/
+	// cropX1 do (0 is itself a valid real seed) - explicitly set here, see
+	// that field's own comment (optix_types.h).
+	cameraExtra.userSeed = -1;
+	// maxComponentValue can't rely on the zero-init default either (0 would
+	// clamp every sample to black) - see that field's own comment
+	// (optix_types.h) for the real "unbounded" value.
+	cameraExtra.maxComponentValue = 1e9f;
+
+	bool builtOk;
+	if (verbose) {
+		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
+							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override);
+	} else {
+		std::ostringstream discard;
+		std::streambuf* oldCerrBuf = std::cerr.rdbuf(discard.rdbuf());
+		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
+							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override);
+		std::cerr.rdbuf(oldCerrBuf);
+	}
+
+	if (!builtOk) {
+		// build_scene() only ever returns false for an unrecognized/
+		// unimplemented scene_id (its default: case) - the other
+		// return-false path (a null camera_params buffer) is unreachable in
+		// practice, since every caller here passes a valid on-stack array.
+		// ERR_GPU_UNSUPPORTED_SCENE gives the user the actionable "switch to
+		// CPU mode" message (error_handler.h); the old ERR_GPU_SCENE_BUILD_FAILED
+		// here was misleading - it reads as a genuine build/geometry failure,
+		// not "this scene was never ported to GPU."
+		if (verbose) std::cerr << "[OptiX] Scene not supported on GPU\n";
+		errorCode = ERR_GPU_UNSUPPORTED_SCENE;
+		return false;
+	}
+
+	// Scenes that don't use a non-default camera model leave cameraExtra
+	// untouched by build_scene() (still zero-init'd: kind=Perspective,
+	// defocus disk zero) - fill it from the plain 12-float camera_params in
+	// that case, matching every scene's prior behavior. Scenes that DID
+	// request a non-default model (Orthographic/Spherical, or Perspective
+	// with DOF) set kind and/or a nonzero defocus disk themselves in
+	// build_scene(), so this check reliably tells the two cases apart.
+	bool defocusDiskZero = cameraExtra.defocus_disk_u.x == 0.0f && cameraExtra.defocus_disk_u.y == 0.0f &&
+							cameraExtra.defocus_disk_u.z == 0.0f;
+	if (cameraExtra.kind == CameraKind::Perspective && defocusDiskZero) {
+		cameraExtra.origin = make_float3(camera_params[0], camera_params[1], camera_params[2]);
+		cameraExtra.lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+		cameraExtra.horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+		cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+	}
+
+	// buildScene() only touches geometry/material/light device memory - it
+	// never sees camera state (that's render()'s cameraExtra param, computed
+	// fresh above on every call regardless) - so re-uploading and rebuilding
+	// the BVH/SBT is only actually necessary when the scene_id changes from
+	// the last call in this process. This is what makes video rendering
+	// (same scene, moving camera, many frames in one process) expensive:
+	// skip it when nothing but the camera moved.
+	if (scene_id != g_uploaded_scene_id) {
+		// Instanced geometry travels separately - see setInstanceData().
+		// Called inside this same cache-skip guard as buildScene() itself,
+		// so instance data is part of what "this scene is already uploaded"
+		// means: a scene switch that reuses geometry must not keep a
+		// PREVIOUS scene's placements around.
+		g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
+									scene.instanceGroups, scene.instancePlacements);
+		if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
+									 scene.lightIndices, scene.lightKinds,
+									 scene.punctualLights, scene.bilinearPatches,
+									 scene.triangles, scene.disks, scene.cylinders,
+									 scene.lensElements,
+									 scene.exitPupilBounds, scene.textures,
+									 scene.texturePixels, scene.cloudMediums,
+									 scene.rgbGridMediums, scene.rgbGridData,
+									 scene.gridMediums, scene.gridData,
+								 scene.bssrdfTables, scene.bssrdfRhoSamples,
+								 scene.bssrdfRadiusSamples, scene.bssrdfProfile,
+								 scene.bssrdfProfileCdf,
+									 scene.measuredTables, scene.measuredParamValues,
+									 scene.measuredData, scene.measuredMcdf,
+									 scene.measuredCcdf,
+									 scene.skyImagePixels, scene.skyMarginalCdf,
+									 scene.skyMarginalFunc, scene.skyMarginalFuncInt,
+									 scene.skyConditionalCdf, scene.skyConditionalFunc,
+									 scene.skyConditionalFuncInt,
+									 scene.skyWidth, scene.skyHeight, scene.skyScale,
+								 scene.portalRectifiedImage, scene.portalDistFunc, scene.portalSatSum,
+								 scene.portalWidth, scene.portalHeight, scene.portalScale,
+								 scene.portalFrameX, scene.portalFrameY, scene.portalFrameZ,
+								 scene.portalP0, scene.portalP2)) {
+			if (verbose) std::cerr << "[OptiX] Failed to upload scene to GPU\n";
+			errorCode = ERR_GPU_MEMORY_COPY_FAILED;
+			return false;
+		}
+		g_uploaded_scene_id = scene_id;
+	} else if (verbose) {
+		std::cout << "[OptiX] Reusing already-uploaded scene " << scene_id << " (skipping GPU rebuild)\n";
+	}
+
+	if (verbose && wavefrontMode) {
+		std::cout << "[OptiX] Wavefront mode enabled (PTX: " << ptxPath << ")\n";
+	}
+	g_renderer->enableWavefront(wavefrontMode, ptxPath);
+
+	return true;
 }
 
 extern "C" int optix_render_main(
@@ -82,51 +233,53 @@ extern "C" int optix_render_main(
 			}
 		}
 
-		// Build scene with specified scene_id
-		std::cout << "[OptiX] Building scene " << scene_id << "...\n";
-		std::cout << "[OptiX] Camera position: (" << cam_x << ", " << cam_y << ", " << cam_z << ")\n";
-
-		SceneData scene;
-		float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
-		GpuCameraParams cameraExtra{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
-		// userSeed can't rely on the zero-init default the way regularize/
-		// cropX1 do (0 is itself a valid real seed) - explicitly set here,
-		// see that field's own comment (optix_types.h).
-		cameraExtra.userSeed = -1;
-		// maxComponentValue can't rely on the zero-init default either (0
-		// would clamp every sample to black) - see that field's own
-		// comment (optix_types.h) for the real "unbounded" value.
-		cameraExtra.maxComponentValue = 1e9f;
-
-		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra, force_camera_override != 0)) {
-			// build_scene() only ever returns false for an unrecognized/
-			// unimplemented scene_id (its default: case) - the other
-			// return-false path (a null camera_params buffer) is
-			// unreachable in practice, since every caller here passes a
-			// valid on-stack array. ERR_GPU_UNSUPPORTED_SCENE gives the
-			// user the actionable "switch to CPU mode" message
-			// (error_handler.h); the old ERR_GPU_SCENE_BUILD_FAILED here
-			// was misleading - it reads as a genuine build/geometry
-			// failure, not "this scene was never ported to GPU."
-			std::cerr << "[OptiX] Scene not supported on GPU\n";
-			return ERR_GPU_UNSUPPORTED_SCENE;
+		// Enable/disable wavefront mode based on env var RAY_TRACER_WAVEFRONT=1.
+		// g_renderer is a process-lifetime singleton (see g_uploaded_scene_id's
+		// own comment above), so OptiXRenderer::useWavefront_ is a member that
+		// persists across calls just like the device buffers scene switches
+		// already have to reset - reading the env var and calling
+		// enableWavefront(true, ...) ONLY when it's "1", with no else branch,
+		// left useWavefront_ latched true forever after the first call that
+		// requested it: a LATER call with the env var unset/"0" (every caller
+		// that believes it is asking for plain recursive-mode rendering, e.g.
+		// a "GPU-recursive-only" pass explicitly meant to exclude wavefront
+		// entirely) never called enableWavefront(false, ...) to say so, so
+		// OptiXRenderer::render() kept routing to wavefrontTracer_->render()
+		// regardless. This silently ran scenes/backends never exercised
+		// together in wavefront mode, which is likely the real explanation
+		// behind this codebase's own "GPU-recursive-only pass still hits the
+		// CUDA-700 corruption" finding (material_cpu_gpu_parity_tests.cpp's
+		// file header comment) - those "recursive-only" renders may actually
+		// have been running under wavefront the whole time, once any earlier
+		// call in the same process (e.g. wavefront_tests.cpp) had set the env
+		// var to "1" once. prepareSceneAndCamera() below calls enableWavefront()
+		// unconditionally with whatever wavefrontMode this call computes, so
+		// this render's own request is what decides the mode every time, not
+		// whatever the last caller that asked for wavefront left behind.
+		// Computed here, before prepareSceneAndCamera() (a pure, side-effect-
+		// free local computation - reordering it earlier than the scene build
+		// it used to follow changes nothing observable).
+#pragma warning(suppress: 4996)
+		const char* wfEnv = std::getenv("RAY_TRACER_WAVEFRONT");
+		const bool wavefrontMode = wfEnv && std::string(wfEnv) == "1";
+		std::string ptxPath;
+		if (wavefrontMode) {
+			// Derive PTX path: same directory as output_path, or executable directory
+			std::string outStr(output_path);
+			size_t sep = outStr.rfind('\\');
+			if (sep == std::string::npos) sep = outStr.rfind('/');
+			if (sep != std::string::npos)
+				ptxPath = outStr.substr(0, sep + 1) + "wavefront_programs.ptx";
+			else
+				ptxPath = "wavefront_programs.ptx";
 		}
 
-		// Scenes that don't use a non-default camera model leave cameraExtra
-		// untouched by build_scene() (still zero-init'd: kind=Perspective,
-		// defocus disk zero) - fill it from the plain 12-float camera_params
-		// in that case, matching every scene's prior behavior. Scenes that
-		// DID request a non-default model (Orthographic/Spherical, or
-		// Perspective with DOF) set kind and/or a nonzero defocus disk
-		// themselves in build_scene(), so this check reliably tells the two
-		// cases apart.
-		bool defocusDiskZero = cameraExtra.defocus_disk_u.x == 0.0f && cameraExtra.defocus_disk_u.y == 0.0f &&
-								cameraExtra.defocus_disk_u.z == 0.0f;
-		if (cameraExtra.kind == CameraKind::Perspective && defocusDiskZero) {
-			cameraExtra.origin = make_float3(camera_params[0], camera_params[1], camera_params[2]);
-			cameraExtra.lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
-			cameraExtra.horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
-			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+		GpuCameraParams cameraExtra;
+		int prepareErrorCode = 0;
+		if (!prepareSceneAndCamera(scene_id, image_width, image_height, cam_x, cam_y, cam_z,
+									 force_camera_override != 0, wavefrontMode, ptxPath, /*verbose=*/true,
+									 cameraExtra, prepareErrorCode)) {
+			return prepareErrorCode;
 		}
 
 		// --regularize/--maxcomponentvalue/--crop/--seed: an explicit CLI
@@ -151,94 +304,6 @@ extern "C" int optix_render_main(
 			cameraExtra.cropX1 = static_cast<int>(std::lround(options.crop_x1 * image_width));
 			cameraExtra.cropY0 = static_cast<int>(std::lround(options.crop_y0 * image_height));
 			cameraExtra.cropY1 = static_cast<int>(std::lround(options.crop_y1 * image_height));
-		}
-
-		// buildScene() only touches geometry/material/light device memory -
-		// it never sees camera state (that's render()'s cameraExtra param,
-		// computed fresh above on every call regardless) - so re-uploading
-		// and rebuilding the BVH/SBT is only actually necessary when the
-		// scene_id changes from the last call in this process. This is what
-		// makes video rendering (same scene, moving camera, many frames in
-		// one process) expensive: skip it when nothing but the camera moved.
-		if (scene_id != g_uploaded_scene_id) {
-			// Instanced geometry travels separately - see setInstanceData().
-			// Called inside this same cache-skip guard as buildScene() itself,
-			// so instance data is part of what "this scene is already
-			// uploaded" means: a scene switch that reuses geometry must not
-			// keep a PREVIOUS scene's placements around.
-			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
-										scene.instanceGroups, scene.instancePlacements);
-			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
-										 scene.lightIndices, scene.lightKinds,
-										 scene.punctualLights, scene.bilinearPatches,
-										 scene.triangles, scene.disks, scene.cylinders,
-										 scene.lensElements,
-										 scene.exitPupilBounds, scene.textures,
-										 scene.texturePixels, scene.cloudMediums,
-										 scene.rgbGridMediums, scene.rgbGridData,
-										 scene.gridMediums, scene.gridData,
-									 scene.bssrdfTables, scene.bssrdfRhoSamples,
-									 scene.bssrdfRadiusSamples, scene.bssrdfProfile,
-									 scene.bssrdfProfileCdf,
-										 scene.measuredTables, scene.measuredParamValues,
-										 scene.measuredData, scene.measuredMcdf,
-										 scene.measuredCcdf,
-										 scene.skyImagePixels, scene.skyMarginalCdf,
-										 scene.skyMarginalFunc, scene.skyMarginalFuncInt,
-										 scene.skyConditionalCdf, scene.skyConditionalFunc,
-										 scene.skyConditionalFuncInt,
-										 scene.skyWidth, scene.skyHeight, scene.skyScale,
-									 scene.portalRectifiedImage, scene.portalDistFunc, scene.portalSatSum,
-									 scene.portalWidth, scene.portalHeight, scene.portalScale,
-									 scene.portalFrameX, scene.portalFrameY, scene.portalFrameZ,
-									 scene.portalP0, scene.portalP2)) {
-				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
-				return ERR_GPU_MEMORY_COPY_FAILED;
-			}
-			g_uploaded_scene_id = scene_id;
-		} else {
-			std::cout << "[OptiX] Reusing already-uploaded scene " << scene_id << " (skipping GPU rebuild)\n";
-		}
-
-		// Enable/disable wavefront mode based on env var RAY_TRACER_WAVEFRONT=1.
-		// g_renderer is a process-lifetime singleton (see g_uploaded_scene_id's
-		// own comment above), so OptiXRenderer::useWavefront_ is a member that
-		// persists across calls just like the device buffers scene switches
-		// already have to reset - reading the env var and calling
-		// enableWavefront(true, ...) ONLY when it's "1", with no else branch,
-		// left useWavefront_ latched true forever after the first call that
-		// requested it: a LATER call with the env var unset/"0" (every caller
-		// that believes it is asking for plain recursive-mode rendering, e.g.
-		// a "GPU-recursive-only" pass explicitly meant to exclude wavefront
-		// entirely) never called enableWavefront(false, ...) to say so, so
-		// OptiXRenderer::render() kept routing to wavefrontTracer_->render()
-		// regardless. This silently ran scenes/backends never exercised
-		// together in wavefront mode, which is likely the real explanation
-		// behind this codebase's own "GPU-recursive-only pass still hits the
-		// CUDA-700 corruption" finding (material_cpu_gpu_parity_tests.cpp's
-		// file header comment) - those "recursive-only" renders may actually
-		// have been running under wavefront the whole time, once any earlier
-		// call in the same process (e.g. wavefront_tests.cpp) had set the env
-		// var to "1" once. Call enableWavefront() unconditionally on both
-		// branches so this render's own request is what decides the mode,
-		// every time, not whatever the last caller that asked for wavefront
-		// left behind.
-#pragma warning(suppress: 4996)
-		const char* wfEnv = std::getenv("RAY_TRACER_WAVEFRONT");
-		if (wfEnv && std::string(wfEnv) == "1") {
-			// Derive PTX path: same directory as output_path, or executable directory
-			std::string ptxPath;
-			std::string outStr(output_path);
-			size_t sep = outStr.rfind('\\');
-			if (sep == std::string::npos) sep = outStr.rfind('/');
-			if (sep != std::string::npos)
-				ptxPath = outStr.substr(0, sep + 1) + "wavefront_programs.ptx";
-			else
-				ptxPath = "wavefront_programs.ptx";
-			std::cout << "[OptiX] Wavefront mode enabled (PTX: " << ptxPath << ")\n";
-			g_renderer->enableWavefront(true, ptxPath);
-		} else {
-			g_renderer->enableWavefront(false);
 		}
 
 		// g_renderer is a process-lifetime singleton (see enableWavefront()'s
@@ -340,7 +405,7 @@ extern "C" int optix_render_main(
 			// siblings), deliberately left for a follow-up: this export path
 			// is a bonus on top of denoising, not part of the "--denoise
 			// actually denoises under --wavefront" fix itself.
-			if (options.denoise && !(wfEnv && std::string(wfEnv) == "1")) {
+			if (options.denoise && !wavefrontMode) {
 				try {
 					std::vector<float> albedo, normal;
 					if (g_renderer->readAovBuffers(static_cast<unsigned int>(image_width),
@@ -446,21 +511,39 @@ extern "C" bool rt_realtime_render_frame(
 	double cam_z,
 	float* out_rgb_buffer
 ) {
-	// Live-preview entry point (progressive-refinement mode): the first half
-	// of optix_render_main() above - init/build/upload/render - reused
-	// verbatim (same g_renderer/g_uploaded_scene_id process-lifetime cache,
-	// so a camera-only call between frames skips the GPU re-upload exactly
-	// the way --video's frame loop already does), but WITHOUT that
-	// function's tonemap/gamma/PPM-file-writing tail: the caller
-	// (RealtimePreviewSession, qt_gui) accumulates raw linear samples across
-	// many low-spp calls and tonemaps only the accumulated result once per
-	// displayed frame, not each noisy individual one. Always renders via the
-	// wavefront backend - see this project's own plan for why (the
-	// recursive backend hardcodes frameNumber=0 without an explicit --seed,
-	// which would make every call return IDENTICAL noise instead of
-	// decorrelated samples that actually converge when averaged).
-	// Deliberately quiet (no [OptiX]/[TECH] console spam) - this runs every
-	// preview frame, not once per CLI invocation.
+	// Live-preview entry point (progressive-refinement mode): shares
+	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
+	// camera-state core), but adds its own cache on top: when scene_id,
+	// resolution, AND camera are all unchanged from the last call in this
+	// process, skip prepareSceneAndCamera() entirely and reuse the cached
+	// cameraExtra - not just the GPU geometry upload it already skips via
+	// g_uploaded_scene_id. This matters because build_scene() itself does
+	// real, synchronous CPU-side work every call regardless of that upload
+	// skip (including real disk I/O + image decode for texture/mesh scenes -
+	// see scene_builder.cpp), and enableWavefront() rebuilds the SBT (~30
+	// cudaMalloc/cudaFree calls) every time it's called, even when nothing
+	// actually changed. The dominant live-preview workload is many
+	// consecutive frames at a FIXED camera (converging via accumulation),
+	// with only occasional camera moves - each of which already resets
+	// accumulation on the caller side (RealtimePreviewWorker::setCamera())
+	// - so caching on "camera unchanged" covers that common case; an actual
+	// camera move still pays the full rebuild cost, same as before.
+	//
+	// Always renders via the wavefront backend - see this project's own
+	// plan for why (the recursive backend hardcodes frameNumber=0 without
+	// an explicit --seed, which would make every call return IDENTICAL
+	// noise instead of decorrelated samples that actually converge when
+	// averaged). enableWavefront() can silently fail (PTX not found, a
+	// program-group/pipeline/SBT error) and fall back to the recursive
+	// backend with no exception and no error return - isWavefrontActive()
+	// is checked right after every (re)build so that silent fallback
+	// surfaces as this function returning false, instead of quietly
+	// rendering frozen, non-converging recursive-backend noise forever.
+	//
+	// Deliberately quiet (no [OptiX]/[TECH] console spam, and build_scene()'s
+	// own diagnostics are redirected away - see prepareSceneAndCamera()'s
+	// own comment) - this runs every preview frame, not once per CLI
+	// invocation.
 	if (!out_rgb_buffer || !scene_id) return false;
 
 	try {
@@ -469,67 +552,42 @@ extern "C" bool rt_realtime_render_frame(
 			if (!g_renderer->initialize()) return false;
 		}
 
-		SceneData scene;
-		float camera_params[12];
-		GpuCameraParams cameraExtra{};
-		cameraExtra.userSeed = -1;
-		cameraExtra.maxComponentValue = 1e9f;
+		static std::string s_cachedSceneId;
+		static int s_cachedWidth = -1;
+		static int s_cachedHeight = -1;
+		static double s_cachedCamX = 0.0, s_cachedCamY = 0.0, s_cachedCamZ = 0.0;
+		static GpuCameraParams s_cachedCameraExtra{};
+		static bool s_haveCache = false;
 
-		// force_camera_override=1: the live preview's whole point is letting
-		// the caller drive the camera, so cam_x/y/z must always win, the
-		// same as --video's per-frame animated camera (optix_render_main's
-		// own force_camera_override comment).
-		if (!build_scene(scene_id, image_width, image_height, scene, camera_params,
-						  cam_x, cam_y, cam_z, &cameraExtra, /*force_camera_override=*/true)) {
-			return false;
-		}
+		const bool cacheHit = s_haveCache && s_cachedSceneId == scene_id &&
+			s_cachedWidth == image_width && s_cachedHeight == image_height &&
+			s_cachedCamX == cam_x && s_cachedCamY == cam_y && s_cachedCamZ == cam_z;
 
-		bool defocusDiskZero = cameraExtra.defocus_disk_u.x == 0.0f && cameraExtra.defocus_disk_u.y == 0.0f &&
-								cameraExtra.defocus_disk_u.z == 0.0f;
-		if (cameraExtra.kind == CameraKind::Perspective && defocusDiskZero) {
-			cameraExtra.origin = make_float3(camera_params[0], camera_params[1], camera_params[2]);
-			cameraExtra.lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
-			cameraExtra.horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
-			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
-		}
-
-		if (scene_id != g_uploaded_scene_id) {
-			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
-										scene.instanceGroups, scene.instancePlacements);
-			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
-										 scene.lightIndices, scene.lightKinds,
-										 scene.punctualLights, scene.bilinearPatches,
-										 scene.triangles, scene.disks, scene.cylinders,
-										 scene.lensElements,
-										 scene.exitPupilBounds, scene.textures,
-										 scene.texturePixels, scene.cloudMediums,
-										 scene.rgbGridMediums, scene.rgbGridData,
-										 scene.gridMediums, scene.gridData,
-									 scene.bssrdfTables, scene.bssrdfRhoSamples,
-									 scene.bssrdfRadiusSamples, scene.bssrdfProfile,
-									 scene.bssrdfProfileCdf,
-										 scene.measuredTables, scene.measuredParamValues,
-										 scene.measuredData, scene.measuredMcdf,
-										 scene.measuredCcdf,
-										 scene.skyImagePixels, scene.skyMarginalCdf,
-										 scene.skyMarginalFunc, scene.skyMarginalFuncInt,
-										 scene.skyConditionalCdf, scene.skyConditionalFunc,
-										 scene.skyConditionalFuncInt,
-										 scene.skyWidth, scene.skyHeight, scene.skyScale,
-									 scene.portalRectifiedImage, scene.portalDistFunc, scene.portalSatSum,
-									 scene.portalWidth, scene.portalHeight, scene.portalScale,
-									 scene.portalFrameX, scene.portalFrameY, scene.portalFrameZ,
-									 scene.portalP0, scene.portalP2)) {
+		GpuCameraParams cameraExtra;
+		if (cacheHit) {
+			cameraExtra = s_cachedCameraExtra;
+		} else {
+			int errorCode = 0;
+			// force_camera_override=true: the live preview's whole point is
+			// letting the caller drive the camera, so cam_x/y/z must always
+			// win, the same as --video's per-frame animated camera
+			// (optix_render_main's own force_camera_override comment).
+			if (!prepareSceneAndCamera(scene_id, image_width, image_height, cam_x, cam_y, cam_z,
+										 /*force_camera_override=*/true, /*wavefrontMode=*/true,
+										 "wavefront_programs.ptx", /*verbose=*/false,
+										 cameraExtra, errorCode)) {
 				return false;
 			}
-			g_uploaded_scene_id = scene_id;
+			if (!g_renderer->isWavefrontActive()) return false;
+
+			s_cachedSceneId = scene_id;
+			s_cachedWidth = image_width;
+			s_cachedHeight = image_height;
+			s_cachedCamX = cam_x; s_cachedCamY = cam_y; s_cachedCamZ = cam_z;
+			s_cachedCameraExtra = cameraExtra;
+			s_haveCache = true;
 		}
 
-		// PTX resolved relative to CWD - matches optix_render_main()'s own
-		// no-directory-in-output_path fallback, and this project's existing
-		// convention of every DLL/PTX sitting alongside RayTracerGUI.exe in
-		// RayTracer_Package with CWD there.
-		g_renderer->enableWavefront(true, "wavefront_programs.ptx");
 		g_renderer->enableDenoise(false);
 
 		return g_renderer->render(

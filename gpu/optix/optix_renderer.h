@@ -169,6 +169,21 @@ public:
 	///                If empty, looks in the same directory as optix_programs.ptx.
 	void enableWavefront(bool enable, const std::string& ptxPath = "");
 
+	/// @brief Whether render() is actually going to use the wavefront backend
+	///        right now - NOT just whether it was last asked to.
+	/// @details enableWavefront(true, ...) can silently fail (PTX not found,
+	///          program-group/pipeline/SBT creation error - see its own
+	///          implementation) and fall back to leaving useWavefront_ false,
+	///          with no exception and no error return (it's a void function).
+	///          A caller that REQUIRES wavefront (e.g. the live-preview path,
+	///          which needs wavefront's per-call-decorrelated noise for
+	///          progressive accumulation to converge at all - the recursive
+	///          backend's frameNumber is hardcoded to 0 without an explicit
+	///          --seed, so it would return byte-identical output every call)
+	///          must check this AFTER calling enableWavefront(true, ...) and
+	///          before render(), rather than assume the request was honored.
+	bool isWavefrontActive() const { return useWavefront_ && wavefrontTracer_ != nullptr; }
+
 	/// @brief Enable or disable the OptiX AI (post-process) denoiser.
 	/// @details When enabled, render() runs the built-in OptiX denoiser model
 	///          on the accumulated framebuffer, on-device, right after the

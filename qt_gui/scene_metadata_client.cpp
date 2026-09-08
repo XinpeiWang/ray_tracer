@@ -1,14 +1,9 @@
 #include "scene_metadata_client.h"
 #include "../cpu_renderer/scene_metadata_snapshot.h"
+#include "cross_abi_library.h"
 
-#ifdef Q_OS_WIN
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
 #include <QCoreApplication>
 #include <QString>
-#include <QDir>
 #include <mutex>
 
 namespace {
@@ -21,10 +16,6 @@ typedef int (*IntByIdFn)(const char*);
 typedef int (*SnapshotFn)(const char*, SceneMetadataSnapshot*);
 
 struct DllHandle {
-	// HMODULE (Windows) and dlopen()'s return type are both opaque handles
-	// that fit in a void* - stored as void* here so the struct itself needs
-	// no platform-conditional field, only handle()'s load/lookup/close calls
-	// below do.
 	void* module = nullptr;
 	GpuCompatibleFn gpuCompatibleFn = nullptr;
 	CountFn countFn = nullptr;
@@ -36,36 +27,16 @@ struct DllHandle {
 	SnapshotFn snapshotFn = nullptr;
 };
 
+// scene_metadata.dll on Windows, .dylib on macOS, .so on Linux - matches
+// CMakeLists.txt's `set_target_properties(scene_metadata PROPERTIES
+// PREFIX "")`, which drops CMake's default "lib" prefix so this exact
+// filename is what actually gets built on the non-Windows platforms.
 #ifdef Q_OS_WIN
-void* loadSceneMetadataLibrary(const QString& dir) {
-	QString path = QDir(dir).filePath("scene_metadata.dll");
-	return static_cast<void*>(LoadLibraryW(reinterpret_cast<const wchar_t*>(path.utf16())));
-}
-void* lookupSymbol(void* module, const char* name) {
-	return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(module), name));
-}
-void closeLibrary(void* module) {
-	FreeLibrary(static_cast<HMODULE>(module));
-}
+constexpr const char* kLibraryFileName = "scene_metadata.dll";
+#elif defined(Q_OS_MAC)
+constexpr const char* kLibraryFileName = "scene_metadata.dylib";
 #else
-void* loadSceneMetadataLibrary(const QString& dir) {
-	// scene_metadata.dylib on macOS, scene_metadata.so on Linux - matches
-	// CMakeLists.txt's `set_target_properties(scene_metadata PROPERTIES
-	// PREFIX "")`, which drops CMake's default "lib" prefix so this exact
-	// filename is what actually gets built.
-#ifdef Q_OS_MAC
-	QString path = QDir(dir).filePath("scene_metadata.dylib");
-#else
-	QString path = QDir(dir).filePath("scene_metadata.so");
-#endif
-	return dlopen(path.toUtf8().constData(), RTLD_NOW | RTLD_LOCAL);
-}
-void* lookupSymbol(void* module, const char* name) {
-	return dlsym(module, name);
-}
-void closeLibrary(void* module) {
-	dlclose(module);
-}
+constexpr const char* kLibraryFileName = "scene_metadata.so";
 #endif
 
 // All current callers are on the GUI thread, but std::call_once (rather than
@@ -76,25 +47,25 @@ DllHandle& handle() {
 	static DllHandle h;
 	static std::once_flag loadOnce;
 	std::call_once(loadOnce, [&h]() {
-		h.module = loadSceneMetadataLibrary(QCoreApplication::applicationDirPath());
+		h.module = cross_abi_library::loadLibrary(QCoreApplication::applicationDirPath(), kLibraryFileName);
 		if (!h.module) return;
 
 		h.gpuCompatibleFn = reinterpret_cast<GpuCompatibleFn>(
-			lookupSymbol(h.module, "scene_metadata_gpu_compatible"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_gpu_compatible"));
 		h.countFn = reinterpret_cast<CountFn>(
-			lookupSymbol(h.module, "scene_metadata_count"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_count"));
 		h.idAtIndexFn = reinterpret_cast<IdAtIndexFn>(
-			lookupSymbol(h.module, "scene_metadata_id_at_index"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_id_at_index"));
 		h.nameFn = reinterpret_cast<StringByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_name"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_name"));
 		h.categoryFn = reinterpret_cast<StringByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_category"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_category"));
 		h.descriptionFn = reinterpret_cast<StringByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_description"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_description"));
 		h.requiresFilesFn = reinterpret_cast<IntByIdFn>(
-			lookupSymbol(h.module, "scene_metadata_requires_files"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_requires_files"));
 		h.snapshotFn = reinterpret_cast<SnapshotFn>(
-			lookupSymbol(h.module, "scene_metadata_snapshot"));
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_snapshot"));
 
 		// Every export is required, including newer ones: a library missing
 		// any of them is a stale build sitting next to a newer exe, and
@@ -111,7 +82,7 @@ DllHandle& handle() {
 		if (!h.gpuCompatibleFn || !h.countFn || !h.idAtIndexFn ||
 			!h.nameFn || !h.categoryFn || !h.descriptionFn ||
 			!h.requiresFilesFn || !h.snapshotFn) {
-			closeLibrary(h.module);
+			cross_abi_library::closeLibrary(h.module);
 			h = DllHandle{};
 		}
 	});

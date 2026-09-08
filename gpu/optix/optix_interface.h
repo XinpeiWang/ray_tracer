@@ -74,12 +74,15 @@ int optix_render_main(
 // >= image_width*image_height*3 floats) - no exposure/tonemap/gamma
 // applied, unlike optix_render_main() above. The caller is expected to
 // accumulate these across many low-spp calls and tonemap only the
-// accumulated result once per displayed frame. Reuses the same
-// g_renderer/g_uploaded_scene_id process-lifetime cache as
-// optix_render_main() - a repeated call with the same scene_id skips the
-// GPU re-upload, so only the camera actually needs to change between calls
-// for this to be cheap. Returns false on any failure (unsupported scene,
-// GPU error, etc.) - check it every call, don't assume out_rgb_buffer was
+// accumulated result once per displayed frame. Caches scene_id/resolution/
+// camera from the last call - a repeated call where NONE of those changed
+// skips scene rebuild, GPU re-upload, AND SBT rebuild entirely (all real
+// per-call costs otherwise - see optix_interface.cpp's own comment), so
+// only an actual camera move pays the full cost, matching how the caller
+// only needs a fresh frame at all in that case (see
+// RealtimePreviewWorker::setCamera()'s own reset-on-move design). Returns
+// false on any failure (unsupported scene, GPU error, or wavefront mode
+// unavailable) - check it every call, don't assume out_rgb_buffer was
 // filled.
 bool rt_realtime_render_frame(
 	const char* scene_id,

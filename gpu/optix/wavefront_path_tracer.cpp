@@ -1794,8 +1794,10 @@ bool WavefrontPathTracer::render(
 						  numPixels * sizeof(float3), cudaMemcpyDeviceToHost));
 
 	// d_fb/d_weight are no longer freed here - see fbCapacity_'s own comment
-	// above. Released in cleanup()/freeFramebuffer() instead, once this
-	// backend is actually torn down or asked to change resolution.
+	// above. Released either inline above (the `if (fbCapacity_ != numPixels)`
+	// branch, when a later call asks for a different resolution) or in
+	// cleanup(), once this backend is actually torn down - there is no
+	// separate "freeFramebuffer()" method.
 
 	std::cout << "[WavefrontPathTracer] Rendered " << width << "x" << height
 			  << " (" << samples_per_pixel << " spp, " << max_depth << " bounces)\n";
