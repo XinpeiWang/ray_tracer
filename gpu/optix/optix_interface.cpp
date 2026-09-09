@@ -519,6 +519,8 @@ extern "C" bool rt_realtime_render_frame(
 	double lookat_x,
 	double lookat_y,
 	double lookat_z,
+	bool denoise,
+	double denoise_blend,
 	float* out_rgb_buffer
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
@@ -610,7 +612,12 @@ extern "C" bool rt_realtime_render_frame(
 			s_haveCache = true;
 		}
 
-		g_renderer->enableDenoise(false);
+		// Applied every call, unconditionally - unlike the scene/camera cache
+		// above, there's no per-call rebuild cost to skip here, just two
+		// member-variable writes the wavefront backend reads on its own next
+		// render() call (OptiXRenderer::render(), optix_renderer_render.cpp).
+		g_renderer->enableDenoise(denoise);
+		g_renderer->setDenoiseBlend(static_cast<float>(denoise_blend));
 
 		return g_renderer->render(
 			image_width,

@@ -89,6 +89,12 @@ int optix_render_main(
 // Preview's free-fly camera always passes has_custom_lookat=true, since it
 // needs to look wherever it's facing rather than always re-aiming at each
 // scene's fixed subject.
+// denoise/denoise_blend: same OptiX AI denoiser already used by
+// --denoise/--denoise-blend for batch/video rendering (see
+// OptiXRenderer::enableDenoise()/setDenoiseBlend()'s own comments) - applied
+// fresh every call, so unlike the cache above there's nothing to key on
+// here. denoise_blend is the fraction of the ORIGINAL noisy signal kept
+// (0.0 = fully denoised, 1.0 = denoiser disabled in all but name).
 bool rt_realtime_render_frame(
 	const char* scene_id,
 	int image_width,
@@ -102,6 +108,8 @@ bool rt_realtime_render_frame(
 	double lookat_x,
 	double lookat_y,
 	double lookat_z,
+	bool denoise,
+	double denoise_blend,
 	float* out_rgb_buffer
 );
 

@@ -1423,7 +1423,8 @@ void MainWindow::startLivePreview() {
 	m_livePreviewLookAt = currentLookAt();
 	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z,
-								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
+								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
+								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -1646,6 +1647,36 @@ double MainWindow::loadSavedKeyboardSensitivity() const {
 void MainWindow::saveKeyboardSensitivity(double value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewKeyboardSensitivityKey, value);
+}
+
+bool MainWindow::loadSavedLiveDenoiseEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewDenoiseEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLiveDenoiseEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewDenoiseEnabledKey, value);
+}
+
+double MainWindow::loadSavedLiveDenoiseBlend() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewDenoiseBlendKey, 0.0).toDouble();
+}
+
+void MainWindow::saveLiveDenoiseBlend(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewDenoiseBlendKey, value);
+}
+
+bool MainWindow::loadSavedLiveDenoiseShowLatest() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewDenoiseShowLatestKey, false).toBool();
+}
+
+void MainWindow::saveLiveDenoiseShowLatest(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewDenoiseShowLatestKey, value);
 }
 #endif
 

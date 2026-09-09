@@ -754,6 +754,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// as m_activeTheme/m_startupFontId just above.
 	m_mouseSensitivity = loadSavedMouseSensitivity();
 	m_keyboardSensitivity = loadSavedKeyboardSensitivity();
+	m_liveDenoiseEnabled = loadSavedLiveDenoiseEnabled();
+	m_liveDenoiseBlend = loadSavedLiveDenoiseBlend();
+	m_liveDenoiseShowLatest = loadSavedLiveDenoiseShowLatest();
 #endif
 	// Set before the first applyTheme() call below (not just by applyFont(),
 	// which runs after it) so that first stylesheet build already scales to

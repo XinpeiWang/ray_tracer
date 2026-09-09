@@ -43,7 +43,8 @@ public:
 
 public slots:
 	// Starts the render loop for sceneId at (camX,camY,camZ) looking at
-	// (lookX,lookY,lookZ), width x height. Safe to call again while already
+	// (lookX,lookY,lookZ), width x height, with the given denoise settings
+	// (see setDenoise()'s own comment). Safe to call again while already
 	// running - restarts with the new scene/resolution and a fresh
 	// accumulation buffer, same effect as stop() then start(). Runs until
 	// stop() is called. Bumps m_epoch (see its own comment) so any
@@ -51,7 +52,8 @@ public slots:
 	// cycle recognizes itself as stale and exits instead of running
 	// alongside the new chain this call starts.
 	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
-			   double lookX, double lookY, double lookZ);
+			   double lookX, double lookY, double lookZ,
+			   bool denoise, double denoiseBlend, bool denoiseShowLatest);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -64,6 +66,18 @@ public slots:
 	// camera change, matching three-gpu-pathtracer/GLSL-PathTracer's own
 	// approach). No-op if not currently running.
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
+
+	// Toggles the OptiX AI denoiser (same one --denoise/--denoise-blend use
+	// for batch/video rendering, see optix_interface.h's own comment) for
+	// every subsequent frame. Unlike setCamera(), this does NOT reset
+	// accumulation - toggling denoise or the accumulation mode is a
+	// post-process decision on the same converging signal, not a "this is a
+	// different image now" event, so a momentary blend of old/new-style
+	// samples in m_accum is an acceptable, self-correcting cosmetic blip.
+	// denoiseShowLatest, if true, replaces the running-mean accumulation
+	// with "always display the latest frame" - only meaningful alongside
+	// denoise=true (see renderLoop()'s own comment). No-op if not running.
+	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 
 signals:
 	// Emitted once per accumulated frame - already tonemapped (ACES + sRGB,
@@ -92,6 +106,13 @@ private:
 	// camera looks, not just where it stands. See optix_interface.h's own
 	// comment on rt_realtime_render_frame()'s lookat parameters.
 	double m_lookX = 0.0, m_lookY = 0.0, m_lookZ = 0.0;
+	// See setDenoise()'s own comment. m_denoiseShowLatest only changes how
+	// renderLoop() folds m_tmp into m_accum below - it never crosses the
+	// DLL boundary (the GPU side only needs to know whether/how much to
+	// denoise, not what the Qt side does with the result afterward).
+	bool m_denoise = false;
+	double m_denoiseBlend = 0.0;
+	bool m_denoiseShowLatest = false;
 	std::vector<float> m_accum;   // linear RGB running mean, width*height*3
 	// Per-frame scratch buffers, persisted across renderLoop() calls and
 	// only resized in resetAccumulation() (same resolution-keyed reuse
@@ -131,9 +152,11 @@ public:
 	static bool isAvailable();
 
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
-			   double lookX, double lookY, double lookZ);
+			   double lookX, double lookY, double lookZ,
+			   bool denoise, double denoiseBlend, bool denoiseShowLatest);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
+	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 
 signals:
 	void frameReady(QImage image, int sampleCount);

@@ -391,6 +391,14 @@ private:
 	void saveMouseSensitivity(double value) const;
 	double loadSavedKeyboardSensitivity() const;
 	void saveKeyboardSensitivity(double value) const;
+	// Same shape again for Live Preview's own OptiX AI denoiser toggle -
+	// see m_liveDenoiseEnabled's own comment.
+	bool loadSavedLiveDenoiseEnabled() const;
+	void saveLiveDenoiseEnabled(bool value) const;
+	double loadSavedLiveDenoiseBlend() const;
+	void saveLiveDenoiseBlend(double value) const;
+	bool loadSavedLiveDenoiseShowLatest() const;
+	void saveLiveDenoiseShowLatest(bool value) const;
 #endif
 
 	// Recent Renders persistence (recent_renders.cpp) - same
@@ -756,6 +764,23 @@ private:
 	double m_keyboardSensitivity = 1.0;
 	QDoubleSpinBox *m_mouseSensitivitySpinBox = nullptr;
 	QDoubleSpinBox *m_keyboardSensitivitySpinBox = nullptr;
+	// Live Preview's own OptiX AI denoiser toggle - same denoiser/blend
+	// concept as the batch Render Options tab's m_denoiseCheck/
+	// m_denoiseBlendSpin, applied to the realtime path instead
+	// (rt_realtime_render_frame()'s own comment). m_liveDenoiseShowLatest
+	// additionally decides whether RealtimePreviewWorker keeps averaging
+	// frames into its running mean or just displays each denoised frame as
+	// it arrives - see RealtimePreviewSession::setDenoise()'s own comment.
+	// Loaded once at startup and saved immediately on every change, same
+	// shape as m_mouseSensitivity/m_keyboardSensitivity above; pushed to
+	// m_livePreviewSession live via setDenoise() whenever changed while a
+	// session is running (onLiveDenoise*Changed(), mainwindow_tabs_render.cpp).
+	bool m_liveDenoiseEnabled = false;
+	double m_liveDenoiseBlend = 0.0;
+	bool m_liveDenoiseShowLatest = false;
+	QCheckBox *m_liveDenoiseCheck = nullptr;
+	QDoubleSpinBox *m_liveDenoiseBlendSpin = nullptr;
+	QCheckBox *m_liveDenoiseShowLatestCheck = nullptr;
 #endif
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides.

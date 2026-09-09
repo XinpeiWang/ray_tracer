@@ -12,9 +12,10 @@ namespace {
 // bool(const char* scene_id, int w, int h, int spp, int max_depth,
 //      double camX, double camY, double camZ,
 //      bool has_custom_lookat, double lookX, double lookY, double lookZ,
+//      bool denoise, double denoiseBlend,
 //      float* out_rgb)
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
-							   bool, double, double, double, float*);
+							   bool, double, double, double, bool, double, float*);
 
 struct DllHandle {
 	void* module = nullptr;
@@ -64,7 +65,8 @@ void RealtimePreviewWorker::resetAccumulation() {
 }
 
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
-								   double lookX, double lookY, double lookZ) {
+								   double lookX, double lookY, double lookZ,
+								   bool denoise, double denoiseBlend, bool denoiseShowLatest) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -74,6 +76,9 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	m_lookX = lookX;
 	m_lookY = lookY;
 	m_lookZ = lookZ;
+	m_denoise = denoise;
+	m_denoiseBlend = denoiseBlend;
+	m_denoiseShowLatest = denoiseShowLatest;
 	m_cameraDirty = false;
 	resetAccumulation();
 	m_running = true;
@@ -93,6 +98,13 @@ void RealtimePreviewWorker::setCamera(double camX, double camY, double camZ, dou
 	m_lookY = lookY;
 	m_lookZ = lookZ;
 	m_cameraDirty = true;
+}
+
+void RealtimePreviewWorker::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {
+	if (!m_running) return;
+	m_denoise = denoise;
+	m_denoiseBlend = denoiseBlend;
+	m_denoiseShowLatest = denoiseShowLatest;
 }
 
 void RealtimePreviewWorker::renderLoop(int epoch) {
@@ -127,6 +139,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		ok = renderFrame(m_sceneId.toUtf8().constData(), m_width, m_height, spp, maxDepth,
 						  m_camX, m_camY, m_camZ,
 						  /*has_custom_lookat=*/true, m_lookX, m_lookY, m_lookZ,
+						  m_denoise, m_denoiseBlend,
 						  m_tmp.data());
 		if (!ok) {
 			emit statusChanged(QStringLiteral("Render failed - scene may not be GPU-supported, "
@@ -135,15 +148,24 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	}
 
 	if (ok) {
-		// Running mean: accum += (sample - accum) / (n+1). Both buffers are
-		// linear RGB (rt_realtime_render_frame()'s own contract), so this is
-		// a plain per-channel average - no dividing/multiplying needed
-		// beyond this, unlike CPU/GPU's own filter-weighted reconstruction
-		// (this preview uses a trivial 1-sample-per-pixel box filter, no
-		// splatting).
-		const int n = m_sampleCount;
-		for (size_t i = 0; i < m_accum.size(); ++i) {
-			m_accum[i] += (m_tmp[i] - m_accum[i]) / static_cast<float>(n + 1);
+		if (m_denoiseShowLatest) {
+			// Skip accumulation entirely - each already-denoised frame is
+			// clean enough on its own that averaging it with older, possibly
+			// differently-denoised frames would only add lag, not quality.
+			// See setDenoise()'s own comment on why toggling this doesn't
+			// also reset m_sampleCount/m_accum.
+			m_accum = m_tmp;
+		} else {
+			// Running mean: accum += (sample - accum) / (n+1). Both buffers
+			// are linear RGB (rt_realtime_render_frame()'s own contract), so
+			// this is a plain per-channel average - no dividing/multiplying
+			// needed beyond this, unlike CPU/GPU's own filter-weighted
+			// reconstruction (this preview uses a trivial 1-sample-per-pixel
+			// box filter, no splatting).
+			const int n = m_sampleCount;
+			for (size_t i = 0; i < m_accum.size(); ++i) {
+				m_accum[i] += (m_tmp[i] - m_accum[i]) / static_cast<float>(n + 1);
+			}
 		}
 		++m_sampleCount;
 
@@ -208,11 +230,13 @@ RealtimePreviewSession::~RealtimePreviewSession() {
 }
 
 void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
-									double lookX, double lookY, double lookZ) {
+									double lookX, double lookY, double lookZ,
+									bool denoise, double denoiseBlend, bool denoiseShowLatest) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
-		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ));
+		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ),
+		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest));
 }
 
 void RealtimePreviewSession::stop() {
@@ -223,4 +247,9 @@ void RealtimePreviewSession::setCamera(double camX, double camY, double camZ, do
 	QMetaObject::invokeMethod(m_worker, "setCamera", Qt::QueuedConnection,
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
 		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ));
+}
+
+void RealtimePreviewSession::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {
+	QMetaObject::invokeMethod(m_worker, "setDenoise", Qt::QueuedConnection,
+		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest));
 }

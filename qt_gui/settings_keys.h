@@ -24,4 +24,7 @@ constexpr const char *kRecentRendersGroup = "renders/recent";
 // whole-app chrome the way theme/font/language are.
 constexpr const char *kLivePreviewMouseSensitivityKey = "livePreview/mouseSensitivity";
 constexpr const char *kLivePreviewKeyboardSensitivityKey = "livePreview/keyboardSensitivity";
+constexpr const char *kLivePreviewDenoiseEnabledKey = "livePreview/denoiseEnabled";
+constexpr const char *kLivePreviewDenoiseBlendKey = "livePreview/denoiseBlend";
+constexpr const char *kLivePreviewDenoiseShowLatestKey = "livePreview/denoiseShowLatest";
 } // namespace settings_keys

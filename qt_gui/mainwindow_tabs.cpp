@@ -1113,6 +1113,73 @@ void MainWindow::createSettingsTab() {
 
 	liveModeSettingsLayout->addRow(sensitivityRow);
 
+	// OptiX AI denoiser - same denoiser/blend the Render Options tab's
+	// m_denoiseCheck/m_denoiseBlendSpin already run for batch/video
+	// rendering, applied to the realtime path too (rt_realtime_render_frame()'s
+	// own comment). "Show latest frame" only makes sense alongside denoise
+	// (a single raw noisy frame has no redeeming value over accumulating),
+	// so it's enabled/disabled in lockstep with the main checkbox exactly
+	// like the blend spinbox already is.
+	QWidget *liveDenoiseRow = new QWidget();
+	QHBoxLayout *liveDenoiseRowLayout = new QHBoxLayout(liveDenoiseRow);
+	liveDenoiseRowLayout->setContentsMargins(0, 0, 0, 0);
+	liveDenoiseRowLayout->setSpacing(10);
+
+	m_liveDenoiseCheck = new QCheckBox(tr("OptiX AI Denoiser"));
+	m_liveDenoiseCheck->setChecked(m_liveDenoiseEnabled);
+	styleCheckBox(m_liveDenoiseCheck);
+
+	m_liveDenoiseBlendSpin = new QDoubleSpinBox();
+	m_liveDenoiseBlendSpin->setRange(0.0, 1.0);
+	m_liveDenoiseBlendSpin->setDecimals(2);
+	m_liveDenoiseBlendSpin->setSingleStep(0.05);
+	m_liveDenoiseBlendSpin->setValue(m_liveDenoiseBlend);
+	m_liveDenoiseBlendSpin->setEnabled(m_liveDenoiseEnabled);
+	styleSpinBox(m_liveDenoiseBlendSpin);
+	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseBlendSpin, &QDoubleSpinBox::setEnabled);
+
+	m_liveDenoiseShowLatestCheck = new QCheckBox(tr("Show latest frame instead of accumulating"));
+	m_liveDenoiseShowLatestCheck->setChecked(m_liveDenoiseShowLatest);
+	m_liveDenoiseShowLatestCheck->setEnabled(m_liveDenoiseEnabled);
+	styleCheckBox(m_liveDenoiseShowLatestCheck);
+	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseShowLatestCheck, &QCheckBox::setEnabled);
+
+	// All three push straight to the running session (if any) as well as
+	// QSettings - see RealtimePreviewSession::setDenoise()'s own comment on
+	// why this doesn't reset accumulation the way setCamera() does.
+	connect(m_liveDenoiseCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveDenoiseEnabled = checked;
+		saveLiveDenoiseEnabled(checked);
+		if (m_livePreviewSession)
+			m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+	});
+	connect(m_liveDenoiseBlendSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveDenoiseBlend = value;
+		saveLiveDenoiseBlend(value);
+		if (m_livePreviewSession)
+			m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+	});
+	connect(m_liveDenoiseShowLatestCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveDenoiseShowLatest = checked;
+		saveLiveDenoiseShowLatest(checked);
+		if (m_livePreviewSession)
+			m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+	});
+
+	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseCheck,
+		tr("Cleans up Live Preview's noisy low-sample image using the same "
+		"OptiX AI denoiser the Render Options tab's own Denoiser checkbox "
+		"runs for finished renders - lets the view look reasonable almost "
+		"immediately instead of waiting many frames to converge. Costs a "
+		"small amount of GPU time per frame. The number to its right blends "
+		"between the noisy original and the fully denoised result, same as "
+		"the Render Options tab's own blend control.")));
+	liveDenoiseRowLayout->addWidget(m_liveDenoiseBlendSpin);
+	liveDenoiseRowLayout->addWidget(m_liveDenoiseShowLatestCheck);
+	liveDenoiseRowLayout->addStretch(1);
+
+	liveModeSettingsLayout->addRow(liveDenoiseRow);
+
 	layout->addWidget(m_liveModeSettingsGroupBox);
 #endif
 
