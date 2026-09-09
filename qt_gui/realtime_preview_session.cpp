@@ -74,6 +74,8 @@ void RealtimePreviewWorker::resetAccumulation() {
 	m_cameraBasis.assign(12, 0.0f);
 	m_prevCameraBasis.assign(12, 0.0f);
 	m_sampleCounts.assign(static_cast<size_t>(m_width) * m_height, 0);
+	m_accumScratch.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
+	m_sampleCountsScratch.assign(static_cast<size_t>(m_width) * m_height, 0);
 	m_displayImage = QImage(m_width, m_height, QImage::Format_RGB888);
 	m_sampleCount = 0;
 }
@@ -112,18 +114,36 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 	// to via the running mean's own 1/(n+1) weighting - capped so reused
 	// history never outweighs new evidence by more than this.
 	constexpr uint16_t kMaxHistorySamples = 64;
-	// World-space units, not screen pixels - deliberately a fixed constant
-	// rather than scene-relative, matching applyTranslateDelta()'s own
-	// kUnitsPerStep precedent (mainwindow_tabs_render.cpp) and its identical
-	// caveat: tuned against the Cornell Box's ~555-unit scale, so a scene
-	// whose own geometry sits within a much smaller or larger span may need
-	// a different value to catch real disocclusion without false-rejecting
-	// (threshold too tight) or missing it (threshold too loose).
-	constexpr float kDisocclusionEpsilon = 1.0f;
-	constexpr float kDisocclusionEpsilonSq = kDisocclusionEpsilon * kDisocclusionEpsilon;
+	// World-space units, not screen pixels - scaled by the camera's CURRENT
+	// distance from its pivot rather than a fixed constant, since this
+	// codebase's own scene library spans wildly different scales (scene 1's
+	// spheres sit within roughly +-15 units of the origin vs. Cornell Box's
+	// ~555 - see this file's own kUnitsPerStep-style constants elsewhere for
+	// the same scale-mismatch problem). A fixed absolute threshold would be
+	// far too loose on a small scene (falsely accepting a disoccluded but
+	// nearby-in-world-space DIFFERENT surface as a match - visible ghosting)
+	// or far too tight on a large one (rejecting real, valid reprojections
+	// as "disoccluded" - defeating the whole feature). distanceFromTarget()
+	// is already available here with no new plumbing, and scales naturally
+	// with whatever the camera is actually looking at right now. The
+	// fraction below is tuned so a Cornell-Box-scale session (radius
+	// around 800, e.g. resolve_fixed_lookfrom()'s own (278,278,-800)
+	// default) lands close to this constant's ORIGINAL fixed value (1.0).
+	constexpr double kDisocclusionEpsilonFraction = 0.00125;
+	const double cameraRadius = camera_math::distanceFromTarget(
+		camera_math::Vec3{m_camX, m_camY, m_camZ}, camera_math::Vec3{m_lookX, m_lookY, m_lookZ});
+	const float kDisocclusionEpsilon = static_cast<float>(cameraRadius * kDisocclusionEpsilonFraction);
+	const float kDisocclusionEpsilonSq = kDisocclusionEpsilon * kDisocclusionEpsilon;
 
-	std::vector<float> newAccum(m_accum.size(), 0.0f);
-	std::vector<uint16_t> newSampleCounts(m_sampleCounts.size(), 0);
+	// Reused, persistently-sized scratch buffers (resetAccumulation()) rather
+	// than freshly allocated here every call - reprojectAccumulation() runs
+	// on every rendered frame for the duration of a drag/held key, not just
+	// once per discrete move, so a fresh heap allocation here would be
+	// avoidable churn on that interactive hot path.
+	std::fill(m_accumScratch.begin(), m_accumScratch.end(), 0.0f);
+	std::fill(m_sampleCountsScratch.begin(), m_sampleCountsScratch.end(), uint16_t{0});
+	std::vector<float> &newAccum = m_accumScratch;
+	std::vector<uint16_t> &newSampleCounts = m_sampleCountsScratch;
 
 	for (int y = 0; y < m_height; ++y) {
 		for (int x = 0; x < m_width; ++x) {
@@ -156,8 +176,13 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 		}
 	}
 
-	m_accum = std::move(newAccum);
-	m_sampleCounts = std::move(newSampleCounts);
+	// Swap rather than assign: newAccum/newSampleCounts are references to
+	// the persistent scratch members, so this exchanges their storage with
+	// m_accum/m_sampleCounts's own (no allocation) - next call's std::fill
+	// above then zeroes what is now the scratch buffer (the OLD m_accum
+	// contents), ready to be built into again.
+	std::swap(m_accum, newAccum);
+	std::swap(m_sampleCounts, newSampleCounts);
 }
 
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,

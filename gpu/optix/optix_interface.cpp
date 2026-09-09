@@ -650,10 +650,13 @@ extern "C" bool rt_realtime_render_frame(
 			// from vfov/aspect (never available to any caller in the first
 			// place). cameraExtra already holds this whether it came from the
 			// cache-hit branch above or a fresh prepareSceneAndCamera() call.
-			std::memcpy(&out_camera_basis[0], &cameraExtra.origin, 3 * sizeof(float));
-			std::memcpy(&out_camera_basis[3], &cameraExtra.lower_left_corner, 3 * sizeof(float));
-			std::memcpy(&out_camera_basis[6], &cameraExtra.horizontal, 3 * sizeof(float));
-			std::memcpy(&out_camera_basis[9], &cameraExtra.vertical, 3 * sizeof(float));
+			// origin/lower_left_corner/horizontal/vertical are 4 consecutive
+			// float3 fields (optix_types.h) with no padding between them, so
+			// one 12-float copy carries all four - relying on that layout
+			// explicitly rather than 4 independent per-field copies that
+			// could silently drift out of sync with each other if a field
+			// were ever reordered.
+			std::memcpy(out_camera_basis, &cameraExtra.origin, 12 * sizeof(float));
 		}
 
 		return ok;

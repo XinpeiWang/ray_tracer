@@ -283,3 +283,29 @@ TEST(CameraMathTest, ProjectToScreenNarrowsScreenFractionWithAspectRatio) {
 	EXPECT_NEAR(p.s, 0.55, 1e-9);
 	EXPECT_NEAR(p.t, 0.5, 1e-9);
 }
+
+// Regression test for a real bug: an earlier version of projectToScreen()
+// assumed horizontal/vertical/wScaled are mutually orthogonal, which breaks
+// for pbrt's Camera "perspective" "float screenwindow" with an off-center
+// window - build_pinhole_camera_params() (scene_builder.cpp) bakes that
+// shift into lowerLeftCorner via its own center_shift_u/v, tilting wScaled
+// out of alignment with horizontal/vertical. This basis is the same
+// lookfrom=(0,0,5)/lookat=(0,0,0)/90deg-vfov camera as kSquare90DegBasis,
+// but built with screenwindow=[0,2,-1,1] (shifted right by 1 world-space
+// viewport unit, not centered at 0) instead of the default [-1,1,-1,1] -
+// hand-derived independently via the ray equation direction(s,t) =
+// lowerLeftCorner + s*horizontal + t*vertical - origin: the lookAt point
+// (0,0,0) only lies on a ray from this basis when s=0, t=0.5 (verified by
+// solving direction(s,t) proportional-to (0,0,-1) for s,t directly - NOT by
+// calling projectToScreen() itself, so this test can't share a bug with the
+// code it's checking). The old orthogonality-assuming formula computed
+// s=0.5 for this same point/basis - wrong by more than an edge case's
+// worth of floating-point error.
+TEST(CameraMathTest, ProjectToScreenHandlesAnAsymmetricScreenWindow) {
+	const CameraBasis shiftedBasis{
+		Vec3{0.0, 0.0, 5.0}, Vec3{0.0, -1.0, 4.0}, Vec3{2.0, 0.0, 0.0}, Vec3{0.0, 2.0, 0.0}};
+	const ScreenProjection p = projectToScreen(Vec3{0.0, 0.0, 0.0}, shiftedBasis);
+	EXPECT_TRUE(p.inFront);
+	EXPECT_NEAR(p.s, 0.0, 1e-9);
+	EXPECT_NEAR(p.t, 0.5, 1e-9);
+}

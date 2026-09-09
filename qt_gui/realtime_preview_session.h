@@ -157,6 +157,14 @@ private:
 	// MainWindow::onLivePreviewFrameReady()) rather than a literal count
 	// that stopped being uniform.
 	std::vector<uint16_t> m_sampleCounts;
+	// Scratch buffers reprojectAccumulation() writes its remapped result
+	// into before swapping with m_accum/m_sampleCounts - persisted and
+	// only resized in resetAccumulation() (same reuse shape as m_accum/
+	// m_tmp above) rather than allocated fresh every call, since a camera
+	// drag/held WASD key runs reprojectAccumulation() on every rendered
+	// frame for the whole gesture, not just once per discrete move.
+	std::vector<float> m_accumScratch;
+	std::vector<uint16_t> m_sampleCountsScratch;
 	QImage m_displayImage;        // tonemapped result, re-filled in place each frame
 	int m_sampleCount = 0;
 	// Every access to the fields below happens only inside a method
