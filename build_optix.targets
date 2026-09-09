@@ -25,8 +25,19 @@
     <OptixSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\optix_programs.cu" />
     <!-- Wavefront OptiX device programs -> PTX (loaded at runtime) -->
     <WavefrontPtxSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_programs.cu" />
-    <!-- Wavefront CUDA compute kernels -> .obj (linked into optix_renderer.lib) -->
-    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.cu" />
+    <!-- Wavefront CUDA compute kernels -> .obj (linked into optix_renderer.lib).
+         The 6 wavefront_kernels_*.cu entries are wavefront_kernels.cu's own
+         per-kernel-family split (see wavefront_device_helpers.h's own header
+         comment) - each recompiles independently based on its own mtime via
+         this item list's per-item Inputs/Outputs in CompileWavefrontKernels
+         below, so editing one kernel no longer forces recompiling all of
+         them. -->
+    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_camera.cu" />
+    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_materials.cu" />
+    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_materials_simple.cu" />
+    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_materials_dielectric.cu" />
+    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_bssrdf.cu" />
+    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_accumulate.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.cu" />
     <!-- SPPM OptiX device programs -> PTX (loaded at runtime) -->
     <SppmPtxSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.cu" />
@@ -150,7 +161,8 @@
   </Target>
 
   <!-- ===================================================================== -->
-  <!-- Compile wavefront_kernels.cu + wavefront_launch.cu -> .obj            -->
+  <!-- Compile the wavefront_kernels_*.cu split files + wavefront_launch.cu  -->
+  <!-- -> .obj (one item per file in @(WavefrontObjSource) above)            -->
   <!-- (linked into optix_renderer.lib via AdditionalDependencies)           -->
   <!-- ===================================================================== -->
   <Target Name="CompileWavefrontKernels"
@@ -202,14 +214,19 @@
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           AfterTargets="CompileWavefrontKernels"
           BeforeTargets="Lib"
-          Inputs="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj"
+          Inputs="@(WavefrontObjSource->'$(MSBuildProjectDirectory)\..\gpu\optix\%(Filename).obj')"
           Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj">
     <!-- Without Inputs/Outputs, MSBuild has no way to skip this target, so
          nvcc -dlink ran unconditionally on every build (even a genuine
          no-op) - its output always got a fresh mtime, which invalidated
          Lib's AdditionalDependencies check and forced a full relink of
          every consuming exe every time. Measured ~41s on every single
-         build before this fix, incremental or not. -->
+         build before this fix, incremental or not.
+
+         Inputs (and DlinkInputs below) are an item-list transform over
+         @(WavefrontObjSource) rather than a hardcoded pair of filenames, so
+         a future split (or a brand new wavefront kernel file) only needs an
+         entry added to that item list above - never a hand-edit here. -->
 
     <Message Text="[CUDA] Device-linking wavefront objs -> wavefront_dlink.obj..." Importance="High" />
 
@@ -218,12 +235,11 @@
       <DlinkFlags>-dlink -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Debug'">$(DlinkFlags) -Xcompiler /MDd -G</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Release'">$(DlinkFlags) -Xcompiler /MD</DlinkFlags>
-      <DlinkIn1>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj</DlinkIn1>
-      <DlinkIn2>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj</DlinkIn2>
+      <DlinkInputs>@(WavefrontObjSource->'"$(MSBuildProjectDirectory)\..\gpu\optix\%(Filename).obj"', ' ')</DlinkInputs>
       <DlinkOut>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj</DlinkOut>
     </PropertyGroup>
 
-    <Exec Command='"$(NvccPath)" $(DlinkFlags) "$(DlinkIn1)" "$(DlinkIn2)" -o "$(DlinkOut)"'
+    <Exec Command='"$(NvccPath)" $(DlinkFlags) $(DlinkInputs) -o "$(DlinkOut)"'
           WorkingDirectory="$(MSBuildThisFileDirectory)"
           IgnoreExitCode="false"
           ConsoleToMSBuild="true" />
@@ -305,7 +321,7 @@
   <Target Name="CleanOptixPrograms" AfterTargets="Clean">
     <ItemGroup>
       <OptixPtxFiles Include="$(OptixOutputDir)\*.ptx" />
-      <OptixObjFiles Include="$(OptixOutputDir)\wavefront_kernels.obj;$(OptixOutputDir)\wavefront_launch.obj;$(OptixOutputDir)\wavefront_dlink.obj;$(OptixOutputDir)\sppm_kernels.obj;$(OptixOutputDir)\sppm_launch.obj;$(OptixOutputDir)\sppm_dlink.obj" />
+      <OptixObjFiles Include="$(OptixOutputDir)\wavefront_kernels_camera.obj;$(OptixOutputDir)\wavefront_kernels_materials.obj;$(OptixOutputDir)\wavefront_kernels_materials_simple.obj;$(OptixOutputDir)\wavefront_kernels_materials_dielectric.obj;$(OptixOutputDir)\wavefront_kernels_bssrdf.obj;$(OptixOutputDir)\wavefront_kernels_accumulate.obj;$(OptixOutputDir)\wavefront_launch.obj;$(OptixOutputDir)\wavefront_dlink.obj;$(OptixOutputDir)\sppm_kernels.obj;$(OptixOutputDir)\sppm_launch.obj;$(OptixOutputDir)\sppm_dlink.obj" />
     </ItemGroup>
     <Delete Files="@(OptixPtxFiles);@(OptixObjFiles)" />
     <Message Text="[OptiX] Cleaned PTX and CUDA obj files" Importance="High" />

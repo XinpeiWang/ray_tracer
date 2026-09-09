@@ -777,7 +777,7 @@ __device__ __forceinline__ float3 wf_dc_apply_point(const float m[12], const flo
 // sphere and register as occluded on every sample. This bug was never
 // caught before because no scene had ever registered a genuinely emissive
 // sphere as a light in wavefront mode until the spherical-camera scene.
-__device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hit,
+__device__ __forceinline__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hit,
 										  unsigned int& seed, float& pdf, float& maxDist,
 										  float& out_u, float& out_v, float3& out_normal,
 										  // Object (per-primitive sphere) motion blur shutter
@@ -869,7 +869,7 @@ __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hi
 }
 
 // Sample a point on a quad light.
-__device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
+__device__ __forceinline__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 										unsigned int& seed, float& geom_pdf, float& maxDist,
 										float& out_u, float& out_v) {
 	float s = wf_rand(seed), t = wf_rand(seed);
@@ -904,7 +904,7 @@ __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 // wf_sample_bilinear_patch_light(), same shape of fix, still unexercised
 // by any real scene (no scene combines wavefront mode with a bilinear-patch
 // light yet) but no longer a live landmine either.
-__device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3& hit,
+__device__ __forceinline__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3& hit,
 											unsigned int& seed, float& geom_pdf, float& maxDist,
 											float& out_u, float& out_v, float3& out_normal) {
 	float a = wf_rand(seed), b = wf_rand(seed);
@@ -952,7 +952,7 @@ __device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3
 // sample_bilinear_patch_light() (the recursive path's copy) - duplicated
 // here for the same cross-module reason every other wf_sample_*_light
 // function in this file is.
-__device__ float3 wf_sample_bilinear_patch_light(const BilinearPatchData& bp, const float3& hit,
+__device__ __forceinline__ float3 wf_sample_bilinear_patch_light(const BilinearPatchData& bp, const float3& hit,
 												   unsigned int& seed, float& geom_pdf, float& maxDist,
 												   float& out_u, float& out_v, float3& out_normal) {
 	const float p00[3] = {bp.p00.x, bp.p00.y, bp.p00.z};
@@ -1025,7 +1025,7 @@ __device__ __forceinline__ float wf_dc_area_cylinder(const CylinderData& cyl) {
 // same math as optix_disk_cylinder_helpers.h's dc_sample_disk()/
 // sample_disk_light(), duplicated here for the same cross-module reason
 // every other wf_sample_*_light function in this file is.
-__device__ float3 wf_sample_disk_light(const DiskData& disk, const float3& hit,
+__device__ __forceinline__ float3 wf_sample_disk_light(const DiskData& disk, const float3& hit,
 										unsigned int& seed, float& geom_pdf, float& maxDist,
 										float& out_u, float& out_v, float3& out_normal) {
 	float dx, dy;
@@ -1066,7 +1066,7 @@ __device__ float3 wf_sample_disk_light(const DiskData& disk, const float3& hit,
 // Sample a point on a cylinder light. Uniform Z along the axis, uniform phi
 // within the sweep, same math as optix_disk_cylinder_helpers.h's
 // dc_sample_cylinder()/sample_cylinder_light().
-__device__ float3 wf_sample_cylinder_light(const CylinderData& cyl, const float3& hit,
+__device__ __forceinline__ float3 wf_sample_cylinder_light(const CylinderData& cyl, const float3& hit,
 											unsigned int& seed, float& geom_pdf, float& maxDist,
 											float& out_u, float& out_v, float3& out_normal) {
 	const float z = cyl.zMin + wf_rand(seed) * (cyl.zMax - cyl.zMin);
@@ -1464,5 +1464,910 @@ __device__ __forceinline__ void wf_generate_primary_ray(
 			break;
 		}
 	}
+}
+
+// ============================================================================
+// Material-scatter finish + RGB->spectral uplift (moved from
+// wavefront_kernels.cu when that file was split into per-kernel-family .cu
+// files - see build_optix.targets' own comment on why a NEW .cu file needs
+// build-system wiring while a header does not. wf_finish_material_scatter is
+// shared by evaluate_materials/evaluate_materials_simple/
+// evaluate_materials_dielectric/resolve_bssrdf_exit, now living in 4
+// different .cu files - keeping it here (as __device__ __forceinline__, the
+// same one-definition-rule-safe pattern already used by every other
+// function in this header) means each of those files gets its own inlined
+// copy with zero cross-TU device-linking required for this specific
+// function, exactly like everything else here already works.
+// ============================================================================
+
+__device__ __forceinline__ void wf_finish_material_scatter(
+	MaterialType matType, float nfEta, int matIdx,
+	// True once any PRIOR bounce along this path was non-specular (see
+	// RayWorkItem::any_nonspecular's own comment, wavefront_types.h) - folded
+	// (OR'd with !is_specular) into the pushed next-bounce RayWorkItem's own
+	// any_nonspecular at this function's tail, regardless of matType. Does
+	// NOT drive glossy_alpha's regularization directly (see glossyAlpha's
+	// own comment below) - kept only for this tail-propagation role.
+	bool do_regularize,
+	// Pre-computed via wf_glossy_alpha() by whichever glossy switch-arm this
+	// call follows (Conductor/RoughDielectric/RoughMetal/CoatedDiffuse/
+	// CoatedConductor - see that function's own comment), already folding in
+	// do_regularize's widening. Passed in rather than re-derived from
+	// materials[matIdx].fuzz here, so the NEE alpha (glossy_alpha below) is
+	// always bit-identical to the alpha the caller's own BSDF-sampling step
+	// just used - re-deriving independently would risk the two silently
+	// drifting apart if either formula is ever edited without the other.
+	// Meaningless/unread for every non-glossy matType (glossy_isType below
+	// gates its only use) - callers that never reach a glossy case (e.g.
+	// evaluate_materials_simple's Lambertian/Metal, resolve_bssrdf_exit's
+	// NormalizedFresnel) just pass 0.0f.
+	float glossyAlpha,
+	// Second (v/bitangent-axis) GGX alpha, mirroring glossyAlpha above -
+	// see wf_glossy_alpha_v()'s own comment for which 4 material kinds set
+	// this to a real per-call value (Conductor/RoughDielectric/
+	// CoatedDiffuse/CoatedConductor) vs. leave it at the caller's own
+	// declared-but-never-set 0.0f (RoughMetal, and every non-glossy
+	// matType) - <=0 here means "isotropic, use glossyAlpha for both axes"
+	// (see MaterialData::roughnessV's own sentinel convention), handled
+	// below rather than requiring every caller to redundantly pass
+	// glossyAlpha twice.
+	float glossyAlphaV,
+	// pbrt-v4 etaScale for the Russian Roulette test below - already fully
+	// updated for THIS event (incoming RayWorkItem/HitWorkItem::etaScale
+	// times this bounce's own eta^2, or unchanged if this event wasn't a
+	// transmission) by whichever caller computed it - see RayWorkItem::
+	// etaScale's own comment (wavefront_types.h) and each call site's own
+	// eventEta local. Written unchanged into the pushed next RayWorkItem's
+	// own etaScale at this function's tail.
+	float etaScale,
+	// Pixel reconstruction filter weight for this path's own sample - see
+	// RayWorkItem::filterWeight's own comment. Multiplied into every
+	// radiance contribution this function adds to the framebuffer (NEE
+	// shadow rays, the RR-kill/hit-light flush) and written unchanged into
+	// the pushed next RayWorkItem's own filterWeight.
+	float filterWeight,
+	// "float maxcomponentvalue" firefly clamp - see addToFramebuffer's own
+	// comment below and GpuCameraParams::maxComponentValue's own comment
+	// (optix_types.h). 1e9f (unbounded) when not requested.
+	float maxComponentValue,
+	const float3& normal, const float3& hit_point,
+	// World-space surface tangent (dp/du) at this shading point - real
+	// per-shape value from the caller (see HitWorkItem::objDpdu's own
+	// comment), used ONLY by evalGlossyF's UV-aligned frame construction
+	// below for the 4 anisotropy-capable material kinds (RoughMetal and
+	// every non-glossy matType ignore it, keeping the arbitrary frame -
+	// matches optix_device_helpers.h's identical RoughMetal exclusion).
+	const float3& dpdu,
+	unsigned int& seed,
+	const SampledSpectrum<kWFNWavelengths>& throughput,
+	const SampledSpectrum<kWFNWavelengths>& radiance,
+	const SampledWavelengths<kWFNWavelengths>& swl,
+	const SampledSpectrum<kWFNWavelengths>& attenuation,
+	const float3& scattered_dir, bool is_specular, float brdf_pdf_override,
+	// Only meaningful when isPhase (below) is true and is_specular == false -
+	// a genuine medium-interior phase-function scatter event, reached by
+	// MaterialType::Medium/CloudMedium/RgbGridMedium/GridMedium (always) or
+	// DielectricMedium's own interior sub-case only (its other two
+	// sub-cases, the entry/exit dielectric-surface refractions, are
+	// genuinely specular and never clear the `if (!is_specular)` gate
+	// below). phaseWo is the direction back toward where the ray came from
+	// (-incoming ray dir, matching CPU hg_phase_pdf's own `wo`); phaseG is
+	// the medium's HG asymmetry (mat.fuzz, or grid.phase_g for the two grid
+	// medium types). ALSO reused (same "-incoming ray dir" meaning) as
+	// `wi_world` by the Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor
+	// glossy branches above to rebuild their local shading frame - harmless/
+	// unused for every other material type.
+	const float3& phaseWo, float phaseG,
+	int pixelIndex, int depth,
+	const SphereData* spheres, const QuadData* quads,
+	const TriangleData* triangles, const BilinearPatchData* bilinearPatches,
+	const DiskData* disks, const CylinderData* cylinders,
+	const MaterialData* materials,
+	const int* lightIndices, const GpuLightKind* lightKinds,
+	const GpuAliasEntry* aliasTable, unsigned int numLights,
+	const PunctualLightGPU* punctualLights, unsigned int numPunctualLights,
+	float3 skyColor, float shadow_eps, const GpuSkyDistribution& skyDist,
+	const GpuPortalLight& portalLight,
+	WorkQueue<ShadowRayWorkItem>& shadowQueue,
+	WorkQueue<RayWorkItem>& nextRayQueue,
+	float3* framebuffer,
+	// Needed for a textured (pbrt AreaLightSource "filename") NEE target -
+	// see this function's own Triangle-light NEE branch below - AND for a
+	// texture-bound CoatedDiffuse's NEE/MIS f() (see uv_u/uv_v below).
+	// Every caller already has these in scope (evaluate_materials/
+	// evaluate_materials_simple as kernel params, evaluate_materials_dielectric/
+	// resolve_bssrdf_exit newly threaded through for this same reason - see
+	// wavefront_launch.cu/wavefront_path_tracer.cpp).
+	const TextureData* textures, const unsigned char* texturePixels,
+	// The CURRENT hit's own UV (HitWorkItem::uv_u/uv_v) - lets evalGlossyF's
+	// CoatedDiffuse branch sample the material's real per-point reflectance
+	// texture for NEE/MIS, matching the scatter path's own lookup instead of
+	// falling back to fm.albedo. Every caller already holds `h.uv_u`/`h.uv_v`
+	// in scope (same HitWorkItem the caller's own scatter-path texture
+	// lookup already reads, e.g. evaluate_materials()'s Lambertian/
+	// CoatedDiffuse cases) - callers whose own material switch can never
+	// reach CoatedDiffuse (evaluate_materials_simple: Lambertian/Metal only;
+	// evaluate_materials_dielectric/resolve_bssrdf_exit: dielectric-only
+	// matTypes) just pass their own h.uv_u/h.uv_v too since it's free and
+	// harmless - evalGlossyF's CoatedDiffuse branch is simply never reached
+	// from those call sites.
+	float uv_u, float uv_v,
+	// Object (per-primitive sphere) motion blur shutter time - see
+	// RayWorkItem::time's own comment (wavefront_types.h). Carried unchanged
+	// from the incoming hit into every ShadowRayWorkItem/RayWorkItem this
+	// function pushes below, exactly like filterWeight/etaScale above.
+	float time)
+{
+	using SS = SampledSpectrum<kWFNWavelengths>;
+
+	// See phaseWo/phaseG's own parameter comment above - matType alone
+	// unambiguously identifies a medium-interior phase-scatter event here:
+	// DielectricMedium's other two (specular) sub-cases never reach this NEE
+	// block at all (is_specular stays true for those), and Medium/
+	// CloudMedium/RgbGridMedium/GridMedium's own "no interaction, straight
+	// pass-through" sub-case is likewise still is_specular=true - only a
+	// genuine scatter event for any of these 5 material types clears the
+	// caller's `if (!is_specular)` gate and reaches here.
+	const bool isPhase = (matType == MaterialType::DielectricMedium ||
+						   matType == MaterialType::Medium ||
+						   matType == MaterialType::CloudMedium ||
+						   matType == MaterialType::RgbGridMedium ||
+						   matType == MaterialType::GridMedium);
+
+	auto addToFramebuffer = [&](int pixIdx, const SS& L) {
+		auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z,
+										kDevCIEMin, kDevCIENSamples);
+		float r, g, b;
+		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		// "float maxcomponentvalue" firefly clamp - see
+		// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
+		// for why this is a per-CONTRIBUTION clamp here, not the true
+		// per-sample-total clamp CPU/the recursive backend apply: this
+		// atomicAdd is one of several independent partial contributions to
+		// the same sample's eventual total, with no single point on this
+		// backend where the whole sample's radiance is ever known as one
+		// value to clamp.
+		const float m = fmaxf(r, fmaxf(g, b));
+		if (maxComponentValue > 0.0f && m > maxComponentValue) {
+			const float s = maxComponentValue / m;
+			r *= s; g *= s; b *= s;
+		}
+		atomicAdd(&framebuffer[pixIdx].x, r);
+		atomicAdd(&framebuffer[pixIdx].y, g);
+		atomicAdd(&framebuffer[pixIdx].z, b);
+	};
+
+	// Real per-direction, per-channel f() for the 4 glossy (non-
+	// EffectivelySmooth) BxDF-templated materials, via the same CPU_GPU
+	// structs already verified on CPU (#222) and the recursive backend
+	// (#229) - reconstructs the local shading frame from `normal` alone
+	// (deterministic, matches every per-material frame-construction formula
+	// in evaluate_materials()'s own switch exactly) and `phaseWo` as wi_world
+	// (see that parameter's own comment). Returns false - meaning "no
+	// contribution, not an error" - for a matType this function doesn't
+	// handle, or when the queried direction falls in a hemisphere the
+	// material can't reach from wi (grazing/back-facing wi, or wo below the
+	// coat/dielectric's own reflection hemisphere - see RoughDielectric's
+	// wo_z<=0 check and this function's own header comment on why
+	// transmission-side NEE is out of scope here).
+	//
+	// Also returns outPdf: the BSDF pdf AT THIS QUERIED DIRECTION (not the
+	// separately-tracked brdf_pdf_override, which is the pdf at the BSDF-
+	// sampled CONTINUATION direction computed once in evaluate_materials() -
+	// a different quantity). MIS needs the pdf at the direction actually
+	// being weighted; mirrors optix_device_helpers.h's NEE blocks, which
+	// compute a fresh {c,rm,rd,cd,cc}_bxdf.pdf(wi,...,ll/sk...) per light/sky
+	// sample rather than reusing the continuation-direction pdf. For
+	// Conductor/RoughMetal this is the BxDF's own real pdf() (a thin wrapper
+	// over ggx_vndf_reflection_pdf); RoughDielectric uses its own real
+	// pdf(); CoatedDiffuse/CoatedConductor have no closed-form pdf for their
+	// unbounded-depth random walk, so - matching optix_device_helpers.h's
+	// documented choice exactly - they reuse the coat's top-surface GGX
+	// VNDF pdf as a cheap shape-matched proxy (any valid pdf keeps MIS
+	// unbiased; this only affects variance, not correctness).
+	// Shared per-shading-point setup for evalGlossyF below, computed ONCE
+	// instead of on each of the (up to) 3 calls it gets per shading point
+	// (area-light NEE, sky NEE, punctual-light NEE) - normal/phaseWo/
+	// matType/matIdx are all invariant across those calls within a single
+	// wf_finish_material_scatter() invocation, so re-deriving the local
+	// frame, wi, and material lookup on every call redid identical work up
+	// to 3x for no reason. glossy_valid folds both of evalGlossyF's old
+	// early-outs (wrong matType, wi_z<=0) into one check the lambda itself
+	// no longer needs to redo.
+	bool glossy_isType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
+		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
+		matType == MaterialType::RoughMetal);
+	float3 glossy_tan = make_float3(0.0f,0.0f,0.0f), glossy_bit = make_float3(0.0f,0.0f,0.0f);
+	float glossy_wi_x = 0.0f, glossy_wi_y = 0.0f, glossy_wi_z = 0.0f;
+	// See glossyAlpha's own parameter comment - already regularized by the
+	// caller, not re-derived here.
+	float glossy_alpha = glossyAlpha;
+	// See glossyAlphaV's own parameter comment - <0 (RoughMetal, or any
+	// non-glossy matType) falls back to glossy_alpha, matching
+	// MaterialData::roughnessV's own isotropic sentinel.
+	float glossy_alpha_v = (glossyAlphaV >= 0.0f) ? glossyAlphaV : glossy_alpha;
+	bool glossy_valid = false;
+	if (glossy_isType) {
+		// RoughMetal stays on the arbitrary frame (isotropic-only, no
+		// anisotropic variant exists - matches optix_device_helpers.h's
+		// identical RoughMetal exclusion); the other 4 glossy kinds get the
+		// real, UV-aligned frame.
+		if (matType == MaterialType::RoughMetal) {
+			BuildArbitraryTangentFrame(normal.x, normal.y, normal.z,
+			                            glossy_tan.x, glossy_tan.y, glossy_tan.z,
+			                            glossy_bit.x, glossy_bit.y, glossy_bit.z);
+		} else {
+			BuildDpduTangentFrame(normal.x, normal.y, normal.z, dpdu.x, dpdu.y, dpdu.z,
+			                       glossy_tan.x, glossy_tan.y, glossy_tan.z,
+			                       glossy_bit.x, glossy_bit.y, glossy_bit.z);
+		}
+		glossy_wi_x = dot(phaseWo, glossy_tan);
+		glossy_wi_y = dot(phaseWo, glossy_bit);
+		glossy_wi_z = dot(phaseWo, normal);
+		if (glossy_wi_z > 0.0f) glossy_valid = true;
+	}
+
+	auto evalGlossyF = [&](const float3& queryDir, float3& outF, float& outPdf) -> bool {
+		if (!glossy_valid) return false;
+		float wo_x = dot(queryDir, glossy_tan), wo_y = dot(queryDir, glossy_bit), wo_z = dot(queryDir, normal);
+		// RoughDielectric reaches both hemispheres (wo_z<0 = transmission,
+		// "seen through the glass" - RoughDielectricBxDF::f()/pdf() already
+		// handle either sign, matching optix_device_helpers.h's identical
+		// `llz != 0.0f` gate); every other glossy type here is reflection-
+		// only, unchanged.
+		if (matType == MaterialType::RoughDielectric) {
+			if (wo_z == 0.0f) return false;
+		} else if (wo_z <= 0.0f) {
+			return false;
+		}
+		const MaterialData& fm = materials[matIdx];
+		float fr = 0.0f, fg = 0.0f, fb = 0.0f;
+		if (matType == MaterialType::Conductor) {
+			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, glossy_alpha, glossy_alpha_v };
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
+		} else if (matType == MaterialType::RoughMetal) {
+			RoughMetalBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, glossy_alpha, glossy_alpha };
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
+		} else if (matType == MaterialType::RoughDielectric) {
+			RoughDielectricBxDF<float> bx{ fm.ior, glossy_alpha, glossy_alpha_v };
+			float v = bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
+			fr = fg = fb = v;
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
+		} else if (matType == MaterialType::CoatedDiffuse) {
+			// Real per-point reflectance when texture-bound (uv_u/uv_v is
+			// the CURRENT hit's own UV, threaded in for exactly this - see
+			// this function's own uv_u/uv_v parameter comment), matching
+			// evaluate_materials()'s own scatter-path lookup for the same
+			// material exactly; fm.albedo (flat) otherwise.
+			const float3 coatedAlbedo = (fm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, fm.textureIdx, uv_u, uv_v, hit_point) * fm.emissionScale
+				: fm.albedo;
+			CoatedDiffuseBxDF<float> bx{ coatedAlbedo.x, coatedAlbedo.y, coatedAlbedo.z, fm.ior, glossy_alpha, glossy_alpha_v };
+			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha_v);
+		} else {
+			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, glossy_alpha, glossy_alpha_v };
+			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha_v);
+		}
+		outF = make_float3(fr, fg, fb);
+		return true;
+	};
+
+	// Uplift an unbounded-positive RGB f() value (can exceed 1, unlike a
+	// plain reflectance) to spectral - same technique as evaluate_materials()'s
+	// own unboundedSpectrum lambda, deliberately WITHOUT the D65 illuminant
+	// factor liftEmission below applies (that factor belongs to light sources,
+	// not BRDF values).
+	auto liftUnboundedRGB = [&](float3 rgb) -> SS {
+		float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);
+		float sc = 2.f * m;
+		if (sc <= 0.f) return SS(0.f);
+		float c0, c1, c2;
+		dev_srgb_to_coeffs(rgb.x / sc, rgb.y / sc, rgb.z / sc, c0, c1, c2);
+		RGBSigmoidPolynomial poly(c0, c1, c2);
+		SS s(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			s[i] = sc * poly(swl.lambda[i]);
+		return s;
+	};
+
+	// -------------------------------------------------------------------------
+	// NEE: direct-light shadow ray (non-specular materials only)
+	// -------------------------------------------------------------------------
+	if (!is_specular) {
+	if (numLights > 0 && aliasTable) {
+		// Pick a light via alias table
+		int   slot = int(wf_rand(seed) * float(numLights));
+		if (slot >= (int)numLights) slot = (int)numLights - 1;
+		const GpuAliasEntry& entry = aliasTable[slot];
+		int light_idx = (wf_rand(seed) < entry.q) ? slot : entry.alias;
+		float selection_pdf = aliasTable[light_idx].pdf;
+
+		int            prim_idx  = lightIndices[light_idx];
+		GpuLightKind   kind      = lightKinds[light_idx];
+
+		float  geom_pdf = 0.0f, max_dist = 0.0f;
+		float3 to_light;
+		SS light_emission_spec(0.f);
+
+		// A light's RGB colour is an ILLUMINANT (pbrt-v4 RGBIlluminantSpectrum:
+		// scale * rsp(lambda) * D65(lambda)), not a bare RGBUnboundedSpectrum
+		// (scale * rsp(lambda)) -- without the D65 factor, a grey light
+		// uplifts to a flat/equal-energy spectrum (chromaticity (0.333,
+		// 0.333)) instead of D65-white (0.3127,0.3290), which then
+		// reconstructs as a non-neutral RGB through wf_xyz_to_linear_rgb's
+		// D65-targeted matrix (R inflated ~20%, G/B suppressed ~5-11%) -- see
+		// dev_sample_d65()'s own comment in spectral_device.h for the full
+		// derivation.
+		auto liftEmission = [&](float3 le) -> SS {
+			float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
+								  : (le.y > le.z ? le.y : le.z);
+			float sc = 2.f * m;
+			if (sc <= 0.f) return SS(0.f);
+			float c0, c1, c2;
+			dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
+			RGBSigmoidPolynomial poly(c0, c1, c2);
+			SS s(0.f);
+			for (int i = 0; i < kWFNWavelengths; ++i)
+				s[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
+			return s;
+		};
+
+		// mat.twoSided (pbrt AreaLightSource "diffuse" "bool twosided") gate for
+		// NEE, mirroring material_emission()'s own front_face gate on a direct
+		// hit and the recursive backend's identical nee_gate_one_sided() -
+		// was previously never checked here for ANY light kind (including
+		// Triangle), so every one-sided area light was silently treated as
+		// two-sided by NEE. `dir` points from hit_point toward the light
+		// (same sense a direct-hit ray_dir has), so front-facing is
+		// dot(dir, light_normal) < 0.
+		auto geoAndGate = [&](float3 raw_emission, const MaterialData& lm, float3 dir, float3 light_normal) -> SS {
+			if (!lm.twoSided && dot(dir, light_normal) >= 0.0f) raw_emission = make_float3(0.0f, 0.0f, 0.0f);
+			return liftEmission(raw_emission);
+		};
+
+		if (kind == GpuLightKind::Sphere) {
+			const SphereData& s = spheres[prim_idx];
+			float su, sv; float3 snormal;
+			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist, su, sv, snormal, time);
+			const MaterialData& lm = materials[s.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, su, sv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, snormal);
+		} else if (kind == GpuLightKind::Triangle) {
+			const TriangleData& tri = triangles[prim_idx];
+			float lu, lv; float3 tnormal;
+			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist, lu, lv, tnormal);
+			const MaterialData& lm = materials[tri.materialIdx];
+			// A pbrt AreaLightSource "filename" triangle light needs the real
+			// sampled UV to look up its image - see the recursive backend's
+			// identical sample_area_light_by_kind() Triangle case.
+			float3 raw;
+			if (lm.textureIdx >= 0) {
+				float3 texel = wf_sample_texture(textures, texturePixels, lm.textureIdx, lu, lv, hit_point + to_light * max_dist);
+				raw = make_float3(texel.x * lm.emissionScale, texel.y * lm.emissionScale, texel.z * lm.emissionScale);
+			} else {
+				raw = lm.emission;
+			}
+			light_emission_spec = geoAndGate(raw, lm, to_light, tnormal);
+		} else if (kind == GpuLightKind::BilinearPatch) {
+			const BilinearPatchData& bp = bilinearPatches[prim_idx];
+			float bu, bv; float3 bnormal;
+			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist, bu, bv, bnormal);
+			const MaterialData& lm = materials[bp.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, bu, bv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, bnormal);
+		} else if (kind == GpuLightKind::Disk) {
+			const DiskData& d = disks[prim_idx];
+			float du, dv; float3 dnormal;
+			to_light = wf_sample_disk_light(d, hit_point, seed, geom_pdf, max_dist, du, dv, dnormal);
+			const MaterialData& lm = materials[d.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, du, dv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, dnormal);
+		} else if (kind == GpuLightKind::Cylinder) {
+			const CylinderData& c = cylinders[prim_idx];
+			float cu, cv; float3 cnormal;
+			to_light = wf_sample_cylinder_light(c, hit_point, seed, geom_pdf, max_dist, cu, cv, cnormal);
+			const MaterialData& lm = materials[c.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, cu, cv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, cnormal);
+		} else {
+			const QuadData& q = quads[prim_idx];
+			float qu, qv;
+			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist, qu, qv);
+			const MaterialData& lm = materials[q.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, qu, qv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, q.normal);
+		}
+
+		float light_pdf = selection_pdf * geom_pdf;
+		// RoughDielectric NEE can reach lights on EITHER side of the
+		// interface (reflection when raw_cos>0, transmission/"seen through
+		// the glass" when raw_cos<0) - see evalGlossyF's own comment and
+		// optix_device_helpers.h's identical two-sided RoughDielectric NEE,
+		// which this now matches. Every other material stays reflection-
+		// only (raw_cos>0 required), same as before.
+		float raw_cos = dot(to_light, normal);
+		if (light_pdf > 1e-6f && (isPhase || matType == MaterialType::RoughDielectric || raw_cos > 0.0f)) {
+			// A phase function has no hemisphere/cosine restriction (it's
+			// normalized over the full sphere, unlike a surface BRDF) - the
+			// `cos_l` slot is set to 1 so the shared `bsdf_val * cos_l`
+			// formula below reduces to the phase value alone. RoughDielectric
+			// uses the absolute cosine (matches optix_device_helpers.h's
+			// fabsf(llz)): the sign only selects reflection vs. transmission,
+			// already handled inside evalGlossyF/RoughDielectricBxDF, not a
+			// zero-below-the-hemisphere cutoff like the other glossy types.
+			float cos_l = isPhase ? 1.0f
+				: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
+				: fmaxf(raw_cos, 0.0f);
+			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
+			// Lambertian's BRDF is albedo/pi, direction-independent - `attenuation`
+			// already equals albedoSpectrum(mat.albedo) from the caller, so reuse
+			// it here instead of leaving the NEE contribution achromatic.
+			// NormalizedFresnel's bsdf_val below is already a complete,
+			// achromatic BRDF value (no color/texture involved), so it needs
+			// no equivalent multiply. Same reuse-attenuation-directly reasoning
+			// applies to the phase-scatter case: `attenuation` there already
+			// equals the medium's single-scatter albedo (mat.albedo).
+			SS bsdf_color(1.f);
+			// Set inside the glossy else-branch below (evalGlossyF's outPdf,
+			// the BSDF pdf at to_light) - 0 for every non-glossy material,
+			// declared here (not nested inside that branch) so it's visible
+			// where brdf_pdf_l is computed just below the if/else chain.
+			float glossyPdf = 0.0f;
+			if (matType == MaterialType::Lambertian) {
+				bsdf_color = attenuation;
+			} else if (matType == MaterialType::NormalizedFresnel) {
+				float inv_eta = 1.0f / nfEta;
+				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+				if (nf_c <= 0.0f) nf_c = 1e-6f;
+				float fr_l = FrDielectric(cos_l, nfEta);
+				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+			} else if (isPhase) {
+				bsdf_val = wf_hg_phase_value(dot(phaseWo, to_light), phaseG);
+				bsdf_color = attenuation;
+			} else {
+				// Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor
+				// (glossy) - see evalGlossyF's own comment. bsdf_val=1 folds
+				// the whole per-channel f() into bsdf_color instead of
+				// splitting it into a scalar shape * color like the
+				// Lambertian/NormalizedFresnel cases above (those have an
+				// achromatic BRDF shape; this one doesn't). evalGlossyF
+				// itself returns false both for "not one of my 4 types" (in
+				// which case leave bsdf_val/bsdf_color at their Lambertian-
+				// shaped defaults, unchanged from before this else - matches
+				// e.g. NormalMappedLambertian's existing behavior, which
+				// reaches here as matType==NormalMappedLambertian, not
+				// Lambertian, and has relied on that same fallback since
+				// before this NEE extension existed) and "wrong hemisphere
+				// for one of my 4 types" (this light sits behind the glass'
+				// reflection side) - only the second case should zero the
+				// contribution, so explicitly re-check matType here rather
+				// than trusting evalGlossyF's return value alone.
+				float3 fRgb;
+				if (evalGlossyF(to_light, fRgb, glossyPdf)) {
+					bsdf_val = 1.0f;
+					bsdf_color = liftUnboundedRGB(fRgb);
+				} else if (glossy_isType) {
+					bsdf_val = 0.0f;
+				}
+			}
+			// glossyPdf (the BSDF pdf evaluated AT to_light, from evalGlossyF
+			// above) takes priority for the 5 glossy types - brdf_pdf_override
+			// is the pdf at the unrelated BSDF-sampled continuation direction
+			// and must not be reused here (see evalGlossyF's own header
+			// comment). glossyPdf is 0 (falls through to the non-glossy
+			// branches) for every other material type, matching prior
+			// behavior exactly.
+			float brdf_pdf_l = (glossyPdf > 0.0f) ? glossyPdf
+				: (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
+
+			// Spectral direct-light contribution
+			SS Ld = (mis_w * bsdf_val * cos_l / light_pdf) * throughput * bsdf_color * light_emission_spec;
+
+			// 0.01, not the original 0.001: a scene with many densely-packed
+			// custom primitives (spheres) reproducibly crashed the shadow
+			// OptiX launch with an illegal memory access - the 0.001 offset
+			// left the shadow ray's origin too close to its own emitting
+			// surface (and, at high primitive density, to a neighboring
+			// primitive's surface too) for this driver's any-hit traversal
+			// over custom AABBs to handle; confirmed via bisection on
+			// synthetic sphere-field pbrt scenes (compute-sanitizer memcheck/
+			// initcheck found nothing, ruling out a plain buffer overrun).
+			// Offsetting along BOTH the shading normal AND the shadow ray's
+			// own direction, not just the normal alone. The normal-only
+			// offset is load-bearing on its own (see above): a pure
+			// direction-only offset - matching optix_device_helpers.h's
+			// trace_shadow_ray() - was tried first and broke
+			// NormalMappedLambertian (scene 20 rendered 99% black), since a
+			// shading normal bent away from the true surface no longer
+			// guarantees "away from this primitive" the way the true
+			// geometric normal does, letting the ray re-enter its own
+			// (unperturbed) sphere at a grazing angle. But normal-only,
+			// even at a much larger shadow_eps, turned out far weaker than
+			// direction-only at escaping self-intersection on dense,
+			// closely-packed real geometry: Sibenik Cathedral's stone
+			// tracery false-occluded most sky-NEE shadow rays at
+			// shadow_eps=0.01, and bumping shadow_eps up to 2.0 with a
+			// normal-only offset barely helped (GPU stayed under 50% of
+			// CPU's brightness at matched settings) - adding the direction
+			// component back in (while keeping the normal component, so
+			// NormalMappedLambertian stays fixed) closed the gap to ~73%
+			// at shadow_eps=0.5, confirmed by direct experiment. 2.0 with
+			// the combined offset overshot badly (GPU 1.5x *brighter* than
+			// CPU - real light leaks from skipping past legitimate
+			// occluders), which is why this is a per-scene-tunable value
+			// (GpuCameraParams::shadowRayEpsilon), not a blanket increase.
+			// isPhase (medium-interior scatter point): skip the normal-based
+			// offset entirely - `normal` here is the sphere's own entry-surface
+			// normal, not a meaningful direction at this interior point, and
+			// direction-only is exactly what optix_device_helpers.h's own
+			// trace_shadow_ray() already uses for this same phase-scatter NEE
+			// on the recursive backend (see that call site's comment).
+			// The normal-offset nudges toward whichever side to_light is
+			// actually on (copysignf(shadow_eps, raw_cos), not always
+			// +shadow_eps): for every material except RoughDielectric's new
+			// transmission-side case raw_cos>0 always holds here (the gate
+			// above still requires it), so this is exactly +shadow_eps as
+			// before - only RoughDielectric's transmission side (raw_cos<0)
+			// newly nudges the origin to the far side of the surface instead
+			// of back into the same hemisphere the ray isn't going toward.
+			ShadowRayWorkItem shadow;
+			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
+				+ shadow_eps * normalize(to_light);
+			shadow.direction = to_light;
+			shadow.tMax      = max_dist - 0.002f;
+			for (int i = 0; i < kWFNWavelengths; ++i) {
+				shadow.Ld[i]             = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
+				shadow.wavelengths[i]    = swl.lambda[i];
+				shadow.wavelength_pdfs[i] = swl.pdf[i];
+			}
+			shadow.pixelIndex = pixelIndex;
+			shadow.time = time;
+			shadowQueue.push(shadow);
+		}
+	}
+	// -------------------------------------------------------------------------
+	// NEE: sky (infinite) light. Mirrors CPU's camera.h Strategy A-2 and the
+	// recursive backend's own sky-NEE block (optix_device_helpers.h) - see
+	// that comment for the full story (GPU used to only pick up sky light via
+	// a lucky BSDF-sampled escape, no NEE, which under-lit small-aperture
+	// interiors like Sibenik Cathedral). skyColor is the same constant color
+	// the miss path already uses (camera.backgroundColor - see
+	// optix_miss.h/accumulate_miss's own use of it), defaulting to black for
+	// every scene without a sky, which makes this a free no-op there.
+	// -------------------------------------------------------------------------
+	if (!is_specular && (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f)) {
+		// wf_sample_sky_nee() (wavefront_sky_light.h) dispatches to real HDR
+		// importance sampling when the scene's infinite light carries an
+		// image (skyDist.height > 0), falling back to this exact uniform-
+		// sphere sample + flat skyColor otherwise - see optix_device_
+		// helpers.h's own Lambertian sky-NEE block for the recursive
+		// backend's identical dispatch, and optix_sky_light.h for the full
+		// algorithm comment.
+		float3 sky_dir, sky_Le_val; float pdf_sky;
+		wf_sample_sky_nee(skyDist, portalLight, seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
+		// See the area-light block above for the RoughDielectric two-sided
+		// rationale (matches optix_device_helpers.h's sky-NEE block).
+		float  raw_cos = dot(sky_dir, normal);
+		float  cos_l   = isPhase ? 1.0f
+			: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
+			: raw_cos;
+		// pdf_sky > 0.0f is REQUIRED here, not just an optimization: a
+		// portal-light NEE sample (wf_sample_sky_nee() -> gpu_portal_sample_Li())
+		// returns pdf_sky == 0.0f with sky_Le_val == (0,0,0) whenever the
+		// portal window subtends zero area from hit_point (a routine outcome
+		// for most points not facing the window, not a rare edge case) -
+		// without this guard, `isPhase`/RoughDielectric (which bypass the
+		// cos_l gate entirely) unconditionally divide by pdf_sky below and
+		// produce NaN (0.0f/0.0f). Mirrors CPU's own
+		// `if (portal->sample_li(...) && pdf_portal > 0.0)` guard
+		// (src/TheRestOfYourLife/camera.h) and this file's own
+		// medium_phase_nee_mis()-equivalent pattern elsewhere.
+		if (pdf_sky > 0.0f && (isPhase || matType == MaterialType::RoughDielectric || cos_l > 0.0f)) {
+			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
+			// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
+			// for Lambertian (direction-independent BRDF, safe to reuse here);
+			// NormalizedFresnel's bsdf_val is already a complete achromatic value.
+			SS bsdf_color(1.f);
+			// See the area-light block above for why this is declared here
+			// rather than nested inside the glossy else-branch.
+			float glossyPdf = 0.0f;
+			if (matType == MaterialType::Lambertian) {
+				bsdf_color = attenuation;
+			} else if (matType == MaterialType::NormalizedFresnel) {
+				float inv_eta = 1.0f / nfEta;
+				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+				if (nf_c <= 0.0f) nf_c = 1e-6f;
+				float fr_l = FrDielectric(cos_l, nfEta);
+				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+			} else if (isPhase) {
+				bsdf_val = wf_hg_phase_value(dot(phaseWo, sky_dir), phaseG);
+				bsdf_color = attenuation;
+			} else {
+				// See the area-light block's identical else-branch for the
+				// full rationale (evalGlossyF/glossy_isType split).
+				float3 fRgb;
+				if (evalGlossyF(sky_dir, fRgb, glossyPdf)) {
+					bsdf_val = 1.0f;
+					bsdf_color = liftUnboundedRGB(fRgb);
+				} else if (glossy_isType) {
+					bsdf_val = 0.0f;
+				}
+			}
+			// See the area-light block above: glossyPdf (pdf at sky_dir) takes
+			// priority over brdf_pdf_override (pdf at the unrelated
+			// continuation direction) for the 5 glossy types.
+			float brdf_pdf_sky = (glossyPdf > 0.0f) ? glossyPdf
+				: (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+			float mis_w = wf_mis(pdf_sky, brdf_pdf_sky);
+
+			// Uplift RGB sky_Le_val (the real per-direction radiance for an
+			// image sky, or the flat skyColor otherwise - see
+			// wf_sample_sky_nee()) to spectrum (same pattern as liftEmission
+			// above, including the D65 illuminant factor -- see that
+			// lambda's own comment).
+			float m = sky_Le_val.x > sky_Le_val.y ? (sky_Le_val.x > sky_Le_val.z ? sky_Le_val.x : sky_Le_val.z)
+			                                       : (sky_Le_val.y > sky_Le_val.z ? sky_Le_val.y : sky_Le_val.z);
+			float sc = 2.f * m;
+			SS sky_spec(0.f);
+			if (sc > 0.f) {
+				float c0, c1, c2;
+				dev_srgb_to_coeffs(sky_Le_val.x / sc, sky_Le_val.y / sc, sky_Le_val.z / sc, c0, c1, c2);
+				RGBSigmoidPolynomial poly(c0, c1, c2);
+				for (int i = 0; i < kWFNWavelengths; ++i)
+					sky_spec[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
+			}
+
+			SS Ld = (mis_w * bsdf_val * cos_l / pdf_sky) * throughput * bsdf_color * sky_spec;
+
+			// See the area-light block above for why this is a combined
+			// normal+direction offset (not the normal alone), why isPhase
+			// skips the normal term entirely, and why the normal term uses
+			// copysignf(shadow_eps, raw_cos) rather than always +shadow_eps.
+			ShadowRayWorkItem shadow;
+			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
+				+ shadow_eps * normalize(sky_dir);
+			shadow.direction = sky_dir;
+			shadow.tMax      = 1e30f;
+			for (int i = 0; i < kWFNWavelengths; ++i) {
+				shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
+				shadow.wavelengths[i]     = swl.lambda[i];
+				shadow.wavelength_pdfs[i] = swl.pdf[i];
+			}
+			shadow.pixelIndex = pixelIndex;
+			shadow.time = time;
+			shadowQueue.push(shadow);
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// NEE: punctual (point/spot/distant) delta lights. Unlike the area-light
+	// block above (one stochastic pick via alias table), every contributing
+	// punctual light gets its own shadow ray - matches recursive path
+	// (optix_device_helpers.h add_punctual_lights_lambertian) and the CPU
+	// reference (camera.h punct_lights loop): pdf=1 by construction, so no
+	// MIS weight or pdf division, just beta * BRDF * cos_theta * Li per light.
+	// -------------------------------------------------------------------------
+	for (unsigned int pli = 0; pli < numPunctualLights; ++pli) {
+		float3 wi, Li; float t_max;
+		if (!wf_eval_punctual_light(punctualLights[pli], hit_point, wi, Li, t_max)) continue;
+		// See the area-light block above for the RoughDielectric two-sided
+		// rationale (matches optix_device_helpers.h's punctual-light NEE,
+		// which only excludes exact grazing (plz==0), not either sign).
+		// isPhase (medium-interior scatter point, see the area-light block's
+		// own identical comment): `normal` is meaningless here, so a phase
+		// function - defined over the full sphere, no hemisphere restriction
+		// - must skip this cosine-based cull entirely, the same way the
+		// area-light block above already does. This was missing here even
+		// though the area/sky blocks in this same function already handle
+		// it - previously the only material this loop's own isPhase-shaped
+		// gap could reach was DielectricMedium's interior sub-case; fixing
+		// it here at the same time real NEE was added to Medium/CloudMedium/
+		// RgbGridMedium/GridMedium's own phase-scatter cases, since those
+		// newly reach this exact gap too.
+		float raw_cos = dot(wi, normal);
+		if (!isPhase && matType != MaterialType::RoughDielectric && raw_cos <= 0.0f) continue;
+		if (!isPhase && matType == MaterialType::RoughDielectric && raw_cos == 0.0f) continue;
+		float cos_l = isPhase ? 1.0f
+			: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos) : raw_cos;
+
+		float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
+		// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
+		// for Lambertian (direction-independent BRDF, safe to reuse here);
+		// NormalizedFresnel's bsdf_val is already a complete achromatic value.
+		// Same reuse-attenuation-directly reasoning applies to the
+		// phase-scatter case: `attenuation` there already equals the
+		// medium's single-scatter albedo (mat.albedo).
+		SS bsdf_color(1.f);
+		if (matType == MaterialType::Lambertian) {
+			bsdf_color = attenuation;
+		} else if (matType == MaterialType::NormalizedFresnel) {
+			float inv_eta = 1.0f / nfEta;
+			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+			if (nf_c <= 0.0f) nf_c = 1e-6f;
+			float fr_l = FrDielectric(cos_l, nfEta);
+			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+		} else if (isPhase) {
+			bsdf_val = wf_hg_phase_value(dot(phaseWo, wi), phaseG);
+			bsdf_color = attenuation;
+		} else {
+			// See the area-light block's identical else-branch for the full
+			// rationale (evalGlossyF/glossy_isType split). No MIS weight for
+			// punctual (delta) lights, same as every other material here -
+			// the pdf-at-wi output isn't needed here, unlike the area/sky
+			// NEE blocks above.
+			float3 fRgb; float unusedPdf;
+			if (evalGlossyF(wi, fRgb, unusedPdf)) {
+				bsdf_val = 1.0f;
+				bsdf_color = liftUnboundedRGB(fRgb);
+			} else if (glossy_isType) {
+				bsdf_val = 0.0f;
+			}
+		}
+
+		// Uplift RGB Li to spectrum (same pattern as liftEmission above,
+		// including the D65 illuminant factor -- see that lambda's own
+		// comment)
+		float m = Li.x > Li.y ? (Li.x > Li.z ? Li.x : Li.z) : (Li.y > Li.z ? Li.y : Li.z);
+		float sc = 2.f * m;
+		SS Li_spec(0.f);
+		if (sc > 0.f) {
+			float c0, c1, c2;
+			dev_srgb_to_coeffs(Li.x / sc, Li.y / sc, Li.z / sc, c0, c1, c2);
+			RGBSigmoidPolynomial poly(c0, c1, c2);
+			for (int i = 0; i < kWFNWavelengths; ++i)
+				Li_spec[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
+		}
+
+		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
+
+		// See the area-light block above for why this is a combined
+		// normal+direction offset, not the normal alone, why the normal
+		// term uses copysignf(shadow_eps, raw_cos) rather than always
+		// +shadow_eps (RoughDielectric's transmission side), and why isPhase
+		// skips the normal term entirely (no meaningful normal at a
+		// medium-interior scatter point).
+		ShadowRayWorkItem shadow;
+		shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
+			+ shadow_eps * normalize(wi);
+		shadow.direction = wi;
+		shadow.tMax      = t_max - 0.002f;
+		for (int i = 0; i < kWFNWavelengths; ++i) {
+			shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
+			shadow.wavelengths[i]     = swl.lambda[i];
+			shadow.wavelength_pdfs[i] = swl.pdf[i];
+		}
+		shadow.pixelIndex = pixelIndex;
+		shadow.time = time;
+		shadowQueue.push(shadow);
+	}
+
+	// Flush accumulated prior-bounce radiance (once, regardless of whether
+	// any area/punctual lights actually contributed above).
+	if ((bool)radiance) addToFramebuffer(pixelIndex, radiance * filterWeight);
+	} // if (!is_specular) - NEE (area + punctual lights)
+
+	// -------------------------------------------------------------------------
+	// Bounce: push next ray
+	// -------------------------------------------------------------------------
+	SS new_throughput = throughput * attenuation;
+
+	// Russian roulette (pbrt-v4 PathIntegrator formula - matches CPU's
+	// camera.h and the recursive backend's optix_raygen.h exactly):
+	// rrBeta = beta * etaScale; q = max(0, 1 - MaxComponent(rrBeta));
+	// terminate if rand < q, else reweight beta itself by 1/(1-q). This
+	// file used to compute p = MaxComponent(beta) directly and terminate on
+	// rand >= p - an older (pbrt-v3-style) scheme that isn't wrong on its
+	// own, but disagreed with the OTHER two backends in this codebase, and
+	// started at depth>=3 rather than the depth>1 both of those use (so the
+	// wavefront backend also spent one extra bounce before RR could kick
+	// in). etaScale (pbrt-v4's per-refraction correction that avoids
+	// killing transmission-heavy paths too aggressively) now matches both
+	// other backends too - see this parameter's own comment.
+	if (depth > 1) {
+		float rr_max = (new_throughput * etaScale).MaxComponentValue();
+		if (rr_max < 1.0f) {
+			float q = fmaxf(0.0f, 1.0f - rr_max);
+			if (wf_rand(seed) < q) {
+				if (is_specular) addToFramebuffer(pixelIndex, radiance * filterWeight);
+				return;
+			}
+			new_throughput = new_throughput / (1.0f - q);
+		}
+	}
+
+	RayWorkItem next;
+	next.origin     = hit_point + 0.001f * scattered_dir;
+	next.direction  = normalize(scattered_dir);
+	next.seed            = seed;
+	next.pixelIndex      = pixelIndex;
+	next.depth           = depth + 1;
+	next.specular_bounce = is_specular ? 1 : 0;
+	// See RayWorkItem::any_nonspecular's own comment - never cleared, only
+	// ever set once this bounce (or an earlier one) was non-specular.
+	next.any_nonspecular = (do_regularize || !is_specular) ? 1 : 0;
+	// Already fully updated for this event - see this function's own
+	// etaScale parameter comment.
+	next.etaScale = etaScale;
+	// Pure reconstruction weight, carried unchanged - see
+	// RayWorkItem::filterWeight's own comment.
+	next.filterWeight = filterWeight;
+	// BRDF PDF of this new direction, for MIS if this ray escapes the scene
+	// on its next bounce (see RayWorkItem::brdf_pdf's own comment) - mirrors
+	// optix_intersection_sphere.h's brdf_pdf_out exactly (0 for specular,
+	// else brdf_pdf_override if the material set one, else the cosine-
+	// weighted hemisphere pdf every non-specular case here samples from).
+	next.brdf_pdf = is_specular ? 0.0f
+		: (brdf_pdf_override > 0.0f ? brdf_pdf_override
+			: fmaxf(dot(next.direction, normal), 0.0f) / 3.14159265f);
+	next.tMin       = 0.001f;
+	next.tMax       = 1e30f;
+	// Fixed for the whole path once sampled at the camera - see RayWorkItem::
+	// time's own comment.
+	next.time       = time;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		next.throughput[i]      = new_throughput[i];
+		next.radiance[i]        = is_specular ? radiance[i] : 0.0f;
+		next.wavelengths[i]     = swl.lambda[i];
+		next.wavelength_pdfs[i] = swl.pdf[i];
+	}
+	nextRayQueue.push(next);
+}
+
+// Uplift a flat RGB color to a spectral sample at the given hero
+// wavelengths. Shared across every call site in the split kernel files that
+// needs the same uplift: evaluate_materials's own DiffuseLight direct-hit
+// emission and MaterialType::Medium "rgb Le" cases
+// (wavefront_kernels_materials.cu), plus resolve_bssrdf_exit
+// (wavefront_kernels_bssrdf.cu) and accumulate_miss
+// (wavefront_kernels_accumulate.cu). NOT the same thing as the `liftEmission`
+// lambda inside wf_finish_material_scatter just above - lambdas can't cross
+// function boundaries, so that one stays a separate, function-local copy of
+// the same math.
+//
+// isIlluminant: true for a light-source colour (DiffuseLight/medium Le
+// above, background/sky radiance in accumulate_miss), which needs the D65
+// illuminant factor -- see liftEmission's own comment above for why. false
+// (default) for an already-computed reflectance-like weight (e.g.
+// resolve_bssrdf_exit's Sp spatial term), which must NOT get an extra
+// illuminant multiply -- it's not a colour being lit, it's already a
+// throughput.
+__device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spectrum(
+	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl, bool isIlluminant = false
+) {
+	using SS = SampledSpectrum<kWFNWavelengths>;
+	float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);
+	float sc = 2.f * m;
+	if (sc <= 0.f) return SS(0.f);
+	float c0, c1, c2;
+	dev_srgb_to_coeffs(rgb.x / sc, rgb.y / sc, rgb.z / sc, c0, c1, c2);
+	RGBSigmoidPolynomial poly(c0, c1, c2);
+	SS s(0.f);
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		s[i] = sc * poly(swl.lambda[i]);
+		if (isIlluminant) s[i] *= dev_sample_d65(swl.lambda[i]);
+	}
+	return s;
 }
 
