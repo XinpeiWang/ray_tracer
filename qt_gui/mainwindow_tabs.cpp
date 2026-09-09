@@ -899,34 +899,48 @@ void MainWindow::createSettingsTab() {
 		"wherever the camera is positioned further down this tab.")),
 		m_cameraPathCombo);
 
-	// Frame count
+	// Frame Count + Frames Per Second on one line - same 4-column-grid-as-
+	// a-single-row trick used for the sensitivity pair in Live Preview
+	// Settings below, rather than converting this whole group from
+	// QFormLayout to QGridLayout (like Advanced Parameters/Camera Position
+	// do) just for this one pair.
+	QWidget *frameRateRow = new QWidget();
+	QGridLayout *frameRateGrid = new QGridLayout(frameRateRow);
+	frameRateGrid->setContentsMargins(0, 0, 0, 0);
+	frameRateGrid->setHorizontalSpacing(10);
+	frameRateGrid->setColumnStretch(1, 1);
+	frameRateGrid->setColumnStretch(3, 1);
+
 	m_videoFramesSpinBox = new QSpinBox();
 	m_videoFramesSpinBox->setRange(10, 1000);
 	m_videoFramesSpinBox->setValue(60);
 	m_videoFramesSpinBox->setSuffix(tr(" frames"));
 	styleSpinBox(m_videoFramesSpinBox);
-	videoLayout->addRow(labelWithInfo(tr("Frame Count:"),
+	frameRateGrid->addWidget(labelWithInfo(tr("Frame Count:"),
 		tr("How many individual images make up the video - each one is a "
 		"full, independent render, so this multiplies total render time "
 		"directly (100 frames takes roughly 100x as long as one image "
 		"at the same settings).\n\n"
-		"Paired with Frames Per Second below to determine the video's "
-		"total length in seconds.")),
-		m_videoFramesSpinBox);
+		"Paired with Frames Per Second to determine the video's total "
+		"length in seconds.")),
+		0, 0);
+	frameRateGrid->addWidget(m_videoFramesSpinBox, 0, 1);
 
-	// FPS (frames per second)
 	m_videoFPSSpinBox = new QSpinBox();
 	m_videoFPSSpinBox->setRange(15, 120);
 	m_videoFPSSpinBox->setValue(30);
 	m_videoFPSSpinBox->setSuffix(tr(" fps"));
 	styleSpinBox(m_videoFPSSpinBox);
-	videoLayout->addRow(labelWithInfo(tr("Frames Per Second:"),
+	frameRateGrid->addWidget(labelWithInfo(tr("Frames Per Second:"),
 		tr("How many of the rendered frames play per second of video.\n\n"
 		"Doesn't change how many frames get rendered (that's Frame "
-		"Count above) - only how fast they play back, and therefore how "
-		"many seconds long the finished video is (Frame Count divided "
-		"by FPS).")),
-		m_videoFPSSpinBox);
+		"Count) - only how fast they play back, and therefore how many "
+		"seconds long the finished video is (Frame Count divided by "
+		"FPS).")),
+		0, 2);
+	frameRateGrid->addWidget(m_videoFPSSpinBox, 0, 3);
+
+	videoLayout->addRow(frameRateRow);
 
 	// Movement speed multiplier - does NOT change the camera path itself (it
 	// always completes the exact same full sweep: 1 rotation for
@@ -1021,6 +1035,86 @@ void MainWindow::createSettingsTab() {
 	updateVideoDuration();
 
 	layout->addWidget(m_videoGroupBox);
+
+#ifdef RT_GUI_HAVE_GPU
+	// --- Live Preview Settings: mouse/keyboard sensitivity - its own
+	// independent group rather than living inline in Render Settings, so
+	// it's as discoverable as Video's own settings are. No separate warning
+	// banner (unlike Video Generation Settings) - the header icon's own
+	// tooltip already states the "only takes effect when..." caveat, so a
+	// banner repeating the same sentence would be pure duplication;
+	// setGroupDimmed() (keyed on isLiveMode() instead of isVideoMode())
+	// still gives the same at-a-glance "inert right now" visual cue. Placed
+	// right below Video Generation Settings - the two other Output Mode
+	// options' own dedicated settings sit next to each other, immediately
+	// under the combo that picks between them.
+	m_liveModeSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), basicTab);
+	styleGroupBox(m_liveModeSettingsGroupBox);
+	m_liveModeSettingsGroupBox->setInfoIcon(createInfoIcon(
+		tr("Tune how responsive click-drag-to-orbit, scroll-to-zoom, and "
+		"the Arrow/+/- keys feel in Live Preview. Only takes effect when "
+		"Output Mode above is \"Live Preview (interactive)\", but stays "
+		"editable in any mode.")));
+	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
+	QFormLayout *liveModeSettingsLayout = new QFormLayout(m_liveModeSettingsGroupBox);
+	liveModeSettingsLayout->setVerticalSpacing(10);
+	liveModeSettingsLayout->setHorizontalSpacing(10);
+	liveModeSettingsLayout->setContentsMargins(15, 22, 15, 12);
+
+	// One multiplier per INPUT DEVICE (not one per axis - azimuth/
+	// elevation/radius all scale together per device), loaded from/saved
+	// to QSettings immediately on change (loadSavedMouseSensitivity()/
+	// saveMouseSensitivity() etc., mainwindow_tabs_render.cpp) the same
+	// way theme/font/language already are. Both on one line, same
+	// 4-column-grid-as-a-single-row trick as Video Generation Settings'
+	// Frame Count/FPS pair above.
+	QWidget *sensitivityRow = new QWidget();
+	QGridLayout *sensitivityGrid = new QGridLayout(sensitivityRow);
+	sensitivityGrid->setContentsMargins(0, 0, 0, 0);
+	sensitivityGrid->setHorizontalSpacing(10);
+	sensitivityGrid->setColumnStretch(1, 1);
+	sensitivityGrid->setColumnStretch(3, 1);
+
+	m_mouseSensitivitySpinBox = new QDoubleSpinBox();
+	m_mouseSensitivitySpinBox->setRange(0.25, 3.0);
+	m_mouseSensitivitySpinBox->setSingleStep(0.25);
+	m_mouseSensitivitySpinBox->setDecimals(2);
+	m_mouseSensitivitySpinBox->setValue(m_mouseSensitivity);
+	m_mouseSensitivitySpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_mouseSensitivitySpinBox);
+	connect(m_mouseSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_mouseSensitivity = value;
+		saveMouseSensitivity(value);
+	});
+	sensitivityGrid->addWidget(labelWithInfo(tr("Mouse Sensitivity:"),
+		tr("Scales click-drag-to-orbit and scroll-to-zoom speed in Live "
+		"Preview. 1x matches the original feel; lower is gentler, higher "
+		"is more responsive.")),
+		0, 0);
+	sensitivityGrid->addWidget(m_mouseSensitivitySpinBox, 0, 1);
+
+	m_keyboardSensitivitySpinBox = new QDoubleSpinBox();
+	m_keyboardSensitivitySpinBox->setRange(0.25, 3.0);
+	m_keyboardSensitivitySpinBox->setSingleStep(0.25);
+	m_keyboardSensitivitySpinBox->setDecimals(2);
+	m_keyboardSensitivitySpinBox->setValue(m_keyboardSensitivity);
+	m_keyboardSensitivitySpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_keyboardSensitivitySpinBox);
+	connect(m_keyboardSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_keyboardSensitivity = value;
+		saveKeyboardSensitivity(value);
+	});
+	sensitivityGrid->addWidget(labelWithInfo(tr("Keyboard Sensitivity:"),
+		tr("Scales the Arrow keys (orbit) and +/- keys (zoom) step size in "
+		"Live Preview. 1x is a moderate per-press nudge; lower is finer, "
+		"higher moves further per press.")),
+		0, 2);
+	sensitivityGrid->addWidget(m_keyboardSensitivitySpinBox, 0, 3);
+
+	liveModeSettingsLayout->addRow(sensitivityRow);
+
+	layout->addWidget(m_liveModeSettingsGroupBox);
+#endif
 
 	// --- Advanced Parameters: manual width/height/samples/depth overrides ---
 	// Formerly its own "Advanced Settings" tab - folded in here since there
@@ -1359,75 +1453,6 @@ void MainWindow::createSettingsTab() {
 	outputLayout->addLayout(pathLayout);
 
 	layout->addWidget(outputGroup);
-
-#ifdef RT_GUI_HAVE_GPU
-	// --- Live Preview Settings: mouse/keyboard sensitivity - its own
-	// independent group rather than living inline in Render Settings, so
-	// it's as discoverable as Video's own settings are. No separate warning
-	// banner (unlike Video Generation Settings) - the header icon's own
-	// tooltip already states the "only takes effect when..." caveat, so a
-	// banner repeating the same sentence would be pure duplication;
-	// setGroupDimmed() (keyed on isLiveMode() instead of isVideoMode())
-	// still gives the same at-a-glance "inert right now" visual cue. Placed
-	// last, after every Image/Video-shared group (Video Generation Settings,
-	// Advanced Parameters, Camera Position, Output), rather than between
-	// Video Generation Settings and Advanced Parameters - Live Preview is
-	// the one fully independent mode, so its own settings read more
-	// coherently tucked at the end than splitting up the shared ones.
-	m_liveModeSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), basicTab);
-	styleGroupBox(m_liveModeSettingsGroupBox);
-	m_liveModeSettingsGroupBox->setInfoIcon(createInfoIcon(
-		tr("Tune how responsive click-drag-to-orbit, scroll-to-zoom, and "
-		"the Arrow/+/- keys feel in Live Preview. Only takes effect when "
-		"Output Mode above is \"Live Preview (interactive)\", but stays "
-		"editable in any mode.")));
-	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
-	QFormLayout *liveModeSettingsLayout = new QFormLayout(m_liveModeSettingsGroupBox);
-	liveModeSettingsLayout->setVerticalSpacing(10);
-	liveModeSettingsLayout->setHorizontalSpacing(10);
-	liveModeSettingsLayout->setContentsMargins(15, 22, 15, 12);
-
-	// One multiplier per INPUT DEVICE (not one per axis - azimuth/
-	// elevation/radius all scale together per device), loaded from/saved
-	// to QSettings immediately on change (loadSavedMouseSensitivity()/
-	// saveMouseSensitivity() etc., mainwindow_tabs_render.cpp) the same
-	// way theme/font/language already are.
-	m_mouseSensitivitySpinBox = new QDoubleSpinBox();
-	m_mouseSensitivitySpinBox->setRange(0.25, 3.0);
-	m_mouseSensitivitySpinBox->setSingleStep(0.25);
-	m_mouseSensitivitySpinBox->setDecimals(2);
-	m_mouseSensitivitySpinBox->setValue(m_mouseSensitivity);
-	m_mouseSensitivitySpinBox->setSuffix(tr("x"));
-	styleSpinBox(m_mouseSensitivitySpinBox);
-	connect(m_mouseSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
-		m_mouseSensitivity = value;
-		saveMouseSensitivity(value);
-	});
-	liveModeSettingsLayout->addRow(labelWithInfo(tr("Mouse Sensitivity:"),
-		tr("Scales click-drag-to-orbit and scroll-to-zoom speed in Live "
-		"Preview. 1x matches the original feel; lower is gentler, higher "
-		"is more responsive.")),
-		m_mouseSensitivitySpinBox);
-
-	m_keyboardSensitivitySpinBox = new QDoubleSpinBox();
-	m_keyboardSensitivitySpinBox->setRange(0.25, 3.0);
-	m_keyboardSensitivitySpinBox->setSingleStep(0.25);
-	m_keyboardSensitivitySpinBox->setDecimals(2);
-	m_keyboardSensitivitySpinBox->setValue(m_keyboardSensitivity);
-	m_keyboardSensitivitySpinBox->setSuffix(tr("x"));
-	styleSpinBox(m_keyboardSensitivitySpinBox);
-	connect(m_keyboardSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
-		m_keyboardSensitivity = value;
-		saveKeyboardSensitivity(value);
-	});
-	liveModeSettingsLayout->addRow(labelWithInfo(tr("Keyboard Sensitivity:"),
-		tr("Scales the Arrow keys (orbit) and +/- keys (zoom) step size in "
-		"Live Preview. 1x is a moderate per-press nudge; lower is finer, "
-		"higher moves further per press.")),
-		m_keyboardSensitivitySpinBox);
-
-	layout->addWidget(m_liveModeSettingsGroupBox);
-#endif
 
 	layout->addStretch();
 
