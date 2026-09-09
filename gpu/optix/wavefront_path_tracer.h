@@ -222,6 +222,15 @@ private:
     // context when !restirEnabled_, the same safe-no-op shape restirReservoirs
     // being null already has.
     GpuRestirTemporalContext buildRestirTemporalContext() const;
+    // ReSTIR DI spatial reuse - see wavefront_kernels_restir.cu's own header
+    // comment. Called once per render() call (after the whole sampleIdx
+    // loop), reading d_reservoirs_/d_restirNormal_/d_worldPos_ (this call's
+    // own) and writing into d_reservoirsHistory_ - which becomes the NEXT
+    // call's temporal-reuse source.
+    void launchRestirSpatialReuse(
+        const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+        const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+        const MaterialData* d_materials);
     void launchEvaluateMaterials(int numHits, int maxDepth, bool regularize, float maxComponentValue,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,

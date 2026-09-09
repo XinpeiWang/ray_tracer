@@ -70,6 +70,12 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	float3, float, GpuSkyDistribution, GpuPortalLight, float);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, const float*);
+// ---- forward declaration of the kernel from wavefront_kernels_restir.cu ----
+extern "C" __global__ void restir_spatial_reuse(
+	const GpuReservoir*, const float3*, const float4*, GpuReservoir*,
+	int, int, unsigned int,
+	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const DiskData*, const CylinderData*,
+	const MaterialData*, const TextureData*, const unsigned char*);
 
 // ---- plain C launcher wrappers ----
 
@@ -268,6 +274,35 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx);
+}
+
+extern "C" void wf_launch_restir_spatial_reuse(
+	const GpuReservoir* d_currentReservoirs,
+	const float3*       d_currentNormals,
+	const float4*       d_currentWorldPos,
+	GpuReservoir*       d_outputReservoirs,
+	int width, int height,
+	unsigned int frameSeed,
+	const SphereData*   d_spheres,
+	const QuadData*     d_quads,
+	const TriangleData* d_triangles,
+	const BilinearPatchData* d_bilinearPatches,
+	const DiskData*     d_disks,
+	const CylinderData* d_cylinders,
+	const MaterialData* d_materials,
+	const TextureData*  d_textures,
+	const unsigned char* d_texturePixels,
+	cudaStream_t stream)
+{
+	const int numPixels = width * height;
+	if (numPixels <= 0) return;
+	dim3 block(256);
+	dim3 grid((numPixels + 255) / 256);
+	restir_spatial_reuse<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_currentReservoirs, d_currentNormals, d_currentWorldPos, d_outputReservoirs,
+		width, height, frameSeed,
+		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders,
+		d_materials, d_textures, d_texturePixels);
 }
 
 extern "C" void wf_launch_accumulate_miss(

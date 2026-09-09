@@ -163,6 +163,31 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	GpuRestirTemporalContext     restirCtx,
 	cudaStream_t                 stream);
 
+// ReSTIR DI spatial reuse - see wavefront_kernels_restir.cu's own header
+// comment for why this is a separate, pixel-indexed kernel rather than
+// folded into wf_finish_material_scatter like temporal reuse is.
+extern "C" void wf_launch_restir_spatial_reuse(
+	const GpuReservoir* d_currentReservoirs,
+	const float3*       d_currentNormals,
+	const float4*       d_currentWorldPos,
+	GpuReservoir*       d_outputReservoirs,
+	int width, int height,
+	unsigned int frameSeed,
+	// Every primIdx a stored GpuLightSample carries was already validated
+	// against these SAME arrays at candidate-generation time (evaluate_
+	// materials*) - no separate count needed here, just the pointers, unlike
+	// the alias-table-drawing launches above which draw a FRESH index.
+	const SphereData*   d_spheres,
+	const QuadData*     d_quads,
+	const TriangleData* d_triangles,
+	const BilinearPatchData* d_bilinearPatches,
+	const DiskData*     d_disks,
+	const CylinderData* d_cylinders,
+	const MaterialData* d_materials,
+	const TextureData*  d_textures,
+	const unsigned char* d_texturePixels,
+	cudaStream_t stream);
+
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,

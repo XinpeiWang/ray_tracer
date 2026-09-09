@@ -53,6 +53,29 @@ constexpr int kRestirCandidateCount = 8;
 // fresh candidates the instant the scene/camera starts changing again.
 constexpr int kRestirTemporalMaxM = 20;
 
+// Spatial reuse's own M-clamp - restir.h's spatial_merge() reference uses
+// 500 for this same role (far looser than temporal's 20: a spatial neighbor
+// set is redrawn fresh every frame from a small, bounded ring of pixels, not
+// carried indefinitely like temporal history, so there is much less risk of
+// it permanently drowning out fresh information).
+constexpr int kRestirSpatialMaxM = 500;
+
+// Spatial reuse's neighbor sampling - kRestirSpatialNeighbors candidate
+// pixels drawn uniformly from a disk of this pixel radius (Bitterli 2020's
+// own "small screen-space radius" recommendation; RTXDI's public reference
+// implementation uses a similar single-digit neighbor count and a
+// few-dozen-pixel radius).
+constexpr int kRestirSpatialNeighbors = 4;
+constexpr float kRestirSpatialRadiusPixels = 20.0f;
+
+// Spatial reuse's neighbor-rejection threshold - reject a neighbor whose
+// shading normal has drifted more than ~25 degrees from this pixel's own
+// (cos(25 deg) ~= 0.9), the same normal-similarity heuristic real-time
+// denoisers/ReSTIR implementations use to avoid blending across a geometric
+// edge (two different surfaces that happen to land near each other on
+// screen).
+constexpr float kRestirSpatialNormalCosThreshold = 0.9f;
+
 // ===========================================================================
 // GpuLightSample / GpuReservoir - defined in optix_types.h, not here (see
 // that header's own comment on why: this file also carries __device__-only

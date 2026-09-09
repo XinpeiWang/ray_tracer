@@ -1213,6 +1213,24 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		dielectricMaterialStream_);
 }
 
+void WavefrontPathTracer::launchRestirSpatialReuse(
+		const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+		const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+		const MaterialData* d_materials) {
+	if (!restirEnabled_) return;
+	wf_launch_restir_spatial_reuse(
+		reinterpret_cast<const GpuReservoir*>(d_reservoirs_),
+		reinterpret_cast<const float3*>(d_restirNormal_),
+		reinterpret_cast<const float4*>(d_worldPos_),
+		reinterpret_cast<GpuReservoir*>(d_reservoirsHistory_),
+		restirImageWidth_, restirImageHeight_,
+		frameNumber_,
+		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders, d_materials,
+		reinterpret_cast<const TextureData*>(d_textures_),
+		reinterpret_cast<const unsigned char*>(d_texturePixels_),
+		stream_);
+}
+
 void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor,
 												GpuSkyDistribution skyDist, GpuPortalLight portalLight, float maxComponentValue) {
 	if (numMiss == 0) return;
@@ -1882,25 +1900,28 @@ bool WavefrontPathTracer::render(
 		++stats.samplesCompleted;
 	}
 
-	// ReSTIR temporal reuse's end-of-call history update - see
-	// d_reservoirsHistory_/d_worldPosHistory_'s own header comment
-	// (wavefront_path_tracer.h) for why this is a plain copy (not a swap):
-	// d_reservoirs_/d_worldPos_ are about to be fully overwritten on the next
-	// restirEnabled_ render() call regardless, so there is nothing to
-	// preserve in them across calls - only the history buffers need this
-	// call's final content. This is device-to-device (numPixels*sizeof(...)
-	// each), cheap relative to the render work just completed above.
+	// ReSTIR's end-of-call history update. d_reservoirs_/d_worldPos_ (this
+	// call's own, fully overwritten by the sampleIdx loop above) are about to
+	// be fully overwritten again on the next restirEnabled_ render() call
+	// regardless, so there is nothing to preserve in them across calls -
+	// only the history buffers (read at the START of the next call) need
+	// this call's final content.
 	//
-	// NOTE: this is RIS+temporal reuse only for now - d_reservoirs_ here
-	// holds the LAST internal sampleIdx's fresh-plus-temporal reservoirs,
-	// with no spatial (cross-pixel) reuse pass yet; that follow-on step will
-	// insert a kernel launch between the sampleIdx loop above and this copy,
-	// writing its own spatially-combined output into d_reservoirsHistory_
-	// instead of this direct copy.
+	// Spatial reuse runs here (once per render() call, over the whole
+	// per-pixel image - see wavefront_kernels_restir.cu's own header comment
+	// for why it can't run inline per-hit like temporal reuse does), writing
+	// its combined result DIRECTLY into d_reservoirsHistory_ - which becomes
+	// the NEXT call's temporal-reuse source, closing the loop between the two
+	// reuse passes across frames.
 	if (restirEnabled_) {
-		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_reservoirsHistory_),
-								   reinterpret_cast<void*>(d_reservoirs_),
-								   numPixels * sizeof(GpuReservoir), cudaMemcpyDeviceToDevice, stream_));
+		launchRestirSpatialReuse(
+			reinterpret_cast<const SphereData*>(d_spheres),
+			reinterpret_cast<const QuadData*>(d_quads),
+			reinterpret_cast<const TriangleData*>(d_triangles),
+			reinterpret_cast<const BilinearPatchData*>(d_bilinear_patches),
+			reinterpret_cast<const DiskData*>(d_disks),
+			reinterpret_cast<const CylinderData*>(d_cylinders),
+			reinterpret_cast<const MaterialData*>(d_materials));
 		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_worldPosHistory_),
 								   reinterpret_cast<void*>(d_worldPos_),
 								   numPixels * sizeof(float4), cudaMemcpyDeviceToDevice, stream_));
