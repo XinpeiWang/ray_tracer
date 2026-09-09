@@ -1343,7 +1343,8 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 
 	m_livePreviewLabel = new OrbitPreviewLabel(page);
 	m_livePreviewLabel->setMinimumSize(200, 200);
-	m_livePreviewLabel->setPlaceholderText(tr("Waiting for first frame..."));
+	m_livePreviewLabel->setPlaceholderText(
+		tr("Waiting for first frame...\n\nDrag to orbit, scroll or +/- to zoom, Arrow keys to orbit"));
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::orbitDragged, this, &MainWindow::onLivePreviewOrbitDragged);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::zoomRequested, this, &MainWindow::onLivePreviewZoomRequested);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::keyOrbitRequested, this, &MainWindow::onLivePreviewKeyOrbit);
@@ -1371,7 +1372,9 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 	page->setProperty("sceneId", sceneId);
 
 	m_livePreviewPage = page;
-	addPreviewSubTabPage(page, tr("Live Preview"), tr("Interactive GPU preview - drag to orbit, scroll to zoom"));
+	addPreviewSubTabPage(page, tr("Live Preview"),
+		tr("Interactive GPU preview - drag to orbit, scroll or +/- to zoom, "
+		"Arrow keys to orbit"));
 }
 
 bool MainWindow::isLivePreviewSubTabVisible() const {
@@ -1439,13 +1442,24 @@ void MainWindow::stopLivePreview() {
 	if (!m_livePreviewSession || !m_livePreviewRunning) return;
 	m_livePreviewSession->stop();
 	m_livePreviewRunning = false;
+	// Defensively ends an in-progress orbit drag the same way
+	// stopLivePreviewIfNavigatedAway() already does - Escape (m_actStop's
+	// shortcut) and the Stop button both route here directly, and neither
+	// waits for a mouseReleaseEvent that may never arrive if the mouse
+	// button is still held when Stop fires. Also covers closePreviewSubTab(),
+	// which calls this function before tearing the page down.
+	if (m_livePreviewLabel) m_livePreviewLabel->cancelDrag();
 	m_livePreviewStatusLabel->setText(tr("Stopped"));
 	updateTransportButtons();
 	updateActionStates();  // Escape (m_actStop) becomes disabled again
 }
 
 void MainWindow::onLivePreviewFrameReady(QImage image, int sampleCount) {
-	if (!m_livePreviewLabel) return;
+	// m_livePreviewLabel/m_livePreviewStatusLabel are only ever set together
+	// (addLivePreviewTab()) or cleared together (closePreviewSubTab()), but
+	// guarding both here rather than relying on that invariant costs
+	// nothing and doesn't assume a future edit can't decouple them.
+	if (!m_livePreviewLabel || !m_livePreviewStatusLabel) return;
 	m_livePreviewLabel->setPreviewPixmap(QPixmap::fromImage(image));
 	m_livePreviewStatusLabel->setText(tr("%1 samples").arg(sampleCount));
 }
@@ -1467,6 +1481,32 @@ void MainWindow::updateLivePreviewCameraFromOrbit() {
 	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z);
 }
 
+// Applies a rotation to m_orbit and clamps elevation short of the true
+// poles (+-90deg): AT a pole, azimuth becomes meaningless (every azimuth
+// points the same direction), which would make the very next step's
+// horizontal component do nothing/jump - matches the standard orbit-camera
+// convention (Blender, Maya, etc.). Shared by the mouse-drag and keyboard
+// arrow-key paths, which differ only in how they convert their own raw
+// input (pixel deltas vs. discrete steps) into radians before calling this.
+void MainWindow::applyOrbitDelta(double azimuthDelta, double elevationDelta) {
+	m_orbit.azimuth += azimuthDelta;
+	m_orbit.elevation += elevationDelta;
+	constexpr double kMaxElevation = 1.5533;  // 89 degrees in radians
+	if (m_orbit.elevation > kMaxElevation) m_orbit.elevation = kMaxElevation;
+	if (m_orbit.elevation < -kMaxElevation) m_orbit.elevation = -kMaxElevation;
+	updateLivePreviewCameraFromOrbit();
+}
+
+// Applies a zoom factor to m_orbit.radius and clamps it away from the
+// lookAt point, where the view direction becomes degenerate. Shared by the
+// mouse-wheel and keyboard +/- paths.
+void MainWindow::applyZoomDelta(double factor) {
+	m_orbit.radius *= factor;
+	constexpr double kMinRadius = 1.0;
+	if (m_orbit.radius < kMinRadius) m_orbit.radius = kMinRadius;
+	updateLivePreviewCameraFromOrbit();
+}
+
 void MainWindow::onLivePreviewOrbitDragged(int dxPixels, int dyPixels) {
 	if (!m_livePreviewRunning) return;
 	// Radians per pixel of drag - chosen so a full 180-degree turn takes
@@ -1474,36 +1514,23 @@ void MainWindow::onLivePreviewOrbitDragged(int dxPixels, int dyPixels) {
 	// pass's fixed preview resolution), a comfortable, not-too-twitchy feel
 	// for a panel this size.
 	constexpr double kRadiansPerPixel = 0.008;
-	m_orbit.azimuth += dxPixels * kRadiansPerPixel * m_mouseSensitivity;
 	// Screen Y grows downward, so dragging UP (dyPixels negative) should
-	// raise the camera (increase elevation) - hence the subtraction.
-	m_orbit.elevation -= dyPixels * kRadiansPerPixel * m_mouseSensitivity;
-	// Clamped short of the true poles (+-90deg): AT a pole, azimuth becomes
-	// meaningless (every azimuth points the same direction), which would
-	// make the very next drag step's horizontal component do nothing/jump -
-	// matches the standard orbit-camera convention (Blender, Maya, etc.).
-	constexpr double kMaxElevation = 1.5533;  // 89 degrees in radians
-	if (m_orbit.elevation > kMaxElevation) m_orbit.elevation = kMaxElevation;
-	if (m_orbit.elevation < -kMaxElevation) m_orbit.elevation = -kMaxElevation;
-	updateLivePreviewCameraFromOrbit();
+	// raise the camera (increase elevation) - hence the negation.
+	applyOrbitDelta(dxPixels * kRadiansPerPixel * m_mouseSensitivity,
+					 -dyPixels * kRadiansPerPixel * m_mouseSensitivity);
 }
 
 void MainWindow::onLivePreviewZoomRequested(int angleDeltaY) {
 	if (!m_livePreviewRunning) return;
 	// ~5.8% radius change per standard wheel notch (angleDelta of +-120) -
 	// a smooth, moderate zoom step; std::pow with a negative exponent
-	// (scrolling the other way) naturally inverts it.
+	// (scrolling the other way) naturally inverts it. Scaling the EXPONENT
+	// (not the base) by sensitivity keeps 1.0x exactly today's behavior and
+	// preserves "higher sensitivity = bigger effect, same direction" -
+	// scaling the base instead would need a second formula to keep values
+	// above/below 1.0 behaving symmetrically.
 	constexpr double kZoomFactorPerUnit = 0.9995;
-	// Scaling the EXPONENT (not the base) by sensitivity keeps 1.0x exactly
-	// today's behavior and preserves "higher sensitivity = bigger effect,
-	// same direction" - scaling the base instead would need a second
-	// formula to keep values above/below 1.0 behaving symmetrically.
-	m_orbit.radius *= std::pow(kZoomFactorPerUnit, static_cast<double>(angleDeltaY) * m_mouseSensitivity);
-	// Keeps the camera from crossing through (or orbiting absurdly close
-	// to) the lookAt point, where the view direction becomes degenerate.
-	constexpr double kMinRadius = 1.0;
-	if (m_orbit.radius < kMinRadius) m_orbit.radius = kMinRadius;
-	updateLivePreviewCameraFromOrbit();
+	applyZoomDelta(std::pow(kZoomFactorPerUnit, static_cast<double>(angleDeltaY) * m_mouseSensitivity));
 }
 
 // Keyboard equivalents of the two mouse handlers above - see
@@ -1517,13 +1544,8 @@ void MainWindow::onLivePreviewKeyOrbit(int azimuthSteps, int elevationSteps) {
 	// fires many times over one drag) - a single key press should be a
 	// noticeable, discrete nudge, not an imperceptible fraction of one.
 	constexpr double kRadiansPerKeyStep = 0.05;
-	m_orbit.azimuth += azimuthSteps * kRadiansPerKeyStep * m_keyboardSensitivity;
-	m_orbit.elevation += elevationSteps * kRadiansPerKeyStep * m_keyboardSensitivity;
-	// Same pole clamp as onLivePreviewOrbitDragged() - see its own comment.
-	constexpr double kMaxElevation = 1.5533;  // 89 degrees in radians
-	if (m_orbit.elevation > kMaxElevation) m_orbit.elevation = kMaxElevation;
-	if (m_orbit.elevation < -kMaxElevation) m_orbit.elevation = -kMaxElevation;
-	updateLivePreviewCameraFromOrbit();
+	applyOrbitDelta(azimuthSteps * kRadiansPerKeyStep * m_keyboardSensitivity,
+					 elevationSteps * kRadiansPerKeyStep * m_keyboardSensitivity);
 }
 
 void MainWindow::onLivePreviewKeyZoom(int radiusSteps) {
@@ -1533,11 +1555,7 @@ void MainWindow::onLivePreviewKeyZoom(int radiusSteps) {
 	// per press" intent above rather than the mouse wheel's much finer
 	// per-notch granularity.
 	constexpr double kZoomFactorPerKeyStep = 0.85;
-	m_orbit.radius *= std::pow(kZoomFactorPerKeyStep, radiusSteps * m_keyboardSensitivity);
-	// Same degenerate-radius clamp as onLivePreviewZoomRequested().
-	constexpr double kMinRadius = 1.0;
-	if (m_orbit.radius < kMinRadius) m_orbit.radius = kMinRadius;
-	updateLivePreviewCameraFromOrbit();
+	applyZoomDelta(std::pow(kZoomFactorPerKeyStep, radiusSteps * m_keyboardSensitivity));
 }
 
 // Live Preview mouse/keyboard sensitivity persistence - same

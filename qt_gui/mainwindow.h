@@ -302,6 +302,13 @@ private:
 	// impossible to tune independently.
 	void onLivePreviewKeyOrbit(int azimuthSteps, int elevationSteps);
 	void onLivePreviewKeyZoom(int radiusSteps);
+	// Shared by the mouse and keyboard orbit/zoom handlers above - each
+	// converts its own raw input into radians/a zoom factor, then calls one
+	// of these to mutate m_orbit, clamp it, and push the result to the
+	// running session. See their own comments (mainwindow_tabs_render.cpp)
+	// for the clamps' rationale.
+	void applyOrbitDelta(double azimuthDelta, double elevationDelta);
+	void applyZoomDelta(double factor);
 	// Converts m_orbit (spherical coordinates around currentLookAt()) back
 	// into an absolute camera position (camera_math::orbitToCartesian())
 	// and forwards it to the running RealtimePreviewSession - called after
@@ -706,8 +713,8 @@ private:
 	// OrbitCoordinates for the field meanings. This is the live-preview
 	// feature's OWN camera representation, deliberately decoupled from
 	// m_cameraPosX/Y/Z (those stay whatever they were before orbiting
-	// started - orbiting never writes back to them, see
-	// onLivePreviewOrbitDragged()'s own comment) - kept in sync with the
+	// started - applyOrbitDelta()/applyZoomDelta() only ever mutate m_orbit,
+	// never those spinboxes) - kept in sync with the
 	// ACTUAL camera position via camera_math::cartesianToOrbit(), called
 	// both when Live Preview starts and whenever onLivePreviewCameraChanged()
 	// moves the camera some other way.
@@ -1047,12 +1054,11 @@ private:
 	QLabel *m_liveModeOptionsWarningLabel = nullptr;
 	// Live Preview's own settings group (mouse/keyboard sensitivity) - its
 	// own independent QGroupBox rather than living inline in Render
-	// Settings, matching m_videoGroupBox's own precedent exactly: a
-	// warning banner (visible when NOT relevant) plus setGroupDimmed() on
-	// the group itself (dimmed when NOT relevant), both keyed on
-	// isLiveMode() here instead of isVideoMode().
+	// Settings. No separate warning banner like m_videoGroupBox's - its
+	// header icon's own tooltip already states the "only takes effect
+	// when..." caveat, so setGroupDimmed() (keyed on isLiveMode() instead
+	// of isVideoMode()) is the only relevance signal this group needs.
 	InfoGroupBox *m_liveModeSettingsGroupBox = nullptr;
-	QLabel *m_liveModeSettingsWarningLabel = nullptr;
 #endif
 
 	// Preview tab - each completed render gets its own closable sub-tab
