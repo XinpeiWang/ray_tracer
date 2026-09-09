@@ -313,6 +313,13 @@ Always run the full, unfiltered suite before pushing or in CI - the
 filtered runs are for fast local iteration only, not a replacement for
 full coverage.
 
+To run tests in parallel rather than just skip a slow suite in one
+process, use `scripts/run_tests_parallel.ps1 -Tier Fast` - it maintains
+its own complete GPU/thread-pool exclusion list (safe to shard
+aggressively) and self-verifies that list still partitions the suite
+exactly on every run, rather than a hand-written filter that can drift
+out of sync with the actual test suite over time.
+
 See [tests/TESTING_GUIDE.md](tests/TESTING_GUIDE.md) for the full guide including test structure and how to add new tests.
 
 ### Running (Development)

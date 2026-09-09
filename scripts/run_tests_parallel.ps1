@@ -132,9 +132,36 @@ $ErrorActionPreference = "Stop"
 # naming convention at all.
 $gpuAndOversubscribingFilter = "*GPU*:*Gpu*:*gpu*:WavefrontRenderTest.*:OptixValidationSweepTest.*:BdptFirstRender.*:SppmFirstSlice.*"
 
+# gtest's own --gtest_filter grammar is positivePatterns[-negativePatterns],
+# split on the FIRST '-' in the whole string, each side colon-separated.
+# Naively string-concatenating "$Filter-$ExcludePattern" breaks the moment
+# $Filter already contains a '-' of its own (i.e. the caller is already
+# using gtest's negative-filter syntax) - gtest splits on the FIRST dash,
+# not the one this code intends, gluing the caller's own last negative
+# pattern to this function's first exclusion entry into one pattern that
+# can never match a real "Suite.Test" name (no test name contains a
+# literal '-'). Confirmed empirically: that glued pattern always destroys
+# $gpuAndOversubscribingFilter's own first entry (*GPU*) specifically,
+# letting tests named only in that exact casing (e.g.
+# RenderIntegrationTest.BasicGPURender) leak back into what should have
+# been the exclusion. Splitting $Filter ourselves and re-joining the two
+# negative-pattern lists with ':' (rather than gluing strings) composes
+# correctly regardless of what $Filter already contains.
+function Add-GTestExclusion {
+	param([string]$Filter, [string]$ExcludePattern)
+	if (-not $Filter) { return "-$ExcludePattern" }
+	$dashIndex = $Filter.IndexOf('-')
+	if ($dashIndex -ge 0) {
+		$positive = $Filter.Substring(0, $dashIndex)
+		$existingNegative = $Filter.Substring($dashIndex + 1)
+		return "$positive-${existingNegative}:$ExcludePattern"
+	}
+	return "$Filter-$ExcludePattern"
+}
+
 switch ($Tier) {
 	"Fast" {
-		$Filter = if ($Filter) { "$Filter-$gpuAndOversubscribingFilter" } else { "-$gpuAndOversubscribingFilter" }
+		$Filter = Add-GTestExclusion -Filter $Filter -ExcludePattern $gpuAndOversubscribingFilter
 	}
 	"Slow" {
 		if ($Filter) {
@@ -157,6 +184,36 @@ if (-not (Test-Path $testsExe)) {
 	exit 1
 }
 $testsExe = (Resolve-Path $testsExe).Path
+
+# Automated guard against the naming-convention drift $gpuAndOversubscribingFilter
+# depends on (see -Tier's own doc comment): rather than trusting that
+# invariant forever on the strength of a prose warning, re-derive it fresh
+# on every -Tier Fast/Slow run by independently counting both sides via
+# --gtest_list_tests (cheap - it only enumerates, never runs a test) and
+# asserting they still sum to the unfiltered total. A future GPU test added
+# without Gpu/GPU/gpu in its name (or one of the two explicitly-listed
+# exceptions) silently escapes the exclusion pattern - this check catches
+# that the moment it happens instead of only showing up as unexplained
+# GPU contention in "Fast" runs later.
+function Get-GTestCount {
+	param([string]$Exe, [string]$Filter)
+	$argList = @("--gtest_list_tests")
+	if ($Filter) { $argList += "--gtest_filter=$Filter" }
+	$output = & $Exe @argList 2>$null
+	($output | Select-String -Pattern '^\s\s\S').Count
+}
+
+if ($Tier -ne "All") {
+	$totalCount = Get-GTestCount -Exe $testsExe -Filter ""
+	$fastCount = Get-GTestCount -Exe $testsExe -Filter "-$gpuAndOversubscribingFilter"
+	$slowCount = Get-GTestCount -Exe $testsExe -Filter $gpuAndOversubscribingFilter
+	if ($fastCount + $slowCount -ne $totalCount) {
+		Write-Host "[FAIL] Tier partition check failed: Fast ($fastCount) + Slow ($slowCount) = $($fastCount + $slowCount), expected $totalCount total tests." -ForegroundColor Red
+		Write-Host "`$gpuAndOversubscribingFilter no longer exactly partitions the suite - most likely a new GPU test's name doesn't follow the Gpu/GPU/gpu convention (see -Tier's own doc comment above) and needs to be added to it explicitly. Fix that before trusting -Tier Fast/Slow results." -ForegroundColor Red
+		exit 1
+	}
+	Write-Host "[OK] Tier partition verified: Fast ($fastCount) + Slow ($slowCount) = $totalCount total tests" -ForegroundColor Green
+}
 
 Write-Host "Running $Shards shards of $testsExe" -ForegroundColor Cyan
 if ($Filter) { Write-Host "Filter: $Filter" -ForegroundColor Cyan }

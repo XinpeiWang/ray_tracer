@@ -78,7 +78,9 @@ ray_tracer_tests.exe --gtest_filter=CameraTest.*
 # Multiple patterns
 ray_tracer_tests.exe --gtest_filter=CameraTest.*:MathTest.*
 
-# Exclude a pattern
+# Exclude a pattern (illustrative - not the complete GPU/slow exclusion
+# list; see scripts/run_tests_parallel.ps1's own $gpuAndOversubscribingFilter
+# for the maintained, complete one used by its -Tier Fast/Slow)
 ray_tracer_tests.exe --gtest_filter=-*GPU*
 
 # List every test without running (the authoritative current list)
@@ -105,6 +107,12 @@ ray_tracer_tests.exe --gtest_filter=-MaterialsAndVolumes/*
 cuts it to ~72s. See the main [README.md](../README.md)'s "Quick dev-loop
 filter" section for a more aggressive variant. Always run the full,
 unfiltered suite before pushing.
+
+To actually run tests in parallel (not just skip a slow suite in one
+process), use `scripts/run_tests_parallel.ps1 -Tier Fast` instead of a
+hand-written filter - it excludes every GPU-touching and thread-pool-
+oversubscribing test (safe to shard aggressively) and verifies its own
+exclusion list still partitions the suite exactly on every run.
 
 ## GPU Tests
 
