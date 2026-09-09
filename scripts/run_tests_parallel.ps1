@@ -24,13 +24,13 @@
 	script silently lost ~150 tests to the second problem and produced
 	spurious OptiX/render failures from the first.
 
-	PERFORMANCE CAVEAT - read before assuming this makes the full suite
-	faster: it measurably does NOT, for the full suite as it stands today.
-	Measured on this project's own machine: 2 shards of ~half the suite
-	each took ~230s wall-clock, slower than the ~215s a single serial
-	process takes for the WHOLE suite. Root causes: (1) many render/
-	integration tests already spawn their own worker-thread pool sized to
-	every logical core (determine_render_thread_count(), src/
+	PERFORMANCE CAVEAT - read before assuming -Tier All makes the full
+	suite faster: it measurably does NOT, for the full suite as it stands
+	today. Measured on this project's own machine: 2 shards of ~half the
+	suite each took ~230s wall-clock, slower than the ~215s a single
+	serial process takes for the WHOLE suite. Root causes: (1) many
+	render/integration tests already spawn their own worker-thread pool
+	sized to every logical core (determine_render_thread_count(), src/
 	TheRestOfYourLife/thread_count.h) - this script caps each shard's pool
 	via that file's own RAY_TRACER_THREADS override to reduce (not
 	eliminate) oversubscription; (2) a handful of very expensive GPU-
@@ -38,11 +38,13 @@
 	contend for the ONE shared physical GPU regardless of CPU thread caps,
 	and aren't evenly distributed by gtest's count-based (not time-based)
 	sharding, so wall-clock ends up bounded by whichever shard drew the
-	unlucky slow tests rather than shrinking with shard count. This script
-	is still useful for sharding a FAST, GPU-free subset via -Filter during
-	dev iteration (no shared-GPU contention there), and its two correctness
-	fixes above are real and worth keeping regardless - just don't reach
-	for -Shards on the full suite expecting a full-suite speedup.
+	unlucky slow tests rather than shrinking with shard count.
+
+	Use -Tier Fast instead: it excludes every GPU-touching and thread-
+	pool-oversubscribing test (see -Tier below), so none of the two root
+	causes above apply, and sharding that subset actually does speed
+	things up. Its two correctness fixes (per-shard scratch cwd, output
+	isolation) are real and worth keeping regardless of tier.
 
 	Requires the tests project to already be built (see build_all.ps1 /
 	setup_env.bat) - this script only RUNS the existing exe, it doesn't
@@ -50,14 +52,57 @@
 .PARAMETER Configuration
 	Build configuration whose test exe to run: Debug or Release (default: Release)
 .PARAMETER Shards
-	Number of parallel shards (default: logical processor count)
+	Number of parallel shards (default: logical processor count). Forced
+	to 1 when -Tier Slow, regardless of what's passed here - see -Tier.
 .PARAMETER Filter
-	Optional --gtest_filter pattern, applied identically within every shard
-	(each shard still only runs its own slice of whatever matches)
+	Optional --gtest_filter pattern. Composes with -Tier Fast (both must
+	match - gtest's positive-pattern-then-negative-pattern grammar allows
+	this exactly). Does NOT compose with -Tier Slow: gtest can't intersect
+	two independent positive-pattern lists in one filter string, so with
+	-Tier Slow this is ignored (with a warning) if also given - pass the
+	full desired pattern directly via -Filter with -Tier All instead.
+.PARAMETER Tier
+	Which slice of the suite to run (default: All, today's original
+	unfiltered behavior - existing invocations are unaffected):
+	  - Fast: excludes every GPU-touching test (matched by the *Gpu*/
+	    *GPU*/*gpu* naming convention this codebase's test suites follow,
+	    plus two suites that don't follow it - WavefrontRenderTest,
+	    OptixValidationSweepTest) and the two known thread-pool-
+	    oversubscribing suites (BdptFirstRender, SppmFirstSlice). Safe to
+	    shard aggressively: no GPU contention, no thread-pool
+	    oversubscription beyond this script's own per-shard cap.
+	  - Slow: only the tests Fast excludes (423 of the suite's 4113, most
+	    of them individual instances of a few parameterized per-scene
+	    suites like PbrtExampleSceneTest/CpuGpuLightParityTest, not 423
+	    distinct hand-written tests - confirmed to exactly partition the
+	    full suite with Fast's 3690, nothing double-counted or missing).
+	    Forces -Shards 1 -
+	    these tests contend for the one physical GPU or spawn full-core
+	    pools themselves, so sharding them provides no benefit and only
+	    reintroduces the exact oversubscription/contention -Tier Fast
+	    exists to avoid.
+	  - All: no tier filter (original behavior).
+	NAMING-CONVENTION CAVEAT: the GPU exclusion pattern relies on GPU
+	tests naming themselves with Gpu/GPU/gpu somewhere in the suite OR
+	test name (confirmed to work even for suites that mix CPU and GPU
+	tests, e.g. BenchmarkTest.SmallGPURender vs .SmallCPURender - gtest
+	filters match the full "Suite.Test" string). A new GPU test added
+	without that in its name will silently land in the Fast tier instead
+	of being excluded - if you add a GPU test with an unconventional name
+	(like the two already special-cased above), add it to
+	$gpuAndOversubscribingFilter explicitly. The failure mode runs the
+	other way too, harmlessly: a handful of pure-CPU tests that merely
+	mention "Gpu" in their own name (e.g. FindSceneTest.
+	CornellBoxIsGpuCompatible, checking a scene's gpu_compatible metadata
+	flag - never touches the GPU) get needlessly pulled into the Slow
+	tier along with the real GPU tests. Confirmed safe (they just lose
+	the chance to be sharded, nothing runs incorrectly), not worth a more
+	precise pattern for the handful of tests this affects.
 .EXAMPLE
 	.\run_tests_parallel.ps1
-	.\run_tests_parallel.ps1 -Shards 8
-	.\run_tests_parallel.ps1 -Filter "CameraMathTest.*"
+	.\run_tests_parallel.ps1 -Tier Fast -Shards 8
+	.\run_tests_parallel.ps1 -Tier Slow
+	.\run_tests_parallel.ps1 -Tier Fast -Filter "CameraMathTest.*"
 #>
 
 param(
@@ -68,6 +113,9 @@ param(
 
 	[string]$Filter = "",
 
+	[ValidateSet("All", "Fast", "Slow")]
+	[string]$Tier = "All",
+
 	# Generous default (the full serial suite alone takes ~215s) - exists so
 	# one hung shard can't block the script forever, not to tightly bound
 	# normal runs.
@@ -75,6 +123,30 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# See -Tier's own parameter comment above for the full rationale and the
+# naming-convention caveat. Verified suite-by-suite (not assumed) that
+# gtest's *Gpu*/*GPU*/*gpu* wildcard correctly separates every GPU test
+# from its CPU siblings even within suites that mix both - the two
+# entries after it are the only suites found that don't follow the
+# naming convention at all.
+$gpuAndOversubscribingFilter = "*GPU*:*Gpu*:*gpu*:WavefrontRenderTest.*:OptixValidationSweepTest.*:BdptFirstRender.*:SppmFirstSlice.*"
+
+switch ($Tier) {
+	"Fast" {
+		$Filter = if ($Filter) { "$Filter-$gpuAndOversubscribingFilter" } else { "-$gpuAndOversubscribingFilter" }
+	}
+	"Slow" {
+		if ($Filter) {
+			Write-Host "[WARN] -Filter is ignored with -Tier Slow (gtest can't intersect two positive-pattern lists) - pass the full pattern via -Filter with -Tier All instead." -ForegroundColor Yellow
+		}
+		$Filter = $gpuAndOversubscribingFilter
+		if ($Shards -ne 1) {
+			Write-Host "[INFO] -Tier Slow forces -Shards 1 (these tests contend for the one GPU / spawn full-core pools - sharding them helps nothing)." -ForegroundColor Cyan
+			$Shards = 1
+		}
+	}
+}
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
