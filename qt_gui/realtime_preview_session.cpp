@@ -102,9 +102,24 @@ void RealtimePreviewWorker::setCamera(double camX, double camY, double camZ, dou
 
 void RealtimePreviewWorker::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {
 	if (!m_running) return;
+	const bool wasEffectivelyShowingLatest = m_denoise && m_denoiseShowLatest;
+	const bool willEffectivelyShowLatest = denoise && denoiseShowLatest;
 	m_denoise = denoise;
 	m_denoiseBlend = denoiseBlend;
 	m_denoiseShowLatest = denoiseShowLatest;
+	if (wasEffectivelyShowingLatest != willEffectivelyShowLatest) {
+		// Unlike a plain denoise-enabled/blend change (see this method's own
+		// header comment), flipping the EFFECTIVE show-latest state changes
+		// what m_accum structurally holds - a single frame vs. a genuine
+		// running-mean average - so resuming the running mean without a
+		// reset would give brand-new real samples almost no weight against
+		// whatever single frame is already sitting in m_accum, weighted by
+		// however large m_sampleCount had already grown. Reset immediately
+		// (this already runs on the worker thread, so unlike setCamera()'s
+		// deferred m_cameraDirty flag there's no need to wait for the next
+		// renderLoop() iteration).
+		resetAccumulation();
+	}
 }
 
 void RealtimePreviewWorker::renderLoop(int epoch) {
@@ -148,12 +163,15 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	}
 
 	if (ok) {
-		if (m_denoiseShowLatest) {
+		// m_denoise is part of this condition (not m_denoiseShowLatest
+		// alone): without denoise, "show the latest raw single-sample frame
+		// instead of accumulating" would mean Live Preview never converges
+		// at all - see setDenoise()'s own comment on why toggling either
+		// side of this condition resets accumulation.
+		if (m_denoise && m_denoiseShowLatest) {
 			// Skip accumulation entirely - each already-denoised frame is
 			// clean enough on its own that averaging it with older, possibly
 			// differently-denoised frames would only add lag, not quality.
-			// See setDenoise()'s own comment on why toggling this doesn't
-			// also reset m_sampleCount/m_accum.
 			m_accum = m_tmp;
 		} else {
 			// Running mean: accum += (sample - accum) / (n+1). Both buffers

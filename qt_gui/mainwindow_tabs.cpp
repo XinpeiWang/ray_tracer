@@ -1127,6 +1127,10 @@ void MainWindow::createSettingsTab() {
 
 	m_liveDenoiseCheck = new QCheckBox(tr("OptiX AI Denoiser"));
 	m_liveDenoiseCheck->setChecked(m_liveDenoiseEnabled);
+	m_liveDenoiseCheck->setToolTip(
+		tr("Run the OptiX AI denoiser on every Live Preview frame - the same "
+		"one the Render Options tab's own Denoiser checkbox runs for "
+		"finished renders."));
 	styleCheckBox(m_liveDenoiseCheck);
 
 	m_liveDenoiseBlendSpin = new QDoubleSpinBox();
@@ -1135,6 +1139,10 @@ void MainWindow::createSettingsTab() {
 	m_liveDenoiseBlendSpin->setSingleStep(0.05);
 	m_liveDenoiseBlendSpin->setValue(m_liveDenoiseBlend);
 	m_liveDenoiseBlendSpin->setEnabled(m_liveDenoiseEnabled);
+	m_liveDenoiseBlendSpin->setToolTip(
+		tr("Blend between the noisy input and the fully denoised output\n"
+		"(0.0 = 100% denoised, 1.0 = original noisy image), same meaning as "
+		"the Render Options tab's own blend control."));
 	styleSpinBox(m_liveDenoiseBlendSpin);
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseBlendSpin, &QDoubleSpinBox::setEnabled);
 
@@ -1145,25 +1153,23 @@ void MainWindow::createSettingsTab() {
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseShowLatestCheck, &QCheckBox::setEnabled);
 
 	// All three push straight to the running session (if any) as well as
-	// QSettings - see RealtimePreviewSession::setDenoise()'s own comment on
-	// why this doesn't reset accumulation the way setCamera() does.
+	// QSettings, via the shared pushLiveDenoiseToSession() helper - see
+	// RealtimePreviewSession::setDenoise()'s own comment on when this does
+	// and doesn't reset accumulation.
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, this, [this](bool checked) {
 		m_liveDenoiseEnabled = checked;
 		saveLiveDenoiseEnabled(checked);
-		if (m_livePreviewSession)
-			m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+		pushLiveDenoiseToSession();
 	});
 	connect(m_liveDenoiseBlendSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_liveDenoiseBlend = value;
 		saveLiveDenoiseBlend(value);
-		if (m_livePreviewSession)
-			m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+		pushLiveDenoiseToSession();
 	});
 	connect(m_liveDenoiseShowLatestCheck, &QCheckBox::toggled, this, [this](bool checked) {
 		m_liveDenoiseShowLatest = checked;
 		saveLiveDenoiseShowLatest(checked);
-		if (m_livePreviewSession)
-			m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+		pushLiveDenoiseToSession();
 	});
 
 	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseCheck,
@@ -1175,7 +1181,13 @@ void MainWindow::createSettingsTab() {
 		"between the noisy original and the fully denoised result, same as "
 		"the Render Options tab's own blend control.")));
 	liveDenoiseRowLayout->addWidget(m_liveDenoiseBlendSpin);
-	liveDenoiseRowLayout->addWidget(m_liveDenoiseShowLatestCheck);
+	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseShowLatestCheck,
+		tr("Displays each denoised frame as-is instead of averaging it into "
+		"a running mean with earlier frames. Trades away the extra quality "
+		"accumulating more samples would eventually reach, in exchange for "
+		"a view that always reflects only the most recent frame - useful "
+		"while flying around with WASD, where older accumulated frames are "
+		"from a camera position you've already left.")));
 	liveDenoiseRowLayout->addStretch(1);
 
 	liveModeSettingsLayout->addRow(liveDenoiseRow);

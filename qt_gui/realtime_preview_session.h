@@ -69,14 +69,20 @@ public slots:
 
 	// Toggles the OptiX AI denoiser (same one --denoise/--denoise-blend use
 	// for batch/video rendering, see optix_interface.h's own comment) for
-	// every subsequent frame. Unlike setCamera(), this does NOT reset
-	// accumulation - toggling denoise or the accumulation mode is a
-	// post-process decision on the same converging signal, not a "this is a
-	// different image now" event, so a momentary blend of old/new-style
-	// samples in m_accum is an acceptable, self-correcting cosmetic blip.
-	// denoiseShowLatest, if true, replaces the running-mean accumulation
-	// with "always display the latest frame" - only meaningful alongside
-	// denoise=true (see renderLoop()'s own comment). No-op if not running.
+	// every subsequent frame. A plain denoise-enabled/blend change does NOT
+	// reset accumulation - that's a post-process decision on the same
+	// converging signal, not a "this is a different image now" event, so a
+	// momentary blend of old/new-style samples in m_accum is an acceptable,
+	// self-correcting cosmetic blip.
+	// denoiseShowLatest, when EFFECTIVE (denoise && denoiseShowLatest both
+	// true - see renderLoop()'s own comment), replaces the running-mean
+	// accumulation with "always display the latest frame" instead - unlike
+	// a plain denoise/blend change, THIS changes what m_accum structurally
+	// IS (a single frame vs. a genuine multi-sample average), so a change
+	// to the EFFECTIVE flag (denoise && denoiseShowLatest) - from either
+	// side flipping - does reset accumulation, the same "different image
+	// now" treatment setCamera() gives an actual camera move. No-op if not
+	// running.
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 
 signals:
@@ -110,6 +116,10 @@ private:
 	// renderLoop() folds m_tmp into m_accum below - it never crosses the
 	// DLL boundary (the GPU side only needs to know whether/how much to
 	// denoise, not what the Qt side does with the result afterward).
+	// renderLoop() and setDenoise() both gate on `m_denoise &&
+	// m_denoiseShowLatest` (never m_denoiseShowLatest alone), so leaving
+	// m_denoiseShowLatest true while m_denoise is false is inert rather
+	// than stuck showing raw, never-converging noise.
 	bool m_denoise = false;
 	double m_denoiseBlend = 0.0;
 	bool m_denoiseShowLatest = false;

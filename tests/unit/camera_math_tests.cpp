@@ -196,8 +196,11 @@ TEST(CameraMathTest, NormalizedOfZeroVectorFallsBackToZeroNotNaN) {
 	expectVec3Near(n, Vec3{0.0, 0.0, 0.0});
 }
 
-// Standard right-handed basis check: X cross Y = Z, matching the forward/
-// right/up basis applyTranslateDelta() builds (forward x worldUp = right).
+// Standard right-handed basis check: X cross Y = Z. cross() itself is still
+// used elsewhere (e.g. deriving screen-space basis vectors); applyTranslateDelta()'s
+// own right vector no longer goes through it directly - it derives the same
+// direction straight from m_orbit.azimuth instead, since cross(forward,
+// worldUp) degenerates to zero when looking straight up/down.
 TEST(CameraMathTest, CrossProductOfUnitAxesMatchesRightHandRule) {
 	const Vec3 xAxis{1.0, 0.0, 0.0};
 	const Vec3 yAxis{0.0, 1.0, 0.0};

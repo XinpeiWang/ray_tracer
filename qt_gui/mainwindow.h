@@ -329,6 +329,11 @@ private:
 	// and forwards both the camera and look-at point to the running
 	// RealtimePreviewSession - called after every orbit/zoom/translate step.
 	void updateLivePreviewCameraFromOrbit();
+	// Pushes m_liveDenoiseEnabled/m_liveDenoiseBlend/m_liveDenoiseShowLatest
+	// to the running m_livePreviewSession (no-op if none is running) - shared
+	// by all three denoise/blend/show-latest control handlers
+	// (mainwindow_tabs.cpp) so they don't each repeat the same call.
+	void pushLiveDenoiseToSession();
 #endif
 
 	// ------------------------------------------------------------------

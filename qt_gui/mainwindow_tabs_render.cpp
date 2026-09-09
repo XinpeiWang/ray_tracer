@@ -1469,7 +1469,15 @@ void MainWindow::onLivePreviewFrameReady(QImage image, int sampleCount) {
 	// nothing and doesn't assume a future edit can't decouple them.
 	if (!m_livePreviewLabel || !m_livePreviewStatusLabel) return;
 	m_livePreviewLabel->setPreviewPixmap(QPixmap::fromImage(image));
-	m_livePreviewStatusLabel->setText(tr("%1 samples").arg(sampleCount));
+	// While effectively showing the latest frame instead of accumulating
+	// (RealtimePreviewWorker::renderLoop()'s own gating condition), sampleCount
+	// is really just a frame counter - no real accumulation is happening, so
+	// "N samples" would misleadingly imply ongoing convergence.
+	if (m_liveDenoiseEnabled && m_liveDenoiseShowLatest) {
+		m_livePreviewStatusLabel->setText(tr("Live (denoised, not accumulating)"));
+	} else {
+		m_livePreviewStatusLabel->setText(tr("%1 samples").arg(sampleCount));
+	}
 }
 
 void MainWindow::onLivePreviewStatus(QString text) {
@@ -1489,6 +1497,11 @@ void MainWindow::updateLivePreviewCameraFromOrbit() {
 	const camera_math::Vec3 camera = camera_math::orbitToCartesian(m_orbit, m_livePreviewLookAt);
 	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z,
 									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
+}
+
+void MainWindow::pushLiveDenoiseToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
 }
 
 // Applies a rotation to m_orbit and clamps elevation short of the true
