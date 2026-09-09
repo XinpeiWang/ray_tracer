@@ -66,6 +66,11 @@ extern "C" void wf_launch_evaluate_materials(
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	float4*                      d_worldPosBuffer,
+	// ReSTIR DI (Live Preview only) current-frame reservoir buffer, indexed
+	// by pixelIndex - see wf_finish_material_scatter's own restirReservoirs
+	// parameter comment (wavefront_device_helpers.h). nullptr for batch/
+	// offline rendering, exactly like d_worldPosBuffer's own opt-in pattern.
+	GpuReservoir*                d_restirReservoirs,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -98,6 +103,11 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	float4*                      d_worldPosBuffer,
+	// ReSTIR DI (Live Preview only) current-frame reservoir buffer, indexed
+	// by pixelIndex - see wf_finish_material_scatter's own restirReservoirs
+	// parameter comment (wavefront_device_helpers.h). nullptr for batch/
+	// offline rendering, exactly like d_worldPosBuffer's own opt-in pattern.
+	GpuReservoir*                d_restirReservoirs,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -131,6 +141,11 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
 	float4*                      d_worldPosBuffer,
+	// ReSTIR DI (Live Preview only) current-frame reservoir buffer, indexed
+	// by pixelIndex - see wf_finish_material_scatter's own restirReservoirs
+	// parameter comment (wavefront_device_helpers.h). nullptr for batch/
+	// offline rendering, exactly like d_worldPosBuffer's own opt-in pattern.
+	GpuReservoir*                d_restirReservoirs,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_accumulate_miss(

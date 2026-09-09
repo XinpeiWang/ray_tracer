@@ -120,6 +120,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setDenoiseEnabled(denoiseEnabled_);
 		wavefrontTracer_->setDenoiseBlend(denoiseBlend_);
 		wavefrontTracer_->setWorldPosOutputEnabled(worldPosOutputEnabled_);
+		wavefrontTracer_->setRestirEnabled(restirEnabled_);
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);

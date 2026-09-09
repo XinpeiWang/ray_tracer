@@ -1096,6 +1096,12 @@ __device__ __forceinline__ float3 wf_sample_cylinder_light(const CylinderData& c
 	return dir;
 }
 
+// ReSTIR DI (Live Preview only) GPU-native reservoir primitives - included
+// here, after wf_dc_area_disk()/wf_dc_area_cylinder() and every wf_sample_*_
+// light() function above, since wf_reevaluate_light_geometry() (defined
+// there) calls them. See that header's own comment for the full picture.
+#include "wavefront_restir_helpers.h"
+
 // Equal-area sphere->square mapping for the goniometric light's image
 // lookup. Duplicated from optix_device_helpers.h's dev_equal_area_sphere_to_square
 // (itself a local copy of src/shared/sampling_extra.h's EqualAreaSphereToSquare -
@@ -1596,7 +1602,18 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// RayWorkItem::time's own comment (wavefront_types.h). Carried unchanged
 	// from the incoming hit into every ShadowRayWorkItem/RayWorkItem this
 	// function pushes below, exactly like filterWeight/etaScale above.
-	float time)
+	float time,
+	// ReSTIR DI (Live Preview only) current-frame reservoir buffer, indexed
+	// by pixelIndex - non-null only when the caller's kernel launch was
+	// built with real-time preview's reservoir buffer allocated (see
+	// WavefrontPathTracer::setRestirEnabled()). Defaulted to nullptr so the
+	// existing batch/offline call sites (evaluate_materials/_simple/
+	// _dielectric) need no edit to keep their current single-draw NEE
+	// behavior exactly as before - only the real-time-preview launch path
+	// ever passes a real pointer. depth>0 (indirect-bounce NEE) always takes
+	// the single-draw path too, even with a non-null buffer - ReSTIR DI is a
+	// primary-hit-only technique (see this function's own RIS block below).
+	GpuReservoir* restirReservoirs = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1780,6 +1797,106 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// NEE: direct-light shadow ray (non-specular materials only)
 	// -------------------------------------------------------------------------
 	if (!is_specular) {
+	// ReSTIR DI (Live Preview only, restirReservoirs non-null - see this
+	// function's own parameter comment) replaces the single alias-table draw
+	// below with weighted resampling over kRestirCandidateCount candidates,
+	// for primary hits only (depth==0 - Bitterli 2020's canonical scope; an
+	// indirect bounce's NEE keeps the classic single-draw path even under
+	// real-time preview). haveSample/to_light/max_dist/light_pdf/nee_norm are
+	// filled by EITHER this block or the classic single-draw block just below
+	// it, then consumed identically by the shared BSDF-evaluation/shadow-ray
+	// code that follows - light_pdf remains the drawn/winning candidate's own
+	// selection_pdf*geom_pdf (used only for the MIS weight against BSDF
+	// sampling), while nee_norm is what actually normalizes the radiance
+	// contribution: 1/light_pdf classically, or the reservoir's own unbiased
+	// contribution weight W under ReSTIR (W already IS an unbiased estimator
+	// of that reciprocal - see restir_reservoir_add's own comment) - so the
+	// Ld formula below multiplies by nee_norm instead of dividing by light_pdf.
+	bool   haveSample = false;
+	float3 to_light = make_float3(0.0f, 0.0f, 0.0f);
+	float  max_dist = 0.0f;
+	float  light_pdf = 0.0f;
+	float  nee_norm = 0.0f;
+	SS light_emission_spec(0.f);
+
+	// A light's RGB colour is an ILLUMINANT (pbrt-v4 RGBIlluminantSpectrum:
+	// scale * rsp(lambda) * D65(lambda)), not a bare RGBUnboundedSpectrum
+	// (scale * rsp(lambda)) -- without the D65 factor, a grey light
+	// uplifts to a flat/equal-energy spectrum (chromaticity (0.333,
+	// 0.333)) instead of D65-white (0.3127,0.3290), which then
+	// reconstructs as a non-neutral RGB through wf_xyz_to_linear_rgb's
+	// D65-targeted matrix (R inflated ~20%, G/B suppressed ~5-11%) -- see
+	// dev_sample_d65()'s own comment in spectral_device.h for the full
+	// derivation.
+	auto liftEmission = [&](float3 le) -> SS {
+		float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
+							  : (le.y > le.z ? le.y : le.z);
+		float sc = 2.f * m;
+		if (sc <= 0.f) return SS(0.f);
+		float c0, c1, c2;
+		dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
+		RGBSigmoidPolynomial poly(c0, c1, c2);
+		SS s(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			s[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
+		return s;
+	};
+
+	const bool useRestir = (restirReservoirs != nullptr && depth == 0);
+	if (useRestir) {
+		GpuReservoir res;
+		for (int i = 0; i < kRestirCandidateCount; ++i) {
+			GpuLightSample cand; float3 candDir; float candMaxDist = 0.0f, candPdf = 0.0f; float3 candRaw;
+			if (!wf_generate_restir_candidate(hit_point, seed, time,
+					spheres, quads, triangles, bilinearPatches, disks, cylinders,
+					materials, lightIndices, lightKinds, aliasTable, numLights,
+					textures, texturePixels, cand, candDir, candMaxDist, candPdf, candRaw))
+				break;  // no lights in the scene at all - nothing to resample
+			if (candPdf <= 1e-9f) continue;
+			// Resampling-only target proxy: a plain Lambertian-cosine-weighted
+			// luminance-like magnitude of the (already twoSided-gated) raw
+			// emission - NOT the exact per-material BSDF value (that's only
+			// evaluated once, below, for the FINAL winning sample). An
+			// approximate p_hat still yields an unbiased ReSTIR estimator (it
+			// only changes variance, not correctness - see restir_reservoir_
+			// ucw's own comment and wavefront_restir_helpers.h's header
+			// comment); evaluating the real per-material BSDF (glossy
+			// evalGlossyF included) for all kRestirCandidateCount draws every
+			// pixel every frame would be far more expensive for a resampling
+			// decision that only needs a reasonable importance proxy.
+			float cosProxy = fmaxf(dot(candDir, normal), 0.0f);
+			float pHat = ((candRaw.x + candRaw.y + candRaw.z) * (1.0f / 3.0f)) * cosProxy;
+			float risWeight = pHat / candPdf;
+			restir_reservoir_add(res, cand, risWeight, 1, pHat, wf_rand(seed));
+		}
+		restir_finalize(res);
+		// Written unconditionally (even an invalid/empty reservoir) - this is
+		// the CURRENT frame's own buffer, which next frame's temporal reuse
+		// reads as "previous frame's reservoir" and must reflect this pixel's
+		// real outcome (including "no light reached this pixel this frame"),
+		// not be left stale from a re-used allocation.
+		restirReservoirs[pixelIndex] = res;
+
+		if (res.valid() && res.W > 0.0f) {
+			float geomPdfAtHit = 0.0f;
+			// Re-derive from hit_point - the SAME origin the winning
+			// candidate was just generated from above, so this recompute is
+			// exact, not an approximation (see wf_reevaluate_light_geometry's
+			// own header comment on why no search/Jacobian is needed when
+			// the query origin is unchanged).
+			if (wf_reevaluate_light_geometry(res.sample, hit_point, spheres, quads, triangles,
+					bilinearPatches, disks, cylinders, to_light, max_dist, geomPdfAtHit) &&
+				geomPdfAtHit > 0.0f) {
+				const float selection_pdf = aliasTable[res.sample.lightIdx].pdf;
+				light_pdf = selection_pdf * geomPdfAtHit;
+				float3 raw = wf_light_raw_emission(res.sample, to_light, materials, spheres, quads, triangles,
+													bilinearPatches, disks, cylinders, textures, texturePixels);
+				light_emission_spec = liftEmission(raw);
+				nee_norm = res.W;
+				haveSample = true;
+			}
+		}
+	} else
 	if (numLights > 0 && aliasTable) {
 		// Pick a light via alias table
 		int   slot = int(wf_rand(seed) * float(numLights));
@@ -1791,32 +1908,11 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		int            prim_idx  = lightIndices[light_idx];
 		GpuLightKind   kind      = lightKinds[light_idx];
 
-		float  geom_pdf = 0.0f, max_dist = 0.0f;
-		float3 to_light;
-		SS light_emission_spec(0.f);
+		float  geom_pdf = 0.0f;
 
-		// A light's RGB colour is an ILLUMINANT (pbrt-v4 RGBIlluminantSpectrum:
-		// scale * rsp(lambda) * D65(lambda)), not a bare RGBUnboundedSpectrum
-		// (scale * rsp(lambda)) -- without the D65 factor, a grey light
-		// uplifts to a flat/equal-energy spectrum (chromaticity (0.333,
-		// 0.333)) instead of D65-white (0.3127,0.3290), which then
-		// reconstructs as a non-neutral RGB through wf_xyz_to_linear_rgb's
-		// D65-targeted matrix (R inflated ~20%, G/B suppressed ~5-11%) -- see
-		// dev_sample_d65()'s own comment in spectral_device.h for the full
-		// derivation.
-		auto liftEmission = [&](float3 le) -> SS {
-			float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
-								  : (le.y > le.z ? le.y : le.z);
-			float sc = 2.f * m;
-			if (sc <= 0.f) return SS(0.f);
-			float c0, c1, c2;
-			dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
-			RGBSigmoidPolynomial poly(c0, c1, c2);
-			SS s(0.f);
-			for (int i = 0; i < kWFNWavelengths; ++i)
-				s[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
-			return s;
-		};
+		// liftEmission() is the shared one declared above (this ReSTIR-aware
+		// block's own scope, used by both the ReSTIR and classic paths) - not
+		// redefined here.
 
 		// mat.twoSided (pbrt AreaLightSource "diffuse" "bool twosided") gate for
 		// NEE, mirroring material_emission()'s own front_face gate on a direct
@@ -1899,15 +1995,22 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			light_emission_spec = geoAndGate(raw, lm, to_light, q.normal);
 		}
 
-		float light_pdf = selection_pdf * geom_pdf;
-		// RoughDielectric NEE can reach lights on EITHER side of the
-		// interface (reflection when raw_cos>0, transmission/"seen through
-		// the glass" when raw_cos<0) - see evalGlossyF's own comment and
-		// optix_device_helpers.h's identical two-sided RoughDielectric NEE,
-		// which this now matches. Every other material stays reflection-
-		// only (raw_cos>0 required), same as before.
+		light_pdf = selection_pdf * geom_pdf;
+		nee_norm = (light_pdf > 1e-6f) ? (1.0f / light_pdf) : 0.0f;
+		haveSample = true;
+	}
+
+	// RoughDielectric NEE can reach lights on EITHER side of the
+	// interface (reflection when raw_cos>0, transmission/"seen through
+	// the glass" when raw_cos<0) - see evalGlossyF's own comment and
+	// optix_device_helpers.h's identical two-sided RoughDielectric NEE,
+	// which this now matches. Every other material stays reflection-
+	// only (raw_cos>0 required), same as before. Shared by both the ReSTIR
+	// and classic paths above - haveSample/nee_norm/to_light/light_pdf are
+	// filled identically by either one by this point.
+	{
 		float raw_cos = dot(to_light, normal);
-		if (light_pdf > 1e-6f && (isPhase || matType == MaterialType::RoughDielectric || raw_cos > 0.0f)) {
+		if (haveSample && nee_norm > 0.0f && (isPhase || matType == MaterialType::RoughDielectric || raw_cos > 0.0f)) {
 			// A phase function has no hemisphere/cosine restriction (it's
 			// normalized over the full sphere, unlike a surface BRDF) - the
 			// `cos_l` slot is set to 1 so the shared `bsdf_val * cos_l`
@@ -1982,8 +2085,12 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				: (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
 
-			// Spectral direct-light contribution
-			SS Ld = (mis_w * bsdf_val * cos_l / light_pdf) * throughput * bsdf_color * light_emission_spec;
+			// Spectral direct-light contribution. nee_norm is 1/light_pdf
+			// classically, or the ReSTIR reservoir's own unbiased contribution
+			// weight W (see this function's own useRestir block comment) -
+			// either way it already IS the correct radiance normalization, so
+			// this multiplies rather than dividing by light_pdf.
+			SS Ld = (mis_w * bsdf_val * cos_l * nee_norm) * throughput * bsdf_color * light_emission_spec;
 
 			// 0.01, not the original 0.001: a scene with many densely-packed
 			// custom primitives (spheres) reproducibly crashed the shadow

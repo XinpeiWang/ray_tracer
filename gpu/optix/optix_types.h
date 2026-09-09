@@ -14,6 +14,10 @@
 // templated on T, so PointLightData<float>/SpotLightData<float>/
 // DistantLightData<float> compile directly for device code - no reimplementation.
 #include "../../src/shared/punctual_lights.h"
+// Same relative-path reasoning as punctual_lights.h above - needed for the
+// CPU_GPU tag on GpuLightSample/GpuReservoir's own accessor methods further
+// down this file.
+#include "../../src/shared/cpu_gpu.h"
 // Same relative-path reasoning as punctual_lights.h above. CloudMedium<T> is
 // CPU_GPU-tagged and templated, so CloudMedium<float> compiles directly for
 // device code (it already calls perlin_noise<T> from noise.h, itself
@@ -312,6 +316,39 @@ enum class GpuLightKind : int {
 	// direct template instantiation - see that header's own comment for why).
 	Disk = 4,
 	Cylinder = 5,
+};
+
+// ReSTIR DI (Live Preview only - gpu/optix/wavefront_restir_helpers.h) plain
+// data structs. Defined here (host+device safe, like every other struct in
+// this file) rather than in wavefront_restir_helpers.h itself, because that
+// header also carries __device__-only RIS/reservoir-combine math (wf_rand()-
+// based candidate generation, etc.) that must NOT be pulled into the plain
+// host .cpp / cross-module extern "C" boundary files (wavefront_launch.h,
+// WavefrontPathTracer's own header/.cpp, optix_interface.cpp) - those only
+// ever need the STORAGE SHAPE of a reservoir (to allocate/pass a buffer
+// pointer), never the device math itself. Mirrors how GpuAliasEntry/
+// GpuLightKind above already separate "plain shared data" (this file) from
+// "device-only logic that consumes it" (wavefront_device_helpers.h).
+struct GpuLightSample {
+	int          lightIdx = -1;
+	GpuLightKind kind     = GpuLightKind::Quad;
+	int          primIdx  = -1;
+	float        sampleU = 0.0f, sampleV = 0.0f;
+	float3       point  = make_float3(0.0f, 0.0f, 0.0f);
+	float3       normal = make_float3(0.0f, 0.0f, 1.0f);
+
+	CPU_GPU bool valid() const { return lightIdx >= 0; }
+};
+
+struct GpuReservoir {
+	GpuLightSample sample;
+	float weightSum = 0.0f;
+	int   M         = 0;
+	float W         = 0.0f;
+	float pHat      = 0.0f;
+
+	CPU_GPU bool valid() const { return sample.valid() && weightSum > 0.0f; }
+	CPU_GPU void clear() { sample = GpuLightSample{}; weightSum = 0.0f; M = 0; W = 0.0f; pHat = 0.0f; }
 };
 
 // Material types

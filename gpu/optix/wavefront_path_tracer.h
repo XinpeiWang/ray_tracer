@@ -187,6 +187,17 @@ public:
     ///        major) on success.
     bool readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const;
 
+    /// Whether render() should route primary-hit (depth==0) NEE through
+    /// ReSTIR DI's weighted resampling (gpu/optix/wavefront_restir_helpers.h)
+    /// instead of the classic single alias-table draw - see
+    /// wf_finish_material_scatter's own restirReservoirs parameter comment.
+    /// Same setter-not-render()-parameter pattern as setWorldPosOutputEnabled()
+    /// above and for the same reason: only Live Preview ever sets this true,
+    /// so batch/offline rendering (MaterialCpuGpuParityTest and friends) never
+    /// pays for the extra allocation and keeps today's exact single-draw NEE
+    /// statistics, unchanged.
+    void setRestirEnabled(bool enabled) { restirEnabled_ = enabled; }
+
 private:
     bool loadModule();
     void destroyProgramGroups();
@@ -449,6 +460,21 @@ private:
     CUdeviceptr      d_worldPos_ = 0;
     int              worldPosCapacity_ = 0;
     bool             worldPosOutputEnabled_ = false;
+
+    // ReSTIR DI (Live Preview only) current-frame reservoir buffer - see
+    // setRestirEnabled()'s own comment. Same resolution-keyed allocate-once/
+    // only-realloc-on-change lifecycle as d_worldPos_ above, and likewise a
+    // SEPARATE capacity tracker and SEPARATE (conditional-on-restirEnabled_)
+    // allocation - batch/video rendering never sets restirEnabled_, so it
+    // never pays for this allocation either. Single-buffered (not yet
+    // double-buffered for temporal reuse across frames - see this codebase's
+    // ReSTIR plan for that follow-on step): every render() call fully
+    // overwrites every entry it reaches (evaluate_materials*'s own restir
+    // block writes restirReservoirs[pixelIndex] unconditionally for every
+    // depth==0 non-specular hit), so there is no stale-content hazard yet.
+    CUdeviceptr      d_reservoirs_ = 0;
+    int              reservoirsCapacity_ = 0;
+    bool             restirEnabled_ = false;
 };
 
 } // namespace optix_renderer

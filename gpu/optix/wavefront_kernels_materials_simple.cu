@@ -73,7 +73,10 @@ extern "C" __global__ void evaluate_materials_simple(
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3* albedoBuffer,
 	float3* normalBuffer,
-	float4* worldPosBuffer
+	float4* worldPosBuffer,
+	// ReSTIR DI (Live Preview only) - see wf_finish_material_scatter's own
+	// restirReservoirs parameter comment. nullptr for batch/offline rendering.
+	GpuReservoir* restirReservoirs
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -202,5 +205,5 @@ extern "C" __global__ void evaluate_materials_simple(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v, h.time);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs);
 }

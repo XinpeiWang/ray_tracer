@@ -233,6 +233,16 @@ public:
 	///        default) costs nothing extra, same "opt-in" shape as denoise.
 	void enableWorldPosOutput(bool enable) { worldPosOutputEnabled_ = enable; }
 
+	/// @brief Enable ReSTIR DI (gpu/optix/wavefront_restir_helpers.h) resampled
+	///        primary-hit NEE on the wavefront backend. Same setter-not-
+	///        render()-parameter pattern as enableWorldPosOutput() just above,
+	///        forwarded to wavefrontTracer_ inside render() (WavefrontPathTracer::
+	///        setRestirEnabled()'s own comment) - only meaningful when
+	///        isWavefrontActive(). false (the default) costs nothing extra and
+	///        keeps the classic single-draw NEE path, same "opt-in" shape as
+	///        denoise/world-pos above.
+	void enableRestir(bool enable) { restirEnabled_ = enable; }
+
 	/// @brief Read back the world-position buffer enableWorldPosOutput(true)
 	///        populated on the last render() call - same "separate consumer
 	///        of a persisted buffer" shape as readAovBuffers() above.
@@ -342,6 +352,7 @@ private:
 	bool denoiseEnabled_ = false;  ///< See enableDenoise()
 	float denoiseBlend_ = 0.0f;    ///< See setDenoiseBlend()
 	bool worldPosOutputEnabled_ = false;  ///< See enableWorldPosOutput()
+	bool restirEnabled_ = false;  ///< See enableRestir()
 	// Persisted across render() calls rather than created/destroyed fresh
 	// each time - see denoise()'s own comment. Shared with
 	// WavefrontPathTracer's identical member (optix_denoiser.h) - each

@@ -627,6 +627,14 @@ extern "C" bool rt_realtime_render_frame(
 		// unused" shape as denoise above, via OptiXRenderer::
 		// enableWorldPosOutput()'s own forwarding to the wavefront backend.
 		g_renderer->enableWorldPosOutput(out_world_pos_buffer != nullptr);
+		// ReSTIR DI (gpu/optix/wavefront_restir_helpers.h) - unconditionally
+		// on for every call through this Live-Preview-only entry point, unlike
+		// denoise/world-pos above which are each individually opt-in per call.
+		// batch/offline rendering (optix_render_main(), above) never calls
+		// this function or OptiXRenderer::enableRestir(), so it keeps today's
+		// classic single-draw NEE statistics unchanged - see WavefrontPathTracer::
+		// setRestirEnabled()'s own comment.
+		g_renderer->enableRestir(true);
 
 		const bool ok = g_renderer->render(
 			image_width,

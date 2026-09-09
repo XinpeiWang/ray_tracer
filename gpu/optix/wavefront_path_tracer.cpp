@@ -1079,6 +1079,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		reinterpret_cast<float4*>(d_worldPos_),
+		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
 		stream_);
 }
 
@@ -1134,6 +1135,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		reinterpret_cast<float4*>(d_worldPos_),
+		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
 		simpleMaterialStream_);
 }
 
@@ -1191,6 +1193,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		reinterpret_cast<float4*>(d_worldPos_),
+		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
 		dielectricMaterialStream_);
 }
 
@@ -1451,6 +1454,29 @@ bool WavefrontPathTracer::render(
 		cudaFree(reinterpret_cast<void*>(d_worldPos_));
 		d_worldPos_ = 0;
 		worldPosCapacity_ = 0;
+	}
+
+	// ReSTIR DI (Live Preview only) reservoir buffer - see setRestirEnabled()'s
+	// own comment. Same resolution-keyed allocate-once/only-realloc-on-change
+	// lifecycle as d_worldPos_ just above. Cleared every render() call (not
+	// just on realloc) since this single buffer is fully rewritten by every
+	// depth==0 non-specular hit this frame - see d_reservoirs_'s own header
+	// comment on why a stale leftover entry (a pixel that didn't reach the
+	// ReSTIR block this frame, e.g. a miss or a specular hit) is harmless
+	// zeroed-out state, not a correctness hazard, but zeroing it anyway keeps
+	// a resized/reused allocation from ever exposing a wholly unrelated old
+	// frame's reservoir at a pixel this frame never touches.
+	if (restirEnabled_) {
+		if (reservoirsCapacity_ != numPixels) {
+			if (d_reservoirs_) { cudaFree(reinterpret_cast<void*>(d_reservoirs_)); d_reservoirs_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_reservoirs_), numPixels * sizeof(GpuReservoir)));
+			reservoirsCapacity_ = numPixels;
+		}
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_reservoirs_), 0, numPixels * sizeof(GpuReservoir), stream_));
+	} else if (d_reservoirs_) {
+		cudaFree(reinterpret_cast<void*>(d_reservoirs_));
+		d_reservoirs_ = 0;
+		reservoirsCapacity_ = 0;
 	}
 
 	// Build WavefrontLaunchParams template (queue pointers filled per phase)
@@ -1914,6 +1940,9 @@ void WavefrontPathTracer::cleanup() {
 	fbCapacity_ = 0;
 	if (d_worldPos_) { cudaFree(reinterpret_cast<void*>(d_worldPos_)); d_worldPos_ = 0; }
 	worldPosCapacity_ = 0;
+
+	if (d_reservoirs_) { cudaFree(reinterpret_cast<void*>(d_reservoirs_)); d_reservoirs_ = 0; }
+	reservoirsCapacity_ = 0;
 
 	if (intersectPipeline_) { optixPipelineDestroy(intersectPipeline_); intersectPipeline_ = nullptr; }
 	if (shadowPipeline_)    { optixPipelineDestroy(shadowPipeline_);    shadowPipeline_    = nullptr; }
