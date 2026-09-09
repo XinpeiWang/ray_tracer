@@ -351,6 +351,49 @@ struct GpuReservoir {
 	CPU_GPU void clear() { sample = GpuLightSample{}; weightSum = 0.0f; M = 0; W = 0.0f; pHat = 0.0f; }
 };
 
+// A previous frame's pinhole camera basis, for GPU-side ReSTIR temporal reuse
+// to reproject a current-frame hit point into that frame's screen space -
+// exactly the 4 vectors qt_gui/camera_math.h's own CameraBasis/projectToScreen
+// already use for the EXISTING host-side accumulation-reprojection feature
+// (see that header's own comment on the ray-generation convention these come
+// from). A separate, smaller struct rather than reusing the full
+// GpuCameraParams (which also carries lens-table pointers/spherical-camera
+// fields irrelevant to reprojection) - kept here (not wavefront_restir_helpers.h)
+// for the same host+device-safe, math-free reason GpuLightSample/GpuReservoir
+// are.
+struct GpuReprojectBasis {
+	float3 origin;
+	float3 lowerLeftCorner;
+	float3 horizontal;
+	float3 vertical;
+};
+
+// Bundles everything wf_finish_material_scatter's ReSTIR temporal-reuse step
+// needs beyond the current-frame GpuReservoir* buffer, as ONE extra kernel
+// parameter instead of six - see that function's own restirReservoirs
+// parameter comment. `history`/`worldPosHistory` are the PREVIOUS render()
+// call's post-spatial-reuse reservoirs and per-pixel world positions
+// (WavefrontPathTracer's own d_reservoirsHistory_/d_worldPosHistory_);
+// `normalOut` is where this call writes the current-frame shading normal at
+// each depth==0 pixel (mirrors wf_write_world_pos()'s plain-overwrite
+// convention), which the SPATIAL-reuse pass (wavefront_kernels_restir.cu)
+// then reads back for its own neighbor-rejection test. `historyValid` is
+// false on the very first call after a scene upload (WavefrontPathTracer::
+// invalidateRestirHistory()) - deliberately the ONLY explicit invalidation
+// signal; a camera CUT (vs. a smooth interactive move) needs no separate
+// flag because the per-pixel screen-bounds/disocclusion test below already
+// naturally rejects a reprojection that lands off-screen or on a
+// wildly-different surface, the same way a hard scene change would.
+struct GpuRestirTemporalContext {
+	const GpuReservoir* history = nullptr;
+	const float4*       worldPosHistory = nullptr;
+	float3*             normalOut = nullptr;
+	GpuReprojectBasis   prevCamera{};
+	bool                historyValid = false;
+	int                 imageWidth = 0;
+	int                 imageHeight = 0;
+};
+
 // Material types
 enum class MaterialType : int {
 	Lambertian = 0,

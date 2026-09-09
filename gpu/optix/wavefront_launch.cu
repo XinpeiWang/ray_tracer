@@ -30,7 +30,7 @@ extern "C" __global__ void evaluate_materials(
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
-	float3*, float3*, float4*, GpuReservoir*);
+	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -42,7 +42,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution, GpuPortalLight, float,
-	float3*, float3*, float4*, GpuReservoir*);
+	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext);
 extern "C" __global__ void evaluate_materials_dielectric(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -54,7 +54,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
-	float3*, float3*, float4*, GpuReservoir*);
+	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*, float4*);
 extern "C" __global__ void normalize_aov_buffers(float3*, float3*, unsigned int, unsigned int);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, float);
@@ -147,6 +147,7 @@ extern "C" void wf_launch_evaluate_materials(
 	float3*                      d_normalBuffer,
 	float4*                      d_worldPosBuffer,
 	GpuReservoir*                d_restirReservoirs,
+	GpuRestirTemporalContext     restirCtx,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -166,7 +167,7 @@ extern "C" void wf_launch_evaluate_materials(
 		d_measuredTables, numMeasuredTables,
 		d_measuredParamValues, d_measuredData, d_measuredMcdf, d_measuredCcdf,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
-		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs);
+		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -200,6 +201,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	float3*                      d_normalBuffer,
 	float4*                      d_worldPosBuffer,
 	GpuReservoir*                d_restirReservoirs,
+	GpuRestirTemporalContext     restirCtx,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -214,7 +216,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels, maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
-		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs);
+		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx);
 }
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -249,6 +251,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	float3*                      d_normalBuffer,
 	float4*                      d_worldPosBuffer,
 	GpuReservoir*                d_restirReservoirs,
+	GpuRestirTemporalContext     restirCtx,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -264,7 +267,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 		d_textures, d_texturePixels,
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
-		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs);
+		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx);
 }
 
 extern "C" void wf_launch_accumulate_miss(

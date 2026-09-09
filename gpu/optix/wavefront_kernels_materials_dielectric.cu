@@ -73,7 +73,9 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	float4* worldPosBuffer,
 	// ReSTIR DI (Live Preview only) - see wf_finish_material_scatter's own
 	// restirReservoirs parameter comment. nullptr for batch/offline rendering.
-	GpuReservoir* restirReservoirs
+	GpuReservoir* restirReservoirs,
+	// See wf_finish_material_scatter's own restirCtx parameter comment.
+	GpuRestirTemporalContext restirCtx
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -347,5 +349,5 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx);
 }

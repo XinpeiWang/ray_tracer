@@ -121,6 +121,12 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setDenoiseBlend(denoiseBlend_);
 		wavefrontTracer_->setWorldPosOutputEnabled(worldPosOutputEnabled_);
 		wavefrontTracer_->setRestirEnabled(restirEnabled_);
+		// See invalidateRestirHistory()'s own comment on why this is
+		// deferred-then-forwarded here instead of calling straight through.
+		if (restirHistoryInvalidationPending_) {
+			wavefrontTracer_->invalidateRestirHistory();
+			restirHistoryInvalidationPending_ = false;
+		}
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);

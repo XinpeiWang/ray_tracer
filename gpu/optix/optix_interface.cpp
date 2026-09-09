@@ -181,6 +181,11 @@ static bool prepareSceneAndCamera(
 			return false;
 		}
 		g_uploaded_scene_id = scene_id;
+		// A previous scene's reservoirs/light samples must never be reused
+		// into this new scene's ReSTIR temporal reuse (its light indices/
+		// kinds mean something entirely different now) - see
+		// WavefrontPathTracer::invalidateRestirHistory()'s own comment.
+		g_renderer->invalidateRestirHistory();
 	} else if (verbose) {
 		std::cout << "[OptiX] Reusing already-uploaded scene " << scene_id << " (skipping GPU rebuild)\n";
 	}

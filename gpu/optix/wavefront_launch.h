@@ -71,6 +71,11 @@ extern "C" void wf_launch_evaluate_materials(
 	// parameter comment (wavefront_device_helpers.h). nullptr for batch/
 	// offline rendering, exactly like d_worldPosBuffer's own opt-in pattern.
 	GpuReservoir*                d_restirReservoirs,
+	// ReSTIR temporal reuse's history/reprojection context - see
+	// wf_finish_material_scatter's own restirCtx parameter comment. Default-
+	// constructed (historyValid=false) is a safe no-op, same as
+	// d_restirReservoirs being null.
+	GpuRestirTemporalContext     restirCtx,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -108,6 +113,11 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	// parameter comment (wavefront_device_helpers.h). nullptr for batch/
 	// offline rendering, exactly like d_worldPosBuffer's own opt-in pattern.
 	GpuReservoir*                d_restirReservoirs,
+	// ReSTIR temporal reuse's history/reprojection context - see
+	// wf_finish_material_scatter's own restirCtx parameter comment. Default-
+	// constructed (historyValid=false) is a safe no-op, same as
+	// d_restirReservoirs being null.
+	GpuRestirTemporalContext     restirCtx,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -146,6 +156,11 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	// parameter comment (wavefront_device_helpers.h). nullptr for batch/
 	// offline rendering, exactly like d_worldPosBuffer's own opt-in pattern.
 	GpuReservoir*                d_restirReservoirs,
+	// ReSTIR temporal reuse's history/reprojection context - see
+	// wf_finish_material_scatter's own restirCtx parameter comment. Default-
+	// constructed (historyValid=false) is a safe no-op, same as
+	// d_restirReservoirs being null.
+	GpuRestirTemporalContext     restirCtx,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_accumulate_miss(

@@ -350,3 +350,132 @@ __device__ __forceinline__ bool wf_generate_restir_candidate(
 											 bilinearPatches, disks, cylinders, textures, texturePixels);
 	return true;
 }
+
+// Resampling-only target-function proxy shared by candidate generation AND
+// temporal/spatial reuse's re-evaluation step - a plain Lambertian-cosine-
+// weighted luminance-like magnitude of a (already twoSided-gated) raw
+// emission, NOT the exact per-material BSDF value (that's only evaluated
+// once, for the FINAL winning sample, by wf_finish_material_scatter's own
+// existing per-material dispatch). Every reservoir combine in this file uses
+// THIS SAME function for p_hat, which is what RIS/reservoir-combine actually
+// requires for correctness (a fixed, consistently-applied target function -
+// see this file's header comment); an approximate p_hat only costs variance,
+// never correctness. Must be called with `dir` pointing FROM the query origin
+// TOWARD the light sample (matches every wf_sample_*_light's own convention).
+CPU_GPU inline float wf_restir_target_proxy(float3 rawEmission, float3 dir, float3 normal) {
+	const float cosProxy = fmaxf(dot(dir, normal), 0.0f);
+	return ((rawEmission.x + rawEmission.y + rawEmission.z) * (1.0f / 3.0f)) * cosProxy;
+}
+
+// Device-only port of qt_gui/camera_math.h's projectToScreen() (see that
+// function's own derivation comment - same algorithm, float/float3 instead
+// of double/Vec3, since that header isn't CPU_GPU-tagged and duplicating a
+// handful of vector ops is simpler than making a Qt-adjacent host header
+// device-safe). Used by ReSTIR temporal reuse to find where a current-frame
+// hit point would have landed in the PREVIOUS frame's camera.
+struct WfScreenProjection {
+	float s = 0.0f, t = 0.0f;
+	bool inFront = false;
+};
+
+__device__ __forceinline__ WfScreenProjection wf_project_to_screen(const float3& worldPoint,
+																	 const GpuReprojectBasis& basis) {
+	const float3 toPoint = worldPoint - basis.origin;
+	const float3 wScaled = basis.origin - basis.lowerLeftCorner
+						  - basis.horizontal * 0.5f - basis.vertical * 0.5f;
+	const float3 vCrossW = cross(basis.vertical, wScaled);
+	const float denom = dot(basis.horizontal, vCrossW);
+	if (fabsf(denom) < 1e-18f) return WfScreenProjection{0.0f, 0.0f, false};
+	const float a = dot(toPoint, vCrossW) / denom;
+	const float b = dot(basis.horizontal, cross(toPoint, wScaled)) / denom;
+	const float c = dot(basis.horizontal, cross(basis.vertical, toPoint)) / denom;
+	if (c >= 0.0f) return WfScreenProjection{0.0f, 0.0f, false};
+	WfScreenProjection out;
+	out.s = 0.5f - a / c;
+	out.t = 0.5f - b / c;
+	out.inFront = true;
+	return out;
+}
+
+// ReSTIR temporal reuse: reprojects `hitPoint` into the previous frame's
+// camera (ctx.prevCamera), and - if that lands on-screen, on a
+// non-disoccluded surface, and ctx.historyValid - combines ctx.history's
+// reservoir at that reprojected pixel into `current` via
+// restir_reservoir_combine(), clamping the resulting M to kRestirTemporalMaxM
+// (restir.h's own max_M concept: bounds how much a long-lived reservoir can
+// outweigh fresh candidates once the scene/camera starts changing again).
+// `current` must already hold this frame's freshly-generated (not yet
+// finalized) reservoir - restir_finalize() is NOT called here, since the
+// caller (wf_finish_material_scatter) still needs to fold in more candidates/
+// call restir_finalize() itself afterward.
+//
+// Disocclusion test: compares the reprojected history pixel's stored world
+// position against hitPoint, with a self-scaling epsilon (a fraction of this
+// surface's own distance from the CURRENT camera - matches the "same relative
+// error tolerance regardless of depth" reasoning real-time reprojection
+// techniques generally use) rather than a fixed world-space constant, which
+// would be too loose close up and too tight far away. No separate explicit
+// "hard reset" signal is needed (see GpuRestirTemporalContext's own comment):
+// a camera cut fails this same test almost everywhere, naturally falling back
+// to fresh candidates only.
+__device__ __forceinline__ void wf_restir_temporal_combine(
+		GpuReservoir& current, const float3& hitPoint, const float3& normal,
+		const GpuRestirTemporalContext& ctx, unsigned int& seed,
+		const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
+		const BilinearPatchData* bilinearPatches, const DiskData* disks, const CylinderData* cylinders,
+		const MaterialData* materials, const TextureData* textures, const unsigned char* texturePixels) {
+	if (!ctx.historyValid || !ctx.history || !ctx.worldPosHistory || ctx.imageWidth <= 0 || ctx.imageHeight <= 0)
+		return;
+
+	WfScreenProjection proj = wf_project_to_screen(hitPoint, ctx.prevCamera);
+	if (!proj.inFront || proj.s < 0.0f || proj.s >= 1.0f || proj.t < 0.0f || proj.t >= 1.0f) return;
+
+	const int px = (int)(proj.s * (float)ctx.imageWidth);
+	// t is bottom-to-top (camera_math.h's own ScreenProjection comment) - flip
+	// to a top-to-bottom pixel row, matching every other screen buffer here.
+	const int py = (int)((1.0f - proj.t) * (float)ctx.imageHeight);
+	if (px < 0 || px >= ctx.imageWidth || py < 0 || py >= ctx.imageHeight) return;
+	const int prevPixel = py * ctx.imageWidth + px;
+
+	const float4 prevWorldPos = ctx.worldPosHistory[prevPixel];
+	if (prevWorldPos.w == 0.0f) return;  // previous frame never wrote a valid hit there (miss, or specular)
+
+	const float3 prevPoint = make_float3(prevWorldPos.x, prevWorldPos.y, prevWorldPos.z);
+	const float3 delta = hitPoint - prevPoint;
+	const float distSq = dot(delta, delta);
+	// Self-scaling epsilon from the PREVIOUS frame's own camera-to-surface
+	// distance at this reprojected pixel (a natural depth proxy, avoiding a
+	// separate cameraDistance parameter) - 1% relative tolerance, floored so
+	// a surface point sitting exactly at the previous camera's origin still
+	// gets a sane minimum epsilon.
+	const float3 prevCamToPoint = prevPoint - ctx.prevCamera.origin;
+	const float prevCamDist = sqrtf(fmaxf(dot(prevCamToPoint, prevCamToPoint), 0.0f));
+	const float eps = fmaxf(prevCamDist * 0.01f, 1e-4f);
+	if (distSq > eps * eps) return;  // disoccluded - a genuinely different surface reprojected here
+
+	const GpuReservoir& prev = ctx.history[prevPixel];
+	if (!prev.valid()) return;
+
+	// Re-evaluate the history sample's geometry AND target function fresh, at
+	// THIS pixel's own hitPoint/normal - restir.h's documented missing piece
+	// for unbiased reuse (this file's own header comment).
+	float3 dirToSample; float dist; float geomPdf;
+	if (!wf_reevaluate_light_geometry(prev.sample, hitPoint, spheres, quads, triangles,
+									   bilinearPatches, disks, cylinders, dirToSample, dist, geomPdf) ||
+		geomPdf <= 0.0f)
+		return;
+
+	const float3 rawEmission = wf_light_raw_emission(prev.sample, dirToSample, materials, spheres, quads, triangles,
+													  bilinearPatches, disks, cylinders, textures, texturePixels);
+	const float pHatAtCurrent = wf_restir_target_proxy(rawEmission, dirToSample, normal);
+	if (pHatAtCurrent <= 0.0f) return;
+
+	restir_reservoir_combine(current, prev, pHatAtCurrent, wf_rand(seed));
+	// M-clamp (restir.h's own max_M concept) - caps how many candidates' worth
+	// of history a reservoir can claim to represent, so a long-lived
+	// reservoir doesn't drown out fresh candidates once the scene/camera
+	// starts changing again. Applied AFTER the combine (which already added
+	// prev.M into current.M) rather than clamping prev.M beforehand, matching
+	// restir.h's temporal_update()'s own "clamp the SUM" ordering.
+	if (current.M > kRestirTemporalMaxM) current.M = kRestirTemporalMaxM;
+}

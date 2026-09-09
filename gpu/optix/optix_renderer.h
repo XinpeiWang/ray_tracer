@@ -243,6 +243,18 @@ public:
 	///        denoise/world-pos above.
 	void enableRestir(bool enable) { restirEnabled_ = enable; }
 
+	/// @brief Clears ReSTIR's cross-call temporal history (WavefrontPathTracer::
+	///        invalidateRestirHistory()) - call on every scene upload/switch,
+	///        so a new scene's reservoirs never reuse a previous scene's light
+	///        samples. Deferred (a flag, forwarded to wavefrontTracer_ inside
+	///        render() - optix_renderer_render.cpp) rather than forwarded
+	///        directly here, like every other wavefrontTracer_-touching setter
+	///        in this class - WavefrontPathTracer is only forward-declared in
+	///        this header (wavefrontTracer_'s own comment), so calling a
+	///        member function on it needs the complete type, only available
+	///        where this class's own .cpp files include wavefront_path_tracer.h.
+	void invalidateRestirHistory() { restirHistoryInvalidationPending_ = true; }
+
 	/// @brief Read back the world-position buffer enableWorldPosOutput(true)
 	///        populated on the last render() call - same "separate consumer
 	///        of a persisted buffer" shape as readAovBuffers() above.
@@ -353,6 +365,7 @@ private:
 	float denoiseBlend_ = 0.0f;    ///< See setDenoiseBlend()
 	bool worldPosOutputEnabled_ = false;  ///< See enableWorldPosOutput()
 	bool restirEnabled_ = false;  ///< See enableRestir()
+	bool restirHistoryInvalidationPending_ = false;  ///< See invalidateRestirHistory()
 	// Persisted across render() calls rather than created/destroyed fresh
 	// each time - see denoise()'s own comment. Shared with
 	// WavefrontPathTracer's identical member (optix_denoiser.h) - each

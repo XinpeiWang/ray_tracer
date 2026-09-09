@@ -1613,7 +1613,14 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// ever passes a real pointer. depth>0 (indirect-bounce NEE) always takes
 	// the single-draw path too, even with a non-null buffer - ReSTIR DI is a
 	// primary-hit-only technique (see this function's own RIS block below).
-	GpuReservoir* restirReservoirs = nullptr)
+	GpuReservoir* restirReservoirs = nullptr,
+	// ReSTIR temporal reuse's previous-frame history + reprojection basis -
+	// see GpuRestirTemporalContext's own comment (optix_types.h). Default-
+	// constructed (historyValid=false) is a safe no-op for every existing
+	// call site - wf_restir_temporal_combine() returns immediately without
+	// touching `res` when historyValid is false, exactly like restirReservoirs
+	// being null skips the whole ReSTIR block above it.
+	const GpuRestirTemporalContext& restirCtx = GpuRestirTemporalContext{})
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1864,18 +1871,28 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// evalGlossyF included) for all kRestirCandidateCount draws every
 			// pixel every frame would be far more expensive for a resampling
 			// decision that only needs a reasonable importance proxy.
-			float cosProxy = fmaxf(dot(candDir, normal), 0.0f);
-			float pHat = ((candRaw.x + candRaw.y + candRaw.z) * (1.0f / 3.0f)) * cosProxy;
+			float pHat = wf_restir_target_proxy(candRaw, candDir, normal);
 			float risWeight = pHat / candPdf;
 			restir_reservoir_add(res, cand, risWeight, 1, pHat, wf_rand(seed));
 		}
+		// Temporal reuse - folds in the reprojected previous-frame reservoir
+		// (if any) BEFORE finalizing, so W/pHat reflect the combined M, not
+		// just this frame's kRestirCandidateCount fresh draws. A no-op
+		// (restirCtx.historyValid false, the default) for every call site
+		// that doesn't pass a real context - see wf_restir_temporal_combine's
+		// own comment.
+		wf_restir_temporal_combine(res, hit_point, normal, restirCtx, seed,
+			spheres, quads, triangles, bilinearPatches, disks, cylinders,
+			materials, textures, texturePixels);
 		restir_finalize(res);
 		// Written unconditionally (even an invalid/empty reservoir) - this is
-		// the CURRENT frame's own buffer, which next frame's temporal reuse
-		// reads as "previous frame's reservoir" and must reflect this pixel's
-		// real outcome (including "no light reached this pixel this frame"),
-		// not be left stale from a re-used allocation.
+		// the CURRENT frame's own buffer, which the spatial-reuse pass
+		// (wavefront_kernels_restir.cu) reads next, and which next frame's
+		// temporal reuse ultimately reads via that pass's own output - must
+		// reflect this pixel's real outcome (including "no light reached this
+		// pixel this frame"), not be left stale from a reused allocation.
 		restirReservoirs[pixelIndex] = res;
+		if (restirCtx.normalOut) restirCtx.normalOut[pixelIndex] = normal;
 
 		if (res.valid() && res.W > 0.0f) {
 			float geomPdfAtHit = 0.0f;

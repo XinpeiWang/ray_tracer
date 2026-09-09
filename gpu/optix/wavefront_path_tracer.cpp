@@ -1012,6 +1012,19 @@ void WavefrontPathTracer::launchGenerateCameraRays(
 	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, d_weightBuffer, stream_);
 }
 
+GpuRestirTemporalContext WavefrontPathTracer::buildRestirTemporalContext() const {
+	GpuRestirTemporalContext ctx;
+	if (!restirEnabled_) return ctx;  // default: historyValid=false, a safe no-op
+	ctx.history = reinterpret_cast<const GpuReservoir*>(d_reservoirsHistory_);
+	ctx.worldPosHistory = reinterpret_cast<const float4*>(d_worldPosHistory_);
+	ctx.normalOut = reinterpret_cast<float3*>(d_restirNormal_);
+	ctx.prevCamera = prevRestirCamera_;
+	ctx.historyValid = restirHistoryValid_;
+	ctx.imageWidth = restirImageWidth_;
+	ctx.imageHeight = restirImageHeight_;
+	return ctx;
+}
+
 void WavefrontPathTracer::launchEvaluateMaterials(
 	int numHits, int maxDepth, bool regularize, float maxComponentValue,
 	const SphereData*    d_spheres,   unsigned int numSpheres,
@@ -1080,6 +1093,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		reinterpret_cast<float4*>(d_worldPos_),
 		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
+		buildRestirTemporalContext(),
 		stream_);
 }
 
@@ -1136,6 +1150,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		reinterpret_cast<float4*>(d_worldPos_),
 		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
+		buildRestirTemporalContext(),
 		simpleMaterialStream_);
 }
 
@@ -1194,6 +1209,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		reinterpret_cast<float4*>(d_worldPos_),
 		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
+		buildRestirTemporalContext(),
 		dielectricMaterialStream_);
 }
 
@@ -1344,6 +1360,9 @@ bool WavefrontPathTracer::render(
 	unsigned int num_cylinders)
 {
 	const int numPixels = width * height;
+	// See restirImageWidth_/restirImageHeight_'s own header comment.
+	restirImageWidth_ = width;
+	restirImageHeight_ = height;
 
 	// Integrator "bool regularize" - camera.regularize is stored as int
 	// (GpuCameraParams is __constant__-safe, see that struct's own comment),
@@ -1440,7 +1459,13 @@ bool WavefrontPathTracer::render(
 	// readWorldPosBuffer() call can copy it back at its own pace - the same
 	// "separate consumer of a persisted buffer" shape readAovBuffers() already
 	// uses for the denoiser's own guide layers.
-	if (worldPosOutputEnabled_) {
+	// restirEnabled_ also needs worldPos populated (temporal reuse's own
+	// disocclusion test - GpuRestirTemporalContext's own comment), regardless
+	// of whether the CALLER separately asked for readback via
+	// worldPosOutputEnabled_ (out_world_pos_buffer != nullptr) - these two
+	// flags are independent opt-ins for two unrelated consumers of the same
+	// underlying per-pixel buffer.
+	if (worldPosOutputEnabled_ || restirEnabled_) {
 		if (worldPosCapacity_ != numPixels) {
 			if (d_worldPos_) { cudaFree(reinterpret_cast<void*>(d_worldPos_)); d_worldPos_ = 0; }
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPos_), numPixels * sizeof(float4)));
@@ -1477,6 +1502,42 @@ bool WavefrontPathTracer::render(
 		cudaFree(reinterpret_cast<void*>(d_reservoirs_));
 		d_reservoirs_ = 0;
 		reservoirsCapacity_ = 0;
+	}
+
+	// ReSTIR temporal reuse's cross-call history buffers - see these members'
+	// own header comment (wavefront_path_tracer.h) for the read-then-
+	// overwrite-at-end-of-call lifecycle. Deliberately NOT memset every call
+	// like d_reservoirs_/d_worldPos_ above (that would erase the very history
+	// this call is about to read) - only allocated/resized here; populated by
+	// the end-of-render() copy further down, and content only ever trusted
+	// when restirHistoryValid_ is true.
+	if (restirEnabled_) {
+		if (reservoirsHistoryCapacity_ != numPixels) {
+			if (d_reservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_reservoirsHistory_)); d_reservoirsHistory_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_reservoirsHistory_), numPixels * sizeof(GpuReservoir)));
+			reservoirsHistoryCapacity_ = numPixels;
+			restirHistoryValid_ = false;  // stale/undefined content at the new size
+		}
+		if (worldPosHistoryCapacity_ != numPixels) {
+			if (d_worldPosHistory_) { cudaFree(reinterpret_cast<void*>(d_worldPosHistory_)); d_worldPosHistory_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPosHistory_), numPixels * sizeof(float4)));
+			worldPosHistoryCapacity_ = numPixels;
+			restirHistoryValid_ = false;
+		}
+		if (restirNormalCapacity_ != numPixels) {
+			if (d_restirNormal_) { cudaFree(reinterpret_cast<void*>(d_restirNormal_)); d_restirNormal_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_restirNormal_), numPixels * sizeof(float3)));
+			restirNormalCapacity_ = numPixels;
+		}
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_restirNormal_), 0, numPixels * sizeof(float3), stream_));
+	} else {
+		if (d_reservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_reservoirsHistory_)); d_reservoirsHistory_ = 0; }
+		reservoirsHistoryCapacity_ = 0;
+		if (d_worldPosHistory_) { cudaFree(reinterpret_cast<void*>(d_worldPosHistory_)); d_worldPosHistory_ = 0; }
+		worldPosHistoryCapacity_ = 0;
+		if (d_restirNormal_) { cudaFree(reinterpret_cast<void*>(d_restirNormal_)); d_restirNormal_ = 0; }
+		restirNormalCapacity_ = 0;
+		restirHistoryValid_ = false;
 	}
 
 	// Build WavefrontLaunchParams template (queue pointers filled per phase)
@@ -1819,6 +1880,35 @@ bool WavefrontPathTracer::render(
 			std::cout << "Scanlines remaining: " << (height - completed) << "\r" << std::flush;
 		}
 		++stats.samplesCompleted;
+	}
+
+	// ReSTIR temporal reuse's end-of-call history update - see
+	// d_reservoirsHistory_/d_worldPosHistory_'s own header comment
+	// (wavefront_path_tracer.h) for why this is a plain copy (not a swap):
+	// d_reservoirs_/d_worldPos_ are about to be fully overwritten on the next
+	// restirEnabled_ render() call regardless, so there is nothing to
+	// preserve in them across calls - only the history buffers need this
+	// call's final content. This is device-to-device (numPixels*sizeof(...)
+	// each), cheap relative to the render work just completed above.
+	//
+	// NOTE: this is RIS+temporal reuse only for now - d_reservoirs_ here
+	// holds the LAST internal sampleIdx's fresh-plus-temporal reservoirs,
+	// with no spatial (cross-pixel) reuse pass yet; that follow-on step will
+	// insert a kernel launch between the sampleIdx loop above and this copy,
+	// writing its own spatially-combined output into d_reservoirsHistory_
+	// instead of this direct copy.
+	if (restirEnabled_) {
+		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_reservoirsHistory_),
+								   reinterpret_cast<void*>(d_reservoirs_),
+								   numPixels * sizeof(GpuReservoir), cudaMemcpyDeviceToDevice, stream_));
+		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_worldPosHistory_),
+								   reinterpret_cast<void*>(d_worldPos_),
+								   numPixels * sizeof(float4), cudaMemcpyDeviceToDevice, stream_));
+		prevRestirCamera_.origin = camera.origin;
+		prevRestirCamera_.lowerLeftCorner = camera.lower_left_corner;
+		prevRestirCamera_.horizontal = camera.horizontal;
+		prevRestirCamera_.vertical = camera.vertical;
+		restirHistoryValid_ = true;
 	}
 
 	// -------------------------------------------------------------------------

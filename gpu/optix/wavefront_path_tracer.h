@@ -198,6 +198,15 @@ public:
     /// statistics, unchanged.
     void setRestirEnabled(bool enabled) { restirEnabled_ = enabled; }
 
+    /// Clears ReSTIR's temporal history flag - see restirHistoryValid_'s own
+    /// comment. Call whenever a scene switch/upload happens (a previous
+    /// scene's light samples must never be reused into a new scene's
+    /// reservoirs) - the actual history buffers are left as-is (they get
+    /// fully overwritten on the next restirEnabled_ render() call anyway,
+    /// same "no need to eagerly clear" reasoning as every other GPU buffer
+    /// here) and are resized/reallocated normally if the resolution changed.
+    void invalidateRestirHistory() { restirHistoryValid_ = false; }
+
 private:
     bool loadModule();
     void destroyProgramGroups();
@@ -206,6 +215,13 @@ private:
     void freeQueues();
     void launchGenerateCameraRays(int width, int height, int sampleIdx,
         const GpuCameraParams& camera, float* d_weightBuffer);
+    // Builds this call's ReSTIR temporal-reuse context from d_reservoirsHistory_/
+    // d_worldPosHistory_/d_restirNormal_/prevRestirCamera_/restirHistoryValid_/
+    // restirImageWidth_/restirImageHeight_ - shared by all 3 launchEvaluateMaterials*()
+    // methods instead of each rebuilding it. Returns a default (historyValid=false)
+    // context when !restirEnabled_, the same safe-no-op shape restirReservoirs
+    // being null already has.
+    GpuRestirTemporalContext buildRestirTemporalContext() const;
     void launchEvaluateMaterials(int numHits, int maxDepth, bool regularize, float maxComponentValue,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
@@ -466,15 +482,45 @@ private:
     // only-realloc-on-change lifecycle as d_worldPos_ above, and likewise a
     // SEPARATE capacity tracker and SEPARATE (conditional-on-restirEnabled_)
     // allocation - batch/video rendering never sets restirEnabled_, so it
-    // never pays for this allocation either. Single-buffered (not yet
-    // double-buffered for temporal reuse across frames - see this codebase's
-    // ReSTIR plan for that follow-on step): every render() call fully
-    // overwrites every entry it reaches (evaluate_materials*'s own restir
-    // block writes restirReservoirs[pixelIndex] unconditionally for every
-    // depth==0 non-specular hit), so there is no stale-content hazard yet.
+    // never pays for this allocation either. Scratch: every render() call's
+    // sampleIdx loop fully overwrites every entry it reaches (evaluate_
+    // materials*'s own restir block writes restirReservoirs[pixelIndex]
+    // unconditionally for every depth==0 non-specular hit).
     CUdeviceptr      d_reservoirs_ = 0;
     int              reservoirsCapacity_ = 0;
     bool             restirEnabled_ = false;
+
+    // ReSTIR temporal reuse's cross-call history - see GpuRestirTemporalContext's
+    // own comment (optix_types.h) for the read-then-overwrite lifecycle within
+    // one render() call: d_reservoirsHistory_/d_worldPosHistory_ are READ at
+    // the start of this call's sampleIdx loop (as "last call's result"), then
+    // OVERWRITTEN with THIS call's own final reservoirs/world-pos at the end
+    // of render() - safe without double-buffering because both uses are
+    // strictly ordered by stream_'s own launch order, never concurrent.
+    // d_restirNormal_ is this call's own per-pixel shading normal (plain
+    // overwrite at depth==0, mirrors d_worldPos_) - kept for the follow-on
+    // spatial-reuse pass's own neighbor-rejection test, not read across calls.
+    // prevRestirCamera_/restirHistoryValid_ persist in host memory (not a GPU
+    // buffer) - restirHistoryValid_ starts false and is only ever set true at
+    // the end of a successful restirEnabled_ render() call, so the very first
+    // call after enabling ReSTIR (or after invalidateRestirHistory(), e.g. on
+    // a scene change) correctly skips temporal reuse instead of reading an
+    // empty/stale history buffer.
+    CUdeviceptr        d_reservoirsHistory_ = 0;
+    int                reservoirsHistoryCapacity_ = 0;
+    CUdeviceptr        d_worldPosHistory_ = 0;
+    int                worldPosHistoryCapacity_ = 0;
+    CUdeviceptr        d_restirNormal_ = 0;
+    int                restirNormalCapacity_ = 0;
+    GpuReprojectBasis  prevRestirCamera_{};
+    bool               restirHistoryValid_ = false;
+    // Set at the top of every render() call - read by launchEvaluateMaterials*()
+    // to build this call's GpuRestirTemporalContext (imageWidth/imageHeight),
+    // which those private methods otherwise have no width/height parameter to
+    // derive from (they read every other ReSTIR buffer directly off `this`
+    // the same way, e.g. d_worldPos_ above).
+    int                restirImageWidth_ = 0;
+    int                restirImageHeight_ = 0;
 };
 
 } // namespace optix_renderer
