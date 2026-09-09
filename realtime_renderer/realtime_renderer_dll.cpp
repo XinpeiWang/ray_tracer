@@ -29,8 +29,13 @@ RT_REALTIME_API bool realtime_render_frame(
 	double cam_x,
 	double cam_y,
 	double cam_z,
+	bool has_custom_lookat,
+	double lookat_x,
+	double lookat_y,
+	double lookat_z,
 	float* out_rgb_buffer
 ) {
 	return rt_realtime_render_frame(scene_id, image_width, image_height,
-		samples_per_pixel, max_depth, cam_x, cam_y, cam_z, out_rgb_buffer);
+		samples_per_pixel, max_depth, cam_x, cam_y, cam_z,
+		has_custom_lookat, lookat_x, lookat_y, lookat_z, out_rgb_buffer);
 }

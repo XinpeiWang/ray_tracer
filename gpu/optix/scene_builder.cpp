@@ -4256,11 +4256,39 @@ bool build_scene(
 	const double cam_y,
 	const double cam_z,
 	GpuCameraParams* out_camera_extra,
-	bool force_camera_override
+	bool force_camera_override,
+	bool has_custom_lookat,
+	double lookat_x,
+	double lookat_y,
+	double lookat_z
 ) {
 	if (camera_params == nullptr) {
 		return false;  // Invalid camera parameter buffer
 	}
+
+	// Shadows the free build_pinhole_camera_params() (defined above in this
+	// file) for the rest of THIS function only - every one of the ~65 scene
+	// cases below calls it exactly as before (same name, same arguments),
+	// but when has_custom_lookat is set (Live Preview's free-fly camera has
+	// moved its look-at point), this transparently substitutes that point
+	// for whichever hardcoded literal the case would otherwise pass -
+	// editing this one place instead of every individual case. Default
+	// arguments mirror the free function's own so every existing call site
+	// (whether it passes 7 or 9 arguments, e.g. the few depth-of-field
+	// scenes passing out_u/out_v) keeps compiling unchanged; `::` inside
+	// the body is required to reach the real free function past this local
+	// shadow.
+	auto build_pinhole_camera_params = [&](const float3& lookfrom, const float3& lookat,
+											const float3& vup, float vfov_degrees, float aspect,
+											float focus_dist, float* cam_params_out,
+											float3* out_u = nullptr, float3* out_v = nullptr,
+											float3* out_w = nullptr, const float* screen_window = nullptr) {
+		const float3 effectiveLookAt = has_custom_lookat
+			? make_float3(static_cast<float>(lookat_x), static_cast<float>(lookat_y), static_cast<float>(lookat_z))
+			: lookat;
+		::build_pinhole_camera_params(lookfrom, effectiveLookAt, vup, vfov_degrees, aspect,
+									   focus_dist, cam_params_out, out_u, out_v, out_w, screen_window);
+	};
 
 	// A native/built-in scene's CPU camera is built entirely by
 	// scene_registry.h/scene_registry_data.h, which never overrides

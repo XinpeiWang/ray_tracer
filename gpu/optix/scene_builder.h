@@ -146,6 +146,13 @@ struct SceneData {
 // see their case blocks) honor cam_x/y/z instead. Set by main.cpp's
 // video-mode frame loop, which must animate the camera every frame
 // regardless of a scene's single-image default.
+// has_custom_lookat/lookat_x/y/z: when set, overrides EVERY scene's own
+// hardcoded look-at point with this one instead - used by Live Preview's
+// free-fly camera, which needs to look wherever it's facing rather than
+// always re-aiming at each scene's fixed subject. Defaulted off so every
+// pre-existing caller (batch/video rendering, thumbnail generation, etc.)
+// keeps today's behavior unchanged. See build_scene()'s own implementation
+// comment for how this reaches all ~65 scene cases from one place.
 bool build_scene(
 	const char* scene_id,
 	int image_width,
@@ -156,5 +163,9 @@ bool build_scene(
 	double cam_y = 278.0,
 	double cam_z = -800.0,  // Far back view
 	GpuCameraParams* out_camera_extra = nullptr,
-	bool force_camera_override = false
+	bool force_camera_override = false,
+	bool has_custom_lookat = false,
+	double lookat_x = 0.0,
+	double lookat_y = 0.0,
+	double lookat_z = 0.0
 );

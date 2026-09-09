@@ -40,26 +40,28 @@ public:
 	explicit RealtimePreviewWorker(QObject *parent = nullptr) : QObject(parent) {}
 
 public slots:
-	// Starts the render loop for sceneId at (camX,camY,camZ), width x height.
-	// Safe to call again while already running - restarts with the new
-	// scene/resolution and a fresh accumulation buffer, same effect as
-	// stop() then start(). Runs until stop() is called. Bumps m_epoch (see
-	// its own comment) so any renderLoop() continuation still queued from
-	// a PRIOR start()/stop() cycle recognizes itself as stale and exits
-	// instead of running alongside the new chain this call starts.
-	void start(QString sceneId, int width, int height, double camX, double camY, double camZ);
+	// Starts the render loop for sceneId at (camX,camY,camZ) looking at
+	// (lookX,lookY,lookZ), width x height. Safe to call again while already
+	// running - restarts with the new scene/resolution and a fresh
+	// accumulation buffer, same effect as stop() then start(). Runs until
+	// stop() is called. Bumps m_epoch (see its own comment) so any
+	// renderLoop() continuation still queued from a PRIOR start()/stop()
+	// cycle recognizes itself as stale and exits instead of running
+	// alongside the new chain this call starts.
+	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
+			   double lookX, double lookY, double lookZ);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
 	void stop();
 
-	// Moves the camera and resets accumulation (a real "the view changed,
-	// start converging again" reset - see the class-level comment on why
-	// this project's chosen progressive-preview design resets rather than
-	// tries to reproject/reuse samples across a camera change, matching
-	// three-gpu-pathtracer/GLSL-PathTracer's own approach). No-op if not
-	// currently running.
-	void setCamera(double camX, double camY, double camZ);
+	// Moves the camera and/or where it's looking, and resets accumulation
+	// (a real "the view changed, start converging again" reset - see the
+	// class-level comment on why this project's chosen progressive-preview
+	// design resets rather than tries to reproject/reuse samples across a
+	// camera change, matching three-gpu-pathtracer/GLSL-PathTracer's own
+	// approach). No-op if not currently running.
+	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 
 signals:
 	// Emitted once per accumulated frame - already tonemapped (ACES + sRGB,
@@ -83,6 +85,11 @@ private:
 	int m_width = 0;
 	int m_height = 0;
 	double m_camX = 0.0, m_camY = 0.0, m_camZ = 0.0;
+	// Always passed to the DLL as an explicit look-at override (has_custom_lookat=true)
+	// - Live Preview's whole point is letting the caller drive where the
+	// camera looks, not just where it stands. See optix_interface.h's own
+	// comment on rt_realtime_render_frame()'s lookat parameters.
+	double m_lookX = 0.0, m_lookY = 0.0, m_lookZ = 0.0;
 	std::vector<float> m_accum;   // linear RGB running mean, width*height*3
 	// Per-frame scratch buffers, persisted across renderLoop() calls and
 	// only resized in resetAccumulation() (same resolution-keyed reuse
@@ -121,9 +128,10 @@ public:
 	// when this is false rather than let start() silently fail every frame.
 	static bool isAvailable();
 
-	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ);
+	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
+			   double lookX, double lookY, double lookZ);
 	void stop();
-	void setCamera(double camX, double camY, double camZ);
+	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 
 signals:
 	void frameReady(QImage image, int sampleCount);

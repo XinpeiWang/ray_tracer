@@ -1344,11 +1344,13 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 	m_livePreviewLabel = new OrbitPreviewLabel(page);
 	m_livePreviewLabel->setMinimumSize(200, 200);
 	m_livePreviewLabel->setPlaceholderText(
-		tr("Waiting for first frame...\n\nDrag to orbit, scroll or +/- to zoom, Arrow keys to orbit"));
+		tr("Waiting for first frame...\n\nDrag to orbit, scroll or +/- to zoom, "
+		   "WASD to move, Up/Down to fly"));
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::orbitDragged, this, &MainWindow::onLivePreviewOrbitDragged);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::zoomRequested, this, &MainWindow::onLivePreviewZoomRequested);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::keyOrbitRequested, this, &MainWindow::onLivePreviewKeyOrbit);
 	connect(m_livePreviewLabel, &OrbitPreviewLabel::keyZoomRequested, this, &MainWindow::onLivePreviewKeyZoom);
+	connect(m_livePreviewLabel, &OrbitPreviewLabel::translateRequested, this, &MainWindow::onLivePreviewTranslate);
 	layout->addWidget(m_livePreviewLabel, /*stretch=*/1);
 	// Grabs keyboard focus immediately so arrow-key/+/- navigation works
 	// without an extra click first (which would itself start an orbit
@@ -1374,7 +1376,7 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 	m_livePreviewPage = page;
 	addPreviewSubTabPage(page, tr("Live Preview"),
 		tr("Interactive GPU preview - drag to orbit, scroll or +/- to zoom, "
-		"Arrow keys to orbit"));
+		"WASD to move, Up/Down to fly, Left/Right to orbit"));
 }
 
 bool MainWindow::isLivePreviewSubTabVisible() const {
@@ -1409,14 +1411,17 @@ void MainWindow::startLivePreview() {
 	// per-resolution controls yet" scope.
 	constexpr int kPreviewWidth = 400;
 	constexpr int kPreviewHeight = 300;
-	// Seed the orbit state from wherever the camera spinboxes currently
-	// point, around the CURRENT scene's own lookAt point (currentLookAt() -
-	// both explicit arguments, not read implicitly off members, so this
-	// call site can't silently drift onto a stale lookAt the way an
-	// implicit-member version could - see m_orbit's own comment).
+	// Seed both the orbit state AND the free-fly pivot from wherever the
+	// camera spinboxes currently point, around the CURRENT scene's own
+	// lookAt point (currentLookAt()) - a fresh starting pivot every
+	// session, exactly like m_orbit itself. From here on, m_livePreviewLookAt
+	// (not currentLookAt()) is what orbiting/zooming/translating actually
+	// revolves around - see its own comment (mainwindow.h).
 	const camera_math::Vec3 camera = currentCameraPosition();
-	m_orbit = camera_math::cartesianToOrbit(camera, currentLookAt());
-	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z);
+	m_livePreviewLookAt = currentLookAt();
+	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
+	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z,
+								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -1471,14 +1476,16 @@ void MainWindow::onLivePreviewStatus(QString text) {
 void MainWindow::onLivePreviewCameraChanged() {
 	if (!m_livePreviewRunning || !m_livePreviewSession) return;
 	const camera_math::Vec3 camera = currentCameraPosition();
-	m_orbit = camera_math::cartesianToOrbit(camera, currentLookAt());
-	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z);
+	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
+	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z,
+									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 }
 
 void MainWindow::updateLivePreviewCameraFromOrbit() {
 	if (!m_livePreviewRunning || !m_livePreviewSession) return;
-	const camera_math::Vec3 camera = camera_math::orbitToCartesian(m_orbit, currentLookAt());
-	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z);
+	const camera_math::Vec3 camera = camera_math::orbitToCartesian(m_orbit, m_livePreviewLookAt);
+	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z,
+									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 }
 
 // Applies a rotation to m_orbit and clamps elevation short of the true
@@ -1504,6 +1511,44 @@ void MainWindow::applyZoomDelta(double factor) {
 	m_orbit.radius *= factor;
 	constexpr double kMinRadius = 1.0;
 	if (m_orbit.radius < kMinRadius) m_orbit.radius = kMinRadius;
+	updateLivePreviewCameraFromOrbit();
+}
+
+// Free-fly WASD/Up-Down translation - unlike applyOrbitDelta()/
+// applyZoomDelta() above (which rotate/scale around a FIXED
+// m_livePreviewLookAt), this MOVES the pivot together with the camera by
+// the same world-space delta, so the camera keeps facing the same
+// direction it already was rather than snapping to re-aim at wherever the
+// pivot used to be. Basis is derived from the camera's CURRENT facing
+// direction (forward = toward the pivot; right = perpendicular to forward
+// in the horizontal plane; up = world +Y, confirmed the vertical axis
+// throughout camera_math.h and the GPU renderer's own vup convention -
+// scene_builder.cpp hardcodes make_float3(0,1,0) everywhere), not a
+// separately-tracked orientation, so there's no drift between this and
+// what orbitToCartesian() would compute from m_orbit right now.
+void MainWindow::applyTranslateDelta(double forwardSteps, double rightSteps, double upSteps) {
+	if (!m_livePreviewRunning) return;
+	const camera_math::Vec3 camera = camera_math::orbitToCartesian(m_orbit, m_livePreviewLookAt);
+	const camera_math::Vec3 forward = camera_math::normalized(m_livePreviewLookAt - camera);
+	constexpr camera_math::Vec3 kWorldUp{0.0, 1.0, 0.0};
+	const camera_math::Vec3 right = camera_math::normalized(camera_math::cross(forward, kWorldUp));
+	// World-space distance per step - tuned against the Cornell Box's own
+	// ~555-unit scale (a comfortable walking pace across the room takes a
+	// handful of presses, not one giant leap or an imperceptible creep).
+	constexpr double kUnitsPerStep = 20.0;
+	const camera_math::Vec3 delta =
+		forward * (forwardSteps * kUnitsPerStep * m_keyboardSensitivity) +
+		right * (rightSteps * kUnitsPerStep * m_keyboardSensitivity) +
+		kWorldUp * (upSteps * kUnitsPerStep * m_keyboardSensitivity);
+	// Camera and pivot translate by the IDENTICAL delta, preserving
+	// distance/orientation between them - re-deriving m_orbit via
+	// cartesianToOrbit() rather than assuming it stays numerically
+	// unchanged matches this file's own existing practice (e.g.
+	// onLivePreviewCameraChanged()) of never assuming float-exact
+	// preservation across a recomputation.
+	m_livePreviewLookAt = m_livePreviewLookAt + delta;
+	const camera_math::Vec3 newCamera = camera + delta;
+	m_orbit = camera_math::cartesianToOrbit(newCamera, m_livePreviewLookAt);
 	updateLivePreviewCameraFromOrbit();
 }
 
@@ -1556,6 +1601,10 @@ void MainWindow::onLivePreviewKeyZoom(int radiusSteps) {
 	// per-notch granularity.
 	constexpr double kZoomFactorPerKeyStep = 0.85;
 	applyZoomDelta(std::pow(kZoomFactorPerKeyStep, radiusSteps * m_keyboardSensitivity));
+}
+
+void MainWindow::onLivePreviewTranslate(int forwardSteps, int rightSteps, int upSteps) {
+	applyTranslateDelta(forwardSteps, rightSteps, upSteps);
 }
 
 // Live Preview mouse/keyboard sensitivity persistence - same

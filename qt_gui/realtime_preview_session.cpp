@@ -10,8 +10,11 @@
 namespace {
 
 // bool(const char* scene_id, int w, int h, int spp, int max_depth,
-//      double camX, double camY, double camZ, float* out_rgb)
-typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double, float*);
+//      double camX, double camY, double camZ,
+//      bool has_custom_lookat, double lookX, double lookY, double lookZ,
+//      float* out_rgb)
+typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
+							   bool, double, double, double, float*);
 
 struct DllHandle {
 	void* module = nullptr;
@@ -60,13 +63,17 @@ void RealtimePreviewWorker::resetAccumulation() {
 	m_sampleCount = 0;
 }
 
-void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ) {
+void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
+								   double lookX, double lookY, double lookZ) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
 	m_camX = camX;
 	m_camY = camY;
 	m_camZ = camZ;
+	m_lookX = lookX;
+	m_lookY = lookY;
+	m_lookZ = lookZ;
 	m_cameraDirty = false;
 	resetAccumulation();
 	m_running = true;
@@ -77,11 +84,14 @@ void RealtimePreviewWorker::stop() {
 	m_running = false;
 }
 
-void RealtimePreviewWorker::setCamera(double camX, double camY, double camZ) {
+void RealtimePreviewWorker::setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ) {
 	if (!m_running) return;
 	m_camX = camX;
 	m_camY = camY;
 	m_camZ = camZ;
+	m_lookX = lookX;
+	m_lookY = lookY;
+	m_lookZ = lookZ;
 	m_cameraDirty = true;
 }
 
@@ -115,7 +125,9 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		const int spp = 1;
 		const int maxDepth = 8;
 		ok = renderFrame(m_sceneId.toUtf8().constData(), m_width, m_height, spp, maxDepth,
-						  m_camX, m_camY, m_camZ, m_tmp.data());
+						  m_camX, m_camY, m_camZ,
+						  /*has_custom_lookat=*/true, m_lookX, m_lookY, m_lookZ,
+						  m_tmp.data());
 		if (!ok) {
 			emit statusChanged(QStringLiteral("Render failed - scene may not be GPU-supported, "
 											   "or the wavefront backend is unavailable"));
@@ -195,17 +207,20 @@ RealtimePreviewSession::~RealtimePreviewSession() {
 	m_thread.wait();
 }
 
-void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ) {
+void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
+									double lookX, double lookY, double lookZ) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
-		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ));
+		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
+		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ));
 }
 
 void RealtimePreviewSession::stop() {
 	QMetaObject::invokeMethod(m_worker, "stop", Qt::QueuedConnection);
 }
 
-void RealtimePreviewSession::setCamera(double camX, double camY, double camZ) {
+void RealtimePreviewSession::setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ) {
 	QMetaObject::invokeMethod(m_worker, "setCamera", Qt::QueuedConnection,
-		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ));
+		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
+		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ));
 }

@@ -587,6 +587,13 @@ signals:
 	void keyOrbitRequested(int azimuthSteps, int elevationSteps);
 	void keyZoomRequested(int radiusSteps);
 
+	// WASD/Up/Down free-fly translation - forwardSteps/rightSteps/upSteps
+	// are each already normalized to -1/0/+1, same shape as
+	// keyOrbitRequested() above. MainWindow (onLivePreviewTranslate())
+	// turns these into an actual world-space move, since this widget has
+	// no notion of the camera's current facing direction either.
+	void translateRequested(int forwardSteps, int rightSteps, int upSteps);
+
 protected:
 	void mousePressEvent(QMouseEvent *event) override {
 		if (event->button() == Qt::LeftButton) {
@@ -625,21 +632,28 @@ protected:
 		event->accept();
 	}
 
-	// Arrow keys drive the same two rotational axes the mouse drag does
-	// (Left/Right -> azimuth, Up/Down -> elevation); +/-/= zoom. No WASD
-	// alias - arrows already cover both axes this orbit-only camera model
-	// has (see camera_math.h's own comment), so a second set of keys for
-	// the same two axes would add nothing; a genuine free-fly mode, if
-	// this ever gets one, is a different feature and can claim WASD then.
-	// event->accept() on every recognized key is required so it never
-	// reaches SplitPreviewTabs/HorizontalTabBar (this widget lives inside
-	// that tab strip's stack) and gets reinterpreted as a tab-switch key.
+	// WASD translates (forward/back/strafe); Up/Down arrows translate
+	// vertically - true free-fly movement, not orbit, so the camera can end
+	// up looking anywhere rather than always facing the scene's subject
+	// (see MainWindow::applyTranslateDelta()'s own comment). Left/Right
+	// arrows still orbit (azimuth) - mouse-drag already covers full
+	// rotation, and there's no natural free-fly meaning left over for them
+	// once WASD+Up/Down cover all 6 translation directions, so they keep
+	// their pre-existing behavior rather than being left doing nothing.
+	// +/-/= still zoom (radius), unchanged. event->accept() on every
+	// recognized key is required so it never reaches SplitPreviewTabs/
+	// HorizontalTabBar (this widget lives inside that tab strip's stack)
+	// and gets reinterpreted as a tab-switch key.
 	void keyPressEvent(QKeyEvent *event) override {
 		switch (event->key()) {
+		case Qt::Key_W: emit translateRequested(+1, 0, 0); event->accept(); return;
+		case Qt::Key_S: emit translateRequested(-1, 0, 0); event->accept(); return;
+		case Qt::Key_A: emit translateRequested(0, -1, 0); event->accept(); return;
+		case Qt::Key_D: emit translateRequested(0, +1, 0); event->accept(); return;
+		case Qt::Key_Up:   emit translateRequested(0, 0, +1); event->accept(); return;
+		case Qt::Key_Down: emit translateRequested(0, 0, -1); event->accept(); return;
 		case Qt::Key_Left:  emit keyOrbitRequested(-1, 0); event->accept(); return;
 		case Qt::Key_Right: emit keyOrbitRequested(+1, 0); event->accept(); return;
-		case Qt::Key_Up:    emit keyOrbitRequested(0, +1); event->accept(); return;
-		case Qt::Key_Down:  emit keyOrbitRequested(0, -1); event->accept(); return;
 		case Qt::Key_Plus: case Qt::Key_Equal:
 			emit keyZoomRequested(+1); event->accept(); return;
 		case Qt::Key_Minus:

@@ -68,7 +68,11 @@ static bool prepareSceneAndCamera(
 	const std::string& ptxPath,
 	bool verbose,
 	GpuCameraParams& cameraExtra,
-	int& errorCode
+	int& errorCode,
+	bool has_custom_lookat = false,
+	double lookat_x = 0.0,
+	double lookat_y = 0.0,
+	double lookat_z = 0.0
 ) {
 	errorCode = 0;
 	if (verbose) {
@@ -91,12 +95,14 @@ static bool prepareSceneAndCamera(
 	bool builtOk;
 	if (verbose) {
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
-							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override);
+							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
+							   has_custom_lookat, lookat_x, lookat_y, lookat_z);
 	} else {
 		std::ostringstream discard;
 		std::streambuf* oldCerrBuf = std::cerr.rdbuf(discard.rdbuf());
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
-							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override);
+							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
+							   has_custom_lookat, lookat_x, lookat_y, lookat_z);
 		std::cerr.rdbuf(oldCerrBuf);
 	}
 
@@ -509,6 +515,10 @@ extern "C" bool rt_realtime_render_frame(
 	double cam_x,
 	double cam_y,
 	double cam_z,
+	bool has_custom_lookat,
+	double lookat_x,
+	double lookat_y,
+	double lookat_z,
 	float* out_rgb_buffer
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
@@ -556,12 +566,21 @@ extern "C" bool rt_realtime_render_frame(
 		static int s_cachedWidth = -1;
 		static int s_cachedHeight = -1;
 		static double s_cachedCamX = 0.0, s_cachedCamY = 0.0, s_cachedCamZ = 0.0;
+		// Look-at is part of the cache key too, alongside camera position -
+		// panning the view while holding position still (a normal free-fly
+		// "move then look around" interaction) changes what gets rendered
+		// just as much as moving does, and must not hit a stale-look-at
+		// cache entry.
+		static bool s_cachedHasCustomLookAt = false;
+		static double s_cachedLookAtX = 0.0, s_cachedLookAtY = 0.0, s_cachedLookAtZ = 0.0;
 		static GpuCameraParams s_cachedCameraExtra{};
 		static bool s_haveCache = false;
 
 		const bool cacheHit = s_haveCache && s_cachedSceneId == scene_id &&
 			s_cachedWidth == image_width && s_cachedHeight == image_height &&
-			s_cachedCamX == cam_x && s_cachedCamY == cam_y && s_cachedCamZ == cam_z;
+			s_cachedCamX == cam_x && s_cachedCamY == cam_y && s_cachedCamZ == cam_z &&
+			s_cachedHasCustomLookAt == has_custom_lookat &&
+			(!has_custom_lookat || (s_cachedLookAtX == lookat_x && s_cachedLookAtY == lookat_y && s_cachedLookAtZ == lookat_z));
 
 		GpuCameraParams cameraExtra;
 		if (cacheHit) {
@@ -575,7 +594,8 @@ extern "C" bool rt_realtime_render_frame(
 			if (!prepareSceneAndCamera(scene_id, image_width, image_height, cam_x, cam_y, cam_z,
 										 /*force_camera_override=*/true, /*wavefrontMode=*/true,
 										 "wavefront_programs.ptx", /*verbose=*/false,
-										 cameraExtra, errorCode)) {
+										 cameraExtra, errorCode,
+										 has_custom_lookat, lookat_x, lookat_y, lookat_z)) {
 				return false;
 			}
 			if (!g_renderer->isWavefrontActive()) return false;
@@ -584,6 +604,8 @@ extern "C" bool rt_realtime_render_frame(
 			s_cachedWidth = image_width;
 			s_cachedHeight = image_height;
 			s_cachedCamX = cam_x; s_cachedCamY = cam_y; s_cachedCamZ = cam_z;
+			s_cachedHasCustomLookAt = has_custom_lookat;
+			s_cachedLookAtX = lookat_x; s_cachedLookAtY = lookat_y; s_cachedLookAtZ = lookat_z;
 			s_cachedCameraExtra = cameraExtra;
 			s_haveCache = true;
 		}

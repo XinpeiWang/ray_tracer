@@ -75,15 +75,20 @@ int optix_render_main(
 // applied, unlike optix_render_main() above. The caller is expected to
 // accumulate these across many low-spp calls and tonemap only the
 // accumulated result once per displayed frame. Caches scene_id/resolution/
-// camera from the last call - a repeated call where NONE of those changed
-// skips scene rebuild, GPU re-upload, AND SBT rebuild entirely (all real
-// per-call costs otherwise - see optix_interface.cpp's own comment), so
-// only an actual camera move pays the full cost, matching how the caller
-// only needs a fresh frame at all in that case (see
+// camera/look-at from the last call - a repeated call where NONE of those
+// changed skips scene rebuild, GPU re-upload, AND SBT rebuild entirely (all
+// real per-call costs otherwise - see optix_interface.cpp's own comment),
+// so only an actual camera or look-at move pays the full cost, matching
+// how the caller only needs a fresh frame at all in that case (see
 // RealtimePreviewWorker::setCamera()'s own reset-on-move design). Returns
 // false on any failure (unsupported scene, GPU error, or wavefront mode
 // unavailable) - check it every call, don't assume out_rgb_buffer was
 // filled.
+// has_custom_lookat/lookat_x/y/z: overrides every scene's own hardcoded
+// look-at point - see build_scene()'s own comment (scene_builder.h). Live
+// Preview's free-fly camera always passes has_custom_lookat=true, since it
+// needs to look wherever it's facing rather than always re-aiming at each
+// scene's fixed subject.
 bool rt_realtime_render_frame(
 	const char* scene_id,
 	int image_width,
@@ -93,6 +98,10 @@ bool rt_realtime_render_frame(
 	double cam_x,
 	double cam_y,
 	double cam_z,
+	bool has_custom_lookat,
+	double lookat_x,
+	double lookat_y,
+	double lookat_z,
 	float* out_rgb_buffer
 );
 

@@ -27,6 +27,33 @@ struct Vec3 {
 	double z = 0.0;
 };
 
+// Basic vector arithmetic - added for Live Preview's free-fly WASD
+// translation (applyTranslateDelta(), mainwindow_tabs_render.cpp), which
+// needs a real forward/right/up basis (cross product) rather than the
+// hand-written per-axis dx/dy/dz arithmetic every function above already
+// used - fine for a single distance/direction formula, awkward for a
+// three-vector basis computation with a cross product in the middle.
+inline Vec3 operator+(const Vec3 &a, const Vec3 &b) { return Vec3{a.x + b.x, a.y + b.y, a.z + b.z}; }
+inline Vec3 operator-(const Vec3 &a, const Vec3 &b) { return Vec3{a.x - b.x, a.y - b.y, a.z - b.z}; }
+inline Vec3 operator*(const Vec3 &v, double s) { return Vec3{v.x * s, v.y * s, v.z * s}; }
+
+inline double length(const Vec3 &v) { return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
+
+// Same degenerate-case convention as repositionAtDistance()/cartesianToOrbit()
+// above: a zero-length input has no direction to normalize, so this returns
+// the zero vector rather than propagating NaN.
+inline Vec3 normalized(const Vec3 &v) {
+	const double len = length(v);
+	if (len < 1e-9) return Vec3{0.0, 0.0, 0.0};
+	return v * (1.0 / len);
+}
+
+inline Vec3 cross(const Vec3 &a, const Vec3 &b) {
+	return Vec3{a.y * b.z - a.z * b.y,
+				a.z * b.x - a.x * b.z,
+				a.x * b.y - a.y * b.x};
+}
+
 // Distance from the look-at point to the camera.
 inline double distanceFromTarget(const Vec3 &camera, const Vec3 &lookAt) {
 	const double dx = camera.x - lookAt.x;

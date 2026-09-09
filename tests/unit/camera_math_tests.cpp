@@ -159,3 +159,52 @@ TEST(CameraMathTest, CartesianToOrbitHandlesStraightUp) {
 	EXPECT_NEAR(orbit.elevation, 1.5707963267948966, 1e-9);  // +90 degrees, in radians
 	expectVec3Near(orbitToCartesian(orbit, kCornellLookAt), straightUp);
 }
+
+// Vec3 arithmetic - added for Live Preview's free-fly WASD translation
+// (MainWindow::applyTranslateDelta()).
+
+TEST(CameraMathTest, Vec3AddSubtractAreComponentwise) {
+	const Vec3 a{1.0, 2.0, 3.0};
+	const Vec3 b{10.0, 20.0, 30.0};
+	expectVec3Near(a + b, Vec3{11.0, 22.0, 33.0});
+	expectVec3Near(b - a, Vec3{9.0, 18.0, 27.0});
+}
+
+TEST(CameraMathTest, Vec3ScaleMultipliesEachComponent) {
+	expectVec3Near(Vec3{1.0, -2.0, 3.0} * 2.0, Vec3{2.0, -4.0, 6.0});
+	expectVec3Near(Vec3{1.0, -2.0, 3.0} * 0.0, Vec3{0.0, 0.0, 0.0});
+}
+
+TEST(CameraMathTest, LengthIsPlainEuclideanNorm) {
+	EXPECT_NEAR(length(Vec3{3.0, 4.0, 0.0}), 5.0, 1e-9);
+	EXPECT_NEAR(length(Vec3{0.0, 0.0, 0.0}), 0.0, 1e-9);
+}
+
+TEST(CameraMathTest, NormalizedProducesAUnitVectorInTheSameDirection) {
+	const Vec3 n = normalized(Vec3{3.0, 4.0, 0.0});
+	EXPECT_NEAR(length(n), 1.0, 1e-9);
+	expectVec3Near(n, Vec3{0.6, 0.8, 0.0});
+}
+
+// Same degenerate-case convention as repositionAtDistance()/cartesianToOrbit():
+// a zero-length vector has no direction to normalize. Must not NaN.
+TEST(CameraMathTest, NormalizedOfZeroVectorFallsBackToZeroNotNaN) {
+	const Vec3 n = normalized(Vec3{0.0, 0.0, 0.0});
+	EXPECT_FALSE(std::isnan(n.x));
+	EXPECT_FALSE(std::isnan(n.y));
+	EXPECT_FALSE(std::isnan(n.z));
+	expectVec3Near(n, Vec3{0.0, 0.0, 0.0});
+}
+
+// Standard right-handed basis check: X cross Y = Z, matching the forward/
+// right/up basis applyTranslateDelta() builds (forward x worldUp = right).
+TEST(CameraMathTest, CrossProductOfUnitAxesMatchesRightHandRule) {
+	const Vec3 xAxis{1.0, 0.0, 0.0};
+	const Vec3 yAxis{0.0, 1.0, 0.0};
+	const Vec3 zAxis{0.0, 0.0, 1.0};
+	expectVec3Near(cross(xAxis, yAxis), zAxis);
+	expectVec3Near(cross(yAxis, zAxis), xAxis);
+	expectVec3Near(cross(zAxis, xAxis), yAxis);
+	// Anti-commutative: swapping operands flips the sign.
+	expectVec3Near(cross(yAxis, xAxis), zAxis * -1.0);
+}

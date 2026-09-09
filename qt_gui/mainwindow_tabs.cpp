@@ -1051,10 +1051,10 @@ void MainWindow::createSettingsTab() {
 	m_liveModeSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), basicTab);
 	styleGroupBox(m_liveModeSettingsGroupBox);
 	m_liveModeSettingsGroupBox->setInfoIcon(createInfoIcon(
-		tr("Tune how responsive click-drag-to-orbit, scroll-to-zoom, and "
-		"the Arrow/+/- keys feel in Live Preview. Only takes effect when "
-		"Output Mode above is \"Live Preview (interactive)\", but stays "
-		"editable in any mode.")));
+		tr("Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down "
+		"movement + Left/Right/+/- feel in Live Preview. Only takes effect "
+		"when Output Mode above is \"Live Preview (interactive)\", but "
+		"stays editable in any mode.")));
 	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
 	QFormLayout *liveModeSettingsLayout = new QFormLayout(m_liveModeSettingsGroupBox);
 	liveModeSettingsLayout->setVerticalSpacing(10);
@@ -1105,9 +1105,9 @@ void MainWindow::createSettingsTab() {
 		saveKeyboardSensitivity(value);
 	});
 	sensitivityGrid->addWidget(labelWithInfo(tr("Keyboard Sensitivity:"),
-		tr("Scales the Arrow keys (orbit) and +/- keys (zoom) step size in "
-		"Live Preview. 1x is a moderate per-press nudge; lower is finer, "
-		"higher moves further per press.")),
+		tr("Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- "
+		"zoom step size in Live Preview. 1x is a moderate per-press nudge; "
+		"lower is finer, higher moves further per press.")),
 		0, 2);
 	sensitivityGrid->addWidget(m_keyboardSensitivitySpinBox, 0, 3);
 

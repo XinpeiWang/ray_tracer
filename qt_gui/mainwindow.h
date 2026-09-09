@@ -275,10 +275,11 @@ private:
 	// Called from the camera spinboxes' valueChanged handlers - forwards to
 	// the running session (no-op if the preview isn't currently running,
 	// see RealtimePreviewWorker::setCamera()'s own comment). Also
-	// re-derives m_orbit from the new position (see its own comment) so a
-	// later mouse-orbit drag continues smoothly from wherever this manual
-	// edit left the camera, instead of jumping back to a stale orbit
-	// state. NOTE: this only defends against a manual spinbox edit WHILE
+	// re-derives m_orbit from the new position AROUND m_livePreviewLookAt -
+	// wherever WASD has flown that pivot to, not the scene's original fixed
+	// point - so a later mouse-orbit drag continues smoothly from wherever
+	// this manual edit left the camera, instead of jumping back to a stale
+	// orbit state. NOTE: this only defends against a manual spinbox edit WHILE
 	// orbiting - it does not (and today cannot: m_cameraPosX/Y/Z live on
 	// the separate Settings tab, which stopLivePreviewIfNavigatedAway()
 	// always stops Live Preview before reaching) protect against reading a
@@ -302,6 +303,11 @@ private:
 	// impossible to tune independently.
 	void onLivePreviewKeyOrbit(int azimuthSteps, int elevationSteps);
 	void onLivePreviewKeyZoom(int radiusSteps);
+	// WASD free-fly translation - see OrbitPreviewLabel::translateRequested()'s
+	// own comment. Unlike orbit/zoom (which rotate/scale around
+	// m_livePreviewLookAt), this MOVES that pivot, together with the camera,
+	// by the same delta - see applyTranslateDelta()'s own comment.
+	void onLivePreviewTranslate(int forwardSteps, int rightSteps, int upSteps);
 	// Shared by the mouse and keyboard orbit/zoom handlers above - each
 	// converts its own raw input into radians/a zoom factor, then calls one
 	// of these to mutate m_orbit, clamp it, and push the result to the
@@ -309,10 +315,15 @@ private:
 	// for the clamps' rationale.
 	void applyOrbitDelta(double azimuthDelta, double elevationDelta);
 	void applyZoomDelta(double factor);
-	// Converts m_orbit (spherical coordinates around currentLookAt()) back
-	// into an absolute camera position (camera_math::orbitToCartesian())
-	// and forwards it to the running RealtimePreviewSession - called after
-	// every orbit drag/zoom step.
+	// Translates the camera AND m_livePreviewLookAt together by the same
+	// world-space delta (forward/right/up basis derived from the CURRENT
+	// camera-to-pivot direction) - see its own definition comment
+	// (mainwindow_tabs_render.cpp) for the full derivation.
+	void applyTranslateDelta(double forwardSteps, double rightSteps, double upSteps);
+	// Converts m_orbit (spherical coordinates around m_livePreviewLookAt)
+	// back into an absolute camera position (camera_math::orbitToCartesian())
+	// and forwards both the camera and look-at point to the running
+	// RealtimePreviewSession - called after every orbit/zoom/translate step.
 	void updateLivePreviewCameraFromOrbit();
 #endif
 
@@ -708,17 +719,27 @@ private:
 	OrbitPreviewLabel *m_livePreviewLabel = nullptr;
 	QLabel *m_livePreviewStatusLabel = nullptr;
 	bool m_livePreviewRunning = false;
-	// Spherical coordinates of the live-preview camera around the current
-	// scene's lookAt point (currentLookAt()) - see camera_math.h's
-	// OrbitCoordinates for the field meanings. This is the live-preview
-	// feature's OWN camera representation, deliberately decoupled from
-	// m_cameraPosX/Y/Z (those stay whatever they were before orbiting
-	// started - applyOrbitDelta()/applyZoomDelta() only ever mutate m_orbit,
-	// never those spinboxes) - kept in sync with the
+	// Spherical coordinates of the live-preview camera around
+	// m_livePreviewLookAt (below) - see camera_math.h's OrbitCoordinates
+	// for the field meanings. This is the live-preview feature's OWN camera
+	// representation, deliberately decoupled from m_cameraPosX/Y/Z (those
+	// stay whatever they were before orbiting started - applyOrbitDelta()/
+	// applyZoomDelta()/applyTranslateDelta() only ever mutate m_orbit/
+	// m_livePreviewLookAt, never those spinboxes) - kept in sync with the
 	// ACTUAL camera position via camera_math::cartesianToOrbit(), called
 	// both when Live Preview starts and whenever onLivePreviewCameraChanged()
 	// moves the camera some other way.
 	camera_math::OrbitCoordinates m_orbit;
+	// The point Live Preview's camera orbits/looks at - starts as the
+	// scene's own fixed lookAt (currentLookAt(), seeded in
+	// startLivePreview()) but, unlike currentLookAt() itself, MOVES:
+	// applyTranslateDelta() (WASD free-fly) translates this together with
+	// the camera, so the pivot goes wherever the camera has flown to
+	// instead of staying pinned to the scene's original subject. Never
+	// written to m_currentLookatX/Y/Z - those stay the scene's fixed value,
+	// read by camera presets/the Distance spinbox/its display, which must
+	// not drift just because Live Preview's own pivot moved.
+	camera_math::Vec3 m_livePreviewLookAt;
 	// Multipliers on the base orbit/zoom step size for each input method -
 	// one knob per DEVICE, not one per axis (azimuth/elevation/radius all
 	// scale together per device), since "the mouse/keyboard feels too
