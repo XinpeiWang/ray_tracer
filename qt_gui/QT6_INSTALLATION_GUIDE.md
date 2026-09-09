@@ -55,7 +55,7 @@ Open PowerShell and check:
 
 ```powershell
 # Check if Qt6 is installed
-$qtPath = "C:\Qt\6.8.0\msvc2022_64\bin\qmake.exe"
+$qtPath = "C:\Qt\6.11.1\msvc2022_64\bin\qmake.exe"
 if (Test-Path $qtPath) {
 	Write-Host "✅ Qt6 installed successfully!" -ForegroundColor Green
 	& $qtPath -version
@@ -71,11 +71,11 @@ Add Qt to your PATH for easier access:
 
 ```powershell
 # Add Qt6 to PATH (adjust version number if different)
-$qtBinPath = "C:\Qt\6.8.0\msvc2022_64\bin"
+$qtBinPath = "C:\Qt\6.11.1\msvc2022_64\bin"
 [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$qtBinPath", "User")
 
 # Set Qt6_DIR for CMake/tools
-[Environment]::SetEnvironmentVariable("Qt6_DIR", "C:\Qt\6.8.0\msvc2022_64", "User")
+[Environment]::SetEnvironmentVariable("Qt6_DIR", "C:\Qt\6.11.1\msvc2022_64", "User")
 
 Write-Host "✅ Environment variables set. Restart your terminal." -ForegroundColor Green
 ```

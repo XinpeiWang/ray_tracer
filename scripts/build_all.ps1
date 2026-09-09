@@ -71,6 +71,23 @@ try {
 	exit 1
 }
 
+# The Qt GUI now builds with the msvc2022_64 Qt kit (see below), which needs
+# cl.exe/nmake.exe on PATH the same way msbuild does above - same Developer
+# Command Prompt/PowerShell precondition, just extended to cover the Qt
+# build too. Checked here (not just deep inside the Qt-build block) so a
+# missing dev-shell environment fails fast with a clear message instead of a
+# confusing qmake/jom error later. Only warns (not fatal) since -SkipGui
+# doesn't need this at all.
+if (-not $SkipGui) {
+	try {
+		Get-Command cl -ErrorAction Stop | Out-Null
+		Get-Command nmake -ErrorAction Stop | Out-Null
+		Write-Success "MSVC compiler tools found (cl/nmake)"
+	} catch {
+		Write-Warning-Message "cl.exe/nmake.exe not found - Qt GUI build will fail. Run this from a Visual Studio Developer Command Prompt or Developer PowerShell (same requirement as msbuild above)."
+	}
+}
+
 # Check CUDA Toolkit (required for OptiX)
 if (-not $env:CudaToolkitPath) {
 	Write-Warning-Message "CudaToolkitPath not set. OptiX build may fail."
@@ -128,15 +145,28 @@ Write-Success "C++ build completed"
 # Verify outputs
 Write-Header "Verifying Build Outputs"
 
-$exePath = "launcher\x64\$Configuration\ray_tracer.exe"
+# Solution-relative paths (x64\$Configuration\...), matching how MSBuild
+# actually places outputs when building through ray_tracer.sln (both the
+# $SkipTests branch's single-project `msbuild launcher/launcher.vcxproj`
+# and the full-solution branch above resolve OutDir the same way once
+# $(SolutionDir) is in scope) - NOT project-relative (launcher\x64\...,
+# cpu_renderer\x64\...), which these two checks used to assume and which
+# doesn't match any actual build output location.
+$exePath = "x64\$Configuration\ray_tracer.exe"
 if (Test-Path $exePath) {
 	$size = (Get-Item $exePath).Length / 1MB
 	Write-Success "Launcher: $exePath ($([math]::Round($size, 2)) MB)"
 } else {
-	Write-Error "Launcher executable not found: $exePath"
+	# Write-Error-Message (not Write-Error) - this script collects failures
+	# via $script:BuildFailed and reports them in one summary at the end;
+	# the real Write-Error cmdlet is a terminating error under this script's
+	# own $ErrorActionPreference = "Stop", which previously aborted the
+	# whole script here (silently skipping the Qt GUI build and deploy
+	# below) instead of just flagging this one check and continuing.
+	Write-Error-Message "Launcher executable not found: $exePath"
 }
 
-$cpuLib = "cpu_renderer\x64\$Configuration\cpu_renderer.lib"
+$cpuLib = "x64\$Configuration\cpu_renderer.lib"
 if (Test-Path $cpuLib) {
 	Write-Success "CPU Renderer: $cpuLib"
 } else {
@@ -158,7 +188,10 @@ if (Test-Path $ptxFile) {
 }
 
 if (-not $SkipTests) {
-	$testsExe = "tests\x64\$Configuration\ray_tracer_tests.exe"
+	# bin\$Configuration\, not tests\x64\$Configuration\ - the tests
+	# project's OutDir differs from the other three (see the comment above
+	# $exePath) and actually lands here.
+	$testsExe = "bin\$Configuration\ray_tracer_tests.exe"
 	if (Test-Path $testsExe) {
 		Write-Success "Tests: $testsExe"
 	} else {
@@ -170,11 +203,12 @@ if (-not $SkipTests) {
 if (-not $SkipGui) {
 	Write-Header "Building Qt GUI"
 
-	# Find Qt installation
+	# Find Qt installation (msvc2022_64 kit - see BUILD.md for why the GUI
+	# moved off MinGW)
 	$qtPaths = @(
-		"C:\Qt\6.11.1\mingw_64\bin",
-		"C:\Qt\6.10.0\mingw_64\bin",
-		"C:\Qt\6.9.0\mingw_64\bin"
+		"C:\Qt\6.11.1\msvc2022_64\bin",
+		"C:\Qt\6.10.0\msvc2022_64\bin",
+		"C:\Qt\6.9.0\msvc2022_64\bin"
 	)
 
 	$qtBinPath = $null
@@ -188,73 +222,73 @@ if (-not $SkipGui) {
 	# Check if Qt is available
 	$qmake = Get-Command qmake -ErrorAction SilentlyContinue
 	if (-not $qmake -and -not $qtBinPath) {
-		Write-Warning-Message "Qt not found in PATH or common locations. Skipping Qt GUI build."
-		Write-Host "To build Qt GUI, ensure Qt is in PATH or install Qt to C:\Qt\"
+		Write-Warning-Message "Qt (msvc2022_64 kit) not found in PATH or common locations. Skipping Qt GUI build."
+		Write-Host "To build Qt GUI, install the MSVC 2022 64-bit component via the Qt Maintenance Tool, or ensure its bin dir is in PATH."
 	} else {
 		if (-not $qmake) {
 			$qmake = Get-Command "$qtBinPath\qmake.exe"
 		}
 
-		# Find MinGW
-		$mingwPaths = @(
-			"C:\Qt\Tools\mingw1310_64\bin",
-			"C:\Qt\Tools\mingw1120_64\bin",
-			"C:\Qt\Tools\mingw_64\bin"
-		)
-
-		$mingwBinPath = $null
-		foreach ($path in $mingwPaths) {
-			if (Test-Path "$path\mingw32-make.exe") {
-				$mingwBinPath = $path
-				break
-			}
+		# jom parallelizes nmake the way mingw32-make -j already did; plain
+		# nmake is single-threaded and noticeably slower on a full rebuild,
+		# so prefer it when available and fall back to nmake (with a
+		# warning) otherwise. Ships with Qt Creator, not the Qt kit itself.
+		$jomPath = "C:\Qt\Tools\QtCreator\bin\jom\jom.exe"
+		$useJom = Test-Path $jomPath
+		if (-not $useJom) {
+			Write-Warning-Message "jom.exe not found at $jomPath - falling back to single-threaded nmake."
 		}
 
-		if (-not $mingwBinPath) {
-			Write-Warning-Message "MinGW not found. Skipping Qt GUI build."
-			Write-Host "Expected MinGW at C:\Qt\Tools\mingw*_64\bin\"
-		} else {
-			Write-Success "Qt: $($qmake.Source)"
-			Write-Success "MinGW: $mingwBinPath"
+		Write-Success "Qt: $($qmake.Source)"
+		if ($useJom) { Write-Success "jom: $jomPath" }
 
-			Push-Location qt_gui
-			try {
-				# Add Qt and MinGW to PATH for this session
-				$env:PATH = "$qtBinPath;$mingwBinPath;$env:PATH"
+		Push-Location qt_gui
+		try {
+			# Add Qt to PATH for this session. cl.exe/nmake.exe (and jom,
+			# once found above) are expected to already be on PATH from
+			# the Developer Command Prompt/PowerShell this script
+			# requires - see the cl/nmake check near the top.
+			$env:PATH = "$qtBinPath;$env:PATH"
 
-				# Clean old build
-				if (Test-Path Makefile) {
-					if ($Clean) {
-						& "$mingwBinPath\mingw32-make.exe" clean 2>$null
-					}
-				}
-
-				# Generate makefiles
-				& $qmake.Source "RayTracerGUI.pro" -spec win32-g++ "CONFIG+=$($Configuration.ToLower())"
-				if ($LASTEXITCODE -ne 0) {
-					Write-Error-Message "qmake failed"
-				} else {
-					# Build
-					# All cores rather than a fixed 8 - this machine may have
-					# more, and a smaller one should not be oversubscribed.
-					& "$mingwBinPath\mingw32-make.exe" -j"$([System.Environment]::ProcessorCount)"
-					if ($LASTEXITCODE -ne 0) {
-						Write-Error-Message "Qt GUI build failed"
-					} else {
-						Write-Success "Qt GUI build completed"
-
-						# Check output (Qt builds directly to ../RayTracer_Package)
-						$guiExe = "..\RayTracer_Package\RayTracerGUI.exe"
-						if (Test-Path $guiExe) {
-							Write-Success "Qt GUI: $guiExe"
-						} else {
-							Write-Warning-Message "Qt GUI executable not found at expected location"
-						}
-					}
-				}
-			} finally {
-				Pop-Location
+			# Clean old build. Also removes any stale Makefile/.qmake.stash
+			# left over from a prior MinGW build (regenerating against the
+			# wrong compiler would silently break in confusing ways), not
+			# just on -Clean.
+			if (Test-Path .qmake.stash) { Remove-Item .qmake.stash -Force }
+			if (Test-Path build) { Remove-Item build -Recurse -Force }
+			if (Test-Path Makefile) {
+				if ($useJom) { & $jomPath clean 2>$null } else { & nmake clean 2>$null }
 			}
+
+			# Generate makefiles
+			& $qmake.Source "RayTracerGUI.pro" -spec win32-msvc "CONFIG+=$($Configuration.ToLower())"
+			if ($LASTEXITCODE -ne 0) {
+				Write-Error-Message "qmake failed"
+			} else {
+				# Build. jom's /J mirrors mingw32-make -j; all cores rather
+				# than a fixed count since this machine may have more, and
+				# a smaller one should not be oversubscribed.
+				if ($useJom) {
+					& $jomPath /J "$([System.Environment]::ProcessorCount)" /F "Makefile.$Configuration"
+				} else {
+					& nmake /F "Makefile.$Configuration"
+				}
+				if ($LASTEXITCODE -ne 0) {
+					Write-Error-Message "Qt GUI build failed"
+				} else {
+					Write-Success "Qt GUI build completed"
+
+					# Check output (Qt builds directly to ../RayTracer_Package)
+					$guiExe = "..\RayTracer_Package\RayTracerGUI.exe"
+					if (Test-Path $guiExe) {
+						Write-Success "Qt GUI: $guiExe"
+					} else {
+						Write-Warning-Message "Qt GUI executable not found at expected location"
+					}
+				}
+			}
+		} finally {
+			Pop-Location
 		}
 	}
 }
@@ -305,7 +339,7 @@ if ($script:BuildFailed) {
 	}
 
 	if (-not $SkipTests) {
-		Write-Host "  - Run tests:       .\tests\x64\$Configuration\ray_tracer_tests.exe"
+		Write-Host "  - Run tests:       .\bin\$Configuration\ray_tracer_tests.exe"
 	}
 	if (-not $SkipGui) {
 		if ($Deploy) {

@@ -127,7 +127,7 @@ The solution contains the following projects:
 
 5. **Qt GUI** (`qt_gui/RayTracerGUI.pro`)
    - Qt 6.11.1 application
-   - MinGW 64-bit build
+   - MSVC 2022 64-bit build
    - Spawns `ray_tracer.exe` as subprocess
    - Built separately with qmake/nmake
 
@@ -155,7 +155,7 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64 `
 
 ### Optional
 
-- **Qt 6.11.1** with MinGW 64-bit (for GUI build)
+- **Qt 6.11.1** with MSVC 2022 64-bit component (for GUI build)
 - **Google Test** (automatically included via FetchContent in tests)
 
 ## Build Configurations
@@ -326,12 +326,15 @@ RayTracer_Package\               # Deployment package (if deployed)
 **Symptom:** `qmake not found`
 
 **Solution:**
-1. Install Qt 6.11.1 with MinGW 64-bit
+1. Install Qt 6.11.1 with the MSVC 2022 64-bit component (via the Qt
+   Maintenance Tool)
 2. Add Qt bin directory to PATH:
    ```powershell
-   $env:Path += ";C:\Qt\6.11.1\mingw_64\bin"
+   $env:Path += ";C:\Qt\6.11.1\msvc2022_64\bin"
    ```
-3. Or skip GUI: `.\scripts\build_all.ps1 -SkipGui`
+3. Make sure you're in a Visual Studio Developer Command Prompt/PowerShell
+   (needed for `cl.exe`/`nmake.exe`, same requirement as `msbuild` above)
+4. Or skip GUI: `.\scripts\build_all.ps1 -SkipGui`
 
 ## Advanced Topics
 

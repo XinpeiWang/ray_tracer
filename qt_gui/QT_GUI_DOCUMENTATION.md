@@ -63,8 +63,7 @@ RayTracer_Package/
 ├── RayTracerGUI.exe    # Qt GUI executable
 ├── ray_tracer.exe      # Console renderer, spawned as a subprocess by the GUI
 ├── scene_metadata.dll  # Scene metadata, loaded live by the GUI (Windows only)
-├── Qt6*.dll            # Qt runtime libraries
-├── libgcc_s_seh-1.dll, libstdc++-6.dll  # MinGW runtime
+├── Qt6*.dll            # Qt runtime libraries (MSVC-built)
 └── platforms/, styles/ # Qt plugins
 ```
 
@@ -73,19 +72,26 @@ RayTracer_Package/
 See [`QT6_INSTALLATION_GUIDE.md`](QT6_INSTALLATION_GUIDE.md) for installing
 Qt itself. To build:
 
+Run this from a Visual Studio Developer Command Prompt/PowerShell (needed
+for `cl.exe`/`nmake.exe`/`jom.exe` - plain PowerShell won't have them on
+PATH):
+
 ```powershell
-$env:Path = "C:\Qt\Tools\mingw1310_64\bin;C:\Qt\6.11.1\mingw_64\bin;$env:Path"
+$env:Path = "C:\Qt\6.11.1\msvc2022_64\bin;$env:Path"
 cd qt_gui
-qmake RayTracerGUI.pro -o build\Makefile
-cd build
-mingw32-make -f Makefile.Release -j8
+qmake RayTracerGUI.pro -spec win32-msvc "CONFIG+=release"
+C:\Qt\Tools\QtCreator\bin\jom\jom.exe /F Makefile.Release /J 8
 ```
+
+(`jom` parallelizes like `mingw32-make -j` did; fall back to plain `nmake
+/F Makefile.Release` if `jom.exe` isn't installed - it's single-threaded,
+so full rebuilds are noticeably slower.)
 
 Or via `scripts\build_all.ps1` / `scripts\build_and_deploy.ps1` from the
 repo root, which build the GUI alongside the CLI/GPU renderer and (for the
 `_deploy` variant) run `windeployqt` automatically. If `RayTracerGUI.pro`'s
-`HEADERS`/`SOURCES` change, re-run `qmake` before `mingw32-make` so the
-Makefile picks up the new moc/compile rules.
+`HEADERS`/`SOURCES` change, re-run `qmake` before `jom` so the Makefile
+picks up the new moc/compile rules.
 
 `RayTracerGUI.exe` holds a lock on `scene_metadata.dll` while running -
 close it before rebuilding, or the DLL copy step will fail.

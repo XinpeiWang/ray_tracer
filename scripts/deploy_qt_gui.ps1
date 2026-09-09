@@ -74,6 +74,9 @@ if (-not (Test-Path $qtGuiExe)) {
 
 # Find windeployqt (try multiple Qt versions/locations)
 $windeployqtPaths = @(
+	"C:\Qt\6.11.1\msvc2022_64\bin\windeployqt.exe",
+	"C:\Qt\6.10.0\msvc2022_64\bin\windeployqt.exe",
+	"C:\Qt\6.9.0\msvc2022_64\bin\windeployqt.exe",
 	"C:\Qt\6.11.1\mingw_64\bin\windeployqt.exe",
 	"C:\Qt\6.10.0\mingw_64\bin\windeployqt.exe",
 	"C:\Qt\6.9.0\mingw_64\bin\windeployqt.exe"

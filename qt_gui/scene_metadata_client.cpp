@@ -46,7 +46,13 @@ constexpr const char* kLibraryFileName = "scene_metadata.so";
 DllHandle& handle() {
 	static DllHandle h;
 	static std::once_flag loadOnce;
-	std::call_once(loadOnce, [&h]() {
+	// [] not [&h]: h has static storage duration, so the lambda can already
+	// reference it directly without capturing it - capturing it anyway is
+	// what MinGW silently accepted but MSVC correctly rejects (C3495: "a
+	// simple capture must be a variable with automatic storage duration
+	// declared in the reaching scope of the lambda"), caught only once this
+	// file was first compiled with MSVC.
+	std::call_once(loadOnce, []() {
 		h.module = cross_abi_library::loadLibrary(QCoreApplication::applicationDirPath(), kLibraryFileName);
 		if (!h.module) return;
 

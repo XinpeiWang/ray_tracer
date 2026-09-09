@@ -5,6 +5,16 @@
 #include <QDir>
 
 #ifdef Q_OS_WIN
+// Without this, windows.h's own min/max macros text-substitute any later
+// bare max(/min( in a translation unit that includes this header - e.g.
+// realtime_preview_session.cpp's std::min(...) calls, which broke under
+// MSVC (error C2589, "std::" followed by the macro-expanded token) but
+// happened to compile under MinGW's qmake spec (which defines NOMINMAX by
+// default). Same guard already used for the same reason in every CUDA .cu
+// file in this project - see e.g. wavefront_device_helpers.h's own.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #else
 #include <dlfcn.h>

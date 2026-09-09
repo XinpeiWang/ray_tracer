@@ -116,6 +116,12 @@ ui_*.h
 Makefile*
 !Makefile.am
 
+# qmake's own generated cache/state - not covered by the Makefile* rule
+# above, and found accidentally committed (along with a stale qt_gui/build/
+# from an old manual build layout) during the MinGW->MSVC toolchain switch
+.qmake.stash
+qt_gui/build/
+
 # Qt Creator
 *.autosave
 *.pro.user

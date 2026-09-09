@@ -130,8 +130,10 @@ Some large mesh/texture assets (Sponza, Bistro, Rungholt and their textures) are
 - **Visual Studio 2022 or 2026** with C++ desktop development workload
 
 **Optional — Qt GUI:**
-- **Qt 6.11.1** with MinGW 64-bit component
-- Add Qt to PATH: `$env:Path += ";C:\Qt\6.11.1\mingw_64\bin"`
+- **Qt 6.11.1** with MSVC 2022 64-bit component
+- Add Qt to PATH: `$env:Path += ";C:\Qt\6.11.1\msvc2022_64\bin"`
+- Build from a Visual Studio Developer Command Prompt/PowerShell (needed
+  for `cl.exe`/`nmake.exe`)
 
 **Optional — GPU rendering:**
 - **CUDA Toolkit 13.2+** and **NVIDIA OptiX SDK 9.1+**
