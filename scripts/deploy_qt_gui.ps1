@@ -111,16 +111,45 @@ if (-not $windeployqtPath) {
 
 	Push-Location $packageDir
 	try {
-		& $windeployqtPath "RayTracerGUI.exe" --no-translations --no-compiler-runtime 2>&1 | Out-Null
+		# --force: windeployqt otherwise skips overwriting a Qt6*.dll that
+		# already exists at the destination, regardless of whether it's the
+		# right build - a leftover MinGW-built Qt6Core.dll/Qt6Multimedia.dll/
+		# etc. from before this project's MSVC switch survived silently
+		# through a "successful" deploy this way (confirmed live: the app
+		# ran with no window and exited with STATUS_DLL_NOT_FOUND once the
+		# MinGW runtime DLLs it actually needed were removed as dead
+		# weight). Without --force, switching Qt toolchains ever again
+		# would reintroduce this exact bug on any machine with a package
+		# already deployed from the old toolchain.
+		# No `2>&1` here: this script sets $ErrorActionPreference = "Stop",
+		# and merging a native command's stderr into the success stream
+		# turns EVERY stderr line into a terminating PowerShell error under
+		# that preference - windeployqt routinely writes harmless warnings
+		# to stderr (e.g. "Cannot find dxcompiler.dll... not a problem
+		# unless Direct3D 12 ... is used"), and with the merge in place any
+		# one of them silently aborted this whole script before it ever
+		# reached the DLL verification below. Letting stderr print directly
+		# to the console (unredirected) is fine - we only branch on
+		# $LASTEXITCODE afterward, never on captured output content.
+		& $windeployqtPath "RayTracerGUI.exe" --no-translations --no-compiler-runtime --force | Out-Null
 		if ($LASTEXITCODE -eq 0) {
 			Write-Host "      => Qt dependencies deployed successfully`n" -ForegroundColor Green
 
-			# Verify critical DLLs
-			$criticalDlls = @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll")
+			# Verify critical DLLs exist AND are actually MSVC-built, not
+			# just present - a stale MinGW-built file left in place (see
+			# the --force comment above) passes a plain Test-Path check
+			# while still being completely broken at runtime. Grepping for
+			# the MinGW runtime import names is a crude but effective
+			# proxy for "wrong toolchain" without needing dumpbin/a VS
+			# developer environment to be available here.
+			$criticalDlls = @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6Multimedia.dll", "Qt6MultimediaWidgets.dll", "Qt6Network.dll", "Qt6Svg.dll")
 			$missingDlls = @()
+			$mingwDlls = @()
 			foreach ($dll in $criticalDlls) {
 				if (-not (Test-Path $dll)) {
 					$missingDlls += $dll
+				} elseif (Select-String -Path $dll -Pattern "libgcc_s_seh|libwinpthread|libstdc\+\+" -Quiet -ErrorAction SilentlyContinue) {
+					$mingwDlls += $dll
 				}
 			}
 
@@ -128,6 +157,12 @@ if (-not $windeployqtPath) {
 				Write-Host "      [WARNING] Some Qt DLLs are still missing:" -ForegroundColor Yellow
 				foreach ($dll in $missingDlls) {
 					Write-Host "        - $dll" -ForegroundColor Yellow
+				}
+			}
+			if ($mingwDlls.Count -gt 0) {
+				Write-Host "      [WARNING] Some deployed Qt DLLs are still MinGW-built (will crash on launch):" -ForegroundColor Red
+				foreach ($dll in $mingwDlls) {
+					Write-Host "        - $dll" -ForegroundColor Red
 				}
 			}
 		} else {
