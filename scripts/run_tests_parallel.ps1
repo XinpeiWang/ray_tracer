@@ -66,7 +66,12 @@ param(
 
 	[int]$Shards = [System.Environment]::ProcessorCount,
 
-	[string]$Filter = ""
+	[string]$Filter = "",
+
+	# Generous default (the full serial suite alone takes ~215s) - exists so
+	# one hung shard can't block the script forever, not to tightly bound
+	# normal runs.
+	[int]$TimeoutSeconds = 1800
 )
 
 $ErrorActionPreference = "Stop"
@@ -84,8 +89,19 @@ $testsExe = (Resolve-Path $testsExe).Path
 Write-Host "Running $Shards shards of $testsExe" -ForegroundColor Cyan
 if ($Filter) { Write-Host "Filter: $Filter" -ForegroundColor Cyan }
 
-$logDir = Join-Path $env:TEMP "ray_tracer_test_shards"
+# $PID-namespaced: without this, two concurrent invocations of this script
+# (two terminals, overlapping CI runs) would reuse the exact same cwd_N/
+# shard_N.log paths and race on them - precisely the cross-process
+# collision this script's own per-shard isolation exists to prevent, just
+# one level up (between invocations instead of between shards).
+$logDir = Join-Path $env:TEMP "ray_tracer_test_shards_$PID"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+# Computed once and reused for every shard below (was re-enumerated inside
+# the loop, redoing the same filesystem walk once per shard for no reason -
+# the repo root's own top-level directory listing doesn't change between
+# shards).
+$repoTopLevelDirs = Get-ChildItem -Path $repoRoot -Directory
 
 $jobs = for ($i = 0; $i -lt $Shards; $i++) {
 	$logFile = Join-Path $logDir "shard_$i.log"
@@ -108,7 +124,7 @@ $jobs = for ($i = 0; $i -lt $Shards; $i++) {
 	# directory itself, never touching the shared original.
 	$shardDir = Join-Path $logDir "cwd_$i"
 	New-Item -ItemType Directory -Force -Path $shardDir | Out-Null
-	foreach ($dir in Get-ChildItem -Path $repoRoot -Directory) {
+	foreach ($dir in $repoTopLevelDirs) {
 		New-Item -ItemType Junction -Path (Join-Path $shardDir $dir.Name) -Target $dir.FullName -Force | Out-Null
 	}
 	# Many render/integration tests spawn their OWN worker-thread pool sized
@@ -133,17 +149,29 @@ $jobs = for ($i = 0; $i -lt $Shards; $i++) {
 		$argList = @("--gtest_brief=1")
 		if ($filter) { $argList += "--gtest_filter=$filter" }
 		& $exe @argList *> $log
-		# Google Test's own shard-count sentinel: if a version without
-		# sharding support is ever swapped in, EVERY shard would silently
-		# rerun the full suite instead of a slice - not this project's own
-		# risk today (gtest has supported this for years), but worth
-		# surfacing loudly rather than double-counting a "pass" 8 times.
-		exit $LASTEXITCODE
+		# Return (not `exit`) the real process exit code so the parent can
+		# read it via Receive-Job. `exit` inside a Start-Job scriptblock only
+		# terminates that job's own runspace - it is NOT reflected in
+		# $job.State (State stays "Completed" even after `exit 1`), so a
+		# hard crash (access violation, etc.) used to look identical to a
+		# clean run to every check the parent script had.
+		$LASTEXITCODE
 	}
 }
 
-Write-Host "Waiting for $($jobs.Count) shards..."
-Wait-Job -Job $jobs | Out-Null
+Write-Host "Waiting for $($jobs.Count) shards (timeout: ${TimeoutSeconds}s)..."
+Wait-Job -Job $jobs -Timeout $TimeoutSeconds | Out-Null
+
+# Wait-Job's own -Timeout only stops WAITING - a job still Running after it
+# elapses keeps executing in the background forever unless explicitly
+# stopped. Without this, a single deadlocked/hung test (GPU driver stall,
+# etc.) in any one shard used to block the whole script indefinitely with
+# no diagnostic at all.
+$hungJobs = $jobs | Where-Object { $_.State -eq "Running" }
+foreach ($job in $hungJobs) {
+	Write-Host "[FAIL] $($job.Name): timed out after ${TimeoutSeconds}s - stopping" -ForegroundColor Red
+}
+if ($hungJobs) { Stop-Job -Job $hungJobs | Out-Null }
 
 $failedShards = @()
 $totalPassed = 0
@@ -151,6 +179,10 @@ $totalFailed = 0
 foreach ($job in $jobs) {
 	$logFile = Join-Path $logDir "$($job.Name).log"
 	$content = if (Test-Path $logFile) { Get-Content $logFile -Raw } else { "" }
+	# Receive-Job returns the scriptblock's own last expression (see the job
+	# definition above) - the real process exit code, not PowerShell's
+	# notion of job State (which stays "Completed" even after a crash).
+	$exitCode = Receive-Job -Job $job -ErrorAction SilentlyContinue
 	$passedMatch = [regex]::Match($content, '\[\s*PASSED\s*\]\s*(\d+)')
 	$failedMatch = [regex]::Match($content, '\[\s*FAILED\s*\]\s*(\d+)')
 	$passedCount = if ($passedMatch.Success) { [int]$passedMatch.Groups[1].Value } else { 0 }
@@ -158,9 +190,17 @@ foreach ($job in $jobs) {
 	$totalPassed += $passedCount
 	$totalFailed += $failedCount
 
-	if ($job.State -eq "Failed" -or $failedCount -gt 0 -or $content -match "exited with code [1-9]") {
+	# A crash (or a timeout kill above) before gtest ever prints its own
+	# summary line looks identical to "0 passed, 0 failed" to the two
+	# regexes above - genuinely distinguishing that from a real 0-test shard
+	# (e.g. an over-narrow -Filter) needs both the real exit code AND
+	# whether a PASSED line ever appeared at all, neither of which the old
+	# $job.State/text-search checks here actually caught.
+	$crashedOrHung = ($job.State -eq "Stopped") -or ($null -ne $exitCode -and $exitCode -ne 0) -or (-not $passedMatch.Success)
+	if ($crashedOrHung -or $failedCount -gt 0) {
 		$failedShards += $job.Name
-		Write-Host "[FAIL] $($job.Name): $passedCount passed, $failedCount failed - see $logFile" -ForegroundColor Red
+		$reason = if ($crashedOrHung) { "crashed/timed out (exit code: $exitCode)" } else { "$failedCount test(s) failed" }
+		Write-Host "[FAIL] $($job.Name): $passedCount passed, $failedCount failed - $reason - see $logFile" -ForegroundColor Red
 	} else {
 		Write-Host "[OK] $($job.Name): $passedCount passed" -ForegroundColor Green
 	}

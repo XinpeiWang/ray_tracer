@@ -82,17 +82,23 @@ $windeployqtPaths = @(
 	"C:\Qt\6.9.0\mingw_64\bin\windeployqt.exe"
 )
 
-$windeployqt = Get-Command windeployqt -ErrorAction SilentlyContinue
-if ($windeployqt) {
-	$windeployqtPath = $windeployqt.Source
-} else {
-	$windeployqtPath = $null
-	foreach ($path in $windeployqtPaths) {
-		if (Test-Path $path) {
-			$windeployqtPath = $path
-			break
-		}
+# Check the explicit, MSVC-first ordered list BEFORE a blind PATH lookup.
+# Get-Command would accept ANY windeployqt on PATH regardless of which Qt
+# kit it belongs to, including a stale MinGW one left over from before this
+# project switched off MinGW (see BUILD.md) - packaging MinGW-flavored Qt
+# DLLs against an MSVC-built RayTracerGUI.exe is an ABI mismatch that
+# crashes at launch, with this script itself reporting success. Only fall
+# back to a bare PATH lookup if none of the known kit locations exist.
+$windeployqtPath = $null
+foreach ($path in $windeployqtPaths) {
+	if (Test-Path $path) {
+		$windeployqtPath = $path
+		break
 	}
+}
+if (-not $windeployqtPath) {
+	$windeployqt = Get-Command windeployqt -ErrorAction SilentlyContinue
+	if ($windeployqt) { $windeployqtPath = $windeployqt.Source }
 }
 
 if (-not $windeployqtPath) {

@@ -125,13 +125,29 @@ if ($runningGui) {
 
 # Build C++ solution
 Write-Header "Building C++ Solution ($Configuration|x64)"
-Write-Host "Building: launcher, cpu_renderer, optix_renderer$(if (-not $SkipTests) {', tests'})"
+Write-Host "Building: launcher, cpu_renderer, optix_renderer$(if (-not $SkipGui) {', scene_metadata, realtime_renderer'})$(if (-not $SkipTests) {', tests'})"
 
 if ($SkipTests) {
 	# Build only the main projects
 	msbuild launcher/launcher.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /v:minimal /m
+	# scene_metadata.dll/realtime_renderer.dll are NOT launcher.vcxproj
+	# ProjectReferences - the Qt GUI loads them at runtime via LoadLibrary
+	# instead (see qt_gui/cross_abi_library.h) - so the launcher-only build
+	# above never produces them. Without this, the script's own default
+	# (-SkipTests, building only launcher) silently produced a GUI whose
+	# scene-metadata lookups and Live Preview both no-op at runtime with no
+	# build-time error, since the DLLs it LoadLibrary's for simply didn't
+	# exist. $SkipTests only exists to skip the (expensive) tests project,
+	# not these two - build them here whenever the GUI itself is being
+	# built, regardless of $SkipTests.
+	if ($LASTEXITCODE -eq 0 -and -not $SkipGui) {
+		msbuild scene_metadata/scene_metadata.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /v:minimal /m
+		if ($LASTEXITCODE -eq 0) {
+			msbuild realtime_renderer/realtime_renderer.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /v:minimal /m
+		}
+	}
 } else {
-	# Build entire solution including tests
+	# Build entire solution including tests (already covers scene_metadata/realtime_renderer)
 	msbuild ray_tracer.sln /p:Configuration=$Configuration /p:Platform=x64 /v:minimal /m
 }
 
@@ -219,16 +235,22 @@ if (-not $SkipGui) {
 		}
 	}
 
-	# Check if Qt is available
-	$qmake = Get-Command qmake -ErrorAction SilentlyContinue
-	if (-not $qmake -and -not $qtBinPath) {
+	# Prefer the curated msvc2022_64-first search above over a blind PATH
+	# lookup - Get-Command would accept ANY qmake on PATH regardless of
+	# which Qt kit it belongs to, including a stale MinGW one left over
+	# from before this project switched off MinGW (see BUILD.md). Only
+	# fall back to PATH if none of the known kit locations exist, so a
+	# MinGW qmake earlier on PATH can never silently override the correct
+	# msvc2022_64 one when both are present.
+	if ($qtBinPath) {
+		$qmake = Get-Command "$qtBinPath\qmake.exe"
+	} else {
+		$qmake = Get-Command qmake -ErrorAction SilentlyContinue
+	}
+	if (-not $qmake) {
 		Write-Warning-Message "Qt (msvc2022_64 kit) not found in PATH or common locations. Skipping Qt GUI build."
 		Write-Host "To build Qt GUI, install the MSVC 2022 64-bit component via the Qt Maintenance Tool, or ensure its bin dir is in PATH."
 	} else {
-		if (-not $qmake) {
-			$qmake = Get-Command "$qtBinPath\qmake.exe"
-		}
-
 		# jom parallelizes nmake the way mingw32-make -j already did; plain
 		# nmake is single-threaded and noticeably slower on a full rebuild,
 		# so prefer it when available and fall back to nmake (with a

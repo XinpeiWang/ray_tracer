@@ -321,7 +321,14 @@
   <Target Name="CleanOptixPrograms" AfterTargets="Clean">
     <ItemGroup>
       <OptixPtxFiles Include="$(OptixOutputDir)\*.ptx" />
-      <OptixObjFiles Include="$(OptixOutputDir)\wavefront_kernels_camera.obj;$(OptixOutputDir)\wavefront_kernels_materials.obj;$(OptixOutputDir)\wavefront_kernels_materials_simple.obj;$(OptixOutputDir)\wavefront_kernels_materials_dielectric.obj;$(OptixOutputDir)\wavefront_kernels_bssrdf.obj;$(OptixOutputDir)\wavefront_kernels_accumulate.obj;$(OptixOutputDir)\wavefront_launch.obj;$(OptixOutputDir)\wavefront_dlink.obj;$(OptixOutputDir)\sppm_kernels.obj;$(OptixOutputDir)\sppm_launch.obj;$(OptixOutputDir)\sppm_dlink.obj" />
+      <!-- Transforms over @(WavefrontObjSource)/@(SppmObjSource) (both
+           declared above, in this same file, so - unlike optix_renderer.
+           vcxproj's AdditionalDependencies, which can't see these item
+           lists at all due to import order - a future kernel split only
+           needs an entry added up there, never a hand-edit here too. -->
+      <OptixObjFiles Include="@(WavefrontObjSource->'$(OptixOutputDir)\%(Filename).obj')" />
+      <OptixObjFiles Include="@(SppmObjSource->'$(OptixOutputDir)\%(Filename).obj')" />
+      <OptixObjFiles Include="$(OptixOutputDir)\wavefront_dlink.obj;$(OptixOutputDir)\sppm_dlink.obj" />
     </ItemGroup>
     <Delete Files="@(OptixPtxFiles);@(OptixObjFiles)" />
     <Message Text="[OptiX] Cleaned PTX and CUDA obj files" Importance="High" />
