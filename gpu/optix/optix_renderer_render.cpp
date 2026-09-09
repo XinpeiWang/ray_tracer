@@ -119,6 +119,7 @@ bool OptiXRenderer::render(
 		// shared with this class's denoise()).
 		wavefrontTracer_->setDenoiseEnabled(denoiseEnabled_);
 		wavefrontTracer_->setDenoiseBlend(denoiseBlend_);
+		wavefrontTracer_->setWorldPosOutputEnabled(worldPosOutputEnabled_);
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
@@ -411,6 +412,11 @@ bool OptiXRenderer::readAovBuffers(unsigned int width, unsigned int height,
 	CUDA_CHECK(cudaMemcpy(normalOut.data(), reinterpret_cast<void*>(denoiserResources_.normalAov),
 		count * sizeof(float), cudaMemcpyDeviceToHost));
 	return true;
+}
+
+bool OptiXRenderer::readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const {
+	if (!useWavefront_ || !wavefrontTracer_) return false;
+	return wavefrontTracer_->readWorldPosBuffer(width, height, out);
 }
 
 void OptiXRenderer::cleanup() noexcept {

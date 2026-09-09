@@ -223,6 +223,27 @@ public:
 	///        image unchanged.
 	void setDenoiseBlend(float blend) { denoiseBlend_ = blend; }
 
+	/// @brief Enable Live Preview's temporal-reprojection guide buffer (a
+	///        per-pixel world-space primary-hit point) on the wavefront
+	///        backend. Same setter-not-render()-parameter pattern as
+	///        enableDenoise() above, forwarded to wavefrontTracer_ inside
+	///        render() (WavefrontPathTracer::setWorldPosOutputEnabled()'s own
+	///        comment) - only meaningful when isWavefrontActive(), since the
+	///        recursive backend has no equivalent buffer. false (the
+	///        default) costs nothing extra, same "opt-in" shape as denoise.
+	void enableWorldPosOutput(bool enable) { worldPosOutputEnabled_ = enable; }
+
+	/// @brief Read back the world-position buffer enableWorldPosOutput(true)
+	///        populated on the last render() call - same "separate consumer
+	///        of a persisted buffer" shape as readAovBuffers() above.
+	///        Delegates to wavefrontTracer_ (the only backend that has one);
+	///        returns false without touching `out` if wavefront isn't active
+	///        or nothing was populated at this resolution.
+	/// @param out Resized to width*height*4 floats (xyz + validity, row-
+	///        major - see WavefrontPathTracer::readWorldPosBuffer()'s own
+	///        comment) on success.
+	bool readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const;
+
 	/// @brief Whether the OptiX device context was created with
 	///        OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL (see createContext()'s
 	///        own comment for what that buys and costs). Read once via the
@@ -320,6 +341,7 @@ private:
 	// -------------------------------------------------------------------
 	bool denoiseEnabled_ = false;  ///< See enableDenoise()
 	float denoiseBlend_ = 0.0f;    ///< See setDenoiseBlend()
+	bool worldPosOutputEnabled_ = false;  ///< See enableWorldPosOutput()
 	// Persisted across render() calls rather than created/destroyed fresh
 	// each time - see denoise()'s own comment. Shared with
 	// WavefrontPathTracer's identical member (optix_denoiser.h) - each

@@ -1146,7 +1146,8 @@ extern "C" __global__ void evaluate_materials(
 	// backend processes one sample per kernel launch, so accumulation has
 	// to persist across launches instead.
 	float3* albedoBuffer,
-	float3* normalBuffer
+	float3* normalBuffer,
+	float4* worldPosBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -1158,6 +1159,11 @@ extern "C" __global__ void evaluate_materials(
 	// wf_accumulate_aov()'s own comment (above gpu_in_crop()) for why.
 	if (albedoBuffer && h.depth == 0) {
 		wf_accumulate_aov(albedoBuffer, normalBuffer, h.pixelIndex, mat.albedo, h.normal);
+	}
+	// Live Preview reprojection guide buffer - see wf_write_world_pos()'s
+	// own comment for why this is a plain overwrite, not an atomicAdd.
+	if (worldPosBuffer && h.depth == 0) {
+		wf_write_world_pos(worldPosBuffer, h.pixelIndex, h.hitPoint);
 	}
 
 	// Hoisted once and reused by every glossy-alpha call site below - both
@@ -2503,7 +2509,8 @@ extern "C" __global__ void evaluate_materials_simple(
 	float maxComponentValue,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3* albedoBuffer,
-	float3* normalBuffer
+	float3* normalBuffer,
+	float4* worldPosBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -2513,6 +2520,9 @@ extern "C" __global__ void evaluate_materials_simple(
 
 	if (albedoBuffer && h.depth == 0) {
 		wf_accumulate_aov(albedoBuffer, normalBuffer, h.pixelIndex, mat.albedo, h.normal);
+	}
+	if (worldPosBuffer && h.depth == 0) {
+		wf_write_world_pos(worldPosBuffer, h.pixelIndex, h.hitPoint);
 	}
 
 	float3 normal    = h.normal;
@@ -2688,7 +2698,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	float maxComponentValue,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3* albedoBuffer,
-	float3* normalBuffer
+	float3* normalBuffer,
+	float4* worldPosBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -2698,6 +2709,9 @@ extern "C" __global__ void evaluate_materials_dielectric(
 
 	if (albedoBuffer && h.depth == 0) {
 		wf_accumulate_aov(albedoBuffer, normalBuffer, h.pixelIndex, mat.albedo, h.normal);
+	}
+	if (worldPosBuffer && h.depth == 0) {
+		wf_write_world_pos(worldPosBuffer, h.pixelIndex, h.hitPoint);
 	}
 
 	// See evaluate_materials()'s own identical hoist just above its `h` load -
@@ -3181,7 +3195,8 @@ extern "C" __global__ void accumulate_miss(
 	float                   maxComponentValue,
 	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
 	float3*                 albedoBuffer,
-	float3*                 normalBuffer
+	float3*                 normalBuffer,
+	float4*                 worldPosBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numMiss) return;
@@ -3217,6 +3232,15 @@ extern "C" __global__ void accumulate_miss(
 	// reverse direction as a placeholder "normal" for a surface that isn't
 	// there). Unconditional on whether L below ends up non-empty - the AOV
 	// write is independent of the radiance contribution.
+	// Live Preview reprojection guide buffer - a miss has no real surface
+	// point, so this is explicitly marked invalid (w=0) rather than left to
+	// the render()-call-start memset (see wf_write_world_pos()'s own
+	// comment on the validity flag) - defensively correct even if that
+	// memset is ever removed/changed.
+	if (worldPosBuffer && m.depth == 0) {
+		worldPosBuffer[m.pixelIndex] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+
 	if (albedoBuffer && m.depth == 0) {
 		atomicAdd(&albedoBuffer[m.pixelIndex].x, color.x);
 		atomicAdd(&albedoBuffer[m.pixelIndex].y, color.y);

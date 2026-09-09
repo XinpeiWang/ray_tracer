@@ -30,7 +30,7 @@ extern "C" __global__ void evaluate_materials(
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
-	float3*, float3*);
+	float3*, float3*, float4*);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -42,7 +42,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution, GpuPortalLight, float,
-	float3*, float3*);
+	float3*, float3*, float4*);
 extern "C" __global__ void evaluate_materials_dielectric(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -54,8 +54,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
-	float3*, float3*);
-extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*);
+	float3*, float3*, float4*);
+extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*, float4*);
 extern "C" __global__ void normalize_aov_buffers(float3*, float3*, unsigned int, unsigned int);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, float);
 extern "C" __global__ void resolve_bssrdf_exit(
@@ -145,6 +145,7 @@ extern "C" void wf_launch_evaluate_materials(
 	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
+	float4*                      d_worldPosBuffer,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -164,7 +165,7 @@ extern "C" void wf_launch_evaluate_materials(
 		d_measuredTables, numMeasuredTables,
 		d_measuredParamValues, d_measuredData, d_measuredMcdf, d_measuredCcdf,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
-		d_albedoBuffer, d_normalBuffer);
+		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -196,6 +197,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
+	float4*                      d_worldPosBuffer,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -210,7 +212,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels, maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
-		d_albedoBuffer, d_normalBuffer);
+		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer);
 }
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -243,6 +245,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
+	float4*                      d_worldPosBuffer,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -258,20 +261,20 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 		d_textures, d_texturePixels,
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
-		d_albedoBuffer, d_normalBuffer);
+		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer);
 }
 
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
 	GpuPortalLight portalLight, float maxComponentValue,
-	float3* d_albedoBuffer, float3* d_normalBuffer, cudaStream_t stream)
+	float3* d_albedoBuffer, float3* d_normalBuffer, float4* d_worldPosBuffer, cudaStream_t stream)
 {
 	if (numMiss == 0) return;
 	dim3 block(256);
 	dim3 grid((numMiss + 255) / 256);
 	accumulate_miss<<<grid, block, 0, (cudaStream_t)stream>>>(mq, numMiss, d_framebuffer, backgroundColor, skyDist,
-		portalLight, maxComponentValue, d_albedoBuffer, d_normalBuffer);
+		portalLight, maxComponentValue, d_albedoBuffer, d_normalBuffer, d_worldPosBuffer);
 }
 
 extern "C" void wf_launch_accumulate_shadow(

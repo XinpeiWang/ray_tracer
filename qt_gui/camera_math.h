@@ -54,6 +54,8 @@ inline Vec3 cross(const Vec3 &a, const Vec3 &b) {
 				a.x * b.y - a.y * b.x};
 }
 
+inline double dot(const Vec3 &a, const Vec3 &b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
 // Distance from the look-at point to the camera.
 inline double distanceFromTarget(const Vec3 &camera, const Vec3 &lookAt) {
 	const double dx = camera.x - lookAt.x;
@@ -148,6 +150,76 @@ inline Vec3 orbitToCartesian(const OrbitCoordinates &orbit, const Vec3 &lookAt) 
 	return Vec3{lookAt.x + orbit.radius * cosElevation * std::sin(orbit.azimuth),
 				lookAt.y + orbit.radius * std::sin(orbit.elevation),
 				lookAt.z + orbit.radius * cosElevation * std::cos(orbit.azimuth)};
+}
+
+// A pinhole camera's ray-generation basis, EXACTLY mirroring the GPU's own
+// camera_params[12] output layout (build_pinhole_camera_params(),
+// scene_builder.cpp): a ray for screen fraction (s,t) in [0,1]x[0,1] is
+// origin + k*(lowerLeftCorner + s*horizontal + t*vertical - origin) for
+// some k > 0. Live Preview's rt_realtime_render_frame() exposes exactly
+// these 4 vectors (GpuCameraParams::origin/lower_left_corner/horizontal/
+// vertical - the same fields build_scene() already fills for every camera
+// kind it supports) rather than a vertical-FOV-and-aspect pair: vfov/aspect
+// are never actually available to ANY caller of rt_realtime_render_frame() -
+// every scene case bakes its own vfov into a hardcoded literal deep inside
+// build_scene(), with nothing surfacing it - so re-deriving a basis from a
+// guessed vfov was never an option; reading back the exact basis the GPU
+// already computed is both simpler and exact, not an approximation.
+struct CameraBasis {
+	Vec3 origin;
+	Vec3 lowerLeftCorner;
+	Vec3 horizontal;
+	Vec3 vertical;
+};
+
+// Where a world-space point lands on a pinhole camera's screen - used by
+// Live Preview's temporal reprojection (qt_gui/realtime_preview_session.cpp)
+// to find where a surface point visible in the CURRENT frame would have
+// appeared in a PREVIOUS frame's camera, so that frame's already-accumulated
+// sample can be reused instead of starting over from noise.
+struct ScreenProjection {
+	double s = 0.0;  // [0, 1], left to right
+	double t = 0.0;  // [0, 1], BOTTOM to top - matches build_pinhole_camera_
+					 // params()'s own lower-left-origin convention (see
+					 // projectToScreen()'s own comment on converting this to
+					 // a pixel row, which needs a top/bottom flip)
+	bool inFront = false;  // false if the point is behind (or exactly on)
+							// the camera's image plane - s/t are
+							// meaningless in that case
+};
+
+// Projects worldPoint into the screen space of the pinhole camera described
+// by basis (see CameraBasis's own comment).
+//
+// Derivation: a point at parameter (s,t) lies along
+// direction(s,t) = lowerLeftCorner + s*horizontal + t*vertical - origin
+//                = (s-0.5)*horizontal + (t-0.5)*vertical - wScaled
+// where wScaled = origin - lowerLeftCorner - 0.5*horizontal - 0.5*vertical
+// (algebraically equal to focus_dist*w in build_pinhole_camera_params()'s
+// own notation, without needing to know focus_dist separately). horizontal,
+// vertical, and wScaled are mutually orthogonal (they're viewport_width*u,
+// viewport_height*v, and focus_dist*w for that function's own orthonormal
+// u/v/w camera basis), so projecting worldPoint - origin onto each via a
+// plain dot product (divided by that vector's own squared length, since
+// none of the three are unit length) directly recovers k*(s-0.5),
+// k*(t-0.5), and -k for whatever k places worldPoint on the ray - solving
+// for s/t below. k <= 0 means worldPoint is behind (or exactly on) the
+// camera's image plane, mirroring how a negative/zero ray parameter means
+// "no intersection in the direction the ray was actually cast" everywhere
+// else in this codebase's own ray-tracing math.
+inline ScreenProjection projectToScreen(const Vec3 &worldPoint, const CameraBasis &basis) {
+	const Vec3 toPoint = worldPoint - basis.origin;
+	const Vec3 wScaled = basis.origin - basis.lowerLeftCorner
+						  - basis.horizontal * 0.5 - basis.vertical * 0.5;
+	const double hh = dot(basis.horizontal, basis.horizontal);
+	const double vv = dot(basis.vertical, basis.vertical);
+	const double ww = dot(wScaled, wScaled);
+	if (hh < 1e-18 || vv < 1e-18 || ww < 1e-18) return ScreenProjection{0.0, 0.0, false};
+	const double a = dot(toPoint, basis.horizontal) / hh;
+	const double b = dot(toPoint, basis.vertical) / vv;
+	const double c = dot(toPoint, wScaled) / ww;
+	if (c >= 0.0) return ScreenProjection{0.0, 0.0, false};
+	return ScreenProjection{0.5 - a / c, 0.5 - b / c, true};
 }
 
 } // namespace camera_math

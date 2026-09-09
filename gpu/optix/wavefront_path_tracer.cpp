@@ -1078,6 +1078,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
+		reinterpret_cast<float4*>(d_worldPos_),
 		stream_);
 }
 
@@ -1132,6 +1133,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
+		reinterpret_cast<float4*>(d_worldPos_),
 		simpleMaterialStream_);
 }
 
@@ -1188,6 +1190,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
+		reinterpret_cast<float4*>(d_worldPos_),
 		dielectricMaterialStream_);
 }
 
@@ -1203,6 +1206,7 @@ void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffe
 	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist, portalLight, maxComponentValue,
 		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
 		reinterpret_cast<float3*>(denoiserResources_.normalAov),
+		reinterpret_cast<float4*>(d_worldPos_),
 		stream_);
 }
 
@@ -1424,6 +1428,29 @@ bool WavefrontPathTracer::render(
 								   numPixels * sizeof(float3), stream_));
 		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(denoiserResources_.normalAov), 0,
 								   numPixels * sizeof(float3), stream_));
+	}
+
+	// Live Preview reprojection guide buffer (see setWorldPosOutputEnabled()'s
+	// own comment) - same resolution-keyed allocate-once/only-realloc-on-
+	// change lifecycle as d_fb_/d_weight_ above. Kept around after this call
+	// returns (freed only on a resolution mismatch or cleanup()), so a later
+	// readWorldPosBuffer() call can copy it back at its own pace - the same
+	// "separate consumer of a persisted buffer" shape readAovBuffers() already
+	// uses for the denoiser's own guide layers.
+	if (worldPosOutputEnabled_) {
+		if (worldPosCapacity_ != numPixels) {
+			if (d_worldPos_) { cudaFree(reinterpret_cast<void*>(d_worldPos_)); d_worldPos_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPos_), numPixels * sizeof(float4)));
+			worldPosCapacity_ = numPixels;
+		}
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_worldPos_), 0, numPixels * sizeof(float4), stream_));
+	} else if (d_worldPos_) {
+		// Flag turned off after being on - free rather than leave a stale
+		// buffer readWorldPosBuffer() could otherwise still report success
+		// for.
+		cudaFree(reinterpret_cast<void*>(d_worldPos_));
+		d_worldPos_ = 0;
+		worldPosCapacity_ = 0;
 	}
 
 	// Build WavefrontLaunchParams template (queue pointers filled per phase)
@@ -1866,6 +1893,16 @@ void WavefrontPathTracer::destroySBT() {
 	probeSBT_     = {};
 }
 
+bool WavefrontPathTracer::readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const {
+	const int numPixels = static_cast<int>(width) * static_cast<int>(height);
+	if (!d_worldPos_ || worldPosCapacity_ != numPixels) return false;
+	const size_t count = static_cast<size_t>(numPixels) * 4;
+	out.resize(count);
+	CUDA_CHECK(cudaMemcpy(out.data(), reinterpret_cast<void*>(d_worldPos_),
+						   count * sizeof(float), cudaMemcpyDeviceToHost));
+	return true;
+}
+
 void WavefrontPathTracer::cleanup() {
 	destroySBT();
 	destroyProgramGroups();
@@ -1875,6 +1912,8 @@ void WavefrontPathTracer::cleanup() {
 	if (d_fb_) { cudaFree(reinterpret_cast<void*>(d_fb_)); d_fb_ = 0; }
 	if (d_weight_) { cudaFree(reinterpret_cast<void*>(d_weight_)); d_weight_ = 0; }
 	fbCapacity_ = 0;
+	if (d_worldPos_) { cudaFree(reinterpret_cast<void*>(d_worldPos_)); d_worldPos_ = 0; }
+	worldPosCapacity_ = 0;
 
 	if (intersectPipeline_) { optixPipelineDestroy(intersectPipeline_); intersectPipeline_ = nullptr; }
 	if (shadowPipeline_)    { optixPipelineDestroy(shadowPipeline_);    shadowPipeline_    = nullptr; }

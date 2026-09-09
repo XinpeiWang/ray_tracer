@@ -1,9 +1,11 @@
 #include "realtime_preview_session.h"
+#include "camera_math.h"
 #include "../src/shared/tone_map.h"
 #include "cross_abi_library.h"
 
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <algorithm>
 #include <cmath>
 #include <mutex>
 
@@ -13,9 +15,10 @@ namespace {
 //      double camX, double camY, double camZ,
 //      bool has_custom_lookat, double lookX, double lookY, double lookZ,
 //      bool denoise, double denoiseBlend,
+//      float* out_world_pos, float* out_camera_basis,
 //      float* out_rgb)
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
-							   bool, double, double, double, bool, double, float*);
+							   bool, double, double, double, bool, double, float*, float*, float*);
 
 struct DllHandle {
 	void* module = nullptr;
@@ -60,8 +63,101 @@ bool RealtimePreviewSession::isAvailable() {
 void RealtimePreviewWorker::resetAccumulation() {
 	m_accum.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
 	m_tmp.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
+	// Zeroed (not just resized) for the same reason m_accum/m_tmp are: the
+	// w=0 validity flag on every pixel means reprojectAccumulation() (if it
+	// somehow ran before a single real frame had populated these - it
+	// shouldn't, since start() clears m_cameraDirty right below, but this
+	// costs nothing to make true anyway) would correctly treat every pixel
+	// as "no old data", not read stale/garbage floats as a real position.
+	m_worldPos.assign(static_cast<size_t>(m_width) * m_height * 4, 0.0f);
+	m_worldPosPrev.assign(static_cast<size_t>(m_width) * m_height * 4, 0.0f);
+	m_cameraBasis.assign(12, 0.0f);
+	m_prevCameraBasis.assign(12, 0.0f);
+	m_sampleCounts.assign(static_cast<size_t>(m_width) * m_height, 0);
 	m_displayImage = QImage(m_width, m_height, QImage::Format_RGB888);
 	m_sampleCount = 0;
+}
+
+// Reuses the OLD accumulation across a camera move instead of discarding it:
+// for each of THIS frame's pixels (already rendered with the NEW camera,
+// giving m_worldPos its real world-space primary-hit points), projects that
+// world point into m_prevCameraBasis - the basis that rendered whatever is
+// CURRENTLY sitting in m_accum (see the member declarations' own comment) -
+// via camera_math.h's projectToScreen(), to find which OLD pixel showed the
+// same location on screen before the camera moved. Accepts that old pixel's
+// accumulated color and (capped) sample count only if its OWN remembered
+// world position (m_worldPosPrev) is close enough to this frame's new one -
+// otherwise the old pixel showed a DIFFERENT surface (something the camera
+// move just occluded or disoccluded), and reusing its color would paste the
+// wrong object's history onto this one. Builds entirely new buffers rather
+// than overwriting m_accum/m_sampleCounts in place, since pixel P's new
+// value is read from a DIFFERENT pixel Q's old one - an in-place write could
+// clobber data a later pixel in the same pass still needs to read.
+//
+// Everything that doesn't pass (off-screen in the old view, the old pixel
+// itself had no data, or disocclusion) is simply left at zero/count-0 -
+// renderLoop()'s own running-mean update right after this returns then
+// folds in this frame's own new sample as sample #1 for those pixels, same
+// as it always has for a pixel with no prior history.
+void RealtimePreviewWorker::reprojectAccumulation() {
+	const camera_math::CameraBasis oldBasis{
+		camera_math::Vec3{m_prevCameraBasis[0], m_prevCameraBasis[1], m_prevCameraBasis[2]},
+		camera_math::Vec3{m_prevCameraBasis[3], m_prevCameraBasis[4], m_prevCameraBasis[5]},
+		camera_math::Vec3{m_prevCameraBasis[6], m_prevCameraBasis[7], m_prevCameraBasis[8]},
+		camera_math::Vec3{m_prevCameraBasis[9], m_prevCameraBasis[10], m_prevCameraBasis[11]}};
+
+	// A long-static view could otherwise accumulate an effective history so
+	// large that a REAL subsequent change (the camera moves back to reveal
+	// something new right at this pixel) would take just as long to react
+	// to via the running mean's own 1/(n+1) weighting - capped so reused
+	// history never outweighs new evidence by more than this.
+	constexpr uint16_t kMaxHistorySamples = 64;
+	// World-space units, not screen pixels - deliberately a fixed constant
+	// rather than scene-relative, matching applyTranslateDelta()'s own
+	// kUnitsPerStep precedent (mainwindow_tabs_render.cpp) and its identical
+	// caveat: tuned against the Cornell Box's ~555-unit scale, so a scene
+	// whose own geometry sits within a much smaller or larger span may need
+	// a different value to catch real disocclusion without false-rejecting
+	// (threshold too tight) or missing it (threshold too loose).
+	constexpr float kDisocclusionEpsilon = 1.0f;
+	constexpr float kDisocclusionEpsilonSq = kDisocclusionEpsilon * kDisocclusionEpsilon;
+
+	std::vector<float> newAccum(m_accum.size(), 0.0f);
+	std::vector<uint16_t> newSampleCounts(m_sampleCounts.size(), 0);
+
+	for (int y = 0; y < m_height; ++y) {
+		for (int x = 0; x < m_width; ++x) {
+			const int pixel = y * m_width + x;
+			const size_t wpIdx = static_cast<size_t>(pixel) * 4;
+			if (m_worldPos[wpIdx + 3] == 0.0f) continue;  // this frame's own pixel missed - nothing to reproject
+
+			const camera_math::Vec3 worldPoint{m_worldPos[wpIdx], m_worldPos[wpIdx + 1], m_worldPos[wpIdx + 2]};
+			const camera_math::ScreenProjection proj = camera_math::projectToScreen(worldPoint, oldBasis);
+			if (!proj.inFront || proj.s < 0.0 || proj.s >= 1.0 || proj.t < 0.0 || proj.t >= 1.0) continue;
+
+			const int oldCol = static_cast<int>(proj.s * m_width);
+			const int oldRow = static_cast<int>((1.0 - proj.t) * m_height);
+			if (oldCol < 0 || oldCol >= m_width || oldRow < 0 || oldRow >= m_height) continue;
+			const int oldPixel = oldRow * m_width + oldCol;
+			const size_t oldWpIdx = static_cast<size_t>(oldPixel) * 4;
+			if (m_worldPosPrev[oldWpIdx + 3] == 0.0f) continue;  // old pixel had no real sample either
+
+			const float dx = m_worldPosPrev[oldWpIdx + 0] - worldPoint.x;
+			const float dy = m_worldPosPrev[oldWpIdx + 1] - worldPoint.y;
+			const float dz = m_worldPosPrev[oldWpIdx + 2] - worldPoint.z;
+			if (dx * dx + dy * dy + dz * dz > kDisocclusionEpsilonSq) continue;  // different surface
+
+			const size_t oldColorIdx = static_cast<size_t>(oldPixel) * 3;
+			const size_t newColorIdx = static_cast<size_t>(pixel) * 3;
+			newAccum[newColorIdx + 0] = m_accum[oldColorIdx + 0];
+			newAccum[newColorIdx + 1] = m_accum[oldColorIdx + 1];
+			newAccum[newColorIdx + 2] = m_accum[oldColorIdx + 2];
+			newSampleCounts[pixel] = std::min(m_sampleCounts[oldPixel], kMaxHistorySamples);
+		}
+	}
+
+	m_accum = std::move(newAccum);
+	m_sampleCounts = std::move(newSampleCounts);
 }
 
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
@@ -131,10 +227,14 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	// race this closes.
 	if (!m_running || epoch != m_epoch) return;
 
-	if (m_cameraDirty) {
-		m_cameraDirty = false;
-		resetAccumulation();
-	}
+	// Captured before clearing: renders the NEXT frame with the already-
+	// updated (new) m_camX/etc below, then - once that frame's own world
+	// positions are in - reprojectAccumulation() uses THIS flag to decide
+	// whether to remap the OLD accumulation into the new view first. No
+	// immediate resetAccumulation() here anymore - that used to be this
+	// block's whole job before reprojection replaced it.
+	const bool cameraJustMoved = m_cameraDirty;
+	m_cameraDirty = false;
 
 	RenderFrameFn renderFrame = handle().renderFrameFn;
 	bool ok = false;
@@ -155,6 +255,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_camX, m_camY, m_camZ,
 						  /*has_custom_lookat=*/true, m_lookX, m_lookY, m_lookZ,
 						  m_denoise, m_denoiseBlend,
+						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data());
 		if (!ok) {
 			emit statusChanged(QStringLiteral("Render failed - scene may not be GPU-supported, "
@@ -168,24 +269,55 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		// instead of accumulating" would mean Live Preview never converges
 		// at all - see setDenoise()'s own comment on why toggling either
 		// side of this condition resets accumulation.
-		if (m_denoise && m_denoiseShowLatest) {
+		const bool effectiveShowLatest = m_denoise && m_denoiseShowLatest;
+
+		// Reprojection would be immediately thrown away by the show-latest
+		// branch below (which overwrites m_accum wholesale every frame
+		// regardless), so skip the work entirely in that mode.
+		if (cameraJustMoved && !effectiveShowLatest) {
+			reprojectAccumulation();
+		}
+
+		int minSampleCount = 0;
+		if (effectiveShowLatest) {
 			// Skip accumulation entirely - each already-denoised frame is
 			// clean enough on its own that averaging it with older, possibly
 			// differently-denoised frames would only add lag, not quality.
 			m_accum = m_tmp;
+			std::fill(m_sampleCounts.begin(), m_sampleCounts.end(), uint16_t{1});
+			minSampleCount = 1;
 		} else {
-			// Running mean: accum += (sample - accum) / (n+1). Both buffers
-			// are linear RGB (rt_realtime_render_frame()'s own contract), so
-			// this is a plain per-channel average - no dividing/multiplying
-			// needed beyond this, unlike CPU/GPU's own filter-weighted
+			// Running mean: accum += (sample - accum) / (n+1), n now READ
+			// PER PIXEL (m_sampleCounts) rather than one shared scalar -
+			// reprojectAccumulation() just above can leave different pixels
+			// with wildly different effective history (0 for a freshly
+			// disoccluded pixel, carried-forward-and-capped for a
+			// successfully reprojected one). Both buffers are linear RGB
+			// (rt_realtime_render_frame()'s own contract), so this is still
+			// a plain per-channel average - no dividing/multiplying needed
+			// beyond this, unlike CPU/GPU's own filter-weighted
 			// reconstruction (this preview uses a trivial 1-sample-per-pixel
 			// box filter, no splatting).
-			const int n = m_sampleCount;
-			for (size_t i = 0; i < m_accum.size(); ++i) {
-				m_accum[i] += (m_tmp[i] - m_accum[i]) / static_cast<float>(n + 1);
+			constexpr uint16_t kMaxSampleCount = 65535;
+			minSampleCount = kMaxSampleCount;
+			const int numPixels = m_width * m_height;
+			for (int pixel = 0; pixel < numPixels; ++pixel) {
+				const int n = m_sampleCounts[pixel];
+				const size_t idx = static_cast<size_t>(pixel) * 3;
+				for (int c = 0; c < 3; ++c) {
+					m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) / static_cast<float>(n + 1);
+				}
+				if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
+				minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
 			}
 		}
-		++m_sampleCount;
+		m_sampleCount = minSampleCount;
+
+		// This frame's world-pos/camera-basis become "the data backing
+		// m_accum" for whenever the NEXT camera move needs to reproject
+		// FROM it - see the member declarations' own comment.
+		m_worldPosPrev = m_worldPos;
+		m_prevCameraBasis = m_cameraBasis;
 
 		// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
 		// project's CPU/GPU display convention exactly - see tone_map.h)

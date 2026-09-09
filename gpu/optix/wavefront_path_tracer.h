@@ -168,6 +168,25 @@ public:
     /// comment. Same setter-not-render()-parameter pattern, same reasoning.
     void setDenoiseBlend(float blend) { denoiseBlend_ = blend; }
 
+    /// Whether render() should also fill a per-pixel world-space primary-hit
+    /// buffer (see d_worldPos_'s own comment) for Live Preview's temporal
+    /// reprojection (qt_gui/realtime_preview_session.cpp, camera_math.h's
+    /// projectToScreen()). Same setter-not-render()-parameter pattern as
+    /// setDenoiseEnabled() above, for the same reason - only the realtime
+    /// path ever sets this true; batch/video rendering never does, so it
+    /// never pays for the extra allocation/write.
+    void setWorldPosOutputEnabled(bool enabled) { worldPosOutputEnabled_ = enabled; }
+
+    /// Reads back the persisted world-position buffer (see
+    /// setWorldPosOutputEnabled()'s own comment) to host memory - same
+    /// "separate consumer of a buffer render() already populated" shape as
+    /// OptiXRenderer::readAovBuffers(). Only valid after a render() call with
+    /// setWorldPosOutputEnabled(true) already in effect, at this exact
+    /// resolution; returns false (leaving `out` untouched) otherwise.
+    /// @param out Resized to width*height*4 floats (xyz + validity, row-
+    ///        major) on success.
+    bool readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const;
+
 private:
     bool loadModule();
     void destroyProgramGroups();
@@ -417,6 +436,19 @@ private:
     bool             denoiseEnabled_ = false;
     float            denoiseBlend_ = 0.0f;  ///< See setDenoiseBlend()
     DenoiserResources denoiserResources_;
+
+    // Live Preview reprojection guide buffer - see setWorldPosOutputEnabled()'s
+    // own comment. Same resolution-keyed allocate-once/only-realloc-on-change
+    // lifecycle as d_fb_/fbCapacity_ above, but a SEPARATE capacity tracker
+    // and SEPARATE (conditional-on-worldPosOutputEnabled_) allocation, since
+    // unlike d_fb_/d_weight_ this is opt-in - batch/video rendering never
+    // sets worldPosOutputEnabled_, so it never pays for this allocation.
+    // xyz = world-space primary-hit point, w = validity (1.0 = real hit,
+    // 0.0 = miss or never-written) - see wf_write_world_pos()'s own comment
+    // (wavefront_device_helpers.h).
+    CUdeviceptr      d_worldPos_ = 0;
+    int              worldPosCapacity_ = 0;
+    bool             worldPosOutputEnabled_ = false;
 };
 
 } // namespace optix_renderer

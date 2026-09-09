@@ -148,6 +148,23 @@ __device__ __forceinline__ void wf_accumulate_aov(float3* albedoBuffer, float3* 
 	atomicAdd(&normalBuffer[pixelIndex].z, normal.z);
 }
 
+// Live Preview's temporal reprojection guide buffer (see camera_math.h's
+// own projectToScreen() on the Qt side, which reprojects these points into
+// a PREVIOUS frame's camera) - primary-ray hits only (depth==0, checked by
+// the caller, same gate as wf_accumulate_aov() above). Unlike the AOV
+// buffers, this is a PLAIN overwrite, not an atomicAdd: worldPosBuffer is
+// only ever non-null for Live Preview's realtime path (see WavefrontPathTracer::
+// setWorldPosOutputEnabled()'s own comment), which always renders exactly
+// 1 sample per pixel per call - there is no second sample to race against
+// within the same call, unlike the AOV buffers, which stay valid at any
+// samples_per_pixel and so must accumulate-then-normalize instead. The `w`
+// component is a validity flag (1.0 = real hit) - accumulate_miss()'s own
+// AOV-equivalent call site writes 0.0 there instead, since a miss has no
+// real world-space point to reproject.
+__device__ __forceinline__ void wf_write_world_pos(float4* worldPosBuffer, int pixelIndex, float3 hitPoint) {
+	worldPosBuffer[pixelIndex] = make_float4(hitPoint.x, hitPoint.y, hitPoint.z, 1.0f);
+}
+
 // Matches optix_intersection_sphere.h's gpu_rgb_grid_at/gpu_rgb_grid_
 // trilinear exactly - see that copy's comment for why this is a from-
 // scratch reimplementation rather than a call into RGBGridMediumData<T>/

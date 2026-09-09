@@ -17,6 +17,7 @@
 #include <cctype>
 #include <string>
 #include <sstream>
+#include <vector>
 
 // Global renderer instance
 static std::unique_ptr<OptiXRenderer> g_renderer;
@@ -521,6 +522,8 @@ extern "C" bool rt_realtime_render_frame(
 	double lookat_z,
 	bool denoise,
 	double denoise_blend,
+	float* out_world_pos_buffer,
+	float* out_camera_basis,
 	float* out_rgb_buffer
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
@@ -618,8 +621,14 @@ extern "C" bool rt_realtime_render_frame(
 		// render() call (OptiXRenderer::render(), optix_renderer_render.cpp).
 		g_renderer->enableDenoise(denoise);
 		g_renderer->setDenoiseBlend(static_cast<float>(denoise_blend));
+		// Live Preview's temporal reprojection guide buffer (see
+		// camera_math.h's projectToScreen()) - gated on the caller actually
+		// wanting it (out_world_pos_buffer non-null), same "no cost when
+		// unused" shape as denoise above, via OptiXRenderer::
+		// enableWorldPosOutput()'s own forwarding to the wavefront backend.
+		g_renderer->enableWorldPosOutput(out_world_pos_buffer != nullptr);
 
-		return g_renderer->render(
+		const bool ok = g_renderer->render(
 			image_width,
 			image_height,
 			samples_per_pixel,
@@ -627,6 +636,27 @@ extern "C" bool rt_realtime_render_frame(
 			cameraExtra,
 			out_rgb_buffer
 		);
+
+		if (ok && out_world_pos_buffer) {
+			std::vector<float> worldPos;
+			if (g_renderer->readWorldPosBuffer(static_cast<unsigned int>(image_width),
+												static_cast<unsigned int>(image_height), worldPos)) {
+				std::memcpy(out_world_pos_buffer, worldPos.data(), worldPos.size() * sizeof(float));
+			}
+		}
+		if (ok && out_camera_basis) {
+			// The exact basis this call's render() used - see camera_math.h's
+			// CameraBasis for why this is read back rather than re-derived
+			// from vfov/aspect (never available to any caller in the first
+			// place). cameraExtra already holds this whether it came from the
+			// cache-hit branch above or a fresh prepareSceneAndCamera() call.
+			std::memcpy(&out_camera_basis[0], &cameraExtra.origin, 3 * sizeof(float));
+			std::memcpy(&out_camera_basis[3], &cameraExtra.lower_left_corner, 3 * sizeof(float));
+			std::memcpy(&out_camera_basis[6], &cameraExtra.horizontal, 3 * sizeof(float));
+			std::memcpy(&out_camera_basis[9], &cameraExtra.vertical, 3 * sizeof(float));
+		}
+
+		return ok;
 	} catch (const std::exception&) {
 		return false;
 	} catch (...) {

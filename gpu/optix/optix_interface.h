@@ -95,6 +95,29 @@ int optix_render_main(
 // fresh every call, so unlike the cache above there's nothing to key on
 // here. denoise_blend is the fraction of the ORIGINAL noisy signal kept
 // (0.0 = fully denoised, 1.0 = denoiser disabled in all but name).
+// out_world_pos_buffer: optional (pass nullptr to skip - see
+// OptiXRenderer::enableWorldPosOutput()'s own comment for the cost of NOT
+// skipping it), caller-allocated >= image_width*image_height*4 floats -
+// filled with each pixel's world-space primary-hit point (xyz) and a
+// validity flag (w: 1.0 = real hit, 0.0 = miss). Used by Live Preview's
+// temporal reprojection (qt_gui/camera_math.h's projectToScreen(),
+// qt_gui/realtime_preview_session.cpp) to find where a surface point
+// visible in THIS frame would have appeared in a PREVIOUS frame's camera,
+// so that frame's already-accumulated sample can be reused instead of
+// starting over from noise on every camera move.
+// out_camera_basis: optional (pass nullptr to skip), caller-allocated
+// >= 12 floats - filled with the ACTUAL GpuCameraParams::origin/
+// lower_left_corner/horizontal/vertical (float3 each, in that order) this
+// call rendered with. This is the pairing partner out_world_pos_buffer
+// needs: vfov/aspect are never available to any caller (every scene case
+// bakes its own vfov into a hardcoded literal deep inside build_scene(),
+// with nothing surfacing it) - reprojection instead reads back the EXACT
+// basis the GPU used via camera_math.h's CameraBasis/projectToScreen(),
+// not a re-derived approximation. Populated from whatever the scene's
+// actual CameraKind produced; a non-Perspective/Orthographic camera (rare -
+// Spherical/Realistic scenes) leaves these near/at zero, which
+// projectToScreen() already treats as "nothing to project onto" rather
+// than dividing by zero.
 bool rt_realtime_render_frame(
 	const char* scene_id,
 	int image_width,
@@ -110,6 +133,8 @@ bool rt_realtime_render_frame(
 	double lookat_z,
 	bool denoise,
 	double denoise_blend,
+	float* out_world_pos_buffer,
+	float* out_camera_basis,
 	float* out_rgb_buffer
 );
 

@@ -211,3 +211,75 @@ TEST(CameraMathTest, CrossProductOfUnitAxesMatchesRightHandRule) {
 	// Anti-commutative: swapping operands flips the sign.
 	expectVec3Near(cross(yAxis, xAxis), zAxis * -1.0);
 }
+
+TEST(CameraMathTest, DotProductOfPerpendicularUnitAxesIsZero) {
+	EXPECT_NEAR(dot(Vec3{1.0, 0.0, 0.0}, Vec3{0.0, 1.0, 0.0}), 0.0, 1e-9);
+	EXPECT_NEAR(dot(Vec3{1.0, 0.0, 0.0}, Vec3{1.0, 0.0, 0.0}), 1.0, 1e-9);
+	EXPECT_NEAR(dot(Vec3{2.0, 3.0, 4.0}, Vec3{5.0, 6.0, 7.0}), 56.0, 1e-9);
+}
+
+// Camera at (0,0,5) looking at the origin, 90 degree vertical FOV
+// (h = tan(45) = 1, so viewport_height = 2*h*focus_dist = 2), square aspect
+// (viewport_width = 2 too) - the simplest possible case to reason about by
+// hand. Basis vectors are the literal values build_pinhole_camera_params()
+// itself would compute (lookfrom - horizontal/2 - vertical/2 - focus_dist*w
+// for lowerLeftCorner, hand-derived independently of projectToScreen() so
+// the test doesn't share a bug with the code it's checking).
+constexpr CameraBasis kSquare90DegBasis{
+	Vec3{0.0, 0.0, 5.0},    // origin
+	Vec3{-1.0, -1.0, 4.0},  // lowerLeftCorner
+	Vec3{2.0, 0.0, 0.0},    // horizontal
+	Vec3{0.0, 2.0, 0.0}};   // vertical
+
+TEST(CameraMathTest, ProjectToScreenPutsTheLookAtPointAtScreenCenter) {
+	const ScreenProjection p = projectToScreen(Vec3{0.0, 0.0, 0.0}, kSquare90DegBasis);
+	EXPECT_TRUE(p.inFront);
+	EXPECT_NEAR(p.s, 0.5, 1e-9);
+	EXPECT_NEAR(p.t, 0.5, 1e-9);
+}
+
+TEST(CameraMathTest, ProjectToScreenPlacesAPointToTheRightPastScreenCenter) {
+	// Same depth as the look-at point, offset 1 unit along world +X.
+	const ScreenProjection p = projectToScreen(Vec3{1.0, 0.0, 0.0}, kSquare90DegBasis);
+	EXPECT_TRUE(p.inFront);
+	EXPECT_NEAR(p.s, 0.6, 1e-9);
+	EXPECT_NEAR(p.t, 0.5, 1e-9);
+}
+
+TEST(CameraMathTest, ProjectToScreenPlacesAPointAbovePastScreenCenter) {
+	const ScreenProjection p = projectToScreen(Vec3{0.0, 1.0, 0.0}, kSquare90DegBasis);
+	EXPECT_TRUE(p.inFront);
+	EXPECT_NEAR(p.s, 0.5, 1e-9);
+	EXPECT_NEAR(p.t, 0.6, 1e-9);
+}
+
+TEST(CameraMathTest, ProjectToScreenRejectsPointsBehindTheCamera) {
+	// Beyond the camera, along the same viewing axis - behind it, not in front.
+	const ScreenProjection p = projectToScreen(Vec3{0.0, 0.0, 10.0}, kSquare90DegBasis);
+	EXPECT_FALSE(p.inFront);
+}
+
+TEST(CameraMathTest, ProjectToScreenRejectsAPointExactlyOnTheCamera) {
+	// c == 0 exactly - the degenerate case the ">= 0.0" gate (not "> 0.0")
+	// exists for, matching this file's other "no division by zero" fallbacks.
+	const ScreenProjection p = projectToScreen(kSquare90DegBasis.origin, kSquare90DegBasis);
+	EXPECT_FALSE(p.inFront);
+}
+
+TEST(CameraMathTest, ProjectToScreenRejectsADegenerateZeroBasis) {
+	const ScreenProjection p = projectToScreen(Vec3{1.0, 2.0, 3.0}, CameraBasis{});
+	EXPECT_FALSE(p.inFront);
+}
+
+TEST(CameraMathTest, ProjectToScreenNarrowsScreenFractionWithAspectRatio) {
+	// Same offset point as ProjectToScreenPlacesAPointToTheRightPastScreenCenter,
+	// but a 2:1 aspect ratio (horizontal doubled) halves the screen-fraction
+	// offset from center for the same world offset (a wider screen fits more
+	// world-space per unit of screen fraction horizontally).
+	const CameraBasis wideBasis{
+		Vec3{0.0, 0.0, 5.0}, Vec3{-2.0, -1.0, 4.0}, Vec3{4.0, 0.0, 0.0}, Vec3{0.0, 2.0, 0.0}};
+	const ScreenProjection p = projectToScreen(Vec3{1.0, 0.0, 0.0}, wideBasis);
+	EXPECT_TRUE(p.inFront);
+	EXPECT_NEAR(p.s, 0.55, 1e-9);
+	EXPECT_NEAR(p.t, 0.5, 1e-9);
+}

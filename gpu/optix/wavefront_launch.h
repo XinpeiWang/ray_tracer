@@ -65,6 +65,7 @@ extern "C" void wf_launch_evaluate_materials(
 	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
+	float4*                      d_worldPosBuffer,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -96,6 +97,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
+	float4*                      d_worldPosBuffer,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -128,13 +130,14 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	float                        maxComponentValue,
 	float3*                      d_albedoBuffer,
 	float3*                      d_normalBuffer,
+	float4*                      d_worldPosBuffer,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
 	GpuPortalLight portalLight, float maxComponentValue,
-	float3* d_albedoBuffer, float3* d_normalBuffer, cudaStream_t stream);
+	float3* d_albedoBuffer, float3* d_normalBuffer, float4* d_worldPosBuffer, cudaStream_t stream);
 
 extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,

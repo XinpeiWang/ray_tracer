@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QString>
 #include <QThread>
+#include <cstdint>
 #include <vector>
 
 // ============================================================================
@@ -19,12 +20,16 @@
 // needed at all here), accumulates the raw linear samples into a running
 // mean, and emits a tonemapped QImage once per frame for the GUI to display.
 //
-// Deliberately scoped to progressive refinement only: this class just
-// accumulates whatever camera/look-at it's given into a converging image -
-// it has no idea whether the caller got there from camera spinboxes, mouse-
-// drag orbit, or WASD free-fly (all three drive it, via MainWindow's own
-// orbit/translate handlers calling setCamera()) - see setCamera()'s own
-// comment for what "changing" it does.
+// This class just accumulates whatever camera/look-at it's given into a
+// converging image - it has no idea whether the caller got there from
+// camera spinboxes, mouse-drag orbit, or WASD free-fly (all three drive it,
+// via MainWindow's own orbit/translate handlers calling setCamera()) - see
+// setCamera()'s own comment for what "changing" it does. A camera move
+// reprojects rather than discards the existing accumulation (see
+// reprojectAccumulation()'s own comment) - an EARLIER version of this class
+// reset to zero noise on every move instead (matching three-gpu-pathtracer/
+// GLSL-PathTracer's own simpler approach), until temporal reprojection
+// replaced that with real reuse of still-valid samples.
 //
 // RealtimePreviewWorker does the actual work and lives on its own QThread
 // (moveToThread() pattern, not a QThread subclass - avoids the classic
@@ -59,12 +64,12 @@ public slots:
 	// call even if not running.
 	void stop();
 
-	// Moves the camera and/or where it's looking, and resets accumulation
-	// (a real "the view changed, start converging again" reset - see the
-	// class-level comment on why this project's chosen progressive-preview
-	// design resets rather than tries to reproject/reuse samples across a
-	// camera change, matching three-gpu-pathtracer/GLSL-PathTracer's own
-	// approach). No-op if not currently running.
+	// Moves the camera and/or where it's looking. Marks accumulation dirty
+	// (m_cameraDirty) rather than resetting it immediately - renderLoop()
+	// renders the NEXT frame with this new camera first, then reprojects
+	// the still-valid parts of the OLD accumulation into it (see
+	// reprojectAccumulation()'s own comment) instead of discarding
+	// everything. No-op if not currently running.
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 
 	// Toggles the OptiX AI denoiser (same one --denoise/--denoise-blend use
@@ -102,6 +107,7 @@ private:
 	// not just read the current m_running/m_epoch.
 	void renderLoop(int epoch);
 	void resetAccumulation();
+	void reprojectAccumulation();
 
 	QString m_sceneId;
 	int m_width = 0;
@@ -131,6 +137,26 @@ private:
 	// WavefrontPathTracer::render() - avoids a heap alloc/free pair on
 	// every single frame for buffers that are the same size every time).
 	std::vector<float> m_tmp;     // raw per-call sample from the DLL, width*height*3
+	// Temporal reprojection state - see reprojectAccumulation()'s own
+	// comment. m_worldPos/m_cameraBasis are THIS frame's own (just rendered
+	// with the CURRENT camera); m_worldPosPrev/m_prevCameraBasis are
+	// whichever frame's data currently backs m_accum, updated to match at
+	// the end of every successful frame (see renderLoop()) - so they always
+	// hold exactly what a reprojection FROM m_accum needs, regardless of
+	// how many frames (with or without a camera move) have happened since.
+	std::vector<float> m_worldPos;         // xyz + validity, width*height*4
+	std::vector<float> m_worldPosPrev;     // same layout, previous frame's
+	std::vector<float> m_cameraBasis;      // origin/lowerLeft/horiz/vert, 12 floats
+	std::vector<float> m_prevCameraBasis;  // same layout, previous frame's
+	// Per-pixel effective sample count - NOT uniform once reprojection is in
+	// play (a freshly-disoccluded pixel starts over at 0 while a
+	// successfully-reprojected neighbor carries its whole history forward),
+	// unlike the single scalar this replaced. m_sampleCount (below) becomes
+	// the MINIMUM across all pixels once rendering starts - a conservative
+	// "worst-converged pixel" indicator for the status label (see
+	// MainWindow::onLivePreviewFrameReady()) rather than a literal count
+	// that stopped being uniform.
+	std::vector<uint16_t> m_sampleCounts;
 	QImage m_displayImage;        // tonemapped result, re-filled in place each frame
 	int m_sampleCount = 0;
 	// Every access to the fields below happens only inside a method

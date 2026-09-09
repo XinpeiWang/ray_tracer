@@ -35,10 +35,12 @@ RT_REALTIME_API bool realtime_render_frame(
 	double lookat_z,
 	bool denoise,
 	double denoise_blend,
+	float* out_world_pos_buffer,
+	float* out_camera_basis,
 	float* out_rgb_buffer
 ) {
 	return rt_realtime_render_frame(scene_id, image_width, image_height,
 		samples_per_pixel, max_depth, cam_x, cam_y, cam_z,
 		has_custom_lookat, lookat_x, lookat_y, lookat_z,
-		denoise, denoise_blend, out_rgb_buffer);
+		denoise, denoise_blend, out_world_pos_buffer, out_camera_basis, out_rgb_buffer);
 }
