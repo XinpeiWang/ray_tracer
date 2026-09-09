@@ -116,7 +116,7 @@ CPU_GPU auto SumOfProducts(Ta a, Tb b, Tc c, Td d) {
 template <typename T>
 class CompensatedSum {
   public:
-	CPU_GPU CompensatedSum() = default;
+	CompensatedSum() = default;
 	CPU_GPU explicit CompensatedSum(T v) : sum_(v), c_(0) {}
 
 	CPU_GPU CompensatedSum& operator=(T v) {

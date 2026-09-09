@@ -104,7 +104,15 @@ struct DirectionCone {
 		: DirectionCone(vx, vy, vz, 1.f) {}
 
 	CPU_GPU bool IsEmpty() const {
+		// std::numeric_limits<float>::infinity() triggers the same
+		// constexpr-host-function nvcc diagnostic as std::min/std::max
+		// under this STL - HUGE_VALF (plain <cmath>, always device-safe)
+		// is the direct portable substitute.
+#if defined(__CUDACC__)
+		return cosTheta == HUGE_VALF;
+#else
 		return cosTheta == std::numeric_limits<float>::infinity();
+#endif
 	}
 
 	// Factory: cone covering the entire sphere.
@@ -172,8 +180,13 @@ CPU_GPU DirectionCone Union(const DirectionCone& a, const DirectionCone& b) {
 
 	// One cone already contains the other
 	static constexpr float kPi = float(scalar_math_detail::kPi);
+#if defined(__CUDACC__)
+	if (fminf(theta_d + theta_b, kPi) <= theta_a) return a;
+	if (fminf(theta_d + theta_a, kPi) <= theta_b) return b;
+#else
 	if (std::min(theta_d + theta_b, kPi) <= theta_a) return a;
 	if (std::min(theta_d + theta_a, kPi) <= theta_b) return b;
+#endif
 
 	// Merged spread angle
 	float theta_o = (theta_a + theta_d + theta_b) * 0.5f;

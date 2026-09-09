@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <string>
@@ -357,9 +358,19 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			std::vector<float> rf, gf, bf;
 			float max_density = 0.0f;
 			if (hasScattering) {
-				rf.assign(md.sigma_s_r.begin(), md.sigma_s_r.end());
-				gf.assign(md.sigma_s_g.begin(), md.sigma_s_g.end());
-				bf.assign(md.sigma_s_b.begin(), md.sigma_s_b.end());
+				// resize+transform, not .assign(begin,end): assigning a
+				// double-iterator range directly into a vector<float> narrows
+				// per element the same way, just without an explicit cast MSVC
+				// can see - C4244 either way, this form just silences it.
+				rf.resize(md.sigma_s_r.size());
+				std::transform(md.sigma_s_r.begin(), md.sigma_s_r.end(), rf.begin(),
+					[](double v) { return static_cast<float>(v); });
+				gf.resize(md.sigma_s_g.size());
+				std::transform(md.sigma_s_g.begin(), md.sigma_s_g.end(), gf.begin(),
+					[](double v) { return static_cast<float>(v); });
+				bf.resize(md.sigma_s_b.size());
+				std::transform(md.sigma_s_b.begin(), md.sigma_s_b.end(), bf.begin(),
+					[](double v) { return static_cast<float>(v); });
 				for (float v : rf) max_density = std::fmax(max_density, v);
 				for (float v : gf) max_density = std::fmax(max_density, v);
 				for (float v : bf) max_density = std::fmax(max_density, v);
@@ -395,9 +406,16 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				// use, so the intermediate copy is skipped; insert() narrows
 				// double->float per element the same way the copy would have.
 				meta.leDataOffset = static_cast<int>(out.rgbGridData.size());
-				out.rgbGridData.insert(out.rgbGridData.end(), md.Le_r.begin(), md.Le_r.end());
-				out.rgbGridData.insert(out.rgbGridData.end(), md.Le_g.begin(), md.Le_g.end());
-				out.rgbGridData.insert(out.rgbGridData.end(), md.Le_b.begin(), md.Le_b.end());
+				// std::transform + back_inserter, not insert(begin,end): same
+				// double->float narrowing as the sigma_s block above via an
+				// explicit cast instead of an implicit one, so MSVC's C4244
+				// is silenced without changing what value ends up stored.
+				std::transform(md.Le_r.begin(), md.Le_r.end(), std::back_inserter(out.rgbGridData),
+					[](double v) { return static_cast<float>(v); });
+				std::transform(md.Le_g.begin(), md.Le_g.end(), std::back_inserter(out.rgbGridData),
+					[](double v) { return static_cast<float>(v); });
+				std::transform(md.Le_b.begin(), md.Le_b.end(), std::back_inserter(out.rgbGridData),
+					[](double v) { return static_cast<float>(v); });
 			}
 			const int gridIdx = static_cast<int>(out.rgbGridMediums.size());
 			out.rgbGridMediums.push_back(meta);
@@ -432,7 +450,11 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			std::vector<float> df;
 			float max_density = 0.0f;
 			if (hasDensity) {
-				df.assign(md.gridDensity.begin(), md.gridDensity.end());
+				// See the sigma_s block above for why this is resize+transform
+				// rather than .assign(begin,end) - same double->float C4244.
+				df.resize(md.gridDensity.size());
+				std::transform(md.gridDensity.begin(), md.gridDensity.end(), df.begin(),
+					[](double v) { return static_cast<float>(v); });
 				for (float v : df) max_density = std::fmax(max_density, v);
 			} else {
 				// No density data (missing/wrong-length "float density" -

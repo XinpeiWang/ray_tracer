@@ -118,7 +118,11 @@ CPU_GPU float Importance(const LightBounds& lb,
 	float dx = lb.bMaxX - lb.bMinX, dy = lb.bMaxY - lb.bMinY, dz = lb.bMaxZ - lb.bMinZ;
 	float diagLen = std::sqrt(dx*dx + dy*dy + dz*dz);
 	float d2raw = (cx-px)*(cx-px) + (cy-py)*(cy-py) + (cz-pz)*(cz-pz);
+#if defined(__CUDACC__)
+	float d2 = fmaxf(d2raw, diagLen * 0.5f);  // pbrt-v4: max(d2, Length(diagonal)/2)
+#else
 	float d2 = std::max(d2raw, diagLen * 0.5f);  // pbrt-v4: max(d2, Length(diagonal)/2)
+#endif
 
 	// Angle from light axis w to direction toward p
 	float wix = px - cx, wiy = py - cy, wiz = pz - cz;
@@ -155,7 +159,11 @@ CPU_GPU float Importance(const LightBounds& lb,
 		importance *= cosThetap_i;
 	}
 
+#if defined(__CUDACC__)
+	return fmaxf(importance, 0.f);
+#else
 	return std::max(importance, 0.f);
+#endif
 }
 
 // ===========================================================================
@@ -168,15 +176,24 @@ CPU_GPU LightBounds Union(const LightBounds& a, const LightBounds& b) {
 	if (b.phi == 0.f) return a;
 
 	// Merge AABBs
+#if defined(__CUDACC__)
+	float mnX = fminf(a.bMinX, b.bMinX), mnY = fminf(a.bMinY, b.bMinY), mnZ = fminf(a.bMinZ, b.bMinZ);
+	float mxX = fmaxf(a.bMaxX, b.bMaxX), mxY = fmaxf(a.bMaxY, b.bMaxY), mxZ = fmaxf(a.bMaxZ, b.bMaxZ);
+#else
 	float mnX = std::min(a.bMinX, b.bMinX), mnY = std::min(a.bMinY, b.bMinY), mnZ = std::min(a.bMinZ, b.bMinZ);
 	float mxX = std::max(a.bMaxX, b.bMaxX), mxY = std::max(a.bMaxY, b.bMaxY), mxZ = std::max(a.bMaxZ, b.bMaxZ);
+#endif
 
 	// Merge emission cones
 	DirectionCone ca(a.wx, a.wy, a.wz, a.cosTheta_o);
 	DirectionCone cb(b.wx, b.wy, b.wz, b.cosTheta_o);
 	DirectionCone cu = Union(ca, cb);
 
+#if defined(__CUDACC__)
+	float cosTheta_e = fminf(a.cosTheta_e, b.cosTheta_e);
+#else
 	float cosTheta_e = std::min(a.cosTheta_e, b.cosTheta_e);
+#endif
 
 	return LightBounds(mnX, mnY, mnZ, mxX, mxY, mxZ,
 					   cu.wx, cu.wy, cu.wz,

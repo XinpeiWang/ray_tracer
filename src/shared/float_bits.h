@@ -131,7 +131,11 @@ CPU_GPU uint64_t SignBit(double v)     { return FloatToBits(v) & 0x8000000000000
 // Mirrors pbrt-v4 NextFloatUp/NextFloatDown.
 // ===========================================================================
 CPU_GPU float NextFloatUp(float v) {
+#if defined(__CUDACC__)
+	if (isinf(v) && v > 0.f) return v;
+#else
 	if (std::isinf(v) && v > 0.f) return v;
+#endif
 	if (v == -0.f) v = 0.f;
 	uint32_t bits = FloatToBits(v);
 	if (v >= 0.f) ++bits; else --bits;
@@ -139,7 +143,11 @@ CPU_GPU float NextFloatUp(float v) {
 }
 
 CPU_GPU float NextFloatDown(float v) {
+#if defined(__CUDACC__)
+	if (isinf(v) && v < 0.f) return v;
+#else
 	if (std::isinf(v) && v < 0.f) return v;
+#endif
 	if (v == 0.f) v = -0.f;
 	uint32_t bits = FloatToBits(v);
 	if (v > 0.f) --bits; else ++bits;
@@ -147,7 +155,16 @@ CPU_GPU float NextFloatDown(float v) {
 }
 
 CPU_GPU double NextFloatUp(double v) {
+	// Unqualified isinf (CUDA's own device overload, distinct from
+	// std::isinf) - same nvcc constexpr/host-function diagnostic as
+	// std::min/std::max, just triggered here only for the double
+	// overload (the float ones just above aren't flagged - not actually
+	// reached by any device-compiled call site today).
+#if defined(__CUDACC__)
+	if (isinf(v) && v > 0.) return v;
+#else
 	if (std::isinf(v) && v > 0.) return v;
+#endif
 	if (v == -0.) v = 0.;
 	uint64_t bits = FloatToBits(v);
 	if (v >= 0.) ++bits; else --bits;
@@ -155,7 +172,11 @@ CPU_GPU double NextFloatUp(double v) {
 }
 
 CPU_GPU double NextFloatDown(double v) {
+#if defined(__CUDACC__)
+	if (isinf(v) && v < 0.) return v;
+#else
 	if (std::isinf(v) && v < 0.) return v;
+#endif
 	if (v == 0.) v = -0.;
 	uint64_t bits = FloatToBits(v);
 	if (v > 0.) --bits; else ++bits;
@@ -216,7 +237,18 @@ template <typename Float>
 CPU_GPU Float SqrtRoundUp(Float a)   { return NextFloatUp(std::sqrt(a)); }
 template <typename Float>
 CPU_GPU Float SqrtRoundDown(Float a) {
+	// SqrtRoundDown<Float> is genuinely instantiated with both float and
+	// double (see tests/unit/float_bits_tests.cpp), unlike most other
+	// CUDACC-guarded std::max sites in this codebase's shared headers
+	// which are float-only - fmaxf would silently truncate a double call
+	// to float precision, so this uses unsuffixed fmax, which CUDA
+	// overloads for both float and double (matching std::max's own
+	// overload set) instead of fmaxf.
+#if defined(__CUDACC__)
+	return fmax(Float(0), NextFloatDown(std::sqrt(a)));
+#else
 	return std::max(Float(0), NextFloatDown(std::sqrt(a)));
+#endif
 }
 
 template <typename Float>

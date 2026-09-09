@@ -47,7 +47,11 @@ CPU_GPU void EqualAreaSquareToSphere(double u, double v,
 	// xy components: cos/sin of phi, scaled by r*sqrt(2-r^2), with original signs
 	double cos_phi = std::cos(phi);
 	double sin_phi = std::sin(phi);
+#if defined(__CUDACC__)
+	double xy_r = r * std::sqrt(fmax(0.0, 2.0 - r*r));
+#else
 	double xy_r = r * std::sqrt(std::max(0.0, 2.0 - r*r));
+#endif
 	wx = std::copysign(cos_phi * xy_r, uu);
 	wy = std::copysign(sin_phi * xy_r, vv);
 }
@@ -57,7 +61,11 @@ CPU_GPU void EqualAreaSquareToSphere(double u, double v,
 CPU_GPU void EqualAreaSphereToSquare(double wx, double wy, double wz,
 											 double& u, double& v) {
 	double x = std::abs(wx), y = std::abs(wy), z = std::abs(wz);
+#if defined(__CUDACC__)
+	double r = std::sqrt(fmax(0.0, 1.0 - z));
+#else
 	double r = std::sqrt(std::max(0.0, 1.0 - z));
+#endif
 	double a = (x > y) ? x : y;
 	double b = (x > y) ? y : x;
 	b = (a == 0.0) ? 0.0 : b / a;
@@ -110,7 +118,11 @@ CPU_GPU void SampleUniformHemisphereConcentric(double u0, double u1,
 	}
 	// Lift disk to hemisphere: z = 1-r^2, xy radius = r*sqrt(2-r^2)
 	wz = 1.0 - r*r;
+#if defined(__CUDACC__)
+	double xy_scale = r * std::sqrt(fmax(0.0, 2.0 - r*r));
+#else
 	double xy_scale = r * std::sqrt(std::max(0.0, 2.0 - r*r));
+#endif
 	wx = std::cos(theta) * xy_scale;
 	wy = std::sin(theta) * xy_scale;
 }
@@ -130,7 +142,11 @@ CPU_GPU void SampleCosineHemisphere(T u0, T u1,
 									T& wx, T& wy, T& wz) {
 	T dx, dy;
 	SampleUniformDiskConcentric(u0, u1, dx, dy);
+#if defined(__CUDACC__)
+	T z = std::sqrt(fmax(T(0), T(1) - dx*dx - dy*dy));
+#else
 	T z = std::sqrt(std::max(T(0), T(1) - dx*dx - dy*dy));
+#endif
 	wx = dx; wy = dy; wz = z;
 }
 
@@ -146,7 +162,13 @@ CPU_GPU float PowerHeuristic(int nf, float f_pdf, int ng, float g_pdf) {
 	float f = static_cast<float>(nf) * f_pdf;
 	float g = static_cast<float>(ng) * g_pdf;
 	float f2 = f * f;
+	// See float_bits.h's NextFloatUp/Down(double) for why this swaps to
+	// unqualified isinf (CUDA's own device overload) under __CUDACC__.
+#if defined(__CUDACC__)
+	if (isinf(f2)) return 1.f;
+#else
 	if (std::isinf(f2)) return 1.f;
+#endif
 	return f2 / (f2 + g * g);
 }
 

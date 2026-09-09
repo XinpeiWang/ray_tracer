@@ -140,7 +140,11 @@ struct CompactLightBounds {
 		float dx = bMax[0] - bMin[0], dy = bMax[1] - bMin[1], dz = bMax[2] - bMin[2];
 		float diagLen = std::sqrt(dx*dx + dy*dy + dz*dz);
 		float d2raw = (cx-px)*(cx-px) + (cy-py)*(cy-py) + (cz-pz)*(cz-pz);
+#if defined(__CUDACC__)
+		float d2 = fmaxf(d2raw, diagLen * 0.5f);
+#else
 		float d2 = std::max(d2raw, diagLen * 0.5f);
+#endif
 
 		// Direction toward p
 		float wix = px - cx, wiy = py - cy, wiz = pz - cz;
@@ -176,7 +180,11 @@ struct CompactLightBounds {
 			importance *= cosThetap_i;
 		}
 
+#if defined(__CUDACC__)
+		return fmaxf(importance, 0.f);
+#else
 		return std::max(importance, 0.f);
+#endif
 	}
 
 	// -----------------------------------------------------------------------

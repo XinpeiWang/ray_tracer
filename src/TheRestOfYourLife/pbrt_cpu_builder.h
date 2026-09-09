@@ -118,7 +118,10 @@ inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const d
 // MipMapOptions{} (gamma 2.2, Clamp, no invert) - unchanged.
 inline MipMapOptions imageMapOptionsFor(const pbrt_flatten::Material &m) {
 	MipMapOptions opts;
-	opts.gamma = m.textureGamma;
+	// static_cast, matching the identical GPU-side cast already used for
+	// this same double(pbrt)->float(MipMapOptions) field 3x in
+	// gpu/optix/pbrt_gpu_builder_materials.h.
+	opts.gamma = static_cast<float>(m.textureGamma);
 	opts.invert = m.textureInvert;
 	// m.textureWrapIndex is the single, already-validated resolution of
 	// m.textureWrap (Material::textureWrapIndex's own comment, pbrt_flatten.h)

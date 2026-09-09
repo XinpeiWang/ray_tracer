@@ -99,8 +99,13 @@ CPU_GPU float length2(const float* a) {
 
 CPU_GPU float abs_max(const float* a) {
     float m = std::abs(a[0]);
+#if defined(__CUDACC__)
+    m = fmaxf(m, std::abs(a[1]));
+    m = fmaxf(m, std::abs(a[2]));
+#else
     m = std::max(m, std::abs(a[1]));
     m = std::max(m, std::abs(a[2]));
+#endif
     return m;
 }
 
@@ -430,7 +435,11 @@ CPU_GPU void blp_sample(const float* p00, const float* p10,
                 float disc = w0u*w0u + (w1u*w1u - w0u*w0u)*u2[0];
                 if (disc < 0) disc = 0;
                 su = (std::sqrt(disc) - w0u) / (w1u - w0u);
+#if defined(__CUDACC__)
+                su = fmaxf(0.f, fminf(1.f, su));
+#else
                 su = std::max(0.f, std::min(1.f, su));
+#endif
             }
             // PDF for u
             float pdf_u = (w0u + (w1u-w0u)*su) / (0.5f*wsum);
@@ -447,7 +456,11 @@ CPU_GPU void blp_sample(const float* p00, const float* p10,
                     float disc2 = w0v*w0v + (w1v*w1v - w0v*w0v)*u2[1];
                     if (disc2 < 0) disc2 = 0;
                     sv = (std::sqrt(disc2) - w0v) / (w1v - w0v);
+#if defined(__CUDACC__)
+                    sv = fmaxf(0.f, fminf(1.f, sv));
+#else
                     sv = std::max(0.f, std::min(1.f, sv));
+#endif
                 }
                 float pdf_v = (w0v + (w1v-w0v)*sv) / (0.5f*wvsum);
                 pdf = pdf_u * pdf_v;

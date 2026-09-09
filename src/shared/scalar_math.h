@@ -31,6 +31,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cfloat>
 #include <climits>
 #include <cstring>
 #include <utility>
@@ -181,7 +182,14 @@ CPU_GPU float FastExp(float x) {
 		return static_cast<int>((bits >> 23) & 0xFF) - 127;
 	}() + i;
 	if (exponent < -126) return 0.f;
+	// See direction_cone.h's IsEmpty() for why this swaps to HUGE_VALF
+	// under __CUDACC__ - same nvcc diagnostic on
+	// std::numeric_limits<T>::infinity().
+#if defined(__CUDACC__)
+	if (exponent >  127) return HUGE_VALF;
+#else
 	if (exponent >  127) return std::numeric_limits<float>::infinity();
+#endif
 	uint32_t bits;
 	std::memcpy(&bits, &twoToF, sizeof(bits));
 	bits &= 0b10000000011111111111111111111111u;
@@ -239,8 +247,17 @@ CPU_GPU double TrimmedLogistic(double x, double s, double a, double b) {
 // ===========================================================================
 CPU_GPU float ErfInv(float a) {
 	float p;
+#if defined(__CUDACC__)
+	// FLT_MIN (<cfloat>, always device-safe), not
+	// std::numeric_limits<float>::min() - same nvcc constexpr-host-function
+	// diagnostic as std::min/std::max itself, just triggered by this
+	// unrelated-looking numeric_limits accessor instead.
+	float t = std::log(fmaxf(std::fma(a, -a, 1.f),
+								FLT_MIN));
+#else
 	float t = std::log(std::max(std::fma(a, -a, 1.f),
 								std::numeric_limits<float>::min()));
+#endif
 	if (std::abs(t) > 6.125f) {
 		p = 3.03697567e-10f;
 		p = std::fma(p, t, 2.93243101e-8f);

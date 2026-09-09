@@ -226,7 +226,7 @@ struct MeasuredBxDF {
 	// Index 0 = R, 1 = G, 2 = B.  Store as float for PL2D compatibility.
 	float lambda[3] = { 0.0f, 0.0f, 0.0f };
 
-	CPU_GPU MeasuredBxDF() = default;
+	MeasuredBxDF() = default;
 
 	CPU_GPU MeasuredBxDF(const MeasuredBRDFData* d,
 						 float lambda_r, float lambda_g, float lambda_b)

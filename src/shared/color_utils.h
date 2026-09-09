@@ -41,7 +41,11 @@
 CPU_GPU float LinearToSRGB(float value) {
 	if (value <= 0.0031308f)
 		return 12.92f * value;
+#if defined(__CUDACC__)
+	float sqrtValue = std::sqrt(fmaxf(0.f, value));
+#else
 	float sqrtValue = std::sqrt(std::max(0.f, value));
+#endif
 	float p = EvaluatePolynomial(sqrtValue,
 		-0.0016829072605308378f,  0.03453868659826638f,
 		 0.7642611304733891f,     2.0041169284241644f,
@@ -117,7 +121,7 @@ inline float SRGB8ToLinear(uint8_t value) {
 struct XYZ {
 	float X = 0.f, Y = 0.f, Z = 0.f;
 
-	CPU_GPU XYZ() = default;
+	XYZ() = default;
 	CPU_GPU XYZ(float X, float Y, float Z) : X(X), Y(Y), Z(Z) {}
 
 	CPU_GPU float Average() const { return (X + Y + Z) / 3.f; }

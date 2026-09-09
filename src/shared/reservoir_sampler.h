@@ -110,7 +110,7 @@ struct PCG32Rng {
 template <typename T>
 class WeightedReservoirSampler {
   public:
-	CPU_GPU WeightedReservoirSampler() = default;
+	WeightedReservoirSampler() = default;
 	CPU_GPU explicit WeightedReservoirSampler(uint64_t rng_seed) : rng_(rng_seed) {}
 
 	CPU_GPU void seed(uint64_t s) { rng_.set_sequence(s); }

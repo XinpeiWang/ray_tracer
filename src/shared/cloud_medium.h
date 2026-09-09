@@ -54,7 +54,7 @@ struct CloudMajorantIterator {
 	bool hit      = false;   // true iff ray intersected the medium bounds
 
 	// Empty iterator (no medium overlap).
-	CPU_GPU CloudMajorantIterator() = default;
+	CloudMajorantIterator() = default;
 
 	// Iterator with one valid segment.
 	CPU_GPU CloudMajorantIterator(T tMin_, T tMax_, T sig_t)
@@ -221,7 +221,15 @@ struct CloudMedium {
 		// pbrt-v4: d = Clamp((1-p.y)*4.5*density*d, 0, 1)
 		//          d += 2 * max(0, 0.5 - p.y)
 		d = cloud_detail::clamp01<T>((T(1) - py) * T(4.5) * density * d);
+		// CloudMedium<T> is instantiated with both float (GPU) and double
+		// (CPU, see cloud_medium_hittable.h/pbrt_cpu_builder.h) - unsuffixed
+		// fmax (not fmaxf) overload-resolves correctly for either, matching
+		// std::max's own overload set.
+#if defined(__CUDACC__)
+		T extra = T(2) * fmax(T(0), T(0.5) - py);
+#else
 		T extra = T(2) * std::max(T(0), T(0.5) - py);
+#endif
 		d = cloud_detail::clamp01<T>(d + extra);
 
 		return d;

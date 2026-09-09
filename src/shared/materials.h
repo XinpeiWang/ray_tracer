@@ -732,7 +732,7 @@ struct MeasuredMaterial {
 	float lambda_b = 465.0f;  // blue  channel wavelength (nm)
 
 	// Construct from a pre-built data table and explicit wavelength samples.
-	CPU_GPU MeasuredMaterial() = default;
+	MeasuredMaterial() = default;
 	CPU_GPU MeasuredMaterial(const MeasuredBRDFData* d,
 							 float lr = 612.0f, float lg = 549.0f, float lb = 465.0f)
 		: brdf(d), lambda_r(lr), lambda_g(lg), lambda_b(lb) {}

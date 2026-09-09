@@ -38,7 +38,7 @@ struct RayMajorantSegment {
     T sigma_maj;  // scalar representative (== all three for uniform media)
 
     // Convenience: scalar (uniform RGB) — used by DDAMajorantIterator
-    CPU_GPU RayMajorantSegment() = default;
+    RayMajorantSegment() = default;
     CPU_GPU RayMajorantSegment(T tMin_, T tMax_, T sigma)
         : tMin(tMin_), tMax(tMax_),
           sigma_maj_r(sigma), sigma_maj_g(sigma), sigma_maj_b(sigma),

@@ -39,7 +39,14 @@ CPU_GPU double BalanceHeuristic(int nf, double fPdf, int ng, double gPdf) {
 CPU_GPU double PowerHeuristic(int nf, double fPdf, int ng, double gPdf) {
 	double f = nf * fPdf, g = ng * gPdf;
 	double f2 = f * f, g2 = g * g;
+	// See direction_cone.h's IsEmpty() for why this swaps to HUGE_VAL under
+	// __CUDACC__ - same nvcc diagnostic on std::numeric_limits<T>::infinity(),
+	// double here so HUGE_VAL (no 'F' suffix) rather than HUGE_VALF.
+#if defined(__CUDACC__)
+	if (f2 == HUGE_VAL) return 1.0;
+#else
 	if (f2 == std::numeric_limits<double>::infinity()) return 1.0;
+#endif
 	return f2 / (f2 + g2);
 }
 

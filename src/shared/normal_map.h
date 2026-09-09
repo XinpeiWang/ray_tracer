@@ -39,7 +39,7 @@
 #include "cpu_gpu.h"
 
 #if defined(__CUDACC__)
-#   include <math_functions.h>
+#   include <cuda_runtime.h>
 #else
 #   include <cmath>
 #endif

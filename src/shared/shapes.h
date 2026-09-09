@@ -67,8 +67,15 @@ CPU_GPU bool solve_quadratic(T a, T b, T c, T& t0, T& t1) {
 }
 
 // Safe arccos clamped to [-1,1]
+// T is instantiated with both float (GPU shapes) and double (CPU shapes) -
+// unsuffixed fmax/fmin overload-resolve correctly for either, unlike
+// fmaxf/fminf which would silently truncate a double instantiation.
 template<typename T> CPU_GPU T safe_acos(T x) {
+#if defined(__CUDACC__)
+	return std::acos(fmax(T(-1), fmin(T(1), x)));
+#else
 	return std::acos(std::max(T(-1), std::min(T(1), x)));
+#endif
 }
 
 // Safe sqrt (clamps negative argument to zero)
@@ -301,8 +308,13 @@ struct SphereShape {
 		if (len > T(0)) { hx *= r/len; hy *= r/len; hz *= r/len; }
 
 		// Z clipping
+#if defined(__CUDACC__)
+		T th_z_min = fmax(T(-1), fmin(T(1), z_min / r));
+		T th_z_max = fmax(T(-1), fmin(T(1), z_max / r));
+#else
 		T th_z_min = std::max(T(-1), std::min(T(1), z_min / r));
 		T th_z_max = std::max(T(-1), std::min(T(1), z_max / r));
+#endif
 		if (hz < z_min || hz > z_max) {
 			// Try other root
 			t_hit = (t_hit == t0) ? t1 : t0;
@@ -340,7 +352,11 @@ struct SphereShape {
 
 		// Compute (u,v)
 		const T pi = T(3.14159265358979323846);
+#if defined(__CUDACC__)
+		T cos_theta = fmax(T(-1), fmin(T(1), hz / r));
+#else
 		T cos_theta = std::max(T(-1), std::min(T(1), hz / r));
+#endif
 		T theta = std::acos(cos_theta);
 		T theta_z_min = std::acos(th_z_max);  // note: cos is monotone decreasing
 		T theta_z_max = std::acos(th_z_min);
@@ -398,12 +414,21 @@ struct SphereShape {
 
 		// (u,v)
 		const T pi = T(3.14159265358979323846);
+#if defined(__CUDACC__)
+		T cos_theta = fmax(T(-1), fmin(T(1), pz_obj / r));
+#else
 		T cos_theta = std::max(T(-1), std::min(T(1), pz_obj / r));
+#endif
 		T theta = std::acos(cos_theta);
 		T phi   = std::atan2(py_obj, px_obj);
 		if (phi < T(0)) phi += T(2) * pi;
+#if defined(__CUDACC__)
+		T th_z_min = fmax(T(-1), fmin(T(1), z_min / r));
+		T th_z_max = fmax(T(-1), fmin(T(1), z_max / r));
+#else
 		T th_z_min = std::max(T(-1), std::min(T(1), z_min / r));
 		T th_z_max = std::max(T(-1), std::min(T(1), z_max / r));
+#endif
 		T theta_z_min = std::acos(th_z_max);
 		T theta_z_max = std::acos(th_z_min);
 		T u_coord = phi / phi_max;
@@ -499,12 +524,21 @@ struct SphereShape {
 
 		// (u,v) at sampled point
 		T px_obj = px_w - cx, py_obj = py_w - cy, pz_obj = pz_w - cz;
+#if defined(__CUDACC__)
+		T cos_theta_uv = fmax(T(-1), fmin(T(1), pz_obj / r));
+#else
 		T cos_theta_uv = std::max(T(-1), std::min(T(1), pz_obj / r));
+#endif
 		T theta_uv = std::acos(cos_theta_uv);
 		T phi_uv   = std::atan2(py_obj, px_obj);
 		if (phi_uv < T(0)) phi_uv += T(2) * pi;
+#if defined(__CUDACC__)
+		T th_z_min = fmax(T(-1), fmin(T(1), z_min / r));
+		T th_z_max = fmax(T(-1), fmin(T(1), z_max / r));
+#else
 		T th_z_min = std::max(T(-1), std::min(T(1), z_min / r));
 		T th_z_max = std::max(T(-1), std::min(T(1), z_max / r));
+#endif
 		T theta_z_min = std::acos(th_z_max);
 		T theta_z_max = std::acos(th_z_min);
 		T u_coord = phi_uv / phi_max;
@@ -1324,14 +1358,27 @@ struct TriangleShape {
 		T t_hit = tScaled * invDet;
 
 		// Conservative t error bound (pbrt-v4 style)
+		// std::max's 3-arg initializer_list overload has no direct device
+		// counterpart - chained 2-arg fmax (unsuffixed, correct for both
+		// the float and double instantiations of T) is the equivalent.
+#if defined(__CUDACC__)
+		T maxZt = fmax(std::abs(p0z_tp), fmax(std::abs(p1z_tp), std::abs(p2z_tp)));
+		T maxXt = fmax(std::abs(p0x_tp), fmax(std::abs(p1x_tp), std::abs(p2x_tp)));
+		T maxYt = fmax(std::abs(p0y_tp), fmax(std::abs(p1y_tp), std::abs(p2y_tp)));
+#else
 		T maxZt = std::max({std::abs(p0z_tp), std::abs(p1z_tp), std::abs(p2z_tp)});
 		T maxXt = std::max({std::abs(p0x_tp), std::abs(p1x_tp), std::abs(p2x_tp)});
 		T maxYt = std::max({std::abs(p0y_tp), std::abs(p1y_tp), std::abs(p2y_tp)});
+#endif
 		T deltaZ = gamma_fp<T>(3) * maxZt;
 		T deltaX = gamma_fp<T>(5) * (maxXt + maxZt);
 		T deltaY = gamma_fp<T>(5) * (maxYt + maxZt);
 		T deltaE = T(2) * (gamma_fp<T>(2)*maxXt*maxYt + deltaY*maxXt + deltaX*maxYt);
+#if defined(__CUDACC__)
+		T maxE   = fmax(std::abs(e0), fmax(std::abs(e1), std::abs(e2)));
+#else
 		T maxE   = std::max({std::abs(e0), std::abs(e1), std::abs(e2)});
+#endif
 		T deltaT = T(3) * (gamma_fp<T>(3)*maxE*maxZt + deltaE*maxZt + deltaZ*maxE)
 				   * std::abs(invDet);
 		if (t_hit <= deltaT || t_hit < t_min) return {};
@@ -1690,9 +1737,15 @@ struct TriangleShape {
 							_transform_point(M, cpW[i], cp[i]);
 
 						// Broad-phase AABB test in ray space
+#if defined(__CUDACC__)
+						float maxWidth = fmaxf(
+							_lerp(float(uMin), float(width0), float(width1)),
+							_lerp(float(uMax), float(width0), float(width1)));
+#else
 						float maxWidth = std::max(
 							_lerp(float(uMin), float(width0), float(width1)),
 							_lerp(float(uMax), float(width0), float(width1)));
+#endif
 						// Curve bounding box in ray space (union of edge midpoints)
 						float bbMin[3], bbMax[3];
 						_bound4(cp, bbMin, bbMax);
@@ -1718,7 +1771,11 @@ struct TriangleShape {
 						}
 						int maxDepth = 0;
 						if (L0 > 0.f) {
+#if defined(__CUDACC__)
+							float maxW = fmaxf(float(width0), float(width1));
+#else
 							float maxW = std::max(float(width0), float(width1));
+#endif
 							float eps  = maxW * 0.05f;
 							float arg  = 1.41421356237f * 6.f * L0 / (8.f * eps);
 							if (arg > 1.f) {
@@ -1911,9 +1968,15 @@ struct TriangleShape {
 										child[i][k] = cpSplit[3*seg + i][k];
 
 								// Child bounding box test
+#if defined(__CUDACC__)
+								float maxW = fmaxf(
+									_lerp(u[seg],   float(width0), float(width1)),
+									_lerp(u[seg+1], float(width0), float(width1)));
+#else
 								float maxW = std::max(
 									_lerp(u[seg],   float(width0), float(width1)),
 									_lerp(u[seg+1], float(width0), float(width1)));
+#endif
 								float bbMin[3], bbMax[3];
 								_bound4(child, bbMin, bbMax);
 								for (int k = 0; k < 3; ++k) {

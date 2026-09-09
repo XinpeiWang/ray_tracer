@@ -95,7 +95,11 @@ CPU_GPU BxDFSampleResult<T> layered_sample_local(
 			T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
 #endif
 			if (rrBeta < T(0.25)) {
+#if defined(__CUDACC__)
+				T q = fmaxf(T(0), T(1) - rrBeta);
+#else
 				T q = std::max(T(0), T(1) - rrBeta);
+#endif
 				if ((T)rng.Uniform<float>() < q) { res.valid = false; return res; }
 				beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
 			}
@@ -279,7 +283,11 @@ CPU_GPU void layered_f(
 				T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
 #endif
 				if (rrBeta < T(0.25)) {
+#if defined(__CUDACC__)
+					T q = fmaxf(T(0), T(1) - rrBeta);
+#else
 					T q = std::max(T(0), T(1) - rrBeta);
+#endif
 					if ((T)rng.Uniform<float>() < q) break;
 					beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
 				}

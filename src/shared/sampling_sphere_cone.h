@@ -93,7 +93,11 @@ CPU_GPU void InvertUniformDiskConcentricSample(T dx, T dy, T& u0, T& u1) {
 template<typename T>
 CPU_GPU void SampleUniformSphere(T u0, T u1, T& wx, T& wy, T& wz) {
 	wz = T(1) - T(2)*u0;
+#if defined(__CUDACC__)
+	T r   = std::sqrt(fmax(T(0), T(1) - wz*wz));
+#else
 	T r   = std::sqrt(std::max(T(0), T(1) - wz*wz));
+#endif
 	T phi = T(2) * T(3.14159265358979323846) * u1;
 	wx = r * std::cos(phi);
 	wy = r * std::sin(phi);
@@ -123,7 +127,11 @@ CPU_GPU void InvertUniformSphereSample(T wx, T wy, T wz, T& u0, T& u1) {
 template<typename T>
 CPU_GPU void SampleUniformHemisphere(T u0, T u1, T& wx, T& wy, T& wz) {
 	wz = u0;
+#if defined(__CUDACC__)
+	T r   = std::sqrt(fmax(T(0), T(1) - wz*wz));
+#else
 	T r   = std::sqrt(std::max(T(0), T(1) - wz*wz));
+#endif
 	T phi = T(2) * T(3.14159265358979323846) * u1;
 	wx = r * std::cos(phi);
 	wy = r * std::sin(phi);
@@ -156,7 +164,11 @@ template<typename T>
 CPU_GPU void SampleUniformCone(T u0, T u1, T cosThetaMax,
 									  T& wx, T& wy, T& wz) {
 	T cosTheta  = (T(1) - u0) + u0 * cosThetaMax;
+#if defined(__CUDACC__)
+	T sinTheta  = std::sqrt(fmax(T(0), T(1) - cosTheta*cosTheta));
+#else
 	T sinTheta  = std::sqrt(std::max(T(0), T(1) - cosTheta*cosTheta));
+#endif
 	T phi       = u1 * T(2) * T(3.14159265358979323846);
 	wx = sinTheta * std::cos(phi);
 	wy = sinTheta * std::sin(phi);

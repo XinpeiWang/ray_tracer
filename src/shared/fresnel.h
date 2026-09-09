@@ -17,7 +17,7 @@
 #include "cpu_gpu.h"
 
 #if defined(__CUDACC__)
-#   include <math_functions.h>   // fmaxf, fminf, sqrtf (device)
+#   include <cuda_runtime.h>   // fmaxf, fminf, sqrtf (device)
 #else
 #   include <cmath>
 #   include <complex>

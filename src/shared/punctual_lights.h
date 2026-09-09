@@ -31,7 +31,7 @@
 #include "cpu_gpu.h"
 
 #if defined(__CUDACC__)
-#   include <math_functions.h>
+#   include <cuda_runtime.h>
 #else
 #   include <cmath>
 #endif
@@ -242,7 +242,11 @@ struct SpotLightData {
 		} else {
 			// Falloff annulus: SmoothStep importance sampling
 			double cosTheta = SampleSmoothStep(rv0, cf_end, cf_start);
+#if defined(__CUDACC__)
+			double sinTheta = std::sqrt(fmax(0.0, 1.0 - cosTheta * cosTheta));
+#else
 			double sinTheta = std::sqrt(std::max(0.0, 1.0 - cosTheta * cosTheta));
+#endif
 			double phi = rv1 * 2.0 * 3.14159265358979323846;
 			lx = std::cos(phi) * sinTheta;
 			ly = std::sin(phi) * sinTheta;
