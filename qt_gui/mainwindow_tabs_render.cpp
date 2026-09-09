@@ -11,6 +11,8 @@
 
 #include "../src/shared/scene_descriptor.h"
 
+#include <cmath>
+
 #include <QTabBar>
 #include "scene_metadata_client.h"
 #ifdef RT_GUI_HAVE_GPU
@@ -1526,20 +1528,27 @@ void MainWindow::applyZoomDelta(double factor) {
 // scene_builder.cpp hardcodes make_float3(0,1,0) everywhere), not a
 // separately-tracked orientation, so there's no drift between this and
 // what orbitToCartesian() would compute from m_orbit right now.
-void MainWindow::applyTranslateDelta(double forwardSteps, double rightSteps, double upSteps) {
-	if (!m_livePreviewRunning) return;
+//
+// Matches applyOrbitDelta()/applyZoomDelta()'s own division of labor: the
+// caller (onLivePreviewTranslate()) has already turned raw step counts into
+// real world-space distances via kUnitsPerStep/m_keyboardSensitivity, so
+// forwardDelta/rightDelta/upDelta here are plain distances along each basis
+// vector, not step counts this function would need to scale itself.
+void MainWindow::applyTranslateDelta(double forwardDelta, double rightDelta, double upDelta) {
 	const camera_math::Vec3 camera = camera_math::orbitToCartesian(m_orbit, m_livePreviewLookAt);
 	const camera_math::Vec3 forward = camera_math::normalized(m_livePreviewLookAt - camera);
 	constexpr camera_math::Vec3 kWorldUp{0.0, 1.0, 0.0};
-	const camera_math::Vec3 right = camera_math::normalized(camera_math::cross(forward, kWorldUp));
-	// World-space distance per step - tuned against the Cornell Box's own
-	// ~555-unit scale (a comfortable walking pace across the room takes a
-	// handful of presses, not one giant leap or an imperceptible creep).
-	constexpr double kUnitsPerStep = 20.0;
-	const camera_math::Vec3 delta =
-		forward * (forwardSteps * kUnitsPerStep * m_keyboardSensitivity) +
-		right * (rightSteps * kUnitsPerStep * m_keyboardSensitivity) +
-		kWorldUp * (upSteps * kUnitsPerStep * m_keyboardSensitivity);
+	// Derived directly from azimuth rather than normalized(cross(forward,
+	// kWorldUp)): that cross product is forward's horizontal component
+	// scaled by cos(elevation), which shrinks to the zero vector (silently
+	// killing A/D strafing - normalized() of a near-zero vector is defined
+	// to return zero, see camera_math.h) once the camera looks near-straight
+	// up or down. The formula below is that same horizontal direction with
+	// the cos(elevation) factor divided back out, so it stays unit-length
+	// and well-defined at every elevation, including both poles, while
+	// matching cross(forward, kWorldUp)'s own direction everywhere else.
+	const camera_math::Vec3 right{std::cos(m_orbit.azimuth), 0.0, -std::sin(m_orbit.azimuth)};
+	const camera_math::Vec3 delta = forward * forwardDelta + right * rightDelta + kWorldUp * upDelta;
 	// Camera and pivot translate by the IDENTICAL delta, preserving
 	// distance/orientation between them - re-deriving m_orbit via
 	// cartesianToOrbit() rather than assuming it stays numerically
@@ -1604,7 +1613,16 @@ void MainWindow::onLivePreviewKeyZoom(int radiusSteps) {
 }
 
 void MainWindow::onLivePreviewTranslate(int forwardSteps, int rightSteps, int upSteps) {
-	applyTranslateDelta(forwardSteps, rightSteps, upSteps);
+	if (!m_livePreviewRunning) return;
+	// World-space distance per step - tuned against the Cornell Box's own
+	// ~555-unit scale (a comfortable walking pace across the room takes a
+	// handful of presses, not one giant leap or an imperceptible creep).
+	// Scaled here rather than inside applyTranslateDelta(), matching
+	// onLivePreviewKeyOrbit()/onLivePreviewKeyZoom()'s own "resolve steps to
+	// a real delta before calling the shared apply* helper" convention.
+	constexpr double kUnitsPerStep = 20.0;
+	const double scale = kUnitsPerStep * m_keyboardSensitivity;
+	applyTranslateDelta(forwardSteps * scale, rightSteps * scale, upSteps * scale);
 }
 
 // Live Preview mouse/keyboard sensitivity persistence - same

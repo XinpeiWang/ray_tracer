@@ -3685,6 +3685,10 @@ static bool build_loaded_pbrt_scene(
 	const double cam_y,
 	const double cam_z,
 	const bool force_camera_override,
+	const bool has_custom_lookat,
+	const double lookat_x,
+	const double lookat_y,
+	const double lookat_z,
 	GpuCameraParams* out_camera_extra
 ) {
 	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path);
@@ -4029,9 +4033,17 @@ static bool build_loaded_pbrt_scene(
 		: make_float3(static_cast<float>(c.lookfrom[0]),
 			      static_cast<float>(c.lookfrom[1]),
 			      static_cast<float>(c.lookfrom[2]));
-	const float3 lookat = make_float3(static_cast<float>(c.lookat[0]),
-					  static_cast<float>(c.lookat[1]),
-					  static_cast<float>(c.lookat[2]));
+	// The scene's own look-at, unless Live Preview's free-fly camera has
+	// moved it - mirrors lookfrom's own force_camera_override substitution
+	// just above. The animated-camera branch below deliberately rebuilds
+	// its own lookat from c.lookat directly instead of using this, for the
+	// same reason its lookfrom counterpart does (see that branch's comment).
+	const float3 lookat = has_custom_lookat
+		? make_float3(static_cast<float>(lookat_x), static_cast<float>(lookat_y),
+			      static_cast<float>(lookat_z))
+		: make_float3(static_cast<float>(c.lookat[0]),
+			      static_cast<float>(c.lookat[1]),
+			      static_cast<float>(c.lookat[2]));
 	const float3 vup = make_float3(static_cast<float>(c.up[0]),
 				       static_cast<float>(c.up[1]),
 				       static_cast<float>(c.up[2]));
@@ -4076,9 +4088,15 @@ static bool build_loaded_pbrt_scene(
 			static_cast<float>(c.lookfrom[0]), static_cast<float>(c.lookfrom[1]), static_cast<float>(c.lookfrom[2]));
 		const float3 animLookfrom1 = make_float3(
 			static_cast<float>(c.lookfrom1[0]), static_cast<float>(c.lookfrom1[1]), static_cast<float>(c.lookfrom1[2]));
+		// Uses c.lookat directly, NOT the possibly-has_custom_lookat-substituted
+		// `lookat` local above - same reason animLookfrom0 uses c.lookfrom
+		// directly just above: an animated camera always uses its own
+		// registered keyframes regardless of an override.
+		const float3 animLookat0 = make_float3(
+			static_cast<float>(c.lookat[0]), static_cast<float>(c.lookat[1]), static_cast<float>(c.lookat[2]));
 		const float3 animLookat1 = make_float3(
 			static_cast<float>(c.lookat1[0]), static_cast<float>(c.lookat1[1]), static_cast<float>(c.lookat1[2]));
-		build_gpu_animated_camera_params(animLookfrom0, lookat, animLookfrom1, animLookat1,
+		build_gpu_animated_camera_params(animLookfrom0, animLookat0, animLookfrom1, animLookat1,
 			vup, static_cast<float>(c.vfov), aspect, defocus_angle_deg, focus_dist_world,
 			camera_params, out_camera_extra);
 		return true;
@@ -4278,6 +4296,13 @@ bool build_scene(
 	// scenes passing out_u/out_v) keeps compiling unchanged; `::` inside
 	// the body is required to reach the real free function past this local
 	// shadow.
+	//
+	// Scope: this shadow only covers the switch below - it is invisible to
+	// the default: case's build_loaded_pbrt_scene() (a scene loaded from a
+	// .pbrt file has no case of its own, so it never calls this lambda at
+	// all). That function honors has_custom_lookat/lookat_x/y/z itself,
+	// the same way it already substitutes cam_x/y/z for lookfrom via
+	// force_camera_override - see its own `lookat` local's comment.
 	auto build_pinhole_camera_params = [&](const float3& lookfrom, const float3& lookat,
 											const float3& vup, float vfov_degrees, float aspect,
 											float focus_dist, float* cam_params_out,
@@ -5869,6 +5894,7 @@ bool build_scene(
 											pbrtPath, scene, camera_params,
 											image_width, image_height,
 											cam_x, cam_y, cam_z, force_camera_override,
+											has_custom_lookat, lookat_x, lookat_y, lookat_z,
 											out_camera_extra);
 									}
 

@@ -318,8 +318,12 @@ private:
 	// Translates the camera AND m_livePreviewLookAt together by the same
 	// world-space delta (forward/right/up basis derived from the CURRENT
 	// camera-to-pivot direction) - see its own definition comment
-	// (mainwindow_tabs_render.cpp) for the full derivation.
-	void applyTranslateDelta(double forwardSteps, double rightSteps, double upSteps);
+	// (mainwindow_tabs_render.cpp) for the full derivation. Matches
+	// applyOrbitDelta()/applyZoomDelta()'s own contract: the caller has
+	// already applied kUnitsPerStep/m_keyboardSensitivity, so these three
+	// are real world-space distances along each basis vector, not raw step
+	// counts (see onLivePreviewTranslate()'s own comment).
+	void applyTranslateDelta(double forwardDelta, double rightDelta, double upDelta);
 	// Converts m_orbit (spherical coordinates around m_livePreviewLookAt)
 	// back into an absolute camera position (camera_math::orbitToCartesian())
 	// and forwards both the camera and look-at point to the running

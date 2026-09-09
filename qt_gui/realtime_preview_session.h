@@ -19,10 +19,12 @@
 // needed at all here), accumulates the raw linear samples into a running
 // mean, and emits a tonemapped QImage once per frame for the GUI to display.
 //
-// Deliberately scoped to progressive refinement only for this first pass:
-// the camera is supplied by the caller (from the existing camera spinboxes),
-// not driven by mouse/orbit input - see setCamera()'s own comment for what
-// "changing" it does.
+// Deliberately scoped to progressive refinement only: this class just
+// accumulates whatever camera/look-at it's given into a converging image -
+// it has no idea whether the caller got there from camera spinboxes, mouse-
+// drag orbit, or WASD free-fly (all three drive it, via MainWindow's own
+// orbit/translate handlers calling setCamera()) - see setCamera()'s own
+// comment for what "changing" it does.
 //
 // RealtimePreviewWorker does the actual work and lives on its own QThread
 // (moveToThread() pattern, not a QThread subclass - avoids the classic
