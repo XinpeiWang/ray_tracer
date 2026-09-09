@@ -41,6 +41,12 @@
 
 #include "optix_types.h"
 #include "optix_math_helpers.h"   // cross()/dot()/length()/normalize()
+// Pure RIS/reservoir-combine math (restir_reservoir_add/ucw/combine/finalize,
+// wf_restir_target_proxy, wf_restir_jacobian) - split out into its own
+// header purely so it can be unit-tested from a plain host build without
+// this file's own wf_sample_*_light/wf_rand dependency on being included
+// from within wavefront_device_helpers.h - see that header's own comment.
+#include "wavefront_restir_math.h"
 
 // Candidates resampled per primary-hit pixel per frame (Bitterli 2020's M) -
 // tunable; 8 balances RIS's noise reduction against the extra alias-table
@@ -81,67 +87,9 @@ constexpr float kRestirSpatialNormalCosThreshold = 0.9f;
 // that header's own comment on why: this file also carries __device__-only
 // RIS math that must not leak into the plain host/extern-"C" boundary files
 // that only need the reservoir's storage shape). optix_types.h is already
-// included above.
-// ===========================================================================
-// Core RIS math - mirrors src/shared/restir.h's ris_add/reservoir_ucw exactly
-// (same formulas, ported to GpuReservoir/float). Pure float in/out, no
-// CUDA-only types, so it is callable and unit-testable from plain host C++ as
-// well as device code.
-// ===========================================================================
-
-// Streams one candidate into `r` via weighted reservoir sampling (Bitterli
-// eq. 5's streaming RIS update). `risWeight` is target_pdf/source_pdf for
-// this candidate; `candidateM` is how many underlying samples it represents
-// (1 for a freshly-drawn candidate, an existing reservoir's own M when
-// combining reservoirs - see restir_reservoir_combine); `candidatePHat` is
-// the candidate's own target-function value, stored on acceptance so the
-// caller can later call restir_finalize() without re-evaluating it again.
-// `rand01` MUST be a fresh uniform random in [0,1) per call. Returns true iff
-// `candidate` became (or stayed) the reservoir's selected sample.
-CPU_GPU inline bool restir_reservoir_add(GpuReservoir& r, const GpuLightSample& candidate,
-										  float risWeight, int candidateM, float candidatePHat,
-										  float rand01) {
-	r.weightSum += risWeight;
-	r.M += candidateM;
-	if (r.weightSum <= 0.0f || risWeight <= 0.0f) return false;
-	if (rand01 * r.weightSum < risWeight) {
-		r.sample = candidate;
-		r.pHat = candidatePHat;
-		return true;
-	}
-	return false;
-}
-
-// Unbiased contribution weight - Bitterli eq. 6: W = w_sum / (M * pHat).
-// Mirrors restir.h's reservoir_ucw exactly (0 when M*pHat is non-positive).
-CPU_GPU inline float restir_reservoir_ucw(float weightSum, int M, float pHat) {
-	float denom = float(M) * pHat;
-	return (denom > 0.0f) ? (weightSum / denom) : 0.0f;
-}
-
-CPU_GPU inline void restir_finalize(GpuReservoir& r) {
-	r.W = restir_reservoir_ucw(r.weightSum, r.M, r.pHat);
-}
-
-// Combines an already-formed reservoir `other` into `dst`, both understood to
-// describe the SAME pixel's context (`dst` is that pixel's own running
-// reservoir; `other` is a temporal or spatial neighbor's reservoir being
-// reused there). `otherPHatAtDstContext` MUST be `other.sample`'s target
-// function freshly evaluated at `dst`'s own shading point (never `other`'s
-// stored `pHat`, which was evaluated at `other`'s original pixel) - this is
-// exactly restir.h's documented missing piece for full unbiasedness. Treats
-// `other` as one weighted candidate of weight `otherPHatAtDstContext *
-// other.W * other.M`, carrying `other.M` samples - the standard reservoir-
-// combine identity (Bitterli Algorithm 4): reusing a whole reservoir's UCW
-// as a single RIS candidate weight is valid because W is itself an unbiased
-// estimator of 1/pHat integrated over that reservoir's own M candidates.
-CPU_GPU inline bool restir_reservoir_combine(GpuReservoir& dst, const GpuReservoir& other,
-											  float otherPHatAtDstContext, float rand01) {
-	if (!other.valid() || other.M <= 0) return false;
-	float w = otherPHatAtDstContext * other.W * float(other.M);
-	return restir_reservoir_add(dst, other.sample, w, other.M, otherPHatAtDstContext, rand01);
-}
-
+// included above. The core RIS math (restir_reservoir_add/ucw/combine/
+// finalize) itself now lives in wavefront_restir_math.h (included above) -
+// see that header's own comment for why.
 // ===========================================================================
 // Shape-aware re-evaluation - given an ALREADY-KNOWN light sample, recompute
 // direction/distance/solid-angle pdf from an arbitrary NEW query origin,
@@ -243,29 +191,8 @@ __device__ __forceinline__ bool wf_reevaluate_light_geometry(
 	return true;
 }
 
-// Geometric-ratio robustness guard for spatial reuse (Bitterli 2020 eq. 11's
-// cos/dist^2 ratio between the two shading points' view of the same sampled
-// light point) - NOT an additional multiplicative correction on top of
-// wf_reevaluate_light_geometry's fresh cosine/distance recompute (applying
-// both would double the same geometric term; see this file's header comment
-// for why the re-evaluation alone is already the full unbiased correction
-// this codebase's restir.h identifies as missing). Used only to REJECT a
-// spatial neighbor whose light-sample geometry differs too drastically
-// between the current and neighbor shading points (e.g. the sample is
-// steeply grazing from one point but not the other), the same variance-
-// control role normal/depth neighbor rejection already plays - a large ratio
-// signals the neighbor's sample is a poor, high-variance fit for the current
-// pixel, not that it is biased to include.
-__device__ __forceinline__ float wf_restir_jacobian(const float3& currentDir, float currentDist,
-													  const float3& neighborDir, float neighborDist,
-													  const float3& lightNormal) {
-	const float cosCurrent = fabsf(dot(currentDir, lightNormal));
-	const float cosNeighbor = fabsf(dot(neighborDir, lightNormal));
-	if (cosNeighbor < 1e-6f || neighborDist < 1e-6f) return 0.0f;
-	const float numerator = cosCurrent * neighborDist * neighborDist;
-	const float denominator = cosNeighbor * currentDist * currentDist;
-	return (denominator > 1e-12f) ? (numerator / denominator) : 0.0f;
-}
+// wf_restir_jacobian() itself now lives in wavefront_restir_math.h (included
+// above) - see that header's own comment.
 
 // ===========================================================================
 // RIS candidate generation - the geometry/raw-emission half of the existing
@@ -374,21 +301,8 @@ __device__ __forceinline__ bool wf_generate_restir_candidate(
 	return true;
 }
 
-// Resampling-only target-function proxy shared by candidate generation AND
-// temporal/spatial reuse's re-evaluation step - a plain Lambertian-cosine-
-// weighted luminance-like magnitude of a (already twoSided-gated) raw
-// emission, NOT the exact per-material BSDF value (that's only evaluated
-// once, for the FINAL winning sample, by wf_finish_material_scatter's own
-// existing per-material dispatch). Every reservoir combine in this file uses
-// THIS SAME function for p_hat, which is what RIS/reservoir-combine actually
-// requires for correctness (a fixed, consistently-applied target function -
-// see this file's header comment); an approximate p_hat only costs variance,
-// never correctness. Must be called with `dir` pointing FROM the query origin
-// TOWARD the light sample (matches every wf_sample_*_light's own convention).
-CPU_GPU inline float wf_restir_target_proxy(float3 rawEmission, float3 dir, float3 normal) {
-	const float cosProxy = fmaxf(dot(dir, normal), 0.0f);
-	return ((rawEmission.x + rawEmission.y + rawEmission.z) * (1.0f / 3.0f)) * cosProxy;
-}
+// wf_restir_target_proxy() itself now lives in wavefront_restir_math.h
+// (included above) - see that header's own comment.
 
 // Device-only port of qt_gui/camera_math.h's projectToScreen() (see that
 // function's own derivation comment - same algorithm, float/float3 instead

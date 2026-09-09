@@ -103,6 +103,18 @@ extern "C" __global__ void restir_spatial_reuse(
 			geomPdf <= 0.0f)
 			continue;
 
+		// Robustness guard: reject a neighbor whose light-sample geometry is
+		// wildly different as seen from this pixel vs. the neighbor's own
+		// (e.g. steeply grazing here but not there) - see wf_restir_jacobian's
+		// own comment for why this is a variance guard, not a second
+		// unbiasing correction on top of the re-evaluation above.
+		const float3 nHitPoint = make_float3(nWp.x, nWp.y, nWp.z);
+		const float3 nToSample = neighbor.sample.point - nHitPoint;
+		const float nDist = sqrtf(fmaxf(dot(nToSample, nToSample), 1e-12f));
+		const float3 nDir = nToSample / nDist;
+		const float jacobian = wf_restir_jacobian(dirToSample, dist, nDir, nDist, neighbor.sample.normal);
+		if (jacobian < 0.1f || jacobian > 10.0f) continue;
+
 		const float3 rawEmission = wf_light_raw_emission(neighbor.sample, dirToSample, materials, spheres, quads,
 														  triangles, bilinearPatches, disks, cylinders,
 														  textures, texturePixels);

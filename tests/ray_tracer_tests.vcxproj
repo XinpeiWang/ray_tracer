@@ -296,6 +296,7 @@
     <ClCompile Include="unit\punctual_lights_tests.cpp" />
     <ClCompile Include="unit\realistic_camera_tests.cpp" />
     <ClCompile Include="unit\restir_tests.cpp" />
+    <ClCompile Include="unit\wavefront_restir_tests.cpp" />
     <ClCompile Include="unit\sample_function_tests.cpp" />
     <ClCompile Include="unit\sampling_inversion_tests.cpp" />
     <ClCompile Include="unit\simple_path_tests.cpp" />
