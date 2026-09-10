@@ -67,8 +67,27 @@ CPU_GPU inline float restir_reservoir_ucw(float weightSum, int M, float pHat) {
 	return (denom > 0.0f) ? (weightSum / denom) : 0.0f;
 }
 
+// Ceiling matching the classic single-draw NEE path's own worst-case
+// normalization (1/light_pdf with light_pdf's own >1e-6f floor, wavefront_
+// device_helpers.h) - not an arbitrary new number. The classic path already
+// DROPS (treats as zero-contribution) any draw whose light_pdf falls at or
+// below that floor rather than dividing by it; restir_finalize() mirrors
+// that exact, already-accepted truncation instead of introducing a new kind
+// of approximation. Without this, a single near-degenerate candidate (e.g. a
+// shading point landing extremely close to a randomly sampled point on an
+// area light) can win RIS selection and give the whole reservoir an
+// arbitrarily large W - one that repeated reservoir combination (temporal
+// reuse's own M-clamped carry-forward, spatial reuse's per-neighbor
+// `other.W * other.M` weight) can amplify further still, since neither
+// restir_reservoir_add nor restir_reservoir_combine caps intermediate
+// weights (capping those WOULD bias the estimator - this ceiling instead
+// applies only once, to the finished per-frame W, exactly mirroring where
+// the classic path's own equivalent truncation already lives).
+constexpr float kRestirMaxW = 1.0e6f;
+
 CPU_GPU inline void restir_finalize(GpuReservoir& r) {
 	r.W = restir_reservoir_ucw(r.weightSum, r.M, r.pHat);
+	if (r.W > kRestirMaxW) r.W = 0.0f;
 }
 
 // Combines an already-formed reservoir `other` into `dst`, both understood to

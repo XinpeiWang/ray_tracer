@@ -1868,7 +1868,20 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 					materials, lightIndices, lightKinds, aliasTable, numLights,
 					textures, texturePixels, cand, candDir, candMaxDist, candPdf, candRaw))
 				break;  // no lights in the scene at all - nothing to resample
-			if (candPdf <= 1e-9f) continue;
+			// 1e-6f, not a looser 1e-9f: matches the classic single-draw NEE
+			// path's own `light_pdf > 1e-6f` gate exactly (a few lines below)
+			// - that threshold is what already bounds the classic path's own
+			// worst-case 1/light_pdf to ~1e6, battle-tested by every existing
+			// non-ReSTIR render. A looser floor here let candidates with a
+			// near-degenerate geometric pdf (a shading point landing extremely
+			// close to a randomly sampled point on an area light) through,
+			// producing a risWeight up to 1000x larger than the classic path
+			// would ever accept - RIS then reservoir-selects that single
+			// candidate outright, giving the whole reservoir a correspondingly
+			// huge W that saturates the pixel white and, via spatial/temporal
+			// reuse, spreads into a visible blocky artifact across nearby
+			// pixels and following frames.
+			if (candPdf <= 1e-6f) continue;
 			// Resampling-only target proxy: a plain Lambertian-cosine-weighted
 			// luminance-like magnitude of the (already twoSided-gated) raw
 			// emission - NOT the exact per-material BSDF value (that's only

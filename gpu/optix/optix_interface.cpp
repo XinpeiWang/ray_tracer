@@ -640,6 +640,48 @@ extern "C" bool rt_realtime_render_frame(
 		// classic single-draw NEE statistics unchanged - see WavefrontPathTracer::
 		// setRestirEnabled()'s own comment.
 		g_renderer->enableRestir(true);
+		// Live Preview pixel filter override - root-caused via direct GPU
+		// instrumentation (not just code reading) to a visible per-frame
+		// "firefly" bug reported interactively: a scene's own (or this
+		// zero-init default's) reconstruction filter is filterKind==0
+		// (Gaussian, see GpuCameraParams::filterKind's own comment), whose
+		// per-sample weight legitimately approaches (not reaches, but can be
+		// as small as ~1e-4-1e-5x a typical weight) zero for a sample whose
+		// random sub-pixel jitter lands near the filter's own support edge -
+		// wavefront_kernels_camera.cu's own filterWeight comment already
+		// documents this as "tiny in absolute magnitude". normalize_framebuffer
+		// (wavefront_kernels_accumulate.cu) divides accumulated radiance by
+		// the SUM of these weights (pbrt-v4's own rgbSum/weightSum film
+		// reconstruction) - correct and stable once enough samples have
+		// accumulated for that sum to be well clear of zero, but at Live
+		// Preview's samples_per_pixel=1-per-call granularity a single
+		// low-weight sample IS the entire denominator for that call, turning
+		// an ORDINARY, small raw radiance value (confirmed via instrumentation:
+		// values like 0.02-2.7, nothing like a bug) into a huge displayed
+		// spike purely from dividing by a near-zero weight - a pre-existing
+		// characteristic of Gaussian/Mitchell-style filters at low sample
+		// counts, not a ReSTIR defect (ReSTIR's own weight-seeking candidate
+		// resampling does make this MORE VISIBLE, by tending to produce
+		// somewhat brighter raw per-sample radiance than the classic single-
+		// draw path, but the divide-by-near-zero mechanism itself is
+		// unrelated to and predates this feature). A box filter (weight
+		// always 1.0 - GpuCameraParams::filterKind's own comment) removes
+		// the mechanism entirely, which is also simply the right choice for
+		// a progressively-ACCUMULATING preview: filters like Gaussian exist
+		// to improve a FINAL, well-converged image's antialiasing, a benefit
+		// that needs many samples to pay for itself and is actively harmful
+		// before that. Batch/offline rendering (optix_render_main(), above)
+		// keeps using each scene's own configured filter unchanged.
+		cameraExtra.filterKind = 1;  // 1 = box (GpuCameraParams::filterKind)
+		// Live Preview firefly clamp, kept as defense-in-depth alongside the
+		// filter fix above - prepareSceneAndCamera()'s own default
+		// (cameraExtra.maxComponentValue = 1e9f, above) is effectively
+		// unbounded, appropriate for batch/offline rendering's own --max-
+		// component-value opt-in (never populated here) but not for a
+		// real-time preview that displays every single low-sample-count
+		// frame directly. 50 is generous headroom above this codebase's
+		// typical scene emission values (single digits to a few tens).
+		cameraExtra.maxComponentValue = 50.0f;
 
 		const bool ok = g_renderer->render(
 			image_width,

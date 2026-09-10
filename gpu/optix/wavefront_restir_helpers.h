@@ -59,12 +59,24 @@ constexpr int kRestirCandidateCount = 8;
 // fresh candidates the instant the scene/camera starts changing again.
 constexpr int kRestirTemporalMaxM = 20;
 
-// Spatial reuse's own M-clamp - restir.h's spatial_merge() reference uses
-// 500 for this same role (far looser than temporal's 20: a spatial neighbor
-// set is redrawn fresh every frame from a small, bounded ring of pixels, not
-// carried indefinitely like temporal history, so there is much less risk of
-// it permanently drowning out fresh information).
-constexpr int kRestirSpatialMaxM = 500;
+// Spatial reuse's own M-clamp. restir.h's own spatial_merge() reference
+// comment suggests 500 for this same role, but that reference assumes a
+// full unbiased visibility-reuse treatment (re-tracing/accounting for
+// occlusion during resampling itself, not just at final shading); this
+// codebase's own restir_reservoir_combine() re-evaluates a neighbor's target
+// function UNSHADOWED (the actual traced shadow ray only happens once, for
+// the FINAL winning sample - wf_finish_material_scatter's own comment). A
+// large M lets restir_reservoir_combine's `otherPHatAtDstContext * other.W *
+// other.M` weight (wavefront_restir_math.h) compound across repeated
+// temporal/spatial combines even after this file's own kRestirMaxW ceiling
+// bounds any SINGLE reservoir's W - confirmed via
+// tests/integration/live_preview_restir_firefly_test.cpp, which showed a
+// materially elevated whole-image mean with ReSTIR enabled vs. an otherwise
+// identical classic-NEE render, traced to this cap being too permissive for
+// that unshadowed-resampling design. Matching temporal reuse's own cap (20)
+// keeps a single spatial combine from injecting disproportionate confidence
+// relative to what a fresh RIS draw earns.
+constexpr int kRestirSpatialMaxM = kRestirTemporalMaxM;
 
 // Spatial reuse's neighbor sampling - kRestirSpatialNeighbors candidate
 // pixels drawn uniformly from a disk of this pixel radius (Bitterli 2020's
@@ -324,12 +336,14 @@ __device__ __forceinline__ bool wf_generate_restir_candidate(
 
 	out_lightPdf = selection_pdf * geom_pdf;
 	// Skip the emission lookup (a real texture fetch for a textured light)
-	// entirely for a degenerate draw - the caller's own `candPdf <= 1e-9f`
-	// check would discard this candidate anyway, so there is nothing to
+	// entirely for a degenerate draw - the caller's own `candPdf <= 1e-6f`
+	// check (wf_finish_material_scatter's RIS loop - see its own comment on
+	// why 1e-6f, matching the classic NEE path's floor exactly, not a looser
+	// value) would discard this candidate anyway, so there is nothing to
 	// gain from fetching its emission first. Ordinary, not rare: a grazing-
 	// angle or degenerate-sphere-cone draw happens routinely, and this
 	// function runs kRestirCandidateCount times per pixel every frame.
-	out_rawEmission = (out_lightPdf > 1e-9f)
+	out_rawEmission = (out_lightPdf > 1e-6f)
 		? wf_light_raw_emission(out_sample, out_dir, materials, spheres, quads, triangles,
 								 bilinearPatches, disks, cylinders, textures, texturePixels)
 		: make_float3(0.0f, 0.0f, 0.0f);
