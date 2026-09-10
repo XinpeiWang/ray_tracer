@@ -757,6 +757,13 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	m_liveDenoiseEnabled = loadSavedLiveDenoiseEnabled();
 	m_liveDenoiseBlend = loadSavedLiveDenoiseBlend();
 	m_liveDenoiseShowLatest = loadSavedLiveDenoiseShowLatest();
+	m_liveSvgfEnabled = loadSavedLiveSvgfEnabled();
+	// The two are mutually exclusive (mainwindow_tabs.cpp's own checkbox
+	// wiring keeps them that way going forward) - if a stale settings file
+	// somehow has both true, SVGF wins (it fully replaces accumulation, so
+	// running it underneath an also-enabled OptiX denoiser would be the more
+	// surprising combination of the two to silently end up in).
+	if (m_liveSvgfEnabled) m_liveDenoiseEnabled = false;
 #endif
 	// Set before the first applyTheme() call below (not just by applyFont(),
 	// which runs after it) so that first stylesheet build already scales to

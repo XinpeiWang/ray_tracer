@@ -58,7 +58,7 @@ public slots:
 	// alongside the new chain this call starts.
 	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
-			   bool denoise, double denoiseBlend, bool denoiseShowLatest);
+			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -89,6 +89,18 @@ public slots:
 	// now" treatment setCamera() gives an actual camera move. No-op if not
 	// running.
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
+
+	// Toggles SVGF (gpu/optix/wavefront_svgf_math.h) - an alternative to
+	// setDenoise()'s own OptiX AI denoiser, not layered on top of it (the
+	// GUI is expected to present these as mutually-exclusive modes). Unlike
+	// a plain denoise/blend change, enabling or disabling SVGF DOES reset
+	// accumulation: SVGF's own output is unconditionally treated as
+	// "already final" (renderLoop()'s own effectiveShowLatest, generalized
+	// to `(m_denoise && m_denoiseShowLatest) || m_svgf`) - toggling it
+	// changes what m_accum structurally IS, the same "different image now"
+	// reasoning setDenoise()'s own denoiseShowLatest-effective-change already
+	// gets. No-op if not running.
+	void setSvgf(bool svgf);
 
 	// Multiplies the accumulated linear radiance right before the ACES+sRGB
 	// tonemap - same step (and formula) the batch/CLI path applies via its
@@ -142,6 +154,10 @@ private:
 	bool m_denoise = false;
 	double m_denoiseBlend = 0.0;
 	bool m_denoiseShowLatest = false;
+	// See setSvgf()'s own comment. Crosses the DLL boundary (unlike
+	// m_denoiseShowLatest above) - the GPU side needs to know whether to run
+	// SVGF at all, not just how Qt should treat its own accumulation buffer.
+	bool m_svgf = false;
 	// Neutral default (matches batch rendering's own implicit 1.0) - an
 	// earlier version of this default was 0.5, added to mask a genuine ReSTIR
 	// correctness bug (gpu/optix/wavefront_restir_helpers.h's temporal
@@ -224,10 +240,11 @@ public:
 
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
-			   bool denoise, double denoiseBlend, bool denoiseShowLatest);
+			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
+	void setSvgf(bool svgf);
 	void setExposure(double exposure);
 
 signals:

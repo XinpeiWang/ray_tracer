@@ -27,4 +27,5 @@ constexpr const char *kLivePreviewKeyboardSensitivityKey = "livePreview/keyboard
 constexpr const char *kLivePreviewDenoiseEnabledKey = "livePreview/denoiseEnabled";
 constexpr const char *kLivePreviewDenoiseBlendKey = "livePreview/denoiseBlend";
 constexpr const char *kLivePreviewDenoiseShowLatestKey = "livePreview/denoiseShowLatest";
+constexpr const char *kLivePreviewSvgfEnabledKey = "livePreview/svgfEnabled";
 } // namespace settings_keys

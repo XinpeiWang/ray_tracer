@@ -1424,7 +1424,8 @@ void MainWindow::startLivePreview() {
 	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z,
 								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
-								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
+								 m_liveSvgfEnabled);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -1502,6 +1503,11 @@ void MainWindow::updateLivePreviewCameraFromOrbit() {
 void MainWindow::pushLiveDenoiseToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+}
+
+void MainWindow::pushLiveSvgfToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setSvgf(m_liveSvgfEnabled);
 }
 
 // Applies a rotation to m_orbit and clamps elevation short of the true
@@ -1690,6 +1696,16 @@ bool MainWindow::loadSavedLiveDenoiseShowLatest() const {
 void MainWindow::saveLiveDenoiseShowLatest(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewDenoiseShowLatestKey, value);
+}
+
+bool MainWindow::loadSavedLiveSvgfEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLiveSvgfEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfEnabledKey, value);
 }
 #endif
 

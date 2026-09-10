@@ -16,9 +16,9 @@ namespace {
 //      bool has_custom_lookat, double lookX, double lookY, double lookZ,
 //      bool denoise, double denoiseBlend,
 //      float* out_world_pos, float* out_camera_basis,
-//      float* out_rgb)
+//      float* out_rgb, bool enable_svgf)
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
-							   bool, double, double, double, bool, double, float*, float*, float*);
+							   bool, double, double, double, bool, double, float*, float*, float*, bool);
 
 struct DllHandle {
 	void* module = nullptr;
@@ -191,7 +191,7 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 								   double lookX, double lookY, double lookZ,
-								   bool denoise, double denoiseBlend, bool denoiseShowLatest) {
+								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -204,6 +204,14 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	m_denoise = denoise;
 	m_denoiseBlend = denoiseBlend;
 	m_denoiseShowLatest = denoiseShowLatest;
+	// Set directly here rather than relying solely on a separate setSvgf()
+	// call from the caller: setSvgf() is gated on m_running (its own header
+	// comment - toggling it before Start has ever run would otherwise be
+	// silently lost, since m_svgf would stay at its default until the NEXT
+	// start() call), same reasoning m_denoise/m_denoiseBlend/
+	// m_denoiseShowLatest are already threaded through start()'s own
+	// parameter list instead of requiring a follow-up setDenoise() call.
+	m_svgf = svgf;
 	m_cameraDirty = false;
 	resetAccumulation();
 	m_running = true;
@@ -243,6 +251,22 @@ void RealtimePreviewWorker::setDenoise(bool denoise, double denoiseBlend, bool d
 		// (this already runs on the worker thread, so unlike setCamera()'s
 		// deferred m_cameraDirty flag there's no need to wait for the next
 		// renderLoop() iteration).
+		resetAccumulation();
+	}
+}
+
+void RealtimePreviewWorker::setSvgf(bool svgf) {
+	if (!m_running) return;
+	// Same "does the OVERALL effective show-latest state change" reset
+	// trigger as setDenoise() above, generalized to include m_svgf as a
+	// second, independent way to reach it (see renderLoop()'s own
+	// effectiveShowLatest comment) - toggling m_svgf while denoise's own
+	// show-latest is already effective (or vice versa) is a no-op change to
+	// the OVERALL flag, so no reset is needed in that case either.
+	const bool wasEffectivelyShowingLatest = (m_denoise && m_denoiseShowLatest) || m_svgf;
+	m_svgf = svgf;
+	const bool willEffectivelyShowLatest = (m_denoise && m_denoiseShowLatest) || m_svgf;
+	if (wasEffectivelyShowingLatest != willEffectivelyShowLatest) {
 		resetAccumulation();
 	}
 }
@@ -294,7 +318,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  /*has_custom_lookat=*/true, m_lookX, m_lookY, m_lookZ,
 						  m_denoise, m_denoiseBlend,
 						  m_worldPos.data(), m_cameraBasis.data(),
-						  m_tmp.data());
+						  m_tmp.data(), m_svgf);
 		if (!ok) {
 			emit statusChanged(QStringLiteral("Render failed - scene may not be GPU-supported, "
 											   "or the wavefront backend is unavailable"));
@@ -302,12 +326,21 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	}
 
 	if (ok) {
-		// m_denoise is part of this condition (not m_denoiseShowLatest
+		// m_denoise is part of the first term (not m_denoiseShowLatest
 		// alone): without denoise, "show the latest raw single-sample frame
 		// instead of accumulating" would mean Live Preview never converges
 		// at all - see setDenoise()'s own comment on why toggling either
-		// side of this condition resets accumulation.
-		const bool effectiveShowLatest = m_denoise && m_denoiseShowLatest;
+		// side of that term resets accumulation. m_svgf is unconditionally
+		// its own reason to show-latest (no equivalent "without X this would
+		// never converge" gate): SVGF's own GPU-side temporal integration
+		// (gpu/optix/wavefront_svgf_math.h) already IS the accumulation -
+		// m_tmp is already temporally stable by the time it reaches here,
+		// and re-blending it into m_accum's own separate running mean would
+		// double-integrate the same signal through two different, competing
+		// temporal filters - see this project's own SVGF plan for why GPU-
+		// side integration REPLACES this CPU-side one for that mode, rather
+		// than sitting on top of it.
+		const bool effectiveShowLatest = (m_denoise && m_denoiseShowLatest) || m_svgf;
 
 		// Reprojection would be immediately thrown away by the show-latest
 		// branch below (which overwrites m_accum wholesale every frame
@@ -424,12 +457,12 @@ RealtimePreviewSession::~RealtimePreviewSession() {
 
 void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 									double lookX, double lookY, double lookZ,
-									bool denoise, double denoiseBlend, bool denoiseShowLatest) {
+									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
 		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ),
-		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest));
+		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf));
 }
 
 void RealtimePreviewSession::stop() {
@@ -445,6 +478,10 @@ void RealtimePreviewSession::setCamera(double camX, double camY, double camZ, do
 void RealtimePreviewSession::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {
 	QMetaObject::invokeMethod(m_worker, "setDenoise", Qt::QueuedConnection,
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest));
+}
+
+void RealtimePreviewSession::setSvgf(bool svgf) {
+	QMetaObject::invokeMethod(m_worker, "setSvgf", Qt::QueuedConnection, Q_ARG(bool, svgf));
 }
 
 void RealtimePreviewSession::setExposure(double exposure) {

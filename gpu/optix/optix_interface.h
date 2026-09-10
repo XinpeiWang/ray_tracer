@@ -135,7 +135,17 @@ bool rt_realtime_render_frame(
 	double denoise_blend,
 	float* out_world_pos_buffer,
 	float* out_camera_basis,
-	float* out_rgb_buffer
+	float* out_rgb_buffer,
+	// SVGF spatiotemporal denoiser (gpu/optix/wavefront_svgf_math.h) - an
+	// alternative to `denoise` above (the OptiX AI denoiser), not layered on
+	// top of it. When true, out_rgb_buffer already holds the temporally-
+	// stable, spatially-filtered result - the caller should NOT also blend
+	// it into its own running-mean accumulation (see qt_gui/
+	// realtime_preview_session.cpp's own effectiveShowLatest comment for why
+	// SVGF's output is unconditionally treated as "already final", exactly
+	// like a denoise+showLatest frame already is). Defaults false so every
+	// existing call site keeps today's exact behavior unchanged.
+	bool enable_svgf = false
 );
 
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,

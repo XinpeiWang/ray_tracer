@@ -122,6 +122,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setWorldPosOutputEnabled(worldPosOutputEnabled_);
 		wavefrontTracer_->setRestirEnabled(restirEnabled_);
 		wavefrontTracer_->setRestirGiEnabled(restirGiEnabled_);
+		wavefrontTracer_->setSvgfEnabled(svgfEnabled_);
 		// See invalidateRestirHistory()'s own comment on why this is
 		// deferred-then-forwarded here instead of calling straight through.
 		if (restirHistoryInvalidationPending_) {

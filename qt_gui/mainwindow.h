@@ -334,6 +334,12 @@ private:
 	// by all three denoise/blend/show-latest control handlers
 	// (mainwindow_tabs.cpp) so they don't each repeat the same call.
 	void pushLiveDenoiseToSession();
+	// Same shape as pushLiveDenoiseToSession() above, for m_liveSvgfEnabled -
+	// kept separate rather than folded into one push*() call since the two
+	// techniques are mutually exclusive checkboxes (mainwindow_tabs.cpp) with
+	// independent backend setters (RealtimePreviewSession::setDenoise()/
+	// setSvgf()).
+	void pushLiveSvgfToSession();
 #endif
 
 	// ------------------------------------------------------------------
@@ -404,6 +410,13 @@ private:
 	void saveLiveDenoiseBlend(double value) const;
 	bool loadSavedLiveDenoiseShowLatest() const;
 	void saveLiveDenoiseShowLatest(bool value) const;
+	// Same shape again for Live Preview's SVGF spatiotemporal denoiser
+	// toggle - see m_liveSvgfEnabled's own comment. No blend/show-latest
+	// counterparts: SVGF's own output is unconditionally "already final"
+	// (RealtimePreviewWorker::setSvgf()'s own comment), so there is nothing
+	// equivalent to blend or accumulate.
+	bool loadSavedLiveSvgfEnabled() const;
+	void saveLiveSvgfEnabled(bool value) const;
 #endif
 
 	// Recent Renders persistence (recent_renders.cpp) - same
@@ -786,6 +799,15 @@ private:
 	QCheckBox *m_liveDenoiseCheck = nullptr;
 	QDoubleSpinBox *m_liveDenoiseBlendSpin = nullptr;
 	QCheckBox *m_liveDenoiseShowLatestCheck = nullptr;
+	// Live Preview's SVGF spatiotemporal denoiser toggle
+	// (RealtimePreviewSession::setSvgf(), this project's own SVGF plan) - an
+	// ALTERNATIVE to the OptiX AI denoiser above, not a second layer on top
+	// of it, so the two checkboxes are presented as mutually exclusive
+	// (mainwindow_tabs.cpp's own toggled-handler wiring keeps them that way)
+	// rather than independent. Loaded once at startup and saved immediately
+	// on every change, same shape as m_liveDenoiseEnabled above.
+	bool m_liveSvgfEnabled = false;
+	QCheckBox *m_liveSvgfCheck = nullptr;
 #endif
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides.

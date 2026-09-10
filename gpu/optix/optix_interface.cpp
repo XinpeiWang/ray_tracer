@@ -330,6 +330,19 @@ extern "C" int optix_render_main(
 		g_renderer->enableDenoise(options.denoise);
 		g_renderer->setDenoiseBlend(options.denoise_blend);
 
+		// ReSTIR DI/GI and SVGF are Live Preview-only features that
+		// rt_realtime_render_frame() turns on unconditionally on this same
+		// process-lifetime g_renderer singleton (see that function's own
+		// comments) - with no batch-render equivalent of options.denoise to
+		// decide them, they must be explicitly forced off here, or a single
+		// prior Live Preview call in this process silently poisons every
+		// batch render after it (found via MaterialCpuGpuParityTest
+		// failures once live_preview_svgf_test.cpp's new tests started
+		// running before the material tests in the same test binary).
+		g_renderer->enableRestir(false);
+		g_renderer->enableRestirGi(false);
+		g_renderer->enableSvgf(false);
+
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;
 		std::vector<float> framebuffer(pixelCount * 3);
@@ -529,7 +542,8 @@ extern "C" bool rt_realtime_render_frame(
 	double denoise_blend,
 	float* out_world_pos_buffer,
 	float* out_camera_basis,
-	float* out_rgb_buffer
+	float* out_rgb_buffer,
+	bool enable_svgf
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -647,6 +661,12 @@ extern "C" bool rt_realtime_render_frame(
 		// primary hits only - see wf_finish_material_scatter's own
 		// giOriginContext-stash comment (wavefront_device_helpers.h) for why.
 		g_renderer->enableRestirGi(true);
+		// SVGF (gpu/optix/wavefront_svgf_math.h) - unlike DI/GI above, this
+		// is genuinely opt-in per call (the CALLER's own `enable_svgf`
+		// parameter), not unconditionally forced on - it's an alternative
+		// denoising mode a Live Preview user chooses, not a resampling
+		// technique that's always strictly better than the classic path.
+		g_renderer->enableSvgf(enable_svgf);
 		// Live Preview pixel filter override - root-caused via direct GPU
 		// instrumentation (not just code reading) to a visible per-frame
 		// "firefly" bug reported interactively: a scene's own (or this

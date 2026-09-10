@@ -1152,14 +1152,26 @@ void MainWindow::createSettingsTab() {
 	styleCheckBox(m_liveDenoiseShowLatestCheck);
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseShowLatestCheck, &QCheckBox::setEnabled);
 
-	// All three push straight to the running session (if any) as well as
-	// QSettings, via the shared pushLiveDenoiseToSession() helper - see
-	// RealtimePreviewSession::setDenoise()'s own comment on when this does
-	// and doesn't reset accumulation.
+	// SVGF spatiotemporal denoiser - an ALTERNATIVE to the OptiX AI denoiser
+	// above, not a second layer on top of it (this project's own SVGF plan),
+	// so the two checkboxes are wired mutually exclusive below rather than
+	// independently toggleable.
+	m_liveSvgfCheck = new QCheckBox(tr("SVGF Denoiser (experimental)"));
+	m_liveSvgfCheck->setChecked(m_liveSvgfEnabled);
+	styleCheckBox(m_liveSvgfCheck);
+
+	// All three OptiX-denoiser controls push straight to the running session
+	// (if any) as well as QSettings, via the shared pushLiveDenoiseToSession()
+	// helper - see RealtimePreviewSession::setDenoise()'s own comment on when
+	// this does and doesn't reset accumulation. Checking this box also turns
+	// SVGF off (checked(false) below is a no-op, and is itself, if it fires,
+	// a plain uncheck rather than a recursive toggle since Qt only emits
+	// toggled() on an actual state change).
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, this, [this](bool checked) {
 		m_liveDenoiseEnabled = checked;
 		saveLiveDenoiseEnabled(checked);
 		pushLiveDenoiseToSession();
+		if (checked) m_liveSvgfCheck->setChecked(false);
 	});
 	connect(m_liveDenoiseBlendSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_liveDenoiseBlend = value;
@@ -1170,6 +1182,12 @@ void MainWindow::createSettingsTab() {
 		m_liveDenoiseShowLatest = checked;
 		saveLiveDenoiseShowLatest(checked);
 		pushLiveDenoiseToSession();
+	});
+	connect(m_liveSvgfCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveSvgfEnabled = checked;
+		saveLiveSvgfEnabled(checked);
+		pushLiveSvgfToSession();
+		if (checked) m_liveDenoiseCheck->setChecked(false);
 	});
 
 	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseCheck,
@@ -1188,6 +1206,16 @@ void MainWindow::createSettingsTab() {
 		"a view that always reflects only the most recent frame - useful "
 		"while flying around with WASD, where older accumulated frames are "
 		"from a camera position you've already left.")));
+	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveSvgfCheck,
+		tr("Cleans up Live Preview using SVGF (Spatiotemporal Variance-Guided "
+		"Filtering) instead of the OptiX AI denoiser - tracks per-pixel "
+		"variance over time and uses it to drive an edge-aware spatial "
+		"filter, which holds up better during camera movement than the AI "
+		"denoiser + running-mean combination above. Always shows the latest "
+		"filtered frame rather than accumulating (there is no separate "
+		"'show latest' option for it, and no blend control - its output is "
+		"always fully filtered). Mutually exclusive with the OptiX AI "
+		"denoiser above.")));
 	liveDenoiseRowLayout->addStretch(1);
 
 	liveModeSettingsLayout->addRow(liveDenoiseRow);

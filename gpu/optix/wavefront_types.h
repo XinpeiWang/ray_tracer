@@ -354,6 +354,27 @@ struct GpuGiOriginContext {
 	CPU_GPU bool valid() const { return pdfAtX0 > 0.0f; }
 };
 
+// SVGF (Live Preview only, gpu/optix/wavefront_svgf_math.h and
+// wavefront_kernels_svgf.cu) - per-pixel temporal-integration state, double-
+// buffered current/history exactly like GpuGiReservoir above (same
+// read-then-overwrite-at-end-of-call lifecycle DI/GI's own history buffers
+// already use). `color` is the temporally-integrated radiance BEFORE the
+// spatial (A-trous) filter runs each frame - never itself spatially
+// filtered, so next frame's temporal blend always mixes with a purely
+// temporal signal, not a re-blurred one (the paper's own distinction
+// between the "integrated" and "filtered" images). `moment1`/`moment2` are
+// running means of luminance and luminance^2 (variance = moment2 -
+// moment1^2, clamped non-negative - see wavefront_svgf_math.h). Every pixel
+// always has a well-defined state once SVGF is enabled (a background/miss
+// pixel gets a legitimate, if dim, color) - `historyLength == 0` alone
+// means "no prior history to blend with", not a separate validity flag.
+struct GpuSvgfState {
+	float3 color = make_float3(0.0f, 0.0f, 0.0f);
+	float  historyLength = 0.0f;
+	float  moment1 = 0.0f;
+	float  moment2 = 0.0f;
+};
+
 // A miss result: the ray escaped, accumulate background/environment.
 struct MissWorkItem {
 	float  throughput[kWFNWavelengths];

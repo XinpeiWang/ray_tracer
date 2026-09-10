@@ -255,6 +255,16 @@ public:
 	///        on its own.
 	void enableRestirGi(bool enable) { restirGiEnabled_ = enable; }
 
+	/// @brief Enable the SVGF spatiotemporal denoiser (gpu/optix/
+	///        wavefront_svgf_math.h) on the wavefront backend - an
+	///        alternative to enableDenoise()'s own OptiX AI denoiser, not
+	///        layered on top of it (see this project's own SVGF plan).
+	///        Independent from enableRestir()/enableRestirGi() above.
+	///        Forwarded to wavefrontTracer_ inside render() (WavefrontPathTracer::
+	///        setSvgfEnabled()'s own comment) - only meaningful when
+	///        isWavefrontActive(). false (the default) costs nothing extra.
+	void enableSvgf(bool enable) { svgfEnabled_ = enable; }
+
 	/// @brief Clears ReSTIR's cross-call temporal history (WavefrontPathTracer::
 	///        invalidateRestirHistory()) - call on every scene upload/switch,
 	///        so a new scene's reservoirs never reuse a previous scene's light
@@ -378,6 +388,7 @@ private:
 	bool worldPosOutputEnabled_ = false;  ///< See enableWorldPosOutput()
 	bool restirEnabled_ = false;  ///< See enableRestir()
 	bool restirGiEnabled_ = false;  ///< See enableRestirGi()
+	bool svgfEnabled_ = false;      ///< See enableSvgf()
 	bool restirHistoryInvalidationPending_ = false;  ///< See invalidateRestirHistory()
 	// Persisted across render() calls rather than created/destroyed fresh
 	// each time - see denoise()'s own comment. Shared with

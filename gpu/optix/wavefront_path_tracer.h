@@ -207,17 +207,28 @@ public:
     /// extra buffers or changes its own statistics.
     void setRestirGiEnabled(bool enabled) { restirGiEnabled_ = enabled; }
 
-    /// Clears ReSTIR's temporal history flags (both DI's restirHistoryValid_
-    /// and GI's restirGiHistoryValid_ - one call for both, since a scene
-    /// switch/hard-reset invalidates both techniques' history for the same
-    /// reason at the same time, and no caller has ever needed to invalidate
-    /// only one). Call whenever a scene switch/upload happens (a previous
-    /// scene's light/indirect samples must never be reused into a new
-    /// scene's reservoirs) - the actual history buffers are left as-is (they
-    /// get fully overwritten on the next render() call anyway, same "no need
-    /// to eagerly clear" reasoning as every other GPU buffer here) and are
+    /// Whether render() should run the SVGF spatiotemporal denoiser
+    /// (gpu/optix/wavefront_svgf_math.h, wavefront_kernels_svgf.cu) on this
+    /// frame's raw radiance before returning it - see that file's own
+    /// header comment. Independent from DI/GI above (a Live Preview user
+    /// can denoise with or without either resampling technique). Same
+    /// "only Live Preview ever sets this true" opt-in shape - batch/offline
+    /// rendering never pays for the extra buffers or changes its own
+    /// statistics.
+    void setSvgfEnabled(bool enabled) { svgfEnabled_ = enabled; }
+
+    /// Clears every technique's temporal history flag together - DI's
+    /// restirHistoryValid_, GI's restirGiHistoryValid_, and SVGF's own
+    /// svgfHistoryValid_ - one call for all three, since a scene switch/
+    /// hard-reset invalidates all of them for the same reason at the same
+    /// time, and no caller has ever needed to invalidate only one. Call
+    /// whenever a scene switch/upload happens (a previous scene's light/
+    /// indirect/temporally-integrated samples must never be reused into a
+    /// new scene) - the actual history buffers are left as-is (they get
+    /// fully overwritten on the next render() call anyway, same "no need to
+    /// eagerly clear" reasoning as every other GPU buffer here) and are
     /// resized/reallocated normally if the resolution changed.
-    void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; }
+    void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; svgfHistoryValid_ = false; }
 
 private:
     // Resize-on-resolution-change helper for a per-pixel GPU buffer: frees
@@ -282,6 +293,13 @@ private:
     // restir_gi_spatial_reuse header comment. Called once per render() call,
     // same timing as launchRestirSpatialReuse() (DI's own).
     void launchGiSpatialReuse();
+    // SVGF (wavefront_kernels_svgf.cu) - runs the full temporal-integrate +
+    // A-trous filter sequence in place on d_framebuffer, once per render()
+    // call, after launchNormalizeFramebuffer (this frame's raw radiance
+    // must already be normalized/final before SVGF treats it as "this
+    // frame's noisy 1-spp sample" - see wavefront_kernels_svgf.cu's own
+    // header comment).
+    void launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin);
     void launchEvaluateMaterials(int numHits, int maxDepth, bool regularize, float maxComponentValue,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
@@ -638,6 +656,29 @@ private:
     // scene switch/hard reset invalidates both for the same reason at the
     // same time (see that method's own comment).
     bool               restirGiHistoryValid_ = false;
+
+    // SVGF (Live Preview only, gpu/optix/wavefront_svgf_math.h) - own
+    // buffers, independent of DI/GI above (a user can enable SVGF with or
+    // without either resampling technique). d_svgfCurrent_/d_svgfHistory_
+    // hold GpuSvgfState (color/moments/historyLength), double-buffered and
+    // read-then-overwrite-at-end-of-call exactly like d_giReservoirs_/
+    // d_giReservoirsHistory_ above - reused reasoning, not repeated.
+    bool               svgfEnabled_ = false;
+    CUdeviceptr        d_svgfCurrent_ = 0;
+    int                svgfCurrentCapacity_ = 0;
+    CUdeviceptr        d_svgfHistory_ = 0;
+    int                svgfHistoryCapacity_ = 0;
+    bool               svgfHistoryValid_ = false;
+    // A-trous ping-pong scratch (float3 color + float variance per pixel,
+    // packed as float4 - xyz=color, w=variance) - purely transient WITHIN
+    // one render() call's own filter pass sequence, never read across
+    // frames, unlike every other buffer on this class. Two buffers so each
+    // pass can read the previous pass's output while writing its own,
+    // without a read/write race within one kernel launch (the same reason
+    // DI's own spatial-reuse pass writes to a SEPARATE output buffer rather
+    // than mutating its input in place).
+    CUdeviceptr        d_svgfPingPong_[2] = {0, 0};
+    int                svgfPingPongCapacity_ = 0;
 };
 
 } // namespace optix_renderer

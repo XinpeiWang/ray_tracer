@@ -233,6 +233,44 @@ extern "C" void wf_launch_restir_gi_spatial_reuse(
 	unsigned int frameSeed,
 	cudaStream_t stream);
 
+// SVGF (Live Preview only, gpu/optix/wavefront_svgf_math.h and
+// wavefront_kernels_svgf.cu) - see that file's own header comment for the
+// full 4-kernel pipeline these wrap.
+extern "C" void wf_launch_svgf_temporal_integrate(
+	const float3*        d_currentRadiance,
+	const float4*        d_currentWorldPos,
+	const GpuSvgfState*  d_history,
+	const float4*        d_worldPosHistory,
+	GpuReprojectBasis    prevCamera,
+	bool                 historyValid,
+	int width, int height,
+	GpuSvgfState*        d_outputCurrent,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_svgf_prepare_for_filter(
+	const GpuSvgfState* d_current,
+	const float3*       d_albedo,
+	int width, int height,
+	float4*             d_outPingPong0,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_svgf_atrous_pass(
+	const float4* d_input,
+	const float4* d_currentWorldPos,
+	const float3* d_normals,
+	float3        cameraOrigin,
+	int width, int height,
+	int stepSize,
+	float4*       d_output,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_svgf_finalize(
+	const float4* d_filtered,
+	const float3* d_albedo,
+	int numPixels,
+	float3*       d_framebuffer,
+	cudaStream_t stream);
+
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
