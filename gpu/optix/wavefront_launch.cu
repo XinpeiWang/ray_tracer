@@ -76,6 +76,7 @@ extern "C" __global__ void restir_spatial_reuse(
 	int, int, unsigned int,
 	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const DiskData*, const CylinderData*,
 	const MaterialData*, const TextureData*, const unsigned char*);
+extern "C" __global__ void restir_clear_reservoirs(GpuReservoir*, int);
 
 // ---- plain C launcher wrappers ----
 
@@ -303,6 +304,13 @@ extern "C" void wf_launch_restir_spatial_reuse(
 		width, height, frameSeed,
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders,
 		d_materials, d_textures, d_texturePixels);
+}
+
+extern "C" void wf_launch_restir_clear_reservoirs(GpuReservoir* d_reservoirs, int numPixels, cudaStream_t stream) {
+	if (numPixels <= 0) return;
+	dim3 block(256);
+	dim3 grid((numPixels + 255) / 256);
+	restir_clear_reservoirs<<<grid, block, 0, (cudaStream_t)stream>>>(d_reservoirs, numPixels);
 }
 
 extern "C" void wf_launch_accumulate_miss(

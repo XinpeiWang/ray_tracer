@@ -1515,7 +1515,12 @@ bool WavefrontPathTracer::render(
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_reservoirs_), numPixels * sizeof(GpuReservoir)));
 			reservoirsCapacity_ = numPixels;
 		}
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_reservoirs_), 0, numPixels * sizeof(GpuReservoir), stream_));
+		// A real per-struct clear (restir_clear_reservoirs), not a raw
+		// cudaMemsetAsync zero-fill - see that kernel's own comment
+		// (wavefront_kernels_restir.cu) for why a memset would leave
+		// GpuLightSample::lightIdx at 0 instead of its documented -1
+		// "invalid" sentinel.
+		wf_launch_restir_clear_reservoirs(reinterpret_cast<GpuReservoir*>(d_reservoirs_), numPixels, stream_);
 	} else if (d_reservoirs_) {
 		cudaFree(reinterpret_cast<void*>(d_reservoirs_));
 		d_reservoirs_ = 0;
@@ -1529,6 +1534,15 @@ bool WavefrontPathTracer::render(
 	// this call is about to read) - only allocated/resized here; populated by
 	// the end-of-render() copy further down, and content only ever trusted
 	// when restirHistoryValid_ is true.
+	//
+	// Checked by exact width/height, not just numPixels - see
+	// restirHistoryWidth_/restirHistoryHeight_'s own header comment on why a
+	// same-product different-dimensions resolution change must also
+	// invalidate the history, even though it wouldn't trigger a capacity
+	// mismatch below.
+	if (restirHistoryValid_ && (restirHistoryWidth_ != width || restirHistoryHeight_ != height)) {
+		restirHistoryValid_ = false;
+	}
 	if (restirEnabled_) {
 		if (reservoirsHistoryCapacity_ != numPixels) {
 			if (d_reservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_reservoirsHistory_)); d_reservoirsHistory_ = 0; }
@@ -1930,6 +1944,8 @@ bool WavefrontPathTracer::render(
 		prevRestirCamera_.horizontal = camera.horizontal;
 		prevRestirCamera_.vertical = camera.vertical;
 		restirHistoryValid_ = true;
+		restirHistoryWidth_ = width;
+		restirHistoryHeight_ = height;
 	}
 
 	// -------------------------------------------------------------------------
@@ -2032,7 +2048,15 @@ void WavefrontPathTracer::destroySBT() {
 
 bool WavefrontPathTracer::readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const {
 	const int numPixels = static_cast<int>(width) * static_cast<int>(height);
-	if (!d_worldPos_ || worldPosCapacity_ != numPixels) return false;
+	// worldPosOutputEnabled_ is checked explicitly (not just inferred from
+	// d_worldPos_'s existence) because d_worldPos_ can now also be allocated
+	// purely due to restirEnabled_ (ReSTIR's own internal use of it, see
+	// this class's render()'s own allocation comment) without the CALLER
+	// ever having asked for readback via setWorldPosOutputEnabled(true) -
+	// without this check, a caller that never opted in could still get back
+	// real (unrequested) world-position data whenever ReSTIR happens to be
+	// enabled, instead of this function's own documented false/failure.
+	if (!worldPosOutputEnabled_ || !d_worldPos_ || worldPosCapacity_ != numPixels) return false;
 	const size_t count = static_cast<size_t>(numPixels) * 4;
 	out.resize(count);
 	CUDA_CHECK(cudaMemcpy(out.data(), reinterpret_cast<void*>(d_worldPos_),

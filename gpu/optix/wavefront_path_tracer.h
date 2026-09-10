@@ -523,6 +523,19 @@ private:
     int                restirNormalCapacity_ = 0;
     GpuReprojectBasis  prevRestirCamera_{};
     bool               restirHistoryValid_ = false;
+    // The exact width/height the CURRENT content of d_reservoirsHistory_/
+    // d_worldPosHistory_ was laid out under - checked (not just numPixels =
+    // width*height) at the top of every render() call, because a resolution
+    // change whose width*height product happens to equal the previous
+    // call's (e.g. 1024x768 -> 768x1024) would otherwise leave
+    // reservoirsHistoryCapacity_/worldPosHistoryCapacity_ matching and
+    // restirHistoryValid_ untouched, while temporal reuse computes
+    // `py*imageWidth+px` against the NEW width over buffer content still
+    // indexed under the OLD width - a row-major misindex reading unrelated
+    // pixels' data. Set alongside restirHistoryValid_=true at the end of a
+    // successful restirEnabled_ render() call.
+    int                restirHistoryWidth_ = 0;
+    int                restirHistoryHeight_ = 0;
     // Set at the top of every render() call - read by launchEvaluateMaterials*()
     // to build this call's GpuRestirTemporalContext (imageWidth/imageHeight),
     // which those private methods otherwise have no width/height parameter to

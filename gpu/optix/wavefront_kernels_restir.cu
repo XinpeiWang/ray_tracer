@@ -61,6 +61,20 @@ extern "C" __global__ void restir_spatial_reuse(
 	}
 	const float3 hitPoint = make_float3(wp.x, wp.y, wp.z);
 	const float3 normal = currentNormals[idx];
+	// worldPos.w==1.0 only means "some depth==0 hit happened here" - it is
+	// written unconditionally for EVERY depth==0 hit including specular
+	// materials and BSSRDF/Subsurface exits (which never populate a
+	// reservoir/normal for this pixel at all - see wf_finish_material_
+	// scatter's own restirReservoirs/restirCtx parameter comments). A real
+	// ReSTIR-eligible hit always writes a genuine (non-degenerate) shading
+	// normal, so a near-zero one here reliably means "no reservoir was ever
+	// written for this pixel this frame" regardless of why - skip the whole
+	// neighbor loop rather than running it against an empty reservoir that
+	// the previous (worldPos-only) check let through.
+	if (dot(normal, normal) < 1e-8f) {
+		outputReservoirs[idx] = currentReservoirs[idx];
+		return;
+	}
 	const int px = idx % width;
 	const int py = idx / width;
 
@@ -98,7 +112,9 @@ extern "C" __global__ void restir_spatial_reuse(
 		// documented missing piece for unbiased reuse (wavefront_restir_
 		// helpers.h's own header comment).
 		float3 dirToSample; float dist; float geomPdf;
-		if (!wf_reevaluate_light_geometry(neighbor.sample, hitPoint, spheres, quads, triangles,
+		// time=0.0f: this pass has no per-pixel shutter-time buffer either -
+		// see wf_reevaluate_light_geometry's own header comment.
+		if (!wf_reevaluate_light_geometry(neighbor.sample, hitPoint, 0.0f, spheres, quads, triangles,
 										   bilinearPatches, disks, cylinders, dirToSample, dist, geomPdf) ||
 			geomPdf <= 0.0f)
 			continue;
@@ -127,4 +143,19 @@ extern "C" __global__ void restir_spatial_reuse(
 	if (result.M > kRestirSpatialMaxM) result.M = kRestirSpatialMaxM;
 	restir_finalize(result);
 	outputReservoirs[idx] = result;
+}
+
+// Per-frame clear of WavefrontPathTracer::d_reservoirs_ - a proper per-struct
+// reinitialization instead of a raw cudaMemsetAsync zero-fill. A memset gives
+// every reservoir's sample.lightIdx == 0, NOT GpuLightSample's documented -1
+// "invalid" sentinel (optix_types.h) - harmless today only because every
+// current consumer checks GpuReservoir::valid() (which also requires
+// weightSum > 0.0f, still false after either a memset or this kernel), never
+// GpuLightSample::valid() in isolation - but a genuine, avoidable mismatch
+// between the documented sentinel and the actual cleared state. This kernel
+// writes the real GpuReservoir{} default (lightIdx=-1) instead.
+extern "C" __global__ void restir_clear_reservoirs(GpuReservoir* reservoirs, int numPixels) {
+	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx >= numPixels) return;
+	reservoirs[idx] = GpuReservoir{};
 }

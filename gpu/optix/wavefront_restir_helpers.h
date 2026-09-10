@@ -107,9 +107,23 @@ constexpr float kRestirSpatialNormalCosThreshold = 0.9f;
 // Returns false (out_geom_pdf left at 0) if the sample is degenerate from
 // this origin (grazing angle, coincident points, or - Sphere only - the
 // sampled direction falls outside the new origin's sampling cone).
+//
+// `time` is the shutter time to interpolate a MOVING sphere's center by
+// (SphereData::center/center1, matching wf_sample_sphere_light's own
+// convention) - only ever exact for the immediate post-RIS-selection
+// re-evaluation (wf_finish_material_scatter), which re-evaluates at the SAME
+// hit_point/time the candidate was just generated from. Temporal reuse
+// (wf_restir_temporal_combine) and spatial reuse (wavefront_kernels_restir.cu)
+// re-evaluate a sample from a DIFFERENT pixel/frame with no shutter time of
+// its own available (no per-pixel time buffer exists), so both pass 0.0f -
+// a known, narrower limitation than a blanket "never happens" claim: a
+// moving emissive sphere's cross-frame/cross-pixel reuse can still use the
+// wrong (static) center, but a fresh per-frame RIS selection - which runs
+// unconditionally every frame even before any reuse history exists - no
+// longer does.
 // ===========================================================================
 __device__ __forceinline__ bool wf_reevaluate_light_geometry(
-		const GpuLightSample& s, const float3& origin,
+		const GpuLightSample& s, const float3& origin, float time,
 		const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
 		const BilinearPatchData* bilinearPatches, const DiskData* disks, const CylinderData* cylinders,
 		float3& out_dir, float& out_dist, float& out_geom_pdf) {
@@ -125,13 +139,14 @@ __device__ __forceinline__ bool wf_reevaluate_light_geometry(
 	if (s.kind == GpuLightKind::Sphere) {
 		// Sphere's cone/inside pdf is already a solid-angle density (see
 		// wf_sample_sphere_light) - no separate cosine/area conversion.
-		// Motion blur is intentionally ignored here (time=0, sph.center) -
-		// Live Preview's real-time-only scope never exercises a moving
-		// emissive sphere with camera-shutter motion blur at the same time,
-		// so this is an accepted simplification specific to ReSTIR reuse,
-		// not a general-purpose sphere-light limitation.
+		// Time-interpolated center, matching wf_sample_sphere_light's own
+		// convention exactly - see this function's own header comment on
+		// which callers can and can't supply the real shutter time.
 		const SphereData& sph = spheres[s.primIdx];
-		const float3 center = sph.center;
+		const float3 center = make_float3(
+			sph.center.x + time * (sph.center1.x - sph.center.x),
+			sph.center.y + time * (sph.center1.y - sph.center.y),
+			sph.center.z + time * (sph.center1.z - sph.center.z));
 		const float3 toC = center - origin;
 		const float distC = length(toC);
 		const float r = sph.radius;
@@ -144,8 +159,17 @@ __device__ __forceinline__ bool wf_reevaluate_light_geometry(
 		const float cosTheta = dot(out_dir, w);
 		if (cosTheta < cosMax) { out_geom_pdf = 0.0f; return false; }
 		const float solid = 2.0f * 3.14159265f * (1.0f - cosMax);
-		out_geom_pdf = (solid > 1e-10f) ? (1.0f / solid) : 0.0f;
-		return out_geom_pdf > 0.0f;
+		// Degenerate near-zero solid angle: fall back to pdf=1.0f, matching
+		// wf_sample_sphere_light's OWN fallback exactly (not 0.0f/failure) -
+		// these two formulas must agree, since a candidate generated with
+		// the generation-time fallback is later re-evaluated right here for
+		// its actual shading contribution; disagreeing fallbacks meant a
+		// candidate could win RIS selection (using pdf=1.0f, generation
+		// time) and then have its contribution silently dropped moments
+		// later (using pdf=0.0f/failure, this function, previously) for the
+		// exact same degenerate geometric configuration.
+		out_geom_pdf = (solid > 1e-10f) ? (1.0f / solid) : 1.0f;
+		return true;
 	}
 
 	float area_pdf = 0.0f;
@@ -234,11 +258,14 @@ __device__ __forceinline__ float3 wf_light_raw_emission(
 		const TextureData* textures, const unsigned char* texturePixels) {
 	const int matIdx = wf_light_material_index(s.kind, s.primIdx, spheres, quads, triangles, bilinearPatches, disks, cylinders);
 	const MaterialData& lm = materials[matIdx];
+	// Back-face gate FIRST - a real early-out, not just a post-hoc zeroing:
+	// skips the texture fetch below entirely for every back-facing sample of
+	// a one-sided light, instead of paying for it and discarding the result.
+	if (!lm.twoSided && dot(dirFromQuery, s.normal) >= 0.0f) return make_float3(0.0f, 0.0f, 0.0f);
 	float3 raw = (lm.textureIdx >= 0)
 		? wf_sample_texture(textures, texturePixels, lm.textureIdx, s.sampleU, s.sampleV, s.point)
 		: lm.emission;
 	if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
-	if (!lm.twoSided && dot(dirFromQuery, s.normal) >= 0.0f) raw = make_float3(0.0f, 0.0f, 0.0f);
 	return raw;
 }
 
@@ -296,8 +323,16 @@ __device__ __forceinline__ bool wf_generate_restir_candidate(
 	out_sample.normal = sampleNormal;
 
 	out_lightPdf = selection_pdf * geom_pdf;
-	out_rawEmission = wf_light_raw_emission(out_sample, out_dir, materials, spheres, quads, triangles,
-											 bilinearPatches, disks, cylinders, textures, texturePixels);
+	// Skip the emission lookup (a real texture fetch for a textured light)
+	// entirely for a degenerate draw - the caller's own `candPdf <= 1e-9f`
+	// check would discard this candidate anyway, so there is nothing to
+	// gain from fetching its emission first. Ordinary, not rare: a grazing-
+	// angle or degenerate-sphere-cone draw happens routinely, and this
+	// function runs kRestirCandidateCount times per pixel every frame.
+	out_rawEmission = (out_lightPdf > 1e-9f)
+		? wf_light_raw_emission(out_sample, out_dir, materials, spheres, quads, triangles,
+								 bilinearPatches, disks, cylinders, textures, texturePixels)
+		: make_float3(0.0f, 0.0f, 0.0f);
 	return true;
 }
 
@@ -397,7 +432,12 @@ __device__ __forceinline__ void wf_restir_temporal_combine(
 	// THIS pixel's own hitPoint/normal - restir.h's documented missing piece
 	// for unbiased reuse (this file's own header comment).
 	float3 dirToSample; float dist; float geomPdf;
-	if (!wf_reevaluate_light_geometry(prev.sample, hitPoint, spheres, quads, triangles,
+	// time=0.0f: no per-pixel shutter-time buffer exists to recover the
+	// PREVIOUS frame's actual draw time here - see wf_reevaluate_light_
+	// geometry's own header comment on this narrower, still-open limitation
+	// (a moving emissive sphere's re-evaluation across frames can still use
+	// the wrong center, unlike the same-frame immediate re-evaluation case).
+	if (!wf_reevaluate_light_geometry(prev.sample, hitPoint, 0.0f, spheres, quads, triangles,
 									   bilinearPatches, disks, cylinders, dirToSample, dist, geomPdf) ||
 		geomPdf <= 0.0f)
 		return;

@@ -1613,6 +1613,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// ever passes a real pointer. depth>0 (indirect-bounce NEE) always takes
 	// the single-draw path too, even with a non-null buffer - ReSTIR DI is a
 	// primary-hit-only technique (see this function's own RIS block below).
+	// wavefront_kernels_bssrdf.cu's resolve_bssrdf_exit is ALSO left on this
+	// nullptr default, but NOT because a BSSRDF exit can't have depth==0 -
+	// it demonstrably can (a camera ray hitting a Subsurface surface keeps
+	// depth==0 unchanged through the probe-request/probe-exit round trip,
+	// see BssrdfProbeWorkItem/BssrdfExitWorkItem's own depth fields). It's
+	// safe purely because useRestir below gates on `restirReservoirs !=
+	// nullptr`, not depth alone - resolve_bssrdf_exit simply never threads a
+	// real reservoir buffer through. If ReSTIR is ever extended to BSSRDF
+	// exits, do NOT assume depth is guaranteed nonzero there.
 	GpuReservoir* restirReservoirs = nullptr,
 	// ReSTIR temporal reuse's previous-frame history + reprojection basis -
 	// see GpuRestirTemporalContext's own comment (optix_types.h). Default-
@@ -1901,7 +1910,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// exact, not an approximation (see wf_reevaluate_light_geometry's
 			// own header comment on why no search/Jacobian is needed when
 			// the query origin is unchanged).
-			if (wf_reevaluate_light_geometry(res.sample, hit_point, spheres, quads, triangles,
+			if (wf_reevaluate_light_geometry(res.sample, hit_point, time, spheres, quads, triangles,
 					bilinearPatches, disks, cylinders, to_light, max_dist, geomPdfAtHit) &&
 				geomPdfAtHit > 0.0f) {
 				const float selection_pdf = aliasTable[res.sample.lightIdx].pdf;
@@ -1915,106 +1924,24 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		}
 	} else
 	if (numLights > 0 && aliasTable) {
-		// Pick a light via alias table
-		int   slot = int(wf_rand(seed) * float(numLights));
-		if (slot >= (int)numLights) slot = (int)numLights - 1;
-		const GpuAliasEntry& entry = aliasTable[slot];
-		int light_idx = (wf_rand(seed) < entry.q) ? slot : entry.alias;
-		float selection_pdf = aliasTable[light_idx].pdf;
-
-		int            prim_idx  = lightIndices[light_idx];
-		GpuLightKind   kind      = lightKinds[light_idx];
-
-		float  geom_pdf = 0.0f;
-
+		// Same alias-table-draw + per-shape dispatch + twoSided-gated
+		// emission lookup the ReSTIR candidate loop above uses - shared via
+		// wf_generate_restir_candidate/wf_light_raw_emission (wavefront_
+		// restir_helpers.h) rather than a second hand-duplicated copy, so a
+		// future light-kind addition or texture-lookup fix only has one
+		// place to change instead of two that can silently drift apart.
 		// liftEmission() is the shared one declared above (this ReSTIR-aware
-		// block's own scope, used by both the ReSTIR and classic paths) - not
-		// redefined here.
-
-		// mat.twoSided (pbrt AreaLightSource "diffuse" "bool twosided") gate for
-		// NEE, mirroring material_emission()'s own front_face gate on a direct
-		// hit and the recursive backend's identical nee_gate_one_sided() -
-		// was previously never checked here for ANY light kind (including
-		// Triangle), so every one-sided area light was silently treated as
-		// two-sided by NEE. `dir` points from hit_point toward the light
-		// (same sense a direct-hit ray_dir has), so front-facing is
-		// dot(dir, light_normal) < 0.
-		auto geoAndGate = [&](float3 raw_emission, const MaterialData& lm, float3 dir, float3 light_normal) -> SS {
-			if (!lm.twoSided && dot(dir, light_normal) >= 0.0f) raw_emission = make_float3(0.0f, 0.0f, 0.0f);
-			return liftEmission(raw_emission);
-		};
-
-		if (kind == GpuLightKind::Sphere) {
-			const SphereData& s = spheres[prim_idx];
-			float su, sv; float3 snormal;
-			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist, su, sv, snormal, time);
-			const MaterialData& lm = materials[s.materialIdx];
-			float3 raw = (lm.textureIdx >= 0)
-				? wf_sample_texture(textures, texturePixels, lm.textureIdx, su, sv, hit_point + to_light * max_dist)
-				: lm.emission;
-			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
-			light_emission_spec = geoAndGate(raw, lm, to_light, snormal);
-		} else if (kind == GpuLightKind::Triangle) {
-			const TriangleData& tri = triangles[prim_idx];
-			float lu, lv; float3 tnormal;
-			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist, lu, lv, tnormal);
-			const MaterialData& lm = materials[tri.materialIdx];
-			// A pbrt AreaLightSource "filename" triangle light needs the real
-			// sampled UV to look up its image - see the recursive backend's
-			// identical sample_area_light_by_kind() Triangle case.
-			float3 raw;
-			if (lm.textureIdx >= 0) {
-				float3 texel = wf_sample_texture(textures, texturePixels, lm.textureIdx, lu, lv, hit_point + to_light * max_dist);
-				raw = make_float3(texel.x * lm.emissionScale, texel.y * lm.emissionScale, texel.z * lm.emissionScale);
-			} else {
-				raw = lm.emission;
-			}
-			light_emission_spec = geoAndGate(raw, lm, to_light, tnormal);
-		} else if (kind == GpuLightKind::BilinearPatch) {
-			const BilinearPatchData& bp = bilinearPatches[prim_idx];
-			float bu, bv; float3 bnormal;
-			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist, bu, bv, bnormal);
-			const MaterialData& lm = materials[bp.materialIdx];
-			float3 raw = (lm.textureIdx >= 0)
-				? wf_sample_texture(textures, texturePixels, lm.textureIdx, bu, bv, hit_point + to_light * max_dist)
-				: lm.emission;
-			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
-			light_emission_spec = geoAndGate(raw, lm, to_light, bnormal);
-		} else if (kind == GpuLightKind::Disk) {
-			const DiskData& d = disks[prim_idx];
-			float du, dv; float3 dnormal;
-			to_light = wf_sample_disk_light(d, hit_point, seed, geom_pdf, max_dist, du, dv, dnormal);
-			const MaterialData& lm = materials[d.materialIdx];
-			float3 raw = (lm.textureIdx >= 0)
-				? wf_sample_texture(textures, texturePixels, lm.textureIdx, du, dv, hit_point + to_light * max_dist)
-				: lm.emission;
-			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
-			light_emission_spec = geoAndGate(raw, lm, to_light, dnormal);
-		} else if (kind == GpuLightKind::Cylinder) {
-			const CylinderData& c = cylinders[prim_idx];
-			float cu, cv; float3 cnormal;
-			to_light = wf_sample_cylinder_light(c, hit_point, seed, geom_pdf, max_dist, cu, cv, cnormal);
-			const MaterialData& lm = materials[c.materialIdx];
-			float3 raw = (lm.textureIdx >= 0)
-				? wf_sample_texture(textures, texturePixels, lm.textureIdx, cu, cv, hit_point + to_light * max_dist)
-				: lm.emission;
-			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
-			light_emission_spec = geoAndGate(raw, lm, to_light, cnormal);
-		} else {
-			const QuadData& q = quads[prim_idx];
-			float qu, qv;
-			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist, qu, qv);
-			const MaterialData& lm = materials[q.materialIdx];
-			float3 raw = (lm.textureIdx >= 0)
-				? wf_sample_texture(textures, texturePixels, lm.textureIdx, qu, qv, hit_point + to_light * max_dist)
-				: lm.emission;
-			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
-			light_emission_spec = geoAndGate(raw, lm, to_light, q.normal);
+		// block's own scope, used by both the ReSTIR and classic paths).
+		GpuLightSample cand;
+		float3 raw;
+		if (wf_generate_restir_candidate(hit_point, seed, time,
+				spheres, quads, triangles, bilinearPatches, disks, cylinders,
+				materials, lightIndices, lightKinds, aliasTable, numLights,
+				textures, texturePixels, cand, to_light, max_dist, light_pdf, raw)) {
+			light_emission_spec = liftEmission(raw);
+			nee_norm = (light_pdf > 1e-6f) ? (1.0f / light_pdf) : 0.0f;
+			haveSample = true;
 		}
-
-		light_pdf = selection_pdf * geom_pdf;
-		nee_norm = (light_pdf > 1e-6f) ? (1.0f / light_pdf) : 0.0f;
-		haveSample = true;
 	}
 
 	// RoughDielectric NEE can reach lights on EITHER side of the

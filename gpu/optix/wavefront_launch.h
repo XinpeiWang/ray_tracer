@@ -188,6 +188,9 @@ extern "C" void wf_launch_restir_spatial_reuse(
 	const unsigned char* d_texturePixels,
 	cudaStream_t stream);
 
+// See wavefront_kernels_restir.cu's own restir_clear_reservoirs comment.
+extern "C" void wf_launch_restir_clear_reservoirs(GpuReservoir* d_reservoirs, int numPixels, cudaStream_t stream);
+
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
