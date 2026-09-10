@@ -70,7 +70,8 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	unsigned int,
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
-	float3, float, GpuSkyDistribution, GpuPortalLight, float);
+	float3, float, GpuSkyDistribution, GpuPortalLight, float,
+	GpuGiOriginContext*, GpuGiSample*);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, const float*);
 // ---- forward declaration of the kernel from wavefront_kernels_restir.cu ----
@@ -422,6 +423,8 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
 	float                        maxComponentValue,
+	GpuGiOriginContext*          d_giOriginContext,
+	GpuGiSample*                 d_giCandidateOut,
 	cudaStream_t                 stream)
 {
 	if (numExit == 0) return;
@@ -435,7 +438,8 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels,
-		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue);
+		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
+		d_giOriginContext, d_giCandidateOut);
 }
 
 extern "C" void wf_launch_normalize_framebuffer(

@@ -71,7 +71,18 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	GpuPortalLight portalLight,
 	// "float maxcomponentvalue" firefly clamp - see
 	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
-	float maxComponentValue
+	float maxComponentValue,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. A BSSRDF exit can
+	// land at depth==1 for a pixel whose primary hit was GI-eligible
+	// (BssrdfExitWorkItem's own depth-propagation comment - a BSSRDF entry
+	// hit does NOT itself become a GI candidate, since it's dispatched here
+	// as MaterialType::NormalizedFresnel/matIdx=-1 below, never Lambertian -
+	// but its depth==1 NEE still needs to reach giCandidateOut when the hit
+	// that led here originated from a Lambertian x0). nullptr for batch/
+	// offline rendering, same opt-in pattern as every other ReSTIR parameter.
+	GpuGiOriginContext* giOriginContext,
+	GpuGiSample* giCandidateOut
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Same defensive capacity guard as accumulate_shadow's own version of
@@ -170,5 +181,14 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, /*uv_u=*/0.0f, /*uv_v=*/0.0f, item.time);
+		textures, texturePixels, /*uv_u=*/0.0f, /*uv_v=*/0.0f, item.time,
+		// ReSTIR DI stays excluded here exactly as before (nullptr/default
+		// context - see wf_finish_material_scatter's own restirReservoirs
+		// parameter comment for why: a BSSRDF exit is never itself a
+		// depth==0 primary hit's own resampling target). Explicit rather
+		// than omitted because C++ default arguments can only be dropped
+		// from the END of a call's argument list, and giOriginContext/
+		// giCandidateOut below need to be supplied.
+		/*restirReservoirs=*/nullptr, /*restirCtx=*/GpuRestirTemporalContext{},
+		giOriginContext, giCandidateOut);
 }

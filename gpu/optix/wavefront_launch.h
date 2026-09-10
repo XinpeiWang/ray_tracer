@@ -273,6 +273,17 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	GpuSkyDistribution           skyDist,
 	GpuPortalLight               portalLight,
 	float                        maxComponentValue,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. A BSSRDF exit can
+	// land at depth==1 for a pixel whose primary hit (x0) was GI-eligible
+	// (see BssrdfExitWorkItem's own depth-propagation comment) - threading
+	// these through lets that exit's own NEE contribute to the GI candidate
+	// exactly like any other depth==1 material would, instead of silently
+	// contributing nothing. nullptr (every batch/offline call site) keeps
+	// this a complete no-op, same opt-in pattern as every other ReSTIR
+	// parameter here.
+	GpuGiOriginContext*          d_giOriginContext,
+	GpuGiSample*                 d_giCandidateOut,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_normalize_framebuffer(

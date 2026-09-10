@@ -1339,6 +1339,8 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 		reinterpret_cast<const TextureData*>(d_textures_),
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
+		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
+		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
 		stream_);
 }
 
@@ -1629,43 +1631,38 @@ bool WavefrontPathTracer::render(
 	// own "harmless zeroed-out state" comment) but still memset every call so
 	// a resized/reused allocation never exposes a wholly unrelated old
 	// frame's data at a pixel this frame never touches.
+	// Allocation only here - see reallocateDeviceBufferIfNeeded()'s own
+	// comment for why this replaces 4 near-identical hand-written blocks.
+	// d_giOriginContext_/d_giCandidateOut_ are NOT memset here (unlike DI's
+	// analogous buffers) - they need to be cleared once per SAMPLE, not once
+	// per render() call (a resolution-triggered realloc still leaves stale
+	// garbage otherwise, so the fresh allocation IS memset once, immediately
+	// below, to cover that one case) - see the per-sample memset inside the
+	// sampleIdx loop for why, and restir_gi_finalize's own header comment
+	// (wavefront_kernels_restir.cu) for the staleness bug this fixes.
+	// d_giReservoirs_ is never memset at all: restir_gi_finalize
+	// unconditionally writes every pixel's outputReservoirs[idx] (either a
+	// default-constructed GpuGiReservoir{} or the finalized one) before
+	// anything ever reads it, so a memset here would be immediately
+	// overwritten - pure wasted bandwidth.
 	if (restirGiEnabled_) {
-		if (giOriginContextCapacity_ != numPixels) {
-			if (d_giOriginContext_) { cudaFree(reinterpret_cast<void*>(d_giOriginContext_)); d_giOriginContext_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giOriginContext_), numPixels * sizeof(GpuGiOriginContext)));
-			giOriginContextCapacity_ = numPixels;
+		const bool originContextResized = reallocateDeviceBufferIfNeeded<GpuGiOriginContext>(d_giOriginContext_, giOriginContextCapacity_, numPixels);
+		if (originContextResized) {
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giOriginContext_), 0, numPixels * sizeof(GpuGiOriginContext), stream_));
 		}
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giOriginContext_), 0, numPixels * sizeof(GpuGiOriginContext), stream_));
-
-		if (giCandidateOutCapacity_ != numPixels) {
-			if (d_giCandidateOut_) { cudaFree(reinterpret_cast<void*>(d_giCandidateOut_)); d_giCandidateOut_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giCandidateOut_), numPixels * sizeof(GpuGiSample)));
-			giCandidateOutCapacity_ = numPixels;
+		const bool candidateOutResized = reallocateDeviceBufferIfNeeded<GpuGiSample>(d_giCandidateOut_, giCandidateOutCapacity_, numPixels);
+		if (candidateOutResized) {
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giCandidateOut_), 0, numPixels * sizeof(GpuGiSample), stream_));
 		}
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giCandidateOut_), 0, numPixels * sizeof(GpuGiSample), stream_));
-
-		if (giReservoirsCapacity_ != numPixels) {
-			if (d_giReservoirs_) { cudaFree(reinterpret_cast<void*>(d_giReservoirs_)); d_giReservoirs_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giReservoirs_), numPixels * sizeof(GpuGiReservoir)));
-			giReservoirsCapacity_ = numPixels;
-		}
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giReservoirs_), 0, numPixels * sizeof(GpuGiReservoir), stream_));
-
-		if (giReservoirsHistoryCapacity_ != numPixels) {
-			if (d_giReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_giReservoirsHistory_)); d_giReservoirsHistory_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giReservoirsHistory_), numPixels * sizeof(GpuGiReservoir)));
-			giReservoirsHistoryCapacity_ = numPixels;
+		reallocateDeviceBufferIfNeeded<GpuGiReservoir>(d_giReservoirs_, giReservoirsCapacity_, numPixels);
+		if (reallocateDeviceBufferIfNeeded<GpuGiReservoir>(d_giReservoirsHistory_, giReservoirsHistoryCapacity_, numPixels)) {
 			restirGiHistoryValid_ = false;  // stale/undefined content at the new size
 		}
 	} else {
-		if (d_giOriginContext_) { cudaFree(reinterpret_cast<void*>(d_giOriginContext_)); d_giOriginContext_ = 0; }
-		giOriginContextCapacity_ = 0;
-		if (d_giCandidateOut_) { cudaFree(reinterpret_cast<void*>(d_giCandidateOut_)); d_giCandidateOut_ = 0; }
-		giCandidateOutCapacity_ = 0;
-		if (d_giReservoirs_) { cudaFree(reinterpret_cast<void*>(d_giReservoirs_)); d_giReservoirs_ = 0; }
-		giReservoirsCapacity_ = 0;
-		if (d_giReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_giReservoirsHistory_)); d_giReservoirsHistory_ = 0; }
-		giReservoirsHistoryCapacity_ = 0;
+		freeDeviceBuffer(d_giOriginContext_, giOriginContextCapacity_);
+		freeDeviceBuffer(d_giCandidateOut_, giCandidateOutCapacity_);
+		freeDeviceBuffer(d_giReservoirs_, giReservoirsCapacity_);
+		freeDeviceBuffer(d_giReservoirsHistory_, giReservoirsHistoryCapacity_);
 		restirGiHistoryValid_ = false;
 	}
 
@@ -1730,6 +1727,24 @@ bool WavefrontPathTracer::render(
 	// Outer sample loop
 	// -------------------------------------------------------------------------
 	for (int sampleIdx = 0; sampleIdx < samples_per_pixel; ++sampleIdx) {
+
+		// ReSTIR GI's per-pixel scratch (see wavefront_kernels_restir.cu's
+		// own restir_gi_finalize header comment) is genuinely this SAMPLE's
+		// own data, not this whole render() call's - cleared once per
+		// sample, here, not once per call (the top-of-render() allocation
+		// block above only memsets a FRESH allocation, once). Without this,
+		// a pixel whose depth==0 hit is Lambertian on sample K but a
+		// different, non-Lambertian material on sample K+1 would leave
+		// sample K's stale x0 context sitting in giOriginContext[pixelIndex]
+		// for sample K+1 to incorrectly pair with ITS OWN, unrelated x1 -
+		// a real bug this project's own code review caught (samples_per_pixel
+		// is always 1 for every current caller of ReSTIR GI, so this was
+		// dormant, not yet reachable - fixed here regardless, since nothing
+		// prevents a future caller from raising it).
+		if (restirGiEnabled_) {
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giOriginContext_), 0, numPixels * sizeof(GpuGiOriginContext), stream_));
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giCandidateOut_), 0, numPixels * sizeof(GpuGiSample), stream_));
+		}
 
 		// Reset ray queue counter, generate primary rays
 		resetQueueCounter(reinterpret_cast<int*>(d_rayCounter_));
@@ -1994,9 +2009,16 @@ bool WavefrontPathTracer::render(
 			// inside the `if (numShadow > 0)` block above). A no-op
 			// (launchGiFinalize's own !restirGiEnabled_ early-out) for every
 			// other depth and for batch/offline rendering.
+			// No host sync after this launch: everything remaining in this
+			// loop iteration (Phase 7's pointer swaps, the next depth
+			// iteration's own launches) either runs entirely on the host or
+			// is queued on this same stream_, so stream-order alone already
+			// sequences it correctly after restir_gi_finalize - a
+			// cudaStreamSynchronize here would only block the CPU thread for
+			// no correctness benefit, once per sample, every interactive
+			// frame GI is enabled for.
 			if (depth == 1) {
 				launchGiFinalize(reinterpret_cast<const MaterialData*>(d_materials), d_fbPtr, camera.maxComponentValue);
-				CUDA_CHECK(cudaStreamSynchronize(stream_));
 			}
 
 			// ------------------------------------------------------------------

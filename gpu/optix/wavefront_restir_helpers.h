@@ -384,6 +384,54 @@ __device__ __forceinline__ WfScreenProjection wf_project_to_screen(const float3&
 	return out;
 }
 
+// Reprojects `currentPoint` into the previous frame's camera and returns the
+// flat pixel index of a valid, non-disoccluded history entry there, or -1 if
+// reprojection fails for any reason (behind the camera, off-screen, that
+// pixel never wrote a valid hit last frame, or disoccluded). Payload-agnostic
+// (only ever depends on x0's own position and the camera, never on which
+// ReSTIR technique - DI or GI - is consuming the result), factored out of
+// wf_restir_temporal_combine below purely so GI's own temporal reuse
+// (restir_gi_finalize, wavefront_kernels_restir.cu) can share this exact,
+// already-tested reprojection/disocclusion test instead of forking a
+// byte-for-byte duplicate of it - the correctness-sensitive M-cap-before-
+// combine bug this project already hit once (this file's own header comment)
+// lived exactly in code shaped like this, so keeping one copy matters.
+//
+// Disocclusion test: compares the reprojected history pixel's stored world
+// position against `currentPoint`, with a self-scaling epsilon (a fraction of
+// that surface's own distance from the PREVIOUS frame's camera - matches the
+// "same relative error tolerance regardless of depth" reasoning real-time
+// reprojection techniques generally use) rather than a fixed world-space
+// constant, which would be too loose close up and too tight far away.
+__device__ __forceinline__ int wf_restir_reproject_prev_pixel(
+		const float3& currentPoint, const GpuReprojectBasis& prevCamera,
+		const float4* worldPosHistory, int imageWidth, int imageHeight) {
+	if (!worldPosHistory || imageWidth <= 0 || imageHeight <= 0) return -1;
+
+	WfScreenProjection proj = wf_project_to_screen(currentPoint, prevCamera);
+	if (!proj.inFront || proj.s < 0.0f || proj.s >= 1.0f || proj.t < 0.0f || proj.t >= 1.0f) return -1;
+
+	const int px = (int)(proj.s * (float)imageWidth);
+	// t is bottom-to-top (camera_math.h's own ScreenProjection comment) - flip
+	// to a top-to-bottom pixel row, matching every other screen buffer here.
+	const int py = (int)((1.0f - proj.t) * (float)imageHeight);
+	if (px < 0 || px >= imageWidth || py < 0 || py >= imageHeight) return -1;
+	const int prevPixel = py * imageWidth + px;
+
+	const float4 prevWorldPos = worldPosHistory[prevPixel];
+	if (prevWorldPos.w == 0.0f) return -1;  // previous frame never wrote a valid hit there (miss, or specular)
+
+	const float3 prevPoint = make_float3(prevWorldPos.x, prevWorldPos.y, prevWorldPos.z);
+	const float3 delta = currentPoint - prevPoint;
+	const float distSq = dot(delta, delta);
+	const float3 prevCamToPoint = prevPoint - prevCamera.origin;
+	const float prevCamDist = sqrtf(fmaxf(dot(prevCamToPoint, prevCamToPoint), 0.0f));
+	const float eps = fmaxf(prevCamDist * 0.01f, 1e-4f);
+	if (distSq > eps * eps) return -1;  // disoccluded - a genuinely different surface reprojected here
+
+	return prevPixel;
+}
+
 // ReSTIR temporal reuse: reprojects `hitPoint` into the previous frame's
 // camera (ctx.prevCamera), and - if that lands on-screen, on a
 // non-disoccluded surface, and ctx.historyValid - combines ctx.history's
@@ -414,31 +462,9 @@ __device__ __forceinline__ void wf_restir_temporal_combine(
 	if (!ctx.historyValid || !ctx.history || !ctx.worldPosHistory || ctx.imageWidth <= 0 || ctx.imageHeight <= 0)
 		return;
 
-	WfScreenProjection proj = wf_project_to_screen(hitPoint, ctx.prevCamera);
-	if (!proj.inFront || proj.s < 0.0f || proj.s >= 1.0f || proj.t < 0.0f || proj.t >= 1.0f) return;
-
-	const int px = (int)(proj.s * (float)ctx.imageWidth);
-	// t is bottom-to-top (camera_math.h's own ScreenProjection comment) - flip
-	// to a top-to-bottom pixel row, matching every other screen buffer here.
-	const int py = (int)((1.0f - proj.t) * (float)ctx.imageHeight);
-	if (px < 0 || px >= ctx.imageWidth || py < 0 || py >= ctx.imageHeight) return;
-	const int prevPixel = py * ctx.imageWidth + px;
-
-	const float4 prevWorldPos = ctx.worldPosHistory[prevPixel];
-	if (prevWorldPos.w == 0.0f) return;  // previous frame never wrote a valid hit there (miss, or specular)
-
-	const float3 prevPoint = make_float3(prevWorldPos.x, prevWorldPos.y, prevWorldPos.z);
-	const float3 delta = hitPoint - prevPoint;
-	const float distSq = dot(delta, delta);
-	// Self-scaling epsilon from the PREVIOUS frame's own camera-to-surface
-	// distance at this reprojected pixel (a natural depth proxy, avoiding a
-	// separate cameraDistance parameter) - 1% relative tolerance, floored so
-	// a surface point sitting exactly at the previous camera's origin still
-	// gets a sane minimum epsilon.
-	const float3 prevCamToPoint = prevPoint - ctx.prevCamera.origin;
-	const float prevCamDist = sqrtf(fmaxf(dot(prevCamToPoint, prevCamToPoint), 0.0f));
-	const float eps = fmaxf(prevCamDist * 0.01f, 1e-4f);
-	if (distSq > eps * eps) return;  // disoccluded - a genuinely different surface reprojected here
+	const int prevPixel = wf_restir_reproject_prev_pixel(hitPoint, ctx.prevCamera, ctx.worldPosHistory,
+														   ctx.imageWidth, ctx.imageHeight);
+	if (prevPixel < 0) return;
 
 	GpuReservoir prev = ctx.history[prevPixel];
 	if (!prev.valid()) return;

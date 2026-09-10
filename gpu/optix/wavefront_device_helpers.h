@@ -1721,7 +1721,21 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// this one). depth==0's own NEE (DI's ReSTIR path or the classic
 	// single-draw path) is never affected, since this is false for every
 	// depth other than 1.
-	const bool giCandidateEligible = (depth == 1 && giOriginContext != nullptr &&
+	//
+	// !is_specular is required here (not just implied by "no shadow ray gets
+	// pushed for a specular hit anyway"): without it, a specular x1 still
+	// registers a real GpuGiSample with radiance permanently (0,0,0) (the
+	// `if (!is_specular)` NEE block below never runs for it, so `.radiance`
+	// is never filled in) - restir_reservoir_add unconditionally does
+	// `r.M += 1` for this zero-weight candidate regardless of its weight, so
+	// once temporal reuse folds in real history the combined M is inflated
+	// by this phantom candidate while weightSum is untouched, systematically
+	// biasing W - and therefore this pixel's whole GI contribution - low
+	// every frame a specular x1 occurs. Gating eligibility on !is_specular
+	// up front means a specular x1 is treated exactly like the already-
+	// documented "no GI candidate this frame" cases (a glowing x1, GI
+	// disabled) instead of silently diluting the reservoir.
+	const bool giCandidateEligible = (depth == 1 && !is_specular && giOriginContext != nullptr &&
 									   giCandidateOut != nullptr &&
 									   giOriginContext[pixelIndex].valid());
 	// The candidate's geometry-side fields ARE all known synchronously right

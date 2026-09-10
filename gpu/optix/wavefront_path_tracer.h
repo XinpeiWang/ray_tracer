@@ -220,6 +220,35 @@ public:
     void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; }
 
 private:
+    // Resize-on-resolution-change helper for a per-pixel GPU buffer: frees
+    // and reallocates only when `capacity` doesn't already match `numPixels`,
+    // exactly the pattern every resize-on-demand buffer in this class already
+    // followed by hand (d_worldPos_, d_reservoirs_, d_reservoirsHistory_,
+    // d_restirNormal_, and originally each of the 4 new GI buffers too - see
+    // ReSTIR GI's own buffer-allocation block in render() for where this
+    // replaced 4 near-identical copy-pasted blocks). Returns true iff a
+    // reallocation actually happened (so a caller that needs to memset the
+    // fresh allocation - e.g. once, for a buffer that's otherwise cleared per
+    // SAMPLE rather than per render() call - knows whether one just occurred).
+    // Left as a template (not reused by the older DI buffers above, which
+    // predate it and are already independently tested) rather than retrofit
+    // every existing call site in the same pass as ReSTIR GI's own fix.
+    template <typename T>
+    bool reallocateDeviceBufferIfNeeded(CUdeviceptr& ptr, int& capacity, int numPixels) {
+        if (capacity == numPixels) return false;
+        if (ptr) { cudaFree(reinterpret_cast<void*>(ptr)); ptr = 0; }
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&ptr), static_cast<size_t>(numPixels) * sizeof(T)));
+        capacity = numPixels;
+        return true;
+    }
+    // Matching teardown for the "GI disabled" branch - frees unconditionally
+    // (a no-op if already null) and resets capacity so the next enable sees
+    // capacity != numPixels and reallocates fresh.
+    void freeDeviceBuffer(CUdeviceptr& ptr, int& capacity) {
+        if (ptr) { cudaFree(reinterpret_cast<void*>(ptr)); ptr = 0; }
+        capacity = 0;
+    }
+
     bool loadModule();
     void destroyProgramGroups();
     void destroySBT();

@@ -37,6 +37,28 @@
 #include "wavefront_device_helpers.h"
 #include "wavefront_restir_gi_math.h"
 
+// Uniform sample within a disk of radius kRestirSpatialRadiusPixels around
+// pixel (px, py) (SampleUniformDiskConcentric would be the textbook choice,
+// but a plain polar sample is simpler and this file's neighbor set doesn't
+// need the low-discrepancy properties a concentric mapping buys elsewhere in
+// this codebase - k is small and redrawn every frame). Returns the flat
+// neighbor index, or -1 if the sampled pixel falls outside [0,width)x
+// [0,height) or lands back on (px, py) itself. Shared by DI's own
+// restir_spatial_reuse below and GI's own restir_gi_spatial_reuse (this
+// file) instead of each keeping its own copy of this identical loop body.
+__device__ __forceinline__ int wf_restir_pick_spatial_neighbor(
+		int px, int py, int width, int height, unsigned int& seed) {
+	const float r = kRestirSpatialRadiusPixels * sqrtf(wf_rand(seed));
+	const float theta = 6.283185307179586f * wf_rand(seed);
+	const int nx = px + (int)(r * cosf(theta));
+	const int ny = py + (int)(r * sinf(theta));
+	if (nx < 0 || nx >= width || ny < 0 || ny >= height) return -1;
+	const int nIdx = ny * width + nx;
+	const int idx = py * width + px;
+	if (nIdx == idx) return -1;
+	return nIdx;
+}
+
 extern "C" __global__ void restir_spatial_reuse(
 	const GpuReservoir* currentReservoirs,
 	const float3*       currentNormals,
@@ -83,18 +105,8 @@ extern "C" __global__ void restir_spatial_reuse(
 	unsigned int seed = wf_pcg(wf_pcg((unsigned int)idx) ^ frameSeed);
 
 	for (int i = 0; i < kRestirSpatialNeighbors; ++i) {
-		// Uniform sample within a disk of radius kRestirSpatialRadiusPixels
-		// (SampleUniformDiskConcentric would be the textbook choice, but a
-		// plain polar sample is simpler and this file's neighbor set doesn't
-		// need the low-discrepancy properties a concentric mapping buys
-		// elsewhere in this codebase - k is small and redrawn every frame).
-		const float r = kRestirSpatialRadiusPixels * sqrtf(wf_rand(seed));
-		const float theta = 6.283185307179586f * wf_rand(seed);
-		const int nx = px + (int)(r * cosf(theta));
-		const int ny = py + (int)(r * sinf(theta));
-		if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-		const int nIdx = ny * width + nx;
-		if (nIdx == idx) continue;
+		const int nIdx = wf_restir_pick_spatial_neighbor(px, py, width, height, seed);
+		if (nIdx < 0) continue;
 
 		const float4 nWp = currentWorldPos[nIdx];
 		if (nWp.w == 0.0f) continue;  // neighbor had no valid hit this frame
@@ -232,43 +244,27 @@ extern "C" __global__ void restir_gi_finalize(
 		restir_reservoir_add(res, cand, risWeight, 1, pHat, wf_rand(seed));
 	}
 
-	// Temporal reuse - same reprojection/disocclusion shape as DI's own
-	// wf_restir_temporal_combine (wavefront_restir_helpers.h); see that
-	// function's own comments for the epsilon/screen-bounds reasoning, not
-	// repeated here.
-	if (historyValid && imageWidth > 0 && imageHeight > 0) {
-		WfScreenProjection proj = wf_project_to_screen(ctx.x0Point, prevCamera);
-		if (proj.inFront && proj.s >= 0.0f && proj.s < 1.0f && proj.t >= 0.0f && proj.t < 1.0f) {
-			const int px = (int)(proj.s * (float)imageWidth);
-			const int py = (int)((1.0f - proj.t) * (float)imageHeight);
-			if (px >= 0 && px < imageWidth && py >= 0 && py < imageHeight) {
-				const int prevPixel = py * imageWidth + px;
-				const float4 prevWorldPos = worldPosHistory[prevPixel];
-				if (prevWorldPos.w != 0.0f) {
-					const float3 prevPoint = make_float3(prevWorldPos.x, prevWorldPos.y, prevWorldPos.z);
-					const float3 delta = ctx.x0Point - prevPoint;
-					const float distSq = dot(delta, delta);
-					const float3 prevCamToPoint = prevPoint - prevCamera.origin;
-					const float prevCamDist = sqrtf(fmaxf(dot(prevCamToPoint, prevCamToPoint), 0.0f));
-					const float eps = fmaxf(prevCamDist * 0.01f, 1e-4f);
-					if (distSq <= eps * eps) {
-						GpuGiReservoir prev = history[prevPixel];
-						if (prev.valid()) {
-							// Clamp the INCOMING reservoir's M before folding it
-							// in, not the combined sum afterward - see DI's own
-							// wf_restir_temporal_combine comment
-							// (wavefront_restir_helpers.h) for exactly why the
-							// other ordering silently inflates W and compounds
-							// across frames instead of just bounding staleness.
-							if (prev.M > kRestirTemporalMaxM) prev.M = kRestirTemporalMaxM;
-							const float3 dirToPrevX1 = normalize(prev.sample.x1Point - ctx.x0Point);
-							const float freshPHat = wf_restir_target_proxy(prev.sample.radiance, dirToPrevX1, ctx.x0Normal);
-							if (freshPHat > 0.0f) {
-								const float jacobian = wf_restir_gi_jacobian(ctx.x0Point, prev.sample);
-								restir_reservoir_combine(res, prev, freshPHat * jacobian, wf_rand(seed));
-							}
-						}
-					}
+	// Temporal reuse - reprojection/disocclusion via the same shared helper
+	// DI's own wf_restir_temporal_combine uses (wavefront_restir_helpers.h),
+	// instead of a second hand-duplicated copy of that logic.
+	if (historyValid) {
+		const int prevPixel = wf_restir_reproject_prev_pixel(ctx.x0Point, prevCamera, worldPosHistory,
+															   imageWidth, imageHeight);
+		if (prevPixel >= 0) {
+			GpuGiReservoir prev = history[prevPixel];
+			if (prev.valid()) {
+				// Clamp the INCOMING reservoir's M before folding it
+				// in, not the combined sum afterward - see DI's own
+				// wf_restir_temporal_combine comment
+				// (wavefront_restir_helpers.h) for exactly why the
+				// other ordering silently inflates W and compounds
+				// across frames instead of just bounding staleness.
+				if (prev.M > kRestirTemporalMaxM) prev.M = kRestirTemporalMaxM;
+				const float3 dirToPrevX1 = normalize(prev.sample.x1Point - ctx.x0Point);
+				const float freshPHat = wf_restir_target_proxy(prev.sample.radiance, dirToPrevX1, ctx.x0Normal);
+				if (freshPHat > 0.0f) {
+					const float jacobian = wf_restir_gi_jacobian(ctx.x0Point, prev.sample);
+					restir_reservoir_combine(res, prev, freshPHat * jacobian, wf_rand(seed));
 				}
 			}
 		}
@@ -296,6 +292,21 @@ extern "C" __global__ void restir_gi_finalize(
 		swl.pdf[i]    = ctx.wavelength_pdfs[i];
 		throughputX0[i] = ctx.throughputX0[i];
 	}
+
+	// Defensive re-check of the Lambertian-only MVP scope this whole function
+	// silently assumes below (the treatment of `albedo` as the COMPLETE BSDF
+	// value, `albedo/pi`, is only correct for Lambertian): the only place
+	// that scope is actually ENFORCED is the depth==0 stash gate in
+	// wf_finish_material_scatter (`matType == MaterialType::Lambertian`,
+	// wavefront_device_helpers.h), which this function has no direct way to
+	// see - it only gets a materialIdx. If that gate is ever widened without
+	// also updating the shading formula below, this re-check turns what
+	// would otherwise be silently wrong shading (a mismatched BRDF for a
+	// material this function was never taught to evaluate) into a clean
+	// "no GI contribution this pixel" instead - the same safe fallback every
+	// other MVP-scope exclusion in this feature already uses (a glowing or
+	// specular x1, a BSSRDF exit that never populated a candidate).
+	if (materials[ctx.materialIdx].type != MaterialType::Lambertian) return;
 
 	// Lambertian albedo uplift - mirrors wavefront_kernels_materials.cu's own
 	// albedoSpectrum lambda exactly (clamp to [0,1], no 2*max rescale, unlike
@@ -381,13 +392,8 @@ extern "C" __global__ void restir_gi_spatial_reuse(
 	unsigned int seed = wf_pcg(wf_pcg((unsigned int)idx) ^ frameSeed);
 
 	for (int i = 0; i < kRestirSpatialNeighbors; ++i) {
-		const float r = kRestirSpatialRadiusPixels * sqrtf(wf_rand(seed));
-		const float theta = 6.283185307179586f * wf_rand(seed);
-		const int nx = px + (int)(r * cosf(theta));
-		const int ny = py + (int)(r * sinf(theta));
-		if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-		const int nIdx = ny * width + nx;
-		if (nIdx == idx) continue;
+		const int nIdx = wf_restir_pick_spatial_neighbor(px, py, width, height, seed);
+		if (nIdx < 0) continue;
 
 		const GpuGiOriginContext& nCtx = originContext[nIdx];
 		if (!nCtx.valid()) continue;
