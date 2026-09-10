@@ -90,6 +90,24 @@ public slots:
 	// running.
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 
+	// Multiplies the accumulated linear radiance right before the ACES+sRGB
+	// tonemap - same step (and formula) the batch/CLI path applies via its
+	// own --exposure option (optix_interface.cpp). Live Preview needs its
+	// OWN, independently-set value rather than reusing whatever the Settings
+	// tab's exposure spinbox holds for batch rendering: the ACES Narkowicz
+	// curve this project uses has a hard plateau above input ~7.24 (every
+	// value at or beyond it tonemaps to identical (255,255,255), with zero
+	// remaining gradient - see tone_map.h's own aces_narkowicz() comment),
+	// and ReSTIR DI (Live-Preview-only, gpu/optix/wavefront_restir_helpers.h)
+	// produces somewhat brighter raw per-sample radiance than the classic
+	// single-draw NEE path batch rendering uses for the exact same scene -
+	// so a bright scene's large, directly-lit surfaces (e.g. a Cornell Box's
+	// ceiling/floor/back-wall) can cross that plateau in Live Preview at an
+	// exposure that still shows a gradient in batch. A plain exposure change
+	// does NOT reset accumulation, same "post-process on the same converging
+	// signal" reasoning as setDenoise()'s own comment.
+	void setExposure(double exposure);
+
 signals:
 	// Emitted once per accumulated frame - already tonemapped (ACES + sRGB,
 	// matching this project's own CPU/GPU display convention) and ready to
@@ -129,6 +147,12 @@ private:
 	bool m_denoise = false;
 	double m_denoiseBlend = 0.0;
 	bool m_denoiseShowLatest = false;
+	// See setExposure()'s own comment on why Live Preview needs its own,
+	// lower-than-batch's-typical-1.0 default: ReSTIR's brighter raw
+	// per-sample radiance plus the ACES curve's hard plateau above ~7.24
+	// otherwise flatten a bright scene's large lit surfaces to solid white
+	// well before a user ever discovers/adjusts this value.
+	double m_exposure = 0.5;
 	std::vector<float> m_accum;   // linear RGB running mean, width*height*3
 	// Per-frame scratch buffers, persisted across renderLoop() calls and
 	// only resized in resetAccumulation() (same resolution-keyed reuse
@@ -201,6 +225,7 @@ public:
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
+	void setExposure(double exposure);
 
 signals:
 	void frameReady(QImage image, int sampleCount);

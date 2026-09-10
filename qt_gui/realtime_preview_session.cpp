@@ -247,6 +247,15 @@ void RealtimePreviewWorker::setDenoise(bool denoise, double denoiseBlend, bool d
 	}
 }
 
+void RealtimePreviewWorker::setExposure(double exposure) {
+	// Unlike setDenoise(), not gated on m_running: this is a pure display
+	// multiply with no accumulation-structure side effect (see this method's
+	// own header comment for why no reset is needed either), so it's safe -
+	// and useful - to accept a value before start() as well as while running,
+	// letting the caller push the Settings tab's own initial value up front.
+	m_exposure = exposure;
+}
+
 void RealtimePreviewWorker::renderLoop(int epoch) {
 	// epoch != m_epoch means a stop()+start() cycle already happened since
 	// THIS continuation was posted (start() bumps m_epoch) - it belongs to
@@ -361,6 +370,11 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				if (!std::isfinite(r)) r = 0.0;
 				if (!std::isfinite(g)) g = 0.0;
 				if (!std::isfinite(b)) b = 0.0;
+				// Same exposure multiply the batch/CLI path applies right
+				// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
+				// see m_exposure's own comment for why Live Preview needs this
+				// pulled down further than batch's default for the same scene.
+				r *= m_exposure; g *= m_exposure; b *= m_exposure;
 				r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
 				g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
 				b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
@@ -431,4 +445,8 @@ void RealtimePreviewSession::setCamera(double camX, double camY, double camZ, do
 void RealtimePreviewSession::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {
 	QMetaObject::invokeMethod(m_worker, "setDenoise", Qt::QueuedConnection,
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest));
+}
+
+void RealtimePreviewSession::setExposure(double exposure) {
+	QMetaObject::invokeMethod(m_worker, "setExposure", Qt::QueuedConnection, Q_ARG(double, exposure));
 }
