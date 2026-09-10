@@ -228,28 +228,87 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	const auto it = cache.find(cacheKey);
 	if (it != cache.end()) return it->second;
 
-	// stbi_ldr_to_hdr_gamma is process-global mutable state (see rtw_stb_
-	// image.h's identical CPU-side use for the full rationale) - mutated for
-	// the duration of this one stbi_loadf() call, then restored. Real GPU
-	// scene building is single-threaded today (no concurrent caller of this
-	// function exists anywhere in this codebase), but that used to be an
-	// unenforced assumption rather than a guarantee - this mutex actually
-	// closes the gap for the realistic future case (a batch/preview mode
-	// building more than one GPU scene concurrently within one process): it
-	// doesn't extend to CPU's own identical mutation in rtw_stb_image.h (a
-	// genuinely cross-module race would need a mutex shared with that file
-	// too, out of scope for a GPU-side fix), but no such CPU/GPU-concurrent
-	// scene-building path exists in this codebase either.
-	static std::mutex gammaMutex;
-	int width = 0, height = 0, channels = 0;
-	float* fdata = nullptr;
+	// `cache` above is a fresh, per-call dedup against inserting the SAME
+	// texture twice into THIS scene's own out.textures/out.texturePixels -
+	// its stored index is only ever meaningful for the specific SceneData
+	// it was built into (a brand-new, empty one every call), so it can
+	// never itself be made process-lifetime. The actual stbi_loadf DECODE
+	// is what's expensive and scene-content-scaling, though, and doesn't
+	// depend on which SceneData it ends up copied into - cached here by the
+	// same composite (path, gamma, wrap, invert) key, for the life of the
+	// process, so a pbrt scene with image-mapped materials doesn't re-decode
+	// every referenced image from disk on every Live Preview frame the
+	// camera moves. Same "no hot-reload" precedent as scene_builder.cpp's
+	// own load_image_texture_gpu() cache, which this function otherwise
+	// duplicates rather than calls (this file's own header comment explains
+	// why - a link-order constraint, not a design choice).
+	struct DecodedImage {
+		bool found = false;
+		int width = 0, height = 0;
+		std::vector<unsigned char> pixels;
+	};
+	static std::map<std::string, DecodedImage> s_decodedImageCache;
+	static std::mutex s_decodedImageCacheMutex;
+	const DecodedImage* decoded;
 	{
-		std::lock_guard<std::mutex> lock(gammaMutex);
-		stbi_ldr_to_hdr_gamma(gamma);
-		fdata = stbi_loadf(resolvedPath.c_str(), &width, &height, &channels, 3);
-		stbi_ldr_to_hdr_gamma(kGpuImagemapDefaultGamma);
+		std::lock_guard<std::mutex> lock(s_decodedImageCacheMutex);
+		auto decodedIt = s_decodedImageCache.find(cacheKey);
+		if (decodedIt == s_decodedImageCache.end()) {
+			DecodedImage entry;
+			// stbi_ldr_to_hdr_gamma is process-global mutable state (see
+			// rtw_stb_image.h's identical CPU-side use for the full
+			// rationale) - mutated for the duration of this one
+			// stbi_loadf() call, then restored. A separate, narrower mutex
+			// than s_decodedImageCacheMutex above: this one only needs to
+			// bracket the global-gamma-state mutation itself, not the whole
+			// cache lookup/insert.
+			static std::mutex gammaMutex;
+			int width = 0, height = 0, channels = 0;
+			float* fdata = nullptr;
+			{
+				std::lock_guard<std::mutex> gammaLock(gammaMutex);
+				stbi_ldr_to_hdr_gamma(gamma);
+				fdata = stbi_loadf(resolvedPath.c_str(), &width, &height, &channels, 3);
+				stbi_ldr_to_hdr_gamma(kGpuImagemapDefaultGamma);
+			}
+			entry.found = (fdata != nullptr);
+			if (fdata) {
+				entry.width = width;
+				entry.height = height;
+				const std::size_t total = static_cast<std::size_t>(width) * height * 3;
+				entry.pixels.resize(total);
+				for (std::size_t i = 0; i < total; ++i) {
+					const float v = fdata[i];
+					unsigned char q = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+					// Matches CPU's own quantize-then-invert order exactly
+					// (mipmap_texture::build_from(), texture.h): CPU reads
+					// the ALREADY-quantized byte back via rtw_image::
+					// pixel_data(), reconstructs a [0,1] value via /255
+					// (not /256 - see build_from()'s own `scale`), and only
+					// then applies invert (1-c, clamped at 0) - inverting
+					// the raw pre-quantization float here instead (as an
+					// earlier version of this code did) diverges from CPU
+					// by 1 LSB whenever the decoded value lands exactly on
+					// a multiple of 1/256. Baked in here, once per unique
+					// cache key, rather than at use time below, since
+					// invert is already part of the cache key (a file
+					// requested both inverted and non-inverted gets two
+					// independently-decoded entries either way).
+					if (invert) {
+						const float reconstructed = q / 255.0f;
+						const float inverted = fmaxf(0.0f, 1.0f - reconstructed);
+						q = (inverted <= 0.0f) ? 0 : (inverted >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * inverted));
+					}
+					entry.pixels[i] = q;
+				}
+				stbi_image_free(fdata);
+			}
+			decodedIt = s_decodedImageCache.emplace(cacheKey, std::move(entry)).first;
+		}
+		decoded = &decodedIt->second;
 	}
-	if (!fdata) {
+
+	if (!decoded->found) {
 		cache.emplace(cacheKey, -1);
 		return -1;
 	}
@@ -258,31 +317,10 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	tex.kind = TextureKind::Image;
 	tex.noiseScale = 0.0f;
 	tex.pixelOffset = static_cast<int>(out.texturePixels.size());
-	tex.width = width;
-	tex.height = height;
+	tex.width = decoded->width;
+	tex.height = decoded->height;
 	tex.wrapMode = wrap;
-	const std::size_t total = static_cast<std::size_t>(width) * height * 3;
-	out.texturePixels.resize(out.texturePixels.size() + total);
-	unsigned char* dst = out.texturePixels.data() + tex.pixelOffset;
-	for (std::size_t i = 0; i < total; ++i) {
-		const float v = fdata[i];
-		unsigned char q = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
-		// Matches CPU's own quantize-then-invert order exactly
-		// (mipmap_texture::build_from(), texture.h): CPU reads the ALREADY-
-		// quantized byte back via rtw_image::pixel_data(), reconstructs a
-		// [0,1] value via /255 (not /256 - see build_from()'s own `scale`),
-		// and only then applies invert (1-c, clamped at 0) - inverting the
-		// raw pre-quantization float here instead (as an earlier version of
-		// this code did) diverges from CPU by 1 LSB whenever the decoded
-		// value lands exactly on a multiple of 1/256.
-		if (invert) {
-			const float reconstructed = q / 255.0f;
-			const float inverted = fmaxf(0.0f, 1.0f - reconstructed);
-			q = (inverted <= 0.0f) ? 0 : (inverted >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * inverted));
-		}
-		dst[i] = q;
-	}
-	stbi_image_free(fdata);
+	out.texturePixels.insert(out.texturePixels.end(), decoded->pixels.begin(), decoded->pixels.end());
 
 	const int idx = static_cast<int>(out.textures.size());
 	out.textures.push_back(tex);

@@ -24,6 +24,7 @@
 #include <sstream>
 #include <vector>
 #include <unordered_map>
+#include <mutex>
 
 #include "../../src/shared/conductor_data.h"
 #include "../../src/shared/rgb_nebula_generator.h"
@@ -52,6 +53,36 @@ namespace {
 	inline int safe_cast_to_int(size_t value) {
 		assert(value <= static_cast<size_t>(INT_MAX) && "Material index overflow");
 		return static_cast<int>(value);
+	}
+
+	// Shared "process-lifetime cache, keyed by file path" helper for the
+	// scene-loading caches below (image decode, OBJ/OBJ+MTL raw geometry,
+	// pbrt parse) - each used to hand-roll its own find/build/emplace
+	// boilerplate; this collapses all of them to one call, the same
+	// "stop repeating the same alloc-or-reuse pattern" reasoning that
+	// motivated wavefront_path_tracer.h's own reallocateDeviceBufferIfNeeded<T>()
+	// template. `mutex` guards concurrent access - scene building only ever
+	// happens on one thread today, but a per-cache mutex costs nothing here
+	// and matches the precedent gpu/optix/pbrt_gpu_builder_materials.h's own
+	// gammaMutex already sets ("for the realistic future case of building
+	// more than one GPU scene concurrently within one process").
+	// `builder(V&)` fills its argument and returns true on success; on
+	// false, nothing is cached (a transient failure - a momentarily locked
+	// or mid-save file - is retried fresh on the very next call instead of
+	// failing permanently for the rest of the process) and this returns
+	// nullptr. `builder` is responsible for its own diagnostics (a warning/
+	// error print, since it only ever runs once per successful OR failed
+	// key rather than once per call the way an outer, always-run print
+	// would).
+	template <typename V, typename Builder>
+	const V* get_or_build_cached(std::unordered_map<std::string, V>& cache, std::mutex& mutex,
+								  const std::string& key, Builder&& builder) {
+		std::lock_guard<std::mutex> lock(mutex);
+		auto it = cache.find(key);
+		if (it != cache.end()) return &it->second;
+		V value{};
+		if (!builder(value)) return nullptr;
+		return &cache.emplace(key, std::move(value)).first->second;
 	}
 
 	// ------------------------------------------------------------------
@@ -772,51 +803,60 @@ namespace {
 		// build_loaded_pbrt_scene()'s own pbrt_load::loadFile() cache just
 		// below this file's own scene-switch for the identical reasoning).
 		// Cached forever per process, same "no hot-reload" precedent as that
-		// cache. A failed load is cached too (found=false), so a
-		// permanently-missing texture fails fast on every later call instead
-		// of re-attempting the same handful of file opens.
+		// cache. A failed load is cached too (found=false, via the builder
+		// below always returning true), so a permanently-missing texture
+		// fails fast on every later call instead of re-attempting the same
+		// handful of file opens - deliberately different from the OBJ/pbrt
+		// loaders' own "never cache a failure" choice just below, since a
+		// texture genuinely not existing at any of the fixed search prefixes
+		// is a stable fact about the file, not the kind of transient
+		// mid-write/locked-file condition those loaders are guarding
+		// against. The warning below only fires from inside the builder, so
+		// it's printed once (the first time this filename is seen), not
+		// once per cache-hit call - see get_or_build_cached()'s own comment
+		// on why builders own their own diagnostics.
 		struct CachedImage {
 			bool found = false;
 			int width = 0, height = 0;
 			std::vector<unsigned char> pixels;
 		};
 		static std::unordered_map<std::string, CachedImage> s_imageCache;
+		static std::mutex s_imageCacheMutex;
 
-		auto cacheIt = s_imageCache.find(filename);
-		if (cacheIt == s_imageCache.end()) {
-			int width = 0, height = 0, channels = 0;
-			float* fdata = nullptr;
-			const char* search_prefixes[] = { "", "images/", "../images/", "../../images/" };
-			for (const char* prefix : search_prefixes) {
-				std::string path = std::string(prefix) + filename;
-				fdata = stbi_loadf(path.c_str(), &width, &height, &channels, 3);
-				if (fdata) break;
-			}
-
-			CachedImage entry;
-			entry.found = (fdata != nullptr);
-			if (fdata) {
-				entry.width = width;
-				entry.height = height;
-				const size_t total = static_cast<size_t>(width) * height * 3;
-				entry.pixels.resize(total);
-				for (size_t i = 0; i < total; ++i) {
-					const float v = fdata[i];
-					entry.pixels[i] = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+		const CachedImage& cached = *get_or_build_cached(s_imageCache, s_imageCacheMutex, std::string(filename),
+			[&](CachedImage& entry) -> bool {
+				int width = 0, height = 0, channels = 0;
+				float* fdata = nullptr;
+				const char* search_prefixes[] = { "", "images/", "../images/", "../../images/" };
+				for (const char* prefix : search_prefixes) {
+					std::string path = std::string(prefix) + filename;
+					fdata = stbi_loadf(path.c_str(), &width, &height, &channels, 3);
+					if (fdata) break;
 				}
-				stbi_image_free(fdata);
-			}
-			cacheIt = s_imageCache.emplace(filename, std::move(entry)).first;
-		}
-		const CachedImage& cached = cacheIt->second;
+
+				entry.found = (fdata != nullptr);
+				if (fdata) {
+					entry.width = width;
+					entry.height = height;
+					const size_t total = static_cast<size_t>(width) * height * 3;
+					entry.pixels.resize(total);
+					for (size_t i = 0; i < total; ++i) {
+						const float v = fdata[i];
+						entry.pixels[i] = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+					}
+					stbi_image_free(fdata);
+				} else {
+					std::cerr << "[OptiX] Could not load image texture '" << filename
+							   << "' (tried a few relative paths) - using solid-cyan "
+							   << "debug fallback, matching CPU's own missing-texture behavior.\n";
+				}
+				return true;  // always cached, even found=false - see this function's own comment above
+			});
 
 		TextureData tex{};
 		tex.kind = TextureKind::Image;
 		tex.noiseScale = 0.0f;
 		if (!cached.found) {
-			std::cerr << "[OptiX] Could not load image texture '" << filename
-					   << "' (tried a few relative paths) - using solid-cyan "
-					   << "debug fallback, matching CPU's own missing-texture behavior.\n";
 			tex.pixelOffset = 0;
 			tex.width = 0;
 			tex.height = 0;
@@ -899,119 +939,133 @@ namespace {
 		// re-parsed from scratch 60 times a second while the user just
 		// orbits the camera is exactly what made large scenes unusably slow.
 		// Cached forever per process, same "no hot-reload" precedent as that
-		// cache. A failed load is deliberately NOT cached (this function
-		// returns before ever touching the cache in that case) - unlike the
-		// pbrt/texture caches above, this keeps the "no file found" warning
+		// cache. A failed load is deliberately NOT cached (the builder below
+		// returns false without ever populating the cache) - unlike the
+		// image-texture cache above, this keeps the "no file found" warning
 		// firing every call exactly as it already did before this cache
-		// existed, rather than changing that behavior.
+		// existed, rather than changing that behavior (a genuinely missing
+		// mesh file is worth re-reporting every attempt, unlike a texture's
+		// fixed set of search prefixes - see the image cache's own comment
+		// for that distinction).
+		//
+		// hasNormals lives on the whole file (ObjRawData), not per-face: OBJ
+		// lists every "v"/"vn" before any "f" references them, so every face
+		// in one file necessarily shares the same answer to "does this file
+		// have vertex normals at all" - storing it per-RawFace duplicated an
+		// already-file-constant value on every one of potentially millions
+		// of entries.
 		struct RawFace {
 			float3 p0, p1, p2;
-			bool hasNormals = false;
 			float3 n0 = make_float3(0.0f, 1.0f, 0.0f);
 			float3 n1 = make_float3(0.0f, 1.0f, 0.0f);
 			float3 n2 = make_float3(0.0f, 1.0f, 0.0f);
 		};
-		static std::unordered_map<std::string, std::vector<RawFace>> s_objCache;
+		struct ObjRawData {
+			bool hasNormals = false;
+			std::vector<RawFace> faces;
+		};
+		static std::unordered_map<std::string, ObjRawData> s_objCache;
+		static std::mutex s_objCacheMutex;
 
-		auto cacheIt = s_objCache.find(filename);
-		if (cacheIt == s_objCache.end()) {
-			std::ifstream file(filename);
-			if (!file.is_open()) {
-				static const char* kSearchPrefixes[] = {
-					"models/", "../models/", "../../models/",
-					"../../../models/", "../../../../models/", "../../../../../models/"
-				};
-				for (const char* prefix : kSearchPrefixes) {
-					file.clear();
-					file.open(std::string(prefix) + filename);
-					if (file.is_open()) break;
-				}
-			}
-			if (!file.is_open()) {
-				std::cerr << "[OptiX] Could not load mesh '" << filename
-						   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
-				return;
-			}
-
-			std::vector<float3> positions;
-			// Normals are unit direction vectors, unaffected by the uniform
-			// scale/offset a CALLER applies to positions (matches CPU's
-			// mesh.h, which likewise only transforms raw_pos, not raw_norm);
-			// flip_xz is applied at USE time below now too (a call-site
-			// choice, not a property of the file), not baked in here.
-			std::vector<float3> normals;
-			std::vector<RawFace> rawFaces;
-			// OBJ format lists all "v"/"vn"/"vt" data before any "f" line
-			// references it, so by the time the first face is parsed, `normals`
-			// already holds every vertex normal the file has (or none, if it
-			// has none) - checking !normals.empty() per-face is equivalent to
-			// (and simpler than) a separate up-front presence scan.
-			std::string line;
-			while (std::getline(file, line)) {
-				if (line.empty() || line[0] == '#') continue;
-				std::istringstream ss(line);
-				std::string tok;
-				ss >> tok;
-				if (tok == "v") {
-					float x, y, z;
-					ss >> x >> y >> z;
-					positions.push_back(make_float3(x, y, z));
-				} else if (tok == "vn") {
-					float x, y, z;
-					ss >> x >> y >> z;
-					normals.push_back(normalize(make_float3(x, y, z)));
-				} else if (tok == "f") {
-					std::vector<int> idx, nIdx;
-					std::string fv;
-					// OBJ indices may be negative ("relative"): -1 refers to the
-					// most-recently-defined v/vn, resolved against however many
-					// have been parsed so far in the file - matches CPU mesh.h's
-					// load_obj() fix (see that function's own comment for why:
-					// rungholt.obj, a McGuire Computer Graphics Archive scene,
-					// uses this convention throughout, and the previous `p - 1`/
-					// `n - 1` here silently dropped every negative-indexed face,
-					// same bug as the CPU loader had).
-					auto resolveIdx = [](int raw, size_t countSoFar) -> int {
-						return raw > 0 ? raw - 1 : static_cast<int>(countSoFar) + raw;
+		const ObjRawData* raw = get_or_build_cached(s_objCache, s_objCacheMutex, std::string(filename),
+			[&](ObjRawData& out) -> bool {
+				std::ifstream file(filename);
+				if (!file.is_open()) {
+					static const char* kSearchPrefixes[] = {
+						"models/", "../models/", "../../models/",
+						"../../../models/", "../../../../models/", "../../../../../models/"
 					};
-					while (ss >> fv) {
-						// Possible formats: p   p/t   p//n   p/t/n
-						int p = 0, t = 0, n = 0;
-						if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
-							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
-						} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
-							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
-						} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
-							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
-						} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
-							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
-						}
-					}
-					auto cornerNormal = [&](int ni) -> float3 {
-						if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
-						return make_float3(0.0f, 1.0f, 0.0f);  // matches CPU mesh.h's fallback
-					};
-					for (size_t i = 1; i + 1 < idx.size(); ++i) {
-						if (idx[0] < 0 || idx[0] >= static_cast<int>(positions.size()) ||
-							idx[i] < 0 || idx[i] >= static_cast<int>(positions.size()) ||
-							idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(positions.size()))
-							continue;
-						RawFace rf{};
-						rf.p0 = positions[idx[0]];
-						rf.p1 = positions[idx[i]];
-						rf.p2 = positions[idx[i + 1]];
-						rf.hasNormals = !normals.empty();
-						if (rf.hasNormals) {
-							rf.n0 = cornerNormal(nIdx[0]);
-							rf.n1 = cornerNormal(nIdx[i]);
-							rf.n2 = cornerNormal(nIdx[i + 1]);
-						}
-						rawFaces.push_back(rf);
+					for (const char* prefix : kSearchPrefixes) {
+						file.clear();
+						file.open(std::string(prefix) + filename);
+						if (file.is_open()) break;
 					}
 				}
-			}
-			cacheIt = s_objCache.emplace(filename, std::move(rawFaces)).first;
-		}
+				if (!file.is_open()) {
+					std::cerr << "[OptiX] Could not load mesh '" << filename
+							   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
+					return false;
+				}
+
+				std::vector<float3> positions;
+				// Normals are unit direction vectors, unaffected by the uniform
+				// scale/offset a CALLER applies to positions (matches CPU's
+				// mesh.h, which likewise only transforms raw_pos, not raw_norm);
+				// flip_xz is applied at USE time below now too (a call-site
+				// choice, not a property of the file), not baked in here.
+				std::vector<float3> normals;
+				// OBJ format lists all "v"/"vn"/"vt" data before any "f" line
+				// references it, so by the time the first face is parsed, `normals`
+				// already holds every vertex normal the file has (or none, if it
+				// has none) - checking !normals.empty() per-face is equivalent to
+				// (and simpler than) a separate up-front presence scan.
+				std::string line;
+				while (std::getline(file, line)) {
+					if (line.empty() || line[0] == '#') continue;
+					std::istringstream ss(line);
+					std::string tok;
+					ss >> tok;
+					if (tok == "v") {
+						float x, y, z;
+						ss >> x >> y >> z;
+						positions.push_back(make_float3(x, y, z));
+					} else if (tok == "vn") {
+						float x, y, z;
+						ss >> x >> y >> z;
+						normals.push_back(normalize(make_float3(x, y, z)));
+					} else if (tok == "f") {
+						std::vector<int> idx, nIdx;
+						std::string fv;
+						// OBJ indices may be negative ("relative"): -1 refers to the
+						// most-recently-defined v/vn, resolved against however many
+						// have been parsed so far in the file - matches CPU mesh.h's
+						// load_obj() fix (see that function's own comment for why:
+						// rungholt.obj, a McGuire Computer Graphics Archive scene,
+						// uses this convention throughout, and the previous `p - 1`/
+						// `n - 1` here silently dropped every negative-indexed face,
+						// same bug as the CPU loader had).
+						auto resolveIdx = [](int rawIdx, size_t countSoFar) -> int {
+							return rawIdx > 0 ? rawIdx - 1 : static_cast<int>(countSoFar) + rawIdx;
+						};
+						while (ss >> fv) {
+							// Possible formats: p   p/t   p//n   p/t/n
+							int p = 0, t = 0, n = 0;
+							if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
+								idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
+							} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
+								idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
+							} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
+								idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
+							} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
+								idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
+							}
+						}
+						auto cornerNormal = [&](int ni) -> float3 {
+							if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
+							return make_float3(0.0f, 1.0f, 0.0f);  // matches CPU mesh.h's fallback
+						};
+						for (size_t i = 1; i + 1 < idx.size(); ++i) {
+							if (idx[0] < 0 || idx[0] >= static_cast<int>(positions.size()) ||
+								idx[i] < 0 || idx[i] >= static_cast<int>(positions.size()) ||
+								idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(positions.size()))
+								continue;
+							RawFace rf{};
+							rf.p0 = positions[idx[0]];
+							rf.p1 = positions[idx[i]];
+							rf.p2 = positions[idx[i + 1]];
+							if (!normals.empty()) {
+								rf.n0 = cornerNormal(nIdx[0]);
+								rf.n1 = cornerNormal(nIdx[i]);
+								rf.n2 = cornerNormal(nIdx[i + 1]);
+							}
+							out.faces.push_back(rf);
+						}
+					}
+				}
+				out.hasNormals = !normals.empty();
+				return true;
+			});
+		if (!raw) return;
 
 		// Apply THIS call's own scale/offset/flip_xz/materialIdx to the
 		// (possibly cached) raw geometry and emit into scene.triangles -
@@ -1026,13 +1080,14 @@ namespace {
 		auto transformNormal = [&](const float3& n) -> float3 {
 			return flip_xz ? make_float3(-n.x, n.y, -n.z) : n;
 		};
-		for (const RawFace& rf : cacheIt->second) {
+		scene.triangles.reserve(scene.triangles.size() + raw->faces.size());
+		for (const RawFace& rf : raw->faces) {
 			TriangleData t{};
 			t.p0 = transformPos(rf.p0);
 			t.p1 = transformPos(rf.p1);
 			t.p2 = transformPos(rf.p2);
 			t.materialIdx = materialIdx;
-			t.hasNormals = rf.hasNormals;
+			t.hasNormals = raw->hasNormals;
 			if (t.hasNormals) {
 				t.n0 = transformNormal(rf.n0);
 				t.n1 = transformNormal(rf.n1);
@@ -1213,100 +1268,101 @@ namespace {
 			std::string foundPrefix;
 		};
 		static std::unordered_map<std::string, ObjMtlRawData> s_objMtlCache;
+		static std::mutex s_objMtlCacheMutex;
 
-		auto cacheIt = s_objMtlCache.find(filename);
-		if (cacheIt == s_objMtlCache.end()) {
-			std::string foundPrefix;
-			std::ifstream file(filename);
-			if (!file.is_open()) {
-				static const char* kSearchPrefixes[] = {
-					"models/", "../models/", "../../models/",
-					"../../../models/", "../../../../models/", "../../../../../models/"
-				};
-				for (const char* prefix : kSearchPrefixes) {
-					file.clear();
-					file.open(std::string(prefix) + filename);
-					if (file.is_open()) { foundPrefix = prefix; break; }
-				}
-			}
-			if (!file.is_open()) {
-				std::cerr << "[OptiX] Could not load mesh '" << filename
-						   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
-				return;
-			}
-
-			ObjMtlRawData raw;
-			raw.foundPrefix = foundPrefix;
-			std::unordered_map<std::string, int> mtlNameToLocalIdx;
-			auto localMtlIdx = [&](const std::string& name) -> int {
-				if (name.empty()) return -1;
-				auto it = mtlNameToLocalIdx.find(name);
-				if (it != mtlNameToLocalIdx.end()) return it->second;
-				int idx = static_cast<int>(raw.uniqueMtlNames.size());
-				raw.uniqueMtlNames.push_back(name);
-				mtlNameToLocalIdx.emplace(name, idx);
-				return idx;
-			};
-
-			std::string currentMtl;
-			std::string line;
-			while (std::getline(file, line)) {
-				if (line.empty() || line[0] == '#') continue;
-				std::istringstream ss(line);
-				std::string tok;
-				ss >> tok;
-				if (tok == "v") {
-					float x, y, z;
-					ss >> x >> y >> z;
-					raw.positions.push_back(make_float3(x, y, z));
-				} else if (tok == "vn") {
-					float x, y, z;
-					ss >> x >> y >> z;
-					raw.normals.push_back(normalize(make_float3(x, y, z)));
-				} else if (tok == "vt") {
-					float u, v;
-					ss >> u >> v;
-					raw.uvs.push_back(make_float2(u, v));
-				} else if (tok == "mtllib") {
-					ss >> raw.mtllibName;
-				} else if (tok == "usemtl") {
-					ss >> currentMtl;
-				} else if (tok == "f") {
-					std::vector<int> idx, nIdx, tIdx;
-					std::string fv;
-					auto resolveIdx = [](int rawIdx, size_t countSoFar) -> int {
-						return rawIdx > 0 ? rawIdx - 1 : static_cast<int>(countSoFar) + rawIdx;
+		const ObjMtlRawData* rawPtr = get_or_build_cached(s_objMtlCache, s_objMtlCacheMutex, std::string(filename),
+			[&](ObjMtlRawData& raw) -> bool {
+				std::string foundPrefix;
+				std::ifstream file(filename);
+				if (!file.is_open()) {
+					static const char* kSearchPrefixes[] = {
+						"models/", "../models/", "../../models/",
+						"../../../models/", "../../../../models/", "../../../../../models/"
 					};
-					while (ss >> fv) {
-						int p = 0, t = 0, n = 0;
-						if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
-							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(resolveIdx(t, raw.uvs.size())); nIdx.push_back(resolveIdx(n, raw.normals.size()));
-						} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
-							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(-1); nIdx.push_back(resolveIdx(n, raw.normals.size()));
-						} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
-							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(resolveIdx(t, raw.uvs.size())); nIdx.push_back(-1);
-						} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
-							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(-1); nIdx.push_back(-1);
+					for (const char* prefix : kSearchPrefixes) {
+						file.clear();
+						file.open(std::string(prefix) + filename);
+						if (file.is_open()) { foundPrefix = prefix; break; }
+					}
+				}
+				if (!file.is_open()) {
+					std::cerr << "[OptiX] Could not load mesh '" << filename
+							   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
+					return false;
+				}
+
+				raw.foundPrefix = foundPrefix;
+				std::unordered_map<std::string, int> mtlNameToLocalIdx;
+				auto localMtlIdx = [&](const std::string& name) -> int {
+					if (name.empty()) return -1;
+					auto it = mtlNameToLocalIdx.find(name);
+					if (it != mtlNameToLocalIdx.end()) return it->second;
+					int idx = static_cast<int>(raw.uniqueMtlNames.size());
+					raw.uniqueMtlNames.push_back(name);
+					mtlNameToLocalIdx.emplace(name, idx);
+					return idx;
+				};
+
+				std::string currentMtl;
+				std::string line;
+				while (std::getline(file, line)) {
+					if (line.empty() || line[0] == '#') continue;
+					std::istringstream ss(line);
+					std::string tok;
+					ss >> tok;
+					if (tok == "v") {
+						float x, y, z;
+						ss >> x >> y >> z;
+						raw.positions.push_back(make_float3(x, y, z));
+					} else if (tok == "vn") {
+						float x, y, z;
+						ss >> x >> y >> z;
+						raw.normals.push_back(normalize(make_float3(x, y, z)));
+					} else if (tok == "vt") {
+						float u, v;
+						ss >> u >> v;
+						raw.uvs.push_back(make_float2(u, v));
+					} else if (tok == "mtllib") {
+						ss >> raw.mtllibName;
+					} else if (tok == "usemtl") {
+						ss >> currentMtl;
+					} else if (tok == "f") {
+						std::vector<int> idx, nIdx, tIdx;
+						std::string fv;
+						auto resolveIdx = [](int rawIdx, size_t countSoFar) -> int {
+							return rawIdx > 0 ? rawIdx - 1 : static_cast<int>(countSoFar) + rawIdx;
+						};
+						while (ss >> fv) {
+							int p = 0, t = 0, n = 0;
+							if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
+								idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(resolveIdx(t, raw.uvs.size())); nIdx.push_back(resolveIdx(n, raw.normals.size()));
+							} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
+								idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(-1); nIdx.push_back(resolveIdx(n, raw.normals.size()));
+							} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
+								idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(resolveIdx(t, raw.uvs.size())); nIdx.push_back(-1);
+							} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
+								idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(-1); nIdx.push_back(-1);
+							}
+						}
+						const int mtlIdx = localMtlIdx(currentMtl);
+						for (size_t i = 1; i + 1 < idx.size(); ++i) {
+							if (idx[0] < 0 || idx[0] >= static_cast<int>(raw.positions.size()) ||
+								idx[i] < 0 || idx[i] >= static_cast<int>(raw.positions.size()) ||
+								idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(raw.positions.size()))
+								continue;
+							RawFaceMtl f{};
+							f.p[0] = idx[0]; f.p[1] = idx[i]; f.p[2] = idx[i + 1];
+							f.n[0] = nIdx[0]; f.n[1] = nIdx[i]; f.n[2] = nIdx[i + 1];
+							f.t[0] = tIdx[0]; f.t[1] = tIdx[i]; f.t[2] = tIdx[i + 1];
+							f.mtlNameIdx = mtlIdx;
+							raw.faces.push_back(f);
 						}
 					}
-					const int mtlIdx = localMtlIdx(currentMtl);
-					for (size_t i = 1; i + 1 < idx.size(); ++i) {
-						if (idx[0] < 0 || idx[0] >= static_cast<int>(raw.positions.size()) ||
-							idx[i] < 0 || idx[i] >= static_cast<int>(raw.positions.size()) ||
-							idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(raw.positions.size()))
-							continue;
-						RawFaceMtl f{};
-						f.p[0] = idx[0]; f.p[1] = idx[i]; f.p[2] = idx[i + 1];
-						f.n[0] = nIdx[0]; f.n[1] = nIdx[i]; f.n[2] = nIdx[i + 1];
-						f.t[0] = tIdx[0]; f.t[1] = tIdx[i]; f.t[2] = tIdx[i + 1];
-						f.mtlNameIdx = mtlIdx;
-						raw.faces.push_back(f);
-					}
 				}
-			}
-			cacheIt = s_objMtlCache.emplace(filename, std::move(raw)).first;
-		}
-		const ObjMtlRawData& raw = cacheIt->second;
+				return true;
+			});
+		if (!rawPtr) return;
+		const ObjMtlRawData& raw = *rawPtr;
 
 		// Locate the companion .mtl the same way CPU's load_obj_mtl() does:
 		// prefer the file's own mtllib directive, fall back to
@@ -3855,26 +3911,40 @@ static bool build_loaded_pbrt_scene(
 	// small/procedural scenes never hit this function at all (they're built
 	// directly in the switch below), which is why the slowdown was specific
 	// to large, file-loaded scenes. Cached by path for the life of the
-	// process, including a failed load (so a permanently-missing/malformed
-	// scene fails fast on every later call instead of re-attempting the same
-	// disk I/O) - same "no hot-reload, cache lives for the process"
-	// precedent g_uploaded_scene_id's own GPU-side scene cache already sets
-	// (editing a scene's file mid-session already isn't picked up by that
-	// cache either). pbrt_gpu::build() below takes its FlatScene by const&
-	// and never mutates it, so the cached entry can be reused directly by
-	// every subsequent call with no copy.
+	// process - same "no hot-reload, cache lives for the process" precedent
+	// g_uploaded_scene_id's own GPU-side scene cache already sets (editing a
+	// scene's file mid-session already isn't picked up by that cache
+	// either). A FAILED load is deliberately NOT cached, unlike an earlier
+	// version of this cache: a scene file that's mid-save, briefly
+	// malformed, or momentarily locked by another process at the exact
+	// moment Live Preview first requests it would otherwise stay marked
+	// failed for the rest of the process even after the file is fixed on
+	// disk - matching load_obj_triangles_gpu()'s/
+	// load_obj_triangles_mtl_gpu()'s own "never cache a failure" choice.
+	// pbrt_gpu::build() below takes its FlatScene by const& and never
+	// mutates it, so the cached entry can be reused directly by every
+	// subsequent call with no copy. The per-warning print happens inside the
+	// builder below (only on an actual, successful parse), not out here -
+	// this function now runs every Live Preview frame the camera moves, so
+	// printing on every cache HIT too would spam stderr continuously for
+	// any scene with warnings, instead of the one-time diagnostic it used
+	// to be back when this function was slow enough that repeat calls were
+	// rare.
 	static std::unordered_map<std::string, pbrt_load::LoadResult> s_pbrtLoadCache;
-	auto cacheIt = s_pbrtLoadCache.find(path);
-	if (cacheIt == s_pbrtLoadCache.end()) {
-		cacheIt = s_pbrtLoadCache.emplace(path, pbrt_load::loadFile(path)).first;
-	}
-	const pbrt_load::LoadResult& loaded = cacheIt->second;
-	if (!loaded.ok) {
-		std::cerr << "[OptiX] " << loaded.error << "\n";
-		return false;
-	}
-	for (const pbrt_scene::Warning& w : loaded.scene.warnings)
-		std::cerr << "[OptiX] warning: " << path << ": " << w.message << "\n";
+	static std::mutex s_pbrtLoadCacheMutex;
+	const pbrt_load::LoadResult* loadedPtr = get_or_build_cached(s_pbrtLoadCache, s_pbrtLoadCacheMutex, std::string(path),
+		[&](pbrt_load::LoadResult& out) -> bool {
+			out = pbrt_load::loadFile(path);
+			if (!out.ok) {
+				std::cerr << "[OptiX] " << out.error << "\n";
+				return false;
+			}
+			for (const pbrt_scene::Warning& w : out.scene.warnings)
+				std::cerr << "[OptiX] warning: " << path << ": " << w.message << "\n";
+			return true;
+		});
+	if (!loadedPtr) return false;
+	const pbrt_load::LoadResult& loaded = *loadedPtr;
 
 	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(loaded.scene, scene);
 	std::cerr << "[OptiX] Loaded " << path << ": " << stats.triangles
