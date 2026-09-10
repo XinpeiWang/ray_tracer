@@ -65,17 +65,18 @@ constexpr int kRestirTemporalMaxM = 20;
 // occlusion during resampling itself, not just at final shading); this
 // codebase's own restir_reservoir_combine() re-evaluates a neighbor's target
 // function UNSHADOWED (the actual traced shadow ray only happens once, for
-// the FINAL winning sample - wf_finish_material_scatter's own comment). A
-// large M lets restir_reservoir_combine's `otherPHatAtDstContext * other.W *
-// other.M` weight (wavefront_restir_math.h) compound across repeated
-// temporal/spatial combines even after this file's own kRestirMaxW ceiling
-// bounds any SINGLE reservoir's W - confirmed via
-// tests/integration/live_preview_restir_firefly_test.cpp, which showed a
-// materially elevated whole-image mean with ReSTIR enabled vs. an otherwise
-// identical classic-NEE render, traced to this cap being too permissive for
-// that unshadowed-resampling design. Matching temporal reuse's own cap (20)
-// keeps a single spatial combine from injecting disproportionate confidence
-// relative to what a fresh RIS draw earns.
+// the FINAL winning sample - wf_finish_material_scatter's own comment).
+// Matching temporal reuse's own cap (20) keeps a single spatial combine from
+// injecting disproportionate confidence relative to what a fresh RIS draw
+// earns. (An earlier version of this comment attributed a since-fixed
+// whole-image-mean blowup to this cap being too permissive at 500 - that
+// diagnosis didn't hold up: dropping it to 20 alone made no measurable
+// difference, confirmed by an identical reproduced frame before and after.
+// The real cause was restir_reservoir_combine's own caller code clamping the
+// COMBINED M after already using the uncapped value in the weight formula -
+// see wf_restir_temporal_combine's and this file's neighbor-clamp's own
+// comments - now fixed at the clamp site itself, independent of this
+// constant's value.)
 constexpr int kRestirSpatialMaxM = kRestirTemporalMaxM;
 
 // Spatial reuse's neighbor sampling - kRestirSpatialNeighbors candidate
@@ -439,8 +440,24 @@ __device__ __forceinline__ void wf_restir_temporal_combine(
 	const float eps = fmaxf(prevCamDist * 0.01f, 1e-4f);
 	if (distSq > eps * eps) return;  // disoccluded - a genuinely different surface reprojected here
 
-	const GpuReservoir& prev = ctx.history[prevPixel];
+	GpuReservoir prev = ctx.history[prevPixel];
 	if (!prev.valid()) return;
+	// Clamp the INCOMING reservoir's M before folding it in, not the summed
+	// current.M afterward (as this code used to). restir_reservoir_combine's
+	// candidate weight is `pHat * other.W * other.M` - if M is truncated only
+	// after that weight (and current.weightSum) already used the untruncated
+	// value, restir_finalize's W = weightSum / (M * pHat) divides by a SMALLER
+	// M than weightSum was built from, inflating W. That inflated W is exactly
+	// what gets stored as this frame's own W and fed forward as `other.W` into
+	// EVERY subsequent frame's combine, compounding the inflation frame over
+	// frame instead of merely bounding history staleness (confirmed via a
+	// direct instrumented A/B: disabling temporal reuse alone dropped this
+	// scene's converged image mean from ~44x classic NEE's own mean back to
+	// parity with it). Clamping M here, before it ever reaches the weight
+	// formula, keeps weightSum and M mutually consistent - the standard ReSTIR
+	// M-cap remains an intentional, bounded, accepted bias (per Bitterli 2020),
+	// not an unbounded runaway.
+	if (prev.M > kRestirTemporalMaxM) prev.M = kRestirTemporalMaxM;
 
 	// Re-evaluate the history sample's geometry AND target function fresh, at
 	// THIS pixel's own hitPoint/normal - restir.h's documented missing piece
@@ -462,11 +479,4 @@ __device__ __forceinline__ void wf_restir_temporal_combine(
 	if (pHatAtCurrent <= 0.0f) return;
 
 	restir_reservoir_combine(current, prev, pHatAtCurrent, wf_rand(seed));
-	// M-clamp (restir.h's own max_M concept) - caps how many candidates' worth
-	// of history a reservoir can claim to represent, so a long-lived
-	// reservoir doesn't drown out fresh candidates once the scene/camera
-	// starts changing again. Applied AFTER the combine (which already added
-	// prev.M into current.M) rather than clamping prev.M beforehand, matching
-	// restir.h's temporal_update()'s own "clamp the SUM" ordering.
-	if (current.M > kRestirTemporalMaxM) current.M = kRestirTemporalMaxM;
 }

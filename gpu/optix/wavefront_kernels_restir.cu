@@ -104,8 +104,14 @@ extern "C" __global__ void restir_spatial_reuse(
 		const float3 nNormal = currentNormals[nIdx];
 		if (dot(normal, nNormal) < kRestirSpatialNormalCosThreshold) continue;
 
-		const GpuReservoir& neighbor = currentReservoirs[nIdx];
+		GpuReservoir neighbor = currentReservoirs[nIdx];
 		if (!neighbor.valid()) continue;
+		// Clamp the neighbor's M before folding it in, not `result.M` after
+		// the loop (as this code used to) - see wf_restir_temporal_combine's
+		// own comment (wavefront_restir_helpers.h) for why post-hoc clamping
+		// the sum (instead of the incoming candidate's own M) inflates W and
+		// compounds across frames instead of just bounding staleness.
+		if (neighbor.M > kRestirSpatialMaxM) neighbor.M = kRestirSpatialMaxM;
 
 		// Re-evaluate the neighbor's stored sample's geometry AND target
 		// function fresh, AT THIS PIXEL's own hitPoint/normal - restir.h's
@@ -140,7 +146,6 @@ extern "C" __global__ void restir_spatial_reuse(
 		restir_reservoir_combine(result, neighbor, pHatAtCurrent, wf_rand(seed));
 	}
 
-	if (result.M > kRestirSpatialMaxM) result.M = kRestirSpatialMaxM;
 	restir_finalize(result);
 	outputReservoirs[idx] = result;
 }

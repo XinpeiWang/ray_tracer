@@ -63,15 +63,26 @@ TEST(LivePreviewRestirTest, CornellBoxImageMeanNeverBlowsUp) {
 	const size_t numChannels = static_cast<size_t>(numPixels) * 3;
 	std::vector<float> rgb(numChannels);
 
-	// A converged Cornell Box render's mean pixel value sits well under the
-	// light's own emission (15) - most of the image is dimmer wall/floor/
-	// box reflection, with the small bright light quad itself and its
-	// immediate surroundings pulling the mean up only slightly. This
-	// ceiling is a generous multiple of that (a single unconverged 1-spp
-	// frame is noisier than a converged image), while still being many
-	// orders of magnitude below what the original bug's filter-weight
-	// divide-by-near-zero (or a genuine reservoir blowup) would produce.
-	constexpr double kMaxPlausibleImageMean = 25.0;
+	// A classic single-draw NEE render of this exact scene/camera/resolution
+	// has a whole-image mean of ~0.16 (measured directly). This ceiling is a
+	// generous ~10x that, covering a single unconverged 1-spp frame's own
+	// noise, while still being far below what either known ReSTIR bug this
+	// test has already caught produced: the original filter-weight divide-
+	// by-near-zero firefly (a per-pixel spike, not a whole-image shift) and a
+	// second, subtler bug found later - restir_reservoir_combine's callers
+	// (temporal reuse and spatial reuse) used to clamp the COMBINED M down to
+	// its cap AFTER weightSum had already been built from the uncapped value,
+	// inflating W every frame; since that inflated W fed forward as next
+	// frame's own input, the bias compounded frame over frame, reaching a
+	// whole-image mean ~44x this scene's true value by frame 250 (gpu/optix/
+	// wavefront_restir_helpers.h's wf_restir_temporal_combine and
+	// wavefront_kernels_restir.cu's restir_spatial_reuse now clamp the
+	// INCOMING reservoir's M before it ever reaches the weight formula,
+	// keeping weightSum and M mutually consistent). The original 25.0 ceiling
+	// here was loose enough that it never caught that second bug even though
+	// this test was already running when it was introduced - kept tight now
+	// so a similar regression fails fast instead of silently shipping.
+	constexpr double kMaxPlausibleImageMean = 2.0;
 	constexpr int kNumFrames = 100;
 
 	for (int frame = 0; frame < kNumFrames; ++frame) {

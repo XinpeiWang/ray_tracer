@@ -94,18 +94,13 @@ public slots:
 	// tonemap - same step (and formula) the batch/CLI path applies via its
 	// own --exposure option (optix_interface.cpp). Live Preview needs its
 	// OWN, independently-set value rather than reusing whatever the Settings
-	// tab's exposure spinbox holds for batch rendering: the ACES Narkowicz
-	// curve this project uses has a hard plateau above input ~7.24 (every
-	// value at or beyond it tonemaps to identical (255,255,255), with zero
-	// remaining gradient - see tone_map.h's own aces_narkowicz() comment),
-	// and ReSTIR DI (Live-Preview-only, gpu/optix/wavefront_restir_helpers.h)
-	// produces somewhat brighter raw per-sample radiance than the classic
-	// single-draw NEE path batch rendering uses for the exact same scene -
-	// so a bright scene's large, directly-lit surfaces (e.g. a Cornell Box's
-	// ceiling/floor/back-wall) can cross that plateau in Live Preview at an
-	// exposure that still shows a gradient in batch. A plain exposure change
-	// does NOT reset accumulation, same "post-process on the same converging
-	// signal" reasoning as setDenoise()'s own comment.
+	// tab's exposure spinbox holds for batch rendering, since the two paths
+	// converge to different images (Live Preview always renders via the
+	// wavefront/ReSTIR backend). Defaults to 1.0, matching batch's own
+	// implicit default - see m_exposure's own comment for why an earlier,
+	// lower default existed and why it no longer needs to. A plain exposure
+	// change does NOT reset accumulation, same "post-process on the same
+	// converging signal" reasoning as setDenoise()'s own comment.
 	void setExposure(double exposure);
 
 signals:
@@ -147,12 +142,20 @@ private:
 	bool m_denoise = false;
 	double m_denoiseBlend = 0.0;
 	bool m_denoiseShowLatest = false;
-	// See setExposure()'s own comment on why Live Preview needs its own,
-	// lower-than-batch's-typical-1.0 default: ReSTIR's brighter raw
-	// per-sample radiance plus the ACES curve's hard plateau above ~7.24
-	// otherwise flatten a bright scene's large lit surfaces to solid white
-	// well before a user ever discovers/adjusts this value.
-	double m_exposure = 0.5;
+	// Neutral default (matches batch rendering's own implicit 1.0) - an
+	// earlier version of this default was 0.5, added to mask a genuine ReSTIR
+	// correctness bug (gpu/optix/wavefront_restir_helpers.h's temporal
+	// combine and wavefront_kernels_restir.cu's spatial reuse both clamped a
+	// reservoir's M AFTER folding its weight into weightSum, leaving
+	// weightSum built from a larger M than restir_finalize() then divided by
+	// - inflating W, which compounded every frame since that inflated W fed
+	// forward as next frame's own input) that made ReSTIR's converged image
+	// mean ~44x classic NEE's for the same scene. With that bug fixed at the
+	// source, Live Preview's own output is back at parity with classic NEE
+	// (confirmed via a direct instrumented comparison) and no longer needs a
+	// darkening workaround - setExposure() itself stays, as a legitimate,
+	// generically useful control.
+	double m_exposure = 1.0;
 	std::vector<float> m_accum;   // linear RGB running mean, width*height*3
 	// Per-frame scratch buffers, persisted across renderLoop() calls and
 	// only resized in resetAccumulation() (same resolution-keyed reuse
