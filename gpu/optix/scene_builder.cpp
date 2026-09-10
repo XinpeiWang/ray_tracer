@@ -764,19 +764,56 @@ namespace {
 	// (optix_device_helpers.h) treats that as CPU's own solid-cyan
 	// missing-texture fallback (texture.h:76), not a crash.
 	inline int load_image_texture_gpu(SceneData& scene, const char* filename) {
-		int width = 0, height = 0, channels = 0;
-		float* fdata = nullptr;
-		const char* search_prefixes[] = { "", "images/", "../images/", "../../images/" };
-		for (const char* prefix : search_prefixes) {
-			std::string path = std::string(prefix) + filename;
-			fdata = stbi_loadf(path.c_str(), &width, &height, &channels, 3);
-			if (fdata) break;
+		// Cache the DECODED, already-float_to_byte-converted pixel bytes,
+		// keyed by filename - stbi_loadf's own disk read + float decode is
+		// real, scene-size-scaling work this function's callers re-pay on
+		// every Live Preview frame the camera moves (this function has no
+		// camera-vs-scene distinction of its own to skip on - see
+		// build_loaded_pbrt_scene()'s own pbrt_load::loadFile() cache just
+		// below this file's own scene-switch for the identical reasoning).
+		// Cached forever per process, same "no hot-reload" precedent as that
+		// cache. A failed load is cached too (found=false), so a
+		// permanently-missing texture fails fast on every later call instead
+		// of re-attempting the same handful of file opens.
+		struct CachedImage {
+			bool found = false;
+			int width = 0, height = 0;
+			std::vector<unsigned char> pixels;
+		};
+		static std::unordered_map<std::string, CachedImage> s_imageCache;
+
+		auto cacheIt = s_imageCache.find(filename);
+		if (cacheIt == s_imageCache.end()) {
+			int width = 0, height = 0, channels = 0;
+			float* fdata = nullptr;
+			const char* search_prefixes[] = { "", "images/", "../images/", "../../images/" };
+			for (const char* prefix : search_prefixes) {
+				std::string path = std::string(prefix) + filename;
+				fdata = stbi_loadf(path.c_str(), &width, &height, &channels, 3);
+				if (fdata) break;
+			}
+
+			CachedImage entry;
+			entry.found = (fdata != nullptr);
+			if (fdata) {
+				entry.width = width;
+				entry.height = height;
+				const size_t total = static_cast<size_t>(width) * height * 3;
+				entry.pixels.resize(total);
+				for (size_t i = 0; i < total; ++i) {
+					const float v = fdata[i];
+					entry.pixels[i] = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+				}
+				stbi_image_free(fdata);
+			}
+			cacheIt = s_imageCache.emplace(filename, std::move(entry)).first;
 		}
+		const CachedImage& cached = cacheIt->second;
 
 		TextureData tex{};
 		tex.kind = TextureKind::Image;
 		tex.noiseScale = 0.0f;
-		if (!fdata) {
+		if (!cached.found) {
 			std::cerr << "[OptiX] Could not load image texture '" << filename
 					   << "' (tried a few relative paths) - using solid-cyan "
 					   << "debug fallback, matching CPU's own missing-texture behavior.\n";
@@ -785,16 +822,9 @@ namespace {
 			tex.height = 0;
 		} else {
 			tex.pixelOffset = safe_cast_to_int(scene.texturePixels.size());
-			tex.width = width;
-			tex.height = height;
-			const size_t total = static_cast<size_t>(width) * height * 3;
-			scene.texturePixels.resize(scene.texturePixels.size() + total);
-			unsigned char* out = scene.texturePixels.data() + tex.pixelOffset;
-			for (size_t i = 0; i < total; ++i) {
-				const float v = fdata[i];
-				out[i] = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
-			}
-			stbi_image_free(fdata);
+			tex.width = cached.width;
+			tex.height = cached.height;
+			scene.texturePixels.insert(scene.texturePixels.end(), cached.pixels.begin(), cached.pixels.end());
 		}
 		scene.textures.push_back(tex);
 		return static_cast<int>(scene.textures.size()) - 1;
@@ -856,103 +886,159 @@ namespace {
 	// every other caller is unaffected.
 	inline void load_obj_triangles_gpu(SceneData& scene, const char* filename,
 			int materialIdx, float scale, float3 offset, bool flip_xz = false) {
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
+		// Cache the RAW (untransformed, file-space) parsed positions/normals/
+		// faces, keyed by filename alone - not by (filename, materialIdx,
+		// scale, offset, flip_xz) - so every call site loading the SAME file
+		// benefits regardless of the material/transform IT applies, and the
+		// (cheap, pure-arithmetic) scale/offset/flip_xz/materialIdx step
+		// still runs fresh every call, exactly as before. The actual file
+		// read + line-by-line parse is the real, scene-size-scaling cost
+		// this function's callers re-pay on every Live Preview frame the
+		// camera moves (see build_loaded_pbrt_scene()'s own pbrt_load::
+		// loadFile() cache for the identical reasoning) - a large OBJ mesh
+		// re-parsed from scratch 60 times a second while the user just
+		// orbits the camera is exactly what made large scenes unusably slow.
+		// Cached forever per process, same "no hot-reload" precedent as that
+		// cache. A failed load is deliberately NOT cached (this function
+		// returns before ever touching the cache in that case) - unlike the
+		// pbrt/texture caches above, this keeps the "no file found" warning
+		// firing every call exactly as it already did before this cache
+		// existed, rather than changing that behavior.
+		struct RawFace {
+			float3 p0, p1, p2;
+			bool hasNormals = false;
+			float3 n0 = make_float3(0.0f, 1.0f, 0.0f);
+			float3 n1 = make_float3(0.0f, 1.0f, 0.0f);
+			float3 n2 = make_float3(0.0f, 1.0f, 0.0f);
+		};
+		static std::unordered_map<std::string, std::vector<RawFace>> s_objCache;
+
+		auto cacheIt = s_objCache.find(filename);
+		if (cacheIt == s_objCache.end()) {
+			std::ifstream file(filename);
+			if (!file.is_open()) {
+				static const char* kSearchPrefixes[] = {
+					"models/", "../models/", "../../models/",
+					"../../../models/", "../../../../models/", "../../../../../models/"
+				};
+				for (const char* prefix : kSearchPrefixes) {
+					file.clear();
+					file.open(std::string(prefix) + filename);
+					if (file.is_open()) break;
+				}
 			}
-		}
-		if (!file.is_open()) {
-			std::cerr << "[OptiX] Could not load mesh '" << filename
-					   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
-			return;
+			if (!file.is_open()) {
+				std::cerr << "[OptiX] Could not load mesh '" << filename
+						   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
+				return;
+			}
+
+			std::vector<float3> positions;
+			// Normals are unit direction vectors, unaffected by the uniform
+			// scale/offset a CALLER applies to positions (matches CPU's
+			// mesh.h, which likewise only transforms raw_pos, not raw_norm);
+			// flip_xz is applied at USE time below now too (a call-site
+			// choice, not a property of the file), not baked in here.
+			std::vector<float3> normals;
+			std::vector<RawFace> rawFaces;
+			// OBJ format lists all "v"/"vn"/"vt" data before any "f" line
+			// references it, so by the time the first face is parsed, `normals`
+			// already holds every vertex normal the file has (or none, if it
+			// has none) - checking !normals.empty() per-face is equivalent to
+			// (and simpler than) a separate up-front presence scan.
+			std::string line;
+			while (std::getline(file, line)) {
+				if (line.empty() || line[0] == '#') continue;
+				std::istringstream ss(line);
+				std::string tok;
+				ss >> tok;
+				if (tok == "v") {
+					float x, y, z;
+					ss >> x >> y >> z;
+					positions.push_back(make_float3(x, y, z));
+				} else if (tok == "vn") {
+					float x, y, z;
+					ss >> x >> y >> z;
+					normals.push_back(normalize(make_float3(x, y, z)));
+				} else if (tok == "f") {
+					std::vector<int> idx, nIdx;
+					std::string fv;
+					// OBJ indices may be negative ("relative"): -1 refers to the
+					// most-recently-defined v/vn, resolved against however many
+					// have been parsed so far in the file - matches CPU mesh.h's
+					// load_obj() fix (see that function's own comment for why:
+					// rungholt.obj, a McGuire Computer Graphics Archive scene,
+					// uses this convention throughout, and the previous `p - 1`/
+					// `n - 1` here silently dropped every negative-indexed face,
+					// same bug as the CPU loader had).
+					auto resolveIdx = [](int raw, size_t countSoFar) -> int {
+						return raw > 0 ? raw - 1 : static_cast<int>(countSoFar) + raw;
+					};
+					while (ss >> fv) {
+						// Possible formats: p   p/t   p//n   p/t/n
+						int p = 0, t = 0, n = 0;
+						if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
+							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
+						} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
+							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
+						} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
+							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
+						} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
+							idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
+						}
+					}
+					auto cornerNormal = [&](int ni) -> float3 {
+						if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
+						return make_float3(0.0f, 1.0f, 0.0f);  // matches CPU mesh.h's fallback
+					};
+					for (size_t i = 1; i + 1 < idx.size(); ++i) {
+						if (idx[0] < 0 || idx[0] >= static_cast<int>(positions.size()) ||
+							idx[i] < 0 || idx[i] >= static_cast<int>(positions.size()) ||
+							idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(positions.size()))
+							continue;
+						RawFace rf{};
+						rf.p0 = positions[idx[0]];
+						rf.p1 = positions[idx[i]];
+						rf.p2 = positions[idx[i + 1]];
+						rf.hasNormals = !normals.empty();
+						if (rf.hasNormals) {
+							rf.n0 = cornerNormal(nIdx[0]);
+							rf.n1 = cornerNormal(nIdx[i]);
+							rf.n2 = cornerNormal(nIdx[i + 1]);
+						}
+						rawFaces.push_back(rf);
+					}
+				}
+			}
+			cacheIt = s_objCache.emplace(filename, std::move(rawFaces)).first;
 		}
 
-		std::vector<float3> positions;
-		// Normals are unit direction vectors, unaffected by the uniform
-		// scale/offset applied to positions (matches CPU's mesh.h, which
-		// likewise only transforms raw_pos, not raw_norm) - but DO need the
-		// same flip_xz rotation positions get, when requested.
-		std::vector<float3> normals;
-		// OBJ format lists all "v"/"vn"/"vt" data before any "f" line
-		// references it, so by the time the first face is parsed, `normals`
-		// already holds every vertex normal the file has (or none, if it
-		// has none) - checking !normals.empty() per-face is equivalent to
-		// (and simpler than) a separate up-front presence scan.
-		std::string line;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "v") {
-				float x, y, z;
-				ss >> x >> y >> z;
-				float lx = x * scale, ly = y * scale, lz = z * scale;
-				if (flip_xz) { lx = -lx; lz = -lz; }
-				positions.push_back(make_float3(lx + offset.x, ly + offset.y, lz + offset.z));
-			} else if (tok == "vn") {
-				float x, y, z;
-				ss >> x >> y >> z;
-				float3 n = normalize(make_float3(x, y, z));
-				if (flip_xz) { n.x = -n.x; n.z = -n.z; }
-				normals.push_back(n);
-			} else if (tok == "f") {
-				std::vector<int> idx, nIdx;
-				std::string fv;
-				// OBJ indices may be negative ("relative"): -1 refers to the
-				// most-recently-defined v/vn, resolved against however many
-				// have been parsed so far in the file - matches CPU mesh.h's
-				// load_obj() fix (see that function's own comment for why:
-				// rungholt.obj, a McGuire Computer Graphics Archive scene,
-				// uses this convention throughout, and the previous `p - 1`/
-				// `n - 1` here silently dropped every negative-indexed face,
-				// same bug as the CPU loader had).
-				auto resolveIdx = [](int raw, size_t countSoFar) -> int {
-					return raw > 0 ? raw - 1 : static_cast<int>(countSoFar) + raw;
-				};
-				while (ss >> fv) {
-					// Possible formats: p   p/t   p//n   p/t/n
-					int p = 0, t = 0, n = 0;
-					if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
-					} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
-					} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
-					} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
-					}
-				}
-				auto cornerNormal = [&](int ni) -> float3 {
-					if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
-					return make_float3(0.0f, 1.0f, 0.0f);  // matches CPU mesh.h's fallback
-				};
-				for (size_t i = 1; i + 1 < idx.size(); ++i) {
-					if (idx[0] < 0 || idx[0] >= static_cast<int>(positions.size()) ||
-						idx[i] < 0 || idx[i] >= static_cast<int>(positions.size()) ||
-						idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(positions.size()))
-						continue;
-					TriangleData t{};
-					t.p0 = positions[idx[0]];
-					t.p1 = positions[idx[i]];
-					t.p2 = positions[idx[i + 1]];
-					t.materialIdx = materialIdx;
-					t.hasNormals = !normals.empty();
-					if (t.hasNormals) {
-						t.n0 = cornerNormal(nIdx[0]);
-						t.n1 = cornerNormal(nIdx[i]);
-						t.n2 = cornerNormal(nIdx[i + 1]);
-					}
-					scene.triangles.push_back(t);
-				}
+		// Apply THIS call's own scale/offset/flip_xz/materialIdx to the
+		// (possibly cached) raw geometry and emit into scene.triangles -
+		// cheap, pure per-vertex arithmetic, unconditionally re-run every
+		// call so different call sites reusing the same file with different
+		// transforms/materials each get their own correctly-transformed copy.
+		auto transformPos = [&](const float3& p) -> float3 {
+			float lx = p.x * scale, ly = p.y * scale, lz = p.z * scale;
+			if (flip_xz) { lx = -lx; lz = -lz; }
+			return make_float3(lx + offset.x, ly + offset.y, lz + offset.z);
+		};
+		auto transformNormal = [&](const float3& n) -> float3 {
+			return flip_xz ? make_float3(-n.x, n.y, -n.z) : n;
+		};
+		for (const RawFace& rf : cacheIt->second) {
+			TriangleData t{};
+			t.p0 = transformPos(rf.p0);
+			t.p1 = transformPos(rf.p1);
+			t.p2 = transformPos(rf.p2);
+			t.materialIdx = materialIdx;
+			t.hasNormals = rf.hasNormals;
+			if (t.hasNormals) {
+				t.n0 = transformNormal(rf.n0);
+				t.n1 = transformNormal(rf.n1);
+				t.n2 = transformNormal(rf.n2);
 			}
+			scene.triangles.push_back(t);
 		}
 	}
 
@@ -1092,95 +1178,146 @@ namespace {
 	// has no non-degenerate Ke data.
 	inline void load_obj_triangles_mtl_gpu(SceneData& scene, const char* filename,
 			int fallbackMaterialIdx, float scale, float3 offset, const char* textureDir = nullptr) {
-		std::string foundPrefix;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) { foundPrefix = prefix; break; }
-			}
-		}
-		if (!file.is_open()) {
-			std::cerr << "[OptiX] Could not load mesh '" << filename
-					   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
-			return;
-		}
+		// Cache the RAW (untransformed, file-space) parsed positions/normals/
+		// uvs/faces AND the resolved mtllib/foundPrefix, keyed by filename -
+		// the actual .obj file read + line-by-line parse (millions of lines
+		// for scenes like Rungholt's 6.7M triangles) is the real, scene-
+		// size-scaling cost this function's callers re-pay on every Live
+		// Preview frame the camera moves otherwise (see
+		// load_obj_triangles_gpu()'s own identical cache, and
+		// build_loaded_pbrt_scene()'s pbrt_load::loadFile() cache, for the
+		// same reasoning). Each face's ".mtl material name" is resolved to a
+		// small per-file-local integer index (into uniqueMtlNames) at PARSE
+		// time rather than kept as a string - the per-face loop below still
+		// runs fresh on every call (cached or not), and hashing a string 6.7
+		// million times a call was itself a second major cost this cache
+		// alone would not have fixed (a material is only ever resolved to a
+		// real scene.materials index once per UNIQUE name below, via
+		// resolveSceneMaterialIdx() further down - not once per face, the
+		// way the old matCache-by-string did). Cached forever per process,
+		// same "no hot-reload" precedent as this file's other caches. A
+		// failed load is deliberately NOT cached - see
+		// load_obj_triangles_gpu()'s own comment on why (keeps the warning
+		// firing every call, matching pre-cache behavior exactly).
+		struct RawFaceMtl {
+			int p[3], n[3], t[3];
+			int mtlNameIdx;  // index into ObjMtlRawData::uniqueMtlNames, or -1 for no usemtl
+		};
+		struct ObjMtlRawData {
+			std::vector<float3> positions;  // untransformed - scale/offset applied at use time below
+			std::vector<float3> normals;
+			std::vector<float2> uvs;
+			std::vector<RawFaceMtl> faces;
+			std::vector<std::string> uniqueMtlNames;
+			std::string mtllibName;
+			std::string foundPrefix;
+		};
+		static std::unordered_map<std::string, ObjMtlRawData> s_objMtlCache;
 
-		std::vector<float3> positions;
-		std::vector<float3> normals;
-		std::vector<float2> uvs;
-		struct Face { int p[3]; int n[3]; int t[3]; std::string mtl; };
-		std::vector<Face> faces;
-		std::string mtllibName;
-		std::string currentMtl;
-
-		std::string line;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "v") {
-				float x, y, z;
-				ss >> x >> y >> z;
-				positions.push_back(make_float3(x * scale + offset.x, y * scale + offset.y, z * scale + offset.z));
-			} else if (tok == "vn") {
-				float x, y, z;
-				ss >> x >> y >> z;
-				normals.push_back(normalize(make_float3(x, y, z)));
-			} else if (tok == "vt") {
-				float u, v;
-				ss >> u >> v;
-				uvs.push_back(make_float2(u, v));
-			} else if (tok == "mtllib") {
-				ss >> mtllibName;
-			} else if (tok == "usemtl") {
-				ss >> currentMtl;
-			} else if (tok == "f") {
-				std::vector<int> idx, nIdx, tIdx;
-				std::string fv;
-				auto resolveIdx = [](int raw, size_t countSoFar) -> int {
-					return raw > 0 ? raw - 1 : static_cast<int>(countSoFar) + raw;
+		auto cacheIt = s_objMtlCache.find(filename);
+		if (cacheIt == s_objMtlCache.end()) {
+			std::string foundPrefix;
+			std::ifstream file(filename);
+			if (!file.is_open()) {
+				static const char* kSearchPrefixes[] = {
+					"models/", "../models/", "../../models/",
+					"../../../models/", "../../../../models/", "../../../../../models/"
 				};
-				while (ss >> fv) {
-					int p = 0, t = 0, n = 0;
-					if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
-						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(resolveIdx(t, uvs.size())); nIdx.push_back(resolveIdx(n, normals.size()));
-					} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
-						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(-1); nIdx.push_back(resolveIdx(n, normals.size()));
-					} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
-						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(resolveIdx(t, uvs.size())); nIdx.push_back(-1);
-					} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
-						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(-1); nIdx.push_back(-1);
+				for (const char* prefix : kSearchPrefixes) {
+					file.clear();
+					file.open(std::string(prefix) + filename);
+					if (file.is_open()) { foundPrefix = prefix; break; }
+				}
+			}
+			if (!file.is_open()) {
+				std::cerr << "[OptiX] Could not load mesh '" << filename
+						   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
+				return;
+			}
+
+			ObjMtlRawData raw;
+			raw.foundPrefix = foundPrefix;
+			std::unordered_map<std::string, int> mtlNameToLocalIdx;
+			auto localMtlIdx = [&](const std::string& name) -> int {
+				if (name.empty()) return -1;
+				auto it = mtlNameToLocalIdx.find(name);
+				if (it != mtlNameToLocalIdx.end()) return it->second;
+				int idx = static_cast<int>(raw.uniqueMtlNames.size());
+				raw.uniqueMtlNames.push_back(name);
+				mtlNameToLocalIdx.emplace(name, idx);
+				return idx;
+			};
+
+			std::string currentMtl;
+			std::string line;
+			while (std::getline(file, line)) {
+				if (line.empty() || line[0] == '#') continue;
+				std::istringstream ss(line);
+				std::string tok;
+				ss >> tok;
+				if (tok == "v") {
+					float x, y, z;
+					ss >> x >> y >> z;
+					raw.positions.push_back(make_float3(x, y, z));
+				} else if (tok == "vn") {
+					float x, y, z;
+					ss >> x >> y >> z;
+					raw.normals.push_back(normalize(make_float3(x, y, z)));
+				} else if (tok == "vt") {
+					float u, v;
+					ss >> u >> v;
+					raw.uvs.push_back(make_float2(u, v));
+				} else if (tok == "mtllib") {
+					ss >> raw.mtllibName;
+				} else if (tok == "usemtl") {
+					ss >> currentMtl;
+				} else if (tok == "f") {
+					std::vector<int> idx, nIdx, tIdx;
+					std::string fv;
+					auto resolveIdx = [](int rawIdx, size_t countSoFar) -> int {
+						return rawIdx > 0 ? rawIdx - 1 : static_cast<int>(countSoFar) + rawIdx;
+					};
+					while (ss >> fv) {
+						int p = 0, t = 0, n = 0;
+						if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
+							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(resolveIdx(t, raw.uvs.size())); nIdx.push_back(resolveIdx(n, raw.normals.size()));
+						} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
+							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(-1); nIdx.push_back(resolveIdx(n, raw.normals.size()));
+						} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
+							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(resolveIdx(t, raw.uvs.size())); nIdx.push_back(-1);
+						} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
+							idx.push_back(resolveIdx(p, raw.positions.size())); tIdx.push_back(-1); nIdx.push_back(-1);
+						}
+					}
+					const int mtlIdx = localMtlIdx(currentMtl);
+					for (size_t i = 1; i + 1 < idx.size(); ++i) {
+						if (idx[0] < 0 || idx[0] >= static_cast<int>(raw.positions.size()) ||
+							idx[i] < 0 || idx[i] >= static_cast<int>(raw.positions.size()) ||
+							idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(raw.positions.size()))
+							continue;
+						RawFaceMtl f{};
+						f.p[0] = idx[0]; f.p[1] = idx[i]; f.p[2] = idx[i + 1];
+						f.n[0] = nIdx[0]; f.n[1] = nIdx[i]; f.n[2] = nIdx[i + 1];
+						f.t[0] = tIdx[0]; f.t[1] = tIdx[i]; f.t[2] = tIdx[i + 1];
+						f.mtlNameIdx = mtlIdx;
+						raw.faces.push_back(f);
 					}
 				}
-				for (size_t i = 1; i + 1 < idx.size(); ++i) {
-					if (idx[0] < 0 || idx[0] >= static_cast<int>(positions.size()) ||
-						idx[i] < 0 || idx[i] >= static_cast<int>(positions.size()) ||
-						idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(positions.size()))
-						continue;
-					Face f{};
-					f.p[0] = idx[0]; f.p[1] = idx[i]; f.p[2] = idx[i + 1];
-					f.n[0] = nIdx[0]; f.n[1] = nIdx[i]; f.n[2] = nIdx[i + 1];
-					f.t[0] = tIdx[0]; f.t[1] = tIdx[i]; f.t[2] = tIdx[i + 1];
-					f.mtl = currentMtl;
-					faces.push_back(f);
-				}
 			}
+			cacheIt = s_objMtlCache.emplace(filename, std::move(raw)).first;
 		}
+		const ObjMtlRawData& raw = cacheIt->second;
 
 		// Locate the companion .mtl the same way CPU's load_obj_mtl() does:
 		// prefer the file's own mtllib directive, fall back to
 		// "<same name as the .obj>.mtl" if that's missing/empty/unreadable.
+		// Re-parsed fresh every call (not cached) - proportional to unique
+		// MATERIAL count, not face count, nowhere near the cost the raw
+		// geometry cache above addresses.
 		std::unordered_map<std::string, float3> mtlColors;
-		std::string mtlPathUsed = mtllibName;
-		if (!mtllibName.empty())
-			mtlColors = parse_mtl_gpu(mtllibName);
+		std::string mtlPathUsed = raw.mtllibName;
+		if (!raw.mtllibName.empty())
+			mtlColors = parse_mtl_gpu(raw.mtllibName);
 		if (mtlColors.empty()) {
 			std::string name(filename);
 			auto dot = name.find_last_of('.');
@@ -1208,11 +1345,11 @@ namespace {
 		}
 
 		auto cornerNormal = [&](int ni) -> float3 {
-			if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
+			if (ni >= 0 && ni < static_cast<int>(raw.normals.size())) return raw.normals[ni];
 			return make_float3(0.0f, 1.0f, 0.0f);
 		};
 		auto cornerUV = [&](int ti) -> float2 {
-			if (ti >= 0 && ti < static_cast<int>(uvs.size())) return uvs[ti];
+			if (ti >= 0 && ti < static_cast<int>(raw.uvs.size())) return raw.uvs[ti];
 			return make_float2(0.0f, 0.0f);
 		};
 
@@ -1255,171 +1392,187 @@ namespace {
 			textureCache[path] = idx;
 			return idx;
 		};
-		std::unordered_map<std::string, int> matCache;
-		for (const auto& f : faces) {
-			int materialIdx = fallbackMaterialIdx;
-			if (!f.mtl.empty()) {
-				auto cached = matCache.find(f.mtl);
-				if (cached != matCache.end()) {
-					materialIdx = cached->second;
-				} else {
-					int resolvedIdx = -1;
-					auto keIt = mtlEmission.find(f.mtl);
-					if (keIt != mtlEmission.end())
-						resolvedIdx = add_diffuse_light(scene, keIt->second);
-					if (resolvedIdx < 0) {
-						auto keTexIt = mtlKeTextures.find(f.mtl);
-						if (keTexIt != mtlKeTextures.end()) {
-							// map_Ke with no scalar Ke (Gallery's own case) - see
-							// CPU's identical dispatch comment. Deliberately NOT
-							// registered as a GpuLightKind::Triangle light below
-							// (that registration stays gated on mtlEmission alone,
-							// unchanged) - same "no NEE registration" reasoning as
-							// CPU's nee_light_mats comment: this texture covers
-							// the scene's entire ~1M-triangle mesh, not just the
-							// painting, and would blow up the alias table the
-							// same way it blew up CPU's hittable_pdf light list.
-							std::string keImgPath = resolve_mtl_texture_path_gpu(keTexIt->second, foundPrefix + textureDir);
-							int keTexIdx = loadTextureCached(keImgPath);
-							if (scene.textures[keTexIdx].width > 0)
-								resolvedIdx = add_diffuse_light(scene, make_float3(0.0f, 0.0f, 0.0f), keTexIdx);
-						}
-					}
-					if (resolvedIdx < 0) {
-						auto specIt = mtlSpecular.find(f.mtl);
-						if (specIt != mtlSpecular.end()) {
-							const MtlSpecularParamsGpu& sp = specIt->second;
-							if (sp.illum == 7) {
-								// Tf tints the transmitted contribution only -
-								// see CPU's dielectric Tf-tint comment. No-op
-								// (white) for materials with no real Tf.
-								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f, sp.tf);
-							} else if ((sp.illum == 4 || sp.illum == 6) && mtl_has_real_transmission_filter_gpu(sp.tf) &&
-									   mtlTextures.find(f.mtl) == mtlTextures.end()) {
-								// illum 4/6 dielectric, Tf-gated - see CPU's identical
-								// dispatch comment for the full rationale.
-								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f, sp.tf);
-							} else if ((sp.illum == 2 || sp.illum == 3) && fmaxf(fmaxf(sp.ks.x, sp.ks.y), sp.ks.z) > kMeaningfulKsComponentGpu) {
-								// illum 3 gets the same glossy-metal treatment as
-								// illum 2 - see CPU's identical dispatch comment.
-								auto colorForKsIt = mtlColors.find(f.mtl);
-								float3 kd = (colorForKsIt != mtlColors.end())
-									? colorForKsIt->second : make_float3(1.0f, 1.0f, 1.0f);
-								resolvedIdx = add_metal(scene, kd, phong_to_roughness_gpu(sp.ns));
-							}
-						}
-					}
-					if (resolvedIdx < 0) {
-						auto texIt = mtlTextures.find(f.mtl);
-						if (texIt != mtlTextures.end()) {
-							std::string imgPath = resolve_mtl_texture_path_gpu(texIt->second, foundPrefix + textureDir);
-							int texIdx = loadTextureCached(imgPath);
-							if (scene.textures[texIdx].width > 0) {
-								auto colorForTexIt = mtlColors.find(f.mtl);
-								float3 albedo = (colorForTexIt != mtlColors.end())
-									? colorForTexIt->second : make_float3(1.0f, 1.0f, 1.0f);
-								resolvedIdx = safe_cast_to_int(scene.materials.size());
-								add_lambertian(scene, albedo);
-								scene.materials.back().textureIdx = texIdx;
-							}
-						}
-					}
-					if (resolvedIdx < 0) {
-						auto colorIt = mtlColors.find(f.mtl);
-						if (colorIt != mtlColors.end()) {
-							resolvedIdx = safe_cast_to_int(scene.materials.size());
-							add_lambertian(scene, colorIt->second);
-						}
-					}
-					// map_Bump -> MaterialType::NormalMappedLambertian, only
-					// when the resolved material is plain Lambertian with NO
-					// existing map_Kd diffuse texture: unlike CPU's decorator
-					// pattern (bump_map_material/normal_map_material wrap ANY
-					// inner material, textured or not), GPU's MaterialType is
-					// a single flat tag with one shared textureIdx slot per
-					// material, so it can't combine two textures (diffuse +
-					// normal) on the same material, and applying it to a
-					// Metal/Dielectric/DiffuseLight base would silently
-					// discard that base's real type. A textured-Lambertian
-					// material (map_Kd present) or a Metal/Dielectric/
-					// DiffuseLight base simply keeps its diffuse texture or
-					// type unperturbed here - a real, structural GPU-vs-CPU
-					// capability gap, not something newly introduced by this
-					// change (NormalMappedLambertian already had this same
-					// one-texture-slot constraint for spheres).
-					if (resolvedIdx >= 0 && textureDir && textureDir[0] != '\0' &&
-							scene.materials[resolvedIdx].type == MaterialType::Lambertian &&
-							scene.materials[resolvedIdx].textureIdx < 0) {
-						auto bumpIt = mtlBump.find(f.mtl);
-						if (bumpIt != mtlBump.end()) {
-							std::string bumpPath = resolve_mtl_texture_path_gpu(bumpIt->second, foundPrefix + textureDir);
-							int bumpTexIdx = loadTextureCached(bumpPath);
-							if (scene.textures[bumpTexIdx].width > 0) {
-								if (is_grayscale_texture_gpu(scene, bumpTexIdx)) {
-									// Real scalar height/displacement map
-									// (confirmed by pixel content, not
-									// filename - see CPU's is_grayscale_
-									// image() for why the .mtl keyword alone
-									// can't say which one a map_Bump
-									// reference really is). No GPU material
-									// type applies scalar bump/height
-									// displacement today - NormalMappedLambertian
-									// only unpacks a tangent-space RGB normal
-									// map. Feeding a grayscale image into
-									// that unpack path would produce a
-									// degenerate, wrong perturbation (R==G==B
-									// decodes to a normal offset only along
-									// one fixed diagonal direction, not real
-									// per-pixel surface detail), so this
-									// material simply keeps its unperturbed
-									// Lambertian shading on GPU instead of
-									// mis-rendering it. CPU handles this
-									// correctly (see mesh.h's own bump_map_
-									// material/normal_map_material dispatch)
-									// - confirmed present in Sponza's own
-									// textures (all real grayscale bump
-									// maps), absent from Bistro's (real
-									// tangent-space normal maps, handled by
-									// the branch below).
-								} else {
-									float3 albedo = scene.materials[resolvedIdx].albedo;
-									resolvedIdx = add_normal_mapped_lambertian(scene, albedo, bumpTexIdx);
-								}
-							}
-						}
-					}
-					// map_d -> MaterialData::alphaMaskTexIdx. Independent of
-					// which branch above produced resolvedIdx (unlike
-					// map_Bump's normal-map handling, this doesn't need a
-					// same-material-type check or a new MaterialData - it's
-					// a separate field any material type can carry) - see
-					// optix_intersection_triangle.h's __anyhit__triangle and
-					// optix_anyhit_shadow.h's __anyhit__shadow_triangle.
-					if (resolvedIdx >= 0) {
-						auto alphaIt = mtlAlpha.find(f.mtl);
-						if (alphaIt != mtlAlpha.end()) {
-							std::string alphaPath = resolve_mtl_texture_path_gpu(alphaIt->second, foundPrefix + textureDir);
-							int alphaTexIdx = loadTextureCached(alphaPath);
-							if (scene.textures[alphaTexIdx].width > 0)
-								scene.materials[resolvedIdx].alphaMaskTexIdx = alphaTexIdx;
-						}
-					}
-					materialIdx = (resolvedIdx >= 0) ? resolvedIdx : fallbackMaterialIdx;
-					matCache[f.mtl] = materialIdx;
+		// Resolves ONE unique material NAME to a real scene.materials index -
+		// identical logic to what used to run once per FACE (memoized
+		// there too, but via a string-keyed matCache lookup paid once per
+		// face regardless - 6.7 MILLION string hashes for a mesh like
+		// Rungholt). Now called at most once per unique name in this file
+		// (raw.uniqueMtlNames already deduplicated them at parse time), with
+		// the per-face loop further down doing plain array indexing
+		// instead - see this function's own top comment.
+		auto resolveSceneMaterialIdx = [&](const std::string& mtl) -> int {
+			int resolvedIdx = -1;
+			auto keIt = mtlEmission.find(mtl);
+			if (keIt != mtlEmission.end())
+				resolvedIdx = add_diffuse_light(scene, keIt->second);
+			if (resolvedIdx < 0) {
+				auto keTexIt = mtlKeTextures.find(mtl);
+				if (keTexIt != mtlKeTextures.end()) {
+					// map_Ke with no scalar Ke (Gallery's own case) - see
+					// CPU's identical dispatch comment. Deliberately NOT
+					// registered as a GpuLightKind::Triangle light below
+					// (that registration stays gated on mtlEmission alone,
+					// unchanged) - same "no NEE registration" reasoning as
+					// CPU's nee_light_mats comment: this texture covers
+					// the scene's entire ~1M-triangle mesh, not just the
+					// painting, and would blow up the alias table the
+					// same way it blew up CPU's hittable_pdf light list.
+					std::string keImgPath = resolve_mtl_texture_path_gpu(keTexIt->second, raw.foundPrefix + textureDir);
+					int keTexIdx = loadTextureCached(keImgPath);
+					if (scene.textures[keTexIdx].width > 0)
+						resolvedIdx = add_diffuse_light(scene, make_float3(0.0f, 0.0f, 0.0f), keTexIdx);
 				}
 			}
+			if (resolvedIdx < 0) {
+				auto specIt = mtlSpecular.find(mtl);
+				if (specIt != mtlSpecular.end()) {
+					const MtlSpecularParamsGpu& sp = specIt->second;
+					if (sp.illum == 7) {
+						// Tf tints the transmitted contribution only -
+						// see CPU's dielectric Tf-tint comment. No-op
+						// (white) for materials with no real Tf.
+						resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f, sp.tf);
+					} else if ((sp.illum == 4 || sp.illum == 6) && mtl_has_real_transmission_filter_gpu(sp.tf) &&
+							   mtlTextures.find(mtl) == mtlTextures.end()) {
+						// illum 4/6 dielectric, Tf-gated - see CPU's identical
+						// dispatch comment for the full rationale.
+						resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f, sp.tf);
+					} else if ((sp.illum == 2 || sp.illum == 3) && fmaxf(fmaxf(sp.ks.x, sp.ks.y), sp.ks.z) > kMeaningfulKsComponentGpu) {
+						// illum 3 gets the same glossy-metal treatment as
+						// illum 2 - see CPU's identical dispatch comment.
+						auto colorForKsIt = mtlColors.find(mtl);
+						float3 kd = (colorForKsIt != mtlColors.end())
+							? colorForKsIt->second : make_float3(1.0f, 1.0f, 1.0f);
+						resolvedIdx = add_metal(scene, kd, phong_to_roughness_gpu(sp.ns));
+					}
+				}
+			}
+			if (resolvedIdx < 0) {
+				auto texIt = mtlTextures.find(mtl);
+				if (texIt != mtlTextures.end()) {
+					std::string imgPath = resolve_mtl_texture_path_gpu(texIt->second, raw.foundPrefix + textureDir);
+					int texIdx = loadTextureCached(imgPath);
+					if (scene.textures[texIdx].width > 0) {
+						auto colorForTexIt = mtlColors.find(mtl);
+						float3 albedo = (colorForTexIt != mtlColors.end())
+							? colorForTexIt->second : make_float3(1.0f, 1.0f, 1.0f);
+						resolvedIdx = safe_cast_to_int(scene.materials.size());
+						add_lambertian(scene, albedo);
+						scene.materials.back().textureIdx = texIdx;
+					}
+				}
+			}
+			if (resolvedIdx < 0) {
+				auto colorIt = mtlColors.find(mtl);
+				if (colorIt != mtlColors.end()) {
+					resolvedIdx = safe_cast_to_int(scene.materials.size());
+					add_lambertian(scene, colorIt->second);
+				}
+			}
+			// map_Bump -> MaterialType::NormalMappedLambertian, only
+			// when the resolved material is plain Lambertian with NO
+			// existing map_Kd diffuse texture: unlike CPU's decorator
+			// pattern (bump_map_material/normal_map_material wrap ANY
+			// inner material, textured or not), GPU's MaterialType is
+			// a single flat tag with one shared textureIdx slot per
+			// material, so it can't combine two textures (diffuse +
+			// normal) on the same material, and applying it to a
+			// Metal/Dielectric/DiffuseLight base would silently
+			// discard that base's real type. A textured-Lambertian
+			// material (map_Kd present) or a Metal/Dielectric/
+			// DiffuseLight base simply keeps its diffuse texture or
+			// type unperturbed here - a real, structural GPU-vs-CPU
+			// capability gap, not something newly introduced by this
+			// change (NormalMappedLambertian already had this same
+			// one-texture-slot constraint for spheres).
+			if (resolvedIdx >= 0 && textureDir && textureDir[0] != '\0' &&
+					scene.materials[resolvedIdx].type == MaterialType::Lambertian &&
+					scene.materials[resolvedIdx].textureIdx < 0) {
+				auto bumpIt = mtlBump.find(mtl);
+				if (bumpIt != mtlBump.end()) {
+					std::string bumpPath = resolve_mtl_texture_path_gpu(bumpIt->second, raw.foundPrefix + textureDir);
+					int bumpTexIdx = loadTextureCached(bumpPath);
+					if (scene.textures[bumpTexIdx].width > 0) {
+						if (is_grayscale_texture_gpu(scene, bumpTexIdx)) {
+							// Real scalar height/displacement map
+							// (confirmed by pixel content, not
+							// filename - see CPU's is_grayscale_
+							// image() for why the .mtl keyword alone
+							// can't say which one a map_Bump
+							// reference really is). No GPU material
+							// type applies scalar bump/height
+							// displacement today - NormalMappedLambertian
+							// only unpacks a tangent-space RGB normal
+							// map. Feeding a grayscale image into
+							// that unpack path would produce a
+							// degenerate, wrong perturbation (R==G==B
+							// decodes to a normal offset only along
+							// one fixed diagonal direction, not real
+							// per-pixel surface detail), so this
+							// material simply keeps its unperturbed
+							// Lambertian shading on GPU instead of
+							// mis-rendering it. CPU handles this
+							// correctly (see mesh.h's own bump_map_
+							// material/normal_map_material dispatch)
+							// - confirmed present in Sponza's own
+							// textures (all real grayscale bump
+							// maps), absent from Bistro's (real
+							// tangent-space normal maps, handled by
+							// the branch below).
+						} else {
+							float3 albedo = scene.materials[resolvedIdx].albedo;
+							resolvedIdx = add_normal_mapped_lambertian(scene, albedo, bumpTexIdx);
+						}
+					}
+				}
+			}
+			// map_d -> MaterialData::alphaMaskTexIdx. Independent of
+			// which branch above produced resolvedIdx (unlike
+			// map_Bump's normal-map handling, this doesn't need a
+			// same-material-type check or a new MaterialData - it's
+			// a separate field any material type can carry) - see
+			// optix_intersection_triangle.h's __anyhit__triangle and
+			// optix_anyhit_shadow.h's __anyhit__shadow_triangle.
+			if (resolvedIdx >= 0) {
+				auto alphaIt = mtlAlpha.find(mtl);
+				if (alphaIt != mtlAlpha.end()) {
+					std::string alphaPath = resolve_mtl_texture_path_gpu(alphaIt->second, raw.foundPrefix + textureDir);
+					int alphaTexIdx = loadTextureCached(alphaPath);
+					if (scene.textures[alphaTexIdx].width > 0)
+						scene.materials[resolvedIdx].alphaMaskTexIdx = alphaTexIdx;
+				}
+			}
+			return (resolvedIdx >= 0) ? resolvedIdx : fallbackMaterialIdx;
+		};
+
+		// Resolve each of THIS file's unique material names exactly once -
+		// a handful to a few dozen entries, regardless of face count.
+		std::vector<int> localToSceneMaterialIdx(raw.uniqueMtlNames.size());
+		std::vector<bool> localMtlIsEmissive(raw.uniqueMtlNames.size());
+		for (size_t i = 0; i < raw.uniqueMtlNames.size(); ++i) {
+			localToSceneMaterialIdx[i] = resolveSceneMaterialIdx(raw.uniqueMtlNames[i]);
+			localMtlIsEmissive[i] = mtlEmission.count(raw.uniqueMtlNames[i]) > 0;
+		}
+
+		auto transformPos = [&](const float3& p) -> float3 {
+			return make_float3(p.x * scale + offset.x, p.y * scale + offset.y, p.z * scale + offset.z);
+		};
+
+		scene.triangles.reserve(scene.triangles.size() + raw.faces.size());
+		for (const RawFaceMtl& f : raw.faces) {
+			const int materialIdx = (f.mtlNameIdx >= 0) ? localToSceneMaterialIdx[f.mtlNameIdx] : fallbackMaterialIdx;
 			TriangleData t{};
-			t.p0 = positions[f.p[0]];
-			t.p1 = positions[f.p[1]];
-			t.p2 = positions[f.p[2]];
+			t.p0 = transformPos(raw.positions[f.p[0]]);
+			t.p1 = transformPos(raw.positions[f.p[1]]);
+			t.p2 = transformPos(raw.positions[f.p[2]]);
 			t.materialIdx = materialIdx;
-			t.hasNormals = !normals.empty();
+			t.hasNormals = !raw.normals.empty();
 			if (t.hasNormals) {
 				t.n0 = cornerNormal(f.n[0]);
 				t.n1 = cornerNormal(f.n[1]);
 				t.n2 = cornerNormal(f.n[2]);
 			}
-			t.hasUVs = !uvs.empty();
+			t.hasUVs = !raw.uvs.empty();
 			if (t.hasUVs) {
 				t.uv0 = cornerUV(f.t[0]);
 				t.uv1 = cornerUV(f.t[1]);
@@ -1429,7 +1582,7 @@ namespace {
 			// genuinely emissive, mirroring pbrt_gpu_builder.h's identical
 			// two-line pattern for leftover (non-quad-mergeable) emissive
 			// triangles.
-			if (!f.mtl.empty() && mtlEmission.count(f.mtl)) {
+			if (f.mtlNameIdx >= 0 && localMtlIsEmissive[f.mtlNameIdx]) {
 				scene.lightIndices.push_back(safe_cast_to_int(scene.triangles.size()));
 				scene.lightKinds.push_back(GpuLightKind::Triangle);
 			}
@@ -3691,7 +3844,31 @@ static bool build_loaded_pbrt_scene(
 	const double lookat_z,
 	GpuCameraParams* out_camera_extra
 ) {
-	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path);
+	// pbrt_load::loadFile() does real, scene-size-scaling work - disk I/O,
+	// full text parsing, PLY mesh loading, and infinite-light image decode -
+	// none of which depends on the camera. This function is called on EVERY
+	// Live Preview frame the camera moves (rt_realtime_render_frame()'s own
+	// cache only covers the GPU-side upload a few frames down the call
+	// chain, not this CPU-side parse - see prepareSceneAndCamera()'s own
+	// comment), so re-parsing a large external .pbrt scene from scratch on
+	// every WASD/orbit frame is what made Live Preview unusably slow there -
+	// small/procedural scenes never hit this function at all (they're built
+	// directly in the switch below), which is why the slowdown was specific
+	// to large, file-loaded scenes. Cached by path for the life of the
+	// process, including a failed load (so a permanently-missing/malformed
+	// scene fails fast on every later call instead of re-attempting the same
+	// disk I/O) - same "no hot-reload, cache lives for the process"
+	// precedent g_uploaded_scene_id's own GPU-side scene cache already sets
+	// (editing a scene's file mid-session already isn't picked up by that
+	// cache either). pbrt_gpu::build() below takes its FlatScene by const&
+	// and never mutates it, so the cached entry can be reused directly by
+	// every subsequent call with no copy.
+	static std::unordered_map<std::string, pbrt_load::LoadResult> s_pbrtLoadCache;
+	auto cacheIt = s_pbrtLoadCache.find(path);
+	if (cacheIt == s_pbrtLoadCache.end()) {
+		cacheIt = s_pbrtLoadCache.emplace(path, pbrt_load::loadFile(path)).first;
+	}
+	const pbrt_load::LoadResult& loaded = cacheIt->second;
 	if (!loaded.ok) {
 		std::cerr << "[OptiX] " << loaded.error << "\n";
 		return false;
