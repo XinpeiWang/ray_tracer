@@ -139,7 +139,23 @@ extern "C" __global__ void accumulate_shadow(
 	float3*                      framebuffer,
 	// "float maxcomponentvalue" firefly clamp - see
 	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
-	float                        maxComponentValue
+	float                        maxComponentValue,
+	// ReSTIR GI (Live Preview only, gpu/optix/wavefront_restir_gi_math.h) -
+	// an item with isGiCandidate set (ShadowRayWorkItem's own comment) adds
+	// its Ld into giCandidateOut[s.pixelIndex].radiance instead of
+	// `framebuffer`, UNCLAMPED (see this parameter's own null-default call
+	// site comment in wavefront_launch.h/.cu for why no maxComponentValue
+	// clamp applies here). The candidate's OTHER fields (x1Point/x1Normal/
+	// x0Point/pdfAtX0) are already written synchronously by
+	// wf_finish_material_scatter itself (giCandidateOut's own parameter
+	// comment, wavefront_device_helpers.h) - this kernel only ever adds into
+	// `.radiance`. nullptr (every existing call site) makes every item
+	// behave exactly as before - isGiCandidate is never set without a real
+	// buffer to write to. No default here (unlike wf_launch_accumulate_
+	// shadow's own host-side wrapper) - a __global__ kernel launch lists
+	// every argument explicitly at its one real call site anyway, so there
+	// is no ambiguity to resolve.
+	GpuGiSample*                 giCandidateOut
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Must also guard against shadowQueue.capacity, not just the host-
@@ -171,6 +187,21 @@ extern "C" __global__ void accumulate_shadow(
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
 		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+
+		// ReSTIR GI (Live Preview only) - redirect into the GI candidate
+		// buffer instead of the real framebuffer, UNCLAMPED: this value is an
+		// internal cache the GI finalize pass (wavefront_kernels_restir.cu)
+		// re-derives a fresh, already-clamped framebuffer contribution FROM -
+		// clamping twice here would double-attenuate a legitimately bright
+		// indirect bounce before finalize ever sees it. See ShadowRayWorkItem::
+		// isGiCandidate's own comment (wavefront_types.h) for who sets this.
+		if (s.isGiCandidate && giCandidateOut != nullptr) {
+			atomicAdd(&giCandidateOut[s.pixelIndex].radiance.x, r);
+			atomicAdd(&giCandidateOut[s.pixelIndex].radiance.y, g);
+			atomicAdd(&giCandidateOut[s.pixelIndex].radiance.z, b);
+			return;
+		}
+
 		// "float maxcomponentvalue" firefly clamp - see
 		// GpuCameraParams::maxComponentValue's own comment (optix_types.h)
 		// for why this is a per-contribution clamp, not a true

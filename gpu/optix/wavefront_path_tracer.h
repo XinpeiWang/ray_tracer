@@ -198,14 +198,26 @@ public:
     /// statistics, unchanged.
     void setRestirEnabled(bool enabled) { restirEnabled_ = enabled; }
 
-    /// Clears ReSTIR's temporal history flag - see restirHistoryValid_'s own
-    /// comment. Call whenever a scene switch/upload happens (a previous
-    /// scene's light samples must never be reused into a new scene's
-    /// reservoirs) - the actual history buffers are left as-is (they get
-    /// fully overwritten on the next restirEnabled_ render() call anyway,
-    /// same "no need to eagerly clear" reasoning as every other GPU buffer
-    /// here) and are resized/reallocated normally if the resolution changed.
-    void invalidateRestirHistory() { restirHistoryValid_ = false; }
+    /// Whether render() should also resample one-bounce indirect lighting via
+    /// ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) - see
+    /// wf_finish_material_scatter's own giOriginContext/giCandidateRadianceOut
+    /// parameter comments. Independent from setRestirEnabled() (DI) above -
+    /// either can be on/off on its own. Same "only Live Preview ever sets
+    /// this true" opt-in shape, so batch/offline rendering never pays for the
+    /// extra buffers or changes its own statistics.
+    void setRestirGiEnabled(bool enabled) { restirGiEnabled_ = enabled; }
+
+    /// Clears ReSTIR's temporal history flags (both DI's restirHistoryValid_
+    /// and GI's restirGiHistoryValid_ - one call for both, since a scene
+    /// switch/hard-reset invalidates both techniques' history for the same
+    /// reason at the same time, and no caller has ever needed to invalidate
+    /// only one). Call whenever a scene switch/upload happens (a previous
+    /// scene's light/indirect samples must never be reused into a new
+    /// scene's reservoirs) - the actual history buffers are left as-is (they
+    /// get fully overwritten on the next render() call anyway, same "no need
+    /// to eagerly clear" reasoning as every other GPU buffer here) and are
+    /// resized/reallocated normally if the resolution changed.
+    void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; }
 
 private:
     bool loadModule();
@@ -231,6 +243,16 @@ private:
         const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
         const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
         const MaterialData* d_materials);
+    // ReSTIR GI finalize - see wavefront_kernels_restir.cu's own
+    // restir_gi_finalize header comment. Runs once per SAMPLE (called from
+    // inside the per-depth loop, right after depth==1's own shadow-ray
+    // accumulation - see render()'s own call site), unlike DI's spatial
+    // reuse which runs once per whole render() call.
+    void launchGiFinalize(const MaterialData* d_materials, float3* d_framebuffer, float maxComponentValue);
+    // ReSTIR GI spatial reuse - see wavefront_kernels_restir.cu's own
+    // restir_gi_spatial_reuse header comment. Called once per render() call,
+    // same timing as launchRestirSpatialReuse() (DI's own).
+    void launchGiSpatialReuse();
     void launchEvaluateMaterials(int numHits, int maxDepth, bool regularize, float maxComponentValue,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
@@ -543,6 +565,50 @@ private:
     // the same way, e.g. d_worldPos_ above).
     int                restirImageWidth_ = 0;
     int                restirImageHeight_ = 0;
+
+    // ReSTIR GI (Live Preview only, gpu/optix/wavefront_restir_gi_math.h) -
+    // own buffers, parallel to DI's own above but for a genuinely different
+    // payload (GpuGiSample vs GpuLightSample) - reuses d_worldPos_/
+    // d_worldPosHistory_/prevRestirCamera_/restirImageWidth_/
+    // restirImageHeight_ as-is for reprojection (those only ever depend on
+    // x0's own position/the camera, never on which ReSTIR technique is
+    // consuming them - see the render()-time allocation gate comment on
+    // d_worldPos_ for why its own gate now includes restirGiEnabled_ too).
+    bool               restirGiEnabled_ = false;
+
+    // Per-pixel stash of x0's shading context (GpuGiOriginContext, written at
+    // depth==0, consumed by the GI finalize pass once depth 1 resolves - see
+    // that struct's own comment, wavefront_types.h, for why this exists at
+    // all). Pure per-frame scratch, same "harmless zeroed-out state, memset
+    // every call" reasoning as d_reservoirs_ above.
+    CUdeviceptr        d_giOriginContext_ = 0;
+    int                giOriginContextCapacity_ = 0;
+
+    // Per-pixel GI candidate (GpuGiSample) - x1Point/x1Normal/x0Point/pdfAtX0
+    // written synchronously by wf_finish_material_scatter's own depth==1
+    // handling, `.radiance` filled in afterward/asynchronously by
+    // accumulate_shadow once occlusion resolves (see that parameter's own
+    // comment, wavefront_device_helpers.h/wavefront_kernels_accumulate.cu).
+    // Same pure-scratch/memset-every-call reasoning as d_giOriginContext_.
+    CUdeviceptr        d_giCandidateOut_ = 0;
+    int                giCandidateOutCapacity_ = 0;
+
+    // GI's own current-frame/history reservoir buffers - same resolution-
+    // keyed allocate-once/only-realloc-on-change lifecycle, and the same
+    // read-then-overwrite-at-end-of-call cross-call relationship, as DI's
+    // own d_reservoirs_/d_reservoirsHistory_ (that struct's own header
+    // comment already explains the shape; not repeated here).
+    CUdeviceptr        d_giReservoirs_ = 0;
+    int                giReservoirsCapacity_ = 0;
+    CUdeviceptr        d_giReservoirsHistory_ = 0;
+    int                giReservoirsHistoryCapacity_ = 0;
+    // Mirrors restirHistoryValid_ exactly, but for GI's own history buffer -
+    // kept as a SEPARATE flag (not folded into restirHistoryValid_) because
+    // restirEnabled_ (DI) and restirGiEnabled_ (GI) are independently
+    // toggleable; invalidateRestirHistory() clears both together since a
+    // scene switch/hard reset invalidates both for the same reason at the
+    // same time (see that method's own comment).
+    bool               restirGiHistoryValid_ = false;
 };
 
 } // namespace optix_renderer

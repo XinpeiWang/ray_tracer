@@ -1629,7 +1629,46 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// call site - wf_restir_temporal_combine() returns immediately without
 	// touching `res` when historyValid is false, exactly like restirReservoirs
 	// being null skips the whole ReSTIR block above it.
-	const GpuRestirTemporalContext& restirCtx = GpuRestirTemporalContext{})
+	const GpuRestirTemporalContext& restirCtx = GpuRestirTemporalContext{},
+	// ReSTIR GI (Live Preview only, gpu/optix/wavefront_restir_gi_math.h) -
+	// ONE per-pixel buffer serving two depth-dependent roles, both gated on
+	// this pointer being non-null (nullptr is a complete no-op, same "every
+	// existing call site needs no edit" shape as restirReservoirs above):
+	//   depth==0 (WRITE): the primary hit x0's own shading context (position,
+	//   normal, the BSDF-sampled x0->x1 direction/pdf, throughput, this
+	//   path's hero wavelengths) is stashed here at pixelIndex, for the GI
+	//   finalize pass (wavefront_kernels_restir.cu) to consume once depth 1
+	//   resolves - see GpuGiOriginContext's own comment (wavefront_types.h)
+	//   for why this stash exists at all (DI never needed one).
+	//   depth==1 (READ): giOriginContext[pixelIndex].valid() gates whether
+	//   this hit's own NEE/emission should populate giCandidateOut below
+	//   instead of leaving it untouched - false whenever depth 0 wasn't
+	//   GI-eligible (non-Lambertian, specular, or GI disabled that frame),
+	//   leaving this pixel's depth-1 contribution completely unaffected.
+	GpuGiOriginContext* giOriginContext = nullptr,
+	// ReSTIR GI's per-pixel candidate buffer - written ONLY for a depth==1
+	// hit whose giOriginContext[pixelIndex] is valid (see above). Unlike
+	// giOriginContext (whose x1-side fields aren't known until depth 1's own
+	// intersection), THIS hit's x1Point/x1Normal/x0Point/pdfAtX0 are all
+	// known synchronously right here - written once, immediately, when
+	// giCandidateEligible first becomes true (below); only `.radiance`
+	// (caching Lo(x1 -> x0): x1's own NEE, via ShadowRayWorkItem::
+	// isGiCandidate, resolved later and asynchronously by accumulate_shadow)
+	// fills in afterward via atomicAdd, since occlusion isn't known yet at
+	// this point. `.radiance` is RGB, not spectral - see GpuGiSample::
+	// radiance's own comment (wavefront_types.h) for why a cached spectral
+	// value would be meaningless once reused by a different pixel/frame's
+	// own independently-sampled hero wavelengths. MVP scope: when x1 is
+	// reached by hitting an emitter directly (the `radiance` flush below,
+	// unrelated variable name collision with GpuGiSample::radiance - this is
+	// the PATH's accumulated emission-hit radiance, not the GI sample's own
+	// field), `.radiance` is deliberately left untouched for that
+	// contribution (real framebuffer still gets it as before) rather than
+	// caching it - see this project's own ReSTIR GI plan for why (a glowing
+	// x1 is treated as "no GI candidate this frame" rather than
+	// approximated, avoiding a whole extra class of edge cases for a rare
+	// path).
+	GpuGiSample* giCandidateOut = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1669,6 +1708,36 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		atomicAdd(&framebuffer[pixIdx].y, g);
 		atomicAdd(&framebuffer[pixIdx].z, b);
 	};
+
+	// ReSTIR GI (see this function's own giOriginContext/giCandidateOut
+	// parameter comments) - true only for a depth==1 hit whose ORIGINATING
+	// primary hit (x0) was GI-eligible this frame. Computed once, used by
+	// every NEE block below to tag its own ShadowRayWorkItem's isGiCandidate
+	// so accumulate_shadow (wavefront_kernels_accumulate.cu) routes that
+	// ray's Ld into giCandidateOut's own `.radiance` instead of the real
+	// framebuffer, once occlusion resolves (this function itself never
+	// learns whether a shadow ray it pushes is occluded - that's
+	// accumulate_shadow's own job, a separate kernel launch that runs after
+	// this one). depth==0's own NEE (DI's ReSTIR path or the classic
+	// single-draw path) is never affected, since this is false for every
+	// depth other than 1.
+	const bool giCandidateEligible = (depth == 1 && giOriginContext != nullptr &&
+									   giCandidateOut != nullptr &&
+									   giOriginContext[pixelIndex].valid());
+	// The candidate's geometry-side fields ARE all known synchronously right
+	// here (unlike its `.radiance`, filled in later/asynchronously - see
+	// giCandidateOut's own parameter comment) - written once, immediately,
+	// so every NEE block below (and accumulate_shadow afterward) has a
+	// fully-formed GpuGiSample to accumulate `.radiance` into regardless of
+	// which block(s) actually fire for this particular hit.
+	if (giCandidateEligible) {
+		GpuGiSample& cand = giCandidateOut[pixelIndex];
+		cand.x1Point = hit_point;
+		cand.x1Normal = normal;
+		cand.x0Point = giOriginContext[pixelIndex].x0Point;
+		cand.pdfAtX0 = giOriginContext[pixelIndex].pdfAtX0;
+		cand.radiance = make_float3(0.0f, 0.0f, 0.0f);
+	}
 
 	// Real per-direction, per-channel f() for the 4 glossy (non-
 	// EffectivelySmooth) BxDF-templated materials, via the same CPU_GPU
@@ -2108,6 +2177,13 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			}
 			shadow.pixelIndex = pixelIndex;
 			shadow.time = time;
+			// See giCandidateEligible's own comment - redirects this ray's Ld
+			// into the GI candidate buffer instead of the real framebuffer,
+			// once accumulate_shadow resolves occlusion, whenever this is a
+			// depth==1 hit whose originating x0 was GI-eligible; a no-op
+			// (false) for every other call (depth==0's own NEE, or GI
+			// disabled/ineligible this frame).
+			shadow.isGiCandidate = giCandidateEligible;
 			shadowQueue.push(shadow);
 		}
 	}
@@ -2221,6 +2297,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			}
 			shadow.pixelIndex = pixelIndex;
 			shadow.time = time;
+			// See giCandidateEligible's own comment (this file's own area-
+			// light NEE block, above, has the identical comment in full).
+			shadow.isGiCandidate = giCandidateEligible;
 			shadowQueue.push(shadow);
 		}
 	}
@@ -2324,11 +2403,17 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		}
 		shadow.pixelIndex = pixelIndex;
 		shadow.time = time;
+		// See giCandidateEligible's own comment (this file's own area-light
+		// NEE block has the identical comment in full).
+		shadow.isGiCandidate = giCandidateEligible;
 		shadowQueue.push(shadow);
 	}
 
 	// Flush accumulated prior-bounce radiance (once, regardless of whether
-	// any area/punctual lights actually contributed above).
+	// any area/punctual lights actually contributed above). Deliberately NOT
+	// redirected for ReSTIR GI even when giCandidateEligible - see
+	// giCandidateOut's own parameter comment (MVP scope: a glowing x1 is
+	// treated as "no GI candidate this frame", not approximated).
 	if ((bool)radiance) addToFramebuffer(pixelIndex, radiance * filterWeight);
 	} // if (!is_specular) - NEE (area + punctual lights)
 
@@ -2385,6 +2470,39 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	next.brdf_pdf = is_specular ? 0.0f
 		: (brdf_pdf_override > 0.0f ? brdf_pdf_override
 			: fmaxf(dot(next.direction, normal), 0.0f) / 3.14159265f);
+
+	// ReSTIR GI (see this function's own giOriginContext parameter comment) -
+	// stash x0's shading context for the GI finalize pass to consume once
+	// depth 1 resolves. MVP scope: Lambertian x0 ONLY, not merely !is_specular
+	// - the GI finalize pass (wavefront_kernels_restir.cu) needs to evaluate
+	// x0's REAL BSDF value in an arbitrary (possibly reservoir-reused)
+	// direction, and every OTHER non-specular material's own BSDF evaluation
+	// here (NormalizedFresnel, or the 4 glossy evalGlossyF-driven types) is a
+	// capturing lambda entangled with a lot of this function's own local
+	// state (dpdu tangent frame, glossyAlpha/glossyAlphaV, phaseWo...) that
+	// cannot be evaluated again later, outside this call, without a much
+	// larger refactor - deferred rather than attempted here. Lambertian's own
+	// BSDF is trivial (albedo/pi, direction-independent), which is exactly
+	// why it's the one case worth supporting first: it is also the classic,
+	// highest-value GI showcase (diffuse-to-diffuse color bleeding). A
+	// degenerate/grazing next.brdf_pdf (0.0f despite matType==Lambertian -
+	// rare, but possible) naturally marks this pixel GI-ineligible via
+	// GpuGiOriginContext::valid()'s own `pdfAtX0 > 0.0f` check, with no
+	// special-casing needed here.
+	if (giOriginContext != nullptr && depth == 0 && matType == MaterialType::Lambertian) {
+		GpuGiOriginContext& ctx = giOriginContext[pixelIndex];
+		ctx.x0Point = hit_point;
+		ctx.x0Normal = normal;
+		ctx.dirX0ToX1 = next.direction;
+		ctx.pdfAtX0 = next.brdf_pdf;
+		ctx.materialIdx = matIdx;
+		for (int i = 0; i < kWFNWavelengths; ++i) {
+			ctx.throughputX0[i] = throughput[i];
+			ctx.wavelengths[i] = swl.lambda[i];
+			ctx.wavelength_pdfs[i] = swl.pdf[i];
+		}
+	}
+
 	next.tMin       = 0.001f;
 	next.tMax       = 1e30f;
 	// Fixed for the whole path once sampled at the camera - see RayWorkItem::

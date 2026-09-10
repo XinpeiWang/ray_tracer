@@ -394,6 +394,16 @@ struct GpuRestirTemporalContext {
 	int                 imageHeight = 0;
 };
 
+// ReSTIR GI's own plain data structs (GpuGiSample/GpuGiReservoir/
+// GpuGiOriginContext) live in wavefront_types.h, not here, alongside
+// RayWorkItem/ShadowRayWorkItem - unlike GpuLightSample/GpuReservoir above,
+// they need kWFNWavelengths-sized spectral storage (a GI candidate's cached
+// radiance and stashed throughput must stay in the same spectral domain,
+// using the SAME per-path hero wavelengths a bounce inherits from its
+// primary ray - RayWorkItem::wavelengths' own "fixed for the whole path"
+// comment), and kWFNWavelengths is defined in wavefront_types.h, which
+// includes THIS file, not the other way around.
+
 // Material types
 enum class MaterialType : int {
 	Lambertian = 0,

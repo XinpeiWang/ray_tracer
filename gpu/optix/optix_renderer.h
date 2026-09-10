@@ -243,6 +243,18 @@ public:
 	///        denoise/world-pos above.
 	void enableRestir(bool enable) { restirEnabled_ = enable; }
 
+	/// @brief Enable ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) resampled
+	///        one-bounce indirect lighting on the wavefront backend - a
+	///        separate opt-in from enableRestir() above (DI), forwarded to
+	///        wavefrontTracer_ inside render() (WavefrontPathTracer::
+	///        setRestirGiEnabled()'s own comment). false (the default) costs
+	///        nothing extra and keeps the classic single-sample indirect
+	///        estimate, same "opt-in" shape as enableRestir() above. Kept
+	///        independently toggleable from DI (not folded into the same
+	///        flag) so either technique can be enabled/disabled/A-B-tested
+	///        on its own.
+	void enableRestirGi(bool enable) { restirGiEnabled_ = enable; }
+
 	/// @brief Clears ReSTIR's cross-call temporal history (WavefrontPathTracer::
 	///        invalidateRestirHistory()) - call on every scene upload/switch,
 	///        so a new scene's reservoirs never reuse a previous scene's light
@@ -365,6 +377,7 @@ private:
 	float denoiseBlend_ = 0.0f;    ///< See setDenoiseBlend()
 	bool worldPosOutputEnabled_ = false;  ///< See enableWorldPosOutput()
 	bool restirEnabled_ = false;  ///< See enableRestir()
+	bool restirGiEnabled_ = false;  ///< See enableRestirGi()
 	bool restirHistoryInvalidationPending_ = false;  ///< See invalidateRestirHistory()
 	// Persisted across render() calls rather than created/destroyed fresh
 	// each time - see denoise()'s own comment. Shared with

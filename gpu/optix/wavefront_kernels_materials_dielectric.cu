@@ -75,7 +75,19 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// restirReservoirs parameter comment. nullptr for batch/offline rendering.
 	GpuReservoir* restirReservoirs,
 	// See wf_finish_material_scatter's own restirCtx parameter comment.
-	GpuRestirTemporalContext restirCtx
+	GpuRestirTemporalContext restirCtx,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. GI's MVP-scope
+	// Lambertian-only restriction applies to x0 (the ORIGINATING primary
+	// hit), not to whatever x1 turns out to be - a Lambertian x0's
+	// continuation ray can perfectly well land on a dielectric/RoughDielectric
+	// surface at depth 1, and THIS kernel is what processes that hit, so it
+	// needs the same depth==1 redirect wiring every other evaluate_materials*
+	// variant has (a specular x1 here simply never reaches the `!is_specular`
+	// NEE gate, so it naturally contributes nothing - not a special case to
+	// handle here).
+	GpuGiOriginContext* giOriginContext,
+	GpuGiSample* giCandidateOut
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -349,5 +361,6 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
+		giOriginContext, giCandidateOut);
 }

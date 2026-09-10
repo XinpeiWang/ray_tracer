@@ -106,7 +106,12 @@ extern "C" __global__ void evaluate_materials(
 	// restirReservoirs parameter comment. nullptr for batch/offline rendering.
 	GpuReservoir* restirReservoirs,
 	// See wf_finish_material_scatter's own restirCtx parameter comment.
-	GpuRestirTemporalContext restirCtx
+	GpuRestirTemporalContext restirCtx,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. nullptr for batch/
+	// offline rendering.
+	GpuGiOriginContext* giOriginContext,
+	GpuGiSample* giCandidateOut
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -1405,6 +1410,7 @@ extern "C" __global__ void evaluate_materials(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
+		giOriginContext, giCandidateOut);
 }
 

@@ -1094,6 +1094,8 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<float4*>(d_worldPos_),
 		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
 		buildRestirTemporalContext(),
+		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
+		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
 		stream_);
 }
 
@@ -1151,6 +1153,8 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<float4*>(d_worldPos_),
 		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
 		buildRestirTemporalContext(),
+		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
+		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
 		simpleMaterialStream_);
 }
 
@@ -1210,6 +1214,8 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		reinterpret_cast<float4*>(d_worldPos_),
 		reinterpret_cast<GpuReservoir*>(d_reservoirs_),
 		buildRestirTemporalContext(),
+		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
+		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
 		dielectricMaterialStream_);
 }
 
@@ -1228,6 +1234,33 @@ void WavefrontPathTracer::launchRestirSpatialReuse(
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders, d_materials,
 		reinterpret_cast<const TextureData*>(d_textures_),
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
+		stream_);
+}
+
+void WavefrontPathTracer::launchGiFinalize(const MaterialData* d_materials, float3* d_framebuffer, float maxComponentValue) {
+	if (!restirGiEnabled_) return;
+	wf_launch_restir_gi_finalize(
+		reinterpret_cast<const GpuGiOriginContext*>(d_giOriginContext_),
+		reinterpret_cast<const GpuGiSample*>(d_giCandidateOut_),
+		reinterpret_cast<const GpuGiReservoir*>(d_giReservoirsHistory_),
+		reinterpret_cast<const float4*>(d_worldPosHistory_),
+		prevRestirCamera_,
+		restirGiHistoryValid_,
+		restirImageWidth_, restirImageHeight_,
+		frameNumber_,
+		d_materials, d_framebuffer, maxComponentValue,
+		reinterpret_cast<GpuGiReservoir*>(d_giReservoirs_),
+		stream_);
+}
+
+void WavefrontPathTracer::launchGiSpatialReuse() {
+	if (!restirGiEnabled_) return;
+	wf_launch_restir_gi_spatial_reuse(
+		reinterpret_cast<const GpuGiReservoir*>(d_giReservoirs_),
+		reinterpret_cast<const GpuGiOriginContext*>(d_giOriginContext_),
+		reinterpret_cast<GpuGiReservoir*>(d_giReservoirsHistory_),
+		restirImageWidth_, restirImageHeight_,
+		frameNumber_,
 		stream_);
 }
 
@@ -1257,7 +1290,8 @@ void WavefrontPathTracer::launchAccumulateShadow(
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
 	sq.capacity = queueCapacity_;
 
-	wf_launch_accumulate_shadow(sq, numShadow, d_occluded, d_framebuffer, maxComponentValue, stream_);
+	wf_launch_accumulate_shadow(sq, numShadow, d_occluded, d_framebuffer, maxComponentValue, stream_,
+								 reinterpret_cast<GpuGiSample*>(d_giCandidateOut_));
 }
 
 void WavefrontPathTracer::launchResolveBssrdfExit(
@@ -1477,13 +1511,16 @@ bool WavefrontPathTracer::render(
 	// readWorldPosBuffer() call can copy it back at its own pace - the same
 	// "separate consumer of a persisted buffer" shape readAovBuffers() already
 	// uses for the denoiser's own guide layers.
-	// restirEnabled_ also needs worldPos populated (temporal reuse's own
-	// disocclusion test - GpuRestirTemporalContext's own comment), regardless
-	// of whether the CALLER separately asked for readback via
-	// worldPosOutputEnabled_ (out_world_pos_buffer != nullptr) - these two
-	// flags are independent opt-ins for two unrelated consumers of the same
-	// underlying per-pixel buffer.
-	if (worldPosOutputEnabled_ || restirEnabled_) {
+	// restirEnabled_ (DI) AND restirGiEnabled_ (GI) both need worldPos
+	// populated (temporal reuse's own disocclusion test - GpuRestirTemporalContext's
+	// own comment; GI's own temporal reuse reuses this exact buffer for the
+	// same reason instead of keeping a second, redundant "depth 0 hit
+	// position" copy - see wavefront_path_tracer.h's own GI buffer comments),
+	// regardless of whether the CALLER separately asked for readback via
+	// worldPosOutputEnabled_ (out_world_pos_buffer != nullptr) - these are
+	// independent opt-ins for unrelated consumers of the same underlying
+	// per-pixel buffer.
+	if (worldPosOutputEnabled_ || restirEnabled_ || restirGiEnabled_) {
 		if (worldPosCapacity_ != numPixels) {
 			if (d_worldPos_) { cudaFree(reinterpret_cast<void*>(d_worldPos_)); d_worldPos_ = 0; }
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPos_), numPixels * sizeof(float4)));
@@ -1543,18 +1580,29 @@ bool WavefrontPathTracer::render(
 	if (restirHistoryValid_ && (restirHistoryWidth_ != width || restirHistoryHeight_ != height)) {
 		restirHistoryValid_ = false;
 	}
+	if (restirGiHistoryValid_ && (restirHistoryWidth_ != width || restirHistoryHeight_ != height)) {
+		restirGiHistoryValid_ = false;
+	}
+	if (restirEnabled_ || restirGiEnabled_) {
+		if (worldPosHistoryCapacity_ != numPixels) {
+			if (d_worldPosHistory_) { cudaFree(reinterpret_cast<void*>(d_worldPosHistory_)); d_worldPosHistory_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPosHistory_), numPixels * sizeof(float4)));
+			worldPosHistoryCapacity_ = numPixels;
+			restirHistoryValid_ = false;
+			restirGiHistoryValid_ = false;
+		}
+	} else {
+		if (d_worldPosHistory_) { cudaFree(reinterpret_cast<void*>(d_worldPosHistory_)); d_worldPosHistory_ = 0; }
+		worldPosHistoryCapacity_ = 0;
+		restirHistoryValid_ = false;
+		restirGiHistoryValid_ = false;
+	}
 	if (restirEnabled_) {
 		if (reservoirsHistoryCapacity_ != numPixels) {
 			if (d_reservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_reservoirsHistory_)); d_reservoirsHistory_ = 0; }
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_reservoirsHistory_), numPixels * sizeof(GpuReservoir)));
 			reservoirsHistoryCapacity_ = numPixels;
 			restirHistoryValid_ = false;  // stale/undefined content at the new size
-		}
-		if (worldPosHistoryCapacity_ != numPixels) {
-			if (d_worldPosHistory_) { cudaFree(reinterpret_cast<void*>(d_worldPosHistory_)); d_worldPosHistory_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPosHistory_), numPixels * sizeof(float4)));
-			worldPosHistoryCapacity_ = numPixels;
-			restirHistoryValid_ = false;
 		}
 		if (restirNormalCapacity_ != numPixels) {
 			if (d_restirNormal_) { cudaFree(reinterpret_cast<void*>(d_restirNormal_)); d_restirNormal_ = 0; }
@@ -1565,11 +1613,60 @@ bool WavefrontPathTracer::render(
 	} else {
 		if (d_reservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_reservoirsHistory_)); d_reservoirsHistory_ = 0; }
 		reservoirsHistoryCapacity_ = 0;
-		if (d_worldPosHistory_) { cudaFree(reinterpret_cast<void*>(d_worldPosHistory_)); d_worldPosHistory_ = 0; }
-		worldPosHistoryCapacity_ = 0;
 		if (d_restirNormal_) { cudaFree(reinterpret_cast<void*>(d_restirNormal_)); d_restirNormal_ = 0; }
 		restirNormalCapacity_ = 0;
 		restirHistoryValid_ = false;
+	}
+
+	// ReSTIR GI (Live Preview only) - own buffers, same resolution-keyed
+	// allocate-once/only-realloc-on-change lifecycle as DI's own above (see
+	// wavefront_path_tracer.h's own GI buffer comments for why these are
+	// separate from d_reservoirs_/d_reservoirsHistory_: a different payload,
+	// not a different mechanism). d_giOriginContext_/d_giCandidateOut_ are
+	// pure per-frame scratch (fully rewritten by depth==0/depth==1's own
+	// processing this frame - a stale leftover entry is inert, gated on its
+	// own pdfAtX0/never-read-unless-valid, same reasoning as d_reservoirs_'s
+	// own "harmless zeroed-out state" comment) but still memset every call so
+	// a resized/reused allocation never exposes a wholly unrelated old
+	// frame's data at a pixel this frame never touches.
+	if (restirGiEnabled_) {
+		if (giOriginContextCapacity_ != numPixels) {
+			if (d_giOriginContext_) { cudaFree(reinterpret_cast<void*>(d_giOriginContext_)); d_giOriginContext_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giOriginContext_), numPixels * sizeof(GpuGiOriginContext)));
+			giOriginContextCapacity_ = numPixels;
+		}
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giOriginContext_), 0, numPixels * sizeof(GpuGiOriginContext), stream_));
+
+		if (giCandidateOutCapacity_ != numPixels) {
+			if (d_giCandidateOut_) { cudaFree(reinterpret_cast<void*>(d_giCandidateOut_)); d_giCandidateOut_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giCandidateOut_), numPixels * sizeof(GpuGiSample)));
+			giCandidateOutCapacity_ = numPixels;
+		}
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giCandidateOut_), 0, numPixels * sizeof(GpuGiSample), stream_));
+
+		if (giReservoirsCapacity_ != numPixels) {
+			if (d_giReservoirs_) { cudaFree(reinterpret_cast<void*>(d_giReservoirs_)); d_giReservoirs_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giReservoirs_), numPixels * sizeof(GpuGiReservoir)));
+			giReservoirsCapacity_ = numPixels;
+		}
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_giReservoirs_), 0, numPixels * sizeof(GpuGiReservoir), stream_));
+
+		if (giReservoirsHistoryCapacity_ != numPixels) {
+			if (d_giReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_giReservoirsHistory_)); d_giReservoirsHistory_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_giReservoirsHistory_), numPixels * sizeof(GpuGiReservoir)));
+			giReservoirsHistoryCapacity_ = numPixels;
+			restirGiHistoryValid_ = false;  // stale/undefined content at the new size
+		}
+	} else {
+		if (d_giOriginContext_) { cudaFree(reinterpret_cast<void*>(d_giOriginContext_)); d_giOriginContext_ = 0; }
+		giOriginContextCapacity_ = 0;
+		if (d_giCandidateOut_) { cudaFree(reinterpret_cast<void*>(d_giCandidateOut_)); d_giCandidateOut_ = 0; }
+		giCandidateOutCapacity_ = 0;
+		if (d_giReservoirs_) { cudaFree(reinterpret_cast<void*>(d_giReservoirs_)); d_giReservoirs_ = 0; }
+		giReservoirsCapacity_ = 0;
+		if (d_giReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_giReservoirsHistory_)); d_giReservoirsHistory_ = 0; }
+		giReservoirsHistoryCapacity_ = 0;
+		restirGiHistoryValid_ = false;
 	}
 
 	// Build WavefrontLaunchParams template (queue pointers filled per phase)
@@ -1887,6 +1984,21 @@ bool WavefrontPathTracer::render(
 				CUDA_CHECK(cudaStreamSynchronize(stream_));
 			}
 
+			// ReSTIR GI finalize (see wavefront_kernels_restir.cu's own
+			// restir_gi_finalize header comment) - runs once per SAMPLE,
+			// right after depth==1's own NEE has fully resolved (whether or
+			// not any shadow ray was actually queued this frame: a fresh
+			// candidate with zero captured radiance is still a valid,
+			// zero-weight RIS candidate, and temporal reuse alone may still
+			// have a good reservoir to fall back on - so this is NOT nested
+			// inside the `if (numShadow > 0)` block above). A no-op
+			// (launchGiFinalize's own !restirGiEnabled_ early-out) for every
+			// other depth and for batch/offline rendering.
+			if (depth == 1) {
+				launchGiFinalize(reinterpret_cast<const MaterialData*>(d_materials), d_fbPtr, camera.maxComponentValue);
+				CUDA_CHECK(cudaStreamSynchronize(stream_));
+			}
+
 			// ------------------------------------------------------------------
 			// Phase 7: Swap ray queues for next bounce
 			// ------------------------------------------------------------------
@@ -1927,6 +2039,22 @@ bool WavefrontPathTracer::render(
 	// its combined result DIRECTLY into d_reservoirsHistory_ - which becomes
 	// the NEXT call's temporal-reuse source, closing the loop between the two
 	// reuse passes across frames.
+	// world-pos history + camera-basis bookkeeping is SHARED between DI and
+	// GI (both only ever depend on x0's own position and the camera, never
+	// on which technique is consuming them - wavefront_path_tracer.h's own
+	// GI buffer comments) - updated once, whenever EITHER is enabled, not
+	// duplicated per technique.
+	if (restirEnabled_ || restirGiEnabled_) {
+		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_worldPosHistory_),
+								   reinterpret_cast<void*>(d_worldPos_),
+								   numPixels * sizeof(float4), cudaMemcpyDeviceToDevice, stream_));
+		prevRestirCamera_.origin = camera.origin;
+		prevRestirCamera_.lowerLeftCorner = camera.lower_left_corner;
+		prevRestirCamera_.horizontal = camera.horizontal;
+		prevRestirCamera_.vertical = camera.vertical;
+		restirHistoryWidth_ = width;
+		restirHistoryHeight_ = height;
+	}
 	if (restirEnabled_) {
 		launchRestirSpatialReuse(
 			reinterpret_cast<const SphereData*>(d_spheres),
@@ -1936,16 +2064,11 @@ bool WavefrontPathTracer::render(
 			reinterpret_cast<const DiskData*>(d_disks),
 			reinterpret_cast<const CylinderData*>(d_cylinders),
 			reinterpret_cast<const MaterialData*>(d_materials));
-		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_worldPosHistory_),
-								   reinterpret_cast<void*>(d_worldPos_),
-								   numPixels * sizeof(float4), cudaMemcpyDeviceToDevice, stream_));
-		prevRestirCamera_.origin = camera.origin;
-		prevRestirCamera_.lowerLeftCorner = camera.lower_left_corner;
-		prevRestirCamera_.horizontal = camera.horizontal;
-		prevRestirCamera_.vertical = camera.vertical;
 		restirHistoryValid_ = true;
-		restirHistoryWidth_ = width;
-		restirHistoryHeight_ = height;
+	}
+	if (restirGiEnabled_) {
+		launchGiSpatialReuse();
+		restirGiHistoryValid_ = true;
 	}
 
 	// -------------------------------------------------------------------------

@@ -640,6 +640,13 @@ extern "C" bool rt_realtime_render_frame(
 		// classic single-draw NEE statistics unchanged - see WavefrontPathTracer::
 		// setRestirEnabled()'s own comment.
 		g_renderer->enableRestir(true);
+		// ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) - same
+		// unconditional-on-for-Live-Preview shape as DI just above, and the
+		// same batch/offline exclusion (optix_render_main() never calls this
+		// function or OptiXRenderer::enableRestirGi()). MVP scope: Lambertian
+		// primary hits only - see wf_finish_material_scatter's own
+		// giOriginContext-stash comment (wavefront_device_helpers.h) for why.
+		g_renderer->enableRestirGi(true);
 		// Live Preview pixel filter override - root-caused via direct GPU
 		// instrumentation (not just code reading) to a visible per-frame
 		// "firefly" bug reported interactively: a scene's own (or this

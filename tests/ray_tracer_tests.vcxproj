@@ -203,6 +203,7 @@
     <ClCompile Include="integration\pbrt_scene_render_test.cpp" />
     <ClCompile Include="integration\optix_validation_sweep_test.cpp" />
     <ClCompile Include="integration\live_preview_restir_firefly_test.cpp" />
+    <ClCompile Include="integration\live_preview_restir_gi_test.cpp" />
     <ClCompile Include="unit\scatter_record_transmission_tests.cpp" />
     <ClCompile Include="unit\gpu_render_tests.cpp" />
     <ClCompile Include="unit\wavefront_tests.cpp" />
@@ -298,6 +299,7 @@
     <ClCompile Include="unit\realistic_camera_tests.cpp" />
     <ClCompile Include="unit\restir_tests.cpp" />
     <ClCompile Include="unit\wavefront_restir_tests.cpp" />
+    <ClCompile Include="unit\wavefront_restir_gi_tests.cpp" />
     <ClCompile Include="unit\sample_function_tests.cpp" />
     <ClCompile Include="unit\sampling_inversion_tests.cpp" />
     <ClCompile Include="unit\simple_path_tests.cpp" />

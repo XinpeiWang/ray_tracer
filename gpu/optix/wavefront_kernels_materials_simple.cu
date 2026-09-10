@@ -78,7 +78,16 @@ extern "C" __global__ void evaluate_materials_simple(
 	// restirReservoirs parameter comment. nullptr for batch/offline rendering.
 	GpuReservoir* restirReservoirs,
 	// See wf_finish_material_scatter's own restirCtx parameter comment.
-	GpuRestirTemporalContext restirCtx
+	GpuRestirTemporalContext restirCtx,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. nullptr for batch/
+	// offline rendering. This is the kernel Lambertian hits are actually
+	// routed through (WavefrontQueues::simpleHitQueue's own comment) - the
+	// ONLY material type ReSTIR GI's MVP scope supports (see
+	// wf_finish_material_scatter's own giOriginContext-stash comment,
+	// wavefront_device_helpers.h) - so this call site matters most.
+	GpuGiOriginContext* giOriginContext,
+	GpuGiSample* giCandidateOut
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -207,5 +216,6 @@ extern "C" __global__ void evaluate_materials_simple(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx);
+		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
+		giOriginContext, giCandidateOut);
 }

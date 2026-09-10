@@ -76,6 +76,11 @@ extern "C" void wf_launch_evaluate_materials(
 	// constructed (historyValid=false) is a safe no-op, same as
 	// d_restirReservoirs being null.
 	GpuRestirTemporalContext     restirCtx,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. nullptr for batch/
+	// offline rendering, same opt-in pattern as d_restirReservoirs above.
+	GpuGiOriginContext*          d_giOriginContext,
+	GpuGiSample*                 d_giCandidateOut,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -118,6 +123,11 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	// constructed (historyValid=false) is a safe no-op, same as
 	// d_restirReservoirs being null.
 	GpuRestirTemporalContext     restirCtx,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. nullptr for batch/
+	// offline rendering, same opt-in pattern as d_restirReservoirs above.
+	GpuGiOriginContext*          d_giOriginContext,
+	GpuGiSample*                 d_giCandidateOut,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -161,6 +171,11 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	// constructed (historyValid=false) is a safe no-op, same as
 	// d_restirReservoirs being null.
 	GpuRestirTemporalContext     restirCtx,
+	// ReSTIR GI (Live Preview only) - see wf_finish_material_scatter's own
+	// giOriginContext/giCandidateOut parameter comments. nullptr for batch/
+	// offline rendering, same opt-in pattern as d_restirReservoirs above.
+	GpuGiOriginContext*          d_giOriginContext,
+	GpuGiSample*                 d_giCandidateOut,
 	cudaStream_t                 stream);
 
 // ReSTIR DI spatial reuse - see wavefront_kernels_restir.cu's own header
@@ -191,6 +206,33 @@ extern "C" void wf_launch_restir_spatial_reuse(
 // See wavefront_kernels_restir.cu's own restir_clear_reservoirs comment.
 extern "C" void wf_launch_restir_clear_reservoirs(GpuReservoir* d_reservoirs, int numPixels, cudaStream_t stream);
 
+// ReSTIR GI (see wavefront_kernels_restir.cu's own restir_gi_finalize/
+// restir_gi_spatial_reuse header comments). Finalize runs once per SAMPLE
+// (not once per render() call like DI's spatial reuse) - see that kernel's
+// own comment for why.
+extern "C" void wf_launch_restir_gi_finalize(
+	const GpuGiOriginContext* d_originContext,
+	const GpuGiSample*        d_candidateIn,
+	const GpuGiReservoir*     d_history,
+	const float4*             d_worldPosHistory,
+	GpuReprojectBasis         prevCamera,
+	bool                      historyValid,
+	int width, int height,
+	unsigned int frameSeed,
+	const MaterialData*       d_materials,
+	float3*                   d_framebuffer,
+	float                     maxComponentValue,
+	GpuGiReservoir*           d_outputReservoirs,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_restir_gi_spatial_reuse(
+	const GpuGiReservoir*     d_currentReservoirs,
+	const GpuGiOriginContext* d_originContext,
+	GpuGiReservoir*           d_outputReservoirs,
+	int width, int height,
+	unsigned int frameSeed,
+	cudaStream_t stream);
+
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
 	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
@@ -199,7 +241,11 @@ extern "C" void wf_launch_accumulate_miss(
 
 extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,
-	const bool* d_occluded, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream);
+	const bool* d_occluded, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream,
+	// ReSTIR GI (Live Preview only) - see accumulate_shadow's own comment
+	// (wavefront_kernels_accumulate.cu). nullptr (every existing call site)
+	// keeps every shadow ray going to d_framebuffer exactly as before.
+	GpuGiSample* d_giCandidateOut = nullptr);
 
 extern "C" void wf_launch_resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem> eq,

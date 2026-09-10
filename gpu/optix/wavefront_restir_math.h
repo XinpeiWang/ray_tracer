@@ -46,7 +46,18 @@
 // caller can later call restir_finalize() without re-evaluating it again.
 // `rand01` MUST be a fresh uniform random in [0,1) per call. Returns true iff
 // `candidate` became (or stayed) the reservoir's selected sample.
-CPU_GPU inline bool restir_reservoir_add(GpuReservoir& r, const GpuLightSample& candidate,
+//
+// Templated on the reservoir/sample types (not hardcoded to GpuReservoir/
+// GpuLightSample) purely so ReSTIR GI (wavefront_restir_gi_math.h,
+// GpuGiReservoir/GpuGiSample) can share this exact, already-tested streaming-
+// RIS/UCW/combine implementation instead of forking a byte-for-byte
+// duplicate of it - the formulas themselves are payload-agnostic (they only
+// ever touch weightSum/M/sample/pHat), the ONE thing that actually differs
+// between DI and GI. ReservoirT needs `.weightSum` (float), `.M` (int),
+// `.sample` (SampleT), `.pHat` (float); both GpuReservoir and GpuGiReservoir
+// already shape-match.
+template <typename ReservoirT, typename SampleT>
+CPU_GPU inline bool restir_reservoir_add(ReservoirT& r, const SampleT& candidate,
 										  float risWeight, int candidateM, float candidatePHat,
 										  float rand01) {
 	r.weightSum += risWeight;
@@ -85,7 +96,10 @@ CPU_GPU inline float restir_reservoir_ucw(float weightSum, int M, float pHat) {
 // the classic path's own equivalent truncation already lives).
 constexpr float kRestirMaxW = 1.0e6f;
 
-CPU_GPU inline void restir_finalize(GpuReservoir& r) {
+// Templated for the same reason restir_reservoir_add is above - only reads/
+// writes weightSum/M/pHat/W, no sample-shape dependency at all.
+template <typename ReservoirT>
+CPU_GPU inline void restir_finalize(ReservoirT& r) {
 	r.W = restir_reservoir_ucw(r.weightSum, r.M, r.pHat);
 	if (r.W > kRestirMaxW) r.W = 0.0f;
 }
@@ -102,7 +116,11 @@ CPU_GPU inline void restir_finalize(GpuReservoir& r) {
 // combine identity (Bitterli Algorithm 4): reusing a whole reservoir's UCW
 // as a single RIS candidate weight is valid because W is itself an unbiased
 // estimator of 1/pHat integrated over that reservoir's own M candidates.
-CPU_GPU inline bool restir_reservoir_combine(GpuReservoir& dst, const GpuReservoir& other,
+// Templated for the same reason restir_reservoir_add is above - `dst`/
+// `other` must be the same ReservoirT, and other.sample's type is deduced
+// automatically for the restir_reservoir_add call below.
+template <typename ReservoirT>
+CPU_GPU inline bool restir_reservoir_combine(ReservoirT& dst, const ReservoirT& other,
 											  float otherPHatAtDstContext, float rand01) {
 	if (!other.valid() || other.M <= 0) return false;
 	float w = otherPHatAtDstContext * other.W * float(other.M);
