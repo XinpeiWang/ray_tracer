@@ -52,6 +52,7 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QToolButton>
+#include <QButtonGroup>
 #include <cmath>
 #include <algorithm>
 
@@ -1153,25 +1154,30 @@ void MainWindow::createSettingsTab() {
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseShowLatestCheck, &QCheckBox::setEnabled);
 
 	// SVGF spatiotemporal denoiser - an ALTERNATIVE to the OptiX AI denoiser
-	// above, not a second layer on top of it (this project's own SVGF plan),
-	// so the two checkboxes are wired mutually exclusive below rather than
-	// independently toggleable.
+	// above, not a second layer on top of it (this project's own SVGF plan).
 	m_liveSvgfCheck = new QCheckBox(tr("SVGF Denoiser (experimental)"));
 	m_liveSvgfCheck->setChecked(m_liveSvgfEnabled);
 	styleCheckBox(m_liveSvgfCheck);
 
+	// Exclusive QButtonGroup enforces the mutual exclusion natively (checking
+	// one automatically unchecks the other, still emitting toggled(false) on
+	// it so the lambdas below correctly update state/settings either way) -
+	// simpler and less error-prone than each checkbox's own handler manually
+	// calling setChecked(false) on the other, and it stays correct without
+	// changes if a third mutually-exclusive mode is ever added here.
+	QButtonGroup *liveDenoiseModeGroup = new QButtonGroup(this);
+	liveDenoiseModeGroup->setExclusive(true);
+	liveDenoiseModeGroup->addButton(m_liveDenoiseCheck);
+	liveDenoiseModeGroup->addButton(m_liveSvgfCheck);
+
 	// All three OptiX-denoiser controls push straight to the running session
 	// (if any) as well as QSettings, via the shared pushLiveDenoiseToSession()
 	// helper - see RealtimePreviewSession::setDenoise()'s own comment on when
-	// this does and doesn't reset accumulation. Checking this box also turns
-	// SVGF off (checked(false) below is a no-op, and is itself, if it fires,
-	// a plain uncheck rather than a recursive toggle since Qt only emits
-	// toggled() on an actual state change).
+	// this does and doesn't reset accumulation.
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, this, [this](bool checked) {
 		m_liveDenoiseEnabled = checked;
 		saveLiveDenoiseEnabled(checked);
 		pushLiveDenoiseToSession();
-		if (checked) m_liveSvgfCheck->setChecked(false);
 	});
 	connect(m_liveDenoiseBlendSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_liveDenoiseBlend = value;
@@ -1187,7 +1193,6 @@ void MainWindow::createSettingsTab() {
 		m_liveSvgfEnabled = checked;
 		saveLiveSvgfEnabled(checked);
 		pushLiveSvgfToSession();
-		if (checked) m_liveDenoiseCheck->setChecked(false);
 	});
 
 	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseCheck,

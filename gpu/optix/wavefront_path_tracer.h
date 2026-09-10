@@ -678,7 +678,12 @@ private:
     // DI's own spatial-reuse pass writes to a SEPARATE output buffer rather
     // than mutating its input in place).
     CUdeviceptr        d_svgfPingPong_[2] = {0, 0};
-    int                svgfPingPongCapacity_ = 0;
+    // One capacity slot per element (not a single shared int) so each can go
+    // through reallocateDeviceBufferIfNeeded<float4>()/freeDeviceBuffer()
+    // independently - a shared capacity would make the second element's own
+    // call see capacity already == numPixels (set by the first element's
+    // call) and skip its own allocation entirely.
+    int                svgfPingPongCapacity_[2] = {0, 0};
 };
 
 } // namespace optix_renderer

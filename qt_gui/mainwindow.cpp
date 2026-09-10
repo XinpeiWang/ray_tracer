@@ -763,7 +763,10 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// somehow has both true, SVGF wins (it fully replaces accumulation, so
 	// running it underneath an also-enabled OptiX denoiser would be the more
 	// surprising combination of the two to silently end up in).
-	if (m_liveSvgfEnabled) m_liveDenoiseEnabled = false;
+	if (m_liveSvgfEnabled && m_liveDenoiseEnabled) {
+		m_liveDenoiseEnabled = false;
+		saveLiveDenoiseEnabled(false);  // persist the correction, not just the in-memory value
+	}
 #endif
 	// Set before the first applyTheme() call below (not just by applyFont(),
 	// which runs after it) so that first stylesheet build already scales to

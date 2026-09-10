@@ -92,7 +92,7 @@ extern "C" __global__ void svgf_temporal_integrate(
 	const float3*, const float4*, const GpuSvgfState*, const float4*,
 	GpuReprojectBasis, bool, int, int, GpuSvgfState*);
 extern "C" __global__ void svgf_prepare_for_filter(
-	const GpuSvgfState*, const float3*, int, int, float4*);
+	const GpuSvgfState*, const float3*, const float4*, int, int, float4*);
 extern "C" __global__ void svgf_atrous_pass(
 	const float4*, const float4*, const float3*, float3, int, int, int, float4*);
 extern "C" __global__ void svgf_finalize(
@@ -406,6 +406,7 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 extern "C" void wf_launch_svgf_prepare_for_filter(
 	const GpuSvgfState* d_current,
 	const float3*       d_albedo,
+	const float4*       d_currentWorldPos,
 	int width, int height,
 	float4*             d_outPingPong0,
 	cudaStream_t stream)
@@ -415,7 +416,7 @@ extern "C" void wf_launch_svgf_prepare_for_filter(
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
 	svgf_prepare_for_filter<<<grid, block, 0, (cudaStream_t)stream>>>(
-		d_current, d_albedo, width, height, d_outPingPong0);
+		d_current, d_albedo, d_currentWorldPos, width, height, d_outPingPong0);
 }
 
 extern "C" void wf_launch_svgf_atrous_pass(

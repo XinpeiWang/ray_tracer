@@ -1271,6 +1271,16 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 	const int numPixels = width * height;
 	if (numPixels <= 0) return;
 
+	// All 4 kernels below launch on the SAME stream_, and every intermediate
+	// buffer (d_svgfCurrent_, d_svgfPingPong_[]) is consumed only by the next
+	// kernel on that same stream - never read back on the host in between -
+	// so stream order alone already sequences them correctly, the same
+	// "no internal sync needed" convention this file's own sibling
+	// launchGiFinalize()/launchRestirSpatialReuse() already rely on. The
+	// single sync the caller (render()) already issues right after
+	// launchSvgf() returns is what actually matters (error-surfacing plus
+	// ordering against the world-pos-history overwrite that follows it).
+
 	// Kernel 1: temporal integrate - see wavefront_kernels_svgf.cu's own
 	// header comment for the full 4-kernel pipeline. Reuses
 	// prevRestirCamera_/d_worldPos_/d_worldPosHistory_ - the SAME
@@ -1286,17 +1296,19 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 		width, height,
 		reinterpret_cast<GpuSvgfState*>(d_svgfCurrent_),
 		stream_);
-	CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 	// Kernel 2: demodulate by albedo + prepare (bootstrap-filtered where
 	// history is still short) variance for the A-trous sequence below.
+	// Passes d_worldPos_ too, so the variance bootstrap can skip
+	// miss/background neighbors instead of mixing their luminance
+	// statistics into a silhouette-adjacent hit pixel's own variance.
 	wf_launch_svgf_prepare_for_filter(
 		reinterpret_cast<const GpuSvgfState*>(d_svgfCurrent_),
 		d_albedoAov,
+		reinterpret_cast<const float4*>(d_worldPos_),
 		width, height,
 		reinterpret_cast<float4*>(d_svgfPingPong_[0]),
 		stream_);
-	CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 	// Kernel 3: A-trous wavelet filter, run kSvgfHostAtrousPasses times with
 	// doubling step sizes (1,2,4,8), ping-ponging between the two scratch
@@ -1317,7 +1329,6 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 			stepSize,
 			reinterpret_cast<float4*>(d_svgfPingPong_[dst]),
 			stream_);
-		CUDA_CHECK(cudaStreamSynchronize(stream_));
 		std::swap(src, dst);
 		stepSize *= 2;
 	}
@@ -1331,7 +1342,6 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 		numPixels,
 		d_framebuffer,
 		stream_);
-	CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 	// End-of-call history update - this frame's own temporally-integrated
 	// state (d_svgfCurrent_, NOT the spatially-filtered d_svgfPingPong_
@@ -1580,9 +1590,16 @@ bool WavefrontPathTracer::render(
 	// render.cpp), zeroed fresh each render() call since they accumulate
 	// (atomicAdd) across every sample - see evaluate_materials()'s own
 	// accumulation comment, wavefront_kernels.cu.
+	// Computed once and reused at every gate below that depends on the same
+	// "does anything currently want this" question, rather than repeating
+	// the compound condition verbatim at each site (a future edit to one
+	// copy silently missing the others was a real risk here).
+	const bool needsAovGuideBuffers = denoiseEnabled_ || svgfEnabled_;
+	const bool needsWorldPosHistory = restirEnabled_ || restirGiEnabled_ || svgfEnabled_;
+
 	float3* d_albedoAovPtr = nullptr;
 	float3* d_normalAovPtr = nullptr;
-	if (denoiseEnabled_ || svgfEnabled_) {
+	if (needsAovGuideBuffers) {
 		ensureAovBuffers((unsigned int)width, (unsigned int)height);
 		d_albedoAovPtr = reinterpret_cast<float3*>(denoiserResources_.albedoAov);
 		d_normalAovPtr = reinterpret_cast<float3*>(denoiserResources_.normalAov);
@@ -1625,7 +1642,7 @@ bool WavefrontPathTracer::render(
 	// worldPosOutputEnabled_ (out_world_pos_buffer != nullptr) - these are
 	// independent opt-ins for unrelated consumers of the same underlying
 	// per-pixel buffer.
-	if (worldPosOutputEnabled_ || restirEnabled_ || restirGiEnabled_ || svgfEnabled_) {
+	if (worldPosOutputEnabled_ || needsWorldPosHistory) {
 		if (worldPosCapacity_ != numPixels) {
 			if (d_worldPos_) { cudaFree(reinterpret_cast<void*>(d_worldPos_)); d_worldPos_ = 0; }
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPos_), numPixels * sizeof(float4)));
@@ -1682,16 +1699,12 @@ bool WavefrontPathTracer::render(
 	// same-product different-dimensions resolution change must also
 	// invalidate the history, even though it wouldn't trigger a capacity
 	// mismatch below.
-	if (restirHistoryValid_ && (restirHistoryWidth_ != width || restirHistoryHeight_ != height)) {
+	if (restirHistoryWidth_ != width || restirHistoryHeight_ != height) {
 		restirHistoryValid_ = false;
-	}
-	if (restirGiHistoryValid_ && (restirHistoryWidth_ != width || restirHistoryHeight_ != height)) {
 		restirGiHistoryValid_ = false;
-	}
-	if (svgfHistoryValid_ && (restirHistoryWidth_ != width || restirHistoryHeight_ != height)) {
 		svgfHistoryValid_ = false;
 	}
-	if (restirEnabled_ || restirGiEnabled_ || svgfEnabled_) {
+	if (needsWorldPosHistory) {
 		if (worldPosHistoryCapacity_ != numPixels) {
 			if (d_worldPosHistory_) { cudaFree(reinterpret_cast<void*>(d_worldPosHistory_)); d_worldPosHistory_ = 0; }
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPosHistory_), numPixels * sizeof(float4)));
@@ -1790,20 +1803,15 @@ bool WavefrontPathTracer::render(
 		if (reallocateDeviceBufferIfNeeded<GpuSvgfState>(d_svgfHistory_, svgfHistoryCapacity_, numPixels)) {
 			svgfHistoryValid_ = false;  // stale/undefined content at the new size
 		}
-		if (svgfPingPongCapacity_ != numPixels) {
-			for (int i = 0; i < 2; ++i) {
-				if (d_svgfPingPong_[i]) { cudaFree(reinterpret_cast<void*>(d_svgfPingPong_[i])); d_svgfPingPong_[i] = 0; }
-				CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_svgfPingPong_[i]), static_cast<size_t>(numPixels) * sizeof(float4)));
-			}
-			svgfPingPongCapacity_ = numPixels;
+		for (int i = 0; i < 2; ++i) {
+			reallocateDeviceBufferIfNeeded<float4>(d_svgfPingPong_[i], svgfPingPongCapacity_[i], numPixels);
 		}
 	} else {
 		freeDeviceBuffer(d_svgfCurrent_, svgfCurrentCapacity_);
 		freeDeviceBuffer(d_svgfHistory_, svgfHistoryCapacity_);
 		for (int i = 0; i < 2; ++i) {
-			if (d_svgfPingPong_[i]) { cudaFree(reinterpret_cast<void*>(d_svgfPingPong_[i])); d_svgfPingPong_[i] = 0; }
+			freeDeviceBuffer(d_svgfPingPong_[i], svgfPingPongCapacity_[i]);
 		}
-		svgfPingPongCapacity_ = 0;
 		svgfHistoryValid_ = false;
 	}
 
@@ -2209,7 +2217,7 @@ bool WavefrontPathTracer::render(
 	// samples_per_pixel - see launchNormalizeAovBuffers()'s own comment) -
 	// needed by EITHER the OptiX AI denoiser below or SVGF, so gated on
 	// either flag rather than duplicated per consumer.
-	if (denoiseEnabled_ || svgfEnabled_) {
+	if (needsAovGuideBuffers) {
 		launchNormalizeAovBuffers((unsigned int)numPixels, d_albedoAovPtr, d_normalAovPtr,
 			(unsigned int)samples_per_pixel);
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
@@ -2218,18 +2226,25 @@ bool WavefrontPathTracer::render(
 	// support - see setDenoiseEnabled()'s own comment), on-device, in place.
 	// A failure here is logged (inside denoise() itself) and otherwise
 	// ignored - the already-valid noisy render is still a correct result,
-	// matching the recursive backend's own precedent.
-	if (denoiseEnabled_) {
+	// matching the recursive backend's own precedent. Skipped when svgfEnabled_
+	// is ALSO true (not just an unreachable GUI combination - the GUI keeps
+	// its own two checkboxes mutually exclusive, but nothing below this
+	// point enforces that on a caller who sets both backend flags directly,
+	// e.g. a test or a future non-GUI entry point) - SVGF treats whatever is
+	// in d_fb as this frame's raw noisy sample, so denoising it first would
+	// corrupt SVGF's own variance/history statistics rather than compose
+	// with it.
+	if (denoiseEnabled_ && !svgfEnabled_) {
 		denoise(d_fb, (unsigned int)width, (unsigned int)height,
 			denoiserResources_.albedoAov, denoiserResources_.normalAov);
 	}
 	// SVGF spatiotemporal denoiser (see wavefront_kernels_svgf.cu's own
 	// header comment) - an alternative to the OptiX AI denoiser above, not
 	// layered on top of it (the GUI is expected to present these as
-	// mutually-exclusive modes, though the backend flags themselves stay
-	// independent - see this project's own SVGF plan). Filters d_fb in
-	// place. MUST run before the world-pos-history overwrite just below -
-	// see this block's own opening comment.
+	// mutually-exclusive modes; see the skip condition just above for what
+	// backend-level enforcement actually looks like when both flags are set
+	// anyway). Filters d_fb in place. MUST run before the world-pos-history
+	// overwrite just below - see this block's own opening comment.
 	if (svgfEnabled_) {
 		launchSvgf(reinterpret_cast<float3*>(d_fb), d_albedoAovPtr, camera.origin);
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
@@ -2254,7 +2269,7 @@ bool WavefrontPathTracer::render(
 	// own GI/SVGF buffer comments) - updated once, whenever ANY is enabled,
 	// not duplicated per technique. Deliberately AFTER launchSvgf above -
 	// see that block's own comment for why the ordering matters here.
-	if (restirEnabled_ || restirGiEnabled_ || svgfEnabled_) {
+	if (needsWorldPosHistory) {
 		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_worldPosHistory_),
 								   reinterpret_cast<void*>(d_worldPos_),
 								   numPixels * sizeof(float4), cudaMemcpyDeviceToDevice, stream_));

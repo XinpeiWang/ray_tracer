@@ -133,6 +133,14 @@ private:
 	void renderLoop(int epoch);
 	void resetAccumulation();
 	void reprojectAccumulation();
+	// `(m_denoise && m_denoiseShowLatest) || m_svgf` - the single "treat
+	// m_tmp as already-final, don't blend into m_accum" condition, computed
+	// in one place and reused by setDenoise()/setSvgf()/renderLoop() instead
+	// of each recomputing it (a prior version had setDenoise() recompute it
+	// without the `|| m_svgf` term, which only happened to be harmless
+	// because the GUI never enables both denoise and SVGF at once - see
+	// setSvgf()'s own comment on why that invariant isn't backend-enforced).
+	bool effectiveShowLatest() const { return (m_denoise && m_denoiseShowLatest) || m_svgf; }
 
 	QString m_sceneId;
 	int m_width = 0;

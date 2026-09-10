@@ -250,6 +250,7 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 extern "C" void wf_launch_svgf_prepare_for_filter(
 	const GpuSvgfState* d_current,
 	const float3*       d_albedo,
+	const float4*       d_currentWorldPos,
 	int width, int height,
 	float4*             d_outPingPong0,
 	cudaStream_t stream);

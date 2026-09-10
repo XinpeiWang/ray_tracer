@@ -5,7 +5,9 @@
 // writeup; summarized here:
 //
 //   svgf_temporal_integrate -> svgf_prepare_for_filter -> svgf_atrous_pass
-//   (x kSvgfAtrousPasses, ping-ponging) -> svgf_finalize
+//   (repeated with doubling step sizes, ping-ponging - pass count is a
+//   host-side loop constant, wavefront_path_tracer.cpp's own
+//   kSvgfHostAtrousPasses, not anything in this file) -> svgf_finalize
 //
 // Runs once per render() call, after launchNormalizeFramebuffer has already
 // produced this frame's final, normalized 1-spp radiance in the framebuffer
@@ -43,7 +45,6 @@ constexpr int   kSvgfVarianceBootstrapRadius = 3;     // 7x7 box (radius 3) for 
 constexpr float kSvgfSigmaNormal = 128.0f;
 constexpr float kSvgfSigmaDepth = 1.0f;
 constexpr float kSvgfSigmaLuminance = 4.0f;
-constexpr int   kSvgfAtrousPasses = 4;            // step sizes 1,2,4,8 - ~15px effective radius
 constexpr int   kSvgfAtrousRadius = 2;             // 5x5 footprint per pass, scaled by that pass's step size
 constexpr float kSvgfMinAlbedo = 0.02f;            // floor before dividing color by albedo (demodulation)
 
@@ -134,6 +135,7 @@ extern "C" __global__ void svgf_temporal_integrate(
 extern "C" __global__ void svgf_prepare_for_filter(
 	const GpuSvgfState* current,
 	const float3* albedo,
+	const float4* currentWorldPos,
 	int width, int height,
 	float4* outPingPong0
 ) {
@@ -155,19 +157,39 @@ extern "C" __global__ void svgf_prepare_for_filter(
 			for (int dx = -kSvgfVarianceBootstrapRadius; dx <= kSvgfVarianceBootstrapRadius; ++dx) {
 				const int nx = px + dx;
 				if (nx < 0 || nx >= width) continue;
-				const GpuSvgfState n = current[ny * width + nx];
+				const int nIdx = ny * width + nx;
+				// Skip miss/background neighbors (worldPos.w == 0, same
+				// validity convention wf_svgf_depth_at uses below) - a
+				// silhouette-adjacent hit pixel's own variance bootstrap
+				// must not be contaminated by unrelated sky/background
+				// luminance statistics from the other side of the edge.
+				if (currentWorldPos[nIdx].w == 0.0f) continue;
+				const GpuSvgfState n = current[nIdx];
 				sumMoment1 += n.moment1;
 				sumMoment2 += n.moment2;
 				++count;
 			}
 		}
-		const float avgMoment1 = sumMoment1 / (float)count;
-		const float avgMoment2 = sumMoment2 / (float)count;
-		variance = wf_svgf_variance(avgMoment1, avgMoment2);
+		if (count > 0) {
+			const float avgMoment1 = sumMoment1 / (float)count;
+			const float avgMoment2 = sumMoment2 / (float)count;
+			variance = wf_svgf_variance(avgMoment1, avgMoment2);
+		} else {
+			// Every neighbor (including self) is a miss - no hit-surface
+			// statistics available to bootstrap from; fall back to this
+			// pixel's own (short-history, noisy but not cross-contaminated)
+			// moments rather than dividing by zero.
+			variance = wf_svgf_variance(s.moment1, s.moment2);
+		}
 	} else {
 		variance = wf_svgf_variance(s.moment1, s.moment2);
 	}
 
+	// Same floor used here (demodulate) and in svgf_finalize (remodulate) -
+	// using the raw, un-floored albedo in one place and the floored value in
+	// the other would round-trip a near-zero-albedo pixel (background/sky,
+	// whose albedo AOV is never written) to zero regardless of its actual
+	// filtered radiance.
 	const float3 alb = albedo[idx];
 	const float3 albedoFloor = make_float3(fmaxf(alb.x, kSvgfMinAlbedo), fmaxf(alb.y, kSvgfMinAlbedo), fmaxf(alb.z, kSvgfMinAlbedo));
 	const float3 demodulated = make_float3(s.color.x / albedoFloor.x, s.color.y / albedoFloor.y, s.color.z / albedoFloor.z);
@@ -300,7 +322,11 @@ extern "C" __global__ void svgf_atrous_pass(
 // albedo (undoing svgf_prepare_for_filter's own division) and writes the
 // result into the real framebuffer - the LAST thing SVGF does each frame,
 // after which WavefrontPathTracer::render()'s existing host-copy code path
-// picks it up completely unchanged.
+// picks it up completely unchanged. Must re-multiply by the SAME floored
+// albedo svgf_prepare_for_filter divided by (kSvgfMinAlbedo, not the raw
+// AOV value) - otherwise any near-zero-albedo pixel (background/sky, whose
+// albedo AOV is never written by accumulate_miss and so stays 0) would
+// round-trip to black regardless of its actual filtered radiance.
 extern "C" __global__ void svgf_finalize(
 	const float4* filtered,
 	const float3* albedo,
@@ -311,5 +337,6 @@ extern "C" __global__ void svgf_finalize(
 	if (idx >= numPixels) return;
 	const float4 f = filtered[idx];
 	const float3 alb = albedo[idx];
-	framebuffer[idx] = make_float3(f.x * alb.x, f.y * alb.y, f.z * alb.z);
+	const float3 albedoFloor = make_float3(fmaxf(alb.x, kSvgfMinAlbedo), fmaxf(alb.y, kSvgfMinAlbedo), fmaxf(alb.z, kSvgfMinAlbedo));
+	framebuffer[idx] = make_float3(f.x * albedoFloor.x, f.y * albedoFloor.y, f.z * albedoFloor.z);
 }

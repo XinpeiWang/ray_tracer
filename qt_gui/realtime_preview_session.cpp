@@ -235,11 +235,11 @@ void RealtimePreviewWorker::setCamera(double camX, double camY, double camZ, dou
 
 void RealtimePreviewWorker::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {
 	if (!m_running) return;
-	const bool wasEffectivelyShowingLatest = m_denoise && m_denoiseShowLatest;
-	const bool willEffectivelyShowLatest = denoise && denoiseShowLatest;
+	const bool wasEffectivelyShowingLatest = effectiveShowLatest();
 	m_denoise = denoise;
 	m_denoiseBlend = denoiseBlend;
 	m_denoiseShowLatest = denoiseShowLatest;
+	const bool willEffectivelyShowLatest = effectiveShowLatest();
 	if (wasEffectivelyShowingLatest != willEffectivelyShowLatest) {
 		// Unlike a plain denoise-enabled/blend change (see this method's own
 		// header comment), flipping the EFFECTIVE show-latest state changes
@@ -263,9 +263,9 @@ void RealtimePreviewWorker::setSvgf(bool svgf) {
 	// effectiveShowLatest comment) - toggling m_svgf while denoise's own
 	// show-latest is already effective (or vice versa) is a no-op change to
 	// the OVERALL flag, so no reset is needed in that case either.
-	const bool wasEffectivelyShowingLatest = (m_denoise && m_denoiseShowLatest) || m_svgf;
+	const bool wasEffectivelyShowingLatest = effectiveShowLatest();
 	m_svgf = svgf;
-	const bool willEffectivelyShowLatest = (m_denoise && m_denoiseShowLatest) || m_svgf;
+	const bool willEffectivelyShowLatest = effectiveShowLatest();
 	if (wasEffectivelyShowingLatest != willEffectivelyShowLatest) {
 		resetAccumulation();
 	}
@@ -340,17 +340,17 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		// temporal filters - see this project's own SVGF plan for why GPU-
 		// side integration REPLACES this CPU-side one for that mode, rather
 		// than sitting on top of it.
-		const bool effectiveShowLatest = (m_denoise && m_denoiseShowLatest) || m_svgf;
+		const bool showLatest = effectiveShowLatest();
 
 		// Reprojection would be immediately thrown away by the show-latest
 		// branch below (which overwrites m_accum wholesale every frame
 		// regardless), so skip the work entirely in that mode.
-		if (cameraJustMoved && !effectiveShowLatest) {
+		if (cameraJustMoved && !showLatest) {
 			reprojectAccumulation();
 		}
 
 		int minSampleCount = 0;
-		if (effectiveShowLatest) {
+		if (showLatest) {
 			// Skip accumulation entirely - each already-denoised frame is
 			// clean enough on its own that averaging it with older, possibly
 			// differently-denoised frames would only add lag, not quality.

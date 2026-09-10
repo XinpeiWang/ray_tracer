@@ -342,6 +342,13 @@ extern "C" int optix_render_main(
 		g_renderer->enableRestir(false);
 		g_renderer->enableRestirGi(false);
 		g_renderer->enableSvgf(false);
+		// Same leaked-flag class as the three above: a prior Live Preview
+		// call requesting world-pos readback (out_world_pos_buffer !=
+		// nullptr) leaves worldPosOutputEnabled_ true forever after on this
+		// same process-lifetime singleton, so every later batch render would
+		// otherwise keep allocating/populating d_worldPos_/d_worldPosHistory_
+		// it never asked for and this function never reads back.
+		g_renderer->enableWorldPosOutput(false);
 
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;
