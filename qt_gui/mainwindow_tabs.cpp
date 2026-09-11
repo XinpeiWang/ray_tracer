@@ -1143,7 +1143,10 @@ void MainWindow::createSettingsTab() {
 	m_liveDenoiserModeCombo->addItem(tr("OptiX AI Denoiser"));
 	m_liveDenoiserModeCombo->addItem(tr("SVGF Denoiser (experimental)"));
 	m_liveDenoiserModeCombo->setCurrentIndex(m_liveSvgfEnabled ? 2 : (m_liveDenoiseEnabled ? 1 : 0));
-	m_liveDenoiserModeCombo->setMaximumWidth(220);
+	// No maximumWidth cap (unlike the numeric spinboxes elsewhere on this
+	// tab) - a combo box's natural sizeHint already fits its longest item
+	// ("SVGF Denoiser (experimental)") plus the dropdown arrow; capping it
+	// to an arbitrary pixel width just truncates that text instead.
 	styleComboBox(m_liveDenoiserModeCombo);
 
 	m_liveDenoiseBlendSpin = new QDoubleSpinBox();
