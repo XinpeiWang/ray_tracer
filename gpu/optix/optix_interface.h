@@ -165,6 +165,14 @@ bool rt_realtime_render_frame(
 	const SvgfTuningParams* svgf_tuning = nullptr
 );
 
+// Detail for the most recent rt_realtime_render_frame() failure on the
+// CALLING thread, when that failure was a caught exception - "" otherwise
+// (success, or an ordinary false return that already reported enough via
+// its own generic-but-accurate meaning). Valid only until the next
+// rt_realtime_render_frame() call on this same thread. See that function's
+// own try/catch for what gets stored here.
+const char* rt_realtime_get_last_error();
+
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,
 // mirrors cpu_render_main_sppm()'s signature (cpu_renderer/cpu_interface.h)
 // so main.cpp's --sppm --gpu branch (sub-phase 1e) can call either with the

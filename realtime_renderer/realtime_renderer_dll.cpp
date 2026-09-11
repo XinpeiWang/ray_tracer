@@ -8,7 +8,7 @@
 // can't link the .lib directly - exact same pattern as
 // scene_metadata/scene_metadata_dll.cpp uses for cpu_renderer.lib.
 //
-// Only one export: a direct passthrough to optix_interface.h - no logic
+// Two exports, both direct passthroughs to optix_interface.h - no logic
 // lives in this file.
 #include "../gpu/optix/optix_interface.h"
 
@@ -48,4 +48,8 @@ RT_REALTIME_API bool realtime_render_frame(
 		has_custom_lookat, lookat_x, lookat_y, lookat_z,
 		denoise, denoise_blend, out_world_pos_buffer, out_camera_basis, out_rgb_buffer,
 		enable_svgf, enable_restir_gi, max_component_value, svgf_tuning);
+}
+
+RT_REALTIME_API const char* realtime_get_last_error() {
+	return rt_realtime_get_last_error();
 }

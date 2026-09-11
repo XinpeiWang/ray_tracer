@@ -28,6 +28,14 @@ static std::unique_ptr<OptiXRenderer> g_renderer;
 // a valid id - every real id has a category letter and a number).
 static std::string g_uploaded_scene_id;
 
+// Detail for the most recent rt_realtime_render_frame() failure on THIS
+// thread - see rt_realtime_get_last_error()'s own comment. thread_local
+// (not a plain static) since Live Preview always calls both functions from
+// its own single dedicated worker thread (qt_gui/realtime_preview_session.cpp),
+// but a batch/video render on a different thread in the same process must
+// never see (or clobber) Live Preview's own last-error text, or vice versa.
+static thread_local std::string g_lastRealtimeError;
+
 extern "C" bool optix_is_available() {
 	return OptiXRenderer::isAvailable();
 }
@@ -601,6 +609,12 @@ extern "C" bool rt_realtime_render_frame(
 	// invocation.
 	if (!out_rgb_buffer || !scene_id) return false;
 
+	// Cleared at the top of every call (not just on success) so a stale
+	// message from a PAST failed call is never misattributed to a later
+	// failure that returned false WITHOUT throwing - see
+	// rt_realtime_get_last_error()'s own comment.
+	g_lastRealtimeError.clear();
+
 	try {
 		if (!g_renderer) {
 			g_renderer = std::make_unique<OptiXRenderer>();
@@ -779,11 +793,28 @@ extern "C" bool rt_realtime_render_frame(
 		}
 
 		return ok;
-	} catch (const std::exception&) {
+	} catch (const std::exception& e) {
+		g_lastRealtimeError = e.what();
 		return false;
 	} catch (...) {
+		g_lastRealtimeError = "unknown exception";
 		return false;
 	}
+}
+
+// Detail for the most recent rt_realtime_render_frame() failure that was
+// caused by a caught exception, on the CALLING thread - "" if the last call
+// succeeded, or failed WITHOUT throwing (e.g. an ordinary "renderer not
+// initialized"/"scene not supported" false return - those already report a
+// generic-but-accurate message to the caller directly and have nothing more
+// specific to add here). Valid until the next rt_realtime_render_frame()
+// call on this same thread - callers needing to keep it longer must copy it
+// immediately. Exists so a caller (qt_gui/realtime_preview_session.cpp) can
+// surface real exception detail instead of only a fixed generic string, for
+// exactly the CUDA/OptiX/std::exception cases the try/catch above used to
+// discard entirely.
+extern "C" const char* rt_realtime_get_last_error() {
+	return g_lastRealtimeError.c_str();
 }
 
 // Human-readable name for the MaterialTypes this function's error messages

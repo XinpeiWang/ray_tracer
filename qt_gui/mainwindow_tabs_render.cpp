@@ -1492,7 +1492,21 @@ void MainWindow::onLivePreviewFrameReady(QImage image, int sampleCount) {
 }
 
 void MainWindow::onLivePreviewStatus(QString text) {
-	if (m_livePreviewStatusLabel) m_livePreviewStatusLabel->setText(text);
+	// Both statusChanged() call sites (RealtimePreviewWorker::renderLoop())
+	// are genuine failures, not routine progress - unlike onLivePreviewFrameReady()'s
+	// own per-frame sample-count text just above, which is never routed to
+	// the Log tab. Logged only when the text actually CHANGES (compared
+	// against what the label is already showing, BEFORE overwriting it) -
+	// renderLoop() reposts itself every frame even after a failure and would
+	// otherwise re-emit the identical message every frame indefinitely,
+	// flooding the Log tab with duplicate lines for one single underlying
+	// problem.
+	if (m_livePreviewStatusLabel) {
+		if (m_livePreviewStatusLabel->text() != text) {
+			onLogMessage(tr("Live Preview: %1").arg(text));
+		}
+		m_livePreviewStatusLabel->setText(text);
+	}
 }
 
 void MainWindow::onLivePreviewCameraChanged() {

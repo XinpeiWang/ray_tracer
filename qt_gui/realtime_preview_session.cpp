@@ -27,6 +27,10 @@ typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, d
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
 							   bool, float, const void*);
 
+// const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
+// own comment. Same hand-duplication convention as RenderFrameFn above.
+typedef const char* (*GetLastErrorFn)();
+
 // Mirrors gpu/optix/svgf_tuning_params.h's SvgfTuningParams field-for-field -
 // see that header's own comment on why this boundary hand-duplicates types
 // rather than sharing a header. `const void*` in the typedef above (rather
@@ -51,6 +55,7 @@ struct SvgfTuningParams {
 struct DllHandle {
 	void* module = nullptr;
 	RenderFrameFn renderFrameFn = nullptr;
+	GetLastErrorFn getLastErrorFn = nullptr;
 };
 
 #ifdef Q_OS_WIN
@@ -78,6 +83,8 @@ DllHandle& handle() {
 		if (!h.module) return;
 		h.renderFrameFn = reinterpret_cast<RenderFrameFn>(
 			cross_abi_library::lookupSymbol(h.module, "realtime_render_frame"));
+		h.getLastErrorFn = reinterpret_cast<GetLastErrorFn>(
+			cross_abi_library::lookupSymbol(h.module, "realtime_get_last_error"));
 	});
 	return h;
 }
@@ -407,8 +414,20 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
 						  reinterpret_cast<const void*>(&svgfTuning));
 		if (!ok) {
-			emit statusChanged(QStringLiteral("Render failed - scene may not be GPU-supported, "
-											   "or the wavefront backend is unavailable"));
+			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
+											  "or the wavefront backend is unavailable");
+			// Extra detail when the failure was a caught exception (CUDA/OptiX
+			// error, etc.) - see rt_realtime_get_last_error()'s own comment.
+			// "" for an ordinary false return (already fully described by the
+			// generic message above), so no redundant empty parenthetical.
+			GetLastErrorFn getLastError = handle().getLastErrorFn;
+			if (getLastError) {
+				const char* detail = getLastError();
+				if (detail && *detail) {
+					message += QStringLiteral(" (%1)").arg(QString::fromUtf8(detail));
+				}
+			}
+			emit statusChanged(message);
 		}
 	}
 
