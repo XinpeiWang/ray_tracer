@@ -22,6 +22,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	GpuCameraParams camera,
 	unsigned int frameNumber,
 	float* d_weightBuffer,
+	bool checkerboardActive,
 	cudaStream_t stream);
 
 extern "C" void wf_launch_evaluate_materials(
@@ -215,6 +216,8 @@ extern "C" void wf_launch_restir_gi_finalize(
 	const GpuGiSample*        d_candidateIn,
 	const GpuGiReservoir*     d_history,
 	const float4*             d_worldPosHistory,
+	const float4*             d_currentWorldPos,
+	const float*              d_weightBuffer,
 	GpuReprojectBasis         prevCamera,
 	bool                      historyValid,
 	int width, int height,
@@ -241,10 +244,19 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 	const float4*        d_currentWorldPos,
 	const GpuSvgfState*  d_history,
 	const float4*        d_worldPosHistory,
+	const float*         d_weightBuffer,
 	GpuReprojectBasis    prevCamera,
 	bool                 historyValid,
 	int width, int height,
 	GpuSvgfState*        d_outputCurrent,
+	cudaStream_t stream);
+
+// Checkerboard temporal upsampling's frame-clear (svgf_checkerboard_clear_
+// frame, wavefront_kernels_svgf.cu) - replaces the plain memset render()
+// used to run on albedoAov/normalAov/worldPos, see that kernel's own comment.
+extern "C" void wf_launch_svgf_checkerboard_clear_frame(
+	float3* d_albedo, float3* d_normal, float4* d_worldPos,
+	int width, int height, unsigned int frameNumber, bool checkerboardActive,
 	cudaStream_t stream);
 
 extern "C" void wf_launch_svgf_prepare_for_filter(

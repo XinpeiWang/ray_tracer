@@ -10,6 +10,7 @@
 #endif
 
 #include "wavefront_device_helpers.h"
+#include "wavefront_svgf_math.h"  // wf_checkerboard_pixel_active
 
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem> rayQueue,
@@ -21,7 +22,12 @@ extern "C" __global__ void generate_camera_rays(
 	// Per-pixel sum of this render's filter weights so far - see this
 	// kernel's own filter_w comment. Same size/lifetime as framebuffer,
 	// zeroed once per render before the sample loop starts.
-	float* weightBuffer
+	float* weightBuffer,
+	// Checkerboard temporal upsampling (WavefrontPathTracer::render()'s own
+	// comment) - see wf_checkerboard_pixel_active()'s own comment
+	// (wavefront_device_helpers.h) for the shared parity check every
+	// consumer of "was this pixel sampled this frame" must agree on.
+	bool checkerboardActive
 ) {
 	// Film "cropwindow"/"pixelbounds" (pbrt-v4) - the HOST launcher
 	// (wf_launch_generate_camera_rays, wavefront_launch.cu) already sizes
@@ -54,6 +60,15 @@ extern "C" __global__ void generate_camera_rays(
 	// `w > 0.0f` guard), the exact same mechanism that already exists for
 	// a pathological zero-weight filter parameterization.
 	if (!gpu_in_crop(camera, px, py)) return;
+
+	// Checkerboard temporal upsampling: an inactive pixel gets neither a
+	// queued ray nor a weightBuffer increment this frame - the exact same
+	// "never enqueue, never touch weightBuffer" shape the crop check just
+	// above already uses, so normalize_framebuffer's existing `w > 0.0f`
+	// guard (this kernel's own crop-check comment) does double duty as the
+	// signal every downstream SVGF/GI kernel uses to tell "held over from
+	// last frame" apart from "genuinely sampled this frame."
+	if (!wf_checkerboard_pixel_active(px, py, frameNumber, checkerboardActive)) return;
 
 	int pixelIdx = py * (int)width + px;
 	unsigned int seed = wf_pcg(wf_pcg(pixelIdx + sampleIdx * width * height) ^ frameNumber);

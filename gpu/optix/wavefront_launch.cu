@@ -13,7 +13,7 @@
 // ---- forward declarations of kernels from wavefront_kernels.cu ----
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem>, unsigned int, unsigned int,
-	GpuCameraParams, unsigned int, unsigned int, float*);
+	GpuCameraParams, unsigned int, unsigned int, float*, bool);
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>, WorkQueue<BssrdfProbeWorkItem>,
@@ -83,13 +83,16 @@ extern "C" __global__ void restir_spatial_reuse(
 extern "C" __global__ void restir_clear_reservoirs(GpuReservoir*, int);
 extern "C" __global__ void restir_gi_finalize(
 	const GpuGiOriginContext*, const GpuGiSample*, const GpuGiReservoir*, const float4*,
+	const float4*, const float*,
 	GpuReprojectBasis, bool, int, int, unsigned int,
 	const MaterialData*, float3*, float, GpuGiReservoir*);
 extern "C" __global__ void restir_gi_spatial_reuse(
 	const GpuGiReservoir*, const GpuGiOriginContext*, GpuGiReservoir*, int, int, unsigned int);
 // ---- forward declarations of kernels from wavefront_kernels_svgf.cu ----
+extern "C" __global__ void svgf_checkerboard_clear_frame(
+	float3*, float3*, float4*, int, int, unsigned int, bool);
 extern "C" __global__ void svgf_temporal_integrate(
-	const float3*, const float4*, const GpuSvgfState*, const float4*,
+	const float3*, const float4*, const GpuSvgfState*, const float4*, const float*,
 	GpuReprojectBasis, bool, int, int, GpuSvgfState*);
 extern "C" __global__ void svgf_prepare_for_filter(
 	const GpuSvgfState*, const float3*, const float4*, int, int, float4*);
@@ -106,6 +109,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	GpuCameraParams camera,
 	unsigned int frameNumber,
 	float* d_weightBuffer,
+	bool checkerboardActive,
 	cudaStream_t stream)
 {
 	// Film "cropwindow"/"pixelbounds" - size the launch grid to just the
@@ -128,7 +132,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	generate_camera_rays<<<grid, block, 0, (cudaStream_t)stream>>>(
 		rq, (unsigned int)width, (unsigned int)height,
 		camera,
-		(unsigned int)sampleIdx, frameNumber, d_weightBuffer);
+		(unsigned int)sampleIdx, frameNumber, d_weightBuffer, checkerboardActive);
 }
 
 extern "C" void wf_launch_evaluate_materials(
@@ -347,6 +351,8 @@ extern "C" void wf_launch_restir_gi_finalize(
 	const GpuGiSample*        d_candidateIn,
 	const GpuGiReservoir*     d_history,
 	const float4*             d_worldPosHistory,
+	const float4*             d_currentWorldPos,
+	const float*              d_weightBuffer,
 	GpuReprojectBasis         prevCamera,
 	bool                      historyValid,
 	int width, int height,
@@ -362,7 +368,7 @@ extern "C" void wf_launch_restir_gi_finalize(
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
 	restir_gi_finalize<<<grid, block, 0, (cudaStream_t)stream>>>(
-		d_originContext, d_candidateIn, d_history, d_worldPosHistory,
+		d_originContext, d_candidateIn, d_history, d_worldPosHistory, d_currentWorldPos, d_weightBuffer,
 		prevCamera, historyValid, width, height, frameSeed,
 		d_materials, d_framebuffer, maxComponentValue, d_outputReservoirs);
 }
@@ -388,6 +394,7 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 	const float4*        d_currentWorldPos,
 	const GpuSvgfState*  d_history,
 	const float4*        d_worldPosHistory,
+	const float*         d_weightBuffer,
 	GpuReprojectBasis    prevCamera,
 	bool                 historyValid,
 	int width, int height,
@@ -399,8 +406,21 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
 	svgf_temporal_integrate<<<grid, block, 0, (cudaStream_t)stream>>>(
-		d_currentRadiance, d_currentWorldPos, d_history, d_worldPosHistory,
+		d_currentRadiance, d_currentWorldPos, d_history, d_worldPosHistory, d_weightBuffer,
 		prevCamera, historyValid, width, height, d_outputCurrent);
+}
+
+extern "C" void wf_launch_svgf_checkerboard_clear_frame(
+	float3* d_albedo, float3* d_normal, float4* d_worldPos,
+	int width, int height, unsigned int frameNumber, bool checkerboardActive,
+	cudaStream_t stream)
+{
+	const int numPixels = width * height;
+	if (numPixels <= 0) return;
+	dim3 block(256);
+	dim3 grid((numPixels + 255) / 256);
+	svgf_checkerboard_clear_frame<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_albedo, d_normal, d_worldPos, width, height, frameNumber, checkerboardActive);
 }
 
 extern "C" void wf_launch_svgf_prepare_for_filter(

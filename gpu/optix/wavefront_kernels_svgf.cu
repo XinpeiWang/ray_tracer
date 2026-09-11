@@ -63,6 +63,49 @@ __device__ __forceinline__ bool wf_svgf_depth_at(
 }
 
 // -----------------------------------------------------------------------
+// Kernel 0 - svgf_checkerboard_clear_frame
+// -----------------------------------------------------------------------
+// Replaces the plain cudaMemsetAsync() this project's own render() used to
+// run unconditionally, every call, on albedoAov/normalAov/worldPos - correct
+// for every pixel when checkerboarding is off (byte-identical: every pixel
+// is "active" per wf_checkerboard_pixel_active's own checkerboardActive==
+// false fast path), but a checkerboard-INACTIVE pixel must instead survive
+// this call untouched, holding whatever it was left at by the last render()
+// call in which it WAS active - that held value is what makes the world-pos/
+// albedo/normal buffers still valid inputs for svgf_temporal_integrate's own
+// reprojection and the A-trous pass's edge-stopping weights on a frame this
+// pixel isn't freshly traced. frameNumber passed in here is this render()
+// call's frameNumber_ AFTER the increment generate_camera_rays will see
+// later in the same call (this kernel runs earlier, in the pre-increment
+// buffer-setup block) - see WavefrontPathTracer::render()'s own call site
+// comment for why +1 is required to agree on parity.
+// Each of the 3 buffers is independently nullable - callers pass whichever
+// subset is actually allocated this call (denoise-only, or restirEnabled_/
+// restirGiEnabled_ without SVGF, still only allocate a subset - see
+// WavefrontPathTracer::render()'s own needsAovGuideBuffers/
+// needsWorldPosHistory gates), unified into one kernel/one launch rather
+// than 2 separate call sites that would otherwise need to stay in sync on
+// which buffers each one is responsible for.
+extern "C" __global__ void svgf_checkerboard_clear_frame(
+	float3* albedoBuffer,
+	float3* normalBuffer,
+	float4* worldPosBuffer,
+	int width, int height,
+	unsigned int frameNumber,
+	bool checkerboardActive
+) {
+	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	const int numPixels = width * height;
+	if (idx >= numPixels) return;
+	const int px = idx % width;
+	const int py = idx / width;
+	if (!wf_checkerboard_pixel_active(px, py, frameNumber, checkerboardActive)) return;
+	if (albedoBuffer) albedoBuffer[idx] = make_float3(0.0f, 0.0f, 0.0f);
+	if (normalBuffer) normalBuffer[idx] = make_float3(0.0f, 0.0f, 0.0f);
+	if (worldPosBuffer) worldPosBuffer[idx] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+// -----------------------------------------------------------------------
 // Kernel 1 - svgf_temporal_integrate
 // -----------------------------------------------------------------------
 // Reprojects each pixel into the previous frame (via the SAME shared helper
@@ -74,11 +117,32 @@ __device__ __forceinline__ bool wf_svgf_depth_at(
 // historyLength=1 - deliberately NOT reprojected via plain screen-space
 // pixel identity for misses, since a moving camera's sky/background would
 // otherwise smear across frames exactly like a false "converged" surface.
+//
+// Checkerboard temporal upsampling (weightBuffer[idx]==0.0f - see
+// wf_checkerboard_pixel_active's own comment for why this reuses
+// generate_camera_rays' own per-pixel filter-weight accumulator as the "was
+// this pixel sampled this frame" signal, rather than adding a second, easy-
+// to-desync mask): currentRadiance[idx] is NOT a real sample for an inactive
+// pixel (normalize_framebuffer already wrote a fabricated black there for
+// weight==0 - see that kernel's own comment), so it must never be blended in
+// as though it were. Instead, reproject via currentWorldPos[idx] (held over
+// from this pixel's last active frame - see svgf_checkerboard_clear_frame's
+// own comment) exactly as the active path does, and on success copy the
+// reprojected history through UNCHANGED: no blend (zero new information
+// arrived this frame) and historyLength NOT incremented (a held frame is not
+// an additional independent sample). On reprojection failure - a pixel with
+// no prior history yet, since checkerboarding only activates once both SVGF
+// and GI history are already warm (WavefrontPathTracer::render()'s own
+// checkerboardActive comment), this is a rare/defensive path, not steady
+// state - fall through to historyLength=0 (NOT 1: nothing was actually
+// sampled, so this must not look like a genuine fresh sample to the variance
+// bootstrap in svgf_prepare_for_filter).
 extern "C" __global__ void svgf_temporal_integrate(
 	const float3* currentRadiance,
 	const float4* currentWorldPos,
 	const GpuSvgfState* history,
 	const float4* worldPosHistory,
+	const float* weightBuffer,
 	GpuReprojectBasis prevCamera,
 	bool historyValid,
 	int width, int height,
@@ -88,14 +152,15 @@ extern "C" __global__ void svgf_temporal_integrate(
 	const int numPixels = width * height;
 	if (idx >= numPixels) return;
 
-	const float3 color = currentRadiance[idx];
-	const float lum = wf_svgf_luminance(color);
+	const bool isActive = weightBuffer[idx] > 0.0f;
+	const float3 color = isActive ? currentRadiance[idx] : make_float3(0.0f, 0.0f, 0.0f);
+	const float lum = isActive ? wf_svgf_luminance(color) : 0.0f;
 
 	GpuSvgfState result;
 	result.color = color;
 	result.moment1 = lum;
 	result.moment2 = lum * lum;
-	result.historyLength = 1.0f;
+	result.historyLength = isActive ? 1.0f : 0.0f;
 
 	if (historyValid) {
 		const float4 wp = currentWorldPos[idx];
@@ -104,11 +169,19 @@ extern "C" __global__ void svgf_temporal_integrate(
 			const int prevPixel = wf_restir_reproject_prev_pixel(hitPoint, prevCamera, worldPosHistory, width, height);
 			if (prevPixel >= 0) {
 				const GpuSvgfState prev = history[prevPixel];
-				const float alpha = wf_svgf_temporal_alpha(prev.historyLength, kSvgfTargetAlpha);
-				result.color = prev.color + (color - prev.color) * alpha;
-				result.moment1 = prev.moment1 + (lum - prev.moment1) * alpha;
-				result.moment2 = prev.moment2 + (lum * lum - prev.moment2) * alpha;
-				result.historyLength = fminf(prev.historyLength + 1.0f, kSvgfMaxHistoryLength);
+				if (isActive) {
+					const float alpha = wf_svgf_temporal_alpha(prev.historyLength, kSvgfTargetAlpha);
+					result.color = prev.color + (color - prev.color) * alpha;
+					result.moment1 = prev.moment1 + (lum - prev.moment1) * alpha;
+					result.moment2 = prev.moment2 + (lum * lum - prev.moment2) * alpha;
+					result.historyLength = fminf(prev.historyLength + 1.0f, kSvgfMaxHistoryLength);
+				} else {
+					// Hold: carry the reprojected history through unchanged.
+					result.color = prev.color;
+					result.moment1 = prev.moment1;
+					result.moment2 = prev.moment2;
+					result.historyLength = prev.historyLength;
+				}
 			}
 		}
 	}

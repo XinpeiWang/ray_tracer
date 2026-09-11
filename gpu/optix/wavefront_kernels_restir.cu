@@ -210,11 +210,32 @@ extern "C" __global__ void restir_clear_reservoirs(GpuReservoir* reservoirs, int
 // (GI has no competing BSDF-sampling estimator for the SAME vertex the way
 // DI's NEE has to share with continuation-ray light hits - GI's own
 // candidate IS the continuation ray).
+// Checkerboard temporal upsampling (WavefrontPathTracer::render()'s own
+// checkerboardActive comment): a checkerboard-inactive pixel never gets a
+// primary ray this frame, so originContext[idx] is never populated and
+// ctx.valid() is false for it - exactly the same shape as a genuine
+// specular/miss/non-Lambertian hit that ALSO leaves originContext[idx]
+// invalid on an ACTIVE frame. Those two causes must be told apart:
+// specular/miss/non-Lambertian is a real "no GI candidate here right now"
+// (existing behavior: wipe to an empty reservoir, correct - GI has nothing
+// to show for this vertex this frame). Checkerboard-inactive is NOT that -
+// this pixel's reservoir would otherwise be wiped to empty every other
+// frame, defeating GI's own temporal accumulation for half the image
+// (ReSTIR GI is unconditionally enabled for every Live Preview call, so
+// this isn't a rare combination to guard against). weightBuffer[idx]==0.0f
+// (the same "was this pixel sampled this frame" signal svgf_temporal_
+// integrate uses) distinguishes the two; on that path, reproject via
+// currentWorldPos[idx] (held over from this pixel's last active frame - see
+// svgf_checkerboard_clear_frame's own comment) and carry the reprojected
+// reservoir through UNCHANGED - no combine, since there is no fresh
+// candidate to fold in.
 extern "C" __global__ void restir_gi_finalize(
 	const GpuGiOriginContext* originContext,
 	const GpuGiSample*        candidateIn,
 	const GpuGiReservoir*     history,
 	const float4*             worldPosHistory,
+	const float4*             currentWorldPos,
+	const float*              weightBuffer,
 	GpuReprojectBasis         prevCamera,
 	bool                      historyValid,
 	int                       imageWidth, int imageHeight,
@@ -230,6 +251,17 @@ extern "C" __global__ void restir_gi_finalize(
 
 	const GpuGiOriginContext& ctx = originContext[idx];
 	if (!ctx.valid()) {
+		if (weightBuffer[idx] == 0.0f && historyValid) {
+			const float4 wp = currentWorldPos[idx];
+			if (wp.w != 0.0f) {
+				const int prevPixel = wf_restir_reproject_prev_pixel(
+					make_float3(wp.x, wp.y, wp.z), prevCamera, worldPosHistory, imageWidth, imageHeight);
+				if (prevPixel >= 0) {
+					outputReservoirs[idx] = history[prevPixel];
+					return;
+				}
+			}
+		}
 		outputReservoirs[idx] = GpuGiReservoir{};
 		return;
 	}

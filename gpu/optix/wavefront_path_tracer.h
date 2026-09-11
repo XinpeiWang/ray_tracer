@@ -266,7 +266,7 @@ private:
     bool allocateQueues(int numPixels);
     void freeQueues();
     void launchGenerateCameraRays(int width, int height, int sampleIdx,
-        const GpuCameraParams& camera, float* d_weightBuffer);
+        const GpuCameraParams& camera, float* d_weightBuffer, bool checkerboardActive);
     // Builds this call's ReSTIR temporal-reuse context from d_reservoirsHistory_/
     // d_worldPosHistory_/d_restirNormal_/prevRestirCamera_/restirHistoryValid_/
     // restirImageWidth_/restirImageHeight_ - shared by all 3 launchEvaluateMaterials*()
@@ -288,7 +288,7 @@ private:
     // inside the per-depth loop, right after depth==1's own shadow-ray
     // accumulation - see render()'s own call site), unlike DI's spatial
     // reuse which runs once per whole render() call.
-    void launchGiFinalize(const MaterialData* d_materials, float3* d_framebuffer, float maxComponentValue);
+    void launchGiFinalize(const MaterialData* d_materials, float3* d_framebuffer, float maxComponentValue, const float* d_weightBuffer);
     // ReSTIR GI spatial reuse - see wavefront_kernels_restir.cu's own
     // restir_gi_spatial_reuse header comment. Called once per render() call,
     // same timing as launchRestirSpatialReuse() (DI's own).
@@ -299,7 +299,7 @@ private:
     // must already be normalized/final before SVGF treats it as "this
     // frame's noisy 1-spp sample" - see wavefront_kernels_svgf.cu's own
     // header comment).
-    void launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin);
+    void launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin, const float* d_weightBuffer);
     void launchEvaluateMaterials(int numHits, int maxDepth, bool regularize, float maxComponentValue,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,

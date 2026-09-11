@@ -25,6 +25,11 @@
 //       difference than a low-variance (converged) one before its weight
 //       collapses
 //   11. Combined edge_weight is the product of all three terms
+// wf_checkerboard_pixel_active
+//   12. checkerboardActive=false: every pixel is active, any frameNumber
+//   13. checkerboardActive=true: exactly half of a frame's pixels are
+//       active, and the active set exactly complements the previous
+//       frame's (same pixel, frameNumber vs frameNumber+1)
 
 #include <gtest/gtest.h>
 #include "wavefront_svgf_math.h"
@@ -107,4 +112,34 @@ TEST(WfSvgfWeights, EdgeWeightIsProductOfAllThreeTerms) {
 		5.0f, 5.2f, 1.0f, 1.0f,
 		0.5f, 0.6f, 0.2f, 4.0f);
 	EXPECT_NEAR(actual, expected, 1e-6f);
+}
+
+TEST(WfCheckerboardPixelActive, InactiveFeatureMeansEveryPixelIsActive) {
+	for (unsigned int frame = 0; frame < 4; ++frame) {
+		for (int py = 0; py < 4; ++py) {
+			for (int px = 0; px < 4; ++px) {
+				EXPECT_TRUE(wf_checkerboard_pixel_active(px, py, frame, /*checkerboardActive=*/false));
+			}
+		}
+	}
+}
+
+TEST(WfCheckerboardPixelActive, ExactlyHalfActivePerFrameAndComplementsNextFrame) {
+	constexpr int width = 8, height = 6;
+	for (unsigned int frame = 0; frame < 3; ++frame) {
+		int activeCount = 0;
+		for (int py = 0; py < height; ++py) {
+			for (int px = 0; px < width; ++px) {
+				const bool active = wf_checkerboard_pixel_active(px, py, frame, /*checkerboardActive=*/true);
+				const bool activeNextFrame = wf_checkerboard_pixel_active(px, py, frame + 1, /*checkerboardActive=*/true);
+				// Same pixel, consecutive frames: exactly one of the two must
+				// be active - a real checkerboard alternates every frame,
+				// never repeats or skips two frames in a row.
+				EXPECT_NE(active, activeNextFrame)
+					<< "pixel (" << px << "," << py << ") frame " << frame;
+				if (active) ++activeCount;
+			}
+		}
+		EXPECT_EQ(activeCount, width * height / 2) << "frame " << frame;
+	}
 }

@@ -1003,13 +1003,13 @@ void WavefrontPathTracer::resetQueueCounter(int* d_counter) {
 
 void WavefrontPathTracer::launchGenerateCameraRays(
 	int width, int height, int sampleIdx,
-	const GpuCameraParams& camera, float* d_weightBuffer)
+	const GpuCameraParams& camera, float* d_weightBuffer, bool checkerboardActive)
 {
 	WorkQueue<RayWorkItem> rq;
 	rq.items    = reinterpret_cast<RayWorkItem*>(d_rayItems_);
 	rq.counter  = reinterpret_cast<int*>(d_rayCounter_);
 	rq.capacity = queueCapacity_;
-	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, d_weightBuffer, stream_);
+	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, d_weightBuffer, checkerboardActive, stream_);
 }
 
 GpuRestirTemporalContext WavefrontPathTracer::buildRestirTemporalContext() const {
@@ -1237,13 +1237,15 @@ void WavefrontPathTracer::launchRestirSpatialReuse(
 		stream_);
 }
 
-void WavefrontPathTracer::launchGiFinalize(const MaterialData* d_materials, float3* d_framebuffer, float maxComponentValue) {
+void WavefrontPathTracer::launchGiFinalize(const MaterialData* d_materials, float3* d_framebuffer, float maxComponentValue, const float* d_weightBuffer) {
 	if (!restirGiEnabled_) return;
 	wf_launch_restir_gi_finalize(
 		reinterpret_cast<const GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<const GpuGiSample*>(d_giCandidateOut_),
 		reinterpret_cast<const GpuGiReservoir*>(d_giReservoirsHistory_),
 		reinterpret_cast<const float4*>(d_worldPosHistory_),
+		reinterpret_cast<const float4*>(d_worldPos_),
+		d_weightBuffer,
 		prevRestirCamera_,
 		restirGiHistoryValid_,
 		restirImageWidth_, restirImageHeight_,
@@ -1264,7 +1266,7 @@ void WavefrontPathTracer::launchGiSpatialReuse() {
 		stream_);
 }
 
-void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin) {
+void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin, const float* d_weightBuffer) {
 	if (!svgfEnabled_) return;
 	const int width = restirImageWidth_;
 	const int height = restirImageHeight_;
@@ -1291,6 +1293,7 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 		reinterpret_cast<const float4*>(d_worldPos_),
 		reinterpret_cast<const GpuSvgfState*>(d_svgfHistory_),
 		reinterpret_cast<const float4*>(d_worldPosHistory_),
+		d_weightBuffer,
 		prevRestirCamera_,
 		svgfHistoryValid_,
 		width, height,
@@ -1530,6 +1533,25 @@ bool WavefrontPathTracer::render(
 	// today's pre-existing behavior, whatever that happens to be.
 	if (camera.userSeed >= 0) frameNumber_ = static_cast<unsigned int>(camera.userSeed);
 
+	// Checkerboard temporal upsampling: reuses SVGF's own temporal
+	// reprojection/history as a reconstruction filter for a sparse per-frame
+	// sample pattern (alternating which half of pixels get a fresh primary-
+	// ray sample each frame - see wf_checkerboard_pixel_active(),
+	// wavefront_device_helpers.h), so a heavy scene traces roughly half as
+	// many primary rays per Live Preview frame. Gated on BOTH svgfEnabled_
+	// AND restirGiHistoryValid_ (not just SVGF's own history) - ReSTIR GI is
+	// unconditionally on for every Live Preview call with no way to disable
+	// it, and its own restir_gi_finalize() kernel needs a warm, reprojectable
+	// history to correctly HOLD a checkerboard-inactive pixel's reservoir
+	// (see that kernel's own comment) rather than wiping it to empty every
+	// other frame. Both *HistoryValid_ flags already reset themselves on
+	// exactly the events (scene switch, resolution change) that would
+	// otherwise need special-casing here - piggybacking on that existing
+	// invalidation is what keeps the very first frame after such an event
+	// (where checkerboarding would otherwise bake a fabricated black/empty
+	// half-image into fresh history) safe by construction.
+	const bool checkerboardActive = svgfEnabled_ && svgfHistoryValid_ && restirGiHistoryValid_;
+
 	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
 	// project's own plan for why wavefront is the one backend that gets
 	// this for free: every field here is already a real, host-visible
@@ -1603,10 +1625,10 @@ bool WavefrontPathTracer::render(
 		ensureAovBuffers((unsigned int)width, (unsigned int)height);
 		d_albedoAovPtr = reinterpret_cast<float3*>(denoiserResources_.albedoAov);
 		d_normalAovPtr = reinterpret_cast<float3*>(denoiserResources_.normalAov);
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(denoiserResources_.albedoAov), 0,
-								   numPixels * sizeof(float3), stream_));
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(denoiserResources_.normalAov), 0,
-								   numPixels * sizeof(float3), stream_));
+		// Cleared below, together with d_worldPos_ (see that block's own
+		// comment) via svgf_checkerboard_clear_frame - NOT a plain memset
+		// here, since a checkerboard-inactive pixel's albedo/normal must
+		// survive this call untouched.
 	} else if (denoiserResources_.albedoAov || denoiserResources_.normalAov) {
 		// Neither consumer wants these this call - free rather than leave
 		// them allocated-but-stale. launchEvaluateMaterials*()'s own kernel-
@@ -1648,7 +1670,8 @@ bool WavefrontPathTracer::render(
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_worldPos_), numPixels * sizeof(float4)));
 			worldPosCapacity_ = numPixels;
 		}
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_worldPos_), 0, numPixels * sizeof(float4), stream_));
+		// Cleared below, together with albedo/normal - see that call's own
+		// comment for why this is no longer a plain memset.
 	} else if (d_worldPos_) {
 		// Flag turned off after being on - free rather than leave a stale
 		// buffer readWorldPosBuffer() could otherwise still report success
@@ -1657,6 +1680,22 @@ bool WavefrontPathTracer::render(
 		d_worldPos_ = 0;
 		worldPosCapacity_ = 0;
 	}
+
+	// Checkerboard temporal upsampling's frame-clear (see WavefrontPathTracer::
+	// render()'s own checkerboardActive comment, and svgf_checkerboard_clear_
+	// frame's own comment, wavefront_kernels_svgf.cu, for the full rationale).
+	// Unifies what used to be 2 independent memsets (albedo+normal, worldPos)
+	// into one kernel launch, each of whose 3 output pointers is independently
+	// nullable - only the ones actually allocated above (per
+	// needsAovGuideBuffers/needsWorldPosHistory/worldPosOutputEnabled_) are
+	// non-null here. frameNumber_ + 1: this runs BEFORE frameNumber_++ below
+	// (the sample loop's own generate_camera_rays calls, further down, see
+	// each other's launch site), so +1 is what makes this call's own
+	// checkerboard parity agree with what THIS SAME render() call's own
+	// primary rays will use once the increment has actually happened.
+	wf_launch_svgf_checkerboard_clear_frame(
+		d_albedoAovPtr, d_normalAovPtr, reinterpret_cast<float4*>(d_worldPos_),
+		width, height, frameNumber_ + 1, checkerboardActive, stream_);
 
 	// ReSTIR DI (Live Preview only) reservoir buffer - see setRestirEnabled()'s
 	// own comment. Same resolution-keyed allocate-once/only-realloc-on-change
@@ -1897,7 +1936,7 @@ bool WavefrontPathTracer::render(
 
 		// Reset ray queue counter, generate primary rays
 		resetQueueCounter(reinterpret_cast<int*>(d_rayCounter_));
-		launchGenerateCameraRays(width, height, sampleIdx, camera, d_weightPtr);
+		launchGenerateCameraRays(width, height, sampleIdx, camera, d_weightPtr, checkerboardActive);
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 		// -------------------------------------------------------------------------
@@ -2167,7 +2206,7 @@ bool WavefrontPathTracer::render(
 			// no correctness benefit, once per sample, every interactive
 			// frame GI is enabled for.
 			if (depth == 1) {
-				launchGiFinalize(reinterpret_cast<const MaterialData*>(d_materials), d_fbPtr, camera.maxComponentValue);
+				launchGiFinalize(reinterpret_cast<const MaterialData*>(d_materials), d_fbPtr, camera.maxComponentValue, d_weightPtr);
 			}
 
 			// ------------------------------------------------------------------
@@ -2246,7 +2285,7 @@ bool WavefrontPathTracer::render(
 	// anyway). Filters d_fb in place. MUST run before the world-pos-history
 	// overwrite just below - see this block's own opening comment.
 	if (svgfEnabled_) {
-		launchSvgf(reinterpret_cast<float3*>(d_fb), d_albedoAovPtr, camera.origin);
+		launchSvgf(reinterpret_cast<float3*>(d_fb), d_albedoAovPtr, camera.origin, d_weightPtr);
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
 	}
 

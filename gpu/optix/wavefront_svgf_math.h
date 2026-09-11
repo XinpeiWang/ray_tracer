@@ -48,6 +48,30 @@ CPU_GPU inline float wf_svgf_temporal_alpha(float historyLength, float targetAlp
 	return fmaxf(targetAlpha, 1.0f / (historyLength + 1.0f));
 }
 
+// Checkerboard temporal-upsampling active-pixel predicate: with SVGF's own
+// temporal reprojection/history already doing the reconstruction work, only
+// half the pixels need a genuinely fresh primary-ray sample each frame - the
+// other half hold last frame's (reprojected) value. `checkerboardActive`
+// false is always the safe/default answer (every pixel active, byte-
+// identical to the pre-checkerboard behavior) - see WavefrontPathTracer::
+// render()'s own comment for the exact gating condition (SVGF AND ReSTIR GI
+// history both already warm, so this never activates on the first frame
+// after a scene/resolution change). Called identically from
+// generate_camera_rays (gpu/optix/wavefront_kernels_camera.cu),
+// svgf_checkerboard_clear_frame and svgf_temporal_integrate (wavefront_
+// kernels_svgf.cu), and restir_gi_finalize (wavefront_kernels_restir.cu) -
+// every consumer of "was this pixel supposed to get a fresh sample this
+// frame" must agree on the exact same parity, so this is the one place that
+// arithmetic lives. Lives here (not wavefront_device_helpers.h, this
+// header's usual home for __device__-only helpers) specifically so it's
+// unit-testable from a plain host build, same reasoning as every other
+// function in this file - see tests/unit/wavefront_svgf_math_tests.cpp.
+CPU_GPU inline bool wf_checkerboard_pixel_active(
+		int px, int py, unsigned int frameNumber, bool checkerboardActive) {
+	if (!checkerboardActive) return true;
+	return ((px + py) & 1) == static_cast<int>(frameNumber & 1u);
+}
+
 // A-trous edge-stopping weights (Schied et al. eq. 4) - each in [0,1],
 // multiplied together by the caller to get one neighbor's total filter
 // weight. Un-normalized (the caller divides by the sum of all sampled
