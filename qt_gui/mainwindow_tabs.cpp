@@ -909,13 +909,17 @@ void MainWindow::createSettingsTab() {
 	QGridLayout *frameRateGrid = new QGridLayout(frameRateRow);
 	frameRateGrid->setContentsMargins(0, 0, 0, 0);
 	frameRateGrid->setHorizontalSpacing(10);
-	frameRateGrid->setColumnStretch(1, 1);
-	frameRateGrid->setColumnStretch(3, 1);
+	// Stretch collects into one trailing column instead of columns 1/3
+	// themselves, so each capped-width spinbox sits compactly next to its
+	// label rather than stretching to fill its whole column (same fix as
+	// Live Preview Settings/Camera Position's own grids).
+	frameRateGrid->setColumnStretch(4, 1);
 
 	m_videoFramesSpinBox = new QSpinBox();
 	m_videoFramesSpinBox->setRange(10, 1000);
 	m_videoFramesSpinBox->setValue(60);
 	m_videoFramesSpinBox->setSuffix(tr(" frames"));
+	m_videoFramesSpinBox->setMaximumWidth(130);
 	styleSpinBox(m_videoFramesSpinBox);
 	frameRateGrid->addWidget(labelWithInfo(tr("Frame Count:"),
 		tr("How many individual images make up the video - each one is a "
@@ -931,6 +935,7 @@ void MainWindow::createSettingsTab() {
 	m_videoFPSSpinBox->setRange(15, 120);
 	m_videoFPSSpinBox->setValue(30);
 	m_videoFPSSpinBox->setSuffix(tr(" fps"));
+	m_videoFPSSpinBox->setMaximumWidth(130);
 	styleSpinBox(m_videoFPSSpinBox);
 	frameRateGrid->addWidget(labelWithInfo(tr("Frames Per Second:"),
 		tr("How many of the rendered frames play per second of video.\n\n"
@@ -1507,13 +1512,17 @@ void MainWindow::createSettingsTab() {
 	advancedGrid->setVerticalSpacing(10);
 	advancedGrid->setHorizontalSpacing(10);
 	advancedGrid->setContentsMargins(15, 22, 15, 12);
-	advancedGrid->setColumnStretch(1, 1);
-	advancedGrid->setColumnStretch(3, 1);
+	// Stretch collects into one trailing column instead of columns 1/3
+	// themselves, so each capped-width spinbox sits compactly next to its
+	// label rather than stretching to fill its whole column (same fix as
+	// Live Preview Settings/Camera Position's own grids).
+	advancedGrid->setColumnStretch(4, 1);
 
 	// Width
 	m_widthSpinBox = new QSpinBox(basicTab);
 	m_widthSpinBox->setRange(100, 4096);
 	m_widthSpinBox->setValue(800);
+	m_widthSpinBox->setMaximumWidth(110);
 	styleSpinBox(m_widthSpinBox);
 	advancedGrid->addWidget(labelWithInfo(tr("Width:"),
 		tr("The image's pixel width.\n\n"
@@ -1527,6 +1536,7 @@ void MainWindow::createSettingsTab() {
 	m_heightSpinBox = new QSpinBox(basicTab);
 	m_heightSpinBox->setRange(100, 4096);
 	m_heightSpinBox->setValue(800);
+	m_heightSpinBox->setMaximumWidth(110);
 	styleSpinBox(m_heightSpinBox);
 	advancedGrid->addWidget(labelWithInfo(tr("Height:"),
 		tr("The image's pixel height.\n\n"
@@ -1539,6 +1549,7 @@ void MainWindow::createSettingsTab() {
 	m_samplesSpinBox = new QSpinBox(basicTab);
 	m_samplesSpinBox->setRange(1, 10000);
 	m_samplesSpinBox->setValue(100);
+	m_samplesSpinBox->setMaximumWidth(110);
 	styleSpinBox(m_samplesSpinBox);
 	m_samplesSpinBox->setToolTip(
 		tr("Rays traced per pixel. This is the main quality/time dial: noise falls\n"
@@ -1559,6 +1570,7 @@ void MainWindow::createSettingsTab() {
 	m_maxDepthSpinBox = new QSpinBox(basicTab);
 	m_maxDepthSpinBox->setRange(1, 100);
 	m_maxDepthSpinBox->setValue(50);
+	m_maxDepthSpinBox->setMaximumWidth(110);
 	styleSpinBox(m_maxDepthSpinBox);
 	m_maxDepthSpinBox->setToolTip(
 		tr("How many times a ray may bounce before it is terminated. Low values\n"
@@ -1612,8 +1624,14 @@ void MainWindow::createSettingsTab() {
 	cameraLayout->setVerticalSpacing(10);
 	cameraLayout->setHorizontalSpacing(10);
 	cameraLayout->setContentsMargins(15, 22, 15, 12);
-	cameraLayout->setColumnStretch(1, 1);
-	cameraLayout->setColumnStretch(3, 1);
+	// Stretch collects into one trailing column instead of columns 1/3
+	// themselves - a widget occupying a stretchy column is pulled wide to
+	// fill it (default QGridLayout fill behavior), which is exactly what
+	// made the capped-width spinboxes below and the Preset combo (spanning
+	// columns 1-3) balloon to the panel's full width. A genuinely separate,
+	// always-empty trailing column absorbs the leftover space instead,
+	// letting every real column size to its own content.
+	cameraLayout->setColumnStretch(4, 1);
 
 	// Camera preset combo box
 	// Each preset stores a direction*ratio QVector3D, NOT an absolute world
@@ -1679,6 +1697,11 @@ void MainWindow::createSettingsTab() {
 	m_cameraPosX->setValue(278);  // Default X: centered horizontally
 	m_cameraPosX->setSingleStep(10);
 	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
+	// Capped so it sits compactly next to its label instead of stretching to
+	// fill its whole (stretchy) grid column - see cameraLayout's own
+	// setColumnStretch() comment, same fix as the Live Preview Settings
+	// group's own spinboxes.
+	m_cameraPosX->setMaximumWidth(110);
 	styleSpinBox(m_cameraPosX);
 	cameraLayout->addWidget(labelWithInfo(tr("Camera X:"),
 		tr("The camera's position along the world's X axis (left/right).\n\n"
@@ -1694,6 +1717,7 @@ void MainWindow::createSettingsTab() {
 	m_cameraPosY->setValue(278);  // Default Y: centered vertically
 	m_cameraPosY->setSingleStep(10);
 	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
+	m_cameraPosY->setMaximumWidth(110);
 	styleSpinBox(m_cameraPosY);
 	cameraLayout->addWidget(labelWithInfo(tr("Camera Y:"),
 		tr("The camera's position along the world's Y axis (up/down).\n\n"
@@ -1708,6 +1732,7 @@ void MainWindow::createSettingsTab() {
 	m_cameraPosZ->setValue(-800);  // Default Z: far back view to match default preset
 	m_cameraPosZ->setSingleStep(10);
 	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
+	m_cameraPosZ->setMaximumWidth(110);
 	styleSpinBox(m_cameraPosZ);
 	cameraLayout->addWidget(labelWithInfo(tr("Camera Z:"),
 		tr("The camera's position along the world's Z axis (forward/back, "
@@ -1739,6 +1764,7 @@ void MainWindow::createSettingsTab() {
 	m_cameraDistance->setValue(1078);  // Matches the default preset's distance from Cornell Box's lookat
 	m_cameraDistance->setSingleStep(10);
 	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
+	m_cameraDistance->setMaximumWidth(110);
 	styleSpinBox(m_cameraDistance);
 	cameraLayout->addWidget(labelWithInfo(tr("Distance from Center:"),
 		tr("Moves the camera directly toward or away from the scene's "
