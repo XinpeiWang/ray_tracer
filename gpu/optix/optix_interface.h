@@ -41,10 +41,9 @@ bool optix_get_diagnostics(OptixDiagnostics* out);
 // Supports multiple scenes via scene_id parameter
 // force_camera_override: 1 = always use cam_x/y/z, even for scenes that
 // otherwise ignore it and use their own fixed lookfrom (see
-// scene_builder.cpp's scene 1/2 cases). main.cpp's video-mode frame loop
-// passes 1, since a video needs to honor its per-frame animated camera
-// regardless of the scene's single-image default; single-image rendering
-// passes 0 (default).
+// scene_builder.cpp's scene 1/2 cases). main.cpp passes 1 for both
+// single-image and video-mode calls today; the default of 0 below is for
+// other/future callers that want a scene's own fixed lookfrom honored.
 // options: render-behavior flags (denoise/exposure/tonemap - sampler/
 // spectral are CPU-only and ignored here) bundled into one struct - see
 // src/shared/render_options.h's own field-by-field comments. A default-

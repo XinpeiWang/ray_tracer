@@ -131,10 +131,13 @@ struct SceneData {
 	std::vector<PunctualLightGPU> punctualLights;
 
 	// Set by prepareSceneAndCamera() (optix_interface.cpp) before calling
-	// build_scene(), when scene_id already matches g_uploaded_scene_id - a
-	// pure camera-move Live Preview frame, where the GPU-side geometry
-	// upload is ALREADY skipped a few lines further down the same call
-	// chain (see g_uploaded_scene_id's own comment) and this call's own
+	// build_scene(), when scene_id already matches g_uploaded_scene_id - most
+	// commonly a pure camera-move Live Preview frame, but this check is in
+	// the entry point SHARED by every caller (optix_render_main() included),
+	// not Live-Preview-scoped, so it also applies to e.g. a batch/video call
+	// that happens to repeat the previous call's scene_id. The GPU-side
+	// geometry upload is ALREADY skipped a few lines further down the same
+	// call chain (see g_uploaded_scene_id's own comment) and this call's own
 	// `scene.triangles`/etc. would be built only to be thrown away
 	// unused. load_obj_triangles_gpu()/load_obj_triangles_mtl_gpu()/
 	// build_loaded_pbrt_scene() check this and return immediately without

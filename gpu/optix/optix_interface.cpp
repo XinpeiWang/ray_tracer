@@ -618,7 +618,16 @@ extern "C" bool rt_realtime_render_frame(
 		static GpuCameraParams s_cachedCameraExtra{};
 		static bool s_haveCache = false;
 
+		// Also require scene_id == g_uploaded_scene_id (the actual GPU-resident
+		// scene, not just this function's own memory of its last call): without
+		// it, a batch/video render for a DIFFERENT scene running between two
+		// otherwise-identical-looking Live Preview calls (same process, e.g. a
+		// test binary linking both entry points) would leave s_cachedSceneId
+		// pointing at a scene that is no longer what's actually uploaded, and
+		// this cache would report a hit and skip prepareSceneAndCamera()
+		// entirely - silently rendering the wrong scene.
 		const bool cacheHit = s_haveCache && s_cachedSceneId == scene_id &&
+			scene_id == g_uploaded_scene_id &&
 			s_cachedWidth == image_width && s_cachedHeight == image_height &&
 			s_cachedCamX == cam_x && s_cachedCamY == cam_y && s_cachedCamZ == cam_z &&
 			s_cachedHasCustomLookAt == has_custom_lookat &&
