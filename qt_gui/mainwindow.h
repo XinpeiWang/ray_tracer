@@ -842,18 +842,21 @@ private:
 	bool m_liveDenoiseEnabled = false;
 	double m_liveDenoiseBlend = 0.0;
 	bool m_liveDenoiseShowLatest = false;
-	QCheckBox *m_liveDenoiseCheck = nullptr;
 	QDoubleSpinBox *m_liveDenoiseBlendSpin = nullptr;
 	QCheckBox *m_liveDenoiseShowLatestCheck = nullptr;
 	// Live Preview's SVGF spatiotemporal denoiser toggle
 	// (RealtimePreviewSession::setSvgf(), this project's own SVGF plan) - an
 	// ALTERNATIVE to the OptiX AI denoiser above, not a second layer on top
-	// of it, so the two checkboxes are presented as mutually exclusive
-	// (mainwindow_tabs.cpp's own toggled-handler wiring keeps them that way)
-	// rather than independent. Loaded once at startup and saved immediately
-	// on every change, same shape as m_liveDenoiseEnabled above.
+	// of it. m_liveDenoiseEnabled/m_liveSvgfEnabled can never both be true -
+	// m_liveDenoiserModeCombo (a single 3-way "None/OptiX AI Denoiser/SVGF
+	// Denoiser" dropdown, since the two are mutually exclusive rather than
+	// independent) is the only thing that sets either, so the mutual
+	// exclusion is structural (one selected index) rather than two
+	// independently-toggled checkboxes that happen to be kept in sync.
+	// Loaded once at startup and saved immediately on every change, same
+	// shape as m_liveDenoiseEnabled above.
 	bool m_liveSvgfEnabled = false;
-	QCheckBox *m_liveSvgfCheck = nullptr;
+	QComboBox *m_liveDenoiserModeCombo = nullptr;
 	// Live Preview render-setting knobs surfaced alongside denoise/SVGF above -
 	// each independent, loaded once at startup and saved immediately on every
 	// change, same shape as m_liveDenoiseEnabled. Defaults match this

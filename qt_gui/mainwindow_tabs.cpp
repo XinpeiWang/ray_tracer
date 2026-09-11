@@ -1073,8 +1073,10 @@ void MainWindow::createSettingsTab() {
 	QGridLayout *sensitivityGrid = new QGridLayout(sensitivityRow);
 	sensitivityGrid->setContentsMargins(0, 0, 0, 0);
 	sensitivityGrid->setHorizontalSpacing(10);
-	sensitivityGrid->setColumnStretch(1, 1);
-	sensitivityGrid->setColumnStretch(3, 1);
+	// Stretch collects into one trailing column instead of columns 1/3
+	// themselves, so each capped-width spinbox sits compactly next to its
+	// label rather than stretching to fill its whole column.
+	sensitivityGrid->setColumnStretch(4, 1);
 
 	m_mouseSensitivitySpinBox = new QDoubleSpinBox();
 	m_mouseSensitivitySpinBox->setRange(0.25, 3.0);
@@ -1082,6 +1084,7 @@ void MainWindow::createSettingsTab() {
 	m_mouseSensitivitySpinBox->setDecimals(2);
 	m_mouseSensitivitySpinBox->setValue(m_mouseSensitivity);
 	m_mouseSensitivitySpinBox->setSuffix(tr("x"));
+	m_mouseSensitivitySpinBox->setMaximumWidth(110);
 	styleSpinBox(m_mouseSensitivitySpinBox);
 	connect(m_mouseSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_mouseSensitivity = value;
@@ -1100,6 +1103,7 @@ void MainWindow::createSettingsTab() {
 	m_keyboardSensitivitySpinBox->setDecimals(2);
 	m_keyboardSensitivitySpinBox->setValue(m_keyboardSensitivity);
 	m_keyboardSensitivitySpinBox->setSuffix(tr("x"));
+	m_keyboardSensitivitySpinBox->setMaximumWidth(110);
 	styleSpinBox(m_keyboardSensitivitySpinBox);
 	connect(m_keyboardSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_keyboardSensitivity = value;
@@ -1114,31 +1118,33 @@ void MainWindow::createSettingsTab() {
 
 	liveModeSettingsLayout->addRow(sensitivityRow);
 
-	// OptiX AI denoiser - same denoiser/blend the Render Options tab's
-	// m_denoiseCheck/m_denoiseBlendSpin already run for batch/video
-	// rendering, applied to the realtime path too (rt_realtime_render_frame()'s
-	// own comment). "Show latest frame" only makes sense alongside denoise
-	// (a single raw noisy frame has no redeeming value over accumulating),
-	// so it's enabled/disabled in lockstep with the main checkbox exactly
-	// like the blend spinbox already is.
-	// Two rows rather than one: the first is the OptiX AI denoiser's own
-	// on/off + blend amount, the second is "show latest" (which only applies
-	// to the OptiX denoiser above - see its own tooltip) alongside the SVGF
-	// alternative - keeps the OptiX-denoiser-specific controls from crowding
-	// against the mode-choice checkbox on one long, hard-to-scan line.
+	// OptiX AI denoiser and SVGF are mutually exclusive alternatives (never
+	// both at once - this project's own SVGF plan), so a single 3-way
+	// dropdown (None/OptiX AI Denoiser/SVGF Denoiser) replaces what used to
+	// be two independently-toggled-but-kept-in-sync checkboxes - the
+	// dropdown makes "exactly one of these, or neither" structural instead
+	// of enforced by a QButtonGroup after the fact. "Show latest frame" and
+	// Blend only apply to the OptiX AI denoiser, so they get their own row
+	// below the mode dropdown, enabled only in that mode.
 	QWidget *liveDenoiseRow = new QWidget();
 	QHBoxLayout *liveDenoiseRowLayout = new QHBoxLayout(liveDenoiseRow);
 	liveDenoiseRowLayout->setContentsMargins(0, 0, 0, 0);
 	liveDenoiseRowLayout->setSpacing(10);
 
-	QWidget *liveDenoiseModeRow = new QWidget();
-	QHBoxLayout *liveDenoiseModeRowLayout = new QHBoxLayout(liveDenoiseModeRow);
-	liveDenoiseModeRowLayout->setContentsMargins(0, 0, 0, 0);
-	liveDenoiseModeRowLayout->setSpacing(10);
+	QWidget *liveDenoiseOptionsRow = new QWidget();
+	QHBoxLayout *liveDenoiseOptionsRowLayout = new QHBoxLayout(liveDenoiseOptionsRow);
+	liveDenoiseOptionsRowLayout->setContentsMargins(0, 0, 0, 0);
+	liveDenoiseOptionsRowLayout->setSpacing(10);
 
-	m_liveDenoiseCheck = new QCheckBox(tr("OptiX AI Denoiser"));
-	m_liveDenoiseCheck->setChecked(m_liveDenoiseEnabled);
-	styleCheckBox(m_liveDenoiseCheck);
+	// Index 0 = None, 1 = OptiX AI Denoiser, 2 = SVGF Denoiser - every place
+	// that reads/sets the selection uses these same three literal indices.
+	m_liveDenoiserModeCombo = new QComboBox();
+	m_liveDenoiserModeCombo->addItem(tr("None"));
+	m_liveDenoiserModeCombo->addItem(tr("OptiX AI Denoiser"));
+	m_liveDenoiserModeCombo->addItem(tr("SVGF Denoiser (experimental)"));
+	m_liveDenoiserModeCombo->setCurrentIndex(m_liveSvgfEnabled ? 2 : (m_liveDenoiseEnabled ? 1 : 0));
+	m_liveDenoiserModeCombo->setMaximumWidth(220);
+	styleComboBox(m_liveDenoiserModeCombo);
 
 	m_liveDenoiseBlendSpin = new QDoubleSpinBox();
 	m_liveDenoiseBlendSpin->setRange(0.0, 1.0);
@@ -1146,108 +1152,96 @@ void MainWindow::createSettingsTab() {
 	m_liveDenoiseBlendSpin->setSingleStep(0.05);
 	m_liveDenoiseBlendSpin->setValue(m_liveDenoiseBlend);
 	m_liveDenoiseBlendSpin->setEnabled(m_liveDenoiseEnabled);
+	m_liveDenoiseBlendSpin->setMaximumWidth(110);
 	styleSpinBox(m_liveDenoiseBlendSpin);
-	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseBlendSpin, &QDoubleSpinBox::setEnabled);
-
-	m_liveDenoiseShowLatestCheck = new QCheckBox(tr("Show latest frame instead of accumulating"));
-	m_liveDenoiseShowLatestCheck->setChecked(m_liveDenoiseShowLatest);
-	m_liveDenoiseShowLatestCheck->setEnabled(m_liveDenoiseEnabled);
-	styleCheckBox(m_liveDenoiseShowLatestCheck);
-	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseShowLatestCheck, &QCheckBox::setEnabled);
-
-	// SVGF spatiotemporal denoiser - an ALTERNATIVE to the OptiX AI denoiser
-	// above, not a second layer on top of it (this project's own SVGF plan).
-	m_liveSvgfCheck = new QCheckBox(tr("SVGF Denoiser (experimental)"));
-	m_liveSvgfCheck->setChecked(m_liveSvgfEnabled);
-	styleCheckBox(m_liveSvgfCheck);
-
-	// Exclusive QButtonGroup enforces the mutual exclusion natively (checking
-	// one automatically unchecks the other, still emitting toggled(false) on
-	// it so the lambdas below correctly update state/settings either way) -
-	// simpler and less error-prone than each checkbox's own handler manually
-	// calling setChecked(false) on the other, and it stays correct without
-	// changes if a third mutually-exclusive mode is ever added here.
-	QButtonGroup *liveDenoiseModeGroup = new QButtonGroup(this);
-	liveDenoiseModeGroup->setExclusive(true);
-	liveDenoiseModeGroup->addButton(m_liveDenoiseCheck);
-	liveDenoiseModeGroup->addButton(m_liveSvgfCheck);
-
-	// All three OptiX-denoiser controls push straight to the running session
-	// (if any) as well as QSettings, via the shared pushLiveDenoiseToSession()
-	// helper - see RealtimePreviewSession::setDenoise()'s own comment on when
-	// this does and doesn't reset accumulation.
-	connect(m_liveDenoiseCheck, &QCheckBox::toggled, this, [this](bool checked) {
-		m_liveDenoiseEnabled = checked;
-		saveLiveDenoiseEnabled(checked);
-		pushLiveDenoiseToSession();
-	});
 	connect(m_liveDenoiseBlendSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_liveDenoiseBlend = value;
 		saveLiveDenoiseBlend(value);
 		pushLiveDenoiseToSession();
 	});
+
+	m_liveDenoiseShowLatestCheck = new QCheckBox(tr("Show latest frame instead of accumulating"));
+	m_liveDenoiseShowLatestCheck->setChecked(m_liveDenoiseShowLatest);
+	m_liveDenoiseShowLatestCheck->setEnabled(m_liveDenoiseEnabled);
+	styleCheckBox(m_liveDenoiseShowLatestCheck);
 	connect(m_liveDenoiseShowLatestCheck, &QCheckBox::toggled, this, [this](bool checked) {
 		m_liveDenoiseShowLatest = checked;
 		saveLiveDenoiseShowLatest(checked);
 		pushLiveDenoiseToSession();
 	});
-	connect(m_liveSvgfCheck, &QCheckBox::toggled, this, [this](bool checked) {
-		m_liveSvgfEnabled = checked;
-		saveLiveSvgfEnabled(checked);
-		pushLiveSvgfToSession();
-	});
 
-	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseCheck,
-		tr("Cleans up Live Preview's noisy low-sample image using the same "
-		"OptiX AI denoiser the Render Options tab's own Denoiser checkbox "
-		"runs for finished renders - lets the view look reasonable almost "
-		"immediately instead of waiting many frames to converge. Costs a "
-		"small amount of GPU time per frame. The number to its right blends "
-		"between the noisy original and the fully denoised result, same as "
-		"the Render Options tab's own blend control.")));
-	liveDenoiseRowLayout->addWidget(labelWithInfo(tr("Blend:"),
-		tr("Blend between the noisy input and the fully denoised output "
-		"(0.0 = 100% denoised, 1.0 = original noisy image), same meaning as "
-		"the Render Options tab's own blend control.")));
-	liveDenoiseRowLayout->addWidget(m_liveDenoiseBlendSpin);
-	liveDenoiseRowLayout->addStretch(1);
-
-	liveDenoiseModeRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseShowLatestCheck,
-		tr("Displays each denoised frame as-is instead of averaging it into "
-		"a running mean with earlier frames. Trades away the extra quality "
-		"accumulating more samples would eventually reach, in exchange for "
-		"a view that always reflects only the most recent frame - useful "
-		"while flying around with WASD, where older accumulated frames are "
-		"from a camera position you've already left.")));
-	liveDenoiseModeRowLayout->addWidget(checkboxWithInfo(m_liveSvgfCheck,
-		tr("Cleans up Live Preview using SVGF (Spatiotemporal Variance-Guided "
-		"Filtering) instead of the OptiX AI denoiser - tracks per-pixel "
-		"variance over time and uses it to drive an edge-aware spatial "
-		"filter, which holds up better during camera movement than the AI "
-		"denoiser + running-mean combination above. Always shows the latest "
-		"filtered frame rather than accumulating (there is no separate "
-		"'show latest' option for it, and no blend control - its output is "
-		"always fully filtered). Mutually exclusive with the OptiX AI "
-		"denoiser above.")));
-	liveDenoiseModeRowLayout->addStretch(1);
-
-	liveModeSettingsLayout->addRow(liveDenoiseRow);
-	liveModeSettingsLayout->addRow(liveDenoiseModeRow);
-
-	// SVGF Advanced Tuning - nested group, enabled/disabled in lockstep with
-	// m_liveSvgfCheck exactly like m_liveDenoiseBlendSpin is with
-	// m_liveDenoiseCheck above. Ten controls mirroring SvgfTuningParams
-	// (gpu/optix/svgf_tuning_params.h) field-for-field; every range/default
-	// below matches that struct's own comments.
+	// SVGF Advanced Tuning - nested group, enabled only in SVGF mode. Ten
+	// controls mirroring SvgfTuningParams (gpu/optix/svgf_tuning_params.h)
+	// field-for-field; every range/default below matches that struct's own
+	// comments. Declared here (before the combo's own connect() below, which
+	// references it) even though its full contents are built further down.
 	m_liveSvgfTuningGroupBox = new QGroupBox(tr("SVGF Advanced Tuning"));
 	styleGroupBox(m_liveSvgfTuningGroupBox);
 	m_liveSvgfTuningGroupBox->setEnabled(m_liveSvgfEnabled);
-	connect(m_liveSvgfCheck, &QCheckBox::toggled, m_liveSvgfTuningGroupBox, &QGroupBox::setEnabled);
+
+	// One handler drives everything the mode selection affects: the two
+	// backing bools (pushed to the session independently, exactly as two
+	// checkboxes would have), persistence, and which sub-controls are
+	// enabled - replaces the QButtonGroup's native mutual exclusion with an
+	// equivalent "at most one of these two bools is ever true" invariant
+	// that's now structurally guaranteed by construction (one selected
+	// index) rather than enforced after the fact.
+	connect(m_liveDenoiserModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+		m_liveDenoiseEnabled = (index == 1);
+		m_liveSvgfEnabled = (index == 2);
+		saveLiveDenoiseEnabled(m_liveDenoiseEnabled);
+		saveLiveSvgfEnabled(m_liveSvgfEnabled);
+		pushLiveDenoiseToSession();
+		pushLiveSvgfToSession();
+		m_liveDenoiseBlendSpin->setEnabled(m_liveDenoiseEnabled);
+		m_liveDenoiseShowLatestCheck->setEnabled(m_liveDenoiseEnabled);
+		m_liveSvgfTuningGroupBox->setEnabled(m_liveSvgfEnabled);
+	});
+
+	liveDenoiseRowLayout->addWidget(labelWithInfo(tr("Denoiser:"),
+		tr("None: raw accumulated samples, no denoising.\n\n"
+		"OptiX AI Denoiser: cleans up Live Preview's noisy low-sample image "
+		"using the same OptiX AI denoiser the Render Options tab's own "
+		"Denoiser checkbox runs for finished renders - lets the view look "
+		"reasonable almost immediately instead of waiting many frames to "
+		"converge. Costs a small amount of GPU time per frame.\n\n"
+		"SVGF Denoiser: an alternative, experimental spatiotemporal filter - "
+		"tracks per-pixel variance over time and uses it to drive an "
+		"edge-aware spatial filter, which holds up better during camera "
+		"movement than the AI denoiser + running-mean combination. Always "
+		"shows the latest filtered frame rather than accumulating (see the "
+		"SVGF Advanced Tuning group below for its own tunable constants).")));
+	liveDenoiseRowLayout->addWidget(m_liveDenoiserModeCombo);
+	liveDenoiseRowLayout->addStretch(1);
+
+	liveDenoiseOptionsRowLayout->addWidget(labelWithInfo(tr("Blend:"),
+		tr("OptiX AI Denoiser only. Blend between the noisy input and the "
+		"fully denoised output (0.0 = 100% denoised, 1.0 = original noisy "
+		"image), same meaning as the Render Options tab's own blend control.")));
+	liveDenoiseOptionsRowLayout->addWidget(m_liveDenoiseBlendSpin);
+	liveDenoiseOptionsRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseShowLatestCheck,
+		tr("OptiX AI Denoiser only. Displays each denoised frame as-is "
+		"instead of averaging it into a running mean with earlier frames. "
+		"Trades away the extra quality accumulating more samples would "
+		"eventually reach, in exchange for a view that always reflects only "
+		"the most recent frame - useful while flying around with WASD, "
+		"where older accumulated frames are from a camera position you've "
+		"already left.")));
+	liveDenoiseOptionsRowLayout->addStretch(1);
+
+	liveModeSettingsLayout->addRow(liveDenoiseRow);
+	liveModeSettingsLayout->addRow(liveDenoiseOptionsRow);
+
 	QGridLayout *svgfTuningGrid = new QGridLayout(m_liveSvgfTuningGroupBox);
 	svgfTuningGrid->setHorizontalSpacing(10);
 	svgfTuningGrid->setVerticalSpacing(8);
-	svgfTuningGrid->setColumnStretch(1, 1);
-	svgfTuningGrid->setColumnStretch(3, 1);
+	// Stretch collects into one trailing column instead of columns 1/3
+	// themselves, so a capped-width spinbox (see addSvgfDoubleSpin/
+	// addSvgfIntSpin below) sits compactly next to its label with the
+	// leftover space pushed to the true right edge of the row, rather than
+	// stretching the spinbox's own column and leaving a gap between the
+	// (small, capped) widget and the next label.
+	svgfTuningGrid->setColumnStretch(4, 1);
 
 	auto addSvgfDoubleSpin = [&](int row, int col, const QString &label, const QString &tooltip,
 								   double lo, double hi, double step, int decimals, double value) {
@@ -1256,6 +1250,7 @@ void MainWindow::createSettingsTab() {
 		spin->setSingleStep(step);
 		spin->setDecimals(decimals);
 		spin->setValue(value);
+		spin->setMaximumWidth(110);
 		styleSpinBox(spin);
 		svgfTuningGrid->addWidget(labelWithInfo(label, tooltip), row, col * 2);
 		svgfTuningGrid->addWidget(spin, row, col * 2 + 1);
@@ -1266,6 +1261,7 @@ void MainWindow::createSettingsTab() {
 		QSpinBox *spin = new QSpinBox();
 		spin->setRange(lo, hi);
 		spin->setValue(value);
+		spin->setMaximumWidth(110);
 		styleSpinBox(spin);
 		svgfTuningGrid->addWidget(labelWithInfo(label, tooltip), row, col * 2);
 		svgfTuningGrid->addWidget(spin, row, col * 2 + 1);
@@ -1335,7 +1331,7 @@ void MainWindow::createSettingsTab() {
 		m_liveSvgfMinAlbedoSpin->setValue(0.02);
 		m_liveSvgfAtrousPassesSpin->setValue(4);
 	});
-	svgfTuningGrid->addWidget(svgfTuningResetButton, 5, 0, 1, 4);
+	svgfTuningGrid->addWidget(svgfTuningResetButton, 5, 0, 1, 4, Qt::AlignLeft);
 
 	// Every SVGF tuning spinbox pushes the WHOLE bundle (not just its own
 	// field) via pushLiveSvgfTuningToSession() - see that method's own
@@ -1385,8 +1381,9 @@ void MainWindow::createSettingsTab() {
 	liveRenderSettingsGrid->setContentsMargins(0, 0, 0, 0);
 	liveRenderSettingsGrid->setHorizontalSpacing(10);
 	liveRenderSettingsGrid->setVerticalSpacing(8);
-	liveRenderSettingsGrid->setColumnStretch(1, 1);
-	liveRenderSettingsGrid->setColumnStretch(3, 1);
+	// Stretch collects into one trailing column instead of columns 1/3
+	// themselves - see svgfTuningGrid's own comment above for why.
+	liveRenderSettingsGrid->setColumnStretch(4, 1);
 
 	m_liveRestirGiCheck = new QCheckBox(tr("ReSTIR GI"));
 	m_liveRestirGiCheck->setChecked(m_liveRestirGiEnabled);
@@ -1407,6 +1404,7 @@ void MainWindow::createSettingsTab() {
 	m_liveExposureSpin->setRange(0.01, 100.0);
 	m_liveExposureSpin->setSingleStep(0.1);
 	m_liveExposureSpin->setValue(m_liveExposure);
+	m_liveExposureSpin->setMaximumWidth(110);
 	styleSpinBox(m_liveExposureSpin);
 	connect(m_liveExposureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_liveExposure = value;
@@ -1423,6 +1421,7 @@ void MainWindow::createSettingsTab() {
 	m_liveSamplesSpinBox = new QSpinBox();
 	m_liveSamplesSpinBox->setRange(1, 16);
 	m_liveSamplesSpinBox->setValue(m_liveSamples);
+	m_liveSamplesSpinBox->setMaximumWidth(110);
 	styleSpinBox(m_liveSamplesSpinBox);
 	auto pushSppMaxDepth = [this]() {
 		m_liveSamples = m_liveSamplesSpinBox->value();
@@ -1442,6 +1441,7 @@ void MainWindow::createSettingsTab() {
 	m_liveMaxDepthSpinBox = new QSpinBox();
 	m_liveMaxDepthSpinBox->setRange(1, 32);
 	m_liveMaxDepthSpinBox->setValue(m_liveMaxDepth);
+	m_liveMaxDepthSpinBox->setMaximumWidth(110);
 	styleSpinBox(m_liveMaxDepthSpinBox);
 	connect(m_liveMaxDepthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
@@ -1455,6 +1455,7 @@ void MainWindow::createSettingsTab() {
 	m_liveFireflyClampSpin->setSingleStep(5.0);
 	m_liveFireflyClampSpin->setDecimals(1);
 	m_liveFireflyClampSpin->setValue(m_liveFireflyClamp);
+	m_liveFireflyClampSpin->setMaximumWidth(110);
 	styleSpinBox(m_liveFireflyClampSpin);
 	connect(m_liveFireflyClampSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
 		m_liveFireflyClamp = value;
