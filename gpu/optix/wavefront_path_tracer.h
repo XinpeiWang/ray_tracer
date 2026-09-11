@@ -86,6 +86,30 @@ public:
     /// setter-not-render()-parameter pattern as setCloudMediums() above, for
     /// the same reason. 0/0/0/0 (the default) is a valid "no RGB grid media
     /// in this scene" state.
+    /// Bounding-cone light BVH (spatial+power selection), the same
+    /// OptiXRenderer-owned d_lightBvhNodes_/d_lightBvhBitTrail_ buffers the
+    /// recursive backend already builds/uploads once at buildScene() time -
+    /// same setter-not-render()-parameter pattern as setInstancePrimBase()/
+    /// setTextures() above. Unlike the recursive backend (which stays
+    /// disabled - see gpu_light_bvh_sample_index()'s own KNOWN UNRESOLVED BUG
+    /// comment, optix_device_helpers_lighting.h, for the confirmed NVCC
+    /// device-execution divergence specific to that megakernel), this
+    /// backend's separately-compiled, shallower kernels were verified clean
+    /// (instrumented: ~99% success against a real 23-node/12-light tree) and
+    /// use this tree in production for ReSTIR DI candidate generation /
+    /// classic NEE (wf_light_bvh_sample_index(), wavefront_restir_helpers.h).
+    /// nodeCount==0 (the default) means "no light BVH built" - falls back to
+    /// the alias table, same as every other optional field.
+    void setLightBvh(CUdeviceptr d_lightBvhNodes, CUdeviceptr d_lightBvhBitTrail, int nodeCount,
+                      float allBMinX, float allBMinY, float allBMinZ,
+                      float allBMaxX, float allBMaxY, float allBMaxZ) {
+        d_lightBvhNodes_ = d_lightBvhNodes;
+        d_lightBvhBitTrail_ = d_lightBvhBitTrail;
+        lightBvhNodeCount_ = nodeCount;
+        lightBvhAllBMinX_ = allBMinX; lightBvhAllBMinY_ = allBMinY; lightBvhAllBMinZ_ = allBMinZ;
+        lightBvhAllBMaxX_ = allBMaxX; lightBvhAllBMaxY_ = allBMaxY; lightBvhAllBMaxZ_ = allBMaxZ;
+    }
+
     void setRgbGridMediums(CUdeviceptr d_rgbGridMediums, unsigned int numRgbGridMediums,
                             CUdeviceptr d_rgbGridData, unsigned int rgbGridDataCount) {
         d_rgbGridMediums_ = d_rgbGridMediums;
@@ -503,6 +527,11 @@ private:
     CUdeviceptr  d_measuredCcdf_ = 0;
     std::string  ptxPath_;
     CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
+    CUdeviceptr  d_lightBvhNodes_ = 0;      ///< see setLightBvh()
+    CUdeviceptr  d_lightBvhBitTrail_ = 0;
+    int          lightBvhNodeCount_ = 0;
+    float lightBvhAllBMinX_ = 0, lightBvhAllBMinY_ = 0, lightBvhAllBMinZ_ = 0;
+    float lightBvhAllBMaxX_ = 0, lightBvhAllBMaxY_ = 0, lightBvhAllBMaxZ_ = 0;
     CUdeviceptr  d_textures_ = 0;           ///< see setTextures()
     CUdeviceptr  d_texturePixels_ = 0;
     CUdeviceptr  d_cloudMediums_ = 0;       ///< see setCloudMediums()

@@ -82,6 +82,12 @@ extern "C" void wf_launch_evaluate_materials(
 	// offline rendering, same opt-in pattern as d_restirReservoirs above.
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
+	// See wf_light_bvh_sample_index()'s own comment
+	// (wavefront_restir_helpers.h). nodeCount<=0 means "no light BVH built".
+	const LightBVHNode*          d_lightBvhNodes,
+	int                          lightBvhNodeCount,
+	float lightBvhAllBMinX, float lightBvhAllBMinY, float lightBvhAllBMinZ,
+	float lightBvhAllBMaxX, float lightBvhAllBMaxY, float lightBvhAllBMaxZ,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -129,6 +135,12 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	// offline rendering, same opt-in pattern as d_restirReservoirs above.
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
+	// See wf_light_bvh_sample_index()'s own comment
+	// (wavefront_restir_helpers.h). nodeCount<=0 means "no light BVH built".
+	const LightBVHNode*          d_lightBvhNodes,
+	int                          lightBvhNodeCount,
+	float lightBvhAllBMinX, float lightBvhAllBMinY, float lightBvhAllBMinZ,
+	float lightBvhAllBMaxX, float lightBvhAllBMaxY, float lightBvhAllBMaxZ,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_dielectric(

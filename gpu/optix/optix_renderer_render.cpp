@@ -132,6 +132,12 @@ bool OptiXRenderer::render(
 		}
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
+		// See WavefrontPathTracer::setLightBvh()'s own comment. Reuses the
+		// SAME already-built/uploaded tree the recursive backend owns
+		// (d_lightBvhNodes_ etc.) - no separate build/upload.
+		wavefrontTracer_->setLightBvh(d_lightBvhNodes_, d_lightBvhBitTrail_, lightBvhNodeCount_,
+			lightBvhAllBMinX_, lightBvhAllBMinY_, lightBvhAllBMinZ_,
+			lightBvhAllBMaxX_, lightBvhAllBMaxY_, lightBvhAllBMaxZ_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
 		wavefrontTracer_->setRgbGridMediums(d_rgbGridMediums_, numRgbGridMediums_, d_rgbGridData_, rgbGridDataCount_);
 		wavefrontTracer_->setGridMediums(d_gridMediums_, numGridMediums_, d_gridData_, gridDataCount_);
@@ -266,31 +272,26 @@ bool OptiXRenderer::render(
 	params.numLights = numLights_;
 	params.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds_);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_aliasTable_);
-	// pbrt-v4 bounding-cone light BVH - DELIBERATELY DISABLED again
-	// (params.lightBvhNodeCount forced to 0, so every device NEE call site
-	// falls back to the alias table below, unconditionally). It was briefly
-	// enabled for real (commit 77acc16), on the theory that the bounds
-	// guards added to gpu_light_bvh_sample_index()/gpu_light_bvh_pmf()
-	// (optix_device_helpers_lighting.h - see that file's own header comment
-	// for the full history) made the earlier illegal-memory-access crash
-	// safe to re-enable. That theory was wrong: MaterialCpuGpuParityTest's
-	// own B22 case ("Named Material & Texture") started failing with
-	// GPU-recursive rendering ~24x too dark (CPU/GPU-wavefront agree with
-	// each other; GPU-recursive alone goes near-black) - confirmed via
-	// bisection that forcing lightBvhNodeCount to 0 here, and only that,
-	// makes the test pass again. Separately, pbrt_scenes/gpu-light-bvh-
-	// many-lights.pbrt (a scene authored specifically to exercise a real
-	// multi-level tree) reproduced the same near-black failure at 3
-	// different light counts (5, 7, 12), while device-side printf tracing
-	// showed gpu_light_bvh_sample_index()'s own guard taking its reject
-	// branch on operands that, printed at that exact point, do not satisfy
-	// the branch condition - not explainable by the guard logic itself.
-	// This is a real, unresolved GPU-recursive bug, not a false positive:
-	// leave disabled until someone can pin down the actual mechanism with
-	// proper tooling (Nsight Compute / compute-sanitizer racecheck, not
-	// printf) rather than re-enabling on a guess. The upload/build machinery
-	// in optix_renderer_scene.cpp is left in place (harmless, just unused)
-	// so re-enabling is a one-line change once the underlying bug is fixed.
+	// pbrt-v4 bounding-cone light BVH - DELIBERATELY DISABLED on GPU-recursive
+	// specifically (params.lightBvhNodeCount forced to 0, so every device NEE
+	// call site here falls back to the alias table below, unconditionally).
+	// Root-caused (see optix_device_helpers_lighting.h's own KNOWN
+	// UNRESOLVED BUG comment for the full investigation): a real, reproducible
+	// NVCC device-execution divergence specific to THIS backend's one-thread-
+	// per-pixel recursive megakernel - CompactLightBounds::Importance()
+	// returns 0 for both children at the tree root on effectively every call
+	// (verified via instrumented counters: 100% failure on a real 23-node/
+	// 12-light tree), yet the exact same byte-identical uploaded data,
+	// computed host-side, returns healthy nonzero importance every time. This
+	// is NOT a data/upload/logic bug - it's specific to how this megakernel
+	// compiles, same class of prior toolchain bug as gpu_cloud_density()'s
+	// own dnoise() history. Confirmed NOT present on the wavefront backend
+	// (see WavefrontPathTracer::setLightBvh()'s own comment) - wavefront's
+	// ReSTIR DI/classic NEE now uses this same tree in production. Leave
+	// GPU-recursive disabled until someone hand-flattens Importance()'s call
+	// chain into one self-contained function for the __CUDACC__ path (no
+	// lambdas/nested free-function calls), matching gpu_cloud_density()'s own
+	// proven fix pattern for this class of bug - not yet attempted.
 	params.lightBvhNodes = reinterpret_cast<LightBVHNode*>(d_lightBvhNodes_);
 	params.lightBvhBitTrail = reinterpret_cast<unsigned int*>(d_lightBvhBitTrail_);
 	params.lightBvhNodeCount = 0;

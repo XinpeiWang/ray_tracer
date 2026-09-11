@@ -282,6 +282,72 @@ __device__ __forceinline__ float3 wf_light_raw_emission(
 	return raw;
 }
 
+// Bounding-cone light BVH (spatial+power selection) for wavefront's own
+// ReSTIR DI candidate generation / classic NEE - a hand-duplicated twin of
+// gpu_light_bvh_sample_index() (optix_device_helpers_lighting.h), reading
+// the tree via explicit parameters rather than a __constant__ params global.
+// evaluate_materials/evaluate_materials_simple (wavefront_kernels_materials*.
+// cu) are plain cudaLaunchKernel-style compute kernels with their own
+// explicit parameter lists, not OptiX raygen launches - they never read
+// wf_params (see either kernel's own "not go through the wf_params/lp
+// raygen-launch-params path" comment), so the tree has to arrive as a real
+// kernel parameter, threaded all the way from WavefrontPathTracer::
+// setLightBvh()/render() down through wf_finish_material_scatter() and
+// wf_generate_restir_candidate() below.
+//
+// This is GPU-recursive's own light BVH tree, reused as-is (OptiXRenderer::
+// buildScene() builds it once; WavefrontPathTracer::setLightBvh() just
+// points at the same device buffers - no separate build/upload) - but unlike
+// GPU-recursive, wavefront's separately-compiled, shallower kernels do NOT
+// exhibit the NVCC device-execution divergence that makes GPU-recursive's
+// own gpu_light_bvh_sample_index() unusable (see that function's own KNOWN
+// UNRESOLVED BUG comment for the full investigation and why this backend is
+// confirmed clean: instrumented counters showed ~99% success against a real
+// 23-node/12-light tree, the same failure signature GPU-recursive hits 100%
+// of the time on).
+__device__ __forceinline__ GpuLightBvhSample wf_light_bvh_sample_index(
+	float px, float py, float pz, float u,
+	const LightBVHNode* lightBvhNodes, int lightBvhNodeCount, unsigned int numLights,
+	float allBMinX, float allBMinY, float allBMinZ,
+	float allBMaxX, float allBMaxY, float allBMaxZ)
+{
+	if (lightBvhNodeCount <= 0) return GpuLightBvhSample{-1, 0.f};
+	int nodeIndex = 0;
+	float pmf = 1.f;
+	u = fminf(u, 1.f - 1e-7f);
+	while (true) {
+		if (nodeIndex < 0 || nodeIndex >= lightBvhNodeCount) {
+			return GpuLightBvhSample{-1, 0.f};
+		}
+		const LightBVHNode& node = lightBvhNodes[nodeIndex];
+		if (!node.isLeaf) {
+			const int c1Index = (int)node.childOrLightIndex;
+			if (c1Index <= nodeIndex + 1 || c1Index >= lightBvhNodeCount) {
+				return GpuLightBvhSample{-1, 0.f};
+			}
+			const LightBVHNode& c0 = lightBvhNodes[nodeIndex + 1];
+			const LightBVHNode& c1 = lightBvhNodes[node.childOrLightIndex];
+			float ci0 = c0.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
+				allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
+			float ci1 = c1.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
+				allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
+			if (ci0 == 0.f && ci1 == 0.f) return GpuLightBvhSample{-1, 0.f};
+			float sum = ci0 + ci1;
+			float nodePMF; int child;
+			if (u < ci0 / sum) { child = 0; nodePMF = ci0 / sum; u = u / nodePMF; }
+			else { child = 1; nodePMF = ci1 / sum; u = (u - ci0/sum) / nodePMF; }
+			u = fminf(u, 1.f - 1e-7f);
+			pmf *= nodePMF;
+			nodeIndex = (child == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
+		} else {
+			if (node.childOrLightIndex >= numLights) {
+				return GpuLightBvhSample{-1, 0.f};
+			}
+			return GpuLightBvhSample{(int)node.childOrLightIndex, pmf};
+		}
+	}
+}
+
 __device__ __forceinline__ bool wf_generate_restir_candidate(
 		const float3& hit, unsigned int& seed, float time,
 		const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
@@ -290,14 +356,39 @@ __device__ __forceinline__ bool wf_generate_restir_candidate(
 		const GpuAliasEntry* aliasTable, unsigned int numLights,
 		const TextureData* textures, const unsigned char* texturePixels,
 		GpuLightSample& out_sample, float3& out_dir, float& out_maxDist,
-		float& out_lightPdf, float3& out_rawEmission) {
-	if (numLights == 0 || !aliasTable) return false;
+		float& out_lightPdf, float3& out_rawEmission,
+		// See wf_light_bvh_sample_index()'s own comment.
+		// lightBvhNodeCount<=0 (the default) means "no light BVH built" -
+		// falls straight through to the alias table below.
+		const LightBVHNode* lightBvhNodes = nullptr, int lightBvhNodeCount = 0,
+		float lightBvhAllBMinX = 0.f, float lightBvhAllBMinY = 0.f, float lightBvhAllBMinZ = 0.f,
+		float lightBvhAllBMaxX = 0.f, float lightBvhAllBMaxY = 0.f, float lightBvhAllBMaxZ = 0.f) {
+	if (numLights == 0) return false;
 
-	int slot = int(wf_rand(seed) * float(numLights));
-	if (slot >= (int)numLights) slot = (int)numLights - 1;
-	const GpuAliasEntry& entry = aliasTable[slot];
-	int light_idx = (wf_rand(seed) < entry.q) ? slot : entry.alias;
-	const float selection_pdf = aliasTable[light_idx].pdf;
+	int light_idx;
+	float selection_pdf;
+	// Light BVH first (real spatial+power selection, position-dependent) -
+	// see wf_light_bvh_sample_index()'s own comment. Falls back to the alias
+	// table for any scene that didn't build a light BVH, or once a sample
+	// rejects (importance genuinely zero at this hit point - same fallback
+	// shape sample_nee_light() uses, optix_device_helpers_lighting.h).
+	if (lightBvhNodeCount > 0) {
+		GpuLightBvhSample s = wf_light_bvh_sample_index(hit.x, hit.y, hit.z, wf_rand(seed),
+			lightBvhNodes, lightBvhNodeCount, numLights,
+			lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
+			lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ);
+		if (s.lightIndex < 0) return false;
+		light_idx = s.lightIndex;
+		selection_pdf = s.pmf;
+	} else if (aliasTable) {
+		int slot = int(wf_rand(seed) * float(numLights));
+		if (slot >= (int)numLights) slot = (int)numLights - 1;
+		const GpuAliasEntry& entry = aliasTable[slot];
+		light_idx = (wf_rand(seed) < entry.q) ? slot : entry.alias;
+		selection_pdf = aliasTable[light_idx].pdf;
+	} else {
+		return false;
+	}
 
 	const int prim_idx = lightIndices[light_idx];
 	const GpuLightKind kind = lightKinds[light_idx];

@@ -77,3 +77,16 @@ struct alignas(32) LightBVHNode {
 		return LightBVHNode{cb, child1Index, 0u};
 	}
 };
+
+// Return type for a light-BVH traversal query - shared by both GPU backends'
+// own traversal code (gpu_light_bvh_sample_index(), optix_device_helpers_
+// lighting.h, GPU-recursive; wf_light_bvh_sample_index(), wavefront_restir_
+// helpers.h, wavefront) since it's plain data with no backend-specific
+// dependency, unlike the traversal functions themselves (each reads its own
+// backend's __constant__ params/wf_params global, so THOSE stay hand-
+// duplicated per this codebase's own established convention - see either
+// function's own header comment).
+struct GpuLightBvhSample {
+	int lightIndex;  // -1 = no light BVH built, or zero importance everywhere
+	float pmf;
+};

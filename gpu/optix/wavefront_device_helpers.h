@@ -1668,7 +1668,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// x1 is treated as "no GI candidate this frame" rather than
 	// approximated, avoiding a whole extra class of edge cases for a rare
 	// path).
-	GpuGiSample* giCandidateOut = nullptr)
+	GpuGiSample* giCandidateOut = nullptr,
+	// See wf_light_bvh_sample_index()'s own comment
+	// (wavefront_restir_helpers.h). lightBvhNodeCount<=0 (the default) means
+	// "no light BVH built" - forwarded to wf_generate_restir_candidate()
+	// below unchanged, which itself falls straight through to the alias
+	// table for that case, so every existing call site needs no edit.
+	const LightBVHNode* lightBvhNodes = nullptr, int lightBvhNodeCount = 0,
+	float lightBvhAllBMinX = 0.f, float lightBvhAllBMinY = 0.f, float lightBvhAllBMinZ = 0.f,
+	float lightBvhAllBMaxX = 0.f, float lightBvhAllBMaxY = 0.f, float lightBvhAllBMaxZ = 0.f)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1949,7 +1957,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			if (!wf_generate_restir_candidate(hit_point, seed, time,
 					spheres, quads, triangles, bilinearPatches, disks, cylinders,
 					materials, lightIndices, lightKinds, aliasTable, numLights,
-					textures, texturePixels, cand, candDir, candMaxDist, candPdf, candRaw))
+					textures, texturePixels, cand, candDir, candMaxDist, candPdf, candRaw,
+					lightBvhNodes, lightBvhNodeCount,
+					lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
+					lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ))
 				break;  // no lights in the scene at all - nothing to resample
 			// 1e-6f, not a looser 1e-9f: matches the classic single-draw NEE
 			// path's own `light_pdf > 1e-6f` gate exactly (a few lines below)
@@ -2033,7 +2044,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		if (wf_generate_restir_candidate(hit_point, seed, time,
 				spheres, quads, triangles, bilinearPatches, disks, cylinders,
 				materials, lightIndices, lightKinds, aliasTable, numLights,
-				textures, texturePixels, cand, to_light, max_dist, light_pdf, raw)) {
+				textures, texturePixels, cand, to_light, max_dist, light_pdf, raw,
+				lightBvhNodes, lightBvhNodeCount,
+				lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
+				lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ)) {
 			light_emission_spec = liftEmission(raw);
 			nee_norm = (light_pdf > 1e-6f) ? (1.0f / light_pdf) : 0.0f;
 			haveSample = true;

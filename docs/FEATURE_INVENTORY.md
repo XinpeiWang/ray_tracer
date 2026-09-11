@@ -254,43 +254,53 @@ infinite light).
 | `power_light_sampler` (`src/TheRestOfYourLife/`) | CPU, superseded by the BVH sampler as default |
 | pbrt-v4's PowerLightSampler algorithm (flat, power-only) | **GPU default (both recursive and wavefront)** - implemented natively in `gpu/optix/optix_renderer_scene.cpp`/`optix_types.h`, NOT via the C++ class below despite the shared algorithm name |
 | `UniformLightSampler` | present, **zero callers** — dead code |
-| `BVHLightSampler2` | Host-side tree build/upload (`OptiXRenderer::buildScene()`) and device-side traversal code (`gpu_light_bvh_sample_index()`/`gpu_light_bvh_pmf()`, `optix_device_helpers_lighting.h`) both exist and compile, but are **deliberately NOT wired into the live launch** (`LaunchParams::lightBvhNodeCount` forced to 0, `optix_renderer_render.cpp`) — see the gap writeup below for why. GPU-wavefront and GPU-SPPM never had a light-BVH path at all (both still the flat power sampler - GPU-SPPM's own `SPPMLaunchParams` has no light-BVH fields at all, only `aliasTable`). |
+| `BVHLightSampler2` | Host-side tree build/upload (`OptiXRenderer::buildScene()`) shared by both GPU backends. **GPU-wavefront: live in production** (`wf_light_bvh_sample_index()`, `wavefront_restir_helpers.h`, feeding ReSTIR DI candidate generation and classic NEE in both `evaluate_materials`/`evaluate_materials_simple`) - verified ~99% success against a real 23-node/12-light tree. **GPU-recursive: still deliberately disabled** (`gpu_light_bvh_sample_index()`/`gpu_light_bvh_pmf()`, `optix_device_helpers_lighting.h`; `LaunchParams::lightBvhNodeCount` forced to 0, `optix_renderer_render.cpp`) - see the gap writeup below for the now-precisely-root-caused reason. GPU-SPPM never had a light-BVH path at all (its own `SPPMLaunchParams` has no light-BVH fields, only `aliasTable`). |
 | `ExhaustiveLightSampler` | only referenced by the unwired `restir.h` (see §11) — not reachable from any render path |
 | `PowerLightSampler<MaxLights>` class (`src/shared/power_light_sampler_scaffold.h`) | present, **zero callers** — dead code; not the GPU row above despite the name |
 
-**Still a real gap, NOT closed**: GPU-recursive, GPU-wavefront, and
-GPU-SPPM all use the flat power-weighted sampler; none has a working
-spatial+power light BVH. A real port of `BVHLightSampler2` to GPU-recursive
-was attempted and reached the point of compiling, uploading a verified-
-correct tree, and passing its own bounds/monotonicity guards on paper -
-but was found, via `MaterialCpuGpuParityTest`'s own B22 case ("Named
-Material & Texture"), to render real scenes roughly 24x too dark on
-GPU-recursive specifically (CPU and GPU-wavefront agree with each other;
-GPU-recursive alone goes near-black) whenever it was live-wired in. The
-same near-black failure was independently reproduced on 3 different
-hand-built multi-light scenes (5, 7, and 12 lights). Device-side printf
-tracing showed `gpu_light_bvh_sample_index()`'s own bounds/monotonicity
-guard rejecting a demonstrably valid, in-range, monotonic node index - the
-printf's own operands, printed at the exact point of the failing `if`, do
-not satisfy the condition being taken. Multiple structural mitigations
-were tried (by-value node reads instead of references, splitting the
-combined guard condition into sequential checks, marking both functions
-`__noinline__`) and NONE resolved it - not explainable by the guard logic
-itself under any of the three tried structures. This looks like a genuine
-NVCC/OptiX codegen bug specific to this exact recursive mega-kernel under
-real interior-node tree depth (this file's own established class of prior
-toolchain bug, see §9's `gpu_cloud_density()`/`dnoise()` history), but
-unlike that precedent, this one is NOT resolved.
+**Gap narrowed to GPU-recursive only**: GPU-wavefront now has a real,
+verified-working spatial+power light BVH (above); GPU-recursive and
+GPU-SPPM still use the flat power-weighted sampler. A real port of
+`BVHLightSampler2` to GPU-recursive was attempted twice. The first attempt
+reached the point of compiling, uploading a verified-correct tree, and
+passing its own bounds/monotonicity guards on paper - but was found, via
+`MaterialCpuGpuParityTest`'s own B22 case ("Named Material & Texture"), to
+render real scenes roughly 24x too dark on GPU-recursive specifically (CPU
+and GPU-wavefront agree with each other; GPU-recursive alone goes
+near-black) whenever it was live-wired in, with device-side printf tracing
+that didn't pin down a mechanism.
 
-Given the confirmed, reproducible, ~24x-too-dark failure on a real
-already-shipped scene, this feature was re-disabled rather than shipped in
-a known-broken state: `LaunchParams::lightBvhNodeCount` is forced to 0 in
-`optix_renderer_render.cpp`, so every device NEE call site falls back to
-the alias table unconditionally, same as before this port was attempted.
-The host-side build/upload machinery is left in place (harmless, unused)
-so re-enabling is a one-line change once someone establishes the actual
-root cause with proper tooling (Nsight Compute / compute-sanitizer
-racecheck, not printf).
+A second, later debugging session root-caused this precisely using
+instrumented atomic counters (not printf) and a byte-for-byte host/device
+data comparison: on a real 23-node/12-light tree, `gpu_light_bvh_sample_
+index()`'s own guards NEVER fire (0 hits across 607,415 calls) - the
+failure is that `CompactLightBounds::Importance()` (`light_bounds.h`)
+returns exactly 0.0 for BOTH of the root's children on effectively every
+call. The uploaded `LightBVHNode` array and allB bounds were dumped and
+compared field-by-field (`phi`, `packedCosThetaAndSide`, quantised
+direction/AABB corners) against the host-built tree and matched
+byte-for-byte; the identical formula, run host-side on that identical
+data, returns healthy nonzero importance every time. This rules out a
+data/upload/logic bug - the divergence is specifically in this one
+function's floating-point execution under NVCC inside GPU-recursive's
+one-thread-per-pixel megakernel (likely somewhere in the
+`BoundSubtendedDirections()`/`SafeACos()`/`SafeSqrt()`/`cosSubClamped()`
+chain it calls through), the same toolchain-fragility family as
+`gpu_cloud_density()`'s own `dnoise()` history (§9) - fixed there only by
+hand-flattening a deep, lambda/nested-free-function call chain into one
+self-contained function, not yet attempted for `Importance()`.
+
+Critically, the SAME algorithm against the SAME tree was confirmed clean
+on GPU-wavefront (`wf_light_bvh_sample_index()`, verified 604,102/608,252
+= ~99.3% success on the same reproducer, the small remainder being
+genuine zero-importance rejects rather than guard misfires) - wavefront's
+kernels are separately-compiled and shallower, never sharing GPU-
+recursive's megakernel shape, matching exactly the isolation
+`gpu_cloud_density()`'s own hand-duplicated-function fix relied on.
+GPU-recursive stays disabled (`LaunchParams::lightBvhNodeCount` forced to
+0 in `optix_renderer_render.cpp`) until someone hand-flattens
+`Importance()`'s call chain for the `__CUDACC__` path - a concrete next
+step now, not "root cause unknown."
 
 ## 5. Media / Volumes
 

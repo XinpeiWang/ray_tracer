@@ -664,54 +664,58 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 // different range than node indices, that a caller dereferences those
 // arrays with unchecked otherwise.
 //
-// KNOWN UNRESOLVED BUG (found while authoring pbrt_scenes/gpu-light-bvh-
-// many-lights.pbrt, the first scene with a real multi-level tree - 12
-// lights, 23 nodes; every scene this feature had been verified against
-// before that had either a single trivial leaf-only tree or a shallow
-// 9-node one): on a tree this size, the monotonicity guard below was
-// observed - via device-side printf tracing - REJECTING a demonstrably
-// valid, in-range, monotonic c1Index at the tree's own root, producing a
-// fully black render (NEE silently returning "no light" on every call)
-// despite the host-side BVHLightSampler2::Sample() (the exact same
-// algorithm, same built tree, called from scene_builder.cpp) handling the
-// identical query correctly. Multiple independent mitigations were tried
-// and NONE resolved it: (1) reading `params.lightBvhNodes[nodeIndex]` into
-// a by-value `LightBVHNode` local instead of a `const LightBVHNode&`
-// reference, (2) splitting the combined `a || b` guard condition into two
-// separate sequential `if` statements, (3) marking both functions
-// `__noinline__` instead of `__forceinline__` (the fix pattern that
-// resolved the unrelated "member-call stall" precedent elsewhere in this
-// codebase). A printf placed immediately before the failing `if`, printing
-// its own pre-computed operands, showed values that do not satisfy the
-// condition being taken (e.g. `c1Index=18 nodeCount=23` failing a
-// `c1Index >= nodeCount` check) - not explainable by the guard logic
-// itself under any of the three tried structures. This looks like a
-// genuine NVCC/OptiX codegen bug specific to this exact recursive mega-
-// kernel under real interior-node depth, in the same toolchain-fragility
-// family as GpuLightBvhSample's own by-value-return fix below and the
-// "member-call stall" precedent - but unlike those, NOT resolved here.
-// Re-verified the SAME build still renders a previously-working 5-light/
-// 9-node scene (triangle-fan-light.pbrt) correctly, so this is not a
-// blanket regression - it is specific to deeper/larger trees, exact
-// trigger unknown. Left as `__forceinline__`/reference/combined-guard (the
-// last VERIFIED-correct form) rather than keeping an unverified "fix" that
-// demonstrably did not fix the reproducer. Anyone picking this up next
-// should reach for compute-sanitizer or Nsight Compute rather than printf -
-// see this file's own earlier crash-diagnosis history for the CAS-guarded-
-// debug-buffer technique that worked for a different symptom.
+// KNOWN UNRESOLVED BUG, GPU-recursive only, root-caused (updated from an
+// earlier, less precise "genuine NVCC/OptiX codegen bug, exact mechanism
+// unknown" writeup - a later debugging session pinned this down much
+// further, see below): on any real multi-level tree (a 23-node/12-light
+// case, spread across varied orientations, was the reproducer), this
+// backend's own gpu_light_bvh_sample_index() call above returns -1 (no
+// light) on effectively 100% of calls, NOT because either guard above ever
+// fires (instrumented counters confirmed zero guard hits) but because the
+// FIRST call to CompactLightBounds::Importance() (light_bounds.h) at the
+// tree's own root returns exactly 0.0 for BOTH children, every time. This
+// is NOT a data/upload/logic bug: the exact same byte-for-byte uploaded
+// LightBVHNode array and allB bounds, verified field-by-field (phi,
+// packedCosThetaAndSide, the quantised direction/AABB corners) to match
+// the host-built tree exactly, computes healthy nonzero Importance() when
+// the SAME formula runs on the HOST - the divergence is specifically in
+// this one function's floating-point execution under NVCC, inside this
+// backend's one-thread-per-pixel recursive megakernel. Likely culprit
+// (not yet isolated further): the BoundSubtendedDirections()/SafeACos()/
+// SafeSqrt()/cosSubClamped() chain Importance() calls through - the same
+// toolchain-fragility family as gpu_cloud_density()'s own dnoise() history
+// (this file's earlier crash-diagnosis section above), where a deep,
+// lambda/nested-free-function call chain miscompiled specifically inside
+// this megakernel and was only fixed by hand-flattening it into one
+// self-contained function - NOT yet attempted here.
+//
+// CONFIRMED NOT PRESENT on the wavefront backend: wf_light_bvh_sample_index()
+// (wavefront_restir_helpers.h) runs the identical algorithm against the
+// identical tree and succeeds on ~99% of calls (instrumented: 604102/608252
+// on the same 23-node reproducer, the remainder being genuine zero-
+// importance rejects, not guard misfires) - wavefront's kernels are
+// separately-compiled, shallower, and never share this backend's megakernel
+// shape, exactly the isolation gpu_cloud_density()'s own hand-duplicated-
+// free-function fix relied on. wavefront's ReSTIR DI/classic NEE now uses
+// this light BVH in production (see WavefrontPathTracer::setLightBvh()'s
+// own comment) - only GPU-recursive stays on the alias table.
+//
+// Leave GPU-recursive disabled (optix_renderer_render.cpp forces
+// params.lightBvhNodeCount to 0) until someone hand-flattens Importance()'s
+// call chain into one self-contained, non-lambda function reachable from
+// this megakernel - the next concrete step, not "root-cause unknown, try
+// compute-sanitizer" as this comment previously said.
 
-// Return type for gpu_light_bvh_sample_index() - a plain by-value struct,
-// deliberately NOT a `float&`/`int&` reference-output parameter. This
-// codebase's own memory of a prior GPU recursive-backend miscompile
-// (CloudMedium::compute_density()'s dnoise() helper, see gpu_cloud_density()'s
-// own history) found reference-output device functions unreliable in this
-// exact NVCC/OptiX toolchain when NOT force-inlined - by-value struct
-// returns sidestep that class of bug entirely, matching that fix's own
-// "called by value, no reference/pointer output params" guidance.
-struct GpuLightBvhSample {
-	int lightIndex;  // -1 = no light BVH built, or zero importance everywhere
-	float pmf;
-};
+// GpuLightBvhSample (the return type below) is defined in src/shared/
+// light_bvh_node.h, shared with wavefront's own wf_light_bvh_sample_index()
+// (wavefront_restir_helpers.h) - see that struct's own comment. A plain
+// by-value struct, deliberately NOT a `float&`/`int&` reference-output
+// parameter: this codebase's own memory of a prior GPU recursive-backend
+// miscompile (CloudMedium::compute_density()'s dnoise() helper, see
+// gpu_cloud_density()'s own history) found reference-output device functions
+// unreliable in this exact NVCC/OptiX toolchain when NOT force-inlined -
+// by-value struct returns sidestep that class of bug entirely, matching that
+// fix's own "called by value, no reference/pointer output params" guidance.
 
 // gpu_light_bvh_sample_index: returns the selected light's index (or -1 if
 // no light BVH was built for this scene, or every light's importance at

@@ -1096,6 +1096,9 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		buildRestirTemporalContext(),
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
+		reinterpret_cast<const LightBVHNode*>(d_lightBvhNodes_), lightBvhNodeCount_,
+		lightBvhAllBMinX_, lightBvhAllBMinY_, lightBvhAllBMinZ_,
+		lightBvhAllBMaxX_, lightBvhAllBMaxY_, lightBvhAllBMaxZ_,
 		stream_);
 }
 
@@ -1155,6 +1158,9 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		buildRestirTemporalContext(),
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
+		reinterpret_cast<const LightBVHNode*>(d_lightBvhNodes_), lightBvhNodeCount_,
+		lightBvhAllBMinX_, lightBvhAllBMinY_, lightBvhAllBMinZ_,
+		lightBvhAllBMaxX_, lightBvhAllBMaxY_, lightBvhAllBMaxZ_,
 		simpleMaterialStream_);
 }
 
