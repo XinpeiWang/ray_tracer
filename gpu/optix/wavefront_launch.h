@@ -205,7 +205,9 @@ extern "C" void wf_launch_restir_spatial_reuse(
 	cudaStream_t stream);
 
 // See wavefront_kernels_restir.cu's own restir_clear_reservoirs comment.
-extern "C" void wf_launch_restir_clear_reservoirs(GpuReservoir* d_reservoirs, int numPixels, cudaStream_t stream);
+extern "C" void wf_launch_restir_clear_reservoirs(
+	GpuReservoir* d_reservoirs, int width, int height,
+	unsigned int frameNumber, bool checkerboardActive, cudaStream_t stream);
 
 // ReSTIR GI (see wavefront_kernels_restir.cu's own restir_gi_finalize/
 // restir_gi_spatial_reuse header comments). Finalize runs once per SAMPLE

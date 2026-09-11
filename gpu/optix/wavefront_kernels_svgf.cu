@@ -152,6 +152,21 @@ extern "C" __global__ void svgf_temporal_integrate(
 	const int numPixels = width * height;
 	if (idx >= numPixels) return;
 
+	// weightBuffer[idx]==0.0f is not EXCLUSIVELY a checkerboard-inactive
+	// signal - a crop/pixelbounds-excluded pixel (gpu_in_crop(),
+	// generate_camera_rays) never gets weightBuffer incremented either,
+	// checkerboarding or not. This is safe regardless: a crop-excluded
+	// pixel is never dispatched a primary ray on ANY frame, so it never
+	// gets a real worldPos written either - currentWorldPos[idx].w stays
+	// permanently 0.0f for it, which is exactly the SAME condition
+	// (wp.w != 0.0f below) that already gates the reprojection/hold path a
+	// checkerboard-inactive pixel needs. A crop-excluded pixel therefore
+	// always falls through to the isActive==false, no-reprojection default
+	// (historyLength=0) below - a harmless, permanent "no info" state for a
+	// pixel that was never part of the rendered image region, and one that
+	// svgf_prepare_for_filter's own variance-bootstrap neighbor loop already
+	// excludes via that same wp.w==0.0f check when THIS pixel is someone
+	// else's neighbor.
 	const bool isActive = weightBuffer[idx] > 0.0f;
 	const float3 color = isActive ? currentRadiance[idx] : make_float3(0.0f, 0.0f, 0.0f);
 	const float lum = isActive ? wf_svgf_luminance(color) : 0.0f;
@@ -163,25 +178,18 @@ extern "C" __global__ void svgf_temporal_integrate(
 	result.historyLength = isActive ? 1.0f : 0.0f;
 
 	if (historyValid) {
-		const float4 wp = currentWorldPos[idx];
-		if (wp.w != 0.0f) {
-			const float3 hitPoint = make_float3(wp.x, wp.y, wp.z);
-			const int prevPixel = wf_restir_reproject_prev_pixel(hitPoint, prevCamera, worldPosHistory, width, height);
-			if (prevPixel >= 0) {
-				const GpuSvgfState prev = history[prevPixel];
-				if (isActive) {
-					const float alpha = wf_svgf_temporal_alpha(prev.historyLength, kSvgfTargetAlpha);
-					result.color = prev.color + (color - prev.color) * alpha;
-					result.moment1 = prev.moment1 + (lum - prev.moment1) * alpha;
-					result.moment2 = prev.moment2 + (lum * lum - prev.moment2) * alpha;
-					result.historyLength = fminf(prev.historyLength + 1.0f, kSvgfMaxHistoryLength);
-				} else {
-					// Hold: carry the reprojected history through unchanged.
-					result.color = prev.color;
-					result.moment1 = prev.moment1;
-					result.moment2 = prev.moment2;
-					result.historyLength = prev.historyLength;
-				}
+		GpuSvgfState prev;
+		if (wf_checkerboard_try_hold(currentWorldPos[idx], prevCamera, worldPosHistory, width, height, history, prev)) {
+			if (isActive) {
+				const float alpha = wf_svgf_temporal_alpha(prev.historyLength, kSvgfTargetAlpha);
+				result.color = prev.color + (color - prev.color) * alpha;
+				result.moment1 = prev.moment1 + (lum - prev.moment1) * alpha;
+				result.moment2 = prev.moment2 + (lum * lum - prev.moment2) * alpha;
+				result.historyLength = fminf(prev.historyLength + 1.0f, kSvgfMaxHistoryLength);
+			} else {
+				// Hold: carry the reprojected history through unchanged - no
+				// blend, since zero new information arrived this frame.
+				result = prev;
 			}
 		}
 	}
@@ -238,6 +246,17 @@ extern "C" __global__ void svgf_prepare_for_filter(
 				// luminance statistics from the other side of the edge.
 				if (currentWorldPos[nIdx].w == 0.0f) continue;
 				const GpuSvgfState n = current[nIdx];
+				// Skip a neighbor with historyLength==0 too - checkerboard
+				// temporal upsampling can produce one: an inactive pixel
+				// whose reprojection fails (freshly disoccluded while also
+				// checkerboard-inactive this frame) keeps its OWN held,
+				// still-nonzero worldPos (svgf_checkerboard_clear_frame only
+				// clears active-this-frame slots) but gets a fabricated
+				// all-zero color/moments (svgf_temporal_integrate's own
+				// cold-start-when-inactive default) - a fake "valid, zero-
+				// variance" neighbor the worldPos.w check above can't catch,
+				// since its worldPos really is a genuine (just stale) hit.
+				if (n.historyLength <= 0.0f) continue;
 				sumMoment1 += n.moment1;
 				sumMoment2 += n.moment2;
 				++count;

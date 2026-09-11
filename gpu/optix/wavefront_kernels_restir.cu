@@ -36,6 +36,7 @@
 
 #include "wavefront_device_helpers.h"
 #include "wavefront_restir_gi_math.h"
+#include "wavefront_svgf_math.h"  // wf_checkerboard_pixel_active
 
 // Uniform sample within a disk of radius kRestirSpatialRadiusPixels around
 // pixel (px, py) (SampleUniformDiskConcentric would be the textbook choice,
@@ -172,9 +173,32 @@ extern "C" __global__ void restir_spatial_reuse(
 // GpuLightSample::valid() in isolation - but a genuine, avoidable mismatch
 // between the documented sentinel and the actual cleared state. This kernel
 // writes the real GpuReservoir{} default (lightIdx=-1) instead.
-extern "C" __global__ void restir_clear_reservoirs(GpuReservoir* reservoirs, int numPixels) {
+//
+// Checkerboard temporal upsampling (WavefrontPathTracer::render()'s own
+// checkerboardActive comment): skips clearing a checkerboard-inactive
+// pixel's reservoir, exactly mirroring the fix restir_gi_finalize's own
+// comment describes for ReSTIR GI - ReSTIR DI is unconditionally enabled for
+// every Live Preview call with no way to disable it, and without this an
+// inactive pixel's d_reservoirs_ entry would be wiped to empty every other
+// frame, then passed straight through by restir_spatial_reuse's own
+// zero-normal early-return (d_restirNormal_ is unconditionally cleared every
+// call, so an inactive pixel's normal always reads as zero) into
+// d_reservoirsHistory_ - defeating DI's own temporal accumulation for half
+// the image every frame. Holding the reservoir here (skip the clear
+// entirely, leaving whatever this pixel's own d_reservoirs_ entry already
+// held from the last render() call it was active in) is sufficient - no
+// separate reprojection is needed the way SVGF/GI's OWN per-frame-rewritten
+// state needed, since d_reservoirs_ is already an incrementally-updated
+// "current best estimate" buffer, not per-frame scratch.
+extern "C" __global__ void restir_clear_reservoirs(
+		GpuReservoir* reservoirs, int width, int height,
+		unsigned int frameNumber, bool checkerboardActive) {
 	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	const int numPixels = width * height;
 	if (idx >= numPixels) return;
+	const int px = idx % width;
+	const int py = idx / width;
+	if (!wf_checkerboard_pixel_active(px, py, frameNumber, checkerboardActive)) return;
 	reservoirs[idx] = GpuReservoir{};
 }
 
@@ -251,15 +275,22 @@ extern "C" __global__ void restir_gi_finalize(
 
 	const GpuGiOriginContext& ctx = originContext[idx];
 	if (!ctx.valid()) {
+		// weightBuffer[idx]==0.0f alone isn't exclusively a checkerboard
+		// signal - a crop/pixelbounds-excluded pixel (gpu_in_crop(),
+		// generate_camera_rays) reads the same way. The wp.w!=0.0f check
+		// just below is what actually makes this safe: a crop-excluded
+		// pixel is never dispatched a primary ray on ANY frame, so
+		// currentWorldPos[idx].w stays permanently 0.0f for it and this
+		// branch can never fire for one - it always falls through to the
+		// unconditional wipe below, exactly like the old, pre-checkerboard
+		// behavior (see svgf_temporal_integrate's own identical comment,
+		// wavefront_kernels_svgf.cu, for the fuller version of this
+		// reasoning).
 		if (weightBuffer[idx] == 0.0f && historyValid) {
-			const float4 wp = currentWorldPos[idx];
-			if (wp.w != 0.0f) {
-				const int prevPixel = wf_restir_reproject_prev_pixel(
-					make_float3(wp.x, wp.y, wp.z), prevCamera, worldPosHistory, imageWidth, imageHeight);
-				if (prevPixel >= 0) {
-					outputReservoirs[idx] = history[prevPixel];
-					return;
-				}
+			GpuGiReservoir held;
+			if (wf_checkerboard_try_hold(currentWorldPos[idx], prevCamera, worldPosHistory, imageWidth, imageHeight, history, held)) {
+				outputReservoirs[idx] = held;
+				return;
 			}
 		}
 		outputReservoirs[idx] = GpuGiReservoir{};

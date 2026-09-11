@@ -432,6 +432,40 @@ __device__ __forceinline__ int wf_restir_reproject_prev_pixel(
 	return prevPixel;
 }
 
+// Checkerboard temporal upsampling's "hold" building block, shared by
+// svgf_temporal_integrate (wavefront_kernels_svgf.cu) and restir_gi_finalize
+// (wavefront_kernels_restir.cu) - both need the exact same sequence (check a
+// hit exists this frame, reproject it into the previous frame via the SAME
+// helper just above, fetch that pixel's own history-buffer entry) to decide
+// whether a checkerboard-inactive pixel has something to carry forward
+// unchanged. Factored out here rather than hand-duplicated per kernel (as an
+// earlier version of this code did) for the same reason
+// wf_restir_reproject_prev_pixel itself was factored out - see that
+// function's own header comment: a fix to this sequence (e.g. a stricter
+// disocclusion test) previously needed two call sites updated in lockstep
+// with no compiler enforcement they stayed identical.
+//
+// Templated on the history element type (GpuSvgfState, GpuGiReservoir - both
+// plain PODs) since the reprojection/lookup logic is identical regardless of
+// payload; only what the CALLER does with the returned entry differs (SVGF
+// still applies its own temporal blend when isActive, GI only ever calls
+// this from its already-inactive branch). Returns false (leaving `outHeld`
+// untouched) if there's nothing to hold - a miss, no reprojection target, or
+// disocclusion - the same three cases wf_restir_reproject_prev_pixel itself
+// already collapses into a single "no reuse" signal.
+template <typename T>
+__device__ __forceinline__ bool wf_checkerboard_try_hold(
+		const float4& currentHitWorldPos, const GpuReprojectBasis& prevCamera,
+		const float4* worldPosHistory, int imageWidth, int imageHeight,
+		const T* history, T& outHeld) {
+	if (currentHitWorldPos.w == 0.0f) return false;
+	const float3 hitPoint = make_float3(currentHitWorldPos.x, currentHitWorldPos.y, currentHitWorldPos.z);
+	const int prevPixel = wf_restir_reproject_prev_pixel(hitPoint, prevCamera, worldPosHistory, imageWidth, imageHeight);
+	if (prevPixel < 0) return false;
+	outHeld = history[prevPixel];
+	return true;
+}
+
 // ReSTIR temporal reuse: reprojects `hitPoint` into the previous frame's
 // camera (ctx.prevCamera), and - if that lands on-screen, on a
 // non-disoccluded surface, and ctx.historyValid - combines ctx.history's

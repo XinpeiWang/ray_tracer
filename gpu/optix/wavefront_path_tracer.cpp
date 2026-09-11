@@ -1533,25 +1533,6 @@ bool WavefrontPathTracer::render(
 	// today's pre-existing behavior, whatever that happens to be.
 	if (camera.userSeed >= 0) frameNumber_ = static_cast<unsigned int>(camera.userSeed);
 
-	// Checkerboard temporal upsampling: reuses SVGF's own temporal
-	// reprojection/history as a reconstruction filter for a sparse per-frame
-	// sample pattern (alternating which half of pixels get a fresh primary-
-	// ray sample each frame - see wf_checkerboard_pixel_active(),
-	// wavefront_device_helpers.h), so a heavy scene traces roughly half as
-	// many primary rays per Live Preview frame. Gated on BOTH svgfEnabled_
-	// AND restirGiHistoryValid_ (not just SVGF's own history) - ReSTIR GI is
-	// unconditionally on for every Live Preview call with no way to disable
-	// it, and its own restir_gi_finalize() kernel needs a warm, reprojectable
-	// history to correctly HOLD a checkerboard-inactive pixel's reservoir
-	// (see that kernel's own comment) rather than wiping it to empty every
-	// other frame. Both *HistoryValid_ flags already reset themselves on
-	// exactly the events (scene switch, resolution change) that would
-	// otherwise need special-casing here - piggybacking on that existing
-	// invalidation is what keeps the very first frame after such an event
-	// (where checkerboarding would otherwise bake a fabricated black/empty
-	// half-image into fresh history) safe by construction.
-	const bool checkerboardActive = svgfEnabled_ && svgfHistoryValid_ && restirGiHistoryValid_;
-
 	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
 	// project's own plan for why wavefront is the one backend that gets
 	// this for free: every field here is already a real, host-visible
@@ -1681,22 +1662,6 @@ bool WavefrontPathTracer::render(
 		worldPosCapacity_ = 0;
 	}
 
-	// Checkerboard temporal upsampling's frame-clear (see WavefrontPathTracer::
-	// render()'s own checkerboardActive comment, and svgf_checkerboard_clear_
-	// frame's own comment, wavefront_kernels_svgf.cu, for the full rationale).
-	// Unifies what used to be 2 independent memsets (albedo+normal, worldPos)
-	// into one kernel launch, each of whose 3 output pointers is independently
-	// nullable - only the ones actually allocated above (per
-	// needsAovGuideBuffers/needsWorldPosHistory/worldPosOutputEnabled_) are
-	// non-null here. frameNumber_ + 1: this runs BEFORE frameNumber_++ below
-	// (the sample loop's own generate_camera_rays calls, further down, see
-	// each other's launch site), so +1 is what makes this call's own
-	// checkerboard parity agree with what THIS SAME render() call's own
-	// primary rays will use once the increment has actually happened.
-	wf_launch_svgf_checkerboard_clear_frame(
-		d_albedoAovPtr, d_normalAovPtr, reinterpret_cast<float4*>(d_worldPos_),
-		width, height, frameNumber_ + 1, checkerboardActive, stream_);
-
 	// ReSTIR DI (Live Preview only) reservoir buffer - see setRestirEnabled()'s
 	// own comment. Same resolution-keyed allocate-once/only-realloc-on-change
 	// lifecycle as d_worldPos_ just above. Cleared every render() call (not
@@ -1713,12 +1678,10 @@ bool WavefrontPathTracer::render(
 			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_reservoirs_), numPixels * sizeof(GpuReservoir)));
 			reservoirsCapacity_ = numPixels;
 		}
-		// A real per-struct clear (restir_clear_reservoirs), not a raw
-		// cudaMemsetAsync zero-fill - see that kernel's own comment
-		// (wavefront_kernels_restir.cu) for why a memset would leave
-		// GpuLightSample::lightIdx at 0 instead of its documented -1
-		// "invalid" sentinel.
-		wf_launch_restir_clear_reservoirs(reinterpret_cast<GpuReservoir*>(d_reservoirs_), numPixels, stream_);
+		// Cleared below, together with the checkerboard AOV/worldPos clear -
+		// see that call's own comment for why (needs checkerboardActive,
+		// which isn't known-correct until after this call's own history-
+		// invalidation checks have all run).
 	} else if (d_reservoirs_) {
 		cudaFree(reinterpret_cast<void*>(d_reservoirs_));
 		d_reservoirs_ = 0;
@@ -1852,6 +1815,77 @@ bool WavefrontPathTracer::render(
 			freeDeviceBuffer(d_svgfPingPong_[i], svgfPingPongCapacity_[i]);
 		}
 		svgfHistoryValid_ = false;
+	}
+
+	// Checkerboard temporal upsampling: reuses SVGF's own temporal
+	// reprojection/history as a reconstruction filter for a sparse per-frame
+	// sample pattern (alternating which half of pixels get a fresh primary-
+	// ray sample each frame - see wf_checkerboard_pixel_active(),
+	// wavefront_device_helpers.h), so a heavy scene traces roughly half as
+	// many primary rays per Live Preview frame. Gated on BOTH svgfEnabled_
+	// AND restirGiHistoryValid_ (not just SVGF's own history) - ReSTIR GI is
+	// unconditionally on for every Live Preview call with no way to disable
+	// it, and its own restir_gi_finalize() kernel needs a warm, reprojectable
+	// history to correctly HOLD a checkerboard-inactive pixel's reservoir
+	// (see that kernel's own comment) rather than wiping it to empty every
+	// other frame. Both *HistoryValid_ flags already reset themselves on
+	// exactly the events (scene switch, resolution change) that would
+	// otherwise need special-casing here - piggybacking on that existing
+	// invalidation is what keeps the very first frame after such an event
+	// (where checkerboarding would otherwise bake a fabricated black/empty
+	// half-image into fresh history) safe by construction.
+	//
+	// Computed HERE, after every *HistoryValid_ reset above (resolution-
+	// change checks for DI/GI/SVGF's own history/AOV buffers), not earlier -
+	// reading these flags before their own reset-on-resize logic had a
+	// chance to run for THIS call would latch a stale `true` on the exact
+	// frame a resize invalidates history, skipping the checkerboard-clear
+	// kernel's zeroing of freshly-(re)allocated, uninitialized buffer
+	// entries for "inactive" pixels (a real, confirmed bug in an earlier
+	// version of this code - see the code review that caught it).
+	const bool checkerboardActive = svgfEnabled_ && svgfHistoryValid_ && restirGiHistoryValid_;
+
+	// Checkerboard temporal upsampling's frame-clear (see this function's own
+	// checkerboardActive comment above, and svgf_checkerboard_clear_frame's
+	// own comment, wavefront_kernels_svgf.cu, for the full rationale). Only
+	// actually NEEDS the generic per-pixel kernel when checkerboardActive is
+	// true (some pixels must be skipped); when it's false - denoise-only,
+	// ReSTIR-only-without-SVGF, or even an SVGF+GI call before both
+	// histories warm up, all of which are common - every pixel clears
+	// unconditionally, so the plain, driver-specialized cudaMemsetAsync this
+	// replaced is strictly faster for the exact same result and is worth
+	// keeping as the fast path rather than paying a kernel launch + per-pixel
+	// branch to reproduce it. Each of the 3 pointers is independently
+	// nullable either way - only the ones actually allocated above (per
+	// needsAovGuideBuffers/needsWorldPosHistory/worldPosOutputEnabled_) are
+	// non-null here. frameNumber_ + 1: this runs BEFORE frameNumber_++ below
+	// (the sample loop's own generate_camera_rays calls, further down, see
+	// each other's launch site), so +1 is what makes this call's own
+	// checkerboard parity agree with what THIS SAME render() call's own
+	// primary rays will use once the increment has actually happened.
+	if (checkerboardActive) {
+		wf_launch_svgf_checkerboard_clear_frame(
+			d_albedoAovPtr, d_normalAovPtr, reinterpret_cast<float4*>(d_worldPos_),
+			width, height, frameNumber_ + 1, checkerboardActive, stream_);
+	} else {
+		if (d_albedoAovPtr) CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_albedoAovPtr), 0, numPixels * sizeof(float3), stream_));
+		if (d_normalAovPtr) CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_normalAovPtr), 0, numPixels * sizeof(float3), stream_));
+		if (d_worldPos_) CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_worldPos_), 0, numPixels * sizeof(float4), stream_));
+	}
+
+	// ReSTIR DI's own reservoir clear (see restir_clear_reservoirs' own
+	// comment, wavefront_kernels_restir.cu, for why this must be
+	// checkerboard-aware too - DI is unconditionally on for every Live
+	// Preview call, same as GI, and was found to have the identical
+	// reservoir-wipe bug GI's own hold branch was added to fix). A real
+	// per-struct clear (not a raw cudaMemsetAsync zero-fill) for every
+	// pixel this call decides to clear - see that kernel's own comment for
+	// why a memset would leave GpuLightSample::lightIdx at 0 instead of its
+	// documented -1 "invalid" sentinel.
+	if (restirEnabled_) {
+		wf_launch_restir_clear_reservoirs(
+			reinterpret_cast<GpuReservoir*>(d_reservoirs_),
+			width, height, frameNumber_ + 1, checkerboardActive, stream_);
 	}
 
 	// Build WavefrontLaunchParams template (queue pointers filled per phase)

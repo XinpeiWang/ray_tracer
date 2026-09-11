@@ -80,7 +80,7 @@ extern "C" __global__ void restir_spatial_reuse(
 	int, int, unsigned int,
 	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const DiskData*, const CylinderData*,
 	const MaterialData*, const TextureData*, const unsigned char*);
-extern "C" __global__ void restir_clear_reservoirs(GpuReservoir*, int);
+extern "C" __global__ void restir_clear_reservoirs(GpuReservoir*, int, int, unsigned int, bool);
 extern "C" __global__ void restir_gi_finalize(
 	const GpuGiOriginContext*, const GpuGiSample*, const GpuGiReservoir*, const float4*,
 	const float4*, const float*,
@@ -339,11 +339,15 @@ extern "C" void wf_launch_restir_spatial_reuse(
 		d_materials, d_textures, d_texturePixels);
 }
 
-extern "C" void wf_launch_restir_clear_reservoirs(GpuReservoir* d_reservoirs, int numPixels, cudaStream_t stream) {
+extern "C" void wf_launch_restir_clear_reservoirs(
+	GpuReservoir* d_reservoirs, int width, int height,
+	unsigned int frameNumber, bool checkerboardActive, cudaStream_t stream) {
+	const int numPixels = width * height;
 	if (numPixels <= 0) return;
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
-	restir_clear_reservoirs<<<grid, block, 0, (cudaStream_t)stream>>>(d_reservoirs, numPixels);
+	restir_clear_reservoirs<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_reservoirs, width, height, frameNumber, checkerboardActive);
 }
 
 extern "C" void wf_launch_restir_gi_finalize(
