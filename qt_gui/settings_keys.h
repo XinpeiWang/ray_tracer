@@ -28,4 +28,21 @@ constexpr const char *kLivePreviewDenoiseEnabledKey = "livePreview/denoiseEnable
 constexpr const char *kLivePreviewDenoiseBlendKey = "livePreview/denoiseBlend";
 constexpr const char *kLivePreviewDenoiseShowLatestKey = "livePreview/denoiseShowLatest";
 constexpr const char *kLivePreviewSvgfEnabledKey = "livePreview/svgfEnabled";
+constexpr const char *kLivePreviewRestirGiEnabledKey = "livePreview/restirGiEnabled";
+constexpr const char *kLivePreviewExposureKey = "livePreview/exposure";
+constexpr const char *kLivePreviewSamplesKey = "livePreview/samples";
+constexpr const char *kLivePreviewMaxDepthKey = "livePreview/maxDepth";
+constexpr const char *kLivePreviewFireflyClampKey = "livePreview/fireflyClamp";
+// SVGF advanced tuning - see gpu/optix/svgf_tuning_params.h's own comment for
+// each field's meaning and literature-default value.
+constexpr const char *kLivePreviewSvgfTemporalAlphaKey = "livePreview/svgfTemporalAlpha";
+constexpr const char *kLivePreviewSvgfMaxHistoryLengthKey = "livePreview/svgfMaxHistoryLength";
+constexpr const char *kLivePreviewSvgfVarianceBootstrapFramesKey = "livePreview/svgfVarianceBootstrapFrames";
+constexpr const char *kLivePreviewSvgfVarianceBootstrapRadiusKey = "livePreview/svgfVarianceBootstrapRadius";
+constexpr const char *kLivePreviewSvgfSigmaNormalKey = "livePreview/svgfSigmaNormal";
+constexpr const char *kLivePreviewSvgfSigmaDepthKey = "livePreview/svgfSigmaDepth";
+constexpr const char *kLivePreviewSvgfSigmaLuminanceKey = "livePreview/svgfSigmaLuminance";
+constexpr const char *kLivePreviewSvgfAtrousRadiusKey = "livePreview/svgfAtrousRadius";
+constexpr const char *kLivePreviewSvgfMinAlbedoKey = "livePreview/svgfMinAlbedo";
+constexpr const char *kLivePreviewSvgfAtrousPassesKey = "livePreview/svgfAtrousPasses";
 } // namespace settings_keys

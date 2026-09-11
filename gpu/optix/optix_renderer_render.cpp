@@ -123,6 +123,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setRestirEnabled(restirEnabled_);
 		wavefrontTracer_->setRestirGiEnabled(restirGiEnabled_);
 		wavefrontTracer_->setSvgfEnabled(svgfEnabled_);
+		wavefrontTracer_->setSvgfTuning(svgfTuning_);
 		// See invalidateRestirHistory()'s own comment on why this is
 		// deferred-then-forwarded here instead of calling straight through.
 		if (restirHistoryInvalidationPending_) {

@@ -767,6 +767,21 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 		m_liveDenoiseEnabled = false;
 		saveLiveDenoiseEnabled(false);  // persist the correction, not just the in-memory value
 	}
+	m_liveRestirGiEnabled = loadSavedLiveRestirGiEnabled();
+	m_liveExposure = loadSavedLiveExposure();
+	m_liveSamples = loadSavedLiveSamples();
+	m_liveMaxDepth = loadSavedLiveMaxDepth();
+	m_liveFireflyClamp = loadSavedLiveFireflyClamp();
+	m_liveSvgfTemporalAlpha = loadSavedLiveSvgfTemporalAlpha();
+	m_liveSvgfMaxHistoryLength = loadSavedLiveSvgfMaxHistoryLength();
+	m_liveSvgfVarianceBootstrapFrames = loadSavedLiveSvgfVarianceBootstrapFrames();
+	m_liveSvgfVarianceBootstrapRadius = loadSavedLiveSvgfVarianceBootstrapRadius();
+	m_liveSvgfSigmaNormal = loadSavedLiveSvgfSigmaNormal();
+	m_liveSvgfSigmaDepth = loadSavedLiveSvgfSigmaDepth();
+	m_liveSvgfSigmaLuminance = loadSavedLiveSvgfSigmaLuminance();
+	m_liveSvgfAtrousRadius = loadSavedLiveSvgfAtrousRadius();
+	m_liveSvgfMinAlbedo = loadSavedLiveSvgfMinAlbedo();
+	m_liveSvgfAtrousPasses = loadSavedLiveSvgfAtrousPasses();
 #endif
 	// Set before the first applyTheme() call below (not just by applyFont(),
 	// which runs after it) so that first stylesheet build already scales to

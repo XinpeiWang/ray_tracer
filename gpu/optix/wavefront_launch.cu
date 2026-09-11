@@ -93,13 +93,13 @@ extern "C" __global__ void svgf_checkerboard_clear_frame(
 	float3*, float3*, float4*, int, int, unsigned int, bool);
 extern "C" __global__ void svgf_temporal_integrate(
 	const float3*, const float4*, const GpuSvgfState*, const float4*, const float*,
-	GpuReprojectBasis, bool, int, int, GpuSvgfState*);
+	GpuReprojectBasis, bool, int, int, float, float, GpuSvgfState*);
 extern "C" __global__ void svgf_prepare_for_filter(
-	const GpuSvgfState*, const float3*, const float4*, int, int, float4*);
+	const GpuSvgfState*, const float3*, const float4*, int, int, float, int, float, float4*);
 extern "C" __global__ void svgf_atrous_pass(
-	const float4*, const float4*, const float3*, float3, int, int, int, float4*);
+	const float4*, const float4*, const float3*, float3, int, int, int, float, float, float, int, float4*);
 extern "C" __global__ void svgf_finalize(
-	const float4*, const float3*, int, float3*);
+	const float4*, const float3*, int, float, float3*);
 
 // ---- plain C launcher wrappers ----
 
@@ -402,6 +402,7 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 	GpuReprojectBasis    prevCamera,
 	bool                 historyValid,
 	int width, int height,
+	float temporalAlpha, float maxHistoryLength,
 	GpuSvgfState*        d_outputCurrent,
 	cudaStream_t stream)
 {
@@ -411,7 +412,7 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 	dim3 grid((numPixels + 255) / 256);
 	svgf_temporal_integrate<<<grid, block, 0, (cudaStream_t)stream>>>(
 		d_currentRadiance, d_currentWorldPos, d_history, d_worldPosHistory, d_weightBuffer,
-		prevCamera, historyValid, width, height, d_outputCurrent);
+		prevCamera, historyValid, width, height, temporalAlpha, maxHistoryLength, d_outputCurrent);
 }
 
 extern "C" void wf_launch_svgf_checkerboard_clear_frame(
@@ -432,6 +433,7 @@ extern "C" void wf_launch_svgf_prepare_for_filter(
 	const float3*       d_albedo,
 	const float4*       d_currentWorldPos,
 	int width, int height,
+	float varianceBootstrapFrames, int varianceBootstrapRadius, float minAlbedo,
 	float4*             d_outPingPong0,
 	cudaStream_t stream)
 {
@@ -440,7 +442,8 @@ extern "C" void wf_launch_svgf_prepare_for_filter(
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
 	svgf_prepare_for_filter<<<grid, block, 0, (cudaStream_t)stream>>>(
-		d_current, d_albedo, d_currentWorldPos, width, height, d_outPingPong0);
+		d_current, d_albedo, d_currentWorldPos, width, height,
+		varianceBootstrapFrames, varianceBootstrapRadius, minAlbedo, d_outPingPong0);
 }
 
 extern "C" void wf_launch_svgf_atrous_pass(
@@ -450,6 +453,7 @@ extern "C" void wf_launch_svgf_atrous_pass(
 	float3        cameraOrigin,
 	int width, int height,
 	int stepSize,
+	float sigmaNormal, float sigmaDepth, float sigmaLuminance, int atrousRadius,
 	float4*       d_output,
 	cudaStream_t stream)
 {
@@ -458,20 +462,22 @@ extern "C" void wf_launch_svgf_atrous_pass(
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
 	svgf_atrous_pass<<<grid, block, 0, (cudaStream_t)stream>>>(
-		d_input, d_currentWorldPos, d_normals, cameraOrigin, width, height, stepSize, d_output);
+		d_input, d_currentWorldPos, d_normals, cameraOrigin, width, height, stepSize,
+		sigmaNormal, sigmaDepth, sigmaLuminance, atrousRadius, d_output);
 }
 
 extern "C" void wf_launch_svgf_finalize(
 	const float4* d_filtered,
 	const float3* d_albedo,
 	int numPixels,
+	float minAlbedo,
 	float3*       d_framebuffer,
 	cudaStream_t stream)
 {
 	if (numPixels <= 0) return;
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
-	svgf_finalize<<<grid, block, 0, (cudaStream_t)stream>>>(d_filtered, d_albedo, numPixels, d_framebuffer);
+	svgf_finalize<<<grid, block, 0, (cudaStream_t)stream>>>(d_filtered, d_albedo, numPixels, minAlbedo, d_framebuffer);
 }
 
 extern "C" void wf_launch_accumulate_miss(

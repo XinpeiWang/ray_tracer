@@ -6,6 +6,7 @@
 #include "wavefront_types.h"
 #include "optix_types.h"
 #include "optix_denoiser.h"  // DenoiserResources - shared with OptiXRenderer
+#include "svgf_tuning_params.h"
 #include <optix.h>
 #include <cuda_runtime.h>
 #include <cuda.h>
@@ -216,6 +217,11 @@ public:
     /// rendering never pays for the extra buffers or changes its own
     /// statistics.
     void setSvgfEnabled(bool enabled) { svgfEnabled_ = enabled; }
+    // SVGF's advanced tuning constants (gpu/optix/svgf_tuning_params.h) -
+    // read directly from svgfTuning_ at every wf_launch_svgf_*() call site
+    // inside launchSvgf() (this class's own .cpp), replacing what used to be
+    // kSvgf* file-scope constexpr literals in wavefront_kernels_svgf.cu.
+    void setSvgfTuning(const SvgfTuningParams& tuning) { svgfTuning_ = tuning; }
 
     /// Clears every technique's temporal history flag together - DI's
     /// restirHistoryValid_, GI's restirGiHistoryValid_, and SVGF's own
@@ -664,6 +670,7 @@ private:
     // read-then-overwrite-at-end-of-call exactly like d_giReservoirs_/
     // d_giReservoirsHistory_ above - reused reasoning, not repeated.
     bool               svgfEnabled_ = false;
+    SvgfTuningParams   svgfTuning_;             // see setSvgfTuning()
     CUdeviceptr        d_svgfCurrent_ = 0;
     int                svgfCurrentCapacity_ = 0;
     CUdeviceptr        d_svgfHistory_ = 0;

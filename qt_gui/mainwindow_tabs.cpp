@@ -1225,6 +1225,242 @@ void MainWindow::createSettingsTab() {
 
 	liveModeSettingsLayout->addRow(liveDenoiseRow);
 
+	// SVGF Advanced Tuning - nested group, enabled/disabled in lockstep with
+	// m_liveSvgfCheck exactly like m_liveDenoiseBlendSpin is with
+	// m_liveDenoiseCheck above. Ten controls mirroring SvgfTuningParams
+	// (gpu/optix/svgf_tuning_params.h) field-for-field; every range/default
+	// below matches that struct's own comments.
+	m_liveSvgfTuningGroupBox = new QGroupBox(tr("SVGF Advanced Tuning"));
+	styleGroupBox(m_liveSvgfTuningGroupBox);
+	m_liveSvgfTuningGroupBox->setEnabled(m_liveSvgfEnabled);
+	connect(m_liveSvgfCheck, &QCheckBox::toggled, m_liveSvgfTuningGroupBox, &QGroupBox::setEnabled);
+	QGridLayout *svgfTuningGrid = new QGridLayout(m_liveSvgfTuningGroupBox);
+	svgfTuningGrid->setHorizontalSpacing(10);
+	svgfTuningGrid->setVerticalSpacing(8);
+	svgfTuningGrid->setColumnStretch(1, 1);
+	svgfTuningGrid->setColumnStretch(3, 1);
+
+	auto addSvgfDoubleSpin = [&](int row, int col, const QString &label, const QString &tooltip,
+								   double lo, double hi, double step, int decimals, double value) {
+		QDoubleSpinBox *spin = new QDoubleSpinBox();
+		spin->setRange(lo, hi);
+		spin->setSingleStep(step);
+		spin->setDecimals(decimals);
+		spin->setValue(value);
+		styleSpinBox(spin);
+		svgfTuningGrid->addWidget(labelWithInfo(label, tooltip), row, col * 2);
+		svgfTuningGrid->addWidget(spin, row, col * 2 + 1);
+		return spin;
+	};
+	auto addSvgfIntSpin = [&](int row, int col, const QString &label, const QString &tooltip,
+							   int lo, int hi, int value) {
+		QSpinBox *spin = new QSpinBox();
+		spin->setRange(lo, hi);
+		spin->setValue(value);
+		styleSpinBox(spin);
+		svgfTuningGrid->addWidget(labelWithInfo(label, tooltip), row, col * 2);
+		svgfTuningGrid->addWidget(spin, row, col * 2 + 1);
+		return spin;
+	};
+
+	m_liveSvgfTemporalAlphaSpin = addSvgfDoubleSpin(0, 0, tr("Temporal Alpha:"),
+		tr("Floor on the temporal blend rate - lower holds onto history "
+		"longer (less noise, more lag on a changing scene), higher adapts "
+		"faster (more noise, less lag)."),
+		0.01, 1.0, 0.01, 2, m_liveSvgfTemporalAlpha);
+	m_liveSvgfMaxHistoryLengthSpin = addSvgfDoubleSpin(0, 1, tr("Max History Length:"),
+		tr("Caps how many frames of history a converged pixel can accumulate "
+		"- bounds how \"sticky\" it gets."),
+		1.0, 256.0, 1.0, 0, m_liveSvgfMaxHistoryLength);
+	m_liveSvgfVarianceBootstrapFramesSpin = addSvgfDoubleSpin(1, 0, tr("Variance Bootstrap Frames:"),
+		tr("Below this history length, variance is spatially prefiltered "
+		"from neighboring pixels instead of trusted alone - helps a fresh "
+		"or disoccluded pixel's edge-stopping weights before it has enough "
+		"of its own temporal history."),
+		0.0, 32.0, 1.0, 0, m_liveSvgfVarianceBootstrapFrames);
+	m_liveSvgfVarianceBootstrapRadiusSpin = addSvgfIntSpin(1, 1, tr("Variance Bootstrap Radius:"),
+		tr("Box radius (in pixels) used for the variance prefilter above - "
+		"radius 3 means a 7x7 box."),
+		0, 8, m_liveSvgfVarianceBootstrapRadius);
+	m_liveSvgfSigmaNormalSpin = addSvgfDoubleSpin(2, 0, tr("Sigma Normal:"),
+		tr("Edge-stopping sensitivity to shading-normal differences - "
+		"higher rejects a smaller normal difference, preventing blur across "
+		"curved surfaces or silhouettes."),
+		1.0, 1024.0, 1.0, 0, m_liveSvgfSigmaNormal);
+	m_liveSvgfSigmaDepthSpin = addSvgfDoubleSpin(2, 1, tr("Sigma Depth:"),
+		tr("Edge-stopping sensitivity to depth differences, relative to the "
+		"local depth gradient - higher tolerates more depth variation "
+		"before rejecting a neighbor as a different surface."),
+		0.01, 16.0, 0.1, 2, m_liveSvgfSigmaDepth);
+	m_liveSvgfSigmaLuminanceSpin = addSvgfDoubleSpin(3, 0, tr("Sigma Luminance:"),
+		tr("Edge-stopping sensitivity to luminance differences, relative to "
+		"the pixel's own estimated noise level - higher blurs across a "
+		"larger brightness difference."),
+		0.1, 32.0, 0.1, 1, m_liveSvgfSigmaLuminance);
+	m_liveSvgfAtrousRadiusSpin = addSvgfIntSpin(3, 1, tr("A-trous Radius:"),
+		tr("Filter footprint radius per A-trous pass - clamped to [0,2] "
+		"(radius 2 = 5x5) since the filter's own kernel weight table only "
+		"has 3 entries."),
+		0, 2, m_liveSvgfAtrousRadius);
+	m_liveSvgfMinAlbedoSpin = addSvgfDoubleSpin(4, 0, tr("Min Albedo:"),
+		tr("Floor applied before dividing color by albedo (demodulation) - "
+		"prevents a near-zero-albedo pixel from blowing up or round-tripping "
+		"to black."),
+		0.001, 1.0, 0.001, 3, m_liveSvgfMinAlbedo);
+	m_liveSvgfAtrousPassesSpin = addSvgfIntSpin(4, 1, tr("A-trous Passes:"),
+		tr("Number of A-trous filter passes (step sizes double each pass: "
+		"1,2,4,8,...) - more passes cover a larger effective radius at "
+		"proportionally higher GPU cost."),
+		0, 8, m_liveSvgfAtrousPasses);
+
+	QPushButton *svgfTuningResetButton = new QPushButton(tr("Reset to Defaults"));
+	connect(svgfTuningResetButton, &QPushButton::clicked, this, [this]() {
+		m_liveSvgfTemporalAlphaSpin->setValue(0.2);
+		m_liveSvgfMaxHistoryLengthSpin->setValue(32.0);
+		m_liveSvgfVarianceBootstrapFramesSpin->setValue(4.0);
+		m_liveSvgfVarianceBootstrapRadiusSpin->setValue(3);
+		m_liveSvgfSigmaNormalSpin->setValue(128.0);
+		m_liveSvgfSigmaDepthSpin->setValue(1.0);
+		m_liveSvgfSigmaLuminanceSpin->setValue(4.0);
+		m_liveSvgfAtrousRadiusSpin->setValue(2);
+		m_liveSvgfMinAlbedoSpin->setValue(0.02);
+		m_liveSvgfAtrousPassesSpin->setValue(4);
+	});
+	svgfTuningGrid->addWidget(svgfTuningResetButton, 5, 0, 1, 4);
+
+	// Every SVGF tuning spinbox pushes the WHOLE bundle (not just its own
+	// field) via pushLiveSvgfTuningToSession() - see that method's own
+	// comment for why they're always sent together as one SvgfTuningParams.
+	auto pushSvgfTuning = [this]() {
+		m_liveSvgfTemporalAlpha = m_liveSvgfTemporalAlphaSpin->value();
+		m_liveSvgfMaxHistoryLength = m_liveSvgfMaxHistoryLengthSpin->value();
+		m_liveSvgfVarianceBootstrapFrames = m_liveSvgfVarianceBootstrapFramesSpin->value();
+		m_liveSvgfVarianceBootstrapRadius = m_liveSvgfVarianceBootstrapRadiusSpin->value();
+		m_liveSvgfSigmaNormal = m_liveSvgfSigmaNormalSpin->value();
+		m_liveSvgfSigmaDepth = m_liveSvgfSigmaDepthSpin->value();
+		m_liveSvgfSigmaLuminance = m_liveSvgfSigmaLuminanceSpin->value();
+		m_liveSvgfAtrousRadius = m_liveSvgfAtrousRadiusSpin->value();
+		m_liveSvgfMinAlbedo = m_liveSvgfMinAlbedoSpin->value();
+		m_liveSvgfAtrousPasses = m_liveSvgfAtrousPassesSpin->value();
+		saveLiveSvgfTemporalAlpha(m_liveSvgfTemporalAlpha);
+		saveLiveSvgfMaxHistoryLength(m_liveSvgfMaxHistoryLength);
+		saveLiveSvgfVarianceBootstrapFrames(m_liveSvgfVarianceBootstrapFrames);
+		saveLiveSvgfVarianceBootstrapRadius(m_liveSvgfVarianceBootstrapRadius);
+		saveLiveSvgfSigmaNormal(m_liveSvgfSigmaNormal);
+		saveLiveSvgfSigmaDepth(m_liveSvgfSigmaDepth);
+		saveLiveSvgfSigmaLuminance(m_liveSvgfSigmaLuminance);
+		saveLiveSvgfAtrousRadius(m_liveSvgfAtrousRadius);
+		saveLiveSvgfMinAlbedo(m_liveSvgfMinAlbedo);
+		saveLiveSvgfAtrousPasses(m_liveSvgfAtrousPasses);
+		pushLiveSvgfTuningToSession();
+	};
+	connect(m_liveSvgfTemporalAlphaSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfMaxHistoryLengthSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfVarianceBootstrapFramesSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfVarianceBootstrapRadiusSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfSigmaNormalSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfSigmaDepthSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfSigmaLuminanceSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfAtrousRadiusSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfMinAlbedoSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pushSvgfTuning);
+	connect(m_liveSvgfAtrousPassesSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSvgfTuning);
+
+	liveModeSettingsLayout->addRow(m_liveSvgfTuningGroupBox);
+
+	// Render-setting knobs surfaced by the architecture review: ReSTIR GI
+	// on/off, exposure, samples/max-bounces per frame, and the firefly
+	// clamp - each independent of everything else on this tab, grouped into
+	// one row purely for layout compactness.
+	QWidget *liveRenderSettingsRow = new QWidget();
+	QGridLayout *liveRenderSettingsGrid = new QGridLayout(liveRenderSettingsRow);
+	liveRenderSettingsGrid->setContentsMargins(0, 0, 0, 0);
+	liveRenderSettingsGrid->setHorizontalSpacing(10);
+	liveRenderSettingsGrid->setVerticalSpacing(8);
+	liveRenderSettingsGrid->setColumnStretch(1, 1);
+	liveRenderSettingsGrid->setColumnStretch(3, 1);
+
+	m_liveRestirGiCheck = new QCheckBox(tr("ReSTIR GI"));
+	m_liveRestirGiCheck->setChecked(m_liveRestirGiEnabled);
+	styleCheckBox(m_liveRestirGiCheck);
+	connect(m_liveRestirGiCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveRestirGiEnabled = checked;
+		saveLiveRestirGiEnabled(checked);
+		pushLiveRestirGiToSession();
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveRestirGiCheck,
+		tr("Resampled one-bounce indirect lighting (ReSTIR GI) - independent "
+		"of which denoiser is active above. Disabling it falls back to the "
+		"classic single-sample indirect estimate, which is noisier but "
+		"cheaper per frame.")),
+		0, 0);
+
+	m_liveExposureSpin = new QDoubleSpinBox();
+	m_liveExposureSpin->setRange(0.01, 100.0);
+	m_liveExposureSpin->setSingleStep(0.1);
+	m_liveExposureSpin->setValue(m_liveExposure);
+	styleSpinBox(m_liveExposureSpin);
+	connect(m_liveExposureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveExposure = value;
+		saveLiveExposure(value);
+		pushLiveExposureToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Exposure:"),
+		tr("A flat brightness multiplier applied before tone-mapping, same "
+		"meaning as the Render Options tab's own Exposure control but "
+		"independently set for Live Preview.")),
+		0, 2);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 0, 3);
+
+	m_liveSamplesSpinBox = new QSpinBox();
+	m_liveSamplesSpinBox->setRange(1, 16);
+	m_liveSamplesSpinBox->setValue(m_liveSamples);
+	styleSpinBox(m_liveSamplesSpinBox);
+	auto pushSppMaxDepth = [this]() {
+		m_liveSamples = m_liveSamplesSpinBox->value();
+		m_liveMaxDepth = m_liveMaxDepthSpinBox->value();
+		saveLiveSamples(m_liveSamples);
+		saveLiveMaxDepth(m_liveMaxDepth);
+		pushLiveSppMaxDepthToSession();
+	};
+	connect(m_liveSamplesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Samples/Frame:"),
+		tr("Samples per pixel rendered on each Live Preview call - Live "
+		"Preview has its own independent value from the Advanced Parameters "
+		"group below, which only applies to Image/Video.")),
+		1, 0);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 1, 1);
+
+	m_liveMaxDepthSpinBox = new QSpinBox();
+	m_liveMaxDepthSpinBox->setRange(1, 32);
+	m_liveMaxDepthSpinBox->setValue(m_liveMaxDepth);
+	styleSpinBox(m_liveMaxDepthSpinBox);
+	connect(m_liveMaxDepthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
+		tr("Maximum ray depth for Live Preview - independent from the "
+		"Advanced Parameters group below, which only applies to Image/Video.")),
+		1, 2);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 1, 3);
+
+	m_liveFireflyClampSpin = new QDoubleSpinBox();
+	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
+	m_liveFireflyClampSpin->setSingleStep(5.0);
+	m_liveFireflyClampSpin->setDecimals(1);
+	m_liveFireflyClampSpin->setValue(m_liveFireflyClamp);
+	styleSpinBox(m_liveFireflyClampSpin);
+	connect(m_liveFireflyClampSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveFireflyClamp = value;
+		saveLiveFireflyClamp(value);
+		pushLiveFireflyClampToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Firefly Clamp:"),
+		tr("Caps the brightest possible sample value to suppress fireflies, "
+		"at the cost of clipping genuinely bright highlights. Lower values "
+		"clamp more aggressively.")),
+		2, 0);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 2, 1);
+
+	liveModeSettingsLayout->addRow(liveRenderSettingsRow);
+
 	layout->addWidget(m_liveModeSettingsGroupBox);
 #endif
 

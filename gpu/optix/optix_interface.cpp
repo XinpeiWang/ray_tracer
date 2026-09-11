@@ -561,7 +561,10 @@ extern "C" bool rt_realtime_render_frame(
 	float* out_world_pos_buffer,
 	float* out_camera_basis,
 	float* out_rgb_buffer,
-	bool enable_svgf
+	bool enable_svgf,
+	bool enable_restir_gi,
+	float max_component_value,
+	const SvgfTuningParams* svgf_tuning
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -681,19 +684,24 @@ extern "C" bool rt_realtime_render_frame(
 		// classic single-draw NEE statistics unchanged - see WavefrontPathTracer::
 		// setRestirEnabled()'s own comment.
 		g_renderer->enableRestir(true);
-		// ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) - same
-		// unconditional-on-for-Live-Preview shape as DI just above, and the
-		// same batch/offline exclusion (optix_render_main() never calls this
-		// function or OptiXRenderer::enableRestirGi()). MVP scope: Lambertian
-		// primary hits only - see wf_finish_material_scatter's own
-		// giOriginContext-stash comment (wavefront_device_helpers.h) for why.
-		g_renderer->enableRestirGi(true);
+		// ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) - unlike DI above,
+		// this IS a genuine per-call opt-in (the caller's own
+		// `enable_restir_gi` parameter, defaulting true to match this
+		// function's own previously-hardcoded-on behavior) - the GUI exposes
+		// it as a real toggle. Same batch/offline exclusion (optix_render_main()
+		// never calls this function or OptiXRenderer::enableRestirGi()). MVP
+		// scope: Lambertian primary hits only - see wf_finish_material_scatter's
+		// own giOriginContext-stash comment (wavefront_device_helpers.h) for why.
+		g_renderer->enableRestirGi(enable_restir_gi);
 		// SVGF (gpu/optix/wavefront_svgf_math.h) - unlike DI/GI above, this
 		// is genuinely opt-in per call (the CALLER's own `enable_svgf`
 		// parameter), not unconditionally forced on - it's an alternative
 		// denoising mode a Live Preview user chooses, not a resampling
 		// technique that's always strictly better than the classic path.
 		g_renderer->enableSvgf(enable_svgf);
+		// SVGF advanced tuning - nullptr means "use SvgfTuningParams{}'s own
+		// literature defaults" (see that struct's own comment).
+		g_renderer->setSvgfTuning(svgf_tuning ? *svgf_tuning : SvgfTuningParams{});
 		// Live Preview pixel filter override - root-caused via direct GPU
 		// instrumentation (not just code reading) to a visible per-frame
 		// "firefly" bug reported interactively: a scene's own (or this
@@ -733,9 +741,11 @@ extern "C" bool rt_realtime_render_frame(
 		// unbounded, appropriate for batch/offline rendering's own --max-
 		// component-value opt-in (never populated here) but not for a
 		// real-time preview that displays every single low-sample-count
-		// frame directly. 50 is generous headroom above this codebase's
-		// typical scene emission values (single digits to a few tens).
-		cameraExtra.maxComponentValue = 50.0f;
+		// frame directly. Caller-supplied (default 50.0f, this function's own
+		// previous hardcoded value) - generous headroom above this codebase's
+		// typical scene emission values (single digits to a few tens), tunable
+		// from the GUI for scenes that need more/less.
+		cameraExtra.maxComponentValue = max_component_value;
 
 		const bool ok = g_renderer->render(
 			image_width,

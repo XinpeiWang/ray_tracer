@@ -6,8 +6,9 @@
 //
 //   svgf_temporal_integrate -> svgf_prepare_for_filter -> svgf_atrous_pass
 //   (repeated with doubling step sizes, ping-ponging - pass count is a
-//   host-side loop constant, wavefront_path_tracer.cpp's own
-//   kSvgfHostAtrousPasses, not anything in this file) -> svgf_finalize
+//   host-side loop bound, WavefrontPathTracer::launchSvgf()'s own
+//   svgfTuning_.atrousPasses (gpu/optix/svgf_tuning_params.h), not anything
+//   in this file) -> svgf_finalize
 //
 // Runs once per render() call, after launchNormalizeFramebuffer has already
 // produced this frame's final, normalized 1-spp radiance in the framebuffer
@@ -35,18 +36,18 @@
 #include "wavefront_device_helpers.h"
 #include "wavefront_svgf_math.h"
 
-// Tunable constants - standard literature defaults (Schied et al. 2017 and
-// the common reference implementations descended from it), not re-derived
-// or scene-tuned here.
-constexpr float kSvgfTargetAlpha = 0.2f;          // temporal blend floor (wf_svgf_temporal_alpha)
-constexpr float kSvgfMaxHistoryLength = 32.0f;    // cap - bounds how "sticky" a converged pixel's history gets
-constexpr float kSvgfVarianceBootstrapFrames = 4.0f;  // below this historyLength, spatially prefilter variance
-constexpr int   kSvgfVarianceBootstrapRadius = 3;     // 7x7 box (radius 3) for the prefilter above
-constexpr float kSvgfSigmaNormal = 128.0f;
-constexpr float kSvgfSigmaDepth = 1.0f;
-constexpr float kSvgfSigmaLuminance = 4.0f;
-constexpr int   kSvgfAtrousRadius = 2;             // 5x5 footprint per pass, scaled by that pass's step size
-constexpr float kSvgfMinAlbedo = 0.02f;            // floor before dividing color by albedo (demodulation)
+// Formerly hardcoded `constexpr` literals here - now runtime parameters
+// (gpu/optix/svgf_tuning_params.h's SvgfTuningParams, threaded through from
+// WavefrontPathTracer::launchSvgf(), this project's own architecture-review
+// follow-up). Each kernel below takes exactly the fields it needs as
+// parameters instead of referencing a file-scope constant; the struct's own
+// in-class defaults reproduce the original literature-default values
+// (Schied et al. 2017 and the common reference implementations descended
+// from it) exactly.
+//
+// kKernel[3] below (svgf_atrous_pass) is the one exception that stays a
+// fixed-size compile-time table - see that kernel's own comment on why
+// atrousRadius is clamped to [0,2].
 
 // Derives this pixel's own linear "depth" (distance from the CURRENT
 // camera) from the world-position buffer - no separate depth AOV exists or
@@ -146,6 +147,7 @@ extern "C" __global__ void svgf_temporal_integrate(
 	GpuReprojectBasis prevCamera,
 	bool historyValid,
 	int width, int height,
+	float temporalAlpha, float maxHistoryLength,
 	GpuSvgfState* outputCurrent
 ) {
 	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -181,11 +183,11 @@ extern "C" __global__ void svgf_temporal_integrate(
 		GpuSvgfState prev;
 		if (wf_checkerboard_try_hold(currentWorldPos[idx], prevCamera, worldPosHistory, width, height, history, prev)) {
 			if (isActive) {
-				const float alpha = wf_svgf_temporal_alpha(prev.historyLength, kSvgfTargetAlpha);
+				const float alpha = wf_svgf_temporal_alpha(prev.historyLength, temporalAlpha);
 				result.color = prev.color + (color - prev.color) * alpha;
 				result.moment1 = prev.moment1 + (lum - prev.moment1) * alpha;
 				result.moment2 = prev.moment2 + (lum * lum - prev.moment2) * alpha;
-				result.historyLength = fminf(prev.historyLength + 1.0f, kSvgfMaxHistoryLength);
+				result.historyLength = fminf(prev.historyLength + 1.0f, maxHistoryLength);
 			} else {
 				// Hold: carry the reprojected history through unchanged - no
 				// blend, since zero new information arrived this frame.
@@ -218,6 +220,7 @@ extern "C" __global__ void svgf_prepare_for_filter(
 	const float3* albedo,
 	const float4* currentWorldPos,
 	int width, int height,
+	float varianceBootstrapFrames, int varianceBootstrapRadius, float minAlbedo,
 	float4* outPingPong0
 ) {
 	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -227,15 +230,15 @@ extern "C" __global__ void svgf_prepare_for_filter(
 	const GpuSvgfState s = current[idx];
 
 	float variance;
-	if (s.historyLength < kSvgfVarianceBootstrapFrames) {
+	if (s.historyLength < varianceBootstrapFrames) {
 		const int px = idx % width;
 		const int py = idx / width;
 		float sumMoment1 = 0.0f, sumMoment2 = 0.0f;
 		int count = 0;
-		for (int dy = -kSvgfVarianceBootstrapRadius; dy <= kSvgfVarianceBootstrapRadius; ++dy) {
+		for (int dy = -varianceBootstrapRadius; dy <= varianceBootstrapRadius; ++dy) {
 			const int ny = py + dy;
 			if (ny < 0 || ny >= height) continue;
-			for (int dx = -kSvgfVarianceBootstrapRadius; dx <= kSvgfVarianceBootstrapRadius; ++dx) {
+			for (int dx = -varianceBootstrapRadius; dx <= varianceBootstrapRadius; ++dx) {
 				const int nx = px + dx;
 				if (nx < 0 || nx >= width) continue;
 				const int nIdx = ny * width + nx;
@@ -283,7 +286,7 @@ extern "C" __global__ void svgf_prepare_for_filter(
 	// whose albedo AOV is never written) to zero regardless of its actual
 	// filtered radiance.
 	const float3 alb = albedo[idx];
-	const float3 albedoFloor = make_float3(fmaxf(alb.x, kSvgfMinAlbedo), fmaxf(alb.y, kSvgfMinAlbedo), fmaxf(alb.z, kSvgfMinAlbedo));
+	const float3 albedoFloor = make_float3(fmaxf(alb.x, minAlbedo), fmaxf(alb.y, minAlbedo), fmaxf(alb.z, minAlbedo));
 	const float3 demodulated = make_float3(s.color.x / albedoFloor.x, s.color.y / albedoFloor.y, s.color.z / albedoFloor.z);
 
 	outPingPong0[idx] = make_float4(demodulated.x, demodulated.y, demodulated.z, variance);
@@ -292,8 +295,9 @@ extern "C" __global__ void svgf_prepare_for_filter(
 // -----------------------------------------------------------------------
 // Kernel 3 - svgf_atrous_pass
 // -----------------------------------------------------------------------
-// One A-trous wavelet filter pass at the given step size - a small (5x5,
-// kSvgfAtrousRadius=2) footprint whose sample spacing is scaled by
+// One A-trous wavelet filter pass at the given step size - a small (default
+// 5x5, atrousRadius=2 - see this kernel's own [0,2] clamp) footprint whose
+// sample spacing is scaled by
 // `stepSize`, so successive passes (stepSize 1,2,4,8) cover an exponentially
 // growing effective radius without needing an exponentially growing kernel
 // footprint (the "a trous" - "with holes" - trick the technique is named
@@ -312,8 +316,15 @@ extern "C" __global__ void svgf_atrous_pass(
 	float3 cameraOrigin,
 	int width, int height,
 	int stepSize,
+	float sigmaNormal, float sigmaDepth, float sigmaLuminance, int atrousRadius,
 	float4* output
 ) {
+	// Defense-in-depth clamp: kKernel[3] below only has 3 entries, indexed by
+	// abs(dx)/abs(dy) up to atrousRadius - the GUI's own spinbox range is the
+	// primary guard (mainwindow_tabs.cpp), this just protects any other
+	// caller (tests, future callers) from an out-of-bounds table read.
+	atrousRadius = atrousRadius < 0 ? 0 : (atrousRadius > 2 ? 2 : atrousRadius);
+
 	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	const int numPixels = width * height;
 	if (idx >= numPixels) return;
@@ -361,10 +372,10 @@ extern "C" __global__ void svgf_atrous_pass(
 	float varianceSumSq = 0.0f;
 	float weightSum = 0.0f;
 
-	for (int dy = -kSvgfAtrousRadius; dy <= kSvgfAtrousRadius; ++dy) {
+	for (int dy = -atrousRadius; dy <= atrousRadius; ++dy) {
 		const int ny = py + dy * stepSize;
 		if (ny < 0 || ny >= height) continue;
-		for (int dx = -kSvgfAtrousRadius; dx <= kSvgfAtrousRadius; ++dx) {
+		for (int dx = -atrousRadius; dx <= atrousRadius; ++dx) {
 			const int nx = px + dx * stepSize;
 			if (nx < 0 || nx >= width) continue;
 			const int nIdx = ny * width + nx;
@@ -380,9 +391,9 @@ extern "C" __global__ void svgf_atrous_pass(
 
 			const float depthGradDotOffset = depthGradX * (float)(dx * stepSize) + depthGradY * (float)(dy * stepSize);
 			float w = wf_svgf_edge_weight(
-				centerNormal, nNormal, kSvgfSigmaNormal,
-				centerDepth, neighborDepth, depthGradDotOffset, kSvgfSigmaDepth,
-				centerLum, nLum, sqrtCenterVariance, kSvgfSigmaLuminance);
+				centerNormal, nNormal, sigmaNormal,
+				centerDepth, neighborDepth, depthGradDotOffset, sigmaDepth,
+				centerLum, nLum, sqrtCenterVariance, sigmaLuminance);
 			// A-trous kernel weight itself (binomial-like [1,2,4,2,1] shape,
 			// separable but applied jointly here since the footprint is
 			// small) on top of the edge-stopping weight above - the standard
@@ -423,12 +434,13 @@ extern "C" __global__ void svgf_finalize(
 	const float4* filtered,
 	const float3* albedo,
 	int numPixels,
+	float minAlbedo,
 	float3* framebuffer
 ) {
 	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numPixels) return;
 	const float4 f = filtered[idx];
 	const float3 alb = albedo[idx];
-	const float3 albedoFloor = make_float3(fmaxf(alb.x, kSvgfMinAlbedo), fmaxf(alb.y, kSvgfMinAlbedo), fmaxf(alb.z, kSvgfMinAlbedo));
+	const float3 albedoFloor = make_float3(fmaxf(alb.x, minAlbedo), fmaxf(alb.y, minAlbedo), fmaxf(alb.z, minAlbedo));
 	framebuffer[idx] = make_float3(f.x * albedoFloor.x, f.y * albedoFloor.y, f.z * albedoFloor.z);
 }

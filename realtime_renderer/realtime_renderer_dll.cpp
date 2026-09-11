@@ -38,11 +38,14 @@ RT_REALTIME_API bool realtime_render_frame(
 	float* out_world_pos_buffer,
 	float* out_camera_basis,
 	float* out_rgb_buffer,
-	bool enable_svgf
+	bool enable_svgf,
+	bool enable_restir_gi,
+	float max_component_value,
+	const SvgfTuningParams* svgf_tuning
 ) {
 	return rt_realtime_render_frame(scene_id, image_width, image_height,
 		samples_per_pixel, max_depth, cam_x, cam_y, cam_z,
 		has_custom_lookat, lookat_x, lookat_y, lookat_z,
 		denoise, denoise_blend, out_world_pos_buffer, out_camera_basis, out_rgb_buffer,
-		enable_svgf);
+		enable_svgf, enable_restir_gi, max_component_value, svgf_tuning);
 }

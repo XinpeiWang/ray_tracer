@@ -1297,6 +1297,7 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 		prevRestirCamera_,
 		svgfHistoryValid_,
 		width, height,
+		svgfTuning_.temporalAlpha, svgfTuning_.maxHistoryLength,
 		reinterpret_cast<GpuSvgfState*>(d_svgfCurrent_),
 		stream_);
 
@@ -1310,19 +1311,20 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 		d_albedoAov,
 		reinterpret_cast<const float4*>(d_worldPos_),
 		width, height,
+		svgfTuning_.varianceBootstrapFrames, svgfTuning_.varianceBootstrapRadius, svgfTuning_.minAlbedo,
 		reinterpret_cast<float4*>(d_svgfPingPong_[0]),
 		stream_);
 
-	// Kernel 3: A-trous wavelet filter, run kSvgfHostAtrousPasses times with
-	// doubling step sizes (1,2,4,8), ping-ponging between the two scratch
-	// buffers. The pass COUNT/step-size schedule lives here (host side) -
-	// the kernel itself is stateless per pass (just takes whatever stepSize
-	// this call gives it), so there is no cross-file constant to keep in
-	// sync, unlike this file's own kRestirTemporalMaxM-style constants.
-	constexpr int kSvgfHostAtrousPasses = 4;
+	// Kernel 3: A-trous wavelet filter, run svgfTuning_.atrousPasses times
+	// with doubling step sizes (1,2,4,...), ping-ponging between the two
+	// scratch buffers. The pass COUNT/step-size schedule lives here (host
+	// side) - the kernel itself is stateless per pass (just takes whatever
+	// stepSize this call gives it), so there is no cross-file constant to
+	// keep in sync, unlike this file's own kRestirTemporalMaxM-style
+	// constants.
 	int src = 0, dst = 1;
 	int stepSize = 1;
-	for (int pass = 0; pass < kSvgfHostAtrousPasses; ++pass) {
+	for (int pass = 0; pass < svgfTuning_.atrousPasses; ++pass) {
 		wf_launch_svgf_atrous_pass(
 			reinterpret_cast<const float4*>(d_svgfPingPong_[src]),
 			reinterpret_cast<const float4*>(d_worldPos_),
@@ -1330,6 +1332,7 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 			cameraOrigin,
 			width, height,
 			stepSize,
+			svgfTuning_.sigmaNormal, svgfTuning_.sigmaDepth, svgfTuning_.sigmaLuminance, svgfTuning_.atrousRadius,
 			reinterpret_cast<float4*>(d_svgfPingPong_[dst]),
 			stream_);
 		std::swap(src, dst);
@@ -1338,11 +1341,14 @@ void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albe
 
 	// Kernel 4: re-multiply by albedo, write the final result into the real
 	// framebuffer. `src` (not `dst`) holds the LAST pass's own output after
-	// the swap above.
+	// the swap above - unless atrousPasses==0, in which case src is still 0
+	// and d_svgfPingPong_[0] correctly holds svgf_prepare_for_filter's own
+	// (unfiltered) output.
 	wf_launch_svgf_finalize(
 		reinterpret_cast<const float4*>(d_svgfPingPong_[src]),
 		d_albedoAov,
 		numPixels,
+		svgfTuning_.minAlbedo,
 		d_framebuffer,
 		stream_);
 

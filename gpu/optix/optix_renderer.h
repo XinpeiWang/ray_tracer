@@ -265,6 +265,16 @@ public:
 	///        isWavefrontActive(). false (the default) costs nothing extra.
 	void enableSvgf(bool enable) { svgfEnabled_ = enable; }
 
+	/// @brief Sets SVGF's advanced tuning constants (gpu/optix/
+	///        svgf_tuning_params.h) - formerly hardcoded kSvgf* literals in
+	///        wavefront_kernels_svgf.cu. Forwarded to wavefrontTracer_ inside
+	///        render() (WavefrontPathTracer::setSvgfTuning()'s own comment),
+	///        same setter-not-render()-parameter pattern as enableSvgf() just
+	///        above. Only meaningful when enableSvgf(true) is also in effect.
+	///        Default-constructed SvgfTuningParams reproduces the previous
+	///        hardcoded behavior exactly.
+	void setSvgfTuning(const SvgfTuningParams& tuning) { svgfTuning_ = tuning; }
+
 	/// @brief Clears ReSTIR's cross-call temporal history (WavefrontPathTracer::
 	///        invalidateRestirHistory()) - call on every scene upload/switch,
 	///        so a new scene's reservoirs never reuse a previous scene's light
@@ -389,6 +399,7 @@ private:
 	bool restirEnabled_ = false;  ///< See enableRestir()
 	bool restirGiEnabled_ = false;  ///< See enableRestirGi()
 	bool svgfEnabled_ = false;      ///< See enableSvgf()
+	SvgfTuningParams svgfTuning_;   ///< See setSvgfTuning()
 	bool restirHistoryInvalidationPending_ = false;  ///< See invalidateRestirHistory()
 	// Persisted across render() calls rather than created/destroyed fresh
 	// each time - see denoise()'s own comment. Shared with

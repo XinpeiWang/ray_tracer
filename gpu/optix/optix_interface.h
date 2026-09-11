@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../../src/shared/render_options.h"
+#include "svgf_tuning_params.h"
 
 // Plain-POD result of a full GPU/CUDA/OptiX capability probe (--diagnose,
 // see launcher/diagnostics.h). Fixed-size char buffers rather than
@@ -144,7 +145,24 @@ bool rt_realtime_render_frame(
 	// SVGF's output is unconditionally treated as "already final", exactly
 	// like a denoise+showLatest frame already is). Defaults false so every
 	// existing call site keeps today's exact behavior unchanged.
-	bool enable_svgf = false
+	bool enable_svgf = false,
+	// ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) resampled one-bounce
+	// indirect lighting - independent from enable_svgf above. Defaults true
+	// so every existing call site keeps today's exact (always-on) behavior
+	// unchanged; the GUI exposes this as a real toggle.
+	bool enable_restir_gi = true,
+	// Firefly clamp (GpuCameraParams::maxComponentValue) - caps the brightest
+	// possible sample value to suppress fireflies, at the cost of clipping
+	// genuinely bright highlights. Defaults 50.0f, matching this function's
+	// own previously-hardcoded literal, so every existing call site keeps
+	// today's exact behavior unchanged.
+	float max_component_value = 50.0f,
+	// SVGF advanced tuning (gpu/optix/svgf_tuning_params.h) - nullptr (the
+	// default) means "use SvgfTuningParams{}'s own literature defaults",
+	// exactly matching this function's own previously-hardcoded kSvgf*
+	// constants (wavefront_kernels_svgf.cu). Only meaningful when enable_svgf
+	// is true. Not retained past this call - copied by value before returning.
+	const SvgfTuningParams* svgf_tuning = nullptr
 );
 
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,

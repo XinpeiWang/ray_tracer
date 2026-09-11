@@ -16,9 +16,37 @@ namespace {
 //      bool has_custom_lookat, double lookX, double lookY, double lookZ,
 //      bool denoise, double denoiseBlend,
 //      float* out_world_pos, float* out_camera_basis,
-//      float* out_rgb, bool enable_svgf)
+//      float* out_rgb, bool enable_svgf, bool enable_restir_gi,
+//      float max_component_value)
+// Must stay byte-for-byte in sync with gpu/optix/optix_interface.h's
+// rt_realtime_render_frame() declaration and realtime_renderer_dll.cpp's own
+// export signature - see this file's own header comment on why there's no
+// shared header/versioning across this boundary. New parameters are always
+// appended at the end, never inserted in the middle.
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
-							   bool, double, double, double, bool, double, float*, float*, float*, bool);
+							   bool, double, double, double, bool, double, float*, float*, float*, bool,
+							   bool, float, const void*);
+
+// Mirrors gpu/optix/svgf_tuning_params.h's SvgfTuningParams field-for-field -
+// see that header's own comment on why this boundary hand-duplicates types
+// rather than sharing a header. `const void*` in the typedef above (rather
+// than `const SvgfTuningParams*`) avoids exposing this qt_gui-local type name
+// through the function-pointer type itself; reinterpret_cast<const void*>(&x)
+// at the one real call site (renderLoop(), below) is enough - the ACTUAL
+// receiving side (optix_interface.cpp) casts it back via the real,
+// canonical-layout struct from gpu/optix/svgf_tuning_params.h.
+struct SvgfTuningParams {
+	float temporalAlpha = 0.2f;
+	float maxHistoryLength = 32.0f;
+	float varianceBootstrapFrames = 4.0f;
+	int   varianceBootstrapRadius = 3;
+	float sigmaNormal = 128.0f;
+	float sigmaDepth = 1.0f;
+	float sigmaLuminance = 4.0f;
+	int   atrousRadius = 2;
+	float minAlbedo = 0.02f;
+	int   atrousPasses = 4;
+};
 
 struct DllHandle {
 	void* module = nullptr;
@@ -191,7 +219,8 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 								   double lookX, double lookY, double lookZ,
-								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf) {
+								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
+								   bool restirGi, int spp, int maxDepth, double fireflyClamp) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -212,6 +241,14 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	// m_denoiseShowLatest are already threaded through start()'s own
 	// parameter list instead of requiring a follow-up setDenoise() call.
 	m_svgf = svgf;
+	// Same "set directly, bypass the m_running gate" reasoning as m_svgf
+	// above - these three are also threaded through start()'s own parameter
+	// list (rather than requiring a follow-up setX() call) so a value set
+	// before the very first start() isn't silently lost.
+	m_restirGi = restirGi;
+	m_spp = spp;
+	m_maxDepth = maxDepth;
+	m_fireflyClamp = fireflyClamp;
 	m_cameraDirty = false;
 	resetAccumulation();
 	m_running = true;
@@ -271,6 +308,46 @@ void RealtimePreviewWorker::setSvgf(bool svgf) {
 	}
 }
 
+void RealtimePreviewWorker::setRestirGi(bool restirGi) {
+	if (!m_running) return;
+	// Unlike setDenoise()/setSvgf(), toggling GI doesn't change what m_accum
+	// structurally holds (still a running mean of the same rendered image,
+	// just with/without one more resampled indirect-lighting technique
+	// contributing to each sample) - no reset needed, same reasoning
+	// setExposure() uses.
+	m_restirGi = restirGi;
+}
+
+void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
+	if (!m_running) return;
+	m_spp = spp;
+	m_maxDepth = maxDepth;
+}
+
+void RealtimePreviewWorker::setFireflyClamp(double fireflyClamp) {
+	if (!m_running) return;
+	m_fireflyClamp = fireflyClamp;
+}
+
+void RealtimePreviewWorker::setSvgfTuning(double temporalAlpha, double maxHistoryLength,
+										   double varianceBootstrapFrames, int varianceBootstrapRadius,
+										   double sigmaNormal, double sigmaDepth, double sigmaLuminance,
+										   int atrousRadius, double minAlbedo, int atrousPasses) {
+	// NOT gated on m_running - see this method's own header comment (mirrors
+	// setExposure()'s reasoning): the caller pushes this BEFORE start() so
+	// the first frame already reflects it.
+	m_svgfTemporalAlpha = temporalAlpha;
+	m_svgfMaxHistoryLength = maxHistoryLength;
+	m_svgfVarianceBootstrapFrames = varianceBootstrapFrames;
+	m_svgfVarianceBootstrapRadius = varianceBootstrapRadius;
+	m_svgfSigmaNormal = sigmaNormal;
+	m_svgfSigmaDepth = sigmaDepth;
+	m_svgfSigmaLuminance = sigmaLuminance;
+	m_svgfAtrousRadius = atrousRadius;
+	m_svgfMinAlbedo = minAlbedo;
+	m_svgfAtrousPasses = atrousPasses;
+}
+
 void RealtimePreviewWorker::setExposure(double exposure) {
 	// Unlike setDenoise(), not gated on m_running: this is a pure display
 	// multiply with no accumulation-structure side effect (see this method's
@@ -304,21 +381,31 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		emit statusChanged(QStringLiteral("realtime_renderer.dll not found or missing its export"));
 		m_running = false;
 	} else {
-		// One low-spp sample per loop iteration - see this class's own header
-		// comment on why: a fixed small per-call cost keeps the loop responsive
-		// to stop()/setCamera() between frames, and frameNumber_'s own
-		// self-incrementing seed (WavefrontPathTracer, see optix_interface.h's
-		// rt_realtime_render_frame() comment) already decorrelates noise across
-		// calls, so accumulating many 1-spp calls converges the same way one
-		// big N-spp call would.
-		const int spp = 1;
-		const int maxDepth = 8;
-		ok = renderFrame(m_sceneId.toUtf8().constData(), m_width, m_height, spp, maxDepth,
+		// Low-spp samples per loop iteration (GUI-configurable, default 1/8 -
+		// see this class's own header comment on why a small per-call cost
+		// keeps the loop responsive to stop()/setCamera() between frames, and
+		// frameNumber_'s own self-incrementing seed (WavefrontPathTracer, see
+		// optix_interface.h's rt_realtime_render_frame() comment) already
+		// decorrelates noise across calls, so accumulating many low-spp calls
+		// converges the same way one big N-spp call would.
+		SvgfTuningParams svgfTuning;
+		svgfTuning.temporalAlpha = static_cast<float>(m_svgfTemporalAlpha);
+		svgfTuning.maxHistoryLength = static_cast<float>(m_svgfMaxHistoryLength);
+		svgfTuning.varianceBootstrapFrames = static_cast<float>(m_svgfVarianceBootstrapFrames);
+		svgfTuning.varianceBootstrapRadius = m_svgfVarianceBootstrapRadius;
+		svgfTuning.sigmaNormal = static_cast<float>(m_svgfSigmaNormal);
+		svgfTuning.sigmaDepth = static_cast<float>(m_svgfSigmaDepth);
+		svgfTuning.sigmaLuminance = static_cast<float>(m_svgfSigmaLuminance);
+		svgfTuning.atrousRadius = m_svgfAtrousRadius;
+		svgfTuning.minAlbedo = static_cast<float>(m_svgfMinAlbedo);
+		svgfTuning.atrousPasses = m_svgfAtrousPasses;
+		ok = renderFrame(m_sceneId.toUtf8().constData(), m_width, m_height, m_spp, m_maxDepth,
 						  m_camX, m_camY, m_camZ,
 						  /*has_custom_lookat=*/true, m_lookX, m_lookY, m_lookZ,
 						  m_denoise, m_denoiseBlend,
 						  m_worldPos.data(), m_cameraBasis.data(),
-						  m_tmp.data(), m_svgf);
+						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
+						  reinterpret_cast<const void*>(&svgfTuning));
 		if (!ok) {
 			emit statusChanged(QStringLiteral("Render failed - scene may not be GPU-supported, "
 											   "or the wavefront backend is unavailable"));
@@ -457,12 +544,14 @@ RealtimePreviewSession::~RealtimePreviewSession() {
 
 void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 									double lookX, double lookY, double lookZ,
-									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf) {
+									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
+									bool restirGi, int spp, int maxDepth, double fireflyClamp) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
 		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ),
-		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf));
+		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf),
+		Q_ARG(bool, restirGi), Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp));
 }
 
 void RealtimePreviewSession::stop() {
@@ -486,4 +575,26 @@ void RealtimePreviewSession::setSvgf(bool svgf) {
 
 void RealtimePreviewSession::setExposure(double exposure) {
 	QMetaObject::invokeMethod(m_worker, "setExposure", Qt::QueuedConnection, Q_ARG(double, exposure));
+}
+
+void RealtimePreviewSession::setRestirGi(bool restirGi) {
+	QMetaObject::invokeMethod(m_worker, "setRestirGi", Qt::QueuedConnection, Q_ARG(bool, restirGi));
+}
+
+void RealtimePreviewSession::setSppAndMaxDepth(int spp, int maxDepth) {
+	QMetaObject::invokeMethod(m_worker, "setSppAndMaxDepth", Qt::QueuedConnection, Q_ARG(int, spp), Q_ARG(int, maxDepth));
+}
+
+void RealtimePreviewSession::setFireflyClamp(double fireflyClamp) {
+	QMetaObject::invokeMethod(m_worker, "setFireflyClamp", Qt::QueuedConnection, Q_ARG(double, fireflyClamp));
+}
+
+void RealtimePreviewSession::setSvgfTuning(double temporalAlpha, double maxHistoryLength,
+											double varianceBootstrapFrames, int varianceBootstrapRadius,
+											double sigmaNormal, double sigmaDepth, double sigmaLuminance,
+											int atrousRadius, double minAlbedo, int atrousPasses) {
+	QMetaObject::invokeMethod(m_worker, "setSvgfTuning", Qt::QueuedConnection,
+		Q_ARG(double, temporalAlpha), Q_ARG(double, maxHistoryLength), Q_ARG(double, varianceBootstrapFrames),
+		Q_ARG(int, varianceBootstrapRadius), Q_ARG(double, sigmaNormal), Q_ARG(double, sigmaDepth),
+		Q_ARG(double, sigmaLuminance), Q_ARG(int, atrousRadius), Q_ARG(double, minAlbedo), Q_ARG(int, atrousPasses));
 }

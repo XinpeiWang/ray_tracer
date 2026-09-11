@@ -58,7 +58,8 @@ public slots:
 	// alongside the new chain this call starts.
 	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
-			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf);
+			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
+			   bool restirGi, int spp, int maxDepth, double fireflyClamp);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -115,6 +116,36 @@ public slots:
 	// converging signal" reasoning as setDenoise()'s own comment.
 	void setExposure(double exposure);
 
+	// Toggles ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) resampled
+	// one-bounce indirect lighting - independent from setSvgf() above. No
+	// accumulation reset needed: unlike denoise/SVGF, this doesn't change
+	// what m_accum structurally holds, only what each new sample contains.
+	// No-op if not running.
+	void setRestirGi(bool restirGi);
+
+	// Samples-per-frame / max ray depth for each low-spp render() call - see
+	// renderLoop()'s own comment on why a small per-call cost is used at all.
+	// No accumulation reset needed, same reasoning as setRestirGi() above.
+	// No-op if not running.
+	void setSppAndMaxDepth(int spp, int maxDepth);
+
+	// Firefly clamp (GpuCameraParams::maxComponentValue) - see
+	// optix_interface.h's rt_realtime_render_frame() comment. No accumulation
+	// reset needed. No-op if not running.
+	void setFireflyClamp(double fireflyClamp);
+
+	// SVGF advanced tuning (gpu/optix/svgf_tuning_params.h's SvgfTuningParams,
+	// one scalar param per field, in the SAME order) - NOT gated on m_running,
+	// same reasoning as setExposure() above: the caller is expected to push
+	// this (and setExposure()) BEFORE start() so the very first rendered
+	// frame already reflects it, not just frame 2 onward (start()'s own
+	// queued call synchronously renders frame 1 as part of the same
+	// worker-thread event). No accumulation reset needed - a filter-tuning
+	// change doesn't alter what m_accum structurally holds.
+	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,
+						int varianceBootstrapRadius, double sigmaNormal, double sigmaDepth,
+						double sigmaLuminance, int atrousRadius, double minAlbedo, int atrousPasses);
+
 signals:
 	// Emitted once per accumulated frame - already tonemapped (ACES + sRGB,
 	// matching this project's own CPU/GPU display convention) and ready to
@@ -166,6 +197,34 @@ private:
 	// m_denoiseShowLatest above) - the GPU side needs to know whether to run
 	// SVGF at all, not just how Qt should treat its own accumulation buffer.
 	bool m_svgf = false;
+	// See setRestirGi()'s own comment. Crosses the DLL boundary like m_svgf
+	// (the GPU side needs to know whether to run GI at all). Defaults true,
+	// matching rt_realtime_render_frame()'s own previously-hardcoded-on
+	// behavior.
+	bool m_restirGi = true;
+	// See setSppAndMaxDepth()'s own comment. Both cross the DLL boundary
+	// (they're renderFrame()'s own 4th/5th positional args). Defaults match
+	// renderLoop()'s own previous hardcoded locals exactly.
+	int m_spp = 1;
+	int m_maxDepth = 8;
+	// See setFireflyClamp()'s own comment. Crosses the DLL boundary. Default
+	// matches rt_realtime_render_frame()'s own previous hardcoded literal.
+	double m_fireflyClamp = 50.0;
+	// See setSvgfTuning()'s own comment. Bundled into a local SvgfTuningParams
+	// (mirroring gpu/optix/svgf_tuning_params.h - see this file's own
+	// anonymous-namespace mirror struct) only at the renderFrame() call site
+	// in renderLoop(), the point where it actually crosses the DLL boundary.
+	// Defaults match SvgfTuningParams' own literature defaults exactly.
+	double m_svgfTemporalAlpha = 0.2;
+	double m_svgfMaxHistoryLength = 32.0;
+	double m_svgfVarianceBootstrapFrames = 4.0;
+	int m_svgfVarianceBootstrapRadius = 3;
+	double m_svgfSigmaNormal = 128.0;
+	double m_svgfSigmaDepth = 1.0;
+	double m_svgfSigmaLuminance = 4.0;
+	int m_svgfAtrousRadius = 2;
+	double m_svgfMinAlbedo = 0.02;
+	int m_svgfAtrousPasses = 4;
 	// Neutral default (matches batch rendering's own implicit 1.0) - an
 	// earlier version of this default was 0.5, added to mask a genuine ReSTIR
 	// correctness bug (gpu/optix/wavefront_restir_helpers.h's temporal
@@ -248,12 +307,19 @@ public:
 
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
-			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf);
+			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
+			   bool restirGi, int spp, int maxDepth, double fireflyClamp);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 	void setSvgf(bool svgf);
 	void setExposure(double exposure);
+	void setRestirGi(bool restirGi);
+	void setSppAndMaxDepth(int spp, int maxDepth);
+	void setFireflyClamp(double fireflyClamp);
+	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,
+						int varianceBootstrapRadius, double sigmaNormal, double sigmaDepth,
+						double sigmaLuminance, int atrousRadius, double minAlbedo, int atrousPasses);
 
 signals:
 	void frameReady(QImage image, int sampleCount);

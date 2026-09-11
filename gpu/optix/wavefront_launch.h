@@ -250,6 +250,7 @@ extern "C" void wf_launch_svgf_temporal_integrate(
 	GpuReprojectBasis    prevCamera,
 	bool                 historyValid,
 	int width, int height,
+	float temporalAlpha, float maxHistoryLength,
 	GpuSvgfState*        d_outputCurrent,
 	cudaStream_t stream);
 
@@ -266,6 +267,7 @@ extern "C" void wf_launch_svgf_prepare_for_filter(
 	const float3*       d_albedo,
 	const float4*       d_currentWorldPos,
 	int width, int height,
+	float varianceBootstrapFrames, int varianceBootstrapRadius, float minAlbedo,
 	float4*             d_outPingPong0,
 	cudaStream_t stream);
 
@@ -276,6 +278,7 @@ extern "C" void wf_launch_svgf_atrous_pass(
 	float3        cameraOrigin,
 	int width, int height,
 	int stepSize,
+	float sigmaNormal, float sigmaDepth, float sigmaLuminance, int atrousRadius,
 	float4*       d_output,
 	cudaStream_t stream);
 
@@ -283,6 +286,7 @@ extern "C" void wf_launch_svgf_finalize(
 	const float4* d_filtered,
 	const float3* d_albedo,
 	int numPixels,
+	float minAlbedo,
 	float3*       d_framebuffer,
 	cudaStream_t stream);
 

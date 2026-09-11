@@ -1422,10 +1422,20 @@ void MainWindow::startLivePreview() {
 	const camera_math::Vec3 camera = currentCameraPosition();
 	m_livePreviewLookAt = currentLookAt();
 	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
+	// Exposure and SVGF tuning aren't part of start()'s own parameter list
+	// (neither has an accumulation-structure side effect - see setExposure()'s
+	// own comment - so it's simplest to push them separately); pushed BEFORE
+	// start() (not after) so the very first rendered frame already uses them,
+	// not just frame 2 onward - start()'s own queued call synchronously
+	// renders frame 1 as part of the SAME worker-thread event, so a push
+	// queued AFTER start() would only take effect starting with frame 2.
+	m_livePreviewSession->setExposure(m_liveExposure);
+	pushLiveSvgfTuningToSession();
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z,
 								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
 								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
-								 m_liveSvgfEnabled);
+								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveSamples, m_liveMaxDepth,
+								 m_liveFireflyClamp);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -1508,6 +1518,34 @@ void MainWindow::pushLiveDenoiseToSession() {
 void MainWindow::pushLiveSvgfToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setSvgf(m_liveSvgfEnabled);
+}
+
+void MainWindow::pushLiveRestirGiToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setRestirGi(m_liveRestirGiEnabled);
+}
+
+void MainWindow::pushLiveExposureToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setExposure(m_liveExposure);
+}
+
+void MainWindow::pushLiveSppMaxDepthToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setSppAndMaxDepth(m_liveSamples, m_liveMaxDepth);
+}
+
+void MainWindow::pushLiveFireflyClampToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setFireflyClamp(m_liveFireflyClamp);
+}
+
+void MainWindow::pushLiveSvgfTuningToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setSvgfTuning(
+		m_liveSvgfTemporalAlpha, m_liveSvgfMaxHistoryLength, m_liveSvgfVarianceBootstrapFrames,
+		m_liveSvgfVarianceBootstrapRadius, m_liveSvgfSigmaNormal, m_liveSvgfSigmaDepth,
+		m_liveSvgfSigmaLuminance, m_liveSvgfAtrousRadius, m_liveSvgfMinAlbedo, m_liveSvgfAtrousPasses);
 }
 
 // Applies a rotation to m_orbit and clamps elevation short of the true
@@ -1706,6 +1744,156 @@ bool MainWindow::loadSavedLiveSvgfEnabled() const {
 void MainWindow::saveLiveSvgfEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewSvgfEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLiveRestirGiEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewRestirGiEnabledKey, true).toBool();
+}
+
+void MainWindow::saveLiveRestirGiEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewRestirGiEnabledKey, value);
+}
+
+double MainWindow::loadSavedLiveExposure() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewExposureKey, 1.0).toDouble();
+}
+
+void MainWindow::saveLiveExposure(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewExposureKey, value);
+}
+
+int MainWindow::loadSavedLiveSamples() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSamplesKey, 1).toInt();
+}
+
+void MainWindow::saveLiveSamples(int value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSamplesKey, value);
+}
+
+int MainWindow::loadSavedLiveMaxDepth() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewMaxDepthKey, 8).toInt();
+}
+
+void MainWindow::saveLiveMaxDepth(int value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewMaxDepthKey, value);
+}
+
+double MainWindow::loadSavedLiveFireflyClamp() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewFireflyClampKey, 50.0).toDouble();
+}
+
+void MainWindow::saveLiveFireflyClamp(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewFireflyClampKey, value);
+}
+
+double MainWindow::loadSavedLiveSvgfTemporalAlpha() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfTemporalAlphaKey, 0.2).toDouble();
+}
+
+void MainWindow::saveLiveSvgfTemporalAlpha(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfTemporalAlphaKey, value);
+}
+
+double MainWindow::loadSavedLiveSvgfMaxHistoryLength() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfMaxHistoryLengthKey, 32.0).toDouble();
+}
+
+void MainWindow::saveLiveSvgfMaxHistoryLength(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfMaxHistoryLengthKey, value);
+}
+
+double MainWindow::loadSavedLiveSvgfVarianceBootstrapFrames() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfVarianceBootstrapFramesKey, 4.0).toDouble();
+}
+
+void MainWindow::saveLiveSvgfVarianceBootstrapFrames(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfVarianceBootstrapFramesKey, value);
+}
+
+int MainWindow::loadSavedLiveSvgfVarianceBootstrapRadius() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfVarianceBootstrapRadiusKey, 3).toInt();
+}
+
+void MainWindow::saveLiveSvgfVarianceBootstrapRadius(int value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfVarianceBootstrapRadiusKey, value);
+}
+
+double MainWindow::loadSavedLiveSvgfSigmaNormal() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfSigmaNormalKey, 128.0).toDouble();
+}
+
+void MainWindow::saveLiveSvgfSigmaNormal(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfSigmaNormalKey, value);
+}
+
+double MainWindow::loadSavedLiveSvgfSigmaDepth() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfSigmaDepthKey, 1.0).toDouble();
+}
+
+void MainWindow::saveLiveSvgfSigmaDepth(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfSigmaDepthKey, value);
+}
+
+double MainWindow::loadSavedLiveSvgfSigmaLuminance() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfSigmaLuminanceKey, 4.0).toDouble();
+}
+
+void MainWindow::saveLiveSvgfSigmaLuminance(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfSigmaLuminanceKey, value);
+}
+
+int MainWindow::loadSavedLiveSvgfAtrousRadius() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfAtrousRadiusKey, 2).toInt();
+}
+
+void MainWindow::saveLiveSvgfAtrousRadius(int value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfAtrousRadiusKey, value);
+}
+
+double MainWindow::loadSavedLiveSvgfMinAlbedo() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfMinAlbedoKey, 0.02).toDouble();
+}
+
+void MainWindow::saveLiveSvgfMinAlbedo(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfMinAlbedoKey, value);
+}
+
+int MainWindow::loadSavedLiveSvgfAtrousPasses() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewSvgfAtrousPassesKey, 4).toInt();
+}
+
+void MainWindow::saveLiveSvgfAtrousPasses(int value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSvgfAtrousPassesKey, value);
 }
 #endif
 

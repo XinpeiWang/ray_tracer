@@ -340,6 +340,18 @@ private:
 	// independent backend setters (RealtimePreviewSession::setDenoise()/
 	// setSvgf()).
 	void pushLiveSvgfToSession();
+	// Same shape again for the render-setting knobs surfaced alongside
+	// denoise/SVGF: ReSTIR GI on/off, exposure, samples/max-depth, and the
+	// firefly clamp - each independent (not mutually exclusive with
+	// anything), so each gets its own push helper rather than sharing one.
+	void pushLiveRestirGiToSession();
+	void pushLiveExposureToSession();
+	void pushLiveSppMaxDepthToSession();
+	void pushLiveFireflyClampToSession();
+	// SVGF's own advanced tuning knobs (gpu/optix/svgf_tuning_params.h) -
+	// bundled into one push helper since they're always sent together as a
+	// single SvgfTuningParams, unlike the independent knobs above.
+	void pushLiveSvgfTuningToSession();
 #endif
 
 	// ------------------------------------------------------------------
@@ -417,6 +429,40 @@ private:
 	// equivalent to blend or accumulate.
 	bool loadSavedLiveSvgfEnabled() const;
 	void saveLiveSvgfEnabled(bool value) const;
+	// Same shape again for the render-setting knobs - see their own push*()
+	// helper declarations above.
+	bool loadSavedLiveRestirGiEnabled() const;
+	void saveLiveRestirGiEnabled(bool value) const;
+	double loadSavedLiveExposure() const;
+	void saveLiveExposure(double value) const;
+	int loadSavedLiveSamples() const;
+	void saveLiveSamples(int value) const;
+	int loadSavedLiveMaxDepth() const;
+	void saveLiveMaxDepth(int value) const;
+	double loadSavedLiveFireflyClamp() const;
+	void saveLiveFireflyClamp(double value) const;
+	// SVGF advanced tuning - one load/save pair per SvgfTuningParams field,
+	// same shape as the knobs above.
+	double loadSavedLiveSvgfTemporalAlpha() const;
+	void saveLiveSvgfTemporalAlpha(double value) const;
+	double loadSavedLiveSvgfMaxHistoryLength() const;
+	void saveLiveSvgfMaxHistoryLength(double value) const;
+	double loadSavedLiveSvgfVarianceBootstrapFrames() const;
+	void saveLiveSvgfVarianceBootstrapFrames(double value) const;
+	int loadSavedLiveSvgfVarianceBootstrapRadius() const;
+	void saveLiveSvgfVarianceBootstrapRadius(int value) const;
+	double loadSavedLiveSvgfSigmaNormal() const;
+	void saveLiveSvgfSigmaNormal(double value) const;
+	double loadSavedLiveSvgfSigmaDepth() const;
+	void saveLiveSvgfSigmaDepth(double value) const;
+	double loadSavedLiveSvgfSigmaLuminance() const;
+	void saveLiveSvgfSigmaLuminance(double value) const;
+	int loadSavedLiveSvgfAtrousRadius() const;
+	void saveLiveSvgfAtrousRadius(int value) const;
+	double loadSavedLiveSvgfMinAlbedo() const;
+	void saveLiveSvgfMinAlbedo(double value) const;
+	int loadSavedLiveSvgfAtrousPasses() const;
+	void saveLiveSvgfAtrousPasses(int value) const;
 #endif
 
 	// Recent Renders persistence (recent_renders.cpp) - same
@@ -808,6 +854,49 @@ private:
 	// on every change, same shape as m_liveDenoiseEnabled above.
 	bool m_liveSvgfEnabled = false;
 	QCheckBox *m_liveSvgfCheck = nullptr;
+	// Live Preview render-setting knobs surfaced alongside denoise/SVGF above -
+	// each independent, loaded once at startup and saved immediately on every
+	// change, same shape as m_liveDenoiseEnabled. Defaults match this
+	// project's own previous hardcoded behavior exactly (see
+	// gpu/optix/optix_interface.h's rt_realtime_render_frame() comment for
+	// enableRestirGi/maxComponentValue, RealtimePreviewWorker::renderLoop()'s
+	// own previous locals for samples/max-depth).
+	bool m_liveRestirGiEnabled = true;
+	QCheckBox *m_liveRestirGiCheck = nullptr;
+	double m_liveExposure = 1.0;
+	QDoubleSpinBox *m_liveExposureSpin = nullptr;
+	int m_liveSamples = 1;
+	int m_liveMaxDepth = 8;
+	QSpinBox *m_liveSamplesSpinBox = nullptr;
+	QSpinBox *m_liveMaxDepthSpinBox = nullptr;
+	double m_liveFireflyClamp = 50.0;
+	QDoubleSpinBox *m_liveFireflyClampSpin = nullptr;
+	// SVGF's own advanced tuning knobs (gpu/optix/svgf_tuning_params.h) -
+	// individual members here (rather than one aggregate) since each has its
+	// own spinbox/settings key; bundled into one SvgfTuningParams only inside
+	// pushLiveSvgfTuningToSession() right before crossing the DLL boundary.
+	// Defaults match SvgfTuningParams' own literature defaults exactly.
+	double m_liveSvgfTemporalAlpha = 0.2;
+	double m_liveSvgfMaxHistoryLength = 32.0;
+	double m_liveSvgfVarianceBootstrapFrames = 4.0;
+	int m_liveSvgfVarianceBootstrapRadius = 3;
+	double m_liveSvgfSigmaNormal = 128.0;
+	double m_liveSvgfSigmaDepth = 1.0;
+	double m_liveSvgfSigmaLuminance = 4.0;
+	int m_liveSvgfAtrousRadius = 2;
+	double m_liveSvgfMinAlbedo = 0.02;
+	int m_liveSvgfAtrousPasses = 4;
+	QGroupBox *m_liveSvgfTuningGroupBox = nullptr;
+	QDoubleSpinBox *m_liveSvgfTemporalAlphaSpin = nullptr;
+	QDoubleSpinBox *m_liveSvgfMaxHistoryLengthSpin = nullptr;
+	QDoubleSpinBox *m_liveSvgfVarianceBootstrapFramesSpin = nullptr;
+	QSpinBox *m_liveSvgfVarianceBootstrapRadiusSpin = nullptr;
+	QDoubleSpinBox *m_liveSvgfSigmaNormalSpin = nullptr;
+	QDoubleSpinBox *m_liveSvgfSigmaDepthSpin = nullptr;
+	QDoubleSpinBox *m_liveSvgfSigmaLuminanceSpin = nullptr;
+	QSpinBox *m_liveSvgfAtrousRadiusSpin = nullptr;
+	QDoubleSpinBox *m_liveSvgfMinAlbedoSpin = nullptr;
+	QSpinBox *m_liveSvgfAtrousPassesSpin = nullptr;
 #endif
 
 	// Settings Tab (cont'd) - manual width/height/samples/depth overrides.
