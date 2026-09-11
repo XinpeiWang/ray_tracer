@@ -889,6 +889,12 @@ private:
 	int m_liveSvgfAtrousRadius = 2;
 	double m_liveSvgfMinAlbedo = 0.02;
 	int m_liveSvgfAtrousPasses = 4;
+	// The "Live Preview" nested subsection of the Render Options tab's
+	// "Denoiser" group (m_denoiserGroupBox/m_denoiserImageVideoGroupBox,
+	// declared near m_denoiseCheck above) - holds m_liveDenoiserModeCombo and
+	// everything below it, mainwindow_tabs_render.cpp. RT_GUI_HAVE_GPU-only
+	// like the controls it contains, unlike its two siblings above.
+	QGroupBox *m_denoiserLivePreviewGroupBox = nullptr;
 	QGroupBox *m_liveSvgfTuningGroupBox = nullptr;
 	QDoubleSpinBox *m_liveSvgfTemporalAlphaSpin = nullptr;
 	QDoubleSpinBox *m_liveSvgfMaxHistoryLengthSpin = nullptr;
@@ -956,6 +962,20 @@ private:
 	// emitted when m_denoiseCheck is checked, same enable-a-sibling-
 	// spinbox pattern as m_maxComponentValueCheck/Spin below.
 	QDoubleSpinBox *m_denoiseBlendSpin;
+	// One central "Denoiser" section on Render Options gathering every
+	// mode's own denoiser controls, instead of batch/video's own being
+	// buried in the Output group while Live Preview's own lived entirely on
+	// a different tab (Settings' own Live Preview Settings group). Two
+	// nested subgroups - Image & Video (this one, holds m_denoiseCheck/
+	// m_denoiseBlendSpin above) and Live Preview (m_denoiserLivePreviewGroupBox
+	// below, RT_GUI_HAVE_GPU-only like the rest of Live Preview's own state) -
+	// each independently dimmed via setGroupDimmed() in onModeChanged(), same
+	// pattern as the top-level m_videoGroupBox/m_advancedParamsGroupBox/
+	// m_liveModeSettingsGroupBox, just one level deeper. The outer group
+	// itself is never dimmed - one of its two children is always relevant
+	// regardless of Output Mode.
+	InfoGroupBox *m_denoiserGroupBox = nullptr;
+	QGroupBox *m_denoiserImageVideoGroupBox = nullptr;
 	QCheckBox *m_optixValidateCheck;    // --optix-validate (GPU only)
 	QCheckBox *m_regularizeCheck;       // --regularize (default path tracer only, both backends)
 	// --maxcomponentvalue (CPU default path tracer only) - spinbox only

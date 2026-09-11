@@ -1685,10 +1685,15 @@ void MainWindow::onModeChanged(int index) {
 	// irrelevance also reads at a glance instead of only via the text.
 	setGroupDimmed(m_videoGroupBox, !isVideoMode());
 	setGroupDimmed(m_advancedParamsGroupBox, isLiveMode());
+	// The Render Options tab's "Denoiser" group's two subsections - same
+	// dimming, one level deeper (mainwindow_tabs_render.cpp's own comment on
+	// m_denoiserGroupBox).
+	setGroupDimmed(m_denoiserImageVideoGroupBox, isLiveMode());
 #ifdef RT_GUI_HAVE_GPU
 	if (m_liveModeWarningLabel) m_liveModeWarningLabel->setVisible(isLiveMode());
 	if (m_liveModeOptionsWarningLabel) m_liveModeOptionsWarningLabel->setVisible(isLiveMode());
 	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
+	setGroupDimmed(m_denoiserLivePreviewGroupBox, !isLiveMode());
 #endif
 
 	// --video hard-rejects any non-Default integrator (see
