@@ -573,6 +573,15 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			margin: 3px 2px;
 			background: transparent;
 		}
+		/* Without this, setEnabled(false) on a labelWithInfo() label (e.g.
+		   FormLabelEnabledSync/the Crop Window corner labels, mainwindow_
+		   tabs_render.cpp) correctly cascades to the QLabel but has no
+		   visible effect - the unqualified rule above applies in every
+		   state, so nothing here overrides its color for :disabled the way
+		   every other widget type below already does. */
+		QLabel:disabled {
+			color: %TEXT_DISABLED%;
+		}
 		/* Secondary and explanatory surfaces, addressed by object name rather
 		   than by a stylesheet set on the widget itself. A per-widget sheet is
 		   invisible to this one, so it has to be rebuilt by hand on every

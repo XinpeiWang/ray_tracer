@@ -117,10 +117,31 @@ protected:
 // per-call-site wiring - the alternative (teaching every enable/disable call
 // site to also toggle its label) would need touching dozens of places by
 // hand, and staying correct only as long as nobody forgets the next one.
-// Only affects QFormLayout rows: a field with no form-layout parent (e.g.
-// the QGridLayout-based rows elsewhere on this tab) already relies on
-// whichever *group* is enabled/disabled cascading naturally to its real
-// children instead, which needs no help from this class.
+//
+// Handles two shapes, both found in this codebase:
+//  1. The field IS the widget registered in the QFormLayout row (the common
+//     case - m_tonemapCombo, m_samplerCombo, etc.).
+//  2. The field is nested ONE level inside a small composite wrapper widget
+//     that's what's actually registered in the form row - e.g. the OptiX
+//     denoiser/adaptive-sampling/time-limit/firefly-clamp rows, which each
+//     pair a checkbox and a spinbox inside one plain QWidget so they can
+//     share a single form row. Checking the field's own parent first, then
+//     its grandparent, catches both without needing to know which shape a
+//     given call site used.
+//
+// Also handles a THIRD, related gap that isn't about QFormLayout at all:
+// MainWindow::checkboxWithInfo()'s info icon is a QToolButton SIBLING of the
+// checkbox (not its child, and not a separate form-layout label either), so
+// it never inherits a directly-disabled checkbox's greyed-out look either -
+// same underlying "Qt only cascades to real children" cause, different
+// widget shape.
+//
+// Only affects QFormLayout rows and checkboxWithInfo() rows specifically: a
+// field with neither shape (e.g. the QGridLayout-based Crop Window corner
+// spinboxes, whose labels are bare QLabels with no form-layout registration
+// at all) needs its own explicit fix at the call site instead - there is no
+// generic Qt API to find "the label for this cell" in a plain QGridLayout
+// the way QFormLayout::labelForField() provides.
 // ============================================================================
 class FormLabelEnabledSync : public QObject {
     Q_OBJECT
@@ -128,17 +149,36 @@ public:
     explicit FormLabelEnabledSync(QObject *parent = nullptr) : QObject(parent) {}
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override {
-        if (event->type() == QEvent::EnabledChange) {
-            if (auto *field = qobject_cast<QWidget *>(watched)) {
-                if (QWidget *parent = field->parentWidget()) {
-                    if (auto *form = qobject_cast<QFormLayout *>(parent->layout())) {
-                        if (QWidget *label = form->labelForField(field)) {
-                            label->setEnabled(field->isEnabled());
-                        }
-                    }
+        if (event->type() != QEvent::EnabledChange) return QObject::eventFilter(watched, event);
+        auto *changed = qobject_cast<QWidget *>(watched);
+        if (!changed) return QObject::eventFilter(watched, event);
+
+        // Shapes 1 & 2: a QFormLayout field, either directly or one plain
+        // wrapper widget removed from it.
+        QWidget *candidates[] = {changed, changed->parentWidget()};
+        for (QWidget *candidate : candidates) {
+            if (!candidate) continue;
+            QWidget *parent = candidate->parentWidget();
+            if (!parent) continue;
+            if (auto *form = qobject_cast<QFormLayout *>(parent->layout())) {
+                if (QWidget *label = form->labelForField(candidate)) {
+                    label->setEnabled(changed->isEnabled());
+                    break;
                 }
             }
         }
+
+        // Shape 3: checkboxWithInfo()'s own info icon, a QToolButton sibling
+        // living in the same small row widget as the checkbox itself.
+        if (auto *checkBox = qobject_cast<QCheckBox *>(changed)) {
+            if (QWidget *parent = checkBox->parentWidget()) {
+                const auto icons = parent->findChildren<QToolButton *>(QString(), Qt::FindDirectChildrenOnly);
+                for (QToolButton *icon : icons) {
+                    icon->setEnabled(checkBox->isEnabled());
+                }
+            }
+        }
+
         return QObject::eventFilter(watched, event);
     }
 };
@@ -183,6 +223,23 @@ public:
 	// maintaining a second icon elsewhere in the group just to hold the
 	// dynamic content.
 	QToolButton *infoIcon() const { return m_infoIcon; }
+
+	// Hides (not overrides - QGroupBox::setTitle() isn't virtual) the base
+	// class setter so a title change also repositions the icon, whose x
+	// depends on the title text's own measured width (repositionInfoIcon()'s
+	// own comment). Without this, a group whose title changes after
+	// construction - e.g. m_queueGroup's "Render Queue (%1)" count,
+	// refreshQueuePanel() - only repositions on the next resize, leaving the
+	// icon at the OLD title's width until then. Works correctly for every
+	// call site in this codebase since m_queueGroup (and every other
+	// InfoGroupBox member) is declared as InfoGroupBox*, not QGroupBox* - a
+	// hidden (non-virtual) method resolves via the STATIC type, so this only
+	// silently reverts to the base behavior if some future caller stores an
+	// InfoGroupBox in a plain QGroupBox* variable.
+	void setTitle(const QString &title) {
+		QGroupBox::setTitle(title);
+		repositionInfoIcon();
+	}
 
 protected:
 	void resizeEvent(QResizeEvent *event) override {

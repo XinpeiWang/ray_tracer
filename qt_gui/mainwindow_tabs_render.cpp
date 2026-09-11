@@ -806,9 +806,17 @@ void MainWindow::createRenderOptionsTab() {
 	layout->addWidget(acceleratorGroup);
 
 	// ------------------------------------------------------------------
-	// Output group
+	// Post-Processing & Diagnostics group
 	// ------------------------------------------------------------------
-	InfoGroupBox *outputGroup = new InfoGroupBox(tr("Output"), optionsTab);
+	// Named to be unambiguous next to the Settings tab's own "Output" group
+	// (file path/format, mainwindow_tabs.cpp) - the two used to share the
+	// same title despite covering entirely different things, a real
+	// name collision for anyone searching for "the Output settings" by
+	// title alone. Also gives m_optixValidateCheck (a debugging flag) a
+	// title that actually covers it, instead of the old "Output" name
+	// needing its own tooltip caveat to explain why a debug-only control
+	// lived there.
+	InfoGroupBox *outputGroup = new InfoGroupBox(tr("Post-Processing && Diagnostics"), optionsTab);
 	styleGroupBox(outputGroup);
 	outputGroup->setInfoIcon(createInfoIcon(
 		tr("Tone mapping curve, whether to print render statistics, and "
@@ -1000,6 +1008,17 @@ void MainWindow::createRenderOptionsTab() {
 		saveLiveDenoiseBlend(value);
 		pushLiveDenoiseToSession();
 	});
+	// Built here (not inline at its addWidget() call site further down) so
+	// the mode-combo's own connect() below can capture it and keep it in
+	// sync with m_liveDenoiseBlendSpin's enabled state - this row isn't a
+	// QFormLayout, so FormLabelEnabledSync can't do it automatically the
+	// way it does for Sampler:/Light Sampler:/etc.
+	QWidget *liveDenoiseBlendLabel = labelWithInfo(tr("Blend:"),
+		tr("OptiX AI Denoiser only. Blend between the noisy input and the "
+		"fully denoised output (0.0 = 100% denoised, 1.0 = original noisy "
+		"image), same meaning as the Image & Video subsection's own blend "
+		"control."));
+	liveDenoiseBlendLabel->setEnabled(m_liveDenoiseEnabled);
 
 	m_liveDenoiseShowLatestCheck = new QCheckBox(tr("Show latest frame instead of accumulating"));
 	m_liveDenoiseShowLatestCheck->setChecked(m_liveDenoiseShowLatest);
@@ -1011,14 +1030,22 @@ void MainWindow::createRenderOptionsTab() {
 		pushLiveDenoiseToSession();
 	});
 
-	// SVGF Advanced Tuning - nested group, enabled only in SVGF mode. Ten
-	// controls mirroring SvgfTuningParams (gpu/optix/svgf_tuning_params.h)
-	// field-for-field; every range/default below matches that struct's own
-	// comments. Declared here (before the combo's own connect() below, which
-	// references it) even though its full contents are built further down.
+	// SVGF Advanced Tuning - nested group, dimmed (not disabled - see
+	// setGroupDimmed()'s own comment) except in SVGF mode, so the ten knobs
+	// below can still be pre-adjusted before switching to SVGF, the same
+	// "browse ahead of switching" behavior every OTHER mode-gated group on
+	// this app already gets. Previously used plain setEnabled() instead -
+	// the one group nested INSIDE a setGroupDimmed()'d parent
+	// (m_denoiserLivePreviewGroupBox above) that dimmed differently from
+	// its own parent's mechanism, for conceptually the same "not relevant
+	// right now" state. Ten controls mirroring SvgfTuningParams
+	// (gpu/optix/svgf_tuning_params.h) field-for-field; every range/default
+	// below matches that struct's own comments. Declared here (before the
+	// combo's own connect() below, which references it) even though its
+	// full contents are built further down.
 	m_liveSvgfTuningGroupBox = new QGroupBox(tr("SVGF Advanced Tuning"));
 	styleGroupBox(m_liveSvgfTuningGroupBox);
-	m_liveSvgfTuningGroupBox->setEnabled(m_liveSvgfEnabled);
+	setGroupDimmed(m_liveSvgfTuningGroupBox, !m_liveSvgfEnabled);
 
 	// One handler drives everything the mode selection affects: the two
 	// backing bools (pushed to the session independently, exactly as two
@@ -1027,7 +1054,7 @@ void MainWindow::createRenderOptionsTab() {
 	// equivalent "at most one of these two bools is ever true" invariant
 	// that's now structurally guaranteed by construction (one selected
 	// index) rather than enforced after the fact.
-	connect(m_liveDenoiserModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+	connect(m_liveDenoiserModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, liveDenoiseBlendLabel](int index) {
 		m_liveDenoiseEnabled = (index == 1);
 		m_liveSvgfEnabled = (index == 2);
 		saveLiveDenoiseEnabled(m_liveDenoiseEnabled);
@@ -1035,8 +1062,9 @@ void MainWindow::createRenderOptionsTab() {
 		pushLiveDenoiseToSession();
 		pushLiveSvgfToSession();
 		m_liveDenoiseBlendSpin->setEnabled(m_liveDenoiseEnabled);
+		liveDenoiseBlendLabel->setEnabled(m_liveDenoiseEnabled);
 		m_liveDenoiseShowLatestCheck->setEnabled(m_liveDenoiseEnabled);
-		m_liveSvgfTuningGroupBox->setEnabled(m_liveSvgfEnabled);
+		setGroupDimmed(m_liveSvgfTuningGroupBox, !m_liveSvgfEnabled);
 	});
 
 	liveDenoiseRowLayout->addWidget(labelWithInfo(tr("Denoiser:"),
@@ -1057,11 +1085,7 @@ void MainWindow::createRenderOptionsTab() {
 	// full-width fields on this tab.
 	liveDenoiseRowLayout->addWidget(m_liveDenoiserModeCombo, 1);
 
-	liveDenoiseOptionsRowLayout->addWidget(labelWithInfo(tr("Blend:"),
-		tr("OptiX AI Denoiser only. Blend between the noisy input and the "
-		"fully denoised output (0.0 = 100% denoised, 1.0 = original noisy "
-		"image), same meaning as the Image & Video subsection's own blend "
-		"control.")));
+	liveDenoiseOptionsRowLayout->addWidget(liveDenoiseBlendLabel);
 	liveDenoiseOptionsRowLayout->addWidget(m_liveDenoiseBlendSpin);
 	// Stretch factor on the checkbox's own container (not a trailing
 	// addStretch()) so the row fills the full line width, matching the
@@ -1273,10 +1297,6 @@ void MainWindow::createRenderOptionsTab() {
 	m_cropX1Spin->setValue(1.0);
 	m_cropY1Spin = makeCropSpin();
 	m_cropY1Spin->setValue(1.0);
-	connect(m_cropCheck, &QCheckBox::toggled, m_cropX0Spin, &QDoubleSpinBox::setEnabled);
-	connect(m_cropCheck, &QCheckBox::toggled, m_cropY0Spin, &QDoubleSpinBox::setEnabled);
-	connect(m_cropCheck, &QCheckBox::toggled, m_cropX1Spin, &QDoubleSpinBox::setEnabled);
-	connect(m_cropCheck, &QCheckBox::toggled, m_cropY1Spin, &QDoubleSpinBox::setEnabled);
 	// A 4-column grid (label, field, label, field) instead of QFormLayout's
 	// one-pair-per-row - the top-left corner (X0/Y0) and bottom-right
 	// corner (X1/Y1) pack two fields per row, halving this group's height.
@@ -1284,15 +1304,46 @@ void MainWindow::createRenderOptionsTab() {
 	cropCornersGrid->setHorizontalSpacing(10);
 	cropCornersGrid->setColumnStretch(1, 1);
 	cropCornersGrid->setColumnStretch(3, 1);
-	cropCornersGrid->addWidget(new QLabel(tr("Left (X0):")), 0, 0);
+	// labelWithInfo() (not a bare QLabel) for the same reason every other
+	// field label on this tab uses it - and captured into a local, rather
+	// than discarded like this grid used to, so the connect() calls below
+	// can dim them alongside their spinbox. A plain QGridLayout has no
+	// QFormLayout::labelForField()-style API FormLabelEnabledSync could use
+	// instead, so these need this explicit wiring.
+	QWidget *cropX0Label = labelWithInfo(tr("Left (X0):"),
+		tr("Left edge of the crop rectangle, as a fraction of the full "
+		"frame width (0 = left edge, 1 = right edge)."));
+	QWidget *cropY0Label = labelWithInfo(tr("Top (Y0):"),
+		tr("Top edge of the crop rectangle, as a fraction of the full "
+		"frame height (0 = top edge, 1 = bottom edge)."));
+	QWidget *cropX1Label = labelWithInfo(tr("Right (X1):"),
+		tr("Right edge of the crop rectangle, as a fraction of the full "
+		"frame width - must be greater than Left (X0) to render anything."));
+	QWidget *cropY1Label = labelWithInfo(tr("Bottom (Y1):"),
+		tr("Bottom edge of the crop rectangle, as a fraction of the full "
+		"frame height - must be greater than Top (Y0) to render anything."));
+	cropCornersGrid->addWidget(cropX0Label, 0, 0);
 	cropCornersGrid->addWidget(m_cropX0Spin, 0, 1);
-	cropCornersGrid->addWidget(new QLabel(tr("Top (Y0):")), 0, 2);
+	cropCornersGrid->addWidget(cropY0Label, 0, 2);
 	cropCornersGrid->addWidget(m_cropY0Spin, 0, 3);
-	cropCornersGrid->addWidget(new QLabel(tr("Right (X1):")), 1, 0);
+	cropCornersGrid->addWidget(cropX1Label, 1, 0);
 	cropCornersGrid->addWidget(m_cropX1Spin, 1, 1);
-	cropCornersGrid->addWidget(new QLabel(tr("Bottom (Y1):")), 1, 2);
+	cropCornersGrid->addWidget(cropY1Label, 1, 2);
 	cropCornersGrid->addWidget(m_cropY1Spin, 1, 3);
 	cropLayout->addRow(cropCornersGrid);
+
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropX0Spin, &QDoubleSpinBox::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropY0Spin, &QDoubleSpinBox::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropX1Spin, &QDoubleSpinBox::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, m_cropY1Spin, &QDoubleSpinBox::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, cropX0Label, &QWidget::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, cropY0Label, &QWidget::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, cropX1Label, &QWidget::setEnabled);
+	connect(m_cropCheck, &QCheckBox::toggled, cropY1Label, &QWidget::setEnabled);
+	cropX0Label->setEnabled(m_cropCheck->isChecked());
+	cropY0Label->setEnabled(m_cropCheck->isChecked());
+	cropX1Label->setEnabled(m_cropCheck->isChecked());
+	cropY1Label->setEnabled(m_cropCheck->isChecked());
 
 	layout->addWidget(cropGroup);
 
@@ -1332,7 +1383,16 @@ void MainWindow::createRenderOptionsTab() {
 	m_seedSpin->setToolTip(m_seedCheck->toolTip());
 	styleSpinBox(m_seedSpin);
 	connect(m_seedCheck, &QCheckBox::toggled, m_seedSpin, &QSpinBox::setEnabled);
-	seedLayout->addRow(tr("Seed:"), m_seedSpin);
+	// labelWithInfo() (not a bare string label) for consistency with every
+	// other field on this tab - this row was the one exception, a plain
+	// QFormLayout-generated label with no info affordance next to its own
+	// sibling checkbox row, which already gets one via checkboxWithInfo().
+	seedLayout->addRow(labelWithInfo(tr("Seed:"),
+		tr("The specific integer used to seed the render's random number "
+		"generator. Only takes effect when Reproducible Render above is "
+		"checked - the same seed on the same scene/settings always "
+		"produces pixel-identical noise.")),
+		m_seedSpin);
 
 	layout->addWidget(seedGroup);
 	layout->addStretch();
