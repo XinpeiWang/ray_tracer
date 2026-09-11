@@ -1209,8 +1209,10 @@ void MainWindow::createSettingsTab() {
 		"movement than the AI denoiser + running-mean combination. Always "
 		"shows the latest filtered frame rather than accumulating (see the "
 		"SVGF Advanced Tuning group below for its own tunable constants).")));
-	liveDenoiseRowLayout->addWidget(m_liveDenoiserModeCombo);
-	liveDenoiseRowLayout->addStretch(1);
+	// Stretch factor on the combo itself (not a trailing addStretch()) so it
+	// grows to fill the row's full width, matching every other row's
+	// full-width fields on this tab.
+	liveDenoiseRowLayout->addWidget(m_liveDenoiserModeCombo, 1);
 
 	liveDenoiseOptionsRowLayout->addWidget(labelWithInfo(tr("Blend:"),
 		tr("OptiX AI Denoiser only. Blend between the noisy input and the "
@@ -1383,13 +1385,18 @@ void MainWindow::createSettingsTab() {
 		saveLiveRestirGiEnabled(checked);
 		pushLiveRestirGiToSession();
 	});
+	// Own row, spanning every column - a checkbox has nothing to pair with
+	// the way the label+field values below do, so it doesn't belong forced
+	// into the same 2-per-row grouping.
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveRestirGiCheck,
 		tr("Resampled one-bounce indirect lighting (ReSTIR GI) - independent "
 		"of which denoiser is active above. Disabling it falls back to the "
 		"classic single-sample indirect estimate, which is noisier but "
 		"cheaper per frame.")),
-		0, 0);
+		0, 0, 1, 4);
 
+	// The four numeric values grouped into their own clean 2-per-row grid
+	// (rows 1-2), separate from the checkbox above.
 	m_liveExposureSpin = new QDoubleSpinBox();
 	m_liveExposureSpin->setRange(0.01, 100.0);
 	m_liveExposureSpin->setSingleStep(0.1);
@@ -1404,8 +1411,8 @@ void MainWindow::createSettingsTab() {
 		tr("A flat brightness multiplier applied before tone-mapping, same "
 		"meaning as the Render Options tab's own Exposure control but "
 		"independently set for Live Preview.")),
-		0, 2);
-	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 0, 3);
+		1, 0);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 1, 1);
 
 	m_liveSamplesSpinBox = new QSpinBox();
 	m_liveSamplesSpinBox->setRange(1, 16);
@@ -1423,8 +1430,8 @@ void MainWindow::createSettingsTab() {
 		tr("Samples per pixel rendered on each Live Preview call - Live "
 		"Preview has its own independent value from the Advanced Parameters "
 		"group below, which only applies to Image/Video.")),
-		1, 0);
-	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 1, 1);
+		1, 2);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 1, 3);
 
 	m_liveMaxDepthSpinBox = new QSpinBox();
 	m_liveMaxDepthSpinBox->setRange(1, 32);
@@ -1434,8 +1441,8 @@ void MainWindow::createSettingsTab() {
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
 		tr("Maximum ray depth for Live Preview - independent from the "
 		"Advanced Parameters group below, which only applies to Image/Video.")),
-		1, 2);
-	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 1, 3);
+		2, 0);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 2, 1);
 
 	m_liveFireflyClampSpin = new QDoubleSpinBox();
 	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
@@ -1452,8 +1459,8 @@ void MainWindow::createSettingsTab() {
 		tr("Caps the brightest possible sample value to suppress fireflies, "
 		"at the cost of clipping genuinely bright highlights. Lower values "
 		"clamp more aggressively.")),
-		2, 0);
-	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 2, 1);
+		2, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 2, 3);
 
 	liveModeSettingsLayout->addRow(liveRenderSettingsRow);
 
