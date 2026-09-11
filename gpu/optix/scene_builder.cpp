@@ -76,15 +76,50 @@ namespace {
 	// error print, since it only ever runs once per successful OR failed
 	// key rather than once per call the way an outer, always-run print
 	// would).
+	// maxEntries: 0 (default) means unbounded, matching every existing
+	// caller's behavior unchanged. A nonzero value bounds a cache whose
+	// VALUES are large enough that unbounded growth is itself a concern
+	// (e.g. a per-mesh transformed-triangle cache, where a long session
+	// visiting several multi-million-triangle scenes could otherwise pin
+	// every one of them in memory forever) - eviction here is a full clear
+	// on overflow, not real LRU: simple, and adequate for a cache whose
+	// point is avoiding repeated work within roughly the current working
+	// set (the scene(s) actually in view), not remembering every scene ever
+	// visited in a session.
 	template <typename V, typename Builder>
 	const V* get_or_build_cached(std::unordered_map<std::string, V>& cache, std::mutex& mutex,
-								  const std::string& key, Builder&& builder) {
+								  const std::string& key, Builder&& builder, std::size_t maxEntries = 0) {
 		std::lock_guard<std::mutex> lock(mutex);
 		auto it = cache.find(key);
 		if (it != cache.end()) return &it->second;
 		V value{};
 		if (!builder(value)) return nullptr;
+		if (maxEntries > 0 && cache.size() >= maxEntries) cache.clear();
 		return &cache.emplace(key, std::move(value)).first->second;
+	}
+
+	// Bound for the transformed-triangle caches (load_obj_triangles_gpu/
+	// load_obj_triangles_mtl_gpu, further down) specifically - see
+	// get_or_build_cached's own maxEntries comment. A handful of entries
+	// covers the realistic "flip between a few scenes in one session" case
+	// these caches exist for, without letting a long session that visits
+	// many different large meshes accumulate an unbounded number of
+	// multi-hundred-MB transformed copies.
+	constexpr std::size_t kMaxCachedTransformedMeshes = 8;
+
+	// Encodes a float's exact IEEE-754 bit pattern as a cache-key fragment -
+	// std::to_string(float) (fixed 6 decimal digits) would risk two distinct-
+	// but-close values formatting identically and colliding, silently
+	// sharing a cache entry baked for the wrong value. Used by every
+	// transform-cache key in this file that includes a scale/offset float
+	// (previously hand-duplicated at each call site) - mirrors
+	// getOrBuildPbrtImageTexture's identical gammaBits encoding
+	// (pbrt_gpu_builder_materials.h), kept separate since that file doesn't
+	// share a common header with this one worth adding just for this.
+	inline std::string float_bits_key(float v) {
+		std::uint32_t bits;
+		std::memcpy(&bits, &v, sizeof(bits));
+		return std::to_string(bits);
 	}
 
 	// ------------------------------------------------------------------
@@ -1095,21 +1130,10 @@ namespace {
 		// precisely so that stays true). Cached forever per process, same
 		// "no hot-reload" precedent as every other cache in this file.
 		//
-		// gamma-style bit-pattern keys for scale/offset - see
-		// getOrBuildPbrtImageTexture's own identical comment (pbrt_gpu_
-		// builder_materials.h) for why std::to_string(float) (fixed 6
-		// decimal digits) would risk two distinct-but-close transforms
-		// colliding into the same cache key.
-		std::uint32_t scaleBits;
-		std::memcpy(&scaleBits, &scale, sizeof(scaleBits));
-		std::uint32_t offXBits, offYBits, offZBits;
-		std::memcpy(&offXBits, &offset.x, sizeof(offXBits));
-		std::memcpy(&offYBits, &offset.y, sizeof(offYBits));
-		std::memcpy(&offZBits, &offset.z, sizeof(offZBits));
 		const std::string transformKey = std::string(filename) +
 			"|m" + std::to_string(materialIdx) +
-			"|s" + std::to_string(scaleBits) +
-			"|ox" + std::to_string(offXBits) + "|oy" + std::to_string(offYBits) + "|oz" + std::to_string(offZBits) +
+			"|s" + float_bits_key(scale) +
+			"|ox" + float_bits_key(offset.x) + "|oy" + float_bits_key(offset.y) + "|oz" + float_bits_key(offset.z) +
 			"|f" + (flip_xz ? "1" : "0");
 
 		static std::unordered_map<std::string, std::vector<TriangleData>> s_transformedObjCache;
@@ -1142,7 +1166,7 @@ namespace {
 					out.push_back(t);
 				}
 				return true;
-			});
+			}, kMaxCachedTransformedMeshes);
 		if (!transformed) return;
 
 		scene.triangles.reserve(scene.triangles.size() + transformed->size());
@@ -1291,12 +1315,17 @@ namespace {
 		// Bistro, Rungholt, ...) pay per Live Preview frame.
 		if (scene.skipExpensiveGeometryLoad) return;
 		// Captured before resolveSceneMaterialIdx() (further down) starts
-		// mutating scene.materials/scene.textures - part of the transformed-
-		// output cache key below, since the per-face materialIdx values baked
-		// into that cache are only valid for calls that start from this same
-		// baseline (see that cache's own comment for the full rationale).
+		// mutating scene.materials - part of the transformed-output cache key
+		// below, since the per-face materialIdx values baked into that cache
+		// are only valid for calls that start from this same baseline (see
+		// that cache's own comment for the full rationale). Materials only -
+		// every path that resolves a materialIdx derives it solely from
+		// scene.materials.size() (add_lambertian/add_metal/add_dielectric/
+		// add_diffuse_light/add_normal_mapped_lambertian all do `idx =
+		// scene.materials.size()` before pushing), never from
+		// scene.textures.size(), so a texture-count baseline would only
+		// fragment this cache key without protecting anything.
 		const size_t baselineMaterials = scene.materials.size();
-		const size_t baselineTextures = scene.textures.size();
 		// Cache the RAW (untransformed, file-space) parsed positions/normals/
 		// uvs/faces AND the resolved mtllib/foundPrefix, keyed by filename -
 		// the actual .obj file read + line-by-line parse (millions of lines
@@ -1493,7 +1522,6 @@ namespace {
 				return true;
 			});
 		if (!mtlMapsPtr) return;
-		const std::string& mtlPathUsed = mtlMapsPtr->mtlPathUsed;
 		const std::unordered_map<std::string, float3>& mtlColors = mtlMapsPtr->mtlColors;
 		const std::unordered_map<std::string, std::string>& mtlTextures = mtlMapsPtr->mtlTextures;
 		const std::unordered_map<std::string, float3>& mtlEmission = mtlMapsPtr->mtlEmission;
@@ -1703,6 +1731,21 @@ namespace {
 			return (resolvedIdx >= 0) ? resolvedIdx : fallbackMaterialIdx;
 		};
 
+		// CONTRACT the transformed-triangle cache below depends on: every
+		// resolvedIdx branch above must always APPEND a brand-new material
+		// (idx = scene.materials.size() at push time), never search for/
+		// reuse an EXISTING one with matching content. This is what makes a
+		// bare "how many materials existed before this call" baseline
+		// (baselineMaterials, captured at function entry) sufficient to
+		// guarantee a cached materialIdx means the same thing on every call -
+		// there is no content-derived key backing this, only that ordering
+		// guarantee. If a future change ever makes resolveSceneMaterialIdx()
+		// deduplicate against existing materials, the transformed-triangle
+		// cache's key (baselineMaterials + this file's own transform/
+		// textureDir/fallbackMaterialIdx) MUST also change to be
+		// content-derived, or it will silently bake in wrong-but-key-
+		// matching materialIdx values with no compiler or runtime signal.
+		//
 		// Resolve each of THIS file's unique material names exactly once -
 		// a handful to a few dozen entries, regardless of face count.
 		std::vector<int> localToSceneMaterialIdx(raw.uniqueMtlNames.size());
@@ -1723,13 +1766,13 @@ namespace {
 		// mesh Rungholt's size. localToSceneMaterialIdx's own resolved
 		// indices are baked into the cached TriangleData::materialIdx
 		// values, so the key must also pin down what those indices WERE -
-		// baselineMaterials/baselineTextures (captured at function entry,
-		// before resolveSceneMaterialIdx() started mutating scene.materials/
-		// scene.textures) do that: for a fixed scene_id, build_scene() always
-		// re-runs the same case in the same order, so this call always sees
-		// the same baseline and always resolves the same names to the same
-		// indices, making a cache hit here exactly reproduce what a full
-		// re-resolve would have produced. Light indices are stored as
+		// baselineMaterials (captured at function entry, before
+		// resolveSceneMaterialIdx() started mutating scene.materials) does
+		// that: for a fixed scene_id, build_scene() always re-runs the same
+		// case in the same order, so this call always sees the same baseline
+		// and always resolves the same names to the same indices, making a
+		// cache hit here exactly reproduce what a full re-resolve would have
+		// produced. Light indices are stored as
 		// OFFSETS INTO THIS BATCH (not into scene.triangles), so they stay
 		// correct regardless of what scene.triangles.size() happens to be at
 		// use time - resolved to real, absolute scene.lightIndices entries
@@ -1738,18 +1781,12 @@ namespace {
 			std::vector<TriangleData> triangles;
 			std::vector<int> lightLocalIndices;  // offsets into `triangles` above
 		};
-		std::uint32_t scaleBits;
-		std::memcpy(&scaleBits, &scale, sizeof(scaleBits));
-		std::uint32_t offXBits, offYBits, offZBits;
-		std::memcpy(&offXBits, &offset.x, sizeof(offXBits));
-		std::memcpy(&offYBits, &offset.y, sizeof(offYBits));
-		std::memcpy(&offZBits, &offset.z, sizeof(offZBits));
 		const std::string transformKey = std::string(filename) +
-			"|s" + std::to_string(scaleBits) +
-			"|ox" + std::to_string(offXBits) + "|oy" + std::to_string(offYBits) + "|oz" + std::to_string(offZBits) +
+			"|s" + float_bits_key(scale) +
+			"|ox" + float_bits_key(offset.x) + "|oy" + float_bits_key(offset.y) + "|oz" + float_bits_key(offset.z) +
 			"|td" + (textureDir ? textureDir : "") +
 			"|fb" + std::to_string(fallbackMaterialIdx) +
-			"|bm" + std::to_string(baselineMaterials) + "|bt" + std::to_string(baselineTextures);
+			"|bm" + std::to_string(baselineMaterials);
 
 		static std::unordered_map<std::string, TransformedObjMtl> s_transformedObjMtlCache;
 		static std::mutex s_transformedObjMtlCacheMutex;
@@ -1782,7 +1819,7 @@ namespace {
 					out.triangles.push_back(t);
 				}
 				return true;
-			});
+			}, kMaxCachedTransformedMeshes);
 		if (!transformed) return;
 
 		const int baseTriangleIdx = safe_cast_to_int(scene.triangles.size());
@@ -4127,11 +4164,17 @@ static bool build_loaded_pbrt_scene(
 		// See SceneData::skipExpensiveGeometryLoad's own comment - this pbrt
 		// scene is already GPU-resident, so the full built->sceneData copy
 		// below (proportional to triangle/texture-byte count) is skipped.
-		// lensElements/exitPupilBounds are the one exception: small, camera-
-		// side tables the RealisticCamera setup further down this same
-		// function still reads sizes from every call, skip or not.
+		// lensElements/exitPupilBounds/lightIndices/lightKinds are the
+		// exceptions: small, camera- or light-count-sized tables that code
+		// further down THIS SAME function still reads every call, skip or
+		// not (RealisticCamera setup's numLensElements/numExitPupilBounds,
+		// and the "N sampled lights"/"no samplable lights" diagnostics a few
+		// lines below) - copying just these avoids the two silently
+		// reporting stale/zero counts on every skip-path call.
 		scene.lensElements = built->sceneData.lensElements;
 		scene.exitPupilBounds = built->sceneData.exitPupilBounds;
+		scene.lightIndices = built->sceneData.lightIndices;
+		scene.lightKinds = built->sceneData.lightKinds;
 	} else {
 		scene = built->sceneData;
 	}
@@ -4632,41 +4675,72 @@ static bool build_loaded_pbrt_scene(
 			// none (see Camera's own comment). A missing/malformed file on
 			// disk is still possible and only detectable here, where actual
 			// file access happens.
-			std::string lensText;
-			if (!pbrt_load::loadFileNear(path, c.lensFile, lensText)) {
-				std::cerr << "[OptiX] warning: " << path << ": realistic camera lensfile '"
-					  << c.lensFile << "' not found; rendering as perspective instead\n";
-			} else {
-				const std::vector<double> lensD = pbrt_load::parseLensFile(lensText);
-				if (lensD.empty()) {
-					std::cerr << "[OptiX] warning: " << path << ": realistic camera lensfile '"
-						  << c.lensFile << "' has no usable rows; rendering as perspective instead\n";
-				} else {
+			//
+			// The expensive part - RealisticCamera's constructor, which
+			// traces 64 slabs x 1024 samples of real lens-refraction rays to
+			// bound the exit pupil per element (bound_exit_pupil(),
+			// realistic_camera.h) - depends only on the LENS SYSTEM (lens
+			// data, half-film-extents, focus distance, aperture diameter),
+			// never on camera_to_world (confirmed by reading that class:
+			// camera_to_world_ is only ever read by world_origin/right/up/
+			// forward() and generate_ray(), never by the constructor or the
+			// exit-pupil-bounding it does). This function reruns on every
+			// Live Preview frame the camera moves, so - like every other
+			// expensive per-triangle/per-file cost in this file - the lens
+			// system's own build output (lensElements/exitPupilBounds/
+			// filmHalf{X,Y}/lensRearZ) is cached here, keyed by everything
+			// that determines it; only the cheap world-space basis vectors
+			// (a plain 4x3 matrix-transform of the CURRENT ctw, computed
+			// fresh below without needing a RealisticCamera object at all -
+			// the identical math world_origin()/etc. themselves wrap) still
+			// depend on the moving camera and are recomputed every call.
+			struct RealisticCameraLensData {
+				std::vector<GpuLensElement> lensElements;
+				std::vector<GpuExitPupilBounds> exitPupilBounds;
+				float filmHalfX = 0.0f, filmHalfY = 0.0f, lensRearZ = 0.0f;
+			};
+			static std::unordered_map<std::string, RealisticCameraLensData> s_realisticLensCache;
+			static std::mutex s_realisticLensCacheMutex;
+
+			const float aspectF = (image_height > 0)
+				? static_cast<float>(image_width) / static_cast<float>(image_height) : 1.0f;
+			const float halfY = static_cast<float>(c.filmDiagonalMM) / (2.0f * std::sqrt(aspectF * aspectF + 1.0f));
+			const float halfX = aspectF * halfY;
+			const float focusDist = static_cast<float>(pbrt_flatten::focusDistanceFor(c));
+			const float apertureDiameter = static_cast<float>(c.apertureDiameterMM);
+			const std::string lensCacheKey = std::string(path) + "|" + c.lensFile +
+				"|hx" + float_bits_key(halfX) + "|hy" + float_bits_key(halfY) +
+				"|fd" + float_bits_key(focusDist) + "|ap" + float_bits_key(apertureDiameter);
+
+			bool lensFileMissing = false, lensFileEmpty = false;
+			const RealisticCameraLensData* lensData = get_or_build_cached(
+				s_realisticLensCache, s_realisticLensCacheMutex, lensCacheKey,
+				[&](RealisticCameraLensData& out) -> bool {
+					std::string lensText;
+					if (!pbrt_load::loadFileNear(path, c.lensFile, lensText)) {
+						lensFileMissing = true;
+						return false;
+					}
+					const std::vector<double> lensD = pbrt_load::parseLensFile(lensText);
+					if (lensD.empty()) {
+						lensFileEmpty = true;
+						return false;
+					}
 					std::vector<float> lens;
 					lens.reserve(lensD.size());
 					for (double v : lensD) lens.push_back(static_cast<float>(v));
-					const float aspectF = (image_height > 0)
-						? static_cast<float>(image_width) / static_cast<float>(image_height) : 1.0f;
-					const float halfY = static_cast<float>(c.filmDiagonalMM) / (2.0f * std::sqrt(aspectF * aspectF + 1.0f));
-					const float halfX = aspectF * halfY;
-					const Mat4<float> ctw = make_look_at<float>(
-						lookfrom.x, lookfrom.y, lookfrom.z,
-						lookat.x, lookat.y, lookat.z,
-						vup.x, vup.y, vup.z);
-					const float focusDist = static_cast<float>(pbrt_flatten::focusDistanceFor(c));
-					RealisticCamera<float> realCam(ctw, halfX, halfY, focusDist,
-						static_cast<float>(c.apertureDiameterMM), lens);
-
-					scene.lensElements.clear();
+					// ctw doesn't matter here - identity is fine, since none
+					// of the fields read below depend on it (see this
+					// block's own comment above).
+					RealisticCamera<float> realCam(Mat4<float>{}, halfX, halfY, focusDist, apertureDiameter, lens);
 					for (int i = 0; i < realCam.num_elements(); ++i) {
 						GpuLensElement le{};
 						le.curvatureRadius = realCam.lens_curvature_radius(i);
 						le.thickness       = realCam.lens_thickness(i);
 						le.eta              = realCam.lens_eta(i);
 						le.apertureRadius   = realCam.lens_aperture_radius(i);
-						scene.lensElements.push_back(le);
+						out.lensElements.push_back(le);
 					}
-					scene.exitPupilBounds.clear();
 					for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
 						GpuExitPupilBounds b{};
 						b.xMin = realCam.exit_pupil_xmin(i);
@@ -4674,25 +4748,43 @@ static bool build_loaded_pbrt_scene(
 						b.yMin = realCam.exit_pupil_ymin(i);
 						b.yMax = realCam.exit_pupil_ymax(i);
 						b.degenerate = realCam.exit_pupil_degenerate(i) ? 1 : 0;
-						scene.exitPupilBounds.push_back(b);
+						out.exitPupilBounds.push_back(b);
 					}
+					out.filmHalfX = realCam.film_half_x();
+					out.filmHalfY = realCam.film_half_y();
+					out.lensRearZ = realCam.lens_rear_z();
+					return true;
+				});
 
-					const CamVec3<float> wo = realCam.world_origin();
-					const CamVec3<float> wr = realCam.world_right();
-					const CamVec3<float> wu = realCam.world_up();
-					const CamVec3<float> wf = realCam.world_forward();
+			if (lensFileMissing) {
+				std::cerr << "[OptiX] warning: " << path << ": realistic camera lensfile '"
+					  << c.lensFile << "' not found; rendering as perspective instead\n";
+			} else if (lensFileEmpty) {
+				std::cerr << "[OptiX] warning: " << path << ": realistic camera lensfile '"
+					  << c.lensFile << "' has no usable rows; rendering as perspective instead\n";
+			} else if (lensData) {
+				scene.lensElements = lensData->lensElements;
+				scene.exitPupilBounds = lensData->exitPupilBounds;
 
-					out_camera_extra->kind = CameraKind::Realistic;
-					out_camera_extra->origin = make_float3(wo.x, wo.y, wo.z);
-					out_camera_extra->su = make_float3(wr.x, wr.y, wr.z);
-					out_camera_extra->sv = make_float3(wu.x, wu.y, wu.z);
-					out_camera_extra->sw = make_float3(wf.x, wf.y, wf.z);
-					out_camera_extra->film_half_x = realCam.film_half_x();
-					out_camera_extra->film_half_y = realCam.film_half_y();
-					out_camera_extra->lens_rear_z = realCam.lens_rear_z();
-					out_camera_extra->numLensElements = static_cast<int>(scene.lensElements.size());
-					out_camera_extra->numExitPupilBounds = static_cast<int>(scene.exitPupilBounds.size());
-				}
+				const Mat4<float> ctw = make_look_at<float>(
+					lookfrom.x, lookfrom.y, lookfrom.z,
+					lookat.x, lookat.y, lookat.z,
+					vup.x, vup.y, vup.z);
+				const CamVec3<float> wo = ctw.transform_point(0.0f, 0.0f, 0.0f);
+				const CamVec3<float> wr = ctw.transform_vec(1.0f, 0.0f, 0.0f);
+				const CamVec3<float> wu = ctw.transform_vec(0.0f, 1.0f, 0.0f);
+				const CamVec3<float> wf = ctw.transform_vec(0.0f, 0.0f, 1.0f);
+
+				out_camera_extra->kind = CameraKind::Realistic;
+				out_camera_extra->origin = make_float3(wo.x, wo.y, wo.z);
+				out_camera_extra->su = make_float3(wr.x, wr.y, wr.z);
+				out_camera_extra->sv = make_float3(wu.x, wu.y, wu.z);
+				out_camera_extra->sw = make_float3(wf.x, wf.y, wf.z);
+				out_camera_extra->film_half_x = lensData->filmHalfX;
+				out_camera_extra->film_half_y = lensData->filmHalfY;
+				out_camera_extra->lens_rear_z = lensData->lensRearZ;
+				out_camera_extra->numLensElements = static_cast<int>(scene.lensElements.size());
+				out_camera_extra->numExitPupilBounds = static_cast<int>(scene.exitPupilBounds.size());
 			}
 		}
 	}

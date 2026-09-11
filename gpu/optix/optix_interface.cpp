@@ -82,14 +82,17 @@ static bool prepareSceneAndCamera(
 	}
 
 	SceneData scene;
-	// See SceneData::skipExpensiveGeometryLoad's own comment - this scene's
-	// geometry is only ever consumed a few lines down (the g_uploaded_scene_id
-	// check just before g_renderer->buildScene()), and only when scene_id has
+	// Computed once and reused below (both here and at the g_uploaded_scene_id
+	// check just before g_renderer->buildScene()) rather than re-typing the
+	// same comparison twice - see SceneData::skipExpensiveGeometryLoad's own
+	// comment: this scene's geometry is only ever consumed when scene_id has
 	// actually changed; when it hasn't, this call exists purely to get a
 	// fresh camera_params/cameraExtra for the CURRENT cam_x/y/z/lookat, and
 	// build_scene()'s own mesh-loading helpers can skip their expensive work
-	// entirely.
-	scene.skipExpensiveGeometryLoad = (scene_id == g_uploaded_scene_id);
+	// entirely. A single shared local also means the two checks can't
+	// silently drift apart if either is ever extended independently.
+	const bool sceneAlreadyUploaded = (scene_id == g_uploaded_scene_id);
+	scene.skipExpensiveGeometryLoad = sceneAlreadyUploaded;
 	float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
 	cameraExtra = GpuCameraParams{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
 	// userSeed can't rely on the zero-init default the way regularize/
@@ -152,7 +155,7 @@ static bool prepareSceneAndCamera(
 	// the last call in this process. This is what makes video rendering
 	// (same scene, moving camera, many frames in one process) expensive:
 	// skip it when nothing but the camera moved.
-	if (scene_id != g_uploaded_scene_id) {
+	if (!sceneAlreadyUploaded) {
 		// Instanced geometry travels separately - see setInstanceData().
 		// Called inside this same cache-skip guard as buildScene() itself,
 		// so instance data is part of what "this scene is already uploaded"
