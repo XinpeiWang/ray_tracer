@@ -59,7 +59,7 @@ public slots:
 	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -122,6 +122,14 @@ public slots:
 	// what m_accum structurally holds, only what each new sample contains.
 	// No-op if not running.
 	void setRestirGi(bool restirGi);
+
+	// Toggles ReSTIR DI (gpu/optix/wavefront_restir_helpers.h) resampled
+	// direct-light sampling - independent from setRestirGi() above (that one
+	// resamples one-bounce INDIRECT lighting; this one resamples the
+	// direct-light draw classic NEE would otherwise do with a single
+	// alias-table sample). Same "no accumulation reset needed" reasoning as
+	// setRestirGi(). No-op if not running.
+	void setRestirDi(bool restirDi);
 
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
@@ -202,6 +210,11 @@ private:
 	// matching rt_realtime_render_frame()'s own previously-hardcoded-on
 	// behavior.
 	bool m_restirGi = true;
+	// See setRestirDi()'s own comment. Crosses the DLL boundary like m_restirGi
+	// above. Defaults true, matching rt_realtime_render_frame()'s own
+	// previously-hardcoded-on behavior (ReSTIR DI shipped as always-on before
+	// this parameter existed).
+	bool m_restirDi = true;
 	// See setSppAndMaxDepth()'s own comment. Both cross the DLL boundary
 	// (they're renderFrame()'s own 4th/5th positional args). Defaults match
 	// renderLoop()'s own previous hardcoded locals exactly.
@@ -308,13 +321,14 @@ public:
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 	void setSvgf(bool svgf);
 	void setExposure(double exposure);
 	void setRestirGi(bool restirGi);
+	void setRestirDi(bool restirDi);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

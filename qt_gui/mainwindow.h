@@ -345,6 +345,7 @@ private:
 	// firefly clamp - each independent (not mutually exclusive with
 	// anything), so each gets its own push helper rather than sharing one.
 	void pushLiveRestirGiToSession();
+	void pushLiveRestirDiToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
 	void pushLiveFireflyClampToSession();
@@ -433,6 +434,8 @@ private:
 	// helper declarations above.
 	bool loadSavedLiveRestirGiEnabled() const;
 	void saveLiveRestirGiEnabled(bool value) const;
+	bool loadSavedLiveRestirDiEnabled() const;
+	void saveLiveRestirDiEnabled(bool value) const;
 	double loadSavedLiveExposure() const;
 	void saveLiveExposure(double value) const;
 	int loadSavedLiveSamples() const;
@@ -866,6 +869,8 @@ private:
 	// own previous locals for samples/max-depth).
 	bool m_liveRestirGiEnabled = true;
 	QCheckBox *m_liveRestirGiCheck = nullptr;
+	bool m_liveRestirDiEnabled = true;
+	QCheckBox *m_liveRestirDiCheck = nullptr;
 	double m_liveExposure = 1.0;
 	QDoubleSpinBox *m_liveExposureSpin = nullptr;
 	int m_liveSamples = 1;

@@ -1805,8 +1805,8 @@ void MainWindow::startLivePreview() {
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z,
 								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
 								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
-								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveSamples, m_liveMaxDepth,
-								 m_liveFireflyClamp);
+								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveRestirDiEnabled,
+								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -1908,6 +1908,11 @@ void MainWindow::pushLiveSvgfToSession() {
 void MainWindow::pushLiveRestirGiToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setRestirGi(m_liveRestirGiEnabled);
+}
+
+void MainWindow::pushLiveRestirDiToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setRestirDi(m_liveRestirDiEnabled);
 }
 
 void MainWindow::pushLiveExposureToSession() {
@@ -2139,6 +2144,16 @@ bool MainWindow::loadSavedLiveRestirGiEnabled() const {
 void MainWindow::saveLiveRestirGiEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewRestirGiEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLiveRestirDiEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewRestirDiEnabledKey, true).toBool();
+}
+
+void MainWindow::saveLiveRestirDiEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewRestirDiEnabledKey, value);
 }
 
 double MainWindow::loadSavedLiveExposure() const {

@@ -572,7 +572,8 @@ extern "C" bool rt_realtime_render_frame(
 	bool enable_svgf,
 	bool enable_restir_gi,
 	float max_component_value,
-	const SvgfTuningParams* svgf_tuning
+	const SvgfTuningParams* svgf_tuning,
+	bool enable_restir_di
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -690,14 +691,16 @@ extern "C" bool rt_realtime_render_frame(
 		// unused" shape as denoise above, via OptiXRenderer::
 		// enableWorldPosOutput()'s own forwarding to the wavefront backend.
 		g_renderer->enableWorldPosOutput(out_world_pos_buffer != nullptr);
-		// ReSTIR DI (gpu/optix/wavefront_restir_helpers.h) - unconditionally
-		// on for every call through this Live-Preview-only entry point, unlike
-		// denoise/world-pos above which are each individually opt-in per call.
-		// batch/offline rendering (optix_render_main(), above) never calls
-		// this function or OptiXRenderer::enableRestir(), so it keeps today's
-		// classic single-draw NEE statistics unchanged - see WavefrontPathTracer::
+		// ReSTIR DI (gpu/optix/wavefront_restir_helpers.h) - like ReSTIR GI
+		// below, this IS now a genuine per-call opt-in (the caller's own
+		// `enable_restir_di` parameter, defaulting true to match this
+		// function's own previously-hardcoded-on behavior) - the GUI exposes
+		// it as a real toggle. batch/offline rendering (optix_render_main(),
+		// above) never calls this function or OptiXRenderer::enableRestir(),
+		// so disabling it here still leaves batch's own classic single-draw
+		// NEE statistics unchanged either way - see WavefrontPathTracer::
 		// setRestirEnabled()'s own comment.
-		g_renderer->enableRestir(true);
+		g_renderer->enableRestir(enable_restir_di);
 		// ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) - unlike DI above,
 		// this IS a genuine per-call opt-in (the caller's own
 		// `enable_restir_gi` parameter, defaulting true to match this

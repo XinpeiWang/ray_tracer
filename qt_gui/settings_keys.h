@@ -29,6 +29,7 @@ constexpr const char *kLivePreviewDenoiseBlendKey = "livePreview/denoiseBlend";
 constexpr const char *kLivePreviewDenoiseShowLatestKey = "livePreview/denoiseShowLatest";
 constexpr const char *kLivePreviewSvgfEnabledKey = "livePreview/svgfEnabled";
 constexpr const char *kLivePreviewRestirGiEnabledKey = "livePreview/restirGiEnabled";
+constexpr const char *kLivePreviewRestirDiEnabledKey = "livePreview/restirDiEnabled";
 constexpr const char *kLivePreviewExposureKey = "livePreview/exposure";
 constexpr const char *kLivePreviewSamplesKey = "livePreview/samples";
 constexpr const char *kLivePreviewMaxDepthKey = "livePreview/maxDepth";

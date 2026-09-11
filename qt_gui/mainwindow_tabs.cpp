@@ -1142,8 +1142,26 @@ void MainWindow::createSettingsTab() {
 		"cheaper per frame.")),
 		0, 0, 1, 4);
 
+	m_liveRestirDiCheck = new QCheckBox(tr("ReSTIR DI"));
+	m_liveRestirDiCheck->setChecked(m_liveRestirDiEnabled);
+	styleCheckBox(m_liveRestirDiCheck);
+	connect(m_liveRestirDiCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveRestirDiEnabled = checked;
+		saveLiveRestirDiEnabled(checked);
+		pushLiveRestirDiToSession();
+	});
+	// Own row too, same reasoning as ReSTIR GI's row above.
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveRestirDiCheck,
+		tr("Resampled direct-light sampling (ReSTIR DI) - independent of "
+		"ReSTIR GI above (that resamples one-bounce INDIRECT lighting; this "
+		"resamples the direct-light draw classic next-event estimation would "
+		"otherwise make from a single global alias-table sample). Disabling "
+		"it falls back to that classic single-sample draw, which is noisier "
+		"in scenes with many lights but cheaper per frame.")),
+		1, 0, 1, 4);
+
 	// The four numeric values grouped into their own clean 2-per-row grid
-	// (rows 1-2), separate from the checkbox above.
+	// (rows 2-3), separate from the checkboxes above.
 	m_liveExposureSpin = new QDoubleSpinBox();
 	m_liveExposureSpin->setRange(0.01, 100.0);
 	m_liveExposureSpin->setSingleStep(0.1);
@@ -1158,8 +1176,8 @@ void MainWindow::createSettingsTab() {
 		tr("A flat brightness multiplier applied before tone-mapping, same "
 		"meaning as the Render Options tab's own Exposure control but "
 		"independently set for Live Preview.")),
-		1, 0);
-	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 1, 1);
+		2, 0);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 2, 1);
 
 	m_liveSamplesSpinBox = new QSpinBox();
 	m_liveSamplesSpinBox->setRange(1, 16);
@@ -1177,8 +1195,8 @@ void MainWindow::createSettingsTab() {
 		tr("Samples per pixel rendered on each Live Preview call - Live "
 		"Preview has its own independent value from the Advanced Parameters "
 		"group below, which only applies to Image/Video.")),
-		1, 2);
-	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 1, 3);
+		2, 2);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 2, 3);
 
 	m_liveMaxDepthSpinBox = new QSpinBox();
 	m_liveMaxDepthSpinBox->setRange(1, 32);
@@ -1188,8 +1206,8 @@ void MainWindow::createSettingsTab() {
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
 		tr("Maximum ray depth for Live Preview - independent from the "
 		"Advanced Parameters group below, which only applies to Image/Video.")),
-		2, 0);
-	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 2, 1);
+		3, 0);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 3, 1);
 
 	m_liveFireflyClampSpin = new QDoubleSpinBox();
 	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
@@ -1206,8 +1224,8 @@ void MainWindow::createSettingsTab() {
 		tr("Caps the brightest possible sample value to suppress fireflies, "
 		"at the cost of clipping genuinely bright highlights. Lower values "
 		"clamp more aggressively.")),
-		2, 2);
-	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 2, 3);
+		3, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 3, 3);
 
 	liveModeSettingsLayout->addRow(liveRenderSettingsRow);
 	// Moved below the ReSTIR GI/Exposure/etc. block above (was above it) -

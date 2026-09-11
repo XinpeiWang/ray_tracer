@@ -17,15 +17,18 @@ namespace {
 //      bool denoise, double denoiseBlend,
 //      float* out_world_pos, float* out_camera_basis,
 //      float* out_rgb, bool enable_svgf, bool enable_restir_gi,
-//      float max_component_value)
+//      float max_component_value, const void* svgf_tuning,
+//      bool enable_restir_di)
 // Must stay byte-for-byte in sync with gpu/optix/optix_interface.h's
 // rt_realtime_render_frame() declaration and realtime_renderer_dll.cpp's own
 // export signature - see this file's own header comment on why there's no
 // shared header/versioning across this boundary. New parameters are always
-// appended at the end, never inserted in the middle.
+// appended at the end, never inserted in the middle - enable_restir_di is
+// appended last for exactly this reason, even though it logically pairs
+// with enable_restir_gi earlier in the list.
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
-							   bool, float, const void*);
+							   bool, float, const void*, bool);
 
 // const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
 // own comment. Same hand-duplication convention as RenderFrameFn above.
@@ -227,7 +230,7 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 								   double lookX, double lookY, double lookZ,
 								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-								   bool restirGi, int spp, int maxDepth, double fireflyClamp) {
+								   bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -253,6 +256,7 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	// list (rather than requiring a follow-up setX() call) so a value set
 	// before the very first start() isn't silently lost.
 	m_restirGi = restirGi;
+	m_restirDi = restirDi;
 	m_spp = spp;
 	m_maxDepth = maxDepth;
 	m_fireflyClamp = fireflyClamp;
@@ -323,6 +327,14 @@ void RealtimePreviewWorker::setRestirGi(bool restirGi) {
 	// contributing to each sample) - no reset needed, same reasoning
 	// setExposure() uses.
 	m_restirGi = restirGi;
+}
+
+void RealtimePreviewWorker::setRestirDi(bool restirDi) {
+	if (!m_running) return;
+	// Same reasoning as setRestirGi() above: toggling which direct-light
+	// sampling technique feeds each new sample doesn't change what m_accum
+	// structurally holds, so no reset is needed.
+	m_restirDi = restirDi;
 }
 
 void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
@@ -412,7 +424,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_denoise, m_denoiseBlend,
 						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
-						  reinterpret_cast<const void*>(&svgfTuning));
+						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -564,13 +576,13 @@ RealtimePreviewSession::~RealtimePreviewSession() {
 void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 									double lookX, double lookY, double lookZ,
 									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-									bool restirGi, int spp, int maxDepth, double fireflyClamp) {
+									bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
 		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ),
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf),
-		Q_ARG(bool, restirGi), Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp));
+		Q_ARG(bool, restirGi), Q_ARG(bool, restirDi), Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp));
 }
 
 void RealtimePreviewSession::stop() {
@@ -598,6 +610,10 @@ void RealtimePreviewSession::setExposure(double exposure) {
 
 void RealtimePreviewSession::setRestirGi(bool restirGi) {
 	QMetaObject::invokeMethod(m_worker, "setRestirGi", Qt::QueuedConnection, Q_ARG(bool, restirGi));
+}
+
+void RealtimePreviewSession::setRestirDi(bool restirDi) {
+	QMetaObject::invokeMethod(m_worker, "setRestirDi", Qt::QueuedConnection, Q_ARG(bool, restirDi));
 }
 
 void RealtimePreviewSession::setSppAndMaxDepth(int spp, int maxDepth) {

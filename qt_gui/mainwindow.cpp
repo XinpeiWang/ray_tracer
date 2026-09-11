@@ -774,6 +774,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 		saveLiveDenoiseEnabled(false);  // persist the correction, not just the in-memory value
 	}
 	m_liveRestirGiEnabled = loadSavedLiveRestirGiEnabled();
+	m_liveRestirDiEnabled = loadSavedLiveRestirDiEnabled();
 	m_liveExposure = loadSavedLiveExposure();
 	m_liveSamples = loadSavedLiveSamples();
 	m_liveMaxDepth = loadSavedLiveMaxDepth();

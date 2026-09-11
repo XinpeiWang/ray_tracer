@@ -162,7 +162,20 @@ bool rt_realtime_render_frame(
 	// exactly matching this function's own previously-hardcoded kSvgf*
 	// constants (wavefront_kernels_svgf.cu). Only meaningful when enable_svgf
 	// is true. Not retained past this call - copied by value before returning.
-	const SvgfTuningParams* svgf_tuning = nullptr
+	const SvgfTuningParams* svgf_tuning = nullptr,
+	// ReSTIR DI (gpu/optix/wavefront_restir_helpers.h) resampled direct-light
+	// sampling - independent from enable_restir_gi above (that one resamples
+	// one-bounce INDIRECT lighting; this one resamples the direct-light draw
+	// classic NEE would otherwise do with a single alias-table sample).
+	// Defaults true so every existing call site (this parameter was added
+	// after DI already shipped as an always-on, non-optional feature of this
+	// entry point) keeps today's exact behavior unchanged; the GUI exposes
+	// this as a real toggle, same as enable_restir_gi. Appended at the very
+	// end of the parameter list, after svgf_tuning, per this function's own
+	// DLL-boundary convention (see realtime_preview_session.cpp's
+	// RenderFrameFn comment) of only ever appending new parameters, never
+	// inserting them in the middle.
+	bool enable_restir_di = true
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the
