@@ -452,28 +452,18 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			min-height: 26px;
 			margin: 3px 2px;
 		}
-		/* Fusion splits a spin box's contents-rect height in half for its
-		   up/down step buttons, so at the shared 26px min-height above
-		   (~12px per button once the border is subtracted) the PlusMinus
-		   primitives' cross-bars are proportionally too thick for the
-		   space: the "+" blobs into a diamond and only the "-" reads
-		   cleanly (see styleSpinBox()'s comment for why PlusMinus is used
-		   at all). Taller spin boxes only, so each button gets room for a
-		   legible glyph; the combo box keeps the 26px height. */
+		/* Taller than the shared 26px above so SpinBoxStepButtons'
+		   (mainwindow_widgets.h) two stacked real QToolButtons - NOT the
+		   native ::up-button/::down-button subcontrols, see
+		   styleSpinBox()'s own comment for why - each get enough vertical
+		   room for a legible chevron icon; the combo box keeps 26px. */
 		QSpinBox, QDoubleSpinBox {
 			min-height: 40px;
-		}
-		/* Sizes only the clickable button rect, not ::up-arrow/
-		   ::down-arrow - those stay completely unstyled so Fusion keeps
-		   drawing its native PE_IndicatorSpinPlus/Minus fill inside the
-		   wider rect (styling the arrow subcontrol itself is what
-		   collapsed to an empty box, see styleSpinBox()'s comment).
-		   Widens len = min(buttonWidth, buttonHeight)'s width side to
-		   match the min-height bump above, so neither dimension caps it
-		   down to a thick, blobby cross. */
-		QSpinBox::up-button, QDoubleSpinBox::up-button,
-		QSpinBox::down-button, QDoubleSpinBox::down-button {
-			width: 20px;
+			/* Leaves room on the right for SpinBoxStepButtons' overlay -
+			   with setButtonSymbols(NoButtons), Fusion no longer reserves
+			   any space there itself, so the edit field would otherwise
+			   run text underneath the buttons. */
+			padding-right: 26px;
 		}
 		QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover, QLineEdit:hover {
 			background-color: %SURFACE2%;
@@ -971,23 +961,26 @@ void MainWindow::applyComboPopupPalette(QComboBox *combo) {
 }
 
 void MainWindow::styleSpinBox(QAbstractSpinBox *spinBox) {
-	// UpDownArrows (the unstyled default - no setButtonSymbols() call) was
-	// tried first, reusing the same "leave the subcontrol alone" approach
-	// that works for m_sceneCombo's own drop-down arrow - it rendered as a
-	// completely empty box instead (confirmed live), matching this file's
-	// prior history of every ::up-arrow/::down-arrow customization attempt
-	// collapsing to nothing with this style/Qt version. Back to PlusMinus:
-	// Fusion's PE_IndicatorSpinPlus/Minus fill-rect primitives
-	// (QCommonStyle::drawPrimitive) are the one thing confirmed to render
-	// something. Geometry: horizontal bar len x step, plus a crossing
-	// vertical bar for "+", where len = min(buttonWidth, buttonHeight) and
-	// step = round-up-to-even((len+4)/5) - see applyDarkTheme()'s
-	// ::up-button/::down-button width rule, which widens the button rect
-	// (without touching ::up-arrow/::down-arrow, so the native fill
-	// primitive keeps drawing) so len isn't capped by Fusion's narrow
-	// default button width, keeping the step/len ratio low enough to read
-	// as a cross instead of a blob.
-	spinBox->setButtonSymbols(QAbstractSpinBox::PlusMinus);
+	// NoButtons: the native ::up-button/::down-button/::up-arrow/::down-arrow
+	// QSS subcontrols collapse to a completely empty box under this app's
+	// style/Qt version no matter what's put in them (tried: custom
+	// background+border, image icons via data-URI/PNG resource, even native
+	// PlusMinus text - same failure QComboBox's own arrow has, see
+	// applyDarkTheme()'s stylesheet comment). SpinBoxStepButtons
+	// (mainwindow_widgets.h) supplies real, separate QToolButtons instead -
+	// actual up/down chevron icons, not a native subcontrol - the same
+	// workaround InfoGroupBox already uses for a group box's title icon.
+	spinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
+	QToolButton *up = new QToolButton(spinBox);
+	QToolButton *down = new QToolButton(spinBox);
+	up->setAutoRaise(true);
+	down->setAutoRaise(true);
+	up->setIconSize(QSize(10, 10));
+	down->setIconSize(QSize(10, 10));
+	icon_tint::apply(up, ":/icons/chevron_up.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	icon_tint::apply(down, ":/icons/chevron_down.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	// Owned by spinBox (QObject parent) - no pointer to keep.
+	new SpinBoxStepButtons(spinBox, up, down);
 
 	// Styling otherwise comes entirely from the global stylesheet in
 	// applyDarkTheme() now, so every QSpinBox/QDoubleSpinBox looks the

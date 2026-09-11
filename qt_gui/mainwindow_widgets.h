@@ -166,6 +166,89 @@ private:
 };
 
 // ============================================================================
+// SpinBoxStepButtons
+// ============================================================================
+// Real up/down step buttons for a QAbstractSpinBox, drawn as separate child
+// QToolButtons layered over its right edge instead of through the native
+// ::up-button/::down-button/::up-arrow/::down-arrow QSS subcontrols - every
+// attempt to put actual content there (custom background+border, image icons
+// via data-URI/PNG resource, even native PlusMinus text) rendered as a
+// completely empty box under this app's style/Qt version (see
+// MainWindow::styleSpinBox()'s own comment, and the identical QComboBox
+// arrow history in mainwindow_style.cpp's stylesheet). Same "real child
+// widget instead of a native subcontrol" workaround InfoGroupBox above
+// already uses for a group box's title icon.
+//
+// Construct with NoButtons already set on the spin box (see styleSpinBox()) -
+// this is the only pair of step buttons the box will ever show. Owned by
+// the spin box (QObject parent), so no caller needs to keep the pointer.
+// ============================================================================
+class SpinBoxStepButtons : public QObject {
+	Q_OBJECT
+public:
+	SpinBoxStepButtons(QAbstractSpinBox *spinBox, QToolButton *upButton, QToolButton *downButton)
+		: QObject(spinBox), m_spinBox(spinBox), m_up(upButton), m_down(downButton) {
+		m_up->setParent(spinBox);
+		m_down->setParent(spinBox);
+		// Not part of tab order and no click-to-focus ring - these are a
+		// convenience shortcut for the mouse, not a substitute for typing
+		// directly into (or arrow-keying) the field itself, which keeps
+		// keyboard focus behavior exactly as before.
+		m_up->setFocusPolicy(Qt::NoFocus);
+		m_down->setFocusPolicy(Qt::NoFocus);
+		m_up->setCursor(Qt::ArrowCursor);
+		m_down->setCursor(Qt::ArrowCursor);
+		connect(m_up, &QToolButton::clicked, spinBox, &QAbstractSpinBox::stepUp);
+		connect(m_down, &QToolButton::clicked, spinBox, &QAbstractSpinBox::stepDown);
+		spinBox->installEventFilter(this);
+		sync();
+	}
+
+protected:
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		if (watched == m_spinBox) {
+			switch (event->type()) {
+			case QEvent::Resize:
+			case QEvent::Show:
+			case QEvent::EnabledChange:
+				sync();
+				break;
+			default:
+				break;
+			}
+		}
+		return QObject::eventFilter(watched, event);
+	}
+
+private:
+	// Repositions both buttons over the spin box's own right edge (top half/
+	// bottom half) and mirrors its enabled/visible state - a disabled or
+	// hidden spin box (e.g. Camera X/Y/Z before "Custom" is selected) must
+	// leave its step buttons disabled/hidden right along with it, since
+	// they're independent sibling widgets rather than part of its own
+	// native rendering.
+	void sync() {
+		constexpr int kButtonWidth = 20;
+		constexpr int kMargin = 2;
+		const int h = m_spinBox->height();
+		const int halfH = h / 2;
+		const int x = m_spinBox->width() - kButtonWidth - kMargin;
+		m_up->setGeometry(x, kMargin, kButtonWidth, halfH - kMargin);
+		m_down->setGeometry(x, halfH, kButtonWidth, h - halfH - kMargin);
+		m_up->raise();
+		m_down->raise();
+		m_up->setEnabled(m_spinBox->isEnabled());
+		m_down->setEnabled(m_spinBox->isEnabled());
+		m_up->setVisible(m_spinBox->isVisible());
+		m_down->setVisible(m_spinBox->isVisible());
+	}
+
+	QAbstractSpinBox *m_spinBox;
+	QToolButton *m_up;
+	QToolButton *m_down;
+};
+
+// ============================================================================
 // CurrentPageSizedStackedWidget
 // ============================================================================
 // QStackedWidget's own sizeHint()/minimumSizeHint() report the maximum over
