@@ -228,8 +228,12 @@ private:
 	// they're independent sibling widgets rather than part of its own
 	// native rendering.
 	void sync() {
-		constexpr int kButtonWidth = 20;
-		constexpr int kMargin = 2;
+		// Widened from 20px to comfortably fit a wider-than-tall chevron
+		// icon (see styleSpinBox()'s own comment) - vertical room is capped
+		// by matching the spin box's height to the combo box/line edit, but
+		// width has slack to spare.
+		constexpr int kButtonWidth = 26;
+		constexpr int kMargin = 1;
 		const int h = m_spinBox->height();
 		const int halfH = h / 2;
 		const int x = m_spinBox->width() - kButtonWidth - kMargin;

@@ -17,6 +17,10 @@ namespace {
 // entry behind, and there is no bookkeeping to keep in sync at the call sites.
 constexpr const char *kPathProperty = "themedIconPath";
 constexpr const char *kRoleProperty = "themedIconRole";
+// Only set on a button that went through the fixed-size apply() overload -
+// its presence is what tells retint() to redo via the fixed-size tinted()
+// instead of the default square-multi-size one.
+constexpr const char *kFixedSizeProperty = "themedIconFixedSize";
 
 // The sizes Qt asks for in this app (menu items, buttons, combo items) plus
 // their 2x hi-dpi equivalents. QIcon picks the closest and scales, so a few
@@ -79,6 +83,29 @@ QIcon tinted(const QString &path, const QColor &colour) {
 	return result;
 }
 
+QIcon tinted(const QString &path, const QColor &colour, const QSize &fixedSize) {
+	// Cached by (path, colour, size) - same reasoning as the square overload
+	// above, just with the size folded into the key since this one doesn't
+	// pre-render a fixed set of sizes.
+	static QHash<QString, QIcon> cache;
+	const QString key = path + QLatin1Char('|') + colour.name(QColor::HexArgb) + QLatin1Char('|') +
+						 QString::number(fixedSize.width()) + QLatin1Char('x') + QString::number(fixedSize.height());
+	const auto cached = cache.constFind(key);
+	if (cached != cache.constEnd()) return cached.value();
+
+	QIcon result;
+	QPixmap pixmap = QIcon(path).pixmap(fixedSize);
+	if (!pixmap.isNull()) {
+		QPainter painter(&pixmap);
+		painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+		painter.fillRect(pixmap.rect(), colour);
+		painter.end();
+		result.addPixmap(pixmap);
+	}
+	cache.insert(key, result);
+	return result;
+}
+
 void apply(QAction *action, const QString &path, Role role, const QColor &colour) {
 	remember(action, path, role);
 	action->setIcon(tinted(path, colour));
@@ -87,6 +114,13 @@ void apply(QAction *action, const QString &path, Role role, const QColor &colour
 void apply(QAbstractButton *button, const QString &path, Role role, const QColor &colour) {
 	remember(button, path, role);
 	button->setIcon(tinted(path, colour));
+}
+
+void apply(QAbstractButton *button, const QString &path, Role role, const QColor &colour,
+		   const QSize &fixedSize) {
+	remember(button, path, role);
+	button->setProperty(kFixedSizeProperty, fixedSize);
+	button->setIcon(tinted(path, colour, fixedSize));
 }
 
 void addItem(QComboBox *combo, const QString &path, const QString &text,
@@ -110,7 +144,13 @@ void retint(QWidget *root, const QColor &bodyColour, const QColor &primaryColour
 		const QVariant path = object->property(kPathProperty);
 		if (!path.isValid()) return;
 		const Role role = static_cast<Role>(object->property(kRoleProperty).toInt());
-		setter(tinted(path.toString(), colourForRole(role, bodyColour, primaryColour, dangerColour)));
+		const QColor colour = colourForRole(role, bodyColour, primaryColour, dangerColour);
+		const QVariant fixedSize = object->property(kFixedSizeProperty);
+		if (fixedSize.isValid()) {
+			setter(tinted(path.toString(), colour, fixedSize.toSize()));
+		} else {
+			setter(tinted(path.toString(), colour));
+		}
 	};
 
 	for (QAction *action : root->findChildren<QAction *>())

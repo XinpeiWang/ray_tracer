@@ -459,11 +459,12 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		   primitive's blobby cross bars once did, so every field on this
 		   tab is a consistent height whether it's a spin box or a dropdown. */
 		QSpinBox, QDoubleSpinBox {
-			/* Leaves room on the right for SpinBoxStepButtons' overlay -
-			   with setButtonSymbols(NoButtons), Fusion no longer reserves
-			   any space there itself, so the edit field would otherwise
-			   run text underneath the buttons. */
-			padding-right: 26px;
+			/* Leaves room on the right for SpinBoxStepButtons' overlay
+			   (its own 26px kButtonWidth + margin) - with
+			   setButtonSymbols(NoButtons), Fusion no longer reserves any
+			   space there itself, so the edit field would otherwise run
+			   text underneath the buttons. */
+			padding-right: 30px;
 		}
 		QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover, QLineEdit:hover {
 			background-color: %SURFACE2%;
@@ -975,10 +976,34 @@ void MainWindow::styleSpinBox(QAbstractSpinBox *spinBox) {
 	QToolButton *down = new QToolButton(spinBox);
 	up->setAutoRaise(true);
 	down->setAutoRaise(true);
-	up->setIconSize(QSize(8, 8));
-	down->setIconSize(QSize(8, 8));
-	icon_tint::apply(up, ":/icons/chevron_up.svg", icon_tint::Role::Body, m_activeTheme.textBody);
-	icon_tint::apply(down, ":/icons/chevron_down.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	// Zeroes Fusion's own default toolbutton padding/border, which would
+	// otherwise eat into the little vertical room SpinBoxStepButtons' two
+	// stacked buttons have (each is only ~12px tall at the spin box's own
+	// 26px height) - without this, the icon below renders noticeably
+	// smaller than its own requested size.
+	const QString kNoChromeStyle = QStringLiteral("QToolButton { border: none; padding: 0px; margin: 0px; }");
+	up->setStyleSheet(kNoChromeStyle);
+	down->setStyleSheet(kNoChromeStyle);
+	// Wider than tall (not square) - vertical room is capped at ~12px by
+	// matching the spin box's height to the combo box/line edit above, but
+	// the button column has more width to spare, so a flatter, wider
+	// chevron reads as noticeably bigger without needing more height.
+	//
+	// The fixed-size apply() overload (icon_tint.h), not the default one:
+	// that one always rasterizes a SQUARE pixmap (its kSizes table), and
+	// QIcon/QToolButton then scale that square source to FIT within
+	// setIconSize()'s box while preserving its own aspect ratio - for a
+	// non-square target that means the request is satisfied by shrinking to
+	// the smaller dimension and letterboxing the rest, silently discarding
+	// the extra width instead of actually using it. The fixed-size overload
+	// rasterizes directly at this exact (non-square) size, and
+	// chevron_up/down.svg's own viewBox already matches its 2:1 ratio, so
+	// nothing gets letterboxed.
+	const QSize kChevronSize(18, 9);
+	up->setIconSize(kChevronSize);
+	down->setIconSize(kChevronSize);
+	icon_tint::apply(up, ":/icons/chevron_up.svg", icon_tint::Role::Body, m_activeTheme.textBody, kChevronSize);
+	icon_tint::apply(down, ":/icons/chevron_down.svg", icon_tint::Role::Body, m_activeTheme.textBody, kChevronSize);
 	// Owned by spinBox (QObject parent) - no pointer to keep.
 	new SpinBoxStepButtons(spinBox, up, down);
 

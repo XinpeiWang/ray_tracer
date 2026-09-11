@@ -3,6 +3,7 @@
 
 #include <QColor>
 #include <QIcon>
+#include <QSize>
 #include <QString>
 
 class QAbstractButton;
@@ -39,9 +40,23 @@ enum class Role {
 // Recolours the resource at `path`, preserving its alpha.
 QIcon tinted(const QString &path, const QColor &colour);
 
+// Same, but rendered at exactly `fixedSize` (a single pixmap, not this
+// module's usual few-common-sizes set) - for a non-square icon on a
+// fixed-size UI element (SpinBoxStepButtons' chevrons), where the default
+// tinted() would rasterize a square pixmap and let QIcon's own aspect-
+// preserving scaling waste the non-square target size instead of actually
+// filling it. The source SVG's own viewBox should already be `fixedSize`'s
+// aspect ratio, or QSvgIconEngine's aspect-preserving render will still
+// letterbox it within this single pixmap.
+QIcon tinted(const QString &path, const QColor &colour, const QSize &fixedSize);
+
 // Sets the icon and records (path, role) so retint() can redo it later.
 void apply(QAction *action, const QString &path, Role role, const QColor &colour);
 void apply(QAbstractButton *button, const QString &path, Role role, const QColor &colour);
+// Fixed-size variant of the QAbstractButton overload above - see the
+// tinted(path, colour, fixedSize) overload's own comment.
+void apply(QAbstractButton *button, const QString &path, Role role, const QColor &colour,
+		   const QSize &fixedSize);
 
 // Re-tints every action and button under `root` that went through apply().
 // bodyColour, primaryColour and dangerColour supply the three roles.
