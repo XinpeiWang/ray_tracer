@@ -82,6 +82,14 @@ static bool prepareSceneAndCamera(
 	}
 
 	SceneData scene;
+	// See SceneData::skipExpensiveGeometryLoad's own comment - this scene's
+	// geometry is only ever consumed a few lines down (the g_uploaded_scene_id
+	// check just before g_renderer->buildScene()), and only when scene_id has
+	// actually changed; when it hasn't, this call exists purely to get a
+	// fresh camera_params/cameraExtra for the CURRENT cam_x/y/z/lookat, and
+	// build_scene()'s own mesh-loading helpers can skip their expensive work
+	// entirely.
+	scene.skipExpensiveGeometryLoad = (scene_id == g_uploaded_scene_id);
 	float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
 	cameraExtra = GpuCameraParams{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
 	// userSeed can't rely on the zero-init default the way regularize/

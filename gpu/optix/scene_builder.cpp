@@ -15,6 +15,8 @@
 #include "../../src/shared/scene_descriptor.h"
 #include <cmath>
 #include <cstdlib>
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <cassert>
 #include <iostream>
@@ -926,6 +928,12 @@ namespace {
 	// every other caller is unaffected.
 	inline void load_obj_triangles_gpu(SceneData& scene, const char* filename,
 			int materialIdx, float scale, float3 offset, bool flip_xz = false) {
+		// See SceneData::skipExpensiveGeometryLoad's own comment - a pure
+		// camera-move call whose scene.triangles output would be built only
+		// to be discarded unused a few lines up its own call chain. Checked
+		// first, before even the raw-parse cache lookup, so a skip costs
+		// nothing beyond this one branch.
+		if (scene.skipExpensiveGeometryLoad) return;
 		// Cache the RAW (untransformed, file-space) parsed positions/normals/
 		// faces, keyed by filename alone - not by (filename, materialIdx,
 		// scale, offset, flip_xz) - so every call site loading the SAME file
@@ -1068,33 +1076,77 @@ namespace {
 		if (!raw) return;
 
 		// Apply THIS call's own scale/offset/flip_xz/materialIdx to the
-		// (possibly cached) raw geometry and emit into scene.triangles -
-		// cheap, pure per-vertex arithmetic, unconditionally re-run every
-		// call so different call sites reusing the same file with different
-		// transforms/materials each get their own correctly-transformed copy.
-		auto transformPos = [&](const float3& p) -> float3 {
-			float lx = p.x * scale, ly = p.y * scale, lz = p.z * scale;
-			if (flip_xz) { lx = -lx; lz = -lz; }
-			return make_float3(lx + offset.x, ly + offset.y, lz + offset.z);
-		};
-		auto transformNormal = [&](const float3& n) -> float3 {
-			return flip_xz ? make_float3(-n.x, n.y, -n.z) : n;
-		};
-		scene.triangles.reserve(scene.triangles.size() + raw->faces.size());
-		for (const RawFace& rf : raw->faces) {
-			TriangleData t{};
-			t.p0 = transformPos(rf.p0);
-			t.p1 = transformPos(rf.p1);
-			t.p2 = transformPos(rf.p2);
-			t.materialIdx = materialIdx;
-			t.hasNormals = raw->hasNormals;
-			if (t.hasNormals) {
-				t.n0 = transformNormal(rf.n0);
-				t.n1 = transformNormal(rf.n1);
-				t.n2 = transformNormal(rf.n2);
-			}
-			scene.triangles.push_back(t);
-		}
+		// (possibly cached) raw geometry - cached a SECOND time here, keyed
+		// by (filename, materialIdx, scale, offset, flip_xz) rather than
+		// filename alone, since the transform+materialIdx bake-in below is
+		// what a moving Live Preview camera on a large mesh (this function's
+		// own worst case: xyzrgb_dragon.obj, ~7.2M triangles) re-pays every
+		// single frame even with the raw-parse cache above warm - measured
+		// directly (see this session's own profiling) at ~140-176ms/frame
+		// for a comparably-sized mesh, ~70-100x the GPU render cost for the
+		// same frame. For a fixed scene_id this call site always passes the
+		// exact same (materialIdx, scale, offset, flip_xz) tuple every call
+		// (build_scene() re-runs the same case in the same order), so this
+		// cache hits on every frame after the first - see
+		// scene_loader_transform_cache_test.cpp for the regression test
+		// confirming two DIFFERENT scene_ids sharing this same file at
+		// different transforms still each get their own correctly-
+		// transformed copy (this cache's key includes the transform
+		// precisely so that stays true). Cached forever per process, same
+		// "no hot-reload" precedent as every other cache in this file.
+		//
+		// gamma-style bit-pattern keys for scale/offset - see
+		// getOrBuildPbrtImageTexture's own identical comment (pbrt_gpu_
+		// builder_materials.h) for why std::to_string(float) (fixed 6
+		// decimal digits) would risk two distinct-but-close transforms
+		// colliding into the same cache key.
+		std::uint32_t scaleBits;
+		std::memcpy(&scaleBits, &scale, sizeof(scaleBits));
+		std::uint32_t offXBits, offYBits, offZBits;
+		std::memcpy(&offXBits, &offset.x, sizeof(offXBits));
+		std::memcpy(&offYBits, &offset.y, sizeof(offYBits));
+		std::memcpy(&offZBits, &offset.z, sizeof(offZBits));
+		const std::string transformKey = std::string(filename) +
+			"|m" + std::to_string(materialIdx) +
+			"|s" + std::to_string(scaleBits) +
+			"|ox" + std::to_string(offXBits) + "|oy" + std::to_string(offYBits) + "|oz" + std::to_string(offZBits) +
+			"|f" + (flip_xz ? "1" : "0");
+
+		static std::unordered_map<std::string, std::vector<TriangleData>> s_transformedObjCache;
+		static std::mutex s_transformedObjCacheMutex;
+
+		const std::vector<TriangleData>* transformed = get_or_build_cached(
+			s_transformedObjCache, s_transformedObjCacheMutex, transformKey,
+			[&](std::vector<TriangleData>& out) -> bool {
+				auto transformPos = [&](const float3& p) -> float3 {
+					float lx = p.x * scale, ly = p.y * scale, lz = p.z * scale;
+					if (flip_xz) { lx = -lx; lz = -lz; }
+					return make_float3(lx + offset.x, ly + offset.y, lz + offset.z);
+				};
+				auto transformNormal = [&](const float3& n) -> float3 {
+					return flip_xz ? make_float3(-n.x, n.y, -n.z) : n;
+				};
+				out.reserve(raw->faces.size());
+				for (const RawFace& rf : raw->faces) {
+					TriangleData t{};
+					t.p0 = transformPos(rf.p0);
+					t.p1 = transformPos(rf.p1);
+					t.p2 = transformPos(rf.p2);
+					t.materialIdx = materialIdx;
+					t.hasNormals = raw->hasNormals;
+					if (t.hasNormals) {
+						t.n0 = transformNormal(rf.n0);
+						t.n1 = transformNormal(rf.n1);
+						t.n2 = transformNormal(rf.n2);
+					}
+					out.push_back(t);
+				}
+				return true;
+			});
+		if (!transformed) return;
+
+		scene.triangles.reserve(scene.triangles.size() + transformed->size());
+		scene.triangles.insert(scene.triangles.end(), transformed->begin(), transformed->end());
 	}
 
 	// GPU-side (float3-typed) thin wrappers over src/shared/mtl_parse.h's
@@ -1233,6 +1285,18 @@ namespace {
 	// has no non-degenerate Ke data.
 	inline void load_obj_triangles_mtl_gpu(SceneData& scene, const char* filename,
 			int fallbackMaterialIdx, float scale, float3 offset, const char* textureDir = nullptr) {
+		// See load_obj_triangles_gpu()'s own identical check just above -
+		// same SceneData::skipExpensiveGeometryLoad reasoning, and the
+		// dominant cost this specific function's own callers (Sponza,
+		// Bistro, Rungholt, ...) pay per Live Preview frame.
+		if (scene.skipExpensiveGeometryLoad) return;
+		// Captured before resolveSceneMaterialIdx() (further down) starts
+		// mutating scene.materials/scene.textures - part of the transformed-
+		// output cache key below, since the per-face materialIdx values baked
+		// into that cache are only valid for calls that start from this same
+		// baseline (see that cache's own comment for the full rationale).
+		const size_t baselineMaterials = scene.materials.size();
+		const size_t baselineTextures = scene.textures.size();
 		// Cache the RAW (untransformed, file-space) parsed positions/normals/
 		// uvs/faces AND the resolved mtllib/foundPrefix, keyed by filename -
 		// the actual .obj file read + line-by-line parse (millions of lines
@@ -1243,8 +1307,8 @@ namespace {
 		// build_loaded_pbrt_scene()'s pbrt_load::loadFile() cache, for the
 		// same reasoning). Each face's ".mtl material name" is resolved to a
 		// small per-file-local integer index (into uniqueMtlNames) at PARSE
-		// time rather than kept as a string - the per-face loop below still
-		// runs fresh on every call (cached or not), and hashing a string 6.7
+		// time rather than kept as a string - the per-face loop further down
+		// is ALSO cached now (see its own comment), and hashing a string 6.7
 		// million times a call was itself a second major cost this cache
 		// alone would not have fixed (a material is only ever resolved to a
 		// real scene.materials index once per UNIQUE name below, via
@@ -1367,38 +1431,76 @@ namespace {
 		// Locate the companion .mtl the same way CPU's load_obj_mtl() does:
 		// prefer the file's own mtllib directive, fall back to
 		// "<same name as the .obj>.mtl" if that's missing/empty/unreadable.
-		// Re-parsed fresh every call (not cached) - proportional to unique
-		// MATERIAL count, not face count, nowhere near the cost the raw
-		// geometry cache above addresses.
-		std::unordered_map<std::string, float3> mtlColors;
-		std::string mtlPathUsed = raw.mtllibName;
-		if (!raw.mtllibName.empty())
-			mtlColors = parse_mtl_gpu(raw.mtllibName);
-		if (mtlColors.empty()) {
-			std::string name(filename);
-			auto dot = name.find_last_of('.');
-			mtlPathUsed = (dot == std::string::npos ? name : name.substr(0, dot)) + ".mtl";
-			mtlColors = parse_mtl_gpu(mtlPathUsed);
-		}
-		std::unordered_map<std::string, std::string> mtlTextures;
-		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty())
-			mtlTextures = parse_mtl_textures_gpu(mtlPathUsed);
-		std::unordered_map<std::string, float3> mtlEmission;
-		std::unordered_map<std::string, std::string> mtlKeTextures;
-		if (!mtlPathUsed.empty()) {
-			mtlEmission = parse_mtl_emission_gpu(mtlPathUsed);
-			if (textureDir && textureDir[0] != '\0')
-				mtlKeTextures = parse_mtl_ke_textures_gpu(mtlPathUsed);
-		}
-		std::unordered_map<std::string, MtlSpecularParamsGpu> mtlSpecular;
-		if (!mtlPathUsed.empty())
-			mtlSpecular = parse_mtl_specular_gpu(mtlPathUsed);
-		std::unordered_map<std::string, std::string> mtlBump;
-		std::unordered_map<std::string, std::string> mtlAlpha;
-		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty()) {
-			mtlBump = parse_mtl_bump_textures_gpu(mtlPathUsed);
-			mtlAlpha = parse_mtl_alpha_textures_gpu(mtlPathUsed);
-		}
+		//
+		// Each parse_mtl_*_gpu() call below independently opens and fully
+		// re-reads the SAME .mtl file (mtl_parse.h's own open_mtl_file() per
+		// function, not shared) - up to 7 full file reads of one file, every
+		// single call to THIS function. Despite scaling with unique material
+		// count rather than face count (this comment's own prior claim),
+		// measured directly (this session's own profiling, after caching the
+		// per-face geometry loop above) to still cost ~65ms/frame on
+		// Rungholt's real .mtl file - proportional to FILE SIZE (comments,
+		// texture references), not entry count, and paid 7 times over. Cached
+		// as one bundle keyed by (filename, hasTextureDir) - hasTextureDir is
+		// part of the key, not just a runtime branch inside the builder,
+		// because mtlTextures/mtlKeTextures/mtlBump/mtlAlpha must stay
+		// EMPTY (not merely unused) when textureDir is null: their own use
+		// sites further down concatenate `raw.foundPrefix + textureDir`
+		// with no separate null check of their own, relying on an empty map
+		// to make that code unreachable - populating them regardless of
+		// textureDir, cached or not, would crash the very next call that
+		// passes textureDir == nullptr.
+		struct MtlDerivedMaps {
+			std::string mtlPathUsed;
+			std::unordered_map<std::string, float3> mtlColors;
+			std::unordered_map<std::string, std::string> mtlTextures;
+			std::unordered_map<std::string, float3> mtlEmission;
+			std::unordered_map<std::string, std::string> mtlKeTextures;
+			std::unordered_map<std::string, MtlSpecularParamsGpu> mtlSpecular;
+			std::unordered_map<std::string, std::string> mtlBump;
+			std::unordered_map<std::string, std::string> mtlAlpha;
+		};
+		const bool hasTextureDir = (textureDir && textureDir[0] != '\0');
+		const std::string mtlMapsKey = std::string(filename) + (hasTextureDir ? "|td1" : "|td0");
+
+		static std::unordered_map<std::string, MtlDerivedMaps> s_mtlDerivedCache;
+		static std::mutex s_mtlDerivedCacheMutex;
+
+		const MtlDerivedMaps* mtlMapsPtr = get_or_build_cached(s_mtlDerivedCache, s_mtlDerivedCacheMutex, mtlMapsKey,
+			[&](MtlDerivedMaps& out) -> bool {
+				out.mtlPathUsed = raw.mtllibName;
+				if (!raw.mtllibName.empty())
+					out.mtlColors = parse_mtl_gpu(raw.mtllibName);
+				if (out.mtlColors.empty()) {
+					std::string name(filename);
+					auto dot = name.find_last_of('.');
+					out.mtlPathUsed = (dot == std::string::npos ? name : name.substr(0, dot)) + ".mtl";
+					out.mtlColors = parse_mtl_gpu(out.mtlPathUsed);
+				}
+				if (hasTextureDir && !out.mtlPathUsed.empty())
+					out.mtlTextures = parse_mtl_textures_gpu(out.mtlPathUsed);
+				if (!out.mtlPathUsed.empty()) {
+					out.mtlEmission = parse_mtl_emission_gpu(out.mtlPathUsed);
+					if (hasTextureDir)
+						out.mtlKeTextures = parse_mtl_ke_textures_gpu(out.mtlPathUsed);
+				}
+				if (!out.mtlPathUsed.empty())
+					out.mtlSpecular = parse_mtl_specular_gpu(out.mtlPathUsed);
+				if (hasTextureDir && !out.mtlPathUsed.empty()) {
+					out.mtlBump = parse_mtl_bump_textures_gpu(out.mtlPathUsed);
+					out.mtlAlpha = parse_mtl_alpha_textures_gpu(out.mtlPathUsed);
+				}
+				return true;
+			});
+		if (!mtlMapsPtr) return;
+		const std::string& mtlPathUsed = mtlMapsPtr->mtlPathUsed;
+		const std::unordered_map<std::string, float3>& mtlColors = mtlMapsPtr->mtlColors;
+		const std::unordered_map<std::string, std::string>& mtlTextures = mtlMapsPtr->mtlTextures;
+		const std::unordered_map<std::string, float3>& mtlEmission = mtlMapsPtr->mtlEmission;
+		const std::unordered_map<std::string, std::string>& mtlKeTextures = mtlMapsPtr->mtlKeTextures;
+		const std::unordered_map<std::string, MtlSpecularParamsGpu>& mtlSpecular = mtlMapsPtr->mtlSpecular;
+		const std::unordered_map<std::string, std::string>& mtlBump = mtlMapsPtr->mtlBump;
+		const std::unordered_map<std::string, std::string>& mtlAlpha = mtlMapsPtr->mtlAlpha;
 
 		auto cornerNormal = [&](int ni) -> float3 {
 			if (ni >= 0 && ni < static_cast<int>(raw.normals.size())) return raw.normals[ni];
@@ -1614,35 +1716,81 @@ namespace {
 			return make_float3(p.x * scale + offset.x, p.y * scale + offset.y, p.z * scale + offset.z);
 		};
 
-		scene.triangles.reserve(scene.triangles.size() + raw.faces.size());
-		for (const RawFaceMtl& f : raw.faces) {
-			const int materialIdx = (f.mtlNameIdx >= 0) ? localToSceneMaterialIdx[f.mtlNameIdx] : fallbackMaterialIdx;
-			TriangleData t{};
-			t.p0 = transformPos(raw.positions[f.p[0]]);
-			t.p1 = transformPos(raw.positions[f.p[1]]);
-			t.p2 = transformPos(raw.positions[f.p[2]]);
-			t.materialIdx = materialIdx;
-			t.hasNormals = !raw.normals.empty();
-			if (t.hasNormals) {
-				t.n0 = cornerNormal(f.n[0]);
-				t.n1 = cornerNormal(f.n[1]);
-				t.n2 = cornerNormal(f.n[2]);
-			}
-			t.hasUVs = !raw.uvs.empty();
-			if (t.hasUVs) {
-				t.uv0 = cornerUV(f.t[0]);
-				t.uv1 = cornerUV(f.t[1]);
-				t.uv2 = cornerUV(f.t[2]);
-			}
-			// Register as an NEE-samplable light if its material is
-			// genuinely emissive, mirroring pbrt_gpu_builder.h's identical
-			// two-line pattern for leftover (non-quad-mergeable) emissive
-			// triangles.
-			if (f.mtlNameIdx >= 0 && localMtlIsEmissive[f.mtlNameIdx]) {
-				scene.lightIndices.push_back(safe_cast_to_int(scene.triangles.size()));
-				scene.lightKinds.push_back(GpuLightKind::Triangle);
-			}
-			scene.triangles.push_back(t);
+		// Cache the transformed-AND-materialIdx-resolved per-face output,
+		// keyed by everything that determines it - see load_obj_triangles_
+		// gpu()'s own identical cache (just above) for the full rationale
+		// and the measured ~140-176ms/frame cost this addresses for a
+		// mesh Rungholt's size. localToSceneMaterialIdx's own resolved
+		// indices are baked into the cached TriangleData::materialIdx
+		// values, so the key must also pin down what those indices WERE -
+		// baselineMaterials/baselineTextures (captured at function entry,
+		// before resolveSceneMaterialIdx() started mutating scene.materials/
+		// scene.textures) do that: for a fixed scene_id, build_scene() always
+		// re-runs the same case in the same order, so this call always sees
+		// the same baseline and always resolves the same names to the same
+		// indices, making a cache hit here exactly reproduce what a full
+		// re-resolve would have produced. Light indices are stored as
+		// OFFSETS INTO THIS BATCH (not into scene.triangles), so they stay
+		// correct regardless of what scene.triangles.size() happens to be at
+		// use time - resolved to real, absolute scene.lightIndices entries
+		// only after the cache lookup, below.
+		struct TransformedObjMtl {
+			std::vector<TriangleData> triangles;
+			std::vector<int> lightLocalIndices;  // offsets into `triangles` above
+		};
+		std::uint32_t scaleBits;
+		std::memcpy(&scaleBits, &scale, sizeof(scaleBits));
+		std::uint32_t offXBits, offYBits, offZBits;
+		std::memcpy(&offXBits, &offset.x, sizeof(offXBits));
+		std::memcpy(&offYBits, &offset.y, sizeof(offYBits));
+		std::memcpy(&offZBits, &offset.z, sizeof(offZBits));
+		const std::string transformKey = std::string(filename) +
+			"|s" + std::to_string(scaleBits) +
+			"|ox" + std::to_string(offXBits) + "|oy" + std::to_string(offYBits) + "|oz" + std::to_string(offZBits) +
+			"|td" + (textureDir ? textureDir : "") +
+			"|fb" + std::to_string(fallbackMaterialIdx) +
+			"|bm" + std::to_string(baselineMaterials) + "|bt" + std::to_string(baselineTextures);
+
+		static std::unordered_map<std::string, TransformedObjMtl> s_transformedObjMtlCache;
+		static std::mutex s_transformedObjMtlCacheMutex;
+
+		const TransformedObjMtl* transformed = get_or_build_cached(
+			s_transformedObjMtlCache, s_transformedObjMtlCacheMutex, transformKey,
+			[&](TransformedObjMtl& out) -> bool {
+				out.triangles.reserve(raw.faces.size());
+				for (const RawFaceMtl& f : raw.faces) {
+					const int materialIdx = (f.mtlNameIdx >= 0) ? localToSceneMaterialIdx[f.mtlNameIdx] : fallbackMaterialIdx;
+					TriangleData t{};
+					t.p0 = transformPos(raw.positions[f.p[0]]);
+					t.p1 = transformPos(raw.positions[f.p[1]]);
+					t.p2 = transformPos(raw.positions[f.p[2]]);
+					t.materialIdx = materialIdx;
+					t.hasNormals = !raw.normals.empty();
+					if (t.hasNormals) {
+						t.n0 = cornerNormal(f.n[0]);
+						t.n1 = cornerNormal(f.n[1]);
+						t.n2 = cornerNormal(f.n[2]);
+					}
+					t.hasUVs = !raw.uvs.empty();
+					if (t.hasUVs) {
+						t.uv0 = cornerUV(f.t[0]);
+						t.uv1 = cornerUV(f.t[1]);
+						t.uv2 = cornerUV(f.t[2]);
+					}
+					if (f.mtlNameIdx >= 0 && localMtlIsEmissive[f.mtlNameIdx])
+						out.lightLocalIndices.push_back(static_cast<int>(out.triangles.size()));
+					out.triangles.push_back(t);
+				}
+				return true;
+			});
+		if (!transformed) return;
+
+		const int baseTriangleIdx = safe_cast_to_int(scene.triangles.size());
+		scene.triangles.reserve(scene.triangles.size() + transformed->triangles.size());
+		scene.triangles.insert(scene.triangles.end(), transformed->triangles.begin(), transformed->triangles.end());
+		for (int localIdx : transformed->lightLocalIndices) {
+			scene.lightIndices.push_back(baseTriangleIdx + localIdx);
+			scene.lightKinds.push_back(GpuLightKind::Triangle);
 		}
 	}
 }
@@ -3946,7 +4094,48 @@ static bool build_loaded_pbrt_scene(
 	if (!loadedPtr) return false;
 	const pbrt_load::LoadResult& loaded = *loadedPtr;
 
-	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(loaded.scene, scene);
+	// pbrt_gpu::build() itself is the SOLE populator of `scene` in this
+	// function (everything after this call only reads loaded.scene/stats to
+	// fill out_camera_extra, never scene) and is a pure function of
+	// loaded.scene alone - already cached above, and never mutated by
+	// build() (takes it by const&) - so its own output is exactly as
+	// cacheable, and for the identical reason: this function reruns on every
+	// Live Preview frame the camera moves, and build()'s own triangle-
+	// flattening loop (proportional to triangle count, same cost class as
+	// scene_builder.cpp's OBJ loaders - see load_obj_triangles_mtl_gpu()'s
+	// own cache comment) was measured to still dominate per-frame cost on a
+	// heavy scene even with pbrt_load::loadFile() itself cached (villa-
+	// daylight: ~1.6s/frame before this cache, a known, previously-flagged
+	// gap - see this cache's own commit message). Cached by the same `path`
+	// key as s_pbrtLoadCache above; a full SceneData copy (not a pointer) on
+	// both store and retrieve, same "bulk-copy beats re-derive" trade this
+	// file's OBJ-loader caches already make.
+	struct PbrtBuiltScene {
+		SceneData sceneData;
+		pbrt_gpu::BuildStats stats;
+	};
+	static std::unordered_map<std::string, PbrtBuiltScene> s_pbrtBuiltSceneCache;
+	static std::mutex s_pbrtBuiltSceneCacheMutex;
+
+	const PbrtBuiltScene* built = get_or_build_cached(s_pbrtBuiltSceneCache, s_pbrtBuiltSceneCacheMutex, std::string(path),
+		[&](PbrtBuiltScene& out) -> bool {
+			out.stats = pbrt_gpu::build(loaded.scene, out.sceneData);
+			return true;
+		});
+	if (!built) return false;
+	if (scene.skipExpensiveGeometryLoad) {
+		// See SceneData::skipExpensiveGeometryLoad's own comment - this pbrt
+		// scene is already GPU-resident, so the full built->sceneData copy
+		// below (proportional to triangle/texture-byte count) is skipped.
+		// lensElements/exitPupilBounds are the one exception: small, camera-
+		// side tables the RealisticCamera setup further down this same
+		// function still reads sizes from every call, skip or not.
+		scene.lensElements = built->sceneData.lensElements;
+		scene.exitPupilBounds = built->sceneData.exitPupilBounds;
+	} else {
+		scene = built->sceneData;
+	}
+	const pbrt_gpu::BuildStats& stats = built->stats;
 	std::cerr << "[OptiX] Loaded " << path << ": " << stats.triangles
 		  << " triangles, " << stats.spheres << " spheres, "
 		  << stats.quadLights << " quads, "

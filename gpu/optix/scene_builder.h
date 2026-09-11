@@ -129,6 +129,25 @@ struct SceneData {
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - not geometry, evaluated deterministically every hit.
 	std::vector<PunctualLightGPU> punctualLights;
+
+	// Set by prepareSceneAndCamera() (optix_interface.cpp) before calling
+	// build_scene(), when scene_id already matches g_uploaded_scene_id - a
+	// pure camera-move Live Preview frame, where the GPU-side geometry
+	// upload is ALREADY skipped a few lines further down the same call
+	// chain (see g_uploaded_scene_id's own comment) and this call's own
+	// `scene.triangles`/etc. would be built only to be thrown away
+	// unused. load_obj_triangles_gpu()/load_obj_triangles_mtl_gpu()/
+	// build_loaded_pbrt_scene() check this and return immediately without
+	// doing their own expensive per-triangle work (file cache lookups,
+	// transform, and - even fully cached - the O(triangle count) bulk copy
+	// into `scene.triangles`, measured directly at ~64ms/frame for a
+	// Rungholt-sized mesh even with every other cost eliminated) when set.
+	// Every OTHER scene case (procedural spheres/quads/materials) is
+	// already cheap enough that gating it isn't worth the extra
+	// bookkeeping, so this is a hint those three functions honor, not an
+	// enforced contract build_scene() itself checks - simply left false
+	// (default) is always correct, just potentially slower.
+	bool skipExpensiveGeometryLoad = false;
 };
 
 // Build a scene and return geometry + camera

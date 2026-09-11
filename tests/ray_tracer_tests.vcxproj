@@ -206,6 +206,7 @@
     <ClCompile Include="integration\live_preview_restir_gi_test.cpp" />
     <ClCompile Include="integration\live_preview_svgf_test.cpp" />
     <ClCompile Include="integration\scene_loader_transform_cache_test.cpp" />
+    <ClCompile Include="integration\live_preview_geometry_skip_test.cpp" />
     <ClCompile Include="unit\scatter_record_transmission_tests.cpp" />
     <ClCompile Include="unit\gpu_render_tests.cpp" />
     <ClCompile Include="unit\wavefront_tests.cpp" />
