@@ -1121,17 +1121,23 @@ void MainWindow::createSettingsTab() {
 	// (a single raw noisy frame has no redeeming value over accumulating),
 	// so it's enabled/disabled in lockstep with the main checkbox exactly
 	// like the blend spinbox already is.
+	// Two rows rather than one: the first is the OptiX AI denoiser's own
+	// on/off + blend amount, the second is "show latest" (which only applies
+	// to the OptiX denoiser above - see its own tooltip) alongside the SVGF
+	// alternative - keeps the OptiX-denoiser-specific controls from crowding
+	// against the mode-choice checkbox on one long, hard-to-scan line.
 	QWidget *liveDenoiseRow = new QWidget();
 	QHBoxLayout *liveDenoiseRowLayout = new QHBoxLayout(liveDenoiseRow);
 	liveDenoiseRowLayout->setContentsMargins(0, 0, 0, 0);
 	liveDenoiseRowLayout->setSpacing(10);
 
+	QWidget *liveDenoiseModeRow = new QWidget();
+	QHBoxLayout *liveDenoiseModeRowLayout = new QHBoxLayout(liveDenoiseModeRow);
+	liveDenoiseModeRowLayout->setContentsMargins(0, 0, 0, 0);
+	liveDenoiseModeRowLayout->setSpacing(10);
+
 	m_liveDenoiseCheck = new QCheckBox(tr("OptiX AI Denoiser"));
 	m_liveDenoiseCheck->setChecked(m_liveDenoiseEnabled);
-	m_liveDenoiseCheck->setToolTip(
-		tr("Run the OptiX AI denoiser on every Live Preview frame - the same "
-		"one the Render Options tab's own Denoiser checkbox runs for "
-		"finished renders."));
 	styleCheckBox(m_liveDenoiseCheck);
 
 	m_liveDenoiseBlendSpin = new QDoubleSpinBox();
@@ -1140,10 +1146,6 @@ void MainWindow::createSettingsTab() {
 	m_liveDenoiseBlendSpin->setSingleStep(0.05);
 	m_liveDenoiseBlendSpin->setValue(m_liveDenoiseBlend);
 	m_liveDenoiseBlendSpin->setEnabled(m_liveDenoiseEnabled);
-	m_liveDenoiseBlendSpin->setToolTip(
-		tr("Blend between the noisy input and the fully denoised output\n"
-		"(0.0 = 100% denoised, 1.0 = original noisy image), same meaning as "
-		"the Render Options tab's own blend control."));
 	styleSpinBox(m_liveDenoiseBlendSpin);
 	connect(m_liveDenoiseCheck, &QCheckBox::toggled, m_liveDenoiseBlendSpin, &QDoubleSpinBox::setEnabled);
 
@@ -1203,15 +1205,21 @@ void MainWindow::createSettingsTab() {
 		"small amount of GPU time per frame. The number to its right blends "
 		"between the noisy original and the fully denoised result, same as "
 		"the Render Options tab's own blend control.")));
+	liveDenoiseRowLayout->addWidget(labelWithInfo(tr("Blend:"),
+		tr("Blend between the noisy input and the fully denoised output "
+		"(0.0 = 100% denoised, 1.0 = original noisy image), same meaning as "
+		"the Render Options tab's own blend control.")));
 	liveDenoiseRowLayout->addWidget(m_liveDenoiseBlendSpin);
-	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseShowLatestCheck,
+	liveDenoiseRowLayout->addStretch(1);
+
+	liveDenoiseModeRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseShowLatestCheck,
 		tr("Displays each denoised frame as-is instead of averaging it into "
 		"a running mean with earlier frames. Trades away the extra quality "
 		"accumulating more samples would eventually reach, in exchange for "
 		"a view that always reflects only the most recent frame - useful "
 		"while flying around with WASD, where older accumulated frames are "
 		"from a camera position you've already left.")));
-	liveDenoiseRowLayout->addWidget(checkboxWithInfo(m_liveSvgfCheck,
+	liveDenoiseModeRowLayout->addWidget(checkboxWithInfo(m_liveSvgfCheck,
 		tr("Cleans up Live Preview using SVGF (Spatiotemporal Variance-Guided "
 		"Filtering) instead of the OptiX AI denoiser - tracks per-pixel "
 		"variance over time and uses it to drive an edge-aware spatial "
@@ -1221,9 +1229,10 @@ void MainWindow::createSettingsTab() {
 		"'show latest' option for it, and no blend control - its output is "
 		"always fully filtered). Mutually exclusive with the OptiX AI "
 		"denoiser above.")));
-	liveDenoiseRowLayout->addStretch(1);
+	liveDenoiseModeRowLayout->addStretch(1);
 
 	liveModeSettingsLayout->addRow(liveDenoiseRow);
+	liveModeSettingsLayout->addRow(liveDenoiseModeRow);
 
 	// SVGF Advanced Tuning - nested group, enabled/disabled in lockstep with
 	// m_liveSvgfCheck exactly like m_liveDenoiseBlendSpin is with
