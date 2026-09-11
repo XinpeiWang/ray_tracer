@@ -88,25 +88,25 @@
         <location filename="../mainwindow_slots.cpp" line="417"/>
         <location filename="../mainwindow_slots.cpp" line="723"/>
         <source>&amp;PAUSE RENDER</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングを一時停止(&amp;P)</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1015"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="725"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
-        <translation type="unfinished"></translation>
+        <translation>実行中のレンダリングをその場で一時停止します - 「再開」は全く同じピクセルから続行します</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1024"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
-        <translation type="unfinished"></translation>
+        <translation>破棄して次へ進む(&amp;N)</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1031"/>
         <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
-        <translation type="unfinished"></translation>
+        <translation>実行中のレンダリングの出力を破棄し、キュー内の次のジョブをただちに開始します</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="47"/>
@@ -138,12 +138,12 @@
         <location filename="../mainwindow_slots.cpp" line="420"/>
         <location filename="../mainwindow_slots.cpp" line="727"/>
         <source>&amp;Pause Render</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングを一時停止(&amp;P)</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="81"/>
         <source>&amp;Abandon &amp;&amp; Start Next</source>
-        <translation type="unfinished"></translation>
+        <translation>破棄して次を開始(&amp;A)</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
@@ -262,7 +262,7 @@
     <message>
         <location filename="../mainwindow_actions.cpp" line="209"/>
         <source>GPU (OptiX, Wavefront)</source>
-        <translation type="unfinished"></translation>
+        <translation>GPU（OptiX、Wavefront）</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="221"/>
@@ -671,52 +671,52 @@
     <message>
         <location filename="../mainwindow_slots.cpp" line="685"/>
         <source>Abandoning render...</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングを破棄中...</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="704"/>
         <source>&amp;RESUME RENDER</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングを再開(&amp;R)</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="706"/>
         <source>Resume the paused render from the exact same pixels</source>
-        <translation type="unfinished"></translation>
+        <translation>一時停止したレンダリングを全く同じピクセルから再開します</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="708"/>
         <source>&amp;Resume Render</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングを再開(&amp;R)</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="711"/>
         <source>⏸ Paused</source>
-        <translation type="unfinished"></translation>
+        <translation>⏸ 一時停止中</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1717"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
-        <translation type="unfinished"></translation>
+        <translation>カメラパスをフレームごとにレンダリングして動画を合成します。すでにレンダリングが実行中の場合は、代わりにその後ろのキューに入ります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1723"/>
         <source>START LIVE &amp;PREVIEW</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビューを開始(&amp;P)</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1726"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
-        <translation type="unfinished"></translation>
+        <translation>マウスで視点を回転/ズームできるインタラクティブな GPU プレビューを開始します。バッチレンダリングの実行中は無効になります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1728"/>
         <source>Ready to start live preview</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビューを開始する準備ができました</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1736"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
-        <translation type="unfinished"></translation>
+        <translation>現在の設定で選択したシーンをレンダリングします。すでにレンダリングが実行中の場合は、代わりにその後ろのキューに入ります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1747"/>
@@ -728,7 +728,7 @@
         <location filename="../mainwindow_tabs_render.cpp" line="961"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1750"/>
         <source>Live Preview</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビュー</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1849"/>
@@ -896,7 +896,7 @@ The render may have failed to create output.</source>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="280"/>
         <source>Pick which scene to render. Scenes are grouped by category and searchable; switch to the grid view for thumbnail previews. Selecting a scene here also seeds its recommended camera/settings hint below, if it has one.</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングするシーンを選びます。シーンはカテゴリ別にグループ化されており検索も可能です。グリッド表示に切り替えるとサムネイルプレビューが見られます。ここでシーンを選択すると、そのシーンに推奨カメラ/設定のヒントがある場合、下部にそれも表示されます。</translation>
     </message>
     <message numerus="yes">
         <location filename="../mainwindow_tabs.cpp" line="329"/>
@@ -990,7 +990,7 @@ scene not already cached. CPU-only, low resolution - takes a while the first tim
     <message>
         <location filename="../mainwindow_tabs.cpp" line="569"/>
         <source>Choose Output Mode (Single Image, Video, or Live Preview) and the renderer (GPU or CPU) here, plus a Quality/Resolution preset or a manual override further down. Video- and Live-Preview-only fields stay visible and editable even in Image mode, dimmed with a note - so you can pre-configure them before switching modes.</source>
-        <translation type="unfinished"></translation>
+        <translation>ここで出力モード（単一画像、動画、ライブプレビュー）とレンダラー（GPU または CPU）を選び、さらに下で品質/解像度のプリセットか手動での上書きを選択します。動画専用およびライブプレビュー専用の項目は、画像モードでも注記付きで薄暗く表示されたまま編集可能です - モードを切り替える前に事前設定しておくことができます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="580"/>
@@ -1005,12 +1005,12 @@ scene not already cached. CPU-only, low resolution - takes a while the first tim
     <message>
         <location filename="../mainwindow_tabs.cpp" line="590"/>
         <source>Live Preview (interactive)</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビュー（インタラクティブ）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="600"/>
         <source>realtime_renderer.dll wasn&apos;t found next to the application.</source>
-        <translation type="unfinished"></translation>
+        <translation>realtime_renderer.dll がアプリケーションの隣に見つかりませんでした。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="607"/>
@@ -1201,14 +1201,16 @@ SPPM(Stochastic Progressive Photon Mapping)は、通常のパストレーシン�
     <message>
         <location filename="../mainwindow_tabs.cpp" line="640"/>
         <source>⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path don&apos;t apply. Scene and Camera Position do.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ ライブプレビューは GPU 上で固定の小さな解像度でレンダリングし、出力ファイルは一切書き出しません - 解像度、ピクセルあたりのサンプル数、最大光線深度、出力パスは適用されません。シーンとカメラ位置は適用されます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="647"/>
         <source>Single Image renders one frame.
 Generate Video renders a camera path frame by frame and assembles an MP4.
 Live Preview renders continuously with an orbitable camera - GPU only.</source>
-        <translation type="unfinished"></translation>
+        <translation>「単一画像」は 1 フレームをレンダリングします。
+「動画を生成」はカメラパスをフレームごとにレンダリングして MP4 に合成します。
+「ライブプレビュー」は視点を回転できるカメラで連続的にレンダリングします - GPU 専用。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="655"/>
@@ -1392,7 +1394,7 @@ Higher resolution means more individual pixels to trace - each one independently
     <message>
         <location filename="../mainwindow_tabs.cpp" line="837"/>
         <source>⚠ These settings only take effect when Output Mode above is set to &quot;Generate Video&quot;.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ これらの設定は、上の出力モードが「動画を生成」に設定されている場合にのみ有効です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="853"/>
@@ -1401,24 +1403,30 @@ have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the Scene above too. Choosing any of the
 other controls on this tab afterward is fine - they simply stop matching
 the preset, the same as if you had built the same settings by hand.</source>
-        <translation type="unfinished"></translation>
+        <translation>有名なレイトレーシングの参考シーンとカメラ演出があらかじめ調整済みなので、
+シーン、カメラパス、フレーム数、fps、速度を自分で設定する必要はありません。
+いずれかを選ぶと上のシーンも変わります。その後このタブの
+他のコントロールを操作しても問題ありません——単にプリセットと一致しなくなるだけで、
+同じ設定を自分の手で組み立てた場合と同じ扱いになります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="862"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the Scene above) - you can still change anything afterward, it just stops matching the preset once you do.</source>
-        <translation type="unfinished"></translation>
+        <translation>シーン＋カメラパス＋フレーム数＋fps＋速度をあらかじめ組み合わせたセットで、設定を自分で一つずつ選ばなくても見栄えの良い動画に仕上がるよう調整されています。
+
+いずれかを選ぶと、下のすべての項目（および上のシーン）が自動的に入力されます - その後も自由に変更できますが、変更した時点でプリセットとは一致しなくなります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="876"/>
         <source>Tour (Room walkthrough)</source>
-        <translation type="unfinished"></translation>
+        <translation>ツアー（部屋の歩き回り）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="877"/>
         <source>Showcase (Product reveal)</source>
-        <translation type="unfinished"></translation>
+        <translation>ショーケース（製品紹介）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="879"/>
@@ -1430,33 +1438,46 @@ Picking one fills in every field below (and the Scene above) - you can still cha
   Tour      — sways side to side and glides forward while looking around, like walking through a room
   Showcase  — one eased turn that pushes in and arcs up-then-down, like a product ad
 Every path starts from the camera position set below.</source>
-        <translation type="unfinished"></translation>
+        <translation>フレームの連なりの中でカメラがどう動くか：
+  オービット      — 常にシーン中心を見つめたまま、シーンの周りを一周する
+  リニア          — シーンの横をまっすぐ通り過ぎる
+  8の字          — 連珠形を描き、中央で交差しながら往復する
+  スパイラル      — 徐々に近づきながら周回する
+  ツアー          — 部屋を歩いて見回すように、左右に揺れながら前進する
+  ショーケース    — 製品広告のように、押し込みつつ上下に弧を描く一回のイーズド回転
+どの経路も、下で設定したカメラ位置から始まります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="890"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Tour sways side to side and glides forward while its look-at point drifts too, like an actual visitor walking through and looking around a room. Showcase turns once around the subject with an eased push-in and a gentle rise-and-fall, like a product advertisement&apos;s hero shot. Every path starts from wherever the camera is positioned further down this tab.</source>
-        <translation type="unfinished"></translation>
+        <translation>フレームの連なり全体でカメラがどう動くか。
+
+オービットはシーンの中心を常に向いたまま、その周りを完全に一周します——古典的な「ターンテーブル」ショットです。リニアはまっすぐな直線で通り過ぎます。8の字は連珠形を描き、中央で交差しながら往復します。スパイラルは徐々に近づきながら周回します。ツアーは、実際に部屋を歩いて見回す人のように、注視点も揺れ動きながら左右に揺れて前進します。ショーケースは、製品広告のメインショットのように、緩やかな押し込みと穏やかな上下動を伴いながら被写体の周りを一周します。どの経路も、このタブの下部で設定されたカメラの位置から始まります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="921"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second to determine the video&apos;s total length in seconds.</source>
-        <translation type="unfinished"></translation>
+        <translation>動画を構成する個々の画像の枚数——各フレームは完全に独立したレンダリングであるため、この値は総レンダリング時間に直接掛かってきます（100 フレームは同じ設定での 1 枚の画像の約 100 倍の時間がかかります）。
+
+「フレームレート（fps）」と組み合わせて、動画の総再生時間（秒）を決めます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="936"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングされたフレームのうち、動画の 1 秒あたりに何枚再生するか。
+
+レンダリングされるフレーム数自体は変わりません（それは「フレーム数」が決めます）——変わるのは再生速度だけで、それによって完成した動画が何秒になるか（フレーム数を FPS で割った値）が決まります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="999"/>
         <source>%1 frames (base %2 x 1/%3x speed)%4</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 フレーム（基準 %2 × 1/%3 倍速）%4</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1011"/>
@@ -1479,256 +1500,278 @@ Step 3: Click START VIDEO RENDER and wait.
 Step 4: Video automatically assembles and opens when done!
 
 Tips: use GPU mode for faster rendering. Lower samples/pixel (10-50) for quick previews, higher (100-500) for production quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes on CPU.</source>
-        <translation type="unfinished"></translation>
+        <translation>動画の長さ：%1 秒（%2）
+
+カメラパス：%3、速度にかかわらず必ず一周分を完走します
+
+出力：フレームは output/frames/ に保存されます
+
+ffmpeg が必要：動画エンコードには ffmpeg（libx264）を使用します。あらかじめインストールして PATH に通しておく必要があります——レンダリングログに見つからないと表示された場合は ffmpeg.org から入手してください。
+
+すべてのフレームのレンダリングが終わると、動画は自動的に合成されて開かれます。
+
+手順 1：上部で「動画生成設定」（カメラパス、フレーム数、FPS）を設定し、出力モードを「動画を生成」にします。
+
+手順 2：このタブの下部で品質設定を行います。
+
+手順 3：「動画レンダリング開始」をクリックして待ちます。
+
+手順 4：完了すると動画が自動的に合成されて開かれます！
+
+ヒント：レンダリングを速くするには GPU モードを使用してください。手早いプレビューには少なめのサンプル数/ピクセル（10～50）、本番品質には多め（100～500）を。典型的なレンダリング時間は GPU で 1～5 分、CPU で 15～60 分です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1052"/>
         <source>Live Preview Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビュー設定</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1055"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビューにおけるマウスでの視点回転/ズーム、およびキーボードの WASD/上/下移動 + 左/右/+/- の応答性を調整します。上の出力モードが「ライブプレビュー（インタラクティブ）」の場合にのみ効果がありますが、どのモードでも編集は可能です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1090"/>
         <source>Mouse Sensitivity:</source>
-        <translation type="unfinished"></translation>
+        <translation>マウス感度：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1091"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビューにおけるクリックドラッグでの視点回転、およびスクロールでのズーム速度を倍率調整します。1x が元の感触に相当し、低いほど穏やかに、高いほど敏感になります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1108"/>
         <source>Keyboard Sensitivity:</source>
-        <translation type="unfinished"></translation>
+        <translation>キーボード感度：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1109"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビューにおける WASD/上/下移動、左右矢印キーでの視点回転、+/- によるズームのステップ幅を倍率調整します。1x は 1 回の押下あたり中程度の移動量です。低いほど細かく、高いほど 1 回の押下で大きく動きます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="990"/>
         <source>OptiX AI Denoiser</source>
-        <translation type="unfinished"></translation>
+        <translation>OptiX AI デノイザー</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1023"/>
         <source>Show latest frame instead of accumulating</source>
-        <translation type="unfinished"></translation>
+        <translation>累積せず最新フレームを表示する</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="991"/>
         <source>SVGF Denoiser (experimental)</source>
-        <translation type="unfinished"></translation>
+        <translation>SVGF デノイザー（実験的）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="88"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ ライブプレビューは GPU のプログレッシブパストレーサーを直接使用します - このタブの設定はライブプレビューには適用されません。ただし、下にある「デノイザー」セクション自体の「ライブプレビュー」サブセクションだけは例外です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1016"/>
         <source>Blend:</source>
-        <translation type="unfinished"></translation>
+        <translation>ブレンド：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1017"/>
         <source>OptiX AI Denoiser only. Blend between the noisy input and the fully denoised output (0.0 = 100% denoised, 1.0 = original noisy image), same meaning as the Image &amp; Video subsection&apos;s own blend control.</source>
-        <translation type="unfinished"></translation>
+        <translation>OptiX AI デノイザー専用。ノイズのある入力と完全にデノイズされた出力の間をブレンドします（0.0 = 100% デノイズ済み、1.0 = 元のノイズ画像）。これは「画像＆動画」サブセクション自体のブレンド設定と同じ意味です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1046"/>
         <source>SVGF Advanced Tuning</source>
-        <translation type="unfinished"></translation>
+        <translation>SVGF 詳細設定</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1070"/>
         <source>Denoiser:</source>
-        <translation type="unfinished"></translation>
+        <translation>デノイザー：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1094"/>
         <source>OptiX AI Denoiser only. Displays each denoised frame as-is instead of averaging it into a running mean with earlier frames. Trades away the extra quality accumulating more samples would eventually reach, in exchange for a view that always reflects only the most recent frame - useful while flying around with WASD, where older accumulated frames are from a camera position you&apos;ve already left.</source>
-        <translation type="unfinished"></translation>
+        <translation>OptiX AI デノイザー専用。各デノイズ済みフレームを、以前のフレームとの累積平均に加えるのではなく、そのまま表示します。サンプルを蓄積し続ければ得られたはずの追加の画質を犠牲にする代わりに、常に最新フレームだけを反映するビューが得られます - WASD で動き回っているとき、蓄積された古いフレームはすでに離れたカメラ位置のものなので、これが役立ちます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1134"/>
         <source>Temporal Alpha:</source>
-        <translation type="unfinished"></translation>
+        <translation>時間方向アルファ：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1135"/>
         <source>Floor on the temporal blend rate - lower holds onto history longer (less noise, more lag on a changing scene), higher adapts faster (more noise, less lag).</source>
-        <translation type="unfinished"></translation>
+        <translation>時間方向のブレンド率の下限です——低いほど履歴を長く保持します（ノイズは少ないが、変化するシーンでは遅延が増えます）。高いほど速く適応します（ノイズは増えるが遅延は減ります）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1139"/>
         <source>Max History Length:</source>
-        <translation type="unfinished"></translation>
+        <translation>最大履歴長：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1140"/>
         <source>Caps how many frames of history a converged pixel can accumulate - bounds how &quot;sticky&quot; it gets.</source>
-        <translation type="unfinished"></translation>
+        <translation>収束したピクセルが蓄積できる履歴フレーム数の上限です——どれだけ「固着」するかを制限します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1143"/>
         <source>Variance Bootstrap Frames:</source>
-        <translation type="unfinished"></translation>
+        <translation>分散ブートストラップフレーム数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1144"/>
         <source>Below this history length, variance is spatially prefiltered from neighboring pixels instead of trusted alone - helps a fresh or disoccluded pixel&apos;s edge-stopping weights before it has enough of its own temporal history.</source>
-        <translation type="unfinished"></translation>
+        <translation>この履歴長を下回る間は、分散を単独で信用せず、近傍ピクセルから空間的に事前フィルタリングします——これは、新規に現れたピクセルや遮蔽が解除されたばかりのピクセルが、十分な独自の時間履歴を持つ前のエッジ保持重みを助けます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1149"/>
         <source>Variance Bootstrap Radius:</source>
-        <translation type="unfinished"></translation>
+        <translation>分散ブートストラップ半径：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1150"/>
         <source>Box radius (in pixels) used for the variance prefilter above - radius 3 means a 7x7 box.</source>
-        <translation type="unfinished"></translation>
+        <translation>上記の分散事前フィルタで使用するボックス半径（ピクセル単位）です——半径 3 は 7x7 のボックスを意味します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1153"/>
         <source>Sigma Normal:</source>
-        <translation type="unfinished"></translation>
+        <translation>法線シグマ：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1154"/>
         <source>Edge-stopping sensitivity to shading-normal differences - higher rejects a smaller normal difference, preventing blur across curved surfaces or silhouettes.</source>
-        <translation type="unfinished"></translation>
+        <translation>シェーディング法線の差に対するエッジ保持の感度です——高いほど、より小さな法線差でも棄却され、曲面やシルエット部分でのぼやけを防ぎます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1158"/>
         <source>Sigma Depth:</source>
-        <translation type="unfinished"></translation>
+        <translation>深度シグマ：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1159"/>
         <source>Edge-stopping sensitivity to depth differences, relative to the local depth gradient - higher tolerates more depth variation before rejecting a neighbor as a different surface.</source>
-        <translation type="unfinished"></translation>
+        <translation>深度差に対するエッジ保持の感度で、局所的な深度勾配に対する相対値です——高いほど、隣接ピクセルを別の面と判定するまでに許容される深度変化が大きくなります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1163"/>
         <source>Sigma Luminance:</source>
-        <translation type="unfinished"></translation>
+        <translation>輝度シグマ：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1164"/>
         <source>Edge-stopping sensitivity to luminance differences, relative to the pixel&apos;s own estimated noise level - higher blurs across a larger brightness difference.</source>
-        <translation type="unfinished"></translation>
+        <translation>輝度差に対するエッジ保持の感度で、そのピクセル自身が推定するノイズレベルに対する相対値です——高いほど、より大きな明るさの差にまたがってぼかしがかかります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1168"/>
         <source>A-trous Radius:</source>
-        <translation type="unfinished"></translation>
+        <translation>A-trous 半径：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1169"/>
         <source>Filter footprint radius per A-trous pass - clamped to [0,2] (radius 2 = 5x5) since the filter&apos;s own kernel weight table only has 3 entries.</source>
-        <translation type="unfinished"></translation>
+        <translation>A-trous パスごとのフィルタ適用範囲の半径です——フィルタ自身のカーネル重みテーブルには 3 項目しかないため、[0,2] にクランプされます（半径 2 = 5x5）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1173"/>
         <source>Min Albedo:</source>
-        <translation type="unfinished"></translation>
+        <translation>最小アルベド：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1174"/>
         <source>Floor applied before dividing color by albedo (demodulation) - prevents a near-zero-albedo pixel from blowing up or round-tripping to black.</source>
-        <translation type="unfinished"></translation>
+        <translation>色をアルベドで除算（デモジュレーション）する前に適用される下限です——アルベドがほぼゼロのピクセルが発散したり、黒に丸め込まれたりするのを防ぎます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1178"/>
         <source>A-trous Passes:</source>
-        <translation type="unfinished"></translation>
+        <translation>A-trous パス数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1179"/>
         <source>Number of A-trous filter passes (step sizes double each pass: 1,2,4,8,...) - more passes cover a larger effective radius at proportionally higher GPU cost.</source>
-        <translation type="unfinished"></translation>
+        <translation>A-trous フィルタのパス数です（各パスでステップ幅が倍になります：1、2、4、8……）——パス数が多いほど有効半径は広くなりますが、その分 GPU コストも高くなります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1184"/>
         <source>Reset to Defaults</source>
-        <translation type="unfinished"></translation>
+        <translation>既定値に戻す</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1127"/>
         <source>ReSTIR GI</source>
-        <translation type="unfinished"></translation>
+        <translation>ReSTIR GI</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1139"/>
         <source>Resampled one-bounce indirect lighting (ReSTIR GI) - independent of which denoiser is active above. Disabling it falls back to the classic single-sample indirect estimate, which is noisier but cheaper per frame.</source>
-        <translation type="unfinished"></translation>
+        <translation>リサンプリングされた 1 バウンス間接光（ReSTIR GI）です——上で有効になっているどのデノイザーとも独立しています。無効にすると、ノイズは多いもののフレームあたりのコストが低い、従来の単一サンプル間接推定に戻ります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1158"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as the Render Options tab&apos;s own Exposure control but independently set for Live Preview.</source>
-        <translation type="unfinished"></translation>
+        <translation>トーンマッピングの前に適用される一律の明るさ倍率で、「レンダリングオプション」タブ自体の「露出」設定と同じ意味を持ちますが、ライブプレビュー用に独立して設定されます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1176"/>
         <source>Samples/Frame:</source>
-        <translation type="unfinished"></translation>
+        <translation>フレームあたりサンプル数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1177"/>
         <source>Samples per pixel rendered on each Live Preview call - Live Preview has its own independent value from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビューの各呼び出しでレンダリングされるピクセルあたりのサンプル数です——ライブプレビューは、画像/動画にのみ適用される下の「詳細パラメータ」グループとは独立した、独自の値を持ちます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1188"/>
         <source>Max Bounces:</source>
-        <translation type="unfinished"></translation>
+        <translation>最大バウンス数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1189"/>
         <source>Maximum ray depth for Live Preview - independent from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビュー用の最大光線深度です——画像/動画にのみ適用される下の「詳細パラメータ」グループとは独立しています。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1205"/>
         <source>Firefly Clamp:</source>
-        <translation type="unfinished"></translation>
+        <translation>ファイアフライ抑制：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1206"/>
         <source>Caps the brightest possible sample value to suppress fireflies, at the cost of clipping genuinely bright highlights. Lower values clamp more aggressively.</source>
-        <translation type="unfinished"></translation>
+        <translation>ファイアフライ（強い輝点ノイズ）を抑えるためにサンプル値の最大輝度を制限しますが、代償として本当に明るいハイライトもクリップされます。値が低いほど強くクランプされます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1230"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>上の品質/解像度プリセットを使う代わりに、解像度、ピクセルあたりのサンプル数、最大光線深度を手動で上書きします。画像と動画で共有されます（動画はこれをフレームごとの設定として再利用します）——ライブプレビューは常に独自の固定された小さな解像度を使用します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1260"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
-        <translation type="unfinished"></translation>
+        <translation>画像のピクセル幅です。
+
+「高さ」と組み合わせて解像度を手動で設定し、上の「品質」プリセットが本来使う値を上書きします。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1273"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
-        <translation type="unfinished"></translation>
+        <translation>画像のピクセル高さです。
+
+「幅」と組み合わせます——両方で解像度を手動設定し、上の「品質」プリセットを上書きします。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1344"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
-        <translation type="unfinished"></translation>
+        <translation>カメラのワールド座標位置を直接設定するか、名前付きプリセットを選びます。画像モードではそのまま使用され、動画ではカメラパスのアニメーションの開始点として、ライブプレビューではインタラクティブに視点を回転/ズームする前の初期位置として使われます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1506"/>
@@ -1738,7 +1781,7 @@ Paired with Width - together they set the resolution manually, overriding the Qu
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1509"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングされたファイルの保存先です。動画モードでは正しい拡張子が自動的に付加されます。ライブプレビューはファイルを書き出すことが一切ないため、この設定を完全に無視します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1532"/>
@@ -1779,7 +1822,7 @@ A raw .ppm file is always written, and a .png copy is generated alongside it aut
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1576"/>
         <source>Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>設定</translation>
     </message>
     <message>
         <source>Basic Settings</source>
@@ -1913,7 +1956,11 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 Single Image renders the scene once, from the camera set on this tab. Generate Video instead moves the camera along a path (Video Generation Settings, further down this tab) and renders one frame per step, then assembles them into an MP4 - taking roughly Frame Count times as long as a single image. Live Preview instead renders continuously at a fixed, small resolution so you can click-drag/scroll to orbit the camera and see the result converge in real time - it never writes an output file.
 
 Generate Video cannot be combined with an alternate Integrator - see the warning below if that combination is picked.</source>
-        <translation type="unfinished"></translation>
+        <translation>このレンダリングが 1 枚の静止画を生成するのか、動画としてつなぎ合わせるフレーム列を生成するのか、あるいはインタラクティブな GPU プレビューなのか。
+
+「単一画像」は、このタブで設定したカメラから一度だけシーンをレンダリングします。「動画を生成」は代わりにカメラを経路（このタブの下にある「動画生成設定」）に沿って移動させ、1 ステップごとに 1 フレームをレンダリングしてから MP4 に合成します——所要時間は単一画像のおよそ「フレーム数」倍です。「ライブプレビュー」は代わりに固定の小さな解像度で連続的にレンダリングし、クリックドラッグ/スクロールでカメラを回転させながら結果がリアルタイムに収束していく様子を確認できます——出力ファイルは一切書き出しません。
+
+「動画を生成」は代替インテグレーターと組み合わせることはできません——その組み合わせを選んだ場合は下の警告を参照してください。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="760"/>
@@ -1926,7 +1973,15 @@ Generate Video cannot be combined with an alternate Integrator - see the warning
   Maximum 5000 spp, depth 100
 Custom leaves the Samples/Max Depth fields below untouched.
 Render time scales roughly linearly with samples per pixel.</source>
-        <translation type="unfinished"></translation>
+        <translation>ピクセルあたりのサンプル数 / 最大光線深度：
+  ドラフト    25 spp、  深度 10
+  プレビュー  50 spp、  深度 20
+  良好       100 spp、  深度 50
+  高品質      500 spp、  深度 50
+  ウルトラ   1000 spp、  深度 100
+  最高      5000 spp、  深度 100
+「カスタム」は下の「サンプル数/最大深度」フィールドをそのままにします。
+レンダリング時間はピクセルあたりのサンプル数にほぼ比例します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1406"/>
@@ -2004,7 +2059,7 @@ X/Y/Zフィールドやプリセットで気に入ったアングルを見つけ
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="104"/>
         <source>Choose the light-transport algorithm - the default path tracer, or an alternate like SPPM/BDPT/MLT/AO with its own sub-options shown below once picked. Alternate integrators are CPU-only and can&apos;t be combined with Video mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>光輸送アルゴリズムを選択します——既定のパストレーサー、あるいは SPPM/BDPT/MLT/AO などの代替方式で、選択すると下にそれぞれ専用のサブオプションが表示されます。代替インテグレーターは CPU 専用であり、動画モードと組み合わせることはできません。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="213"/>
@@ -2135,7 +2190,7 @@ X/Y/Zフィールドやプリセットで気に入ったアングルを見つけ
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="378"/>
         <source>Sampler algorithm, spectral rendering, adaptive sampling, and a time-limit alternative to a fixed sample count. These control HOW samples are drawn, separately from HOW MANY (Settings tab).</source>
-        <translation type="unfinished"></translation>
+        <translation>サンプラーアルゴリズム、スペクトルレンダリング、適応サンプリング、そして固定サンプル数の代替となる時間制限です。これらはサンプルが「どのように」取得されるかを制御し、「いくつ」（設定タブ）とは別の話です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="391"/>
@@ -2221,25 +2276,32 @@ or under BDPT/MLT/SPPM/the debug integrators.</source>
 Real light is a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths refract by different amounts - RGB alone can&apos;t represent that. Spectral rendering tracks a handful of actual wavelengths per ray instead of just RGB, at the cost of being noisier and slower per sample.
 
 Grayed out? This only exists on the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>通常のレンダリングは光を 3 つの数値——赤、緑、青——として記録します。これは画面が色を表示する方法と同じです。
+
+実際の光は連続的な波長のスペクトルであり、いくつかの物理現象（プリズムが白色光を虹に分解するなど）は、波長ごとに屈折の度合いが異なるために起こります——RGB だけではそれを表現できません。スペクトルレンダリングは、単なる RGB の代わりに光線ごとに実際の波長を数個記録しますが、その代償としてサンプルあたりのノイズが増え、速度も遅くなります。
+
+グレーアウトしていますか？これは CPU レンダラーの既定のパストレーサーにのみ存在します——「設定」タブで「レンダラー」を CPU に切り替えて使用してください。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="531"/>
         <source>Adaptive sampling (--adaptive)</source>
-        <translation type="unfinished"></translation>
+        <translation>適応サンプリング（--adaptive）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="533"/>
         <source>Stops sampling a pixel early once it&apos;s converged, instead of
 always spending the full Samples budget on every pixel - Samples
 becomes a ceiling, not a fixed count. CPU default path tracer only.</source>
-        <translation type="unfinished"></translation>
+        <translation>収束したピクセルへのサンプリングを、常に全ピクセルに
+サンプル予算を使い切る代わりに、早めに打ち切ります——「サンプル数」は
+固定回数ではなく上限になります。CPU の既定パストレーサー専用。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="544"/>
         <source>Target relative noise level to consider a pixel converged.
 Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</source>
-        <translation type="unfinished"></translation>
+        <translation>ピクセルが収束したとみなすための目標相対ノイズレベルです。
+低いほどきれいになりますが遅くなります。0.01 は Blender Cycles 自体の既定値と一致します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="555"/>
@@ -2248,30 +2310,37 @@ Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</sour
 Adaptive sampling tracks each pixel&apos;s own running noise estimate and stops early once it drops below the threshold below, letting Samples act as a ceiling rather than a flat quota - the same idea as Blender Cycles&apos; own adaptive sampling.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>モンテカルロ・パストレーサーのノイズはランダム性に由来します——明るく均一に照らされた壁のようなピクセルは、わずかなサンプルできれいな推定値に収束しますが、小さな窓からしか光が入らない薄暗い隅のようなピクセルは、ノイズが落ち着くまでにはるかに多くのサンプルを必要とします。両方に同じ固定サンプル数を費やすと、すでに終わっているピクセルで時間が無駄になります。
+
+適応サンプリングは各ピクセル自身の実行中のノイズ推定を追跡し、それが下の閾値を下回った時点で早期に打ち切ることで、「サンプル数」を一律の割り当てではなく上限として機能させます——これは Blender Cycles 自体の適応サンプリングと同じ考え方です。
+
+グレーアウトしていますか？これは CPU レンダラーの既定のパストレーサーにのみ影響します——「設定」タブで「レンダラー」を CPU に切り替えて使用してください。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="570"/>
         <source>Time limit (--time-limit)</source>
-        <translation type="unfinished"></translation>
+        <translation>時間制限（--time-limit）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="572"/>
         <source>Stop rendering once this many seconds have elapsed, instead of
 always running until every scanline is done. CPU default path
 tracer only.</source>
-        <translation type="unfinished"></translation>
+        <translation>常に全スキャンラインが完了するまで実行するのではなく、
+この秒数が経過した時点でレンダリングを停止します。CPU の既定パス
+トレーサー専用。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="581"/>
         <source> s</source>
-        <translation type="unfinished"></translation>
+        <translation> 秒</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="584"/>
         <source>Seconds to render before stopping, regardless of the Samples
 budget above.</source>
-        <translation type="unfinished"></translation>
+        <translation>上の「サンプル数」予算に関係なく、
+停止するまでにレンダリングする秒数です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="595"/>
@@ -2282,32 +2351,38 @@ Scanline-granular: whatever rows were already being worked on when the deadline 
 Generating a video? This is a budget for the WHOLE video, not each frame - later frames get whatever&apos;s left of it, and any frames still remaining once it runs out are skipped.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>時間内に終わるサンプル数を推測する代わりに、固定のプレビューやレンダーファームの時間予算として使えます——上の「サンプル数」は余裕を持った上限のままにしつつ、実際にいつ止めるかはこちらが決めます。
+
+スキャンライン単位：締め切りが過ぎた時点ですでに処理中だった行は通常どおり完了します。一度も開始されなかった行はスキップされるのではなく黒として書き出されるため、画像は壊れたファイルにはならず、（不完全であっても）有効なレンダリング結果のままになります。
+
+動画を生成する場合は？これは各フレームではなく動画全体に対する予算です——後のフレームは残った予算を使い、予算を使い切った時点で残っているフレームはスキップされます。
+
+グレーアウトしていますか？これは CPU レンダラーの既定のパストレーサーにのみ影響します——「設定」タブで「レンダラー」を CPU に切り替えて使用してください。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="819"/>
         <source>Post-Processing &amp;&amp; Diagnostics</source>
-        <translation type="unfinished"></translation>
+        <translation>後処理と診断</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="822"/>
         <source>Tone mapping curve, whether to print render statistics, and OptiX validation mode - behavior flags for how the final image is processed and reported, not what to render. Denoising has its own dedicated section further down this tab.</source>
-        <translation type="unfinished"></translation>
+        <translation>トーンマッピングカーブ、レンダリング統計を出力するかどうか、そして OptiX 検証モード——これらは最終画像がどう処理・報告されるかに関する動作フラグであり、何をレンダリングするかとは無関係です。デノイズにはこのタブの下部に専用のセクションがあります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="895"/>
         <source>Denoiser</source>
-        <translation type="unfinished"></translation>
+        <translation>デノイザー</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="898"/>
         <source>Every render mode&apos;s own denoiser settings, gathered in one place. Image/Video and Live Preview each have independent controls below - only the subsection for the currently selected Output Mode is active.</source>
-        <translation type="unfinished"></translation>
+        <translation>各レンダリングモード固有のデノイザー設定を一箇所にまとめたものです。画像/動画とライブプレビューには、それぞれ下に独立したコントロールがあります——現在選択されている出力モードに対応するサブセクションだけが有効になります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="907"/>
         <source>Image &amp; Video</source>
-        <translation type="unfinished"></translation>
+        <translation>画像＆動画</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="927"/>
@@ -2315,7 +2390,10 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 (0.0 = 100% denoised, 1.0 = original noisy image). Lower this to
 preserve more fine texture/grain that full-strength denoising
 can over-smooth.</source>
-        <translation type="unfinished"></translation>
+        <translation>ノイズのある入力と完全にデノイズされた出力の間をブレンドします
+（0.0 = 100% デノイズ済み、1.0 = 元のノイズ画像）。これを下げると、
+フル強度のデノイズで過度に均されてしまう細かい質感/粒状感を
+より多く残せます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="940"/>
@@ -2324,7 +2402,11 @@ can over-smooth.</source>
 A denoiser is a machine-learning model trained to recognize that speckle pattern and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
 
 Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and GPU Backend to Recursive) on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>レイトレーシングは本質的にノイズを伴います——サンプル数が少ないと粒状のまだら画像になります。これが、サンプル数が多いほど通常きれいな画像になる理由です。
+
+デノイザーは、そのまだら模様のパターンを認識して事後的に滑らかにするよう訓練された機械学習モデルで、追加の光線を追跡する必要がありません——細部を多少犠牲にする代わりに、より速くきれいに見える画像を得る手段です。その右側の数値は、ノイズのある元画像と完全にデノイズされた結果との間をブレンドします——0 が完全デノイズ（既定値）で、値を上げると元の粒状感が一部残ります。フル強度のデノイズで残しておきたい質感が失われてしまう場合に便利です。
+
+グレーアウトしていますか？これには GPU リカーシブバックエンドが必要です——「設定」タブで「レンダラー」を GPU に（そして「GPU バックエンド」を「リカーシブ」に）切り替えて使用してください。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1071"/>
@@ -2333,7 +2415,11 @@ Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and G
 OptiX AI Denoiser: cleans up Live Preview&apos;s noisy low-sample image using the same OptiX AI denoiser the Image &amp; Video subsection above runs for finished renders - lets the view look reasonable almost immediately instead of waiting many frames to converge. Costs a small amount of GPU time per frame.
 
 SVGF Denoiser: an alternative, experimental spatiotemporal filter - tracks per-pixel variance over time and uses it to drive an edge-aware spatial filter, which holds up better during camera movement than the AI denoiser + running-mean combination. Always shows the latest filtered frame rather than accumulating (see the SVGF Advanced Tuning group below for its own tunable constants).</source>
-        <translation type="unfinished"></translation>
+        <translation>なし：生の累積サンプルのみで、デノイズは行いません。
+
+OptiX AI デノイザー：上の「画像＆動画」サブセクションが完成レンダリングに使うのと同じ OptiX AI デノイザーを使って、ライブプレビューの低サンプル数によるノイズ画像をきれいにします——多数のフレームが収束するのを待たずに、ほぼ即座にそれらしい見た目にできます。フレームごとに少量の GPU 時間がかかります。
+
+SVGF デノイザー：代替の実験的な時空間フィルタです——ピクセルごとの分散を時間とともに追跡し、それを使ってエッジを保持する空間フィルタを駆動します。カメラが動いている間、AI デノイザー＋移動平均の組み合わせよりも安定します。常に最新のフィルタ済みフレームを表示し、累積は行いません（独自の調整可能な定数については下の「SVGF 詳細設定」グループを参照）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="870"/>
@@ -2342,7 +2428,11 @@ SVGF Denoiser: an alternative, experimental spatiotemporal filter - tracks per-p
 It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
 
 Grayed out? This is GPU-only - switch Renderer to GPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>GPU レイトレーシングパイプライン自体の内部で追加の正しさチェックを有効にし、そのままでは静かに誤った画像を生成したり予測不能にクラッシュしたりする類のバグを捕捉します。
+
+これはレンダラー自体の GPU コードに取り組む人向けのデバッグ支援であり、通常のレンダリングにとって利益になるものではありません——実際のパフォーマンスコストがあり、正しいレンダリングの見た目を変えるものでもありません。
+
+グレーアウトしていますか？これは GPU 専用です——「設定」タブで「レンダラー」を GPU に切り替えて使用してください。</translation>
     </message>
     <message>
         <source>Ray tracing needs a lot of random numbers - which direction to bounce a ray, which point on a light to sample, and so on - and HOW those &quot;random&quot; numbers are generated changes how quickly the image converges to a clean result.
@@ -2369,12 +2459,12 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="460"/>
         <source>Auto (use scene&apos;s own request)</source>
-        <translation type="unfinished"></translation>
+        <translation>自動（シーン自身の要求を使用）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="460"/>
         <source>Uses whatever this scene&apos;s own Integrator &quot;string lightsampler&quot; parameter requested (BVH if it made no request, or requested something this project doesn&apos;t implement) instead of a fixed choice - matches the CLI&apos;s own --lightsampler auto. Picking this once and leaving it is the one choice here that stays correct as you switch between scenes with different recommendations.</source>
-        <translation type="unfinished"></translation>
+        <translation>固定の選択の代わりに、そのシーン自身のインテグレーターの「string lightsampler」パラメータが要求する値を使用します（要求がなければ BVH、または本プロジェクトが実装していない何かが要求された場合も同様）——CLI 自体の --lightsampler auto に相当します。これを一度選んでそのままにしておくことが、推奨内容の異なるシーン間を切り替えても常に正しい状態を保てる唯一の選択です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="468"/>
@@ -2545,7 +2635,11 @@ default Path Tracer - see each control&apos;s own tooltip.</source>
 A naive random-number generator clusters and leaves gaps; most samplers here (Sobol, Halton, etc.) are low-discrepancy sequences, deliberately spread out to cover the sampling space more evenly, which converges to a clean image faster than true randomness would for the same sample count. Independent is the exception - plain uncorrelated random numbers, included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive rather than as a recommended choice.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>レイトレーシングには大量の乱数が必要です——光線をどの方向に反射させるか、光源上のどの点をサンプリングするか、等々——そしてその「乱数」が「どのように」生成されるかによって、画像がきれいな結果へ収束する速さが変わります。
+
+素朴な乱数生成器は偏りや隙間を生みますが、ここにあるサンプラーの大半（Sobol、Halton など）は低食い違い量列であり、サンプリング空間をより均等に覆うように意図的に分散されているため、同じサンプル数であれば真の乱数よりも速くきれいな画像に収束します。「Independent」は例外で、単純な無相関の乱数です。これは推奨されるものとしてではなく、読み込んだ .pbrt シーン自体の Sampler ディレクティブへの忠実性のために含まれています。
+
+グレーアウトしていますか？これは CPU レンダラーの既定のパストレーサーにのみ影響します——「設定」タブで「レンダラー」を CPU に切り替えて使用してください。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="488"/>
@@ -2554,7 +2648,11 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 BVH (the default, matching pbrt-v4 itself) builds a spatial hierarchy over the scene&apos;s lights and adapts its weighting per shading point - both bright AND nearby lights get preferred. Auto instead uses whatever the loaded scene&apos;s own Integrator parameter requested (BVH if it made no request). Power picks by brightness alone, ignoring position - simpler, worse in scenes where light distance varies a lot. Uniform ignores both - every light equally likely regardless of brightness or distance, included mainly for comparison/debugging.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>拡散/光沢反射のバウンスごとに、次イベント推定のために直接サンプリングする光源を（潜在的に多数の中から）1 つ選ぶ必要があります——どの光源が選ばれ、どれだけ公平に選ばれるかによって画像の収束速度は変わりますが、最終的に収束する「結果」自体は決して変わりません。
+
+BVH（既定、pbrt-v4 自体と一致）はシーンの光源上に空間階層を構築し、シェーディング点ごとに重みを適応させます——明るい光源も近い光源も優先されます。「Auto」は代わりに読み込んだシーン自身のインテグレーターパラメータが要求する値を使用します（要求がなければ BVH）。「Power」は位置を無視して明るさのみで選択します——よりシンプルですが、光源距離の差が大きいシーンでは劣ります。「Uniform」は両方を無視します——明るさや距離に関係なくすべての光源が等確率で選ばれ、主に比較/デバッグ用に含まれています。
+
+グレーアウトしていますか？これは CPU レンダラーの既定のパストレーサーにのみ影響します——「設定」タブで「レンダラー」を CPU に切り替えて使用してください。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="509"/>
@@ -2608,42 +2706,42 @@ CPU・GPUいずれのデフォルトパストレーサーでのみ有効です�
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="709"/>
         <source>Accelerator</source>
-        <translation type="unfinished"></translation>
+        <translation>アクセラレーター</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="712"/>
         <source>CPU-only spatial acceleration structure and split heuristic used to speed up ray-scene intersection tests. Applies to every integrator, not just the default path tracer - the defaults work well for almost every scene.</source>
-        <translation type="unfinished"></translation>
+        <translation>光線とシーンの交差テストを高速化するための、CPU 専用の空間加速構造と分割ヒューリスティックです。既定のパストレーサーだけでなく、すべてのインテグレーターに適用されます——既定値はほぼすべてのシーンでうまく機能します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="723"/>
         <source>Scene&apos;s own choice (default)</source>
-        <translation type="unfinished"></translation>
+        <translation>シーン自身の選択（既定）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="723"/>
         <source>Leaves a loaded .pbrt scene&apos;s own Accelerator directive alone (bvh if it named none, real pbrt-v4&apos;s own default). No effect on a native (non-.pbrt) scene either way.</source>
-        <translation type="unfinished"></translation>
+        <translation>読み込んだ .pbrt シーン自身の Accelerator ディレクティブをそのままにします（指定がなければ bvh、これは実際の pbrt-v4 自体の既定値です）。ネイティブ（非 .pbrt）シーンにはいずれにせよ影響しません。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="727"/>
         <source>BVH</source>
-        <translation type="unfinished"></translation>
+        <translation>BVH</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="727"/>
         <source>A bounding volume hierarchy, built by the split method chosen below - this project&apos;s pre-existing default accelerator, matching pbrt-v4 itself.</source>
-        <translation type="unfinished"></translation>
+        <translation>下で選択した分割方法によって構築される階層的境界ボリュームです——これは pbrt-v4 自体と一致する、本プロジェクトの従来からの既定アクセラレーターです。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="731"/>
         <source>Kd-tree</source>
-        <translation type="unfinished"></translation>
+        <translation>Kd 木</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="731"/>
         <source>A k-d tree instead of a BVH - pbrt-v4&apos;s other real accelerator option. Has no split-method concept of its own (the combo below is ignored when this is chosen). Falls back to BVH/sah on a scene with object motion blur (this project&apos;s kd-tree wrapper has no per-ray-time channel) - a warning is printed when that happens.</source>
-        <translation type="unfinished"></translation>
+        <translation>BVH の代わりに k-d 木を使用します——pbrt-v4 のもう一つの実在するアクセラレーターオプションです。独自の分割方法という概念を持たず（これを選択すると下のコンボボックスは無視されます）、物体のモーションブラーがあるシーンでは BVH/sah にフォールバックします（本プロジェクトの kd 木ラッパーには光線ごとの時間チャンネルがありません）——その際は警告が出力されます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="740"/>
@@ -2652,12 +2750,16 @@ choice renders the identical converged image - a build-strategy/
 perf knob, not a quality one. CPU only, every integrator - no
 effect on GPU (always its own fixed BVH) or a native (non-.pbrt)
 scene (has no Accelerator directive to override - see the log).</source>
-        <translation type="unfinished"></translation>
+        <translation>シーンのジオメトリを保持するアクセラレーターです。どの選択肢を
+選んでも収束後の画像は全く同一になります——これは構築戦略/
+パフォーマンスのつまみであり、画質のつまみではありません。CPU のみ、すべてのインテグレーターに適用——GPU（常に
+独自の固定 BVH）やネイティブ（非 .pbrt）シーン（上書きできる Accelerator
+ディレクティブがない——ログを参照）には影響しません。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="746"/>
         <source>Accelerator:</source>
-        <translation type="unfinished"></translation>
+        <translation>アクセラレーター：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="747"/>
@@ -2666,47 +2768,51 @@ scene (has no Accelerator directive to override - see the log).</source>
 BVH (bounding volume hierarchy) and Kd-tree are two different real strategies for organizing the same geometry - both produce the exact same rendered image, just at different build/traversal speeds depending on the scene&apos;s shape.
 
 Only a loaded .pbrt scene has an Accelerator directive to override at all - a native (non-.pbrt) scene always uses its own fixed BVH regardless of this choice (a warning is printed if you pick something else anyway).</source>
-        <translation type="unfinished"></translation>
+        <translation>三角形/球のフラットなリストでは、すべての光線がシーン内のすべてのプリミティブをテストすることになってしまいます——加速構造があるからこそ、光線はシーンの大部分を飛ばして、実際に通過する経路の近くにあるわずかなプリミティブだけをテストできます。
+
+BVH（階層的境界ボリューム）と Kd 木は、同じジオメトリを整理するための 2 つの異なる実在の戦略です——どちらも全く同じレンダリング画像を生成しますが、シーンの形状によって構築/走査の速度が異なります。
+
+Accelerator ディレクティブを上書きできるのは、読み込んだ .pbrt シーンだけです——ネイティブ（非 .pbrt）シーンは、この選択にかかわらず常に独自の固定 BVH を使用します（それでも他を選んだ場合は警告が出力されます）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="766"/>
         <source>SAH (default)</source>
-        <translation type="unfinished"></translation>
+        <translation>SAH（既定）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="766"/>
         <source>Surface Area Heuristic - estimates the traversal cost of several candidate splits and picks the cheapest. Slower to build than Middle/Equal, but the best-traversing tree in most scenes - this project&apos;s pre-existing BVH build.</source>
-        <translation type="unfinished"></translation>
+        <translation>表面積ヒューリスティック——複数の候補分割の走査コストを見積もり、最も安いものを選びます。Middle/Equal より構築は遅いですが、ほとんどのシーンで最も走査効率の良い木になります——本プロジェクトの従来からの BVH 構築方式です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="771"/>
         <source>Middle</source>
-        <translation type="unfinished"></translation>
+        <translation>Middle</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="771"/>
         <source>Splits each node at the midpoint of its bounding box&apos;s longest axis. Cheap to build, no cost estimation at all - can traverse poorly on unevenly-distributed geometry.</source>
-        <translation type="unfinished"></translation>
+        <translation>各ノードをその境界ボックスの最も長い軸の中点で分割します。構築は安価で、コスト見積もりは一切行いません——分布が不均一なジオメトリでは走査効率が悪くなることがあります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="775"/>
         <source>Equal counts</source>
-        <translation type="unfinished"></translation>
+        <translation>Equal counts（均等分割）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="775"/>
         <source>Splits each node so an equal number of primitives fall on each side, regardless of their spatial extent. Cheap to build; can produce badly-shaped nodes for clustered geometry.</source>
-        <translation type="unfinished"></translation>
+        <translation>空間的な広がりに関係なく、各ノードを両側のプリミティブ数が等しくなるように分割します。構築は安価ですが、密集したジオメトリでは形の悪いノードを生成することがあります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="780"/>
         <source>HLBVH</source>
-        <translation type="unfinished"></translation>
+        <translation>HLBVH</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="780"/>
         <source>Hierarchical Linear BVH - builds bottom-up from Morton codes, the fastest of these four to build for very large triangle counts, at some traversal-quality cost versus SAH.</source>
-        <translation type="unfinished"></translation>
+        <translation>階層的リニア BVH——モートン符号からボトムアップで構築され、非常に多い三角形数に対してこれら 4 つの中で最も高速に構築できますが、SAH に比べて走査品質はいくらか劣ります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="787"/>
@@ -2715,17 +2821,21 @@ Kd-tree). Every choice renders the identical converged image.
 Falls back to sah on a scene with object motion blur (this
 project&apos;s non-sah BVH build has no per-ray-time channel) - a
 warning is printed when that happens.</source>
-        <translation type="unfinished"></translation>
+        <translation>上の BVH がどのように構築されるか（Accelerator が
+Kd 木に設定されている場合は無視されます）。どの選択肢を選んでも収束後の画像は全く同一になります。
+物体のモーションブラーがあるシーンでは sah にフォールバックします（本
+プロジェクトの非 sah BVH 構築には光線ごとの時間チャンネルがありません）——その際は
+警告が出力されます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="793"/>
         <source>BVH split method:</source>
-        <translation type="unfinished"></translation>
+        <translation>BVH 分割方法：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="794"/>
         <source>Only consulted when the accelerator above resolves to BVH (ignored for Kd-tree, which has no split-method concept). All four build the same tree shape family from a different strategy - SAH spends more time building in exchange for a better-traversing tree; Middle/Equal are cheap, simple fallbacks; HLBVH trades some traversal quality for the fastest build on very large scenes.</source>
-        <translation type="unfinished"></translation>
+        <translation>上のアクセラレーターが BVH に解決される場合にのみ参照されます（Kd 木には分割方法の概念がないため無視されます）。この 4 つはいずれも異なる戦略から同じ系統の木の形を構築します——SAH はより良く走査できる木と引き換えに構築により多くの時間をかけます。Middle/Equal は安価でシンプルなフォールバックです。HLBVH は非常に大きなシーンでの最速の構築と引き換えに、いくらか走査品質を犠牲にします。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="832"/>
@@ -2839,7 +2949,7 @@ Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab 
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1254"/>
         <source>Render only a rectangular sub-region of the full frame, given as normalized 0-1 coordinates - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
-        <translation type="unfinished"></translation>
+        <translation>完全なフレームのうち、正規化された 0～1 座標で指定した矩形の一部だけをレンダリングします——シーンの一部を、画像全体のコストをかけずに素早くテストレンダリングするのに便利です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1262"/>
@@ -2876,7 +2986,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1314"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
-        <translation type="unfinished"></translation>
+        <translation>クロップ矩形の左端で、フレーム全体の幅に対する割合として表されます（0 = 左端、1 = 右端）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1316"/>
@@ -2886,7 +2996,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1317"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
-        <translation type="unfinished"></translation>
+        <translation>クロップ矩形の上端で、フレーム全体の高さに対する割合として表されます（0 = 上端、1 = 下端）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1319"/>
@@ -2896,7 +3006,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
-        <translation type="unfinished"></translation>
+        <translation>クロップ矩形の右端で、フレーム全体の幅に対する割合として表されます——何かをレンダリングするには「左（X0）」より大きい必要があります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1322"/>
@@ -2906,7 +3016,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1323"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
-        <translation type="unfinished"></translation>
+        <translation>クロップ矩形の下端で、フレーム全体の高さに対する割合として表されます——何かをレンダリングするには「上（Y0）」より大きい必要があります。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
@@ -2916,7 +3026,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1356"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
-        <translation type="unfinished"></translation>
+        <translation>乱数シードを固定することで、後の実行でもレンダリングをピクセル単位で正確に再現できるようにします——ランダムなノイズの違いに惑わされずに設定変更を比較したい場合に便利です。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
@@ -2947,7 +3057,7 @@ Off by default (genuinely random every render).</source>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1391"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
-        <translation type="unfinished"></translation>
+        <translation>レンダリングの乱数生成器の種として使用される特定の整数です。上の「再現可能なレンダリング」がチェックされている場合にのみ有効です——同じシーン/設定で同じシードを使えば、常にピクセル単位で同一のノイズが生成されます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1415"/>
@@ -2974,47 +3084,49 @@ Off by default (genuinely random every render).</source>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
-        <translation type="unfinished"></translation>
+        <translation>最初のフレームを待っています...
+
+ドラッグで視点回転、スクロールまたは +/- でズーム、WASD で移動、上/下で上昇・下降</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1746"/>
         <source>Live Preview — %1</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビュー — %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1751"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
-        <translation type="unfinished"></translation>
+        <translation>インタラクティブな GPU プレビュー——ドラッグで視点回転、スクロールまたは +/- でズーム、WASD で移動、上/下で上昇・下降、左/右で回転</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1777"/>
         <source>Select a scene first</source>
-        <translation type="unfinished"></translation>
+        <translation>先にシーンを選択してください</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1826"/>
         <source>Starting...</source>
-        <translation type="unfinished"></translation>
+        <translation>開始中...</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1842"/>
         <source>Stopped</source>
-        <translation type="unfinished"></translation>
+        <translation>停止しました</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1859"/>
         <source>Live (denoised, not accumulating)</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブ（デノイズ済み、累積なし）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1861"/>
         <source>%1 samples</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 サンプル</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1877"/>
         <source>Live Preview: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>ライブプレビュー：%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="2313"/>
@@ -3046,7 +3158,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="49"/>
         <source>Live status for whichever job is currently rendering - which job it is, percent complete, and elapsed/estimated time. Pause, Stop, and Abandon act on this job specifically.</source>
-        <translation type="unfinished"></translation>
+        <translation>現在レンダリング中のジョブのライブ状況です——どのジョブか、完了率、経過/推定時間。一時停止、停止、破棄はこの特定のジョブに対して作用します。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="91"/>
@@ -3056,7 +3168,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="93"/>
         <source>Jobs queued behind the one currently rendering - clicking Render while a job is already in progress adds another here instead of interrupting it. Renders in order, automatically, as each one finishes.</source>
-        <translation type="unfinished"></translation>
+        <translation>現在レンダリング中のジョブの後ろに並んでいるジョブです——すでにジョブが進行中のときに「レンダリング」をクリックすると、それを中断するのではなく、ここに新たなジョブが追加されます。各ジョブが完了するたびに、自動的に順番にレンダリングされます。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="108"/>
@@ -3419,7 +3531,7 @@ CPU専用です。面光源のみ対応。</translation>
     <message>
         <location filename="../mainwindow_style.cpp" line="1262"/>
         <source>Denoiser: on (blend %1)</source>
-        <translation type="unfinished"></translation>
+        <translation>デノイザー：オン（ブレンド %1）</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1263"/>
@@ -3454,27 +3566,27 @@ CPU専用です。面光源のみ対応。</translation>
     <message>
         <location filename="../mainwindow_style.cpp" line="1275"/>
         <source>Accelerator: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>アクセラレーター：%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1276"/>
         <source>Split method: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>分割方法：%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1279"/>
         <source>Adaptive sampling: on (threshold %1)</source>
-        <translation type="unfinished"></translation>
+        <translation>適応サンプリング：オン（閾値 %1）</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1280"/>
         <source>Adaptive sampling: on</source>
-        <translation type="unfinished"></translation>
+        <translation>適応サンプリング：オン</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1282"/>
         <source>Time limit: %1s</source>
-        <translation type="unfinished"></translation>
+        <translation>時間制限：%1秒</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1283"/>
@@ -4153,7 +4265,9 @@ CPU専用です。面光源のみ対応。</translation>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>
-        <translation type="unfinished"></translation>
+        <translation>「設定」からレンダリングを開始します——完了した画像
+や動画はそれぞれここに独自のタブとして開かれるため、
+設定を比較したり調整したりしている間も過去のレンダリング結果が残ります。</translation>
     </message>
     <message>
         <source>Start a render from Basic Settings - each finished image

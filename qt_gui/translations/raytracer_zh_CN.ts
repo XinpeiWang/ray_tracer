@@ -88,25 +88,25 @@
         <location filename="../mainwindow_slots.cpp" line="417"/>
         <location filename="../mainwindow_slots.cpp" line="723"/>
         <source>&amp;PAUSE RENDER</source>
-        <translation type="unfinished"></translation>
+        <translation>暂停渲染(&amp;P)</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1015"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="725"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
-        <translation type="unfinished"></translation>
+        <translation>就地暂停正在运行的渲染 - “继续”会从完全相同的像素处接着渲染</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1024"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
-        <translation type="unfinished"></translation>
+        <translation>放弃并继续下一个(&amp;N)</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1031"/>
         <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
-        <translation type="unfinished"></translation>
+        <translation>丢弃正在运行的渲染的输出，并立即开始下一个排队的任务</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="47"/>
@@ -138,12 +138,12 @@
         <location filename="../mainwindow_slots.cpp" line="420"/>
         <location filename="../mainwindow_slots.cpp" line="727"/>
         <source>&amp;Pause Render</source>
-        <translation type="unfinished"></translation>
+        <translation>暂停渲染(&amp;P)</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="81"/>
         <source>&amp;Abandon &amp;&amp; Start Next</source>
-        <translation type="unfinished"></translation>
+        <translation>放弃并开始下一个(&amp;A)</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
@@ -262,7 +262,7 @@
     <message>
         <location filename="../mainwindow_actions.cpp" line="209"/>
         <source>GPU (OptiX, Wavefront)</source>
-        <translation type="unfinished"></translation>
+        <translation>GPU（OptiX，Wavefront）</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="221"/>
@@ -671,52 +671,52 @@
     <message>
         <location filename="../mainwindow_slots.cpp" line="685"/>
         <source>Abandoning render...</source>
-        <translation type="unfinished"></translation>
+        <translation>正在放弃渲染…</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="704"/>
         <source>&amp;RESUME RENDER</source>
-        <translation type="unfinished"></translation>
+        <translation>继续渲染(&amp;R)</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="706"/>
         <source>Resume the paused render from the exact same pixels</source>
-        <translation type="unfinished"></translation>
+        <translation>从完全相同的像素处继续已暂停的渲染</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="708"/>
         <source>&amp;Resume Render</source>
-        <translation type="unfinished"></translation>
+        <translation>继续渲染(&amp;R)</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="711"/>
         <source>⏸ Paused</source>
-        <translation type="unfinished"></translation>
+        <translation>⏸ 已暂停</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1717"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
-        <translation type="unfinished"></translation>
+        <translation>逐帧渲染相机路径并合成为视频。如果已有渲染正在进行，则改为加入队列排在其后。</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1723"/>
         <source>START LIVE &amp;PREVIEW</source>
-        <translation type="unfinished"></translation>
+        <translation>开始实时预览(&amp;P)</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1726"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
-        <translation type="unfinished"></translation>
+        <translation>启动一个可用鼠标环绕/缩放的交互式 GPU 预览。批量渲染运行期间会被禁用。</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1728"/>
         <source>Ready to start live preview</source>
-        <translation type="unfinished"></translation>
+        <translation>准备开始实时预览</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1736"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
-        <translation type="unfinished"></translation>
+        <translation>使用当前设置渲染所选场景。如果已有渲染正在进行，则改为加入队列排在其后。</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1747"/>
@@ -728,7 +728,7 @@
         <location filename="../mainwindow_tabs_render.cpp" line="961"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1750"/>
         <source>Live Preview</source>
-        <translation type="unfinished"></translation>
+        <translation>实时预览</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1849"/>
@@ -896,7 +896,7 @@ The render may have failed to create output.</source>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="280"/>
         <source>Pick which scene to render. Scenes are grouped by category and searchable; switch to the grid view for thumbnail previews. Selecting a scene here also seeds its recommended camera/settings hint below, if it has one.</source>
-        <translation type="unfinished"></translation>
+        <translation>选择要渲染的场景。场景按类别分组并可搜索；切换到网格视图可查看缩略图预览。在此处选择场景，还会在下方带出该场景推荐的相机/设置提示（如果有的话）。</translation>
     </message>
     <message numerus="yes">
         <location filename="../mainwindow_tabs.cpp" line="329"/>
@@ -990,7 +990,7 @@ scene not already cached. CPU-only, low resolution - takes a while the first tim
     <message>
         <location filename="../mainwindow_tabs.cpp" line="569"/>
         <source>Choose Output Mode (Single Image, Video, or Live Preview) and the renderer (GPU or CPU) here, plus a Quality/Resolution preset or a manual override further down. Video- and Live-Preview-only fields stay visible and editable even in Image mode, dimmed with a note - so you can pre-configure them before switching modes.</source>
-        <translation type="unfinished"></translation>
+        <translation>在此处选择输出模式（单张图像、视频或实时预览）以及渲染器（GPU 或 CPU），再往下还可选择质量/分辨率预设或手动覆盖。仅用于视频和实时预览的字段在图像模式下仍会保持可见并可编辑，只是会变暗并附带提示——这样你就可以在切换模式之前预先配置好它们。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="580"/>
@@ -1005,12 +1005,12 @@ scene not already cached. CPU-only, low resolution - takes a while the first tim
     <message>
         <location filename="../mainwindow_tabs.cpp" line="590"/>
         <source>Live Preview (interactive)</source>
-        <translation type="unfinished"></translation>
+        <translation>实时预览（交互式）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="600"/>
         <source>realtime_renderer.dll wasn&apos;t found next to the application.</source>
-        <translation type="unfinished"></translation>
+        <translation>未在应用程序旁找到 realtime_renderer.dll。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="607"/>
@@ -1201,14 +1201,16 @@ SPPM(随机渐进光子映射)能处理路径追踪难以应对的强焦散/玻�
     <message>
         <location filename="../mainwindow_tabs.cpp" line="640"/>
         <source>⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path don&apos;t apply. Scene and Camera Position do.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ 实时预览在 GPU 上以固定的小分辨率渲染，且不写入任何输出文件——分辨率、每像素采样数、最大光线深度和输出路径均不适用。场景和相机位置则适用。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="647"/>
         <source>Single Image renders one frame.
 Generate Video renders a camera path frame by frame and assembles an MP4.
 Live Preview renders continuously with an orbitable camera - GPU only.</source>
-        <translation type="unfinished"></translation>
+        <translation>“单张图像”渲染一帧画面。
+“生成视频”逐帧渲染相机路径并合成为 MP4。
+“实时预览”使用可环绕的相机连续渲染——仅限 GPU。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="655"/>
@@ -1392,7 +1394,7 @@ Higher resolution means more individual pixels to trace - each one independently
     <message>
         <location filename="../mainwindow_tabs.cpp" line="837"/>
         <source>⚠ These settings only take effect when Output Mode above is set to &quot;Generate Video&quot;.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ 这些设置仅在上方的输出模式设为“生成视频”时才会生效。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="853"/>
@@ -1401,24 +1403,30 @@ have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the Scene above too. Choosing any of the
 other controls on this tab afterward is fine - they simply stop matching
 the preset, the same as if you had built the same settings by hand.</source>
-        <translation type="unfinished"></translation>
+        <translation>著名的光线追踪参考场景与运镜方式，均已预先调好，因此你不必
+手动设置场景、相机路径、帧数、帧率和速度。
+选择其中一项也会同时更改上方的场景。之后再调整此标签页上的
+其他控件也没关系——它们只会不再与预设匹配，
+就像你是手动搭建出相同设置一样。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="862"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the Scene above) - you can still change anything afterward, it just stops matching the preset once you do.</source>
-        <translation type="unfinished"></translation>
+        <translation>一套现成的场景 + 相机路径 + 帧数 + 帧率 + 速度组合，经过调校，无需你自己逐项挑选设置即可获得效果不错的成片视频。
+
+选择其中一项会填好下方的每个字段（以及上方的场景）——之后你仍可随意更改，只是一旦更改就不再与该预设匹配。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="876"/>
         <source>Tour (Room walkthrough)</source>
-        <translation type="unfinished"></translation>
+        <translation>漫游（房间步行浏览）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="877"/>
         <source>Showcase (Product reveal)</source>
-        <translation type="unfinished"></translation>
+        <translation>展示（产品展示）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="879"/>
@@ -1430,33 +1438,46 @@ Picking one fills in every field below (and the Scene above) - you can still cha
   Tour      — sways side to side and glides forward while looking around, like walking through a room
   Showcase  — one eased turn that pushes in and arcs up-then-down, like a product ad
 Every path starts from the camera position set below.</source>
-        <translation type="unfinished"></translation>
+        <translation>相机在帧序列中的运镜方式：
+  环绕      —— 围绕场景整整转一圈，始终注视场景中心
+  直线      —— 从场景旁掠过的直线运镜
+  8字形     —— 描绘一条双纽线，在中间交叉往返
+  螺旋      —— 一边环绕一边持续靠近
+  漫游      —— 左右摇摆并向前滑行，同时四处张望，如同走进房间参观
+  展示      —— 一次带缓动的转动，推近镜头并做一次先升后降的弧线运动，如同产品广告
+每种路径都从下方设置的相机位置开始。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="890"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Tour sways side to side and glides forward while its look-at point drifts too, like an actual visitor walking through and looking around a room. Showcase turns once around the subject with an eased push-in and a gentle rise-and-fall, like a product advertisement&apos;s hero shot. Every path starts from wherever the camera is positioned further down this tab.</source>
-        <translation type="unfinished"></translation>
+        <translation>相机在整个帧序列中的运镜方式。
+
+环绕会围绕场景完整转一圈，并始终正对其中心——经典的“转盘”式镜头。直线以一条笔直路线从旁掠过。8字形描绘一条双纽线，在中间交叉往返。螺旋一边环绕一边持续靠近。漫游会左右摇摆并向前滑行，同时其注视点也在漂移，就像真的有人在房间里边走边环顾四周。展示则围绕主体转动一周，带一次缓动推近和轻柔的先升后降，如同产品广告的主打镜头。每种路径都从此标签页下方相机所在的位置开始。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="921"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second to determine the video&apos;s total length in seconds.</source>
-        <translation type="unfinished"></translation>
+        <translation>视频由多少张独立图像组成——每一帧都是一次完整、独立的渲染，因此该值会直接乘以总渲染时间（100 帧的耗时大约是相同设置下单张图像的 100 倍）。
+
+与“每秒帧数”搭配使用，可确定视频的总时长（秒）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="936"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
-        <translation type="unfinished"></translation>
+        <translation>每秒播放多少已渲染帧。
+
+并不改变实际渲染的帧数（那是由“帧数”决定的）——只改变播放速度，从而决定成片视频有多少秒长（帧数除以帧率）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="999"/>
         <source>%1 frames (base %2 x 1/%3x speed)%4</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 帧（基础 %2 x 1/%3 倍速）%4</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1011"/>
@@ -1479,256 +1500,278 @@ Step 3: Click START VIDEO RENDER and wait.
 Step 4: Video automatically assembles and opens when done!
 
 Tips: use GPU mode for faster rendering. Lower samples/pixel (10-50) for quick previews, higher (100-500) for production quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes on CPU.</source>
-        <translation type="unfinished"></translation>
+        <translation>视频时长：%1 秒（%2）
+
+相机路径：%3，无论速度如何都会完整走完一遍
+
+输出：帧将保存到 output/frames/
+
+需要 ffmpeg：视频编码使用 ffmpeg（libx264），必须先安装并加入你的 PATH——如果渲染日志报告缺失，请前往 ffmpeg.org 获取。
+
+所有帧渲染完成后，视频会自动合成并打开。
+
+第 1 步：在上方配置“视频生成设置”（相机路径、帧数、帧率），并将输出模式设为“生成视频”。
+
+第 2 步：在此标签页下方配置质量设置。
+
+第 3 步：点击“开始视频渲染”并等待。
+
+第 4 步：完成后视频会自动合成并打开！
+
+提示：使用 GPU 模式可获得更快的渲染速度。较低的每像素采样数（10-50）适合快速预览，较高（100-500）适合成片质量。典型渲染时间为 GPU 上 1-5 分钟，CPU 上 15-60 分钟。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1052"/>
         <source>Live Preview Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>实时预览设置</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1055"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>调节实时预览中鼠标环绕/缩放以及键盘 WASD/上/下移动 + 左/右/+/- 的响应灵敏度。仅在上方输出模式为“实时预览（交互式）”时生效，但在任何模式下都可编辑。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1090"/>
         <source>Mouse Sensitivity:</source>
-        <translation type="unfinished"></translation>
+        <translation>鼠标灵敏度：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1091"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
-        <translation type="unfinished"></translation>
+        <translation>缩放实时预览中点击拖动环绕以及滚轮缩放的速度。1x 对应原始手感；数值越低越柔和，越高响应越灵敏。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1108"/>
         <source>Keyboard Sensitivity:</source>
-        <translation type="unfinished"></translation>
+        <translation>键盘灵敏度：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1109"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
-        <translation type="unfinished"></translation>
+        <translation>缩放实时预览中 WASD/上/下移动、左/右方向键环绕以及 +/- 缩放的步进幅度。1x 为每次按键的适中幅度；数值越低越精细，越高每次按键移动越远。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="990"/>
         <source>OptiX AI Denoiser</source>
-        <translation type="unfinished"></translation>
+        <translation>OptiX AI 降噪器</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1023"/>
         <source>Show latest frame instead of accumulating</source>
-        <translation type="unfinished"></translation>
+        <translation>显示最新一帧，而非累积平均</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="991"/>
         <source>SVGF Denoiser (experimental)</source>
-        <translation type="unfinished"></translation>
+        <translation>SVGF 降噪器（实验性）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="88"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ 实时预览直接使用 GPU 渐进式路径追踪器——此标签页上的设置均不适用于它，唯独“降噪器”分区自己的“实时预览”子分区（在下方）除外。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1016"/>
         <source>Blend:</source>
-        <translation type="unfinished"></translation>
+        <translation>混合：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1017"/>
         <source>OptiX AI Denoiser only. Blend between the noisy input and the fully denoised output (0.0 = 100% denoised, 1.0 = original noisy image), same meaning as the Image &amp; Video subsection&apos;s own blend control.</source>
-        <translation type="unfinished"></translation>
+        <translation>仅限 OptiX AI 降噪器。在有噪点的输入与完全降噪的输出之间混合（0.0 = 100% 降噪，1.0 = 原始噪点图像），含义与“图像和视频”子分区自身的混合控件相同。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1046"/>
         <source>SVGF Advanced Tuning</source>
-        <translation type="unfinished"></translation>
+        <translation>SVGF 高级调优</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1070"/>
         <source>Denoiser:</source>
-        <translation type="unfinished"></translation>
+        <translation>降噪器：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1094"/>
         <source>OptiX AI Denoiser only. Displays each denoised frame as-is instead of averaging it into a running mean with earlier frames. Trades away the extra quality accumulating more samples would eventually reach, in exchange for a view that always reflects only the most recent frame - useful while flying around with WASD, where older accumulated frames are from a camera position you&apos;ve already left.</source>
-        <translation type="unfinished"></translation>
+        <translation>仅限 OptiX AI 降噪器。按原样显示每个已降噪的帧，而不是将其与之前的帧累积平均。这会放弃累积更多样本本可达到的额外画质，换来始终只反映最新一帧的画面——在用 WASD 四处飞行时很有用，因为累积的旧帧来自你已经离开的相机位置。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1134"/>
         <source>Temporal Alpha:</source>
-        <translation type="unfinished"></translation>
+        <translation>时域 Alpha：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1135"/>
         <source>Floor on the temporal blend rate - lower holds onto history longer (less noise, more lag on a changing scene), higher adapts faster (more noise, less lag).</source>
-        <translation type="unfinished"></translation>
+        <translation>时域混合率的下限——数值越低，保留历史信息越久（噪点更少，但在场景变化时滞后更多）；数值越高，适应越快（噪点更多，滞后更少）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1139"/>
         <source>Max History Length:</source>
-        <translation type="unfinished"></translation>
+        <translation>最大历史长度：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1140"/>
         <source>Caps how many frames of history a converged pixel can accumulate - bounds how &quot;sticky&quot; it gets.</source>
-        <translation type="unfinished"></translation>
+        <translation>限制一个已收敛像素最多能累积多少帧历史——用于限定其“粘滞”程度的上限。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1143"/>
         <source>Variance Bootstrap Frames:</source>
-        <translation type="unfinished"></translation>
+        <translation>方差引导帧数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1144"/>
         <source>Below this history length, variance is spatially prefiltered from neighboring pixels instead of trusted alone - helps a fresh or disoccluded pixel&apos;s edge-stopping weights before it has enough of its own temporal history.</source>
-        <translation type="unfinished"></translation>
+        <translation>在历史长度低于此值时，方差会先根据相邻像素做空间预滤波，而不是单独信任自身——这有助于一个新出现或刚解除遮挡的像素，在积累起足够自身时域历史之前先获得合理的边缘保持权重。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1149"/>
         <source>Variance Bootstrap Radius:</source>
-        <translation type="unfinished"></translation>
+        <translation>方差引导半径：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1150"/>
         <source>Box radius (in pixels) used for the variance prefilter above - radius 3 means a 7x7 box.</source>
-        <translation type="unfinished"></translation>
+        <translation>上方方差预滤波所用的框半径（以像素为单位）——半径 3 表示一个 7x7 的框。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1153"/>
         <source>Sigma Normal:</source>
-        <translation type="unfinished"></translation>
+        <translation>法线 Sigma：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1154"/>
         <source>Edge-stopping sensitivity to shading-normal differences - higher rejects a smaller normal difference, preventing blur across curved surfaces or silhouettes.</source>
-        <translation type="unfinished"></translation>
+        <translation>对着色法线差异的边缘保持灵敏度——数值越高，越小的法线差异也会被拒绝，从而防止在曲面或轮廓边缘处产生模糊。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1158"/>
         <source>Sigma Depth:</source>
-        <translation type="unfinished"></translation>
+        <translation>深度 Sigma：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1159"/>
         <source>Edge-stopping sensitivity to depth differences, relative to the local depth gradient - higher tolerates more depth variation before rejecting a neighbor as a different surface.</source>
-        <translation type="unfinished"></translation>
+        <translation>对深度差异的边缘保持灵敏度，相对于局部深度梯度而言——数值越高，在把邻近像素判定为不同表面之前所能容忍的深度变化越大。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1163"/>
         <source>Sigma Luminance:</source>
-        <translation type="unfinished"></translation>
+        <translation>亮度 Sigma：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1164"/>
         <source>Edge-stopping sensitivity to luminance differences, relative to the pixel&apos;s own estimated noise level - higher blurs across a larger brightness difference.</source>
-        <translation type="unfinished"></translation>
+        <translation>对亮度差异的边缘保持灵敏度，相对于该像素自身估计的噪声水平而言——数值越高，能在越大的亮度差异范围内进行模糊处理。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1168"/>
         <source>A-trous Radius:</source>
-        <translation type="unfinished"></translation>
+        <translation>A-trous 半径：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1169"/>
         <source>Filter footprint radius per A-trous pass - clamped to [0,2] (radius 2 = 5x5) since the filter&apos;s own kernel weight table only has 3 entries.</source>
-        <translation type="unfinished"></translation>
+        <translation>每次 A-trous 滤波的滤波器覆盖半径——限制在 [0,2] 之间（半径 2 = 5x5），因为该滤波器自身的核权重表只有 3 项。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1173"/>
         <source>Min Albedo:</source>
-        <translation type="unfinished"></translation>
+        <translation>最小反照率：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1174"/>
         <source>Floor applied before dividing color by albedo (demodulation) - prevents a near-zero-albedo pixel from blowing up or round-tripping to black.</source>
-        <translation type="unfinished"></translation>
+        <translation>在用颜色除以反照率（去调制）之前施加的下限——防止反照率接近零的像素数值爆炸，或来回折算成黑色。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1178"/>
         <source>A-trous Passes:</source>
-        <translation type="unfinished"></translation>
+        <translation>A-trous 遍数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1179"/>
         <source>Number of A-trous filter passes (step sizes double each pass: 1,2,4,8,...) - more passes cover a larger effective radius at proportionally higher GPU cost.</source>
-        <translation type="unfinished"></translation>
+        <translation>A-trous 滤波遍数（每一遍步长翻倍：1、2、4、8……）——遍数越多，能覆盖的有效半径越大，但 GPU 开销也相应更高。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1184"/>
         <source>Reset to Defaults</source>
-        <translation type="unfinished"></translation>
+        <translation>恢复默认值</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1127"/>
         <source>ReSTIR GI</source>
-        <translation type="unfinished"></translation>
+        <translation>ReSTIR GI</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1139"/>
         <source>Resampled one-bounce indirect lighting (ReSTIR GI) - independent of which denoiser is active above. Disabling it falls back to the classic single-sample indirect estimate, which is noisier but cheaper per frame.</source>
-        <translation type="unfinished"></translation>
+        <translation>重采样的单次反弹间接光照（ReSTIR GI）——与上方启用哪种降噪器无关。禁用它会回退到经典的单样本间接估计，噪点更多但每帧开销更低。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1158"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as the Render Options tab&apos;s own Exposure control but independently set for Live Preview.</source>
-        <translation type="unfinished"></translation>
+        <translation>色调映射前施加的固定亮度倍数，含义与“渲染选项”标签页自身的“曝光”控件相同，但为实时预览独立设置。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1176"/>
         <source>Samples/Frame:</source>
-        <translation type="unfinished"></translation>
+        <translation>每帧采样数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1177"/>
         <source>Samples per pixel rendered on each Live Preview call - Live Preview has its own independent value from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="unfinished"></translation>
+        <translation>实时预览每次调用时渲染的每像素采样数——实时预览拥有独立于下方“高级参数”组的自身取值，后者仅适用于图像/视频。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1188"/>
         <source>Max Bounces:</source>
-        <translation type="unfinished"></translation>
+        <translation>最大反弹次数：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1189"/>
         <source>Maximum ray depth for Live Preview - independent from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="unfinished"></translation>
+        <translation>实时预览的最大光线深度——独立于下方仅适用于图像/视频的“高级参数”组。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1205"/>
         <source>Firefly Clamp:</source>
-        <translation type="unfinished"></translation>
+        <translation>萤火虫钳制：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1206"/>
         <source>Caps the brightest possible sample value to suppress fireflies, at the cost of clipping genuinely bright highlights. Lower values clamp more aggressively.</source>
-        <translation type="unfinished"></translation>
+        <translation>限制单个样本值可达到的最大亮度以抑制萤火虫噪点，代价是会截断真正明亮的高光。数值越低，钳制越激进。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1230"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>手动覆盖分辨率、每像素采样数和最大光线深度，而不是使用上方的质量/分辨率预设。图像和视频共用这些设置（视频将其复用为逐帧设置）——实时预览则始终使用自身固定的小分辨率。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1260"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
-        <translation type="unfinished"></translation>
+        <translation>图像的像素宽度。
+
+与“高度”搭配，用于手动设置分辨率，覆盖上方“质量”预设原本会使用的值。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1273"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
-        <translation type="unfinished"></translation>
+        <translation>图像的像素高度。
+
+与“宽度”搭配——两者共同手动设置分辨率，覆盖上方的“质量”预设。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1344"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
-        <translation type="unfinished"></translation>
+        <translation>直接设置相机的世界坐标位置，或选择一个命名预设。图像模式下会照原样使用；视频模式下将其作为相机路径动画的起点；实时预览模式下则作为你交互式环绕/缩放之前的初始位置。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1506"/>
@@ -1738,7 +1781,7 @@ Paired with Width - together they set the resolution manually, overriding the Qu
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1509"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.</source>
-        <translation type="unfinished"></translation>
+        <translation>渲染文件的保存位置。视频模式会自动附加正确的扩展名；实时预览则完全忽略此设置，因为它从不写入文件。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1532"/>
@@ -1779,7 +1822,7 @@ A raw .ppm file is always written, and a .png copy is generated alongside it aut
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1576"/>
         <source>Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>设置</translation>
     </message>
     <message>
         <source>Basic Settings</source>
@@ -1913,7 +1956,11 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 Single Image renders the scene once, from the camera set on this tab. Generate Video instead moves the camera along a path (Video Generation Settings, further down this tab) and renders one frame per step, then assembles them into an MP4 - taking roughly Frame Count times as long as a single image. Live Preview instead renders continuously at a fixed, small resolution so you can click-drag/scroll to orbit the camera and see the result converge in real time - it never writes an output file.
 
 Generate Video cannot be combined with an alternate Integrator - see the warning below if that combination is picked.</source>
-        <translation type="unfinished"></translation>
+        <translation>此渲染是生成一帧静态画面、一段拼接成视频的帧序列，还是一个交互式 GPU 预览。
+
+“单张图像”只从这个标签页设置的相机渲染场景一次。“生成视频”则会沿一条路径移动相机（“视频生成设置”，位于此标签页下方），逐步渲染每一帧，再合成为 MP4——耗时大约是单张图像的“帧数”倍。“实时预览”则以固定的小分辨率连续渲染，让你可以点击拖动/滚轮来环绕相机，并实时看到画面收敛——它从不写入输出文件。
+
+“生成视频”不能与备选积分器组合使用——如果选择了这种组合，请查看下方的警告。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="760"/>
@@ -1926,7 +1973,15 @@ Generate Video cannot be combined with an alternate Integrator - see the warning
   Maximum 5000 spp, depth 100
 Custom leaves the Samples/Max Depth fields below untouched.
 Render time scales roughly linearly with samples per pixel.</source>
-        <translation type="unfinished"></translation>
+        <translation>每像素采样数 / 最大光线深度：
+  草稿      25 spp，  深度 10
+  预览      50 spp，  深度 20
+  良好     100 spp，  深度 50
+  高       500 spp，  深度 50
+  极致    1000 spp，  深度 100
+  最高    5000 spp，  深度 100
+“自定义”不会改动下方的“采样数/最大深度”字段。
+渲染时间大致与每像素采样数成正比。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1406"/>
@@ -2004,7 +2059,7 @@ The quickest way to zoom in or pull back once you&apos;ve already found an angle
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="104"/>
         <source>Choose the light-transport algorithm - the default path tracer, or an alternate like SPPM/BDPT/MLT/AO with its own sub-options shown below once picked. Alternate integrators are CPU-only and can&apos;t be combined with Video mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>选择光传输算法——默认的路径追踪器，或者选择 SPPM/BDPT/MLT/AO 等备选算法，一旦选定会在下方显示其专属子选项。备选积分器仅限 CPU，且不能与视频模式组合使用。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="213"/>
@@ -2135,7 +2190,7 @@ The quickest way to zoom in or pull back once you&apos;ve already found an angle
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="378"/>
         <source>Sampler algorithm, spectral rendering, adaptive sampling, and a time-limit alternative to a fixed sample count. These control HOW samples are drawn, separately from HOW MANY (Settings tab).</source>
-        <translation type="unfinished"></translation>
+        <translation>采样器算法、光谱渲染、自适应采样，以及作为固定采样数替代方案的时间限制。这些控制的是采样“如何”进行，与“数量多少”（设置标签页）相互独立。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="391"/>
@@ -2221,25 +2276,32 @@ or under BDPT/MLT/SPPM/the debug integrators.</source>
 Real light is a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths refract by different amounts - RGB alone can&apos;t represent that. Spectral rendering tracks a handful of actual wavelengths per ray instead of just RGB, at the cost of being noisier and slower per sample.
 
 Grayed out? This only exists on the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>普通渲染将光记录为三个数值——红、绿、蓝——就像屏幕显示颜色的方式一样。
+
+真实的光是一段连续的波长光谱，一些物理现象（比如棱镜将白光分解成彩虹）之所以会发生，正是因为不同波长的折射程度不同——单靠 RGB 无法表现这一点。光谱渲染会为每条光线记录若干真实波长，而不只是 RGB，代价是每个样本的噪点更多、速度更慢。
+
+显示为灰色？此选项仅存在于 CPU 渲染器的默认路径追踪器中——请在“设置”标签页将“渲染器”切换为 CPU 以使用它。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="531"/>
         <source>Adaptive sampling (--adaptive)</source>
-        <translation type="unfinished"></translation>
+        <translation>自适应采样（--adaptive）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="533"/>
         <source>Stops sampling a pixel early once it&apos;s converged, instead of
 always spending the full Samples budget on every pixel - Samples
 becomes a ceiling, not a fixed count. CPU default path tracer only.</source>
-        <translation type="unfinished"></translation>
+        <translation>一旦某个像素已收敛就提前停止对它采样，而不是
+始终对每个像素都花完完整的采样预算——“采样数”
+变成一个上限，而不是固定次数。仅限 CPU 默认路径追踪器。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="544"/>
         <source>Target relative noise level to consider a pixel converged.
 Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</source>
-        <translation type="unfinished"></translation>
+        <translation>判定一个像素已收敛所需的目标相对噪声水平。
+数值越低越干净但越慢。0.01 与 Blender Cycles 自身的默认值一致。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="555"/>
@@ -2248,30 +2310,37 @@ Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</sour
 Adaptive sampling tracks each pixel&apos;s own running noise estimate and stops early once it drops below the threshold below, letting Samples act as a ceiling rather than a flat quota - the same idea as Blender Cycles&apos; own adaptive sampling.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>蒙特卡洛路径追踪器的噪点来自随机性——有些像素（比如一面明亮且均匀受光的墙）只需几个样本就能收敛到干净的估计值，而另一些像素（比如仅由一扇小窗照亮的昏暗角落）则需要多得多的样本，噪点才会平息下来。对两者花费相同的固定样本数，会在已经收敛完毕的像素上浪费时间。
+
+自适应采样会跟踪每个像素自身实时的噪声估计，并在其降到下方阈值以下时提前停止，让“采样数”起到上限而非平均分配额度的作用——这与 Blender Cycles 自身的自适应采样思路相同。
+
+显示为灰色？此选项仅影响 CPU 渲染器的默认路径追踪器——请在“设置”标签页将“渲染器”切换为 CPU 以使用它。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="570"/>
         <source>Time limit (--time-limit)</source>
-        <translation type="unfinished"></translation>
+        <translation>时间限制（--time-limit）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="572"/>
         <source>Stop rendering once this many seconds have elapsed, instead of
 always running until every scanline is done. CPU default path
 tracer only.</source>
-        <translation type="unfinished"></translation>
+        <translation>经过这么多秒后即停止渲染，而不是
+始终运行到每条扫描线都完成为止。仅限 CPU 默认路径
+追踪器。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="581"/>
         <source> s</source>
-        <translation type="unfinished"></translation>
+        <translation> 秒</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="584"/>
         <source>Seconds to render before stopping, regardless of the Samples
 budget above.</source>
-        <translation type="unfinished"></translation>
+        <translation>停止前的渲染秒数，与上方的“采样数”
+预算无关。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="595"/>
@@ -2282,32 +2351,38 @@ Scanline-granular: whatever rows were already being worked on when the deadline 
 Generating a video? This is a budget for the WHOLE video, not each frame - later frames get whatever&apos;s left of it, and any frames still remaining once it runs out are skipped.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>适用于固定的预览或渲染农场时间预算，无需猜测一个恰好能按时完成的样本数——让上方的“采样数”保持为一个宽裕的上限，而由此项决定何时真正停止。
+
+以扫描线为粒度：截止时间到达时正在处理的行会正常完成；任何尚未开始的行会被写成黑色而不是被跳过，因此图像仍是一个有效（虽不完整）的渲染结果，而不是损坏的文件。
+
+正在生成视频？这是针对整段视频的预算，而不是每一帧——后面的帧会使用剩余的预算，一旦预算耗尽，剩下的帧会被跳过。
+
+显示为灰色？此选项仅影响 CPU 渲染器的默认路径追踪器——请在“设置”标签页将“渲染器”切换为 CPU 以使用它。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="819"/>
         <source>Post-Processing &amp;&amp; Diagnostics</source>
-        <translation type="unfinished"></translation>
+        <translation>后期处理和诊断</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="822"/>
         <source>Tone mapping curve, whether to print render statistics, and OptiX validation mode - behavior flags for how the final image is processed and reported, not what to render. Denoising has its own dedicated section further down this tab.</source>
-        <translation type="unfinished"></translation>
+        <translation>色调映射曲线、是否打印渲染统计信息，以及 OptiX 校验模式——这些是关于最终图像如何被处理和汇报的行为开关，而非渲染什么内容。降噪功能在此标签页下方有自己专属的分区。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="895"/>
         <source>Denoiser</source>
-        <translation type="unfinished"></translation>
+        <translation>降噪器</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="898"/>
         <source>Every render mode&apos;s own denoiser settings, gathered in one place. Image/Video and Live Preview each have independent controls below - only the subsection for the currently selected Output Mode is active.</source>
-        <translation type="unfinished"></translation>
+        <translation>各渲染模式自身的降噪器设置，汇总在同一处。图像/视频与实时预览各有独立的控件，位于下方——仅当前所选输出模式对应的子分区处于激活状态。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="907"/>
         <source>Image &amp; Video</source>
-        <translation type="unfinished"></translation>
+        <translation>图像和视频</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="927"/>
@@ -2315,7 +2390,9 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 (0.0 = 100% denoised, 1.0 = original noisy image). Lower this to
 preserve more fine texture/grain that full-strength denoising
 can over-smooth.</source>
-        <translation type="unfinished"></translation>
+        <translation>在有噪点的输入与完全降噪的输出之间混合
+（0.0 = 100% 降噪，1.0 = 原始噪点图像）。降低此值可
+保留更多全力降噪可能会过度平滑掉的细腻纹理/颗粒感。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="940"/>
@@ -2324,7 +2401,11 @@ can over-smooth.</source>
 A denoiser is a machine-learning model trained to recognize that speckle pattern and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
 
 Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and GPU Backend to Recursive) on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>光线追踪本质上是有噪点的——较低的采样数会留下颗粒状、斑驳的图像，这正是为什么样本越多通常意味着画面越干净。
+
+降噪器是一种经过训练的机器学习模型，用于识别这种斑驳图案并在事后将其平滑掉，而无需追踪额外的光线——这是一种更快获得干净画面的方式，代价是损失一些细节。它右侧的数值用于在有噪点的原图与完全降噪的结果之间混合——0 为完全降噪（默认值）；调高该值会保留一部分原始颗粒感，适合在全力降噪会抹掉你想保留的纹理时使用。
+
+显示为灰色？此功能需要 GPU 递归后端——请在“设置”标签页将“渲染器”切换为 GPU（并将“GPU 后端”切换为“递归”）以使用它。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1071"/>
@@ -2333,7 +2414,11 @@ Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and G
 OptiX AI Denoiser: cleans up Live Preview&apos;s noisy low-sample image using the same OptiX AI denoiser the Image &amp; Video subsection above runs for finished renders - lets the view look reasonable almost immediately instead of waiting many frames to converge. Costs a small amount of GPU time per frame.
 
 SVGF Denoiser: an alternative, experimental spatiotemporal filter - tracks per-pixel variance over time and uses it to drive an edge-aware spatial filter, which holds up better during camera movement than the AI denoiser + running-mean combination. Always shows the latest filtered frame rather than accumulating (see the SVGF Advanced Tuning group below for its own tunable constants).</source>
-        <translation type="unfinished"></translation>
+        <translation>无：原始累积样本，不进行降噪。
+
+OptiX AI 降噪器：使用与上方“图像和视频”子分区在成品渲染中运行的同一个 OptiX AI 降噪器，清理实时预览低样本数带来的噪点图像——让画面几乎立刻就显得过得去，而不必等待多帧收敛。每帧会占用少量 GPU 时间。
+
+SVGF 降噪器：一种备选的实验性时空滤波器——随时间跟踪每像素方差，并用它来驱动一个边缘感知的空间滤波器，在相机移动时比“AI 降噪器 + 滑动平均”的组合表现更稳定。它始终显示最新的滤波结果，而不是累积平均（其自身可调常数见下方“SVGF 高级调优”组）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="870"/>
@@ -2342,7 +2427,11 @@ SVGF Denoiser: an alternative, experimental spatiotemporal filter - tracks per-p
 It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
 
 Grayed out? This is GPU-only - switch Renderer to GPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>启用 GPU 光线追踪管线内部的额外正确性检查，可捕获某些原本会悄无声息地产生错误图像或随机崩溃的错误类别。
+
+这是给从事渲染器自身 GPU 代码开发的人使用的调试辅助手段，普通渲染并不会从中受益——它有实实在在的性能开销，也不会改变正确渲染结果的样子。
+
+显示为灰色？此功能仅限 GPU——请在“设置”标签页将“渲染器”切换为 GPU 以使用它。</translation>
     </message>
     <message>
         <source>Ray tracing needs a lot of random numbers - which direction to bounce a ray, which point on a light to sample, and so on - and HOW those &quot;random&quot; numbers are generated changes how quickly the image converges to a clean result.
@@ -2369,12 +2458,12 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="460"/>
         <source>Auto (use scene&apos;s own request)</source>
-        <translation type="unfinished"></translation>
+        <translation>自动（使用场景自身的请求）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="460"/>
         <source>Uses whatever this scene&apos;s own Integrator &quot;string lightsampler&quot; parameter requested (BVH if it made no request, or requested something this project doesn&apos;t implement) instead of a fixed choice - matches the CLI&apos;s own --lightsampler auto. Picking this once and leaving it is the one choice here that stays correct as you switch between scenes with different recommendations.</source>
-        <translation type="unfinished"></translation>
+        <translation>使用该场景自身的积分器 “string lightsampler” 参数所请求的值（如果未请求则为 BVH，或请求了本项目未实现的算法），而不是固定选择——与 CLI 自身的 --lightsampler auto 相匹配。选定这一项并保持不变，是在不同场景推荐各异的情况下唯一始终保持正确的选择。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="468"/>
@@ -2546,7 +2635,11 @@ default Path Tracer - see each control&apos;s own tooltip.</source>
 A naive random-number generator clusters and leaves gaps; most samplers here (Sobol, Halton, etc.) are low-discrepancy sequences, deliberately spread out to cover the sampling space more evenly, which converges to a clean image faster than true randomness would for the same sample count. Independent is the exception - plain uncorrelated random numbers, included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive rather than as a recommended choice.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>光线追踪需要大量随机数——光线该往哪个方向反弹、该在光源上采样哪个点，等等——而这些“随机”数是如何生成的，会改变图像收敛到干净结果的速度。
+
+朴素的随机数生成器会出现聚集和空隙；这里的大多数采样器（Sobol、Halton 等）都是低差异序列，刻意分布得更均匀以覆盖采样空间，在相同样本数下比真正的随机数收敛到干净图像的速度更快。“独立”是个例外——普通的不相关随机数，之所以包含它是为了忠实还原已加载的 .pbrt 场景自身的 Sampler 指令，而不是作为推荐选择。
+
+显示为灰色？此选项仅影响 CPU 渲染器的默认路径追踪器——请在“设置”标签页将“渲染器”切换为 CPU 以使用它。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="488"/>
@@ -2555,7 +2648,11 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 BVH (the default, matching pbrt-v4 itself) builds a spatial hierarchy over the scene&apos;s lights and adapts its weighting per shading point - both bright AND nearby lights get preferred. Auto instead uses whatever the loaded scene&apos;s own Integrator parameter requested (BVH if it made no request). Power picks by brightness alone, ignoring position - simpler, worse in scenes where light distance varies a lot. Uniform ignores both - every light equally likely regardless of brightness or distance, included mainly for comparison/debugging.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>每次漫反射/光泽反弹都需要从（可能很多的）光源中挑选一个，直接对其采样以进行下一事件估计——选中哪个光源，以及选取的公平程度，会影响图像收敛的速度，但绝不会影响最终收敛到什么结果。
+
+BVH（默认，与 pbrt-v4 本身一致）会在场景光源上构建一个空间层次结构，并按每个着色点自适应地调整权重——明亮且距离近的光源都会被优先选中。“自动”则使用已加载场景自身的积分器参数所请求的值（未请求时为 BVH）。“Power”仅按亮度挑选，忽略位置——更简单，但在光源距离差异很大的场景中效果较差。“Uniform”两者都忽略——不论亮度或距离，每个光源被选中的概率均等，主要用于对比/调试。
+
+显示为灰色？此选项仅影响 CPU 渲染器的默认路径追踪器——请在“设置”标签页将“渲染器”切换为 CPU 以使用它。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="509"/>
@@ -2611,42 +2708,42 @@ Both CPU and GPU default path tracer only.</source>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="709"/>
         <source>Accelerator</source>
-        <translation type="unfinished"></translation>
+        <translation>加速结构</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="712"/>
         <source>CPU-only spatial acceleration structure and split heuristic used to speed up ray-scene intersection tests. Applies to every integrator, not just the default path tracer - the defaults work well for almost every scene.</source>
-        <translation type="unfinished"></translation>
+        <translation>仅限 CPU 的空间加速结构与分割启发式方法，用于加速光线与场景的相交测试。适用于每一种积分器，而不仅仅是默认路径追踪器——默认设置在几乎所有场景中都表现良好。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="723"/>
         <source>Scene&apos;s own choice (default)</source>
-        <translation type="unfinished"></translation>
+        <translation>场景自身选择（默认）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="723"/>
         <source>Leaves a loaded .pbrt scene&apos;s own Accelerator directive alone (bvh if it named none, real pbrt-v4&apos;s own default). No effect on a native (non-.pbrt) scene either way.</source>
-        <translation type="unfinished"></translation>
+        <translation>保留已加载 .pbrt 场景自身的 Accelerator 指令不变（如果未指定则为 bvh，即真正 pbrt-v4 自身的默认值）。对原生（非 .pbrt）场景则无论如何都没有影响。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="727"/>
         <source>BVH</source>
-        <translation type="unfinished"></translation>
+        <translation>BVH</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="727"/>
         <source>A bounding volume hierarchy, built by the split method chosen below - this project&apos;s pre-existing default accelerator, matching pbrt-v4 itself.</source>
-        <translation type="unfinished"></translation>
+        <translation>一种包围体层次结构，由下方选择的分割方法构建——本项目原有的默认加速结构，与 pbrt-v4 本身一致。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="731"/>
         <source>Kd-tree</source>
-        <translation type="unfinished"></translation>
+        <translation>Kd 树</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="731"/>
         <source>A k-d tree instead of a BVH - pbrt-v4&apos;s other real accelerator option. Has no split-method concept of its own (the combo below is ignored when this is chosen). Falls back to BVH/sah on a scene with object motion blur (this project&apos;s kd-tree wrapper has no per-ray-time channel) - a warning is printed when that happens.</source>
-        <translation type="unfinished"></translation>
+        <translation>使用 k-d 树代替 BVH——pbrt-v4 另一种真实存在的加速结构选项。它没有自己的分割方法概念（选择此项时会忽略下方的下拉框）。在带有物体运动模糊的场景中会回退到 BVH/sah（本项目的 kd 树封装没有逐光线时间通道）——发生这种情况时会打印一条警告。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="740"/>
@@ -2655,12 +2752,16 @@ choice renders the identical converged image - a build-strategy/
 perf knob, not a quality one. CPU only, every integrator - no
 effect on GPU (always its own fixed BVH) or a native (non-.pbrt)
 scene (has no Accelerator directive to override - see the log).</source>
-        <translation type="unfinished"></translation>
+        <translation>哪种加速结构承载场景的几何体。所有
+选项渲染出的收敛图像完全相同——这是一个构建策略/
+性能旋钮，而非画质旋钮。仅限 CPU，适用于所有积分器——对
+GPU（始终使用自身固定的 BVH）或原生（非 .pbrt）
+场景（没有可覆盖的 Accelerator 指令——见日志）没有影响。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="746"/>
         <source>Accelerator:</source>
-        <translation type="unfinished"></translation>
+        <translation>加速结构：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="747"/>
@@ -2669,47 +2770,51 @@ scene (has no Accelerator directive to override - see the log).</source>
 BVH (bounding volume hierarchy) and Kd-tree are two different real strategies for organizing the same geometry - both produce the exact same rendered image, just at different build/traversal speeds depending on the scene&apos;s shape.
 
 Only a loaded .pbrt scene has an Accelerator directive to override at all - a native (non-.pbrt) scene always uses its own fixed BVH regardless of this choice (a warning is printed if you pick something else anyway).</source>
-        <translation type="unfinished"></translation>
+        <translation>一份三角形/球体的平铺列表会让每条光线都去测试场景中的每一个图元——而加速结构正是让光线可以跳过场景中的大部分内容，只测试它实际经过路径附近的少数图元。
+
+BVH（包围体层次结构）和 Kd 树是组织同一份几何体的两种不同的真实策略——两者都会生成完全相同的渲染图像，只是构建/遍历速度会因场景形状而异。
+
+只有已加载的 .pbrt 场景才有可覆盖的 Accelerator 指令——原生（非 .pbrt）场景无论如何都始终使用自身固定的 BVH（如果你仍选择了其他选项，会打印一条警告）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="766"/>
         <source>SAH (default)</source>
-        <translation type="unfinished"></translation>
+        <translation>SAH（默认）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="766"/>
         <source>Surface Area Heuristic - estimates the traversal cost of several candidate splits and picks the cheapest. Slower to build than Middle/Equal, but the best-traversing tree in most scenes - this project&apos;s pre-existing BVH build.</source>
-        <translation type="unfinished"></translation>
+        <translation>表面积启发式——评估若干候选分割方案的遍历成本，并选择最便宜的一个。构建速度比 Middle/Equal 慢，但在大多数场景中能得到遍历效率最高的树——本项目原有的 BVH 构建方式。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="771"/>
         <source>Middle</source>
-        <translation type="unfinished"></translation>
+        <translation>Middle</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="771"/>
         <source>Splits each node at the midpoint of its bounding box&apos;s longest axis. Cheap to build, no cost estimation at all - can traverse poorly on unevenly-distributed geometry.</source>
-        <translation type="unfinished"></translation>
+        <translation>在包围盒最长轴的中点处分割每个节点。构建成本低，完全不做成本估算——在分布不均匀的几何体上可能遍历效果不佳。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="775"/>
         <source>Equal counts</source>
-        <translation type="unfinished"></translation>
+        <translation>Equal counts</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="775"/>
         <source>Splits each node so an equal number of primitives fall on each side, regardless of their spatial extent. Cheap to build; can produce badly-shaped nodes for clustered geometry.</source>
-        <translation type="unfinished"></translation>
+        <translation>将每个节点分割成两侧图元数量相等，而不考虑它们的空间范围。构建成本低；对聚集的几何体可能产生形状很差的节点。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="780"/>
         <source>HLBVH</source>
-        <translation type="unfinished"></translation>
+        <translation>HLBVH</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="780"/>
         <source>Hierarchical Linear BVH - builds bottom-up from Morton codes, the fastest of these four to build for very large triangle counts, at some traversal-quality cost versus SAH.</source>
-        <translation type="unfinished"></translation>
+        <translation>分层线性 BVH——基于 Morton 码自底向上构建，是这四种方法中在超大三角形数量下构建速度最快的一种，但遍历质量比 SAH 略逊一筹。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="787"/>
@@ -2718,17 +2823,21 @@ Kd-tree). Every choice renders the identical converged image.
 Falls back to sah on a scene with object motion blur (this
 project&apos;s non-sah BVH build has no per-ray-time channel) - a
 warning is printed when that happens.</source>
-        <translation type="unfinished"></translation>
+        <translation>上方 BVH 的构建方式（当加速结构设为
+Kd 树时会被忽略）。所有选项渲染出的收敛图像完全相同。
+在带有物体运动模糊的场景中会回退到 sah（本
+项目非 sah 的 BVH 构建没有逐光线时间通道）——发生这种情况时会
+打印一条警告。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="793"/>
         <source>BVH split method:</source>
-        <translation type="unfinished"></translation>
+        <translation>BVH 分割方法：</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="794"/>
         <source>Only consulted when the accelerator above resolves to BVH (ignored for Kd-tree, which has no split-method concept). All four build the same tree shape family from a different strategy - SAH spends more time building in exchange for a better-traversing tree; Middle/Equal are cheap, simple fallbacks; HLBVH trades some traversal quality for the fastest build on very large scenes.</source>
-        <translation type="unfinished"></translation>
+        <translation>仅当上方加速结构解析为 BVH 时才会参考此项（Kd 树没有分割方法的概念，因此会忽略）。这四种方法都以不同策略构建出同一大类树形——SAH 花更多时间构建以换取遍历效果更好的树；Middle/Equal 是简单、廉价的后备方案；HLBVH 则以牺牲部分遍历质量换取在超大场景下最快的构建速度。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="832"/>
@@ -2848,7 +2957,7 @@ Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab 
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1254"/>
         <source>Render only a rectangular sub-region of the full frame, given as normalized 0-1 coordinates - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
-        <translation type="unfinished"></translation>
+        <translation>仅渲染完整画面中的一个矩形子区域，以归一化的 0-1 坐标给出——适合快速测试渲染场景的某一区域，而不必为整张图像付出代价。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1262"/>
@@ -2885,7 +2994,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1314"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
-        <translation type="unfinished"></translation>
+        <translation>裁剪矩形的左边缘，以完整帧宽度的比例表示（0 = 左边缘，1 = 右边缘）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1316"/>
@@ -2895,7 +3004,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1317"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
-        <translation type="unfinished"></translation>
+        <translation>裁剪矩形的上边缘，以完整帧高度的比例表示（0 = 上边缘，1 = 下边缘）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1319"/>
@@ -2905,7 +3014,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
-        <translation type="unfinished"></translation>
+        <translation>裁剪矩形的右边缘，以完整帧宽度的比例表示——必须大于“左（X0）”才能渲染出任何内容。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1322"/>
@@ -2915,7 +3024,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1323"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
-        <translation type="unfinished"></translation>
+        <translation>裁剪矩形的下边缘，以完整帧高度的比例表示——必须大于“上（Y0）”才能渲染出任何内容。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
@@ -2925,7 +3034,7 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1356"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
-        <translation type="unfinished"></translation>
+        <translation>固定随机种子，以便渲染可以在之后的运行中精确、逐像素地复现——适合在比较设置变化时使用，不会被随机噪点差异干扰对比。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
@@ -2956,7 +3065,7 @@ Off by default (genuinely random every render).</source>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1391"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
-        <translation type="unfinished"></translation>
+        <translation>用于播种渲染随机数生成器的具体整数。仅当上方勾选了“可复现渲染”时才生效——相同的种子在相同的场景/设置下，总会产生像素完全相同的噪点。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1415"/>
@@ -2983,47 +3092,49 @@ Off by default (genuinely random every render).</source>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
-        <translation type="unfinished"></translation>
+        <translation>正在等待第一帧…
+
+拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1746"/>
         <source>Live Preview — %1</source>
-        <translation type="unfinished"></translation>
+        <translation>实时预览 — %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1751"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
-        <translation type="unfinished"></translation>
+        <translation>交互式 GPU 预览——拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行，左/右环绕</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1777"/>
         <source>Select a scene first</source>
-        <translation type="unfinished"></translation>
+        <translation>请先选择一个场景</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1826"/>
         <source>Starting...</source>
-        <translation type="unfinished"></translation>
+        <translation>正在启动…</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1842"/>
         <source>Stopped</source>
-        <translation type="unfinished"></translation>
+        <translation>已停止</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1859"/>
         <source>Live (denoised, not accumulating)</source>
-        <translation type="unfinished"></translation>
+        <translation>实时（已降噪，不进行累积）</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1861"/>
         <source>%1 samples</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 个样本</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1877"/>
         <source>Live Preview: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>实时预览：%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="2313"/>
@@ -3055,7 +3166,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="49"/>
         <source>Live status for whichever job is currently rendering - which job it is, percent complete, and elapsed/estimated time. Pause, Stop, and Abandon act on this job specifically.</source>
-        <translation type="unfinished"></translation>
+        <translation>当前正在渲染的任务的实时状态——是哪个任务、完成百分比，以及已用/预计时间。暂停、停止和放弃操作专门作用于这个任务。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="91"/>
@@ -3065,7 +3176,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="93"/>
         <source>Jobs queued behind the one currently rendering - clicking Render while a job is already in progress adds another here instead of interrupting it. Renders in order, automatically, as each one finishes.</source>
-        <translation type="unfinished"></translation>
+        <translation>排在当前正在渲染的任务后面排队的任务——在已有任务进行中时点击“渲染”，会在此处新增一项，而不是打断当前任务。会按顺序自动渲染，每完成一个就接着下一个。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="108"/>
@@ -3430,7 +3541,7 @@ CPU only. Area lights only.</source>
     <message>
         <location filename="../mainwindow_style.cpp" line="1262"/>
         <source>Denoiser: on (blend %1)</source>
-        <translation type="unfinished"></translation>
+        <translation>降噪器：开启（混合 %1）</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1263"/>
@@ -3465,27 +3576,27 @@ CPU only. Area lights only.</source>
     <message>
         <location filename="../mainwindow_style.cpp" line="1275"/>
         <source>Accelerator: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>加速结构：%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1276"/>
         <source>Split method: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>分割方法：%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1279"/>
         <source>Adaptive sampling: on (threshold %1)</source>
-        <translation type="unfinished"></translation>
+        <translation>自适应采样：开启（阈值 %1）</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1280"/>
         <source>Adaptive sampling: on</source>
-        <translation type="unfinished"></translation>
+        <translation>自适应采样：开启</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1282"/>
         <source>Time limit: %1s</source>
-        <translation type="unfinished"></translation>
+        <translation>时间限制：%1 秒</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1283"/>
@@ -4164,7 +4275,9 @@ CPU only. Area lights only.</source>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>
-        <translation type="unfinished"></translation>
+        <translation>从“设置”开始渲染——每个渲染完成的图像
+或视频都会在此处以独立的标签页打开，方便你
+在比较或调整设置时保留过去的渲染结果。</translation>
     </message>
     <message>
         <source>Start a render from Basic Settings - each finished image

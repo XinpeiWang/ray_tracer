@@ -89,25 +89,25 @@
         <location filename="../mainwindow_slots.cpp" line="417"/>
         <location filename="../mainwindow_slots.cpp" line="723"/>
         <source>&amp;PAUSE RENDER</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;METTRE LE RENDU EN PAUSE</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1015"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="725"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
-        <translation type="unfinished"></translation>
+        <translation>Met en pause le rendu en cours, tel quel - Reprendre continue exactement à partir des mêmes pixels</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1024"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
-        <translation type="unfinished"></translation>
+        <translation>ABANDONNER ET PASSER AU S&amp;UIVANT</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1031"/>
         <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
-        <translation type="unfinished"></translation>
+        <translation>Abandonne la sortie du rendu en cours et démarre immédiatement le prochain travail en file d&apos;attente</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="47"/>
@@ -139,12 +139,12 @@
         <location filename="../mainwindow_slots.cpp" line="420"/>
         <location filename="../mainwindow_slots.cpp" line="727"/>
         <source>&amp;Pause Render</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;Mettre le rendu en pause</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="81"/>
         <source>&amp;Abandon &amp;&amp; Start Next</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;Abandonner et passer au suivant</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
@@ -263,7 +263,7 @@
     <message>
         <location filename="../mainwindow_actions.cpp" line="209"/>
         <source>GPU (OptiX, Wavefront)</source>
-        <translation type="unfinished"></translation>
+        <translation>GPU (OptiX, Wavefront)</translation>
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="221"/>
@@ -673,52 +673,52 @@
     <message>
         <location filename="../mainwindow_slots.cpp" line="685"/>
         <source>Abandoning render...</source>
-        <translation type="unfinished"></translation>
+        <translation>Abandon du rendu...</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="704"/>
         <source>&amp;RESUME RENDER</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;REPRENDRE LE RENDU</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="706"/>
         <source>Resume the paused render from the exact same pixels</source>
-        <translation type="unfinished"></translation>
+        <translation>Reprend le rendu mis en pause à partir exactement des mêmes pixels</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="708"/>
         <source>&amp;Resume Render</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;Reprendre le rendu</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="711"/>
         <source>⏸ Paused</source>
-        <translation type="unfinished"></translation>
+        <translation>⏸ En pause</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1717"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
-        <translation type="unfinished"></translation>
+        <translation>Effectue le rendu de la trajectoire de caméra image par image et assemble une vidéo. Se met en file d&apos;attente à la place si un rendu est déjà en cours.</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1723"/>
         <source>START LIVE &amp;PREVIEW</source>
-        <translation type="unfinished"></translation>
+        <translation>DÉMARRER L&apos;APERÇU EN &amp;DIRECT</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1726"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
-        <translation type="unfinished"></translation>
+        <translation>Démarre un aperçu GPU interactif que vous pouvez orbiter/zoomer à la souris. Désactivé pendant qu&apos;un rendu par lots est en cours.</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1728"/>
         <source>Ready to start live preview</source>
-        <translation type="unfinished"></translation>
+        <translation>Prêt à démarrer l&apos;aperçu en direct</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1736"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
-        <translation type="unfinished"></translation>
+        <translation>Effectue le rendu de la scène sélectionnée avec les paramètres actuels. Se met en file d&apos;attente à la place si un rendu est déjà en cours.</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1747"/>
@@ -730,7 +730,7 @@
         <location filename="../mainwindow_tabs_render.cpp" line="961"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1750"/>
         <source>Live Preview</source>
-        <translation type="unfinished"></translation>
+        <translation>Aperçu en direct</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1849"/>
@@ -899,7 +899,7 @@ Le rendu n&apos;a peut-être pas réussi à créer de résultat.</translation>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="280"/>
         <source>Pick which scene to render. Scenes are grouped by category and searchable; switch to the grid view for thumbnail previews. Selecting a scene here also seeds its recommended camera/settings hint below, if it has one.</source>
-        <translation type="unfinished"></translation>
+        <translation>Choisissez la scène à rendre. Les scènes sont regroupées par catégorie et sont consultables ; passez à la vue en grille pour des aperçus en vignettes. Sélectionner une scène ici affiche aussi, ci-dessous, son indice de caméra/paramètres recommandé, s&apos;il en existe un.</translation>
     </message>
     <message numerus="yes">
         <location filename="../mainwindow_tabs.cpp" line="329"/>
@@ -995,7 +995,7 @@ non encore mise en cache. CPU uniquement, basse résolution - prend du temps la 
     <message>
         <location filename="../mainwindow_tabs.cpp" line="569"/>
         <source>Choose Output Mode (Single Image, Video, or Live Preview) and the renderer (GPU or CPU) here, plus a Quality/Resolution preset or a manual override further down. Video- and Live-Preview-only fields stay visible and editable even in Image mode, dimmed with a note - so you can pre-configure them before switching modes.</source>
-        <translation type="unfinished"></translation>
+        <translation>Choisissez ici le mode de sortie (Image unique, Vidéo ou Aperçu en direct) et le moteur de rendu (GPU ou CPU), ainsi qu&apos;un préréglage Qualité/Résolution ou une substitution manuelle plus bas. Les champs propres à la Vidéo et à l&apos;Aperçu en direct restent visibles et modifiables même en mode Image, estompés avec une note - vous pouvez ainsi les préconfigurer avant de changer de mode.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="580"/>
@@ -1010,12 +1010,12 @@ non encore mise en cache. CPU uniquement, basse résolution - prend du temps la 
     <message>
         <location filename="../mainwindow_tabs.cpp" line="590"/>
         <source>Live Preview (interactive)</source>
-        <translation type="unfinished"></translation>
+        <translation>Aperçu en direct (interactif)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="600"/>
         <source>realtime_renderer.dll wasn&apos;t found next to the application.</source>
-        <translation type="unfinished"></translation>
+        <translation>realtime_renderer.dll est introuvable à côté de l&apos;application.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="607"/>
@@ -1206,14 +1206,16 @@ Survolez n&apos;importe quel élément du menu déroulant pour voir les détails
     <message>
         <location filename="../mainwindow_tabs.cpp" line="640"/>
         <source>⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path don&apos;t apply. Scene and Camera Position do.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ L&apos;aperçu en direct effectue le rendu à une résolution fixe et réduite sur le GPU et n&apos;écrit aucun fichier de sortie - Résolution, Échantillons par pixel, Profondeur de rayon max. et Chemin de sortie ne s&apos;appliquent pas. Scène et Position de la caméra s&apos;appliquent.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="647"/>
         <source>Single Image renders one frame.
 Generate Video renders a camera path frame by frame and assembles an MP4.
 Live Preview renders continuously with an orbitable camera - GPU only.</source>
-        <translation type="unfinished"></translation>
+        <translation>Image unique effectue le rendu d&apos;une seule image.
+Générer une vidéo effectue le rendu d&apos;une trajectoire de caméra image par image et l&apos;assemble en MP4.
+L&apos;aperçu en direct effectue un rendu continu avec une caméra orbitable - GPU uniquement.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="655"/>
@@ -1397,7 +1399,7 @@ Une résolution plus élevée signifie plus de pixels individuels à tracer - ch
     <message>
         <location filename="../mainwindow_tabs.cpp" line="837"/>
         <source>⚠ These settings only take effect when Output Mode above is set to &quot;Generate Video&quot;.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ Ces paramètres ne prennent effet que lorsque le Mode de sortie ci-dessus est réglé sur « Générer une vidéo ».</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="853"/>
@@ -1406,24 +1408,30 @@ have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the Scene above too. Choosing any of the
 other controls on this tab afterward is fine - they simply stop matching
 the preset, the same as if you had built the same settings by hand.</source>
-        <translation type="unfinished"></translation>
+        <translation>Des scènes et mouvements de référence célèbres en lancer de rayons, préréglés pour que vous n&apos;ayez
+pas à définir vous-même la scène, la trajectoire de caméra, le nombre d&apos;images, les fps et la vitesse.
+En choisir un modifie aussi la Scène ci-dessus. Modifier ensuite
+n&apos;importe quel autre réglage de cet onglet ne pose pas de problème - ils cessent simplement de correspondre
+au préréglage, comme si vous aviez construit vous-même les mêmes réglages.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="862"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the Scene above) - you can still change anything afterward, it just stops matching the preset once you do.</source>
-        <translation type="unfinished"></translation>
+        <translation>Un ensemble prêt à l&apos;emploi de scène + trajectoire de caméra + nombre d&apos;images + fps + vitesse, réglé pour que la vidéo obtenue soit réussie sans avoir à choisir chaque paramètre à la main.
+
+En choisir un remplit tous les champs ci-dessous (ainsi que la Scène ci-dessus) - vous pouvez toujours tout modifier ensuite, cela cesse simplement de correspondre au préréglage dès que vous le faites.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="876"/>
         <source>Tour (Room walkthrough)</source>
-        <translation type="unfinished"></translation>
+        <translation>Visite (parcours d&apos;une pièce)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="877"/>
         <source>Showcase (Product reveal)</source>
-        <translation type="unfinished"></translation>
+        <translation>Présentation (révélation produit)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="879"/>
@@ -1435,33 +1443,46 @@ Picking one fills in every field below (and the Scene above) - you can still cha
   Tour      — sways side to side and glides forward while looking around, like walking through a room
   Showcase  — one eased turn that pushes in and arcs up-then-down, like a product ad
 Every path starts from the camera position set below.</source>
-        <translation type="unfinished"></translation>
+        <translation>Comment la caméra se déplace au fil de la séquence d&apos;images :
+  Orbite      — cercle complet autour de la scène, toujours tourné vers son centre
+  Linéaire    — balayage rectiligne devant la scène
+  Figure-8    — trace une lemniscate, en repassant par le milieu
+  Spirale     — orbite tout en se rapprochant régulièrement
+  Visite      — oscille de part et d&apos;autre et glisse vers l&apos;avant en regardant autour, comme en parcourant une pièce
+  Présentation — une rotation adoucie qui s&apos;approche puis décrit un arc montant-descendant, comme une publicité produit
+Chaque trajectoire part de la position de caméra définie plus bas.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="890"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Tour sways side to side and glides forward while its look-at point drifts too, like an actual visitor walking through and looking around a room. Showcase turns once around the subject with an eased push-in and a gentle rise-and-fall, like a product advertisement&apos;s hero shot. Every path starts from wherever the camera is positioned further down this tab.</source>
-        <translation type="unfinished"></translation>
+        <translation>Comment la caméra se déplace tout au long de la séquence d&apos;images.
+
+Orbite tourne entièrement autour de la scène, toujours face à son centre - le plan classique en « plateau tournant ». Linéaire balaie en ligne droite. Figure-8 trace une lemniscate, en repassant par le milieu. Spirale orbite tout en se rapprochant régulièrement. Visite oscille de part et d&apos;autre et glisse vers l&apos;avant tandis que son point de mire dérive aussi, comme un visiteur qui marche et regarde autour de lui dans une pièce. Présentation tourne une fois autour du sujet avec un zoom avant adouci et une légère montée-descente, comme le plan vedette d&apos;une publicité produit. Chaque trajectoire part de la position de la caméra définie plus bas dans cet onglet.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="921"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second to determine the video&apos;s total length in seconds.</source>
-        <translation type="unfinished"></translation>
+        <translation>Combien d&apos;images individuelles composent la vidéo - chacune est un rendu complet et indépendant, ce qui multiplie donc directement le temps de rendu total (100 images prennent environ 100 fois plus de temps qu&apos;une seule image avec les mêmes réglages).
+
+Combiné avec Images par seconde pour déterminer la durée totale de la vidéo en secondes.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="936"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
-        <translation type="unfinished"></translation>
+        <translation>Combien des images rendues sont lues par seconde de vidéo.
+
+Ne change pas le nombre d&apos;images rendues (c&apos;est le Nombre d&apos;images qui le détermine) - uniquement la vitesse de lecture, et donc la durée en secondes de la vidéo finale (Nombre d&apos;images divisé par les FPS).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="999"/>
         <source>%1 frames (base %2 x 1/%3x speed)%4</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 images (base %2 x 1/%3x vitesse)%4</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1011"/>
@@ -1484,256 +1505,278 @@ Step 3: Click START VIDEO RENDER and wait.
 Step 4: Video automatically assembles and opens when done!
 
 Tips: use GPU mode for faster rendering. Lower samples/pixel (10-50) for quick previews, higher (100-500) for production quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes on CPU.</source>
-        <translation type="unfinished"></translation>
+        <translation>Durée de la vidéo : %1 secondes (%2)
+
+Trajectoire de caméra : %3, effectue toujours son parcours complet quelle que soit la vitesse
+
+Sortie : les images seront enregistrées dans output/frames/
+
+Nécessite ffmpeg : l&apos;encodage vidéo utilise ffmpeg (libx264), qui doit être installé et accessible dans votre PATH - récupérez-le sur ffmpeg.org si le journal de rendu signale qu&apos;il est manquant.
+
+Une fois toutes les images rendues, la vidéo est automatiquement assemblée puis ouverte.
+
+Étape 1 : configurez les Paramètres de génération vidéo ci-dessus (trajectoire de caméra, images, FPS) et réglez le Mode de sortie sur Générer une vidéo.
+
+Étape 2 : configurez les paramètres de qualité plus bas dans cet onglet.
+
+Étape 3 : cliquez sur DÉMARRER LE RENDU VIDÉO et patientez.
+
+Étape 4 : la vidéo est assemblée et ouverte automatiquement une fois terminée !
+
+Astuces : utilisez le mode GPU pour un rendu plus rapide. Réduisez les échantillons/pixel (10-50) pour des aperçus rapides, augmentez-les (100-500) pour une qualité de production. Le temps de rendu typique est de 1 à 5 minutes sur GPU, 15 à 60 minutes sur CPU.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1052"/>
         <source>Live Preview Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Paramètres de l&apos;aperçu en direct</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1055"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>Ajuste la réactivité de l&apos;orbite/du zoom à la souris et du déplacement clavier WASD/Haut/Bas + Gauche/Droite/+/- dans l&apos;Aperçu en direct. Ne prend effet que lorsque le Mode de sortie ci-dessus est « Aperçu en direct (interactif) », mais reste modifiable dans tous les modes.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1090"/>
         <source>Mouse Sensitivity:</source>
-        <translation type="unfinished"></translation>
+        <translation>Sensibilité de la souris :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1091"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
-        <translation type="unfinished"></translation>
+        <translation>Ajuste la vitesse d&apos;orbite par glisser-cliquer et de zoom par molette dans l&apos;Aperçu en direct. 1x correspond à la sensation d&apos;origine ; plus bas est plus doux, plus haut est plus réactif.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1108"/>
         <source>Keyboard Sensitivity:</source>
-        <translation type="unfinished"></translation>
+        <translation>Sensibilité du clavier :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1109"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
-        <translation type="unfinished"></translation>
+        <translation>Ajuste le déplacement WASD/Haut/Bas, l&apos;orbite aux flèches Gauche/Droite et le pas de zoom +/- dans l&apos;Aperçu en direct. 1x correspond à un incrément modéré par pression ; plus bas est plus fin, plus haut déplace davantage par pression.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="990"/>
         <source>OptiX AI Denoiser</source>
-        <translation type="unfinished"></translation>
+        <translation>Débruiteur IA OptiX</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1023"/>
         <source>Show latest frame instead of accumulating</source>
-        <translation type="unfinished"></translation>
+        <translation>Afficher la dernière image au lieu d&apos;accumuler</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="991"/>
         <source>SVGF Denoiser (experimental)</source>
-        <translation type="unfinished"></translation>
+        <translation>Débruiteur SVGF (expérimental)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="88"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ L&apos;aperçu en direct utilise directement le traceur de chemin progressif du GPU - aucun des réglages de cet onglet ne s&apos;y applique, à l&apos;exception de la propre sous-section « Aperçu en direct » de la section Débruiteur, plus bas.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1016"/>
         <source>Blend:</source>
-        <translation type="unfinished"></translation>
+        <translation>Mélange :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1017"/>
         <source>OptiX AI Denoiser only. Blend between the noisy input and the fully denoised output (0.0 = 100% denoised, 1.0 = original noisy image), same meaning as the Image &amp; Video subsection&apos;s own blend control.</source>
-        <translation type="unfinished"></translation>
+        <translation>Débruiteur IA OptiX uniquement. Mélange entre l&apos;entrée bruitée et la sortie entièrement débruitée (0.0 = 100 % débruité, 1.0 = image bruitée d&apos;origine), même signification que le propre réglage de mélange de la sous-section Image et vidéo.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1046"/>
         <source>SVGF Advanced Tuning</source>
-        <translation type="unfinished"></translation>
+        <translation>Réglage avancé SVGF</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1070"/>
         <source>Denoiser:</source>
-        <translation type="unfinished"></translation>
+        <translation>Débruiteur :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1094"/>
         <source>OptiX AI Denoiser only. Displays each denoised frame as-is instead of averaging it into a running mean with earlier frames. Trades away the extra quality accumulating more samples would eventually reach, in exchange for a view that always reflects only the most recent frame - useful while flying around with WASD, where older accumulated frames are from a camera position you&apos;ve already left.</source>
-        <translation type="unfinished"></translation>
+        <translation>Débruiteur IA OptiX uniquement. Affiche chaque image débruitée telle quelle au lieu de la faire entrer dans une moyenne glissante avec les images précédentes. Renonce à la qualité supplémentaire que l&apos;accumulation d&apos;échantillons finirait par atteindre, en échange d&apos;une vue qui ne reflète toujours que l&apos;image la plus récente - utile en se déplaçant avec WASD, où les anciennes images accumulées proviennent d&apos;une position de caméra déjà quittée.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1134"/>
         <source>Temporal Alpha:</source>
-        <translation type="unfinished"></translation>
+        <translation>Alpha temporel :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1135"/>
         <source>Floor on the temporal blend rate - lower holds onto history longer (less noise, more lag on a changing scene), higher adapts faster (more noise, less lag).</source>
-        <translation type="unfinished"></translation>
+        <translation>Plancher du taux de mélange temporel - plus bas conserve l&apos;historique plus longtemps (moins de bruit, plus de latence sur une scène changeante), plus haut s&apos;adapte plus vite (plus de bruit, moins de latence).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1139"/>
         <source>Max History Length:</source>
-        <translation type="unfinished"></translation>
+        <translation>Longueur max. de l&apos;historique :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1140"/>
         <source>Caps how many frames of history a converged pixel can accumulate - bounds how &quot;sticky&quot; it gets.</source>
-        <translation type="unfinished"></translation>
+        <translation>Limite le nombre d&apos;images d&apos;historique qu&apos;un pixel convergé peut accumuler - borne à quel point il devient « collant ».</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1143"/>
         <source>Variance Bootstrap Frames:</source>
-        <translation type="unfinished"></translation>
+        <translation>Images d&apos;amorçage de la variance :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1144"/>
         <source>Below this history length, variance is spatially prefiltered from neighboring pixels instead of trusted alone - helps a fresh or disoccluded pixel&apos;s edge-stopping weights before it has enough of its own temporal history.</source>
-        <translation type="unfinished"></translation>
+        <translation>En dessous de cette longueur d&apos;historique, la variance est préfiltrée spatialement à partir des pixels voisins plutôt que d&apos;être fiée à elle seule - aide les poids de préservation des contours d&apos;un pixel neuf ou tout juste dés-occlus avant qu&apos;il n&apos;ait assez de son propre historique temporel.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1149"/>
         <source>Variance Bootstrap Radius:</source>
-        <translation type="unfinished"></translation>
+        <translation>Rayon d&apos;amorçage de la variance :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1150"/>
         <source>Box radius (in pixels) used for the variance prefilter above - radius 3 means a 7x7 box.</source>
-        <translation type="unfinished"></translation>
+        <translation>Rayon de la boîte (en pixels) utilisé par le préfiltre de variance ci-dessus - un rayon de 3 signifie une boîte de 7x7.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1153"/>
         <source>Sigma Normal:</source>
-        <translation type="unfinished"></translation>
+        <translation>Sigma normal :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1154"/>
         <source>Edge-stopping sensitivity to shading-normal differences - higher rejects a smaller normal difference, preventing blur across curved surfaces or silhouettes.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sensibilité de préservation des contours aux différences de normale d&apos;ombrage - une valeur plus élevée rejette une différence de normale plus petite, évitant le flou sur les surfaces courbes ou les silhouettes.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1158"/>
         <source>Sigma Depth:</source>
-        <translation type="unfinished"></translation>
+        <translation>Sigma de profondeur :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1159"/>
         <source>Edge-stopping sensitivity to depth differences, relative to the local depth gradient - higher tolerates more depth variation before rejecting a neighbor as a different surface.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sensibilité de préservation des contours aux différences de profondeur, relative au gradient de profondeur local - une valeur plus élevée tolère davantage de variation de profondeur avant de rejeter un voisin comme une surface différente.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1163"/>
         <source>Sigma Luminance:</source>
-        <translation type="unfinished"></translation>
+        <translation>Sigma de luminance :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1164"/>
         <source>Edge-stopping sensitivity to luminance differences, relative to the pixel&apos;s own estimated noise level - higher blurs across a larger brightness difference.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sensibilité de préservation des contours aux différences de luminance, relative au niveau de bruit estimé propre au pixel - une valeur plus élevée floute sur un écart de luminosité plus important.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1168"/>
         <source>A-trous Radius:</source>
-        <translation type="unfinished"></translation>
+        <translation>Rayon A-trous :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1169"/>
         <source>Filter footprint radius per A-trous pass - clamped to [0,2] (radius 2 = 5x5) since the filter&apos;s own kernel weight table only has 3 entries.</source>
-        <translation type="unfinished"></translation>
+        <translation>Rayon d&apos;empreinte du filtre par passe A-trous - limité à [0,2] (rayon 2 = 5x5) car la table de poids du noyau du filtre ne compte que 3 entrées.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1173"/>
         <source>Min Albedo:</source>
-        <translation type="unfinished"></translation>
+        <translation>Albédo minimal :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1174"/>
         <source>Floor applied before dividing color by albedo (demodulation) - prevents a near-zero-albedo pixel from blowing up or round-tripping to black.</source>
-        <translation type="unfinished"></translation>
+        <translation>Plancher appliqué avant de diviser la couleur par l&apos;albédo (démodulation) - empêche un pixel à l&apos;albédo quasi nul d&apos;exploser ou de retomber au noir.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1178"/>
         <source>A-trous Passes:</source>
-        <translation type="unfinished"></translation>
+        <translation>Passes A-trous :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1179"/>
         <source>Number of A-trous filter passes (step sizes double each pass: 1,2,4,8,...) - more passes cover a larger effective radius at proportionally higher GPU cost.</source>
-        <translation type="unfinished"></translation>
+        <translation>Nombre de passes du filtre A-trous (la taille du pas double à chaque passe : 1, 2, 4, 8...) - davantage de passes couvrent un rayon effectif plus grand, à un coût GPU proportionnellement plus élevé.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1184"/>
         <source>Reset to Defaults</source>
-        <translation type="unfinished"></translation>
+        <translation>Rétablir les valeurs par défaut</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1127"/>
         <source>ReSTIR GI</source>
-        <translation type="unfinished"></translation>
+        <translation>ReSTIR GI</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1139"/>
         <source>Resampled one-bounce indirect lighting (ReSTIR GI) - independent of which denoiser is active above. Disabling it falls back to the classic single-sample indirect estimate, which is noisier but cheaper per frame.</source>
-        <translation type="unfinished"></translation>
+        <translation>Éclairage indirect à un rebond ré-échantillonné (ReSTIR GI) - indépendant du débruiteur actif ci-dessus. Le désactiver revient à l&apos;estimation indirecte classique à échantillon unique, plus bruitée mais moins coûteuse par image.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1158"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as the Render Options tab&apos;s own Exposure control but independently set for Live Preview.</source>
-        <translation type="unfinished"></translation>
+        <translation>Un multiplicateur de luminosité uniforme appliqué avant le tone mapping, avec la même signification que le propre réglage Exposition de l&apos;onglet Options de rendu, mais réglé indépendamment pour l&apos;Aperçu en direct.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1176"/>
         <source>Samples/Frame:</source>
-        <translation type="unfinished"></translation>
+        <translation>Échantillons/image :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1177"/>
         <source>Samples per pixel rendered on each Live Preview call - Live Preview has its own independent value from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="unfinished"></translation>
+        <translation>Échantillons par pixel rendus à chaque appel de l&apos;Aperçu en direct - l&apos;Aperçu en direct possède sa propre valeur, indépendante du groupe Paramètres avancés ci-dessous, qui ne s&apos;applique qu&apos;à Image/Vidéo.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1188"/>
         <source>Max Bounces:</source>
-        <translation type="unfinished"></translation>
+        <translation>Rebonds max. :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1189"/>
         <source>Maximum ray depth for Live Preview - independent from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="unfinished"></translation>
+        <translation>Profondeur de rayon maximale pour l&apos;Aperçu en direct - indépendante du groupe Paramètres avancés ci-dessous, qui ne s&apos;applique qu&apos;à Image/Vidéo.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1205"/>
         <source>Firefly Clamp:</source>
-        <translation type="unfinished"></translation>
+        <translation>Écrêtage des fireflies :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1206"/>
         <source>Caps the brightest possible sample value to suppress fireflies, at the cost of clipping genuinely bright highlights. Lower values clamp more aggressively.</source>
-        <translation type="unfinished"></translation>
+        <translation>Plafonne la valeur d&apos;échantillon la plus brillante possible pour supprimer les fireflies, au prix d&apos;un écrêtage des hautes lumières réellement brillantes. Des valeurs plus basses écrêtent plus agressivement.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1230"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>Remplace manuellement la résolution, les échantillons par pixel et la profondeur de rayon maximale au lieu d&apos;utiliser les préréglages Qualité/Résolution ci-dessus. Partagé par Image et Vidéo (la Vidéo les réutilise comme réglages par image) - l&apos;Aperçu en direct utilise toujours sa propre résolution fixe et réduite à la place.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1260"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
-        <translation type="unfinished"></translation>
+        <translation>La largeur en pixels de l&apos;image.
+
+Combinée avec Hauteur pour définir la résolution manuellement, en remplaçant ce que le préréglage Qualité ci-dessus utiliserait sinon.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1273"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
-        <translation type="unfinished"></translation>
+        <translation>La hauteur en pixels de l&apos;image.
+
+Combinée avec Largeur - ensemble, elles définissent la résolution manuellement, en remplaçant le préréglage Qualité ci-dessus.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1344"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
-        <translation type="unfinished"></translation>
+        <translation>Définit directement la position mondiale de la caméra, ou choisit un préréglage nommé. Utilisée telle quelle en mode Image, comme point de départ à partir duquel s&apos;anime la trajectoire de caméra de la Vidéo, et comme position initiale de l&apos;Aperçu en direct avant que vous ne l&apos;orbitiez/zoomiez interactivement.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1506"/>
@@ -1743,7 +1786,7 @@ Paired with Width - together they set the resolution manually, overriding the Qu
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1509"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.</source>
-        <translation type="unfinished"></translation>
+        <translation>Où le fichier rendu est enregistré. Le mode Vidéo ajoute automatiquement la bonne extension ; l&apos;Aperçu en direct ignore complètement ce réglage, puisqu&apos;il n&apos;écrit jamais de fichier.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1532"/>
@@ -1784,7 +1827,7 @@ Un fichier .ppm brut est toujours écrit, et une copie .png est générée autom
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1576"/>
         <source>Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Paramètres</translation>
     </message>
     <message>
         <source>Basic Settings</source>
@@ -1920,7 +1963,11 @@ Chaque rebond supplémentaire permet à la lumière de parcourir une surface de 
 Single Image renders the scene once, from the camera set on this tab. Generate Video instead moves the camera along a path (Video Generation Settings, further down this tab) and renders one frame per step, then assembles them into an MP4 - taking roughly Frame Count times as long as a single image. Live Preview instead renders continuously at a fixed, small resolution so you can click-drag/scroll to orbit the camera and see the result converge in real time - it never writes an output file.
 
 Generate Video cannot be combined with an alternate Integrator - see the warning below if that combination is picked.</source>
-        <translation type="unfinished"></translation>
+        <translation>Si ce rendu produit une seule image fixe, une séquence d&apos;images assemblées en vidéo, ou un aperçu GPU interactif.
+
+Image unique effectue le rendu de la scène une seule fois, depuis la caméra définie dans cet onglet. Générer une vidéo déplace au contraire la caméra le long d&apos;une trajectoire (Paramètres de génération vidéo, plus bas dans cet onglet) et rend une image par étape, puis les assemble en MP4 - ce qui prend environ Nombre d&apos;images fois plus de temps qu&apos;une seule image. L&apos;Aperçu en direct effectue à la place un rendu continu à une résolution fixe et réduite afin que vous puissiez glisser-cliquer/faire défiler pour orbiter la caméra et voir le résultat converger en temps réel - il n&apos;écrit jamais de fichier de sortie.
+
+Générer une vidéo ne peut pas être combiné avec un Intégrateur alternatif - voir l&apos;avertissement ci-dessous si cette combinaison est choisie.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="760"/>
@@ -1933,7 +1980,15 @@ Generate Video cannot be combined with an alternate Integrator - see the warning
   Maximum 5000 spp, depth 100
 Custom leaves the Samples/Max Depth fields below untouched.
 Render time scales roughly linearly with samples per pixel.</source>
-        <translation type="unfinished"></translation>
+        <translation>Échantillons par pixel / profondeur de rayon max. :
+  Brouillon   25 spp,  profondeur 10
+  Aperçu      50 spp,  profondeur 20
+  Bonne      100 spp,  profondeur 50
+  Élevée     500 spp,  profondeur 50
+  Ultra     1000 spp,  profondeur 100
+  Maximale  5000 spp,  profondeur 100
+Personnalisé laisse intacts les champs Échantillons/Profondeur max. ci-dessous.
+Le temps de rendu évolue à peu près linéairement avec les échantillons par pixel.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="1406"/>
@@ -2011,7 +2066,7 @@ Le moyen le plus rapide de zoomer ou de reculer une fois que vous avez déjà tr
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="104"/>
         <source>Choose the light-transport algorithm - the default path tracer, or an alternate like SPPM/BDPT/MLT/AO with its own sub-options shown below once picked. Alternate integrators are CPU-only and can&apos;t be combined with Video mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>Choisissez l&apos;algorithme de transport de la lumière - le traceur de chemin par défaut, ou une alternative comme SPPM/BDPT/MLT/AO avec ses propres sous-options affichées ci-dessous une fois choisie. Les intégrateurs alternatifs sont réservés au CPU et ne peuvent pas être combinés avec le mode Vidéo.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="213"/>
@@ -2142,7 +2197,7 @@ Le moyen le plus rapide de zoomer ou de reculer une fois que vous avez déjà tr
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="378"/>
         <source>Sampler algorithm, spectral rendering, adaptive sampling, and a time-limit alternative to a fixed sample count. These control HOW samples are drawn, separately from HOW MANY (Settings tab).</source>
-        <translation type="unfinished"></translation>
+        <translation>Algorithme d&apos;échantillonneur, rendu spectral, échantillonnage adaptatif, et une limite de temps comme alternative à un nombre d&apos;échantillons fixe. Ces réglages contrôlent COMMENT les échantillons sont prélevés, séparément de COMBIEN (onglet Paramètres).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="391"/>
@@ -2228,25 +2283,32 @@ or under BDPT/MLT/SPPM/the debug integrators.</source>
 Real light is a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths refract by different amounts - RGB alone can&apos;t represent that. Spectral rendering tracks a handful of actual wavelengths per ray instead of just RGB, at the cost of being noisier and slower per sample.
 
 Grayed out? This only exists on the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Le rendu ordinaire enregistre la lumière sous forme de trois nombres - rouge, vert, bleu - de la même manière qu&apos;un écran affiche les couleurs.
+
+La lumière réelle est un spectre continu de longueurs d&apos;onde, et certains effets physiques (comme un prisme décomposant la lumière blanche en arc-en-ciel) ne se produisent que parce que différentes longueurs d&apos;onde réfractent différemment - le RGB seul ne peut pas représenter cela. Le rendu spectral enregistre une poignée de longueurs d&apos;onde réelles par rayon au lieu du simple RGB, au prix d&apos;être plus bruité et plus lent par échantillon.
+
+Grisé ? Cette option n&apos;existe que sur le traceur de chemin par défaut du moteur de rendu CPU - passez le Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="531"/>
         <source>Adaptive sampling (--adaptive)</source>
-        <translation type="unfinished"></translation>
+        <translation>Échantillonnage adaptatif (--adaptive)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="533"/>
         <source>Stops sampling a pixel early once it&apos;s converged, instead of
 always spending the full Samples budget on every pixel - Samples
 becomes a ceiling, not a fixed count. CPU default path tracer only.</source>
-        <translation type="unfinished"></translation>
+        <translation>Arrête d&apos;échantillonner un pixel dès qu&apos;il a convergé, au lieu de
+toujours dépenser tout le budget d&apos;Échantillons sur chaque pixel - Échantillons
+devient un plafond, non un nombre fixe. Traceur de chemin CPU par défaut uniquement.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="544"/>
         <source>Target relative noise level to consider a pixel converged.
 Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</source>
-        <translation type="unfinished"></translation>
+        <translation>Niveau de bruit relatif cible pour considérer qu&apos;un pixel a convergé.
+Plus bas = plus propre mais plus lent. 0.01 correspond à la valeur par défaut de Blender Cycles.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="555"/>
@@ -2255,30 +2317,37 @@ Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</sour
 Adaptive sampling tracks each pixel&apos;s own running noise estimate and stops early once it drops below the threshold below, letting Samples act as a ceiling rather than a flat quota - the same idea as Blender Cycles&apos; own adaptive sampling.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Le bruit d&apos;un traceur de chemin de Monte-Carlo provient du hasard - certains pixels (un mur lumineux et uniformément éclairé) convergent vers une estimation propre en seulement quelques échantillons, tandis que d&apos;autres (un coin sombre éclairé uniquement par une petite fenêtre) en ont besoin de bien plus avant que le bruit ne se stabilise. Dépenser le même nombre fixe d&apos;échantillons sur les deux gaspille du temps sur les pixels déjà terminés.
+
+L&apos;échantillonnage adaptatif suit l&apos;estimation de bruit propre et continue de chaque pixel et s&apos;arrête plus tôt dès qu&apos;elle passe sous le seuil ci-dessous, laissant Échantillons agir comme un plafond plutôt qu&apos;un quota fixe - la même idée que l&apos;échantillonnage adaptatif propre à Blender Cycles.
+
+Grisé ? Cela n&apos;affecte que le traceur de chemin par défaut du moteur de rendu CPU - passez le Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="570"/>
         <source>Time limit (--time-limit)</source>
-        <translation type="unfinished"></translation>
+        <translation>Limite de temps (--time-limit)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="572"/>
         <source>Stop rendering once this many seconds have elapsed, instead of
 always running until every scanline is done. CPU default path
 tracer only.</source>
-        <translation type="unfinished"></translation>
+        <translation>Arrête le rendu une fois ce nombre de secondes écoulé, au lieu de
+toujours s&apos;exécuter jusqu&apos;à ce que chaque ligne de balayage soit terminée. Traceur de chemin CPU
+par défaut uniquement.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="581"/>
         <source> s</source>
-        <translation type="unfinished"></translation>
+        <translation> s</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="584"/>
         <source>Seconds to render before stopping, regardless of the Samples
 budget above.</source>
-        <translation type="unfinished"></translation>
+        <translation>Secondes de rendu avant l&apos;arrêt, indépendamment du
+budget d&apos;Échantillons ci-dessus.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="595"/>
@@ -2289,32 +2358,38 @@ Scanline-granular: whatever rows were already being worked on when the deadline 
 Generating a video? This is a budget for the WHOLE video, not each frame - later frames get whatever&apos;s left of it, and any frames still remaining once it runs out are skipped.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Utile pour un budget de temps fixe de type aperçu ou ferme de rendu, plutôt que de deviner un nombre d&apos;échantillons qui finira à temps par chance - laisse Échantillons ci-dessus rester un plafond généreux pendant que ce réglage décide du moment où s&apos;arrêter réellement.
+
+Granularité par ligne de balayage : les lignes déjà en cours de traitement au moment où l&apos;échéance passe se terminent normalement ; toute ligne jamais commencée est écrite en noir plutôt qu&apos;omise, de sorte que l&apos;image reste un rendu valide (bien qu&apos;incomplet) plutôt qu&apos;un fichier corrompu.
+
+Vous générez une vidéo ? Il s&apos;agit d&apos;un budget pour TOUTE la vidéo, pas par image - les images suivantes reçoivent ce qu&apos;il en reste, et toute image encore à faire une fois le budget épuisé est ignorée.
+
+Grisé ? Cela n&apos;affecte que le traceur de chemin par défaut du moteur de rendu CPU - passez le Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="819"/>
         <source>Post-Processing &amp;&amp; Diagnostics</source>
-        <translation type="unfinished"></translation>
+        <translation>Post-traitement et diagnostic</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="822"/>
         <source>Tone mapping curve, whether to print render statistics, and OptiX validation mode - behavior flags for how the final image is processed and reported, not what to render. Denoising has its own dedicated section further down this tab.</source>
-        <translation type="unfinished"></translation>
+        <translation>Courbe de tone mapping, impression ou non des statistiques de rendu, et mode de validation OptiX - des indicateurs de comportement sur la façon dont l&apos;image finale est traitée et rapportée, pas sur ce qu&apos;il faut rendre. Le débruitage possède sa propre section dédiée plus bas dans cet onglet.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="895"/>
         <source>Denoiser</source>
-        <translation type="unfinished"></translation>
+        <translation>Débruiteur</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="898"/>
         <source>Every render mode&apos;s own denoiser settings, gathered in one place. Image/Video and Live Preview each have independent controls below - only the subsection for the currently selected Output Mode is active.</source>
-        <translation type="unfinished"></translation>
+        <translation>Les réglages de débruiteur propres à chaque mode de rendu, réunis en un seul endroit. Image/Vidéo et Aperçu en direct disposent chacun de commandes indépendantes ci-dessous - seule la sous-section du Mode de sortie actuellement sélectionné est active.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="907"/>
         <source>Image &amp; Video</source>
-        <translation type="unfinished"></translation>
+        <translation>Image et vidéo</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="927"/>
@@ -2322,7 +2397,10 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 (0.0 = 100% denoised, 1.0 = original noisy image). Lower this to
 preserve more fine texture/grain that full-strength denoising
 can over-smooth.</source>
-        <translation type="unfinished"></translation>
+        <translation>Mélange entre l&apos;entrée bruitée et la sortie entièrement débruitée
+(0.0 = 100 % débruité, 1.0 = image bruitée d&apos;origine). Réduisez cette valeur pour
+préserver davantage de texture/grain fin qu&apos;un débruitage à pleine
+puissance peut lisser à l&apos;excès.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="940"/>
@@ -2331,7 +2409,11 @@ can over-smooth.</source>
 A denoiser is a machine-learning model trained to recognize that speckle pattern and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
 
 Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and GPU Backend to Recursive) on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Le lancer de rayons est intrinsèquement bruité - un faible nombre d&apos;échantillons laisse une image granuleuse et mouchetée, ce qui explique pourquoi davantage d&apos;échantillons donne généralement une image plus propre.
+
+Un débruiteur est un modèle d&apos;apprentissage automatique entraîné à reconnaître ce motif moucheté et à le lisser après coup, sans avoir besoin de tracer des rayons supplémentaires - un moyen d&apos;obtenir plus vite une image d&apos;aspect propre, au prix d&apos;un certain coût en détail fin. Le nombre à sa droite mélange entre l&apos;original bruité et le résultat entièrement débruité - 0 est entièrement débruité (par défaut) ; l&apos;augmenter conserve une partie du grain d&apos;origine, utile quand un débruitage à pleine puissance lisse une texture que vous vouliez garder.
+
+Grisé ? Cela nécessite le backend récursif GPU - passez le Moteur de rendu sur GPU (et le Backend GPU sur Récursif) dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1071"/>
@@ -2340,7 +2422,11 @@ Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and G
 OptiX AI Denoiser: cleans up Live Preview&apos;s noisy low-sample image using the same OptiX AI denoiser the Image &amp; Video subsection above runs for finished renders - lets the view look reasonable almost immediately instead of waiting many frames to converge. Costs a small amount of GPU time per frame.
 
 SVGF Denoiser: an alternative, experimental spatiotemporal filter - tracks per-pixel variance over time and uses it to drive an edge-aware spatial filter, which holds up better during camera movement than the AI denoiser + running-mean combination. Always shows the latest filtered frame rather than accumulating (see the SVGF Advanced Tuning group below for its own tunable constants).</source>
-        <translation type="unfinished"></translation>
+        <translation>Aucun : échantillons accumulés bruts, sans débruitage.
+
+Débruiteur IA OptiX : nettoie l&apos;image bruitée à faible nombre d&apos;échantillons de l&apos;Aperçu en direct à l&apos;aide du même débruiteur IA OptiX que la sous-section Image et vidéo ci-dessus exécute pour les rendus terminés - permet à la vue de paraître raisonnable presque immédiatement au lieu d&apos;attendre de nombreuses images pour converger. Coûte un peu de temps GPU par image.
+
+Débruiteur SVGF : un filtre spatio-temporel alternatif et expérimental - suit la variance par pixel dans le temps et l&apos;utilise pour piloter un filtre spatial sensible aux contours, qui tient mieux la route pendant les mouvements de caméra que la combinaison débruiteur IA + moyenne glissante. Affiche toujours la dernière image filtrée plutôt que d&apos;accumuler (voir le groupe Réglage avancé SVGF ci-dessous pour ses propres constantes ajustables).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="870"/>
@@ -2349,7 +2435,11 @@ SVGF Denoiser: an alternative, experimental spatiotemporal filter - tracks per-p
 It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
 
 Grayed out? This is GPU-only - switch Renderer to GPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Active des vérifications de correction supplémentaires au sein même du pipeline de lancer de rayons GPU, détectant certaines classes de bugs qui produiraient sinon silencieusement une image incorrecte ou planteraient de façon imprévisible.
+
+C&apos;est une aide au débogage pour les personnes travaillant sur le code GPU du moteur de rendu lui-même, pas quelque chose dont un rendu normal bénéficie - cela a un coût réel en performance et ne change pas l&apos;apparence d&apos;un rendu correct.
+
+Grisé ? Ceci est réservé au GPU - passez le Moteur de rendu sur GPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
         <source>Ray tracing needs a lot of random numbers - which direction to bounce a ray, which point on a light to sample, and so on - and HOW those &quot;random&quot; numbers are generated changes how quickly the image converges to a clean result.
@@ -2376,12 +2466,12 @@ Grisé ? Cela n&apos;affecte que le traceur de chemins par défaut du moteur CPU
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="460"/>
         <source>Auto (use scene&apos;s own request)</source>
-        <translation type="unfinished"></translation>
+        <translation>Automatique (utilise la demande propre de la scène)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="460"/>
         <source>Uses whatever this scene&apos;s own Integrator &quot;string lightsampler&quot; parameter requested (BVH if it made no request, or requested something this project doesn&apos;t implement) instead of a fixed choice - matches the CLI&apos;s own --lightsampler auto. Picking this once and leaving it is the one choice here that stays correct as you switch between scenes with different recommendations.</source>
-        <translation type="unfinished"></translation>
+        <translation>Utilise ce que demande le propre paramètre Intégrateur « string lightsampler » de cette scène (BVH si elle n&apos;a rien demandé, ou quelque chose que ce projet n&apos;implémente pas) plutôt qu&apos;un choix fixe - correspond au propre --lightsampler auto de la CLI. Choisir cette option une fois et la laisser est le seul choix ici qui reste correct en passant d&apos;une scène à l&apos;autre avec des recommandations différentes.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="468"/>
@@ -2555,7 +2645,11 @@ default Path Tracer - see each control&apos;s own tooltip.</source>
 A naive random-number generator clusters and leaves gaps; most samplers here (Sobol, Halton, etc.) are low-discrepancy sequences, deliberately spread out to cover the sampling space more evenly, which converges to a clean image faster than true randomness would for the same sample count. Independent is the exception - plain uncorrelated random numbers, included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive rather than as a recommended choice.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Le lancer de rayons a besoin de beaucoup de nombres aléatoires - dans quelle direction faire rebondir un rayon, quel point d&apos;une lumière échantillonner, etc. - et COMMENT ces nombres « aléatoires » sont générés change la vitesse à laquelle l&apos;image converge vers un résultat propre.
+
+Un générateur de nombres aléatoires naïf forme des amas et laisse des trous ; la plupart des échantillonneurs ici (Sobol, Halton, etc.) sont des séquences à faible discrépance, délibérément réparties pour couvrir plus uniformément l&apos;espace d&apos;échantillonnage, ce qui converge vers une image propre plus vite qu&apos;un vrai hasard ne le ferait pour le même nombre d&apos;échantillons. Indépendant fait exception - de simples nombres aléatoires non corrélés, inclus par fidélité à la propre directive Sampler d&apos;une scène .pbrt chargée plutôt que comme choix recommandé.
+
+Grisé ? Cela n&apos;affecte que le traceur de chemin par défaut du moteur de rendu CPU - passez le Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="488"/>
@@ -2564,7 +2658,11 @@ Grayed out? This only affects the CPU renderer&apos;s default path tracer - swit
 BVH (the default, matching pbrt-v4 itself) builds a spatial hierarchy over the scene&apos;s lights and adapts its weighting per shading point - both bright AND nearby lights get preferred. Auto instead uses whatever the loaded scene&apos;s own Integrator parameter requested (BVH if it made no request). Power picks by brightness alone, ignoring position - simpler, worse in scenes where light distance varies a lot. Uniform ignores both - every light equally likely regardless of brightness or distance, included mainly for comparison/debugging.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Chaque rebond diffus/glossy doit choisir UNE lumière (parmi potentiellement beaucoup) à échantillonner directement pour l&apos;estimation du prochain événement - quelle lumière est choisie, et avec quelle équité, change la vitesse à laquelle l&apos;image converge, mais jamais VERS QUOI elle converge.
+
+BVH (par défaut, comme pbrt-v4 lui-même) construit une hiérarchie spatiale sur les lumières de la scène et adapte sa pondération par point d&apos;ombrage - les lumières à la fois brillantes ET proches sont favorisées. Automatique utilise à la place ce que demande le propre paramètre Intégrateur de la scène chargée (BVH si rien n&apos;est demandé). Power choisit uniquement par luminosité, en ignorant la position - plus simple, moins bon dans les scènes où la distance des lumières varie beaucoup. Uniforme ignore les deux - chaque lumière a la même probabilité quelles que soient sa luminosité ou sa distance, inclus principalement pour comparaison/débogage.
+
+Grisé ? Cela n&apos;affecte que le traceur de chemin par défaut du moteur de rendu CPU - passez le Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="509"/>
@@ -2621,42 +2719,42 @@ Uniquement pour le path tracer par défaut, CPU et GPU.</translation>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="709"/>
         <source>Accelerator</source>
-        <translation type="unfinished"></translation>
+        <translation>Accélérateur</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="712"/>
         <source>CPU-only spatial acceleration structure and split heuristic used to speed up ray-scene intersection tests. Applies to every integrator, not just the default path tracer - the defaults work well for almost every scene.</source>
-        <translation type="unfinished"></translation>
+        <translation>Structure d&apos;accélération spatiale et heuristique de division réservées au CPU, utilisées pour accélérer les tests d&apos;intersection rayon-scène. S&apos;applique à chaque intégrateur, pas seulement au traceur de chemin par défaut - les valeurs par défaut fonctionnent bien pour presque toutes les scènes.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="723"/>
         <source>Scene&apos;s own choice (default)</source>
-        <translation type="unfinished"></translation>
+        <translation>Choix propre de la scène (par défaut)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="723"/>
         <source>Leaves a loaded .pbrt scene&apos;s own Accelerator directive alone (bvh if it named none, real pbrt-v4&apos;s own default). No effect on a native (non-.pbrt) scene either way.</source>
-        <translation type="unfinished"></translation>
+        <translation>Laisse intacte la propre directive Accelerator d&apos;une scène .pbrt chargée (bvh si elle n&apos;en a spécifié aucune, le propre défaut du vrai pbrt-v4). Sans effet de toute façon sur une scène native (non .pbrt).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="727"/>
         <source>BVH</source>
-        <translation type="unfinished"></translation>
+        <translation>BVH</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="727"/>
         <source>A bounding volume hierarchy, built by the split method chosen below - this project&apos;s pre-existing default accelerator, matching pbrt-v4 itself.</source>
-        <translation type="unfinished"></translation>
+        <translation>Une hiérarchie de volumes englobants, construite selon la méthode de division choisie ci-dessous - l&apos;accélérateur par défaut préexistant de ce projet, comme pbrt-v4 lui-même.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="731"/>
         <source>Kd-tree</source>
-        <translation type="unfinished"></translation>
+        <translation>Arbre Kd</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="731"/>
         <source>A k-d tree instead of a BVH - pbrt-v4&apos;s other real accelerator option. Has no split-method concept of its own (the combo below is ignored when this is chosen). Falls back to BVH/sah on a scene with object motion blur (this project&apos;s kd-tree wrapper has no per-ray-time channel) - a warning is printed when that happens.</source>
-        <translation type="unfinished"></translation>
+        <translation>Un arbre k-d au lieu d&apos;un BVH - l&apos;autre véritable option d&apos;accélérateur de pbrt-v4. N&apos;a pas de notion propre de méthode de division (le menu déroulant ci-dessous est ignoré si celui-ci est choisi). Revient à BVH/sah sur une scène avec flou de mouvement d&apos;objet (le wrapper d&apos;arbre kd de ce projet n&apos;a pas de canal par temps de rayon) - un avertissement est affiché quand cela se produit.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="740"/>
@@ -2665,12 +2763,16 @@ choice renders the identical converged image - a build-strategy/
 perf knob, not a quality one. CPU only, every integrator - no
 effect on GPU (always its own fixed BVH) or a native (non-.pbrt)
 scene (has no Accelerator directive to override - see the log).</source>
-        <translation type="unfinished"></translation>
+        <translation>Quelle structure d&apos;accélération contient la géométrie de la scène. Chaque
+choix produit l&apos;image convergée identique - un réglage de stratégie de
+construction/performance, pas de qualité. CPU uniquement, tous les intégrateurs - sans
+effet sur GPU (toujours son propre BVH fixe) ni sur une scène native (non .pbrt)
+(n&apos;a pas de directive Accelerator à remplacer - voir le journal).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="746"/>
         <source>Accelerator:</source>
-        <translation type="unfinished"></translation>
+        <translation>Accélérateur :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="747"/>
@@ -2679,47 +2781,51 @@ scene (has no Accelerator directive to override - see the log).</source>
 BVH (bounding volume hierarchy) and Kd-tree are two different real strategies for organizing the same geometry - both produce the exact same rendered image, just at different build/traversal speeds depending on the scene&apos;s shape.
 
 Only a loaded .pbrt scene has an Accelerator directive to override at all - a native (non-.pbrt) scene always uses its own fixed BVH regardless of this choice (a warning is printed if you pick something else anyway).</source>
-        <translation type="unfinished"></translation>
+        <translation>Une simple liste de triangles/sphères ferait tester chaque rayon contre chaque primitive de la scène - la structure d&apos;accélération est ce qui permet à un rayon de sauter la majeure partie de la scène et de ne tester que la poignée de primitives proches de l&apos;endroit où il passe réellement.
+
+BVH (hiérarchie de volumes englobants) et Arbre Kd sont deux stratégies réelles différentes pour organiser la même géométrie - toutes deux produisent exactement la même image rendue, seulement à des vitesses de construction/parcours différentes selon la forme de la scène.
+
+Seule une scène .pbrt chargée possède une directive Accelerator à remplacer - une scène native (non .pbrt) utilise toujours son propre BVH fixe quel que soit ce choix (un avertissement est affiché si vous choisissez tout de même autre chose).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="766"/>
         <source>SAH (default)</source>
-        <translation type="unfinished"></translation>
+        <translation>SAH (par défaut)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="766"/>
         <source>Surface Area Heuristic - estimates the traversal cost of several candidate splits and picks the cheapest. Slower to build than Middle/Equal, but the best-traversing tree in most scenes - this project&apos;s pre-existing BVH build.</source>
-        <translation type="unfinished"></translation>
+        <translation>Heuristique de surface (SAH) - estime le coût de parcours de plusieurs divisions candidates et choisit la moins coûteuse. Plus lente à construire que Middle/Equal, mais l&apos;arbre au meilleur parcours dans la plupart des scènes - la construction BVH préexistante de ce projet.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="771"/>
         <source>Middle</source>
-        <translation type="unfinished"></translation>
+        <translation>Middle</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="771"/>
         <source>Splits each node at the midpoint of its bounding box&apos;s longest axis. Cheap to build, no cost estimation at all - can traverse poorly on unevenly-distributed geometry.</source>
-        <translation type="unfinished"></translation>
+        <translation>Divise chaque nœud au point médian de l&apos;axe le plus long de sa boîte englobante. Peu coûteux à construire, sans aucune estimation de coût - peut mal parcourir une géométrie répartie de façon inégale.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="775"/>
         <source>Equal counts</source>
-        <translation type="unfinished"></translation>
+        <translation>Effectifs égaux</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="775"/>
         <source>Splits each node so an equal number of primitives fall on each side, regardless of their spatial extent. Cheap to build; can produce badly-shaped nodes for clustered geometry.</source>
-        <translation type="unfinished"></translation>
+        <translation>Divise chaque nœud de sorte qu&apos;un nombre égal de primitives se retrouve de chaque côté, quelle que soit leur étendue spatiale. Peu coûteux à construire ; peut produire des nœuds de forme médiocre pour une géométrie regroupée.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="780"/>
         <source>HLBVH</source>
-        <translation type="unfinished"></translation>
+        <translation>HLBVH</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="780"/>
         <source>Hierarchical Linear BVH - builds bottom-up from Morton codes, the fastest of these four to build for very large triangle counts, at some traversal-quality cost versus SAH.</source>
-        <translation type="unfinished"></translation>
+        <translation>BVH linéaire hiérarchique - se construit de bas en haut à partir de codes de Morton, le plus rapide de ces quatre à construire pour un très grand nombre de triangles, au prix d&apos;une qualité de parcours légèrement inférieure à SAH.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="787"/>
@@ -2728,17 +2834,21 @@ Kd-tree). Every choice renders the identical converged image.
 Falls back to sah on a scene with object motion blur (this
 project&apos;s non-sah BVH build has no per-ray-time channel) - a
 warning is printed when that happens.</source>
-        <translation type="unfinished"></translation>
+        <translation>Comment le BVH ci-dessus est construit (ignoré quand Accelerator est réglé sur
+Arbre Kd). Chaque choix produit l&apos;image convergée identique.
+Revient à sah sur une scène avec flou de mouvement d&apos;objet (la
+construction BVH non-sah de ce projet n&apos;a pas de canal par temps de rayon) - un
+avertissement est affiché quand cela se produit.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="793"/>
         <source>BVH split method:</source>
-        <translation type="unfinished"></translation>
+        <translation>Méthode de division BVH :</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="794"/>
         <source>Only consulted when the accelerator above resolves to BVH (ignored for Kd-tree, which has no split-method concept). All four build the same tree shape family from a different strategy - SAH spends more time building in exchange for a better-traversing tree; Middle/Equal are cheap, simple fallbacks; HLBVH trades some traversal quality for the fastest build on very large scenes.</source>
-        <translation type="unfinished"></translation>
+        <translation>Consultée uniquement lorsque l&apos;accélérateur ci-dessus se résout en BVH (ignorée pour Arbre Kd, qui n&apos;a pas de notion de méthode de division). Les quatre construisent la même famille de forme d&apos;arbre selon une stratégie différente - SAH passe plus de temps à construire en échange d&apos;un arbre au meilleur parcours ; Middle/Equal sont des solutions de repli simples et bon marché ; HLBVH sacrifie un peu de qualité de parcours pour la construction la plus rapide sur de très grandes scènes.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="832"/>
@@ -2858,7 +2968,7 @@ Grisé ? Cette option est réservée au GPU - passez Renderer sur GPU dans l&apo
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1254"/>
         <source>Render only a rectangular sub-region of the full frame, given as normalized 0-1 coordinates - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
-        <translation type="unfinished"></translation>
+        <translation>N&apos;effectue le rendu que d&apos;une sous-région rectangulaire de l&apos;image complète, donnée sous forme de coordonnées normalisées 0-1 - utile pour tester rapidement le rendu d&apos;une zone d&apos;une scène sans payer le coût de l&apos;image entière.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1262"/>
@@ -2895,7 +3005,7 @@ Désactivé par défaut (l&apos;image entière). Si le fichier d&apos;une scène
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1314"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
-        <translation type="unfinished"></translation>
+        <translation>Bord gauche du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image (0 = bord gauche, 1 = bord droit).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1316"/>
@@ -2905,7 +3015,7 @@ Désactivé par défaut (l&apos;image entière). Si le fichier d&apos;une scène
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1317"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
-        <translation type="unfinished"></translation>
+        <translation>Bord supérieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image (0 = bord supérieur, 1 = bord inférieur).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1319"/>
@@ -2915,7 +3025,7 @@ Désactivé par défaut (l&apos;image entière). Si le fichier d&apos;une scène
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bord droit du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image - doit être supérieur à Gauche (X0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1322"/>
@@ -2925,7 +3035,7 @@ Désactivé par défaut (l&apos;image entière). Si le fichier d&apos;une scène
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1323"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bord inférieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image - doit être supérieur à Haut (Y0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
@@ -2935,7 +3045,7 @@ Désactivé par défaut (l&apos;image entière). Si le fichier d&apos;une scène
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1356"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
-        <translation type="unfinished"></translation>
+        <translation>Fixe la graine aléatoire afin qu&apos;un rendu puisse être reproduit exactement, pixel par pixel, lors d&apos;une exécution ultérieure - utile pour comparer des changements de réglages sans que des différences de bruit aléatoire ne brouillent la comparaison.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
@@ -2966,7 +3076,7 @@ Désactivé par défaut (véritablement aléatoire à chaque rendu).</translatio
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1391"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
-        <translation type="unfinished"></translation>
+        <translation>L&apos;entier spécifique utilisé pour amorcer le générateur de nombres aléatoires du rendu. Ne prend effet que lorsque Rendu reproductible ci-dessus est coché - la même graine sur la même scène/les mêmes réglages produit toujours un bruit identique pixel par pixel.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1415"/>
@@ -2993,47 +3103,49 @@ Désactivé par défaut (véritablement aléatoire à chaque rendu).</translatio
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
-        <translation type="unfinished"></translation>
+        <translation>En attente de la première image...
+
+Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut/Bas pour voler</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1746"/>
         <source>Live Preview — %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Aperçu en direct — %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1751"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
-        <translation type="unfinished"></translation>
+        <translation>Aperçu GPU interactif - glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut/Bas pour voler, Gauche/Droite pour orbiter</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1777"/>
         <source>Select a scene first</source>
-        <translation type="unfinished"></translation>
+        <translation>Sélectionnez d&apos;abord une scène</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1826"/>
         <source>Starting...</source>
-        <translation type="unfinished"></translation>
+        <translation>Démarrage...</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1842"/>
         <source>Stopped</source>
-        <translation type="unfinished"></translation>
+        <translation>Arrêté</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1859"/>
         <source>Live (denoised, not accumulating)</source>
-        <translation type="unfinished"></translation>
+        <translation>En direct (débruité, sans accumulation)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1861"/>
         <source>%1 samples</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 échantillons</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1877"/>
         <source>Live Preview: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Aperçu en direct : %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render.cpp" line="2313"/>
@@ -3065,7 +3177,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="49"/>
         <source>Live status for whichever job is currently rendering - which job it is, percent complete, and elapsed/estimated time. Pause, Stop, and Abandon act on this job specifically.</source>
-        <translation type="unfinished"></translation>
+        <translation>État en direct du travail actuellement en cours de rendu - lequel c&apos;est, le pourcentage terminé, et le temps écoulé/estimé. Pause, Arrêt et Abandon agissent spécifiquement sur ce travail.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="91"/>
@@ -3075,7 +3187,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="93"/>
         <source>Jobs queued behind the one currently rendering - clicking Render while a job is already in progress adds another here instead of interrupting it. Renders in order, automatically, as each one finishes.</source>
-        <translation type="unfinished"></translation>
+        <translation>Travaux en file d&apos;attente derrière celui actuellement en cours de rendu - cliquer sur Rendu alors qu&apos;un travail est déjà en cours en ajoute un autre ici au lieu de l&apos;interrompre. Rendus dans l&apos;ordre, automatiquement, au fur et à mesure que chacun se termine.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="108"/>
@@ -3441,7 +3553,7 @@ CPU uniquement. Luminaires surfaciques uniquement.</translation>
     <message>
         <location filename="../mainwindow_style.cpp" line="1262"/>
         <source>Denoiser: on (blend %1)</source>
-        <translation type="unfinished"></translation>
+        <translation>Débruiteur : activé (mélange %1)</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1263"/>
@@ -3476,27 +3588,27 @@ CPU uniquement. Luminaires surfaciques uniquement.</translation>
     <message>
         <location filename="../mainwindow_style.cpp" line="1275"/>
         <source>Accelerator: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Accélérateur : %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1276"/>
         <source>Split method: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Méthode de division : %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1279"/>
         <source>Adaptive sampling: on (threshold %1)</source>
-        <translation type="unfinished"></translation>
+        <translation>Échantillonnage adaptatif : activé (seuil %1)</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1280"/>
         <source>Adaptive sampling: on</source>
-        <translation type="unfinished"></translation>
+        <translation>Échantillonnage adaptatif : activé</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1282"/>
         <source>Time limit: %1s</source>
-        <translation type="unfinished"></translation>
+        <translation>Limite de temps : %1s</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1283"/>
@@ -4175,7 +4287,9 @@ CPU uniquement. Luminaires surfaciques uniquement.</translation>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>
-        <translation type="unfinished"></translation>
+        <translation>Démarre un rendu depuis Paramètres - chaque image ou vidéo
+terminée s&apos;ouvre ici dans son propre onglet, si bien que les rendus
+passés restent disponibles pendant que vous comparez ou ajustez les réglages.</translation>
     </message>
     <message>
         <source>Start a render from Basic Settings - each finished image
