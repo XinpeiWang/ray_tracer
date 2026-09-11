@@ -1670,13 +1670,11 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// path).
 	GpuGiSample* giCandidateOut = nullptr,
 	// See wf_light_bvh_sample_index()'s own comment
-	// (wavefront_restir_helpers.h). lightBvhNodeCount<=0 (the default) means
+	// (wavefront_restir_helpers.h). lightBvh.nodeCount<=0 (the default) means
 	// "no light BVH built" - forwarded to wf_generate_restir_candidate()
 	// below unchanged, which itself falls straight through to the alias
 	// table for that case, so every existing call site needs no edit.
-	const LightBVHNode* lightBvhNodes = nullptr, int lightBvhNodeCount = 0,
-	float lightBvhAllBMinX = 0.f, float lightBvhAllBMinY = 0.f, float lightBvhAllBMinZ = 0.f,
-	float lightBvhAllBMaxX = 0.f, float lightBvhAllBMaxY = 0.f, float lightBvhAllBMaxZ = 0.f)
+	WfLightBvhContext lightBvh = {})
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1958,10 +1956,17 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 					spheres, quads, triangles, bilinearPatches, disks, cylinders,
 					materials, lightIndices, lightKinds, aliasTable, numLights,
 					textures, texturePixels, cand, candDir, candMaxDist, candPdf, candRaw,
-					lightBvhNodes, lightBvhNodeCount,
-					lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
-					lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ))
-				break;  // no lights in the scene at all - nothing to resample
+					lightBvh))
+				// numLights==0/no aliasTable is a loop-invariant condition (every
+				// remaining draw would fail identically, so `break` was correct
+				// for that case alone) - but a light BVH's per-draw zero-
+				// importance reject (wf_generate_restir_candidate's own comment)
+				// is NOT loop-invariant: a DIFFERENT random draw can easily land
+				// in a light's cone of influence even when this one didn't.
+				// `continue`, not `break`, so a BVH-active scene still spends
+				// its full kRestirCandidateCount budget instead of aborting the
+				// reservoir after the first unlucky draw.
+				continue;
 			// 1e-6f, not a looser 1e-9f: matches the classic single-draw NEE
 			// path's own `light_pdf > 1e-6f` gate exactly (a few lines below)
 			// - that threshold is what already bounds the classic path's own
@@ -2020,7 +2025,23 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			if (wf_reevaluate_light_geometry(res.sample, hit_point, time, spheres, quads, triangles,
 					bilinearPatches, disks, cylinders, to_light, max_dist, geomPdfAtHit) &&
 				geomPdfAtHit > 0.0f) {
-				const float selection_pdf = aliasTable[res.sample.lightIdx].pdf;
+				// The winning reservoir sample may have been drawn (this frame,
+				// or via temporal/spatial reuse) using EITHER selection method -
+				// re-deriving its selection_pdf from the alias table unconditionally
+				// would be wrong whenever it was actually drawn via the light BVH's
+				// position-dependent pmf (a fixed, power-only alias pdf can differ
+				// from the BVH pmf by an order of magnitude or more at this exact
+				// hit_point), corrupting the MIS weight below (wf_mis(light_pdf,
+				// brdf_pdf_l)). wf_light_bvh_pmf() replays the bit-trail to recover
+				// the SAME pmf the BVH draw would have produced at this point,
+				// exactly like gpu_light_bvh_pmf() does for the recursive backend's
+				// own BSDF-hit MIS case (optix_device_helpers_lighting.h).
+				const float selection_pdf = (lightBvh.nodeCount > 0)
+					? wf_light_bvh_pmf(hit_point.x, hit_point.y, hit_point.z, res.sample.lightIdx, numLights,
+						lightBvh.nodes, lightBvh.bitTrail, lightBvh.nodeCount,
+						lightBvh.allBMinX, lightBvh.allBMinY, lightBvh.allBMinZ,
+						lightBvh.allBMaxX, lightBvh.allBMaxY, lightBvh.allBMaxZ)
+					: aliasTable[res.sample.lightIdx].pdf;
 				light_pdf = selection_pdf * geomPdfAtHit;
 				float3 raw = wf_light_raw_emission(res.sample, to_light, materials, spheres, quads, triangles,
 													bilinearPatches, disks, cylinders, textures, texturePixels);
@@ -2045,9 +2066,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				spheres, quads, triangles, bilinearPatches, disks, cylinders,
 				materials, lightIndices, lightKinds, aliasTable, numLights,
 				textures, texturePixels, cand, to_light, max_dist, light_pdf, raw,
-				lightBvhNodes, lightBvhNodeCount,
-				lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
-				lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ)) {
+				lightBvh)) {
 			light_emission_spec = liftEmission(raw);
 			nee_norm = (light_pdf > 1e-6f) ? (1.0f / light_pdf) : 0.0f;
 			haveSample = true;

@@ -86,6 +86,14 @@ public:
     /// setter-not-render()-parameter pattern as setCloudMediums() above, for
     /// the same reason. 0/0/0/0 (the default) is a valid "no RGB grid media
     /// in this scene" state.
+    void setRgbGridMediums(CUdeviceptr d_rgbGridMediums, unsigned int numRgbGridMediums,
+                            CUdeviceptr d_rgbGridData, unsigned int rgbGridDataCount) {
+        d_rgbGridMediums_ = d_rgbGridMediums;
+        numRgbGridMediums_ = numRgbGridMediums;
+        d_rgbGridData_ = d_rgbGridData;
+        rgbGridDataCount_ = rgbGridDataCount;
+    }
+
     /// Bounding-cone light BVH (spatial+power selection), the same
     /// OptiXRenderer-owned d_lightBvhNodes_/d_lightBvhBitTrail_ buffers the
     /// recursive backend already builds/uploads once at buildScene() time -
@@ -108,14 +116,6 @@ public:
         lightBvhNodeCount_ = nodeCount;
         lightBvhAllBMinX_ = allBMinX; lightBvhAllBMinY_ = allBMinY; lightBvhAllBMinZ_ = allBMinZ;
         lightBvhAllBMaxX_ = allBMaxX; lightBvhAllBMaxY_ = allBMaxY; lightBvhAllBMaxZ_ = allBMaxZ;
-    }
-
-    void setRgbGridMediums(CUdeviceptr d_rgbGridMediums, unsigned int numRgbGridMediums,
-                            CUdeviceptr d_rgbGridData, unsigned int rgbGridDataCount) {
-        d_rgbGridMediums_ = d_rgbGridMediums;
-        numRgbGridMediums_ = numRgbGridMediums;
-        d_rgbGridData_ = d_rgbGridData;
-        rgbGridDataCount_ = rgbGridDataCount;
     }
 
     /// Heterogeneous single-channel grid media (MaterialType::GridMedium) -
@@ -304,6 +304,15 @@ private:
     // context when !restirEnabled_, the same safe-no-op shape restirReservoirs
     // being null already has.
     GpuRestirTemporalContext buildRestirTemporalContext() const;
+    // Bundles d_lightBvhNodes_/d_lightBvhBitTrail_/lightBvhNodeCount_/
+    // lightBvhAllB{Min,Max}{X,Y,Z}_ into one WfLightBvhContext - shared by
+    // every launchEvaluateMaterials*()/launchResolveBssrdfExit() call site
+    // instead of each threading 9 individual scalars/pointers through by
+    // hand (see setLightBvh()'s own comment for where these values come
+    // from). Returns a default (nodeCount=0, "no light BVH built") context
+    // when no light BVH was ever set, the same safe-no-op shape every other
+    // optional field here has.
+    WfLightBvhContext buildLightBvhContext() const;
     // ReSTIR DI spatial reuse - see wavefront_kernels_restir.cu's own header
     // comment. Called once per render() call (after the whole sampleIdx
     // loop), reading d_reservoirs_/d_restirNormal_/d_worldPos_ (this call's

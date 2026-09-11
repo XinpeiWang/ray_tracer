@@ -354,6 +354,25 @@ struct GpuGiOriginContext {
 	CPU_GPU bool valid() const { return pdfAtX0 > 0.0f; }
 };
 
+// Bundles the light-BVH tree + its scene-wide bounds that wf_finish_material_
+// scatter()'s NEE/ReSTIR light selection needs (wf_light_bvh_sample_index()/
+// wf_light_bvh_pmf(), wavefront_restir_helpers.h), in place of threading each
+// field through as its own loose scalar/pointer parameter at every call site -
+// same "one struct, passed by value" shape as GpuRestirTemporalContext/
+// GpuGiOriginContext* above. See WavefrontPathTracer::buildLightBvhContext()/
+// setLightBvh() for where these values come from (OptiXRenderer-owned
+// buffers, built once per scene, reused verbatim by both backends).
+// nodeCount<=0 (the default) means "no light BVH built for this scene" -
+// every call site falls straight through to the alias table, exactly as
+// before this was bundled into one struct.
+struct WfLightBvhContext {
+	const LightBVHNode* nodes = nullptr;
+	const unsigned int* bitTrail = nullptr;
+	int nodeCount = 0;
+	float allBMinX = 0.f, allBMinY = 0.f, allBMinZ = 0.f;
+	float allBMaxX = 0.f, allBMaxY = 0.f, allBMaxZ = 0.f;
+};
+
 // SVGF (Live Preview only, gpu/optix/wavefront_svgf_math.h and
 // wavefront_kernels_svgf.cu) - per-pixel temporal-integration state, double-
 // buffered current/history exactly like GpuGiReservoir above (same

@@ -89,11 +89,9 @@ extern "C" __global__ void evaluate_materials_simple(
 	GpuGiOriginContext* giOriginContext,
 	GpuGiSample* giCandidateOut,
 	// See wf_light_bvh_sample_index()'s own comment
-	// (wavefront_restir_helpers.h). lightBvhNodeCount<=0 (the default) means
+	// (wavefront_restir_helpers.h). lightBvh.nodeCount<=0 (the default) means
 	// "no light BVH built".
-	const LightBVHNode* lightBvhNodes = nullptr, int lightBvhNodeCount = 0,
-	float lightBvhAllBMinX = 0.f, float lightBvhAllBMinY = 0.f, float lightBvhAllBMinZ = 0.f,
-	float lightBvhAllBMaxX = 0.f, float lightBvhAllBMaxY = 0.f, float lightBvhAllBMaxZ = 0.f
+	WfLightBvhContext lightBvh = {}
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -224,7 +222,5 @@ extern "C" __global__ void evaluate_materials_simple(
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
 		giOriginContext, giCandidateOut,
-		lightBvhNodes, lightBvhNodeCount,
-		lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
-		lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ);
+		lightBvh);
 }

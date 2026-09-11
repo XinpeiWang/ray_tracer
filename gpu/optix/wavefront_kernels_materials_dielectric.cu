@@ -87,7 +87,16 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// NEE gate, so it naturally contributes nothing - not a special case to
 	// handle here).
 	GpuGiOriginContext* giOriginContext,
-	GpuGiSample* giCandidateOut
+	GpuGiSample* giCandidateOut,
+	// See wf_light_bvh_sample_index()'s own comment (wavefront_restir_
+	// helpers.h). lightBvh.nodeCount<=0 (the default) means "no light BVH
+	// built" - forwarded to wf_finish_material_scatter() below unchanged,
+	// which itself falls straight through to the alias table for that case.
+	// Previously always defaulted here (this kernel was never wired up when
+	// the light BVH first shipped for Lambertian/Metal), silently keeping
+	// Dielectric/RoughDielectric NEE on the alias table even in scenes where
+	// every other material type already uses the spatial+power selection.
+	WfLightBvhContext lightBvh = {}
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -362,5 +371,6 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		skyColor, shadow_eps, skyDist, portalLight,
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
-		giOriginContext, giCandidateOut);
+		giOriginContext, giCandidateOut,
+		lightBvh);
 }

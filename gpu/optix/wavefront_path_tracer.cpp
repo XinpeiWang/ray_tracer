@@ -1025,6 +1025,16 @@ GpuRestirTemporalContext WavefrontPathTracer::buildRestirTemporalContext() const
 	return ctx;
 }
 
+WfLightBvhContext WavefrontPathTracer::buildLightBvhContext() const {
+	WfLightBvhContext ctx;
+	ctx.nodes = reinterpret_cast<const LightBVHNode*>(d_lightBvhNodes_);
+	ctx.bitTrail = reinterpret_cast<const unsigned int*>(d_lightBvhBitTrail_);
+	ctx.nodeCount = lightBvhNodeCount_;
+	ctx.allBMinX = lightBvhAllBMinX_; ctx.allBMinY = lightBvhAllBMinY_; ctx.allBMinZ = lightBvhAllBMinZ_;
+	ctx.allBMaxX = lightBvhAllBMaxX_; ctx.allBMaxY = lightBvhAllBMaxY_; ctx.allBMaxZ = lightBvhAllBMaxZ_;
+	return ctx;
+}
+
 void WavefrontPathTracer::launchEvaluateMaterials(
 	int numHits, int maxDepth, bool regularize, float maxComponentValue,
 	const SphereData*    d_spheres,   unsigned int numSpheres,
@@ -1096,9 +1106,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		buildRestirTemporalContext(),
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
-		reinterpret_cast<const LightBVHNode*>(d_lightBvhNodes_), lightBvhNodeCount_,
-		lightBvhAllBMinX_, lightBvhAllBMinY_, lightBvhAllBMinZ_,
-		lightBvhAllBMaxX_, lightBvhAllBMaxY_, lightBvhAllBMaxZ_,
+		buildLightBvhContext(),
 		stream_);
 }
 
@@ -1158,9 +1166,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		buildRestirTemporalContext(),
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
-		reinterpret_cast<const LightBVHNode*>(d_lightBvhNodes_), lightBvhNodeCount_,
-		lightBvhAllBMinX_, lightBvhAllBMinY_, lightBvhAllBMinZ_,
-		lightBvhAllBMaxX_, lightBvhAllBMaxY_, lightBvhAllBMaxZ_,
+		buildLightBvhContext(),
 		simpleMaterialStream_);
 }
 
@@ -1222,6 +1228,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		buildRestirTemporalContext(),
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
+		buildLightBvhContext(),
 		dielectricMaterialStream_);
 }
 
@@ -1447,6 +1454,7 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
+		buildLightBvhContext(),
 		stream_);
 }
 

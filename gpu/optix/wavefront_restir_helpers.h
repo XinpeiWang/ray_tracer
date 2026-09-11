@@ -348,6 +348,50 @@ __device__ __forceinline__ GpuLightBvhSample wf_light_bvh_sample_index(
 	}
 }
 
+// wf_light_bvh_pmf: wavefront's twin of gpu_light_bvh_pmf() (optix_device_
+// helpers_lighting.h - see that function's own comment for the full
+// rationale). Replays the bit-trail for `lightIndex` to recompute its
+// selection PMF at THIS shading point (position-dependent, unlike the alias
+// table's fixed pdf) - needed whenever a light-BVH-selected candidate's
+// winning sample is re-used from somewhere other than the draw that produced
+// it (ReSTIR temporal/spatial reuse, or a BSDF-sampled light hit's own MIS
+// weight), since the pmf that draw actually used isn't otherwise recoverable
+// without redoing the stochastic descent. Returns 0 if no light BVH was
+// built, or if every ancestor's combined importance was zero (can't happen
+// for a real bit-trail from a light actually in the tree, but matches
+// gpu_light_bvh_pmf()'s own defensive return).
+__device__ __forceinline__ float wf_light_bvh_pmf(
+	float px, float py, float pz, int lightIndex, unsigned int numLights,
+	const LightBVHNode* lightBvhNodes, const unsigned int* lightBvhBitTrail, int lightBvhNodeCount,
+	float allBMinX, float allBMinY, float allBMinZ,
+	float allBMaxX, float allBMaxY, float allBMaxZ)
+{
+	if (lightBvhNodeCount <= 0 || !lightBvhBitTrail) return 0.f;
+	if (lightIndex < 0 || (unsigned int)lightIndex >= numLights) return 0.f;
+	unsigned int bitTrail = lightBvhBitTrail[lightIndex];
+	float pmf = 1.f;
+	int nodeIndex = 0;
+	while (true) {
+		if (nodeIndex < 0 || nodeIndex >= lightBvhNodeCount) return 0.f;
+		const LightBVHNode& node = lightBvhNodes[nodeIndex];
+		if (node.isLeaf) return pmf;
+		const int c1Index = (int)node.childOrLightIndex;
+		if (c1Index <= nodeIndex + 1 || c1Index >= lightBvhNodeCount) return 0.f;
+		const LightBVHNode& c0 = lightBvhNodes[nodeIndex + 1];
+		const LightBVHNode& c1 = lightBvhNodes[node.childOrLightIndex];
+		float ci0 = c0.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
+			allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
+		float ci1 = c1.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
+			allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
+		float sum = ci0 + ci1;
+		if (sum == 0.f) return 0.f;
+		int branch = (int)(bitTrail & 1u);
+		pmf *= (branch == 0 ? ci0 : ci1) / sum;
+		nodeIndex = (branch == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
+		bitTrail >>= 1;
+	}
+}
+
 __device__ __forceinline__ bool wf_generate_restir_candidate(
 		const float3& hit, unsigned int& seed, float time,
 		const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
@@ -358,25 +402,27 @@ __device__ __forceinline__ bool wf_generate_restir_candidate(
 		GpuLightSample& out_sample, float3& out_dir, float& out_maxDist,
 		float& out_lightPdf, float3& out_rawEmission,
 		// See wf_light_bvh_sample_index()'s own comment.
-		// lightBvhNodeCount<=0 (the default) means "no light BVH built" -
+		// lightBvh.nodeCount<=0 (the default) means "no light BVH built" -
 		// falls straight through to the alias table below.
-		const LightBVHNode* lightBvhNodes = nullptr, int lightBvhNodeCount = 0,
-		float lightBvhAllBMinX = 0.f, float lightBvhAllBMinY = 0.f, float lightBvhAllBMinZ = 0.f,
-		float lightBvhAllBMaxX = 0.f, float lightBvhAllBMaxY = 0.f, float lightBvhAllBMaxZ = 0.f) {
+		WfLightBvhContext lightBvh = {}) {
 	if (numLights == 0) return false;
 
 	int light_idx;
 	float selection_pdf;
 	// Light BVH first (real spatial+power selection, position-dependent) -
 	// see wf_light_bvh_sample_index()'s own comment. Falls back to the alias
-	// table for any scene that didn't build a light BVH, or once a sample
-	// rejects (importance genuinely zero at this hit point - same fallback
-	// shape sample_nee_light() uses, optix_device_helpers_lighting.h).
-	if (lightBvhNodeCount > 0) {
+	// table for any scene that didn't build a light BVH. A per-draw rejection
+	// (importance genuinely zero at this hit point for every light the BVH
+	// currently considers) returns false with NO alias-table fallback for
+	// that same draw - see this function's callers (wf_finish_material_
+	// scatter's RIS loop uses `continue`, not `break`, specifically because
+	// of this: a BVH scene's occasional reject is a per-draw event, not a
+	// "no lights in the scene" one).
+	if (lightBvh.nodeCount > 0) {
 		GpuLightBvhSample s = wf_light_bvh_sample_index(hit.x, hit.y, hit.z, wf_rand(seed),
-			lightBvhNodes, lightBvhNodeCount, numLights,
-			lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
-			lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ);
+			lightBvh.nodes, lightBvh.nodeCount, numLights,
+			lightBvh.allBMinX, lightBvh.allBMinY, lightBvh.allBMinZ,
+			lightBvh.allBMaxX, lightBvh.allBMaxY, lightBvh.allBMaxZ);
 		if (s.lightIndex < 0) return false;
 		light_idx = s.lightIndex;
 		selection_pdf = s.pmf;

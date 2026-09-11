@@ -82,7 +82,16 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	// that led here originated from a Lambertian x0). nullptr for batch/
 	// offline rendering, same opt-in pattern as every other ReSTIR parameter.
 	GpuGiOriginContext* giOriginContext,
-	GpuGiSample* giCandidateOut
+	GpuGiSample* giCandidateOut,
+	// See wf_light_bvh_sample_index()'s own comment (wavefront_restir_
+	// helpers.h). lightBvh.nodeCount<=0 (the default) means "no light BVH
+	// built" - the classic single-draw NEE path below (ReSTIR DI stays
+	// excluded here regardless, see restirReservoirs=nullptr above) falls
+	// straight through to the alias table for that case. Previously always
+	// defaulted here, silently keeping a BSSRDF exit's own NEE on the alias
+	// table even in scenes where every other material type already uses the
+	// spatial+power selection.
+	WfLightBvhContext lightBvh = {}
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Same defensive capacity guard as accumulate_shadow's own version of
@@ -190,5 +199,6 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		// from the END of a call's argument list, and giOriginContext/
 		// giCandidateOut below need to be supplied.
 		/*restirReservoirs=*/nullptr, /*restirCtx=*/GpuRestirTemporalContext{},
-		giOriginContext, giCandidateOut);
+		giOriginContext, giCandidateOut,
+		lightBvh);
 }

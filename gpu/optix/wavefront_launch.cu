@@ -32,7 +32,7 @@ extern "C" __global__ void evaluate_materials(
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
 	GpuGiOriginContext*, GpuGiSample*,
-	const LightBVHNode*, int, float, float, float, float, float, float);
+	WfLightBvhContext);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -46,7 +46,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	float3, float, GpuSkyDistribution, GpuPortalLight, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
 	GpuGiOriginContext*, GpuGiSample*,
-	const LightBVHNode*, int, float, float, float, float, float, float);
+	WfLightBvhContext);
 extern "C" __global__ void evaluate_materials_dielectric(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -59,7 +59,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	int,
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
-	GpuGiOriginContext*, GpuGiSample*);
+	GpuGiOriginContext*, GpuGiSample*,
+	WfLightBvhContext);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*, float4*);
 extern "C" __global__ void normalize_aov_buffers(float3*, float3*, unsigned int, unsigned int);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, float, GpuGiSample*);
@@ -73,7 +74,8 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
 	float3, float, GpuSkyDistribution, GpuPortalLight, float,
-	GpuGiOriginContext*, GpuGiSample*);
+	GpuGiOriginContext*, GpuGiSample*,
+	WfLightBvhContext);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, const float*);
 // ---- forward declaration of the kernel from wavefront_kernels_restir.cu ----
@@ -183,10 +185,7 @@ extern "C" void wf_launch_evaluate_materials(
 	GpuRestirTemporalContext     restirCtx,
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
-	const LightBVHNode*          d_lightBvhNodes,
-	int                          lightBvhNodeCount,
-	float lightBvhAllBMinX, float lightBvhAllBMinY, float lightBvhAllBMinZ,
-	float lightBvhAllBMaxX, float lightBvhAllBMaxY, float lightBvhAllBMaxZ,
+	WfLightBvhContext            lightBvh,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -208,9 +207,7 @@ extern "C" void wf_launch_evaluate_materials(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
 		d_giOriginContext, d_giCandidateOut,
-		d_lightBvhNodes, lightBvhNodeCount,
-		lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
-		lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ);
+		lightBvh);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -247,10 +244,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	GpuRestirTemporalContext     restirCtx,
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
-	const LightBVHNode*          d_lightBvhNodes,
-	int                          lightBvhNodeCount,
-	float lightBvhAllBMinX, float lightBvhAllBMinY, float lightBvhAllBMinZ,
-	float lightBvhAllBMaxX, float lightBvhAllBMaxY, float lightBvhAllBMaxZ,
+	WfLightBvhContext            lightBvh,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -267,9 +261,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
 		d_giOriginContext, d_giCandidateOut,
-		d_lightBvhNodes, lightBvhNodeCount,
-		lightBvhAllBMinX, lightBvhAllBMinY, lightBvhAllBMinZ,
-		lightBvhAllBMaxX, lightBvhAllBMaxY, lightBvhAllBMaxZ);
+		lightBvh);
 }
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -307,6 +299,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	GpuRestirTemporalContext     restirCtx,
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
+	WfLightBvhContext            lightBvh,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -323,7 +316,8 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
-		d_giOriginContext, d_giCandidateOut);
+		d_giOriginContext, d_giCandidateOut,
+		lightBvh);
 }
 
 extern "C" void wf_launch_restir_spatial_reuse(
@@ -548,6 +542,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	float                        maxComponentValue,
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
+	WfLightBvhContext            lightBvh,
 	cudaStream_t                 stream)
 {
 	if (numExit == 0) return;
@@ -562,7 +557,8 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels,
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
-		d_giOriginContext, d_giCandidateOut);
+		d_giOriginContext, d_giCandidateOut,
+		lightBvh);
 }
 
 extern "C" void wf_launch_normalize_framebuffer(
