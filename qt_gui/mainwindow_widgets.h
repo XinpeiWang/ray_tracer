@@ -52,6 +52,7 @@
 #include <QStylePainter>
 #include <QStyleOptionTab>
 #include <QHBoxLayout>
+#include <QFormLayout>
 #include <QSplitter>
 #include <QSignalBlocker>
 #include <QQueue>
@@ -93,6 +94,52 @@ protected:
         if (event->type() == QEvent::Wheel)
             return true;  // always block wheel on these controls
         return QObject::eventFilter(obj, event);
+    }
+};
+
+// ============================================================================
+// FormLabelEnabledSync
+// ============================================================================
+// Mirrors a QFormLayout field widget's enabled state onto its own label
+// widget - Qt has no signal for "my enabled state changed" (unlike QAction's
+// own changed()), so a label built via MainWindow::labelWithInfo() (a
+// separate QLabel+info-icon container, not part of the field widget itself)
+// stays looking fully active when the field next to it later gets
+// setEnabled(false) by something like updateRenderOptionsEnabled() - the
+// field visibly greys via this app's own :disabled QSS, but its label
+// doesn't, since Qt only auto-disables a widget's REAL children, and the
+// label is a SIBLING, not a child, of the field.
+//
+// Installed exactly once, application-wide (qApp->installEventFilter() in
+// MainWindow's constructor) rather than per-field: a global filter already
+// sees every QEvent::EnabledChange in the whole app, so every current and
+// future QFormLayout field/label pair gets this for free with no
+// per-call-site wiring - the alternative (teaching every enable/disable call
+// site to also toggle its label) would need touching dozens of places by
+// hand, and staying correct only as long as nobody forgets the next one.
+// Only affects QFormLayout rows: a field with no form-layout parent (e.g.
+// the QGridLayout-based rows elsewhere on this tab) already relies on
+// whichever *group* is enabled/disabled cascading naturally to its real
+// children instead, which needs no help from this class.
+// ============================================================================
+class FormLabelEnabledSync : public QObject {
+    Q_OBJECT
+public:
+    explicit FormLabelEnabledSync(QObject *parent = nullptr) : QObject(parent) {}
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() == QEvent::EnabledChange) {
+            if (auto *field = qobject_cast<QWidget *>(watched)) {
+                if (QWidget *parent = field->parentWidget()) {
+                    if (auto *form = qobject_cast<QFormLayout *>(parent->layout())) {
+                        if (QWidget *label = form->labelForField(field)) {
+                            label->setEnabled(field->isEnabled());
+                        }
+                    }
+                }
+            }
+        }
+        return QObject::eventFilter(watched, event);
     }
 };
 

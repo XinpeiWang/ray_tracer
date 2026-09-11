@@ -1063,6 +1063,9 @@ void MainWindow::createRenderOptionsTab() {
 		"image), same meaning as the Image & Video subsection's own blend "
 		"control.")));
 	liveDenoiseOptionsRowLayout->addWidget(m_liveDenoiseBlendSpin);
+	// Stretch factor on the checkbox's own container (not a trailing
+	// addStretch()) so the row fills the full line width, matching the
+	// Denoiser combo row above it.
 	liveDenoiseOptionsRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseShowLatestCheck,
 		tr("OptiX AI Denoiser only. Displays each denoised frame as-is "
 		"instead of averaging it into a running mean with earlier frames. "
@@ -1070,8 +1073,7 @@ void MainWindow::createRenderOptionsTab() {
 		"eventually reach, in exchange for a view that always reflects only "
 		"the most recent frame - useful while flying around with WASD, "
 		"where older accumulated frames are from a camera position you've "
-		"already left.")));
-	liveDenoiseOptionsRowLayout->addStretch(1);
+		"already left.")), 1);
 
 	denoiserLivePreviewLayout->addRow(liveDenoiseRow);
 	denoiserLivePreviewLayout->addRow(liveDenoiseOptionsRow);

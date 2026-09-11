@@ -716,6 +716,12 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// Create shared wheel filter (blocks accidental scroll on all controls)
 	m_wheelFilter = new WheelIgnoreFilter(this);
 
+	// Installed on qApp (not just `this`) since a global filter already sees
+	// every QEvent::EnabledChange application-wide - see FormLabelEnabledSync's
+	// own comment (mainwindow_widgets.h) for why this needs no per-call-site
+	// wiring at any of the many labelWithInfo()/QFormLayout::addRow() sites.
+	qApp->installEventFilter(new FormLabelEnabledSync(this));
+
 	setWindowTitle(tr("Ray Tracer - Path Tracing Renderer"));
 	setMinimumSize(600, 500);
 

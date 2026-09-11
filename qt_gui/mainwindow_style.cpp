@@ -839,6 +839,21 @@ void MainWindow::setGroupDimmed(QGroupBox *box, bool dimmed) {
 		// permanently flat once it becomes relevant again.
 		applyElevation(box, /*blurRadius=*/16, /*offsetY=*/3, /*alpha=*/55);
 	}
+	// QToolButtons - info icons (createInfoIcon) and SpinBoxStepButtons'
+	// step buttons (mainwindow_widgets.h) - don't reliably fade along with
+	// the rest of the group under the ancestor QGraphicsOpacityEffect above
+	// (observed live: everything else in a dimmed group fades, these two
+	// stay full-strength). Give each one its own matching opacity effect
+	// directly instead of relying on it to propagate down.
+	for (QToolButton *button : box->findChildren<QToolButton *>()) {
+		if (dimmed) {
+			auto *buttonOpacity = new QGraphicsOpacityEffect(button);
+			buttonOpacity->setOpacity(0.5);
+			button->setGraphicsEffect(buttonOpacity);
+		} else {
+			button->setGraphicsEffect(nullptr);
+		}
+	}
 }
 
 QLabel *MainWindow::makeModeWarningBanner(QWidget *parent, const QString &text) {

@@ -1112,8 +1112,6 @@ void MainWindow::createSettingsTab() {
 		0, 2);
 	sensitivityGrid->addWidget(m_keyboardSensitivitySpinBox, 0, 3);
 
-	liveModeSettingsLayout->addRow(sensitivityRow);
-
 	// Render-setting knobs surfaced by the architecture review: ReSTIR GI
 	// on/off, exposure, samples/max-bounces per frame, and the firefly
 	// clamp - each independent of everything else on this tab, grouped into
@@ -1212,6 +1210,10 @@ void MainWindow::createSettingsTab() {
 	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 2, 3);
 
 	liveModeSettingsLayout->addRow(liveRenderSettingsRow);
+	// Moved below the ReSTIR GI/Exposure/etc. block above (was above it) -
+	// both rows are already fully self-contained widgets by this point, so
+	// only the ORDER of these two addRow() calls needed to change.
+	liveModeSettingsLayout->addRow(sensitivityRow);
 
 	layout->addWidget(m_liveModeSettingsGroupBox);
 #endif

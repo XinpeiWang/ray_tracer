@@ -60,6 +60,18 @@ QIcon tinted(const QString &path, const QColor &colour) {
 	const auto cached = cache.constFind(key);
 	if (cached != cache.constEnd()) return cached.value();
 
+	// Same colour, ~40% alpha - used below for an explicit QIcon::Disabled
+	// pixmap. Without one, a disabled QToolButton (e.g. SpinBoxStepButtons'
+	// step buttons when the spin box itself is disabled via
+	// updateRenderOptionsEnabled()) falls back to QStyle's own generated
+	// disabled icon - which this app's heavily-customized style doesn't
+	// reliably produce (observed live: the icon stays full-strength while
+	// the rest of the disabled widget correctly greys out via this app's
+	// own :disabled QSS). Registering a real Disabled-mode pixmap sidesteps
+	// relying on that generation entirely.
+	QColor disabledColour = colour;
+	disabledColour.setAlpha(colour.alpha() * 0.4);
+
 	const QIcon source(path);
 	QIcon result;
 	for (int size : kSizes) {
@@ -68,12 +80,18 @@ QIcon tinted(const QString &path, const QColor &colour) {
 
 		// SourceIn keeps the destination's alpha and takes the source's colour,
 		// which is exactly "recolour the silhouette, leave the holes alone".
+		QPixmap disabledPixmap = pixmap;
 		QPainter painter(&pixmap);
 		painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
 		painter.fillRect(pixmap.rect(), colour);
 		painter.end();
-
 		result.addPixmap(pixmap);
+
+		QPainter disabledPainter(&disabledPixmap);
+		disabledPainter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+		disabledPainter.fillRect(disabledPixmap.rect(), disabledColour);
+		disabledPainter.end();
+		result.addPixmap(disabledPixmap, QIcon::Disabled);
 	}
 	// A missing resource yields an empty QIcon and no pixmaps, which renders as
 	// nothing - the same as before tinting existed. Returning the untinted
@@ -93,14 +111,26 @@ QIcon tinted(const QString &path, const QColor &colour, const QSize &fixedSize) 
 	const auto cached = cache.constFind(key);
 	if (cached != cache.constEnd()) return cached.value();
 
+	// See the square overload's own comment on why an explicit Disabled
+	// pixmap is registered rather than relying on QStyle's own generation.
+	QColor disabledColour = colour;
+	disabledColour.setAlpha(colour.alpha() * 0.4);
+
 	QIcon result;
 	QPixmap pixmap = QIcon(path).pixmap(fixedSize);
 	if (!pixmap.isNull()) {
+		QPixmap disabledPixmap = pixmap;
 		QPainter painter(&pixmap);
 		painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
 		painter.fillRect(pixmap.rect(), colour);
 		painter.end();
 		result.addPixmap(pixmap);
+
+		QPainter disabledPainter(&disabledPixmap);
+		disabledPainter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+		disabledPainter.fillRect(disabledPixmap.rect(), disabledColour);
+		disabledPainter.end();
+		result.addPixmap(disabledPixmap, QIcon::Disabled);
 	}
 	cache.insert(key, result);
 	return result;
