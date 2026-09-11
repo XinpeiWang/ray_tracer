@@ -452,13 +452,13 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			min-height: 26px;
 			margin: 3px 2px;
 		}
-		/* Taller than the shared 26px above so SpinBoxStepButtons'
-		   (mainwindow_widgets.h) two stacked real QToolButtons - NOT the
-		   native ::up-button/::down-button subcontrols, see
-		   styleSpinBox()'s own comment for why - each get enough vertical
-		   room for a legible chevron icon; the combo box keeps 26px. */
+		/* Same 26px min-height as the combo box/line edit above (no
+		   override here) - now that SpinBoxStepButtons (mainwindow_widgets.h)
+		   draws small real chevron icons instead of the old thick PlusMinus
+		   fill-primitive, they no longer need the extra height that
+		   primitive's blobby cross bars once did, so every field on this
+		   tab is a consistent height whether it's a spin box or a dropdown. */
 		QSpinBox, QDoubleSpinBox {
-			min-height: 40px;
 			/* Leaves room on the right for SpinBoxStepButtons' overlay -
 			   with setButtonSymbols(NoButtons), Fusion no longer reserves
 			   any space there itself, so the edit field would otherwise
@@ -975,8 +975,8 @@ void MainWindow::styleSpinBox(QAbstractSpinBox *spinBox) {
 	QToolButton *down = new QToolButton(spinBox);
 	up->setAutoRaise(true);
 	down->setAutoRaise(true);
-	up->setIconSize(QSize(10, 10));
-	down->setIconSize(QSize(10, 10));
+	up->setIconSize(QSize(8, 8));
+	down->setIconSize(QSize(8, 8));
 	icon_tint::apply(up, ":/icons/chevron_up.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	icon_tint::apply(down, ":/icons/chevron_down.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	// Owned by spinBox (QObject parent) - no pointer to keep.
