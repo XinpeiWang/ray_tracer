@@ -131,9 +131,10 @@ extern "C" __global__ void __raygen__wf_intersect() {
 // ============================================================================
 
 // Shadow launch params: reuse wf_params but a separate optixLaunch with a
-// shadow pipeline.  We store occluded[] as a bool* in wf_params.framebuffer
-// during the shadow pass launch (the host casts it; the bool array has exactly
-// numShadow entries allocated separately).
+// shadow pipeline. We store transmittance[] as a float* in wf_params.framebuffer
+// during the shadow pass launch (the host casts it; the float array has exactly
+// numShadow entries allocated separately) - see WfShadowPayload::transmittance's
+// own comment (wavefront_common.h) for what the values mean.
 
 // __raygen__wf_shadow: one thread per shadow ray.
 extern "C" __global__ void __raygen__wf_shadow() {
@@ -154,7 +155,7 @@ extern "C" __global__ void __raygen__wf_shadow() {
 	// bounce than queueCapacity_ holds. Before this fix, *sq.counter (e.g.
 	// 3934) exceeding sq.capacity (e.g. 3600) meant this raygen launched
 	// with more threads than the buffer has slots for, and every idx in
-	// [capacity, counter) read sq.items[idx]/occluded[idx] past their
+	// [capacity, counter) read sq.items[idx]/transmittance[idx] past their
 	// cudaMalloc'd end - confirmed via compute-sanitizer as an out-of-bounds
 	// __global__ read landing just past d_shadowItems_'s allocation. That
 	// stray read (and the matching one in accumulate_shadow, wavefront_

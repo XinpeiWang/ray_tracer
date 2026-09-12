@@ -125,8 +125,9 @@ extern "C" __global__ void accumulate_miss(
 
 // ============================================================================
 // Kernel 4 — accumulate_shadow
-//   Runs after the OptiX shadow-trace pass.  ShadowRayWorkItems that were NOT
-//   occluded have their `occluded` flag cleared by the shadow miss program;
+//   Runs after the OptiX shadow-trace pass.  ShadowRayWorkItems that reached
+//   tMax without a real occluder keep the transmittance value the shadow miss
+//   program leaves untouched (initialized to 1.0f by __raygen__wf_shadow);
 //   we accumulate their Ld, scaled by whatever transmittance survived any
 //   participating media the ray crossed, into the framebuffer.
 //   (The transmittance value is stored in a separate float array passed

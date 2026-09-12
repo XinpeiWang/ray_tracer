@@ -150,11 +150,11 @@ __device__ __forceinline__ MaterialData wf_resolve_mix_material(MaterialData mat
 	return mat;
 }
 
-// Per-shadow-ray occlusion output (device pointer passed via launch params extension).
-// We reuse a float3* slot in WavefrontLaunchParams — see wavefront_path_tracer.cpp
-// which passes d_occluded via the misuse of framebuffer during the shadow pass.
-// Actually we pass occluded as a separate bool* stored in wf_params.framebuffer cast.
-// For clarity we just read it from the framebuffer pointer (see shadow launch setup).
+// Per-shadow-ray transmittance output: wavefront_path_tracer.cpp points
+// wf_params.framebuffer at a separate float array (d_transmittance_) for the
+// duration of the shadow pass only, and __raygen__wf_shadow (wavefront_raygen.h)
+// casts it back to float* to write into - see WfShadowPayload::transmittance's
+// own comment below for what the values mean.
 
 // ============================================================================
 // Utility: encode/decode 64-bit pointers as two 32-bit payload registers

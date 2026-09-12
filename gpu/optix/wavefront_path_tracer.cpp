@@ -8,7 +8,7 @@
 //       2. optixLaunch(intersectPipeline)  -- fills hitQueue + missQueue
 //       3. evaluate_materials kernel       -- fills shadowQueue + nextRayQueue
 //       4. accumulate_miss kernel
-//       5. optixLaunch(shadowPipeline)     -- fills occluded[] bool array
+//       5. optixLaunch(shadowPipeline)     -- fills transmittance[] float array
 //       6. accumulate_shadow kernel
 //       7. swap ray / nextRay queues
 //   normalize_framebuffer kernel (once, after all samples)

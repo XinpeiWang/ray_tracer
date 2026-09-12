@@ -128,7 +128,18 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 				// ray transmittance needs absorption AND out-scattering, unlike
 				// the primary path's accept/reject test just above sigma_s alone.
 				float sigma_t_local = d * (cloud.sigma_a + cloud.sigma_s);
-				sp->transmittance *= 1.0f - sigma_t_local / sigma_maj;
+				// Clamped, not a bare (1 - ratio): sigma_maj is a coarse GLOBAL
+				// majorant (this file's own comment above), not a mathematically
+				// tight per-point bound, so a local density spike can in
+				// principle push sigma_t_local slightly past it. The primary
+				// path's own accept/reject test (wf_rand(seed) < ratio,
+				// wavefront_kernels_materials.cu) is naturally immune to
+				// ratio>1; this multiplicative update needs the explicit clamp
+				// to keep the same immunity - without it, transmittance could
+				// go negative and the loop's/post-loop's own `> 0.0f` checks
+				// would treat the ray as fully occluded instead of merely
+				// heavily attenuated.
+				sp->transmittance *= fmaxf(0.0f, 1.0f - sigma_t_local / sigma_maj);
 			}
 		}
 		if (sp->transmittance <= 0.0f) { optixTerminateRay(); return; }
@@ -221,7 +232,10 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 					// (wavefront_kernels_materials.cu) - keeps transmittance a
 					// single scalar and shadow/primary-ray results consistent.
 					float sigma_t_local = fmaxf(sr, fmaxf(sg, sb));
-					sp->transmittance *= 1.0f - sigma_t_local / sigma_maj;
+					// Clamped - see the CloudMedium branch's identical comment
+					// above for why (sigma_maj is a coarse global majorant, not
+					// a tight per-point bound).
+					sp->transmittance *= fmaxf(0.0f, 1.0f - sigma_t_local / sigma_maj);
 				}
 			} else {
 				const float* data = wf_params.gridData + dataOffset;
@@ -232,7 +246,10 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 					float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
 					float d = gpu_rgb_grid_trilinear(data, nx, ny, nz, px, py, pz);
 					float sigma_t_local = d * sigma_scale;
-					sp->transmittance *= 1.0f - sigma_t_local / sigma_maj;
+					// Clamped - see the CloudMedium branch's identical comment
+					// above for why (sigma_maj is a coarse global majorant, not
+					// a tight per-point bound).
+					sp->transmittance *= fmaxf(0.0f, 1.0f - sigma_t_local / sigma_maj);
 				}
 			}
 		}
