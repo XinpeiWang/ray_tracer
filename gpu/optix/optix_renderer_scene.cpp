@@ -23,6 +23,36 @@
 #include <cmath>         // ceil/isnan - buildProbeGrid()'s own spacing/dims derivation
 #include <algorithm>     // min/max - buildProbeGrid()'s own spacing/dims derivation
 
+// World-space AABB for a disk/cylinder given its object-space extent and
+// o2w transform - corner-by-corner (a naive transform of the object-space
+// box's own min/max would clip the geometry the moment a rotation is
+// involved), same technique as disk_cylinder_hittable.h's CPU-side
+// transformed_bbox(). Hoisted to file scope (out of buildScene()'s own
+// local lambda further down, which still delegates here) so buildProbeGrid()
+// below can share it instead of falling back to a looser approximation.
+static OptixAabb wf_disk_cylinder_world_aabb(const float o2w[12],
+											  float xlo, float xhi, float ylo, float yhi,
+											  float zlo, float zhi) {
+	OptixAabb box{};
+	float lox = 0, loy = 0, loz = 0, hix = 0, hiy = 0, hiz = 0;
+	bool first = true;
+	for (int corner = 0; corner < 8; ++corner) {
+		const float x = (corner & 1) ? xhi : xlo;
+		const float y = (corner & 2) ? yhi : ylo;
+		const float z = (corner & 4) ? zhi : zlo;
+		const float wx = o2w[0] * x + o2w[1] * y + o2w[2]  * z + o2w[3];
+		const float wy = o2w[4] * x + o2w[5] * y + o2w[6]  * z + o2w[7];
+		const float wz = o2w[8] * x + o2w[9] * y + o2w[10] * z + o2w[11];
+		if (first) { lox = hix = wx; loy = hiy = wy; loz = hiz = wz; first = false; continue; }
+		lox = fminf(lox, wx); hix = fmaxf(hix, wx);
+		loy = fminf(loy, wy); hiy = fmaxf(hiy, wy);
+		loz = fminf(loz, wz); hiz = fmaxf(hiz, wz);
+	}
+	box.minX = lox; box.minY = loy; box.minZ = loz;
+	box.maxX = hix; box.maxY = hiy; box.maxZ = hiz;
+	return box;
+}
+
 // ============================================================================
 // buildProbeGrid -- world-space irradiance probe cache (Live Preview only,
 // gpu/optix/probe_grid_types.h and this project's own plan). See
@@ -40,6 +70,18 @@ void OptiXRenderer::buildProbeGrid(
 		maxX = fmaxf(maxX, x); maxY = fmaxf(maxY, y); maxZ = fmaxf(maxZ, z);
 	};
 	for (const auto& s : spheres) {
+		// Box-shape medium boundaries leave center/radius unused/zero (see
+		// SphereData's own comment, optix_types.h) - fold their real boxMin/
+		// boxMax instead, same distinction the GAS-build AABB loop further
+		// down this file already makes. ClippedSphere entries DO populate a
+		// real, conservative full-sphere center/radius (optix_types.h's own
+		// comment), so they fall through to the plain sphere fold below
+		// unlike Box.
+		if (s.shapeKind == GpuMediumShapeKind::Box) {
+			fold(s.boxMin.x, s.boxMin.y, s.boxMin.z);
+			fold(s.boxMax.x, s.boxMax.y, s.boxMax.z);
+			continue;
+		}
 		fold(s.center.x - s.radius, s.center.y - s.radius, s.center.z - s.radius);
 		fold(s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius);
 	}
@@ -56,23 +98,20 @@ void OptiXRenderer::buildProbeGrid(
 	for (const auto& t : triangles) {
 		fold(t.p0.x, t.p0.y, t.p0.z); fold(t.p1.x, t.p1.y, t.p1.z); fold(t.p2.x, t.p2.y, t.p2.z);
 	}
-	// Disks/cylinders: a coarse world-space bound from their o2w translation
-	// (o2w[3]/[7]/[11] - row-major object->world, same convention as
-	// SphereData::ClippedSphere's own 8-corner transform above) +- radius
-	// (cylinders also fold in their own z half-extent). Looser than a tight
-	// transformed bound, which is fine here - this only sizes/places probes,
-	// never affects correctness (wf_query_probe_grid's own leak test is what
-	// actually gates light leaks - see this project's own plan).
+	// Disks/cylinders: exact corner-transformed world AABB, same helper the
+	// GAS-build AABB loop further down this file uses for these two shapes
+	// (wf_disk_cylinder_world_aabb, this file's own file-scope helper) -
+	// tight even for a disk/cylinder rotated far from axis-aligned, unlike a
+	// radius-only isotropic margin.
 	for (const auto& d : disks) {
-		const float tx = d.o2w[3], ty = d.o2w[7], tz = d.o2w[11];
-		fold(tx - d.radius, ty - d.radius, tz - d.radius);
-		fold(tx + d.radius, ty + d.radius, tz + d.radius);
+		const OptixAabb box = wf_disk_cylinder_world_aabb(d.o2w, -d.radius, d.radius, -d.radius, d.radius, d.height, d.height);
+		fold(box.minX, box.minY, box.minZ);
+		fold(box.maxX, box.maxY, box.maxZ);
 	}
 	for (const auto& c : cylinders) {
-		const float tx = c.o2w[3], ty = c.o2w[7], tz = c.o2w[11];
-		const float extent = fmaxf(c.radius, fmaxf(fabsf(c.zMin), fabsf(c.zMax)));
-		fold(tx - extent, ty - extent, tz - extent);
-		fold(tx + extent, ty + extent, tz + extent);
+		const OptixAabb box = wf_disk_cylinder_world_aabb(c.o2w, -c.radius, c.radius, -c.radius, c.radius, c.zMin, c.zMax);
+		fold(box.minX, box.minY, box.minZ);
+		fold(box.maxX, box.maxY, box.maxZ);
 	}
 
 	if (d_probeGrid_) { cudaFree(reinterpret_cast<void*>(d_probeGrid_)); d_probeGrid_ = 0; }
@@ -1377,28 +1416,7 @@ bool OptiXRenderer::buildScene(
 	// hittable.h's CPU-side transformed_bbox() - a naive transform of the
 	// object-space box's own min/max would clip the geometry the moment a
 	// rotation is involved).
-	const auto diskCylinderWorldAabb = [](const float o2w[12],
-										   float xlo, float xhi, float ylo, float yhi,
-										   float zlo, float zhi) -> OptixAabb {
-		OptixAabb box{};
-		float lox = 0, loy = 0, loz = 0, hix = 0, hiy = 0, hiz = 0;
-		bool first = true;
-		for (int corner = 0; corner < 8; ++corner) {
-			const float x = (corner & 1) ? xhi : xlo;
-			const float y = (corner & 2) ? yhi : ylo;
-			const float z = (corner & 4) ? zhi : zlo;
-			const float wx = o2w[0] * x + o2w[1] * y + o2w[2]  * z + o2w[3];
-			const float wy = o2w[4] * x + o2w[5] * y + o2w[6]  * z + o2w[7];
-			const float wz = o2w[8] * x + o2w[9] * y + o2w[10] * z + o2w[11];
-			if (first) { lox = hix = wx; loy = hiy = wy; loz = hiz = wz; first = false; continue; }
-			lox = fminf(lox, wx); hix = fmaxf(hix, wx);
-			loy = fminf(loy, wy); hiy = fmaxf(hiy, wy);
-			loz = fminf(loz, wz); hiz = fmaxf(hiz, wz);
-		}
-		box.minX = lox; box.minY = loy; box.minZ = loz;
-		box.maxX = hix; box.maxY = hiy; box.maxZ = hiz;
-		return box;
-	};
+	const auto& diskCylinderWorldAabb = wf_disk_cylinder_world_aabb;
 
 	std::vector<OptixAabb> diskCylinderAabbs;
 	diskCylinderAabbs.reserve(disks.size() + cylinders.size());

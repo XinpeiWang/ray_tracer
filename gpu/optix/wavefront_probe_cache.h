@@ -55,11 +55,14 @@ extern "C" __global__ void __raygen__wf_probe_cache() {
 	out.hitPoint    = hit.position;
 	out.hitNormal   = hit.normal;
 	out.materialIdx = hit.materialIdx;
-	out.direction   = item.direction;
 	out.seed        = item.seed;
-	// Matches probe_cache_shade's own miss-sentinel convention (large but
-	// finite, NOT 1e30f - see that function's own comment for why a raw
-	// 1e30f would corrupt the mean-distance leak test at lookup time).
-	out.hitDist     = hit.found ? length(hit.position - item.origin) : 1.0e4f;
+	// -1.0f (not a large-but-finite sentinel like 1e30f/1e4f) on a miss -
+	// a real hit distance is never negative, so this is unambiguous and,
+	// unlike a large finite placeholder, can never get blended into the
+	// mean-distance leak-test EMA by mistake (probe_cache_accumulate, this
+	// project's own wavefront_kernels_restir.cu, skips the meanDist/
+	// meanDistSq update entirely when hitDist < 0 - see that function's own
+	// comment for why a sky-miss sentinel must never pollute that stat).
+	out.hitDist     = hit.found ? length(hit.position - item.origin) : -1.0f;
 	wf_params.probeCacheHitQueue.push(out);
 }

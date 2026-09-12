@@ -590,18 +590,17 @@ struct ProbeCacheHitWorkItem {
 	bool   hit;
 	float3 hitPoint;
 	float3 hitNormal;
-	float  hitDist;     // sentinel (see probe_cache_shade's own comment) on a miss
+	float  hitDist;     // -1.0f (see __raygen__wf_probe_cache's own comment) on a miss
 	int    materialIdx;
-	// Copied through unchanged from ProbeCacheRayWorkItem::direction - probe_
-	// cache_accumulate (wavefront_kernels_restir.cu) needs the ORIGINAL probe
-	// ray direction (not derivable from hitPoint alone once occlusion/miss
-	// has happened) to project this sample onto the SH-L1 basis via
-	// wf_probe_sh_basis() (probe_grid_types.h).
-	float3 direction;
 	// Copied through unchanged from ProbeCacheRayWorkItem::seed -
 	// probe_cache_shade's own NEE light draw consumes this (the raygen itself
 	// doesn't need it - the ray direction is sampled host-side, see
-	// ProbeCacheRayWorkItem::direction's own comment).
+	// ProbeCacheRayWorkItem::direction's own comment). The ORIGINAL probe ray
+	// direction itself is NOT carried here - probe_cache_accumulate reads it
+	// from its own probeCacheDirections device array (built alongside
+	// ProbeCacheRayWorkItem::origin, host-side, in launchProbeCacheUpdate())
+	// instead, since that array already exists before this hit item does and
+	// needs no round trip through the intersection/shading pipeline.
 	unsigned int seed;
 };
 

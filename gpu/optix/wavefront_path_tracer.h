@@ -608,6 +608,13 @@ private:
     // null) the first time launchProbeCacheUpdate() runs, and freed once in
     // the destructor, same "allocate once, mutate forever" lifecycle as
     // OptiXRenderer's own d_probeGrid_.
+    // Persistent host-side staging buffers for launchProbeCacheUpdate()'s
+    // own round-robin batch - resized (never shrunk) on first use instead of
+    // a fresh std::vector construction/heap allocation every render() call;
+    // batchSize never exceeds kProbesPerFrame_, so one reservation covers
+    // every future call.
+    std::vector<ProbeCacheRayWorkItem> probeCacheHostItems_;
+    std::vector<float3> probeCacheHostDirections_;
 
     // Own stream for launchEvaluateMaterialsSimple()'s kernel, separate from
     // the base class's stream_ (externally owned by OptiXRenderer, shared

@@ -1356,8 +1356,15 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 	// own comment (wavefront_types.h) for why batchSlot is a batch-local
 	// index, not the real probe index.
 	// ------------------------------------------------------------------
-	std::vector<ProbeCacheRayWorkItem> hostItems(batchSize);
-	std::vector<float3> hostDirections(batchSize);
+	// Reused across calls (never reallocated once big enough) rather than a
+	// fresh std::vector construction every render() call - see these
+	// members' own comment (wavefront_path_tracer.h).
+	if (probeCacheHostItems_.size() < static_cast<size_t>(batchSize)) {
+		probeCacheHostItems_.resize(batchSize);
+		probeCacheHostDirections_.resize(batchSize);
+	}
+	std::vector<ProbeCacheRayWorkItem>& hostItems = probeCacheHostItems_;
+	std::vector<float3>& hostDirections = probeCacheHostDirections_;
 	// Deterministic per-(frame,cursor) seed - real randomness isn't needed
 	// here (this is a coarse, temporally-EMA'd cache, not a converged
 	// reference render), just decorrelation between probes/frames so
@@ -1431,8 +1438,10 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 		d_wfLaunchParams_, sizeof(WavefrontLaunchParams),
 		&probeCacheSBT_,
 		static_cast<unsigned int>(batchSize), 1, 1));
-	CUDA_CHECK(cudaStreamSynchronize(stream_));
-
+	// No cudaStreamSynchronize here - readQueueSize() below issues its own
+	// cudaMemcpyAsync on this SAME stream_, so stream ordering alone already
+	// guarantees it sees this launch's finished results; an explicit sync
+	// first would just be a second, redundant host-blocking wait.
 	const int numHits = readQueueSize(reinterpret_cast<int*>(d_probeCacheHitCounter_));
 	if (numHits <= 0) {
 		probeUpdateCursor_ = (probeUpdateCursor_ + batchSize) % probeGridMeta_.totalProbes;
@@ -1469,8 +1478,8 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 		reinterpret_cast<float3*>(d_probeCacheRadianceOut_),
 		reinterpret_cast<float*>(d_probeCacheHitDistOut_),
 		sq, stream_);
-	CUDA_CHECK(cudaStreamSynchronize(stream_));
-
+	// Same reasoning as Stage 1's own comment above - readQueueSize() below
+	// syncs this same stream_ itself, so no separate sync is needed here.
 	const int numShadow = readQueueSize(reinterpret_cast<int*>(d_shadowCounter_));
 	if (numShadow > 0) {
 		// --------------------------------------------------------------
@@ -1491,8 +1500,14 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 			d_wfLaunchParams_, sizeof(WavefrontLaunchParams),
 			&shadowSBT_,
 			static_cast<unsigned int>(numShadow), 1, 1));
-		CUDA_CHECK(cudaStreamSynchronize(stream_));
-
+		// No sync here (or after the accumulate launch just below) - both
+		// this shadow optixLaunch and wf_launch_accumulate_shadow run on the
+		// same stream_, and so does wf_launch_probe_cache_accumulate further
+		// down, so stream ordering alone already sequences all three
+		// correctly; nothing in between needs a host-visible result. Same
+		// "no correctness benefit, only a CPU stall" reasoning as render()'s
+		// own per-bounce shadow-launch call site.
+		//
 		// Stage 4: redirect resolved Ld into d_probeCacheRadianceOut_ (every
 		// item here has isProbeCacheRay=true - see probe_cache_shade's own
 		// comment - so d_framebuffer/maxComponentValue are never touched).
@@ -1501,7 +1516,6 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 									 /*d_framebuffer=*/nullptr, /*maxComponentValue=*/0.0f, stream_,
 									 /*d_giCandidateOut=*/nullptr,
 									 reinterpret_cast<float3*>(d_probeCacheRadianceOut_));
-		CUDA_CHECK(cudaStreamSynchronize(stream_));
 	}
 
 	// ------------------------------------------------------------------
@@ -1515,7 +1529,13 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 		batchSize, probeUpdateCursor_, probeGridMeta_,
 		reinterpret_cast<GpuProbe*>(d_probeGrid_),
 		stream_);
-	CUDA_CHECK(cudaStreamSynchronize(stream_));
+	// No trailing sync - the only remaining work in this function is the
+	// host-only probeUpdateCursor_ update just below (no GPU dependency),
+	// and render()'s own final framebuffer readback (a plain, stream-less
+	// cudaMemcpy right after this method returns) already synchronizes with
+	// every stream in the context under CUDA's legacy-default-stream
+	// semantics - an explicit sync here would only add one more redundant
+	// host-blocking wait on top of that.
 
 	probeUpdateCursor_ = (probeUpdateCursor_ + batchSize) % probeGridMeta_.totalProbes;
 }

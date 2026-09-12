@@ -2593,19 +2593,22 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		matType == MaterialType::Lambertian) {
 		const float3 cacheIrradiance = wf_query_probe_grid(probeGridMeta, probeGrid, hit_point, normal);
 		if (cacheIrradiance.x > 0.0f || cacheIrradiance.y > 0.0f || cacheIrradiance.z > 0.0f) {
-			// attenuation == albedoSpectrum(mat.albedo) for Lambertian (see
-			// this function's own area-light NEE block, `bsdf_color =
-			// attenuation;`) - reused directly here instead of re-deriving a
-			// raw RGB albedo, so the cache's own Lambertian BRDF divide-by-pi
-			// stays in spectral space throughout, like every other
-			// contribution this function computes. cacheIrradiance is
-			// treated as an illuminant (like mat.emission/background
+			// Uses new_throughput (== throughput * attenuation, already
+			// reweighted by the Russian-roulette survival boost just above)
+			// rather than the pre-bounce `throughput` - this contribution
+			// terminates the path exactly like a real next bounce would, so
+			// it must carry the SAME BSDF-color-times-RR-boost factor a real
+			// next bounce's own throughput would, not the un-boosted,
+			// pre-attenuation value. attenuation == albedoSpectrum(mat.albedo)
+			// for Lambertian is already folded into new_throughput here -
+			// multiplying by it a second time (as an earlier version of this
+			// block did) would double-count the surface color. cacheIrradiance
+			// is treated as an illuminant (like mat.emission/background
 			// radiance elsewhere in this codebase) since it already IS a
 			// fully-resolved incoming-radiance estimate by the time it left
 			// the probe cache, not a reflectance being lit.
 			const SS cacheSpec = wf_lift_rgb_to_spectrum(cacheIrradiance, swl, /*isIlluminant=*/true);
-			const SS contribution = attenuation * cacheSpec * (1.0f / 3.14159265f);
-			addToFramebuffer(pixelIndex, throughput * contribution * filterWeight);
+			addToFramebuffer(pixelIndex, new_throughput * cacheSpec * (1.0f / 3.14159265f) * filterWeight);
 			return;
 		}
 	}

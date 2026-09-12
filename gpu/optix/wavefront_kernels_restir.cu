@@ -657,7 +657,20 @@ extern "C" __global__ void probe_cache_accumulate(
 			shC[c][k] = shC[c][k] + alpha * (sample - shC[c][k]);
 		}
 	}
-	p.meanDist   = p.meanDist   + alpha * (hitDist - p.meanDist);
-	p.meanDistSq = p.meanDistSq + alpha * (hitDist * hitDist - p.meanDistSq);
+	// Skip the distance-EMA update entirely on a miss (hitDist < 0 - see
+	// __raygen__wf_probe_cache's own -1.0f sentinel comment). A sky-miss has
+	// no real "unoccluded reach" to report, and blending its old 1e4-style
+	// placeholder in at the same weight as a real hit distance used to drag
+	// meanDist toward that placeholder for any probe with a nontrivial miss
+	// fraction (e.g. near an opening to the sky or a scene boundary),
+	// inflating wf_query_probe_grid's own leak-test maxReach enough to
+	// disable the leak guard entirely for exactly the probes nearest such
+	// boundaries. The SH radiance/numRaysEverTraced update above still runs
+	// unconditionally either way - a miss's background contribution is still
+	// real, valid radiance data for the cache to learn from.
+	if (hitDist >= 0.0f) {
+		p.meanDist   = p.meanDist   + alpha * (hitDist - p.meanDist);
+		p.meanDistSq = p.meanDistSq + alpha * (hitDist * hitDist - p.meanDistSq);
+	}
 	p.numRaysEverTraced += 1;
 }

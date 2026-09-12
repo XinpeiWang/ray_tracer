@@ -131,8 +131,10 @@ CPU_GPU float wf_probe_sh_irradiance(const float sh[4], float3 n) {
 // through to a normal continuation ray on a miss, exactly like a reservoir
 // with W==0 does elsewhere in this codebase.
 //
-// kLeakSlack=1.5: a corner is trusted out to 1.5 standard deviations past
-// its own mean unoccluded reach - loose enough that a probe sitting in an
+// kLeakSlack=1.5: a corner is trusted out to 2*kLeakSlack = 3 standard
+// deviations past its own mean unoccluded reach (this project's own plan's
+// own formula - the leading 2.0f below is a fixed baseline multiplier, not
+// itself part of kLeakSlack) - loose enough that a probe sitting in an
 // open room doesn't spuriously reject nearby geometry from ordinary sampling
 // noise in its own EMA, tight enough to reject a shading point that is
 // obviously on the far side of a wall from a probe whose rays never reach
