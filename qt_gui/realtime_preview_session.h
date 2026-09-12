@@ -271,14 +271,19 @@ private:
 	std::vector<float> m_worldPosPrev;     // same layout, previous frame's
 	std::vector<float> m_cameraBasis;      // origin/lowerLeft/horiz/vert, 12 floats
 	std::vector<float> m_prevCameraBasis;  // same layout, previous frame's
-	// Per-pixel effective sample count - NOT uniform once reprojection is in
+	// Per-pixel effective BATCH count - NOT uniform once reprojection is in
 	// play (a freshly-disoccluded pixel starts over at 0 while a
 	// successfully-reprojected neighbor carries its whole history forward),
 	// unlike the single scalar this replaced. m_sampleCount (below) becomes
 	// the MINIMUM across all pixels once rendering starts - a conservative
 	// "worst-converged pixel" indicator for the status label (see
 	// MainWindow::onLivePreviewFrameReady()) rather than a literal count
-	// that stopped being uniform.
+	// that stopped being uniform. "Batch" because each increment is one
+	// render call's own m_spp-sample average, not one raw sample - the
+	// frameReady() emit site multiplies by m_spp before it reaches the
+	// label, so the label shows real samples traced while this stays the
+	// batch-weighted count the running-mean math (renderLoop()) actually
+	// needs as its divisor.
 	std::vector<uint16_t> m_sampleCounts;
 	// Scratch buffers reprojectAccumulation() writes its remapped result
 	// into before swapping with m_accum/m_sampleCounts - persisted and

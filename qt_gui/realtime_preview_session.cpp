@@ -544,7 +544,19 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		// shared buffer. .copy() gives this emit its own buffer up front,
 		// letting m_displayImage keep being mutated in place next iteration
 		// with no such hazard.
-		emit frameReady(m_displayImage.copy(), m_sampleCount);
+		//
+		// m_sampleCount * m_spp, not m_sampleCount alone: m_sampleCount is a
+		// BATCH count (see its own comment) - each batch already IS an
+		// m_spp-sample average from a single render call, so the status
+		// label needs this multiply to show the true number of samples
+		// traced, not the number of calls made. Scaling by the CURRENT
+		// m_spp rather than tracking a separate running total keeps this a
+		// pure display fix with no new per-pixel state to reproject/cap -
+		// the one imprecision this trades away is retroactive: if the user
+		// changes Samples/Frame mid-session, batches accumulated at the OLD
+		// value get re-reported as if they'd used the new one too. Harmless
+		// for a live status number nobody is auditing frame-by-frame.
+		emit frameReady(m_displayImage.copy(), m_sampleCount * m_spp);
 	}
 
 	if (m_running) QMetaObject::invokeMethod(this, [this, epoch]() { renderLoop(epoch); }, Qt::QueuedConnection);
