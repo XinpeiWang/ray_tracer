@@ -1700,6 +1700,7 @@ void MainWindow::onModeChanged(int index) {
 	if (m_liveModeOptionsWarningLabel) m_liveModeOptionsWarningLabel->setVisible(isLiveMode());
 	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
 	setGroupDimmed(m_denoiserLivePreviewGroupBox, !isLiveMode());
+	setGroupDimmed(m_liveRenderSettingsGroupBox, !isLiveMode());
 #endif
 
 	// --video hard-rejects any non-Default integrator (see

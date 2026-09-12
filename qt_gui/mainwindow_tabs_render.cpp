@@ -1245,6 +1245,149 @@ void MainWindow::createRenderOptionsTab() {
 
 	layout->addWidget(m_denoiserGroupBox);
 
+#ifdef RT_GUI_HAVE_GPU
+	// ------------------------------------------------------------------
+	// Live Preview Settings group - render-BEHAVIOR knobs moved here from
+	// the Settings tab's own former "Live Preview Settings" group (renamed
+	// "Live Preview Controls", now sensitivity-only - see
+	// m_liveModeSettingsGroupBox's own comment, mainwindow.h) so every
+	// render setting lives on this tab, next to the Denoiser section right
+	// above. RT_GUI_HAVE_GPU-only, like every widget it contains and like
+	// the Denoiser group's own "Live Preview" subsection.
+	// ------------------------------------------------------------------
+	m_liveRenderSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), optionsTab);
+	styleGroupBox(m_liveRenderSettingsGroupBox);
+	m_liveRenderSettingsGroupBox->setInfoIcon(createInfoIcon(
+		tr("ReSTIR DI/GI, exposure, samples/max-bounces per frame, and the "
+		"firefly clamp - all independent of the Advanced Parameters group "
+		"below (which only applies to Image/Video) and of the Denoiser "
+		"section above. Only takes effect when Output Mode above is "
+		"\"Live Preview (interactive)\", but stays editable in any mode.")));
+	setGroupDimmed(m_liveRenderSettingsGroupBox, !isLiveMode());
+	QFormLayout *liveRenderSettingsLayout = new QFormLayout(m_liveRenderSettingsGroupBox);
+	liveRenderSettingsLayout->setVerticalSpacing(10);
+	liveRenderSettingsLayout->setHorizontalSpacing(10);
+	liveRenderSettingsLayout->setContentsMargins(15, 22, 15, 12);
+
+	// ReSTIR GI on/off, exposure, samples/max-bounces per frame, and the
+	// firefly clamp - each independent of everything else on this tab,
+	// grouped into one row purely for layout compactness.
+	QWidget *liveRenderSettingsRow = new QWidget();
+	QGridLayout *liveRenderSettingsGrid = new QGridLayout(liveRenderSettingsRow);
+	liveRenderSettingsGrid->setContentsMargins(0, 0, 0, 0);
+	liveRenderSettingsGrid->setHorizontalSpacing(10);
+	liveRenderSettingsGrid->setVerticalSpacing(8);
+	liveRenderSettingsGrid->setColumnStretch(1, 1);
+	liveRenderSettingsGrid->setColumnStretch(3, 1);
+
+	m_liveRestirGiCheck = new QCheckBox(tr("ReSTIR GI"));
+	m_liveRestirGiCheck->setChecked(m_liveRestirGiEnabled);
+	styleCheckBox(m_liveRestirGiCheck);
+	connect(m_liveRestirGiCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveRestirGiEnabled = checked;
+		saveLiveRestirGiEnabled(checked);
+		pushLiveRestirGiToSession();
+	});
+	// Own row, spanning every column - a checkbox has nothing to pair with
+	// the way the label+field values below do, so it doesn't belong forced
+	// into the same 2-per-row grouping.
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveRestirGiCheck,
+		tr("Resampled one-bounce indirect lighting (ReSTIR GI) - independent "
+		"of which denoiser is active above. Disabling it falls back to the "
+		"classic single-sample indirect estimate, which is noisier but "
+		"cheaper per frame.")),
+		0, 0, 1, 4);
+
+	m_liveRestirDiCheck = new QCheckBox(tr("ReSTIR DI"));
+	m_liveRestirDiCheck->setChecked(m_liveRestirDiEnabled);
+	styleCheckBox(m_liveRestirDiCheck);
+	connect(m_liveRestirDiCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveRestirDiEnabled = checked;
+		saveLiveRestirDiEnabled(checked);
+		pushLiveRestirDiToSession();
+	});
+	// Own row too, same reasoning as ReSTIR GI's row above.
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveRestirDiCheck,
+		tr("Resampled direct-light sampling (ReSTIR DI) - independent of "
+		"ReSTIR GI above (that resamples one-bounce INDIRECT lighting; this "
+		"resamples the direct-light draw classic next-event estimation would "
+		"otherwise make from a single global alias-table sample). Disabling "
+		"it falls back to that classic single-sample draw, which is noisier "
+		"in scenes with many lights but cheaper per frame.")),
+		1, 0, 1, 4);
+
+	// The four numeric values grouped into their own clean 2-per-row grid
+	// (rows 2-3), separate from the checkboxes above.
+	m_liveExposureSpin = new QDoubleSpinBox();
+	m_liveExposureSpin->setRange(0.01, 100.0);
+	m_liveExposureSpin->setSingleStep(0.1);
+	m_liveExposureSpin->setValue(m_liveExposure);
+	styleSpinBox(m_liveExposureSpin);
+	connect(m_liveExposureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveExposure = value;
+		saveLiveExposure(value);
+		pushLiveExposureToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Exposure:"),
+		tr("A flat brightness multiplier applied before tone-mapping, same "
+		"meaning as this tab's own Output-group Exposure control but "
+		"independently set for Live Preview.")),
+		2, 0);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 2, 1);
+
+	m_liveSamplesSpinBox = new QSpinBox();
+	m_liveSamplesSpinBox->setRange(1, 16);
+	m_liveSamplesSpinBox->setValue(m_liveSamples);
+	styleSpinBox(m_liveSamplesSpinBox);
+	auto pushSppMaxDepth = [this]() {
+		m_liveSamples = m_liveSamplesSpinBox->value();
+		m_liveMaxDepth = m_liveMaxDepthSpinBox->value();
+		saveLiveSamples(m_liveSamples);
+		saveLiveMaxDepth(m_liveMaxDepth);
+		pushLiveSppMaxDepthToSession();
+	};
+	connect(m_liveSamplesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Samples/Frame:"),
+		tr("Samples per pixel rendered on each Live Preview call - Live "
+		"Preview has its own independent value from the Advanced Parameters "
+		"group below, which only applies to Image/Video.")),
+		2, 2);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 2, 3);
+
+	m_liveMaxDepthSpinBox = new QSpinBox();
+	m_liveMaxDepthSpinBox->setRange(1, 32);
+	m_liveMaxDepthSpinBox->setValue(m_liveMaxDepth);
+	styleSpinBox(m_liveMaxDepthSpinBox);
+	connect(m_liveMaxDepthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
+		tr("Maximum ray depth for Live Preview - independent from the "
+		"Advanced Parameters group below, which only applies to Image/Video.")),
+		3, 0);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 3, 1);
+
+	m_liveFireflyClampSpin = new QDoubleSpinBox();
+	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
+	m_liveFireflyClampSpin->setSingleStep(5.0);
+	m_liveFireflyClampSpin->setDecimals(1);
+	m_liveFireflyClampSpin->setValue(m_liveFireflyClamp);
+	styleSpinBox(m_liveFireflyClampSpin);
+	connect(m_liveFireflyClampSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveFireflyClamp = value;
+		saveLiveFireflyClamp(value);
+		pushLiveFireflyClampToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Firefly Clamp:"),
+		tr("Caps the brightest possible sample value to suppress fireflies, "
+		"at the cost of clipping genuinely bright highlights. Lower values "
+		"clamp more aggressively.")),
+		3, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 3, 3);
+
+	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
+
+	layout->addWidget(m_liveRenderSettingsGroupBox);
+#endif
+
 	// ------------------------------------------------------------------
 	// Crop Window group
 	// ------------------------------------------------------------------

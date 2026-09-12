@@ -879,6 +879,17 @@ private:
 	QSpinBox *m_liveMaxDepthSpinBox = nullptr;
 	double m_liveFireflyClamp = 50.0;
 	QDoubleSpinBox *m_liveFireflyClampSpin = nullptr;
+	// Own top-level group on the Render Options tab (mainwindow_tabs_render.cpp),
+	// right after the Denoiser group - holds the ReSTIR GI/DI checkboxes and
+	// Exposure/Samples/Max Bounces/Firefly Clamp spinboxes above. Same
+	// dimming pattern as m_advancedParamsGroupBox/m_denoiserImageVideoGroupBox
+	// (setGroupDimmed(..., !isLiveMode()) in onModeChanged()). Was previously
+	// nested inside the Settings tab's "Live Preview Settings" group
+	// (renamed m_liveModeSettingsGroupBox/"Live Preview Controls" - see its
+	// own comment) alongside mouse/keyboard sensitivity - split out so every
+	// render-BEHAVIOR knob lives with the rest of Render Options, leaving
+	// only INPUT-feel controls on Settings.
+	InfoGroupBox *m_liveRenderSettingsGroupBox = nullptr;
 	// SVGF's own advanced tuning knobs (gpu/optix/svgf_tuning_params.h) -
 	// individual members here (rather than one aggregate) since each has its
 	// own spinbox/settings key; bundled into one SvgfTuningParams only inside
@@ -1246,12 +1257,15 @@ private:
 	// Same purpose, at the top of the Render Options tab - none of that
 	// tab's settings apply to Live Preview's own GPU path tracer either.
 	QLabel *m_liveModeOptionsWarningLabel = nullptr;
-	// Live Preview's own settings group (mouse/keyboard sensitivity) - its
-	// own independent QGroupBox rather than living inline in Render
-	// Settings. No separate warning banner like m_videoGroupBox's - its
-	// header icon's own tooltip already states the "only takes effect
-	// when..." caveat, so setGroupDimmed() (keyed on isLiveMode() instead
-	// of isVideoMode()) is the only relevance signal this group needs.
+	// Live Preview's own input-sensitivity group ("Live Preview Controls" -
+	// mouse/keyboard feel only; render-behavior knobs live in
+	// m_liveRenderSettingsGroupBox on the Render Options tab instead, see
+	// that member's own comment) - its own independent QGroupBox rather than
+	// living inline in Render Settings. No separate warning banner like
+	// m_videoGroupBox's - its header icon's own tooltip already states the
+	// "only takes effect when..." caveat, so setGroupDimmed() (keyed on
+	// isLiveMode() instead of isVideoMode()) is the only relevance signal
+	// this group needs.
 	InfoGroupBox *m_liveModeSettingsGroupBox = nullptr;
 #endif
 
