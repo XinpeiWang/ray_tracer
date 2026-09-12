@@ -55,55 +55,55 @@
         <translation>光线追踪渲染器 - 路径追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="817"/>
+        <location filename="../mainwindow.cpp" line="818"/>
         <source>Ray Tracer</source>
         <translation>光线追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="969"/>
-        <location filename="../mainwindow_slots.cpp" line="1733"/>
+        <location filename="../mainwindow.cpp" line="970"/>
+        <location filename="../mainwindow_slots.cpp" line="1740"/>
         <source>START &amp;RENDER</source>
         <translation>开始渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="979"/>
+        <location filename="../mainwindow.cpp" line="980"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>使用当前设置渲染所选场景
 （如果已有渲染正在进行，则改为加入队列排在其后）</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="990"/>
+        <location filename="../mainwindow.cpp" line="991"/>
         <source>S&amp;TOP RENDER</source>
         <translation>停止渲染(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="997"/>
+        <location filename="../mainwindow.cpp" line="998"/>
         <location filename="../mainwindow_actions.cpp" line="69"/>
         <source>Stop the running render and discard its output</source>
         <translation>停止正在运行的渲染并丢弃其输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1010"/>
+        <location filename="../mainwindow.cpp" line="1011"/>
         <location filename="../mainwindow_slots.cpp" line="417"/>
         <location filename="../mainwindow_slots.cpp" line="723"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>暂停渲染(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1016"/>
+        <location filename="../mainwindow.cpp" line="1017"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="725"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>就地暂停正在运行的渲染 - “继续”会从完全相同的像素处接着渲染</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1025"/>
+        <location filename="../mainwindow.cpp" line="1026"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>放弃并继续下一个(&amp;N)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1032"/>
+        <location filename="../mainwindow.cpp" line="1033"/>
         <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>丢弃正在运行的渲染的输出，并立即开始下一个排队的任务</translation>
@@ -147,7 +147,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1605"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1770"/>
         <source>Open Output &amp;Folder</source>
         <translation>打开输出文件夹(&amp;F)</translation>
     </message>
@@ -158,7 +158,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="96"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1617"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1782"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>用默认查看器打开(&amp;V)</translation>
     </message>
@@ -557,7 +557,7 @@
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1314"/>
-        <location filename="../mainwindow_slots.cpp" line="1323"/>
+        <location filename="../mainwindow_slots.cpp" line="1329"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ 渲染完成（%1 秒）</translation>
     </message>
@@ -567,104 +567,104 @@
         <translation>警告：预览图像加载失败，位置 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1324"/>
+        <location filename="../mainwindow_slots.cpp" line="1330"/>
         <source>Warning: output file not found at %1</source>
         <translation>警告：未在 %1 找到输出文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1339"/>
+        <location filename="../mainwindow_slots.cpp" line="1345"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1344"/>
-        <location filename="../mainwindow_slots.cpp" line="1916"/>
+        <location filename="../mainwindow_slots.cpp" line="1350"/>
+        <location filename="../mainwindow_slots.cpp" line="1923"/>
         <source>Render Failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1364"/>
+        <location filename="../mainwindow_slots.cpp" line="1370"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>已停止 - 另有 %1 个排队中（点击“开始渲染”继续）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1486"/>
+        <location filename="../mainwindow_slots.cpp" line="1492"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>正在渲染  ·  %1%  ·  已用时 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1496"/>
+        <location filename="../mainwindow_slots.cpp" line="1502"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1504"/>
+        <location filename="../mainwindow_slots.cpp" line="1510"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  预计剩余 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1507"/>
+        <location filename="../mainwindow_slots.cpp" line="1513"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  预计剩余 --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1530"/>
+        <location filename="../mainwindow_slots.cpp" line="1536"/>
         <source>Render complete</source>
         <translation>渲染完成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1531"/>
+        <location filename="../mainwindow_slots.cpp" line="1537"/>
         <source>Render stopped</source>
         <translation>渲染已停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1531"/>
+        <location filename="../mainwindow_slots.cpp" line="1537"/>
         <source>Render failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1533"/>
+        <location filename="../mainwindow_slots.cpp" line="1539"/>
         <source>Finished in %1 seconds</source>
         <translation>耗时 %1 秒完成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1548"/>
+        <location filename="../mainwindow_slots.cpp" line="1554"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1557"/>
+        <location filename="../mainwindow_slots.cpp" line="1563"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[调试] 系统托盘不可用，跳过完成通知</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1561"/>
+        <location filename="../mainwindow_slots.cpp" line="1567"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[调试] 系统托盘不支持消息通知，跳过通知</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1714"/>
+        <location filename="../mainwindow_slots.cpp" line="1721"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>开始视频渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1719"/>
+        <location filename="../mainwindow_slots.cpp" line="1726"/>
         <source>Ready to render video frames</source>
         <translation>已就绪，可渲染视频帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1738"/>
+        <location filename="../mainwindow_slots.cpp" line="1745"/>
         <location filename="../mainwindow_tabs_output.cpp" line="68"/>
         <source>Ready to render</source>
         <translation>已就绪，可开始渲染</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1752"/>
+        <location filename="../mainwindow_slots.cpp" line="1759"/>
         <source>Mode changed to: %1</source>
         <translation>模式已切换为：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1748"/>
+        <location filename="../mainwindow_slots.cpp" line="1755"/>
         <source>Video Generation</source>
         <translation>视频生成</translation>
     </message>
@@ -694,74 +694,74 @@
         <translation>⏸ 已暂停</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1717"/>
+        <location filename="../mainwindow_slots.cpp" line="1724"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
         <translation>逐帧渲染相机路径并合成为视频。如果已有渲染正在进行，则改为加入队列排在其后。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1723"/>
+        <location filename="../mainwindow_slots.cpp" line="1730"/>
         <source>START LIVE &amp;PREVIEW</source>
         <translation>开始实时预览(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1726"/>
+        <location filename="../mainwindow_slots.cpp" line="1733"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
         <translation>启动一个可用鼠标环绕/缩放的交互式 GPU 预览。批量渲染运行期间会被禁用。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1728"/>
+        <location filename="../mainwindow_slots.cpp" line="1735"/>
         <source>Ready to start live preview</source>
         <translation>准备开始实时预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1736"/>
+        <location filename="../mainwindow_slots.cpp" line="1743"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
         <translation>使用当前设置渲染所选场景。如果已有渲染正在进行，则改为加入队列排在其后。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1747"/>
+        <location filename="../mainwindow_slots.cpp" line="1754"/>
         <source>Single Image</source>
         <translation>单张图像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1750"/>
+        <location filename="../mainwindow_slots.cpp" line="1757"/>
         <location filename="../mainwindow_tabs_render.cpp" line="961"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1750"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1915"/>
         <source>Live Preview</source>
         <translation>实时预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1849"/>
+        <location filename="../mainwindow_slots.cpp" line="1856"/>
         <source>Integrator changed to: %1</source>
         <translation>积分器已切换为: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1897"/>
+        <location filename="../mainwindow_slots.cpp" line="1904"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ 未找到视频文件，正在检查帧序列…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1898"/>
+        <location filename="../mainwindow_slots.cpp" line="1905"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>警告：在所有预期位置均未找到视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1907"/>
+        <location filename="../mainwindow_slots.cpp" line="1914"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ 找到 %1 帧，但没有视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1908"/>
+        <location filename="../mainwindow_slots.cpp" line="1915"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>帧序列已渲染完成（%1 个文件），但视频合成可能已失败。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1909"/>
+        <location filename="../mainwindow_slots.cpp" line="1916"/>
         <source>Video Not Created</source>
         <translation>视频未生成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1910"/>
+        <location filename="../mainwindow_slots.cpp" line="1917"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -774,17 +774,17 @@ Please check the render log for ffmpeg errors.</source>
 请检查渲染日志中的 ffmpeg 错误信息。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1914"/>
+        <location filename="../mainwindow_slots.cpp" line="1921"/>
         <source>❌ No frames or video found</source>
         <translation>❌ 未找到帧序列或视频</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1915"/>
+        <location filename="../mainwindow_slots.cpp" line="1922"/>
         <source>ERROR: No frames or video file found</source>
         <translation>错误：未找到帧序列或视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1917"/>
+        <location filename="../mainwindow_slots.cpp" line="1924"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -793,22 +793,22 @@ Please check the render log for errors.</source>
 请检查渲染日志中的错误信息。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1920"/>
+        <location filename="../mainwindow_slots.cpp" line="1927"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ 未找到帧目录</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1921"/>
+        <location filename="../mainwindow_slots.cpp" line="1928"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>错误：未找到帧目录：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1922"/>
+        <location filename="../mainwindow_slots.cpp" line="1929"/>
         <source>Directory Not Found</source>
         <translation>未找到目录</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1923"/>
+        <location filename="../mainwindow_slots.cpp" line="1930"/>
         <source>Frames directory not found:
 %1
 
@@ -819,27 +819,27 @@ The render may have failed to create output.</source>
 渲染可能未能成功生成输出。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1929"/>
+        <location filename="../mainwindow_slots.cpp" line="1936"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ 视频生成成功！</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1930"/>
+        <location filename="../mainwindow_slots.cpp" line="1937"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ 视频合成成功：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1931"/>
+        <location filename="../mainwindow_slots.cpp" line="1938"/>
         <source>Video size: %1 MB</source>
         <translation>视频大小：%1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1952"/>
+        <location filename="../mainwindow_slots.cpp" line="1959"/>
         <source>%1 (Video)</source>
         <translation>%1（视频）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1954"/>
+        <location filename="../mainwindow_slots.cpp" line="1961"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3 帧  •  %4spp · %5%6</translation>
     </message>
@@ -848,7 +848,7 @@ The render may have failed to create output.</source>
         <translation type="vanished">%1  •  %2 MB  •  %3 帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1966"/>
+        <location filename="../mainwindow_slots.cpp" line="1973"/>
         <source>Playing video inline: %1</source>
         <translation>正在内嵌播放视频：%1</translation>
     </message>
@@ -1264,7 +1264,7 @@ Live Preview renders continuously with an orbitable camera - GPU only.</source>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="751"/>
-        <location filename="../mainwindow_tabs.cpp" line="1420"/>
+        <location filename="../mainwindow_tabs.cpp" line="1310"/>
         <source>Custom</source>
         <translation>自定义</translation>
     </message>
@@ -1521,32 +1521,62 @@ Tips: use GPU mode for faster rendering. Lower samples/pixel (10-50) for quick p
 提示：使用 GPU 模式可获得更快的渲染速度。较低的每像素采样数（10-50）适合快速预览，较高（100-500）适合成片质量。典型渲染时间为 GPU 上 1-5 分钟，CPU 上 15-60 分钟。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1052"/>
+        <location filename="../mainwindow_tabs.cpp" line="1417"/>
+        <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.
+
+Type or Browse to a .exr path instead of .png/.ppm for linear, full-precision HDR output (no tone mapping baked in) - useful for compositing. If Denoise is also on and GPU Backend is Recursive, an _albedo.exr and _normal.exr guide-buffer pair is written alongside it automatically (Wavefront doesn&apos;t produce these yet).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1445"/>
+        <source>Where the rendered image is written. A .png is always saved alongside
+the raw .ppm, and it is the .png the Preview tab displays.
+
+Enter a .exr path instead for linear HDR output with no PNG sibling -
+the Preview tab opens it in your system&apos;s EXR viewer instead of showing
+it inline.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1458"/>
+        <source>PNG Image (*.png);;PPM Image (*.ppm);;EXR Image, linear HDR (*.exr)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1465"/>
+        <source>Where the finished image is saved.
+
+A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.
+
+Choosing a .exr path instead skips both: it writes one linear, un-tonemapped, full-float-precision file directly - the format compositing/VFX tools expect, and the only way to get HDR values out of this app rather than an already-tonemapped image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1258"/>
         <source>Live Preview Settings</source>
         <translation>实时预览设置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1055"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation>调节实时预览中鼠标环绕/缩放以及键盘 WASD/上/下移动 + 左/右/+/- 的响应灵敏度。仅在上方输出模式为“实时预览（交互式）”时生效，但在任何模式下都可编辑。</translation>
+        <translation type="vanished">调节实时预览中鼠标环绕/缩放以及键盘 WASD/上/下移动 + 左/右/+/- 的响应灵敏度。仅在上方输出模式为“实时预览（交互式）”时生效，但在任何模式下都可编辑。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1090"/>
+        <location filename="../mainwindow_tabs.cpp" line="1099"/>
         <source>Mouse Sensitivity:</source>
         <translation>鼠标灵敏度：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1091"/>
+        <location filename="../mainwindow_tabs.cpp" line="1100"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
         <translation>缩放实时预览中点击拖动环绕以及滚轮缩放的速度。1x 对应原始手感；数值越低越柔和，越高响应越灵敏。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1108"/>
+        <location filename="../mainwindow_tabs.cpp" line="1117"/>
         <source>Keyboard Sensitivity:</source>
         <translation>键盘灵敏度：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1109"/>
+        <location filename="../mainwindow_tabs.cpp" line="1118"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
         <translation>缩放实时预览中 WASD/上/下移动、左/右方向键环绕以及 +/- 缩放的步进幅度。1x 为每次按键的适中幅度；数值越低越精细，越高每次按键移动越远。</translation>
     </message>
@@ -1701,67 +1731,71 @@ Tips: use GPU mode for faster rendering. Lower samples/pixel (10-50) for quick p
         <translation>恢复默认值</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1127"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1261"/>
+        <source>ReSTIR DI/GI, the radiance cache, exposure, samples/max-bounces per frame, and the firefly clamp - all independent of the Advanced Parameters group below (which only applies to Image/Video) and of the Denoiser section above. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
+        <translation>ReSTIR DI/GI、辐射缓存、曝光、每帧采样数/最大反弹次数，以及萤火虫钳制——均独立于下方仅适用于图像/视频的“高级参数”组，也独立于上方的降噪器部分。仅在上方输出模式为“实时预览（交互式）”时生效，但在任何模式下都可编辑。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1284"/>
         <source>ReSTIR GI</source>
         <translation>ReSTIR GI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1139"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1296"/>
         <source>Resampled one-bounce indirect lighting (ReSTIR GI) - independent of which denoiser is active above. Disabling it falls back to the classic single-sample indirect estimate, which is noisier but cheaper per frame.</source>
         <translation>重采样的单次反弹间接光照（ReSTIR GI）——与上方启用哪种降噪器无关。禁用它会回退到经典的单样本间接估计，噪点更多但每帧开销更低。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1145"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1302"/>
         <source>ReSTIR DI</source>
         <translation>ReSTIR DI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1155"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1312"/>
         <source>Resampled direct-light sampling (ReSTIR DI) - independent of ReSTIR GI above (that resamples one-bounce INDIRECT lighting; this resamples the direct-light draw classic next-event estimation would otherwise make from a single global alias-table sample). Disabling it falls back to that classic single-sample draw, which is noisier in scenes with many lights but cheaper per frame.</source>
         <translation>重采样的直接光照采样（ReSTIR DI）——与上方 ReSTIR GI 相互独立（那重采样的是单次反弹的间接光照；这重采样的是经典下一事件估计原本会从单个全局别名表样本中做出的直接光照抽取）。禁用它会回退到那种经典的单样本抽取，在光源较多的场景中噪点更多，但每帧开销更低。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1176"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as the Render Options tab&apos;s own Exposure control but independently set for Live Preview.</source>
-        <translation>色调映射前施加的固定亮度倍数，含义与“渲染选项”标签页自身的“曝光”控件相同，但为实时预览独立设置。</translation>
+        <translation type="vanished">色调映射前施加的固定亮度倍数，含义与“渲染选项”标签页自身的“曝光”控件相同，但为实时预览独立设置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1194"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1372"/>
         <source>Samples/Frame:</source>
         <translation>每帧采样数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1195"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1373"/>
         <source>Samples per pixel rendered on each Live Preview call - Live Preview has its own independent value from the Advanced Parameters group below, which only applies to Image/Video.</source>
         <translation>实时预览每次调用时渲染的每像素采样数——实时预览拥有独立于下方“高级参数”组的自身取值，后者仅适用于图像/视频。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1206"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1384"/>
         <source>Max Bounces:</source>
         <translation>最大反弹次数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1207"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1385"/>
         <source>Maximum ray depth for Live Preview - independent from the Advanced Parameters group below, which only applies to Image/Video.</source>
         <translation>实时预览的最大光线深度——独立于下方仅适用于图像/视频的“高级参数”组。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1223"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1401"/>
         <source>Firefly Clamp:</source>
         <translation>萤火虫钳制：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1224"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1402"/>
         <source>Caps the brightest possible sample value to suppress fireflies, at the cost of clipping genuinely bright highlights. Lower values clamp more aggressively.</source>
         <translation>限制单个样本值可达到的最大亮度以抑制萤火虫噪点，代价是会截断真正明亮的高光。数值越低，钳制越激进。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1248"/>
+        <location filename="../mainwindow_tabs.cpp" line="1138"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
         <translation>手动覆盖分辨率、每像素采样数和最大光线深度，而不是使用上方的质量/分辨率预设。图像和视频共用这些设置（视频将其复用为逐帧设置）——实时预览则始终使用自身固定的小分辨率。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1278"/>
+        <location filename="../mainwindow_tabs.cpp" line="1168"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
@@ -1770,7 +1804,7 @@ Paired with Height to set the resolution manually, overriding whatever the Quali
 与“高度”搭配，用于手动设置分辨率，覆盖上方“质量”预设原本会使用的值。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1291"/>
+        <location filename="../mainwindow_tabs.cpp" line="1181"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
@@ -1779,58 +1813,54 @@ Paired with Width - together they set the resolution manually, overriding the Qu
 与“宽度”搭配——两者共同手动设置分辨率，覆盖上方的“质量”预设。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1362"/>
+        <location filename="../mainwindow_tabs.cpp" line="1252"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
         <translation>直接设置相机的世界坐标位置，或选择一个命名预设。图像模式下会照原样使用；视频模式下将其作为相机路径动画的起点；实时预览模式下则作为你交互式环绕/缩放之前的初始位置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1524"/>
+        <location filename="../mainwindow_tabs.cpp" line="1414"/>
         <source>Output</source>
         <translation>输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1527"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.</source>
-        <translation>渲染文件的保存位置。视频模式会自动附加正确的扩展名；实时预览则完全忽略此设置，因为它从不写入文件。</translation>
+        <translation type="vanished">渲染文件的保存位置。视频模式会自动附加正确的扩展名；实时预览则完全忽略此设置，因为它从不写入文件。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1550"/>
         <source>Where the rendered image is written. A .png is always saved alongside
 the raw .ppm, and it is the .png the Preview tab displays.</source>
-        <translation>渲染图像的写入位置。系统总会在原始 .ppm 文件旁
+        <translation type="vanished">渲染图像的写入位置。系统总会在原始 .ppm 文件旁
 额外保存一份 .png，预览标签页显示的正是这份 .png。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1555"/>
+        <location filename="../mainwindow_tabs.cpp" line="1453"/>
         <source>&amp;Browse…</source>
         <translation>浏览(&amp;B)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1556"/>
+        <location filename="../mainwindow_tabs.cpp" line="1454"/>
         <source>Choose the output file name and location</source>
         <translation>选择输出文件名和位置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1558"/>
+        <location filename="../mainwindow_tabs.cpp" line="1456"/>
         <source>Save Render Output</source>
         <translation>保存渲染输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1559"/>
         <source>PNG Image (*.png);;PPM Image (*.ppm)</source>
-        <translation>PNG 图像 (*.png);;PPM 图像 (*.ppm)</translation>
+        <translation type="vanished">PNG 图像 (*.png);;PPM 图像 (*.ppm)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1566"/>
         <source>Where the finished image is saved.
 
 A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.</source>
-        <translation>渲染完成图像的保存位置。
+        <translation type="vanished">渲染完成图像的保存位置。
 
 系统总会写入一份原始 .ppm 文件，并自动在旁边生成一份 .png 副本 - 预览标签页始终显示这份 .png，因为大多数图像查看器（包括本应用自身的预览功能）都无法直接打开 .ppm 文件。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1594"/>
+        <location filename="../mainwindow_tabs.cpp" line="1497"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
@@ -1839,12 +1869,12 @@ A raw .ppm file is always written, and a .png copy is generated alongside it aut
         <translation type="vanished">基本设置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1245"/>
+        <location filename="../mainwindow_tabs.cpp" line="1135"/>
         <source>Advanced Parameters</source>
         <translation>高级参数</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1277"/>
+        <location filename="../mainwindow_tabs.cpp" line="1167"/>
         <source>Width:</source>
         <translation>宽度：</translation>
     </message>
@@ -1857,7 +1887,7 @@ Paired with Height below to set the resolution manually, overriding whatever the
 与下方的“高度”配合，可手动设置分辨率，覆盖“基本”标签页中“质量”预设原本会使用的数值。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1290"/>
+        <location filename="../mainwindow_tabs.cpp" line="1180"/>
         <source>Height:</source>
         <translation>高度：</translation>
     </message>
@@ -1870,7 +1900,7 @@ Paired with Width above - together they set the resolution manually, overriding 
 与上方的“宽度”配合 - 二者共同手动设置分辨率，覆盖“基本”标签页的“质量”预设。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1303"/>
+        <location filename="../mainwindow_tabs.cpp" line="1193"/>
         <source>Rays traced per pixel. This is the main quality/time dial: noise falls
 as the square root of this value, so halving the noise costs about 4x
 the render time. Setting it here switches Quality to Custom.</source>
@@ -1879,12 +1909,12 @@ the render time. Setting it here switches Quality to Custom.</source>
 “质量”切换为“自定义”。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1306"/>
+        <location filename="../mainwindow_tabs.cpp" line="1196"/>
         <source>Samples per Pixel:</source>
         <translation>每像素采样数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1307"/>
+        <location filename="../mainwindow_tabs.cpp" line="1197"/>
         <source>Ray tracing estimates each pixel&apos;s color by firing many random rays and averaging the results, like polling a lot of people and averaging their guesses.
 
 More samples means a more accurate average, which shows up as less speckly &quot;noise&quot; in the image - but each extra sample costs render time. Doubling this value roughly halves the noise, but takes about twice as long to render.</source>
@@ -1893,19 +1923,19 @@ More samples means a more accurate average, which shows up as less speckly &quot
 样本数越多,平均值就越准确,画面上表现为“噪点”更少——但每多一个样本都要花费渲染时间。将该值加倍大致可将噪点减半,但渲染时间也会随之翻倍。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1323"/>
+        <location filename="../mainwindow_tabs.cpp" line="1213"/>
         <source>How many times a ray may bounce before it is terminated. Low values
 darken glass and mirrors, which need many bounces to resolve; scenes
 of plain diffuse surfaces look the same well below the maximum.</source>
         <translation>光线在被终止前最多可以反弹的次数。数值过低会使玻璃和镜面变暗,因为它们需要多次反弹才能正确成像;而纯漫反射表面构成的场景,远低于最大值时看起来就已经没有差别。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1326"/>
+        <location filename="../mainwindow_tabs.cpp" line="1216"/>
         <source>Max Ray Depth:</source>
         <translation>最大光线深度:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1327"/>
+        <location filename="../mainwindow_tabs.cpp" line="1217"/>
         <source>A depth of 1 means a ray only sees what it hits directly, with no bounced light at all - like a scene with no reflections or indirect lighting.
 
 Each extra bounce lets light travel one more surface before giving up, which is what makes glass, mirrors, and soft indirect lighting look correct. Most scenes look &quot;finished&quot; well before the maximum - beyond that, extra depth mostly traces light too dim to matter.</source>
@@ -1914,48 +1944,48 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 每多一次反弹,光就能多经过一个表面才被放弃,这正是玻璃、镜面和柔和间接光照能正确呈现的原因。大多数场景在远未达到最大深度时就已经“渲染完整”——超过这个点之后,多出来的深度大多只是在追踪暗到无关紧要的光线。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1359"/>
+        <location filename="../mainwindow_tabs.cpp" line="1249"/>
         <source>Camera Position</source>
         <translation>相机位置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1403"/>
+        <location filename="../mainwindow_tabs.cpp" line="1293"/>
         <source>Front View (Outside)</source>
         <translation>正面视图(外部)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1406"/>
+        <location filename="../mainwindow_tabs.cpp" line="1296"/>
         <source>Inside Front</source>
         <translation>内部前方</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1407"/>
+        <location filename="../mainwindow_tabs.cpp" line="1297"/>
         <source>Inside Back</source>
         <translation>内部后方</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1408"/>
+        <location filename="../mainwindow_tabs.cpp" line="1298"/>
         <source>Right Wall (Green)</source>
         <translation>右墙(绿色)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1409"/>
+        <location filename="../mainwindow_tabs.cpp" line="1299"/>
         <source>Left Wall (Red)</source>
         <translation>左墙(红色)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1412"/>
+        <location filename="../mainwindow_tabs.cpp" line="1302"/>
         <source>Floor Corner</source>
         <translation>地面角落</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1413"/>
+        <location filename="../mainwindow_tabs.cpp" line="1303"/>
         <source>Ceiling Corner</source>
         <translation>天花板角落</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="861"/>
-        <location filename="../mainwindow_tabs.cpp" line="1423"/>
+        <location filename="../mainwindow_tabs.cpp" line="1313"/>
         <source>Preset:</source>
         <translation>预设:</translation>
     </message>
@@ -1994,7 +2024,19 @@ Render time scales roughly linearly with samples per pixel.</source>
 渲染时间大致与每像素采样数成正比。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1424"/>
+        <location filename="../mainwindow_tabs.cpp" line="1058"/>
+        <source>Live Preview Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1061"/>
+        <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.
+
+Looking for ReSTIR/Exposure/Samples/Max Bounces/Firefly Clamp? Those are render-behavior settings now on the Render Options tab&apos;s own Live Preview Settings group, next to the Denoiser section.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1314"/>
         <source>A handful of hand-picked camera positions for this scene, framed to show off something specific (e.g. looking in through the front, or from inside a Cornell-box-style enclosure).
 
 Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the camera anywhere you like instead.</source>
@@ -2003,12 +2045,12 @@ Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the ca
 选择“自定义”会解锁下方的 X/Y/Z 字段,让你可以将相机移动到任意位置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1442"/>
+        <location filename="../mainwindow_tabs.cpp" line="1332"/>
         <source>Camera X:</source>
         <translation>相机 X:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1443"/>
+        <location filename="../mainwindow_tabs.cpp" line="1333"/>
         <source>The camera&apos;s position along the world&apos;s X axis (left/right).
 
 Only editable when the preset above is set to Custom - the camera always looks toward the scene&apos;s own fixed look-at point, so moving X/Y/Z changes the viewing angle and distance, not just a straight left-right pan.</source>
@@ -2017,12 +2059,12 @@ Only editable when the preset above is set to Custom - the camera always looks t
 仅当上方预设设为“自定义”时才可编辑——相机始终朝向场景自身固定的注视点,因此移动 X/Y/Z 改变的是观察角度和距离,而不只是简单的左右平移。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1457"/>
+        <location filename="../mainwindow_tabs.cpp" line="1347"/>
         <source>Camera Y:</source>
         <translation>相机 Y:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1458"/>
+        <location filename="../mainwindow_tabs.cpp" line="1348"/>
         <source>The camera&apos;s position along the world&apos;s Y axis (up/down).
 
 Same Custom-preset-only editing rule as Camera X - the camera keeps looking at the scene&apos;s fixed look-at point as you move it.</source>
@@ -2031,12 +2073,12 @@ Same Custom-preset-only editing rule as Camera X - the camera keeps looking at t
 与相机 X 一样,只有在预设为“自定义”时才可编辑——移动时相机会始终保持注视场景固定的目标点。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1471"/>
+        <location filename="../mainwindow_tabs.cpp" line="1361"/>
         <source>Camera Z:</source>
         <translation>相机 Z:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1472"/>
+        <location filename="../mainwindow_tabs.cpp" line="1362"/>
         <source>The camera&apos;s position along the world&apos;s Z axis (forward/back, into or out of the scene).
 
 Same Custom-preset-only editing rule as Camera X/Y.</source>
@@ -2045,12 +2087,12 @@ Same Custom-preset-only editing rule as Camera X/Y.</source>
 与相机 X/Y 一样,只有在预设为“自定义”时才可编辑。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1502"/>
+        <location filename="../mainwindow_tabs.cpp" line="1392"/>
         <source>Distance from Center:</source>
         <translation>距中心距离:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1503"/>
+        <location filename="../mainwindow_tabs.cpp" line="1393"/>
         <source>Moves the camera directly toward or away from the scene&apos;s look-at point along whatever direction it&apos;s currently facing, without changing which way it&apos;s pointed.
 
 The quickest way to zoom in or pull back once you&apos;ve already found an angle you like via the X/Y/Z fields or a preset.</source>
@@ -2431,6 +2473,21 @@ OptiX AI 降噪器：使用与上方“图像和视频”子分区在成品渲�
 SVGF 降噪器：一种备选的实验性时空滤波器——随时间跟踪每像素方差，并用它来驱动一个边缘感知的空间滤波器，在相机移动时比“AI 降噪器 + 滑动平均”的组合表现更稳定。它始终显示最新的滤波结果，而不是累积平均（其自身可调常数见下方“SVGF 高级调优”组）。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
+        <source>Radiance Cache</source>
+        <translation>辐射缓存</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1330"/>
+        <source>World-space irradiance probe cache - caches and resamples diffuse lighting two or more bounces deep, independent of ReSTIR GI above (that only resamples the FIRST indirect bounce; this covers every bounce beyond it). Converges over many frames, so expect it to look patchy or noisy for the first few seconds after enabling it or moving the camera into a new area. Disabling it falls back to classic next-event estimation for every bounce, which is noisier in scenes with a lot of deep indirect light but has no convergence delay.</source>
+        <translation>世界空间辐照度探针缓存——缓存并重采样两次或更多次反弹深度的漫反射光照，与上方 ReSTIR GI 相互独立（那只重采样第一次间接反弹；这覆盖它之外的每一次反弹）。需要经过多帧才能收敛，因此启用它或将相机移入新区域后的最初几秒内，画面可能显得斑驳或有噪点。禁用它会使每次反弹都回退到经典的下一事件估计，在深层间接光较多的场景中噪点更多，但没有收敛延迟。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
+        <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="870"/>
         <source>Turns on extra correctness checks inside the GPU ray-tracing pipeline itself, catching certain classes of bugs that would otherwise silently produce a wrong image or crash unpredictably.
 
@@ -2701,8 +2758,8 @@ Both CPU and GPU default path tracer only.</source>
 仅对 CPU 和 GPU 的默认路径追踪器生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1175"/>
         <location filename="../mainwindow_tabs_render.cpp" line="620"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
         <source>Exposure:</source>
         <translation>曝光:</translation>
     </message>
@@ -2960,22 +3017,22 @@ Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab 
 显示为灰色?此功能仅限 GPU——请在“基本设置”标签页中将渲染器切换为 GPU 以使用它。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1251"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1416"/>
         <source>Crop Window</source>
         <translation>裁剪窗口</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1254"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1419"/>
         <source>Render only a rectangular sub-region of the full frame, given as normalized 0-1 coordinates - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>仅渲染完整画面中的一个矩形子区域，以归一化的 0-1 坐标给出——适合快速测试渲染场景的某一区域，而不必为整张图像付出代价。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1262"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1427"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>仅渲染画面的一部分(--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1264"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1429"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image in [0,1]. Both CPU and GPU default
 path tracer only.</source>
@@ -2984,7 +3041,7 @@ path tracer only.</source>
 GPU 的默认路径追踪器生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1269"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1434"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total sample count converges much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -2997,69 +3054,69 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
 默认关闭(渲染整个画面)。如果加载的 .pbrt 场景文件本身已经请求了自己的 cropwindow/pixelbounds,勾选此项会用下方的矩形将其覆盖;不勾选则保留场景自身的请求(如果有的话)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1313"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1478"/>
         <source>Left (X0):</source>
         <translation>左(X0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1314"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1479"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>裁剪矩形的左边缘，以完整帧宽度的比例表示（0 = 左边缘，1 = 右边缘）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1316"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1481"/>
         <source>Top (Y0):</source>
         <translation>上(Y0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1317"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1482"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>裁剪矩形的上边缘，以完整帧高度的比例表示（0 = 上边缘，1 = 下边缘）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1319"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1484"/>
         <source>Right (X1):</source>
         <translation>右(X1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1485"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>裁剪矩形的右边缘，以完整帧宽度的比例表示——必须大于“左（X0）”才能渲染出任何内容。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1322"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1487"/>
         <source>Bottom (Y1):</source>
         <translation>下(Y1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1323"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1488"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>裁剪矩形的下边缘，以完整帧高度的比例表示——必须大于“上（Y0）”才能渲染出任何内容。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1518"/>
         <source>Reproducibility</source>
         <translation>可复现性</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1356"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1521"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>固定随机种子，以便渲染可以在之后的运行中精确、逐像素地复现——适合在比较设置变化时使用，不会被随机噪点差异干扰对比。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1529"/>
         <source>Reproducible render (--seed)</source>
         <translation>可复现渲染(--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1366"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1531"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Both CPU and GPU default path tracer only.</source>
         <translation>使用相同种子重新渲染时,结果逐字节完全一致。
 仅对 CPU 和 GPU 的默认路径追踪器生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1370"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1535"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -3068,37 +3125,37 @@ Off by default (genuinely random every render).</source>
 默认关闭(每次渲染都是真正随机的)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1390"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1555"/>
         <source>Seed:</source>
         <translation>种子:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1391"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1556"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>用于播种渲染随机数生成器的具体整数。仅当上方勾选了“可复现渲染”时才生效——相同的种子在相同的场景/设置下，总会产生像素完全相同的噪点。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1415"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1580"/>
         <source>Render Options</source>
         <translation>渲染选项</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1608"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1773"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>在资源管理器中显示当前标签页渲染结果所在的文件夹</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1620"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1785"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>使用系统查看器打开当前标签页的渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1646"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1811"/>
         <source>Preview</source>
         <translation>预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1720"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1885"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -3107,63 +3164,63 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1746"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1911"/>
         <source>Live Preview — %1</source>
         <translation>实时预览 — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1751"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1916"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>交互式 GPU 预览——拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行，左/右环绕</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1777"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1942"/>
         <source>Select a scene first</source>
         <translation>请先选择一个场景</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1826"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1992"/>
         <source>Starting...</source>
         <translation>正在启动…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1842"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2008"/>
         <source>Stopped</source>
         <translation>已停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1859"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2025"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>实时（已降噪，不进行累积）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1861"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2027"/>
         <source>%1 samples</source>
         <translation>%1 个样本</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1877"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2043"/>
         <source>Live Preview: %1</source>
         <translation>实时预览：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2328"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2509"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;为什么看起来是这样&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2454"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="2467"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2635"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2648"/>
         <source>Pause</source>
         <translation>暂停</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2467"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2648"/>
         <source>Play</source>
         <translation>播放</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2477"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2658"/>
         <source>Video playback error (%1): %2</source>
         <translation>视频播放错误 (%1):%2</translation>
     </message>
@@ -3357,8 +3414,8 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above)
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="959"/>
-        <location filename="../mainwindow_tabs.cpp" line="1084"/>
-        <location filename="../mainwindow_tabs.cpp" line="1102"/>
+        <location filename="../mainwindow_tabs.cpp" line="1093"/>
+        <location filename="../mainwindow_tabs.cpp" line="1111"/>
         <source>x</source>
         <translation>x</translation>
     </message>

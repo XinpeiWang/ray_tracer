@@ -55,55 +55,55 @@
         <translation>Ray Tracer - パストレーシングレンダラー</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="817"/>
+        <location filename="../mainwindow.cpp" line="818"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="969"/>
-        <location filename="../mainwindow_slots.cpp" line="1733"/>
+        <location filename="../mainwindow.cpp" line="970"/>
+        <location filename="../mainwindow_slots.cpp" line="1740"/>
         <source>START &amp;RENDER</source>
         <translation>レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="979"/>
+        <location filename="../mainwindow.cpp" line="980"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>現在の設定で選択したシーンをレンダリングします
 (すでにレンダリング中の場合はキューに追加されます)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="990"/>
+        <location filename="../mainwindow.cpp" line="991"/>
         <source>S&amp;TOP RENDER</source>
         <translation>レンダリング停止(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="997"/>
+        <location filename="../mainwindow.cpp" line="998"/>
         <location filename="../mainwindow_actions.cpp" line="69"/>
         <source>Stop the running render and discard its output</source>
         <translation>実行中のレンダリングを停止し、出力を破棄します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1010"/>
+        <location filename="../mainwindow.cpp" line="1011"/>
         <location filename="../mainwindow_slots.cpp" line="417"/>
         <location filename="../mainwindow_slots.cpp" line="723"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>レンダリングを一時停止(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1016"/>
+        <location filename="../mainwindow.cpp" line="1017"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="725"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>実行中のレンダリングをその場で一時停止します - 「再開」は全く同じピクセルから続行します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1025"/>
+        <location filename="../mainwindow.cpp" line="1026"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>破棄して次へ進む(&amp;N)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1032"/>
+        <location filename="../mainwindow.cpp" line="1033"/>
         <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>実行中のレンダリングの出力を破棄し、キュー内の次のジョブをただちに開始します</translation>
@@ -147,7 +147,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1605"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1770"/>
         <source>Open Output &amp;Folder</source>
         <translation>出力フォルダーを開く(&amp;F)</translation>
     </message>
@@ -158,7 +158,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="96"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1617"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1782"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>既定のビューアーで開く(&amp;V)</translation>
     </message>
@@ -557,7 +557,7 @@
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1314"/>
-        <location filename="../mainwindow_slots.cpp" line="1323"/>
+        <location filename="../mainwindow_slots.cpp" line="1329"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ レンダリング完了 (%1s)</translation>
     </message>
@@ -567,104 +567,104 @@
         <translation>警告: プレビュー画像を%1から読み込めませんでした</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1324"/>
+        <location filename="../mainwindow_slots.cpp" line="1330"/>
         <source>Warning: output file not found at %1</source>
         <translation>警告: 出力ファイルが%1に見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1339"/>
+        <location filename="../mainwindow_slots.cpp" line="1345"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1344"/>
-        <location filename="../mainwindow_slots.cpp" line="1916"/>
+        <location filename="../mainwindow_slots.cpp" line="1350"/>
+        <location filename="../mainwindow_slots.cpp" line="1923"/>
         <source>Render Failed</source>
         <translation>レンダリングに失敗しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1364"/>
+        <location filename="../mainwindow_slots.cpp" line="1370"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>停止しました - 他に%1件がキュー待ち (再開するには「レンダリング開始」をクリック)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1486"/>
+        <location filename="../mainwindow_slots.cpp" line="1492"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>レンダリング中  ·  %1%  ·  経過時間 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1496"/>
+        <location filename="../mainwindow_slots.cpp" line="1502"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1504"/>
+        <location filename="../mainwindow_slots.cpp" line="1510"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  残り時間 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1507"/>
+        <location filename="../mainwindow_slots.cpp" line="1513"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  残り時間 --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1530"/>
+        <location filename="../mainwindow_slots.cpp" line="1536"/>
         <source>Render complete</source>
         <translation>レンダリング完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1531"/>
+        <location filename="../mainwindow_slots.cpp" line="1537"/>
         <source>Render stopped</source>
         <translation>レンダリング停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1531"/>
+        <location filename="../mainwindow_slots.cpp" line="1537"/>
         <source>Render failed</source>
         <translation>レンダリング失敗</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1533"/>
+        <location filename="../mainwindow_slots.cpp" line="1539"/>
         <source>Finished in %1 seconds</source>
         <translation>%1秒で完了しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1548"/>
+        <location filename="../mainwindow_slots.cpp" line="1554"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1557"/>
+        <location filename="../mainwindow_slots.cpp" line="1563"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[DEBUG] システムトレイが利用できないため、完了通知をスキップします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1561"/>
+        <location filename="../mainwindow_slots.cpp" line="1567"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[DEBUG] システムトレイがメッセージ表示に対応していないため、通知をスキップします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1714"/>
+        <location filename="../mainwindow_slots.cpp" line="1721"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>動画レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1719"/>
+        <location filename="../mainwindow_slots.cpp" line="1726"/>
         <source>Ready to render video frames</source>
         <translation>動画フレームのレンダリング準備完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1738"/>
+        <location filename="../mainwindow_slots.cpp" line="1745"/>
         <location filename="../mainwindow_tabs_output.cpp" line="68"/>
         <source>Ready to render</source>
         <translation>レンダリング準備完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1752"/>
+        <location filename="../mainwindow_slots.cpp" line="1759"/>
         <source>Mode changed to: %1</source>
         <translation>モードを%1に変更しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1748"/>
+        <location filename="../mainwindow_slots.cpp" line="1755"/>
         <source>Video Generation</source>
         <translation>動画生成</translation>
     </message>
@@ -694,74 +694,74 @@
         <translation>⏸ 一時停止中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1717"/>
+        <location filename="../mainwindow_slots.cpp" line="1724"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
         <translation>カメラパスをフレームごとにレンダリングして動画を合成します。すでにレンダリングが実行中の場合は、代わりにその後ろのキューに入ります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1723"/>
+        <location filename="../mainwindow_slots.cpp" line="1730"/>
         <source>START LIVE &amp;PREVIEW</source>
         <translation>ライブプレビューを開始(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1726"/>
+        <location filename="../mainwindow_slots.cpp" line="1733"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
         <translation>マウスで視点を回転/ズームできるインタラクティブな GPU プレビューを開始します。バッチレンダリングの実行中は無効になります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1728"/>
+        <location filename="../mainwindow_slots.cpp" line="1735"/>
         <source>Ready to start live preview</source>
         <translation>ライブプレビューを開始する準備ができました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1736"/>
+        <location filename="../mainwindow_slots.cpp" line="1743"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
         <translation>現在の設定で選択したシーンをレンダリングします。すでにレンダリングが実行中の場合は、代わりにその後ろのキューに入ります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1747"/>
+        <location filename="../mainwindow_slots.cpp" line="1754"/>
         <source>Single Image</source>
         <translation>単一画像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1750"/>
+        <location filename="../mainwindow_slots.cpp" line="1757"/>
         <location filename="../mainwindow_tabs_render.cpp" line="961"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1750"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1915"/>
         <source>Live Preview</source>
         <translation>ライブプレビュー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1849"/>
+        <location filename="../mainwindow_slots.cpp" line="1856"/>
         <source>Integrator changed to: %1</source>
         <translation>インテグレータを変更しました: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1897"/>
+        <location filename="../mainwindow_slots.cpp" line="1904"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ 動画ファイルが見つかりません。フレームを確認中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1898"/>
+        <location filename="../mainwindow_slots.cpp" line="1905"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>WARNING: 想定されるいずれの場所にも動画ファイルが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1907"/>
+        <location filename="../mainwindow_slots.cpp" line="1914"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ %1個のフレームが見つかりましたが、動画ファイルがありません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1908"/>
+        <location filename="../mainwindow_slots.cpp" line="1915"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>フレームはレンダリングされました (%1ファイル) が、動画の合成に失敗した可能性があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1909"/>
+        <location filename="../mainwindow_slots.cpp" line="1916"/>
         <source>Video Not Created</source>
         <translation>動画が作成されませんでした</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1910"/>
+        <location filename="../mainwindow_slots.cpp" line="1917"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -774,17 +774,17 @@ Please check the render log for ffmpeg errors.</source>
 ffmpegのエラーについてはレンダリングログを確認してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1914"/>
+        <location filename="../mainwindow_slots.cpp" line="1921"/>
         <source>❌ No frames or video found</source>
         <translation>❌ フレームも動画も見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1915"/>
+        <location filename="../mainwindow_slots.cpp" line="1922"/>
         <source>ERROR: No frames or video file found</source>
         <translation>ERROR: フレームまたは動画ファイルが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1917"/>
+        <location filename="../mainwindow_slots.cpp" line="1924"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -793,22 +793,22 @@ Please check the render log for errors.</source>
 エラーについてはレンダリングログを確認してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1920"/>
+        <location filename="../mainwindow_slots.cpp" line="1927"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ フレームディレクトリが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1921"/>
+        <location filename="../mainwindow_slots.cpp" line="1928"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>ERROR: フレームディレクトリが見つかりません: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1922"/>
+        <location filename="../mainwindow_slots.cpp" line="1929"/>
         <source>Directory Not Found</source>
         <translation>ディレクトリが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1923"/>
+        <location filename="../mainwindow_slots.cpp" line="1930"/>
         <source>Frames directory not found:
 %1
 
@@ -819,27 +819,27 @@ The render may have failed to create output.</source>
 レンダリングが出力の作成に失敗した可能性があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1929"/>
+        <location filename="../mainwindow_slots.cpp" line="1936"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ 動画の作成が完了しました!</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1930"/>
+        <location filename="../mainwindow_slots.cpp" line="1937"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ 動画の合成が完了しました: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1931"/>
+        <location filename="../mainwindow_slots.cpp" line="1938"/>
         <source>Video size: %1 MB</source>
         <translation>動画サイズ: %1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1952"/>
+        <location filename="../mainwindow_slots.cpp" line="1959"/>
         <source>%1 (Video)</source>
         <translation>%1 (動画)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1954"/>
+        <location filename="../mainwindow_slots.cpp" line="1961"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3フレーム  •  %4spp · %5%6</translation>
     </message>
@@ -848,7 +848,7 @@ The render may have failed to create output.</source>
         <translation type="vanished">%1  •  %2 MB  •  %3フレーム</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1966"/>
+        <location filename="../mainwindow_slots.cpp" line="1973"/>
         <source>Playing video inline: %1</source>
         <translation>動画をインライン再生中: %1</translation>
     </message>
@@ -1264,7 +1264,7 @@ Live Preview renders continuously with an orbitable camera - GPU only.</source>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="751"/>
-        <location filename="../mainwindow_tabs.cpp" line="1420"/>
+        <location filename="../mainwindow_tabs.cpp" line="1310"/>
         <source>Custom</source>
         <translation>カスタム</translation>
     </message>
@@ -1521,32 +1521,62 @@ ffmpeg が必要：動画エンコードには ffmpeg（libx264）を使用し�
 ヒント：レンダリングを速くするには GPU モードを使用してください。手早いプレビューには少なめのサンプル数/ピクセル（10～50）、本番品質には多め（100～500）を。典型的なレンダリング時間は GPU で 1～5 分、CPU で 15～60 分です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1052"/>
+        <location filename="../mainwindow_tabs.cpp" line="1417"/>
+        <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.
+
+Type or Browse to a .exr path instead of .png/.ppm for linear, full-precision HDR output (no tone mapping baked in) - useful for compositing. If Denoise is also on and GPU Backend is Recursive, an _albedo.exr and _normal.exr guide-buffer pair is written alongside it automatically (Wavefront doesn&apos;t produce these yet).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1445"/>
+        <source>Where the rendered image is written. A .png is always saved alongside
+the raw .ppm, and it is the .png the Preview tab displays.
+
+Enter a .exr path instead for linear HDR output with no PNG sibling -
+the Preview tab opens it in your system&apos;s EXR viewer instead of showing
+it inline.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1458"/>
+        <source>PNG Image (*.png);;PPM Image (*.ppm);;EXR Image, linear HDR (*.exr)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1465"/>
+        <source>Where the finished image is saved.
+
+A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.
+
+Choosing a .exr path instead skips both: it writes one linear, un-tonemapped, full-float-precision file directly - the format compositing/VFX tools expect, and the only way to get HDR values out of this app rather than an already-tonemapped image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1258"/>
         <source>Live Preview Settings</source>
         <translation>ライブプレビュー設定</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1055"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation>ライブプレビューにおけるマウスでの視点回転/ズーム、およびキーボードの WASD/上/下移動 + 左/右/+/- の応答性を調整します。上の出力モードが「ライブプレビュー（インタラクティブ）」の場合にのみ効果がありますが、どのモードでも編集は可能です。</translation>
+        <translation type="vanished">ライブプレビューにおけるマウスでの視点回転/ズーム、およびキーボードの WASD/上/下移動 + 左/右/+/- の応答性を調整します。上の出力モードが「ライブプレビュー（インタラクティブ）」の場合にのみ効果がありますが、どのモードでも編集は可能です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1090"/>
+        <location filename="../mainwindow_tabs.cpp" line="1099"/>
         <source>Mouse Sensitivity:</source>
         <translation>マウス感度：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1091"/>
+        <location filename="../mainwindow_tabs.cpp" line="1100"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
         <translation>ライブプレビューにおけるクリックドラッグでの視点回転、およびスクロールでのズーム速度を倍率調整します。1x が元の感触に相当し、低いほど穏やかに、高いほど敏感になります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1108"/>
+        <location filename="../mainwindow_tabs.cpp" line="1117"/>
         <source>Keyboard Sensitivity:</source>
         <translation>キーボード感度：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1109"/>
+        <location filename="../mainwindow_tabs.cpp" line="1118"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
         <translation>ライブプレビューにおける WASD/上/下移動、左右矢印キーでの視点回転、+/- によるズームのステップ幅を倍率調整します。1x は 1 回の押下あたり中程度の移動量です。低いほど細かく、高いほど 1 回の押下で大きく動きます。</translation>
     </message>
@@ -1701,67 +1731,71 @@ ffmpeg が必要：動画エンコードには ffmpeg（libx264）を使用し�
         <translation>既定値に戻す</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1127"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1261"/>
+        <source>ReSTIR DI/GI, the radiance cache, exposure, samples/max-bounces per frame, and the firefly clamp - all independent of the Advanced Parameters group below (which only applies to Image/Video) and of the Denoiser section above. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
+        <translation>ReSTIR DI/GI、放射輝度キャッシュ、露出、フレームあたりのサンプル数/最大バウンス数、そしてファイアフライ抑制——これらはすべて、画像/動画にのみ適用される下の「詳細パラメータ」グループにも、上の「デノイザー」セクションにも依存しません。上の出力モードが「ライブプレビュー（インタラクティブ）」の場合にのみ効果がありますが、どのモードでも編集は可能です。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1284"/>
         <source>ReSTIR GI</source>
         <translation>ReSTIR GI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1139"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1296"/>
         <source>Resampled one-bounce indirect lighting (ReSTIR GI) - independent of which denoiser is active above. Disabling it falls back to the classic single-sample indirect estimate, which is noisier but cheaper per frame.</source>
         <translation>リサンプリングされた 1 バウンス間接光（ReSTIR GI）です——上で有効になっているどのデノイザーとも独立しています。無効にすると、ノイズは多いもののフレームあたりのコストが低い、従来の単一サンプル間接推定に戻ります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1145"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1302"/>
         <source>ReSTIR DI</source>
         <translation>ReSTIR DI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1155"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1312"/>
         <source>Resampled direct-light sampling (ReSTIR DI) - independent of ReSTIR GI above (that resamples one-bounce INDIRECT lighting; this resamples the direct-light draw classic next-event estimation would otherwise make from a single global alias-table sample). Disabling it falls back to that classic single-sample draw, which is noisier in scenes with many lights but cheaper per frame.</source>
         <translation>リサンプリングされた直接光サンプリング（ReSTIR DI）——上の ReSTIR GI とは独立しています（あちらは 1 バウンスの間接光をリサンプリングしますが、こちらは古典的な次イベント推定が単一のグローバルなエイリアステーブルのサンプルから行っていた直接光の抽選をリサンプリングします）。無効にすると、その古典的な単一サンプルの抽選に戻ります。光源が多いシーンではノイズが増えますが、フレームあたりのコストは下がります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1176"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as the Render Options tab&apos;s own Exposure control but independently set for Live Preview.</source>
-        <translation>トーンマッピングの前に適用される一律の明るさ倍率で、「レンダリングオプション」タブ自体の「露出」設定と同じ意味を持ちますが、ライブプレビュー用に独立して設定されます。</translation>
+        <translation type="vanished">トーンマッピングの前に適用される一律の明るさ倍率で、「レンダリングオプション」タブ自体の「露出」設定と同じ意味を持ちますが、ライブプレビュー用に独立して設定されます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1194"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1372"/>
         <source>Samples/Frame:</source>
         <translation>フレームあたりサンプル数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1195"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1373"/>
         <source>Samples per pixel rendered on each Live Preview call - Live Preview has its own independent value from the Advanced Parameters group below, which only applies to Image/Video.</source>
         <translation>ライブプレビューの各呼び出しでレンダリングされるピクセルあたりのサンプル数です——ライブプレビューは、画像/動画にのみ適用される下の「詳細パラメータ」グループとは独立した、独自の値を持ちます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1206"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1384"/>
         <source>Max Bounces:</source>
         <translation>最大バウンス数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1207"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1385"/>
         <source>Maximum ray depth for Live Preview - independent from the Advanced Parameters group below, which only applies to Image/Video.</source>
         <translation>ライブプレビュー用の最大光線深度です——画像/動画にのみ適用される下の「詳細パラメータ」グループとは独立しています。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1223"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1401"/>
         <source>Firefly Clamp:</source>
         <translation>ファイアフライ抑制：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1224"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1402"/>
         <source>Caps the brightest possible sample value to suppress fireflies, at the cost of clipping genuinely bright highlights. Lower values clamp more aggressively.</source>
         <translation>ファイアフライ（強い輝点ノイズ）を抑えるためにサンプル値の最大輝度を制限しますが、代償として本当に明るいハイライトもクリップされます。値が低いほど強くクランプされます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1248"/>
+        <location filename="../mainwindow_tabs.cpp" line="1138"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
         <translation>上の品質/解像度プリセットを使う代わりに、解像度、ピクセルあたりのサンプル数、最大光線深度を手動で上書きします。画像と動画で共有されます（動画はこれをフレームごとの設定として再利用します）——ライブプレビューは常に独自の固定された小さな解像度を使用します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1278"/>
+        <location filename="../mainwindow_tabs.cpp" line="1168"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
@@ -1770,7 +1804,7 @@ Paired with Height to set the resolution manually, overriding whatever the Quali
 「高さ」と組み合わせて解像度を手動で設定し、上の「品質」プリセットが本来使う値を上書きします。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1291"/>
+        <location filename="../mainwindow_tabs.cpp" line="1181"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
@@ -1779,58 +1813,54 @@ Paired with Width - together they set the resolution manually, overriding the Qu
 「幅」と組み合わせます——両方で解像度を手動設定し、上の「品質」プリセットを上書きします。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1362"/>
+        <location filename="../mainwindow_tabs.cpp" line="1252"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
         <translation>カメラのワールド座標位置を直接設定するか、名前付きプリセットを選びます。画像モードではそのまま使用され、動画ではカメラパスのアニメーションの開始点として、ライブプレビューではインタラクティブに視点を回転/ズームする前の初期位置として使われます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1524"/>
+        <location filename="../mainwindow_tabs.cpp" line="1414"/>
         <source>Output</source>
         <translation>出力</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1527"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.</source>
-        <translation>レンダリングされたファイルの保存先です。動画モードでは正しい拡張子が自動的に付加されます。ライブプレビューはファイルを書き出すことが一切ないため、この設定を完全に無視します。</translation>
+        <translation type="vanished">レンダリングされたファイルの保存先です。動画モードでは正しい拡張子が自動的に付加されます。ライブプレビューはファイルを書き出すことが一切ないため、この設定を完全に無視します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1550"/>
         <source>Where the rendered image is written. A .png is always saved alongside
 the raw .ppm, and it is the .png the Preview tab displays.</source>
-        <translation>レンダリング画像の書き出し先です。生の.ppmファイルとあわせて
+        <translation type="vanished">レンダリング画像の書き出し先です。生の.ppmファイルとあわせて
 常に.pngも保存され、プレビュータブに表示されるのはこの.pngです。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1555"/>
+        <location filename="../mainwindow_tabs.cpp" line="1453"/>
         <source>&amp;Browse…</source>
         <translation>参照(&amp;B)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1556"/>
+        <location filename="../mainwindow_tabs.cpp" line="1454"/>
         <source>Choose the output file name and location</source>
         <translation>出力ファイルの名前と保存場所を選択します</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1558"/>
+        <location filename="../mainwindow_tabs.cpp" line="1456"/>
         <source>Save Render Output</source>
         <translation>レンダリング出力を保存</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1559"/>
         <source>PNG Image (*.png);;PPM Image (*.ppm)</source>
-        <translation>PNG画像 (*.png);;PPM画像 (*.ppm)</translation>
+        <translation type="vanished">PNG画像 (*.png);;PPM画像 (*.ppm)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1566"/>
         <source>Where the finished image is saved.
 
 A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.</source>
-        <translation>完成した画像の保存先です。
+        <translation type="vanished">完成した画像の保存先です。
 
 生の.ppmファイルは常に書き出され、あわせて.pngのコピーが自動生成されます - ほとんどの画像ビューアー（および本アプリ自身のプレビュー）は.ppmを直接開けないため、プレビュータブには常に.pngが表示されます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1594"/>
+        <location filename="../mainwindow_tabs.cpp" line="1497"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
@@ -1839,12 +1869,12 @@ A raw .ppm file is always written, and a .png copy is generated alongside it aut
         <translation type="vanished">基本設定</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1245"/>
+        <location filename="../mainwindow_tabs.cpp" line="1135"/>
         <source>Advanced Parameters</source>
         <translation>詳細パラメーター</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1277"/>
+        <location filename="../mainwindow_tabs.cpp" line="1167"/>
         <source>Width:</source>
         <translation>幅:</translation>
     </message>
@@ -1857,7 +1887,7 @@ Paired with Height below to set the resolution manually, overriding whatever the
 下のHeightと組み合わせて解像度を手動で設定でき、「基本設定」タブの品質プリセットの値を上書きします。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1290"/>
+        <location filename="../mainwindow_tabs.cpp" line="1180"/>
         <source>Height:</source>
         <translation>高さ:</translation>
     </message>
@@ -1870,7 +1900,7 @@ Paired with Width above - together they set the resolution manually, overriding 
 上のWidthと組み合わせることで解像度を手動で設定でき、「基本設定」タブの品質プリセットを上書きします。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1303"/>
+        <location filename="../mainwindow_tabs.cpp" line="1193"/>
         <source>Rays traced per pixel. This is the main quality/time dial: noise falls
 as the square root of this value, so halving the noise costs about 4x
 the render time. Setting it here switches Quality to Custom.</source>
@@ -1879,12 +1909,12 @@ the render time. Setting it here switches Quality to Custom.</source>
 レンダリング時間がおよそ4倍かかります。ここで値を変更するとQualityはCustomに切り替わります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1306"/>
+        <location filename="../mainwindow_tabs.cpp" line="1196"/>
         <source>Samples per Pixel:</source>
         <translation>Samples per Pixel:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1307"/>
+        <location filename="../mainwindow_tabs.cpp" line="1197"/>
         <source>Ray tracing estimates each pixel&apos;s color by firing many random rays and averaging the results, like polling a lot of people and averaging their guesses.
 
 More samples means a more accurate average, which shows up as less speckly &quot;noise&quot; in the image - but each extra sample costs render time. Doubling this value roughly halves the noise, but takes about twice as long to render.</source>
@@ -1893,19 +1923,19 @@ More samples means a more accurate average, which shows up as less speckly &quot
 サンプル数が多いほど平均値の精度が上がり、画像の粒状の「ノイズ」が減ります。ただし、サンプルを増やすほどレンダリング時間もかかります。この値を2倍にするとノイズはおよそ半分になりますが、レンダリング時間もおよそ2倍になります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1323"/>
+        <location filename="../mainwindow_tabs.cpp" line="1213"/>
         <source>How many times a ray may bounce before it is terminated. Low values
 darken glass and mirrors, which need many bounces to resolve; scenes
 of plain diffuse surfaces look the same well below the maximum.</source>
         <translation>レイが打ち切られるまでに反射・屈折できる最大回数です。値が低いと、解決に多くのバウンスを必要とするガラスや鏡が暗くなります。一方、単純な拡散面だけのシーンでは、最大値よりかなり低い値でも見た目はほぼ変わりません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1326"/>
+        <location filename="../mainwindow_tabs.cpp" line="1216"/>
         <source>Max Ray Depth:</source>
         <translation>最大レイ深度:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1327"/>
+        <location filename="../mainwindow_tabs.cpp" line="1217"/>
         <source>A depth of 1 means a ray only sees what it hits directly, with no bounced light at all - like a scene with no reflections or indirect lighting.
 
 Each extra bounce lets light travel one more surface before giving up, which is what makes glass, mirrors, and soft indirect lighting look correct. Most scenes look &quot;finished&quot; well before the maximum - beyond that, extra depth mostly traces light too dim to matter.</source>
@@ -1914,48 +1944,48 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 バウンス回数を1つ増やすごとに、光がもう1面分だけ余分に伝わってから打ち切られるようになります。これがガラスや鏡、柔らかい間接照明を正しく見せる仕組みです。ほとんどのシーンは最大値よりかなり低い深度で「完成」して見えます。それ以上深度を増やしても、ほとんどの場合ほぼ影響しないほど暗い光を追跡するだけです。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1359"/>
+        <location filename="../mainwindow_tabs.cpp" line="1249"/>
         <source>Camera Position</source>
         <translation>カメラ位置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1403"/>
+        <location filename="../mainwindow_tabs.cpp" line="1293"/>
         <source>Front View (Outside)</source>
         <translation>正面ビュー(外側)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1406"/>
+        <location filename="../mainwindow_tabs.cpp" line="1296"/>
         <source>Inside Front</source>
         <translation>内側前方</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1407"/>
+        <location filename="../mainwindow_tabs.cpp" line="1297"/>
         <source>Inside Back</source>
         <translation>内側後方</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1408"/>
+        <location filename="../mainwindow_tabs.cpp" line="1298"/>
         <source>Right Wall (Green)</source>
         <translation>右壁(緑)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1409"/>
+        <location filename="../mainwindow_tabs.cpp" line="1299"/>
         <source>Left Wall (Red)</source>
         <translation>左壁(赤)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1412"/>
+        <location filename="../mainwindow_tabs.cpp" line="1302"/>
         <source>Floor Corner</source>
         <translation>床の隅</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1413"/>
+        <location filename="../mainwindow_tabs.cpp" line="1303"/>
         <source>Ceiling Corner</source>
         <translation>天井の隅</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="861"/>
-        <location filename="../mainwindow_tabs.cpp" line="1423"/>
+        <location filename="../mainwindow_tabs.cpp" line="1313"/>
         <source>Preset:</source>
         <translation>プリセット:</translation>
     </message>
@@ -1994,7 +2024,19 @@ Render time scales roughly linearly with samples per pixel.</source>
 レンダリング時間はピクセルあたりのサンプル数にほぼ比例します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1424"/>
+        <location filename="../mainwindow_tabs.cpp" line="1058"/>
+        <source>Live Preview Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1061"/>
+        <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.
+
+Looking for ReSTIR/Exposure/Samples/Max Bounces/Firefly Clamp? Those are render-behavior settings now on the Render Options tab&apos;s own Live Preview Settings group, next to the Denoiser section.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1314"/>
         <source>A handful of hand-picked camera positions for this scene, framed to show off something specific (e.g. looking in through the front, or from inside a Cornell-box-style enclosure).
 
 Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the camera anywhere you like instead.</source>
@@ -2003,12 +2045,12 @@ Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the ca
 「カスタム」を選択すると下のX/Y/Zフィールドが有効になり、カメラを自由な位置に配置できます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1442"/>
+        <location filename="../mainwindow_tabs.cpp" line="1332"/>
         <source>Camera X:</source>
         <translation>カメラX:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1443"/>
+        <location filename="../mainwindow_tabs.cpp" line="1333"/>
         <source>The camera&apos;s position along the world&apos;s X axis (left/right).
 
 Only editable when the preset above is set to Custom - the camera always looks toward the scene&apos;s own fixed look-at point, so moving X/Y/Z changes the viewing angle and distance, not just a straight left-right pan.</source>
@@ -2017,12 +2059,12 @@ Only editable when the preset above is set to Custom - the camera always looks t
 上のプリセットが「カスタム」に設定されている場合のみ編集できます。カメラは常にシーン固有の固定注視点を向き続けるため、X/Y/Zを動かすと単純な左右のパンではなく、視野角と距離の両方が変化します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1457"/>
+        <location filename="../mainwindow_tabs.cpp" line="1347"/>
         <source>Camera Y:</source>
         <translation>カメラY:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1458"/>
+        <location filename="../mainwindow_tabs.cpp" line="1348"/>
         <source>The camera&apos;s position along the world&apos;s Y axis (up/down).
 
 Same Custom-preset-only editing rule as Camera X - the camera keeps looking at the scene&apos;s fixed look-at point as you move it.</source>
@@ -2031,12 +2073,12 @@ Same Custom-preset-only editing rule as Camera X - the camera keeps looking at t
 カメラXと同じく、「カスタム」プリセットの時のみ編集可能です。動かしている間もカメラはシーンの固定注視点を向き続けます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1471"/>
+        <location filename="../mainwindow_tabs.cpp" line="1361"/>
         <source>Camera Z:</source>
         <translation>カメラZ:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1472"/>
+        <location filename="../mainwindow_tabs.cpp" line="1362"/>
         <source>The camera&apos;s position along the world&apos;s Z axis (forward/back, into or out of the scene).
 
 Same Custom-preset-only editing rule as Camera X/Y.</source>
@@ -2045,12 +2087,12 @@ Same Custom-preset-only editing rule as Camera X/Y.</source>
 カメラX/Yと同じく、「カスタム」プリセットの時のみ編集可能です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1502"/>
+        <location filename="../mainwindow_tabs.cpp" line="1392"/>
         <source>Distance from Center:</source>
         <translation>中心からの距離:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1503"/>
+        <location filename="../mainwindow_tabs.cpp" line="1393"/>
         <source>Moves the camera directly toward or away from the scene&apos;s look-at point along whatever direction it&apos;s currently facing, without changing which way it&apos;s pointed.
 
 The quickest way to zoom in or pull back once you&apos;ve already found an angle you like via the X/Y/Z fields or a preset.</source>
@@ -2432,6 +2474,21 @@ OptiX AI デノイザー：上の「画像＆動画」サブセクションが�
 SVGF デノイザー：代替の実験的な時空間フィルタです——ピクセルごとの分散を時間とともに追跡し、それを使ってエッジを保持する空間フィルタを駆動します。カメラが動いている間、AI デノイザー＋移動平均の組み合わせよりも安定します。常に最新のフィルタ済みフレームを表示し、累積は行いません（独自の調整可能な定数については下の「SVGF 詳細設定」グループを参照）。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
+        <source>Radiance Cache</source>
+        <translation>放射輝度キャッシュ</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1330"/>
+        <source>World-space irradiance probe cache - caches and resamples diffuse lighting two or more bounces deep, independent of ReSTIR GI above (that only resamples the FIRST indirect bounce; this covers every bounce beyond it). Converges over many frames, so expect it to look patchy or noisy for the first few seconds after enabling it or moving the camera into a new area. Disabling it falls back to classic next-event estimation for every bounce, which is noisier in scenes with a lot of deep indirect light but has no convergence delay.</source>
+        <translation>ワールド空間の放射照度プローブキャッシュです——2 バウンス以上の深さの拡散光を、上の ReSTIR GI とは独立にキャッシュ・リサンプリングします（あちらは最初の間接バウンスのみをリサンプリングしますが、こちらはそれ以降のすべてのバウンスをカバーします）。多数のフレームをかけて収束するため、有効にした直後やカメラを新しい領域に移動した直後の数秒間はまだら模様やノイズが見えることがあります。無効にすると、すべてのバウンスで従来の次イベント推定に戻ります。深い間接光の多いシーンではノイズが増えますが、収束の遅延はありません。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
+        <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="870"/>
         <source>Turns on extra correctness checks inside the GPU ray-tracing pipeline itself, catching certain classes of bugs that would otherwise silently produce a wrong image or crash unpredictably.
 
@@ -2699,8 +2756,8 @@ Both CPU and GPU default path tracer only.</source>
 CPU・GPUいずれのデフォルトパストレーサーでのみ有効です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1175"/>
         <location filename="../mainwindow_tabs_render.cpp" line="620"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
         <source>Exposure:</source>
         <translation>露出:</translation>
     </message>
@@ -2952,22 +3009,22 @@ Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab 
 グレーアウトしている場合はGPU専用の設定です。ベーシック設定タブでレンダラーをGPUに切り替えると使用できます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1251"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1416"/>
         <source>Crop Window</source>
         <translation>クロップウィンドウ</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1254"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1419"/>
         <source>Render only a rectangular sub-region of the full frame, given as normalized 0-1 coordinates - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>完全なフレームのうち、正規化された 0～1 座標で指定した矩形の一部だけをレンダリングします——シーンの一部を、画像全体のコストをかけずに素早くテストレンダリングするのに便利です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1262"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1427"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>フレームの一部のみをレンダリング(--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1264"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1429"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image in [0,1]. Both CPU and GPU default
 path tracer only.</source>
@@ -2976,7 +3033,7 @@ path tracer only.</source>
 デフォルトパストレーサーのみに適用されます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1269"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1434"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total sample count converges much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -2989,69 +3046,69 @@ Off by default (the full frame). If a loaded .pbrt scene&apos;s file already req
 既定では無効です(フレーム全体)。読み込んだ.pbrtシーンのファイルがすでに独自のcropwindow/pixelboundsを要求している場合、これを有効にすると下の矩形で上書きされます。無効のままにしておくと、シーン自身の要求(もしあれば)がそのまま有効になります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1313"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1478"/>
         <source>Left (X0):</source>
         <translation>左(X0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1314"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1479"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>クロップ矩形の左端で、フレーム全体の幅に対する割合として表されます（0 = 左端、1 = 右端）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1316"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1481"/>
         <source>Top (Y0):</source>
         <translation>上(Y0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1317"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1482"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>クロップ矩形の上端で、フレーム全体の高さに対する割合として表されます（0 = 上端、1 = 下端）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1319"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1484"/>
         <source>Right (X1):</source>
         <translation>右(X1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1485"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>クロップ矩形の右端で、フレーム全体の幅に対する割合として表されます——何かをレンダリングするには「左（X0）」より大きい必要があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1322"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1487"/>
         <source>Bottom (Y1):</source>
         <translation>下(Y1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1323"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1488"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>クロップ矩形の下端で、フレーム全体の高さに対する割合として表されます——何かをレンダリングするには「上（Y0）」より大きい必要があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1518"/>
         <source>Reproducibility</source>
         <translation>再現性</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1356"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1521"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>乱数シードを固定することで、後の実行でもレンダリングをピクセル単位で正確に再現できるようにします——ランダムなノイズの違いに惑わされずに設定変更を比較したい場合に便利です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1529"/>
         <source>Reproducible render (--seed)</source>
         <translation>再現可能なレンダリング(--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1366"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1531"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Both CPU and GPU default path tracer only.</source>
         <translation>同じシードで再実行した際に、このレンダリングをバイト単位で
 再現できるようにします。CPUとGPUのデフォルトパストレーサーのみに適用されます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1370"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1535"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -3060,37 +3117,37 @@ Off by default (genuinely random every render).</source>
 既定では無効です(毎回本当にランダムなレンダリングになります)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1390"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1555"/>
         <source>Seed:</source>
         <translation>シード:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1391"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1556"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>レンダリングの乱数生成器の種として使用される特定の整数です。上の「再現可能なレンダリング」がチェックされている場合にのみ有効です——同じシーン/設定で同じシードを使えば、常にピクセル単位で同一のノイズが生成されます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1415"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1580"/>
         <source>Render Options</source>
         <translation>レンダリングオプション</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1608"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1773"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>アクティブなタブのレンダリング結果が格納されているフォルダをエクスプローラーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1620"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1785"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>アクティブなタブのレンダリング結果をシステムのビューアーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1646"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1811"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1720"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1885"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -3099,63 +3156,63 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 ドラッグで視点回転、スクロールまたは +/- でズーム、WASD で移動、上/下で上昇・下降</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1746"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1911"/>
         <source>Live Preview — %1</source>
         <translation>ライブプレビュー — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1751"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1916"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>インタラクティブな GPU プレビュー——ドラッグで視点回転、スクロールまたは +/- でズーム、WASD で移動、上/下で上昇・下降、左/右で回転</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1777"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1942"/>
         <source>Select a scene first</source>
         <translation>先にシーンを選択してください</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1826"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1992"/>
         <source>Starting...</source>
         <translation>開始中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1842"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2008"/>
         <source>Stopped</source>
         <translation>停止しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1859"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2025"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>ライブ（デノイズ済み、累積なし）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1861"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2027"/>
         <source>%1 samples</source>
         <translation>%1 サンプル</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1877"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2043"/>
         <source>Live Preview: %1</source>
         <translation>ライブプレビュー：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2328"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2509"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;なぜこのように見えるのか&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2454"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="2467"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2635"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2648"/>
         <source>Pause</source>
         <translation>一時停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2467"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2648"/>
         <source>Play</source>
         <translation>再生</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2477"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2658"/>
         <source>Video playback error (%1): %2</source>
         <translation>動画再生エラー(%1): %2</translation>
     </message>
@@ -3347,8 +3404,8 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above)
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="959"/>
-        <location filename="../mainwindow_tabs.cpp" line="1084"/>
-        <location filename="../mainwindow_tabs.cpp" line="1102"/>
+        <location filename="../mainwindow_tabs.cpp" line="1093"/>
+        <location filename="../mainwindow_tabs.cpp" line="1111"/>
         <source>x</source>
         <translation>x</translation>
     </message>

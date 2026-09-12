@@ -56,55 +56,55 @@
         <translation>Ray Tracer - Moteur de rendu par path tracing</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="817"/>
+        <location filename="../mainwindow.cpp" line="818"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="969"/>
-        <location filename="../mainwindow_slots.cpp" line="1733"/>
+        <location filename="../mainwindow.cpp" line="970"/>
+        <location filename="../mainwindow_slots.cpp" line="1740"/>
         <source>START &amp;RENDER</source>
         <translation>DÉMARRER LE &amp;RENDU</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="979"/>
+        <location filename="../mainwindow.cpp" line="980"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>Rend la scène sélectionnée avec les paramètres actuels
 (la met en file d&apos;attente si un rendu est déjà en cours)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="990"/>
+        <location filename="../mainwindow.cpp" line="991"/>
         <source>S&amp;TOP RENDER</source>
         <translation>ARRÊ&amp;TER LE RENDU</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="997"/>
+        <location filename="../mainwindow.cpp" line="998"/>
         <location filename="../mainwindow_actions.cpp" line="69"/>
         <source>Stop the running render and discard its output</source>
         <translation>Arrête le rendu en cours et abandonne son résultat</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1010"/>
+        <location filename="../mainwindow.cpp" line="1011"/>
         <location filename="../mainwindow_slots.cpp" line="417"/>
         <location filename="../mainwindow_slots.cpp" line="723"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>&amp;METTRE LE RENDU EN PAUSE</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1016"/>
+        <location filename="../mainwindow.cpp" line="1017"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="725"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>Met en pause le rendu en cours, tel quel - Reprendre continue exactement à partir des mêmes pixels</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1025"/>
+        <location filename="../mainwindow.cpp" line="1026"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>ABANDONNER ET PASSER AU S&amp;UIVANT</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1032"/>
+        <location filename="../mainwindow.cpp" line="1033"/>
         <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>Abandonne la sortie du rendu en cours et démarre immédiatement le prochain travail en file d&apos;attente</translation>
@@ -148,7 +148,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1605"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1770"/>
         <source>Open Output &amp;Folder</source>
         <translation>Ouvrir le &amp;dossier de sortie</translation>
     </message>
@@ -159,7 +159,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="96"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1617"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1782"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Ouvrir dans la &amp;visionneuse par défaut</translation>
     </message>
@@ -559,7 +559,7 @@
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1314"/>
-        <location filename="../mainwindow_slots.cpp" line="1323"/>
+        <location filename="../mainwindow_slots.cpp" line="1329"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ Rendu terminé (%1 s)</translation>
     </message>
@@ -569,104 +569,104 @@
         <translation>Avertissement : échec du chargement de l&apos;image d&apos;aperçu à %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1324"/>
+        <location filename="../mainwindow_slots.cpp" line="1330"/>
         <source>Warning: output file not found at %1</source>
         <translation>Avertissement : fichier de sortie introuvable à %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1339"/>
+        <location filename="../mainwindow_slots.cpp" line="1345"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1344"/>
-        <location filename="../mainwindow_slots.cpp" line="1916"/>
+        <location filename="../mainwindow_slots.cpp" line="1350"/>
+        <location filename="../mainwindow_slots.cpp" line="1923"/>
         <source>Render Failed</source>
         <translation>Échec du rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1364"/>
+        <location filename="../mainwindow_slots.cpp" line="1370"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>Arrêté - %1 de plus en attente (cliquez sur Démarrer le rendu pour reprendre)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1486"/>
+        <location filename="../mainwindow_slots.cpp" line="1492"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>Rendu en cours  ·  %1 %  ·  écoulé %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1496"/>
+        <location filename="../mainwindow_slots.cpp" line="1502"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1504"/>
+        <location filename="../mainwindow_slots.cpp" line="1510"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  ETA %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1507"/>
+        <location filename="../mainwindow_slots.cpp" line="1513"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  ETA --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1530"/>
+        <location filename="../mainwindow_slots.cpp" line="1536"/>
         <source>Render complete</source>
         <translation>Rendu terminé</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1531"/>
+        <location filename="../mainwindow_slots.cpp" line="1537"/>
         <source>Render stopped</source>
         <translation>Rendu arrêté</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1531"/>
+        <location filename="../mainwindow_slots.cpp" line="1537"/>
         <source>Render failed</source>
         <translation>Échec du rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1533"/>
+        <location filename="../mainwindow_slots.cpp" line="1539"/>
         <source>Finished in %1 seconds</source>
         <translation>Terminé en %1 secondes</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1548"/>
+        <location filename="../mainwindow_slots.cpp" line="1554"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1557"/>
+        <location filename="../mainwindow_slots.cpp" line="1563"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[DEBUG] Aucune zone de notification système disponible ; notification de fin ignorée</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1561"/>
+        <location filename="../mainwindow_slots.cpp" line="1567"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[DEBUG] La zone de notification système ne prend pas en charge les messages ; notification ignorée</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1714"/>
+        <location filename="../mainwindow_slots.cpp" line="1721"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>DÉMARRER LE &amp;RENDU VIDÉO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1719"/>
+        <location filename="../mainwindow_slots.cpp" line="1726"/>
         <source>Ready to render video frames</source>
         <translation>Prêt à rendre les images vidéo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1738"/>
+        <location filename="../mainwindow_slots.cpp" line="1745"/>
         <location filename="../mainwindow_tabs_output.cpp" line="68"/>
         <source>Ready to render</source>
         <translation>Prêt à effectuer le rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1752"/>
+        <location filename="../mainwindow_slots.cpp" line="1759"/>
         <source>Mode changed to: %1</source>
         <translation>Mode changé pour : %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1748"/>
+        <location filename="../mainwindow_slots.cpp" line="1755"/>
         <source>Video Generation</source>
         <translation>Génération vidéo</translation>
     </message>
@@ -696,74 +696,74 @@
         <translation>⏸ En pause</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1717"/>
+        <location filename="../mainwindow_slots.cpp" line="1724"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
         <translation>Effectue le rendu de la trajectoire de caméra image par image et assemble une vidéo. Se met en file d&apos;attente à la place si un rendu est déjà en cours.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1723"/>
+        <location filename="../mainwindow_slots.cpp" line="1730"/>
         <source>START LIVE &amp;PREVIEW</source>
         <translation>DÉMARRER L&apos;APERÇU EN &amp;DIRECT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1726"/>
+        <location filename="../mainwindow_slots.cpp" line="1733"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
         <translation>Démarre un aperçu GPU interactif que vous pouvez orbiter/zoomer à la souris. Désactivé pendant qu&apos;un rendu par lots est en cours.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1728"/>
+        <location filename="../mainwindow_slots.cpp" line="1735"/>
         <source>Ready to start live preview</source>
         <translation>Prêt à démarrer l&apos;aperçu en direct</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1736"/>
+        <location filename="../mainwindow_slots.cpp" line="1743"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
         <translation>Effectue le rendu de la scène sélectionnée avec les paramètres actuels. Se met en file d&apos;attente à la place si un rendu est déjà en cours.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1747"/>
+        <location filename="../mainwindow_slots.cpp" line="1754"/>
         <source>Single Image</source>
         <translation>Image unique</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1750"/>
+        <location filename="../mainwindow_slots.cpp" line="1757"/>
         <location filename="../mainwindow_tabs_render.cpp" line="961"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1750"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1915"/>
         <source>Live Preview</source>
         <translation>Aperçu en direct</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1849"/>
+        <location filename="../mainwindow_slots.cpp" line="1856"/>
         <source>Integrator changed to: %1</source>
         <translation>Intégrateur changé pour : %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1897"/>
+        <location filename="../mainwindow_slots.cpp" line="1904"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ Fichier vidéo introuvable, vérification des images...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1898"/>
+        <location filename="../mainwindow_slots.cpp" line="1905"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>AVERTISSEMENT : fichier vidéo introuvable à aucun des emplacements attendus</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1907"/>
+        <location filename="../mainwindow_slots.cpp" line="1914"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ %1 images trouvées mais aucun fichier vidéo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1908"/>
+        <location filename="../mainwindow_slots.cpp" line="1915"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>Les images ont été rendues (%1 fichiers) mais l&apos;assemblage vidéo semble avoir échoué.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1909"/>
+        <location filename="../mainwindow_slots.cpp" line="1916"/>
         <source>Video Not Created</source>
         <translation>Vidéo non créée</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1910"/>
+        <location filename="../mainwindow_slots.cpp" line="1917"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -776,17 +776,17 @@ Vidéo attendue à : %2
 Veuillez consulter le journal de rendu pour les erreurs ffmpeg.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1914"/>
+        <location filename="../mainwindow_slots.cpp" line="1921"/>
         <source>❌ No frames or video found</source>
         <translation>❌ Aucune image ni vidéo trouvée</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1915"/>
+        <location filename="../mainwindow_slots.cpp" line="1922"/>
         <source>ERROR: No frames or video file found</source>
         <translation>ERREUR : aucune image ni fichier vidéo trouvé</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1917"/>
+        <location filename="../mainwindow_slots.cpp" line="1924"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -795,22 +795,22 @@ Please check the render log for errors.</source>
 Veuillez consulter le journal de rendu pour les erreurs.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1920"/>
+        <location filename="../mainwindow_slots.cpp" line="1927"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ Dossier d&apos;images introuvable</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1921"/>
+        <location filename="../mainwindow_slots.cpp" line="1928"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>ERREUR : dossier d&apos;images introuvable : %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1922"/>
+        <location filename="../mainwindow_slots.cpp" line="1929"/>
         <source>Directory Not Found</source>
         <translation>Dossier introuvable</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1923"/>
+        <location filename="../mainwindow_slots.cpp" line="1930"/>
         <source>Frames directory not found:
 %1
 
@@ -821,27 +821,27 @@ The render may have failed to create output.</source>
 Le rendu n&apos;a peut-être pas réussi à créer de résultat.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1929"/>
+        <location filename="../mainwindow_slots.cpp" line="1936"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ Vidéo créée avec succès !</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1930"/>
+        <location filename="../mainwindow_slots.cpp" line="1937"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ Vidéo assemblée avec succès : %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1931"/>
+        <location filename="../mainwindow_slots.cpp" line="1938"/>
         <source>Video size: %1 MB</source>
         <translation>Taille de la vidéo : %1 Mo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1952"/>
+        <location filename="../mainwindow_slots.cpp" line="1959"/>
         <source>%1 (Video)</source>
         <translation>%1 (Vidéo)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1954"/>
+        <location filename="../mainwindow_slots.cpp" line="1961"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 Mo  •  %3 images  •  %4spp · %5%6</translation>
     </message>
@@ -850,7 +850,7 @@ Le rendu n&apos;a peut-être pas réussi à créer de résultat.</translation>
         <translation type="vanished">%1  •  %2 Mo  •  %3 images</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1966"/>
+        <location filename="../mainwindow_slots.cpp" line="1973"/>
         <source>Playing video inline: %1</source>
         <translation>Lecture de la vidéo intégrée : %1</translation>
     </message>
@@ -1269,7 +1269,7 @@ L&apos;aperçu en direct effectue un rendu continu avec une caméra orbitable - 
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="751"/>
-        <location filename="../mainwindow_tabs.cpp" line="1420"/>
+        <location filename="../mainwindow_tabs.cpp" line="1310"/>
         <source>Custom</source>
         <translation>Personnalisé</translation>
     </message>
@@ -1526,32 +1526,62 @@ Une fois toutes les images rendues, la vidéo est automatiquement assemblée pui
 Astuces : utilisez le mode GPU pour un rendu plus rapide. Réduisez les échantillons/pixel (10-50) pour des aperçus rapides, augmentez-les (100-500) pour une qualité de production. Le temps de rendu typique est de 1 à 5 minutes sur GPU, 15 à 60 minutes sur CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1052"/>
+        <location filename="../mainwindow_tabs.cpp" line="1417"/>
+        <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.
+
+Type or Browse to a .exr path instead of .png/.ppm for linear, full-precision HDR output (no tone mapping baked in) - useful for compositing. If Denoise is also on and GPU Backend is Recursive, an _albedo.exr and _normal.exr guide-buffer pair is written alongside it automatically (Wavefront doesn&apos;t produce these yet).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1445"/>
+        <source>Where the rendered image is written. A .png is always saved alongside
+the raw .ppm, and it is the .png the Preview tab displays.
+
+Enter a .exr path instead for linear HDR output with no PNG sibling -
+the Preview tab opens it in your system&apos;s EXR viewer instead of showing
+it inline.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1458"/>
+        <source>PNG Image (*.png);;PPM Image (*.ppm);;EXR Image, linear HDR (*.exr)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1465"/>
+        <source>Where the finished image is saved.
+
+A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.
+
+Choosing a .exr path instead skips both: it writes one linear, un-tonemapped, full-float-precision file directly - the format compositing/VFX tools expect, and the only way to get HDR values out of this app rather than an already-tonemapped image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1258"/>
         <source>Live Preview Settings</source>
         <translation>Paramètres de l&apos;aperçu en direct</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1055"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation>Ajuste la réactivité de l&apos;orbite/du zoom à la souris et du déplacement clavier WASD/Haut/Bas + Gauche/Droite/+/- dans l&apos;Aperçu en direct. Ne prend effet que lorsque le Mode de sortie ci-dessus est « Aperçu en direct (interactif) », mais reste modifiable dans tous les modes.</translation>
+        <translation type="vanished">Ajuste la réactivité de l&apos;orbite/du zoom à la souris et du déplacement clavier WASD/Haut/Bas + Gauche/Droite/+/- dans l&apos;Aperçu en direct. Ne prend effet que lorsque le Mode de sortie ci-dessus est « Aperçu en direct (interactif) », mais reste modifiable dans tous les modes.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1090"/>
+        <location filename="../mainwindow_tabs.cpp" line="1099"/>
         <source>Mouse Sensitivity:</source>
         <translation>Sensibilité de la souris :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1091"/>
+        <location filename="../mainwindow_tabs.cpp" line="1100"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
         <translation>Ajuste la vitesse d&apos;orbite par glisser-cliquer et de zoom par molette dans l&apos;Aperçu en direct. 1x correspond à la sensation d&apos;origine ; plus bas est plus doux, plus haut est plus réactif.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1108"/>
+        <location filename="../mainwindow_tabs.cpp" line="1117"/>
         <source>Keyboard Sensitivity:</source>
         <translation>Sensibilité du clavier :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1109"/>
+        <location filename="../mainwindow_tabs.cpp" line="1118"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
         <translation>Ajuste le déplacement WASD/Haut/Bas, l&apos;orbite aux flèches Gauche/Droite et le pas de zoom +/- dans l&apos;Aperçu en direct. 1x correspond à un incrément modéré par pression ; plus bas est plus fin, plus haut déplace davantage par pression.</translation>
     </message>
@@ -1706,67 +1736,71 @@ Astuces : utilisez le mode GPU pour un rendu plus rapide. Réduisez les échanti
         <translation>Rétablir les valeurs par défaut</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1127"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1261"/>
+        <source>ReSTIR DI/GI, the radiance cache, exposure, samples/max-bounces per frame, and the firefly clamp - all independent of the Advanced Parameters group below (which only applies to Image/Video) and of the Denoiser section above. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
+        <translation>ReSTIR DI/GI, le cache de radiance, l&apos;exposition, les échantillons/rebonds max. par image, et l&apos;écrêtage des fireflies - tous indépendants du groupe Paramètres avancés ci-dessous (qui ne s&apos;applique qu&apos;à Image/Vidéo) et de la section Débruiteur ci-dessus. Ne prend effet que lorsque le Mode de sortie ci-dessus est « Aperçu en direct (interactif) », mais reste modifiable dans tous les modes.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1284"/>
         <source>ReSTIR GI</source>
         <translation>ReSTIR GI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1139"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1296"/>
         <source>Resampled one-bounce indirect lighting (ReSTIR GI) - independent of which denoiser is active above. Disabling it falls back to the classic single-sample indirect estimate, which is noisier but cheaper per frame.</source>
         <translation>Éclairage indirect à un rebond ré-échantillonné (ReSTIR GI) - indépendant du débruiteur actif ci-dessus. Le désactiver revient à l&apos;estimation indirecte classique à échantillon unique, plus bruitée mais moins coûteuse par image.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1145"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1302"/>
         <source>ReSTIR DI</source>
         <translation>ReSTIR DI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1155"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1312"/>
         <source>Resampled direct-light sampling (ReSTIR DI) - independent of ReSTIR GI above (that resamples one-bounce INDIRECT lighting; this resamples the direct-light draw classic next-event estimation would otherwise make from a single global alias-table sample). Disabling it falls back to that classic single-sample draw, which is noisier in scenes with many lights but cheaper per frame.</source>
         <translation>Échantillonnage de lumière directe ré-échantillonné (ReSTIR DI) - indépendant du ReSTIR GI ci-dessus (celui-ci ré-échantillonne l&apos;éclairage INDIRECT à un rebond ; celui-ci ré-échantillonne le tirage de lumière directe que l&apos;estimation classique du prochain événement ferait sinon à partir d&apos;un seul échantillon de la table d&apos;alias globale). Le désactiver revient à ce tirage classique à échantillon unique, plus bruité dans les scènes à nombreuses lumières mais moins coûteux par image.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1176"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as the Render Options tab&apos;s own Exposure control but independently set for Live Preview.</source>
-        <translation>Un multiplicateur de luminosité uniforme appliqué avant le tone mapping, avec la même signification que le propre réglage Exposition de l&apos;onglet Options de rendu, mais réglé indépendamment pour l&apos;Aperçu en direct.</translation>
+        <translation type="vanished">Un multiplicateur de luminosité uniforme appliqué avant le tone mapping, avec la même signification que le propre réglage Exposition de l&apos;onglet Options de rendu, mais réglé indépendamment pour l&apos;Aperçu en direct.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1194"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1372"/>
         <source>Samples/Frame:</source>
         <translation>Échantillons/image :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1195"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1373"/>
         <source>Samples per pixel rendered on each Live Preview call - Live Preview has its own independent value from the Advanced Parameters group below, which only applies to Image/Video.</source>
         <translation>Échantillons par pixel rendus à chaque appel de l&apos;Aperçu en direct - l&apos;Aperçu en direct possède sa propre valeur, indépendante du groupe Paramètres avancés ci-dessous, qui ne s&apos;applique qu&apos;à Image/Vidéo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1206"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1384"/>
         <source>Max Bounces:</source>
         <translation>Rebonds max. :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1207"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1385"/>
         <source>Maximum ray depth for Live Preview - independent from the Advanced Parameters group below, which only applies to Image/Video.</source>
         <translation>Profondeur de rayon maximale pour l&apos;Aperçu en direct - indépendante du groupe Paramètres avancés ci-dessous, qui ne s&apos;applique qu&apos;à Image/Vidéo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1223"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1401"/>
         <source>Firefly Clamp:</source>
         <translation>Écrêtage des fireflies :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1224"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1402"/>
         <source>Caps the brightest possible sample value to suppress fireflies, at the cost of clipping genuinely bright highlights. Lower values clamp more aggressively.</source>
         <translation>Plafonne la valeur d&apos;échantillon la plus brillante possible pour supprimer les fireflies, au prix d&apos;un écrêtage des hautes lumières réellement brillantes. Des valeurs plus basses écrêtent plus agressivement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1248"/>
+        <location filename="../mainwindow_tabs.cpp" line="1138"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
         <translation>Remplace manuellement la résolution, les échantillons par pixel et la profondeur de rayon maximale au lieu d&apos;utiliser les préréglages Qualité/Résolution ci-dessus. Partagé par Image et Vidéo (la Vidéo les réutilise comme réglages par image) - l&apos;Aperçu en direct utilise toujours sa propre résolution fixe et réduite à la place.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1278"/>
+        <location filename="../mainwindow_tabs.cpp" line="1168"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
@@ -1775,7 +1809,7 @@ Paired with Height to set the resolution manually, overriding whatever the Quali
 Combinée avec Hauteur pour définir la résolution manuellement, en remplaçant ce que le préréglage Qualité ci-dessus utiliserait sinon.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1291"/>
+        <location filename="../mainwindow_tabs.cpp" line="1181"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
@@ -1784,58 +1818,54 @@ Paired with Width - together they set the resolution manually, overriding the Qu
 Combinée avec Largeur - ensemble, elles définissent la résolution manuellement, en remplaçant le préréglage Qualité ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1362"/>
+        <location filename="../mainwindow_tabs.cpp" line="1252"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
         <translation>Définit directement la position mondiale de la caméra, ou choisit un préréglage nommé. Utilisée telle quelle en mode Image, comme point de départ à partir duquel s&apos;anime la trajectoire de caméra de la Vidéo, et comme position initiale de l&apos;Aperçu en direct avant que vous ne l&apos;orbitiez/zoomiez interactivement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1524"/>
+        <location filename="../mainwindow_tabs.cpp" line="1414"/>
         <source>Output</source>
         <translation>Sortie</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1527"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.</source>
-        <translation>Où le fichier rendu est enregistré. Le mode Vidéo ajoute automatiquement la bonne extension ; l&apos;Aperçu en direct ignore complètement ce réglage, puisqu&apos;il n&apos;écrit jamais de fichier.</translation>
+        <translation type="vanished">Où le fichier rendu est enregistré. Le mode Vidéo ajoute automatiquement la bonne extension ; l&apos;Aperçu en direct ignore complètement ce réglage, puisqu&apos;il n&apos;écrit jamais de fichier.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1550"/>
         <source>Where the rendered image is written. A .png is always saved alongside
 the raw .ppm, and it is the .png the Preview tab displays.</source>
-        <translation>Emplacement d&apos;écriture de l&apos;image rendue. Un fichier .png est toujours enregistré à côté
+        <translation type="vanished">Emplacement d&apos;écriture de l&apos;image rendue. Un fichier .png est toujours enregistré à côté
 du .ppm brut, et c&apos;est ce .png que l&apos;onglet Aperçu affiche.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1555"/>
+        <location filename="../mainwindow_tabs.cpp" line="1453"/>
         <source>&amp;Browse…</source>
         <translation>&amp;Parcourir…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1556"/>
+        <location filename="../mainwindow_tabs.cpp" line="1454"/>
         <source>Choose the output file name and location</source>
         <translation>Choisit le nom et l&apos;emplacement du fichier de sortie</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1558"/>
+        <location filename="../mainwindow_tabs.cpp" line="1456"/>
         <source>Save Render Output</source>
         <translation>Enregistrer le résultat du rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1559"/>
         <source>PNG Image (*.png);;PPM Image (*.ppm)</source>
-        <translation>Image PNG (*.png);;Image PPM (*.ppm)</translation>
+        <translation type="vanished">Image PNG (*.png);;Image PPM (*.ppm)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1566"/>
         <source>Where the finished image is saved.
 
 A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.</source>
-        <translation>Emplacement où l&apos;image finale est enregistrée.
+        <translation type="vanished">Emplacement où l&apos;image finale est enregistrée.
 
 Un fichier .ppm brut est toujours écrit, et une copie .png est générée automatiquement à côté - l&apos;onglet Aperçu affiche toujours le .png, car la plupart des visionneuses d&apos;images (et l&apos;aperçu propre à cette application) ne peuvent pas ouvrir directement un .ppm.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1594"/>
+        <location filename="../mainwindow_tabs.cpp" line="1497"/>
         <source>Settings</source>
         <translation>Paramètres</translation>
     </message>
@@ -1844,12 +1874,12 @@ Un fichier .ppm brut est toujours écrit, et une copie .png est générée autom
         <translation type="vanished">Paramètres de base</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1245"/>
+        <location filename="../mainwindow_tabs.cpp" line="1135"/>
         <source>Advanced Parameters</source>
         <translation>Paramètres avancés</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1277"/>
+        <location filename="../mainwindow_tabs.cpp" line="1167"/>
         <source>Width:</source>
         <translation>Largeur :</translation>
     </message>
@@ -1862,7 +1892,7 @@ Paired with Height below to set the resolution manually, overriding whatever the
 Associée à la hauteur ci-dessous pour définir manuellement la résolution, en remplaçant ce que le préréglage Qualité de l&apos;onglet Basique utiliserait autrement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1290"/>
+        <location filename="../mainwindow_tabs.cpp" line="1180"/>
         <source>Height:</source>
         <translation>Hauteur :</translation>
     </message>
@@ -1875,7 +1905,7 @@ Paired with Width above - together they set the resolution manually, overriding 
 Associée à la largeur ci-dessus - ensemble, elles définissent manuellement la résolution, en remplaçant le préréglage Qualité de l&apos;onglet Basique.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1303"/>
+        <location filename="../mainwindow_tabs.cpp" line="1193"/>
         <source>Rays traced per pixel. This is the main quality/time dial: noise falls
 as the square root of this value, so halving the noise costs about 4x
 the render time. Setting it here switches Quality to Custom.</source>
@@ -1884,12 +1914,12 @@ comme la racine carrée de cette valeur, donc diviser le bruit par deux coûte e
 plus de temps de rendu. Le modifier ici fait passer Qualité à Personnalisé.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1306"/>
+        <location filename="../mainwindow_tabs.cpp" line="1196"/>
         <source>Samples per Pixel:</source>
         <translation>Échantillons par pixel :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1307"/>
+        <location filename="../mainwindow_tabs.cpp" line="1197"/>
         <source>Ray tracing estimates each pixel&apos;s color by firing many random rays and averaging the results, like polling a lot of people and averaging their guesses.
 
 More samples means a more accurate average, which shows up as less speckly &quot;noise&quot; in the image - but each extra sample costs render time. Doubling this value roughly halves the noise, but takes about twice as long to render.</source>
@@ -1898,7 +1928,7 @@ More samples means a more accurate average, which shows up as less speckly &quot
 Plus d&apos;échantillons donne une moyenne plus précise, ce qui se traduit par moins de « bruit » granuleux dans l&apos;image - mais chaque échantillon supplémentaire coûte du temps de rendu. Doubler cette valeur réduit approximativement le bruit de moitié, mais prend environ deux fois plus de temps à rendre.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1323"/>
+        <location filename="../mainwindow_tabs.cpp" line="1213"/>
         <source>How many times a ray may bounce before it is terminated. Low values
 darken glass and mirrors, which need many bounces to resolve; scenes
 of plain diffuse surfaces look the same well below the maximum.</source>
@@ -1907,12 +1937,12 @@ assombrissent le verre et les miroirs, qui ont besoin de nombreux rebonds pour s
 de surfaces diffuses simples restent identiques bien en dessous du maximum.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1326"/>
+        <location filename="../mainwindow_tabs.cpp" line="1216"/>
         <source>Max Ray Depth:</source>
         <translation>Profondeur max. des rayons :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1327"/>
+        <location filename="../mainwindow_tabs.cpp" line="1217"/>
         <source>A depth of 1 means a ray only sees what it hits directly, with no bounced light at all - like a scene with no reflections or indirect lighting.
 
 Each extra bounce lets light travel one more surface before giving up, which is what makes glass, mirrors, and soft indirect lighting look correct. Most scenes look &quot;finished&quot; well before the maximum - beyond that, extra depth mostly traces light too dim to matter.</source>
@@ -1921,48 +1951,48 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 Chaque rebond supplémentaire permet à la lumière de parcourir une surface de plus avant d&apos;abandonner, c&apos;est ce qui rend le verre, les miroirs et l&apos;éclairage indirect doux réalistes. La plupart des scènes semblent « terminées » bien avant le maximum - au-delà, la profondeur supplémentaire trace surtout une lumière trop faible pour compter.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1359"/>
+        <location filename="../mainwindow_tabs.cpp" line="1249"/>
         <source>Camera Position</source>
         <translation>Position de la caméra</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1403"/>
+        <location filename="../mainwindow_tabs.cpp" line="1293"/>
         <source>Front View (Outside)</source>
         <translation>Vue de face (extérieur)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1406"/>
+        <location filename="../mainwindow_tabs.cpp" line="1296"/>
         <source>Inside Front</source>
         <translation>Intérieur avant</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1407"/>
+        <location filename="../mainwindow_tabs.cpp" line="1297"/>
         <source>Inside Back</source>
         <translation>Intérieur arrière</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1408"/>
+        <location filename="../mainwindow_tabs.cpp" line="1298"/>
         <source>Right Wall (Green)</source>
         <translation>Mur droit (vert)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1409"/>
+        <location filename="../mainwindow_tabs.cpp" line="1299"/>
         <source>Left Wall (Red)</source>
         <translation>Mur gauche (rouge)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1412"/>
+        <location filename="../mainwindow_tabs.cpp" line="1302"/>
         <source>Floor Corner</source>
         <translation>Coin du sol</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1413"/>
+        <location filename="../mainwindow_tabs.cpp" line="1303"/>
         <source>Ceiling Corner</source>
         <translation>Coin du plafond</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="861"/>
-        <location filename="../mainwindow_tabs.cpp" line="1423"/>
+        <location filename="../mainwindow_tabs.cpp" line="1313"/>
         <source>Preset:</source>
         <translation>Préréglage :</translation>
     </message>
@@ -2001,7 +2031,19 @@ Personnalisé laisse intacts les champs Échantillons/Profondeur max. ci-dessous
 Le temps de rendu évolue à peu près linéairement avec les échantillons par pixel.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1424"/>
+        <location filename="../mainwindow_tabs.cpp" line="1058"/>
+        <source>Live Preview Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1061"/>
+        <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.
+
+Looking for ReSTIR/Exposure/Samples/Max Bounces/Firefly Clamp? Those are render-behavior settings now on the Render Options tab&apos;s own Live Preview Settings group, next to the Denoiser section.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1314"/>
         <source>A handful of hand-picked camera positions for this scene, framed to show off something specific (e.g. looking in through the front, or from inside a Cornell-box-style enclosure).
 
 Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the camera anywhere you like instead.</source>
@@ -2010,12 +2052,12 @@ Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the ca
 Choisir « Personnalisé » déverrouille les champs X/Y/Z ci-dessous, pour placer la caméra où vous le souhaitez.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1442"/>
+        <location filename="../mainwindow_tabs.cpp" line="1332"/>
         <source>Camera X:</source>
         <translation>Caméra X :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1443"/>
+        <location filename="../mainwindow_tabs.cpp" line="1333"/>
         <source>The camera&apos;s position along the world&apos;s X axis (left/right).
 
 Only editable when the preset above is set to Custom - the camera always looks toward the scene&apos;s own fixed look-at point, so moving X/Y/Z changes the viewing angle and distance, not just a straight left-right pan.</source>
@@ -2024,12 +2066,12 @@ Only editable when the preset above is set to Custom - the camera always looks t
 Modifiable uniquement lorsque le préréglage ci-dessus est réglé sur Personnalisé - la caméra regarde toujours vers le point de visée fixe de la scène, donc déplacer X/Y/Z change l&apos;angle de vue et la distance, pas seulement un simple panoramique gauche-droite.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1457"/>
+        <location filename="../mainwindow_tabs.cpp" line="1347"/>
         <source>Camera Y:</source>
         <translation>Caméra Y :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1458"/>
+        <location filename="../mainwindow_tabs.cpp" line="1348"/>
         <source>The camera&apos;s position along the world&apos;s Y axis (up/down).
 
 Same Custom-preset-only editing rule as Camera X - the camera keeps looking at the scene&apos;s fixed look-at point as you move it.</source>
@@ -2038,12 +2080,12 @@ Same Custom-preset-only editing rule as Camera X - the camera keeps looking at t
 Même règle de modification réservée au préréglage Personnalisé que pour Caméra X - la caméra continue de regarder le point de visée fixe de la scène pendant que vous la déplacez.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1471"/>
+        <location filename="../mainwindow_tabs.cpp" line="1361"/>
         <source>Camera Z:</source>
         <translation>Caméra Z :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1472"/>
+        <location filename="../mainwindow_tabs.cpp" line="1362"/>
         <source>The camera&apos;s position along the world&apos;s Z axis (forward/back, into or out of the scene).
 
 Same Custom-preset-only editing rule as Camera X/Y.</source>
@@ -2052,12 +2094,12 @@ Same Custom-preset-only editing rule as Camera X/Y.</source>
 Même règle de modification réservée au préréglage Personnalisé que pour Caméra X/Y.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1502"/>
+        <location filename="../mainwindow_tabs.cpp" line="1392"/>
         <source>Distance from Center:</source>
         <translation>Distance au centre :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1503"/>
+        <location filename="../mainwindow_tabs.cpp" line="1393"/>
         <source>Moves the camera directly toward or away from the scene&apos;s look-at point along whatever direction it&apos;s currently facing, without changing which way it&apos;s pointed.
 
 The quickest way to zoom in or pull back once you&apos;ve already found an angle you like via the X/Y/Z fields or a preset.</source>
@@ -2439,6 +2481,21 @@ Débruiteur IA OptiX : nettoie l&apos;image bruitée à faible nombre d&apos;éc
 Débruiteur SVGF : un filtre spatio-temporel alternatif et expérimental - suit la variance par pixel dans le temps et l&apos;utilise pour piloter un filtre spatial sensible aux contours, qui tient mieux la route pendant les mouvements de caméra que la combinaison débruiteur IA + moyenne glissante. Affiche toujours la dernière image filtrée plutôt que d&apos;accumuler (voir le groupe Réglage avancé SVGF ci-dessous pour ses propres constantes ajustables).</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
+        <source>Radiance Cache</source>
+        <translation>Cache de radiance</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1330"/>
+        <source>World-space irradiance probe cache - caches and resamples diffuse lighting two or more bounces deep, independent of ReSTIR GI above (that only resamples the FIRST indirect bounce; this covers every bounce beyond it). Converges over many frames, so expect it to look patchy or noisy for the first few seconds after enabling it or moving the camera into a new area. Disabling it falls back to classic next-event estimation for every bounce, which is noisier in scenes with a lot of deep indirect light but has no convergence delay.</source>
+        <translation>Cache de sondes d&apos;irradiance en espace monde - met en cache et ré-échantillonne l&apos;éclairage diffus à partir de deux rebonds de profondeur ou plus, indépendant du ReSTIR GI ci-dessus (celui-ci ne ré-échantillonne que le PREMIER rebond indirect ; celui-ci couvre chaque rebond au-delà). Converge sur de nombreuses images, donc attendez-vous à ce qu&apos;il paraisse tacheté ou bruité pendant les premières secondes après son activation ou après avoir déplacé la caméra vers une nouvelle zone. Le désactiver revient à l&apos;estimation classique du prochain événement pour chaque rebond, plus bruitée dans les scènes à fort éclairage indirect profond, mais sans délai de convergence.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
+        <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="870"/>
         <source>Turns on extra correctness checks inside the GPU ray-tracing pipeline itself, catching certain classes of bugs that would otherwise silently produce a wrong image or crash unpredictably.
 
@@ -2712,8 +2769,8 @@ Both CPU and GPU default path tracer only.</source>
 Uniquement pour le path tracer par défaut, CPU et GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1175"/>
         <location filename="../mainwindow_tabs_render.cpp" line="620"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
         <source>Exposure:</source>
         <translation>Exposition :</translation>
     </message>
@@ -2971,22 +3028,22 @@ C&apos;est une aide au débogage pour les personnes qui travaillent sur le code 
 Grisé ? Cette option est réservée au GPU - passez Renderer sur GPU dans l&apos;onglet Paramètres de base pour l&apos;utiliser.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1251"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1416"/>
         <source>Crop Window</source>
         <translation>Fenêtre de recadrage</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1254"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1419"/>
         <source>Render only a rectangular sub-region of the full frame, given as normalized 0-1 coordinates - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>N&apos;effectue le rendu que d&apos;une sous-région rectangulaire de l&apos;image complète, donnée sous forme de coordonnées normalisées 0-1 - utile pour tester rapidement le rendu d&apos;une zone d&apos;une scène sans payer le coût de l&apos;image entière.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1262"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1427"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>Ne rendre qu&apos;une partie de l&apos;image (--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1264"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1429"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image in [0,1]. Both CPU and GPU default
 path tracer only.</source>
@@ -2995,7 +3052,7 @@ de fractions de l&apos;image complète dans [0,1]. Traceur de chemins
 par défaut CPU et GPU uniquement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1269"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1434"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total sample count converges much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -3008,69 +3065,69 @@ Utile pour itérer plus rapidement sur une partie problématique d&apos;une scè
 Désactivé par défaut (l&apos;image entière). Si le fichier d&apos;une scène .pbrt chargée demande déjà son propre cropwindow/pixelbounds, cocher cette case le remplace par le rectangle ci-dessous ; le laisser décoché permet à la propre demande de la scène (le cas échéant) de s&apos;appliquer.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1313"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1478"/>
         <source>Left (X0):</source>
         <translation>Gauche (X0) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1314"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1479"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>Bord gauche du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image (0 = bord gauche, 1 = bord droit).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1316"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1481"/>
         <source>Top (Y0):</source>
         <translation>Haut (Y0) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1317"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1482"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>Bord supérieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image (0 = bord supérieur, 1 = bord inférieur).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1319"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1484"/>
         <source>Right (X1):</source>
         <translation>Droite (X1) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1320"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1485"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>Bord droit du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image - doit être supérieur à Gauche (X0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1322"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1487"/>
         <source>Bottom (Y1):</source>
         <translation>Bas (Y1) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1323"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1488"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>Bord inférieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image - doit être supérieur à Haut (Y0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1353"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1518"/>
         <source>Reproducibility</source>
         <translation>Reproductibilité</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1356"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1521"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>Fixe la graine aléatoire afin qu&apos;un rendu puisse être reproduit exactement, pixel par pixel, lors d&apos;une exécution ultérieure - utile pour comparer des changements de réglages sans que des différences de bruit aléatoire ne brouillent la comparaison.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1529"/>
         <source>Reproducible render (--seed)</source>
         <translation>Rendu reproductible (--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1366"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1531"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Both CPU and GPU default path tracer only.</source>
         <translation>Permet à ce rendu de se reproduire à l&apos;octet près lors d&apos;une nouvelle exécution avec la
 même graine. Traceur de chemins par défaut CPU et GPU uniquement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1370"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1535"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -3079,37 +3136,37 @@ Off by default (genuinely random every render).</source>
 Désactivé par défaut (véritablement aléatoire à chaque rendu).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1390"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1555"/>
         <source>Seed:</source>
         <translation>Graine :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1391"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1556"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>L&apos;entier spécifique utilisé pour amorcer le générateur de nombres aléatoires du rendu. Ne prend effet que lorsque Rendu reproductible ci-dessus est coché - la même graine sur la même scène/les mêmes réglages produit toujours un bruit identique pixel par pixel.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1415"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1580"/>
         <source>Render Options</source>
         <translation>Options de rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1608"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1773"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>Afficher dans l&apos;Explorateur le dossier contenant le rendu de l&apos;onglet actif</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1620"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1785"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>Ouvrir le rendu de l&apos;onglet actif dans la visionneuse du système</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1646"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1811"/>
         <source>Preview</source>
         <translation>Aperçu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1720"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1885"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -3118,63 +3175,63 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut/Bas pour voler</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1746"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1911"/>
         <source>Live Preview — %1</source>
         <translation>Aperçu en direct — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1751"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1916"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>Aperçu GPU interactif - glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut/Bas pour voler, Gauche/Droite pour orbiter</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1777"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1942"/>
         <source>Select a scene first</source>
         <translation>Sélectionnez d&apos;abord une scène</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1826"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1992"/>
         <source>Starting...</source>
         <translation>Démarrage...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1842"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2008"/>
         <source>Stopped</source>
         <translation>Arrêté</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1859"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2025"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En direct (débruité, sans accumulation)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1861"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2027"/>
         <source>%1 samples</source>
         <translation>%1 échantillons</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1877"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2043"/>
         <source>Live Preview: %1</source>
         <translation>Aperçu en direct : %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2328"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2509"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Pourquoi ce rendu a cet aspect&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2454"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="2467"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2635"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2648"/>
         <source>Pause</source>
         <translation>Pause</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2467"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2648"/>
         <source>Play</source>
         <translation>Lecture</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2477"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2658"/>
         <source>Video playback error (%1): %2</source>
         <translation>Erreur de lecture vidéo (%1) : %2</translation>
     </message>
@@ -3369,8 +3426,8 @@ Ne change pas le nombre d&apos;images rendues (c&apos;est le Nombre d&apos;image
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="959"/>
-        <location filename="../mainwindow_tabs.cpp" line="1084"/>
-        <location filename="../mainwindow_tabs.cpp" line="1102"/>
+        <location filename="../mainwindow_tabs.cpp" line="1093"/>
+        <location filename="../mainwindow_tabs.cpp" line="1111"/>
         <source>x</source>
         <translation>x</translation>
     </message>
