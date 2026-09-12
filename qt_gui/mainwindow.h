@@ -346,6 +346,7 @@ private:
 	// anything), so each gets its own push helper rather than sharing one.
 	void pushLiveRestirGiToSession();
 	void pushLiveRestirDiToSession();
+	void pushLiveProbeCacheToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
 	void pushLiveFireflyClampToSession();
@@ -436,6 +437,8 @@ private:
 	void saveLiveRestirGiEnabled(bool value) const;
 	bool loadSavedLiveRestirDiEnabled() const;
 	void saveLiveRestirDiEnabled(bool value) const;
+	bool loadSavedLiveProbeCacheEnabled() const;
+	void saveLiveProbeCacheEnabled(bool value) const;
 	double loadSavedLiveExposure() const;
 	void saveLiveExposure(double value) const;
 	int loadSavedLiveSamples() const;
@@ -871,6 +874,13 @@ private:
 	QCheckBox *m_liveRestirGiCheck = nullptr;
 	bool m_liveRestirDiEnabled = true;
 	QCheckBox *m_liveRestirDiCheck = nullptr;
+	// World-space irradiance probe cache (gpu/optix/probe_grid_types.h) -
+	// same shape as m_liveRestirGiEnabled/m_liveRestirDiEnabled above, but
+	// defaults false: unlike ReSTIR DI/GI, this feature has no prior
+	// always-on behavior to preserve (see optix_interface.h's
+	// rt_realtime_render_frame() enable_probe_cache comment).
+	bool m_liveProbeCacheEnabled = false;
+	QCheckBox *m_liveProbeCacheCheck = nullptr;
 	double m_liveExposure = 1.0;
 	QDoubleSpinBox *m_liveExposureSpin = nullptr;
 	int m_liveSamples = 1;

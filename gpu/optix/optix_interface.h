@@ -175,7 +175,21 @@ bool rt_realtime_render_frame(
 	// DLL-boundary convention (see realtime_preview_session.cpp's
 	// RenderFrameFn comment) of only ever appending new parameters, never
 	// inserting them in the middle.
-	bool enable_restir_di = true
+	bool enable_restir_di = true,
+	// World-space irradiance probe cache (gpu/optix/probe_grid_types.h) -
+	// resampled/cached depth>=2 diffuse bounces, filling the gap
+	// enable_restir_gi's own depth 0->1-only MVP leaves open (see this
+	// project's own plan). Independent from enable_restir_gi/enable_restir_di
+	// above - all three can be mixed freely. Defaults false (unlike
+	// enable_restir_gi/enable_restir_di's default-true): this parameter
+	// shipped WITH the feature itself (nothing was ever hardcoded-on to
+	// preserve), so false is both "off until the GUI's own checkbox is
+	// checked" and this project's own general new-feature-off-by-default
+	// convention. Appended at the very end of the parameter list, after
+	// enable_restir_di, per this function's own DLL-boundary convention (see
+	// realtime_preview_session.cpp's RenderFrameFn comment) of only ever
+	// appending new parameters, never inserting them in the middle.
+	bool enable_probe_cache = false
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the

@@ -18,17 +18,18 @@ namespace {
 //      float* out_world_pos, float* out_camera_basis,
 //      float* out_rgb, bool enable_svgf, bool enable_restir_gi,
 //      float max_component_value, const void* svgf_tuning,
-//      bool enable_restir_di)
+//      bool enable_restir_di, bool enable_probe_cache)
 // Must stay byte-for-byte in sync with gpu/optix/optix_interface.h's
 // rt_realtime_render_frame() declaration and realtime_renderer_dll.cpp's own
 // export signature - see this file's own header comment on why there's no
 // shared header/versioning across this boundary. New parameters are always
-// appended at the end, never inserted in the middle - enable_restir_di is
-// appended last for exactly this reason, even though it logically pairs
-// with enable_restir_gi earlier in the list.
+// appended at the end, never inserted in the middle - enable_restir_di (and,
+// after it, enable_probe_cache) are appended last for exactly this reason,
+// even though enable_probe_cache logically pairs with enable_restir_gi
+// earlier in the list.
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
-							   bool, float, const void*, bool);
+							   bool, float, const void*, bool, bool);
 
 // const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
 // own comment. Same hand-duplication convention as RenderFrameFn above.
@@ -230,7 +231,7 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 								   double lookX, double lookY, double lookZ,
 								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-								   bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp) {
+								   bool restirGi, bool restirDi, bool probeCache, int spp, int maxDepth, double fireflyClamp) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -257,6 +258,7 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	// before the very first start() isn't silently lost.
 	m_restirGi = restirGi;
 	m_restirDi = restirDi;
+	m_probeCache = probeCache;
 	m_spp = spp;
 	m_maxDepth = maxDepth;
 	m_fireflyClamp = fireflyClamp;
@@ -335,6 +337,14 @@ void RealtimePreviewWorker::setRestirDi(bool restirDi) {
 	// sampling technique feeds each new sample doesn't change what m_accum
 	// structurally holds, so no reset is needed.
 	m_restirDi = restirDi;
+}
+
+void RealtimePreviewWorker::setProbeCache(bool probeCache) {
+	if (!m_running) return;
+	// Same reasoning as setRestirGi()/setRestirDi() above: toggling whether
+	// depth>=2 diffuse bounces consult the probe cache doesn't change what
+	// m_accum structurally holds, so no reset is needed.
+	m_probeCache = probeCache;
 }
 
 void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
@@ -424,7 +434,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_denoise, m_denoiseBlend,
 						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
-						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi);
+						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -588,13 +598,13 @@ RealtimePreviewSession::~RealtimePreviewSession() {
 void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 									double lookX, double lookY, double lookZ,
 									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-									bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp) {
+									bool restirGi, bool restirDi, bool probeCache, int spp, int maxDepth, double fireflyClamp) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
 		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ),
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf),
-		Q_ARG(bool, restirGi), Q_ARG(bool, restirDi), Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp));
+		Q_ARG(bool, restirGi), Q_ARG(bool, restirDi), Q_ARG(bool, probeCache), Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp));
 }
 
 void RealtimePreviewSession::stop() {
@@ -626,6 +636,10 @@ void RealtimePreviewSession::setRestirGi(bool restirGi) {
 
 void RealtimePreviewSession::setRestirDi(bool restirDi) {
 	QMetaObject::invokeMethod(m_worker, "setRestirDi", Qt::QueuedConnection, Q_ARG(bool, restirDi));
+}
+
+void RealtimePreviewSession::setProbeCache(bool probeCache) {
+	QMetaObject::invokeMethod(m_worker, "setProbeCache", Qt::QueuedConnection, Q_ARG(bool, probeCache));
 }
 
 void RealtimePreviewSession::setSppAndMaxDepth(int spp, int maxDepth) {

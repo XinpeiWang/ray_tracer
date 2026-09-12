@@ -1258,11 +1258,12 @@ void MainWindow::createRenderOptionsTab() {
 	m_liveRenderSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), optionsTab);
 	styleGroupBox(m_liveRenderSettingsGroupBox);
 	m_liveRenderSettingsGroupBox->setInfoIcon(createInfoIcon(
-		tr("ReSTIR DI/GI, exposure, samples/max-bounces per frame, and the "
-		"firefly clamp - all independent of the Advanced Parameters group "
-		"below (which only applies to Image/Video) and of the Denoiser "
-		"section above. Only takes effect when Output Mode above is "
-		"\"Live Preview (interactive)\", but stays editable in any mode.")));
+		tr("ReSTIR DI/GI, the radiance cache, exposure, samples/max-bounces "
+		"per frame, and the firefly clamp - all independent of the Advanced "
+		"Parameters group below (which only applies to Image/Video) and of "
+		"the Denoiser section above. Only takes effect when Output Mode "
+		"above is \"Live Preview (interactive)\", but stays editable in any "
+		"mode.")));
 	setGroupDimmed(m_liveRenderSettingsGroupBox, !isLiveMode());
 	QFormLayout *liveRenderSettingsLayout = new QFormLayout(m_liveRenderSettingsGroupBox);
 	liveRenderSettingsLayout->setVerticalSpacing(10);
@@ -1316,8 +1317,29 @@ void MainWindow::createRenderOptionsTab() {
 		"in scenes with many lights but cheaper per frame.")),
 		1, 0, 1, 4);
 
+	m_liveProbeCacheCheck = new QCheckBox(tr("Radiance Cache"));
+	m_liveProbeCacheCheck->setChecked(m_liveProbeCacheEnabled);
+	styleCheckBox(m_liveProbeCacheCheck);
+	connect(m_liveProbeCacheCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveProbeCacheEnabled = checked;
+		saveLiveProbeCacheEnabled(checked);
+		pushLiveProbeCacheToSession();
+	});
+	// Own row too, same reasoning as ReSTIR GI/DI's rows above.
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveProbeCacheCheck,
+		tr("World-space irradiance probe cache - caches and resamples "
+		"diffuse lighting two or more bounces deep, independent of ReSTIR "
+		"GI above (that only resamples the FIRST indirect bounce; this "
+		"covers every bounce beyond it). Converges over many frames, so "
+		"expect it to look patchy or noisy for the first few seconds after "
+		"enabling it or moving the camera into a new area. Disabling it "
+		"falls back to classic next-event estimation for every bounce, "
+		"which is noisier in scenes with a lot of deep indirect light but "
+		"has no convergence delay.")),
+		2, 0, 1, 4);
+
 	// The four numeric values grouped into their own clean 2-per-row grid
-	// (rows 2-3), separate from the checkboxes above.
+	// (rows 3-4), separate from the checkboxes above.
 	m_liveExposureSpin = new QDoubleSpinBox();
 	m_liveExposureSpin->setRange(0.01, 100.0);
 	m_liveExposureSpin->setSingleStep(0.1);
@@ -1332,8 +1354,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("A flat brightness multiplier applied before tone-mapping, same "
 		"meaning as this tab's own Output-group Exposure control but "
 		"independently set for Live Preview.")),
-		2, 0);
-	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 2, 1);
+		3, 0);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 3, 1);
 
 	m_liveSamplesSpinBox = new QSpinBox();
 	m_liveSamplesSpinBox->setRange(1, 16);
@@ -1351,8 +1373,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Samples per pixel rendered on each Live Preview call - Live "
 		"Preview has its own independent value from the Advanced Parameters "
 		"group below, which only applies to Image/Video.")),
-		2, 2);
-	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 2, 3);
+		3, 2);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 3, 3);
 
 	m_liveMaxDepthSpinBox = new QSpinBox();
 	m_liveMaxDepthSpinBox->setRange(1, 32);
@@ -1362,8 +1384,8 @@ void MainWindow::createRenderOptionsTab() {
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
 		tr("Maximum ray depth for Live Preview - independent from the "
 		"Advanced Parameters group below, which only applies to Image/Video.")),
-		3, 0);
-	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 3, 1);
+		4, 0);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 4, 1);
 
 	m_liveFireflyClampSpin = new QDoubleSpinBox();
 	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
@@ -1380,8 +1402,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Caps the brightest possible sample value to suppress fireflies, "
 		"at the cost of clipping genuinely bright highlights. Lower values "
 		"clamp more aggressively.")),
-		3, 2);
-	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 3, 3);
+		4, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 4, 3);
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
@@ -1949,6 +1971,7 @@ void MainWindow::startLivePreview() {
 								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
 								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
 								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveRestirDiEnabled,
+								 m_liveProbeCacheEnabled,
 								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
@@ -2056,6 +2079,11 @@ void MainWindow::pushLiveRestirGiToSession() {
 void MainWindow::pushLiveRestirDiToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setRestirDi(m_liveRestirDiEnabled);
+}
+
+void MainWindow::pushLiveProbeCacheToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setProbeCache(m_liveProbeCacheEnabled);
 }
 
 void MainWindow::pushLiveExposureToSession() {
@@ -2297,6 +2325,16 @@ bool MainWindow::loadSavedLiveRestirDiEnabled() const {
 void MainWindow::saveLiveRestirDiEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewRestirDiEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLiveProbeCacheEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewProbeCacheEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLiveProbeCacheEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewProbeCacheEnabledKey, value);
 }
 
 double MainWindow::loadSavedLiveExposure() const {

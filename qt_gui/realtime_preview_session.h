@@ -59,7 +59,7 @@ public slots:
 	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, bool probeCache, int spp, int maxDepth, double fireflyClamp);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -130,6 +130,14 @@ public slots:
 	// alias-table sample). Same "no accumulation reset needed" reasoning as
 	// setRestirGi(). No-op if not running.
 	void setRestirDi(bool restirDi);
+
+	// Toggles the world-space irradiance probe cache (gpu/optix/
+	// probe_grid_types.h) - resampled/cached depth>=2 diffuse bounces,
+	// independent from setRestirGi()/setRestirDi() above (those cover
+	// depth 0->1 direct/indirect lighting; this covers every bounce beyond
+	// that). Same "no accumulation reset needed" reasoning as setRestirGi().
+	// No-op if not running.
+	void setProbeCache(bool probeCache);
 
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
@@ -215,6 +223,12 @@ private:
 	// previously-hardcoded-on behavior (ReSTIR DI shipped as always-on before
 	// this parameter existed).
 	bool m_restirDi = true;
+	// See setProbeCache()'s own comment. Crosses the DLL boundary like
+	// m_restirGi/m_restirDi above. Defaults false (unlike m_restirGi/
+	// m_restirDi's default-true) - this parameter shipped WITH the feature
+	// itself, so there was no prior always-on behavior to preserve; false
+	// matches rt_realtime_render_frame()'s own default (optix_interface.h).
+	bool m_probeCache = false;
 	// See setSppAndMaxDepth()'s own comment. Both cross the DLL boundary
 	// (they're renderFrame()'s own 4th/5th positional args). Defaults match
 	// renderLoop()'s own previous hardcoded locals exactly.
@@ -326,7 +340,7 @@ public:
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, bool restirDi, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, bool probeCache, int spp, int maxDepth, double fireflyClamp);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
@@ -334,6 +348,7 @@ public:
 	void setExposure(double exposure);
 	void setRestirGi(bool restirGi);
 	void setRestirDi(bool restirDi);
+	void setProbeCache(bool probeCache);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

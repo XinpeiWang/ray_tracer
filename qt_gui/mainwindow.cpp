@@ -775,6 +775,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	}
 	m_liveRestirGiEnabled = loadSavedLiveRestirGiEnabled();
 	m_liveRestirDiEnabled = loadSavedLiveRestirDiEnabled();
+	m_liveProbeCacheEnabled = loadSavedLiveProbeCacheEnabled();
 	m_liveExposure = loadSavedLiveExposure();
 	m_liveSamples = loadSavedLiveSamples();
 	m_liveMaxDepth = loadSavedLiveMaxDepth();
