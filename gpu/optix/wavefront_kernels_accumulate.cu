@@ -160,7 +160,16 @@ extern "C" __global__ void accumulate_shadow(
 	// shadow's own host-side wrapper) - a __global__ kernel launch lists
 	// every argument explicitly at its one real call site anyway, so there
 	// is no ambiguity to resolve.
-	GpuGiSample*                 giCandidateOut
+	GpuGiSample*                 giCandidateOut,
+	// Probe cache (Live Preview only) - an item with isProbeCacheRay set
+	// (ShadowRayWorkItem's own comment) adds its Ld into
+	// probeCacheRadianceOut[s.pixelIndex] instead of `framebuffer`,
+	// UNCLAMPED, same reasoning as giCandidateOut just above: probe_cache_
+	// accumulate (wavefront_kernels_restir.cu) blends this raw value into the
+	// persistent GpuProbe array itself, so clamping here would double-
+	// attenuate before that EMA ever sees it. nullptr (every non-probe-cache
+	// call site) keeps every other shadow ray's behavior unchanged.
+	float3*                      probeCacheRadianceOut
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Must also guard against shadowQueue.capacity, not just the host-
@@ -209,6 +218,17 @@ extern "C" __global__ void accumulate_shadow(
 			atomicAdd(&giCandidateOut[s.pixelIndex].radiance.x, r);
 			atomicAdd(&giCandidateOut[s.pixelIndex].radiance.y, g);
 			atomicAdd(&giCandidateOut[s.pixelIndex].radiance.z, b);
+			return;
+		}
+
+		// Probe cache (Live Preview only) - see probeCacheRadianceOut's own
+		// parameter comment above. `s.pixelIndex` here is this frame's own
+		// probe-update batch slot, not a screen pixel - see ProbeCacheRayWorkItem::
+		// batchSlot's own comment (wavefront_types.h).
+		if (s.isProbeCacheRay && probeCacheRadianceOut != nullptr) {
+			atomicAdd(&probeCacheRadianceOut[s.pixelIndex].x, r);
+			atomicAdd(&probeCacheRadianceOut[s.pixelIndex].y, g);
+			atomicAdd(&probeCacheRadianceOut[s.pixelIndex].z, b);
 			return;
 		}
 

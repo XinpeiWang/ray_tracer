@@ -6,6 +6,7 @@
 #define SPECTRAL_DEVICE_IMPL   // owns the __constant__ symbol definitions
 #include "spectral_device.h"
 #include "optix_types.h"
+#include "probe_grid_types.h"
 #include "wavefront_launch.h"  // declares the wf_launch_*/wf_upload_*/wf_reset_queue_counter
                                 // signatures the definitions below are checked against
 #include <cuda_runtime.h>
@@ -46,7 +47,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	float3, float, GpuSkyDistribution, GpuPortalLight, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
 	GpuGiOriginContext*, GpuGiSample*,
-	WfLightBvhContext);
+	WfLightBvhContext, GpuProbeGridMeta, const GpuProbe*);
 extern "C" __global__ void evaluate_materials_dielectric(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -63,7 +64,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	WfLightBvhContext);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*, float4*);
 extern "C" __global__ void normalize_aov_buffers(float3*, float3*, unsigned int, unsigned int);
-extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const float*, float3*, float, GpuGiSample*);
+extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const float*, float3*, float, GpuGiSample*, float3*);
 extern "C" __global__ void resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -92,6 +93,17 @@ extern "C" __global__ void restir_gi_finalize(
 	const MaterialData*, float3*, float, GpuGiReservoir*);
 extern "C" __global__ void restir_gi_spatial_reuse(
 	const GpuGiReservoir*, const GpuGiOriginContext*, GpuGiReservoir*, int, int, unsigned int);
+// ---- forward declarations of the probe-cache kernels from wavefront_kernels_restir.cu ----
+extern "C" __global__ void probe_cache_shade(
+	WorkQueue<ProbeCacheHitWorkItem>, int,
+	const MaterialData*, const SphereData*, const QuadData*, const TriangleData*,
+	const BilinearPatchData*, const DiskData*, const CylinderData*,
+	const TextureData*, const unsigned char*,
+	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
+	WfLightBvhContext, float3, float,
+	float3*, float*, WorkQueue<ShadowRayWorkItem>);
+extern "C" __global__ void probe_cache_accumulate(
+	const float3*, const float*, const float3*, int, int, GpuProbeGridMeta, GpuProbe*);
 // ---- forward declarations of kernels from wavefront_kernels_svgf.cu ----
 extern "C" __global__ void svgf_checkerboard_clear_frame(
 	float3*, float3*, float4*, int, int, unsigned int, bool);
@@ -245,6 +257,8 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
 	WfLightBvhContext            lightBvh,
+	GpuProbeGridMeta             probeGridMeta,
+	const GpuProbe*              d_probeGrid,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -261,7 +275,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
 		d_giOriginContext, d_giCandidateOut,
-		lightBvh);
+		lightBvh, probeGridMeta, d_probeGrid);
 }
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -403,6 +417,59 @@ extern "C" void wf_launch_restir_gi_spatial_reuse(
 		d_currentReservoirs, d_originContext, d_outputReservoirs, width, height, frameSeed);
 }
 
+extern "C" void wf_launch_probe_cache_shade(
+	WorkQueue<ProbeCacheHitWorkItem> hq,
+	int                          numProbeCacheHits,
+	const MaterialData*          d_materials,
+	const SphereData*            d_spheres,
+	const QuadData*              d_quads,
+	const TriangleData*          d_triangles,
+	const BilinearPatchData*     d_bilinearPatches,
+	const DiskData*              d_disks,
+	const CylinderData*          d_cylinders,
+	const TextureData*           d_textures,
+	const unsigned char*         d_texturePixels,
+	const int*                   d_lightIndices,
+	const GpuLightKind*          d_lightKinds,
+	const GpuAliasEntry*         d_aliasTable,
+	unsigned int                 numLights,
+	WfLightBvhContext            lightBvh,
+	float3                       backgroundColor,
+	float                        shadowRayEpsilon,
+	float3*                      d_probeCacheRadianceOut,
+	float*                       d_probeCacheHitDistOut,
+	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	cudaStream_t                 stream)
+{
+	if (numProbeCacheHits <= 0) return;
+	dim3 block(256);
+	dim3 grid((numProbeCacheHits + 255) / 256);
+	probe_cache_shade<<<grid, block, 0, (cudaStream_t)stream>>>(
+		hq, numProbeCacheHits, d_materials, d_spheres, d_quads, d_triangles,
+		d_bilinearPatches, d_disks, d_cylinders, d_textures, d_texturePixels,
+		d_lightIndices, d_lightKinds, d_aliasTable, numLights, lightBvh,
+		backgroundColor, shadowRayEpsilon,
+		d_probeCacheRadianceOut, d_probeCacheHitDistOut, shadowQueue);
+}
+
+extern "C" void wf_launch_probe_cache_accumulate(
+	const float3*    d_probeCacheRadianceOut,
+	const float*     d_probeCacheHitDistOut,
+	const float3*    d_probeCacheDirections,
+	int              numBatchSlots,
+	int              probeUpdateCursor,
+	GpuProbeGridMeta gridMeta,
+	GpuProbe*        d_probes,
+	cudaStream_t     stream)
+{
+	if (numBatchSlots <= 0) return;
+	dim3 block(256);
+	dim3 grid((numBatchSlots + 255) / 256);
+	probe_cache_accumulate<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_probeCacheRadianceOut, d_probeCacheHitDistOut, d_probeCacheDirections,
+		numBatchSlots, probeUpdateCursor, gridMeta, d_probes);
+}
+
 extern "C" void wf_launch_svgf_temporal_integrate(
 	const float3*        d_currentRadiance,
 	const float4*        d_currentWorldPos,
@@ -506,12 +573,13 @@ extern "C" void wf_launch_accumulate_miss(
 extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,
 	const float* d_transmittance, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream,
-	GpuGiSample* d_giCandidateOut)
+	GpuGiSample* d_giCandidateOut,
+	float3* d_probeCacheRadianceOut)
 {
 	if (numShadow == 0) return;
 	dim3 block(256);
 	dim3 grid((numShadow + 255) / 256);
-	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_transmittance, d_framebuffer, maxComponentValue, d_giCandidateOut);
+	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_transmittance, d_framebuffer, maxComponentValue, d_giCandidateOut, d_probeCacheRadianceOut);
 }
 
 extern "C" void wf_launch_resolve_bssrdf_exit(

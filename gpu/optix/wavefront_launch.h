@@ -14,6 +14,7 @@
 
 #include "wavefront_types.h"
 #include "optix_types.h"
+#include "probe_grid_types.h"
 #include <cuda_runtime.h>
 
 extern "C" void wf_launch_generate_camera_rays(
@@ -135,6 +136,12 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	// See wf_light_bvh_sample_index()'s own comment
 	// (wavefront_restir_helpers.h). nodeCount<=0 means "no light BVH built".
 	WfLightBvhContext            lightBvh,
+	// World-space irradiance probe cache (Live Preview only) - see
+	// wf_finish_material_scatter's own probeGridMeta/probeGrid parameter
+	// comments (wavefront_device_helpers.h). d_probeGrid==nullptr (default,
+	// every non-Live-Preview call site) is a complete no-op.
+	GpuProbeGridMeta             probeGridMeta,
+	const GpuProbe*              d_probeGrid,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -249,6 +256,45 @@ extern "C" void wf_launch_restir_gi_spatial_reuse(
 	unsigned int frameSeed,
 	cudaStream_t stream);
 
+// World-space irradiance probe cache (Live Preview only, gpu/optix/
+// probe_grid_types.h and wavefront_kernels_restir.cu's own probe_cache_shade/
+// probe_cache_accumulate comments) - the plain-CUDA half of the update pass,
+// run once per render() call after __raygen__wf_probe_cache's own OptiX
+// intersection launch (WavefrontPathTracer::launchProbeCacheUpdate()).
+extern "C" void wf_launch_probe_cache_shade(
+	WorkQueue<ProbeCacheHitWorkItem> hq,
+	int                          numProbeCacheHits,
+	const MaterialData*          d_materials,
+	const SphereData*            d_spheres,
+	const QuadData*              d_quads,
+	const TriangleData*          d_triangles,
+	const BilinearPatchData*     d_bilinearPatches,
+	const DiskData*              d_disks,
+	const CylinderData*          d_cylinders,
+	const TextureData*           d_textures,
+	const unsigned char*         d_texturePixels,
+	const int*                   d_lightIndices,
+	const GpuLightKind*          d_lightKinds,
+	const GpuAliasEntry*         d_aliasTable,
+	unsigned int                 numLights,
+	WfLightBvhContext            lightBvh,
+	float3                       backgroundColor,
+	float                        shadowRayEpsilon,
+	float3*                      d_probeCacheRadianceOut,
+	float*                       d_probeCacheHitDistOut,
+	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	cudaStream_t                 stream);
+
+extern "C" void wf_launch_probe_cache_accumulate(
+	const float3*    d_probeCacheRadianceOut,
+	const float*     d_probeCacheHitDistOut,
+	const float3*    d_probeCacheDirections,
+	int              numBatchSlots,
+	int              probeUpdateCursor,
+	GpuProbeGridMeta gridMeta,
+	GpuProbe*        d_probes,
+	cudaStream_t     stream);
+
 // SVGF (Live Preview only, gpu/optix/wavefront_svgf_math.h and
 // wavefront_kernels_svgf.cu) - see that file's own header comment for the
 // full 4-kernel pipeline these wrap.
@@ -313,7 +359,11 @@ extern "C" void wf_launch_accumulate_shadow(
 	// ReSTIR GI (Live Preview only) - see accumulate_shadow's own comment
 	// (wavefront_kernels_accumulate.cu). nullptr (every existing call site)
 	// keeps every shadow ray going to d_framebuffer exactly as before.
-	GpuGiSample* d_giCandidateOut = nullptr);
+	GpuGiSample* d_giCandidateOut = nullptr,
+	// Probe cache (Live Preview only) - see accumulate_shadow's own
+	// probeCacheRadianceOut parameter comment. nullptr (every non-probe-cache
+	// call site) keeps every shadow ray going to d_framebuffer as before.
+	float3* d_probeCacheRadianceOut = nullptr);
 
 extern "C" void wf_launch_resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem> eq,

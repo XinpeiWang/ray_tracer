@@ -20,6 +20,102 @@
 #include <iostream>
 #include <cstring>       // memcpy, for instance transform packing
 #include <type_traits>   // remove_pointer_t, for the light-flag width assert
+#include <cmath>         // ceil/isnan - buildProbeGrid()'s own spacing/dims derivation
+#include <algorithm>     // min/max - buildProbeGrid()'s own spacing/dims derivation
+
+// ============================================================================
+// buildProbeGrid -- world-space irradiance probe cache (Live Preview only,
+// gpu/optix/probe_grid_types.h and this project's own plan). See
+// optix_renderer.h's own buildProbeGrid()/probeGridMeta_ comments.
+// ============================================================================
+void OptiXRenderer::buildProbeGrid(
+	const std::vector<SphereData>& spheres, const std::vector<QuadData>& quads,
+	const std::vector<BilinearPatchData>& bilinearPatches, const std::vector<TriangleData>& triangles,
+	const std::vector<DiskData>& disks, const std::vector<CylinderData>& cylinders)
+{
+	float minX = 1e30f, minY = 1e30f, minZ = 1e30f;
+	float maxX = -1e30f, maxY = -1e30f, maxZ = -1e30f;
+	auto fold = [&](float x, float y, float z) {
+		minX = fminf(minX, x); minY = fminf(minY, y); minZ = fminf(minZ, z);
+		maxX = fmaxf(maxX, x); maxY = fmaxf(maxY, y); maxZ = fmaxf(maxZ, z);
+	};
+	for (const auto& s : spheres) {
+		fold(s.center.x - s.radius, s.center.y - s.radius, s.center.z - s.radius);
+		fold(s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius);
+	}
+	for (const auto& q : quads) {
+		fold(q.Q.x, q.Q.y, q.Q.z);
+		fold(q.Q.x + q.u.x, q.Q.y + q.u.y, q.Q.z + q.u.z);
+		fold(q.Q.x + q.v.x, q.Q.y + q.v.y, q.Q.z + q.v.z);
+		fold(q.Q.x + q.u.x + q.v.x, q.Q.y + q.u.y + q.v.y, q.Q.z + q.u.z + q.v.z);
+	}
+	for (const auto& p : bilinearPatches) {
+		fold(p.p00.x, p.p00.y, p.p00.z); fold(p.p01.x, p.p01.y, p.p01.z);
+		fold(p.p10.x, p.p10.y, p.p10.z); fold(p.p11.x, p.p11.y, p.p11.z);
+	}
+	for (const auto& t : triangles) {
+		fold(t.p0.x, t.p0.y, t.p0.z); fold(t.p1.x, t.p1.y, t.p1.z); fold(t.p2.x, t.p2.y, t.p2.z);
+	}
+	// Disks/cylinders: a coarse world-space bound from their o2w translation
+	// (o2w[3]/[7]/[11] - row-major object->world, same convention as
+	// SphereData::ClippedSphere's own 8-corner transform above) +- radius
+	// (cylinders also fold in their own z half-extent). Looser than a tight
+	// transformed bound, which is fine here - this only sizes/places probes,
+	// never affects correctness (wf_query_probe_grid's own leak test is what
+	// actually gates light leaks - see this project's own plan).
+	for (const auto& d : disks) {
+		const float tx = d.o2w[3], ty = d.o2w[7], tz = d.o2w[11];
+		fold(tx - d.radius, ty - d.radius, tz - d.radius);
+		fold(tx + d.radius, ty + d.radius, tz + d.radius);
+	}
+	for (const auto& c : cylinders) {
+		const float tx = c.o2w[3], ty = c.o2w[7], tz = c.o2w[11];
+		const float extent = fmaxf(c.radius, fmaxf(fabsf(c.zMin), fabsf(c.zMax)));
+		fold(tx - extent, ty - extent, tz - extent);
+		fold(tx + extent, ty + extent, tz + extent);
+	}
+
+	if (d_probeGrid_) { cudaFree(reinterpret_cast<void*>(d_probeGrid_)); d_probeGrid_ = 0; }
+	probeGridMeta_ = GpuProbeGridMeta{};
+
+	if (minX > maxX) {
+		// No geometry contributed a bound - shouldn't happen (buildScene()
+		// already requires non-empty geometry before this point), but
+		// degrade to "no probe grid" rather than build one from an inverted
+		// box - wf_finish_material_scatter's own totalProbes<=0 gate already
+		// treats this as a safe no-op everywhere else.
+		std::cout << "[OptiX] Probe cache: no scene bounds, skipping probe grid\n";
+		return;
+	}
+
+	const float dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
+	const float diag = std::sqrt(dx * dx + dy * dy + dz * dz);
+	// spacing = sceneDiagonal/20, clamped - see this project's own plan.
+	float spacing = diag / 20.0f;
+	if (!(spacing > 0.0f) || std::isnan(spacing)) spacing = 1.0f;
+	spacing = std::max(spacing, 0.05f);
+
+	const int kMaxProbesPerAxis = 32;  // hard cap: 32^3 = 32768 probes max
+	const int dimX = std::min(kMaxProbesPerAxis, std::max(1, static_cast<int>(std::ceil(dx / spacing)) + 1));
+	const int dimY = std::min(kMaxProbesPerAxis, std::max(1, static_cast<int>(std::ceil(dy / spacing)) + 1));
+	const int dimZ = std::min(kMaxProbesPerAxis, std::max(1, static_cast<int>(std::ceil(dz / spacing)) + 1));
+
+	probeGridMeta_.gridMin = make_float3(minX, minY, minZ);
+	probeGridMeta_.cellSize = make_float3(spacing, spacing, spacing);
+	probeGridMeta_.dims = make_int3(dimX, dimY, dimZ);
+	probeGridMeta_.totalProbes = dimX * dimY * dimZ;
+
+	// Zeroed on upload - GpuProbe's own default member initializers already
+	// give every field its correct "never updated" state (numRaysEverTraced
+	// ==0), so a plain value-initialized vector is a fully valid initial grid.
+	std::vector<GpuProbe> zeroed(static_cast<size_t>(probeGridMeta_.totalProbes));
+	const size_t bytes = zeroed.size() * sizeof(GpuProbe);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeGrid_), bytes));
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeGrid_), zeroed.data(), bytes, cudaMemcpyHostToDevice));
+
+	std::cout << "[OptiX] Built probe cache grid (" << dimX << "x" << dimY << "x" << dimZ
+			  << " = " << probeGridMeta_.totalProbes << " probes, spacing=" << spacing << ")\n";
+}
 
 bool OptiXRenderer::buildScene(
 	const std::vector<SphereData>& spheres,
@@ -847,6 +943,13 @@ bool OptiXRenderer::buildScene(
 		lightBvhNodeCount_ = 0;
 		std::cout << "[OptiX] No emissive lights in scene\n";
 	}
+
+	// World-space irradiance probe cache (Live Preview only) - independent of
+	// whether the scene has any emissive lights (a probe grid over a scene
+	// with none would just cache background/ambient contributions - still
+	// well-defined), so built unconditionally here rather than nested inside
+	// the numLights_>0 branch above.
+	buildProbeGrid(spheres, quads, bilinearPatches, triangles, disks, cylinders);
 
 	// Store punctual (point/spot/distant) lights on device - separate from
 	// the area-light arrays above, evaluated deterministically every hit

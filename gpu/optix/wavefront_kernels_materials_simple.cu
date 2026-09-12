@@ -91,7 +91,17 @@ extern "C" __global__ void evaluate_materials_simple(
 	// See wf_light_bvh_sample_index()'s own comment
 	// (wavefront_restir_helpers.h). lightBvh.nodeCount<=0 (the default) means
 	// "no light BVH built".
-	WfLightBvhContext lightBvh = {}
+	WfLightBvhContext lightBvh = {},
+	// World-space irradiance probe cache (Live Preview only) - see
+	// wf_finish_material_scatter's own probeGridMeta/probeGrid parameter
+	// comments. This is the ONLY evaluate_materials* kernel that can ever
+	// reach the cache's own matType==Lambertian gate (simpleHitQueue's own
+	// comment) - evaluate_materials()/_dielectric()/resolve_bssrdf_exit
+	// never see a Lambertian hit, so they stay on the nullptr default.
+	// probeGrid==nullptr (the default, every non-Live-Preview call site) is
+	// a complete no-op.
+	GpuProbeGridMeta probeGridMeta = GpuProbeGridMeta{},
+	const GpuProbe* probeGrid = nullptr
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -222,5 +232,5 @@ extern "C" __global__ void evaluate_materials_simple(
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
 		giOriginContext, giCandidateOut,
-		lightBvh);
+		lightBvh, probeGridMeta, probeGrid);
 }

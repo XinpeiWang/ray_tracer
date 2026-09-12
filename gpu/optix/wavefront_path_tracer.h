@@ -5,6 +5,7 @@
 #include "path_tracing_strategy.h"
 #include "wavefront_types.h"
 #include "optix_types.h"
+#include "probe_grid_types.h"
 #include "optix_denoiser.h"  // DenoiserResources - shared with OptiXRenderer
 #include "svgf_tuning_params.h"
 #include <optix.h>
@@ -117,6 +118,30 @@ public:
         lightBvhAllBMinX_ = allBMinX; lightBvhAllBMinY_ = allBMinY; lightBvhAllBMinZ_ = allBMinZ;
         lightBvhAllBMaxX_ = allBMaxX; lightBvhAllBMaxY_ = allBMaxY; lightBvhAllBMaxZ_ = allBMaxZ;
     }
+
+    /// World-space irradiance probe cache (Live Preview only, gpu/optix/
+    /// probe_grid_types.h) - the OptiXRenderer-owned, scene-lifetime GpuProbe
+    /// array built once per scene by optix_renderer_scene.cpp's own
+    /// buildProbeGrid(), same setter-not-render()-parameter pattern as
+    /// setLightBvh() above (this class never allocates or frees d_probeGrid
+    /// itself - only mutates the array it's handed, across frames, via
+    /// launchProbeCacheUpdate()). meta.totalProbes==0 (the default) means "no
+    /// probe grid built for this scene" - render() skips the whole update
+    /// pass and wf_finish_material_scatter's own lookup is a guaranteed miss.
+    void setProbeGrid(CUdeviceptr d_probeGrid, const GpuProbeGridMeta& meta) {
+        d_probeGrid_ = d_probeGrid;
+        probeGridMeta_ = meta;
+    }
+
+    /// Enables the probe cache's per-frame update pass and shading-time
+    /// query - see OptiXRenderer::enableProbeCache()'s own comment for the
+    /// full "Live-Preview-only opt-in" rationale (same shape as
+    /// setRestirEnabled()/setRestirGiEnabled()/setSvgfEnabled() above).
+    /// false (the default) is a complete no-op even when a probe grid was
+    /// set via setProbeGrid() above - the grid itself is still built and
+    /// uploaded at scene-build time regardless (cheap, matches the light
+    /// BVH's own precedent), only its USE is gated here.
+    void setProbeCacheEnabled(bool enabled) { probeCacheEnabled_ = enabled; }
 
     /// Heterogeneous single-channel grid media (MaterialType::GridMedium) -
     /// same setter-not-render()-parameter pattern as setRgbGridMediums()
@@ -258,7 +283,13 @@ public:
     /// fully overwritten on the next render() call anyway, same "no need to
     /// eagerly clear" reasoning as every other GPU buffer here) and are
     /// resized/reallocated normally if the resolution changed.
-    void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; svgfHistoryValid_ = false; }
+    // probeUpdateCursor_ resets alongside the others: a scene switch means
+    // the previous scene's probe grid (different totalProbes, different
+    // world extents) is gone - restarting the round-robin at 0 is the same
+    // "just start over, the real state gets rebuilt from scratch" reasoning
+    // every other buffer here already follows, and is harmless even when the
+    // new scene's probe count differs from the old one.
+    void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; svgfHistoryValid_ = false; probeUpdateCursor_ = 0; }
 
 private:
     // Resize-on-resolution-change helper for a per-pixel GPU buffer: frees
@@ -332,6 +363,37 @@ private:
     // restir_gi_spatial_reuse header comment. Called once per render() call,
     // same timing as launchRestirSpatialReuse() (DI's own).
     void launchGiSpatialReuse();
+    // World-space irradiance probe cache update (Live Preview only, gpu/
+    // optix/probe_grid_types.h) - called once per render() call, after the
+    // whole sampleIdx loop (same timing as launchRestirSpatialReuse()/
+    // launchGiSpatialReuse() above, right after them - see render()'s own
+    // call site). No-op when probeGridMeta_.totalProbes==0 (no probe grid
+    // built for this scene - see setProbeGrid()'s own comment).
+    //
+    // Runs a self-contained 4-stage sequence: (1) builds this frame's
+    // round-robin ProbeCacheRayWorkItem batch host-side and traces it via
+    // __raygen__wf_probe_cache (probeCacheSBT_, intersectPipeline_ - see that
+    // raygen's own header comment for why intersection and shading are split
+    // across two OptiX modules); (2) probe_cache_shade (wavefront_kernels_
+    // restir.cu) does the actual one-light NEE draw and pushes any resulting
+    // shadow ray into the SAME shadowQueue/shadowPipeline_/shadowSBT_ every
+    // other NEE draw in this codebase uses - safe to reuse here because this
+    // runs strictly after the per-bounce loop has already fully drained that
+    // queue for this render() call; (3) the ordinary OptiX shadow launch
+    // resolves occlusion; (4) accumulate_shadow redirects each resolved Ld
+    // into d_probeCacheRadianceOut_ (ShadowRayWorkItem::isProbeCacheRay) and
+    // probe_cache_accumulate EMA-blends the result into the persistent
+    // GpuProbe array, advancing probeUpdateCursor_ by the batch size.
+    // Takes render()'s own "template" WavefrontLaunchParams by const
+    // reference (the same `lp` local already fully populated with this
+    // call's traversable/geometry/materials/lights/textures pointers before
+    // the sampleIdx loop even starts) rather than re-threading a dozen
+    // individual pointers through by hand - makes its own local mutable copy
+    // to overwrite the queue/framebuffer fields it needs, the same
+    // "copy, don't mutate the shared template" pattern render()'s own
+    // per-bounce shadowLP already uses, so the caller's `lp` is never
+    // touched.
+    void launchProbeCacheUpdate(const WavefrontLaunchParams& lp, float3 backgroundColor, float shadowRayEpsilon);
     // SVGF (wavefront_kernels_svgf.cu) - runs the full temporal-integrate +
     // A-trous filter sequence in place on d_framebuffer, once per render()
     // call, after launchNormalizeFramebuffer (this frame's raw radiance
@@ -456,6 +518,11 @@ private:
     // module/pipeline is needed, just more program groups in the same
     // pipeline, selected via their own dedicated probeSBT_ at launch time).
     OptixProgramGroup raygenProbePG_             = nullptr;
+    // Probe CACHE update rays (Live Preview only) - own raygen, reuses the
+    // SAME hit/miss groups (missProbePG_/hitProbeSpherePG_/...) as the
+    // BSSRDF probe walk above via a second SBT (probeCacheSBT_) - see
+    // buildSBT()'s own comment for why no new hit/miss programs are needed.
+    OptixProgramGroup raygenProbeCachePG_        = nullptr;
     OptixProgramGroup missProbePG_               = nullptr;
     OptixProgramGroup hitProbeSpherePG_          = nullptr;
     OptixProgramGroup hitProbeQuadPG_            = nullptr;
@@ -473,6 +540,10 @@ private:
     // layout exactly, just pointing at the probe hit groups instead of the
     // radiance ones - see buildSBT()'s own pushTriple comment).
     OptixShaderBindingTable probeSBT_     = {};
+    // Probe CACHE SBT (Live Preview only) - shares probeSBT_'s own hit/miss
+    // record buffers verbatim, only raygenRecord differs - see buildSBT()'s
+    // own comment.
+    OptixShaderBindingTable probeCacheSBT_ = {};
     CUdeviceptr d_intersectRaygenRecord_ = 0;
     CUdeviceptr d_intersectMissRecord_   = 0;
     CUdeviceptr d_intersectHitRecords_   = 0;
@@ -483,6 +554,10 @@ private:
     CUdeviceptr d_probeMissRecord_       = 0;
     CUdeviceptr d_probeHitRecords_       = 0;
     CUdeviceptr d_probeExceptionRecord_  = 0;
+    // Probe CACHE SBT's own raygen record (Live Preview only) - its
+    // miss/hit/exception records are probeSBT_'s own (see buildSBT()'s own
+    // comment), so no separate device buffers are needed for those.
+    CUdeviceptr d_probeCacheRaygenRecord_ = 0;
     CUdeviceptr d_intersectExceptionRecord_ = 0;  ///< see exceptionPG_
     CUdeviceptr d_shadowExceptionRecord_    = 0;
     CUdeviceptr d_wfLaunchParams_   = 0;
@@ -505,6 +580,34 @@ private:
     CUdeviceptr d_shadowCounter_    = 0;
     CUdeviceptr d_probeCounter_     = 0;
     CUdeviceptr d_exitCounter_      = 0;
+
+    // World-space irradiance probe cache (Live Preview only, gpu/optix/
+    // probe_grid_types.h) - see setProbeGrid()/launchProbeCacheUpdate()'s own
+    // comments. d_probeGrid_/probeGridMeta_ are OptiXRenderer-owned (handed
+    // in via setProbeGrid(), never allocated/freed here); every other buffer
+    // below is owned by THIS class, sized kProbesPerFrame_ (a small, fixed
+    // per-frame batch, NOT resolution-dependent - reallocateDeviceBufferIfNeeded<T>
+    // still applies cleanly since it only compares against a stored capacity,
+    // never assumes that count means "one per screen pixel").
+    CUdeviceptr d_probeGrid_ = 0;             ///< see setProbeGrid() - NOT owned by this class
+    GpuProbeGridMeta probeGridMeta_{};        ///< see setProbeGrid()
+    bool probeCacheEnabled_ = false;          ///< see setProbeCacheEnabled()
+    int probeUpdateCursor_ = 0;               ///< see invalidateRestirHistory()/launchProbeCacheUpdate()
+    static constexpr int kProbesPerFrame_ = 512;  ///< see this project's own plan - round-robin update budget
+    CUdeviceptr d_probeCacheRayItems_    = 0; ///< ProbeCacheRayWorkItem[kProbesPerFrame_], host-built each call
+    CUdeviceptr d_probeCacheRayCounter_  = 0;
+    CUdeviceptr d_probeCacheHitItems_    = 0; ///< ProbeCacheHitWorkItem[kProbesPerFrame_], device-populated by the raygen
+    CUdeviceptr d_probeCacheHitCounter_  = 0;
+    CUdeviceptr d_probeCacheRadianceOut_ = 0; ///< float3[kProbesPerFrame_] - see probe_cache_shade's own comment
+    CUdeviceptr d_probeCacheHitDistOut_  = 0; ///< float[kProbesPerFrame_]
+    CUdeviceptr d_probeCacheDirections_  = 0; ///< float3[kProbesPerFrame_] - this frame's own host-sampled ray directions
+    // kProbesPerFrame_ is a fixed compile-time constant (unlike every other
+    // queue/buffer in this class, which resizes with screen resolution), so
+    // the 6 buffers above need no realloc-on-resize logic at all - each is
+    // lazily cudaMalloc'd exactly once (guarded by its own pointer being
+    // null) the first time launchProbeCacheUpdate() runs, and freed once in
+    // the destructor, same "allocate once, mutate forever" lifecycle as
+    // OptiXRenderer's own d_probeGrid_.
 
     // Own stream for launchEvaluateMaterialsSimple()'s kernel, separate from
     // the base class's stream_ (externally owned by OptiXRenderer, shared

@@ -16,3 +16,4 @@
 #include "wavefront_miss.h"
 #include "wavefront_raygen.h"
 #include "wavefront_anyhit_shadow.h"
+#include "wavefront_probe_cache.h"

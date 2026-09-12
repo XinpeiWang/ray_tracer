@@ -6,6 +6,7 @@
 #pragma once
 
 #include "optix_types.h"
+#include "probe_grid_types.h"
 // For SceneData's instancing structs. No cycle: scene_builder.h pulls only
 // optix_types.h and <vector>.
 #include "scene_builder.h"
@@ -265,6 +266,23 @@ public:
 	///        isWavefrontActive(). false (the default) costs nothing extra.
 	void enableSvgf(bool enable) { svgfEnabled_ = enable; }
 
+	/// @brief Enable the world-space irradiance probe cache (gpu/optix/
+	///        probe_grid_types.h) on the wavefront backend - see this
+	///        project's own plan. Independent from enableRestir()/
+	///        enableRestirGi()/enableSvgf() above. Forwarded to
+	///        wavefrontTracer_ inside render() (WavefrontPathTracer::
+	///        setProbeCacheEnabled()'s own comment) - only meaningful when
+	///        isWavefrontActive(). false (the default) costs nothing extra
+	///        and keeps every depth>=2 bounce on classic NEE, unchanged -
+	///        Live-Preview-only, same "opt-in, batch/offline rendering never
+	///        pays for it" shape as enableRestir()/enableRestirGi() above.
+	///        The probe GRID ITSELF (buildProbeGrid(), optix_renderer_scene.cpp)
+	///        is still built unconditionally at scene-build time regardless of
+	///        this flag - cheap, and matches the light BVH's own "always
+	///        built, usage gated separately" precedent - only the per-frame
+	///        UPDATE pass and the shading-time query are gated here.
+	void enableProbeCache(bool enable) { probeCacheEnabled_ = enable; }
+
 	/// @brief Sets SVGF's advanced tuning constants (gpu/optix/
 	///        svgf_tuning_params.h) - formerly hardcoded kSvgf* literals in
 	///        wavefront_kernels_svgf.cu. Forwarded to wavefrontTracer_ inside
@@ -399,6 +417,7 @@ private:
 	bool restirEnabled_ = false;  ///< See enableRestir()
 	bool restirGiEnabled_ = false;  ///< See enableRestirGi()
 	bool svgfEnabled_ = false;      ///< See enableSvgf()
+	bool probeCacheEnabled_ = false;  ///< See enableProbeCache()
 	SvgfTuningParams svgfTuning_;   ///< See setSvgfTuning()
 	bool restirHistoryInvalidationPending_ = false;  ///< See invalidateRestirHistory()
 	// Persisted across render() calls rather than created/destroyed fresh
@@ -637,6 +656,17 @@ private:
 	float lightBvhAllBMinX_ = 0, lightBvhAllBMinY_ = 0, lightBvhAllBMinZ_ = 0;
 	float lightBvhAllBMaxX_ = 0, lightBvhAllBMaxY_ = 0, lightBvhAllBMaxZ_ = 0;
 
+	// World-space irradiance probe cache (Live Preview only, gpu/optix/
+	// probe_grid_types.h and this project's own plan) - built once per scene
+	// by buildProbeGrid() (optix_renderer_scene.cpp), same "OptiXRenderer
+	// builds/owns it once, WavefrontPathTracer only mutates the array it's
+	// handed" lifecycle as d_lightBvhNodes_ above. probeGridMeta_.totalProbes
+	// ==0 (default) means "no probe grid built for this scene" - forwarded
+	// every render() call via setProbeGrid() (optix_renderer_render.cpp),
+	// same pattern as setLightBvh() just above.
+	CUdeviceptr d_probeGrid_ = 0;                  ///< Device GpuProbe array, probeGridMeta_.totalProbes entries
+	GpuProbeGridMeta probeGridMeta_{};
+
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - evaluated deterministically, not via the alias table.
 	CUdeviceptr d_punctualLights_ = 0;
@@ -653,6 +683,17 @@ private:
 
 	/// @brief Create OptiX device context and CUDA resources
 	bool createContext();
+
+	/// @brief World-space irradiance probe cache (Live Preview only) - builds
+	///        a merged scene bound from the given geometry, derives probe
+	///        spacing/dims from it, and uploads a freshly-zeroed GpuProbe
+	///        array. Called once per buildScene(), adjacent to the light BVH
+	///        build - see this project's own plan and probeGridMeta_'s own
+	///        comment for the full design. Leaves probeGridMeta_.totalProbes
+	///        at 0 (no probe grid) if the merged bound ends up degenerate.
+	void buildProbeGrid(const std::vector<SphereData>& spheres, const std::vector<QuadData>& quads,
+						 const std::vector<BilinearPatchData>& bilinearPatches, const std::vector<TriangleData>& triangles,
+						 const std::vector<DiskData>& disks, const std::vector<CylinderData>& cylinders);
 
 	/// @brief Load PTX and create OptiX module
 	bool createModule();

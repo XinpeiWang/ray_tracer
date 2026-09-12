@@ -30,6 +30,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cstdlib>
+#include <random>  // World-space irradiance probe cache - see launchProbeCacheUpdate()'s own comment
 
 // Declarations for wavefront_launch.cu's C wrappers (no <<<>>> in .cpp) -
 // shared with wavefront_launch.cu itself via wavefront_launch.h, rather than
@@ -391,6 +392,21 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeRgDesc, 1, &pgOptions,
 										 log, &logSize, &raygenProbePG_));
 
+	// ----- Probe cache update rays (Live Preview only) -----
+	// Own raygen only - reuses the SAME hit/miss groups as the BSSRDF probe
+	// walk above (missProbePG_/hitProbeSpherePG_/...) via a second SBT
+	// (probeCacheSBT_) that shares probeSBT_'s own hit/miss record buffers -
+	// see buildSBT()'s own comment. No new hit/miss programs needed: this
+	// raygen wants exactly the same "find the closest surface hit, report
+	// position/normal/materialIdx" query the probe walk already has.
+	OptixProgramGroupDesc probeCacheRgDesc = {};
+	probeCacheRgDesc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+	probeCacheRgDesc.raygen.module            = wfModule_;
+	probeCacheRgDesc.raygen.entryFunctionName = "__raygen__wf_probe_cache";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeCacheRgDesc, 1, &pgOptions,
+										 log, &logSize, &raygenProbeCachePG_));
+
 	OptixProgramGroupDesc probeMissDesc = {};
 	probeMissDesc.kind                   = OPTIX_PROGRAM_GROUP_KIND_MISS;
 	probeMissDesc.miss.module            = wfModule_;
@@ -585,6 +601,7 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 		hitCylinderPG_,
 		hitTrianglePG_,
 		raygenProbePG_,
+		raygenProbeCachePG_,
 		missProbePG_,
 		hitProbeSpherePG_,
 		hitProbeQuadPG_,
@@ -857,6 +874,34 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeExceptionRecord_), &probeExcRec,
 							  sizeof(RaygenRecord), cudaMemcpyHostToDevice));
 		probeSBT_.exceptionRecord = d_probeExceptionRecord_;
+	}
+
+	// ---- Probe CACHE SBT (world-space irradiance probe cache, Live Preview
+	// only) ----
+	// Own raygen record only - every other field is a direct COPY of
+	// probeSBT_'s own values, just built above: same hit/miss program groups
+	// (missProbePG_/hitProbeSpherePG_/...), same SBT layout, since a probe-
+	// cache-update ray wants the EXACT same "find the closest surface hit"
+	// query the BSSRDF probe walk already has (see wavefront_probe_cache.h's
+	// own header comment for why only the raygen differs - the shading logic
+	// that would otherwise live in a closest-hit program lives in a separate
+	// plain CUDA kernel, probe_cache_shade, instead).
+	{
+		RaygenRecord rg;
+		OPTIX_CHECK(optixSbtRecordPackHeader(raygenProbeCachePG_, &rg));
+		rg.data = 0;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheRaygenRecord_), sizeof(RaygenRecord)));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeCacheRaygenRecord_), &rg,
+							  sizeof(RaygenRecord), cudaMemcpyHostToDevice));
+
+		probeCacheSBT_.raygenRecord                = d_probeCacheRaygenRecord_;
+		probeCacheSBT_.missRecordBase              = probeSBT_.missRecordBase;
+		probeCacheSBT_.missRecordStrideInBytes     = probeSBT_.missRecordStrideInBytes;
+		probeCacheSBT_.missRecordCount             = probeSBT_.missRecordCount;
+		probeCacheSBT_.hitgroupRecordBase          = probeSBT_.hitgroupRecordBase;
+		probeCacheSBT_.hitgroupRecordStrideInBytes = probeSBT_.hitgroupRecordStrideInBytes;
+		probeCacheSBT_.hitgroupRecordCount         = probeSBT_.hitgroupRecordCount;
+		probeCacheSBT_.exceptionRecord             = probeSBT_.exceptionRecord;
 	}
 
 	// ---- Shadow SBT ----
@@ -1167,6 +1212,13 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
 		buildLightBvhContext(),
+		probeGridMeta_,
+		// nullptr (not d_probeGrid_) when disabled - wf_finish_material_
+		// scatter's own probe-cache lookup block gates on this pointer alone
+		// (probeGrid != nullptr), same "null disables the whole feature"
+		// shape as restirReservoirs/giOriginContext - see setProbeCacheEnabled()'s
+		// own comment for why the grid can be built/uploaded yet still unused.
+		probeCacheEnabled_ ? reinterpret_cast<const GpuProbe*>(d_probeGrid_) : nullptr,
 		simpleMaterialStream_);
 }
 
@@ -1277,6 +1329,195 @@ void WavefrontPathTracer::launchGiSpatialReuse() {
 		restirImageWidth_, restirImageHeight_,
 		frameNumber_,
 		stream_);
+}
+
+void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp, float3 backgroundColor, float shadowRayEpsilon) {
+	if (!probeCacheEnabled_ || probeGridMeta_.totalProbes <= 0 || d_probeGrid_ == 0) return;
+	const int batchSize = std::min(kProbesPerFrame_, probeGridMeta_.totalProbes);
+	if (batchSize <= 0) return;
+
+	// kProbesPerFrame_ is a fixed compile-time constant (unlike every other
+	// per-pixel queue in this class) - lazily allocate once, guarded by
+	// d_probeCacheRayItems_ alone (see these members' own comments,
+	// wavefront_path_tracer.h).
+	if (!d_probeCacheRayItems_) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheRayItems_),    kProbesPerFrame_ * sizeof(ProbeCacheRayWorkItem)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheRayCounter_),  sizeof(int)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheHitItems_),    kProbesPerFrame_ * sizeof(ProbeCacheHitWorkItem)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheHitCounter_),  sizeof(int)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheRadianceOut_), kProbesPerFrame_ * sizeof(float3)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheHitDistOut_),  kProbesPerFrame_ * sizeof(float)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCacheDirections_),  kProbesPerFrame_ * sizeof(float3)));
+	}
+
+	// ------------------------------------------------------------------
+	// Build this frame's round-robin batch host-side: probeUpdateCursor_..
+	// +batchSize (mod totalProbes) - see ProbeCacheRayWorkItem::batchSlot's
+	// own comment (wavefront_types.h) for why batchSlot is a batch-local
+	// index, not the real probe index.
+	// ------------------------------------------------------------------
+	std::vector<ProbeCacheRayWorkItem> hostItems(batchSize);
+	std::vector<float3> hostDirections(batchSize);
+	// Deterministic per-(frame,cursor) seed - real randomness isn't needed
+	// here (this is a coarse, temporally-EMA'd cache, not a converged
+	// reference render), just decorrelation between probes/frames so
+	// repeated updates of the same probe eventually cover its whole sphere.
+	std::mt19937 rng(0x9E3779B9u ^ static_cast<unsigned int>(frameNumber_) ^ static_cast<unsigned int>(probeUpdateCursor_));
+	std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+	const int dimsXY = probeGridMeta_.dims.x * probeGridMeta_.dims.y;
+	for (int i = 0; i < batchSize; ++i) {
+		const int probeIdx = (probeUpdateCursor_ + i) % probeGridMeta_.totalProbes;
+		const int pz = (dimsXY > 0) ? probeIdx / dimsXY : 0;
+		const int rem = (dimsXY > 0) ? probeIdx % dimsXY : 0;
+		const int py = (probeGridMeta_.dims.x > 0) ? rem / probeGridMeta_.dims.x : 0;
+		const int px = (probeGridMeta_.dims.x > 0) ? rem % probeGridMeta_.dims.x : 0;
+		const int3 coord = {px, py, pz};
+
+		// Rejection-sample a uniform point in the unit ball then normalize -
+		// same algorithm as wf_rand_unit()'s own device-side rejection loop
+		// (wavefront_device_helpers.h), just built host-side here because a
+		// probe ray's own direction must exist BEFORE the OptiX raygen ever
+		// runs (see ProbeCacheRayWorkItem::direction's own comment).
+		float3 dir = make_float3(0.0f, 0.0f, 1.0f);
+		for (;;) {
+			const float px3 = 2.0f * uni(rng) - 1.0f;
+			const float py3 = 2.0f * uni(rng) - 1.0f;
+			const float pz3 = 2.0f * uni(rng) - 1.0f;
+			const float l = px3 * px3 + py3 * py3 + pz3 * pz3;
+			if (l > 1e-8f && l < 1.0f) {
+				const float invLen = 1.0f / sqrtf(l);
+				dir = make_float3(px3 * invLen, py3 * invLen, pz3 * invLen);
+				break;
+			}
+		}
+
+		ProbeCacheRayWorkItem item;
+		item.batchSlot = i;
+		item.origin    = probeGridMeta_.probeWorldPos(coord);
+		item.direction = dir;
+		item.seed      = rng();
+		hostItems[i]      = item;
+		hostDirections[i] = dir;
+	}
+
+	CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_probeCacheRayItems_), hostItems.data(),
+							   static_cast<size_t>(batchSize) * sizeof(ProbeCacheRayWorkItem),
+							   cudaMemcpyHostToDevice, stream_));
+	CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_probeCacheDirections_), hostDirections.data(),
+							   static_cast<size_t>(batchSize) * sizeof(float3),
+							   cudaMemcpyHostToDevice, stream_));
+	CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_probeCacheRayCounter_), &batchSize,
+							   sizeof(int), cudaMemcpyHostToDevice, stream_));
+	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_probeCacheHitCounter_), 0, sizeof(int), stream_));
+	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_probeCacheRadianceOut_), 0,
+							   static_cast<size_t>(batchSize) * sizeof(float3), stream_));
+
+	// ------------------------------------------------------------------
+	// Stage 1: OptiX intersection launch - __raygen__wf_probe_cache via
+	// probeCacheSBT_ (wavefront_probe_cache.h's own header comment).
+	// ------------------------------------------------------------------
+	WavefrontLaunchParams probeLp = lp;
+	probeLp.probeCacheRayQueue.items    = reinterpret_cast<ProbeCacheRayWorkItem*>(d_probeCacheRayItems_);
+	probeLp.probeCacheRayQueue.counter  = reinterpret_cast<int*>(d_probeCacheRayCounter_);
+	probeLp.probeCacheRayQueue.capacity = kProbesPerFrame_;
+	probeLp.probeCacheHitQueue.items    = reinterpret_cast<ProbeCacheHitWorkItem*>(d_probeCacheHitItems_);
+	probeLp.probeCacheHitQueue.counter  = reinterpret_cast<int*>(d_probeCacheHitCounter_);
+	probeLp.probeCacheHitQueue.capacity = kProbesPerFrame_;
+
+	CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_wfLaunchParams_), &probeLp,
+							   sizeof(WavefrontLaunchParams), cudaMemcpyHostToDevice, stream_));
+	OPTIX_CHECK(optixLaunch(
+		intersectPipeline_, stream_,
+		d_wfLaunchParams_, sizeof(WavefrontLaunchParams),
+		&probeCacheSBT_,
+		static_cast<unsigned int>(batchSize), 1, 1));
+	CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+	const int numHits = readQueueSize(reinterpret_cast<int*>(d_probeCacheHitCounter_));
+	if (numHits <= 0) {
+		probeUpdateCursor_ = (probeUpdateCursor_ + batchSize) % probeGridMeta_.totalProbes;
+		return;
+	}
+
+	// ------------------------------------------------------------------
+	// Stage 2: probe_cache_shade - one-light NEE draw, pushes any resulting
+	// shadow ray into the ORDINARY shadow queue/pipeline/SBT. Safe to reuse
+	// here (not a fresh dedicated pipeline) because this whole method runs
+	// strictly after render()'s own per-bounce loop has fully drained those
+	// buffers for this render() call - see this method's own declaration
+	// comment (wavefront_path_tracer.h).
+	// ------------------------------------------------------------------
+	WorkQueue<ProbeCacheHitWorkItem> hq;
+	hq.items    = reinterpret_cast<ProbeCacheHitWorkItem*>(d_probeCacheHitItems_);
+	hq.counter  = reinterpret_cast<int*>(d_probeCacheHitCounter_);
+	hq.capacity = kProbesPerFrame_;
+
+	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_shadowCounter_), 0, sizeof(int), stream_));
+
+	WorkQueue<ShadowRayWorkItem> sq;
+	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
+	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
+	sq.capacity = queueCapacity_;
+
+	wf_launch_probe_cache_shade(
+		hq, numHits,
+		lp.materials, lp.spheres, lp.quads, lp.triangles, lp.bilinearPatches, lp.disks, lp.cylinders,
+		lp.textures, lp.texturePixels,
+		lp.lightIndices, lp.lightKinds, lp.aliasTable, lp.numLights,
+		buildLightBvhContext(),
+		backgroundColor, shadowRayEpsilon,
+		reinterpret_cast<float3*>(d_probeCacheRadianceOut_),
+		reinterpret_cast<float*>(d_probeCacheHitDistOut_),
+		sq, stream_);
+	CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+	const int numShadow = readQueueSize(reinterpret_cast<int*>(d_shadowCounter_));
+	if (numShadow > 0) {
+		// --------------------------------------------------------------
+		// Stage 3: OptiX shadow launch - real occlusion test, exactly the
+		// same shadowPipeline_/shadowSBT_ every other NEE draw uses.
+		// --------------------------------------------------------------
+		WavefrontLaunchParams shadowLp = lp;
+		shadowLp.shadowQueue = sq;
+		// Temporarily point framebuffer to the transmittance float array -
+		// same convention render()'s own per-bounce shadow launch uses (see
+		// that call site's own comment).
+		shadowLp.framebuffer = reinterpret_cast<float3*>(d_transmittance_);
+
+		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_wfLaunchParams_), &shadowLp,
+								   sizeof(WavefrontLaunchParams), cudaMemcpyHostToDevice, stream_));
+		OPTIX_CHECK(optixLaunch(
+			shadowPipeline_, stream_,
+			d_wfLaunchParams_, sizeof(WavefrontLaunchParams),
+			&shadowSBT_,
+			static_cast<unsigned int>(numShadow), 1, 1));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+		// Stage 4: redirect resolved Ld into d_probeCacheRadianceOut_ (every
+		// item here has isProbeCacheRay=true - see probe_cache_shade's own
+		// comment - so d_framebuffer/maxComponentValue are never touched).
+		wf_launch_accumulate_shadow(sq, numShadow,
+									 reinterpret_cast<const float*>(d_transmittance_),
+									 /*d_framebuffer=*/nullptr, /*maxComponentValue=*/0.0f, stream_,
+									 /*d_giCandidateOut=*/nullptr,
+									 reinterpret_cast<float3*>(d_probeCacheRadianceOut_));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+	}
+
+	// ------------------------------------------------------------------
+	// EMA-blend this frame's resolved samples into the persistent GpuProbe
+	// array (probe_cache_accumulate, wavefront_kernels_restir.cu).
+	// ------------------------------------------------------------------
+	wf_launch_probe_cache_accumulate(
+		reinterpret_cast<const float3*>(d_probeCacheRadianceOut_),
+		reinterpret_cast<const float*>(d_probeCacheHitDistOut_),
+		reinterpret_cast<const float3*>(d_probeCacheDirections_),
+		batchSize, probeUpdateCursor_, probeGridMeta_,
+		reinterpret_cast<GpuProbe*>(d_probeGrid_),
+		stream_);
+	CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+	probeUpdateCursor_ = (probeUpdateCursor_ + batchSize) % probeGridMeta_.totalProbes;
 }
 
 void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin, const float* d_weightBuffer) {
@@ -2389,6 +2630,14 @@ bool WavefrontPathTracer::render(
 		restirGiHistoryValid_ = true;
 	}
 
+	// World-space irradiance probe cache update (Live Preview only) - see
+	// launchProbeCacheUpdate()'s own header comment. `lp` is still exactly
+	// as built above (never mutated in place anywhere in this function - the
+	// per-bounce shadow/probe-walk launches above all worked on their own
+	// local copies), so it already carries this call's own
+	// traversable/geometry/materials/lights/textures pointers unchanged.
+	launchProbeCacheUpdate(lp, camera.backgroundColor, camera.shadowRayEpsilon);
+
 	// -------------------------------------------------------------------------
 	// Copy to host
 	// -------------------------------------------------------------------------
@@ -2453,6 +2702,7 @@ void WavefrontPathTracer::destroyProgramGroups() {
 	destroyPG(anyhitShadowSpherePG_); destroyPG(anyhitShadowQuadPG_); destroyPG(anyhitShadowBilinearPatchPG_); destroyPG(anyhitShadowTrianglePG_);
 	destroyPG(raygenProbePG_);       destroyPG(missProbePG_);
 	destroyPG(hitProbeSpherePG_);    destroyPG(hitProbeQuadPG_);   destroyPG(hitProbeBilinearPatchPG_); destroyPG(hitProbeTrianglePG_);
+	destroyPG(raygenProbeCachePG_);
 	destroyPG(exceptionPG_);
 }
 
@@ -2463,10 +2713,12 @@ void WavefrontPathTracer::destroySBT() {
 	freeDev(d_intersectRaygenRecord_); freeDev(d_intersectMissRecord_); freeDev(d_intersectHitRecords_);
 	freeDev(d_shadowRaygenRecord_);    freeDev(d_shadowMissRecord_);    freeDev(d_shadowHitRecords_);
 	freeDev(d_probeRaygenRecord_);     freeDev(d_probeMissRecord_);     freeDev(d_probeHitRecords_);
+	freeDev(d_probeCacheRaygenRecord_);  // probeCacheSBT_'s own miss/hit/exception records ARE probeSBT_'s, freed just above
 	freeDev(d_intersectExceptionRecord_); freeDev(d_shadowExceptionRecord_); freeDev(d_probeExceptionRecord_);
 	intersectSBT_ = {};
 	shadowSBT_    = {};
 	probeSBT_     = {};
+	probeCacheSBT_ = {};
 }
 
 bool WavefrontPathTracer::readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const {
@@ -2501,6 +2753,20 @@ void WavefrontPathTracer::cleanup() {
 
 	if (d_reservoirs_) { cudaFree(reinterpret_cast<void*>(d_reservoirs_)); d_reservoirs_ = 0; }
 	reservoirsCapacity_ = 0;
+
+	// World-space irradiance probe cache (Live Preview only) - d_probeGrid_
+	// itself is OptiXRenderer-owned (never freed here, see setProbeGrid()'s
+	// own comment); everything below is this class's own, lazily allocated
+	// on first use by launchProbeCacheUpdate().
+	{
+		auto freeDev = [](CUdeviceptr& p) {
+			if (p) { cudaFree(reinterpret_cast<void*>(p)); p = 0; }
+		};
+		freeDev(d_probeCacheRayItems_);    freeDev(d_probeCacheRayCounter_);
+		freeDev(d_probeCacheHitItems_);    freeDev(d_probeCacheHitCounter_);
+		freeDev(d_probeCacheRadianceOut_); freeDev(d_probeCacheHitDistOut_);
+		freeDev(d_probeCacheDirections_);
+	}
 
 	if (intersectPipeline_) { optixPipelineDestroy(intersectPipeline_); intersectPipeline_ = nullptr; }
 	if (shadowPipeline_)    { optixPipelineDestroy(shadowPipeline_);    shadowPipeline_    = nullptr; }

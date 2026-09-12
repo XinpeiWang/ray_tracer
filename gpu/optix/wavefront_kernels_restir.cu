@@ -37,6 +37,7 @@
 #include "wavefront_device_helpers.h"
 #include "wavefront_restir_gi_math.h"
 #include "wavefront_svgf_math.h"  // wf_checkerboard_pixel_active
+#include "probe_grid_types.h"     // GpuProbe/GpuProbeGridMeta - probe_cache_accumulate below
 
 // Uniform sample within a disk of radius kRestirSpatialRadiusPixels around
 // pixel (px, py) (SampleUniformDiskConcentric would be the textbook choice,
@@ -487,4 +488,176 @@ extern "C" __global__ void restir_gi_spatial_reuse(
 
 	restir_finalize(result);
 	outputReservoirs[idx] = result;
+}
+
+// ============================================================================
+// probe_cache_shade -- world-space irradiance probe cache (Live Preview
+// only), shading half of the update ray. Consumes ProbeCacheHitWorkItems
+// produced by __raygen__wf_probe_cache (wavefront_probe_cache.h, a SEPARATE
+// OptiX-module translation unit that can only trace intersections, not call
+// wf_generate_restir_candidate() - see that raygen's own header comment for
+// the full cross-translation-unit rationale). This kernel lives in THIS file
+// (not wavefront_kernels_materials.cu) because it, like restir_spatial_reuse
+// above, is launched once per render() call rather than once per bounce.
+//
+// Deliberately simplified relative to wf_finish_material_scatter's own
+// classic/ReSTIR NEE block: Lambertian-albedo-only BSDF (this project's own
+// plan, ADR-equivalent to ReSTIR GI's own Lambertian-x0 MVP restriction) - a
+// probe's SH-L1 storage is already a coarse, blurry approximation, so a
+// glossy hit's own specular lobe would be lost in that blur anyway. Writes
+// the hit surface's own emission directly into probeCacheRadianceOut (no
+// occlusion to test for a surface lighting itself) and, for a valid one-
+// light NEE draw, pushes a real spectral ShadowRayWorkItem into the ordinary
+// shadow queue/pipeline for a fully correct occlusion test - no approximate
+// second trace, no hand-rolled per-light-kind sampling: this reuses the
+// exact same wf_generate_restir_candidate()/shadow-pipeline machinery every
+// other NEE draw in this codebase already goes through.
+// ============================================================================
+extern "C" __global__ void probe_cache_shade(
+	WorkQueue<ProbeCacheHitWorkItem> probeCacheHitQueue,
+	int                          numProbeCacheHits,
+	const MaterialData*          materials,
+	const SphereData*            spheres,
+	const QuadData*              quads,
+	const TriangleData*          triangles,
+	const BilinearPatchData*     bilinearPatches,
+	const DiskData*              disks,
+	const CylinderData*          cylinders,
+	const TextureData*           textures,
+	const unsigned char*         texturePixels,
+	const int*                   lightIndices,
+	const GpuLightKind*          lightKinds,
+	const GpuAliasEntry*         aliasTable,
+	unsigned int                 numLights,
+	WfLightBvhContext            lightBvh,
+	float3                       backgroundColor,
+	float                        shadowEps,
+	float3*                      probeCacheRadianceOut,  // [kProbesPerFrame], indexed by batchSlot
+	float*                       probeCacheHitDistOut,   // [kProbesPerFrame], indexed by batchSlot
+	WorkQueue<ShadowRayWorkItem> shadowQueue
+) {
+	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx >= numProbeCacheHits || idx >= probeCacheHitQueue.capacity) return;
+
+	const ProbeCacheHitWorkItem& item = probeCacheHitQueue.items[idx];
+	probeCacheHitDistOut[item.batchSlot] = item.hitDist;
+
+	if (!item.hit) {
+		// Miss: treat as a flat-background contribution (same backgroundColor
+		// every other escaped ray in this codebase adds - see accumulate_
+		// miss's own comment for why a flat color, not a real importance-
+		// sampled sky, matches what the CPU renderer does). No occlusion test
+		// needed for a ray that hit nothing.
+		atomicAdd(&probeCacheRadianceOut[item.batchSlot].x, backgroundColor.x);
+		atomicAdd(&probeCacheRadianceOut[item.batchSlot].y, backgroundColor.y);
+		atomicAdd(&probeCacheRadianceOut[item.batchSlot].z, backgroundColor.z);
+		return;
+	}
+
+	const MaterialData& mat = materials[item.materialIdx];
+	// A hit surface's own emission (DiffuseLight) - no occlusion to test,
+	// this ray already IS at the emitting surface.
+	atomicAdd(&probeCacheRadianceOut[item.batchSlot].x, mat.emission.x);
+	atomicAdd(&probeCacheRadianceOut[item.batchSlot].y, mat.emission.y);
+	atomicAdd(&probeCacheRadianceOut[item.batchSlot].z, mat.emission.z);
+
+	unsigned int seed = item.seed;
+	GpuLightSample cand;
+	float3 toLight = make_float3(0.0f, 0.0f, 0.0f);
+	float  maxDist = 0.0f, lightPdf = 0.0f;
+	float3 rawEmission = make_float3(0.0f, 0.0f, 0.0f);
+	if (!wf_generate_restir_candidate(item.hitPoint, seed, /*time=*/0.0f,
+			spheres, quads, triangles, bilinearPatches, disks, cylinders,
+			materials, lightIndices, lightKinds, aliasTable, numLights,
+			textures, texturePixels, cand, toLight, maxDist, lightPdf, rawEmission,
+			lightBvh)) {
+		return;
+	}
+	const float cosTheta = dot(item.hitNormal, toLight);
+	if (!(cosTheta > 0.0f) || !(lightPdf > 1e-6f)) return;
+
+	using SS  = SampledSpectrum<kWFNWavelengths>;
+	using SWL = SampledWavelengths<kWFNWavelengths>;
+	const SWL swl = SWL::SampleVisible(wf_rand(seed));
+
+	const SS lightSpec  = wf_lift_rgb_to_spectrum(rawEmission, swl, /*isIlluminant=*/true);
+	const SS albedoSpec = wf_lift_rgb_to_spectrum(mat.albedo, swl, /*isIlluminant=*/false);
+	const float invPi = 1.0f / 3.14159265f;
+	const SS Ld = (cosTheta * invPi / lightPdf) * albedoSpec * lightSpec;
+	if (!(bool)Ld) return;
+
+	// Same combined normal+direction shadow-ray-origin offset as wf_finish_
+	// material_scatter's own classic NEE block - see that block's own long
+	// comment (wavefront_device_helpers.h) for why both components matter.
+	ShadowRayWorkItem sr;
+	sr.origin    = item.hitPoint + shadowEps * item.hitNormal + shadowEps * normalize(toLight);
+	sr.direction = toLight;
+	sr.tMax      = maxDist - 0.002f;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		sr.Ld[i] = Ld[i];
+		sr.wavelengths[i] = swl.lambda[i];
+		sr.wavelength_pdfs[i] = swl.pdf[i];
+	}
+	sr.pixelIndex     = item.batchSlot;
+	sr.time           = 0.0f;
+	sr.isGiCandidate  = false;
+	sr.seed           = seed;
+	sr.isProbeCacheRay = true;
+	shadowQueue.push(sr);
+}
+
+// ============================================================================
+// probe_cache_accumulate -- EMA-blends this frame's resolved probe-update
+// samples into the persistent GpuProbe array. Runs after accumulate_shadow
+// has redirected each probe-update shadow ray's resolved Ld into
+// probeCacheRadianceOut (ShadowRayWorkItem::isProbeCacheRay's own comment) -
+// so by the time this launches, probeCacheRadianceOut[batchSlot] already
+// holds the FULL resolved radiance (emission + occluded-tested NEE) for that
+// batch slot's probe-update ray.
+//
+// One thread per this frame's batch slot (kProbesPerFrame threads, NOT one
+// per probe in the grid) - see ProbeCacheRayWorkItem::batchSlot's own
+// comment for the round-robin arithmetic recovering the real probe index.
+// ============================================================================
+extern "C" __global__ void probe_cache_accumulate(
+	const float3*    probeCacheRadianceOut,  // [numBatchSlots]
+	const float*     probeCacheHitDistOut,   // [numBatchSlots]
+	const float3*    probeCacheDirections,   // [numBatchSlots] - this batch slot's own traced ray direction
+	int              numBatchSlots,
+	int              probeUpdateCursor,
+	GpuProbeGridMeta gridMeta,
+	GpuProbe*        probes
+) {
+	const int batchSlot = blockIdx.x * blockDim.x + threadIdx.x;
+	if (batchSlot >= numBatchSlots || gridMeta.totalProbes <= 0) return;
+
+	const int probeIdx = (probeUpdateCursor + batchSlot) % gridMeta.totalProbes;
+	GpuProbe& p = probes[probeIdx];
+
+	const int kProbeHistoryCap = 64;
+	const float alpha = 1.0f / (float)min(p.numRaysEverTraced + 1, kProbeHistoryCap);
+
+	const float3 radiance = probeCacheRadianceOut[batchSlot];
+	const float  hitDist  = probeCacheHitDistOut[batchSlot];
+	const float3 d        = probeCacheDirections[batchSlot];
+
+	float basis[4];
+	wf_probe_sh_basis(d, basis);
+	// wf_rand_unit()'s own distribution is uniform over the sphere, pdf =
+	// 1/(4*pi) - dividing the projected sample by that pdf (equivalently,
+	// multiplying by 4*pi) turns this single Monte-Carlo sample into an
+	// unbiased estimator of the SH projection integral, matching this
+	// project's own plan formula exactly.
+	const float kInv4PiPdf = 4.0f * 3.14159265f;
+	const float* radianceC[3] = {&radiance.x, &radiance.y, &radiance.z};
+	float* shC[3] = {p.shR, p.shG, p.shB};
+	for (int c = 0; c < 3; ++c) {
+		for (int k = 0; k < 4; ++k) {
+			const float sample = (*radianceC[c]) * basis[k] * kInv4PiPdf;
+			shC[c][k] = shC[c][k] + alpha * (sample - shC[c][k]);
+		}
+	}
+	p.meanDist   = p.meanDist   + alpha * (hitDist - p.meanDist);
+	p.meanDistSq = p.meanDistSq + alpha * (hitDist * hitDist - p.meanDistSq);
+	p.numRaysEverTraced += 1;
 }

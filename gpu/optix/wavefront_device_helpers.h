@@ -20,6 +20,7 @@
 
 #include "wavefront_types.h"
 #include "optix_types.h"
+#include "probe_grid_types.h"
 #include "spectral_device.h"
 #include "sampled_spectrum.h"
 #include "spectrum_types.h"
@@ -1492,6 +1493,18 @@ __device__ __forceinline__ void wf_generate_primary_ray(
 // function, exactly like everything else here already works.
 // ============================================================================
 
+// Forward declaration - real definition (and its own full doc comment) is
+// further down this same file. wf_finish_material_scatter's own probe-cache
+// lookup block needs to call this before that point, so it needs a
+// declaration in scope here; the definition below is unchanged either way.
+// SampledSpectrum<N>/SampledWavelengths<N> are already fully defined by this
+// point (sampled_spectrum.h, included at this file's own top) - only the
+// FUNCTION itself needs forward-declaring.
+// No default arg here (that stays on the real definition below) - a default
+// argument can only be specified once per scope in one translation unit.
+__device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spectrum(
+	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl, bool isIlluminant);
+
 __device__ __forceinline__ void wf_finish_material_scatter(
 	MaterialType matType, float nfEta, int matIdx,
 	// True once any PRIOR bounce along this path was non-specular (see
@@ -1680,7 +1693,17 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// "no light BVH built" - forwarded to wf_generate_restir_candidate()
 	// below unchanged, which itself falls straight through to the alias
 	// table for that case, so every existing call site needs no edit.
-	WfLightBvhContext lightBvh = {})
+	WfLightBvhContext lightBvh = {},
+	// World-space irradiance probe cache (Live Preview only, gpu/optix/
+	// probe_grid_types.h) - see this project's own plan. probeGrid==nullptr
+	// (the default, every non-Live-Preview call site) is a complete no-op,
+	// same "null pointer disables the whole feature" shape as
+	// restirReservoirs/giOriginContext above. When non-null, a depth>=
+	// kProbeCacheMinDepth Lambertian scatter queries the cache instead of
+	// tracing another bounce - see this function's own lookup block, right
+	// before the "Bounce: push next ray" section below.
+	const GpuProbeGridMeta& probeGridMeta = GpuProbeGridMeta{},
+	const GpuProbe* probeGrid = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -2548,6 +2571,42 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				return;
 			}
 			new_throughput = new_throughput / (1.0f - q);
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// World-space irradiance probe cache lookup (Live Preview only) - see
+	// this project's own plan. Fills exactly the gap ReSTIR GI's own
+	// Lambertian-x0, depth 0->1-only MVP leaves open: every bounce beyond
+	// depth 1 today traces on with classic NEE at full cost forever, with no
+	// caching at all. A cache HIT here terminates the path immediately
+	// instead of pushing another bounce - a MISS (the common case for an
+	// uninitialized or newly-scaled scene) falls through to the ordinary
+	// bounce below completely unaffected. Gated on Lambertian only, same
+	// "BSDF eval trapped in a capturing lambda, can't be re-evaluated outside
+	// this function's own call frame" reason ReSTIR GI's own x0 restriction
+	// has (wavefront_kernels_restir.cu's own "MVP scope" comment) - every
+	// other material type falls through unaffected, same as a cache miss.
+	// depth>=2 (kProbeCacheMinDepth): depth 0->1 is ReSTIR GI's own territory
+	// already; this cache only ever replaces bounces GI itself doesn't reach.
+	if (probeGrid != nullptr && !is_specular && depth >= /*kProbeCacheMinDepth*/ 2 &&
+		matType == MaterialType::Lambertian) {
+		const float3 cacheIrradiance = wf_query_probe_grid(probeGridMeta, probeGrid, hit_point, normal);
+		if (cacheIrradiance.x > 0.0f || cacheIrradiance.y > 0.0f || cacheIrradiance.z > 0.0f) {
+			// attenuation == albedoSpectrum(mat.albedo) for Lambertian (see
+			// this function's own area-light NEE block, `bsdf_color =
+			// attenuation;`) - reused directly here instead of re-deriving a
+			// raw RGB albedo, so the cache's own Lambertian BRDF divide-by-pi
+			// stays in spectral space throughout, like every other
+			// contribution this function computes. cacheIrradiance is
+			// treated as an illuminant (like mat.emission/background
+			// radiance elsewhere in this codebase) since it already IS a
+			// fully-resolved incoming-radiance estimate by the time it left
+			// the probe cache, not a reflectance being lit.
+			const SS cacheSpec = wf_lift_rgb_to_spectrum(cacheIrradiance, swl, /*isIlluminant=*/true);
+			const SS contribution = attenuation * cacheSpec * (1.0f / 3.14159265f);
+			addToFramebuffer(pixelIndex, throughput * contribution * filterWeight);
+			return;
 		}
 	}
 
