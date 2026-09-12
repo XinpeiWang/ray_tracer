@@ -283,17 +283,24 @@ __device__ __forceinline__ float3 wf_light_raw_emission(
 }
 
 // Bounding-cone light BVH (spatial+power selection) for wavefront's own
-// ReSTIR DI candidate generation / classic NEE - a hand-duplicated twin of
-// gpu_light_bvh_sample_index() (optix_device_helpers_lighting.h), reading
-// the tree via explicit parameters rather than a __constant__ params global.
-// evaluate_materials/evaluate_materials_simple (wavefront_kernels_materials*.
-// cu) are plain cudaLaunchKernel-style compute kernels with their own
-// explicit parameter lists, not OptiX raygen launches - they never read
-// wf_params (see either kernel's own "not go through the wf_params/lp
-// raygen-launch-params path" comment), so the tree has to arrive as a real
-// kernel parameter, threaded all the way from WavefrontPathTracer::
-// setLightBvh()/render() down through wf_finish_material_scatter() and
-// wf_generate_restir_candidate() below.
+// ReSTIR DI candidate generation / classic NEE. wf_light_bvh_sample_index()/
+// wf_light_bvh_pmf() below are thin wrappers around the shared, backend-
+// agnostic light_bvh_sample_index()/light_bvh_pmf() (light_bvh_traversal_
+// shared.h) - the same traversal GPU-recursive's own gpu_light_bvh_sample_
+// index()/gpu_light_bvh_pmf() (optix_device_helpers_lighting.h) call into,
+// just reading the tree via explicit parameters here instead of a
+// __constant__ params global. evaluate_materials/evaluate_materials_simple
+// (wavefront_kernels_materials*.cu) are plain cudaLaunchKernel-style compute
+// kernels with their own explicit parameter lists, not OptiX raygen
+// launches - they never read wf_params (see either kernel's own "not go
+// through the wf_params/lp raygen-launch-params path" comment), so the tree
+// has to arrive as a real kernel parameter, threaded all the way from
+// WavefrontPathTracer::setLightBvh()/render() down through wf_finish_
+// material_scatter() and wf_generate_restir_candidate() below. Always
+// passes 0,0,0 for the shared function's nx/ny/nz - wavefront's own
+// selection doesn't use the shading normal (a simplification relative to
+// GPU-recursive's real-normal call, unrelated to this dedup - preserved
+// as-is rather than changed here).
 //
 // This is GPU-recursive's own light BVH tree, reused as-is (OptiXRenderer::
 // buildScene() builds it once; WavefrontPathTracer::setLightBvh() just
@@ -311,85 +318,28 @@ __device__ __forceinline__ GpuLightBvhSample wf_light_bvh_sample_index(
 	float allBMinX, float allBMinY, float allBMinZ,
 	float allBMaxX, float allBMaxY, float allBMaxZ)
 {
-	if (lightBvhNodeCount <= 0) return GpuLightBvhSample{-1, 0.f};
-	int nodeIndex = 0;
-	float pmf = 1.f;
-	u = fminf(u, 1.f - 1e-7f);
-	while (true) {
-		if (nodeIndex < 0 || nodeIndex >= lightBvhNodeCount) {
-			return GpuLightBvhSample{-1, 0.f};
-		}
-		const LightBVHNode& node = lightBvhNodes[nodeIndex];
-		if (!node.isLeaf) {
-			const int c1Index = (int)node.childOrLightIndex;
-			if (c1Index <= nodeIndex + 1 || c1Index >= lightBvhNodeCount) {
-				return GpuLightBvhSample{-1, 0.f};
-			}
-			const LightBVHNode& c0 = lightBvhNodes[nodeIndex + 1];
-			const LightBVHNode& c1 = lightBvhNodes[node.childOrLightIndex];
-			float ci0 = c0.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
-				allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
-			float ci1 = c1.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
-				allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
-			if (ci0 == 0.f && ci1 == 0.f) return GpuLightBvhSample{-1, 0.f};
-			float sum = ci0 + ci1;
-			float nodePMF; int child;
-			if (u < ci0 / sum) { child = 0; nodePMF = ci0 / sum; u = u / nodePMF; }
-			else { child = 1; nodePMF = ci1 / sum; u = (u - ci0/sum) / nodePMF; }
-			u = fminf(u, 1.f - 1e-7f);
-			pmf *= nodePMF;
-			nodeIndex = (child == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
-		} else {
-			if (node.childOrLightIndex >= numLights) {
-				return GpuLightBvhSample{-1, 0.f};
-			}
-			return GpuLightBvhSample{(int)node.childOrLightIndex, pmf};
-		}
-	}
+	return light_bvh_sample_index(px, py, pz, 0.f, 0.f, 0.f, u,
+		lightBvhNodes, lightBvhNodeCount, numLights,
+		allBMinX, allBMinY, allBMinZ, allBMaxX, allBMaxY, allBMaxZ);
 }
 
-// wf_light_bvh_pmf: wavefront's twin of gpu_light_bvh_pmf() (optix_device_
-// helpers_lighting.h - see that function's own comment for the full
-// rationale). Replays the bit-trail for `lightIndex` to recompute its
+// wf_light_bvh_pmf: replays the bit-trail for `lightIndex` to recompute its
 // selection PMF at THIS shading point (position-dependent, unlike the alias
 // table's fixed pdf) - needed whenever a light-BVH-selected candidate's
 // winning sample is re-used from somewhere other than the draw that produced
 // it (ReSTIR temporal/spatial reuse, or a BSDF-sampled light hit's own MIS
 // weight), since the pmf that draw actually used isn't otherwise recoverable
-// without redoing the stochastic descent. Returns 0 if no light BVH was
-// built, or if every ancestor's combined importance was zero (can't happen
-// for a real bit-trail from a light actually in the tree, but matches
-// gpu_light_bvh_pmf()'s own defensive return).
+// without redoing the stochastic descent. See wf_light_bvh_sample_index()'s
+// own comment above for why nx/ny/nz are always 0,0,0 here.
 __device__ __forceinline__ float wf_light_bvh_pmf(
 	float px, float py, float pz, int lightIndex, unsigned int numLights,
 	const LightBVHNode* lightBvhNodes, const unsigned int* lightBvhBitTrail, int lightBvhNodeCount,
 	float allBMinX, float allBMinY, float allBMinZ,
 	float allBMaxX, float allBMaxY, float allBMaxZ)
 {
-	if (lightBvhNodeCount <= 0 || !lightBvhBitTrail) return 0.f;
-	if (lightIndex < 0 || (unsigned int)lightIndex >= numLights) return 0.f;
-	unsigned int bitTrail = lightBvhBitTrail[lightIndex];
-	float pmf = 1.f;
-	int nodeIndex = 0;
-	while (true) {
-		if (nodeIndex < 0 || nodeIndex >= lightBvhNodeCount) return 0.f;
-		const LightBVHNode& node = lightBvhNodes[nodeIndex];
-		if (node.isLeaf) return pmf;
-		const int c1Index = (int)node.childOrLightIndex;
-		if (c1Index <= nodeIndex + 1 || c1Index >= lightBvhNodeCount) return 0.f;
-		const LightBVHNode& c0 = lightBvhNodes[nodeIndex + 1];
-		const LightBVHNode& c1 = lightBvhNodes[node.childOrLightIndex];
-		float ci0 = c0.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
-			allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
-		float ci1 = c1.lightBounds.Importance(px,py,pz, 0.f,0.f,0.f,
-			allBMinX,allBMinY,allBMinZ, allBMaxX,allBMaxY,allBMaxZ);
-		float sum = ci0 + ci1;
-		if (sum == 0.f) return 0.f;
-		int branch = (int)(bitTrail & 1u);
-		pmf *= (branch == 0 ? ci0 : ci1) / sum;
-		nodeIndex = (branch == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
-		bitTrail >>= 1;
-	}
+	return light_bvh_pmf(px, py, pz, 0.f, 0.f, 0.f, lightIndex, numLights,
+		lightBvhNodes, lightBvhBitTrail, lightBvhNodeCount,
+		allBMinX, allBMinY, allBMinZ, allBMaxX, allBMaxY, allBMaxZ);
 }
 
 __device__ __forceinline__ bool wf_generate_restir_candidate(

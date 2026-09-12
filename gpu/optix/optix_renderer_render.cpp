@@ -276,22 +276,27 @@ bool OptiXRenderer::render(
 	// specifically (params.lightBvhNodeCount forced to 0, so every device NEE
 	// call site here falls back to the alias table below, unconditionally).
 	// Root-caused (see optix_device_helpers_lighting.h's own KNOWN
-	// UNRESOLVED BUG comment for the full investigation): a real, reproducible
-	// NVCC device-execution divergence specific to THIS backend's one-thread-
-	// per-pixel recursive megakernel - CompactLightBounds::Importance()
-	// returns 0 for both children at the tree root on effectively every call
-	// (verified via instrumented counters: 100% failure on a real 23-node/
-	// 12-light tree), yet the exact same byte-identical uploaded data,
-	// computed host-side, returns healthy nonzero importance every time. This
-	// is NOT a data/upload/logic bug - it's specific to how this megakernel
-	// compiles, same class of prior toolchain bug as gpu_cloud_density()'s
-	// own dnoise() history. Confirmed NOT present on the wavefront backend
+	// UNRESOLVED BUG comment for the full investigation, including a second,
+	// more recent negative result): a real, reproducible NVCC device-
+	// execution divergence specific to THIS backend's one-thread-per-pixel
+	// recursive megakernel - CompactLightBounds::Importance() returns 0 for
+	// both children at the tree root on effectively every call (re-confirmed
+	// via instrumented counters on a fresh 23-node/12-light tree: 2530301/
+	// 2530301 calls returned -1, i.e. 100% failure, even AFTER hand-
+	// flattening Importance() into one self-contained function with no
+	// lambdas/nested calls - see that function's own comment,
+	// compact_light_bounds.h), yet the exact same byte-identical uploaded
+	// data, computed host-side, returns healthy nonzero importance every
+	// time. This is NOT a data/upload/logic bug - it's specific to how this
+	// megakernel compiles. Confirmed NOT present on the wavefront backend
 	// (see WavefrontPathTracer::setLightBvh()'s own comment) - wavefront's
 	// ReSTIR DI/classic NEE now uses this same tree in production. Leave
-	// GPU-recursive disabled until someone hand-flattens Importance()'s call
-	// chain into one self-contained function for the __CUDACC__ path (no
-	// lambdas/nested free-function calls), matching gpu_cloud_density()'s own
-	// proven fix pattern for this class of bug - not yet attempted.
+	// GPU-recursive disabled - the hand-flatten fix that resolved this same
+	// bug class for gpu_cloud_density()'s own dnoise() history did NOT
+	// resolve this one; the next concrete step is unknown (compute-sanitizer/
+	// Nsight Compute against the flattened Importance(), or a from-scratch
+	// re-port of the cone-angle math avoiding OctahedralVector's decode
+	// step, are the least-tried remaining angles).
 	params.lightBvhNodes = reinterpret_cast<LightBVHNode*>(d_lightBvhNodes_);
 	params.lightBvhBitTrail = reinterpret_cast<unsigned int*>(d_lightBvhBitTrail_);
 	params.lightBvhNodeCount = 0;

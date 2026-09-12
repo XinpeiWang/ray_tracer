@@ -129,19 +129,20 @@ TEST(LivePreviewSvgfTest, CornellBoxImageMeanStaysBoundedWithSvgfEnabled) {
 
 TEST(LivePreviewSvgfTest, SubstantiallyReducesTemporalVarianceOnAFixedCamera) {
 	const int width = 64, height = 64;
-	// Both bumped from an earlier version of this test (60/10): the measured
-	// reduction ratio turned out noticeably noisier run-to-run (and worse
-	// under the full suite - g_renderer is a process-lifetime singleton, so
-	// whatever GPU/history state hundreds of earlier tests left behind
-	// measurably affects how quickly THIS test's own temporal integration
-	// converges within its first, unmeasured frames) than expected from a
-	// deterministic fixed-camera render, most likely because a short
-	// (10-frame) measurement window is itself a small, noisy sample of the
-	// residual per-pixel variance. More frames to build up history before
-	// measuring, and a wider window to average the measurement over, both
-	// reduce that estimator noise without needing to touch SVGF itself.
-	constexpr int kNumFrames = 120;
-	constexpr int kVarianceWindow = 30;
+	// Bumped again from 120/30 (which itself replaced an earlier 60/10 - see
+	// git history for that first bump's own reasoning, still accurate): even
+	// at 120/30 this test was observed to fail intermittently in a full-suite
+	// run (measured ratio landing just under the 1.3x threshold on one run
+	// out of several identical repeats) - the same "short measurement window
+	// is a small, noisy sample of the residual per-pixel variance" mechanism
+	// the first bump's own comment already diagnosed, just not yet reduced
+	// enough. Doubling both again (240/60, same 0.25 window-to-total ratio)
+	// halves the measurement window's own sampling error by roughly sqrt(2)
+	// - if this still flakes, keep following this same remedy (more frames/
+	// a wider window), not a lower 1.3x threshold - see that constant's own
+	// comment for why loosening it defeats the point of this test.
+	constexpr int kNumFrames = 240;
+	constexpr int kVarianceWindow = 60;
 
 	const double baselineVariance = RenderAndMeasureTemporalVariance(
 		width, height, /*enableSvgf=*/false, kNumFrames, kVarianceWindow);

@@ -303,6 +303,13 @@ __device__ __forceinline__ bool sample_principled_material(
 // "before optix_sky_light.h, which calls into it" not a hard requirement.
 #include "gpu_sky_light_shared.h"
 #include "gpu_portal_light_shared.h"
+// Bounding-cone light BVH traversal (stochastic descent + bit-trail PMF
+// replay) - same shared-explicit-parameter split as the two lines above.
+// Needs nothing but LightBVHNode/GpuLightBvhSample (already visible via
+// optix_types.h's own light_bvh_node.h include above), so it could sit
+// anywhere before optix_device_helpers_lighting.h; grouped here with its
+// two siblings instead.
+#include "light_bvh_traversal_shared.h"
 #include "optix_sky_light.h"
 
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {

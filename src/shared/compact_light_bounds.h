@@ -105,6 +105,32 @@ struct CompactLightBounds {
 	// Mirrors pbrt-v4 CompactLightBounds::Importance(Point3f, Normal3f, Bounds3f).
 	// Dequantises on the fly then runs the same cone-angle arithmetic as
 	// LightBounds::Importance.
+	//
+	// Hand-flattened into one self-contained function (no BoundSubtendedDirections()
+	// call, no cosSubClamped/sinSubClamped lambdas) - this was an ATTEMPTED fix
+	// for GPU-recursive's own KNOWN UNRESOLVED BUG (see gpu_light_bvh_sample_
+	// index()'s own comment, optix_device_helpers_lighting.h, for the full
+	// diagnosis and this attempt's own negative result): this exact function
+	// returns 0.0 for both children at the light BVH's root on effectively
+	// 100% of calls inside that backend's one-thread-per-pixel recursive
+	// megakernel, while the byte-identical uploaded data computes healthy
+	// nonzero results on the host AND on wavefront's separately-compiled,
+	// shallower kernels - a genuine NVCC floating-point divergence specific
+	// to this megakernel, not a data/logic bug. This flatten matches the fix
+	// that resolved the ONE other confirmed instance of this exact bug class
+	// in this codebase (gpu_cloud_density()'s own dnoise() history,
+	// optix_intersection_sphere.h) - but re-instrumented testing against a
+	// fresh 23-node/12-light tree AFTER this flatten still showed 100%
+	// failure (2530301/2530301 calls), unchanged from before it. Kept anyway
+	// as a real, if smaller, improvement independent of that bug: no lambda,
+	// and reuses the diagonal-length/distance-squared values Importance()
+	// already computed instead of recomputing them under BoundSubtendedDirections()'s
+	// own local names (that function is otherwise unaffected - still used
+	// by LightBounds::Importance() in light_bounds.h, the CPU-only sibling
+	// this struct's own Importance() doesn't call). Functionally identical
+	// to the previous BoundSubtendedDirections()-calling version - see git
+	// history for that version if this ever needs to be cross-checked
+	// line-by-line again.
 	// -----------------------------------------------------------------------
 	CPU_GPU float Importance(float px, float py, float pz,
 							  float nx, float ny, float nz,
@@ -122,16 +148,6 @@ struct CompactLightBounds {
 		// Decode emission axis
 		float wox, woy, woz;
 		w.ToVec3(wox, woy, woz);
-
-		// Helpers identical to pbrt-v4
-		auto cosSubClamped = [](float sinA, float cosA, float sinB, float cosB) -> float {
-			if (cosA > cosB) return 1.f;
-			return cosA * cosB + sinA * sinB;
-		};
-		auto sinSubClamped = [](float sinA, float cosA, float sinB, float cosB) -> float {
-			if (cosA > cosB) return 0.f;
-			return sinA * cosB - cosA * sinB;
-		};
 
 		// Centroid and clamped d2
 		float cx = (bMin[0] + bMax[0]) * 0.5f;
@@ -157,16 +173,33 @@ struct CompactLightBounds {
 		if (TwoSided()) cosTheta_w = std::abs(cosTheta_w);
 		float sinTheta_w = SafeSqrt(1.f - Sqr(cosTheta_w));
 
-		// cos(theta_b)
-		float cosTheta_b = BoundSubtendedDirections(
-			bMin[0], bMin[1], bMin[2], bMax[0], bMax[1], bMax[2], px, py, pz).cosTheta;
+		// cos(theta_b) - BoundSubtendedDirections(bMin,bMax,p).cosTheta,
+		// inlined directly (same centroid/diagonal already computed above as
+		// cx/cy/cz/dx/dy/dz - the box is the SAME box, so this reuses them
+		// rather than recomputing under different names the way the separate-
+		// function version's own local cx/cy/cz shadowed these). p inside the
+		// box's bounding sphere (bd2 < radius^2) is DirectionCone::
+		// EntireSphere()'s own cosTheta = -1, matching that factory exactly;
+		// otherwise SafeSqrt(1 - sin^2ThetaMax) matches DirectionCone's
+		// constructor storing cosThetaMax verbatim (this function only ever
+		// reads .cosTheta from the result, never the cone's axis, so the
+		// axis itself - cx-px,cy-py,cz-pz - was never needed here).
+		float radius = 0.5f * diagLen;
+		float cosTheta_b;
+		if (d2raw < radius * radius) {
+			cosTheta_b = -1.f;
+		} else {
+			float sin2ThetaMax = (radius * radius) / d2raw;
+			cosTheta_b = SafeSqrt(1.f - sin2ThetaMax);
+		}
 		float sinTheta_b = SafeSqrt(1.f - Sqr(cosTheta_b));
 
-		// cos(theta')
+		// cos(theta') - cosSubClamped/sinSubClamped inlined directly at each
+		// use site (no lambda - see this function's own header comment).
 		float sinTheta_o = SafeSqrt(1.f - Sqr(cosTheta_o));
-		float cosTheta_x = cosSubClamped(sinTheta_w, cosTheta_w, sinTheta_o, cosTheta_o);
-		float sinTheta_x = sinSubClamped(sinTheta_w, cosTheta_w, sinTheta_o, cosTheta_o);
-		float cosThetap  = cosSubClamped(sinTheta_x, cosTheta_x, sinTheta_b, cosTheta_b);
+		float cosTheta_x = (cosTheta_w > cosTheta_o) ? 1.f : (cosTheta_w * cosTheta_o + sinTheta_w * sinTheta_o);
+		float sinTheta_x = (cosTheta_w > cosTheta_o) ? 0.f : (sinTheta_w * cosTheta_o - cosTheta_w * sinTheta_o);
+		float cosThetap  = (cosTheta_x > cosTheta_b) ? 1.f : (cosTheta_x * cosTheta_b + sinTheta_x * sinTheta_b);
 		if (cosThetap <= cosTheta_e) return 0.f;
 
 		float importance = phi * cosThetap / d2;
@@ -176,7 +209,7 @@ struct CompactLightBounds {
 		if (nLen2 > 0.f) {
 			float cosTheta_i = std::abs(nx*wix + ny*wiy + nz*wiz);
 			float sinTheta_i = SafeSqrt(1.f - Sqr(cosTheta_i));
-			float cosThetap_i = cosSubClamped(sinTheta_i, cosTheta_i, sinTheta_b, cosTheta_b);
+			float cosThetap_i = (cosTheta_i > cosTheta_b) ? 1.f : (cosTheta_i * cosTheta_b + sinTheta_i * sinTheta_b);
 			importance *= cosThetap_i;
 		}
 

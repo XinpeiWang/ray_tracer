@@ -629,40 +629,31 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 // the same frame still lights the scene) rather than crashing the render.
 //
 // Bounds+monotonicity guards - both gpu_light_bvh_sample_index() and
-// gpu_light_bvh_pmf() below hand-duplicate the same two checks at their own
-// 2 call sites each (4 total), rather than sharing them via a helper
-// function - matching this file's own established "hand-duplicate at the
-// call site" convention for this exact recursive mega-kernel (see the
-// "shared-function-call codegen/inlining issue" ruled-out theory above,
-// and GpuLightBvhSample's own by-value-return precedent below, both from
-// the ORIGINAL crash diagnosis). NOTE: while fixing this, `optixModuleCreate`
-// was observed taking ~2 minutes regardless of whether these checks were
-// shared or duplicated, or even present at all - traced to something
-// unrelated to this specific change (the byte-identical, already-shipped
-// baseline showed the same delay) rather than caused by this fix; kept the
-// duplicated form anyway since it costs nothing extra and matches this
-// file's own established convention. See this file's own header comment
-// above for the crash-diagnosis history these checks exist to guard
-// against. A code-review pass on the first version
-// of this fix found it caught out-of-range indices but not two other real
-// gaps, both fixed at each of the 4 sites below: (1) the interior-node
-// child check now rejects not just an out-of-range c1Index but also one
-// that doesn't strictly follow the current node - the forward-progress
-// invariant a well-formed flattened BVH always guarantees (see
-// BVHLightSampler2::buildBVH()'s own `nodeIndex + 1 == i0` assertion,
-// src/shared/bvh_light_sampler2.h: the right child always comes strictly
-// after the ENTIRE left subtree, which itself occupies at least node
-// nodeIndex+1, so a genuine right-child index can never be <= nodeIndex+1).
-// Catching this - not just range - is what prevents a corrupted-but-in-
-// range index (this file's own comment above notes the observed
-// corruption "was itself sometimes NOT out of range by the numbers alone")
-// from turning either traversal's `while(true)` loop into an infinite loop
-// (a GPU hang / driver TDR) instead of the safe fallback a pure range
-// check alone does not guarantee. (2) gpu_light_bvh_sample_index()'s own
-// leaf branch now bounds-checks `childOrLightIndex` before returning it -
-// a LIGHT index (into `params.lightIndices`/`lightKinds`), a completely
-// different range than node indices, that a caller dereferences those
-// arrays with unchecked otherwise.
+// gpu_light_bvh_pmf() below used to hand-duplicate the same two checks at
+// their own 2 call sites each (4 total); they now share ONE copy of the
+// traversal (light_bvh_sample_index()/light_bvh_pmf(), light_bvh_traversal_
+// shared.h - same shared-explicit-parameter split as gpu_portal_light_
+// shared.h/gpu_sky_light_shared.h, see either file's own header comment),
+// with wavefront's own wf_light_bvh_sample_index()/wf_light_bvh_pmf()
+// (wavefront_restir_helpers.h) calling the identical shared implementation
+// instead of a hand-kept-in-sync twin. Moving the guards there doesn't
+// change what they check: (1) the interior-node child check rejects not
+// just an out-of-range c1Index but also one that doesn't strictly follow
+// the current node - the forward-progress invariant a well-formed flattened
+// BVH always guarantees (see BVHLightSampler2::buildBVH()'s own `nodeIndex
+// + 1 == i0` assertion, src/shared/bvh_light_sampler2.h: the right child
+// always comes strictly after the ENTIRE left subtree, which itself
+// occupies at least node nodeIndex+1, so a genuine right-child index can
+// never be <= nodeIndex+1). Catching this - not just range - is what
+// prevents a corrupted-but-in-range index (this file's own comment above
+// notes the observed corruption "was itself sometimes NOT out of range by
+// the numbers alone") from turning either traversal's `while(true)` loop
+// into an infinite loop (a GPU hang / driver TDR) instead of the safe
+// fallback a pure range check alone does not guarantee. (2) light_bvh_
+// sample_index()'s own leaf branch bounds-checks `childOrLightIndex` before
+// returning it - a LIGHT index (into `params.lightIndices`/`lightKinds`), a
+// completely different range than node indices, that a caller would
+// otherwise dereference those arrays with unchecked.
 //
 // KNOWN UNRESOLVED BUG, GPU-recursive only, root-caused (updated from an
 // earlier, less precise "genuine NVCC/OptiX codegen bug, exact mechanism
@@ -680,31 +671,44 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 // the host-built tree exactly, computes healthy nonzero Importance() when
 // the SAME formula runs on the HOST - the divergence is specifically in
 // this one function's floating-point execution under NVCC, inside this
-// backend's one-thread-per-pixel recursive megakernel. Likely culprit
-// (not yet isolated further): the BoundSubtendedDirections()/SafeACos()/
-// SafeSqrt()/cosSubClamped() chain Importance() calls through - the same
-// toolchain-fragility family as gpu_cloud_density()'s own dnoise() history
-// (this file's earlier crash-diagnosis section above), where a deep,
-// lambda/nested-free-function call chain miscompiled specifically inside
-// this megakernel and was only fixed by hand-flattening it into one
-// self-contained function - NOT yet attempted here.
+// backend's one-thread-per-pixel recursive megakernel.
+//
+// ATTEMPTED AND RULED OUT: hand-flattening CompactLightBounds::Importance()
+// (compact_light_bounds.h) into one self-contained function - no
+// BoundSubtendedDirections() call, no cosSubClamped/sinSubClamped lambdas,
+// every value computed inline - matching gpu_cloud_density()'s own dnoise()
+// fix pattern exactly (this file's earlier crash-diagnosis section above).
+// Re-instrumented and re-tested against a fresh 23-node/12-light tree AFTER
+// the flatten: 2530301/2530301 gpu_light_bvh_sample_index() calls still
+// returned -1 - unchanged, 100% failure. The flatten is still worth keeping
+// (it's semantically identical, removes a lambda, and reuses a diagonal-
+// length/distance-squared computation Importance() already had rather than
+// recomputing it under BoundSubtendedDirections()'s own local names) but it
+// does NOT fix this bug - whatever NVCC does wrong here is not simply "a
+// deep call chain with lambdas", ruling out the most direct analogy to the
+// dnoise() precedent. Untried remaining angles: compute-sanitizer/Nsight
+// Compute against the now-flattened Importance() specifically (the original
+// investigation used hand-instrumented counters instead, never actually ran
+// either tool - see this file's own earlier crash-diagnosis section); a
+// from-scratch re-port of the cone-angle math that avoids OctahedralVector's
+// w.ToVec3() decode step (untested as a variable); or accepting this may be
+// a genuine, unfixable-from-here NVCC bug and reporting it upstream.
 //
 // CONFIRMED NOT PRESENT on the wavefront backend: wf_light_bvh_sample_index()
-// (wavefront_restir_helpers.h) runs the identical algorithm against the
-// identical tree and succeeds on ~99% of calls (instrumented: 604102/608252
-// on the same 23-node reproducer, the remainder being genuine zero-
-// importance rejects, not guard misfires) - wavefront's kernels are
+// (wavefront_restir_helpers.h) runs the identical algorithm (now the exact
+// same shared light_bvh_sample_index(), light_bvh_traversal_shared.h)
+// against the identical tree and succeeds on ~99% of calls (instrumented:
+// 604102/608252 on the same 23-node reproducer, the remainder being genuine
+// zero-importance rejects, not guard misfires) - wavefront's kernels are
 // separately-compiled, shallower, and never share this backend's megakernel
-// shape, exactly the isolation gpu_cloud_density()'s own hand-duplicated-
-// free-function fix relied on. wavefront's ReSTIR DI/classic NEE now uses
-// this light BVH in production (see WavefrontPathTracer::setLightBvh()'s
-// own comment) - only GPU-recursive stays on the alias table.
+// shape. wavefront's ReSTIR DI/classic NEE now uses this light BVH in
+// production (see WavefrontPathTracer::setLightBvh()'s own comment) - only
+// GPU-recursive stays on the alias table.
 //
 // Leave GPU-recursive disabled (optix_renderer_render.cpp forces
-// params.lightBvhNodeCount to 0) until someone hand-flattens Importance()'s
-// call chain into one self-contained, non-lambda function reachable from
-// this megakernel - the next concrete step, not "root-cause unknown, try
-// compute-sanitizer" as this comment previously said.
+// params.lightBvhNodeCount to 0) - the flatten fix that resolved this exact
+// bug class for gpu_cloud_density()'s own dnoise() history did not resolve
+// this one; see the "untried remaining angles" above for where to look next.
 
 // GpuLightBvhSample (the return type below) is defined in src/shared/
 // light_bvh_node.h, shared with wavefront's own wf_light_bvh_sample_index()
@@ -717,112 +721,28 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 // by-value struct returns sidestep that class of bug entirely, matching that
 // fix's own "called by value, no reference/pointer output params" guidance.
 
-// gpu_light_bvh_sample_index: returns the selected light's index (or -1 if
-// no light BVH was built for this scene, or every light's importance at
-// this point is zero) and its selection PMF - a drop-in replacement for the
-// alias table's `selection_pdf` at every call site below, since
-// `light_pdf = pmf * geom_pdf` is the same formula either way.
+// gpu_light_bvh_sample_index/gpu_light_bvh_pmf: thin `params`-reading
+// wrappers around the shared, backend-agnostic light_bvh_sample_index()/
+// light_bvh_pmf() (light_bvh_traversal_shared.h) - kept under their own
+// gpu_-prefixed names since every call site and comment throughout this
+// file (and optix_intersection_*.h's 6 closest-hit files) already refers to
+// them this way; only the traversal body itself moved, not its interface.
 __device__ __forceinline__ GpuLightBvhSample gpu_light_bvh_sample_index(
 	float px, float py, float pz, float nx, float ny, float nz, float u)
 {
-	if (params.lightBvhNodeCount <= 0) return GpuLightBvhSample{-1, 0.f};
-	int nodeIndex = 0;
-	float pmf = 1.f;
-	u = fminf(u, 1.f - 1e-7f);
-	while (true) {
-		// Bounds guard - see this file's own header comment above.
-		if (nodeIndex < 0 || nodeIndex >= params.lightBvhNodeCount) {
-			return GpuLightBvhSample{-1, 0.f};
-		}
-		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
-		if (!node.isLeaf) {
-			const int c1Index = (int)node.childOrLightIndex;
-			// Range AND forward-progress guard - see this file's own
-			// header comment above for why `c1Index <= nodeIndex + 1` is
-			// rejected too, not just an out-of-range one.
-			if (c1Index <= nodeIndex + 1 || c1Index >= params.lightBvhNodeCount) {
-				return GpuLightBvhSample{-1, 0.f};
-			}
-			const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];
-			const LightBVHNode& c1 = params.lightBvhNodes[node.childOrLightIndex];
-			float ci0 = c0.lightBounds.Importance(px,py,pz, nx,ny,nz,
-				params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
-				params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
-			float ci1 = c1.lightBounds.Importance(px,py,pz, nx,ny,nz,
-				params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
-				params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
-			if (ci0 == 0.f && ci1 == 0.f) return GpuLightBvhSample{-1, 0.f};
-			float sum = ci0 + ci1;
-			float nodePMF; int child;
-			if (u < ci0 / sum) { child = 0; nodePMF = ci0 / sum; u = u / nodePMF; }
-			else { child = 1; nodePMF = ci1 / sum; u = (u - ci0/sum) / nodePMF; }
-			u = fminf(u, 1.f - 1e-7f);
-			pmf *= nodePMF;
-			nodeIndex = (child == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
-		} else {
-			// Leaf's own bounds guard - childOrLightIndex here is a LIGHT
-			// index (into params.lightIndices/lightKinds), a completely
-			// different range than node indices - see this file's own
-			// header comment above.
-			if (node.childOrLightIndex >= (unsigned int)params.numLights) {
-				return GpuLightBvhSample{-1, 0.f};
-			}
-			return GpuLightBvhSample{(int)node.childOrLightIndex, pmf};
-		}
-	}
+	return light_bvh_sample_index(px, py, pz, nx, ny, nz, u,
+		params.lightBvhNodes, params.lightBvhNodeCount, params.numLights,
+		params.lightBvhAllBMinX, params.lightBvhAllBMinY, params.lightBvhAllBMinZ,
+		params.lightBvhAllBMaxX, params.lightBvhAllBMaxY, params.lightBvhAllBMaxZ);
 }
 
-// gpu_light_bvh_pmf: replays the bit-trail for `lightIndex` to recompute its
-// selection PMF at THIS shading point (position-dependent, unlike the alias
-// table's fixed pdf) - needed at a BSDF-sampled light hit to MIS-weight
-// against whatever NEE would have picked from the point the BSDF sample was
-// actually taken (see this function's callers in the 6 shape closest-hit
-// files' own DiffuseLight branches). Returns 0 if no light BVH was built, or
-// if every ancestor's combined importance was zero (can't happen for a real
-// bit-trail from a light actually in the tree, but matches PMF()'s own
-// defensive return).
 __device__ __forceinline__ float gpu_light_bvh_pmf(
 	float px, float py, float pz, float nx, float ny, float nz, int lightIndex)
 {
-	if (params.lightBvhNodeCount <= 0) return 0.f;
-	// Bounds guards below - see this file's own header comment above
-	// (gpu_light_bvh_sample_index's) for why these exist and why a safe
-	// fallback rather than an assert/crash is the right response here.
-	if (lightIndex < 0 || (unsigned int)lightIndex >= params.numLights) {
-		return 0.f;
-	}
-	uint32_t bitTrail = params.lightBvhBitTrail[lightIndex];
-	float pmf = 1.f;
-	int nodeIndex = 0;
-	while (true) {
-		// Bounds guard - see this file's own header comment above.
-		if (nodeIndex < 0 || nodeIndex >= params.lightBvhNodeCount) {
-			return 0.f;
-		}
-		const LightBVHNode& node = params.lightBvhNodes[nodeIndex];
-		if (node.isLeaf) return pmf;
-		const int c1Index = (int)node.childOrLightIndex;
-		// Range AND forward-progress guard - see this file's own header
-		// comment above for why `c1Index <= nodeIndex + 1` is rejected
-		// too, not just an out-of-range one.
-		if (c1Index <= nodeIndex + 1 || c1Index >= params.lightBvhNodeCount) {
-			return 0.f;
-		}
-		const LightBVHNode& c0 = params.lightBvhNodes[nodeIndex + 1];
-		const LightBVHNode& c1 = params.lightBvhNodes[node.childOrLightIndex];
-		float ci0 = c0.lightBounds.Importance(px,py,pz, nx,ny,nz,
-			params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
-			params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
-		float ci1 = c1.lightBounds.Importance(px,py,pz, nx,ny,nz,
-			params.lightBvhAllBMinX,params.lightBvhAllBMinY,params.lightBvhAllBMinZ,
-			params.lightBvhAllBMaxX,params.lightBvhAllBMaxY,params.lightBvhAllBMaxZ);
-		float sum = ci0 + ci1;
-		if (sum == 0.f) return 0.f;
-		int branch = (int)(bitTrail & 1u);
-		pmf *= (branch == 0 ? ci0 : ci1) / sum;
-		nodeIndex = (branch == 0) ? (nodeIndex + 1) : (int)node.childOrLightIndex;
-		bitTrail >>= 1;
-	}
+	return light_bvh_pmf(px, py, pz, nx, ny, nz, lightIndex, params.numLights,
+		params.lightBvhNodes, params.lightBvhBitTrail, params.lightBvhNodeCount,
+		params.lightBvhAllBMinX, params.lightBvhAllBMinY, params.lightBvhAllBMinZ,
+		params.lightBvhAllBMaxX, params.lightBvhAllBMaxY, params.lightBvhAllBMaxZ);
 }
 
 // Selects one area light (light BVH when the scene built one - see

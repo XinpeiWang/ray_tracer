@@ -1096,6 +1096,12 @@ __device__ __forceinline__ float3 wf_sample_cylinder_light(const CylinderData& c
 	return dir;
 }
 
+// Bounding-cone light BVH traversal, shared with the GPU-recursive backend
+// (optix_device_helpers_lighting.h's gpu_light_bvh_sample_index()/
+// gpu_light_bvh_pmf()) - see that header's own comment. Needed by wavefront_
+// restir_helpers.h's wf_light_bvh_sample_index()/wf_light_bvh_pmf() below.
+#include "light_bvh_traversal_shared.h"
+
 // ReSTIR DI (Live Preview only) GPU-native reservoir primitives - included
 // here, after wf_dc_area_disk()/wf_dc_area_cylinder() and every wf_sample_*_
 // light() function above, since wf_reevaluate_light_geometry() (defined
