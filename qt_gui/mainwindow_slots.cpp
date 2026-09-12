@@ -1315,9 +1315,15 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 						setStatusWarning(tr("Warning: preview image failed to load at %1").arg(pngPath));
 					}
 				} else if (fileInfo.exists()) {
-					// PNG conversion failed but the raw PPM output exists -
-					// fall back to the old external-viewer behavior rather
-					// than showing nothing.
+					// Either PNG conversion failed but the raw PPM output
+					// still exists, OR outputPath is itself a .exr (main.cpp's
+					// own Format Conversion step deliberately never generates
+					// a PNG for those - see is_exr_output_path()'s callers) -
+					// fall back to the OS's own default handler for the file
+					// rather than showing nothing/erroring on an unsupported
+					// format. Does not add a Recent Renders entry or an inline
+					// preview tab in either case; only the PNG-found branch
+					// above does that.
 					QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
 				} else {
 					m_statusLabel->setText(tr("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));

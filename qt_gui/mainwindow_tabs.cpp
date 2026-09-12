@@ -1526,7 +1526,12 @@ void MainWindow::createSettingsTab() {
 	outputGroup->setInfoIcon(createInfoIcon(
 		tr("Where the rendered file is saved. Video mode appends the "
 		"correct extension automatically; Live Preview ignores this "
-		"entirely since it never writes a file.")));
+		"entirely since it never writes a file.\n\n"
+		"Type or Browse to a .exr path instead of .png/.ppm for linear, "
+		"full-precision HDR output (no tone mapping baked in) - useful for "
+		"compositing. If Denoise is also on and GPU Backend is Recursive, "
+		"an _albedo.exr and _normal.exr guide-buffer pair is written "
+		"alongside it automatically (Wavefront doesn't produce these yet).")));
 	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
 	outputLayout->setSpacing(8);
 	outputLayout->setContentsMargins(15, 20, 15, 12);
@@ -1548,7 +1553,10 @@ void MainWindow::createSettingsTab() {
 	);
 	m_outputPathEdit->setToolTip(
 		tr("Where the rendered image is written. A .png is always saved alongside\n"
-		"the raw .ppm, and it is the .png the Preview tab displays."));
+		"the raw .ppm, and it is the .png the Preview tab displays.\n\n"
+		"Enter a .exr path instead for linear HDR output with no PNG sibling -\n"
+		"the Preview tab opens it in your system's EXR viewer instead of showing\n"
+		"it inline."));
 	// Trailing ellipsis (U+2026, not three periods) marks an action that needs
 	// further input before it completes - a file dialog here. Buttons that act
 	// immediately (Open Output Folder, Clear Log) deliberately have none.
@@ -1556,7 +1564,8 @@ void MainWindow::createSettingsTab() {
 	m_browseButton->setToolTip(tr("Choose the output file name and location"));
 	connect(m_browseButton, &QPushButton::clicked, [this]() {
 		QString path = QFileDialog::getSaveFileName(this, tr("Save Render Output"),
-			m_outputPathEdit->text(), tr("PNG Image (*.png);;PPM Image (*.ppm)"));
+			m_outputPathEdit->text(),
+			tr("PNG Image (*.png);;PPM Image (*.ppm);;EXR Image, linear HDR (*.exr)"));
 		if (!path.isEmpty()) {
 			m_outputPathEdit->setText(QDir::toNativeSeparators(path));
 		}
@@ -1567,7 +1576,11 @@ void MainWindow::createSettingsTab() {
 		"A raw .ppm file is always written, and a .png copy is generated "
 		"alongside it automatically - the Preview tab always shows the "
 		".png, since most image viewers (and this app's own preview) "
-		"can't open .ppm directly.")));
+		"can't open .ppm directly.\n\n"
+		"Choosing a .exr path instead skips both: it writes one linear, "
+		"un-tonemapped, full-float-precision file directly - the format "
+		"compositing/VFX tools expect, and the only way to get HDR values "
+		"out of this app rather than an already-tonemapped image.")));
 	pathLayout->addWidget(m_outputPathEdit);
 	pathLayout->addWidget(m_browseButton);
 	outputLayout->addLayout(pathLayout);
