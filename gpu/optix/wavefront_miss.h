@@ -11,7 +11,10 @@ extern "C" __global__ void __miss__wf_radiance() {
 
 // __miss__wf_shadow: ray reached tMax without hitting anything — not occluded.
 extern "C" __global__ void __miss__wf_shadow() {
-	// occluded stays false (its default)
+	// transmittance stays at whatever __raygen__wf_shadow initialized it to
+	// (1.0f - see WfShadowPayload::transmittance's own comment) - a ray that
+	// crossed one or more media before reaching tMax without a real occluder
+	// still needs their accumulated attenuation, so this must NOT reset it.
 }
 
 // Exception program -- see wavefront_path_tracer.cpp's exceptionFlags

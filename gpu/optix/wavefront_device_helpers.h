@@ -1998,7 +1998,17 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// evalGlossyF included) for all kRestirCandidateCount draws every
 			// pixel every frame would be far more expensive for a resampling
 			// decision that only needs a reasonable importance proxy.
-			float pHat = wf_restir_target_proxy(candRaw, candDir, normal);
+			// isPhase: `normal` here is the medium BOUNDARY's entry-surface
+			// normal (h.normal, wavefront_kernels_materials.cu), unrelated to
+			// the actual interior scatter point - wf_restir_target_proxy's
+			// cosine term would silently zero/bias every candidate against
+			// it. wf_restir_target_proxy_phase replaces that cosine with the
+			// phase value between phaseWo (this vertex's own incoming
+			// direction) and the candidate light direction instead - see that
+			// function's own comment (wavefront_restir_math.h).
+			float pHat = isPhase
+				? wf_restir_target_proxy_phase(candRaw, candDir, phaseWo, phaseG)
+				: wf_restir_target_proxy(candRaw, candDir, normal);
 			float risWeight = pHat / candPdf;
 			restir_reservoir_add(res, cand, risWeight, 1, pHat, wf_rand(seed));
 		}
@@ -2007,19 +2017,44 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// just this frame's kRestirCandidateCount fresh draws. A no-op
 		// (restirCtx.historyValid false, the default) for every call site
 		// that doesn't pass a real context - see wf_restir_temporal_combine's
-		// own comment.
-		wf_restir_temporal_combine(res, hit_point, normal, restirCtx, seed,
-			spheres, quads, triangles, bilinearPatches, disks, cylinders,
-			materials, textures, texturePixels);
+		// own comment. Skipped entirely for isPhase: restirCtx is the
+		// SURFACE reservoir's history (indexed by pixel, populated by surface
+		// hits) - reprojecting it into a phase vertex's own RIS result would
+		// combine two incompatible sample kinds at the same pixel index.
+		if (!isPhase) {
+			wf_restir_temporal_combine(res, hit_point, normal, restirCtx, seed,
+				spheres, quads, triangles, bilinearPatches, disks, cylinders,
+				materials, textures, texturePixels);
+		}
 		restir_finalize(res);
-		// Written unconditionally (even an invalid/empty reservoir) - this is
-		// the CURRENT frame's own buffer, which the spatial-reuse pass
-		// (wavefront_kernels_restir.cu) reads next, and which next frame's
-		// temporal reuse ultimately reads via that pass's own output - must
-		// reflect this pixel's real outcome (including "no light reached this
-		// pixel this frame"), not be left stale from a reused allocation.
-		restirReservoirs[pixelIndex] = res;
-		if (restirCtx.normalOut) restirCtx.normalOut[pixelIndex] = normal;
+		// isPhase deliberately does NOT persist `res` into restirReservoirs/
+		// restirCtx.normalOut - see wf_restir_target_proxy_phase's own call
+		// site above for why a phase vertex's reservoir is incompatible with
+		// the surface buffer's Lambertian-cosine convention: this frame's
+		// depth==0 worldPos/normal AOV writes (evaluate_materials(), fired
+		// unconditionally for every depth==0 hit including a medium's own
+		// entry-surface point) already give a phase-vertex pixel a "valid"
+		// worldPos.w/normal from the SURFACE spatial-reuse pass's point of
+		// view; writing a phase-derived reservoir into the same buffer would
+		// let that pass and next frame's temporal reuse silently blend
+		// surface and volumetric samples together. `res` still drives THIS
+		// frame's own shading immediately below regardless - only cross-
+		// frame/cross-pixel persistence is skipped, so isPhase still gets the
+		// full within-frame RIS resampling benefit over classic single-draw
+		// NEE, just without carrying forward across frames or pixels (a
+		// deliberately narrower scope than surface DI's full temporal+
+		// spatial reuse - see this project's own plan for why).
+		if (!isPhase) {
+			// Written unconditionally (even an invalid/empty reservoir) - this
+			// is the CURRENT frame's own buffer, which the spatial-reuse pass
+			// (wavefront_kernels_restir.cu) reads next, and which next
+			// frame's temporal reuse ultimately reads via that pass's own
+			// output - must reflect this pixel's real outcome (including "no
+			// light reached this pixel this frame"), not be left stale from a
+			// reused allocation.
+			restirReservoirs[pixelIndex] = res;
+			if (restirCtx.normalOut) restirCtx.normalOut[pixelIndex] = normal;
+		}
 
 		if (res.valid() && res.W > 0.0f) {
 			float geomPdfAtHit = 0.0f;
@@ -2240,6 +2275,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// (false) for every other call (depth==0's own NEE, or GI
 			// disabled/ineligible this frame).
 			shadow.isGiCandidate = giCandidateEligible;
+			// See ShadowRayWorkItem::seed's own comment - a derived value, not
+			// a consuming wf_rand(seed) draw, so this doesn't perturb the
+			// caller's own subsequent sampling (continuation ray, etc.).
+			shadow.seed = wf_pcg(seed);
 			shadowQueue.push(shadow);
 		}
 	}
@@ -2356,6 +2395,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// See giCandidateEligible's own comment (this file's own area-
 			// light NEE block, above, has the identical comment in full).
 			shadow.isGiCandidate = giCandidateEligible;
+			// See ShadowRayWorkItem::seed's own comment / the area-light
+			// block's identical derivation above.
+			shadow.seed = wf_pcg(seed);
 			shadowQueue.push(shadow);
 		}
 	}
@@ -2462,6 +2504,13 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// See giCandidateEligible's own comment (this file's own area-light
 		// NEE block has the identical comment in full).
 		shadow.isGiCandidate = giCandidateEligible;
+		// See ShadowRayWorkItem::seed's own comment. Unlike the area/sky
+		// blocks above (each fires at most once per call), this loop can push
+		// several shadow rays per call, one per punctual light, with no
+		// wf_rand(seed)-consuming call between iterations to decorrelate them
+		// - mix in pli so two lights on the same hit don't get identical
+		// ratio-tracking noise if they both cross the same medium.
+		shadow.seed = wf_pcg(seed ^ (pli * 0x9E3779B9u));
 		shadowQueue.push(shadow);
 	}
 

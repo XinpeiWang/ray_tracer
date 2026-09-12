@@ -391,7 +391,7 @@ private:
     // comment), they travel via denoiserResources_ member state instead,
     // read directly inside each kernel-launch method's own body.
     void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist, GpuPortalLight portalLight, float maxComponentValue);
-    void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer, float maxComponentValue);
+    void launchAccumulateShadow(int numShadow, const float* d_transmittance, float3* d_framebuffer, float maxComponentValue);
     void launchResolveBssrdfExit(int numExit,
         const MaterialData* d_materials, unsigned int numMaterials,
         const SphereData* d_spheres, unsigned int numSpheres,
@@ -493,7 +493,7 @@ private:
     CUdeviceptr d_dielectricHitItems_ = 0; ///< see WavefrontQueues::dielectricHitQueue
     CUdeviceptr d_missItems_        = 0;
     CUdeviceptr d_shadowItems_      = 0;
-    CUdeviceptr d_occluded_         = 0;
+    CUdeviceptr d_transmittance_    = 0;   ///< per-shadow-ray transmittance (float) - see WfShadowPayload::transmittance's own comment
     CUdeviceptr d_probeItems_       = 0;   ///< BssrdfProbeWorkItem queue
     CUdeviceptr d_exitItems_        = 0;   ///< BssrdfExitWorkItem queue
     CUdeviceptr d_rayCounter_       = 0;

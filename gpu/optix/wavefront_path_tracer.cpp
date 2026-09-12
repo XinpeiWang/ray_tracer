@@ -932,7 +932,7 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	size_t hitItemSz    = numPixels * sizeof(HitWorkItem);
 	size_t missItemSz   = numPixels * sizeof(MissWorkItem);
 	size_t shadowItemSz = numPixels * sizeof(ShadowRayWorkItem);
-	size_t occludedSz   = numPixels * sizeof(bool);
+	size_t transmittanceSz = numPixels * sizeof(float);
 	// Worst case every hit this bounce is a Subsurface transmission -
 	// same numPixels capacity class as every other per-bounce queue.
 	size_t probeItemSz  = numPixels * sizeof(BssrdfProbeWorkItem);
@@ -946,7 +946,7 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_dielectricHitItems_), hitItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missItems_),    missItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowItems_),  shadowItemSz));
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_occluded_),     occludedSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_transmittance_), transmittanceSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeItems_),   probeItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_exitItems_),    exitItemSz));
 
@@ -971,7 +971,7 @@ void WavefrontPathTracer::freeQueues() {
 	freeDev(d_hitItems_);      freeDev(d_simpleHitItems_);
 	freeDev(d_dielectricHitItems_);
 	freeDev(d_missItems_);
-	freeDev(d_shadowItems_);   freeDev(d_occluded_);
+	freeDev(d_shadowItems_);   freeDev(d_transmittance_);
 	freeDev(d_probeItems_);    freeDev(d_exitItems_);
 	freeDev(d_rayCounter_);    freeDev(d_nextRayCounter_);
 	freeDev(d_hitCounter_);    freeDev(d_simpleHitCounter_);
@@ -1394,7 +1394,7 @@ void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffe
 }
 
 void WavefrontPathTracer::launchAccumulateShadow(
-	int numShadow, const bool* d_occluded, float3* d_framebuffer, float maxComponentValue)
+	int numShadow, const float* d_transmittance, float3* d_framebuffer, float maxComponentValue)
 {
 	if (numShadow == 0) return;
 
@@ -1403,7 +1403,7 @@ void WavefrontPathTracer::launchAccumulateShadow(
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
 	sq.capacity = queueCapacity_;
 
-	wf_launch_accumulate_shadow(sq, numShadow, d_occluded, d_framebuffer, maxComponentValue, stream_,
+	wf_launch_accumulate_shadow(sq, numShadow, d_transmittance, d_framebuffer, maxComponentValue, stream_,
 								 reinterpret_cast<GpuGiSample*>(d_giCandidateOut_));
 }
 
@@ -2214,11 +2214,11 @@ bool WavefrontPathTracer::render(
 				lp.shadowQueue.counter  = reinterpret_cast<int*>(d_shadowCounter_);
 				lp.shadowQueue.capacity = queueCapacity_;
 
-				// Temporarily point framebuffer to the occluded bool array so
-				// __raygen__wf_shadow can write results there.
-				// (The kernel casts (bool*)wf_params.framebuffer.)
+				// Temporarily point framebuffer to the transmittance float
+				// array so __raygen__wf_shadow can write results there.
+				// (The kernel casts (float*)wf_params.framebuffer.)
 				WavefrontLaunchParams shadowLP = lp;
-				shadowLP.framebuffer = reinterpret_cast<float3*>(d_occluded_);
+				shadowLP.framebuffer = reinterpret_cast<float3*>(d_transmittance_);
 
 				CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_wfLaunchParams_), &shadowLP,
 										   sizeof(WavefrontLaunchParams),
@@ -2236,7 +2236,7 @@ bool WavefrontPathTracer::render(
 				// Phase 6: Accumulate shadow contributions
 				// ------------------------------------------------------------------
 				launchAccumulateShadow(numShadow,
-									   reinterpret_cast<const bool*>(d_occluded_),
+									   reinterpret_cast<const float*>(d_transmittance_),
 									   d_fbPtr, camera.maxComponentValue);
 				CUDA_CHECK(cudaStreamSynchronize(stream_));
 			}

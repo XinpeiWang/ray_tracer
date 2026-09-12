@@ -64,6 +64,35 @@ __device__ __forceinline__ float3 wf_box_face_normal(const float3& p, const floa
 	return n;
 }
 
+// Recomputes a homogeneous Medium/DielectricMedium sphere's entry (near) and
+// exit (far) roots relative to ray_orig/unit_dir - shared by
+// __closesthit__wf_sphere's own needsNearFar block below (primary-ray
+// re-intersection after an interior scatter) and __anyhit__wf_shadow_sphere
+// (wavefront_anyhit_shadow.h, shadow-ray Beer-Lambert segment length), so
+// both compute the exact same near/far for a moving or box-shaped Medium
+// sphere instead of two independently-drifting copies. See
+// __closesthit__wf_sphere's own comment for why both roots need recomputing
+// here rather than trusting optixGetRayTmax() alone (a ray already inside
+// the sphere reports only the far root as "the" hit).
+__device__ __forceinline__ void wf_medium_sphere_near_far(
+		const float3& ray_orig, const float3& unit_dir, const SphereData& sph,
+		const float3& sphere_center, bool is_box, float& t_near, float& t_far) {
+	if (is_box) {
+		float bn, bf;
+		wf_box_slab_intersect(ray_orig, unit_dir, sph.boxMin, sph.boxMax, bn, bf);
+		t_near = fmaxf(0.0f, bn);
+		t_far  = bf;
+	} else {
+		float3 oc2 = ray_orig - sphere_center;
+		float half_b2 = dot(oc2, unit_dir);
+		float c2 = dot(oc2, oc2) - sph.radius * sph.radius;
+		float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
+		float sq2 = sqrtf(disc2);
+		t_near = fmaxf(0.0f, -half_b2 - sq2);
+		t_far  = -half_b2 + sq2;
+	}
+}
+
 // Wavefront-native duplicate of optix_device_helpers.h's material_needs_dpdu()
 // (same reason every other wf_ helper in this file is duplicated rather than
 // shared - see this file's own header comment) - only these material kinds
@@ -427,24 +456,13 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	if (needsNearFar) {
 		float3 unit_dir = normalize(ray_dir);
 		float t_near, t_far;
-		if (is_box) {
-			float bn, bf;
-			wf_box_slab_intersect(ray_orig, unit_dir, sph.boxMin, sph.boxMax, bn, bf);
-			t_near = fmaxf(0.0f, bn);
-			t_far  = bf;
-		} else {
-			// sphere_center (time-interpolated), not sph.center - a moving
-			// Medium sphere's near/far re-entry roots need the same centre
-			// the closest-hit above already resolved this ray's shading
-			// point against, not the raw start-of-shutter struct value.
-			float3 oc2 = ray_orig - sphere_center;
-			float half_b2 = dot(oc2, unit_dir);
-			float c2 = dot(oc2, oc2) - sph.radius * sph.radius;
-			float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
-			float sq2 = sqrtf(disc2);
-			t_near = fmaxf(0.0f, -half_b2 - sq2);
-			t_far  = -half_b2 + sq2;
-		}
+		// sphere_center (time-interpolated), not sph.center - a moving
+		// Medium sphere's near/far re-entry roots need the same centre the
+		// closest-hit above already resolved this ray's shading point
+		// against, not the raw start-of-shutter struct value. See
+		// wf_medium_sphere_near_far's own comment for why both roots need
+		// recomputing rather than trusting optixGetRayTmax() alone.
+		wf_medium_sphere_near_far(ray_orig, unit_dir, sph, sphere_center, is_box, t_near, t_far);
 		payload->t          = t_near;
 		payload->hitPoint   = ray_orig + t_near * unit_dir;
 		payload->mediumTFar = t_far;

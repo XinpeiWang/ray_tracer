@@ -27,19 +27,29 @@
 //   __anyhit__wf_shadow_sphere / _quad / _bilinear_patch / _triangle
 //                                 - One per geometry type (mirrors
 //                                   optix_anyhit_shadow.h): DiffuseLight is
-//                                   NOT an occluder, transmissive materials
-//                                   are ignored, everything else terminates
-//                                   the ray with occluded=true.
-//   __miss__wf_shadow            - Writes occluded[rayIndex] = false.
+//                                   NOT an occluder, purely-transmissive
+//                                   materials (Dielectric family, Interface)
+//                                   are ignored, participating media
+//                                   (sphere/cylinder only - Medium/
+//                                   CloudMedium/RgbGridMedium/GridMedium/
+//                                   DielectricMedium) attenuate the running
+//                                   transmittance instead of blocking
+//                                   outright, everything else terminates the
+//                                   ray with transmittance=0.
+//   __miss__wf_shadow            - Writes transmittance[rayIndex] = 1.0f (unoccluded).
 //
 // The host (wavefront_path_tracer.cpp) drives two launches per bounce:
 //   1. optixLaunch(intersectPipeline, numRays)   -> fills hitQueue/simpleHitQueue + missQueue
-//   2. optixLaunch(shadowPipeline,   numShadow)  -> fills occluded[] array
+//   2. optixLaunch(shadowPipeline,   numShadow)  -> fills transmittance[] array
 
 #include <optix.h>
 #include "wavefront_types.h"
 #include "optix_types.h"
 #include "optix_math_helpers.h"
+// perlin_noise<T> only - portable CPU_GPU template header, safe to include
+// directly (unlike gpu_cloud_density below, which is a hand-duplicated,
+// wavefront-module-local reimplementation of the non-portable parts).
+#include "../../src/shared/noise.h"
 
 // Wavefront launch params live in constant memory.
 extern "C" { __constant__ WavefrontLaunchParams wf_params; }
@@ -240,6 +250,72 @@ __device__ __forceinline__ bool wf_dc_solve_tube_quadratic(const float3& ro, con
 	return true;
 }
 
+// wf_pcg()/wf_rand() are NOT redeclared here - wavefront_probe.h (included
+// at the bottom of this file) already carries its own duplicate of them
+// (same cross-module reason as everything else in this file), and that
+// include is processed before __anyhit__wf_shadow_sphere's own heterogeneous-
+// medium ratio tracking (wavefront_anyhit_shadow.h, included after this
+// whole file) ever needs them - a second copy here would just redefine the
+// same symbol and fail to compile.
+
+// Duplicate of wavefront_device_helpers.h's gpu_cloud_density() (identical
+// body - same cross-module reason, and same "hand-duplicated 5-octave-FBm-
+// only, no wispiness" caveat as that copy's own comment: this is NOT
+// CloudMedium::compute_density(), which is documented as stalling the
+// recursive backend's mega-kernel). Needed here for shadow-ray ratio
+// tracking through a CloudMedium (wavefront_anyhit_shadow.h) the same way
+// the primary path already uses it for free-path sampling.
+__device__ __forceinline__ float gpu_cloud_density(const CloudMedium<float>& cloud,
+													 float mx, float my, float mz) {
+	float ppx = cloud.frequency * mx;
+	float ppy = cloud.frequency * my;
+	float ppz = cloud.frequency * mz;
+	float d = 0.0f;
+	float omega = 0.5f, lambda = 1.0f;
+	for (int oct = 0; oct < 5; ++oct) {
+		d += omega * perlin_noise<float>(lambda * ppx, lambda * ppy, lambda * ppz);
+		omega *= 0.5f;
+		lambda *= 1.99f;
+	}
+	d = fminf(1.0f, fmaxf(0.0f, (1.0f - my) * 4.5f * cloud.density * d));
+	float extra = 2.0f * fmaxf(0.0f, 0.5f - my);
+	return fminf(1.0f, fmaxf(0.0f, d + extra));
+}
+
+// Duplicates of wavefront_device_helpers.h's gpu_rgb_grid_at()/
+// gpu_rgb_grid_trilinear() (identical bodies, same cross-module reason) -
+// needed here for shadow-ray ratio tracking through RgbGridMedium/GridMedium
+// (wavefront_anyhit_shadow.h).
+__device__ __forceinline__ float gpu_rgb_grid_at(const float* d, int nx, int ny, int nz,
+												   int x, int y, int z) {
+	x = x < 0 ? 0 : (x >= nx ? nx-1 : x);
+	y = y < 0 ? 0 : (y >= ny ? ny-1 : y);
+	z = z < 0 ? 0 : (z >= nz ? nz-1 : z);
+	return d[x + nx * (y + ny * z)];
+}
+
+__device__ __forceinline__ float gpu_rgb_grid_trilinear(const float* d, int nx, int ny, int nz,
+														  float px, float py, float pz) {
+	float gx = px*nx - 0.5f, gy = py*ny - 0.5f, gz = pz*nz - 0.5f;
+	int ix0 = (int)floorf(gx), iy0 = (int)floorf(gy), iz0 = (int)floorf(gz);
+	float fx = gx-ix0, fy = gy-iy0, fz = gz-iz0;
+	float c000 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0,   iz0);
+	float c100 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0,   iz0);
+	float c010 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0+1, iz0);
+	float c110 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0+1, iz0);
+	float c001 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0,   iz0+1);
+	float c101 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0,   iz0+1);
+	float c011 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0+1, iz0+1);
+	float c111 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0+1, iz0+1);
+	float c00 = c000 + fx*(c100-c000);
+	float c10 = c010 + fx*(c110-c010);
+	float c01 = c001 + fx*(c101-c001);
+	float c11 = c011 + fx*(c111-c011);
+	float c0 = c00 + fy*(c10-c00);
+	float c1 = c01 + fy*(c11-c01);
+	return c0 + fz*(c1-c0);
+}
+
 // ============================================================================
 // Payload structs (passed by pointer via p0/p1)
 // ============================================================================
@@ -265,8 +341,26 @@ struct WfHitPayload {
 	float  uv_u, uv_v; // see HitWorkItem::uv_u/uv_v
 };
 
+// transmittance <= 0.0f means fully occluded (subsumes the old plain `bool
+// occluded`) - any-hit multiplies this down for each participating-medium
+// boundary the shadow ray crosses (Beer-Lambert for homogeneous Medium/
+// DielectricMedium, ratio tracking for CloudMedium/RgbGridMedium/GridMedium,
+// wavefront_anyhit_shadow.h) instead of the old unconditional pass-through,
+// so a fully unoccluded ray still ends at 1.0f exactly as `occluded=false`
+// did. `seed` seeds those any-hit ratio-tracking draws - see
+// ShadowRayWorkItem::seed's own comment for why it can't just reuse the
+// originating ray's seed directly.
 struct WfShadowPayload {
-	bool occluded;
+	float transmittance;
+	unsigned int seed;
+	// The originating ShadowRayWorkItem's own tMax (the target light's
+	// distance) - lets any-hit clamp a medium's far root to wherever the
+	// light actually sits, instead of integrating transmittance past it for
+	// the (valid) case of a light sampled from a point embedded inside the
+	// same medium volume. optixGetRayTmax() can't stand in for this inside
+	// any-hit: once a candidate is reported it returns THAT candidate's own
+	// hit distance, not the ray's original requested bound.
+	float tMax;
 };
 
 // BSSRDF probe walk (MaterialType::Subsurface, wavefront backend Phase 2) -

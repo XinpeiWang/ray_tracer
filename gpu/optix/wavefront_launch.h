@@ -309,7 +309,7 @@ extern "C" void wf_launch_accumulate_miss(
 
 extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,
-	const bool* d_occluded, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream,
+	const float* d_transmittance, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream,
 	// ReSTIR GI (Live Preview only) - see accumulate_shadow's own comment
 	// (wavefront_kernels_accumulate.cu). nullptr (every existing call site)
 	// keeps every shadow ray going to d_framebuffer exactly as before.

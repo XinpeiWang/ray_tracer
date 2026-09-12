@@ -278,6 +278,15 @@ struct ShadowRayWorkItem {
 	// existing call site that builds a ShadowRayWorkItem without setting it
 	// keeps going to the real framebuffer, exactly as before.
 	bool   isGiCandidate = false;
+	// Seed for the any-hit shadow program's own random draws (heterogeneous
+	// medium ratio tracking, wavefront_anyhit_shadow.h) - any-hit has no
+	// access to the originating RayWorkItem's seed otherwise, since it only
+	// sees this struct via WfShadowPayload. Homogeneous Medium/DielectricMedium
+	// (deterministic Beer-Lambert) don't consume it. Defaults to 0 so any
+	// call site that doesn't populate it (none should, once this lands) fails
+	// loudly (visibly wrong/correlated ratio-tracking noise) rather than
+	// reading uninitialized memory.
+	unsigned int seed = 0;
 };
 
 // ReSTIR GI's own plain data structs (Live Preview only, gpu/optix/

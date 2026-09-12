@@ -63,7 +63,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	WfLightBvhContext);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*, float4*);
 extern "C" __global__ void normalize_aov_buffers(float3*, float3*, unsigned int, unsigned int);
-extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, float, GpuGiSample*);
+extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const float*, float3*, float, GpuGiSample*);
 extern "C" __global__ void resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -505,13 +505,13 @@ extern "C" void wf_launch_accumulate_miss(
 
 extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,
-	const bool* d_occluded, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream,
+	const float* d_transmittance, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream,
 	GpuGiSample* d_giCandidateOut)
 {
 	if (numShadow == 0) return;
 	dim3 block(256);
 	dim3 grid((numShadow + 255) / 256);
-	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_occluded, d_framebuffer, maxComponentValue, d_giCandidateOut);
+	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_transmittance, d_framebuffer, maxComponentValue, d_giCandidateOut);
 }
 
 extern "C" void wf_launch_resolve_bssrdf_exit(

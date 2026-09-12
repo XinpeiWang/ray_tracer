@@ -171,7 +171,9 @@ extern "C" __global__ void __raygen__wf_shadow() {
 	const ShadowRayWorkItem& s = sq.items[idx];
 
 	WfShadowPayload sp;
-	sp.occluded = false;
+	sp.transmittance = 1.0f;
+	sp.seed = s.seed;
+	sp.tMax = s.tMax;
 
 	unsigned int p0, p1;
 	packPointer(&sp, p0, p1);
@@ -206,7 +208,11 @@ extern "C" __global__ void __raygen__wf_shadow() {
 		p0, p1
 	);
 
-	// Write result into the bool array (reused from framebuffer pointer during shadow pass)
-	bool* occluded = (bool*)wf_params.framebuffer;
-	occluded[idx]  = sp.occluded;
+	// Write result into the transmittance array (reused from framebuffer
+	// pointer during shadow pass) - see WfShadowPayload::transmittance's own
+	// comment: <= 0.0f means fully occluded, 1.0f means fully unoccluded,
+	// same as the old bool did, with real attenuation values in between for
+	// a ray that crossed one or more participating media.
+	float* transmittance = (float*)wf_params.framebuffer;
+	transmittance[idx]   = sp.transmittance;
 }

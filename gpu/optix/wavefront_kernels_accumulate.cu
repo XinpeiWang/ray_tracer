@@ -127,15 +127,19 @@ extern "C" __global__ void accumulate_miss(
 // Kernel 4 — accumulate_shadow
 //   Runs after the OptiX shadow-trace pass.  ShadowRayWorkItems that were NOT
 //   occluded have their `occluded` flag cleared by the shadow miss program;
-//   we accumulate their Ld into the framebuffer.
-//   (The `occluded` flag is stored in a separate bool array passed alongside
-//    the shadow queue items — see wavefront_path_tracer.cpp.)
+//   we accumulate their Ld, scaled by whatever transmittance survived any
+//   participating media the ray crossed, into the framebuffer.
+//   (The transmittance value is stored in a separate float array passed
+//    alongside the shadow queue items — see wavefront_path_tracer.cpp. <= 0.0f
+//    means fully occluded, same as the old plain `bool occluded` did; values
+//    in between mean the ray crossed one or more media - see
+//    WfShadowPayload::transmittance's own comment, wavefront_common.h.)
 // ============================================================================
 
 extern "C" __global__ void accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> shadowQueue,
 	int                          numShadow,
-	const bool*                  occluded,   // per-item occlusion result
+	const float*                 transmittance,   // per-item transmittance result
 	float3*                      framebuffer,
 	// "float maxcomponentvalue" firefly clamp - see
 	// GpuCameraParams::maxComponentValue's own comment (optix_types.h).
@@ -162,17 +166,18 @@ extern "C" __global__ void accumulate_shadow(
 	// supplied numShadow: numShadow is *shadowCounter read back on the host
 	// (WavefrontPathTracer::render(), readQueueSize()), and WorkQueue::push()
 	// (wavefront_types.h) keeps incrementing that counter even once the
-	// backing d_shadowItems_/d_occluded_ buffers (sized to shadowQueue.
+	// backing d_shadowItems_/d_transmittance_ buffers (sized to shadowQueue.
 	// capacity = queueCapacity_) are full - it only stops writing items[]
 	// past capacity. A bounce that legitimately queues more shadow rays than
 	// capacity (confirmed: scene B2/"Cornell Rough Metal" combines area-
 	// light NEE with a non-zero-backgroundColor sky-NEE push per hit - see
 	// __raygen__wf_shadow's own version of this comment, wavefront_
-	// programs.cu) would otherwise read occluded[idx]/shadowQueue.items[idx]
-	// past their allocations here too.
+	// programs.cu) would otherwise read transmittance[idx]/shadowQueue.
+	// items[idx] past their allocations here too.
 	if (idx >= numShadow || idx >= shadowQueue.capacity) return;
 
-	if (!occluded[idx]) {
+	const float tr = transmittance[idx];
+	if (tr > 0.0f) {
 		const ShadowRayWorkItem& s = shadowQueue.items[idx];
 		// Reconstruct spectral wavelengths for XYZ conversion
 		using SS  = SampledSpectrum<kWFNWavelengths>;
@@ -187,6 +192,10 @@ extern "C" __global__ void accumulate_shadow(
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
 		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		// Attenuate by whatever survived any participating media crossed -
+		// see WfShadowPayload::transmittance's own comment. 1.0f (the common
+		// case: no medium in the way) is a no-op multiply.
+		r *= tr; g *= tr; b *= tr;
 
 		// ReSTIR GI (Live Preview only) - redirect into the GI candidate
 		// buffer instead of the real framebuffer, UNCLAMPED: this value is an

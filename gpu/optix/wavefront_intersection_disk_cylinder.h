@@ -155,6 +155,51 @@ extern "C" __global__ void __intersection__wf_cylinder() {
 	optixReportIntersection(t, 0, 0, 0, 0, 0);
 }
 
+// Recomputes a homogeneous MaterialType::Medium cylinder's entry (near) /
+// exit (far) roots (object-space tube-quadric clipped to the z-slab) - shared
+// by __closesthit__wf_cylinder's own Medium case below (primary-ray re-
+// intersection after an interior scatter) and __anyhit__wf_shadow_cylinder
+// (wavefront_anyhit_shadow.h, shadow-ray Beer-Lambert segment length), so
+// both compute the exact same near/far instead of two independently-
+// drifting copies. ray_orig/ray_dir are WORLD space (transformed to object
+// space here via cyl.w2o) - see the recursive backend's identical
+// __closesthit__cylinder Medium case (optix_intersection_disk_cylinder.h)
+// for the full derivation and its phi-sweep scope limit.
+__device__ __forceinline__ void wf_medium_cylinder_near_far(
+		const float3& ray_orig, const float3& ray_dir, const CylinderData& cyl,
+		float& t_near, float& t_far) {
+	const float3 ro = wf_dc_apply_point(cyl.w2o, ray_orig);
+	const float3 rd = wf_dc_apply_vector(cyl.w2o, ray_dir);
+	// Ray parallel to the axis handled directly here, NOT via
+	// wf_dc_solve_tube_quadratic() below - see the recursive backend's
+	// identical __closesthit__cylinder Medium case (optix_intersection_
+	// disk_cylinder.h) for why: that function's a==0 case answers a
+	// SURFACE-crossing question (always no), the wrong question for this
+	// VOLUME/interval test.
+	float tube_t0 = -1e30f, tube_t1 = 1e30f;
+	bool hasTube;
+	if (rd.x == 0.0f && rd.y == 0.0f) {
+		hasTube = (double)ro.x * ro.x + (double)ro.y * ro.y <= (double)cyl.radius * (double)cyl.radius;
+	} else {
+		hasTube = wf_dc_solve_tube_quadratic(ro, rd, cyl.radius, tube_t0, tube_t1);
+	}
+
+	float z_t0 = -1e30f, z_t1 = 1e30f;
+	bool hasZSlab = true;
+	if (rd.z == 0.0f) {
+		hasZSlab = (ro.z >= cyl.zMin && ro.z <= cyl.zMax);
+	} else {
+		float za = (cyl.zMin - ro.z) / rd.z;
+		float zb = (cyl.zMax - ro.z) / rd.z;
+		z_t0 = fminf(za, zb);
+		z_t1 = fmaxf(za, zb);
+	}
+
+	t_near = fmaxf(0.0f, fmaxf(tube_t0, z_t0));
+	t_far  = fminf(tube_t1, z_t1);
+	if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
+}
+
 extern "C" __global__ void __closesthit__wf_cylinder() {
 	WfHitPayload* payload = (WfHitPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
@@ -215,37 +260,8 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 	// Object space, since CylinderData::zMin/zMax are object-space.
 	const MaterialData& cyl_mat = wf_params.materials[cyl.materialIdx];
 	if (cyl_mat.type == MaterialType::Medium) {
-		const float3 ro = wf_dc_apply_point(cyl.w2o, ray_orig);
-		const float3 rd = wf_dc_apply_vector(cyl.w2o, ray_dir);
-		// Ray parallel to the axis handled directly here, NOT via
-		// wf_dc_solve_tube_quadratic() below - see the recursive backend's
-		// identical __closesthit__cylinder Medium case (optix_intersection_
-		// disk_cylinder.h) for why: that function's a==0 case answers a
-		// SURFACE-crossing question (always no), the wrong question for
-		// this VOLUME/interval test.
-		float tube_t0 = -1e30f, tube_t1 = 1e30f;
-		bool hasTube;
-		if (rd.x == 0.0f && rd.y == 0.0f) {
-			hasTube = (double)ro.x * ro.x + (double)ro.y * ro.y <= (double)cyl.radius * (double)cyl.radius;
-		} else {
-			hasTube = wf_dc_solve_tube_quadratic(ro, rd, cyl.radius, tube_t0, tube_t1);
-		}
-
-		float z_t0 = -1e30f, z_t1 = 1e30f;
-		bool hasZSlab = true;
-		if (rd.z == 0.0f) {
-			hasZSlab = (ro.z >= cyl.zMin && ro.z <= cyl.zMax);
-		} else {
-			float za = (cyl.zMin - ro.z) / rd.z;
-			float zb = (cyl.zMax - ro.z) / rd.z;
-			z_t0 = fminf(za, zb);
-			z_t1 = fmaxf(za, zb);
-		}
-
-		float t_near = fmaxf(0.0f, fmaxf(tube_t0, z_t0));
-		float t_far  = fminf(tube_t1, z_t1);
-		if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
-
+		float t_near, t_far;
+		wf_medium_cylinder_near_far(ray_orig, ray_dir, cyl, t_near, t_far);
 		float3 unit_dir = normalize(ray_dir);
 		payload->t          = t_near;
 		payload->hitPoint   = ray_orig + t_near * unit_dir;

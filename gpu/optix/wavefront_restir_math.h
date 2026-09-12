@@ -143,6 +143,32 @@ CPU_GPU inline float wf_restir_target_proxy(float3 rawEmission, float3 dir, floa
 	return ((rawEmission.x + rawEmission.y + rawEmission.z) * (1.0f / 3.0f)) * cosProxy;
 }
 
+// Volumetric sibling of wf_restir_target_proxy above, for a ReSTIR candidate/
+// reservoir rooted at a medium-interior phase-scatter vertex (isPhase, see
+// wf_finish_material_scatter's own comment, wavefront_device_helpers.h)
+// instead of a surface hit - a phase-scatter vertex has no shading normal to
+// take a cosine against, and a phase function is already normalized over the
+// full sphere of directions (no hemisphere restriction, unlike the single-
+// sided Lambertian cosProxy above), so this replaces the cosine term with the
+// Henyey-Greenstein phase value between the vertex's incoming direction
+// (phaseWo, pointing back toward the previous vertex - wf_sample_phase_
+// scatter's own convention) and the direction toward the candidate light
+// sample. Self-contained HG formula (not a call into wavefront_device_
+// helpers.h's wf_hg_phase_value) so this header keeps its own "no scene data,
+// plain-host-testable" property intact - see this file's own header comment.
+CPU_GPU inline float wf_hg_phase_value_restir(float cos_theta, float g) {
+	const float gc = fminf(0.99f, fmaxf(-0.99f, g));
+	const float denom = 1.0f + gc * gc + 2.0f * gc * cos_theta;
+	constexpr float kInv4Pi = 0.07957747154594767f;  // 1/(4*pi)
+	return kInv4Pi * (1.0f - gc * gc) / (denom * sqrtf(fmaxf(1e-12f, denom)));
+}
+
+CPU_GPU inline float wf_restir_target_proxy_phase(float3 rawEmission, float3 dirToLight,
+													float3 phaseWo, float g) {
+	return ((rawEmission.x + rawEmission.y + rawEmission.z) * (1.0f / 3.0f))
+		* wf_hg_phase_value_restir(dot(phaseWo, dirToLight), g);
+}
+
 // Geometric-ratio robustness guard for spatial reuse (Bitterli 2020 eq. 11's
 // cos/dist^2 ratio between the two shading points' view of the same sampled
 // light point) - NOT an additional multiplicative correction on top of
