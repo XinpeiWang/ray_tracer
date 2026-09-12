@@ -336,6 +336,19 @@ struct GpuLightSample {
 	float        sampleU = 0.0f, sampleV = 0.0f;
 	float3       point  = make_float3(0.0f, 0.0f, 0.0f);
 	float3       normal = make_float3(0.0f, 0.0f, 1.0f);
+	// The shutter time this sample was drawn at (wf_generate_restir_candidate's
+	// own `time` parameter) - needed to re-derive a MOVING Sphere light's
+	// correct center (SphereData::center/center1 interpolation) when this
+	// sample is later re-evaluated from a different origin than the one it
+	// was drawn from (wf_reevaluate_light_geometry, wavefront_restir_helpers.h).
+	// Travels WITH the sample specifically so temporal/spatial reuse (which
+	// re-evaluates a sample generated at a DIFFERENT pixel/frame, with no
+	// shutter time of its own to offer) can't silently fall back to a wrong
+	// guess (0.0f) - see that function's own header comment for the bug this
+	// fixed. 0.0f (the default) is exactly correct for every non-Sphere kind
+	// and every static (center==center1) Sphere, which is why this was easy
+	// to not notice was missing.
+	float        time = 0.0f;
 
 	CPU_GPU bool valid() const { return lightIdx >= 0; }
 };

@@ -2023,12 +2023,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 
 		if (res.valid() && res.W > 0.0f) {
 			float geomPdfAtHit = 0.0f;
-			// Re-derive from hit_point - the SAME origin the winning
-			// candidate was just generated from above, so this recompute is
-			// exact, not an approximation (see wf_reevaluate_light_geometry's
-			// own header comment on why no search/Jacobian is needed when
-			// the query origin is unchanged).
-			if (wf_reevaluate_light_geometry(res.sample, hit_point, time, spheres, quads, triangles,
+			// Re-derive from hit_point - exact, not an approximation, even
+			// when res.sample won by temporal reuse (a DIFFERENT pixel/
+			// frame's own origin, not hit_point) rather than this frame's own
+			// RIS loop: wf_reevaluate_light_geometry only ever needs the
+			// sample's already-fixed point/normal/time (GpuLightSample::time's
+			// own comment) plus the NEW query origin - no search/Jacobian
+			// required regardless of whether the origin actually changed (see
+			// that function's own header comment).
+			if (wf_reevaluate_light_geometry(res.sample, hit_point, spheres, quads, triangles,
 					bilinearPatches, disks, cylinders, to_light, max_dist, geomPdfAtHit) &&
 				geomPdfAtHit > 0.0f) {
 				// The winning reservoir sample may have been drawn (this frame,

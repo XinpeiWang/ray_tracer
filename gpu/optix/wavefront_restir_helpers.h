@@ -121,22 +121,24 @@ constexpr float kRestirSpatialNormalCosThreshold = 0.9f;
 // this origin (grazing angle, coincident points, or - Sphere only - the
 // sampled direction falls outside the new origin's sampling cone).
 //
-// `time` is the shutter time to interpolate a MOVING sphere's center by
-// (SphereData::center/center1, matching wf_sample_sphere_light's own
-// convention) - only ever exact for the immediate post-RIS-selection
-// re-evaluation (wf_finish_material_scatter), which re-evaluates at the SAME
-// hit_point/time the candidate was just generated from. Temporal reuse
-// (wf_restir_temporal_combine) and spatial reuse (wavefront_kernels_restir.cu)
-// re-evaluate a sample from a DIFFERENT pixel/frame with no shutter time of
-// its own available (no per-pixel time buffer exists), so both pass 0.0f -
-// a known, narrower limitation than a blanket "never happens" claim: a
-// moving emissive sphere's cross-frame/cross-pixel reuse can still use the
-// wrong (static) center, but a fresh per-frame RIS selection - which runs
-// unconditionally every frame even before any reuse history exists - no
-// longer does.
+// Interpolates a MOVING sphere's center (SphereData::center/center1) using
+// `s.time` - the shutter time this exact sample was drawn at (GpuLightSample::
+// time's own comment), NOT the caller's own current time. This matters
+// because `s.point` (the actual point this function re-derives a direction
+// toward) was itself sampled at the light's position AT THAT TIME - reusing
+// any other time here would recompute a sampling cone for a DIFFERENT sphere
+// position than the one `s.point` actually sits on, which is wrong regardless
+// of whether that other time happens to be "more current" than the sample's
+// own. Previously took a separate `time` parameter that temporal/spatial
+// reuse (wf_restir_temporal_combine, wavefront_kernels_restir.cu) could only
+// ever pass 0.0f for, since a reused sample - drawn at a different pixel/
+// frame - has no shutter time of its own available at the REUSE call site;
+// only the fresh, same-pixel-same-frame re-evaluation right after RIS
+// selection (wf_finish_material_scatter) had the real value to pass. Fixed
+// by having the sample carry its own time from generation onward instead.
 // ===========================================================================
 __device__ __forceinline__ bool wf_reevaluate_light_geometry(
-		const GpuLightSample& s, const float3& origin, float time,
+		const GpuLightSample& s, const float3& origin,
 		const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
 		const BilinearPatchData* bilinearPatches, const DiskData* disks, const CylinderData* cylinders,
 		float3& out_dir, float& out_dist, float& out_geom_pdf) {
@@ -152,14 +154,15 @@ __device__ __forceinline__ bool wf_reevaluate_light_geometry(
 	if (s.kind == GpuLightKind::Sphere) {
 		// Sphere's cone/inside pdf is already a solid-angle density (see
 		// wf_sample_sphere_light) - no separate cosine/area conversion.
-		// Time-interpolated center, matching wf_sample_sphere_light's own
-		// convention exactly - see this function's own header comment on
-		// which callers can and can't supply the real shutter time.
+		// Time-interpolated center using the SAMPLE's own shutter time
+		// (s.time - see this function's own header comment and GpuLightSample::
+		// time's own comment), matching wf_sample_sphere_light's own convention
+		// exactly.
 		const SphereData& sph = spheres[s.primIdx];
 		const float3 center = make_float3(
-			sph.center.x + time * (sph.center1.x - sph.center.x),
-			sph.center.y + time * (sph.center1.y - sph.center.y),
-			sph.center.z + time * (sph.center1.z - sph.center.z));
+			sph.center.x + s.time * (sph.center1.x - sph.center.x),
+			sph.center.y + s.time * (sph.center1.y - sph.center.y),
+			sph.center.z + s.time * (sph.center1.z - sph.center.z));
 		const float3 toC = center - origin;
 		const float distC = length(toC);
 		const float r = sph.radius;
@@ -421,6 +424,11 @@ __device__ __forceinline__ bool wf_generate_restir_candidate(
 	out_sample.sampleV = sv;
 	out_sample.point = hit + out_dir * out_maxDist;
 	out_sample.normal = sampleNormal;
+	// See GpuLightSample::time's own comment - only meaningfully used for
+	// GpuLightKind::Sphere, but stamped unconditionally (harmless everywhere
+	// else) so this sample carries its own correct shutter time regardless of
+	// who re-evaluates it later, and from where.
+	out_sample.time = time;
 
 	out_lightPdf = selection_pdf * geom_pdf;
 	// Skip the emission lookup (a real texture fetch for a textured light)
@@ -610,12 +618,10 @@ __device__ __forceinline__ void wf_restir_temporal_combine(
 	// THIS pixel's own hitPoint/normal - restir.h's documented missing piece
 	// for unbiased reuse (this file's own header comment).
 	float3 dirToSample; float dist; float geomPdf;
-	// time=0.0f: no per-pixel shutter-time buffer exists to recover the
-	// PREVIOUS frame's actual draw time here - see wf_reevaluate_light_
-	// geometry's own header comment on this narrower, still-open limitation
-	// (a moving emissive sphere's re-evaluation across frames can still use
-	// the wrong center, unlike the same-frame immediate re-evaluation case).
-	if (!wf_reevaluate_light_geometry(prev.sample, hitPoint, 0.0f, spheres, quads, triangles,
+	// prev.sample.time carries the PREVIOUS frame's own actual draw time
+	// (GpuLightSample::time's own comment) - no separate per-pixel shutter-
+	// time buffer needed to recover it.
+	if (!wf_reevaluate_light_geometry(prev.sample, hitPoint, spheres, quads, triangles,
 									   bilinearPatches, disks, cylinders, dirToSample, dist, geomPdf) ||
 		geomPdf <= 0.0f)
 		return;

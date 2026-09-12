@@ -132,9 +132,10 @@ extern "C" __global__ void restir_spatial_reuse(
 		// documented missing piece for unbiased reuse (wavefront_restir_
 		// helpers.h's own header comment).
 		float3 dirToSample; float dist; float geomPdf;
-		// time=0.0f: this pass has no per-pixel shutter-time buffer either -
-		// see wf_reevaluate_light_geometry's own header comment.
-		if (!wf_reevaluate_light_geometry(neighbor.sample, hitPoint, 0.0f, spheres, quads, triangles,
+		// neighbor.sample.time carries the neighbor's own actual draw time
+		// (GpuLightSample::time's own comment) - no separate per-pixel
+		// shutter-time buffer needed to recover it.
+		if (!wf_reevaluate_light_geometry(neighbor.sample, hitPoint, spheres, quads, triangles,
 										   bilinearPatches, disks, cylinders, dirToSample, dist, geomPdf) ||
 			geomPdf <= 0.0f)
 			continue;
