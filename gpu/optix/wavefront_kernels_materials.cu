@@ -119,15 +119,17 @@ extern "C" __global__ void evaluate_materials(
 	// that case.
 	WfLightBvhContext lightBvh = {},
 	// Real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h)
-	// - see this project's own plan. Consulted ONLY by the Conductor/
-	// RoughMetal cases below (v1 scope), BEFORE wf_finish_material_scatter is
-	// even called, unlike probeGridMeta/probeGrid there (which stay on their
-	// nullptr/default - Lambertian never reaches this kernel, see
-	// WavefrontQueues::simpleHitQueue's own comment). guidingHistograms==
-	// nullptr (the default, every non-Live-Preview call site, or Live
-	// Preview with the feature toggled off) is a complete no-op - every
-	// glossy case below falls through to its own existing, unmodified
-	// GGX/VNDF sampling unchanged.
+	// - see this project's own plan. Consulted by the Conductor/RoughMetal
+	// cases below (v1 scope) for their own scatter-direction mixture pdf,
+	// AND forwarded into wf_finish_material_scatter() so its NEE/MIS pdf
+	// (evalGlossyF's own Conductor/RoughMetal branches) uses the SAME
+	// mixture rather than the plain BSDF pdf alone - unlike probeGridMeta/
+	// probeGrid there (which stay on their nullptr/default - Lambertian
+	// never reaches this kernel, see WavefrontQueues::simpleHitQueue's own
+	// comment). guidingHistograms==nullptr (the default, every non-Live-
+	// Preview call site, or Live Preview with the feature toggled off) is a
+	// complete no-op - every glossy case below falls through to its own
+	// existing, unmodified GGX/VNDF sampling unchanged.
 	GpuProbeGridMeta guidingGridMeta = {},
 	const GpuGuidingHistogram* guidingHistograms = nullptr,
 	// Same probe array wf_query_probe_grid() (probe_grid_types.h) already
@@ -1526,6 +1528,17 @@ extern "C" __global__ void evaluate_materials(
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
 		giOriginContext, giCandidateOut,
-		lightBvh);
+		lightBvh,
+		// probeGridMeta/probeGrid (SH-L1 diffuse cache) intentionally left on
+		// their nullptr/default just above - Lambertian never reaches this
+		// kernel (see this file's own guidingHistograms parameter comment).
+		// guidingGridMeta/guidingHistograms/guidingProbes DO apply here
+		// (Conductor/RoughMetal's own NEE/MIS pdf, via evalGlossyF) - same
+		// pointers this kernel's own Conductor/RoughMetal switch-arms above
+		// already consult for their scatter-direction pdf, now also reaching
+		// wf_finish_material_scatter() so its NEE MIS weight uses the same
+		// mixture pdf rather than the plain BSDF pdf alone.
+		GpuProbeGridMeta{}, nullptr,
+		guidingGridMeta, guidingHistograms, guidingProbes);
 }
 

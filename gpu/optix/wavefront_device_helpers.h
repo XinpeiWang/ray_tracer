@@ -1704,7 +1704,21 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// tracing another bounce - see this function's own lookup block, right
 	// before the "Bounce: push next ray" section below.
 	const GpuProbeGridMeta& probeGridMeta = GpuProbeGridMeta{},
-	const GpuProbe* probeGrid = nullptr)
+	const GpuProbe* probeGrid = nullptr,
+	// Real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h)
+	// - lets evalGlossyF's Conductor/RoughMetal branches (below) report the
+	// SAME mixture pdf evaluate_materials()'s own scatter path already uses
+	// for the BSDF-sampled continuation direction, evaluated instead at the
+	// NEE-queried light direction - see evalGlossyF's own header comment for
+	// why MIS needs the pdf at THIS direction, not the continuation one, and
+	// this project's own plan for the mixture-pdf rationale. nullptr (the
+	// default, every non-Live-Preview call site, or Live Preview with the
+	// feature toggled off) keeps evalGlossyF on the plain BSDF pdf it always
+	// used before path guiding existed - a complete no-op, same shape as
+	// probeGrid just above.
+	GpuProbeGridMeta guidingGridMeta = {},
+	const GpuGuidingHistogram* guidingHistograms = nullptr,
+	const GpuProbe* guidingProbes = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1811,12 +1825,19 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// compute a fresh {c,rm,rd,cd,cc}_bxdf.pdf(wi,...,ll/sk...) per light/sky
 	// sample rather than reusing the continuation-direction pdf. For
 	// Conductor/RoughMetal this is the BxDF's own real pdf() (a thin wrapper
-	// over ggx_vndf_reflection_pdf); RoughDielectric uses its own real
-	// pdf(); CoatedDiffuse/CoatedConductor have no closed-form pdf for their
-	// unbounded-depth random walk, so - matching optix_device_helpers.h's
-	// documented choice exactly - they reuse the coat's top-surface GGX
-	// VNDF pdf as a cheap shape-matched proxy (any valid pdf keeps MIS
-	// unbiased; this only affects variance, not correctness).
+	// over ggx_vndf_reflection_pdf) - blended with real-time path guiding's
+	// own mixture pdf (glossy_pGuide/glossy_guideProbeIdx below) whenever
+	// guiding is active for this hit, so this stays the pdf of whichever
+	// technique is ACTUALLY being used to sample the continuation direction,
+	// exactly matching brdf_pdf_override's own mixture in evaluate_materials()'s
+	// Conductor/RoughMetal cases - MIS is only correct when both directions'
+	// pdfs come from the same distribution the renderer is really sampling
+	// from; RoughDielectric uses its own real pdf(); CoatedDiffuse/
+	// CoatedConductor have no closed-form pdf for their unbounded-depth
+	// random walk, so - matching optix_device_helpers.h's documented choice
+	// exactly - they reuse the coat's top-surface GGX VNDF pdf as a cheap
+	// shape-matched proxy (any valid pdf keeps MIS unbiased; this only
+	// affects variance, not correctness).
 	// Shared per-shading-point setup for evalGlossyF below, computed ONCE
 	// instead of on each of the (up to) 3 calls it gets per shading point
 	// (area-light NEE, sky NEE, punctual-light NEE) - normal/phaseWo/
@@ -1859,6 +1880,26 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		if (glossy_wi_z > 0.0f) glossy_valid = true;
 	}
 
+	// Real-time path guiding (Live Preview only) - v1 scope is Conductor/
+	// RoughMetal only (see guidingHistograms's own parameter comment above),
+	// computed ONCE here rather than inside evalGlossyF below since the
+	// nearest probe/pGuide depend only on hit_point, not on which of the
+	// (up to 3) query directions evalGlossyF is asked about. Reaching here
+	// with is_specular==false already means evaluate_materials() itself
+	// found this Conductor/RoughMetal hit non-EffectivelySmooth (a smooth
+	// one sets is_specular=true and never reaches this whole NEE block) - so
+	// no separate EffectivelySmooth re-check is needed, matching that
+	// switch-arm's own guiding gate exactly.
+	float glossy_pGuide = 0.0f;
+	int glossy_guideProbeIdx = -1;
+	if (glossy_valid && guidingHistograms != nullptr &&
+		(matType == MaterialType::Conductor || matType == MaterialType::RoughMetal)) {
+		glossy_guideProbeIdx = wf_guiding_nearest_probe(guidingGridMeta, guidingProbes, hit_point);
+		if (glossy_guideProbeIdx >= 0) {
+			glossy_pGuide = wf_guiding_probability(guidingHistograms[glossy_guideProbeIdx]);
+		}
+	}
+
 	auto evalGlossyF = [&](const float3& queryDir, float3& outF, float& outPdf) -> bool {
 		if (!glossy_valid) return false;
 		float wo_x = dot(queryDir, glossy_tan), wo_y = dot(queryDir, glossy_bit), wo_z = dot(queryDir, normal);
@@ -1878,10 +1919,25 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, glossy_alpha, glossy_alpha_v };
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
+			// Blend to the SAME mixture pdf the scatter path uses for its own
+			// BSDF-sampled continuation direction (evaluate_materials()'s own
+			// Conductor case), evaluated here at queryDir instead - MIS must
+			// weight against the pdf of the technique actually being used to
+			// sample this material's continuation, which is this mixture
+			// whenever glossy_pGuide>0, not the plain BSDF pdf alone.
+			if (glossy_pGuide > 0.0f) {
+				const float pdf_guide = wf_guided_pdf(guidingHistograms[glossy_guideProbeIdx], queryDir);
+				outPdf = glossy_pGuide * pdf_guide + (1.0f - glossy_pGuide) * outPdf;
+			}
 		} else if (matType == MaterialType::RoughMetal) {
 			RoughMetalBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, glossy_alpha, glossy_alpha };
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
+			// See MaterialType::Conductor's identical-shape blend just above.
+			if (glossy_pGuide > 0.0f) {
+				const float pdf_guide = wf_guided_pdf(guidingHistograms[glossy_guideProbeIdx], queryDir);
+				outPdf = glossy_pGuide * pdf_guide + (1.0f - glossy_pGuide) * outPdf;
+			}
 		} else if (matType == MaterialType::RoughDielectric) {
 			RoughDielectricBxDF<float> bx{ fm.ior, glossy_alpha, glossy_alpha_v };
 			float v = bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
