@@ -38,6 +38,7 @@
 #include "wavefront_restir_gi_math.h"
 #include "wavefront_svgf_math.h"  // wf_checkerboard_pixel_active
 #include "probe_grid_types.h"     // GpuProbe/GpuProbeGridMeta - probe_cache_accumulate below
+#include "wavefront_guiding.h"    // GpuGuidingHistogram/wf_guiding_accumulate - probe_cache_accumulate below
 
 // Uniform sample within a disk of radius kRestirSpatialRadiusPixels around
 // pixel (px, py) (SampleUniformDiskConcentric would be the textbook choice,
@@ -626,7 +627,16 @@ extern "C" __global__ void probe_cache_accumulate(
 	int              numBatchSlots,
 	int              probeUpdateCursor,
 	GpuProbeGridMeta gridMeta,
-	GpuProbe*        probes
+	GpuProbe*        probes,
+	// Real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h)
+	// - nullptr (guiding disabled, or the probe cache's own totalProbes<=0
+	// case) is a complete no-op, same "null pointer disables the whole
+	// feature" shape as every other optional buffer in this codebase. When
+	// non-null, sized gridMeta.totalProbes exactly like `probes` above -
+	// SAME probe index, SAME already-traced direction/radiance this probe-
+	// update ray already resolved for the SH-L1 projection above, at zero
+	// extra ray-tracing cost (see this project's own plan).
+	GpuGuidingHistogram* guidingHistograms = nullptr
 ) {
 	const int batchSlot = blockIdx.x * blockDim.x + threadIdx.x;
 	if (batchSlot >= numBatchSlots || gridMeta.totalProbes <= 0) return;
@@ -673,4 +683,13 @@ extern "C" __global__ void probe_cache_accumulate(
 		p.meanDistSq = p.meanDistSq + alpha * (hitDist * hitDist - p.meanDistSq);
 	}
 	p.numRaysEverTraced += 1;
+
+	// Real-time path guiding (Live Preview only) - bins this SAME already-
+	// resolved sample into the matching probe's own directional histogram,
+	// alongside (not instead of) the SH-L1 projection above. See
+	// wavefront_guiding.h's own header comment for why this reuses the
+	// probe-cache-update pipeline wholesale rather than a dedicated pass.
+	if (guidingHistograms != nullptr) {
+		wf_guiding_accumulate(guidingHistograms[probeIdx], d, wf_svgf_luminance(radiance));
+	}
 }

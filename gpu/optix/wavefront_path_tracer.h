@@ -6,6 +6,7 @@
 #include "wavefront_types.h"
 #include "optix_types.h"
 #include "probe_grid_types.h"
+#include "wavefront_guiding.h"
 #include "optix_denoiser.h"  // DenoiserResources - shared with OptiXRenderer
 #include "svgf_tuning_params.h"
 #include <optix.h>
@@ -142,6 +143,26 @@ public:
     /// uploaded at scene-build time regardless (cheap, matches the light
     /// BVH's own precedent), only its USE is gated here.
     void setProbeCacheEnabled(bool enabled) { probeCacheEnabled_ = enabled; }
+
+    /// Real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h)
+    /// - the OptiXRenderer-owned, scene-lifetime GpuGuidingHistogram array
+    /// built alongside the probe grid by optix_renderer_scene.cpp's own
+    /// buildProbeGrid(), same setter-not-render()-parameter pattern as
+    /// setProbeGrid() just above (sized identically, one histogram per
+    /// probe - this class never allocates/frees it, only mutates it via
+    /// launchProbeCacheUpdate()'s own probe_cache_accumulate call).
+    void setGuidingHistograms(CUdeviceptr d_guidingHistograms) {
+        d_guidingHistograms_ = d_guidingHistograms;
+    }
+
+    /// Enables path guiding's own histogram feed and glossy-material bounce-
+    /// direction bias - see OptiXRenderer::enablePathGuiding()'s own comment.
+    /// Same "false is a complete no-op" shape as setProbeCacheEnabled()
+    /// above. Hard-depends on the probe cache being enabled too (path
+    /// guiding reuses its update pipeline outright) - enabling this alone
+    /// with the probe cache off is a documented no-op, not a crash: every
+    /// guiding call site is itself gated on probeCacheEnabled_.
+    void setPathGuidingEnabled(bool enabled) { pathGuidingEnabled_ = enabled; }
 
     /// Heterogeneous single-channel grid media (MaterialType::GridMedium) -
     /// same setter-not-render()-parameter pattern as setRgbGridMediums()
@@ -592,6 +613,18 @@ private:
     CUdeviceptr d_probeGrid_ = 0;             ///< see setProbeGrid() - NOT owned by this class
     GpuProbeGridMeta probeGridMeta_{};        ///< see setProbeGrid()
     bool probeCacheEnabled_ = false;          ///< see setProbeCacheEnabled()
+    // Real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h)
+    // - d_guidingHistograms_ is OptiXRenderer-owned (handed in via
+    // setGuidingHistograms(), never allocated/freed here), same "not owned
+    // by this class" shape as d_probeGrid_ just above, and sized
+    // probeGridMeta_.totalProbes identically (one histogram per probe).
+    // Hard-depends on the probe cache: guiding reuses its update pipeline
+    // outright (see launchProbeCacheUpdate()'s own comment), so
+    // pathGuidingEnabled_ is meaningless whenever probeCacheEnabled_ is
+    // false - callers still get correct (guiding-disabled) behavior in that
+    // case since every guiding call site itself checks probeCacheEnabled_.
+    CUdeviceptr d_guidingHistograms_ = 0;     ///< see setGuidingHistograms() - NOT owned by this class
+    bool pathGuidingEnabled_ = false;         ///< see setPathGuidingEnabled()
     int probeUpdateCursor_ = 0;               ///< see invalidateRestirHistory()/launchProbeCacheUpdate()
     static constexpr int kProbesPerFrame_ = 512;  ///< see this project's own plan - round-robin update budget
     CUdeviceptr d_probeCacheRayItems_    = 0; ///< ProbeCacheRayWorkItem[kProbesPerFrame_], host-built each call

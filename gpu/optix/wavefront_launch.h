@@ -15,6 +15,7 @@
 #include "wavefront_types.h"
 #include "optix_types.h"
 #include "probe_grid_types.h"
+#include "wavefront_guiding.h"
 #include <cuda_runtime.h>
 
 extern "C" void wf_launch_generate_camera_rays(
@@ -86,6 +87,12 @@ extern "C" void wf_launch_evaluate_materials(
 	// See wf_light_bvh_sample_index()'s own comment
 	// (wavefront_restir_helpers.h). nodeCount<=0 means "no light BVH built".
 	WfLightBvhContext            lightBvh,
+	// Real-time path guiding (Live Preview only) - see evaluate_materials's
+	// own guidingHistograms parameter comment (wavefront_kernels_materials.cu).
+	// d_guidingHistograms==nullptr keeps every Conductor/RoughMetal case on
+	// its existing, unmodified GGX/VNDF sampling.
+	GpuProbeGridMeta             guidingGridMeta,
+	const GpuGuidingHistogram*   d_guidingHistograms,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -293,6 +300,10 @@ extern "C" void wf_launch_probe_cache_accumulate(
 	int              probeUpdateCursor,
 	GpuProbeGridMeta gridMeta,
 	GpuProbe*        d_probes,
+	// Real-time path guiding (Live Preview only) - see probe_cache_accumulate's
+	// own guidingHistograms parameter comment (wavefront_kernels_restir.cu).
+	// nullptr (guiding disabled) keeps this a complete no-op.
+	GpuGuidingHistogram* d_guidingHistograms,
 	cudaStream_t     stream);
 
 // SVGF (Live Preview only, gpu/optix/wavefront_svgf_math.h and

@@ -59,7 +59,7 @@ public slots:
 	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, bool restirDi, bool probeCache, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -138,6 +138,17 @@ public slots:
 	// that). Same "no accumulation reset needed" reasoning as setRestirGi().
 	// No-op if not running.
 	void setProbeCache(bool probeCache);
+
+	// Toggles real-time path guiding (gpu/optix/wavefront_guiding.h) -
+	// importance-samples the bounce direction for glossy/rough materials
+	// against a coarse, incrementally-learned incident-radiance estimate,
+	// independent from setRestirGi()/setRestirDi() above. Hard-depends on
+	// setProbeCache() also being on - it reuses the probe cache's own grid
+	// and per-frame update pipeline outright (see this project's own plan);
+	// enabling this alone is a documented no-op, not a crash. Same "no
+	// accumulation reset needed" reasoning as setProbeCache(). No-op if not
+	// running.
+	void setPathGuiding(bool pathGuiding);
 
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
@@ -229,6 +240,10 @@ private:
 	// itself, so there was no prior always-on behavior to preserve; false
 	// matches rt_realtime_render_frame()'s own default (optix_interface.h).
 	bool m_probeCache = false;
+	// See setPathGuiding()'s own comment. Crosses the DLL boundary like
+	// m_probeCache above. Defaults false for the same reason m_probeCache
+	// does (shipped WITH the feature, nothing to preserve).
+	bool m_pathGuiding = false;
 	// See setSppAndMaxDepth()'s own comment. Both cross the DLL boundary
 	// (they're renderFrame()'s own 4th/5th positional args). Defaults match
 	// renderLoop()'s own previous hardcoded locals exactly.
@@ -340,7 +355,7 @@ public:
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, bool restirDi, bool probeCache, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
@@ -349,6 +364,7 @@ public:
 	void setRestirGi(bool restirGi);
 	void setRestirDi(bool restirDi);
 	void setProbeCache(bool probeCache);
+	void setPathGuiding(bool pathGuiding);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

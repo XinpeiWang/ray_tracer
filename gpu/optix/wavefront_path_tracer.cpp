@@ -1152,6 +1152,19 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<GpuGiOriginContext*>(d_giOriginContext_),
 		reinterpret_cast<GpuGiSample*>(d_giCandidateOut_),
 		buildLightBvhContext(),
+		probeGridMeta_,
+		// nullptr (not d_guidingHistograms_) when disabled - evaluate_materials's
+		// own Conductor/RoughMetal guiding gates on this pointer alone, same
+		// "null disables the whole feature" shape as launchEvaluateMaterialsSimple's
+		// own probeGrid forwarding. Also nullptr whenever the probe cache
+		// itself is off, since path guiding hard-depends on it (see
+		// setPathGuidingEnabled()'s own comment) - probeCacheEnabled_ is
+		// checked here rather than relying on d_guidingHistograms_ alone
+		// being null, since OptiXRenderer always builds/uploads the
+		// histogram array regardless of either flag (cheap, matches
+		// d_probeGrid_'s own "always built, usage gated separately"
+		// precedent).
+		(pathGuidingEnabled_ && probeCacheEnabled_) ? reinterpret_cast<const GpuGuidingHistogram*>(d_guidingHistograms_) : nullptr,
 		stream_);
 }
 
@@ -1528,6 +1541,9 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 		reinterpret_cast<const float3*>(d_probeCacheDirections_),
 		batchSize, probeUpdateCursor_, probeGridMeta_,
 		reinterpret_cast<GpuProbe*>(d_probeGrid_),
+		// nullptr when path guiding is off - probe_cache_accumulate's own
+		// guidingHistograms parameter comment (wavefront_kernels_restir.cu).
+		pathGuidingEnabled_ ? reinterpret_cast<GpuGuidingHistogram*>(d_guidingHistograms_) : nullptr,
 		stream_);
 	// No trailing sync - the only remaining work in this function is the
 	// host-only probeUpdateCursor_ update just below (no GPU dependency),

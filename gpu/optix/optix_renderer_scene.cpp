@@ -115,6 +115,10 @@ void OptiXRenderer::buildProbeGrid(
 	}
 
 	if (d_probeGrid_) { cudaFree(reinterpret_cast<void*>(d_probeGrid_)); d_probeGrid_ = 0; }
+	// Path guiding's own per-probe histogram array - freed here in lockstep
+	// with d_probeGrid_ (see its own comment, optix_renderer.h) since both
+	// are sized probeGridMeta_.totalProbes and rebuilt together below.
+	if (d_guidingHistograms_) { cudaFree(reinterpret_cast<void*>(d_guidingHistograms_)); d_guidingHistograms_ = 0; }
 	probeGridMeta_ = GpuProbeGridMeta{};
 
 	if (minX > maxX) {
@@ -151,6 +155,18 @@ void OptiXRenderer::buildProbeGrid(
 	const size_t bytes = zeroed.size() * sizeof(GpuProbe);
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeGrid_), bytes));
 	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeGrid_), zeroed.data(), bytes, cudaMemcpyHostToDevice));
+
+	// Path guiding's own per-probe histogram array (gpu/optix/wavefront_
+	// guiding.h) - built here, alongside d_probeGrid_ above, NOT gated on
+	// pathGuidingEnabled_ (cheap, matches d_probeGrid_'s own "always built,
+	// usage gated separately" precedent - see enablePathGuiding()'s own
+	// comment). GpuGuidingHistogram's own default member initializers
+	// already give every field its correct "never updated" state
+	// (numSamplesEverAdded==0), same zeroed-vector-upload pattern as above.
+	std::vector<GpuGuidingHistogram> zeroedHistograms(static_cast<size_t>(probeGridMeta_.totalProbes));
+	const size_t histogramBytes = zeroedHistograms.size() * sizeof(GpuGuidingHistogram);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_guidingHistograms_), histogramBytes));
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_guidingHistograms_), zeroedHistograms.data(), histogramBytes, cudaMemcpyHostToDevice));
 
 	std::cout << "[OptiX] Built probe cache grid (" << dimX << "x" << dimY << "x" << dimZ
 			  << " = " << probeGridMeta_.totalProbes << " probes, spacing=" << spacing << ")\n";

@@ -1258,12 +1258,12 @@ void MainWindow::createRenderOptionsTab() {
 	m_liveRenderSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), optionsTab);
 	styleGroupBox(m_liveRenderSettingsGroupBox);
 	m_liveRenderSettingsGroupBox->setInfoIcon(createInfoIcon(
-		tr("ReSTIR DI/GI, the radiance cache, exposure, samples/max-bounces "
-		"per frame, and the firefly clamp - all independent of the Advanced "
-		"Parameters group below (which only applies to Image/Video) and of "
-		"the Denoiser section above. Only takes effect when Output Mode "
-		"above is \"Live Preview (interactive)\", but stays editable in any "
-		"mode.")));
+		tr("ReSTIR DI/GI, the radiance cache, path guiding, exposure, "
+		"samples/max-bounces per frame, and the firefly clamp - all "
+		"independent of the Advanced Parameters group below (which only "
+		"applies to Image/Video) and of the Denoiser section above. Only "
+		"takes effect when Output Mode above is \"Live Preview "
+		"(interactive)\", but stays editable in any mode.")));
 	setGroupDimmed(m_liveRenderSettingsGroupBox, !isLiveMode());
 	QFormLayout *liveRenderSettingsLayout = new QFormLayout(m_liveRenderSettingsGroupBox);
 	liveRenderSettingsLayout->setVerticalSpacing(10);
@@ -1338,8 +1338,28 @@ void MainWindow::createRenderOptionsTab() {
 		"has no convergence delay.")),
 		2, 0, 1, 4);
 
+	m_livePathGuidingCheck = new QCheckBox(tr("Path Guiding"));
+	m_livePathGuidingCheck->setChecked(m_livePathGuidingEnabled);
+	styleCheckBox(m_livePathGuidingCheck);
+	connect(m_livePathGuidingCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_livePathGuidingEnabled = checked;
+		saveLivePathGuidingEnabled(checked);
+		pushLivePathGuidingToSession();
+	});
+	// Own row too, same reasoning as the checkboxes above.
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_livePathGuidingCheck,
+		tr("Importance-samples the bounce direction for glossy/metal "
+		"surfaces against a coarse, incrementally-learned estimate of where "
+		"incident light actually is, instead of relying purely on the "
+		"material's own reflection-lobe sampling. Requires the Radiance "
+		"Cache above to also be on - it reuses that cache's own grid and "
+		"update pipeline, and is a no-op without it. Like the Radiance "
+		"Cache, converges over several seconds; disabling it falls back to "
+		"the material's own unbiased reflection sampling.")),
+		3, 0, 1, 4);
+
 	// The four numeric values grouped into their own clean 2-per-row grid
-	// (rows 3-4), separate from the checkboxes above.
+	// (rows 4-5), separate from the checkboxes above.
 	m_liveExposureSpin = new QDoubleSpinBox();
 	m_liveExposureSpin->setRange(0.01, 100.0);
 	m_liveExposureSpin->setSingleStep(0.1);
@@ -1354,8 +1374,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("A flat brightness multiplier applied before tone-mapping, same "
 		"meaning as this tab's own Output-group Exposure control but "
 		"independently set for Live Preview.")),
-		3, 0);
-	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 3, 1);
+		4, 0);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 4, 1);
 
 	m_liveSamplesSpinBox = new QSpinBox();
 	m_liveSamplesSpinBox->setRange(1, 16);
@@ -1373,8 +1393,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Samples per pixel rendered on each Live Preview call - Live "
 		"Preview has its own independent value from the Advanced Parameters "
 		"group below, which only applies to Image/Video.")),
-		3, 2);
-	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 3, 3);
+		4, 2);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 4, 3);
 
 	m_liveMaxDepthSpinBox = new QSpinBox();
 	m_liveMaxDepthSpinBox->setRange(1, 32);
@@ -1384,8 +1404,8 @@ void MainWindow::createRenderOptionsTab() {
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
 		tr("Maximum ray depth for Live Preview - independent from the "
 		"Advanced Parameters group below, which only applies to Image/Video.")),
-		4, 0);
-	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 4, 1);
+		5, 0);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 5, 1);
 
 	m_liveFireflyClampSpin = new QDoubleSpinBox();
 	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
@@ -1402,8 +1422,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Caps the brightest possible sample value to suppress fireflies, "
 		"at the cost of clipping genuinely bright highlights. Lower values "
 		"clamp more aggressively.")),
-		4, 2);
-	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 4, 3);
+		5, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 5, 3);
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
@@ -1971,7 +1991,7 @@ void MainWindow::startLivePreview() {
 								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
 								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
 								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveRestirDiEnabled,
-								 m_liveProbeCacheEnabled,
+								 m_liveProbeCacheEnabled, m_livePathGuidingEnabled,
 								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
@@ -2084,6 +2104,11 @@ void MainWindow::pushLiveRestirDiToSession() {
 void MainWindow::pushLiveProbeCacheToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setProbeCache(m_liveProbeCacheEnabled);
+}
+
+void MainWindow::pushLivePathGuidingToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setPathGuiding(m_livePathGuidingEnabled);
 }
 
 void MainWindow::pushLiveExposureToSession() {
@@ -2335,6 +2360,16 @@ bool MainWindow::loadSavedLiveProbeCacheEnabled() const {
 void MainWindow::saveLiveProbeCacheEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewProbeCacheEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLivePathGuidingEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewPathGuidingEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLivePathGuidingEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewPathGuidingEnabledKey, value);
 }
 
 double MainWindow::loadSavedLiveExposure() const {

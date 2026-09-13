@@ -7,6 +7,7 @@
 
 #include "optix_types.h"
 #include "probe_grid_types.h"
+#include "wavefront_guiding.h"
 // For SceneData's instancing structs. No cycle: scene_builder.h pulls only
 // optix_types.h and <vector>.
 #include "scene_builder.h"
@@ -282,6 +283,27 @@ public:
 	///        built, usage gated separately" precedent - only the per-frame
 	///        UPDATE pass and the shading-time query are gated here.
 	void enableProbeCache(bool enable) { probeCacheEnabled_ = enable; }
+
+	/// @brief Enable real-time path guiding (gpu/optix/wavefront_guiding.h)
+	///        on the wavefront backend - see this project's own plan.
+	///        Independent from enableRestir()/enableRestirGi()/enableSvgf()
+	///        above. Forwarded to wavefrontTracer_ inside render()
+	///        (WavefrontPathTracer::setPathGuidingEnabled()'s own comment) -
+	///        only meaningful when isWavefrontActive(). false (the default)
+	///        costs nothing extra and keeps every Conductor/RoughMetal bounce
+	///        on pure BSDF/VNDF sampling, unchanged - Live-Preview-only, same
+	///        "opt-in, batch/offline rendering never pays for it" shape as
+	///        enableProbeCache() above. HARD-DEPENDS on enableProbeCache()
+	///        also being on - guiding reuses the probe cache's own grid and
+	///        per-frame update pipeline outright rather than maintaining a
+	///        second one; enabling this alone is a documented no-op, not a
+	///        crash (WavefrontPathTracer::setPathGuidingEnabled()'s own
+	///        comment). The histogram array ITSELF
+	///        (buildProbeGrid(), optix_renderer_scene.cpp) is still built
+	///        unconditionally alongside the probe grid regardless of this
+	///        flag - only the per-frame update and the glossy-material
+	///        sampling bias are gated here.
+	void enablePathGuiding(bool enable) { pathGuidingEnabled_ = enable; }
 
 	/// @brief Sets SVGF's advanced tuning constants (gpu/optix/
 	///        svgf_tuning_params.h) - formerly hardcoded kSvgf* literals in
@@ -666,6 +688,16 @@ private:
 	// same pattern as setLightBvh() just above.
 	CUdeviceptr d_probeGrid_ = 0;                  ///< Device GpuProbe array, probeGridMeta_.totalProbes entries
 	GpuProbeGridMeta probeGridMeta_{};
+
+	// Real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h
+	// and this project's own plan) - built alongside the probe grid above,
+	// by the SAME buildProbeGrid() call (optix_renderer_scene.cpp), sized
+	// identically (probeGridMeta_.totalProbes entries, one histogram per
+	// probe) and freed/re-zeroed in lockstep with d_probeGrid_ - keep the
+	// two allocation sites next to each other in buildProbeGrid() so a
+	// future change to one doesn't silently desync the other's count.
+	CUdeviceptr d_guidingHistograms_ = 0;          ///< Device GpuGuidingHistogram array, probeGridMeta_.totalProbes entries
+	bool pathGuidingEnabled_ = false;              ///< See enablePathGuiding()
 
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - evaluated deterministically, not via the alias table.

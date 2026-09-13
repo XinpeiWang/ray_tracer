@@ -33,7 +33,7 @@ extern "C" __global__ void evaluate_materials(
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
 	GpuGiOriginContext*, GpuGiSample*,
-	WfLightBvhContext);
+	WfLightBvhContext, GpuProbeGridMeta, const GpuGuidingHistogram*);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -103,7 +103,8 @@ extern "C" __global__ void probe_cache_shade(
 	WfLightBvhContext, float3, float,
 	float3*, float*, WorkQueue<ShadowRayWorkItem>);
 extern "C" __global__ void probe_cache_accumulate(
-	const float3*, const float*, const float3*, int, int, GpuProbeGridMeta, GpuProbe*);
+	const float3*, const float*, const float3*, int, int, GpuProbeGridMeta, GpuProbe*,
+	GpuGuidingHistogram*);
 // ---- forward declarations of kernels from wavefront_kernels_svgf.cu ----
 extern "C" __global__ void svgf_checkerboard_clear_frame(
 	float3*, float3*, float4*, int, int, unsigned int, bool);
@@ -198,6 +199,8 @@ extern "C" void wf_launch_evaluate_materials(
 	GpuGiOriginContext*          d_giOriginContext,
 	GpuGiSample*                 d_giCandidateOut,
 	WfLightBvhContext            lightBvh,
+	GpuProbeGridMeta             guidingGridMeta,
+	const GpuGuidingHistogram*   d_guidingHistograms,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -219,7 +222,7 @@ extern "C" void wf_launch_evaluate_materials(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
 		d_giOriginContext, d_giCandidateOut,
-		lightBvh);
+		lightBvh, guidingGridMeta, d_guidingHistograms);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -460,6 +463,7 @@ extern "C" void wf_launch_probe_cache_accumulate(
 	int              probeUpdateCursor,
 	GpuProbeGridMeta gridMeta,
 	GpuProbe*        d_probes,
+	GpuGuidingHistogram* d_guidingHistograms,
 	cudaStream_t     stream)
 {
 	if (numBatchSlots <= 0) return;
@@ -467,7 +471,7 @@ extern "C" void wf_launch_probe_cache_accumulate(
 	dim3 grid((numBatchSlots + 255) / 256);
 	probe_cache_accumulate<<<grid, block, 0, (cudaStream_t)stream>>>(
 		d_probeCacheRadianceOut, d_probeCacheHitDistOut, d_probeCacheDirections,
-		numBatchSlots, probeUpdateCursor, gridMeta, d_probes);
+		numBatchSlots, probeUpdateCursor, gridMeta, d_probes, d_guidingHistograms);
 }
 
 extern "C" void wf_launch_svgf_temporal_integrate(

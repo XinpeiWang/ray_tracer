@@ -574,7 +574,8 @@ extern "C" bool rt_realtime_render_frame(
 	float max_component_value,
 	const SvgfTuningParams* svgf_tuning,
 	bool enable_restir_di,
-	bool enable_probe_cache
+	bool enable_probe_cache,
+	bool enable_path_guiding
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -719,6 +720,13 @@ extern "C" bool rt_realtime_render_frame(
 		// batch/offline exclusion as DI/GI (optix_render_main() never calls
 		// this function or OptiXRenderer::enableProbeCache()).
 		g_renderer->enableProbeCache(enable_probe_cache);
+		// Real-time path guiding (gpu/optix/wavefront_guiding.h) - like the
+		// probe cache above, a genuine per-call opt-in (the caller's own
+		// `enable_path_guiding` parameter), defaulting false for the same
+		// reason. Hard-depends on enable_probe_cache also being true - see
+		// OptiXRenderer::enablePathGuiding()'s own comment for why enabling
+		// this alone is a documented no-op, not a crash.
+		g_renderer->enablePathGuiding(enable_path_guiding);
 		// SVGF (gpu/optix/wavefront_svgf_math.h) - unlike DI/GI above, this
 		// is genuinely opt-in per call (the CALLER's own `enable_svgf`
 		// parameter), not unconditionally forced on - it's an alternative

@@ -21,6 +21,7 @@
 #include "wavefront_types.h"
 #include "optix_types.h"
 #include "probe_grid_types.h"
+#include "wavefront_guiding.h"
 #include "spectral_device.h"
 #include "sampled_spectrum.h"
 #include "spectrum_types.h"

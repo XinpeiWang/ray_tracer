@@ -117,7 +117,19 @@ extern "C" __global__ void evaluate_materials(
 	// "no light BVH built" - forwarded to wf_finish_material_scatter() below
 	// unchanged, which itself falls straight through to the alias table for
 	// that case.
-	WfLightBvhContext lightBvh = {}
+	WfLightBvhContext lightBvh = {},
+	// Real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h)
+	// - see this project's own plan. Consulted ONLY by the Conductor/
+	// RoughMetal cases below (v1 scope), BEFORE wf_finish_material_scatter is
+	// even called, unlike probeGridMeta/probeGrid there (which stay on their
+	// nullptr/default - Lambertian never reaches this kernel, see
+	// WavefrontQueues::simpleHitQueue's own comment). guidingHistograms==
+	// nullptr (the default, every non-Live-Preview call site, or Live
+	// Preview with the feature toggled off) is a complete no-op - every
+	// glossy case below falls through to its own existing, unmodified
+	// GGX/VNDF sampling unchanged.
+	GpuProbeGridMeta guidingGridMeta = {},
+	const GpuGuidingHistogram* guidingHistograms = nullptr
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -548,19 +560,54 @@ extern "C" __global__ void evaluate_materials(
 		float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
 		if (cwi_z <= 0.0f) { scattered = false; break; }
 		TrowbridgeReitz<float> c_dist(c_alpha_x, c_alpha_y);
-		float cwm_x, cwm_y, cwm_z;
-		c_dist.Sample_wm(cwi_x, cwi_y, cwi_z, wf_rand(seed), wf_rand(seed), cwm_x, cwm_y, cwm_z);
+
+		// Real-time path guiding (Live Preview only, gpu/optix/
+		// wavefront_guiding.h) - only for non-EffectivelySmooth (genuinely
+		// glossy, not near-mirror) surfaces, matching the existing NEE/MIS
+		// gate below exactly (an EffectivelySmooth conductor stays specular
+		// either way, guiding or not).
+		float c_pGuide = 0.0f;
+		int c_probeIdx = -1;
+		if (guidingHistograms != nullptr && !c_dist.EffectivelySmooth()) {
+			c_probeIdx = wf_guiding_nearest_probe(guidingGridMeta, hit_point);
+			if (c_probeIdx >= 0) {
+				c_pGuide = wf_guiding_probability(guidingHistograms[c_probeIdx].numSamplesEverAdded);
+			}
+		}
+
+		float cwm_x, cwm_y, cwm_z, cwo_x, cwo_y, cwo_z;
+		if (c_pGuide > 0.0f && wf_rand(seed) < c_pGuide) {
+			// Guided branch: draw wo from the nearest probe's own directional
+			// histogram instead of Sample_wm(), then reconstruct wm - see
+			// wavefront_guiding.h's own header comment for the full
+			// mixture-pdf rationale.
+			const float3 c_wo_world = wf_guided_sample_direction(
+				guidingHistograms[c_probeIdx], wf_rand(seed), wf_rand(seed), wf_rand(seed));
+			cwo_x = dot(c_wo_world, ctan); cwo_y = dot(c_wo_world, cbitan); cwo_z = dot(c_wo_world, cn);
+			if (cwo_z <= 0.0f) { scattered = false; break; }
+			const float wmx = cwi_x + cwo_x, wmy = cwi_y + cwo_y, wmz = cwi_z + cwo_z;
+			const float wmlen = sqrtf(wmx*wmx + wmy*wmy + wmz*wmz);
+			if (wmlen < 1e-8f) { scattered = false; break; }
+			cwm_x = wmx / wmlen; cwm_y = wmy / wmlen; cwm_z = wmz / wmlen;
+		} else {
+			c_dist.Sample_wm(cwi_x, cwi_y, cwi_z, wf_rand(seed), wf_rand(seed), cwm_x, cwm_y, cwm_z);
+			const float c_dot0 = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
+			cwo_x = 2.0f*c_dot0*cwm_x - cwi_x;
+			cwo_y = 2.0f*c_dot0*cwm_y - cwi_y;
+			cwo_z = 2.0f*c_dot0*cwm_z - cwi_z;
+			if (cwo_z <= 0.0f) { scattered = false; break; }
+		}
 		float c_dot = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
-		float cwo_x = 2.0f*c_dot*cwm_x - cwi_x;
-		float cwo_y = 2.0f*c_dot*cwm_y - cwi_y;
-		float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
-		if (cwo_z <= 0.0f) { scattered = false; break; }
 		float c_G1_wi  = c_dist.G1(cwi_x, cwi_y, cwi_z);
 		float c_G_wowi = c_dist.G(cwo_x, cwo_y, cwo_z, cwi_x, cwi_y, cwi_z);
+		// f(wi,wo)*cos(wo)/pdf_bsdf(wo) == G(wo,wi)/G1(wi) for a VNDF-sampled
+		// microfacet BRDF, at ANY wo paired with wm=normalize(wi+wo) - not
+		// only ones Sample_wm() itself produced (already relied on by
+		// evalGlossyF's own NEE evaluation above). This is what lets guiding
+		// substitute the pdf below transparently, with no separate f()
+		// evaluation in either branch.
 		float c_weight = (c_G1_wi > 1e-8f) ? c_G_wowi / c_G1_wi : 0.0f;
 		float3 c_F = FrConductorRGB(c_dot, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
-		// Use average Fresnel weight as scalar (conductor is specular, color from albedo)
-		attenuation = albedoSpectrum(make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight));
 		scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
 		scattered   = true;
 
@@ -574,11 +621,28 @@ extern "C" __global__ void evaluate_materials(
 		// matching evalGlossyF's `wi_world` convention).
 		if (!c_dist.EffectivelySmooth()) {
 			is_specular = false;
-			brdf_pdf_override = ggx_vndf_reflection_pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z, c_alpha_x, c_alpha_y);
+			const float c_pdf_bsdf = ggx_vndf_reflection_pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z, c_alpha_x, c_alpha_y);
+			float c_pdf_final = c_pdf_bsdf;
+			// Rescale f*cos/pdf_bsdf (already in c_weight) to f*cos/pdf_mixture -
+			// the only new arithmetic path guiding needs here (see
+			// wavefront_guiding.h's own header comment). A no-op when
+			// c_pGuide==0 (guiding off, or this probe's histogram still
+			// unpopulated).
+			if (c_pGuide > 0.0f && c_probeIdx >= 0) {
+				const float c_pdf_guide = wf_guided_pdf(guidingHistograms[c_probeIdx], scattered_dir);
+				const float c_pdf_mixture = c_pGuide * c_pdf_guide + (1.0f - c_pGuide) * c_pdf_bsdf;
+				if (c_pdf_mixture > 1e-8f) {
+					c_weight *= c_pdf_bsdf / c_pdf_mixture;
+					c_pdf_final = c_pdf_mixture;
+				}
+			}
+			brdf_pdf_override = c_pdf_final;
 			phaseWo = cwi;
 		} else {
 			is_specular = true;
 		}
+		// Use average Fresnel weight as scalar (conductor is specular, color from albedo)
+		attenuation = albedoSpectrum(make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight));
 		break;
 	}
 	case MaterialType::RoughMetal: {
@@ -597,17 +661,41 @@ extern "C" __global__ void evaluate_materials(
 		float rmwi_x = dot(rmwi, rmtan), rmwi_y = dot(rmwi, rmbitan), rmwi_z = dot(rmwi, rmn);
 		if (rmwi_z <= 0.0f) { scattered = false; break; }
 		TrowbridgeReitz<float> rm_dist(rm_alpha, rm_alpha);
-		float rmwm_x, rmwm_y, rmwm_z;
-		rm_dist.Sample_wm(rmwi_x, rmwi_y, rmwi_z, wf_rand(seed), wf_rand(seed), rmwm_x, rmwm_y, rmwm_z);
-		float rm_dot = rmwi_x*rmwm_x + rmwi_y*rmwm_y + rmwi_z*rmwm_z;
-		float rmwo_x = 2.0f*rm_dot*rmwm_x - rmwi_x;
-		float rmwo_y = 2.0f*rm_dot*rmwm_y - rmwi_y;
-		float rmwo_z = 2.0f*rm_dot*rmwm_z - rmwi_z;
-		if (rmwo_z <= 0.0f) { scattered = false; break; }
+
+		// Real-time path guiding (Live Preview only) - see
+		// MaterialType::Conductor's identical-shape block above for the full
+		// rationale; RoughMetal has no Fresnel color of its own, everything
+		// else about the guiding gate/branch is identical.
+		float rm_pGuide = 0.0f;
+		int rm_probeIdx = -1;
+		if (guidingHistograms != nullptr && !rm_dist.EffectivelySmooth()) {
+			rm_probeIdx = wf_guiding_nearest_probe(guidingGridMeta, hit_point);
+			if (rm_probeIdx >= 0) {
+				rm_pGuide = wf_guiding_probability(guidingHistograms[rm_probeIdx].numSamplesEverAdded);
+			}
+		}
+
+		float rmwm_x, rmwm_y, rmwm_z, rmwo_x, rmwo_y, rmwo_z;
+		if (rm_pGuide > 0.0f && wf_rand(seed) < rm_pGuide) {
+			const float3 rm_wo_world = wf_guided_sample_direction(
+				guidingHistograms[rm_probeIdx], wf_rand(seed), wf_rand(seed), wf_rand(seed));
+			rmwo_x = dot(rm_wo_world, rmtan); rmwo_y = dot(rm_wo_world, rmbitan); rmwo_z = dot(rm_wo_world, rmn);
+			if (rmwo_z <= 0.0f) { scattered = false; break; }
+			const float wmx = rmwi_x + rmwo_x, wmy = rmwi_y + rmwo_y, wmz = rmwi_z + rmwo_z;
+			const float wmlen = sqrtf(wmx*wmx + wmy*wmy + wmz*wmz);
+			if (wmlen < 1e-8f) { scattered = false; break; }
+			rmwm_x = wmx / wmlen; rmwm_y = wmy / wmlen; rmwm_z = wmz / wmlen;
+		} else {
+			rm_dist.Sample_wm(rmwi_x, rmwi_y, rmwi_z, wf_rand(seed), wf_rand(seed), rmwm_x, rmwm_y, rmwm_z);
+			const float rm_dot0 = rmwi_x*rmwm_x + rmwi_y*rmwm_y + rmwi_z*rmwm_z;
+			rmwo_x = 2.0f*rm_dot0*rmwm_x - rmwi_x;
+			rmwo_y = 2.0f*rm_dot0*rmwm_y - rmwi_y;
+			rmwo_z = 2.0f*rm_dot0*rmwm_z - rmwi_z;
+			if (rmwo_z <= 0.0f) { scattered = false; break; }
+		}
 		float rm_G1_wi  = rm_dist.G1(rmwi_x, rmwi_y, rmwi_z);
 		float rm_G_wowi = rm_dist.G(rmwo_x, rmwo_y, rmwo_z, rmwi_x, rmwi_y, rmwi_z);
 		float rm_weight = (rm_G1_wi > 1e-8f) ? rm_G_wowi / rm_G1_wi : 0.0f;
-		attenuation = albedoSpectrum(make_float3(mat.albedo.x * rm_weight, mat.albedo.y * rm_weight, mat.albedo.z * rm_weight));
 		scattered_dir = normalize(rmwo_x*rmtan + rmwo_y*rmbitan + rmwo_z*rmn);
 		scattered   = true;
 
@@ -616,11 +704,22 @@ extern "C" __global__ void evaluate_materials(
 		// MaterialType::Conductor's identical-shape block above.
 		if (!rm_dist.EffectivelySmooth()) {
 			is_specular = false;
-			brdf_pdf_override = ggx_vndf_reflection_pdf(rmwi_x, rmwi_y, rmwi_z, rmwo_x, rmwo_y, rmwo_z, rm_alpha, rm_alpha);
+			const float rm_pdf_bsdf = ggx_vndf_reflection_pdf(rmwi_x, rmwi_y, rmwi_z, rmwo_x, rmwo_y, rmwo_z, rm_alpha, rm_alpha);
+			float rm_pdf_final = rm_pdf_bsdf;
+			if (rm_pGuide > 0.0f && rm_probeIdx >= 0) {
+				const float rm_pdf_guide = wf_guided_pdf(guidingHistograms[rm_probeIdx], scattered_dir);
+				const float rm_pdf_mixture = rm_pGuide * rm_pdf_guide + (1.0f - rm_pGuide) * rm_pdf_bsdf;
+				if (rm_pdf_mixture > 1e-8f) {
+					rm_weight *= rm_pdf_bsdf / rm_pdf_mixture;
+					rm_pdf_final = rm_pdf_mixture;
+				}
+			}
+			brdf_pdf_override = rm_pdf_final;
 			phaseWo = rmwi;
 		} else {
 			is_specular = true;
 		}
+		attenuation = albedoSpectrum(make_float3(mat.albedo.x * rm_weight, mat.albedo.y * rm_weight, mat.albedo.z * rm_weight));
 		break;
 	}
 	case MaterialType::CoatedDiffuse: {

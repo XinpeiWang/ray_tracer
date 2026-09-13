@@ -347,6 +347,7 @@ private:
 	void pushLiveRestirGiToSession();
 	void pushLiveRestirDiToSession();
 	void pushLiveProbeCacheToSession();
+	void pushLivePathGuidingToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
 	void pushLiveFireflyClampToSession();
@@ -439,6 +440,8 @@ private:
 	void saveLiveRestirDiEnabled(bool value) const;
 	bool loadSavedLiveProbeCacheEnabled() const;
 	void saveLiveProbeCacheEnabled(bool value) const;
+	bool loadSavedLivePathGuidingEnabled() const;
+	void saveLivePathGuidingEnabled(bool value) const;
 	double loadSavedLiveExposure() const;
 	void saveLiveExposure(double value) const;
 	int loadSavedLiveSamples() const;
@@ -881,6 +884,15 @@ private:
 	// rt_realtime_render_frame() enable_probe_cache comment).
 	bool m_liveProbeCacheEnabled = false;
 	QCheckBox *m_liveProbeCacheCheck = nullptr;
+	// Real-time path guiding (gpu/optix/wavefront_guiding.h) - same shape as
+	// m_liveProbeCacheEnabled above, defaults false for the same reason.
+	// Hard-depends on m_liveProbeCacheEnabled also being true (see
+	// OptiXRenderer::enablePathGuiding()'s own comment) - the checkbox
+	// itself stays independently toggleable either way, matching this
+	// project's own "no cross-checkbox enable/disable coupling in the UI,
+	// document the dependency in the tooltip instead" precedent.
+	bool m_livePathGuidingEnabled = false;
+	QCheckBox *m_livePathGuidingCheck = nullptr;
 	double m_liveExposure = 1.0;
 	QDoubleSpinBox *m_liveExposureSpin = nullptr;
 	int m_liveSamples = 1;

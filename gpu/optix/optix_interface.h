@@ -189,7 +189,23 @@ bool rt_realtime_render_frame(
 	// enable_restir_di, per this function's own DLL-boundary convention (see
 	// realtime_preview_session.cpp's RenderFrameFn comment) of only ever
 	// appending new parameters, never inserting them in the middle.
-	bool enable_probe_cache = false
+	bool enable_probe_cache = false,
+	// Real-time path guiding (gpu/optix/wavefront_guiding.h) - importance-
+	// samples the bounce direction for glossy/rough materials (Conductor/
+	// RoughMetal in v1) against a coarse, incrementally-learned estimate of
+	// where incident radiance actually is, instead of relying purely on the
+	// BSDF's own GGX/VNDF sampling (see this project's own plan).
+	// Independent from enable_restir_gi/enable_restir_di/enable_probe_cache
+	// above. HARD-DEPENDS on enable_probe_cache also being true - it reuses
+	// the probe cache's own grid and per-frame update pipeline outright, so
+	// enabling this alone is a documented no-op (falls back to pure BSDF
+	// sampling), not a crash. Defaults false for the same reason
+	// enable_probe_cache does (shipped WITH the feature, nothing to
+	// preserve). Appended at the very end of the parameter list, after
+	// enable_probe_cache, per this function's own DLL-boundary convention
+	// (see realtime_preview_session.cpp's RenderFrameFn comment) of only
+	// ever appending new parameters, never inserting them in the middle.
+	bool enable_path_guiding = false
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the

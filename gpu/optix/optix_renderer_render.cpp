@@ -125,6 +125,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setSvgfEnabled(svgfEnabled_);
 		wavefrontTracer_->setSvgfTuning(svgfTuning_);
 		wavefrontTracer_->setProbeCacheEnabled(probeCacheEnabled_);
+		wavefrontTracer_->setPathGuidingEnabled(pathGuidingEnabled_);
 		// See invalidateRestirHistory()'s own comment on why this is
 		// deferred-then-forwarded here instead of calling straight through.
 		if (restirHistoryInvalidationPending_) {
@@ -144,6 +145,10 @@ bool OptiXRenderer::render(
 		// builds/owns it once at buildScene() time, forwarded every render()
 		// call" pattern as setLightBvh() just above.
 		wavefrontTracer_->setProbeGrid(d_probeGrid_, probeGridMeta_);
+		// Real-time path guiding (Live Preview only) - see WavefrontPathTracer::
+		// setGuidingHistograms()'s own comment. Same forwarding pattern as
+		// setProbeGrid() just above.
+		wavefrontTracer_->setGuidingHistograms(d_guidingHistograms_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
 		wavefrontTracer_->setRgbGridMediums(d_rgbGridMediums_, numRgbGridMediums_, d_rgbGridData_, rgbGridDataCount_);
 		wavefrontTracer_->setGridMediums(d_gridMediums_, numGridMediums_, d_gridData_, gridDataCount_);
@@ -516,6 +521,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_lightBvhNodes_) cudaFree(reinterpret_cast<void*>(d_lightBvhNodes_));
 	if (d_lightBvhBitTrail_) cudaFree(reinterpret_cast<void*>(d_lightBvhBitTrail_));
 	if (d_probeGrid_) cudaFree(reinterpret_cast<void*>(d_probeGrid_));
+	if (d_guidingHistograms_) cudaFree(reinterpret_cast<void*>(d_guidingHistograms_));
 	if (d_punctualLights_) cudaFree(reinterpret_cast<void*>(d_punctualLights_));
 
 	// Free launch params
