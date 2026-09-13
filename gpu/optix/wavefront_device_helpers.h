@@ -294,6 +294,112 @@ __device__ __forceinline__ float wf_glossy_alpha_v(const MaterialData& mat, bool
 	return do_regularize ? RegularizeAlpha(a) : a;
 }
 
+// Result of wf_sample_guided_glossy() below - everything MaterialType::
+// Conductor/RoughMetal need from their shared scatter-direction sampling.
+// `scattered=false` means a degenerate direction was hit (wo below the
+// hemisphere, or a zero-length half-vector) - matches every other
+// `scattered=false` case in evaluate_materials()'s own switch, caller should
+// set its own `scattered=false; break;` on this.
+struct WfGuidedGlossySample {
+	bool  scattered = false;
+	// Tangent-space outgoing direction - caller builds scattered_dir (world
+	// space) and, for Conductor only, its own Fresnel term from wm_dot_wi.
+	float wo_x = 0.0f, wo_y = 0.0f, wo_z = 0.0f;
+	float wm_dot_wi = 0.0f;  // dot(wi, wm) - Conductor's FrConductorRGB cosine term; unused by RoughMetal
+	float weight = 0.0f;     // G(wo,wi)/G1(wi), rescaled to path guiding's own mixture pdf when it contributed
+	float pdf = 0.0f;        // pdf_bsdf, or the guiding/BSDF mixture pdf when pGuide>0 - caller's own
+	                         // brdf_pdf_override whenever !dist.EffectivelySmooth() (unused, harmlessly
+	                         // still pdf_bsdf, when it IS smooth - pGuide is already forced 0 in that case).
+};
+
+// Shared MaterialType::Conductor/RoughMetal scatter-direction sampling +
+// real-time path guiding (Live Preview only, gpu/optix/wavefront_guiding.h) -
+// draws wo via guided sampling (probability pGuide, from the nearest probe's
+// own directional histogram) or the material's existing GGX/VNDF
+// Sample_wm() otherwise, then returns the G(wo,wi)/G1(wi) weight and pdf
+// BOTH materials need, rescaled to the same defensive mixture pdf whenever
+// guiding contributed - see this project's own plan for the full mixture-pdf
+// rationale. f(wi,wo)*cos(wo)/pdf_bsdf(wo) == G(wo,wi)/G1(wi) for a
+// VNDF-sampled microfacet BRDF at ANY wo paired with wm=normalize(wi+wo) -
+// not only ones Sample_wm() itself produced (already relied on by
+// evalGlossyF's own NEE evaluation) - which is what lets guiding substitute
+// the pdf here transparently, with no separate f() evaluation in either
+// branch. Conductor and RoughMetal differ only in their own Fresnel-vs-flat-
+// albedo attenuation afterward (using wm_dot_wi/weight from the result) and
+// tangent-frame construction (UV-aligned vs. arbitrary) - both stay in each
+// switch-arm, since this helper only needs wi/tan/bitan/n already resolved
+// into that frame, not how they got there.
+__device__ __forceinline__ WfGuidedGlossySample wf_sample_guided_glossy(
+	const TrowbridgeReitz<float>& dist,
+	float wi_x, float wi_y, float wi_z,
+	const float3& tangent, const float3& bitangent, const float3& n,
+	float alpha_x, float alpha_y,
+	const float3& hit_point,
+	const GpuProbeGridMeta& guidingGridMeta,
+	const GpuGuidingHistogram* guidingHistograms,
+	const GpuProbe* guidingProbes,
+	unsigned int& seed)
+{
+	WfGuidedGlossySample result;
+
+	// Only for non-EffectivelySmooth (genuinely glossy, not near-mirror)
+	// surfaces, matching the existing NEE/MIS gate exactly (an
+	// EffectivelySmooth conductor/rough metal stays specular either way,
+	// guiding or not).
+	float pGuide = 0.0f;
+	int probeIdx = -1;
+	if (guidingHistograms != nullptr && !dist.EffectivelySmooth()) {
+		probeIdx = wf_guiding_nearest_probe(guidingGridMeta, guidingProbes, hit_point);
+		if (probeIdx >= 0) {
+			pGuide = wf_guiding_probability(guidingHistograms[probeIdx]);
+		}
+	}
+
+	float wm_x, wm_y, wm_z;
+	if (pGuide > 0.0f && wf_rand(seed) < pGuide) {
+		// Guided branch: draw wo from the nearest probe's own directional
+		// histogram instead of Sample_wm(), then reconstruct wm.
+		const float3 wo_world = wf_guided_sample_direction(
+			guidingHistograms[probeIdx], wf_rand(seed), wf_rand(seed), wf_rand(seed));
+		result.wo_x = dot(wo_world, tangent);
+		result.wo_y = dot(wo_world, bitangent);
+		result.wo_z = dot(wo_world, n);
+		if (result.wo_z <= 0.0f) return result;
+		const float wmx = wi_x + result.wo_x, wmy = wi_y + result.wo_y, wmz = wi_z + result.wo_z;
+		const float wmlen = sqrtf(wmx * wmx + wmy * wmy + wmz * wmz);
+		if (wmlen < 1e-8f) return result;
+		wm_x = wmx / wmlen; wm_y = wmy / wmlen; wm_z = wmz / wmlen;
+	} else {
+		dist.Sample_wm(wi_x, wi_y, wi_z, wf_rand(seed), wf_rand(seed), wm_x, wm_y, wm_z);
+		const float dot0 = wi_x * wm_x + wi_y * wm_y + wi_z * wm_z;
+		result.wo_x = 2.0f * dot0 * wm_x - wi_x;
+		result.wo_y = 2.0f * dot0 * wm_y - wi_y;
+		result.wo_z = 2.0f * dot0 * wm_z - wi_z;
+		if (result.wo_z <= 0.0f) return result;
+	}
+	result.wm_dot_wi = wi_x * wm_x + wi_y * wm_y + wi_z * wm_z;
+	const float G1_wi  = dist.G1(wi_x, wi_y, wi_z);
+	const float G_wowi = dist.G(result.wo_x, result.wo_y, result.wo_z, wi_x, wi_y, wi_z);
+	result.weight = (G1_wi > 1e-8f) ? G_wowi / G1_wi : 0.0f;
+
+	const float pdf_bsdf = ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, result.wo_x, result.wo_y, result.wo_z, alpha_x, alpha_y);
+	result.pdf = pdf_bsdf;
+	// Rescale f*cos/pdf_bsdf (already in result.weight) to f*cos/pdf_mixture -
+	// the only new arithmetic path guiding needs here. A no-op when
+	// pGuide==0 (guiding off, or this probe's histogram still unpopulated).
+	if (pGuide > 0.0f && probeIdx >= 0) {
+		const float3 wo_world = normalize(result.wo_x * tangent + result.wo_y * bitangent + result.wo_z * n);
+		const float pdf_guide = wf_guided_pdf(guidingHistograms[probeIdx], wo_world);
+		const float pdf_mixture = pGuide * pdf_guide + (1.0f - pGuide) * pdf_bsdf;
+		if (pdf_mixture > 1e-8f) {
+			result.weight *= pdf_bsdf / pdf_mixture;
+			result.pdf = pdf_mixture;
+		}
+	}
+	result.scattered = true;
+	return result;
+}
+
 // Duplicated from optix_device_helpers.h's material_requires_sphere_only_
 // handling() (with the wf_ prefix), matching this file's existing pattern of
 // not sharing device helpers with the recursive path. See that function's
