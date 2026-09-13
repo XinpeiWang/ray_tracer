@@ -74,7 +74,10 @@ CPU_GPU void wf_temporal_upscale_subcell(unsigned int sampleIndex, int upscaleFa
 CPU_GPU void wf_temporal_upscale_jitter(unsigned int sampleIndex, int upscaleFactor, float& outRx, float& outRy) {
 	int cx = 0, cy = 0;
 	wf_temporal_upscale_subcell(sampleIndex, upscaleFactor, cx, cy);
-	const float factor = static_cast<float>(upscaleFactor);
+	// upscaleFactor is caller-controlled (ultimately from UI/host settings) -
+	// guard against 0/negative reaching a divide, same defensive posture as
+	// wf_temporal_upscale_subcell()'s own "anything else falls back" comment.
+	const float factor = static_cast<float>(upscaleFactor > 0 ? upscaleFactor : 1);
 	outRx = (static_cast<float>(cx) + 0.5f) / factor;
 	outRy = (static_cast<float>(cy) + 0.5f) / factor;
 }

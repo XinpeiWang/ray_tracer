@@ -268,7 +268,9 @@ inline void temporalUpscaleSubcell(unsigned int sampleIndex, int upscaleFactor, 
 inline void temporalUpscaleJitter(unsigned int sampleIndex, int upscaleFactor, double &outRx, double &outRy) {
 	int cx = 0, cy = 0;
 	temporalUpscaleSubcell(sampleIndex, upscaleFactor, cx, cy);
-	const double factor = static_cast<double>(upscaleFactor);
+	// Guard against 0/negative reaching a divide - see the GPU-side copy's
+	// own identical comment (wavefront_temporal_upscale_math.h).
+	const double factor = static_cast<double>(upscaleFactor > 0 ? upscaleFactor : 1);
 	outRx = (static_cast<double>(cx) + 0.5) / factor;
 	outRy = (static_cast<double>(cy) + 0.5) / factor;
 }

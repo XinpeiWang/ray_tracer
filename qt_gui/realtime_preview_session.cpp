@@ -125,31 +125,42 @@ void RealtimePreviewWorker::resetAccumulation() {
 	m_sampleCountsScratch.assign(static_cast<size_t>(m_width) * m_height, 0);
 
 	// Temporal upscale's own higher-resolution reconstruction buffers - only
-	// allocated (Wh*Hh-sized) while the feature is enabled, cleared to empty
-	// otherwise so a disabled session carries no extra host memory cost (see
-	// this project's own plan's Risks section on the ~40-200MB cost at
-	// 2x/4x). m_temporalJitterCounter restarts at 0 too - a fresh reconstruction
-	// buffer has no history to resume a jitter phase against.
+	// allocated (Wh*Hh-sized) while the feature is ACTUALLY going to be used
+	// this session, cleared to empty otherwise so a disabled/inactive session
+	// carries no extra host memory cost (see this project's own plan's Risks
+	// section on the ~40-200MB cost at 2x/4x). Gated on useTemporalUpscale()
+	// (m_temporalUpscaleEnabled && !effectiveShowLatest()), NOT the raw
+	// m_temporalUpscaleEnabled flag alone - using the raw flag here used to
+	// let this size m_displayImage at Wh x Hh even when SVGF/show-latest was
+	// also on (making useTemporalUpscale() false), while renderLoop()'s own
+	// tonemap step only ever wrote the smaller [0,m_width)x[0,m_height)
+	// region in that case - leaving the rest of the QImage as uninitialized
+	// garbage (a real, confirmed bug this project's own code review caught).
+	// Every caller that can change either half of useTemporalUpscale()'s own
+	// condition (setSvgf(), setDenoise(), setTemporalUpscale()) already calls
+	// resetAccumulation() whenever the EFFECTIVE state changes, so re-
+	// evaluating useTemporalUpscale() here always reflects the same "which
+	// mode is really active" decision renderLoop() will make next.
+	// m_temporalJitterCounter/m_temporalUpscaleWriteCounter restart at 0 too -
+	// a fresh reconstruction buffer has no history to resume a jitter phase
+	// against.
 	m_temporalJitterCounter = 0;
-	if (m_temporalUpscaleEnabled) {
+	m_temporalUpscaleWriteCounter = 0;
+	if (useTemporalUpscale()) {
 		const size_t wh = static_cast<size_t>(m_width) * m_upscaleFactor;
 		const size_t hh = static_cast<size_t>(m_height) * m_upscaleFactor;
 		m_accumHi.assign(wh * hh * 3, 0.0f);
 		m_worldPosHi.assign(wh * hh * 4, 0.0f);
 		m_worldPosHiPrev.assign(wh * hh * 4, 0.0f);
-		m_cellAgeHi.assign(wh * hh, 0);
 		m_accumHiScratch.assign(wh * hh * 3, 0.0f);
 		m_worldPosHiScratch.assign(wh * hh * 4, 0.0f);
-		m_cellAgeHiScratch.assign(wh * hh, 0);
 		m_displayImage = QImage(static_cast<int>(wh), static_cast<int>(hh), QImage::Format_RGB888);
 	} else {
 		m_accumHi.clear();
 		m_worldPosHi.clear();
 		m_worldPosHiPrev.clear();
-		m_cellAgeHi.clear();
 		m_accumHiScratch.clear();
 		m_worldPosHiScratch.clear();
-		m_cellAgeHiScratch.clear();
 		m_displayImage = QImage(m_width, m_height, QImage::Format_RGB888);
 	}
 	m_sampleCount = 0;
@@ -289,14 +300,11 @@ void RealtimePreviewWorker::reprojectAccumulationHi() {
 
 	const int Wh = m_width * m_upscaleFactor;
 	const int Hh = m_height * m_upscaleFactor;
-	constexpr uint16_t kAgeCap = 65535;
 
 	std::fill(m_accumHiScratch.begin(), m_accumHiScratch.end(), 0.0f);
 	std::fill(m_worldPosHiScratch.begin(), m_worldPosHiScratch.end(), 0.0f);
-	std::fill(m_cellAgeHiScratch.begin(), m_cellAgeHiScratch.end(), uint16_t{0});
 	std::vector<float> &newAccumHi = m_accumHiScratch;
 	std::vector<float> &newWorldPosHi = m_worldPosHiScratch;
-	std::vector<uint16_t> &newCellAgeHi = m_cellAgeHiScratch;
 
 	for (int y = 0; y < m_height; ++y) {
 		for (int x = 0; x < m_width; ++x) {
@@ -309,8 +317,9 @@ void RealtimePreviewWorker::reprojectAccumulationHi() {
 			if (!proj.inFront || proj.s < 0.0 || proj.s >= 1.0 || proj.t < 0.0 || proj.t >= 1.0) continue;
 
 			// Straight into HIGH-RES grid coordinates - (s,t) is continuous,
-			// so this recovers sub-low-res-pixel precision "for free" versus
-			// snapping to a low-res cell first.
+			// so this recovers sub-low-res-pixel precision for the ANCHOR
+			// (used for the disocclusion test below) versus snapping to a
+			// low-res cell first.
 			const int oldColHi = static_cast<int>(proj.s * Wh);
 			const int oldRowHi = static_cast<int>((1.0 - proj.t) * Hh);
 			if (oldColHi < 0 || oldColHi >= Wh || oldRowHi < 0 || oldRowHi >= Hh) continue;
@@ -324,17 +333,30 @@ void RealtimePreviewWorker::reprojectAccumulationHi() {
 			if (dx * dx + dy * dy + dz * dz > kDisocclusionEpsilonSq) continue;  // different surface
 
 			// Block-translate: the whole upscaleFactor x upscaleFactor block
-			// this low-res pixel owns moves by the SAME (oldColHi - newBaseCol,
-			// oldRowHi - newBaseRow) offset - one rigid shift per block, not
-			// an independent lookup per sub-cell (see this function's own
-			// header comment).
+			// this low-res pixel owns is sourced from the OLD grid's block
+			// that CONTAINS the anchor - snapped down to a multiple of
+			// upscaleFactor first (oldBaseCol/oldBaseRow), not the raw
+			// sub-pixel-precise anchor itself. Without this snap, the source
+			// window generally straddles two (or four) different old low-res
+			// pixels' own blocks - most reprojected pixels land off a block
+			// boundary - splicing cells together that were never disocclusion-
+			// tested against each other (only the anchor cell is checked
+			// above) and producing visible seam/ghosting artifacts on nearly
+			// every camera move. Snapping first keeps the whole block sourced
+			// from ONE coherent old block whose own anchor already passed the
+			// disocclusion test - a coarser translation (up to
+			// upscaleFactor-1 cells of positional slack) but a coherent one,
+			// matching this function's own "one rigid motion vector per
+			// block" design intent instead of undermining it.
+			const int oldBaseCol = (oldColHi / m_upscaleFactor) * m_upscaleFactor;
+			const int oldBaseRow = (oldRowHi / m_upscaleFactor) * m_upscaleFactor;
 			const int newBaseCol = x * m_upscaleFactor;
 			const int newBaseRow = y * m_upscaleFactor;
 			for (int cy = 0; cy < m_upscaleFactor; ++cy) {
-				const int oldRow = oldRowHi + cy;
+				const int oldRow = oldBaseRow + cy;
 				if (oldRow < 0 || oldRow >= Hh) continue;
 				for (int cx = 0; cx < m_upscaleFactor; ++cx) {
-					const int oldCol = oldColHi + cx;
+					const int oldCol = oldBaseCol + cx;
 					if (oldCol < 0 || oldCol >= Wh) continue;
 					const int newCell = (newBaseRow + cy) * Wh + (newBaseCol + cx);
 					const int oldCell = oldRow * Wh + oldCol;
@@ -349,8 +371,6 @@ void RealtimePreviewWorker::reprojectAccumulationHi() {
 					newWorldPosHi[newWpIdx + 1] = m_worldPosHi[oldCellWpIdx + 1];
 					newWorldPosHi[newWpIdx + 2] = m_worldPosHi[oldCellWpIdx + 2];
 					newWorldPosHi[newWpIdx + 3] = m_worldPosHi[oldCellWpIdx + 3];
-					const int age = static_cast<int>(m_cellAgeHi[oldCell]) + 1;
-					newCellAgeHi[newCell] = static_cast<uint16_t>(std::min(age, static_cast<int>(kAgeCap)));
 				}
 			}
 		}
@@ -361,7 +381,6 @@ void RealtimePreviewWorker::reprojectAccumulationHi() {
 	// no allocation).
 	std::swap(m_accumHi, newAccumHi);
 	std::swap(m_worldPosHi, newWorldPosHi);
-	std::swap(m_cellAgeHi, newCellAgeHi);
 }
 
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
@@ -566,6 +585,18 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	const bool cameraJustMoved = m_cameraDirty;
 	m_cameraDirty = false;
 
+	// Computed here (before the render call, not after) so the value SENT
+	// to the GPU this frame matches the value the CPU side will actually
+	// act on once the call returns - see useTemporalUpscale()'s own comment.
+	// Sending the raw m_temporalUpscaleEnabled instead (this function used
+	// to) meant the GPU's own checkerboardActive gate
+	// (wavefront_path_tracer.cpp) could see "upscale on" and defensively
+	// disable SVGF's checkerboard optimization even on a frame where the
+	// CPU had already fallen back to ordinary SVGF display because
+	// effectiveShowLatest() was true - a real, confirmed mismatch (this
+	// project's own code review caught it), not just a theoretical one.
+	const bool useUpscale = useTemporalUpscale();
+
 	RenderFrameFn renderFrame = handle().renderFrameFn;
 	bool ok = false;
 	if (!renderFrame) {
@@ -597,7 +628,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
 						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding,
-						  m_temporalUpscaleEnabled, m_upscaleFactor, m_temporalJitterCounter);
+						  useUpscale, m_upscaleFactor, m_temporalJitterCounter);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -632,10 +663,9 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		// side integration REPLACES this CPU-side one for that mode, rather
 		// than sitting on top of it.
 		const bool showLatest = effectiveShowLatest();
-		// Temporal upscale (see this project's own plan) - mutually
-		// exclusive with showLatest for v1 (useTemporalUpscale() itself
-		// checks !effectiveShowLatest()).
-		const bool useUpscale = useTemporalUpscale();
+		// useUpscale was already computed above, before the render call -
+		// see its own comment there for why (must match what was actually
+		// sent to the GPU this frame).
 
 		// Reprojection would be immediately thrown away by the show-latest
 		// branch below (which overwrites m_accum wholesale every frame
@@ -650,24 +680,27 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 
 		if (useUpscale) {
 			// --- Temporal upscale: write step + reconstruction ---
-			// This call's own place in the deterministic jitter sequence
-			// (see setTemporalUpscaleJitter()'s own comment,
-			// WavefrontPathTracer) selects ONE sub-cell shared by every
+			// This call's own place in the write step's OWN sequence
+			// (m_temporalUpscaleWriteCounter - see its own comment on the
+			// header for why this is a SEPARATE counter from
+			// m_temporalJitterCounter) selects ONE sub-cell shared by every
 			// low-res pixel this frame - each low-res pixel's raw sample
 			// (m_tmp, not the running mean) overwrites that one high-res
 			// cell, never blended (see this project's own plan for why a
 			// running mean doesn't apply at the per-cell level the way it
 			// does for m_accum). NOTE: when Samples/Frame > 1, m_tmp is
-			// already an average across several jitter phases from the
-			// GPU's own sample loop - the write step below still treats it
-			// as if it were a single phase (m_temporalJitterCounter, this
-			// call's FIRST sample), a known v1 simplification that
-			// slightly blurs the splatted cell at Samples/Frame > 1
-			// (recommend Samples/Frame=1 for the sharpest reconstruction).
+			// already an average across several GPU-side jitter phases -
+			// the write step below still treats it as if it were a single
+			// phase, a known v1 simplification that slightly blurs the
+			// splatted cell at Samples/Frame > 1 (recommend Samples/Frame=1
+			// for the sharpest reconstruction). This blur is independent of
+			// - and much less severe than - full-grid coverage, which is
+			// what m_temporalUpscaleWriteCounter's own separate, always-by-1
+			// advance guarantees regardless of Samples/Frame.
 			const int Wh = m_width * m_upscaleFactor;
 			const int Hh = m_height * m_upscaleFactor;
 			int subCx = 0, subCy = 0;
-			camera_math::temporalUpscaleSubcell(m_temporalJitterCounter, m_upscaleFactor, subCx, subCy);
+			camera_math::temporalUpscaleSubcell(m_temporalUpscaleWriteCounter, m_upscaleFactor, subCx, subCy);
 			for (int y = 0; y < m_height; ++y) {
 				for (int x = 0; x < m_width; ++x) {
 					const int pixel = y * m_width + x;
@@ -683,7 +716,6 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 					m_worldPosHi[dstWpIdx + 1] = m_worldPos[srcWpIdx + 1];
 					m_worldPosHi[dstWpIdx + 2] = m_worldPos[srcWpIdx + 2];
 					m_worldPosHi[dstWpIdx + 3] = m_worldPos[srcWpIdx + 3];
-					m_cellAgeHi[target] = 0;
 				}
 			}
 			// No uniform per-pixel convergence metric applies once each
@@ -736,12 +768,15 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				}
 			}
 
-			// Advance this call's own place in the jitter sequence by m_spp
-			// (matching how many samples-per-call this render just consumed,
-			// the same per-call advance frameNumber_ itself already gets),
-			// wrapped modulo the sequence's own period.
+			// Advance this call's own place in the GPU-side jitter sequence
+			// by m_spp (matching how many samples-per-call this render just
+			// consumed, the same per-call advance frameNumber_ itself
+			// already gets), wrapped modulo the sequence's own period.
 			const unsigned int period = static_cast<unsigned int>(m_upscaleFactor * m_upscaleFactor);
 			m_temporalJitterCounter = (period > 0) ? ((m_temporalJitterCounter + static_cast<unsigned int>(m_spp)) % period) : 0;
+			// Advance the write step's OWN counter by exactly 1 - see its
+			// declaration's own comment for why this must NOT track m_spp.
+			m_temporalUpscaleWriteCounter = (period > 0) ? ((m_temporalUpscaleWriteCounter + 1u) % period) : 0;
 		} else {
 			int minSampleCount = 0;
 			if (showLatest) {

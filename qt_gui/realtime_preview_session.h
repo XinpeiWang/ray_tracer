@@ -284,6 +284,18 @@ private:
 	// upscaleFactor*upscaleFactor after a successful call. Reset to 0
 	// whenever the Hi buffers are reset (resetAccumulation()).
 	uint32_t m_temporalJitterCounter = 0;
+	// The write step's OWN place in the sequence - deliberately a SEPARATE
+	// counter from m_temporalJitterCounter above, advanced by exactly 1 each
+	// renderLoop() iteration (never by m_spp). Reusing m_temporalJitterCounter
+	// here would make full high-res-grid coverage depend on
+	// gcd(m_spp, upscaleFactor*upscaleFactor): whenever the period divides
+	// m_spp (e.g. Samples/Frame=4 at 2x, period=4), that counter's value
+	// modulo the period never changes, so every frame would splat into the
+	// SAME single sub-cell forever and the rest of the grid would never
+	// receive a real sample. Advancing by 1 guarantees every sub-cell gets
+	// written within `period` frames regardless of m_spp. Reset to 0
+	// whenever the Hi buffers are reset (resetAccumulation()).
+	uint32_t m_temporalUpscaleWriteCounter = 0;
 	// See setSppAndMaxDepth()'s own comment. Both cross the DLL boundary
 	// (they're renderFrame()'s own 4th/5th positional args). Defaults match
 	// renderLoop()'s own previous hardcoded locals exactly.
@@ -374,15 +386,10 @@ private:
 	std::vector<float> m_accumHi;         // linear RGB, Wh*Hh*3
 	std::vector<float> m_worldPosHi;      // xyz+validity backing m_accumHi, Wh*Hh*4
 	std::vector<float> m_worldPosHiPrev;  // snapshot for the NEXT frame's reprojection, same layout
-	// Frames since this cell's last fresh splat - tracked for a possible
-	// future staleness-blur fallback, not consumed in v1 (see this
-	// project's own plan's Risks section).
-	std::vector<uint16_t> m_cellAgeHi;
 	// Reprojection scratch, same in-place-clobber-avoidance reasoning as
 	// m_accumScratch/m_sampleCountsScratch above.
 	std::vector<float> m_accumHiScratch;
 	std::vector<float> m_worldPosHiScratch;
-	std::vector<uint16_t> m_cellAgeHiScratch;
 	int m_sampleCount = 0;
 	// Every access to the fields below happens only inside a method
 	// invoked via Qt::QueuedConnection onto this worker's own QThread
