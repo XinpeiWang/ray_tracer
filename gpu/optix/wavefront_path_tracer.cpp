@@ -1157,14 +1157,22 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		// own Conductor/RoughMetal guiding gates on this pointer alone, same
 		// "null disables the whole feature" shape as launchEvaluateMaterialsSimple's
 		// own probeGrid forwarding. Also nullptr whenever the probe cache
-		// itself is off, since path guiding hard-depends on it (see
-		// setPathGuidingEnabled()'s own comment) - probeCacheEnabled_ is
-		// checked here rather than relying on d_guidingHistograms_ alone
-		// being null, since OptiXRenderer always builds/uploads the
-		// histogram array regardless of either flag (cheap, matches
-		// d_probeGrid_'s own "always built, usage gated separately"
-		// precedent).
-		(pathGuidingEnabled_ && probeCacheEnabled_) ? reinterpret_cast<const GpuGuidingHistogram*>(d_guidingHistograms_) : nullptr,
+		// itself is off, since path guiding hard-depends on it - see
+		// guidingActive()'s own comment for why that's checked via one shared
+		// helper rather than re-derived here, since OptiXRenderer always
+		// builds/uploads the histogram array regardless of either flag
+		// (cheap, matches d_probeGrid_'s own "always built, usage gated
+		// separately" precedent).
+		guidingActive() ? reinterpret_cast<const GpuGuidingHistogram*>(d_guidingHistograms_) : nullptr,
+		// Same probe array the SH-L1 diffuse cache already leak-guards
+		// against (probe_grid_types.h's wf_query_probe_grid()) - guiding's
+		// own nearest-probe lookup reuses each probe's meanDist/meanDistSq
+		// to reject a "nearest by index" probe that's actually occluded
+		// (e.g. on the far side of a thin wall), the same failure mode the
+		// SH-L1 path already guards against. nullptr whenever guiding itself
+		// is inactive (guidingActive() above), matching every other guiding
+		// pointer's "null disables" shape.
+		guidingActive() ? reinterpret_cast<const GpuProbe*>(d_probeGrid_) : nullptr,
 		stream_);
 }
 
@@ -1541,9 +1549,16 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 		reinterpret_cast<const float3*>(d_probeCacheDirections_),
 		batchSize, probeUpdateCursor_, probeGridMeta_,
 		reinterpret_cast<GpuProbe*>(d_probeGrid_),
-		// nullptr when path guiding is off - probe_cache_accumulate's own
+		// nullptr when path guiding is off (or the probe cache itself is off
+		// - see guidingActive()'s own comment) - probe_cache_accumulate's own
 		// guidingHistograms parameter comment (wavefront_kernels_restir.cu).
-		pathGuidingEnabled_ ? reinterpret_cast<GpuGuidingHistogram*>(d_guidingHistograms_) : nullptr,
+		// This function is itself only ever reached with probeCacheEnabled_
+		// true (see its own early-return above), so guidingActive() here is
+		// equivalent to the bare pathGuidingEnabled_ this used to read - but
+		// spelled the same way as launchEvaluateMaterials()'s check so the
+		// invariant has one enforcement point instead of two, and stays
+		// correct even if this function's early-return is ever restructured.
+		guidingActive() ? reinterpret_cast<GpuGuidingHistogram*>(d_guidingHistograms_) : nullptr,
 		stream_);
 	// No trailing sync - the only remaining work in this function is the
 	// host-only probeUpdateCursor_ update just below (no GPU dependency),

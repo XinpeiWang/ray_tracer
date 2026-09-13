@@ -2483,6 +2483,16 @@ SVGF 降噪器：一种备选的实验性时空滤波器——随时间跟踪每
         <translation>世界空间辐照度探针缓存——缓存并重采样两次或更多次反弹深度的漫反射光照，与上方 ReSTIR GI 相互独立（那只重采样第一次间接反弹；这覆盖它之外的每一次反弹）。需要经过多帧才能收敛，因此启用它或将相机移入新区域后的最初几秒内，画面可能显得斑驳或有噪点。禁用它会使每次反弹都回退到经典的下一事件估计，在深层间接光较多的场景中噪点更多，但没有收敛延迟。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1341"/>
+        <source>Path Guiding</source>
+        <translation>路径引导</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1351"/>
+        <source>Importance-samples the bounce direction for glossy/metal surfaces against a coarse, incrementally-learned estimate of where incident light actually is, instead of relying purely on the material&apos;s own reflection-lobe sampling. Requires the Radiance Cache above to also be on - it reuses that cache&apos;s own grid and update pipeline, and is a no-op without it. Like the Radiance Cache, converges over several seconds; disabling it falls back to the material&apos;s own unbiased reflection sampling.</source>
+        <translation>针对光泽/金属表面的反弹方向，依据一个粗略的、增量学习得到的入射光实际位置估计进行重要性采样，而不是完全依赖材质自身的反射波瓣采样。需要同时开启上方的“辐射缓存”——它复用该缓存自身的网格和更新流程，若辐射缓存关闭则此功能不起作用。与辐射缓存一样，需要经过数秒才能收敛；禁用它会回退到材质自身的无偏反射采样。</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
         <translation type="unfinished"></translation>

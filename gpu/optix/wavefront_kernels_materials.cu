@@ -129,7 +129,16 @@ extern "C" __global__ void evaluate_materials(
 	// glossy case below falls through to its own existing, unmodified
 	// GGX/VNDF sampling unchanged.
 	GpuProbeGridMeta guidingGridMeta = {},
-	const GpuGuidingHistogram* guidingHistograms = nullptr
+	const GpuGuidingHistogram* guidingHistograms = nullptr,
+	// Same probe array wf_query_probe_grid() (probe_grid_types.h) already
+	// leak-guards the SH-L1 diffuse cache against, reused here so
+	// wf_guiding_nearest_probe() can reject a "nearest by grid index" probe
+	// that's actually occluded from hit_point (e.g. on the far side of a
+	// thin wall) instead of returning it unconditionally. nullptr whenever
+	// guidingHistograms is (guidingActive() in wavefront_path_tracer.cpp
+	// gates both together) - wf_guiding_nearest_probe() treats a null probes
+	// pointer as "skip the leak test", never as a crash.
+	const GpuProbe* guidingProbes = nullptr
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -569,9 +578,9 @@ extern "C" __global__ void evaluate_materials(
 		float c_pGuide = 0.0f;
 		int c_probeIdx = -1;
 		if (guidingHistograms != nullptr && !c_dist.EffectivelySmooth()) {
-			c_probeIdx = wf_guiding_nearest_probe(guidingGridMeta, hit_point);
+			c_probeIdx = wf_guiding_nearest_probe(guidingGridMeta, guidingProbes, hit_point);
 			if (c_probeIdx >= 0) {
-				c_pGuide = wf_guiding_probability(guidingHistograms[c_probeIdx].numSamplesEverAdded);
+				c_pGuide = wf_guiding_probability(guidingHistograms[c_probeIdx]);
 			}
 		}
 
@@ -669,9 +678,9 @@ extern "C" __global__ void evaluate_materials(
 		float rm_pGuide = 0.0f;
 		int rm_probeIdx = -1;
 		if (guidingHistograms != nullptr && !rm_dist.EffectivelySmooth()) {
-			rm_probeIdx = wf_guiding_nearest_probe(guidingGridMeta, hit_point);
+			rm_probeIdx = wf_guiding_nearest_probe(guidingGridMeta, guidingProbes, hit_point);
 			if (rm_probeIdx >= 0) {
-				rm_pGuide = wf_guiding_probability(guidingHistograms[rm_probeIdx].numSamplesEverAdded);
+				rm_pGuide = wf_guiding_probability(guidingHistograms[rm_probeIdx]);
 			}
 		}
 

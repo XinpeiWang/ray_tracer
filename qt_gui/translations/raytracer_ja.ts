@@ -2484,6 +2484,16 @@ SVGF デノイザー：代替の実験的な時空間フィルタです——ピ
         <translation>ワールド空間の放射照度プローブキャッシュです——2 バウンス以上の深さの拡散光を、上の ReSTIR GI とは独立にキャッシュ・リサンプリングします（あちらは最初の間接バウンスのみをリサンプリングしますが、こちらはそれ以降のすべてのバウンスをカバーします）。多数のフレームをかけて収束するため、有効にした直後やカメラを新しい領域に移動した直後の数秒間はまだら模様やノイズが見えることがあります。無効にすると、すべてのバウンスで従来の次イベント推定に戻ります。深い間接光の多いシーンではノイズが増えますが、収束の遅延はありません。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1341"/>
+        <source>Path Guiding</source>
+        <translation>パスガイディング</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1351"/>
+        <source>Importance-samples the bounce direction for glossy/metal surfaces against a coarse, incrementally-learned estimate of where incident light actually is, instead of relying purely on the material&apos;s own reflection-lobe sampling. Requires the Radiance Cache above to also be on - it reuses that cache&apos;s own grid and update pipeline, and is a no-op without it. Like the Radiance Cache, converges over several seconds; disabling it falls back to the material&apos;s own unbiased reflection sampling.</source>
+        <translation>光沢/金属表面のバウンド方向を、実際の入射光の位置を粗く漸進的に学習した推定値に基づいて重点的にサンプリングします。マテリアル自体の反射ローブサンプリングのみに頼るのではありません。上の「放射輝度キャッシュ」も有効になっている必要があります——そのキャッシュ自身のグリッドと更新パイプラインを再利用するため、無効の場合は何も行いません。放射輝度キャッシュと同様、収束には数秒かかります。無効にすると、マテリアル自身の不偏な反射サンプリングにフォールバックします。</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
         <translation type="unfinished"></translation>

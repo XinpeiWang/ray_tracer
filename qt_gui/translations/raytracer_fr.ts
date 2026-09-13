@@ -2491,6 +2491,16 @@ Débruiteur SVGF : un filtre spatio-temporel alternatif et expérimental - suit 
         <translation>Cache de sondes d&apos;irradiance en espace monde - met en cache et ré-échantillonne l&apos;éclairage diffus à partir de deux rebonds de profondeur ou plus, indépendant du ReSTIR GI ci-dessus (celui-ci ne ré-échantillonne que le PREMIER rebond indirect ; celui-ci couvre chaque rebond au-delà). Converge sur de nombreuses images, donc attendez-vous à ce qu&apos;il paraisse tacheté ou bruité pendant les premières secondes après son activation ou après avoir déplacé la caméra vers une nouvelle zone. Le désactiver revient à l&apos;estimation classique du prochain événement pour chaque rebond, plus bruitée dans les scènes à fort éclairage indirect profond, mais sans délai de convergence.</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1341"/>
+        <source>Path Guiding</source>
+        <translation>Guidage de chemin</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1351"/>
+        <source>Importance-samples the bounce direction for glossy/metal surfaces against a coarse, incrementally-learned estimate of where incident light actually is, instead of relying purely on the material&apos;s own reflection-lobe sampling. Requires the Radiance Cache above to also be on - it reuses that cache&apos;s own grid and update pipeline, and is a no-op without it. Like the Radiance Cache, converges over several seconds; disabling it falls back to the material&apos;s own unbiased reflection sampling.</source>
+        <translation>Échantillonne par importance la direction de rebond pour les surfaces brillantes/métalliques selon une estimation grossière et apprise de façon incrémentale de l&apos;endroit où se trouve réellement la lumière incidente, au lieu de se fier uniquement à l&apos;échantillonnage du lobe de réflexion propre au matériau. Nécessite que le Cache de radiance ci-dessus soit également activé - il réutilise la grille et le pipeline de mise à jour de ce cache, et n&apos;a aucun effet sans lui. Comme le Cache de radiance, il converge en plusieurs secondes ; le désactiver revient à l&apos;échantillonnage de réflexion non biaisé propre au matériau.</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
         <translation type="unfinished"></translation>

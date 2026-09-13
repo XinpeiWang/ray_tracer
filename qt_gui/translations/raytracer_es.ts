@@ -2491,6 +2491,16 @@ Eliminador de ruido SVGF: un filtro espaciotemporal alternativo y experimental -
         <translation>Caché de sondas de irradiancia en espacio de mundo - almacena en caché y remuestrea la iluminación difusa a partir de dos o más rebotes de profundidad, independiente de ReSTIR GI de arriba (esa solo remuestrea el PRIMER rebote indirecto; esta cubre cada rebote más allá de ese). Converge a lo largo de muchos fotogramas, así que es normal que se vea parcheada o ruidosa durante los primeros segundos tras activarla o al mover la cámara a una zona nueva. Desactivarla vuelve a la estimación clásica de próximo evento para cada rebote, más ruidosa en escenas con mucha luz indirecta profunda, pero sin retraso de convergencia.</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1341"/>
+        <source>Path Guiding</source>
+        <translation>Guiado de trayectoria</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1351"/>
+        <source>Importance-samples the bounce direction for glossy/metal surfaces against a coarse, incrementally-learned estimate of where incident light actually is, instead of relying purely on the material&apos;s own reflection-lobe sampling. Requires the Radiance Cache above to also be on - it reuses that cache&apos;s own grid and update pipeline, and is a no-op without it. Like the Radiance Cache, converges over several seconds; disabling it falls back to the material&apos;s own unbiased reflection sampling.</source>
+        <translation>Muestrea por importancia la dirección de rebote para superficies brillantes/metálicas según una estimación aproximada y aprendida de forma incremental de dónde se encuentra realmente la luz incidente, en lugar de depender solo del muestreo del propio lóbulo de reflexión del material. Requiere que la Caché de radiancia de arriba también esté activada - reutiliza la malla y el proceso de actualización de esa caché, y no tiene efecto sin ella. Al igual que la Caché de radiancia, converge a lo largo de varios segundos; al desactivarla, se vuelve al muestreo de reflexión sin sesgo propio del material.</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
         <translation type="unfinished"></translation>

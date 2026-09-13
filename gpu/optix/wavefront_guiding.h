@@ -50,6 +50,15 @@ static constexpr int kGuidingCells = kGuidingCellsPerAxis * kGuidingCellsPerAxis
 // numRaysEverTraced==0 already uses for the SH-L1 cache.
 struct GpuGuidingHistogram {
 	float cellWeight[kGuidingCells] = {};  // per-cell EMA of incident-radiance luminance
+	// Per-cell sample count, used ONLY to drive each cell's own EMA alpha in
+	// wf_guiding_accumulate() below. Deliberately separate from
+	// numSamplesEverAdded (which stays a probe-wide "how many accumulate()
+	// calls has this probe ever seen" counter driving wf_guiding_probability()'s
+	// ramp-up) - conflating the two used to mean a cell's very first-ever
+	// sample got blended in at a fraction of its true weight (alpha=1/32
+	// instead of 1.0) as soon as the PROBE's total count passed 32, even
+	// though that specific cell had never been touched before.
+	int   cellSampleCount[kGuidingCells] = {};
 	int   numSamplesEverAdded = 0;
 };
 
@@ -116,12 +125,48 @@ CPU_GPU float3 wf_guiding_cell_to_dir(int cellIndex, float uJitterU, float uJitt
 	return wf_guiding_uv_to_dir(u, v);
 }
 
-// Solid angle of one cell - octahedral equal-area cells split the sphere's
-// 4*pi steradians evenly, so every cell has the SAME solid angle. This is
-// what makes wf_guided_pdf() below an O(1) lookup instead of needing a
-// per-cell Jacobian.
-CPU_GPU float wf_guiding_cell_solid_angle() {
-	return (4.0f * 3.14159265358979323846f) / (float)kGuidingCells;
+// Exact solid angle subtended by 3 unit vectors from the sphere's center
+// (Van Oosterom & Strackee 1983) - numerically robust near both 0 and the
+// full hemisphere, unlike summing interior angles via acos. Used below to
+// get each guiding cell's TRUE solid angle rather than assuming a constant.
+CPU_GPU float wf_guiding_solid_angle_triangle(float3 a, float3 b, float3 c) {
+	const float triple = a.x * (b.y * c.z - b.z * c.y)
+	                    - a.y * (b.x * c.z - b.z * c.x)
+	                    + a.z * (b.x * c.y - b.y * c.x);
+	const float ab = a.x * b.x + a.y * b.y + a.z * b.z;
+	const float bc = b.x * c.x + b.y * c.y + b.z * c.z;
+	const float ca = c.x * a.x + c.y * a.y + c.z * a.z;
+	return fabsf(2.0f * atan2f(triple, 1.0f + ab + bc + ca));
+}
+
+// Solid angle of one guiding cell. wf_guiding_dir_to_uv/uv_to_dir is the
+// PLAIN (Meyer-style) octahedral fold - normalize by L1 norm, fold the
+// lower hemisphere - not the additional Clarberg-style warp a genuinely
+// EQUAL-AREA octahedral parameterization needs. Without that warp, equal
+// areas in (u,v) do NOT correspond to equal solid angles (the mapping's
+// Jacobian is smaller near the square's center - the axis directions - and
+// larger near its edges/fold seams), so a single constant-per-cell value
+// silently mis-weights every guided sample by however much that cell's true
+// solid angle differs from the assumed average. This computes each cell's
+// EXACT solid angle instead, by splitting its curvilinear quad (4 corners
+// mapped through wf_guiding_uv_to_dir) into 2 spherical triangles. Costs 4
+// extra direction evaluations plus 2 triangle solid angles versus a plain
+// constant lookup - paid only when a guided pdf is actually needed (pGuide>0),
+// which this project's own plan already caps at 50% of glossy hits at most.
+CPU_GPU float wf_guiding_cell_solid_angle(int cellIndex) {
+	const int cx = cellIndex % kGuidingCellsPerAxis;
+	const int cy = cellIndex / kGuidingCellsPerAxis;
+	const float cellSize = 2.0f / (float)kGuidingCellsPerAxis;
+	const float u0 = -1.0f + cellSize * (float)cx;
+	const float v0 = -1.0f + cellSize * (float)cy;
+	const float u1 = u0 + cellSize;
+	const float v1 = v0 + cellSize;
+	const float3 p00 = wf_guiding_uv_to_dir(u0, v0);
+	const float3 p10 = wf_guiding_uv_to_dir(u1, v0);
+	const float3 p11 = wf_guiding_uv_to_dir(u1, v1);
+	const float3 p01 = wf_guiding_uv_to_dir(u0, v1);
+	return wf_guiding_solid_angle_triangle(p00, p10, p11)
+	     + wf_guiding_solid_angle_triangle(p00, p11, p01);
 }
 
 // Weighted linear scan over the histogram's kGuidingCells (small and fixed -
@@ -131,9 +176,10 @@ CPU_GPU float wf_guiding_cell_solid_angle() {
 // wrong template for a small, per-frame-updated-in-place histogram).
 // uPick selects the cell (proportional to weight); uJitterU/V place the
 // returned direction within it. Callers should gate on
-// wf_guiding_probability(hist.numSamplesEverAdded) > 0 first (an
-// unpopulated histogram, all-zero weights, falls back to cell 0's own
-// center here rather than being a meaningful sample).
+// wf_guiding_probability(hist) > 0 first, which itself checks for exactly
+// the all-zero-weights case this function falls back to cell 0's own center
+// for - that fallback should therefore never actually be reachable through a
+// properly-gated caller, only defensive.
 CPU_GPU float3 wf_guided_sample_direction(const GpuGuidingHistogram& hist,
 												  float uPick, float uJitterU, float uJitterV) {
 	float total = 0.0f;
@@ -162,7 +208,7 @@ CPU_GPU float wf_guided_pdf(const GpuGuidingHistogram& hist, float3 dir) {
 	if (total <= 0.0f) return 0.0f;
 	const int cell = wf_guiding_cell_index(dir);
 	const float w = fmaxf(0.0f, hist.cellWeight[cell]);
-	return (w / total) / wf_guiding_cell_solid_angle();
+	return (w / total) / wf_guiding_cell_solid_angle(cell);
 }
 
 // EMA-blends one new (direction, luminance) sample into the matching cell -
@@ -174,15 +220,20 @@ CPU_GPU float wf_guided_pdf(const GpuGuidingHistogram& hist, float3 dir) {
 // getting a fraction of one probe's total ray budget (a probe visited once
 // every ~totalProbes/kProbesPerFrame_ frames splits that one sample across
 // only ONE of kGuidingCells cells, unlike SH-L1's 4 shared coefficients
-// which get a contribution from every visit).
+// which get a contribution from every visit). The cap/alpha are driven by
+// THIS cell's own cellSampleCount, not the probe-wide numSamplesEverAdded -
+// otherwise a cell's very first-ever sample would get blended in at whatever
+// fraction the PROBE's total count happened to already be at, instead of at
+// alpha=1.0 like a genuine first sample should.
 CPU_GPU void wf_guiding_accumulate(GpuGuidingHistogram& hist, float3 dir, float luminance) {
 	const int kGuidingHistoryCap = 32;
 	const int cell = wf_guiding_cell_index(dir);
-	int cap = hist.numSamplesEverAdded + 1;
+	int cap = hist.cellSampleCount[cell] + 1;
 	if (cap > kGuidingHistoryCap) cap = kGuidingHistoryCap;
 	const float alpha = 1.0f / (float)cap;
 	const float clamped = fmaxf(0.0f, luminance);
 	hist.cellWeight[cell] = hist.cellWeight[cell] + alpha * (clamped - hist.cellWeight[cell]);
+	hist.cellSampleCount[cell] += 1;
 	hist.numSamplesEverAdded += 1;
 }
 
@@ -190,8 +241,20 @@ CPU_GPU void wf_guiding_accumulate(GpuGuidingHistogram& hist, float3 dir, float 
 // unlike wf_query_probe_grid()'s own trilinear 8-corner blend of a smooth
 // SH-L1 signal, guiding uses nearest-probe only (blending directional
 // HISTOGRAMS across probes isn't a simple scalar lerp - see this project's
-// own plan for why). Returns -1 if the grid has no probes at all.
-CPU_GPU int wf_guiding_nearest_probe(const GpuProbeGridMeta& meta, float3 worldPos) {
+// own plan for why). Returns -1 if the grid has no probes at all, if the
+// chosen probe has never traced a ray (GpuProbe::numRaysEverTraced==0 - same
+// graceful-miss convention wf_query_probe_grid() already uses), or if it
+// fails the SAME per-corner light-leak test wf_query_probe_grid() applies
+// (probe_grid_types.h) - a shading point farther from this probe than its
+// own average unoccluded reach is likely on the far side of an occluder
+// (e.g. a thin wall) from it, and unlike that function's 8-corner trilinear
+// blend (which can drop one bad corner and renormalize the rest), a single
+// nearest-probe lookup has no partial fallback: a failed leak test here is a
+// hard miss, gracefully handled by every caller as "guiding unavailable
+// here" (pGuide falls back to 0, ordinary BSDF sampling), not a crash.
+// `probes` may be nullptr (skips the leak test entirely, index-only) for
+// callers without access to the probe array.
+CPU_GPU int wf_guiding_nearest_probe(const GpuProbeGridMeta& meta, const GpuProbe* probes, float3 worldPos) {
 	if (meta.totalProbes <= 0) return -1;
 	const float3 pc = meta.probeSpaceCoord(worldPos);
 	int cx = (int)(pc.x + 0.5f);
@@ -201,23 +264,52 @@ CPU_GPU int wf_guiding_nearest_probe(const GpuProbeGridMeta& meta, float3 worldP
 	if (cy < 0) cy = 0; if (cy > meta.dims.y - 1) cy = meta.dims.y - 1;
 	if (cz < 0) cz = 0; if (cz > meta.dims.z - 1) cz = meta.dims.z - 1;
 	const int3 coord = {cx, cy, cz};
-	return meta.probeIndex(coord);
+	const int idx = meta.probeIndex(coord);
+	if (probes == nullptr) return idx;
+	const GpuProbe& p = probes[idx];
+	if (p.numRaysEverTraced == 0) return -1;
+	const float3 probePos = meta.probeWorldPos(coord);
+	const float ddx = worldPos.x - probePos.x, ddy = worldPos.y - probePos.y, ddz = worldPos.z - probePos.z;
+	const float dist = sqrtf(ddx * ddx + ddy * ddy + ddz * ddz);
+	const float variance = fmaxf(0.0f, p.meanDistSq - p.meanDist * p.meanDist);
+	const float kLeakSlack = 1.5f;  // matches wf_query_probe_grid()'s own constant
+	const float maxReach = p.meanDist + 2.0f * sqrtf(variance) * kLeakSlack;
+	if (dist > maxReach) return -1;
+	return idx;
 }
 
-// pGuide ramp-up policy - 0 until the nearest probe's histogram has real
-// samples (graceful-miss, same convention as GpuProbe::numRaysEverTraced==0
-// skipping the SH-L1 cache query entirely), then rises linearly to
-// kGuideMaxProb over kGuideRampUpSamples accumulate() calls. Capped well
-// below 1.0 so BSDF/VNDF sampling always keeps real weight in the mixture -
-// a defensive/mixture pdf's variance-reduction guarantee needs BOTH
-// techniques to keep nonzero probability mass everywhere the other one can
-// reach, and BSDF sampling stays excellent for the lobe's own specular-ish
-// core regardless of how well-populated guiding's own histogram gets.
-CPU_GPU float wf_guiding_probability(int numSamplesEverAdded) {
-	if (numSamplesEverAdded <= 0) return 0.0f;
+// pGuide ramp-up policy - 0 until the nearest probe's histogram has real,
+// nonzero samples (graceful-miss, same convention as GpuProbe::
+// numRaysEverTraced==0 skipping the SH-L1 cache query entirely), then rises
+// linearly to kGuideMaxProb over kGuideRampUpSamples accumulate() calls.
+// Capped well below 1.0 so BSDF/VNDF sampling always keeps real weight in
+// the mixture - a defensive/mixture pdf's variance-reduction guarantee needs
+// BOTH techniques to keep nonzero probability mass everywhere the other one
+// can reach, and BSDF sampling stays excellent for the lobe's own
+// specular-ish core regardless of how well-populated guiding's own
+// histogram gets.
+//
+// Takes the whole histogram (not just numSamplesEverAdded) so it can also
+// check the actual cellWeight total: numSamplesEverAdded>0 only means
+// accumulate() has been CALLED, not that any of those calls carried nonzero
+// luminance (e.g. a probe's first-ever sample could be a ray that hit a
+// shadowed/black surface). Without this check, the guided branch could be
+// selected for a histogram whose every cell is still 0 - wf_guided_pdf()
+// correctly reports pdf_guide=0 for that case, but rescaling by
+// pdf_bsdf/((1-pGuide)*pdf_bsdf) would silently inflate the sample's weight
+// by 1/(1-pGuide) instead of leaving it at pdf_bsdf, and
+// wf_guided_sample_direction()'s own degenerate-histogram fallback (a fixed,
+// non-random cell-0 direction) would be reachable as a live sampling
+// outcome instead of the "should never actually be selected" fallback it's
+// meant to be.
+CPU_GPU float wf_guiding_probability(const GpuGuidingHistogram& hist) {
+	if (hist.numSamplesEverAdded <= 0) return 0.0f;
+	float total = 0.0f;
+	for (int i = 0; i < kGuidingCells; ++i) total += fmaxf(0.0f, hist.cellWeight[i]);
+	if (total <= 0.0f) return 0.0f;
 	const float kGuideMaxProb = 0.5f;
 	const float kGuideRampUpSamples = 16.0f;
-	float t = (float)numSamplesEverAdded / kGuideRampUpSamples;
+	float t = (float)hist.numSamplesEverAdded / kGuideRampUpSamples;
 	if (t > 1.0f) t = 1.0f;
 	return kGuideMaxProb * t;
 }

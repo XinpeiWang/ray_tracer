@@ -33,7 +33,7 @@ extern "C" __global__ void evaluate_materials(
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
 	GpuGiOriginContext*, GpuGiSample*,
-	WfLightBvhContext, GpuProbeGridMeta, const GpuGuidingHistogram*);
+	WfLightBvhContext, GpuProbeGridMeta, const GpuGuidingHistogram*, const GpuProbe*);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -201,6 +201,7 @@ extern "C" void wf_launch_evaluate_materials(
 	WfLightBvhContext            lightBvh,
 	GpuProbeGridMeta             guidingGridMeta,
 	const GpuGuidingHistogram*   d_guidingHistograms,
+	const GpuProbe*              d_guidingProbes,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -222,7 +223,7 @@ extern "C" void wf_launch_evaluate_materials(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
 		d_giOriginContext, d_giCandidateOut,
-		lightBvh, guidingGridMeta, d_guidingHistograms);
+		lightBvh, guidingGridMeta, d_guidingHistograms, d_guidingProbes);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(

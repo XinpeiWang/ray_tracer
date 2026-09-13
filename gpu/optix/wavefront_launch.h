@@ -93,6 +93,10 @@ extern "C" void wf_launch_evaluate_materials(
 	// its existing, unmodified GGX/VNDF sampling.
 	GpuProbeGridMeta             guidingGridMeta,
 	const GpuGuidingHistogram*   d_guidingHistograms,
+	// Same probe array wf_query_probe_grid() already leak-guards the SH-L1
+	// diffuse cache with - see evaluate_materials's own guidingProbes
+	// parameter comment.
+	const GpuProbe*              d_guidingProbes,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(

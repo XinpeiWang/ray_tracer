@@ -342,6 +342,16 @@ private:
         capacity = 0;
     }
 
+    // Single enforcement point for path guiding's hard dependency on the
+    // probe cache (see setPathGuidingEnabled()'s own comment) - every call
+    // site that decides whether to pass a non-null guiding pointer downstream
+    // (launchEvaluateMaterials(), launchProbeCacheUpdate()) calls this rather
+    // than re-deriving "pathGuidingEnabled_ && probeCacheEnabled_" by hand, so
+    // a future call site can't accidentally use pathGuidingEnabled_ alone (or
+    // rely on an unrelated early-return to make that safe, as
+    // launchProbeCacheUpdate() previously did).
+    bool guidingActive() const { return pathGuidingEnabled_ && probeCacheEnabled_; }
+
     bool loadModule();
     void destroyProgramGroups();
     void destroySBT();
