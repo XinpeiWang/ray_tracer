@@ -59,7 +59,8 @@ public slots:
 	void start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
+			   bool temporalUpscale, int temporalUpscaleFactor);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -150,6 +151,19 @@ public slots:
 	// running.
 	void setPathGuiding(bool pathGuiding);
 
+	// Toggles Live Preview's temporal upscale feature (gpu/optix/
+	// wavefront_temporal_upscale_math.h) - see this project's own plan.
+	// Render resolution is unchanged; this reconstructs a sharper display
+	// image over several frames from a deterministic sub-pixel jitter
+	// sequence instead of today's random one. Unlike setRestirGi()/
+	// setPathGuiding() above, changing EITHER `enabled` or `factor` DOES
+	// reset accumulation (both the low-res m_accum AND the new high-res
+	// reconstruction buffers) - this changes m_displayImage's own size and
+	// the reconstruction buffers' shape, the same "different image now"
+	// treatment setSvgf()'s own effective-show-latest change gets. No-op if
+	// not running.
+	void setTemporalUpscale(bool enabled, int factor);
+
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
 	// No accumulation reset needed, same reasoning as setRestirGi() above.
@@ -191,6 +205,15 @@ private:
 	void renderLoop(int epoch);
 	void resetAccumulation();
 	void reprojectAccumulation();
+	// Temporal upscale's own reprojection - see this project's own plan.
+	// Same world-position + disocclusion-test technique as
+	// reprojectAccumulation() above, generalized to project directly into
+	// the higher-resolution m_accumHi grid's own coordinates (continuous
+	// screen-space (s,t) makes this free - no separate low-res-to-high-res
+	// mapping step needed) and to block-translate a whole
+	// upscaleFactor x upscaleFactor cell block per low-res pixel, since the
+	// GPU still only ever produces one world position per low-res pixel.
+	void reprojectAccumulationHi();
 	// `(m_denoise && m_denoiseShowLatest) || m_svgf` - the single "treat
 	// m_tmp as already-final, don't blend into m_accum" condition, computed
 	// in one place and reused by setDenoise()/setSvgf()/renderLoop() instead
@@ -199,6 +222,10 @@ private:
 	// because the GUI never enables both denoise and SVGF at once - see
 	// setSvgf()'s own comment on why that invariant isn't backend-enforced).
 	bool effectiveShowLatest() const { return (m_denoise && m_denoiseShowLatest) || m_svgf; }
+	// Temporal upscale is mutually exclusive with SVGF/denoise-showLatest
+	// for v1 (same `!showLatest` gate reprojectAccumulation()'s own caller
+	// already requires) - see this project's own plan for why.
+	bool useTemporalUpscale() const { return m_temporalUpscaleEnabled && !effectiveShowLatest(); }
 
 	QString m_sceneId;
 	int m_width = 0;
@@ -244,6 +271,19 @@ private:
 	// m_probeCache above. Defaults false for the same reason m_probeCache
 	// does (shipped WITH the feature, nothing to preserve).
 	bool m_pathGuiding = false;
+	// See setTemporalUpscale()'s own comment. Crosses the DLL boundary like
+	// m_pathGuiding above (generate_camera_rays' own jitter sequence choice
+	// is a GPU-side decision). Defaults false/2 for the same reason
+	// m_pathGuiding does (shipped WITH the feature, nothing to preserve).
+	bool m_temporalUpscaleEnabled = false;
+	int m_upscaleFactor = 2;
+	// This call's own starting point in the deterministic jitter sequence -
+	// purely internal per-frame bookkeeping (NOT part of start()'s settings
+	// snapshot, unlike m_temporalUpscaleEnabled/m_upscaleFactor above) - read
+	// each renderLoop() iteration, then advanced by m_spp and wrapped modulo
+	// upscaleFactor*upscaleFactor after a successful call. Reset to 0
+	// whenever the Hi buffers are reset (resetAccumulation()).
+	uint32_t m_temporalJitterCounter = 0;
 	// See setSppAndMaxDepth()'s own comment. Both cross the DLL boundary
 	// (they're renderFrame()'s own 4th/5th positional args). Defaults match
 	// renderLoop()'s own previous hardcoded locals exactly.
@@ -323,6 +363,26 @@ private:
 	std::vector<float> m_accumScratch;
 	std::vector<uint16_t> m_sampleCountsScratch;
 	QImage m_displayImage;        // tonemapped result, re-filled in place each frame
+	// Temporal upscale's own persistent higher-resolution reconstruction
+	// state - see this project's own plan and reprojectAccumulationHi()'s
+	// own comment. Sized (m_width*m_upscaleFactor) x (m_height*m_upscaleFactor)
+	// - all host-side; the GPU still only ever renders m_width x m_height
+	// per frame, zero additional GPU memory. Unlike m_accum (a genuine
+	// running mean), m_accumHi is a plain last-known-good value per cell -
+	// each cell gets exactly one fresh, non-blended sample every
+	// upscaleFactor*upscaleFactor frames (see the write step, renderLoop()).
+	std::vector<float> m_accumHi;         // linear RGB, Wh*Hh*3
+	std::vector<float> m_worldPosHi;      // xyz+validity backing m_accumHi, Wh*Hh*4
+	std::vector<float> m_worldPosHiPrev;  // snapshot for the NEXT frame's reprojection, same layout
+	// Frames since this cell's last fresh splat - tracked for a possible
+	// future staleness-blur fallback, not consumed in v1 (see this
+	// project's own plan's Risks section).
+	std::vector<uint16_t> m_cellAgeHi;
+	// Reprojection scratch, same in-place-clobber-avoidance reasoning as
+	// m_accumScratch/m_sampleCountsScratch above.
+	std::vector<float> m_accumHiScratch;
+	std::vector<float> m_worldPosHiScratch;
+	std::vector<uint16_t> m_cellAgeHiScratch;
 	int m_sampleCount = 0;
 	// Every access to the fields below happens only inside a method
 	// invoked via Qt::QueuedConnection onto this worker's own QThread
@@ -355,7 +415,8 @@ public:
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp);
+			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
+			   bool temporalUpscale, int temporalUpscaleFactor);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
@@ -365,6 +426,7 @@ public:
 	void setRestirDi(bool restirDi);
 	void setProbeCache(bool probeCache);
 	void setPathGuiding(bool pathGuiding);
+	void setTemporalUpscale(bool enabled, int factor);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

@@ -164,6 +164,23 @@ public:
     /// guiding call site is itself gated on probeCacheEnabled_.
     void setPathGuidingEnabled(bool enabled) { pathGuidingEnabled_ = enabled; }
 
+    /// Live Preview's temporal upscale feature (gpu/optix/
+    /// wavefront_temporal_upscale_math.h) - see this project's own plan.
+    /// `enabled=false` (the default) is a complete no-op: generate_camera_rays'
+    /// own sub-pixel jitter is drawn exactly as it always was, byte-identical
+    /// to before this feature existed. `factor` (2 or 4) sets the deterministic
+    /// jitter sequence's period (factor*factor); meaningless when disabled.
+    /// `baseIndex` is this call's own starting point in that sequence - the
+    /// CALLER (RealtimePreviewWorker) owns advancing it call to call, exactly
+    /// like it already owns m_camX/m_lookX etc.; this class just threads it
+    /// through to generate_camera_rays unchanged (offset by sampleIdx within
+    /// one render() call's own sample loop - see launchGenerateCameraRays()).
+    void setTemporalUpscaleJitter(bool enabled, int factor, unsigned int baseIndex) {
+        temporalUpscaleJitterEnabled_ = enabled;
+        temporalUpscaleFactor_ = factor;
+        temporalJitterBaseIndex_ = baseIndex;
+    }
+
     /// Heterogeneous single-channel grid media (MaterialType::GridMedium) -
     /// same setter-not-render()-parameter pattern as setRgbGridMediums()
     /// above, for the same reason. 0/0/0/0 (the default) is a valid "no
@@ -862,6 +879,11 @@ private:
     // d_giReservoirsHistory_ above - reused reasoning, not repeated.
     bool               svgfEnabled_ = false;
     SvgfTuningParams   svgfTuning_;             // see setSvgfTuning()
+    // Live Preview's temporal upscale feature - see setTemporalUpscaleJitter()'s
+    // own comment.
+    bool               temporalUpscaleJitterEnabled_ = false;
+    int                temporalUpscaleFactor_ = 2;
+    unsigned int       temporalJitterBaseIndex_ = 0;
     CUdeviceptr        d_svgfCurrent_ = 0;
     int                svgfCurrentCapacity_ = 0;
     CUdeviceptr        d_svgfHistory_ = 0;

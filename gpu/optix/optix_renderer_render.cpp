@@ -126,6 +126,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setSvgfTuning(svgfTuning_);
 		wavefrontTracer_->setProbeCacheEnabled(probeCacheEnabled_);
 		wavefrontTracer_->setPathGuidingEnabled(pathGuidingEnabled_);
+		wavefrontTracer_->setTemporalUpscaleJitter(temporalUpscaleJitterEnabled_, temporalUpscaleFactor_, temporalJitterBaseIndex_);
 		// See invalidateRestirHistory()'s own comment on why this is
 		// deferred-then-forwarded here instead of calling straight through.
 		if (restirHistoryInvalidationPending_) {

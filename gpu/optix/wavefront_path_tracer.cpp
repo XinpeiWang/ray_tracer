@@ -1054,7 +1054,15 @@ void WavefrontPathTracer::launchGenerateCameraRays(
 	rq.items    = reinterpret_cast<RayWorkItem*>(d_rayItems_);
 	rq.counter  = reinterpret_cast<int*>(d_rayCounter_);
 	rq.capacity = queueCapacity_;
-	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, d_weightBuffer, checkerboardActive, stream_);
+	// Live Preview's temporal upscale feature - see setTemporalUpscaleJitter()'s
+	// own comment. temporalJitterBaseIndex_ + sampleIdx gives each sample
+	// within a single render() call (this function is called once per
+	// sampleIdx in the sample loop below) its own distinct place in the
+	// deterministic jitter sequence, the same way frameNumber_ already
+	// varies seed's own random stream call to call.
+	const unsigned int temporalJitterIndex = temporalJitterBaseIndex_ + (unsigned int)sampleIdx;
+	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, d_weightBuffer, checkerboardActive,
+		temporalUpscaleJitterEnabled_, temporalJitterIndex, temporalUpscaleFactor_, stream_);
 }
 
 GpuRestirTemporalContext WavefrontPathTracer::buildRestirTemporalContext() const {
@@ -2155,7 +2163,18 @@ bool WavefrontPathTracer::render(
 	// kernel's zeroing of freshly-(re)allocated, uninitialized buffer
 	// entries for "inactive" pixels (a real, confirmed bug in an earlier
 	// version of this code - see the code review that caught it).
-	const bool checkerboardActive = svgfEnabled_ && svgfHistoryValid_ && restirGiHistoryValid_;
+	//
+	// !temporalUpscaleJitterEnabled_ - Live Preview's own UI should never
+	// enable both features together (temporal upscale requires SVGF's
+	// showLatest path off), but nothing on the GPU side enforced that until
+	// this check: a checkerboard-inactive pixel holds over LAST frame's
+	// (stale, out-of-jitter-phase) world position/color rather than
+	// sampling fresh, which the temporal-upscale splat step would then
+	// happily write into a high-res history cell as if it were this
+	// frame's genuine sample - corrupting it in a way the low-res
+	// running-mean path (which just tolerates an occasional held-over
+	// pixel) does not. See this project's own plan for the full rationale.
+	const bool checkerboardActive = svgfEnabled_ && svgfHistoryValid_ && restirGiHistoryValid_ && !temporalUpscaleJitterEnabled_;
 
 	// Checkerboard temporal upsampling's frame-clear (see this function's own
 	// checkerboardActive comment above, and svgf_checkerboard_clear_frame's

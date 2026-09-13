@@ -2494,6 +2494,31 @@ SVGF デノイザー：代替の実験的な時空間フィルタです——ピ
         <translation>光沢/金属表面のバウンド方向を、実際の入射光の位置を粗く漸進的に学習した推定値に基づいて重点的にサンプリングします。マテリアル自体の反射ローブサンプリングのみに頼るのではありません。上の「放射輝度キャッシュ」も有効になっている必要があります——そのキャッシュ自身のグリッドと更新パイプラインを再利用するため、無効の場合は何も行いません。放射輝度キャッシュと同様、収束には数秒かかります。無効にすると、マテリアル自身の不偏な反射サンプリングにフォールバックします。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>Temporal Upscale:</source>
+        <translation>時間的アップスケール：</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>Off</source>
+        <translation>オフ</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>2x</source>
+        <translation>2x</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>4x</source>
+        <translation>4x</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1370"/>
+        <source>Reconstructs a sharper image over several frames from a deterministic sub-pixel jitter sequence, instead of Live Preview&apos;s native low resolution just being stretched to fit the window. Render cost per frame is unchanged - 2x/4x only changes how many frames it takes to sharpen (4 or 16 respectively after a camera move settles). 4x uses noticeably more memory (roughly 150-200 MB) than 2x (roughly 40-50 MB). Mutually exclusive with the Denoiser dropdown&apos;s SVGF mode and &apos;Show latest frame&apos; option above - those take priority when both are on.</source>
+        <translation>決定論的なサブピクセルジッターシーケンスを用いて、数フレームにわたってより鮮明な画像を再構成します。ライブプレビュー本来の低解像度画像をウィンドウに合わせて単純に引き伸ばす代わりに行います。1フレームあたりのレンダリングコストは変わりません——2倍/4倍は、鮮明になるまでに必要なフレーム数（カメラ移動が落ち着いた後、それぞれ4フレームまたは16フレーム）が変わるだけです。4倍は2倍（約40～50MB）よりも明らかに多くのメモリ（約150～200MB）を使用します。上の「デノイザー」ドロップダウンのSVGFモードおよび「最新フレームを表示」オプションとは併用できません——両方がオンの場合はそちらが優先されます。</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
         <translation type="unfinished"></translation>

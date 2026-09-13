@@ -2493,6 +2493,31 @@ SVGF 降噪器：一种备选的实验性时空滤波器——随时间跟踪每
         <translation>针对光泽/金属表面的反弹方向，依据一个粗略的、增量学习得到的入射光实际位置估计进行重要性采样，而不是完全依赖材质自身的反射波瓣采样。需要同时开启上方的“辐射缓存”——它复用该缓存自身的网格和更新流程，若辐射缓存关闭则此功能不起作用。与辐射缓存一样，需要经过数秒才能收敛；禁用它会回退到材质自身的无偏反射采样。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>Temporal Upscale:</source>
+        <translation>时域超分辨率：</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>Off</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>2x</source>
+        <translation>2x</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>4x</source>
+        <translation>4x</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1370"/>
+        <source>Reconstructs a sharper image over several frames from a deterministic sub-pixel jitter sequence, instead of Live Preview&apos;s native low resolution just being stretched to fit the window. Render cost per frame is unchanged - 2x/4x only changes how many frames it takes to sharpen (4 or 16 respectively after a camera move settles). 4x uses noticeably more memory (roughly 150-200 MB) than 2x (roughly 40-50 MB). Mutually exclusive with the Denoiser dropdown&apos;s SVGF mode and &apos;Show latest frame&apos; option above - those take priority when both are on.</source>
+        <translation>通过一个确定性的亚像素抖动序列，在多帧之间重建出更清晰的图像，而不是让实时预览原生的低分辨率画面被简单拉伸以填满窗口。每帧的渲染成本不变——2倍/4倍只是改变了需要多少帧才能变清晰（相机移动稳定后分别为4帧或16帧）。4倍比2倍（约40-50 MB）占用明显更多的内存（约150-200 MB）。与上方“降噪器”下拉菜单的SVGF模式以及“显示最新帧”选项互斥——两者同时开启时以那些设置优先。</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
         <translation type="unfinished"></translation>

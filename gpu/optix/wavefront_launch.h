@@ -25,6 +25,11 @@ extern "C" void wf_launch_generate_camera_rays(
 	unsigned int frameNumber,
 	float* d_weightBuffer,
 	bool checkerboardActive,
+	// Live Preview's temporal upscale feature - see generate_camera_rays's
+	// own temporalJitterEnabled parameter comment (wavefront_kernels_camera.cu).
+	bool temporalJitterEnabled,
+	unsigned int temporalJitterIndex,
+	int temporalUpscaleFactor,
 	cudaStream_t stream);
 
 extern "C" void wf_launch_evaluate_materials(

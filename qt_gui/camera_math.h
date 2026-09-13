@@ -232,6 +232,47 @@ inline ScreenProjection projectToScreen(const Vec3 &worldPoint, const CameraBasi
 	return ScreenProjection{0.5 - a / c, 0.5 - b / c, true};
 }
 
+// Temporal upscale's own deterministic sub-pixel jitter sequence. HAND-
+// DUPLICATED from gpu/optix/wavefront_temporal_upscale_math.h (double here
+// vs. float there is exact either way - both are plain table lookups, no
+// floating-point accumulation to diverge) - qt_gui is MinGW-built and
+// cannot include that CUDA/MSVC-ABI header, the same reason RenderFrameFn's
+// signature is hand-duplicated at the DLL boundary (realtime_preview_
+// session.cpp's own comment). Keep both copies in exact agreement - see
+// wavefront_temporal_upscale_math_tests.cpp's own cross-check test for this
+// pair.
+//
+// See wf_temporal_upscale_subcell()'s own comment (gpu/optix/
+// wavefront_temporal_upscale_math.h) for why this is an exact ordered-
+// dither (Bayer matrix) bijection rather than a quantized low-discrepancy
+// sequence - identical table, identical formula.
+inline void temporalUpscaleSubcell(unsigned int sampleIndex, int upscaleFactor, int &outCx, int &outCy) {
+	if (upscaleFactor == 4) {
+		static const int kInverse4x4[16][2] = {
+			{0, 0}, {2, 2}, {2, 0}, {0, 2}, {1, 1}, {3, 3}, {3, 1}, {1, 3},
+			{1, 0}, {3, 2}, {3, 0}, {1, 2}, {0, 1}, {2, 3}, {2, 1}, {0, 3}
+		};
+		const unsigned int i = sampleIndex % 16u;
+		outCx = kInverse4x4[i][0];
+		outCy = kInverse4x4[i][1];
+		return;
+	}
+	static const int kInverse2x2[4][2] = { {0, 0}, {1, 1}, {1, 0}, {0, 1} };
+	const unsigned int i = sampleIndex % 4u;
+	outCx = kInverse2x2[i][0];
+	outCy = kInverse2x2[i][1];
+}
+
+// See wf_temporal_upscale_jitter()'s own comment (gpu/optix/
+// wavefront_temporal_upscale_math.h) - identical formula.
+inline void temporalUpscaleJitter(unsigned int sampleIndex, int upscaleFactor, double &outRx, double &outRy) {
+	int cx = 0, cy = 0;
+	temporalUpscaleSubcell(sampleIndex, upscaleFactor, cx, cy);
+	const double factor = static_cast<double>(upscaleFactor);
+	outRx = (static_cast<double>(cx) + 0.5) / factor;
+	outRy = (static_cast<double>(cy) + 0.5) / factor;
+}
+
 } // namespace camera_math
 
 #endif // CAMERA_MATH_H

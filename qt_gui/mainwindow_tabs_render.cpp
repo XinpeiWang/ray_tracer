@@ -1358,8 +1358,48 @@ void MainWindow::createRenderOptionsTab() {
 		"the material's own unbiased reflection sampling.")),
 		3, 0, 1, 4);
 
+	// Temporal upscale (see this project's own plan) - a 3-way factor
+	// choice (Off/2x/4x), not a checkbox, so it gets its own label+combo row
+	// (like the Denoiser mode combo above, m_liveDenoiserModeCombo) rather
+	// than living in the plain-checkbox rows above. Plain int persistence
+	// (m_liveTemporalUpscaleFactor, settings_keys.h's own
+	// kLivePreviewTemporalUpscaleFactorKey), not a bool pair - there's no
+	// pre-existing bool this decomposes from, unlike the Denoiser combo's
+	// own m_liveDenoiseEnabled/m_liveSvgfEnabled pair.
+	QWidget *liveTemporalUpscaleRow = new QWidget();
+	QHBoxLayout *liveTemporalUpscaleRowLayout = new QHBoxLayout(liveTemporalUpscaleRow);
+	liveTemporalUpscaleRowLayout->setContentsMargins(0, 0, 0, 0);
+	liveTemporalUpscaleRowLayout->setSpacing(10);
+
+	// Index 0 = Off (factor 1), 1 = 2x, 2 = 4x.
+	m_liveTemporalUpscaleCombo = new QComboBox();
+	m_liveTemporalUpscaleCombo->addItem(tr("Off"));
+	m_liveTemporalUpscaleCombo->addItem(tr("2x"));
+	m_liveTemporalUpscaleCombo->addItem(tr("4x"));
+	m_liveTemporalUpscaleCombo->setCurrentIndex(m_liveTemporalUpscaleFactor >= 4 ? 2 : (m_liveTemporalUpscaleFactor >= 2 ? 1 : 0));
+	styleComboBox(m_liveTemporalUpscaleCombo);
+	connect(m_liveTemporalUpscaleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+		m_liveTemporalUpscaleFactor = (index == 2) ? 4 : (index == 1 ? 2 : 1);
+		saveLiveTemporalUpscaleFactor(m_liveTemporalUpscaleFactor);
+		pushLiveTemporalUpscaleToSession();
+	});
+
+	liveTemporalUpscaleRowLayout->addWidget(labelWithInfo(tr("Temporal Upscale:"),
+		tr("Reconstructs a sharper image over several frames from a "
+		"deterministic sub-pixel jitter sequence, instead of Live Preview's "
+		"native low resolution just being stretched to fit the window. "
+		"Render cost per frame is unchanged - 2x/4x only changes how many "
+		"frames it takes to sharpen (4 or 16 respectively after a camera "
+		"move settles). 4x uses noticeably more memory (roughly 150-200 MB) "
+		"than 2x (roughly 40-50 MB). Mutually exclusive with the Denoiser "
+		"dropdown's SVGF mode and 'Show latest frame' option above - those "
+		"take priority when both are on.")));
+	liveTemporalUpscaleRowLayout->addWidget(m_liveTemporalUpscaleCombo, 1);
+
+	liveRenderSettingsGrid->addWidget(liveTemporalUpscaleRow, 4, 0, 1, 4);
+
 	// The four numeric values grouped into their own clean 2-per-row grid
-	// (rows 4-5), separate from the checkboxes above.
+	// (rows 5-6), separate from the checkboxes above.
 	m_liveExposureSpin = new QDoubleSpinBox();
 	m_liveExposureSpin->setRange(0.01, 100.0);
 	m_liveExposureSpin->setSingleStep(0.1);
@@ -1374,8 +1414,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("A flat brightness multiplier applied before tone-mapping, same "
 		"meaning as this tab's own Output-group Exposure control but "
 		"independently set for Live Preview.")),
-		4, 0);
-	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 4, 1);
+		5, 0);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 5, 1);
 
 	m_liveSamplesSpinBox = new QSpinBox();
 	m_liveSamplesSpinBox->setRange(1, 16);
@@ -1393,8 +1433,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Samples per pixel rendered on each Live Preview call - Live "
 		"Preview has its own independent value from the Advanced Parameters "
 		"group below, which only applies to Image/Video.")),
-		4, 2);
-	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 4, 3);
+		5, 2);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 5, 3);
 
 	m_liveMaxDepthSpinBox = new QSpinBox();
 	m_liveMaxDepthSpinBox->setRange(1, 32);
@@ -1404,8 +1444,8 @@ void MainWindow::createRenderOptionsTab() {
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
 		tr("Maximum ray depth for Live Preview - independent from the "
 		"Advanced Parameters group below, which only applies to Image/Video.")),
-		5, 0);
-	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 5, 1);
+		6, 0);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 6, 1);
 
 	m_liveFireflyClampSpin = new QDoubleSpinBox();
 	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
@@ -1422,8 +1462,8 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Caps the brightest possible sample value to suppress fireflies, "
 		"at the cost of clipping genuinely bright highlights. Lower values "
 		"clamp more aggressively.")),
-		5, 2);
-	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 5, 3);
+		6, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 6, 3);
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
@@ -1992,7 +2032,8 @@ void MainWindow::startLivePreview() {
 								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
 								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveRestirDiEnabled,
 								 m_liveProbeCacheEnabled, m_livePathGuidingEnabled,
-								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp);
+								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp,
+								 m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -2109,6 +2150,11 @@ void MainWindow::pushLiveProbeCacheToSession() {
 void MainWindow::pushLivePathGuidingToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setPathGuiding(m_livePathGuidingEnabled);
+}
+
+void MainWindow::pushLiveTemporalUpscaleToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setTemporalUpscale(m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor);
 }
 
 void MainWindow::pushLiveExposureToSession() {
@@ -2370,6 +2416,16 @@ bool MainWindow::loadSavedLivePathGuidingEnabled() const {
 void MainWindow::saveLivePathGuidingEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewPathGuidingEnabledKey, value);
+}
+
+int MainWindow::loadSavedLiveTemporalUpscaleFactor() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewTemporalUpscaleFactorKey, 1).toInt();
+}
+
+void MainWindow::saveLiveTemporalUpscaleFactor(int value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewTemporalUpscaleFactorKey, value);
 }
 
 double MainWindow::loadSavedLiveExposure() const {

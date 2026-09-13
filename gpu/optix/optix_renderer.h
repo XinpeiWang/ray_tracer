@@ -305,6 +305,20 @@ public:
 	///        sampling bias are gated here.
 	void enablePathGuiding(bool enable) { pathGuidingEnabled_ = enable; }
 
+	/// @brief Live Preview's temporal upscale feature (gpu/optix/
+	///        wavefront_temporal_upscale_math.h) - see this project's own
+	///        plan. `enable=false` (the default) is a complete no-op.
+	///        `factor` (2 or 4) sets the deterministic jitter sequence's
+	///        period; `jitterBaseIndex` is this call's own starting point in
+	///        that sequence (the caller's own responsibility to advance it
+	///        call to call). Forwarded to WavefrontPathTracer::
+	///        setTemporalUpscaleJitter() inside render() below.
+	void enableTemporalUpscaleJitter(bool enable, int factor, unsigned int jitterBaseIndex) {
+		temporalUpscaleJitterEnabled_ = enable;
+		temporalUpscaleFactor_ = factor;
+		temporalJitterBaseIndex_ = jitterBaseIndex;
+	}
+
 	/// @brief Sets SVGF's advanced tuning constants (gpu/optix/
 	///        svgf_tuning_params.h) - formerly hardcoded kSvgf* literals in
 	///        wavefront_kernels_svgf.cu. Forwarded to wavefrontTracer_ inside
@@ -698,6 +712,12 @@ private:
 	// future change to one doesn't silently desync the other's count.
 	CUdeviceptr d_guidingHistograms_ = 0;          ///< Device GpuGuidingHistogram array, probeGridMeta_.totalProbes entries
 	bool pathGuidingEnabled_ = false;              ///< See enablePathGuiding()
+
+	// Live Preview's temporal upscale feature - see enableTemporalUpscaleJitter()'s
+	// own comment.
+	bool temporalUpscaleJitterEnabled_ = false;
+	int temporalUpscaleFactor_ = 2;
+	unsigned int temporalJitterBaseIndex_ = 0;
 
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - evaluated deterministically, not via the alias table.

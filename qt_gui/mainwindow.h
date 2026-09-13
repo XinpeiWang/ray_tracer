@@ -348,6 +348,7 @@ private:
 	void pushLiveRestirDiToSession();
 	void pushLiveProbeCacheToSession();
 	void pushLivePathGuidingToSession();
+	void pushLiveTemporalUpscaleToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
 	void pushLiveFireflyClampToSession();
@@ -442,6 +443,8 @@ private:
 	void saveLiveProbeCacheEnabled(bool value) const;
 	bool loadSavedLivePathGuidingEnabled() const;
 	void saveLivePathGuidingEnabled(bool value) const;
+	int loadSavedLiveTemporalUpscaleFactor() const;
+	void saveLiveTemporalUpscaleFactor(int value) const;
 	double loadSavedLiveExposure() const;
 	void saveLiveExposure(double value) const;
 	int loadSavedLiveSamples() const;
@@ -893,6 +896,14 @@ private:
 	// document the dependency in the tooltip instead" precedent.
 	bool m_livePathGuidingEnabled = false;
 	QCheckBox *m_livePathGuidingCheck = nullptr;
+	// Live Preview's temporal upscale feature (see this project's own plan).
+	// Plain int (1/2/4, not a bool+separate-int pair) since the combo's own
+	// selected factor IS the setting - no pre-existing bool pair to
+	// decompose into the way the denoiser-mode combo has (m_liveDenoiserModeCombo).
+	// 1 means "off" (no pre-existing always-on behavior to preserve, same
+	// reasoning m_livePathGuidingEnabled's own false default has).
+	int m_liveTemporalUpscaleFactor = 1;
+	QComboBox *m_liveTemporalUpscaleCombo = nullptr;
 	double m_liveExposure = 1.0;
 	QDoubleSpinBox *m_liveExposureSpin = nullptr;
 	int m_liveSamples = 1;

@@ -18,18 +18,22 @@ namespace {
 //      float* out_world_pos, float* out_camera_basis,
 //      float* out_rgb, bool enable_svgf, bool enable_restir_gi,
 //      float max_component_value, const void* svgf_tuning,
-//      bool enable_restir_di, bool enable_probe_cache, bool enable_path_guiding)
+//      bool enable_restir_di, bool enable_probe_cache, bool enable_path_guiding,
+//      bool enable_temporal_upscale, int temporal_upscale_factor,
+//      unsigned int temporal_jitter_base_index)
 // Must stay byte-for-byte in sync with gpu/optix/optix_interface.h's
 // rt_realtime_render_frame() declaration and realtime_renderer_dll.cpp's own
 // export signature - see this file's own header comment on why there's no
 // shared header/versioning across this boundary. New parameters are always
 // appended at the end, never inserted in the middle - enable_restir_di,
-// enable_probe_cache, and now enable_path_guiding are all appended last for
-// exactly this reason, even though enable_path_guiding logically pairs with
-// enable_probe_cache (it hard-depends on it) rather than sitting at the end.
+// enable_probe_cache, enable_path_guiding, and now the 3 temporal-upscale
+// params are all appended last for exactly this reason, even though
+// enable_path_guiding logically pairs with enable_probe_cache (it
+// hard-depends on it) rather than sitting at the end.
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
-							   bool, float, const void*, bool, bool, bool);
+							   bool, float, const void*, bool, bool, bool,
+							   bool, int, unsigned int);
 
 // const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
 // own comment. Same hand-duplication convention as RenderFrameFn above.
@@ -119,7 +123,35 @@ void RealtimePreviewWorker::resetAccumulation() {
 	m_sampleCounts.assign(static_cast<size_t>(m_width) * m_height, 0);
 	m_accumScratch.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
 	m_sampleCountsScratch.assign(static_cast<size_t>(m_width) * m_height, 0);
-	m_displayImage = QImage(m_width, m_height, QImage::Format_RGB888);
+
+	// Temporal upscale's own higher-resolution reconstruction buffers - only
+	// allocated (Wh*Hh-sized) while the feature is enabled, cleared to empty
+	// otherwise so a disabled session carries no extra host memory cost (see
+	// this project's own plan's Risks section on the ~40-200MB cost at
+	// 2x/4x). m_temporalJitterCounter restarts at 0 too - a fresh reconstruction
+	// buffer has no history to resume a jitter phase against.
+	m_temporalJitterCounter = 0;
+	if (m_temporalUpscaleEnabled) {
+		const size_t wh = static_cast<size_t>(m_width) * m_upscaleFactor;
+		const size_t hh = static_cast<size_t>(m_height) * m_upscaleFactor;
+		m_accumHi.assign(wh * hh * 3, 0.0f);
+		m_worldPosHi.assign(wh * hh * 4, 0.0f);
+		m_worldPosHiPrev.assign(wh * hh * 4, 0.0f);
+		m_cellAgeHi.assign(wh * hh, 0);
+		m_accumHiScratch.assign(wh * hh * 3, 0.0f);
+		m_worldPosHiScratch.assign(wh * hh * 4, 0.0f);
+		m_cellAgeHiScratch.assign(wh * hh, 0);
+		m_displayImage = QImage(static_cast<int>(wh), static_cast<int>(hh), QImage::Format_RGB888);
+	} else {
+		m_accumHi.clear();
+		m_worldPosHi.clear();
+		m_worldPosHiPrev.clear();
+		m_cellAgeHi.clear();
+		m_accumHiScratch.clear();
+		m_worldPosHiScratch.clear();
+		m_cellAgeHiScratch.clear();
+		m_displayImage = QImage(m_width, m_height, QImage::Format_RGB888);
+	}
 	m_sampleCount = 0;
 }
 
@@ -228,10 +260,115 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 	std::swap(m_sampleCounts, newSampleCounts);
 }
 
+// Temporal upscale's own reprojection (see this project's own plan) - same
+// world-position + disocclusion-test technique as reprojectAccumulation()
+// above, generalized two ways: (1) projects directly into the higher-
+// resolution Hi grid's own coordinates (continuous screen-space (s,t) makes
+// this free - no separate low-res-then-high-res mapping step needed), and
+// (2) since the GPU still only ever produces ONE world position per low-res
+// pixel, a whole upscaleFactor x upscaleFactor cell block is reprojected as
+// a single rigid translation rather than each sub-cell independently - see
+// this project's own plan's Risks section for the accepted silhouette-block
+// approximation this implies.
+void RealtimePreviewWorker::reprojectAccumulationHi() {
+	const camera_math::CameraBasis oldBasis{
+		camera_math::Vec3{m_prevCameraBasis[0], m_prevCameraBasis[1], m_prevCameraBasis[2]},
+		camera_math::Vec3{m_prevCameraBasis[3], m_prevCameraBasis[4], m_prevCameraBasis[5]},
+		camera_math::Vec3{m_prevCameraBasis[6], m_prevCameraBasis[7], m_prevCameraBasis[8]},
+		camera_math::Vec3{m_prevCameraBasis[9], m_prevCameraBasis[10], m_prevCameraBasis[11]}};
+
+	// Same disocclusion-epsilon formula as reprojectAccumulation() - see that
+	// function's own comment for the full rationale (scaled by the camera's
+	// current distance from its pivot, since this codebase's scene library
+	// spans wildly different world-space scales).
+	constexpr double kDisocclusionEpsilonFraction = 0.00125;
+	const double cameraRadius = camera_math::distanceFromTarget(
+		camera_math::Vec3{m_camX, m_camY, m_camZ}, camera_math::Vec3{m_lookX, m_lookY, m_lookZ});
+	const float kDisocclusionEpsilon = static_cast<float>(cameraRadius * kDisocclusionEpsilonFraction);
+	const float kDisocclusionEpsilonSq = kDisocclusionEpsilon * kDisocclusionEpsilon;
+
+	const int Wh = m_width * m_upscaleFactor;
+	const int Hh = m_height * m_upscaleFactor;
+	constexpr uint16_t kAgeCap = 65535;
+
+	std::fill(m_accumHiScratch.begin(), m_accumHiScratch.end(), 0.0f);
+	std::fill(m_worldPosHiScratch.begin(), m_worldPosHiScratch.end(), 0.0f);
+	std::fill(m_cellAgeHiScratch.begin(), m_cellAgeHiScratch.end(), uint16_t{0});
+	std::vector<float> &newAccumHi = m_accumHiScratch;
+	std::vector<float> &newWorldPosHi = m_worldPosHiScratch;
+	std::vector<uint16_t> &newCellAgeHi = m_cellAgeHiScratch;
+
+	for (int y = 0; y < m_height; ++y) {
+		for (int x = 0; x < m_width; ++x) {
+			const int pixel = y * m_width + x;
+			const size_t wpIdx = static_cast<size_t>(pixel) * 4;
+			if (m_worldPos[wpIdx + 3] == 0.0f) continue;  // this frame's own pixel missed
+
+			const camera_math::Vec3 worldPoint{m_worldPos[wpIdx], m_worldPos[wpIdx + 1], m_worldPos[wpIdx + 2]};
+			const camera_math::ScreenProjection proj = camera_math::projectToScreen(worldPoint, oldBasis);
+			if (!proj.inFront || proj.s < 0.0 || proj.s >= 1.0 || proj.t < 0.0 || proj.t >= 1.0) continue;
+
+			// Straight into HIGH-RES grid coordinates - (s,t) is continuous,
+			// so this recovers sub-low-res-pixel precision "for free" versus
+			// snapping to a low-res cell first.
+			const int oldColHi = static_cast<int>(proj.s * Wh);
+			const int oldRowHi = static_cast<int>((1.0 - proj.t) * Hh);
+			if (oldColHi < 0 || oldColHi >= Wh || oldRowHi < 0 || oldRowHi >= Hh) continue;
+			const int oldAnchor = oldRowHi * Wh + oldColHi;
+			const size_t oldWpIdx = static_cast<size_t>(oldAnchor) * 4;
+			if (m_worldPosHiPrev[oldWpIdx + 3] == 0.0f) continue;  // old cell had no data either
+
+			const float dx = m_worldPosHiPrev[oldWpIdx + 0] - worldPoint.x;
+			const float dy = m_worldPosHiPrev[oldWpIdx + 1] - worldPoint.y;
+			const float dz = m_worldPosHiPrev[oldWpIdx + 2] - worldPoint.z;
+			if (dx * dx + dy * dy + dz * dz > kDisocclusionEpsilonSq) continue;  // different surface
+
+			// Block-translate: the whole upscaleFactor x upscaleFactor block
+			// this low-res pixel owns moves by the SAME (oldColHi - newBaseCol,
+			// oldRowHi - newBaseRow) offset - one rigid shift per block, not
+			// an independent lookup per sub-cell (see this function's own
+			// header comment).
+			const int newBaseCol = x * m_upscaleFactor;
+			const int newBaseRow = y * m_upscaleFactor;
+			for (int cy = 0; cy < m_upscaleFactor; ++cy) {
+				const int oldRow = oldRowHi + cy;
+				if (oldRow < 0 || oldRow >= Hh) continue;
+				for (int cx = 0; cx < m_upscaleFactor; ++cx) {
+					const int oldCol = oldColHi + cx;
+					if (oldCol < 0 || oldCol >= Wh) continue;
+					const int newCell = (newBaseRow + cy) * Wh + (newBaseCol + cx);
+					const int oldCell = oldRow * Wh + oldCol;
+					const size_t newColorIdx = static_cast<size_t>(newCell) * 3;
+					const size_t oldColorIdx = static_cast<size_t>(oldCell) * 3;
+					newAccumHi[newColorIdx + 0] = m_accumHi[oldColorIdx + 0];
+					newAccumHi[newColorIdx + 1] = m_accumHi[oldColorIdx + 1];
+					newAccumHi[newColorIdx + 2] = m_accumHi[oldColorIdx + 2];
+					const size_t newWpIdx = static_cast<size_t>(newCell) * 4;
+					const size_t oldCellWpIdx = static_cast<size_t>(oldCell) * 4;
+					newWorldPosHi[newWpIdx + 0] = m_worldPosHi[oldCellWpIdx + 0];
+					newWorldPosHi[newWpIdx + 1] = m_worldPosHi[oldCellWpIdx + 1];
+					newWorldPosHi[newWpIdx + 2] = m_worldPosHi[oldCellWpIdx + 2];
+					newWorldPosHi[newWpIdx + 3] = m_worldPosHi[oldCellWpIdx + 3];
+					const int age = static_cast<int>(m_cellAgeHi[oldCell]) + 1;
+					newCellAgeHi[newCell] = static_cast<uint16_t>(std::min(age, static_cast<int>(kAgeCap)));
+				}
+			}
+		}
+	}
+
+	// Swap rather than assign - see reprojectAccumulation()'s own identical
+	// comment on why (exchanges storage with the persistent scratch members,
+	// no allocation).
+	std::swap(m_accumHi, newAccumHi);
+	std::swap(m_worldPosHi, newWorldPosHi);
+	std::swap(m_cellAgeHi, newCellAgeHi);
+}
+
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
 								   double lookX, double lookY, double lookZ,
 								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-								   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp) {
+								   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
+								   bool temporalUpscale, int temporalUpscaleFactor) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -260,6 +397,8 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	m_restirDi = restirDi;
 	m_probeCache = probeCache;
 	m_pathGuiding = pathGuiding;
+	m_temporalUpscaleEnabled = temporalUpscale;
+	m_upscaleFactor = temporalUpscaleFactor;
 	m_spp = spp;
 	m_maxDepth = maxDepth;
 	m_fireflyClamp = fireflyClamp;
@@ -356,6 +495,20 @@ void RealtimePreviewWorker::setPathGuiding(bool pathGuiding) {
 	m_pathGuiding = pathGuiding;
 }
 
+void RealtimePreviewWorker::setTemporalUpscale(bool enabled, int factor) {
+	if (!m_running) return;
+	// Unlike setProbeCache()/setPathGuiding() above, changing EITHER of
+	// these DOES reset accumulation - see this method's own header comment
+	// (realtime_preview_session.h) for why: it changes m_displayImage's own
+	// size and the Hi reconstruction buffers' shape, not just what a new
+	// sample contains.
+	if (enabled != m_temporalUpscaleEnabled || factor != m_upscaleFactor) {
+		m_temporalUpscaleEnabled = enabled;
+		m_upscaleFactor = factor;
+		resetAccumulation();
+	}
+}
+
 void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
 	if (!m_running) return;
 	m_spp = spp;
@@ -443,7 +596,8 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_denoise, m_denoiseBlend,
 						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
-						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding);
+						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding,
+						  m_temporalUpscaleEnabled, m_upscaleFactor, m_temporalJitterCounter);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -478,79 +632,183 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		// side integration REPLACES this CPU-side one for that mode, rather
 		// than sitting on top of it.
 		const bool showLatest = effectiveShowLatest();
+		// Temporal upscale (see this project's own plan) - mutually
+		// exclusive with showLatest for v1 (useTemporalUpscale() itself
+		// checks !effectiveShowLatest()).
+		const bool useUpscale = useTemporalUpscale();
 
 		// Reprojection would be immediately thrown away by the show-latest
 		// branch below (which overwrites m_accum wholesale every frame
 		// regardless), so skip the work entirely in that mode.
-		if (cameraJustMoved && !showLatest) {
-			reprojectAccumulation();
-		}
-
-		int minSampleCount = 0;
-		if (showLatest) {
-			// Skip accumulation entirely - each already-denoised frame is
-			// clean enough on its own that averaging it with older, possibly
-			// differently-denoised frames would only add lag, not quality.
-			m_accum = m_tmp;
-			std::fill(m_sampleCounts.begin(), m_sampleCounts.end(), uint16_t{1});
-			minSampleCount = 1;
-		} else {
-			// Running mean: accum += (sample - accum) / (n+1), n now READ
-			// PER PIXEL (m_sampleCounts) rather than one shared scalar -
-			// reprojectAccumulation() just above can leave different pixels
-			// with wildly different effective history (0 for a freshly
-			// disoccluded pixel, carried-forward-and-capped for a
-			// successfully reprojected one). Both buffers are linear RGB
-			// (rt_realtime_render_frame()'s own contract), so this is still
-			// a plain per-channel average - no dividing/multiplying needed
-			// beyond this, unlike CPU/GPU's own filter-weighted
-			// reconstruction (this preview uses a trivial 1-sample-per-pixel
-			// box filter, no splatting).
-			constexpr uint16_t kMaxSampleCount = 65535;
-			minSampleCount = kMaxSampleCount;
-			const int numPixels = m_width * m_height;
-			for (int pixel = 0; pixel < numPixels; ++pixel) {
-				const int n = m_sampleCounts[pixel];
-				const size_t idx = static_cast<size_t>(pixel) * 3;
-				for (int c = 0; c < 3; ++c) {
-					m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) / static_cast<float>(n + 1);
-				}
-				if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
-				minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
+		if (cameraJustMoved) {
+			if (useUpscale) {
+				reprojectAccumulationHi();
+			} else if (!showLatest) {
+				reprojectAccumulation();
 			}
 		}
-		m_sampleCount = minSampleCount;
 
-		// This frame's world-pos/camera-basis become "the data backing
-		// m_accum" for whenever the NEXT camera move needs to reproject
-		// FROM it - see the member declarations' own comment.
-		m_worldPosPrev = m_worldPos;
-		m_prevCameraBasis = m_cameraBasis;
+		if (useUpscale) {
+			// --- Temporal upscale: write step + reconstruction ---
+			// This call's own place in the deterministic jitter sequence
+			// (see setTemporalUpscaleJitter()'s own comment,
+			// WavefrontPathTracer) selects ONE sub-cell shared by every
+			// low-res pixel this frame - each low-res pixel's raw sample
+			// (m_tmp, not the running mean) overwrites that one high-res
+			// cell, never blended (see this project's own plan for why a
+			// running mean doesn't apply at the per-cell level the way it
+			// does for m_accum). NOTE: when Samples/Frame > 1, m_tmp is
+			// already an average across several jitter phases from the
+			// GPU's own sample loop - the write step below still treats it
+			// as if it were a single phase (m_temporalJitterCounter, this
+			// call's FIRST sample), a known v1 simplification that
+			// slightly blurs the splatted cell at Samples/Frame > 1
+			// (recommend Samples/Frame=1 for the sharpest reconstruction).
+			const int Wh = m_width * m_upscaleFactor;
+			const int Hh = m_height * m_upscaleFactor;
+			int subCx = 0, subCy = 0;
+			camera_math::temporalUpscaleSubcell(m_temporalJitterCounter, m_upscaleFactor, subCx, subCy);
+			for (int y = 0; y < m_height; ++y) {
+				for (int x = 0; x < m_width; ++x) {
+					const int pixel = y * m_width + x;
+					const int target = (y * m_upscaleFactor + subCy) * Wh + (x * m_upscaleFactor + subCx);
+					const size_t srcColorIdx = static_cast<size_t>(pixel) * 3;
+					const size_t dstColorIdx = static_cast<size_t>(target) * 3;
+					m_accumHi[dstColorIdx + 0] = m_tmp[srcColorIdx + 0];
+					m_accumHi[dstColorIdx + 1] = m_tmp[srcColorIdx + 1];
+					m_accumHi[dstColorIdx + 2] = m_tmp[srcColorIdx + 2];
+					const size_t srcWpIdx = static_cast<size_t>(pixel) * 4;
+					const size_t dstWpIdx = static_cast<size_t>(target) * 4;
+					m_worldPosHi[dstWpIdx + 0] = m_worldPos[srcWpIdx + 0];
+					m_worldPosHi[dstWpIdx + 1] = m_worldPos[srcWpIdx + 1];
+					m_worldPosHi[dstWpIdx + 2] = m_worldPos[srcWpIdx + 2];
+					m_worldPosHi[dstWpIdx + 3] = m_worldPos[srcWpIdx + 3];
+					m_cellAgeHi[target] = 0;
+				}
+			}
+			// No uniform per-pixel convergence metric applies once each
+			// high-res cell converges to a single direct sample rather than
+			// a running mean - same "1" showLatest already reports for the
+			// analogous "no meaningful running-mean count" case below.
+			m_sampleCount = 1;
 
-		// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
-		// project's CPU/GPU display convention exactly - see tone_map.h)
-		// into m_displayImage IN PLACE. Tonemapping the per-call noisy
-		// sample instead would defeat the whole point of accumulating in
-		// linear space first.
-		for (int y = 0; y < m_height; ++y) {
-			uchar* row = m_displayImage.scanLine(y);
-			for (int x = 0; x < m_width; ++x) {
-				const size_t idx = (static_cast<size_t>(y) * m_width + x) * 3;
-				double r = m_accum[idx + 0], g = m_accum[idx + 1], b = m_accum[idx + 2];
-				if (!std::isfinite(r)) r = 0.0;
-				if (!std::isfinite(g)) g = 0.0;
-				if (!std::isfinite(b)) b = 0.0;
-				// Same exposure multiply the batch/CLI path applies right
-				// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
-				// see m_exposure's own comment for why Live Preview needs this
-				// pulled down further than batch's default for the same scene.
-				r *= m_exposure; g *= m_exposure; b *= m_exposure;
-				r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
-				g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
-				b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
-				row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
-				row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
-				row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+			// This frame's world-pos/camera-basis (and the just-updated Hi
+			// buffers) become "the data backing the display" for whenever
+			// the NEXT camera move needs to reproject FROM it - see
+			// reprojectAccumulationHi()'s own comment.
+			m_worldPosHiPrev = m_worldPosHi;
+			m_worldPosPrev = m_worldPos;
+			m_prevCameraBasis = m_cameraBasis;
+
+			// Tonemap the Hi buffer into m_displayImage (already sized
+			// Wh x Hh, see resetAccumulation()). A cell whose m_worldPosHi
+			// validity is still 0 (never splatted into - e.g. right after
+			// enabling the feature) falls back to a plain nearest-neighbor
+			// upscale of THIS frame's own m_tmp - display-only, never
+			// written into m_accumHi itself, so it never contaminates
+			// history once a real splat arrives (see this project's own
+			// plan's first-frame/cold-cell fallback).
+			for (int y = 0; y < Hh; ++y) {
+				uchar* row = m_displayImage.scanLine(y);
+				const int lowY = std::min(y / m_upscaleFactor, m_height - 1);
+				for (int x = 0; x < Wh; ++x) {
+					const int cell = y * Wh + x;
+					const size_t wpIdx = static_cast<size_t>(cell) * 4;
+					const size_t idx = static_cast<size_t>(cell) * 3;
+					double r, g, b;
+					if (m_worldPosHi[wpIdx + 3] != 0.0f) {
+						r = m_accumHi[idx + 0]; g = m_accumHi[idx + 1]; b = m_accumHi[idx + 2];
+					} else {
+						const int lowX = std::min(x / m_upscaleFactor, m_width - 1);
+						const size_t lowIdx = (static_cast<size_t>(lowY) * m_width + lowX) * 3;
+						r = m_tmp[lowIdx + 0]; g = m_tmp[lowIdx + 1]; b = m_tmp[lowIdx + 2];
+					}
+					if (!std::isfinite(r)) r = 0.0;
+					if (!std::isfinite(g)) g = 0.0;
+					if (!std::isfinite(b)) b = 0.0;
+					r *= m_exposure; g *= m_exposure; b *= m_exposure;
+					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+					row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
+					row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
+					row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+				}
+			}
+
+			// Advance this call's own place in the jitter sequence by m_spp
+			// (matching how many samples-per-call this render just consumed,
+			// the same per-call advance frameNumber_ itself already gets),
+			// wrapped modulo the sequence's own period.
+			const unsigned int period = static_cast<unsigned int>(m_upscaleFactor * m_upscaleFactor);
+			m_temporalJitterCounter = (period > 0) ? ((m_temporalJitterCounter + static_cast<unsigned int>(m_spp)) % period) : 0;
+		} else {
+			int minSampleCount = 0;
+			if (showLatest) {
+				// Skip accumulation entirely - each already-denoised frame is
+				// clean enough on its own that averaging it with older, possibly
+				// differently-denoised frames would only add lag, not quality.
+				m_accum = m_tmp;
+				std::fill(m_sampleCounts.begin(), m_sampleCounts.end(), uint16_t{1});
+				minSampleCount = 1;
+			} else {
+				// Running mean: accum += (sample - accum) / (n+1), n now READ
+				// PER PIXEL (m_sampleCounts) rather than one shared scalar -
+				// reprojectAccumulation() just above can leave different pixels
+				// with wildly different effective history (0 for a freshly
+				// disoccluded pixel, carried-forward-and-capped for a
+				// successfully reprojected one). Both buffers are linear RGB
+				// (rt_realtime_render_frame()'s own contract), so this is still
+				// a plain per-channel average - no dividing/multiplying needed
+				// beyond this, unlike CPU/GPU's own filter-weighted
+				// reconstruction (this preview uses a trivial 1-sample-per-pixel
+				// box filter, no splatting).
+				constexpr uint16_t kMaxSampleCount = 65535;
+				minSampleCount = kMaxSampleCount;
+				const int numPixels = m_width * m_height;
+				for (int pixel = 0; pixel < numPixels; ++pixel) {
+					const int n = m_sampleCounts[pixel];
+					const size_t idx = static_cast<size_t>(pixel) * 3;
+					for (int c = 0; c < 3; ++c) {
+						m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) / static_cast<float>(n + 1);
+					}
+					if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
+					minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
+				}
+			}
+			m_sampleCount = minSampleCount;
+
+			// This frame's world-pos/camera-basis become "the data backing
+			// m_accum" for whenever the NEXT camera move needs to reproject
+			// FROM it - see the member declarations' own comment.
+			m_worldPosPrev = m_worldPos;
+			m_prevCameraBasis = m_cameraBasis;
+
+			// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
+			// project's CPU/GPU display convention exactly - see tone_map.h)
+			// into m_displayImage IN PLACE. Tonemapping the per-call noisy
+			// sample instead would defeat the whole point of accumulating in
+			// linear space first.
+			for (int y = 0; y < m_height; ++y) {
+				uchar* row = m_displayImage.scanLine(y);
+				for (int x = 0; x < m_width; ++x) {
+					const size_t idx = (static_cast<size_t>(y) * m_width + x) * 3;
+					double r = m_accum[idx + 0], g = m_accum[idx + 1], b = m_accum[idx + 2];
+					if (!std::isfinite(r)) r = 0.0;
+					if (!std::isfinite(g)) g = 0.0;
+					if (!std::isfinite(b)) b = 0.0;
+					// Same exposure multiply the batch/CLI path applies right
+					// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
+					// see m_exposure's own comment for why Live Preview needs this
+					// pulled down further than batch's default for the same scene.
+					r *= m_exposure; g *= m_exposure; b *= m_exposure;
+					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+					row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
+					row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
+					row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+				}
 			}
 		}
 
@@ -607,14 +865,16 @@ RealtimePreviewSession::~RealtimePreviewSession() {
 void RealtimePreviewSession::start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 									double lookX, double lookY, double lookZ,
 									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
-									bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp) {
+									bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
+									bool temporalUpscale, int temporalUpscaleFactor) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
 		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ),
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf),
 		Q_ARG(bool, restirGi), Q_ARG(bool, restirDi), Q_ARG(bool, probeCache), Q_ARG(bool, pathGuiding),
-		Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp));
+		Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp),
+		Q_ARG(bool, temporalUpscale), Q_ARG(int, temporalUpscaleFactor));
 }
 
 void RealtimePreviewSession::stop() {
@@ -654,6 +914,10 @@ void RealtimePreviewSession::setProbeCache(bool probeCache) {
 
 void RealtimePreviewSession::setPathGuiding(bool pathGuiding) {
 	QMetaObject::invokeMethod(m_worker, "setPathGuiding", Qt::QueuedConnection, Q_ARG(bool, pathGuiding));
+}
+
+void RealtimePreviewSession::setTemporalUpscale(bool enabled, int factor) {
+	QMetaObject::invokeMethod(m_worker, "setTemporalUpscale", Qt::QueuedConnection, Q_ARG(bool, enabled), Q_ARG(int, factor));
 }
 
 void RealtimePreviewSession::setSppAndMaxDepth(int spp, int maxDepth) {

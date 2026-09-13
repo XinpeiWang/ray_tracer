@@ -14,7 +14,8 @@
 // ---- forward declarations of kernels from wavefront_kernels.cu ----
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem>, unsigned int, unsigned int,
-	GpuCameraParams, unsigned int, unsigned int, float*, bool);
+	GpuCameraParams, unsigned int, unsigned int, float*, bool,
+	bool, unsigned int, int);
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>, WorkQueue<BssrdfProbeWorkItem>,
@@ -127,6 +128,9 @@ extern "C" void wf_launch_generate_camera_rays(
 	unsigned int frameNumber,
 	float* d_weightBuffer,
 	bool checkerboardActive,
+	bool temporalJitterEnabled,
+	unsigned int temporalJitterIndex,
+	int temporalUpscaleFactor,
 	cudaStream_t stream)
 {
 	// Film "cropwindow"/"pixelbounds" - size the launch grid to just the
@@ -149,7 +153,8 @@ extern "C" void wf_launch_generate_camera_rays(
 	generate_camera_rays<<<grid, block, 0, (cudaStream_t)stream>>>(
 		rq, (unsigned int)width, (unsigned int)height,
 		camera,
-		(unsigned int)sampleIdx, frameNumber, d_weightBuffer, checkerboardActive);
+		(unsigned int)sampleIdx, frameNumber, d_weightBuffer, checkerboardActive,
+		temporalJitterEnabled, temporalJitterIndex, temporalUpscaleFactor);
 }
 
 extern "C" void wf_launch_evaluate_materials(

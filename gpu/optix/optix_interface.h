@@ -205,7 +205,24 @@ bool rt_realtime_render_frame(
 	// enable_probe_cache, per this function's own DLL-boundary convention
 	// (see realtime_preview_session.cpp's RenderFrameFn comment) of only
 	// ever appending new parameters, never inserting them in the middle.
-	bool enable_path_guiding = false
+	bool enable_path_guiding = false,
+	// Live Preview's temporal upscale feature (gpu/optix/
+	// wavefront_temporal_upscale_math.h) - see this project's own plan.
+	// Render resolution is unchanged; this only swaps generate_camera_rays'
+	// own random sub-pixel jitter for a deterministic Halton(2,3) sequence
+	// so the CALLER (RealtimePreviewWorker) can splat/reproject this call's
+	// samples into a persistent, higher-resolution reconstruction buffer.
+	// `enable_temporal_upscale=false` (the default, every non-Live-Preview
+	// call site) is a complete no-op - generate_camera_rays' jitter is drawn
+	// exactly as it always was. `temporal_upscale_factor` (2 or 4) sets the
+	// sequence's period; meaningless when disabled. `temporal_jitter_base_index`
+	// is this call's own starting point in that sequence - the CALLER owns
+	// advancing it call to call, exactly like it already owns the camera
+	// position. Appended at the very end of the parameter list, after
+	// enable_path_guiding, per this function's own append-only convention.
+	bool enable_temporal_upscale = false,
+	int temporal_upscale_factor = 2,
+	unsigned int temporal_jitter_base_index = 0
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the

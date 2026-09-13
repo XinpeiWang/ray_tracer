@@ -44,14 +44,18 @@ RT_REALTIME_API bool realtime_render_frame(
 	const SvgfTuningParams* svgf_tuning,
 	bool enable_restir_di,
 	bool enable_probe_cache,
-	bool enable_path_guiding
+	bool enable_path_guiding,
+	bool enable_temporal_upscale,
+	int temporal_upscale_factor,
+	unsigned int temporal_jitter_base_index
 ) {
 	return rt_realtime_render_frame(scene_id, image_width, image_height,
 		samples_per_pixel, max_depth, cam_x, cam_y, cam_z,
 		has_custom_lookat, lookat_x, lookat_y, lookat_z,
 		denoise, denoise_blend, out_world_pos_buffer, out_camera_basis, out_rgb_buffer,
 		enable_svgf, enable_restir_gi, max_component_value, svgf_tuning, enable_restir_di,
-		enable_probe_cache, enable_path_guiding);
+		enable_probe_cache, enable_path_guiding,
+		enable_temporal_upscale, temporal_upscale_factor, temporal_jitter_base_index);
 }
 
 RT_REALTIME_API const char* realtime_get_last_error() {

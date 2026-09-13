@@ -2501,6 +2501,31 @@ Débruiteur SVGF : un filtre spatio-temporel alternatif et expérimental - suit 
         <translation>Échantillonne par importance la direction de rebond pour les surfaces brillantes/métalliques selon une estimation grossière et apprise de façon incrémentale de l&apos;endroit où se trouve réellement la lumière incidente, au lieu de se fier uniquement à l&apos;échantillonnage du lobe de réflexion propre au matériau. Nécessite que le Cache de radiance ci-dessus soit également activé - il réutilise la grille et le pipeline de mise à jour de ce cache, et n&apos;a aucun effet sans lui. Comme le Cache de radiance, il converge en plusieurs secondes ; le désactiver revient à l&apos;échantillonnage de réflexion non biaisé propre au matériau.</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>Temporal Upscale:</source>
+        <translation>Suréchantillonnage temporel :</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>Off</source>
+        <translation>Désactivé</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>2x</source>
+        <translation>2x</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1364"/>
+        <source>4x</source>
+        <translation>4x</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1370"/>
+        <source>Reconstructs a sharper image over several frames from a deterministic sub-pixel jitter sequence, instead of Live Preview&apos;s native low resolution just being stretched to fit the window. Render cost per frame is unchanged - 2x/4x only changes how many frames it takes to sharpen (4 or 16 respectively after a camera move settles). 4x uses noticeably more memory (roughly 150-200 MB) than 2x (roughly 40-50 MB). Mutually exclusive with the Denoiser dropdown&apos;s SVGF mode and &apos;Show latest frame&apos; option above - those take priority when both are on.</source>
+        <translation>Reconstruit une image plus nette sur plusieurs images à partir d&apos;une séquence de tremblement sous-pixel déterministe, au lieu que la résolution basse native de l&apos;Aperçu en direct soit simplement étirée pour remplir la fenêtre. Le coût de rendu par image reste inchangé - 2x/4x ne change que le nombre d&apos;images nécessaires pour affiner (4 ou 16 respectivement une fois qu&apos;un déplacement de caméra se stabilise). Le mode 4x utilise nettement plus de mémoire (environ 150-200 Mo) que le mode 2x (environ 40-50 Mo). Mutuellement exclusif avec le mode SVGF du menu déroulant Denoiser et l&apos;option &apos;Afficher la dernière image&apos; ci-dessus - ceux-ci sont prioritaires lorsque les deux sont activés.</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="1354"/>
         <source>A flat brightness multiplier applied before tone-mapping, same meaning as this tab&apos;s own Output-group Exposure control but independently set for Live Preview.</source>
         <translation type="unfinished"></translation>

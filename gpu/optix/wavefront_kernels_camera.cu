@@ -11,6 +11,7 @@
 
 #include "wavefront_device_helpers.h"
 #include "wavefront_svgf_math.h"  // wf_checkerboard_pixel_active
+#include "wavefront_temporal_upscale_math.h"  // wf_temporal_upscale_jitter
 
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem> rayQueue,
@@ -27,7 +28,15 @@ extern "C" __global__ void generate_camera_rays(
 	// comment) - see wf_checkerboard_pixel_active()'s own comment
 	// (wavefront_device_helpers.h) for the shared parity check every
 	// consumer of "was this pixel sampled this frame" must agree on.
-	bool checkerboardActive
+	bool checkerboardActive,
+	// Live Preview's temporal upscale feature (Live Preview only, gpu/optix/
+	// wavefront_temporal_upscale_math.h) - see this project's own plan.
+	// false (the default, every non-Live-Preview call site, or Live Preview
+	// with the feature toggled off) is a complete no-op: rx/ry below are
+	// drawn exactly as before this feature existed, byte-identical.
+	bool temporalJitterEnabled = false,
+	unsigned int temporalJitterIndex = 0,
+	int temporalUpscaleFactor = 2
 ) {
 	// Film "cropwindow"/"pixelbounds" (pbrt-v4) - the HOST launcher
 	// (wf_launch_generate_camera_rays, wavefront_launch.cu) already sizes
@@ -77,8 +86,19 @@ extern "C" __global__ void generate_camera_rays(
 	// the reconstruction filter's sub-pixel offset below (see
 	// gpu_filter_evaluate()'s own comment) - matches the recursive
 	// backend's identical reuse of its own Halton hx/hy for both purposes.
-	float rx = wf_rand(seed);
-	float ry = wf_rand(seed);
+	// Temporal upscale (see this kernel's own temporalJitterEnabled
+	// parameter comment) substitutes a deterministic Halton(2,3) sequence
+	// for these same two floats instead of drawing them from `seed` - every
+	// other consumer of `seed` below (wf_generate_primary_ray, lambda_u,
+	// motion-blur time) is unaffected either way, since seed's PCG state
+	// simply starts advancing from a slightly different point.
+	float rx, ry;
+	if (temporalJitterEnabled) {
+		wf_temporal_upscale_jitter(temporalJitterIndex, temporalUpscaleFactor, rx, ry);
+	} else {
+		rx = wf_rand(seed);
+		ry = wf_rand(seed);
+	}
 	float u = (float(px) + rx) / float(width  - 1);
 	// Flip Y to match optix_raygen.h's lower-left-origin viewport convention
 	// (py=0/top row -> v=1, matching how lower_left_corner+u*horizontal+

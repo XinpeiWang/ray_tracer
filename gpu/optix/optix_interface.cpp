@@ -575,7 +575,10 @@ extern "C" bool rt_realtime_render_frame(
 	const SvgfTuningParams* svgf_tuning,
 	bool enable_restir_di,
 	bool enable_probe_cache,
-	bool enable_path_guiding
+	bool enable_path_guiding,
+	bool enable_temporal_upscale,
+	int temporal_upscale_factor,
+	unsigned int temporal_jitter_base_index
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -727,6 +730,10 @@ extern "C" bool rt_realtime_render_frame(
 		// OptiXRenderer::enablePathGuiding()'s own comment for why enabling
 		// this alone is a documented no-op, not a crash.
 		g_renderer->enablePathGuiding(enable_path_guiding);
+		// Live Preview's temporal upscale feature (gpu/optix/
+		// wavefront_temporal_upscale_math.h) - see this project's own plan
+		// and enableTemporalUpscaleJitter()'s own comment.
+		g_renderer->enableTemporalUpscaleJitter(enable_temporal_upscale, temporal_upscale_factor, temporal_jitter_base_index);
 		// SVGF (gpu/optix/wavefront_svgf_math.h) - unlike DI/GI above, this
 		// is genuinely opt-in per call (the CALLER's own `enable_svgf`
 		// parameter), not unconditionally forced on - it's an alternative
