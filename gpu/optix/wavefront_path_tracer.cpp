@@ -1204,14 +1204,13 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		nrcTrainingSteps_, nrcAabbMin_, nrcAabbExtent_,
 		// ReSTIR for volumetric/participating media (Live Preview only) - see
 		// wf_finish_material_scatter's own restirVolumeReservoirs/
-		// restirVolumeCtx/volumeMatIdxOut/volumeMeanFreePathOut/
-		// volumePhaseWoGOut parameter comments. Same restirEnabled_ gate as
-		// d_reservoirs_/buildRestirTemporalContext() above - no separate UI
-		// toggle for this feature (see this project's own plan).
+		// restirVolumeCtx/volumeMatIdxOut/volumeEntryPointOut parameter
+		// comments. Same restirEnabled_ gate as d_reservoirs_/
+		// buildRestirTemporalContext() above - no separate UI toggle for
+		// this feature (see this project's own plan).
 		reinterpret_cast<GpuVolumeReservoir*>(d_volumeReservoirs_),
 		buildVolumeRestirTemporalContext(),
 		reinterpret_cast<int*>(d_volumeMatIdx_),
-		reinterpret_cast<float*>(d_volumeMeanFreePath_),
 		reinterpret_cast<float4*>(d_volumePhaseWoG_),
 		reinterpret_cast<float4*>(d_volumeEntryPoint_),
 		stream_);
@@ -1378,7 +1377,6 @@ void WavefrontPathTracer::launchRestirVolumeSpatialReuse(
 	wf_launch_restir_volume_spatial_reuse(
 		reinterpret_cast<const GpuVolumeReservoir*>(d_volumeReservoirs_),
 		reinterpret_cast<const int*>(d_volumeMatIdx_),
-		reinterpret_cast<const float*>(d_volumeMeanFreePath_),
 		reinterpret_cast<const float4*>(d_volumePhaseWoG_),
 		reinterpret_cast<const float4*>(d_volumeEntryPoint_),
 		reinterpret_cast<GpuVolumeReservoir*>(d_volumeReservoirsHistory_),
@@ -2331,7 +2329,7 @@ bool WavefrontPathTracer::render(
 	// helpers the GI/SVGF blocks below already use - instead of hand-rolled
 	// free/malloc pairs.
 	//
-	// Unlike d_reservoirs_/d_restirNormal_ above, the 5 "current frame"
+	// Unlike d_reservoirs_/d_restirNormal_ above, the 4 "current frame"
 	// buffers here are deliberately NEVER memset every render() call - see
 	// that same header comment for why an unconditional per-frame clear
 	// would defeat this feature's whole point (holding a reservoir across a
@@ -2340,24 +2338,28 @@ bool WavefrontPathTracer::render(
 	// int32 is -1 in two's complement) and d_volumeReservoirs_ (zero fill,
 	// safe because GpuVolumeReservoir::valid()'s own weightSum>0.0f check
 	// makes a zeroed reservoir read as invalid) are reset BOTH on a fresh
-	// allocation AND whenever restirHistoryValid_ has just gone false for a
-	// reason other than a capacity change - i.e. a scene switch at unchanged
+	// allocation of EITHER (captured explicitly below, not inferred from one
+	// alone - the two are expected to always resize together since both are
+	// keyed on the same numPixels, but a future change that decoupled them
+	// should still get both reset rather than silently relying on that
+	// coupling) AND whenever restirHistoryValid_ was ALREADY false when this
+	// call started (capturing it before this block's own history-capacity
+	// check further down can flip it) - i.e. a scene switch at unchanged
 	// resolution (invalidateRestirHistory()) - since a stale GpuLightSample
 	// carries the PREVIOUS scene's own lightIdx/primIdx, which would
 	// otherwise get dereferenced against the new scene's freshly-uploaded
-	// (possibly smaller) light/geometry arrays. The other 3 sticky buffers
-	// (meanFreePath/phaseWoG/entryPoint) need no such reset: every reader
-	// gates on matIdx>=0 first, so resetting matIdx alone makes their own
-	// stale bytes unreachable.
+	// (possibly smaller) light/geometry arrays. The other 2 sticky buffers
+	// (phaseWoG/entryPoint) need no such reset: every reader gates on
+	// matIdx>=0 first, so resetting matIdx alone makes their own stale bytes
+	// unreachable.
 	if (restirEnabled_) {
-		reallocateDeviceBufferIfNeeded<GpuVolumeReservoir>(d_volumeReservoirs_, volumeReservoirsCapacity_, numPixels);
+		const bool volumeReservoirsResized = reallocateDeviceBufferIfNeeded<GpuVolumeReservoir>(d_volumeReservoirs_, volumeReservoirsCapacity_, numPixels);
 		const bool volumeMatIdxResized = reallocateDeviceBufferIfNeeded<int>(d_volumeMatIdx_, volumeMatIdxCapacity_, numPixels);
-		const bool volumeSceneSwitch = !restirHistoryValid_;
-		if (volumeMatIdxResized || volumeSceneSwitch) {
+		const bool volumeHistoryWasInvalid = !restirHistoryValid_;
+		if (volumeReservoirsResized || volumeMatIdxResized || volumeHistoryWasInvalid) {
 			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeMatIdx_), 0xFF, numPixels * sizeof(int), stream_));
 			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeReservoirs_), 0, numPixels * sizeof(GpuVolumeReservoir), stream_));
 		}
-		reallocateDeviceBufferIfNeeded<float>(d_volumeMeanFreePath_, volumeMeanFreePathCapacity_, numPixels);
 		reallocateDeviceBufferIfNeeded<float4>(d_volumePhaseWoG_, volumePhaseWoGCapacity_, numPixels);
 		reallocateDeviceBufferIfNeeded<float4>(d_volumeEntryPoint_, volumeEntryPointCapacity_, numPixels);
 		if (reallocateDeviceBufferIfNeeded<GpuVolumeReservoir>(d_volumeReservoirsHistory_, volumeReservoirsHistoryCapacity_, numPixels)) {
@@ -2366,7 +2368,6 @@ bool WavefrontPathTracer::render(
 	} else {
 		freeDeviceBuffer(d_volumeReservoirs_, volumeReservoirsCapacity_);
 		freeDeviceBuffer(d_volumeMatIdx_, volumeMatIdxCapacity_);
-		freeDeviceBuffer(d_volumeMeanFreePath_, volumeMeanFreePathCapacity_);
 		freeDeviceBuffer(d_volumePhaseWoG_, volumePhaseWoGCapacity_);
 		freeDeviceBuffer(d_volumeEntryPoint_, volumeEntryPointCapacity_);
 		freeDeviceBuffer(d_volumeReservoirsHistory_, volumeReservoirsHistoryCapacity_);
@@ -3149,7 +3150,6 @@ void WavefrontPathTracer::cleanup() {
 
 	freeDeviceBuffer(d_volumeReservoirs_, volumeReservoirsCapacity_);
 	freeDeviceBuffer(d_volumeMatIdx_, volumeMatIdxCapacity_);
-	freeDeviceBuffer(d_volumeMeanFreePath_, volumeMeanFreePathCapacity_);
 	freeDeviceBuffer(d_volumePhaseWoG_, volumePhaseWoGCapacity_);
 	freeDeviceBuffer(d_volumeEntryPoint_, volumeEntryPointCapacity_);
 	freeDeviceBuffer(d_volumeReservoirsHistory_, volumeReservoirsHistoryCapacity_);

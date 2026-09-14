@@ -212,7 +212,7 @@ extern "C" __global__ void restir_clear_reservoirs(
 // why: by the time this runs, there is no per-thread phase-scatter context
 // left to re-shade WITH this frame, only next frame's temporal reuse ever
 // sees this pass's own output) - reads d_volumeReservoirs_/d_volumeMatIdx_/
-// d_volumeMeanFreePath_/d_volumePhaseWoG_ (this call's own, written by
+// d_volumePhaseWoG_/d_volumeEntryPoint_ (this call's own, written by
 // wf_finish_material_scatter's isPhase branch, wavefront_device_helpers.h),
 // writes into d_volumeReservoirsHistory_.
 //
@@ -225,19 +225,20 @@ extern "C" __global__ void restir_clear_reservoirs(
 // naively clearing every frame would defeat cross-frame reuse for any medium
 // with scattering probability below 1.
 //
-// currentEntryPoint (d_volumeEntryPoint_) is its OWN held-over sticky buffer,
-// deliberately NOT the shared d_worldPos_/currentWorldPos every OTHER ReSTIR
-// kernel reads - d_worldPos_ is refreshed every frame for every depth==0 hit
-// regardless of medium status, so reading it here would pair THIS frame's
-// fresh (possibly unrelated) hit point with matIdx/meanFreePath/phaseWoG's
-// held-over values from whichever earlier frame last had a genuine
-// phase-scatter - see wf_finish_material_scatter's own volumeEntryPointOut
-// parameter comment (wavefront_device_helpers.h) for the corruption that
-// mismatch caused before this buffer existed.
+// currentEntryPoint (d_volumeEntryPoint_ - xyz=entry point, w=mean free
+// path, packed together the same way currentPhaseWoG packs phaseWo/phaseG)
+// is its OWN held-over sticky buffer, deliberately NOT the shared
+// d_worldPos_/currentWorldPos every OTHER ReSTIR kernel reads - d_worldPos_
+// is refreshed every frame for every depth==0 hit regardless of medium
+// status, so reading it here would pair THIS frame's fresh (possibly
+// unrelated) hit point with matIdx/phaseWoG's held-over values from
+// whichever earlier frame last had a genuine phase-scatter - see
+// wf_finish_material_scatter's own volumeEntryPointOut parameter comment
+// (wavefront_device_helpers.h) for the corruption that mismatch caused
+// before this buffer existed.
 extern "C" __global__ void restir_volume_spatial_reuse(
 	const GpuVolumeReservoir* currentReservoirs,
 	const int*                currentMatIdx,
-	const float*              currentMeanFreePath,
 	const float4*             currentPhaseWoG,
 	const float4*             currentEntryPoint,
 	GpuVolumeReservoir*       outputReservoirs,
@@ -263,7 +264,7 @@ extern "C" __global__ void restir_volume_spatial_reuse(
 	}
 	const float4 wp = currentEntryPoint[idx];
 	const float3 entryPoint = make_float3(wp.x, wp.y, wp.z);
-	const float meanFreePath = currentMeanFreePath[idx];
+	const float meanFreePath = wp.w;
 	const float4 pwg = currentPhaseWoG[idx];
 	const float3 phaseWo = make_float3(pwg.x, pwg.y, pwg.z);
 	const float  phaseG  = pwg.w;

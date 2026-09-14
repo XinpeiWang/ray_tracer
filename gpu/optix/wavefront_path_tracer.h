@@ -948,29 +948,33 @@ private:
     // restirEnabled_ toggle - no separate UI toggle for this feature, see
     // setRestirEnabled()'s own comment).
     //
-    // Unlike d_reservoirs_/d_restirNormal_, these 5 "current frame" buffers
-    // (reservoirs/matIdx/meanFreePath/phaseWoG/entryPoint) are deliberately
-    // NEVER cleared every render() call - see render()'s own allocation-site
-    // comment for the full reasoning: wf_finish_material_scatter's own
-    // isPhase branch only ever writes them on a genuine phase-scatter event,
-    // never on a medium's own "no scatter this frame" pass-through sub-case
-    // (which never reaches that branch at all - is_specular stays true for
-    // it), so an unconditional per-frame clear would wipe a perfectly good
-    // reservoir every frame a high-transmittance medium happens not to
-    // scatter, defeating cross-frame reuse for exactly the media this
-    // feature targets. Held indefinitely instead, self-correcting via the
-    // ordinary reprojection/mediumMatIdx-equality disocclusion test once the
-    // camera actually moves away - see this project's own plan's "Risks"
-    // section for the accepted staleness tradeoff.
+    // Unlike d_reservoirs_/d_restirNormal_, these 4 "current frame" buffers
+    // (reservoirs/matIdx/phaseWoG/entryPoint) are deliberately NEVER cleared
+    // every render() call - see render()'s own allocation-site comment for
+    // the full reasoning: wf_finish_material_scatter's own isPhase branch
+    // only ever writes them on a genuine phase-scatter event, never on a
+    // medium's own "no scatter this frame" pass-through sub-case (which
+    // never reaches that branch at all - is_specular stays true for it), so
+    // an unconditional per-frame clear would wipe a perfectly good reservoir
+    // every frame a high-transmittance medium happens not to scatter,
+    // defeating cross-frame reuse for exactly the media this feature
+    // targets. Held indefinitely instead, self-correcting via the ordinary
+    // reprojection/mediumMatIdx-equality disocclusion test once the camera
+    // actually moves away - see this project's own plan's "Risks" section
+    // for the accepted staleness tradeoff.
     //
-    // d_volumeEntryPoint_ exists as its OWN sticky buffer (not a reuse of the
-    // shared d_worldPos_) specifically so it stays consistent with the other
-    // 4 held-over fields: d_worldPos_ is refreshed every frame for every
+    // d_volumeEntryPoint_ packs the medium entry point (xyz) AND the
+    // medium's own mean free path (w) into one float4 - same "position +
+    // extra scalar" convention as d_volumePhaseWoG_ and d_worldPos_ itself,
+    // folding what would otherwise be a 5th separate buffer into this one.
+    // It exists as its OWN sticky buffer (not a reuse of the shared
+    // d_worldPos_) specifically so it stays consistent with the other
+    // held-over fields: d_worldPos_ is refreshed every frame for every
     // depth==0 hit regardless of medium status, so restir_volume_spatial_
     // reuse reading it directly would pair THIS frame's fresh (possibly
-    // unrelated) hit point with matIdx/meanFreePath/phaseWoG's stale values
-    // whenever a pixel's depth==0 hit type changes between phase-scatter
-    // frames - a real corruption this buffer's own addition fixes.
+    // unrelated) hit point with matIdx/phaseWoG's stale values whenever a
+    // pixel's depth==0 hit type changes between phase-scatter frames - a
+    // real corruption this buffer's own addition fixes.
     //
     // d_volumeMatIdx_ needs a real -1 fill (not a raw zero-memset) at
     // allocation time - see the render()-time allocation site's own comment
@@ -990,8 +994,6 @@ private:
     int                volumeReservoirsCapacity_ = 0;
     CUdeviceptr        d_volumeMatIdx_ = 0;
     int                volumeMatIdxCapacity_ = 0;
-    CUdeviceptr        d_volumeMeanFreePath_ = 0;
-    int                volumeMeanFreePathCapacity_ = 0;
     CUdeviceptr        d_volumePhaseWoG_ = 0;
     int                volumePhaseWoGCapacity_ = 0;
     CUdeviceptr        d_volumeEntryPoint_ = 0;

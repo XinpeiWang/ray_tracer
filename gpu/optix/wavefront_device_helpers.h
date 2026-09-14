@@ -1887,12 +1887,6 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// distance-validity gate, wf_restir_volume_spatial_valid). Meaningless/
 	// unread when isPhase is false.
 	float mediumMeanFreePath = 0.0f,
-	// Mirrors volumeMatIdxOut above - this frame's own mediumMeanFreePath,
-	// written unconditionally whenever isPhase is true so
-	// restir_volume_spatial_reuse can read it with no live per-thread medium
-	// context of its own. nullptr is a complete no-op, same shape as
-	// volumeMatIdxOut above.
-	float* volumeMeanFreePathOut = nullptr,
 	// This frame's own phaseWo (xyz)/phaseG (w), packed into one float4 the
 	// same "position/data + extra scalar" packing convention worldPosBuffer
 	// uses - the volumetric analog of d_restirNormal_'s role for DI's own
@@ -1901,23 +1895,28 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// exactly like wf_restir_target_proxy needs `normal`), since the separate,
 	// later restir_volume_spatial_reuse kernel launch has no live per-thread
 	// phaseWo/phaseG of its own to read. Written unconditionally whenever
-	// isPhase is true, same shape as volumeMatIdxOut/volumeMeanFreePathOut
-	// above. nullptr is a complete no-op.
+	// isPhase is true, same shape as volumeMatIdxOut above. nullptr is a
+	// complete no-op.
 	float4* volumePhaseWoGOut = nullptr,
-	// This frame's own mediumEntryPoint (xyz; w unused), written alongside
-	// volumeMatIdxOut/volumeMeanFreePathOut/volumePhaseWoGOut above so the
-	// separate, later restir_volume_spatial_reuse kernel launch reads an
-	// entry point that is ALWAYS from the same frame/call as those other
-	// three sticky fields - critically, NOT the shared worldPosBuffer, which
-	// is overwritten every frame for every depth==0 hit (including a frame
-	// where THIS pixel is no longer a phase vertex at all). Reading
-	// worldPosBuffer there instead would pair this frame's fresh (and
-	// possibly totally unrelated) hit point with the other three fields'
-	// stale, held-over values whenever a pixel's depth==0 hit type changes
-	// between phase-scatter frames - see this project's own plan for the
-	// "isPhase never clears these buffers" design and why staying self-
-	// consistent across all 4 sticky fields is what actually fixes that.
-	// nullptr is a complete no-op, same shape as the other 3 above.
+	// This frame's own mediumEntryPoint (xyz) + mediumMeanFreePath (w),
+	// packed into one float4 - same packing convention as volumePhaseWoGOut
+	// above, folding what used to be two separate buffers (a float4 entry
+	// point and a plain float mean-free-path) into one, since both are
+	// always written together and read together by restir_volume_spatial_
+	// reuse's own neighbor-validity gate. Written alongside volumeMatIdxOut/
+	// volumePhaseWoGOut above so the separate, later restir_volume_spatial_
+	// reuse kernel launch reads an entry point that is ALWAYS from the same
+	// frame/call as those other two sticky fields - critically, NOT the
+	// shared worldPosBuffer, which is overwritten every frame for every
+	// depth==0 hit (including a frame where THIS pixel is no longer a phase
+	// vertex at all). Reading worldPosBuffer there instead would pair this
+	// frame's fresh (and possibly totally unrelated) hit point with the
+	// other sticky fields' stale, held-over values whenever a pixel's
+	// depth==0 hit type changes between phase-scatter frames - see this
+	// project's own plan for the "isPhase never clears these buffers"
+	// design and why staying self-consistent across all sticky fields is
+	// what actually fixes that. nullptr is a complete no-op, same shape as
+	// volumeMatIdxOut/volumePhaseWoGOut above.
 	float4* volumeEntryPointOut = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
@@ -2405,9 +2404,8 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			volRes.mediumMatIdx = matIdx;
 			restirVolumeReservoirs[pixelIndex] = volRes;
 			if (volumeMatIdxOut) volumeMatIdxOut[pixelIndex] = matIdx;
-			if (volumeMeanFreePathOut) volumeMeanFreePathOut[pixelIndex] = mediumMeanFreePath;
 			if (volumePhaseWoGOut) volumePhaseWoGOut[pixelIndex] = make_float4(phaseWo.x, phaseWo.y, phaseWo.z, phaseG);
-			if (volumeEntryPointOut) volumeEntryPointOut[pixelIndex] = make_float4(mediumEntryPoint.x, mediumEntryPoint.y, mediumEntryPoint.z, 0.0f);
+			if (volumeEntryPointOut) volumeEntryPointOut[pixelIndex] = make_float4(mediumEntryPoint.x, mediumEntryPoint.y, mediumEntryPoint.z, mediumMeanFreePath);
 		}
 
 		if (res.valid() && res.W > 0.0f) {

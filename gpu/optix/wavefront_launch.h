@@ -112,14 +112,13 @@ extern "C" void wf_launch_evaluate_materials(
 	float3                       nrcAabbExtent,
 	// ReSTIR for volumetric/participating media (Live Preview only) - see
 	// wf_finish_material_scatter's own restirVolumeReservoirs/restirVolumeCtx/
-	// volumeMatIdxOut/volumeMeanFreePathOut parameter comments. nullptr for
+	// volumeMatIdxOut/volumeEntryPointOut parameter comments. nullptr for
 	// batch/offline rendering, same opt-in pattern as d_restirReservoirs
 	// above. Only this launcher's own kernel (evaluate_materials) ever
 	// reaches a phase-scatter vertex - see this project's own plan.
 	GpuVolumeReservoir*          d_restirVolumeReservoirs,
 	GpuVolumeRestirTemporalContext restirVolumeCtx,
 	int*                         d_volumeMatIdxOut,
-	float*                       d_volumeMeanFreePathOut,
 	float4*                      d_volumePhaseWoGOut,
 	float4*                      d_volumeEntryPointOut,
 	cudaStream_t                 stream);
@@ -281,14 +280,14 @@ extern "C" void wf_launch_restir_clear_reservoirs(
 extern "C" void wf_launch_restir_volume_spatial_reuse(
 	const GpuVolumeReservoir* d_currentReservoirs,
 	const int*                d_currentMatIdx,
-	const float*              d_currentMeanFreePath,
 	const float4*             d_currentPhaseWoG,
-	// This pixel's own held-over medium entry point (d_volumeEntryPoint_) -
-	// NOT d_worldPos_/d_currentWorldPos, which is refreshed every frame for
-	// EVERY depth==0 hit regardless of medium status; using it here would
-	// pair this frame's fresh (possibly unrelated) hit point with the other
-	// 3 sticky buffers' held-over values - see wf_finish_material_scatter's
-	// own volumeEntryPointOut parameter comment (wavefront_device_helpers.h).
+	// This pixel's own held-over medium entry point (xyz) + mean free path
+	// (w), packed into one float4 (d_volumeEntryPoint_) - NOT d_worldPos_/
+	// d_currentWorldPos, which is refreshed every frame for EVERY depth==0
+	// hit regardless of medium status; using it here would pair this frame's
+	// fresh (possibly unrelated) hit point with the other 2 sticky buffers'
+	// held-over values - see wf_finish_material_scatter's own
+	// volumeEntryPointOut parameter comment (wavefront_device_helpers.h).
 	const float4*             d_currentEntryPoint,
 	GpuVolumeReservoir*       d_outputReservoirs,
 	int width, int height,

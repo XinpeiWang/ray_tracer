@@ -155,14 +155,13 @@ extern "C" __global__ void evaluate_materials(
 	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f),
 	// ReSTIR for volumetric/participating media (Live Preview only) - see
 	// wf_finish_material_scatter's own restirVolumeReservoirs/restirVolumeCtx/
-	// volumeMatIdxOut/volumeMeanFreePathOut parameter comments. nullptr for
+	// volumeMatIdxOut/volumeEntryPointOut parameter comments. nullptr for
 	// batch/offline rendering, same shape as restirReservoirs above. This IS
 	// a real call site (all 5 medium MaterialTypes are routed to THIS kernel,
 	// not simpleHitQueue).
 	GpuVolumeReservoir* restirVolumeReservoirs = nullptr,
 	GpuVolumeRestirTemporalContext restirVolumeCtx = {},
 	int* volumeMatIdxOut = nullptr,
-	float* volumeMeanFreePathOut = nullptr,
 	float4* volumePhaseWoGOut = nullptr,
 	float4* volumeEntryPointOut = nullptr
 ) {
@@ -1497,6 +1496,6 @@ extern "C" __global__ void evaluate_materials(
 		// helpers.h) for why only the entry point is stable enough to
 		// reproject frame-to-frame.
 		h.hitPoint, restirVolumeReservoirs, restirVolumeCtx, volumeMatIdxOut,
-		mediumMeanFreePath, volumeMeanFreePathOut, volumePhaseWoGOut, volumeEntryPointOut);
+		mediumMeanFreePath, volumePhaseWoGOut, volumeEntryPointOut);
 }
 
