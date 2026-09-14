@@ -16,6 +16,7 @@
 #include "optix_types.h"
 #include "probe_grid_types.h"
 #include "wavefront_guiding.h"
+#include "wavefront_nrc_types.h"
 #include <cuda_runtime.h>
 
 extern "C" void wf_launch_generate_camera_rays(
@@ -102,6 +103,13 @@ extern "C" void wf_launch_evaluate_materials(
 	// diffuse cache with - see evaluate_materials's own guidingProbes
 	// parameter comment.
 	const GpuProbe*              d_guidingProbes,
+	// Neural Radiance Cache (Live Preview only) - see evaluate_materials's
+	// own nrcWeights parameter comment (wavefront_kernels_materials.cu).
+	// nrcWeights==nullptr is a complete no-op.
+	const float*                 nrcWeights,
+	int                          nrcTrainingSteps,
+	float3                       nrcAabbMin,
+	float3                       nrcAabbExtent,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -158,6 +166,13 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	// every non-Live-Preview call site) is a complete no-op.
 	GpuProbeGridMeta             probeGridMeta,
 	const GpuProbe*              d_probeGrid,
+	// Neural Radiance Cache (Live Preview only) - see evaluate_materials_
+	// simple's own nrcWeights parameter comment (wavefront_kernels_
+	// materials_simple.cu). nrcWeights==nullptr is a complete no-op.
+	const float*                 nrcWeights,
+	int                          nrcTrainingSteps,
+	float3                       nrcAabbMin,
+	float3                       nrcAabbExtent,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -383,7 +398,58 @@ extern "C" void wf_launch_accumulate_shadow(
 	// Probe cache (Live Preview only) - see accumulate_shadow's own
 	// probeCacheRadianceOut parameter comment. nullptr (every non-probe-cache
 	// call site) keeps every shadow ray going to d_framebuffer as before.
-	float3* d_probeCacheRadianceOut = nullptr);
+	float3* d_probeCacheRadianceOut = nullptr,
+	// Neural Radiance Cache training pipeline (Live Preview only) - see
+	// accumulate_shadow's own nrcTrainingRecords parameter comment. nullptr
+	// (every non-NRC call site) keeps every shadow ray going to
+	// d_framebuffer as before.
+	NrcTrainingRecord* d_nrcTrainingRecords = nullptr);
+
+// Neural Radiance Cache training pipeline (Live Preview only, gpu/optix/
+// wavefront_kernels_nrc.cu) - see that file's own header comment for the
+// full Phase A/B design these wrap.
+extern "C" void wf_launch_nrc_generate_training_rays(
+	WorkQueue<RayWorkItem> rq, int numPaths, GpuCameraParams camera, unsigned int frameNumber,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_nrc_training_shade_simple(
+	WorkQueue<HitWorkItem> simpleHitQueue, int numHits, int depth, int maxDepth,
+	const MaterialData* d_materials,
+	const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+	const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+	const TextureData* d_textures, const unsigned char* d_texturePixels,
+	const int* d_lightIndices, const GpuLightKind* d_lightKinds, const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+	WfLightBvhContext lightBvh, float shadowRayEpsilon,
+	NrcTrainingRecord* d_records, int* d_validRecordCounter,
+	WorkQueue<RayWorkItem> nextRayQueue, WorkQueue<ShadowRayWorkItem> shadowQueue,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_nrc_training_shade_full(
+	WorkQueue<HitWorkItem> hitQueue, int numHits, int depth, int maxDepth,
+	const MaterialData* d_materials,
+	const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+	const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+	const TextureData* d_textures, const unsigned char* d_texturePixels,
+	const int* d_lightIndices, const GpuLightKind* d_lightKinds, const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+	WfLightBvhContext lightBvh, float shadowRayEpsilon,
+	NrcTrainingRecord* d_records, int* d_validRecordCounter,
+	WorkQueue<RayWorkItem> nextRayQueue, WorkQueue<ShadowRayWorkItem> shadowQueue,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_nrc_bootstrap_and_train(
+	const NrcTrainingRecord* d_records, int numRecords,
+	const float* d_weights, float* d_gradAccum,
+	float3 aabbMin, float3 aabbExtent,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_nrc_apply_gradients(
+	float* d_weights, float* d_adamM, float* d_adamV, float* d_gradAccum,
+	int numContributingRecords, int stepCount,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_nrc_reset_weights(
+	float* d_weights, float* d_adamM, float* d_adamV, unsigned int seed,
+	cudaStream_t stream);
 
 extern "C" void wf_launch_resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem> eq,

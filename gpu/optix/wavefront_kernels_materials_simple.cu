@@ -101,7 +101,20 @@ extern "C" __global__ void evaluate_materials_simple(
 	// probeGrid==nullptr (the default, every non-Live-Preview call site) is
 	// a complete no-op.
 	GpuProbeGridMeta probeGridMeta = GpuProbeGridMeta{},
-	const GpuProbe* probeGrid = nullptr
+	const GpuProbe* probeGrid = nullptr,
+	// Neural Radiance Cache (Live Preview only) - see wf_finish_material_
+	// scatter's own nrcWeights parameter comment. This kernel is the only
+	// evaluate_materials* that ever sees a Lambertian hit (same reasoning
+	// as probeGridMeta/probeGrid just above), and Metal (this kernel's
+	// other material type) always stays specular so nrcWeights being
+	// non-null is harmless for it - wf_finish_material_scatter's own
+	// !is_specular gate already excludes it. nrcWeights==nullptr (every
+	// non-Live-Preview call site, or Live Preview with the feature toggled
+	// off) is a complete no-op.
+	const float* nrcWeights = nullptr,
+	int nrcTrainingSteps = 0,
+	float3 nrcAabbMin = make_float3(0.0f, 0.0f, 0.0f),
+	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f)
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -232,5 +245,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		shadowQueue, nextRayQueue, framebuffer,
 		textures, texturePixels, h.uv_u, h.uv_v, h.time, restirReservoirs, restirCtx,
 		giOriginContext, giCandidateOut,
-		lightBvh, probeGridMeta, probeGrid);
+		lightBvh, probeGridMeta, probeGrid,
+		GpuProbeGridMeta{}, nullptr, nullptr,
+		nrcWeights, nrcTrainingSteps, nrcAabbMin, nrcAabbExtent);
 }

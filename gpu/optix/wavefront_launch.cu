@@ -7,6 +7,7 @@
 #include "spectral_device.h"
 #include "optix_types.h"
 #include "probe_grid_types.h"
+#include "wavefront_nrc_types.h"  // NrcTrainingRecord
 #include "wavefront_launch.h"  // declares the wf_launch_*/wf_upload_*/wf_reset_queue_counter
                                 // signatures the definitions below are checked against
 #include <cuda_runtime.h>
@@ -34,7 +35,8 @@ extern "C" __global__ void evaluate_materials(
 	float3, float, GpuSkyDistribution, GpuPortalLight, bool, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
 	GpuGiOriginContext*, GpuGiSample*,
-	WfLightBvhContext, GpuProbeGridMeta, const GpuGuidingHistogram*, const GpuProbe*);
+	WfLightBvhContext, GpuProbeGridMeta, const GpuGuidingHistogram*, const GpuProbe*,
+	const float*, int, float3, float3);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -48,7 +50,8 @@ extern "C" __global__ void evaluate_materials_simple(
 	float3, float, GpuSkyDistribution, GpuPortalLight, float,
 	float3*, float3*, float4*, GpuReservoir*, GpuRestirTemporalContext,
 	GpuGiOriginContext*, GpuGiSample*,
-	WfLightBvhContext, GpuProbeGridMeta, const GpuProbe*);
+	WfLightBvhContext, GpuProbeGridMeta, const GpuProbe*,
+	const float*, int, float3, float3);
 extern "C" __global__ void evaluate_materials_dielectric(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -65,7 +68,30 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	WfLightBvhContext);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, GpuPortalLight, float, float3*, float3*, float4*);
 extern "C" __global__ void normalize_aov_buffers(float3*, float3*, unsigned int, unsigned int);
-extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const float*, float3*, float, GpuGiSample*, float3*);
+extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const float*, float3*, float, GpuGiSample*, float3*, NrcTrainingRecord*);
+// ---- forward declarations of the NRC training kernels from wavefront_kernels_nrc.cu ----
+extern "C" __global__ void nrc_generate_training_rays(WorkQueue<RayWorkItem>, int, GpuCameraParams, unsigned int);
+extern "C" __global__ void nrc_training_shade_simple(
+	WorkQueue<HitWorkItem>, int, int, int,
+	const MaterialData*,
+	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const DiskData*, const CylinderData*,
+	const TextureData*, const unsigned char*,
+	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
+	WfLightBvhContext, float,
+	NrcTrainingRecord*, int*,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>);
+extern "C" __global__ void nrc_training_shade_full(
+	WorkQueue<HitWorkItem>, int, int, int,
+	const MaterialData*,
+	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const DiskData*, const CylinderData*,
+	const TextureData*, const unsigned char*,
+	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
+	WfLightBvhContext, float,
+	NrcTrainingRecord*, int*,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>);
+extern "C" __global__ void nrc_bootstrap_and_train(const NrcTrainingRecord*, int, const float*, float*, float3, float3);
+extern "C" __global__ void nrc_apply_gradients(float*, float*, float*, float*, int, int);
+extern "C" __global__ void nrc_reset_weights(float*, float*, float*, unsigned int);
 extern "C" __global__ void resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -207,6 +233,10 @@ extern "C" void wf_launch_evaluate_materials(
 	GpuProbeGridMeta             guidingGridMeta,
 	const GpuGuidingHistogram*   d_guidingHistograms,
 	const GpuProbe*              d_guidingProbes,
+	const float*                 nrcWeights,
+	int                          nrcTrainingSteps,
+	float3                       nrcAabbMin,
+	float3                       nrcAabbExtent,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -228,7 +258,8 @@ extern "C" void wf_launch_evaluate_materials(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, regularize, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
 		d_giOriginContext, d_giCandidateOut,
-		lightBvh, guidingGridMeta, d_guidingHistograms, d_guidingProbes);
+		lightBvh, guidingGridMeta, d_guidingHistograms, d_guidingProbes,
+		nrcWeights, nrcTrainingSteps, nrcAabbMin, nrcAabbExtent);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -268,6 +299,10 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	WfLightBvhContext            lightBvh,
 	GpuProbeGridMeta             probeGridMeta,
 	const GpuProbe*              d_probeGrid,
+	const float*                 nrcWeights,
+	int                          nrcTrainingSteps,
+	float3                       nrcAabbMin,
+	float3                       nrcAabbExtent,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -284,7 +319,8 @@ extern "C" void wf_launch_evaluate_materials_simple(
 		skyColor, shadowRayEpsilon, skyDist, portalLight, maxComponentValue,
 		d_albedoBuffer, d_normalBuffer, d_worldPosBuffer, d_restirReservoirs, restirCtx,
 		d_giOriginContext, d_giCandidateOut,
-		lightBvh, probeGridMeta, d_probeGrid);
+		lightBvh, probeGridMeta, d_probeGrid,
+		nrcWeights, nrcTrainingSteps, nrcAabbMin, nrcAabbExtent);
 }
 
 extern "C" void wf_launch_evaluate_materials_dielectric(
@@ -584,12 +620,102 @@ extern "C" void wf_launch_accumulate_shadow(
 	WorkQueue<ShadowRayWorkItem> sq, int numShadow,
 	const float* d_transmittance, float3* d_framebuffer, float maxComponentValue, cudaStream_t stream,
 	GpuGiSample* d_giCandidateOut,
-	float3* d_probeCacheRadianceOut)
+	float3* d_probeCacheRadianceOut,
+	NrcTrainingRecord* d_nrcTrainingRecords)
 {
 	if (numShadow == 0) return;
 	dim3 block(256);
 	dim3 grid((numShadow + 255) / 256);
-	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_transmittance, d_framebuffer, maxComponentValue, d_giCandidateOut, d_probeCacheRadianceOut);
+	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_transmittance, d_framebuffer, maxComponentValue, d_giCandidateOut, d_probeCacheRadianceOut, d_nrcTrainingRecords);
+}
+
+extern "C" void wf_launch_nrc_generate_training_rays(
+	WorkQueue<RayWorkItem> rq, int numPaths, GpuCameraParams camera, unsigned int frameNumber,
+	cudaStream_t stream)
+{
+	if (numPaths <= 0) return;
+	dim3 block(256);
+	dim3 grid((numPaths + 255) / 256);
+	nrc_generate_training_rays<<<grid, block, 0, (cudaStream_t)stream>>>(rq, numPaths, camera, frameNumber);
+}
+
+extern "C" void wf_launch_nrc_training_shade_simple(
+	WorkQueue<HitWorkItem> simpleHitQueue, int numHits, int depth, int maxDepth,
+	const MaterialData* d_materials,
+	const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+	const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+	const TextureData* d_textures, const unsigned char* d_texturePixels,
+	const int* d_lightIndices, const GpuLightKind* d_lightKinds, const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+	WfLightBvhContext lightBvh, float shadowRayEpsilon,
+	NrcTrainingRecord* d_records, int* d_validRecordCounter,
+	WorkQueue<RayWorkItem> nextRayQueue, WorkQueue<ShadowRayWorkItem> shadowQueue,
+	cudaStream_t stream)
+{
+	if (numHits <= 0) return;
+	dim3 block(256);
+	dim3 grid((numHits + 255) / 256);
+	nrc_training_shade_simple<<<grid, block, 0, (cudaStream_t)stream>>>(
+		simpleHitQueue, numHits, depth, maxDepth, d_materials,
+		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders,
+		d_textures, d_texturePixels,
+		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
+		lightBvh, shadowRayEpsilon, d_records, d_validRecordCounter, nextRayQueue, shadowQueue);
+}
+
+extern "C" void wf_launch_nrc_training_shade_full(
+	WorkQueue<HitWorkItem> hitQueue, int numHits, int depth, int maxDepth,
+	const MaterialData* d_materials,
+	const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+	const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+	const TextureData* d_textures, const unsigned char* d_texturePixels,
+	const int* d_lightIndices, const GpuLightKind* d_lightKinds, const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+	WfLightBvhContext lightBvh, float shadowRayEpsilon,
+	NrcTrainingRecord* d_records, int* d_validRecordCounter,
+	WorkQueue<RayWorkItem> nextRayQueue, WorkQueue<ShadowRayWorkItem> shadowQueue,
+	cudaStream_t stream)
+{
+	if (numHits <= 0) return;
+	dim3 block(256);
+	dim3 grid((numHits + 255) / 256);
+	nrc_training_shade_full<<<grid, block, 0, (cudaStream_t)stream>>>(
+		hitQueue, numHits, depth, maxDepth, d_materials,
+		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders,
+		d_textures, d_texturePixels,
+		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
+		lightBvh, shadowRayEpsilon, d_records, d_validRecordCounter, nextRayQueue, shadowQueue);
+}
+
+extern "C" void wf_launch_nrc_bootstrap_and_train(
+	const NrcTrainingRecord* d_records, int numRecords,
+	const float* d_weights, float* d_gradAccum,
+	float3 aabbMin, float3 aabbExtent,
+	cudaStream_t stream)
+{
+	if (numRecords <= 0) return;
+	dim3 block(256);
+	dim3 grid((numRecords + 255) / 256);
+	nrc_bootstrap_and_train<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_records, numRecords, d_weights, d_gradAccum, aabbMin, aabbExtent);
+}
+
+extern "C" void wf_launch_nrc_apply_gradients(
+	float* d_weights, float* d_adamM, float* d_adamV, float* d_gradAccum,
+	int numContributingRecords, int stepCount,
+	cudaStream_t stream)
+{
+	dim3 block(256);
+	dim3 grid((kNrcNumWeights + 255) / 256);
+	nrc_apply_gradients<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_weights, d_adamM, d_adamV, d_gradAccum, numContributingRecords, stepCount);
+}
+
+extern "C" void wf_launch_nrc_reset_weights(
+	float* d_weights, float* d_adamM, float* d_adamV, unsigned int seed,
+	cudaStream_t stream)
+{
+	dim3 block(256);
+	dim3 grid((kNrcNumWeights + 255) / 256);
+	nrc_reset_weights<<<grid, block, 0, (cudaStream_t)stream>>>(d_weights, d_adamM, d_adamV, seed);
 }
 
 extern "C" void wf_launch_resolve_bssrdf_exit(

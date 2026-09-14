@@ -7,6 +7,7 @@
 #include "optix_types.h"
 #include "probe_grid_types.h"
 #include "wavefront_guiding.h"
+#include "wavefront_nrc_types.h"
 #include "optix_denoiser.h"  // DenoiserResources - shared with OptiXRenderer
 #include "svgf_tuning_params.h"
 #include <optix.h>
@@ -163,6 +164,16 @@ public:
     /// with the probe cache off is a documented no-op, not a crash: every
     /// guiding call site is itself gated on probeCacheEnabled_.
     void setPathGuidingEnabled(bool enabled) { pathGuidingEnabled_ = enabled; }
+
+    /// Neural Radiance Cache (Live Preview only, gpu/optix/wavefront_nrc_*.h) -
+    /// see OptiXRenderer::enableNrc()'s own comment and this project's own
+    /// plan. Same "false is a complete no-op" shape as setProbeCacheEnabled()
+    /// above - independent of the probe cache/path guiding (no shared state,
+    /// unlike path guiding's own hard-dependency on the probe cache). The
+    /// weight/training buffers themselves are lazily allocated on first
+    /// render() call with this true (see launchNrcTrainingUpdate()'s own
+    /// comment) - toggling this off and back on does not reset them.
+    void setNrcEnabled(bool enabled) { nrcEnabled_ = enabled; }
 
     /// Live Preview's temporal upscale feature (gpu/optix/
     /// wavefront_temporal_upscale_math.h) - see this project's own plan.
@@ -442,6 +453,50 @@ private:
     // per-bounce shadowLP already uses, so the caller's `lp` is never
     // touched.
     void launchProbeCacheUpdate(const WavefrontLaunchParams& lp, float3 backgroundColor, float shadowRayEpsilon);
+    // Neural Radiance Cache training pipeline (Live Preview only, gpu/optix/
+    // wavefront_kernels_nrc.cu) - called once per render() call, right after
+    // launchProbeCacheUpdate() (same "self-contained side pipeline, safe to
+    // reuse the main per-bounce queues/pipelines because they're fully
+    // drained by this point" reasoning - see that method's own comment).
+    // No-op when nrcEnabled_ is false.
+    //
+    // Two-phase sequence (see wavefront_kernels_nrc.cu's own header comment
+    // for why Phase B needs no per-depth ordering/sync, unlike Phase A):
+    // Phase A traces kNrcTrainingPathsPerFrame fresh camera rays depth-by-
+    // depth (nrc_generate_training_rays, then per depth: an ordinary
+    // intersectPipeline_/intersectSBT_ launch + nrc_training_shade_simple/
+    // _full, reusing the main per-bounce rayQueue/nextRayQueue/hitQueue/
+    // simpleHitQueue/shadowQueue/shadowPipeline_ exactly like
+    // launchProbeCacheUpdate() reuses the shadow queue), writing one
+    // NrcTrainingRecord per visited Lambertian/RoughMetal vertex. Phase B
+    // (nrc_bootstrap_and_train) is a single flat launch over every record,
+    // computing each one's bootstrapped training target and accumulating
+    // gradients. A final nrc_apply_gradients launch is the only place the
+    // live weight buffer is ever written (Adam step, then zeroes the
+    // gradient accumulator for next frame).
+    //
+    // Lazily allocates d_nrcWeights_/d_nrcAdamM_/d_nrcAdamV_/
+    // d_nrcGradAccum_/d_nrcTrainingRecords_ on first call (guarded by
+    // d_nrcWeights_ alone, same "fixed-size scratch, allocated once" pattern
+    // as the probe cache's own d_probeCacheRayItems_ - see that member's own
+    // comment) and randomizes the weights via nrc_reset_weights.
+    //
+    // KNOWN v1 SIMPLIFICATION (deviates from this project's own plan):
+    // weights are NOT reset when the scene changes - only on this class's
+    // own first-ever use. The plan called for hooking a reset into
+    // OptiXRenderer::buildProbeGrid()'s own scene-rebuild call site, but
+    // that requires a new cross-file call from optix_renderer_scene.cpp
+    // into WavefrontPathTracer that this implementation pass deliberately
+    // defers. Practical effect: switching scenes leaves the network briefly
+    // trained on the PREVIOUS scene's radiance distribution - a few hundred
+    // frames of visible mispredicted color/brightness in NRC-lit regions
+    // immediately after a scene swap, self-correcting as continual training
+    // adapts to the new scene. The render-path query's own NaN/negative
+    // rejection and warm-up gate provide no protection against this
+    // specific case (the network is still "trained", just on stale data) -
+    // flagged here explicitly so it isn't mistaken for a crash-class bug if
+    // observed.
+    void launchNrcTrainingUpdate(const WavefrontLaunchParams& lp, GpuCameraParams camera, float shadowRayEpsilon);
     // SVGF (wavefront_kernels_svgf.cu) - runs the full temporal-integrate +
     // A-trous filter sequence in place on d_framebuffer, once per render()
     // call, after launchNormalizeFramebuffer (this frame's raw radiance
@@ -675,6 +730,41 @@ private:
     // every future call.
     std::vector<ProbeCacheRayWorkItem> probeCacheHostItems_;
     std::vector<float3> probeCacheHostDirections_;
+
+    // Neural Radiance Cache (Live Preview only, gpu/optix/wavefront_nrc_*.h) -
+    // see setNrcEnabled()/launchNrcTrainingUpdate()'s own comments. Unlike
+    // the probe cache's d_probeGrid_ (OptiXRenderer-owned, scene-lifetime),
+    // ALL of this state is owned by THIS class - the network's parameter
+    // count is fixed by architecture, never by scene bounds or resolution,
+    // so it follows the same "fixed-size scratch, lazily allocated once,
+    // guarded by one pointer being null" lifecycle as d_probeCacheRayItems_
+    // above (see launchNrcTrainingUpdate()'s own comment for the one
+    // documented deviation: no reset-on-scene-change hook in this pass).
+    bool nrcEnabled_ = false;                 ///< see setNrcEnabled()
+    CUdeviceptr d_nrcWeights_ = 0;             ///< float[kNrcNumWeights]
+    CUdeviceptr d_nrcAdamM_ = 0;               ///< float[kNrcNumWeights], Adam first moment
+    CUdeviceptr d_nrcAdamV_ = 0;               ///< float[kNrcNumWeights], Adam second moment
+    CUdeviceptr d_nrcGradAccum_ = 0;           ///< float[kNrcNumWeights], zeroed after every apply step
+    CUdeviceptr d_nrcTrainingRecords_ = 0;     ///< NrcTrainingRecord[kNrcTrainingRecordCapacity]
+    CUdeviceptr d_nrcValidRecordCounter_ = 0;  ///< int, atomicAdd'd by nrc_training_shade_simple/_full, read back for gradient averaging
+    // Global training-step counter - incremented once per successful
+    // launchNrcTrainingUpdate() call, read by wf_finish_material_scatter's
+    // own render-path query as the warm-up gate (nrcTrainingSteps>=
+    // kNrcWarmupSteps) and passed to nrc_apply_gradients as Adam's own
+    // bias-correction step count (both uses are correct off the SAME
+    // counter - warm-up cares "how many times has training run", Adam's
+    // bias correction cares "how many update steps has THIS optimizer
+    // taken", and this class only ever runs one training step per call).
+    int nrcTrainingSteps_ = 0;
+    // Scene AABB for NRC's own position-normalization (wf_nrc_encode_
+    // features()) - reused directly from probeGridMeta_'s own gridMin/
+    // dims*cellSize rather than computed independently (see
+    // launchNrcTrainingUpdate()'s own comment for why). Kept as members
+    // (not recomputed inline at every query site) purely so wf_finish_
+    // material_scatter's own call sites, several layers away from
+    // probeGridMeta_, don't each need their own derivation.
+    float3 nrcAabbMin_ = make_float3(0.0f, 0.0f, 0.0f);
+    float3 nrcAabbExtent_ = make_float3(0.0f, 0.0f, 0.0f);
 
     // Own stream for launchEvaluateMaterialsSimple()'s kernel, separate from
     // the base class's stream_ (externally owned by OptiXRenderer, shared

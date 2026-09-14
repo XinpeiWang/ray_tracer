@@ -13,6 +13,7 @@
 #endif
 
 #include "wavefront_device_helpers.h"
+#include "wavefront_nrc_types.h"  // NrcTrainingRecord - accumulate_shadow's own isNrcTrainingRay redirect
 
 // ============================================================================
 // Kernel 3 — accumulate_miss
@@ -169,7 +170,15 @@ extern "C" __global__ void accumulate_shadow(
 	// persistent GpuProbe array itself, so clamping here would double-
 	// attenuate before that EMA ever sees it. nullptr (every non-probe-cache
 	// call site) keeps every other shadow ray's behavior unchanged.
-	float3*                      probeCacheRadianceOut
+	float3*                      probeCacheRadianceOut,
+	// Neural Radiance Cache training pipeline (Live Preview only, gpu/optix/
+	// wavefront_kernels_nrc.cu) - an item with isNrcTrainingRay set
+	// (ShadowRayWorkItem's own comment) adds its Ld into
+	// nrcTrainingRecords[s.pixelIndex].directRadiance instead of
+	// `framebuffer`, UNCLAMPED, same reasoning as probeCacheRadianceOut just
+	// above. nullptr (every non-NRC call site) keeps every other shadow
+	// ray's behavior unchanged.
+	NrcTrainingRecord*           nrcTrainingRecords
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	// Must also guard against shadowQueue.capacity, not just the host-
@@ -229,6 +238,16 @@ extern "C" __global__ void accumulate_shadow(
 			atomicAdd(&probeCacheRadianceOut[s.pixelIndex].x, r);
 			atomicAdd(&probeCacheRadianceOut[s.pixelIndex].y, g);
 			atomicAdd(&probeCacheRadianceOut[s.pixelIndex].z, b);
+			return;
+		}
+
+		// See this kernel's own nrcTrainingRecords parameter comment above.
+		// `s.pixelIndex` here is a flat training-record index, not a screen
+		// pixel - see NrcTrainingRecord's own comment (wavefront_nrc_types.h).
+		if (s.isNrcTrainingRay && nrcTrainingRecords != nullptr) {
+			atomicAdd(&nrcTrainingRecords[s.pixelIndex].directRadiance.x, r);
+			atomicAdd(&nrcTrainingRecords[s.pixelIndex].directRadiance.y, g);
+			atomicAdd(&nrcTrainingRecords[s.pixelIndex].directRadiance.z, b);
 			return;
 		}
 

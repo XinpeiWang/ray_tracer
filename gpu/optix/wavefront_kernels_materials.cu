@@ -140,7 +140,19 @@ extern "C" __global__ void evaluate_materials(
 	// guidingHistograms is (guidingActive() in wavefront_path_tracer.cpp
 	// gates both together) - wf_guiding_nearest_probe() treats a null probes
 	// pointer as "skip the leak test", never as a crash.
-	const GpuProbe* guidingProbes = nullptr
+	const GpuProbe* guidingProbes = nullptr,
+	// Neural Radiance Cache (Live Preview only) - see wf_finish_material_
+	// scatter's own nrcWeights parameter comment. This IS a real call site
+	// (unlike probeGridMeta/probeGrid just above, which stay on their
+	// nullptr/default here): RoughMetal is routed to THIS kernel (hitQueue,
+	// not simpleHitQueue - see WavefrontQueues::simpleHitQueue's own routing
+	// comment) and is one of the two material types NRC supports.
+	// nrcWeights==nullptr (every non-Live-Preview call site, or Live
+	// Preview with the feature toggled off) is a complete no-op.
+	const float* nrcWeights = nullptr,
+	int nrcTrainingSteps = 0,
+	float3 nrcAabbMin = make_float3(0.0f, 0.0f, 0.0f),
+	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f)
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -1450,6 +1462,7 @@ extern "C" __global__ void evaluate_materials(
 		// wf_finish_material_scatter() so its NEE MIS weight uses the same
 		// mixture pdf rather than the plain BSDF pdf alone.
 		GpuProbeGridMeta{}, nullptr,
-		guidingGridMeta, guidingHistograms, guidingProbes);
+		guidingGridMeta, guidingHistograms, guidingProbes,
+		nrcWeights, nrcTrainingSteps, nrcAabbMin, nrcAabbExtent);
 }
 

@@ -32,6 +32,7 @@ constexpr const char *kLivePreviewRestirGiEnabledKey = "livePreview/restirGiEnab
 constexpr const char *kLivePreviewRestirDiEnabledKey = "livePreview/restirDiEnabled";
 constexpr const char *kLivePreviewProbeCacheEnabledKey = "livePreview/probeCacheEnabled";
 constexpr const char *kLivePreviewPathGuidingEnabledKey = "livePreview/pathGuidingEnabled";
+constexpr const char *kLivePreviewNrcEnabledKey = "livePreview/nrcEnabled";
 constexpr const char *kLivePreviewTemporalUpscaleFactorKey = "livePreview/temporalUpscaleFactor";
 constexpr const char *kLivePreviewExposureKey = "livePreview/exposure";
 constexpr const char *kLivePreviewSamplesKey = "livePreview/samples";

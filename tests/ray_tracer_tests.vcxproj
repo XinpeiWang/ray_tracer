@@ -204,6 +204,7 @@
     <ClCompile Include="integration\optix_validation_sweep_test.cpp" />
     <ClCompile Include="integration\live_preview_restir_firefly_test.cpp" />
     <ClCompile Include="integration\live_preview_restir_gi_test.cpp" />
+    <ClCompile Include="integration\live_preview_nrc_test.cpp" />
     <ClCompile Include="integration\live_preview_restir_light_bvh_test.cpp" />
     <ClCompile Include="integration\live_preview_svgf_test.cpp" />
     <ClCompile Include="integration\live_preview_checkerboard_test.cpp" />
@@ -307,6 +308,7 @@
     <ClCompile Include="unit\wavefront_restir_gi_tests.cpp" />
     <ClCompile Include="unit\wavefront_svgf_math_tests.cpp" />
     <ClCompile Include="unit\wavefront_temporal_upscale_math_tests.cpp" />
+    <ClCompile Include="unit\wavefront_nrc_math_tests.cpp" />
     <ClCompile Include="unit\sample_function_tests.cpp" />
     <ClCompile Include="unit\sampling_inversion_tests.cpp" />
     <ClCompile Include="unit\simple_path_tests.cpp" />

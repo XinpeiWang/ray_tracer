@@ -348,6 +348,7 @@ private:
 	void pushLiveRestirDiToSession();
 	void pushLiveProbeCacheToSession();
 	void pushLivePathGuidingToSession();
+	void pushLiveNrcToSession();
 	void pushLiveTemporalUpscaleToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
@@ -443,6 +444,8 @@ private:
 	void saveLiveProbeCacheEnabled(bool value) const;
 	bool loadSavedLivePathGuidingEnabled() const;
 	void saveLivePathGuidingEnabled(bool value) const;
+	bool loadSavedLiveNrcEnabled() const;
+	void saveLiveNrcEnabled(bool value) const;
 	int loadSavedLiveTemporalUpscaleFactor() const;
 	void saveLiveTemporalUpscaleFactor(int value) const;
 	double loadSavedLiveExposure() const;
@@ -896,6 +899,13 @@ private:
 	// document the dependency in the tooltip instead" precedent.
 	bool m_livePathGuidingEnabled = false;
 	QCheckBox *m_livePathGuidingCheck = nullptr;
+	// Neural Radiance Cache (gpu/optix/wavefront_nrc_*.h) - same shape as
+	// m_liveProbeCacheEnabled above, defaults false for the same reason.
+	// Independent of m_liveProbeCacheEnabled/m_livePathGuidingEnabled (no
+	// shared state, unlike path guiding's own hard-dependency on the probe
+	// cache).
+	bool m_liveNrcEnabled = false;
+	QCheckBox *m_liveNrcCheck = nullptr;
 	// Live Preview's temporal upscale feature (see this project's own plan).
 	// Plain int (1/2/4, not a bool+separate-int pair) since the combo's own
 	// selected factor IS the setting - no pre-existing bool pair to

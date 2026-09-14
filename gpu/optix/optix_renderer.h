@@ -305,6 +305,17 @@ public:
 	///        sampling bias are gated here.
 	void enablePathGuiding(bool enable) { pathGuidingEnabled_ = enable; }
 
+	/// @brief Enable the Neural Radiance Cache (gpu/optix/wavefront_nrc_*.h)
+	///        on the wavefront backend - see this project's own plan.
+	///        Independent from enableProbeCache()/enablePathGuiding() above -
+	///        no shared state (unlike path guiding's own hard-dependency on
+	///        the probe cache). Forwarded to wavefrontTracer_ inside
+	///        render() (WavefrontPathTracer::setNrcEnabled()'s own comment) -
+	///        only meaningful when isWavefrontActive(). false (the default)
+	///        is a complete no-op, same "opt-in, batch/offline rendering
+	///        never pays for it" shape as enableProbeCache() above.
+	void enableNrc(bool enable) { nrcEnabled_ = enable; }
+
 	/// @brief Live Preview's temporal upscale feature (gpu/optix/
 	///        wavefront_temporal_upscale_math.h) - see this project's own
 	///        plan. `enable=false` (the default) is a complete no-op.
@@ -712,6 +723,7 @@ private:
 	// future change to one doesn't silently desync the other's count.
 	CUdeviceptr d_guidingHistograms_ = 0;          ///< Device GpuGuidingHistogram array, probeGridMeta_.totalProbes entries
 	bool pathGuidingEnabled_ = false;              ///< See enablePathGuiding()
+	bool nrcEnabled_ = false;                      ///< See enableNrc()
 
 	// Live Preview's temporal upscale feature - see enableTemporalUpscaleJitter()'s
 	// own comment.

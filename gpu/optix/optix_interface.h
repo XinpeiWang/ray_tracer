@@ -222,7 +222,17 @@ bool rt_realtime_render_frame(
 	// enable_path_guiding, per this function's own append-only convention.
 	bool enable_temporal_upscale = false,
 	int temporal_upscale_factor = 2,
-	unsigned int temporal_jitter_base_index = 0
+	unsigned int temporal_jitter_base_index = 0,
+	// Neural Radiance Cache (gpu/optix/wavefront_nrc_*.h) - see this
+	// project's own plan. Independent from enable_probe_cache/
+	// enable_path_guiding above (no shared state). Defaults false for the
+	// same reason enable_probe_cache does (shipped WITH the feature,
+	// nothing to preserve). Appended at the very end of the parameter list,
+	// after temporal_jitter_base_index, per this function's own DLL-
+	// boundary convention (see realtime_preview_session.cpp's RenderFrameFn
+	// comment) of only ever appending new parameters, never inserting them
+	// in the middle.
+	bool enable_nrc = false
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the

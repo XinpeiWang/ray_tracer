@@ -33,7 +33,7 @@ namespace {
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
 							   bool, float, const void*, bool, bool, bool,
-							   bool, int, unsigned int);
+							   bool, int, unsigned int, bool);
 
 // const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
 // own comment. Same hand-duplication convention as RenderFrameFn above.
@@ -387,7 +387,7 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 								   double lookX, double lookY, double lookZ,
 								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 								   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-								   bool temporalUpscale, int temporalUpscaleFactor) {
+								   bool temporalUpscale, int temporalUpscaleFactor, bool nrc) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -418,6 +418,7 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	m_pathGuiding = pathGuiding;
 	m_temporalUpscaleEnabled = temporalUpscale;
 	m_upscaleFactor = temporalUpscaleFactor;
+	m_nrc = nrc;
 	m_spp = spp;
 	m_maxDepth = maxDepth;
 	m_fireflyClamp = fireflyClamp;
@@ -512,6 +513,14 @@ void RealtimePreviewWorker::setPathGuiding(bool pathGuiding) {
 	// bounces consult the guiding histogram doesn't change what m_accum
 	// structurally holds, so no reset is needed.
 	m_pathGuiding = pathGuiding;
+}
+
+void RealtimePreviewWorker::setNrc(bool nrc) {
+	if (!m_running) return;
+	// Same reasoning as setProbeCache() above: toggling whether the Neural
+	// Radiance Cache is consulted/trained doesn't change what m_accum
+	// structurally holds, so no reset is needed.
+	m_nrc = nrc;
 }
 
 void RealtimePreviewWorker::setTemporalUpscale(bool enabled, int factor) {
@@ -628,7 +637,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
 						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding,
-						  useUpscale, m_upscaleFactor, m_temporalJitterCounter);
+						  useUpscale, m_upscaleFactor, m_temporalJitterCounter, m_nrc);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -901,7 +910,7 @@ void RealtimePreviewSession::start(const QString &sceneId, int width, int height
 									double lookX, double lookY, double lookZ,
 									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 									bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-									bool temporalUpscale, int temporalUpscaleFactor) {
+									bool temporalUpscale, int temporalUpscaleFactor, bool nrc) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
@@ -909,7 +918,7 @@ void RealtimePreviewSession::start(const QString &sceneId, int width, int height
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf),
 		Q_ARG(bool, restirGi), Q_ARG(bool, restirDi), Q_ARG(bool, probeCache), Q_ARG(bool, pathGuiding),
 		Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp),
-		Q_ARG(bool, temporalUpscale), Q_ARG(int, temporalUpscaleFactor));
+		Q_ARG(bool, temporalUpscale), Q_ARG(int, temporalUpscaleFactor), Q_ARG(bool, nrc));
 }
 
 void RealtimePreviewSession::stop() {
@@ -949,6 +958,10 @@ void RealtimePreviewSession::setProbeCache(bool probeCache) {
 
 void RealtimePreviewSession::setPathGuiding(bool pathGuiding) {
 	QMetaObject::invokeMethod(m_worker, "setPathGuiding", Qt::QueuedConnection, Q_ARG(bool, pathGuiding));
+}
+
+void RealtimePreviewSession::setNrc(bool nrc) {
+	QMetaObject::invokeMethod(m_worker, "setNrc", Qt::QueuedConnection, Q_ARG(bool, nrc));
 }
 
 void RealtimePreviewSession::setTemporalUpscale(bool enabled, int factor) {

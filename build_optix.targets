@@ -40,6 +40,7 @@
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_accumulate.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_restir.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_svgf.cu" />
+    <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_nrc.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.cu" />
     <!-- SPPM OptiX device programs -> PTX (loaded at runtime) -->
     <SppmPtxSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.cu" />

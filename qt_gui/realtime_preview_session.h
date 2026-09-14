@@ -60,7 +60,7 @@ public slots:
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-			   bool temporalUpscale, int temporalUpscaleFactor);
+			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -150,6 +150,12 @@ public slots:
 	// accumulation reset needed" reasoning as setProbeCache(). No-op if not
 	// running.
 	void setPathGuiding(bool pathGuiding);
+
+	// Toggles the Neural Radiance Cache (gpu/optix/wavefront_nrc_*.h) - see
+	// this project's own plan. Independent from setProbeCache()/
+	// setPathGuiding() above (no shared state). Same "no accumulation reset
+	// needed" reasoning as setProbeCache(). No-op if not running.
+	void setNrc(bool nrc);
 
 	// Toggles Live Preview's temporal upscale feature (gpu/optix/
 	// wavefront_temporal_upscale_math.h) - see this project's own plan.
@@ -271,6 +277,10 @@ private:
 	// m_probeCache above. Defaults false for the same reason m_probeCache
 	// does (shipped WITH the feature, nothing to preserve).
 	bool m_pathGuiding = false;
+	// See setNrc()'s own comment. Crosses the DLL boundary like m_probeCache
+	// above. Defaults false for the same reason m_probeCache does (shipped
+	// WITH the feature, nothing to preserve).
+	bool m_nrc = false;
 	// See setTemporalUpscale()'s own comment. Crosses the DLL boundary like
 	// m_pathGuiding above (generate_camera_rays' own jitter sequence choice
 	// is a GPU-side decision). Defaults false/2 for the same reason
@@ -423,7 +433,7 @@ public:
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-			   bool temporalUpscale, int temporalUpscaleFactor);
+			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
@@ -433,6 +443,7 @@ public:
 	void setRestirDi(bool restirDi);
 	void setProbeCache(bool probeCache);
 	void setPathGuiding(bool pathGuiding);
+	void setNrc(bool nrc);
 	void setTemporalUpscale(bool enabled, int factor);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);

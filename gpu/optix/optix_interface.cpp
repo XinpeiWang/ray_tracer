@@ -578,7 +578,8 @@ extern "C" bool rt_realtime_render_frame(
 	bool enable_path_guiding,
 	bool enable_temporal_upscale,
 	int temporal_upscale_factor,
-	unsigned int temporal_jitter_base_index
+	unsigned int temporal_jitter_base_index,
+	bool enable_nrc
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -734,6 +735,9 @@ extern "C" bool rt_realtime_render_frame(
 		// wavefront_temporal_upscale_math.h) - see this project's own plan
 		// and enableTemporalUpscaleJitter()'s own comment.
 		g_renderer->enableTemporalUpscaleJitter(enable_temporal_upscale, temporal_upscale_factor, temporal_jitter_base_index);
+		// Neural Radiance Cache (gpu/optix/wavefront_nrc_*.h) - see this
+		// project's own plan and enableNrc()'s own comment.
+		g_renderer->enableNrc(enable_nrc);
 		// SVGF (gpu/optix/wavefront_svgf_math.h) - unlike DI/GI above, this
 		// is genuinely opt-in per call (the CALLER's own `enable_svgf`
 		// parameter), not unconditionally forced on - it's an alternative

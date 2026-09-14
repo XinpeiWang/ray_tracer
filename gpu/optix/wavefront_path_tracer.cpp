@@ -1181,6 +1181,15 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		// is inactive (guidingActive() above), matching every other guiding
 		// pointer's "null disables" shape.
 		guidingActive() ? reinterpret_cast<const GpuProbe*>(d_probeGrid_) : nullptr,
+		// Neural Radiance Cache (Live Preview only) - see wf_finish_material_
+		// scatter's own nrcWeights parameter comment. nrcEnabled_/d_nrcWeights_
+		// gate this exactly like every other "null disables the feature"
+		// pointer above; RoughMetal (the only material type reaching THIS
+		// kernel that NRC supports) needs a real value here, unlike
+		// probeGridMeta/probeGrid which stay on their own nullptr/default for
+		// this kernel (Lambertian never reaches it).
+		nrcEnabled_ ? reinterpret_cast<const float*>(d_nrcWeights_) : nullptr,
+		nrcTrainingSteps_, nrcAabbMin_, nrcAabbExtent_,
 		stream_);
 }
 
@@ -1248,6 +1257,12 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		// shape as restirReservoirs/giOriginContext - see setProbeCacheEnabled()'s
 		// own comment for why the grid can be built/uploaded yet still unused.
 		probeCacheEnabled_ ? reinterpret_cast<const GpuProbe*>(d_probeGrid_) : nullptr,
+		// Neural Radiance Cache (Live Preview only) - see wf_finish_material_
+		// scatter's own nrcWeights parameter comment. This is the only
+		// evaluate_materials* kernel that ever sees a Lambertian hit, one of
+		// the two material types NRC supports.
+		nrcEnabled_ ? reinterpret_cast<const float*>(d_nrcWeights_) : nullptr,
+		nrcTrainingSteps_, nrcAabbMin_, nrcAabbExtent_,
 		simpleMaterialStream_);
 }
 
@@ -1577,6 +1592,176 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 	// host-blocking wait on top of that.
 
 	probeUpdateCursor_ = (probeUpdateCursor_ + batchSize) % probeGridMeta_.totalProbes;
+}
+
+void WavefrontPathTracer::launchNrcTrainingUpdate(const WavefrontLaunchParams& lp, GpuCameraParams camera, float shadowRayEpsilon) {
+	if (!nrcEnabled_) return;
+
+	// Lazy allocation (guarded by d_nrcWeights_ alone) - see this method's
+	// own declaration comment (wavefront_path_tracer.h) for the lifecycle
+	// rationale and the documented no-reset-on-scene-change simplification.
+	if (!d_nrcWeights_) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcWeights_), kNrcNumWeights * sizeof(float)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcAdamM_), kNrcNumWeights * sizeof(float)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcAdamV_), kNrcNumWeights * sizeof(float)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcGradAccum_), kNrcNumWeights * sizeof(float)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcTrainingRecords_), kNrcTrainingRecordCapacity * sizeof(NrcTrainingRecord)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcValidRecordCounter_), sizeof(int)));
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_nrcGradAccum_), 0, kNrcNumWeights * sizeof(float), stream_));
+		wf_launch_nrc_reset_weights(
+			reinterpret_cast<float*>(d_nrcWeights_), reinterpret_cast<float*>(d_nrcAdamM_), reinterpret_cast<float*>(d_nrcAdamV_),
+			/*seed=*/0x9E3779B9u, stream_);
+	}
+
+	// Scene AABB reused directly from probeGridMeta_ - see nrcAabbMin_/
+	// nrcAabbExtent_'s own member comment (wavefront_path_tracer.h) for why
+	// NRC doesn't derive its own separate scene AABB. Re-derived every call
+	// (cheap) rather than cached once, matching probeGridMeta_ itself being
+	// re-forwarded every render() call elsewhere in this class.
+	nrcAabbMin_ = probeGridMeta_.gridMin;
+	nrcAabbExtent_ = make_float3(
+		probeGridMeta_.cellSize.x * (float)probeGridMeta_.dims.x,
+		probeGridMeta_.cellSize.y * (float)probeGridMeta_.dims.y,
+		probeGridMeta_.cellSize.z * (float)probeGridMeta_.dims.z);
+
+	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_nrcTrainingRecords_), 0,
+							   kNrcTrainingRecordCapacity * sizeof(NrcTrainingRecord), stream_));
+	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_nrcValidRecordCounter_), 0, sizeof(int), stream_));
+
+	// ------------------------------------------------------------------
+	// Phase A: trace kNrcTrainingPathsPerFrame fresh camera rays depth-by-
+	// depth, reusing the MAIN per-bounce loop's own rayQueue/nextRayQueue/
+	// hitQueue/simpleHitQueue/dielectricHitQueue/missQueue/shadowQueue/
+	// shadowPipeline_/intersectPipeline_/d_transmittance_ - safe because
+	// this whole method runs strictly after render()'s own per-sample loop
+	// has fully drained them for this render() call (same reasoning as
+	// launchProbeCacheUpdate()'s own reuse of the shadow queue/pipeline).
+	// dielectricHitQueue/missQueue are cleared each depth but never read -
+	// a training ray that hits a Dielectric/RoughDielectric surface or
+	// escapes the scene simply terminates (no record), see
+	// wavefront_kernels_nrc.cu's own header comment for the v1 material
+	// scope.
+	// ------------------------------------------------------------------
+	resetQueueCounter(reinterpret_cast<int*>(d_rayCounter_));
+	WorkQueue<RayWorkItem> initialRayQueue;
+	initialRayQueue.items = reinterpret_cast<RayWorkItem*>(d_rayItems_);
+	initialRayQueue.counter = reinterpret_cast<int*>(d_rayCounter_);
+	initialRayQueue.capacity = queueCapacity_;
+	wf_launch_nrc_generate_training_rays(
+		initialRayQueue, kNrcTrainingPathsPerFrame, camera, frameNumber_ ^ 0xBEEF0000u, stream_);
+
+	WavefrontLaunchParams trainLp = lp;
+	int numActive = kNrcTrainingPathsPerFrame;
+	for (int depth = 0; depth < kNrcTrainingMaxBounces; ++depth) {
+		if (numActive <= 0) break;
+
+		resetQueueCounter(reinterpret_cast<int*>(d_hitCounter_));
+		resetQueueCounter(reinterpret_cast<int*>(d_simpleHitCounter_));
+		resetQueueCounter(reinterpret_cast<int*>(d_dielectricHitCounter_));
+		resetQueueCounter(reinterpret_cast<int*>(d_missCounter_));
+		resetQueueCounter(reinterpret_cast<int*>(d_nextRayCounter_));
+		resetQueueCounter(reinterpret_cast<int*>(d_shadowCounter_));
+
+		trainLp.rayQueue.items = reinterpret_cast<RayWorkItem*>(d_rayItems_);
+		trainLp.rayQueue.counter = reinterpret_cast<int*>(d_rayCounter_);
+		trainLp.rayQueue.capacity = queueCapacity_;
+		trainLp.hitQueue.items = reinterpret_cast<HitWorkItem*>(d_hitItems_);
+		trainLp.hitQueue.counter = reinterpret_cast<int*>(d_hitCounter_);
+		trainLp.hitQueue.capacity = queueCapacity_;
+		trainLp.simpleHitQueue.items = reinterpret_cast<HitWorkItem*>(d_simpleHitItems_);
+		trainLp.simpleHitQueue.counter = reinterpret_cast<int*>(d_simpleHitCounter_);
+		trainLp.simpleHitQueue.capacity = queueCapacity_;
+		trainLp.dielectricHitQueue.items = reinterpret_cast<HitWorkItem*>(d_dielectricHitItems_);
+		trainLp.dielectricHitQueue.counter = reinterpret_cast<int*>(d_dielectricHitCounter_);
+		trainLp.dielectricHitQueue.capacity = queueCapacity_;
+		trainLp.missQueue.items = reinterpret_cast<MissWorkItem*>(d_missItems_);
+		trainLp.missQueue.counter = reinterpret_cast<int*>(d_missCounter_);
+		trainLp.missQueue.capacity = queueCapacity_;
+
+		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_wfLaunchParams_), &trainLp,
+								   sizeof(WavefrontLaunchParams), cudaMemcpyHostToDevice, stream_));
+		OPTIX_CHECK(optixLaunch(intersectPipeline_, stream_, d_wfLaunchParams_, sizeof(WavefrontLaunchParams),
+								 &intersectSBT_, (unsigned int)numActive, 1, 1));
+
+		const int numSimpleHits = readQueueSize(reinterpret_cast<int*>(d_simpleHitCounter_));
+		const int numFullHits = readQueueSize(reinterpret_cast<int*>(d_hitCounter_));
+
+		WorkQueue<RayWorkItem> nq;
+		nq.items = reinterpret_cast<RayWorkItem*>(d_nextRayItems_);
+		nq.counter = reinterpret_cast<int*>(d_nextRayCounter_);
+		nq.capacity = queueCapacity_;
+		WorkQueue<ShadowRayWorkItem> sq;
+		sq.items = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
+		sq.counter = reinterpret_cast<int*>(d_shadowCounter_);
+		sq.capacity = queueCapacity_;
+
+		if (numSimpleHits > 0) {
+			WorkQueue<HitWorkItem> shq;
+			shq.items = reinterpret_cast<HitWorkItem*>(d_simpleHitItems_);
+			shq.counter = reinterpret_cast<int*>(d_simpleHitCounter_);
+			shq.capacity = queueCapacity_;
+			wf_launch_nrc_training_shade_simple(
+				shq, numSimpleHits, depth, kNrcTrainingMaxBounces,
+				lp.materials, lp.spheres, lp.quads, lp.triangles, lp.bilinearPatches, lp.disks, lp.cylinders,
+				lp.textures, lp.texturePixels,
+				lp.lightIndices, lp.lightKinds, lp.aliasTable, lp.numLights,
+				buildLightBvhContext(), shadowRayEpsilon,
+				reinterpret_cast<NrcTrainingRecord*>(d_nrcTrainingRecords_),
+				reinterpret_cast<int*>(d_nrcValidRecordCounter_),
+				nq, sq, stream_);
+		}
+		if (numFullHits > 0) {
+			WorkQueue<HitWorkItem> fhq;
+			fhq.items = reinterpret_cast<HitWorkItem*>(d_hitItems_);
+			fhq.counter = reinterpret_cast<int*>(d_hitCounter_);
+			fhq.capacity = queueCapacity_;
+			wf_launch_nrc_training_shade_full(
+				fhq, numFullHits, depth, kNrcTrainingMaxBounces,
+				lp.materials, lp.spheres, lp.quads, lp.triangles, lp.bilinearPatches, lp.disks, lp.cylinders,
+				lp.textures, lp.texturePixels,
+				lp.lightIndices, lp.lightKinds, lp.aliasTable, lp.numLights,
+				buildLightBvhContext(), shadowRayEpsilon,
+				reinterpret_cast<NrcTrainingRecord*>(d_nrcTrainingRecords_),
+				reinterpret_cast<int*>(d_nrcValidRecordCounter_),
+				nq, sq, stream_);
+		}
+
+		const int numShadow = readQueueSize(reinterpret_cast<int*>(d_shadowCounter_));
+		if (numShadow > 0) {
+			WavefrontLaunchParams shadowLp = lp;
+			shadowLp.shadowQueue = sq;
+			shadowLp.framebuffer = reinterpret_cast<float3*>(d_transmittance_);
+			CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_wfLaunchParams_), &shadowLp,
+									   sizeof(WavefrontLaunchParams), cudaMemcpyHostToDevice, stream_));
+			OPTIX_CHECK(optixLaunch(shadowPipeline_, stream_, d_wfLaunchParams_, sizeof(WavefrontLaunchParams),
+									 &shadowSBT_, (unsigned int)numShadow, 1, 1));
+			wf_launch_accumulate_shadow(sq, numShadow,
+										 reinterpret_cast<const float*>(d_transmittance_),
+										 /*d_framebuffer=*/nullptr, /*maxComponentValue=*/0.0f, stream_,
+										 /*d_giCandidateOut=*/nullptr, /*d_probeCacheRadianceOut=*/nullptr,
+										 reinterpret_cast<NrcTrainingRecord*>(d_nrcTrainingRecords_));
+		}
+
+		numActive = readQueueSize(reinterpret_cast<int*>(d_nextRayCounter_));
+		std::swap(d_rayItems_, d_nextRayItems_);
+		std::swap(d_rayCounter_, d_nextRayCounter_);
+	}
+
+	// ------------------------------------------------------------------
+	// Phase B + apply step - see wavefront_kernels_nrc.cu's own header
+	// comment for why Phase B is a single flat launch with no per-depth
+	// ordering/sync required.
+	// ------------------------------------------------------------------
+	wf_launch_nrc_bootstrap_and_train(
+		reinterpret_cast<const NrcTrainingRecord*>(d_nrcTrainingRecords_), kNrcTrainingRecordCapacity,
+		reinterpret_cast<const float*>(d_nrcWeights_), reinterpret_cast<float*>(d_nrcGradAccum_),
+		nrcAabbMin_, nrcAabbExtent_, stream_);
+
+	const int numValidRecords = readQueueSize(reinterpret_cast<int*>(d_nrcValidRecordCounter_));
+	++nrcTrainingSteps_;
+	wf_launch_nrc_apply_gradients(
+		reinterpret_cast<float*>(d_nrcWeights_), reinterpret_cast<float*>(d_nrcAdamM_), reinterpret_cast<float*>(d_nrcAdamV_),
+		reinterpret_cast<float*>(d_nrcGradAccum_), numValidRecords, nrcTrainingSteps_, stream_);
 }
 
 void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin, const float* d_weightBuffer) {
@@ -2708,6 +2893,12 @@ bool WavefrontPathTracer::render(
 	// traversable/geometry/materials/lights/textures pointers unchanged.
 	launchProbeCacheUpdate(lp, camera.backgroundColor, camera.shadowRayEpsilon);
 
+	// Neural Radiance Cache training pipeline (Live Preview only) - see
+	// launchNrcTrainingUpdate()'s own header comment. Same "lp is still
+	// exactly as built above" reasoning as launchProbeCacheUpdate() just
+	// above.
+	launchNrcTrainingUpdate(lp, camera, camera.shadowRayEpsilon);
+
 	// -------------------------------------------------------------------------
 	// Copy to host
 	// -------------------------------------------------------------------------
@@ -2836,6 +3027,8 @@ void WavefrontPathTracer::cleanup() {
 		freeDev(d_probeCacheHitItems_);    freeDev(d_probeCacheHitCounter_);
 		freeDev(d_probeCacheRadianceOut_); freeDev(d_probeCacheHitDistOut_);
 		freeDev(d_probeCacheDirections_);
+		freeDev(d_nrcWeights_); freeDev(d_nrcAdamM_); freeDev(d_nrcAdamV_);
+		freeDev(d_nrcGradAccum_); freeDev(d_nrcTrainingRecords_); freeDev(d_nrcValidRecordCounter_);
 	}
 
 	if (intersectPipeline_) { optixPipelineDestroy(intersectPipeline_); intersectPipeline_ = nullptr; }

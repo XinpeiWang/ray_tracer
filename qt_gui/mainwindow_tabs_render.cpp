@@ -1358,6 +1358,28 @@ void MainWindow::createRenderOptionsTab() {
 		"the material's own unbiased reflection sampling.")),
 		3, 0, 1, 4);
 
+	m_liveNrcCheck = new QCheckBox(tr("Neural Radiance Cache"));
+	m_liveNrcCheck->setChecked(m_liveNrcEnabled);
+	styleCheckBox(m_liveNrcCheck);
+	connect(m_liveNrcCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveNrcEnabled = checked;
+		saveLiveNrcEnabled(checked);
+		pushLiveNrcToSession();
+	});
+	// Own row, placed at row 7 (after the numeric grid below at rows 5-6) to
+	// avoid renumbering any existing row - independent of every checkbox
+	// above (no shared state with the Radiance Cache/Path Guiding).
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveNrcCheck,
+		tr("A small neural network, trained online from traced paths, caches "
+		"and predicts indirect lighting for both diffuse and glossy/metal "
+		"surfaces - unlike the Radiance Cache above, which is diffuse-only "
+		"and has no notion of view direction. Converges over many frames "
+		"after enabling it or moving the camera into a new area, similar to "
+		"the Radiance Cache. Disabling it falls back to classic bounce "
+		"tracing (or the Radiance Cache, if that's also enabled) for every "
+		"affected bounce.")),
+		7, 0, 1, 4);
+
 	// Temporal upscale (see this project's own plan) - a 3-way factor
 	// choice (Off/2x/4x), not a checkbox, so it gets its own label+combo row
 	// (like the Denoiser mode combo above, m_liveDenoiserModeCombo) rather
@@ -2033,7 +2055,7 @@ void MainWindow::startLivePreview() {
 								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveRestirDiEnabled,
 								 m_liveProbeCacheEnabled, m_livePathGuidingEnabled,
 								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp,
-								 m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor);
+								 m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor, m_liveNrcEnabled);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -2150,6 +2172,11 @@ void MainWindow::pushLiveProbeCacheToSession() {
 void MainWindow::pushLivePathGuidingToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setPathGuiding(m_livePathGuidingEnabled);
+}
+
+void MainWindow::pushLiveNrcToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setNrc(m_liveNrcEnabled);
 }
 
 void MainWindow::pushLiveTemporalUpscaleToSession() {
@@ -2416,6 +2443,16 @@ bool MainWindow::loadSavedLivePathGuidingEnabled() const {
 void MainWindow::saveLivePathGuidingEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewPathGuidingEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLiveNrcEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewNrcEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLiveNrcEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewNrcEnabledKey, value);
 }
 
 int MainWindow::loadSavedLiveTemporalUpscaleFactor() const {

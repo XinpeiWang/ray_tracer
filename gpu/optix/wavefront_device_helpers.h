@@ -22,6 +22,9 @@
 #include "optix_types.h"
 #include "probe_grid_types.h"
 #include "wavefront_guiding.h"
+#include "wavefront_nrc_types.h"
+#include "wavefront_nrc_encoding.h"
+#include "wavefront_nrc_mlp.h"
 #include "spectral_device.h"
 #include "sampled_spectrum.h"
 #include "spectrum_types.h"
@@ -1824,7 +1827,29 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// probeGrid just above.
 	GpuProbeGridMeta guidingGridMeta = {},
 	const GpuGuidingHistogram* guidingHistograms = nullptr,
-	const GpuProbe* guidingProbes = nullptr)
+	const GpuProbe* guidingProbes = nullptr,
+	// Neural Radiance Cache (Live Preview only, gpu/optix/wavefront_nrc_*.h) -
+	// see this project's own plan. nrcWeights==nullptr (the default, every
+	// non-Live-Preview call site, or Live Preview with the feature toggled
+	// off) is a complete no-op, same "null pointer disables the whole
+	// feature" shape as probeGrid/guidingHistograms above. When non-null, a
+	// depth>=kNrcMinDepth Lambertian/RoughMetal scatter may stochastically
+	// terminate and substitute the network's own predicted radiance instead
+	// of tracing another bounce - see this function's own lookup block,
+	// right before the probe-cache lookup below (tried FIRST: NRC supports
+	// both material types the probe cache is gated to, plus RoughMetal,
+	// which the probe cache's SH-L1 cache cannot represent at all).
+	// nrcTrainingSteps gates a cold/untrained network out exactly like the
+	// probe cache's own numRaysEverTraced==0 check (WavefrontPathTracer's
+	// own persistent training-step counter, incremented once per
+	// launchNrcTrainingUpdate() call). nrcAabbMin/nrcAabbExtent are the
+	// scene's own world-space bounds, reused directly from probeGridMeta's
+	// gridMin/dims*cellSize (see launchNrcTrainingUpdate()'s own comment for
+	// why NRC doesn't compute its own separate scene AABB).
+	const float* nrcWeights = nullptr,
+	int nrcTrainingSteps = 0,
+	float3 nrcAabbMin = make_float3(0.0f, 0.0f, 0.0f),
+	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f))
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -2734,6 +2759,61 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				return;
 			}
 			new_throughput = new_throughput / (1.0f - q);
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Neural Radiance Cache lookup (Live Preview only) - see this project's
+	// own plan. Tried BEFORE the probe cache below: unlike that cache's
+	// view-independent, Lambertian-only SH-L1 grid, NRC is directionally
+	// aware and supports RoughMetal too, so it's strictly more capable
+	// wherever both are eligible. Gates:
+	//  - depth>=kNrcMinDepth (matches the probe cache's own threshold).
+	//  - !is_specular (same as probe cache/path guiding).
+	//  - Lambertian or RoughMetal only - the ONLY two material types the
+	//    training pipeline (wavefront_kernels_nrc.cu) ever visits/learns
+	//    from; querying the network for a material type it was never
+	//    trained on would just return an unreliable extrapolation with no
+	//    warm-up/confidence gate protecting it (that gate only covers "the
+	//    whole network is cold", not "this specific input is off the
+	//    training manifold").
+	//  - nrcTrainingSteps>=kNrcWarmupSteps - a cold/untrained network's
+	//    output is near-random noise; rejecting it here is the exact same
+	//    "0 means never updated, skip it" convention GpuProbe::
+	//    numRaysEverTraced==0 already uses for the probe cache, applied
+	//    globally to the whole network rather than per-cell.
+	//  - a STOCHASTIC termination roll (not a hard cutoff): pTerm rises
+	//    linearly with depth past kNrcMinDepth, capped at
+	//    kNrcMaxTerminationProb (<1.0) so the renderer stays asymptotically
+	//    unbiased in the limit and a real bounce is always still possible.
+	//    Drawn from the SAME wf_rand(seed) sequence Russian roulette above
+	//    already advances - a path RR just killed never reaches this check.
+	// On acceptance: reject (fall through to a real bounce, exactly like a
+	// miss) if the network's own output has any non-finite or negative
+	// component - a hard backstop independent of whatever gradient
+	// clipping the training side applies, since this is a hand-written,
+	// from-scratch-trained model with no external correctness guarantee.
+	if (nrcWeights != nullptr && !is_specular && depth >= kNrcMinDepth &&
+		(matType == MaterialType::Lambertian || matType == MaterialType::RoughMetal) &&
+		nrcTrainingSteps >= kNrcWarmupSteps) {
+		const float pTerm = fminf((float)(depth - kNrcMinDepth) * kNrcTerminationRamp, kNrcMaxTerminationProb);
+		if (wf_rand(seed) < pTerm) {
+			const float roughness = (matType == MaterialType::Lambertian)
+				? kNrcLambertianRoughnessSentinel
+				: wf_glossy_alpha(materials[matIdx], do_regularize);
+			float nrcFeatures[kNrcInputDim];
+			wf_nrc_encode_features(hit_point, scattered_dir, normal, roughness, materials[matIdx].albedo,
+									nrcAabbMin, nrcAabbExtent, nrcFeatures);
+			NrcForwardCache nrcCache;
+			wf_nrc_forward(nrcWeights, nrcFeatures, nrcCache);
+			const bool valid = isfinite(nrcCache.out[0]) && isfinite(nrcCache.out[1]) && isfinite(nrcCache.out[2]) &&
+								nrcCache.out[0] >= 0.0f && nrcCache.out[1] >= 0.0f && nrcCache.out[2] >= 0.0f;
+			if (valid) {
+				const float3 L_hat = make_float3(nrcCache.out[0], nrcCache.out[1], nrcCache.out[2]);
+				const SS nrcSpec = wf_lift_rgb_to_spectrum(L_hat, swl, /*isIlluminant=*/true);
+				addToFramebuffer(pixelIndex, new_throughput * nrcSpec * filterWeight);
+				return;
+			}
 		}
 	}
 
