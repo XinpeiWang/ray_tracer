@@ -37,7 +37,7 @@ extern "C" __global__ void evaluate_materials(
 	GpuGiOriginContext*, GpuGiSample*,
 	WfLightBvhContext, GpuProbeGridMeta, const GpuGuidingHistogram*, const GpuProbe*,
 	const float*, int, float3, float3,
-	GpuVolumeReservoir*, GpuVolumeRestirTemporalContext, int*, float*, float4*);
+	GpuVolumeReservoir*, GpuVolumeRestirTemporalContext, int*, float*, float4*, float4*);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -115,7 +115,7 @@ extern "C" __global__ void restir_spatial_reuse(
 	const MaterialData*, const TextureData*, const unsigned char*);
 extern "C" __global__ void restir_clear_reservoirs(GpuReservoir*, int, int, unsigned int, bool);
 extern "C" __global__ void restir_volume_spatial_reuse(
-	const GpuVolumeReservoir*, const int*, const float*, const float4*, const float4*, GpuVolumeReservoir*,
+	const GpuVolumeReservoir*, const int*, const float*, const float4*, const float4*/*entryPoint*/, GpuVolumeReservoir*,
 	int, int, unsigned int,
 	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const DiskData*, const CylinderData*,
 	const MaterialData*, const TextureData*, const unsigned char*);
@@ -248,6 +248,7 @@ extern "C" void wf_launch_evaluate_materials(
 	int*                         d_volumeMatIdxOut,
 	float*                       d_volumeMeanFreePathOut,
 	float4*                      d_volumePhaseWoGOut,
+	float4*                      d_volumeEntryPointOut,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -271,7 +272,8 @@ extern "C" void wf_launch_evaluate_materials(
 		d_giOriginContext, d_giCandidateOut,
 		lightBvh, guidingGridMeta, d_guidingHistograms, d_guidingProbes,
 		nrcWeights, nrcTrainingSteps, nrcAabbMin, nrcAabbExtent,
-		d_restirVolumeReservoirs, restirVolumeCtx, d_volumeMatIdxOut, d_volumeMeanFreePathOut, d_volumePhaseWoGOut);
+		d_restirVolumeReservoirs, restirVolumeCtx, d_volumeMatIdxOut, d_volumeMeanFreePathOut, d_volumePhaseWoGOut,
+		d_volumeEntryPointOut);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -436,7 +438,7 @@ extern "C" void wf_launch_restir_volume_spatial_reuse(
 	const int*                d_currentMatIdx,
 	const float*              d_currentMeanFreePath,
 	const float4*             d_currentPhaseWoG,
-	const float4*             d_currentWorldPos,
+	const float4*             d_currentEntryPoint,
 	GpuVolumeReservoir*       d_outputReservoirs,
 	int width, int height,
 	unsigned int frameSeed,
@@ -456,7 +458,7 @@ extern "C" void wf_launch_restir_volume_spatial_reuse(
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
 	restir_volume_spatial_reuse<<<grid, block, 0, (cudaStream_t)stream>>>(
-		d_currentReservoirs, d_currentMatIdx, d_currentMeanFreePath, d_currentPhaseWoG, d_currentWorldPos, d_outputReservoirs,
+		d_currentReservoirs, d_currentMatIdx, d_currentMeanFreePath, d_currentPhaseWoG, d_currentEntryPoint, d_outputReservoirs,
 		width, height, frameSeed,
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders,
 		d_materials, d_textures, d_texturePixels);

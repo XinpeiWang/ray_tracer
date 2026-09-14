@@ -948,9 +948,9 @@ private:
     // restirEnabled_ toggle - no separate UI toggle for this feature, see
     // setRestirEnabled()'s own comment).
     //
-    // Unlike d_reservoirs_/d_restirNormal_, these 4 "current frame" buffers
-    // (reservoirs/matIdx/meanFreePath/phaseWoG) are deliberately NEVER
-    // cleared every render() call - see render()'s own allocation-site
+    // Unlike d_reservoirs_/d_restirNormal_, these 5 "current frame" buffers
+    // (reservoirs/matIdx/meanFreePath/phaseWoG/entryPoint) are deliberately
+    // NEVER cleared every render() call - see render()'s own allocation-site
     // comment for the full reasoning: wf_finish_material_scatter's own
     // isPhase branch only ever writes them on a genuine phase-scatter event,
     // never on a medium's own "no scatter this frame" pass-through sub-case
@@ -963,12 +963,29 @@ private:
     // camera actually moves away - see this project's own plan's "Risks"
     // section for the accepted staleness tradeoff.
     //
+    // d_volumeEntryPoint_ exists as its OWN sticky buffer (not a reuse of the
+    // shared d_worldPos_) specifically so it stays consistent with the other
+    // 4 held-over fields: d_worldPos_ is refreshed every frame for every
+    // depth==0 hit regardless of medium status, so restir_volume_spatial_
+    // reuse reading it directly would pair THIS frame's fresh (possibly
+    // unrelated) hit point with matIdx/meanFreePath/phaseWoG's stale values
+    // whenever a pixel's depth==0 hit type changes between phase-scatter
+    // frames - a real corruption this buffer's own addition fixes.
+    //
     // d_volumeMatIdx_ needs a real -1 fill (not a raw zero-memset) at
     // allocation time - see the render()-time allocation site's own comment
     // for why 0 is a valid real matIdx and cannot double as the "never
     // written" sentinel the way GpuVolumeReservoir::valid()'s own
     // weightSum>0.0f check already makes a plain zero-memset safe for
-    // d_volumeReservoirs_.
+    // d_volumeReservoirs_. Both d_volumeMatIdx_ (-1 fill) and
+    // d_volumeReservoirs_ (zero fill) are ALSO re-applied whenever
+    // restirHistoryValid_ transitions to false for a reason OTHER than a
+    // capacity change - i.e. invalidateRestirHistory() on a scene switch at
+    // unchanged resolution - since GpuLightSample's own lightIdx/primIdx
+    // index into the PREVIOUS scene's light/geometry arrays; leaving them
+    // untouched would let the new scene's first frames dereference a stale
+    // index against the newly-uploaded (possibly smaller) arrays. See
+    // render()'s own allocation-site comment.
     CUdeviceptr        d_volumeReservoirs_ = 0;
     int                volumeReservoirsCapacity_ = 0;
     CUdeviceptr        d_volumeMatIdx_ = 0;
@@ -977,6 +994,8 @@ private:
     int                volumeMeanFreePathCapacity_ = 0;
     CUdeviceptr        d_volumePhaseWoG_ = 0;
     int                volumePhaseWoGCapacity_ = 0;
+    CUdeviceptr        d_volumeEntryPoint_ = 0;
+    int                volumeEntryPointCapacity_ = 0;
     // History buffer - read-then-overwrite-at-end-of-call, same cross-call
     // relationship as d_reservoirsHistory_ above; content only ever trusted
     // when restirHistoryValid_ (shared with DI - see this member block's own

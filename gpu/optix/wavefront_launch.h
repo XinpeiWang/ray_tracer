@@ -121,6 +121,7 @@ extern "C" void wf_launch_evaluate_materials(
 	int*                         d_volumeMatIdxOut,
 	float*                       d_volumeMeanFreePathOut,
 	float4*                      d_volumePhaseWoGOut,
+	float4*                      d_volumeEntryPointOut,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -282,7 +283,13 @@ extern "C" void wf_launch_restir_volume_spatial_reuse(
 	const int*                d_currentMatIdx,
 	const float*              d_currentMeanFreePath,
 	const float4*             d_currentPhaseWoG,
-	const float4*             d_currentWorldPos,
+	// This pixel's own held-over medium entry point (d_volumeEntryPoint_) -
+	// NOT d_worldPos_/d_currentWorldPos, which is refreshed every frame for
+	// EVERY depth==0 hit regardless of medium status; using it here would
+	// pair this frame's fresh (possibly unrelated) hit point with the other
+	// 3 sticky buffers' held-over values - see wf_finish_material_scatter's
+	// own volumeEntryPointOut parameter comment (wavefront_device_helpers.h).
+	const float4*             d_currentEntryPoint,
 	GpuVolumeReservoir*       d_outputReservoirs,
 	int width, int height,
 	unsigned int frameSeed,

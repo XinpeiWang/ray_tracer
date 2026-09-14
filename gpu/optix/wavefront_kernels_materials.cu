@@ -163,7 +163,8 @@ extern "C" __global__ void evaluate_materials(
 	GpuVolumeRestirTemporalContext restirVolumeCtx = {},
 	int* volumeMatIdxOut = nullptr,
 	float* volumeMeanFreePathOut = nullptr,
-	float4* volumePhaseWoGOut = nullptr
+	float4* volumePhaseWoGOut = nullptr,
+	float4* volumeEntryPointOut = nullptr
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -1496,6 +1497,6 @@ extern "C" __global__ void evaluate_materials(
 		// helpers.h) for why only the entry point is stable enough to
 		// reproject frame-to-frame.
 		h.hitPoint, restirVolumeReservoirs, restirVolumeCtx, volumeMatIdxOut,
-		mediumMeanFreePath, volumeMeanFreePathOut, volumePhaseWoGOut);
+		mediumMeanFreePath, volumeMeanFreePathOut, volumePhaseWoGOut, volumeEntryPointOut);
 }
 

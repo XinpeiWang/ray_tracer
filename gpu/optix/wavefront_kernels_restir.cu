@@ -224,12 +224,22 @@ extern "C" __global__ void restir_clear_reservoirs(
 // intended held state, not a bug - see this project's own plan for why
 // naively clearing every frame would defeat cross-frame reuse for any medium
 // with scattering probability below 1.
+//
+// currentEntryPoint (d_volumeEntryPoint_) is its OWN held-over sticky buffer,
+// deliberately NOT the shared d_worldPos_/currentWorldPos every OTHER ReSTIR
+// kernel reads - d_worldPos_ is refreshed every frame for every depth==0 hit
+// regardless of medium status, so reading it here would pair THIS frame's
+// fresh (possibly unrelated) hit point with matIdx/meanFreePath/phaseWoG's
+// held-over values from whichever earlier frame last had a genuine
+// phase-scatter - see wf_finish_material_scatter's own volumeEntryPointOut
+// parameter comment (wavefront_device_helpers.h) for the corruption that
+// mismatch caused before this buffer existed.
 extern "C" __global__ void restir_volume_spatial_reuse(
 	const GpuVolumeReservoir* currentReservoirs,
 	const int*                currentMatIdx,
 	const float*              currentMeanFreePath,
 	const float4*             currentPhaseWoG,
-	const float4*             currentWorldPos,
+	const float4*             currentEntryPoint,
 	GpuVolumeReservoir*       outputReservoirs,
 	int width, int height,
 	unsigned int frameSeed,
@@ -251,7 +261,7 @@ extern "C" __global__ void restir_volume_spatial_reuse(
 		outputReservoirs[idx] = currentReservoirs[idx];
 		return;
 	}
-	const float4 wp = currentWorldPos[idx];
+	const float4 wp = currentEntryPoint[idx];
 	const float3 entryPoint = make_float3(wp.x, wp.y, wp.z);
 	const float meanFreePath = currentMeanFreePath[idx];
 	const float4 pwg = currentPhaseWoG[idx];
@@ -276,7 +286,7 @@ extern "C" __global__ void restir_volume_spatial_reuse(
 		// a geometric edge" guard (a phase-scatter vertex has no shading
 		// normal) - see wf_restir_volume_spatial_valid's own comment for why
 		// no phaseWo-cosine gate is included.
-		const float4 nWp = currentWorldPos[nIdx];
+		const float4 nWp = currentEntryPoint[nIdx];
 		const float3 nEntryPoint = make_float3(nWp.x, nWp.y, nWp.z);
 		if (!wf_restir_volume_spatial_valid(entryPoint, nEntryPoint, matIdx, nMatIdx,
 				meanFreePath, kVolumeSpatialDistScale))

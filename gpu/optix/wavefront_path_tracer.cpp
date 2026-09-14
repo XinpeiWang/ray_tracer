@@ -1213,6 +1213,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<int*>(d_volumeMatIdx_),
 		reinterpret_cast<float*>(d_volumeMeanFreePath_),
 		reinterpret_cast<float4*>(d_volumePhaseWoG_),
+		reinterpret_cast<float4*>(d_volumeEntryPoint_),
 		stream_);
 }
 
@@ -1379,7 +1380,7 @@ void WavefrontPathTracer::launchRestirVolumeSpatialReuse(
 		reinterpret_cast<const int*>(d_volumeMatIdx_),
 		reinterpret_cast<const float*>(d_volumeMeanFreePath_),
 		reinterpret_cast<const float4*>(d_volumePhaseWoG_),
-		reinterpret_cast<const float4*>(d_worldPos_),
+		reinterpret_cast<const float4*>(d_volumeEntryPoint_),
 		reinterpret_cast<GpuVolumeReservoir*>(d_volumeReservoirsHistory_),
 		restirImageWidth_, restirImageHeight_,
 		frameNumber_,
@@ -2326,61 +2327,49 @@ bool WavefrontPathTracer::render(
 	// wavefront_path_tracer.h's own d_volumeReservoirs_ header comment for
 	// the full "why", and this project's own plan. Same restirEnabled_ gate
 	// as DI's own buffers above (no separate UI toggle for this feature).
+	// Uses reallocateDeviceBufferIfNeeded<T>()/freeDeviceBuffer() - same
+	// helpers the GI/SVGF blocks below already use - instead of hand-rolled
+	// free/malloc pairs.
 	//
-	// Unlike d_reservoirs_/d_restirNormal_ above, the 4 "current frame"
-	// buffers here are deliberately NEVER memset every render() call - only
-	// initialized once, right here, on a FRESH allocation (a resolution
-	// change or first-ever enable) - see that same header comment for why an
-	// unconditional per-frame clear would defeat this feature's whole point
-	// (holding a reservoir across a medium's own "no scatter this frame"
-	// pass-through sub-case). d_volumeMatIdx_ needs a real -1 fill (0xFF
-	// bytes, not a zero-memset - see setmemset semantics: an all-1-bits
-	// int32 is -1 in two's complement) since 0 is a valid real materials[]
-	// index and cannot double as the "never written" sentinel the way
-	// GpuVolumeReservoir::valid()'s own weightSum>0.0f check already makes a
-	// plain zero-memset safe for d_volumeReservoirs_.
+	// Unlike d_reservoirs_/d_restirNormal_ above, the 5 "current frame"
+	// buffers here are deliberately NEVER memset every render() call - see
+	// that same header comment for why an unconditional per-frame clear
+	// would defeat this feature's whole point (holding a reservoir across a
+	// medium's own "no scatter this frame" pass-through sub-case). Instead,
+	// d_volumeMatIdx_ (0xFF fill - see setmemset semantics: an all-1-bits
+	// int32 is -1 in two's complement) and d_volumeReservoirs_ (zero fill,
+	// safe because GpuVolumeReservoir::valid()'s own weightSum>0.0f check
+	// makes a zeroed reservoir read as invalid) are reset BOTH on a fresh
+	// allocation AND whenever restirHistoryValid_ has just gone false for a
+	// reason other than a capacity change - i.e. a scene switch at unchanged
+	// resolution (invalidateRestirHistory()) - since a stale GpuLightSample
+	// carries the PREVIOUS scene's own lightIdx/primIdx, which would
+	// otherwise get dereferenced against the new scene's freshly-uploaded
+	// (possibly smaller) light/geometry arrays. The other 3 sticky buffers
+	// (meanFreePath/phaseWoG/entryPoint) need no such reset: every reader
+	// gates on matIdx>=0 first, so resetting matIdx alone makes their own
+	// stale bytes unreachable.
 	if (restirEnabled_) {
-		if (volumeReservoirsCapacity_ != numPixels) {
-			if (d_volumeReservoirs_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirs_)); d_volumeReservoirs_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeReservoirs_), numPixels * sizeof(GpuVolumeReservoir)));
-			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeReservoirs_), 0, numPixels * sizeof(GpuVolumeReservoir), stream_));
-			volumeReservoirsCapacity_ = numPixels;
-		}
-		if (volumeMatIdxCapacity_ != numPixels) {
-			if (d_volumeMatIdx_) { cudaFree(reinterpret_cast<void*>(d_volumeMatIdx_)); d_volumeMatIdx_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeMatIdx_), numPixels * sizeof(int)));
+		reallocateDeviceBufferIfNeeded<GpuVolumeReservoir>(d_volumeReservoirs_, volumeReservoirsCapacity_, numPixels);
+		const bool volumeMatIdxResized = reallocateDeviceBufferIfNeeded<int>(d_volumeMatIdx_, volumeMatIdxCapacity_, numPixels);
+		const bool volumeSceneSwitch = !restirHistoryValid_;
+		if (volumeMatIdxResized || volumeSceneSwitch) {
 			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeMatIdx_), 0xFF, numPixels * sizeof(int), stream_));
-			volumeMatIdxCapacity_ = numPixels;
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeReservoirs_), 0, numPixels * sizeof(GpuVolumeReservoir), stream_));
 		}
-		if (volumeMeanFreePathCapacity_ != numPixels) {
-			if (d_volumeMeanFreePath_) { cudaFree(reinterpret_cast<void*>(d_volumeMeanFreePath_)); d_volumeMeanFreePath_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeMeanFreePath_), numPixels * sizeof(float)));
-			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeMeanFreePath_), 0, numPixels * sizeof(float), stream_));
-			volumeMeanFreePathCapacity_ = numPixels;
-		}
-		if (volumePhaseWoGCapacity_ != numPixels) {
-			if (d_volumePhaseWoG_) { cudaFree(reinterpret_cast<void*>(d_volumePhaseWoG_)); d_volumePhaseWoG_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumePhaseWoG_), numPixels * sizeof(float4)));
-			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumePhaseWoG_), 0, numPixels * sizeof(float4), stream_));
-			volumePhaseWoGCapacity_ = numPixels;
-		}
-		if (volumeReservoirsHistoryCapacity_ != numPixels) {
-			if (d_volumeReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirsHistory_)); d_volumeReservoirsHistory_ = 0; }
-			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeReservoirsHistory_), numPixels * sizeof(GpuVolumeReservoir)));
-			volumeReservoirsHistoryCapacity_ = numPixels;
+		reallocateDeviceBufferIfNeeded<float>(d_volumeMeanFreePath_, volumeMeanFreePathCapacity_, numPixels);
+		reallocateDeviceBufferIfNeeded<float4>(d_volumePhaseWoG_, volumePhaseWoGCapacity_, numPixels);
+		reallocateDeviceBufferIfNeeded<float4>(d_volumeEntryPoint_, volumeEntryPointCapacity_, numPixels);
+		if (reallocateDeviceBufferIfNeeded<GpuVolumeReservoir>(d_volumeReservoirsHistory_, volumeReservoirsHistoryCapacity_, numPixels)) {
 			restirHistoryValid_ = false;  // stale/undefined content at the new size
 		}
 	} else {
-		if (d_volumeReservoirs_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirs_)); d_volumeReservoirs_ = 0; }
-		volumeReservoirsCapacity_ = 0;
-		if (d_volumeMatIdx_) { cudaFree(reinterpret_cast<void*>(d_volumeMatIdx_)); d_volumeMatIdx_ = 0; }
-		volumeMatIdxCapacity_ = 0;
-		if (d_volumeMeanFreePath_) { cudaFree(reinterpret_cast<void*>(d_volumeMeanFreePath_)); d_volumeMeanFreePath_ = 0; }
-		volumeMeanFreePathCapacity_ = 0;
-		if (d_volumePhaseWoG_) { cudaFree(reinterpret_cast<void*>(d_volumePhaseWoG_)); d_volumePhaseWoG_ = 0; }
-		volumePhaseWoGCapacity_ = 0;
-		if (d_volumeReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirsHistory_)); d_volumeReservoirsHistory_ = 0; }
-		volumeReservoirsHistoryCapacity_ = 0;
+		freeDeviceBuffer(d_volumeReservoirs_, volumeReservoirsCapacity_);
+		freeDeviceBuffer(d_volumeMatIdx_, volumeMatIdxCapacity_);
+		freeDeviceBuffer(d_volumeMeanFreePath_, volumeMeanFreePathCapacity_);
+		freeDeviceBuffer(d_volumePhaseWoG_, volumePhaseWoGCapacity_);
+		freeDeviceBuffer(d_volumeEntryPoint_, volumeEntryPointCapacity_);
+		freeDeviceBuffer(d_volumeReservoirsHistory_, volumeReservoirsHistoryCapacity_);
 	}
 
 	// ReSTIR GI (Live Preview only) - own buffers, same resolution-keyed
@@ -3158,16 +3147,12 @@ void WavefrontPathTracer::cleanup() {
 	if (d_reservoirs_) { cudaFree(reinterpret_cast<void*>(d_reservoirs_)); d_reservoirs_ = 0; }
 	reservoirsCapacity_ = 0;
 
-	if (d_volumeReservoirs_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirs_)); d_volumeReservoirs_ = 0; }
-	volumeReservoirsCapacity_ = 0;
-	if (d_volumeMatIdx_) { cudaFree(reinterpret_cast<void*>(d_volumeMatIdx_)); d_volumeMatIdx_ = 0; }
-	volumeMatIdxCapacity_ = 0;
-	if (d_volumeMeanFreePath_) { cudaFree(reinterpret_cast<void*>(d_volumeMeanFreePath_)); d_volumeMeanFreePath_ = 0; }
-	volumeMeanFreePathCapacity_ = 0;
-	if (d_volumePhaseWoG_) { cudaFree(reinterpret_cast<void*>(d_volumePhaseWoG_)); d_volumePhaseWoG_ = 0; }
-	volumePhaseWoGCapacity_ = 0;
-	if (d_volumeReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirsHistory_)); d_volumeReservoirsHistory_ = 0; }
-	volumeReservoirsHistoryCapacity_ = 0;
+	freeDeviceBuffer(d_volumeReservoirs_, volumeReservoirsCapacity_);
+	freeDeviceBuffer(d_volumeMatIdx_, volumeMatIdxCapacity_);
+	freeDeviceBuffer(d_volumeMeanFreePath_, volumeMeanFreePathCapacity_);
+	freeDeviceBuffer(d_volumePhaseWoG_, volumePhaseWoGCapacity_);
+	freeDeviceBuffer(d_volumeEntryPoint_, volumeEntryPointCapacity_);
+	freeDeviceBuffer(d_volumeReservoirsHistory_, volumeReservoirsHistoryCapacity_);
 
 	// World-space irradiance probe cache (Live Preview only) - d_probeGrid_
 	// itself is OptiXRenderer-owned (never freed here, see setProbeGrid()'s

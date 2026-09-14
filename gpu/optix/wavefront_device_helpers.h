@@ -1903,7 +1903,22 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// phaseWo/phaseG of its own to read. Written unconditionally whenever
 	// isPhase is true, same shape as volumeMatIdxOut/volumeMeanFreePathOut
 	// above. nullptr is a complete no-op.
-	float4* volumePhaseWoGOut = nullptr)
+	float4* volumePhaseWoGOut = nullptr,
+	// This frame's own mediumEntryPoint (xyz; w unused), written alongside
+	// volumeMatIdxOut/volumeMeanFreePathOut/volumePhaseWoGOut above so the
+	// separate, later restir_volume_spatial_reuse kernel launch reads an
+	// entry point that is ALWAYS from the same frame/call as those other
+	// three sticky fields - critically, NOT the shared worldPosBuffer, which
+	// is overwritten every frame for every depth==0 hit (including a frame
+	// where THIS pixel is no longer a phase vertex at all). Reading
+	// worldPosBuffer there instead would pair this frame's fresh (and
+	// possibly totally unrelated) hit point with the other three fields'
+	// stale, held-over values whenever a pixel's depth==0 hit type changes
+	// between phase-scatter frames - see this project's own plan for the
+	// "isPhase never clears these buffers" design and why staying self-
+	// consistent across all 4 sticky fields is what actually fixes that.
+	// nullptr is a complete no-op, same shape as the other 3 above.
+	float4* volumeEntryPointOut = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -2218,6 +2233,21 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		return s;
 	};
 
+	// Gates on restirReservoirs (surface) alone, not restirVolumeReservoirs -
+	// safe ONLY because WavefrontPathTracer::render() always allocates/
+	// passes both together under the single restirEnabled_ toggle (no
+	// separate UI toggle for the volumetric feature - see
+	// restirVolumeReservoirs's own parameter comment below). The isPhase
+	// branches further down re-check restirVolumeReservoirs explicitly
+	// before touching it, so a null restirVolumeReservoirs with a non-null
+	// restirReservoirs degrades gracefully (volume RIS/persistence simply
+	// skipped) - but the reverse (restirVolumeReservoirs non-null,
+	// restirReservoirs null) would silently skip volumetric ReSTIR entirely
+	// despite a caller believing it was enabled. If this coupling is ever
+	// loosened (e.g. an independent volumetric-ReSTIR toggle), this gate
+	// needs to test both pointers - not a bare OR, though, since the surface
+	// persistence write below (`restirReservoirs[pixelIndex] = res`) still
+	// assumes restirReservoirs itself is non-null whenever useRestir is true.
 	const bool useRestir = (restirReservoirs != nullptr && depth == 0);
 	if (useRestir) {
 		GpuReservoir res;
@@ -2377,6 +2407,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			if (volumeMatIdxOut) volumeMatIdxOut[pixelIndex] = matIdx;
 			if (volumeMeanFreePathOut) volumeMeanFreePathOut[pixelIndex] = mediumMeanFreePath;
 			if (volumePhaseWoGOut) volumePhaseWoGOut[pixelIndex] = make_float4(phaseWo.x, phaseWo.y, phaseWo.z, phaseG);
+			if (volumeEntryPointOut) volumeEntryPointOut[pixelIndex] = make_float4(mediumEntryPoint.x, mediumEntryPoint.y, mediumEntryPoint.z, 0.0f);
 		}
 
 		if (res.valid() && res.W > 0.0f) {
