@@ -47,6 +47,7 @@
 // this file's own wf_sample_*_light/wf_rand dependency on being included
 // from within wavefront_device_helpers.h - see that header's own comment.
 #include "wavefront_restir_math.h"
+#include "wavefront_restir_volume_math.h"
 
 // Candidates resampled per primary-hit pixel per frame (Bitterli 2020's M) -
 // tunable; 8 balances RIS's noise reduction against the extra alias-table
@@ -94,6 +95,13 @@ constexpr float kRestirSpatialRadiusPixels = 20.0f;
 // edge (two different surfaces that happen to land near each other on
 // screen).
 constexpr float kRestirSpatialNormalCosThreshold = 0.9f;
+
+// ReSTIR for volumetric/participating media's own spatial-neighbor distance
+// threshold, in units of mean free paths (wf_restir_volume_spatial_valid,
+// wavefront_restir_volume_math.h) - the volumetric analog of
+// kRestirSpatialNormalCosThreshold above (a phase-scatter vertex has no
+// shading normal). A few mean free paths, matching this project's own plan.
+constexpr float kVolumeSpatialDistScale = 3.0f;
 
 // ===========================================================================
 // GpuLightSample / GpuReservoir - defined in optix_types.h, not here (see
@@ -629,6 +637,57 @@ __device__ __forceinline__ void wf_restir_temporal_combine(
 	const float3 rawEmission = wf_light_raw_emission(prev.sample, dirToSample, materials, spheres, quads, triangles,
 													  bilinearPatches, disks, cylinders, textures, texturePixels);
 	const float pHatAtCurrent = wf_restir_target_proxy(rawEmission, dirToSample, normal);
+	if (pHatAtCurrent <= 0.0f) return;
+
+	restir_reservoir_combine(current, prev, pHatAtCurrent, wf_rand(seed));
+}
+
+// ReSTIR-for-volumetric-media's own temporal reuse - a close structural
+// mirror of wf_restir_temporal_combine above, with three substitutions (see
+// this project's own plan for the full design):
+//  - `hitPoint` here MUST be the medium's own BOUNDARY/entry point
+//    (HitWorkItem::hitPoint), NOT the stochastic interior scatter point a
+//    phase vertex's own `hit_point` local has been reassigned to by the
+//    time wf_finish_material_scatter runs - the entry point is exactly as
+//    deterministic frame-to-frame as a surface hit, which is what makes
+//    reprojecting it via the SAME wf_restir_reproject_prev_pixel below
+//    correct with zero new reprojection math. The interior point is never
+//    stored or reprojected at all; it's redrawn fresh every frame and used
+//    only as the QUERY CONTEXT for wf_restir_target_proxy_phase's own
+//    fresh re-evaluation just like a surface's shading point is.
+//  - `phaseWo`/`g` replace `normal` - a phase-scatter vertex has no shading
+//    normal; wf_restir_target_proxy_phase's own HG-phase-value term plays
+//    the cosine term's role instead.
+//  - An extra `matIdx` equality gate against `prev.mediumMatIdx` - the
+//    volumetric analog of "don't blend across a geometric edge," and the
+//    ONLY thing standing in for a normal-similarity test here.
+__device__ __forceinline__ void wf_restir_volume_temporal_combine(
+		GpuVolumeReservoir& current, const float3& hitPoint, const float3& phaseWo, float g, int matIdx,
+		const GpuVolumeRestirTemporalContext& ctx, unsigned int& seed,
+		const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
+		const BilinearPatchData* bilinearPatches, const DiskData* disks, const CylinderData* cylinders,
+		const MaterialData* materials, const TextureData* textures, const unsigned char* texturePixels) {
+	if (!ctx.historyValid || !ctx.history || !ctx.worldPosHistory || ctx.imageWidth <= 0 || ctx.imageHeight <= 0)
+		return;
+
+	const int prevPixel = wf_restir_reproject_prev_pixel(hitPoint, ctx.prevCamera, ctx.worldPosHistory,
+														   ctx.imageWidth, ctx.imageHeight);
+	if (prevPixel < 0) return;
+
+	GpuVolumeReservoir prev = ctx.history[prevPixel];
+	if (!prev.valid()) return;
+	if (prev.mediumMatIdx != matIdx) return;  // different medium reprojected here - disoccluded in all but name
+	if (prev.M > kRestirTemporalMaxM) prev.M = kRestirTemporalMaxM;  // see wf_restir_temporal_combine's own comment on why BEFORE combine, not after
+
+	float3 dirToSample; float dist; float geomPdf;
+	if (!wf_reevaluate_light_geometry(prev.sample, hitPoint, spheres, quads, triangles,
+									   bilinearPatches, disks, cylinders, dirToSample, dist, geomPdf) ||
+		geomPdf <= 0.0f)
+		return;
+
+	const float3 rawEmission = wf_light_raw_emission(prev.sample, dirToSample, materials, spheres, quads, triangles,
+													  bilinearPatches, disks, cylinders, textures, texturePixels);
+	const float pHatAtCurrent = wf_restir_target_proxy_phase(rawEmission, dirToSample, phaseWo, g);
 	if (pHatAtCurrent <= 0.0f) return;
 
 	restir_reservoir_combine(current, prev, pHatAtCurrent, wf_rand(seed));

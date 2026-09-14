@@ -1078,6 +1078,18 @@ GpuRestirTemporalContext WavefrontPathTracer::buildRestirTemporalContext() const
 	return ctx;
 }
 
+GpuVolumeRestirTemporalContext WavefrontPathTracer::buildVolumeRestirTemporalContext() const {
+	GpuVolumeRestirTemporalContext ctx;
+	if (!restirEnabled_) return ctx;  // default: historyValid=false, a safe no-op
+	ctx.history = reinterpret_cast<const GpuVolumeReservoir*>(d_volumeReservoirsHistory_);
+	ctx.worldPosHistory = reinterpret_cast<const float4*>(d_worldPosHistory_);
+	ctx.prevCamera = prevRestirCamera_;
+	ctx.historyValid = restirHistoryValid_;
+	ctx.imageWidth = restirImageWidth_;
+	ctx.imageHeight = restirImageHeight_;
+	return ctx;
+}
+
 WfLightBvhContext WavefrontPathTracer::buildLightBvhContext() const {
 	WfLightBvhContext ctx;
 	ctx.nodes = reinterpret_cast<const LightBVHNode*>(d_lightBvhNodes_);
@@ -1190,6 +1202,17 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		// this kernel (Lambertian never reaches it).
 		nrcEnabled_ ? reinterpret_cast<const float*>(d_nrcWeights_) : nullptr,
 		nrcTrainingSteps_, nrcAabbMin_, nrcAabbExtent_,
+		// ReSTIR for volumetric/participating media (Live Preview only) - see
+		// wf_finish_material_scatter's own restirVolumeReservoirs/
+		// restirVolumeCtx/volumeMatIdxOut/volumeMeanFreePathOut/
+		// volumePhaseWoGOut parameter comments. Same restirEnabled_ gate as
+		// d_reservoirs_/buildRestirTemporalContext() above - no separate UI
+		// toggle for this feature (see this project's own plan).
+		reinterpret_cast<GpuVolumeReservoir*>(d_volumeReservoirs_),
+		buildVolumeRestirTemporalContext(),
+		reinterpret_cast<int*>(d_volumeMatIdx_),
+		reinterpret_cast<float*>(d_volumeMeanFreePath_),
+		reinterpret_cast<float4*>(d_volumePhaseWoG_),
 		stream_);
 }
 
@@ -1338,6 +1361,26 @@ void WavefrontPathTracer::launchRestirSpatialReuse(
 		reinterpret_cast<const float3*>(d_restirNormal_),
 		reinterpret_cast<const float4*>(d_worldPos_),
 		reinterpret_cast<GpuReservoir*>(d_reservoirsHistory_),
+		restirImageWidth_, restirImageHeight_,
+		frameNumber_,
+		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders, d_materials,
+		reinterpret_cast<const TextureData*>(d_textures_),
+		reinterpret_cast<const unsigned char*>(d_texturePixels_),
+		stream_);
+}
+
+void WavefrontPathTracer::launchRestirVolumeSpatialReuse(
+		const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+		const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+		const MaterialData* d_materials) {
+	if (!restirEnabled_) return;
+	wf_launch_restir_volume_spatial_reuse(
+		reinterpret_cast<const GpuVolumeReservoir*>(d_volumeReservoirs_),
+		reinterpret_cast<const int*>(d_volumeMatIdx_),
+		reinterpret_cast<const float*>(d_volumeMeanFreePath_),
+		reinterpret_cast<const float4*>(d_volumePhaseWoG_),
+		reinterpret_cast<const float4*>(d_worldPos_),
+		reinterpret_cast<GpuVolumeReservoir*>(d_volumeReservoirsHistory_),
 		restirImageWidth_, restirImageHeight_,
 		frameNumber_,
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_disks, d_cylinders, d_materials,
@@ -2279,6 +2322,67 @@ bool WavefrontPathTracer::render(
 		restirHistoryValid_ = false;
 	}
 
+	// ReSTIR for volumetric/participating media (Live Preview only) - see
+	// wavefront_path_tracer.h's own d_volumeReservoirs_ header comment for
+	// the full "why", and this project's own plan. Same restirEnabled_ gate
+	// as DI's own buffers above (no separate UI toggle for this feature).
+	//
+	// Unlike d_reservoirs_/d_restirNormal_ above, the 4 "current frame"
+	// buffers here are deliberately NEVER memset every render() call - only
+	// initialized once, right here, on a FRESH allocation (a resolution
+	// change or first-ever enable) - see that same header comment for why an
+	// unconditional per-frame clear would defeat this feature's whole point
+	// (holding a reservoir across a medium's own "no scatter this frame"
+	// pass-through sub-case). d_volumeMatIdx_ needs a real -1 fill (0xFF
+	// bytes, not a zero-memset - see setmemset semantics: an all-1-bits
+	// int32 is -1 in two's complement) since 0 is a valid real materials[]
+	// index and cannot double as the "never written" sentinel the way
+	// GpuVolumeReservoir::valid()'s own weightSum>0.0f check already makes a
+	// plain zero-memset safe for d_volumeReservoirs_.
+	if (restirEnabled_) {
+		if (volumeReservoirsCapacity_ != numPixels) {
+			if (d_volumeReservoirs_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirs_)); d_volumeReservoirs_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeReservoirs_), numPixels * sizeof(GpuVolumeReservoir)));
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeReservoirs_), 0, numPixels * sizeof(GpuVolumeReservoir), stream_));
+			volumeReservoirsCapacity_ = numPixels;
+		}
+		if (volumeMatIdxCapacity_ != numPixels) {
+			if (d_volumeMatIdx_) { cudaFree(reinterpret_cast<void*>(d_volumeMatIdx_)); d_volumeMatIdx_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeMatIdx_), numPixels * sizeof(int)));
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeMatIdx_), 0xFF, numPixels * sizeof(int), stream_));
+			volumeMatIdxCapacity_ = numPixels;
+		}
+		if (volumeMeanFreePathCapacity_ != numPixels) {
+			if (d_volumeMeanFreePath_) { cudaFree(reinterpret_cast<void*>(d_volumeMeanFreePath_)); d_volumeMeanFreePath_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeMeanFreePath_), numPixels * sizeof(float)));
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumeMeanFreePath_), 0, numPixels * sizeof(float), stream_));
+			volumeMeanFreePathCapacity_ = numPixels;
+		}
+		if (volumePhaseWoGCapacity_ != numPixels) {
+			if (d_volumePhaseWoG_) { cudaFree(reinterpret_cast<void*>(d_volumePhaseWoG_)); d_volumePhaseWoG_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumePhaseWoG_), numPixels * sizeof(float4)));
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_volumePhaseWoG_), 0, numPixels * sizeof(float4), stream_));
+			volumePhaseWoGCapacity_ = numPixels;
+		}
+		if (volumeReservoirsHistoryCapacity_ != numPixels) {
+			if (d_volumeReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirsHistory_)); d_volumeReservoirsHistory_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_volumeReservoirsHistory_), numPixels * sizeof(GpuVolumeReservoir)));
+			volumeReservoirsHistoryCapacity_ = numPixels;
+			restirHistoryValid_ = false;  // stale/undefined content at the new size
+		}
+	} else {
+		if (d_volumeReservoirs_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirs_)); d_volumeReservoirs_ = 0; }
+		volumeReservoirsCapacity_ = 0;
+		if (d_volumeMatIdx_) { cudaFree(reinterpret_cast<void*>(d_volumeMatIdx_)); d_volumeMatIdx_ = 0; }
+		volumeMatIdxCapacity_ = 0;
+		if (d_volumeMeanFreePath_) { cudaFree(reinterpret_cast<void*>(d_volumeMeanFreePath_)); d_volumeMeanFreePath_ = 0; }
+		volumeMeanFreePathCapacity_ = 0;
+		if (d_volumePhaseWoG_) { cudaFree(reinterpret_cast<void*>(d_volumePhaseWoG_)); d_volumePhaseWoG_ = 0; }
+		volumePhaseWoGCapacity_ = 0;
+		if (d_volumeReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirsHistory_)); d_volumeReservoirsHistory_ = 0; }
+		volumeReservoirsHistoryCapacity_ = 0;
+	}
+
 	// ReSTIR GI (Live Preview only) - own buffers, same resolution-keyed
 	// allocate-once/only-realloc-on-change lifecycle as DI's own above (see
 	// wavefront_path_tracer.h's own GI buffer comments for why these are
@@ -2909,6 +3013,14 @@ bool WavefrontPathTracer::render(
 			reinterpret_cast<const DiskData*>(d_disks),
 			reinterpret_cast<const CylinderData*>(d_cylinders),
 			reinterpret_cast<const MaterialData*>(d_materials));
+		launchRestirVolumeSpatialReuse(
+			reinterpret_cast<const SphereData*>(d_spheres),
+			reinterpret_cast<const QuadData*>(d_quads),
+			reinterpret_cast<const TriangleData*>(d_triangles),
+			reinterpret_cast<const BilinearPatchData*>(d_bilinear_patches),
+			reinterpret_cast<const DiskData*>(d_disks),
+			reinterpret_cast<const CylinderData*>(d_cylinders),
+			reinterpret_cast<const MaterialData*>(d_materials));
 		restirHistoryValid_ = true;
 	}
 	if (restirGiEnabled_) {
@@ -3045,6 +3157,17 @@ void WavefrontPathTracer::cleanup() {
 
 	if (d_reservoirs_) { cudaFree(reinterpret_cast<void*>(d_reservoirs_)); d_reservoirs_ = 0; }
 	reservoirsCapacity_ = 0;
+
+	if (d_volumeReservoirs_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirs_)); d_volumeReservoirs_ = 0; }
+	volumeReservoirsCapacity_ = 0;
+	if (d_volumeMatIdx_) { cudaFree(reinterpret_cast<void*>(d_volumeMatIdx_)); d_volumeMatIdx_ = 0; }
+	volumeMatIdxCapacity_ = 0;
+	if (d_volumeMeanFreePath_) { cudaFree(reinterpret_cast<void*>(d_volumeMeanFreePath_)); d_volumeMeanFreePath_ = 0; }
+	volumeMeanFreePathCapacity_ = 0;
+	if (d_volumePhaseWoG_) { cudaFree(reinterpret_cast<void*>(d_volumePhaseWoG_)); d_volumePhaseWoG_ = 0; }
+	volumePhaseWoGCapacity_ = 0;
+	if (d_volumeReservoirsHistory_) { cudaFree(reinterpret_cast<void*>(d_volumeReservoirsHistory_)); d_volumeReservoirsHistory_ = 0; }
+	volumeReservoirsHistoryCapacity_ = 0;
 
 	// World-space irradiance probe cache (Live Preview only) - d_probeGrid_
 	// itself is OptiXRenderer-owned (never freed here, see setProbeGrid()'s

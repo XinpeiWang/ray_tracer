@@ -152,7 +152,18 @@ extern "C" __global__ void evaluate_materials(
 	const float* nrcWeights = nullptr,
 	int nrcTrainingSteps = 0,
 	float3 nrcAabbMin = make_float3(0.0f, 0.0f, 0.0f),
-	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f)
+	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f),
+	// ReSTIR for volumetric/participating media (Live Preview only) - see
+	// wf_finish_material_scatter's own restirVolumeReservoirs/restirVolumeCtx/
+	// volumeMatIdxOut/volumeMeanFreePathOut parameter comments. nullptr for
+	// batch/offline rendering, same shape as restirReservoirs above. This IS
+	// a real call site (all 5 medium MaterialTypes are routed to THIS kernel,
+	// not simpleHitQueue).
+	GpuVolumeReservoir* restirVolumeReservoirs = nullptr,
+	GpuVolumeRestirTemporalContext restirVolumeCtx = {},
+	int* volumeMatIdxOut = nullptr,
+	float* volumeMeanFreePathOut = nullptr,
+	float4* volumePhaseWoGOut = nullptr
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -337,6 +348,14 @@ extern "C" __global__ void evaluate_materials(
 	// probeItem.etaScale directly.
 	float eventEta = 1.0f;
 	float  phaseG  = 0.0f;
+	// ReSTIR for volumetric/participating media (Live Preview only) - see
+	// wf_finish_material_scatter's own mediumMeanFreePath parameter comment.
+	// Set alongside phaseG by whichever of the 5 medium cases below computes
+	// its own sigma_t/sigma_maj for free-flight distance sampling (that same
+	// local value is exactly what wf_restir_volume_mean_free_path needs) -
+	// set unconditionally there, even on the no-interaction pass-through
+	// sub-case, since it's simply unused (isPhase never true) in that case.
+	float mediumMeanFreePath = 0.0f;
 	// Set inside whichever glossy case (Conductor/RoughMetal/RoughDielectric/
 	// CoatedDiffuse/CoatedConductor) this hit takes, via wf_glossy_alpha() -
 	// passed to wf_finish_material_scatter's glossyAlpha parameter below so
@@ -943,6 +962,7 @@ extern "C" __global__ void evaluate_materials(
 		float t_far  = h.mediumTFar;
 		float dist_inside = fmaxf(0.0f, t_far - t_near);
 		float sigma_t = mat.ior;
+		mediumMeanFreePath = wf_restir_volume_mean_free_path(sigma_t);
 		float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / sigma_t) : 1e30f;
 		float3 unit_dir = normalize(h.rayDir);
 		if (free_path < dist_inside) {
@@ -1008,6 +1028,7 @@ extern "C" __global__ void evaluate_materials(
 		auto maj_it = cloud.sample_ray(ray_o3, ray_d3, 1e30f);
 		float segMin, segMax, sigma_maj;
 		bool has_seg = maj_it.next(segMin, segMax, sigma_maj);
+		if (has_seg) mediumMeanFreePath = wf_restir_volume_mean_free_path(sigma_maj);
 
 		bool did_scatter = false;
 		float medium_t = 0.0f;
@@ -1056,6 +1077,7 @@ extern "C" __global__ void evaluate_materials(
 		// one single GLOBAL majorant rather than CPU's real per-voxel DDA
 		// majorant grid).
 		const GpuRgbGridMedium& grid = rgbGridMediums[(int)mat.rgb_grid_medium_extra.rgbGridMediumIdx];
+		mediumMeanFreePath = wf_restir_volume_mean_free_path(grid.sigma_maj);
 		float3 unit_dir = normalize(h.rayDir);
 
 		float mox = grid.mat[0]*h.rayOrigin.x + grid.mat[1]*h.rayOrigin.y + grid.mat[2]*h.rayOrigin.z + grid.translate[0];
@@ -1165,6 +1187,7 @@ extern "C" __global__ void evaluate_materials(
 		// comment; same single-GLOBAL-majorant simplification), and mirrors
 		// optix_intersection_sphere.h's closesthit GridMedium case exactly.
 		const GpuGridMedium& grid = gridMediums[(int)mat.grid_medium_extra.gridMediumIdx];
+		mediumMeanFreePath = wf_restir_volume_mean_free_path(grid.sigma_maj);
 		float3 unit_dir = normalize(h.rayDir);
 
 		float mox = grid.mat[0]*h.rayOrigin.x + grid.mat[1]*h.rayOrigin.y + grid.mat[2]*h.rayOrigin.z + grid.translate[0];
@@ -1287,6 +1310,7 @@ extern "C" __global__ void evaluate_materials(
 			float t_far  = h.mediumTFar;
 			float dist_inside = fmaxf(0.0f, t_far - t_near);
 			float sigma_t = mat.eta_c.x;  // dielectric_medium_extra.sigma_t
+			mediumMeanFreePath = wf_restir_volume_mean_free_path(sigma_t);
 			float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / sigma_t) : 1e30f;
 			float3 unit_dir = normalize(h.rayDir);
 			if (free_path < dist_inside) {
@@ -1463,6 +1487,15 @@ extern "C" __global__ void evaluate_materials(
 		// mixture pdf rather than the plain BSDF pdf alone.
 		GpuProbeGridMeta{}, nullptr,
 		guidingGridMeta, guidingHistograms, guidingProbes,
-		nrcWeights, nrcTrainingSteps, nrcAabbMin, nrcAabbExtent);
+		nrcWeights, nrcTrainingSteps, nrcAabbMin, nrcAabbExtent,
+		// mediumEntryPoint is h.hitPoint (the medium's own stable boundary
+		// intersection, written into worldPosBuffer above) - NOT hit_point,
+		// which every one of the 5 medium switch-cases above has already
+		// reassigned to the stochastic interior scatter point by this point.
+		// See mediumEntryPoint's own parameter comment (wavefront_device_
+		// helpers.h) for why only the entry point is stable enough to
+		// reproject frame-to-frame.
+		h.hitPoint, restirVolumeReservoirs, restirVolumeCtx, volumeMatIdxOut,
+		mediumMeanFreePath, volumeMeanFreePathOut, volumePhaseWoGOut);
 }
 

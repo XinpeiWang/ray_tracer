@@ -110,6 +110,17 @@ extern "C" void wf_launch_evaluate_materials(
 	int                          nrcTrainingSteps,
 	float3                       nrcAabbMin,
 	float3                       nrcAabbExtent,
+	// ReSTIR for volumetric/participating media (Live Preview only) - see
+	// wf_finish_material_scatter's own restirVolumeReservoirs/restirVolumeCtx/
+	// volumeMatIdxOut/volumeMeanFreePathOut parameter comments. nullptr for
+	// batch/offline rendering, same opt-in pattern as d_restirReservoirs
+	// above. Only this launcher's own kernel (evaluate_materials) ever
+	// reaches a phase-scatter vertex - see this project's own plan.
+	GpuVolumeReservoir*          d_restirVolumeReservoirs,
+	GpuVolumeRestirTemporalContext restirVolumeCtx,
+	int*                         d_volumeMatIdxOut,
+	float*                       d_volumeMeanFreePathOut,
+	float4*                      d_volumePhaseWoGOut,
 	cudaStream_t                 stream);
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -257,6 +268,34 @@ extern "C" void wf_launch_restir_spatial_reuse(
 extern "C" void wf_launch_restir_clear_reservoirs(
 	GpuReservoir* d_reservoirs, int width, int height,
 	unsigned int frameNumber, bool checkerboardActive, cudaStream_t stream);
+
+// ReSTIR for volumetric/participating media's own spatial reuse - see
+// wavefront_kernels_restir.cu's own restir_volume_spatial_reuse comment and
+// this project's own plan. Unlike restir_clear_reservoirs above, there is no
+// wf_launch_restir_clear_volume_reservoirs: d_currentReservoirs/
+// d_currentMatIdx are deliberately NEVER unconditionally cleared every
+// render() call - see WavefrontPathTracer::render()'s own volume-reservoir
+// allocation comment for why holding them across a medium's "no scatter this
+// frame" pass-through sub-case is the whole point of this feature.
+extern "C" void wf_launch_restir_volume_spatial_reuse(
+	const GpuVolumeReservoir* d_currentReservoirs,
+	const int*                d_currentMatIdx,
+	const float*              d_currentMeanFreePath,
+	const float4*             d_currentPhaseWoG,
+	const float4*             d_currentWorldPos,
+	GpuVolumeReservoir*       d_outputReservoirs,
+	int width, int height,
+	unsigned int frameSeed,
+	const SphereData*   d_spheres,
+	const QuadData*     d_quads,
+	const TriangleData* d_triangles,
+	const BilinearPatchData* d_bilinearPatches,
+	const DiskData*     d_disks,
+	const CylinderData* d_cylinders,
+	const MaterialData* d_materials,
+	const TextureData*  d_textures,
+	const unsigned char* d_texturePixels,
+	cudaStream_t stream);
 
 // ReSTIR GI (see wavefront_kernels_restir.cu's own restir_gi_finalize/
 // restir_gi_spatial_reuse header comments). Finalize runs once per SAMPLE

@@ -407,6 +407,54 @@ struct GpuRestirTemporalContext {
 	int                 imageHeight = 0;
 };
 
+// ReSTIR for volumetric/participating-media scattering (Live Preview only) -
+// see this project's own plan. A depth==0 medium phase-scatter vertex
+// (isPhase, wf_finish_material_scatter) already resamples a GpuLightSample
+// exactly like a surface DI candidate does (same wf_generate_restir_candidate,
+// same restir_reservoir_add - only the target-function proxy differs,
+// wf_restir_target_proxy_phase vs wf_restir_target_proxy). GpuVolumeReservoir
+// is therefore NOT a new sample-space, just GpuReservoir plus one extra
+// identity field: which medium (materials[] index) this reservoir's
+// candidate was last validated against - the volumetric analog of a surface
+// reservoir's implicit "same geometry" assumption, since two different
+// media can have wildly different sigma_t/g/albedo with no partial-credit
+// case the way two similarly-oriented surfaces have.
+struct GpuVolumeReservoir {
+	GpuLightSample sample;
+	float weightSum = 0.0f;
+	int   M         = 0;
+	float W         = 0.0f;
+	float pHat      = 0.0f;
+	int   mediumMatIdx = -1;
+
+	CPU_GPU bool valid() const { return sample.valid() && weightSum > 0.0f; }
+};
+
+// Mirrors GpuRestirTemporalContext exactly, substituting GpuVolumeReservoir
+// for GpuReservoir. worldPosHistory is the SAME buffer surface DI/GI/SVGF
+// already share (d_worldPosHistory_) - a medium's own BOUNDARY/entry point
+// (HitWorkItem::hitPoint, written before any medium-specific interior-point
+// logic runs) is exactly as deterministic frame-to-frame as a surface hit,
+// so it needs no separate history buffer of its own; only the STOCHASTIC
+// interior scatter point (redrawn by a fresh free-flight distance sample
+// every frame) would have needed one, and that point is never stored or
+// reprojected at all - see this project's own plan for why reprojecting the
+// entry point (not the interior point) is what makes this whole feature
+// possible with no new reprojection math. No `normalOut` field - a phase
+// vertex has no shading normal; medium identity (mediumMatIdx, above) plays
+// that role instead, via a separate small per-pixel identity buffer
+// (WavefrontPathTracer::d_volumeMatIdx_) rather than a field here, since the
+// spatial-reuse pass needs to know a NEIGHBOR pixel's own current-frame
+// medium identity, not just a reused reservoir's stored one.
+struct GpuVolumeRestirTemporalContext {
+	const GpuVolumeReservoir* history         = nullptr;
+	const float4*             worldPosHistory = nullptr;
+	GpuReprojectBasis         prevCamera{};
+	bool                      historyValid    = false;
+	int                       imageWidth  = 0;
+	int                       imageHeight = 0;
+};
+
 // ReSTIR GI's own plain data structs (GpuGiSample/GpuGiReservoir/
 // GpuGiOriginContext) live in wavefront_types.h, not here, alongside
 // RayWorkItem/ShadowRayWorkItem - unlike GpuLightSample/GpuReservoir above,

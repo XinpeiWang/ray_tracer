@@ -394,6 +394,17 @@ private:
     // context when !restirEnabled_, the same safe-no-op shape restirReservoirs
     // being null already has.
     GpuRestirTemporalContext buildRestirTemporalContext() const;
+    // ReSTIR for volumetric/participating media's own temporal-reuse context
+    // - mirrors buildRestirTemporalContext() above exactly, reusing the SAME
+    // d_worldPosHistory_/prevRestirCamera_/restirHistoryValid_/
+    // restirImageWidth_/restirImageHeight_ DI's own context already builds
+    // from (a phase-scatter vertex's own entry point is reprojected via the
+    // SAME camera history DI's own shading points already are - see this
+    // project's own plan), substituting d_volumeReservoirsHistory_ for
+    // d_reservoirsHistory_ and dropping normalOut entirely (no volumetric
+    // analog of d_restirNormal_ needed here - see wf_restir_volume_temporal_
+    // combine's own comment, wavefront_restir_helpers.h).
+    GpuVolumeRestirTemporalContext buildVolumeRestirTemporalContext() const;
     // Bundles d_lightBvhNodes_/d_lightBvhBitTrail_/lightBvhNodeCount_/
     // lightBvhAllB{Min,Max}{X,Y,Z}_ into one WfLightBvhContext - shared by
     // every launchEvaluateMaterials*()/launchResolveBssrdfExit() call site
@@ -409,6 +420,14 @@ private:
     // own) and writing into d_reservoirsHistory_ - which becomes the NEXT
     // call's temporal-reuse source.
     void launchRestirSpatialReuse(
+        const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
+        const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
+        const MaterialData* d_materials);
+    // ReSTIR for volumetric/participating media's own spatial reuse - see
+    // wavefront_kernels_restir.cu's own restir_volume_spatial_reuse header
+    // comment. Called once per render() call, same timing as
+    // launchRestirSpatialReuse() (DI's own), immediately alongside it.
+    void launchRestirVolumeSpatialReuse(
         const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
         const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
         const MaterialData* d_materials);
@@ -916,6 +935,54 @@ private:
     // the same way, e.g. d_worldPos_ above).
     int                restirImageWidth_ = 0;
     int                restirImageHeight_ = 0;
+
+    // ReSTIR for volumetric/participating media (Live Preview only) - see
+    // this project's own plan. Own buffers, separate from DI's d_reservoirs_/
+    // d_reservoirsHistory_ above (a different payload/validity convention -
+    // see GpuVolumeReservoir's own comment, optix_types.h), but reusing the
+    // SAME d_worldPosHistory_/prevRestirCamera_/restirHistoryValid_/
+    // restirImageWidth_/restirImageHeight_ DI's own context already
+    // maintains for reprojection (a phase-scatter vertex's own entry point
+    // reprojects through the exact same camera history a surface shading
+    // point does). Allocated/freed alongside d_reservoirs_ (gated on the SAME
+    // restirEnabled_ toggle - no separate UI toggle for this feature, see
+    // setRestirEnabled()'s own comment).
+    //
+    // Unlike d_reservoirs_/d_restirNormal_, these 4 "current frame" buffers
+    // (reservoirs/matIdx/meanFreePath/phaseWoG) are deliberately NEVER
+    // cleared every render() call - see render()'s own allocation-site
+    // comment for the full reasoning: wf_finish_material_scatter's own
+    // isPhase branch only ever writes them on a genuine phase-scatter event,
+    // never on a medium's own "no scatter this frame" pass-through sub-case
+    // (which never reaches that branch at all - is_specular stays true for
+    // it), so an unconditional per-frame clear would wipe a perfectly good
+    // reservoir every frame a high-transmittance medium happens not to
+    // scatter, defeating cross-frame reuse for exactly the media this
+    // feature targets. Held indefinitely instead, self-correcting via the
+    // ordinary reprojection/mediumMatIdx-equality disocclusion test once the
+    // camera actually moves away - see this project's own plan's "Risks"
+    // section for the accepted staleness tradeoff.
+    //
+    // d_volumeMatIdx_ needs a real -1 fill (not a raw zero-memset) at
+    // allocation time - see the render()-time allocation site's own comment
+    // for why 0 is a valid real matIdx and cannot double as the "never
+    // written" sentinel the way GpuVolumeReservoir::valid()'s own
+    // weightSum>0.0f check already makes a plain zero-memset safe for
+    // d_volumeReservoirs_.
+    CUdeviceptr        d_volumeReservoirs_ = 0;
+    int                volumeReservoirsCapacity_ = 0;
+    CUdeviceptr        d_volumeMatIdx_ = 0;
+    int                volumeMatIdxCapacity_ = 0;
+    CUdeviceptr        d_volumeMeanFreePath_ = 0;
+    int                volumeMeanFreePathCapacity_ = 0;
+    CUdeviceptr        d_volumePhaseWoG_ = 0;
+    int                volumePhaseWoGCapacity_ = 0;
+    // History buffer - read-then-overwrite-at-end-of-call, same cross-call
+    // relationship as d_reservoirsHistory_ above; content only ever trusted
+    // when restirHistoryValid_ (shared with DI - see this member block's own
+    // header comment) is true.
+    CUdeviceptr        d_volumeReservoirsHistory_ = 0;
+    int                volumeReservoirsHistoryCapacity_ = 0;
 
     // ReSTIR GI (Live Preview only, gpu/optix/wavefront_restir_gi_math.h) -
     // own buffers, parallel to DI's own above but for a genuinely different

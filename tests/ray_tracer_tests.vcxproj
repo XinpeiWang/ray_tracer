@@ -306,6 +306,7 @@
     <ClCompile Include="unit\restir_tests.cpp" />
     <ClCompile Include="unit\wavefront_restir_tests.cpp" />
     <ClCompile Include="unit\wavefront_restir_gi_tests.cpp" />
+    <ClCompile Include="unit\wavefront_restir_volume_tests.cpp" />
     <ClCompile Include="unit\wavefront_svgf_math_tests.cpp" />
     <ClCompile Include="unit\wavefront_temporal_upscale_math_tests.cpp" />
     <ClCompile Include="unit\wavefront_nrc_math_tests.cpp" />

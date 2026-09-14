@@ -206,6 +206,124 @@ extern "C" __global__ void restir_clear_reservoirs(
 }
 
 // ===========================================================================
+// ReSTIR for volumetric/participating media (gpu/optix/wavefront_restir_
+// volume_math.h) - restir_volume_spatial_reuse. Same one-frame-delay design
+// as restir_spatial_reuse above (see that kernel's own header comment for
+// why: by the time this runs, there is no per-thread phase-scatter context
+// left to re-shade WITH this frame, only next frame's temporal reuse ever
+// sees this pass's own output) - reads d_volumeReservoirs_/d_volumeMatIdx_/
+// d_volumeMeanFreePath_/d_volumePhaseWoG_ (this call's own, written by
+// wf_finish_material_scatter's isPhase branch, wavefront_device_helpers.h),
+// writes into d_volumeReservoirsHistory_.
+//
+// Unlike restir_spatial_reuse, d_currentMatIdx/d_currentReservoirs are NOT
+// cleared every render() call - see WavefrontPathTracer::render()'s own
+// volume-reservoir allocation comment. A stale entry here (this pixel's last
+// genuine phase-scatter was several frames ago, e.g. a high-transmittance
+// medium's own "no scatter this frame" pass-through sub-case) is exactly the
+// intended held state, not a bug - see this project's own plan for why
+// naively clearing every frame would defeat cross-frame reuse for any medium
+// with scattering probability below 1.
+extern "C" __global__ void restir_volume_spatial_reuse(
+	const GpuVolumeReservoir* currentReservoirs,
+	const int*                currentMatIdx,
+	const float*              currentMeanFreePath,
+	const float4*             currentPhaseWoG,
+	const float4*             currentWorldPos,
+	GpuVolumeReservoir*       outputReservoirs,
+	int width, int height,
+	unsigned int frameSeed,
+	const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
+	const BilinearPatchData* bilinearPatches, const DiskData* disks, const CylinderData* cylinders,
+	const MaterialData* materials, const TextureData* textures, const unsigned char* texturePixels
+) {
+	const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	const int numPixels = width * height;
+	if (idx >= numPixels) return;
+
+	const int matIdx = currentMatIdx[idx];
+	if (matIdx < 0) {
+		// No phase-scatter vertex has ever written this pixel's own volume
+		// reservoir (or it was never a medium pixel at all) - nothing to
+		// spatially combine here; pass its (necessarily invalid/empty)
+		// reservoir through unchanged, same shape as restir_spatial_reuse's
+		// own wp.w==0.0f early-return above.
+		outputReservoirs[idx] = currentReservoirs[idx];
+		return;
+	}
+	const float4 wp = currentWorldPos[idx];
+	const float3 entryPoint = make_float3(wp.x, wp.y, wp.z);
+	const float meanFreePath = currentMeanFreePath[idx];
+	const float4 pwg = currentPhaseWoG[idx];
+	const float3 phaseWo = make_float3(pwg.x, pwg.y, pwg.z);
+	const float  phaseG  = pwg.w;
+	const int px = idx % width;
+	const int py = idx / width;
+
+	GpuVolumeReservoir result = currentReservoirs[idx];
+	unsigned int seed = wf_pcg(wf_pcg((unsigned int)idx) ^ frameSeed ^ 0x9E3779B9u);
+
+	for (int i = 0; i < kRestirSpatialNeighbors; ++i) {
+		const int nIdx = wf_restir_pick_spatial_neighbor(px, py, width, height, seed);
+		if (nIdx < 0) continue;
+
+		const int nMatIdx = currentMatIdx[nIdx];
+		if (nMatIdx < 0) continue;
+
+		// Neighbor-rejection: mediumMatIdx equality + a mean-free-path-scaled
+		// distance threshold between the two pixels' own medium entry points -
+		// the volumetric analog of DI's own normal-cosine "don't blend across
+		// a geometric edge" guard (a phase-scatter vertex has no shading
+		// normal) - see wf_restir_volume_spatial_valid's own comment for why
+		// no phaseWo-cosine gate is included.
+		const float4 nWp = currentWorldPos[nIdx];
+		const float3 nEntryPoint = make_float3(nWp.x, nWp.y, nWp.z);
+		if (!wf_restir_volume_spatial_valid(entryPoint, nEntryPoint, matIdx, nMatIdx,
+				meanFreePath, kVolumeSpatialDistScale))
+			continue;
+
+		GpuVolumeReservoir neighbor = currentReservoirs[nIdx];
+		if (!neighbor.valid()) continue;
+		// Clamp the neighbor's M before folding it in, not `result.M` after
+		// the loop - see restir_spatial_reuse's own identical comment above
+		// for why the other ordering inflates W and compounds across frames.
+		if (neighbor.M > kRestirSpatialMaxM) neighbor.M = kRestirSpatialMaxM;
+
+		// Re-evaluate the neighbor's stored sample's geometry AND target
+		// function fresh, AT THIS PIXEL's own entryPoint/phaseWo/phaseG -
+		// restir.h's documented missing piece for unbiased reuse, same as
+		// restir_spatial_reuse above.
+		float3 dirToSample; float dist; float geomPdf;
+		if (!wf_reevaluate_light_geometry(neighbor.sample, entryPoint, spheres, quads, triangles,
+										   bilinearPatches, disks, cylinders, dirToSample, dist, geomPdf) ||
+			geomPdf <= 0.0f)
+			continue;
+
+		// Robustness guard - same Jacobian bound restir_spatial_reuse uses
+		// above (wf_restir_jacobian only ever compares the candidate light's
+		// own geometry as seen from two querying points, with no dependency
+		// on what kind of vertex is doing the querying - see this project's
+		// own plan for why it's reused completely unchanged here).
+		const float3 nToSample = neighbor.sample.point - nEntryPoint;
+		const float nDist = sqrtf(fmaxf(dot(nToSample, nToSample), 1e-12f));
+		const float3 nDir = nToSample / nDist;
+		const float jacobian = wf_restir_jacobian(dirToSample, dist, nDir, nDist, neighbor.sample.normal);
+		if (jacobian < 0.1f || jacobian > 10.0f) continue;
+
+		const float3 rawEmission = wf_light_raw_emission(neighbor.sample, dirToSample, materials, spheres, quads,
+														  triangles, bilinearPatches, disks, cylinders,
+														  textures, texturePixels);
+		const float pHatAtCurrent = wf_restir_target_proxy_phase(rawEmission, dirToSample, phaseWo, phaseG);
+		if (pHatAtCurrent <= 0.0f) continue;
+
+		restir_reservoir_combine(result, neighbor, pHatAtCurrent, wf_rand(seed));
+	}
+
+	restir_finalize(result);
+	outputReservoirs[idx] = result;
+}
+
+// ===========================================================================
 // ReSTIR GI (gpu/optix/wavefront_restir_gi_math.h) - restir_gi_finalize and
 // restir_gi_spatial_reuse below. MVP scope: Lambertian x0 only (see
 // wf_finish_material_scatter's own giOriginContext-stash comment,

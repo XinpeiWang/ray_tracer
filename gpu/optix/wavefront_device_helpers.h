@@ -1849,7 +1849,61 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	const float* nrcWeights = nullptr,
 	int nrcTrainingSteps = 0,
 	float3 nrcAabbMin = make_float3(0.0f, 0.0f, 0.0f),
-	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f))
+	float3 nrcAabbExtent = make_float3(0.0f, 0.0f, 0.0f),
+	// ReSTIR for volumetric/participating-media phase-scatter vertices (Live
+	// Preview only) - see this project's own plan. Mirrors restirReservoirs/
+	// restirCtx above but keyed by mediumEntryPoint (the medium's own
+	// boundary/entry point, HitWorkItem::hitPoint) rather than hit_point -
+	// by the time isPhase is true, hit_point has already been reassigned to
+	// the stochastic INTERIOR scatter point re-drawn fresh every frame, which
+	// is NOT stable enough to reproject frame-to-frame; the entry point is a
+	// deterministic ray/geometry intersection exactly as stable as a surface
+	// hit. nullptr (the default, every non-Live-Preview call site, or Live
+	// Preview with the feature toggled off) is a complete no-op, same "null
+	// pointer disables the whole feature" shape as restirReservoirs above.
+	// Only ever consulted when isPhase is true (see this function's own
+	// isPhase-gated RIS block below) - harmless/unused otherwise.
+	const float3& mediumEntryPoint = make_float3(0.0f, 0.0f, 0.0f),
+	GpuVolumeReservoir* restirVolumeReservoirs = nullptr,
+	const GpuVolumeRestirTemporalContext& restirVolumeCtx = GpuVolumeRestirTemporalContext{},
+	// This frame's own medium identity (materials[] index), written
+	// unconditionally whenever isPhase is true so the separate, later
+	// restir_volume_spatial_reuse kernel launch (wavefront_kernels_restir.cu)
+	// - which has no live per-thread material context of its own by that
+	// point - can still recover "which medium is this pixel's reservoir even
+	// for" at spatial-reuse time. nullptr is a complete no-op, same shape as
+	// restirVolumeReservoirs above.
+	int* volumeMatIdxOut = nullptr,
+	// This medium's own mean free path (wf_restir_volume_mean_free_path,
+	// 1/sigma_t for Medium/DielectricMedium's homogeneous case, 1/sigma_maj
+	// for CloudMedium/RgbGridMedium/GridMedium's heterogeneous case) - the
+	// caller (wavefront_kernels_materials.cu) already computes sigma_t/
+	// sigma_maj locally for its own free-flight distance sampling in each of
+	// the 5 medium switch-cases, so this is passed in rather than re-derived
+	// here from materials[matIdx] alone, which lacks the heterogeneous
+	// types' own CloudMediumData/GpuRgbGridMedium/GpuGridMedium sigma_maj
+	// (an index away, not a flat field) - see this project's own plan for
+	// why the spatial-reuse kernel needs this value at all (its own neighbor
+	// distance-validity gate, wf_restir_volume_spatial_valid). Meaningless/
+	// unread when isPhase is false.
+	float mediumMeanFreePath = 0.0f,
+	// Mirrors volumeMatIdxOut above - this frame's own mediumMeanFreePath,
+	// written unconditionally whenever isPhase is true so
+	// restir_volume_spatial_reuse can read it with no live per-thread medium
+	// context of its own. nullptr is a complete no-op, same shape as
+	// volumeMatIdxOut above.
+	float* volumeMeanFreePathOut = nullptr,
+	// This frame's own phaseWo (xyz)/phaseG (w), packed into one float4 the
+	// same "position/data + extra scalar" packing convention worldPosBuffer
+	// uses - the volumetric analog of d_restirNormal_'s role for DI's own
+	// spatial reuse (wf_restir_target_proxy_phase needs phaseWo/phaseG to
+	// re-evaluate a reused candidate's target function fresh at THIS pixel,
+	// exactly like wf_restir_target_proxy needs `normal`), since the separate,
+	// later restir_volume_spatial_reuse kernel launch has no live per-thread
+	// phaseWo/phaseG of its own to read. Written unconditionally whenever
+	// isPhase is true, same shape as volumeMatIdxOut/volumeMeanFreePathOut
+	// above. nullptr is a complete no-op.
+	float4* volumePhaseWoGOut = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -2236,6 +2290,39 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			wf_restir_temporal_combine(res, hit_point, normal, restirCtx, seed,
 				spheres, quads, triangles, bilinearPatches, disks, cylinders,
 				materials, textures, texturePixels);
+		} else if (restirVolumeReservoirs != nullptr) {
+			// Volumetric analog of the surface combine just above - keyed by
+			// mediumEntryPoint (stable) rather than hit_point (redrawn fresh
+			// every frame for a phase vertex), phaseWo/phaseG standing in for
+			// normal, and gated additionally on matIdx equality (see
+			// wf_restir_volume_temporal_combine's own comment,
+			// wavefront_restir_helpers.h). A no-op when
+			// restirVolumeCtx.historyValid is false (the default), same shape
+			// as wf_restir_temporal_combine above.
+			//
+			// wf_restir_volume_temporal_combine takes a GpuVolumeReservoir&,
+			// not `res` (GpuReservoir) - the two share the exact same core
+			// RIS fields (restir_reservoir_add's own template only ever
+			// touches those), so this bridges via a temporary that copies
+			// `res`'s own within-frame RIS result in, then copies the
+			// (possibly temporally-combined) result back out - `res` stays
+			// the single source of truth restir_finalize/the shading step
+			// below both read, regardless of isPhase.
+			GpuVolumeReservoir volRes;
+			volRes.sample = res.sample;
+			volRes.weightSum = res.weightSum;
+			volRes.M = res.M;
+			volRes.W = res.W;
+			volRes.pHat = res.pHat;
+			wf_restir_volume_temporal_combine(volRes, mediumEntryPoint, phaseWo, phaseG, matIdx,
+				restirVolumeCtx, seed,
+				spheres, quads, triangles, bilinearPatches, disks, cylinders,
+				materials, textures, texturePixels);
+			res.sample = volRes.sample;
+			res.weightSum = volRes.weightSum;
+			res.M = volRes.M;
+			res.W = volRes.W;
+			res.pHat = volRes.pHat;
 		}
 		restir_finalize(res);
 		// isPhase deliberately does NOT persist `res` into restirReservoirs/
@@ -2265,6 +2352,31 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// reused allocation.
 			restirReservoirs[pixelIndex] = res;
 			if (restirCtx.normalOut) restirCtx.normalOut[pixelIndex] = normal;
+		} else if (restirVolumeReservoirs != nullptr) {
+			// Volumetric analog of the surface persistence write just above,
+			// into the SEPARATE d_volumeReservoirs_/d_volumeMatIdx_ buffers -
+			// never the surface restirReservoirs buffer above, which the
+			// surface spatial-reuse/temporal-combine code already assumes is
+			// exclusively Lambertian-cosine-convention samples (see this
+			// project's own plan for why the two are kept apart). Written
+			// unconditionally, same "reflect this pixel's real outcome, don't
+			// leave it stale" reasoning as the surface write. volumeMatIdxOut
+			// is written whenever a phase vertex is reached at all (not
+			// gated on res.valid()) - the spatial-reuse pass's own neighbor
+			// gate (wf_restir_volume_spatial_valid) needs this pixel's medium
+			// identity regardless of whether THIS frame's own RIS loop found
+			// a usable light candidate.
+			GpuVolumeReservoir volRes;
+			volRes.sample = res.sample;
+			volRes.weightSum = res.weightSum;
+			volRes.M = res.M;
+			volRes.W = res.W;
+			volRes.pHat = res.pHat;
+			volRes.mediumMatIdx = matIdx;
+			restirVolumeReservoirs[pixelIndex] = volRes;
+			if (volumeMatIdxOut) volumeMatIdxOut[pixelIndex] = matIdx;
+			if (volumeMeanFreePathOut) volumeMeanFreePathOut[pixelIndex] = mediumMeanFreePath;
+			if (volumePhaseWoGOut) volumePhaseWoGOut[pixelIndex] = make_float4(phaseWo.x, phaseWo.y, phaseWo.z, phaseG);
 		}
 
 		if (res.valid() && res.W > 0.0f) {
