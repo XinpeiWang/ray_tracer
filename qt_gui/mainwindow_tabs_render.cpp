@@ -1404,6 +1404,16 @@ void MainWindow::createRenderOptionsTab() {
 		m_liveTemporalUpscaleFactor = (index == 2) ? 4 : (index == 1 ? 2 : 1);
 		saveLiveTemporalUpscaleFactor(m_liveTemporalUpscaleFactor);
 		pushLiveTemporalUpscaleToSession();
+		// Neural Reconstruction is meaningless at "Off" - grey it out (and
+		// force it off) rather than silently no-op, same "document the
+		// dependency by disabling the control" precedent Path Guiding's own
+		// checkbox already established for its probe-cache dependency.
+		if (m_liveNeuralUpscaleCheck) {
+			m_liveNeuralUpscaleCheck->setEnabled(m_liveTemporalUpscaleFactor > 1);
+			if (m_liveTemporalUpscaleFactor <= 1 && m_liveNeuralUpscaleCheck->isChecked()) {
+				m_liveNeuralUpscaleCheck->setChecked(false);
+			}
+		}
 	});
 
 	liveTemporalUpscaleRowLayout->addWidget(labelWithInfo(tr("Temporal Upscale:"),
@@ -1419,6 +1429,32 @@ void MainWindow::createRenderOptionsTab() {
 	liveTemporalUpscaleRowLayout->addWidget(m_liveTemporalUpscaleCombo, 1);
 
 	liveRenderSettingsGrid->addWidget(liveTemporalUpscaleRow, 4, 0, 1, 4);
+
+	// Neural temporal upscale (see this project's own plan) - HARD-DEPENDS
+	// on Temporal Upscale above being 2x/4x, same "grey out the dependent
+	// checkbox" precedent Path Guiding's own checkbox already established
+	// for its probe-cache dependency. Own row (8), after the Radiance
+	// Cache's own row (7) above, to avoid renumbering any existing row.
+	m_liveNeuralUpscaleCheck = new QCheckBox(tr("Neural Reconstruction"));
+	m_liveNeuralUpscaleCheck->setChecked(m_liveNeuralUpscaleEnabled);
+	m_liveNeuralUpscaleCheck->setEnabled(m_liveTemporalUpscaleFactor > 1);
+	styleCheckBox(m_liveNeuralUpscaleCheck);
+	connect(m_liveNeuralUpscaleCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveNeuralUpscaleEnabled = checked;
+		saveLiveNeuralUpscaleEnabled(checked);
+		pushLiveNeuralUpscaleToSession();
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveNeuralUpscaleCheck,
+		tr("Replaces Temporal Upscale's own reconstruction with a small "
+		"neural network, trained online, that learns to blend nearby "
+		"samples instead of a rigid pixel-block copy - reduces the blocky "
+		"ghosting the plain reconstruction can show at moving silhouette "
+		"edges. Requires Temporal Upscale above to be 2x or 4x (has no "
+		"effect at Off). Converges over a few seconds after enabling it, "
+		"similar to the Radiance Cache. Best with Samples/Frame set to 1 - "
+		"higher values are averaged before this feature sees them, which "
+		"blurs its training data.")),
+		8, 0, 1, 4);
 
 	// The four numeric values grouped into their own clean 2-per-row grid
 	// (rows 5-6), separate from the checkboxes above.
@@ -2055,7 +2091,8 @@ void MainWindow::startLivePreview() {
 								 m_liveSvgfEnabled, m_liveRestirGiEnabled, m_liveRestirDiEnabled,
 								 m_liveProbeCacheEnabled, m_livePathGuidingEnabled,
 								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp,
-								 m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor, m_liveNrcEnabled);
+								 m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor, m_liveNrcEnabled,
+								 m_liveNeuralUpscaleEnabled);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -2177,6 +2214,11 @@ void MainWindow::pushLivePathGuidingToSession() {
 void MainWindow::pushLiveNrcToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setNrc(m_liveNrcEnabled);
+}
+
+void MainWindow::pushLiveNeuralUpscaleToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setNeuralUpscale(m_liveNeuralUpscaleEnabled);
 }
 
 void MainWindow::pushLiveTemporalUpscaleToSession() {
@@ -2453,6 +2495,16 @@ bool MainWindow::loadSavedLiveNrcEnabled() const {
 void MainWindow::saveLiveNrcEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewNrcEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLiveNeuralUpscaleEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewNeuralUpscaleEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLiveNeuralUpscaleEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewNeuralUpscaleEnabledKey, value);
 }
 
 int MainWindow::loadSavedLiveTemporalUpscaleFactor() const {

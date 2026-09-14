@@ -778,6 +778,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	m_liveProbeCacheEnabled = loadSavedLiveProbeCacheEnabled();
 	m_livePathGuidingEnabled = loadSavedLivePathGuidingEnabled();
 	m_liveNrcEnabled = loadSavedLiveNrcEnabled();
+	m_liveNeuralUpscaleEnabled = loadSavedLiveNeuralUpscaleEnabled();
 	m_liveTemporalUpscaleFactor = loadSavedLiveTemporalUpscaleFactor();
 	m_liveExposure = loadSavedLiveExposure();
 	m_liveSamples = loadSavedLiveSamples();

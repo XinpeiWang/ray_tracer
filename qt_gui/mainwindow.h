@@ -349,6 +349,7 @@ private:
 	void pushLiveProbeCacheToSession();
 	void pushLivePathGuidingToSession();
 	void pushLiveNrcToSession();
+	void pushLiveNeuralUpscaleToSession();
 	void pushLiveTemporalUpscaleToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
@@ -446,6 +447,8 @@ private:
 	void saveLivePathGuidingEnabled(bool value) const;
 	bool loadSavedLiveNrcEnabled() const;
 	void saveLiveNrcEnabled(bool value) const;
+	bool loadSavedLiveNeuralUpscaleEnabled() const;
+	void saveLiveNeuralUpscaleEnabled(bool value) const;
 	int loadSavedLiveTemporalUpscaleFactor() const;
 	void saveLiveTemporalUpscaleFactor(int value) const;
 	double loadSavedLiveExposure() const;
@@ -906,6 +909,14 @@ private:
 	// cache).
 	bool m_liveNrcEnabled = false;
 	QCheckBox *m_liveNrcCheck = nullptr;
+	// Neural temporal upscale (gpu/optix/wavefront_upscale_*.h) - see this
+	// project's own plan. HARD-DEPENDS on the Temporal Upscale combo being
+	// off "Off" (m_liveTemporalUpscaleFactor > 1) - its own checkbox is
+	// disabled/unchecked whenever that combo is "Off", same "grey out the
+	// dependent control rather than silently no-op" precedent path guiding's
+	// own checkbox already established for its probe-cache dependency.
+	bool m_liveNeuralUpscaleEnabled = false;
+	QCheckBox *m_liveNeuralUpscaleCheck = nullptr;
 	// Live Preview's temporal upscale feature (see this project's own plan).
 	// Plain int (1/2/4, not a bool+separate-int pair) since the combo's own
 	// selected factor IS the setting - no pre-existing bool pair to

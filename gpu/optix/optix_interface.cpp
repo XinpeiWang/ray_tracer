@@ -579,7 +579,9 @@ extern "C" bool rt_realtime_render_frame(
 	bool enable_temporal_upscale,
 	int temporal_upscale_factor,
 	unsigned int temporal_jitter_base_index,
-	bool enable_nrc
+	bool enable_nrc,
+	bool enable_neural_upscale,
+	float* out_neural_upscale_buffer
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -738,6 +740,9 @@ extern "C" bool rt_realtime_render_frame(
 		// Neural Radiance Cache (gpu/optix/wavefront_nrc_*.h) - see this
 		// project's own plan and enableNrc()'s own comment.
 		g_renderer->enableNrc(enable_nrc);
+		// Neural temporal upscale (gpu/optix/wavefront_upscale_*.h) - see
+		// this project's own plan and enableNeuralUpscale()'s own comment.
+		g_renderer->enableNeuralUpscale(enable_neural_upscale);
 		// SVGF (gpu/optix/wavefront_svgf_math.h) - unlike DI/GI above, this
 		// is genuinely opt-in per call (the CALLER's own `enable_svgf`
 		// parameter), not unconditionally forced on - it's an alternative
@@ -821,6 +826,13 @@ extern "C" bool rt_realtime_render_frame(
 			// could silently drift out of sync with each other if a field
 			// were ever reordered.
 			std::memcpy(out_camera_basis, &cameraExtra.origin, 12 * sizeof(float));
+		}
+		if (ok && out_neural_upscale_buffer) {
+			std::vector<float> upscaled;
+			if (g_renderer->readNeuralUpscaleBuffer(static_cast<unsigned int>(image_width),
+													 static_cast<unsigned int>(image_height), upscaled)) {
+				std::memcpy(out_neural_upscale_buffer, upscaled.data(), upscaled.size() * sizeof(float));
+			}
 		}
 
 		return ok;

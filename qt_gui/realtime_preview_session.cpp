@@ -33,7 +33,8 @@ namespace {
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
 							   bool, float, const void*, bool, bool, bool,
-							   bool, int, unsigned int, bool);
+							   bool, int, unsigned int, bool,
+							   bool, float*);
 
 // const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
 // own comment. Same hand-duplication convention as RenderFrameFn above.
@@ -154,6 +155,19 @@ void RealtimePreviewWorker::resetAccumulation() {
 		m_worldPosHiPrev.assign(wh * hh * 4, 0.0f);
 		m_accumHiScratch.assign(wh * hh * 3, 0.0f);
 		m_worldPosHiScratch.assign(wh * hh * 4, 0.0f);
+		// Neural temporal upscale's own GPU-filled result buffer (Live
+		// Preview only) - see this project's own plan. Sized the same
+		// wh*hh*3 as m_accumHi, but only when the feature is ACTUALLY going
+		// to be used this session (m_neuralUpscale, gated the same way
+		// m_accumHi itself already is on useTemporalUpscale()) - a plain
+		// std::vector, not a GPU buffer; the GPU-side result crosses the DLL
+		// boundary and lands here via renderFrame()'s own out_neural_upscale_buffer
+		// parameter (renderLoop(), below).
+		if (m_neuralUpscale) {
+			m_neuralUpscaleOut.assign(wh * hh * 3, 0.0f);
+		} else {
+			m_neuralUpscaleOut.clear();
+		}
 		m_displayImage = QImage(static_cast<int>(wh), static_cast<int>(hh), QImage::Format_RGB888);
 	} else {
 		m_accumHi.clear();
@@ -161,6 +175,7 @@ void RealtimePreviewWorker::resetAccumulation() {
 		m_worldPosHiPrev.clear();
 		m_accumHiScratch.clear();
 		m_worldPosHiScratch.clear();
+		m_neuralUpscaleOut.clear();
 		m_displayImage = QImage(m_width, m_height, QImage::Format_RGB888);
 	}
 	m_sampleCount = 0;
@@ -387,7 +402,7 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 								   double lookX, double lookY, double lookZ,
 								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 								   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-								   bool temporalUpscale, int temporalUpscaleFactor, bool nrc) {
+								   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -419,6 +434,7 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	m_temporalUpscaleEnabled = temporalUpscale;
 	m_upscaleFactor = temporalUpscaleFactor;
 	m_nrc = nrc;
+	m_neuralUpscale = neuralUpscale;
 	m_spp = spp;
 	m_maxDepth = maxDepth;
 	m_fireflyClamp = fireflyClamp;
@@ -537,6 +553,16 @@ void RealtimePreviewWorker::setTemporalUpscale(bool enabled, int factor) {
 	}
 }
 
+void RealtimePreviewWorker::setNeuralUpscale(bool enabled) {
+	if (!m_running) return;
+	// Same "changes which reconstruction buffer feeds m_displayImage" reset
+	// reasoning as setTemporalUpscale() just above.
+	if (enabled != m_neuralUpscale) {
+		m_neuralUpscale = enabled;
+		resetAccumulation();
+	}
+}
+
 void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
 	if (!m_running) return;
 	m_spp = spp;
@@ -637,7 +663,8 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
 						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding,
-						  useUpscale, m_upscaleFactor, m_temporalJitterCounter, m_nrc);
+						  useUpscale, m_upscaleFactor, m_temporalJitterCounter, m_nrc,
+						  m_neuralUpscale, (useUpscale && m_neuralUpscale) ? m_neuralUpscaleOut.data() : nullptr);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -680,14 +707,62 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		// branch below (which overwrites m_accum wholesale every frame
 		// regardless), so skip the work entirely in that mode.
 		if (cameraJustMoved) {
-			if (useUpscale) {
+			// Neural reconstruction does its own reprojection GPU-side every
+			// frame regardless (gpu/optix/wavefront_kernels_upscale.cu's own
+			// upscale_infer, via wf_restir_reproject_prev_pixel) - this CPU-
+			// side reprojection exists only for the OLD block-splat path's
+			// own m_accumHi/m_worldPosHi, which m_neuralUpscale bypasses
+			// entirely (see the useUpscale branch below).
+			if (useUpscale && !m_neuralUpscale) {
 				reprojectAccumulationHi();
-			} else if (!showLatest) {
+			} else if (!useUpscale && !showLatest) {
 				reprojectAccumulation();
 			}
 		}
 
-		if (useUpscale) {
+		if (useUpscale && m_neuralUpscale) {
+			// --- Neural temporal upscale ---
+			// The GPU already produced the final high-res result
+			// (m_neuralUpscaleOut, filled via renderFrame()'s own
+			// out_neural_upscale_buffer parameter) - just tonemap it
+			// directly. No CPU-side reprojection/block-splat/reconstruction
+			// at all in this mode - see this project's own plan for why this
+			// REPLACES the old-path block below rather than augmenting it.
+			m_sampleCount = 1;
+			const int Wh = m_width * m_upscaleFactor;
+			const int Hh = m_height * m_upscaleFactor;
+			for (int y = 0; y < Hh; ++y) {
+				uchar* row = m_displayImage.scanLine(y);
+				for (int x = 0; x < Wh; ++x) {
+					const int cell = y * Wh + x;
+					const size_t idx = static_cast<size_t>(cell) * 3;
+					double r = m_neuralUpscaleOut[idx + 0];
+					double g = m_neuralUpscaleOut[idx + 1];
+					double b = m_neuralUpscaleOut[idx + 2];
+					if (!std::isfinite(r)) r = 0.0;
+					if (!std::isfinite(g)) g = 0.0;
+					if (!std::isfinite(b)) b = 0.0;
+					r *= m_exposure; g *= m_exposure; b *= m_exposure;
+					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+					row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
+					row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
+					row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+				}
+			}
+			// Still track prev camera/world-pos bookkeeping, matching the old
+			// path's own end-of-branch update just below, so toggling neural
+			// reconstruction OFF mid-session leaves the old path's own
+			// reprojection with a sane, up-to-date starting point next frame
+			// rather than a stale one from whenever neural mode was enabled.
+			m_worldPosPrev = m_worldPos;
+			m_prevCameraBasis = m_cameraBasis;
+
+			const unsigned int neuralPeriod = static_cast<unsigned int>(m_upscaleFactor * m_upscaleFactor);
+			m_temporalJitterCounter = (neuralPeriod > 0) ? ((m_temporalJitterCounter + static_cast<unsigned int>(m_spp)) % neuralPeriod) : 0;
+			m_temporalUpscaleWriteCounter = (neuralPeriod > 0) ? ((m_temporalUpscaleWriteCounter + 1u) % neuralPeriod) : 0;
+		} else if (useUpscale) {
 			// --- Temporal upscale: write step + reconstruction ---
 			// This call's own place in the write step's OWN sequence
 			// (m_temporalUpscaleWriteCounter - see its own comment on the
@@ -910,7 +985,7 @@ void RealtimePreviewSession::start(const QString &sceneId, int width, int height
 									double lookX, double lookY, double lookZ,
 									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 									bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-									bool temporalUpscale, int temporalUpscaleFactor, bool nrc) {
+									bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
@@ -918,7 +993,7 @@ void RealtimePreviewSession::start(const QString &sceneId, int width, int height
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf),
 		Q_ARG(bool, restirGi), Q_ARG(bool, restirDi), Q_ARG(bool, probeCache), Q_ARG(bool, pathGuiding),
 		Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp),
-		Q_ARG(bool, temporalUpscale), Q_ARG(int, temporalUpscaleFactor), Q_ARG(bool, nrc));
+		Q_ARG(bool, temporalUpscale), Q_ARG(int, temporalUpscaleFactor), Q_ARG(bool, nrc), Q_ARG(bool, neuralUpscale));
 }
 
 void RealtimePreviewSession::stop() {
@@ -966,6 +1041,10 @@ void RealtimePreviewSession::setNrc(bool nrc) {
 
 void RealtimePreviewSession::setTemporalUpscale(bool enabled, int factor) {
 	QMetaObject::invokeMethod(m_worker, "setTemporalUpscale", Qt::QueuedConnection, Q_ARG(bool, enabled), Q_ARG(int, factor));
+}
+
+void RealtimePreviewSession::setNeuralUpscale(bool enabled) {
+	QMetaObject::invokeMethod(m_worker, "setNeuralUpscale", Qt::QueuedConnection, Q_ARG(bool, enabled));
 }
 
 void RealtimePreviewSession::setSppAndMaxDepth(int spp, int maxDepth) {

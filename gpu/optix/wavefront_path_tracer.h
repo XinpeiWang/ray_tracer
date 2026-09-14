@@ -192,6 +192,20 @@ public:
         temporalJitterBaseIndex_ = baseIndex;
     }
 
+    /// Neural temporal upscale (Live Preview only, gpu/optix/wavefront_upscale_*.h) -
+    /// see this project's own plan. `false` (the default) is a complete
+    /// no-op - render() skips launchNeuralUpscaleUpdate() entirely and the
+    /// caller (RealtimePreviewWorker) keeps using its own existing CPU-side
+    /// reconstruction, byte-identical to before this feature existed.
+    /// Meaningless (never consulted) unless temporalUpscaleJitterEnabled_ is
+    /// ALSO true - the network's own inputs assume that same jittered
+    /// low-res sampling pattern. The weight/training buffers are lazily
+    /// allocated on first render() call with this true (see
+    /// launchNeuralUpscaleUpdate()'s own comment) - toggling this off and
+    /// back on does not reset them (matches setNrcEnabled()'s own
+    /// documented no-reset behavior).
+    void setNeuralUpscaleEnabled(bool enabled) { neuralUpscaleEnabled_ = enabled; }
+
     /// Heterogeneous single-channel grid media (MaterialType::GridMedium) -
     /// same setter-not-render()-parameter pattern as setRgbGridMediums()
     /// above, for the same reason. 0/0/0/0 (the default) is a valid "no
@@ -286,6 +300,15 @@ public:
     ///        major) on success.
     bool readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const;
 
+    /// Neural temporal upscale's own high-res result (Live Preview only) -
+    /// see setNeuralUpscaleEnabled()'s own comment. Only valid after a
+    /// render() call with neuralUpscaleEnabled_ already in effect, at this
+    /// exact low-res width/height AND upscale factor; returns false
+    /// (leaving `out` untouched) otherwise.
+    /// @param out Resized to width*height*upscaleFactor^2*3 floats (linear
+    ///        RGB, pre-tonemap, row-major) on success.
+    bool readNeuralUpscaleBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const;
+
     /// Whether render() should route primary-hit (depth==0) NEE through
     /// ReSTIR DI's weighted resampling (gpu/optix/wavefront_restir_helpers.h)
     /// instead of the classic single alias-table draw - see
@@ -338,7 +361,7 @@ public:
     // "just start over, the real state gets rebuilt from scratch" reasoning
     // every other buffer here already follows, and is harmless even when the
     // new scene's probe count differs from the old one.
-    void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; svgfHistoryValid_ = false; probeUpdateCursor_ = 0; }
+    void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; svgfHistoryValid_ = false; neuralUpscaleHistoryValid_ = false; probeUpdateCursor_ = 0; }
 
 private:
     // Resize-on-resolution-change helper for a per-pixel GPU buffer: frees
@@ -516,6 +539,16 @@ private:
     // flagged here explicitly so it isn't mistaken for a crash-class bug if
     // observed.
     void launchNrcTrainingUpdate(const WavefrontLaunchParams& lp, GpuCameraParams camera, float shadowRayEpsilon);
+
+    /// Neural temporal upscale training+inference update (Live Preview
+    /// only) - see wavefront_kernels_upscale.cu's own header comment for
+    /// the full 3-kernel-family design. Called from render() BEFORE the
+    /// world-pos-history/prevRestirCamera_ overwrite (unlike
+    /// launchNrcTrainingUpdate(), which runs after it) - this method's own
+    /// reprojection needs prevRestirCamera_/d_worldPosHistory_ to still
+    /// hold the PREVIOUS frame's values, exactly like launchSvgf()'s own
+    /// call site requires (see render()'s own call-site comment).
+    void launchNeuralUpscaleUpdate(const float3* d_lowResFramebuffer, int width, int height, GpuCameraParams camera);
     // SVGF (wavefront_kernels_svgf.cu) - runs the full temporal-integrate +
     // A-trous filter sequence in place on d_framebuffer, once per render()
     // call, after launchNormalizeFramebuffer (this frame's raw radiance
@@ -784,6 +817,75 @@ private:
     // probeGridMeta_, don't each need their own derivation.
     float3 nrcAabbMin_ = make_float3(0.0f, 0.0f, 0.0f);
     float3 nrcAabbExtent_ = make_float3(0.0f, 0.0f, 0.0f);
+
+    // Neural temporal upscale (Live Preview only, gpu/optix/wavefront_upscale_*.h,
+    // wavefront_kernels_upscale.cu) - see setNeuralUpscaleEnabled()/
+    // launchNeuralUpscaleUpdate()'s own comments and this project's own
+    // plan. Replaces qt_gui/realtime_preview_session.cpp's own CPU-side
+    // reconstruction when enabled; requires temporalUpscaleJitterEnabled_
+    // to ALSO be true (meaningless otherwise - the network's inputs assume
+    // that same jittered low-res sampling pattern).
+    bool neuralUpscaleEnabled_ = false;  ///< see setNeuralUpscaleEnabled()
+    // Fixed-size weight/Adam/grad-accum buffers - same lazily-allocated-
+    // together, guarded-by-one-pointer-being-null lifecycle as d_nrcWeights_
+    // above (see launchNeuralUpscaleUpdate()'s own comment).
+    CUdeviceptr d_upscaleWeights_ = 0;    ///< float[kUpscaleNumWeights]
+    CUdeviceptr d_upscaleAdamM_ = 0;      ///< float[kUpscaleNumWeights]
+    CUdeviceptr d_upscaleAdamV_ = 0;      ///< float[kUpscaleNumWeights]
+    CUdeviceptr d_upscaleGradAccum_ = 0;  ///< float[kUpscaleNumWeights], zeroed after every apply step
+    CUdeviceptr d_upscaleValidRecordCounter_ = 0;  ///< int, atomicAdd'd by upscale_train, read back for gradient averaging
+    int upscaleTrainingSteps_ = 0;  ///< global training-step counter, same dual warm-up/Adam-bias-correction role as nrcTrainingSteps_ above
+
+    // Low-res (width*height) auxiliary buffer - screen-space motion vector,
+    // an INPUT FEATURE only (the actual history reprojection reuses
+    // wf_restir_reproject_prev_pixel directly - see wavefront_kernels_
+    // upscale.cu's own header comment). Resolution-keyed, allocated via
+    // reallocateDeviceBufferIfNeeded<float2>() same as d_worldPos_ etc.
+    CUdeviceptr d_upscaleMotionVectors_ = 0;
+    int upscaleMotionVectorsCapacity_ = 0;
+
+    // High-res (width*height*upscaleFactor^2) buffers - the FIRST GPU-
+    // resident high-res buffers in this codebase (see this project's own
+    // plan). d_upscaleOutput_ is this call's own final RGB result (crosses
+    // the DLL boundary as out_neural_upscale_buffer). d_upscaleCurrent_
+    // (xyz=color, w=age) is upscale_infer's OWN per-cell write target this
+    // call, then copied wholesale into d_upscaleHistory_ at the end of
+    // launchNeuralUpscaleUpdate() - a SEPARATE buffer from d_upscaleHistory_,
+    // not the same one read-then-overwritten in place, because upscale_infer
+    // reads OTHER cells' reprojected history entries while writing its own
+    // cell in the SAME kernel launch; aliasing the read and write buffers
+    // would be a cross-thread read-after-write race (no ordering guarantee
+    // between different threads' global-memory accesses within one launch) -
+    // this is exactly why d_worldPos_/d_worldPosHistory_ are two separate
+    // buffers too, not one read-and-written in place. d_upscaleForwardCache_
+    // holds one UpscaleForwardCache per cell, deliberately NEVER cleared
+    // mid-session (upscale_train reads its PRIOR frame's own contents
+    // before upscale_infer overwrites them this same frame - see
+    // launchNeuralUpscaleUpdate()'s own comment for why the call order
+    // matters).
+    CUdeviceptr d_upscaleOutput_ = 0;
+    int upscaleOutputCapacity_ = 0;
+    CUdeviceptr d_upscaleCurrent_ = 0;
+    int upscaleCurrentCapacity_ = 0;
+    CUdeviceptr d_upscaleHistory_ = 0;
+    int upscaleHistoryCapacity_ = 0;
+    CUdeviceptr d_upscaleForwardCache_ = 0;
+    int upscaleForwardCacheCapacity_ = 0;
+    // Own history-validity flag, SEPARATE from restirHistoryValid_/
+    // svgfHistoryValid_ - this feature is gated by temporalUpscaleJitterEnabled_,
+    // independent of whether ReSTIR DI or SVGF happen to be on, so it can't
+    // safely reuse either of their own flags (see this project's own plan).
+    bool neuralUpscaleHistoryValid_ = false;
+    // This feature's OWN independent "which sub-cell is due this frame"
+    // write counter - DELIBERATELY separate from temporalJitterBaseIndex_
+    // (which drives generate_camera_rays' own per-SAMPLE ray jitter and can
+    // advance by more than 1 per render() call under spp>1) - see
+    // launchNeuralUpscaleUpdate()'s own comment for why conflating the two
+    // would silently break "every high-res cell gets a fresh sample once
+    // per period" the same way this project's own Temporal Upscale feature
+    // was already once fixed for exactly this class of bug (57bdc1f).
+    // Always advances by exactly 1 per render() call this feature is active.
+    unsigned int neuralUpscaleWriteCounter_ = 0;
 
     // Own stream for launchEvaluateMaterialsSimple()'s kernel, separate from
     // the base class's stream_ (externally owned by OptiXRenderer, shared

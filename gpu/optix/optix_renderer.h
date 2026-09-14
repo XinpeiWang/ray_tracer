@@ -330,6 +330,16 @@ public:
 		temporalJitterBaseIndex_ = jitterBaseIndex;
 	}
 
+	/// @brief Neural temporal upscale (gpu/optix/wavefront_upscale_*.h,
+	///        wavefront_kernels_upscale.cu) - see this project's own plan.
+	///        Replaces qt_gui/realtime_preview_session.cpp's own CPU-side
+	///        reconstruction when enabled. Meaningless (a documented no-op)
+	///        unless enableTemporalUpscaleJitter(true, ...) is ALSO in
+	///        effect - the network's own inputs assume that same jittered
+	///        low-res sampling pattern. Forwarded to WavefrontPathTracer::
+	///        setNeuralUpscaleEnabled() inside render() below.
+	void enableNeuralUpscale(bool enable) { neuralUpscaleEnabled_ = enable; }
+
 	/// @brief Sets SVGF's advanced tuning constants (gpu/optix/
 	///        svgf_tuning_params.h) - formerly hardcoded kSvgf* literals in
 	///        wavefront_kernels_svgf.cu. Forwarded to wavefrontTracer_ inside
@@ -362,6 +372,15 @@ public:
 	///        major - see WavefrontPathTracer::readWorldPosBuffer()'s own
 	///        comment) on success.
 	bool readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const;
+
+	/// @brief Neural temporal upscale's own high-res result (Live Preview
+	///        only) - see enableNeuralUpscale()'s own comment. Delegates to
+	///        wavefrontTracer_'s own readNeuralUpscaleBuffer(); returns
+	///        false without touching `out` if wavefront isn't active or
+	///        nothing was populated at this resolution/upscale factor.
+	/// @param out Resized to width*height*upscaleFactor^2*3 floats (linear
+	///        RGB, pre-tonemap, row-major) on success.
+	bool readNeuralUpscaleBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const;
 
 	/// @brief Whether the OptiX device context was created with
 	///        OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL (see createContext()'s
@@ -730,6 +749,7 @@ private:
 	bool temporalUpscaleJitterEnabled_ = false;
 	int temporalUpscaleFactor_ = 2;
 	unsigned int temporalJitterBaseIndex_ = 0;
+	bool neuralUpscaleEnabled_ = false;             ///< See enableNeuralUpscale()
 
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - evaluated deterministically, not via the alias table.

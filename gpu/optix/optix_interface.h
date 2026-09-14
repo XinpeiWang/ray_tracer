@@ -232,7 +232,29 @@ bool rt_realtime_render_frame(
 	// boundary convention (see realtime_preview_session.cpp's RenderFrameFn
 	// comment) of only ever appending new parameters, never inserting them
 	// in the middle.
-	bool enable_nrc = false
+	bool enable_nrc = false,
+	// Neural temporal upscale (gpu/optix/wavefront_upscale_*.h,
+	// wavefront_kernels_upscale.cu) - see this project's own plan. Replaces
+	// the CALLER's own CPU-side reconstruction (RealtimePreviewWorker's
+	// reprojectAccumulationHi()/write-step) with a GPU-side, online-trained
+	// blend of nearby low-res samples. HARD-DEPENDS on
+	// enable_temporal_upscale also being true (a documented no-op
+	// otherwise, same shape as enable_path_guiding's own dependency on
+	// enable_probe_cache) - the network's own inputs assume that same
+	// jittered low-res sampling pattern. Defaults false for the same reason
+	// enable_probe_cache does. Appended at the very end of the parameter
+	// list, after enable_nrc, per this function's own append-only
+	// convention.
+	bool enable_neural_upscale = false,
+	// Caller-allocated >= image_width*image_height*temporal_upscale_factor^2*3
+	// floats (nullptr, the default, when enable_neural_upscale is false -
+	// same optional-output convention as out_world_pos_buffer/
+	// out_camera_basis above). Filled with this call's high-res, LINEAR
+	// (pre-tonemap, no exposure/gamma applied) RGB result - same "raw
+	// linear" contract as out_rgb_buffer, just at upscale_factor times the
+	// resolution. Appended at the very end of the parameter list, after
+	// enable_neural_upscale, per this function's own append-only convention.
+	float* out_neural_upscale_buffer = nullptr
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the

@@ -38,6 +38,7 @@
 // across translation units, so two independently-typed copies could drift
 // out of sync silently).
 #include "wavefront_launch.h"
+#include "wavefront_temporal_upscale_math.h"
 
 namespace optix_renderer {
 
@@ -1837,6 +1838,146 @@ void WavefrontPathTracer::launchNrcTrainingUpdate(const WavefrontLaunchParams& l
 		reinterpret_cast<float*>(d_nrcGradAccum_), numValidRecords, nrcTrainingSteps_, stream_);
 }
 
+// Neural temporal upscale (Live Preview only) - see wavefront_kernels_
+// upscale.cu's own header comment for the full 3-kernel-family design.
+// Called from render() BEFORE the world-pos-history/prevRestirCamera_
+// overwrite (see this method's own declaration comment, wavefront_path_
+// tracer.h) - every reprojection this method does needs those to still
+// hold the PREVIOUS frame's values.
+void WavefrontPathTracer::launchNeuralUpscaleUpdate(const float3* d_lowResFramebuffer, int width, int height, GpuCameraParams camera) {
+	if (!neuralUpscaleEnabled_ || !temporalUpscaleJitterEnabled_) return;
+
+	const int numPixels = width * height;
+	const int upscaleFactor = temporalUpscaleFactor_;
+	// wf_temporal_upscale_subcell() only supports factor 2 or 4 (anything
+	// else falls back to its own 2x table but can still return a cx/cy of
+	// 1) - the GUI never offers factor 1 with jitter enabled (that
+	// combination means "Off"), but a direct rt_realtime_render_frame()
+	// caller could pass one, and upscale_train/upscale_infer's
+	// px*upscaleFactor+dueCx indexing would then read one high-res row/
+	// column past the end of d_upscaleForwardCache_/d_upscaleHistory_.
+	if (upscaleFactor != 2 && upscaleFactor != 4) return;
+	const int numHighResPixels = numPixels * upscaleFactor * upscaleFactor;
+	if (numPixels <= 0 || numHighResPixels <= 0) return;
+
+	// Lazy allocation of the fixed-size weight/Adam/grad-accum/counter set -
+	// same "guarded by one pointer being null, free-and-renull-all-on-
+	// exception" lifecycle as d_nrcWeights_'s own block above (see that
+	// block's own comment for the full rationale - a partial-allocation
+	// failure must not permanently wedge this feature either).
+	if (!d_upscaleWeights_) {
+		try {
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_upscaleWeights_), kUpscaleNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_upscaleAdamM_), kUpscaleNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_upscaleAdamV_), kUpscaleNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_upscaleGradAccum_), kUpscaleNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_upscaleValidRecordCounter_), sizeof(int)));
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_upscaleGradAccum_), 0, kUpscaleNumWeights * sizeof(float), stream_));
+			wf_launch_upscale_reset_weights(
+				reinterpret_cast<float*>(d_upscaleWeights_), reinterpret_cast<float*>(d_upscaleAdamM_), reinterpret_cast<float*>(d_upscaleAdamV_),
+				/*seed=*/0x51ED270Bu, stream_);
+		} catch (...) {
+			auto freeDev = [](CUdeviceptr& p) { if (p) { cudaFree(reinterpret_cast<void*>(p)); p = 0; } };
+			freeDev(d_upscaleWeights_); freeDev(d_upscaleAdamM_); freeDev(d_upscaleAdamV_);
+			freeDev(d_upscaleGradAccum_); freeDev(d_upscaleValidRecordCounter_);
+			throw;
+		}
+	}
+
+	// Resolution/upscale-factor-keyed buffers. d_upscaleForwardCache_/
+	// d_upscaleHistory_ are zeroed ONLY on a fresh allocation (a genuinely
+	// new/resized buffer's content is undefined otherwise) - both structs'
+	// own all-zero state already IS their correct "never written" sentinel
+	// (UpscaleForwardCache::flags==0, GpuVolumeReservoir-style; history age
+	// w==0 reads as "just written this frame", the same safe-if-slightly-
+	// optimistic default worldPos's own w==0/1 validity flag convention
+	// uses elsewhere) - see wavefront_path_tracer.h's own member comment.
+	reallocateDeviceBufferIfNeeded<float2>(d_upscaleMotionVectors_, upscaleMotionVectorsCapacity_, numPixels);
+	if (reallocateDeviceBufferIfNeeded<float3>(d_upscaleOutput_, upscaleOutputCapacity_, numHighResPixels)) {
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_upscaleOutput_), 0, numHighResPixels * sizeof(float3), stream_));
+	}
+	// d_upscaleCurrent_ is pure per-frame scratch (upscale_infer writes
+	// every cell unconditionally each call) - no memset needed on its own
+	// resize, only d_upscaleHistory_ (the buffer actually READ) needs one.
+	reallocateDeviceBufferIfNeeded<float4>(d_upscaleCurrent_, upscaleCurrentCapacity_, numHighResPixels);
+	if (reallocateDeviceBufferIfNeeded<float4>(d_upscaleHistory_, upscaleHistoryCapacity_, numHighResPixels)) {
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_upscaleHistory_), 0, numHighResPixels * sizeof(float4), stream_));
+		neuralUpscaleHistoryValid_ = false;  // stale/undefined content at the new size
+	}
+	if (reallocateDeviceBufferIfNeeded<UpscaleForwardCache>(d_upscaleForwardCache_, upscaleForwardCacheCapacity_, numHighResPixels)) {
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_upscaleForwardCache_), 0, numHighResPixels * sizeof(UpscaleForwardCache), stream_));
+	}
+
+	// This frame's own "which sub-cell is due" offset - see
+	// neuralUpscaleWriteCounter_'s own member comment (wavefront_path_
+	// tracer.h) for why this is a dedicated counter, not temporalJitterBaseIndex_.
+	int dueCxInt = 0, dueCyInt = 0;
+	wf_temporal_upscale_subcell(neuralUpscaleWriteCounter_, upscaleFactor, dueCxInt, dueCyInt);
+	const unsigned int dueCx = (unsigned int)dueCxInt;
+	const unsigned int dueCy = (unsigned int)dueCyInt;
+
+	wf_launch_upscale_compute_motion_vectors(
+		reinterpret_cast<const float4*>(d_worldPos_), reinterpret_cast<float2*>(d_upscaleMotionVectors_),
+		width, height, prevRestirCamera_, stream_);
+
+	// Train BEFORE infer - see wavefront_kernels_upscale.cu's own header
+	// comment for why this ordering is load-bearing: upscale_train needs
+	// d_upscaleForwardCache_'s contents from LAST frame's own upscale_infer
+	// call, not this one's.
+	//
+	// Gated on neuralUpscaleHistoryValid_: d_upscaleForwardCache_ is
+	// deliberately never cleared mid-session (see its own member comment),
+	// so on a scene switch at an UNCHANGED resolution its cells keep the
+	// PREVIOUS scene's cached predictions with kUpscaleCacheFlagValid still
+	// set - upscale_train has no way to tell those apart from genuinely
+	// current ones, and would otherwise train the network for up to one
+	// full sub-cell period on (old-scene prediction, new-scene target)
+	// pairs. invalidateRestirHistory() already resets
+	// neuralUpscaleHistoryValid_ to false on exactly that transition (and
+	// it's also false before the very first upscale_infer call ever runs),
+	// so skipping training while it's false is both a correctness fix and,
+	// as a side effect, avoids paying for the training+apply-gradients
+	// dispatch on a frame where every sample would fail its own
+	// per-cell validity check anyway.
+	if (neuralUpscaleHistoryValid_) {
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_upscaleValidRecordCounter_), 0, sizeof(int), stream_));
+		wf_launch_upscale_train(
+			d_lowResFramebuffer, width, height,
+			reinterpret_cast<const UpscaleForwardCache*>(d_upscaleForwardCache_), upscaleFactor, dueCx, dueCy,
+			reinterpret_cast<const float*>(d_upscaleWeights_), reinterpret_cast<float*>(d_upscaleGradAccum_),
+			reinterpret_cast<int*>(d_upscaleValidRecordCounter_),
+			frameNumber_ ^ 0xACE1D00Du, kUpscaleTrainingRecordsPerFrame, stream_);
+		const int numValidUpscaleRecords = readQueueSize(reinterpret_cast<int*>(d_upscaleValidRecordCounter_));
+		++upscaleTrainingSteps_;
+		wf_launch_upscale_apply_gradients(
+			reinterpret_cast<float*>(d_upscaleWeights_), reinterpret_cast<float*>(d_upscaleAdamM_), reinterpret_cast<float*>(d_upscaleAdamV_),
+			reinterpret_cast<float*>(d_upscaleGradAccum_), numValidUpscaleRecords, upscaleTrainingSteps_, stream_);
+	}
+
+	// Reads d_upscaleHistory_ (last call's own result) while writing
+	// d_upscaleCurrent_ (this call's own result) - deliberately TWO
+	// buffers, not one read-and-written in place - see d_upscaleCurrent_'s
+	// own member comment (wavefront_path_tracer.h) for why aliasing them
+	// would be a cross-thread race.
+	wf_launch_upscale_infer(
+		d_lowResFramebuffer, reinterpret_cast<const float4*>(d_worldPos_), reinterpret_cast<const float4*>(d_worldPosHistory_),
+		reinterpret_cast<const float4*>(d_upscaleHistory_), reinterpret_cast<const float2*>(d_upscaleMotionVectors_),
+		width, height, upscaleFactor,
+		dueCx, dueCy,
+		prevRestirCamera_, neuralUpscaleHistoryValid_, camera.origin,
+		reinterpret_cast<const float*>(d_upscaleWeights_),
+		reinterpret_cast<float3*>(d_upscaleOutput_), reinterpret_cast<float4*>(d_upscaleCurrent_), reinterpret_cast<UpscaleForwardCache*>(d_upscaleForwardCache_),
+		stream_);
+
+	// End-of-call history update - exactly d_worldPosHistory_'s own
+	// read-then-overwrite-at-end-of-call pattern.
+	CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_upscaleHistory_), reinterpret_cast<void*>(d_upscaleCurrent_),
+							   (size_t)numHighResPixels * sizeof(float4), cudaMemcpyDeviceToDevice, stream_));
+
+	neuralUpscaleHistoryValid_ = true;
+	++neuralUpscaleWriteCounter_;
+}
+
 void WavefrontPathTracer::launchSvgf(float3* d_framebuffer, const float3* d_albedoAov, float3 cameraOrigin, const float* d_weightBuffer) {
 	if (!svgfEnabled_) return;
 	const int width = restirImageWidth_;
@@ -2176,7 +2317,16 @@ bool WavefrontPathTracer::render(
 	// the compound condition verbatim at each site (a future edit to one
 	// copy silently missing the others was a real risk here).
 	const bool needsAovGuideBuffers = denoiseEnabled_ || svgfEnabled_;
-	const bool needsWorldPosHistory = restirEnabled_ || restirGiEnabled_ || svgfEnabled_;
+	// neuralUpscaleEnabled_ is included here (not just gated by its own
+	// temporalUpscaleJitterEnabled_ check in launchNeuralUpscaleUpdate())
+	// because that call reads d_worldPos_/d_worldPosHistory_ and
+	// prevRestirCamera_ unconditionally once enabled - without this, a user
+	// running Neural Reconstruction with ReSTIR DI/GI and SVGF all off
+	// (a reachable, independent GUI combination) would silently disable its
+	// own temporal reprojection: d_worldPosHistory_ stays null forever, so
+	// wf_restir_reproject_prev_pixel's null-guard always fails and the
+	// network never sees real history.
+	const bool needsWorldPosHistory = restirEnabled_ || restirGiEnabled_ || svgfEnabled_ || neuralUpscaleEnabled_;
 
 	float3* d_albedoAovPtr = nullptr;
 	float3* d_normalAovPtr = nullptr;
@@ -2964,6 +3114,19 @@ bool WavefrontPathTracer::render(
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
 	}
 
+	// Neural temporal upscale (Live Preview only) - see wavefront_kernels_
+	// upscale.cu's own header comment. MUST run before the world-pos-history/
+	// prevRestirCamera_ overwrite just below (same reasoning as launchSvgf()'s
+	// own placement just above it, and launchNeuralUpscaleUpdate()'s own
+	// declaration comment, wavefront_path_tracer.h) - unlike
+	// launchNrcTrainingUpdate() further down, which runs AFTER that overwrite
+	// and therefore must never need last frame's camera/history. Reads d_fb
+	// (this frame's own final low-res linear color, after SVGF/the OptiX AI
+	// denoiser above have already had their turn on it, same "whatever's in
+	// d_fb now IS the ground truth this frame" treatment SVGF itself gives
+	// it).
+	launchNeuralUpscaleUpdate(reinterpret_cast<const float3*>(d_fb), width, height, camera);
+
 	// ReSTIR's end-of-call history update. d_reservoirs_/d_worldPos_ (this
 	// call's own, fully overwritten by the sampleIdx loop above) are about to
 	// be fully overwritten again on the next restirEnabled_ render() call
@@ -3133,6 +3296,18 @@ bool WavefrontPathTracer::readWorldPosBuffer(unsigned int width, unsigned int he
 	return true;
 }
 
+bool WavefrontPathTracer::readNeuralUpscaleBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const {
+	if (!neuralUpscaleEnabled_ || !d_upscaleOutput_) return false;
+	const int numHighResPixels = static_cast<int>(width) * static_cast<int>(height) *
+		temporalUpscaleFactor_ * temporalUpscaleFactor_;
+	if (upscaleOutputCapacity_ != numHighResPixels) return false;
+	const size_t count = static_cast<size_t>(numHighResPixels) * 3;
+	out.resize(count);
+	CUDA_CHECK(cudaMemcpy(out.data(), reinterpret_cast<void*>(d_upscaleOutput_),
+						   count * sizeof(float), cudaMemcpyDeviceToHost));
+	return true;
+}
+
 void WavefrontPathTracer::cleanup() {
 	destroySBT();
 	destroyProgramGroups();
@@ -3168,6 +3343,10 @@ void WavefrontPathTracer::cleanup() {
 		freeDev(d_probeCacheDirections_);
 		freeDev(d_nrcWeights_); freeDev(d_nrcAdamM_); freeDev(d_nrcAdamV_);
 		freeDev(d_nrcGradAccum_); freeDev(d_nrcTrainingRecords_); freeDev(d_nrcValidRecordCounter_);
+		freeDev(d_upscaleWeights_); freeDev(d_upscaleAdamM_); freeDev(d_upscaleAdamV_);
+		freeDev(d_upscaleGradAccum_); freeDev(d_upscaleValidRecordCounter_);
+		freeDev(d_upscaleMotionVectors_); freeDev(d_upscaleOutput_);
+		freeDev(d_upscaleCurrent_); freeDev(d_upscaleHistory_); freeDev(d_upscaleForwardCache_);
 	}
 
 	if (intersectPipeline_) { optixPipelineDestroy(intersectPipeline_); intersectPipeline_ = nullptr; }

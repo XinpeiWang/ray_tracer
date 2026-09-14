@@ -17,6 +17,7 @@
 #include "probe_grid_types.h"
 #include "wavefront_guiding.h"
 #include "wavefront_nrc_types.h"
+#include "wavefront_upscale_types.h"
 #include <cuda_runtime.h>
 
 extern "C" void wf_launch_generate_camera_rays(
@@ -494,6 +495,41 @@ extern "C" void wf_launch_nrc_apply_gradients(
 
 extern "C" void wf_launch_nrc_reset_weights(
 	float* d_weights, float* d_adamM, float* d_adamV, unsigned int seed,
+	cudaStream_t stream);
+
+// Neural temporal upscale (Live Preview only, gpu/optix/wavefront_kernels_upscale.cu) -
+// see this project's own plan. Mirrors the NRC launcher family just above
+// in shape (train/apply-gradients/reset-weights), plus its own motion-
+// vector and inference launchers.
+extern "C" void wf_launch_upscale_compute_motion_vectors(
+	const float4* d_worldPos, float2* d_outMotionVectors,
+	int width, int height, GpuReprojectBasis prevCamera,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_upscale_train(
+	const float3* d_lowResFramebuffer, int width, int height,
+	const UpscaleForwardCache* d_forwardCache, int upscaleFactor, unsigned int dueCx, unsigned int dueCy,
+	const float* d_weights, float* d_gradAccum, int* d_validRecordCounter,
+	unsigned int frameSeed, int numSamples,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_upscale_apply_gradients(
+	float* d_weights, float* d_adamM, float* d_adamV, float* d_gradAccum,
+	int numContributingRecords, int stepCount,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_upscale_reset_weights(
+	float* d_weights, float* d_adamM, float* d_adamV, unsigned int seed,
+	cudaStream_t stream);
+
+extern "C" void wf_launch_upscale_infer(
+	const float3* d_lowResFramebuffer, const float4* d_worldPos, const float4* d_worldPosHistory,
+	const float4* d_history, const float2* d_motionVectors,
+	int width, int height, int upscaleFactor,
+	unsigned int dueCx, unsigned int dueCy,
+	GpuReprojectBasis prevCamera, bool historyValid, float3 cameraOrigin,
+	const float* d_weights,
+	float3* d_outColor, float4* d_outHistory, UpscaleForwardCache* d_outCache,
 	cudaStream_t stream);
 
 extern "C" void wf_launch_resolve_bssrdf_exit(

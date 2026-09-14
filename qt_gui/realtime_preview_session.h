@@ -60,7 +60,7 @@ public slots:
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc);
+			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -169,6 +169,16 @@ public slots:
 	// treatment setSvgf()'s own effective-show-latest change gets. No-op if
 	// not running.
 	void setTemporalUpscale(bool enabled, int factor);
+
+	// Toggles neural temporal upscale (gpu/optix/wavefront_upscale_*.h) -
+	// see this project's own plan. Replaces the CPU-side reconstruction
+	// setTemporalUpscale() above drives with a GPU-side, online-trained
+	// blend. Meaningless (a documented no-op) unless setTemporalUpscale()'s
+	// own `enabled` is ALSO true. Resets accumulation like setTemporalUpscale()
+	// itself does - this changes which buffer m_displayImage's own tonemap
+	// step reads from (m_neuralUpscaleOut vs. m_accumHi), the same "different
+	// reconstruction now" treatment. No-op if not running.
+	void setNeuralUpscale(bool enabled);
 
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
@@ -281,6 +291,20 @@ private:
 	// above. Defaults false for the same reason m_probeCache does (shipped
 	// WITH the feature, nothing to preserve).
 	bool m_nrc = false;
+	// See setNeuralUpscale()'s own comment. Crosses the DLL boundary like
+	// m_nrc above. Defaults false for the same reason (shipped WITH the
+	// feature, nothing to preserve).
+	bool m_neuralUpscale = false;
+	// Neural upscale's own GPU-filled high-res result (Live Preview only) -
+	// see this project's own plan. Sized wh*hh*3 alongside m_accumHi in
+	// resetAccumulation() (only while m_neuralUpscale is actually set, same
+	// "no cost when unused" gating m_accumHi itself already gets from
+	// useTemporalUpscale()); renderLoop() passes its .data() as
+	// out_neural_upscale_buffer and tonemaps it directly into m_displayImage
+	// when m_neuralUpscale is on, bypassing the CPU-side reconstruction
+	// m_accumHi/m_worldPosHi's own write-step/reprojectAccumulationHi()
+	// entirely for that mode.
+	std::vector<float> m_neuralUpscaleOut;
 	// See setTemporalUpscale()'s own comment. Crosses the DLL boundary like
 	// m_pathGuiding above (generate_camera_rays' own jitter sequence choice
 	// is a GPU-side decision). Defaults false/2 for the same reason
@@ -433,7 +457,7 @@ public:
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc);
+			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
@@ -445,6 +469,7 @@ public:
 	void setPathGuiding(bool pathGuiding);
 	void setNrc(bool nrc);
 	void setTemporalUpscale(bool enabled, int factor);
+	void setNeuralUpscale(bool enabled);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

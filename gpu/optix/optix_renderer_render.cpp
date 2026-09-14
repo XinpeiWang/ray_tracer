@@ -128,6 +128,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setPathGuidingEnabled(pathGuidingEnabled_);
 		wavefrontTracer_->setNrcEnabled(nrcEnabled_);
 		wavefrontTracer_->setTemporalUpscaleJitter(temporalUpscaleJitterEnabled_, temporalUpscaleFactor_, temporalJitterBaseIndex_);
+		wavefrontTracer_->setNeuralUpscaleEnabled(neuralUpscaleEnabled_);
 		// See invalidateRestirHistory()'s own comment on why this is
 		// deferred-then-forwarded here instead of calling straight through.
 		if (restirHistoryInvalidationPending_) {
@@ -446,6 +447,11 @@ bool OptiXRenderer::readAovBuffers(unsigned int width, unsigned int height,
 bool OptiXRenderer::readWorldPosBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const {
 	if (!useWavefront_ || !wavefrontTracer_) return false;
 	return wavefrontTracer_->readWorldPosBuffer(width, height, out);
+}
+
+bool OptiXRenderer::readNeuralUpscaleBuffer(unsigned int width, unsigned int height, std::vector<float>& out) const {
+	if (!useWavefront_ || !wavefrontTracer_) return false;
+	return wavefrontTracer_->readNeuralUpscaleBuffer(width, height, out);
 }
 
 void OptiXRenderer::cleanup() noexcept {

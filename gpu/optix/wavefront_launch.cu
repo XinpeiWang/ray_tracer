@@ -8,6 +8,7 @@
 #include "optix_types.h"
 #include "probe_grid_types.h"
 #include "wavefront_nrc_types.h"  // NrcTrainingRecord
+#include "wavefront_upscale_types.h"  // UpscaleForwardCache
 #include "wavefront_launch.h"  // declares the wf_launch_*/wf_upload_*/wf_reset_queue_counter
                                 // signatures the definitions below are checked against
 #include <cuda_runtime.h>
@@ -93,6 +94,23 @@ extern "C" __global__ void nrc_training_shade_full(
 extern "C" __global__ void nrc_bootstrap_and_train(const NrcTrainingRecord*, int, const float*, float*, float3, float3);
 extern "C" __global__ void nrc_apply_gradients(float*, float*, float*, float*, int, int);
 extern "C" __global__ void nrc_reset_weights(float*, float*, float*, unsigned int);
+// ---- forward declarations of the neural temporal upscale kernels from wavefront_kernels_upscale.cu ----
+extern "C" __global__ void upscale_compute_motion_vectors(const float4*, float2*, int, int, GpuReprojectBasis);
+extern "C" __global__ void upscale_train(
+	const float3*, int, int,
+	const UpscaleForwardCache*, int, unsigned int, unsigned int,
+	const float*, float*, int*,
+	unsigned int, int);
+extern "C" __global__ void upscale_apply_gradients(float*, float*, float*, float*, int, int);
+extern "C" __global__ void upscale_reset_weights(float*, float*, float*, unsigned int);
+extern "C" __global__ void upscale_infer(
+	const float3*, const float4*, const float4*,
+	const float4*, const float2*,
+	int, int, int,
+	unsigned int, unsigned int,
+	GpuReprojectBasis, bool, float3,
+	const float*,
+	float3*, float4*, UpscaleForwardCache*);
 extern "C" __global__ void resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -759,6 +777,81 @@ extern "C" void wf_launch_nrc_reset_weights(
 	dim3 block(256);
 	dim3 grid((kNrcNumWeights + 255) / 256);
 	nrc_reset_weights<<<grid, block, 0, (cudaStream_t)stream>>>(d_weights, d_adamM, d_adamV, seed);
+}
+
+extern "C" void wf_launch_upscale_compute_motion_vectors(
+	const float4* d_worldPos, float2* d_outMotionVectors,
+	int width, int height, GpuReprojectBasis prevCamera,
+	cudaStream_t stream)
+{
+	const int numPixels = width * height;
+	if (numPixels <= 0) return;
+	dim3 block(256);
+	dim3 grid((numPixels + 255) / 256);
+	upscale_compute_motion_vectors<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_worldPos, d_outMotionVectors, width, height, prevCamera);
+}
+
+extern "C" void wf_launch_upscale_train(
+	const float3* d_lowResFramebuffer, int width, int height,
+	const UpscaleForwardCache* d_forwardCache, int upscaleFactor, unsigned int dueCx, unsigned int dueCy,
+	const float* d_weights, float* d_gradAccum, int* d_validRecordCounter,
+	unsigned int frameSeed, int numSamples,
+	cudaStream_t stream)
+{
+	if (numSamples <= 0) return;
+	dim3 block(256);
+	dim3 grid((numSamples + 255) / 256);
+	upscale_train<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_lowResFramebuffer, width, height,
+		d_forwardCache, upscaleFactor, dueCx, dueCy,
+		d_weights, d_gradAccum, d_validRecordCounter,
+		frameSeed, numSamples);
+}
+
+extern "C" void wf_launch_upscale_apply_gradients(
+	float* d_weights, float* d_adamM, float* d_adamV, float* d_gradAccum,
+	int numContributingRecords, int stepCount,
+	cudaStream_t stream)
+{
+	dim3 block(256);
+	dim3 grid((kUpscaleNumWeights + 255) / 256);
+	upscale_apply_gradients<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_weights, d_adamM, d_adamV, d_gradAccum, numContributingRecords, stepCount);
+}
+
+extern "C" void wf_launch_upscale_reset_weights(
+	float* d_weights, float* d_adamM, float* d_adamV, unsigned int seed,
+	cudaStream_t stream)
+{
+	dim3 block(256);
+	dim3 grid((kUpscaleNumWeights + 255) / 256);
+	upscale_reset_weights<<<grid, block, 0, (cudaStream_t)stream>>>(d_weights, d_adamM, d_adamV, seed);
+}
+
+extern "C" void wf_launch_upscale_infer(
+	const float3* d_lowResFramebuffer, const float4* d_worldPos, const float4* d_worldPosHistory,
+	const float4* d_history, const float2* d_motionVectors,
+	int width, int height, int upscaleFactor,
+	unsigned int dueCx, unsigned int dueCy,
+	GpuReprojectBasis prevCamera, bool historyValid, float3 cameraOrigin,
+	const float* d_weights,
+	float3* d_outColor, float4* d_outHistory, UpscaleForwardCache* d_outCache,
+	cudaStream_t stream)
+{
+	const int Wh = width * upscaleFactor;
+	const int Hh = height * upscaleFactor;
+	if (Wh <= 0 || Hh <= 0) return;
+	dim3 block(16, 16);
+	dim3 grid((unsigned int)((Wh + 15) / 16), (unsigned int)((Hh + 15) / 16));
+	upscale_infer<<<grid, block, 0, (cudaStream_t)stream>>>(
+		d_lowResFramebuffer, d_worldPos, d_worldPosHistory,
+		d_history, d_motionVectors,
+		width, height, upscaleFactor,
+		dueCx, dueCy,
+		prevCamera, historyValid, cameraOrigin,
+		d_weights,
+		d_outColor, d_outHistory, d_outCache);
 }
 
 extern "C" void wf_launch_resolve_bssrdf_exit(
