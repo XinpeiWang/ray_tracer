@@ -1366,9 +1366,10 @@ void MainWindow::createRenderOptionsTab() {
 		saveLiveNrcEnabled(checked);
 		pushLiveNrcToSession();
 	});
-	// Own row, placed at row 7 (after the numeric grid below at rows 5-6) to
-	// avoid renumbering any existing row - independent of every checkbox
-	// above (no shared state with the Radiance Cache/Path Guiding).
+	// Own row, grouped with the plain-checkbox rows above (independent of
+	// every one of them - no shared state with the Radiance Cache/Path
+	// Guiding) rather than after the numeric/combo rows below, so every
+	// checkbox on this panel reads as one contiguous block.
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveNrcCheck,
 		tr("A small neural network, trained online from traced paths, caches "
 		"and predicts indirect lighting for both diffuse and glossy/metal "
@@ -1378,7 +1379,28 @@ void MainWindow::createRenderOptionsTab() {
 		"the Radiance Cache. Disabling it falls back to classic bounce "
 		"tracing (or the Radiance Cache, if that's also enabled) for every "
 		"affected bounce.")),
-		7, 0, 1, 4);
+		4, 0, 1, 4);
+
+	// Depth-of-field override checkbox - see RenderOptions::aperture_override's
+	// own comment (render_options.h). No hard dependency on any other Live
+	// Preview control, so it groups here with the other independent
+	// checkboxes; its own Aperture/Focus Distance value fields live further
+	// down with the other numeric rows, not here (a checkbox row has
+	// nothing to pair with the way those do).
+	m_liveDofCheck = new QCheckBox(tr("Depth of Field"));
+	m_liveDofCheck->setChecked(m_liveDofEnabled);
+	styleCheckBox(m_liveDofCheck);
+	connect(m_liveDofCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveDofEnabled = checked;
+		saveLiveDofEnabled(checked);
+		pushLiveDofToSession();
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveDofCheck,
+		tr("Overrides the active scene's own camera lens diameter/focus "
+		"distance with the values below, without editing the scene file. "
+		"Only affects scenes loaded from a scene file - has no effect on "
+		"the built-in demo gallery, which keeps its own fixed camera.")),
+		5, 0, 1, 4);
 
 	// Temporal upscale (see this project's own plan) - a 3-way factor
 	// choice (Off/2x/4x), not a checkbox, so it gets its own label+combo row
@@ -1428,13 +1450,14 @@ void MainWindow::createRenderOptionsTab() {
 		"take priority when both are on.")));
 	liveTemporalUpscaleRowLayout->addWidget(m_liveTemporalUpscaleCombo, 1);
 
-	liveRenderSettingsGrid->addWidget(liveTemporalUpscaleRow, 4, 0, 1, 4);
+	liveRenderSettingsGrid->addWidget(liveTemporalUpscaleRow, 6, 0, 1, 4);
 
 	// Neural temporal upscale (see this project's own plan) - HARD-DEPENDS
 	// on Temporal Upscale above being 2x/4x, same "grey out the dependent
 	// checkbox" precedent Path Guiding's own checkbox already established
-	// for its probe-cache dependency. Own row (8), after the Radiance
-	// Cache's own row (7) above, to avoid renumbering any existing row.
+	// for its probe-cache dependency. Kept on its own row directly below
+	// Temporal Upscale's own row rather than grouped with the other
+	// checkboxes above it, so the dependency reads top-to-bottom.
 	m_liveNeuralUpscaleCheck = new QCheckBox(tr("Neural Reconstruction"));
 	m_liveNeuralUpscaleCheck->setChecked(m_liveNeuralUpscaleEnabled);
 	m_liveNeuralUpscaleCheck->setEnabled(m_liveTemporalUpscaleFactor > 1);
@@ -1454,26 +1477,81 @@ void MainWindow::createRenderOptionsTab() {
 		"similar to the Radiance Cache. Best with Samples/Frame set to 1 - "
 		"higher values are averaged before this feature sees them, which "
 		"blurs its training data.")),
-		8, 0, 1, 4);
+		7, 0, 1, 4);
 
-	// Depth-of-field override - see RenderOptions::aperture_override's own
-	// comment (render_options.h). Unlike Neural Reconstruction above, no
-	// hard dependency on any other Live Preview control. Own row (9), after
-	// Neural Reconstruction's own row (8) above.
-	m_liveDofCheck = new QCheckBox(tr("Depth of Field"));
-	m_liveDofCheck->setChecked(m_liveDofEnabled);
-	styleCheckBox(m_liveDofCheck);
-	connect(m_liveDofCheck, &QCheckBox::toggled, this, [this](bool checked) {
-		m_liveDofEnabled = checked;
-		saveLiveDofEnabled(checked);
-		pushLiveDofToSession();
+	// The numeric values grouped into their own clean 2-per-row grid (rows
+	// 8-10), separate from every checkbox/combo above.
+	m_liveExposureSpin = new QDoubleSpinBox();
+	m_liveExposureSpin->setRange(0.01, 100.0);
+	m_liveExposureSpin->setSingleStep(0.1);
+	m_liveExposureSpin->setValue(m_liveExposure);
+	styleSpinBox(m_liveExposureSpin);
+	connect(m_liveExposureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveExposure = value;
+		saveLiveExposure(value);
+		pushLiveExposureToSession();
 	});
-	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveDofCheck,
-		tr("Overrides the active scene's own camera lens diameter/focus "
-		"distance with the values below, without editing the scene file. "
-		"Only affects scenes loaded from a scene file - has no effect on "
-		"the built-in demo gallery, which keeps its own fixed camera.")),
-		9, 0, 1, 4);
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Exposure:"),
+		tr("A flat brightness multiplier applied before tone-mapping, same "
+		"meaning as this tab's own Output-group Exposure control but "
+		"independently set for Live Preview.")),
+		8, 0);
+	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 8, 1);
+
+	m_liveSamplesSpinBox = new QSpinBox();
+	// Raised from 16 - Live Preview intentionally uses a small per-call
+	// sample count so it stays responsive to camera moves/setting changes
+	// between frames (see this spinbox's own tooltip and
+	// RealtimePreviewWorker::renderLoop()'s own comment on why), but 16 was
+	// too low a ceiling for anyone wanting a heavier per-call cost in
+	// exchange for faster convergence on a static frame - the caller still
+	// chooses how high to actually go.
+	m_liveSamplesSpinBox->setRange(1, 64);
+	m_liveSamplesSpinBox->setValue(m_liveSamples);
+	styleSpinBox(m_liveSamplesSpinBox);
+	auto pushSppMaxDepth = [this]() {
+		m_liveSamples = m_liveSamplesSpinBox->value();
+		m_liveMaxDepth = m_liveMaxDepthSpinBox->value();
+		saveLiveSamples(m_liveSamples);
+		saveLiveMaxDepth(m_liveMaxDepth);
+		pushLiveSppMaxDepthToSession();
+	};
+	connect(m_liveSamplesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Samples/Frame:"),
+		tr("Samples per pixel rendered on each Live Preview call - Live "
+		"Preview has its own independent value from the Advanced Parameters "
+		"group below, which only applies to Image/Video.")),
+		8, 2);
+	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 8, 3);
+
+	m_liveMaxDepthSpinBox = new QSpinBox();
+	m_liveMaxDepthSpinBox->setRange(1, 32);
+	m_liveMaxDepthSpinBox->setValue(m_liveMaxDepth);
+	styleSpinBox(m_liveMaxDepthSpinBox);
+	connect(m_liveMaxDepthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
+		tr("Maximum ray depth for Live Preview - independent from the "
+		"Advanced Parameters group below, which only applies to Image/Video.")),
+		9, 0);
+	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 9, 1);
+
+	m_liveFireflyClampSpin = new QDoubleSpinBox();
+	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
+	m_liveFireflyClampSpin->setSingleStep(5.0);
+	m_liveFireflyClampSpin->setDecimals(1);
+	m_liveFireflyClampSpin->setValue(m_liveFireflyClamp);
+	styleSpinBox(m_liveFireflyClampSpin);
+	connect(m_liveFireflyClampSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveFireflyClamp = value;
+		saveLiveFireflyClamp(value);
+		pushLiveFireflyClampToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Firefly Clamp:"),
+		tr("Caps the brightest possible sample value to suppress fireflies, "
+		"at the cost of clipping genuinely bright highlights. Lower values "
+		"clamp more aggressively.")),
+		9, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 9, 3);
 
 	m_liveApertureSpin = new QDoubleSpinBox();
 	m_liveApertureSpin->setRange(0.0, 100.0);
@@ -1506,80 +1584,6 @@ void MainWindow::createRenderOptionsTab() {
 		"units.")),
 		10, 2);
 	liveRenderSettingsGrid->addWidget(m_liveFocusDistanceSpin, 10, 3);
-
-	// The four numeric values grouped into their own clean 2-per-row grid
-	// (rows 5-6), separate from the checkboxes above.
-	m_liveExposureSpin = new QDoubleSpinBox();
-	m_liveExposureSpin->setRange(0.01, 100.0);
-	m_liveExposureSpin->setSingleStep(0.1);
-	m_liveExposureSpin->setValue(m_liveExposure);
-	styleSpinBox(m_liveExposureSpin);
-	connect(m_liveExposureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
-		m_liveExposure = value;
-		saveLiveExposure(value);
-		pushLiveExposureToSession();
-	});
-	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Exposure:"),
-		tr("A flat brightness multiplier applied before tone-mapping, same "
-		"meaning as this tab's own Output-group Exposure control but "
-		"independently set for Live Preview.")),
-		5, 0);
-	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 5, 1);
-
-	m_liveSamplesSpinBox = new QSpinBox();
-	// Raised from 16 - Live Preview intentionally uses a small per-call
-	// sample count so it stays responsive to camera moves/setting changes
-	// between frames (see this spinbox's own tooltip and
-	// RealtimePreviewWorker::renderLoop()'s own comment on why), but 16 was
-	// too low a ceiling for anyone wanting a heavier per-call cost in
-	// exchange for faster convergence on a static frame - the caller still
-	// chooses how high to actually go.
-	m_liveSamplesSpinBox->setRange(1, 64);
-	m_liveSamplesSpinBox->setValue(m_liveSamples);
-	styleSpinBox(m_liveSamplesSpinBox);
-	auto pushSppMaxDepth = [this]() {
-		m_liveSamples = m_liveSamplesSpinBox->value();
-		m_liveMaxDepth = m_liveMaxDepthSpinBox->value();
-		saveLiveSamples(m_liveSamples);
-		saveLiveMaxDepth(m_liveMaxDepth);
-		pushLiveSppMaxDepthToSession();
-	};
-	connect(m_liveSamplesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
-	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Samples/Frame:"),
-		tr("Samples per pixel rendered on each Live Preview call - Live "
-		"Preview has its own independent value from the Advanced Parameters "
-		"group below, which only applies to Image/Video.")),
-		5, 2);
-	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 5, 3);
-
-	m_liveMaxDepthSpinBox = new QSpinBox();
-	m_liveMaxDepthSpinBox->setRange(1, 32);
-	m_liveMaxDepthSpinBox->setValue(m_liveMaxDepth);
-	styleSpinBox(m_liveMaxDepthSpinBox);
-	connect(m_liveMaxDepthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
-	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
-		tr("Maximum ray depth for Live Preview - independent from the "
-		"Advanced Parameters group below, which only applies to Image/Video.")),
-		6, 0);
-	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 6, 1);
-
-	m_liveFireflyClampSpin = new QDoubleSpinBox();
-	m_liveFireflyClampSpin->setRange(1.0, 10000.0);
-	m_liveFireflyClampSpin->setSingleStep(5.0);
-	m_liveFireflyClampSpin->setDecimals(1);
-	m_liveFireflyClampSpin->setValue(m_liveFireflyClamp);
-	styleSpinBox(m_liveFireflyClampSpin);
-	connect(m_liveFireflyClampSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
-		m_liveFireflyClamp = value;
-		saveLiveFireflyClamp(value);
-		pushLiveFireflyClampToSession();
-	});
-	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Firefly Clamp:"),
-		tr("Caps the brightest possible sample value to suppress fireflies, "
-		"at the cost of clipping genuinely bright highlights. Lower values "
-		"clamp more aggressively.")),
-		6, 2);
-	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 6, 3);
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
