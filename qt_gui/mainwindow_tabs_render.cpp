@@ -1527,7 +1527,14 @@ void MainWindow::createRenderOptionsTab() {
 	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 5, 1);
 
 	m_liveSamplesSpinBox = new QSpinBox();
-	m_liveSamplesSpinBox->setRange(1, 16);
+	// Raised from 16 - Live Preview intentionally uses a small per-call
+	// sample count so it stays responsive to camera moves/setting changes
+	// between frames (see this spinbox's own tooltip and
+	// RealtimePreviewWorker::renderLoop()'s own comment on why), but 16 was
+	// too low a ceiling for anyone wanting a heavier per-call cost in
+	// exchange for faster convergence on a static frame - the caller still
+	// chooses how high to actually go.
+	m_liveSamplesSpinBox->setRange(1, 64);
 	m_liveSamplesSpinBox->setValue(m_liveSamples);
 	styleSpinBox(m_liveSamplesSpinBox);
 	auto pushSppMaxDepth = [this]() {
