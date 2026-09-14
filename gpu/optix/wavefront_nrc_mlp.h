@@ -18,7 +18,7 @@
 // no fp16/WMMA - see this project's own plan for why tensor cores don't
 // help this workload's shape).
 //
-// Network: Input(38) -> Linear+ReLU(64) -> Linear+ReLU(64) -> Linear+ReLU(64)
+// Network: Input(35) -> Linear+ReLU(64) -> Linear+ReLU(64) -> Linear+ReLU(64)
 // -> Linear(3) -> softplus. Weight layout/offsets: wavefront_nrc_types.h.
 //
 // Deliberately dependency-free beyond wavefront_nrc_types.h's layout

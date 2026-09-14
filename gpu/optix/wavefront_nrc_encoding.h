@@ -6,7 +6,7 @@
 //
 // wf_nrc_encode_features() turns 7 raw physical quantities (position,
 // outgoing direction, normal, roughness, diffuse/specular albedo) into the
-// kNrcInputDim=38 encoded floats wf_nrc_forward() (wavefront_nrc_mlp.h)
+// kNrcInputDim=35 encoded floats wf_nrc_forward() (wavefront_nrc_mlp.h)
 // actually consumes. Forward-only: nothing downstream ever needs a gradient
 // with respect to the RAW inputs (they're observed data, not optimized
 // parameters), so unlike wf_nrc_forward()/wf_nrc_backward()'s matched pair,

@@ -2793,14 +2793,45 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// component - a hard backstop independent of whatever gradient
 	// clipping the training side applies, since this is a hand-written,
 	// from-scratch-trained model with no external correctness guarantee.
+	//
+	// IMPORTANT: the network is trained (nrc_bootstrap_and_train,
+	// wavefront_kernels_nrc.cu) to predict ONLY the radiance arriving at
+	// the queried vertex via CONTINUING the path beyond it (>=1 more
+	// bounce) - it deliberately does NOT include this same vertex's own
+	// direct-lighting term, which the classic/ReSTIR NEE block earlier in
+	// THIS function has already added to the framebuffer for the current
+	// hit. Substituting the network's output here is therefore additive
+	// with that real NEE, not a replacement for it - mirroring exactly how
+	// the world-space probe cache below is genuinely one-bounce-indirect-
+	// only (see its own header comment). An earlier version of this
+	// feature trained the network on the queried vertex's own TOTAL
+	// radiance (direct term included) and substituted it here anyway,
+	// silently double-counting that vertex's own direct light every time
+	// this block fired - a real, confirmed bug fixed at the training-
+	// target level (nrc_bootstrap_and_train), not by restructuring this
+	// function's own NEE/RR/substitution ordering.
 	if (nrcWeights != nullptr && !is_specular && depth >= kNrcMinDepth &&
 		(matType == MaterialType::Lambertian || matType == MaterialType::RoughMetal) &&
 		nrcTrainingSteps >= kNrcWarmupSteps) {
 		const float pTerm = fminf((float)(depth - kNrcMinDepth) * kNrcTerminationRamp, kNrcMaxTerminationProb);
 		if (wf_rand(seed) < pTerm) {
+			// glossyAlpha, NOT a fresh wf_glossy_alpha(materials[matIdx],
+			// do_regularize) call - do_regularize alone (without the
+			// caller's own `regularize` render-option flag folded in, see
+			// this function's own do_regularize parameter comment above)
+			// is NOT the same value the caller's real BSDF sample/NEE used
+			// for this material's alpha. glossyAlpha is that exact,
+			// already-computed value (0 for Lambertian, meaningless but
+			// harmless), keeping the query's own roughness feature
+			// bit-identical to what the real render path used - and to
+			// what the training pipeline computes (wavefront_kernels_nrc.cu
+			// always passes do_regularize=false, which would otherwise
+			// silently diverge from a regularized live query whenever
+			// do_regularize alone is true but the caller's real alpha
+			// wasn't regularized).
 			const float roughness = (matType == MaterialType::Lambertian)
 				? kNrcLambertianRoughnessSentinel
-				: wf_glossy_alpha(materials[matIdx], do_regularize);
+				: glossyAlpha;
 			float nrcFeatures[kNrcInputDim];
 			wf_nrc_encode_features(hit_point, scattered_dir, normal, roughness, materials[matIdx].albedo,
 									nrcAabbMin, nrcAabbExtent, nrcFeatures);

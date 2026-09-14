@@ -25,7 +25,7 @@
 #include "../../src/shared/cpu_gpu.h"
 
 // ---------------------------------------------------------------------------
-// Network architecture (see wavefront_nrc_encoding.h for how the 38 raw
+// Network architecture (see wavefront_nrc_encoding.h for how the 35 raw
 // input dims below are produced, and wavefront_nrc_mlp.h for the
 // forward/backward/Adam math that consumes these layout constants).
 // ---------------------------------------------------------------------------

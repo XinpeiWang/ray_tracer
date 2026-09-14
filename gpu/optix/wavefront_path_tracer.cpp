@@ -1600,17 +1600,36 @@ void WavefrontPathTracer::launchNrcTrainingUpdate(const WavefrontLaunchParams& l
 	// Lazy allocation (guarded by d_nrcWeights_ alone) - see this method's
 	// own declaration comment (wavefront_path_tracer.h) for the lifecycle
 	// rationale and the documented no-reset-on-scene-change simplification.
+	// Wrapped in try/catch: CUDA_CHECK throws std::runtime_error on failure
+	// (optix_types.h), and rt_realtime_render_frame()'s own top-level catch
+	// (optix_interface.cpp) swallows that per-frame rather than tearing down
+	// this persistent object - without the rollback below, a transient
+	// failure partway through (e.g. low VRAM while allocating the largest
+	// buffer, d_nrcTrainingRecords_) would leave d_nrcWeights_ non-null
+	// (guard already satisfied) but one or more LATER buffers still null,
+	// permanently skipping this whole block on every subsequent frame and
+	// leaving NRC broken for the rest of the session with no retry. Freeing
+	// and re-nulling everything on any exception here keeps the guard
+	// itself the single source of truth: non-null d_nrcWeights_ means ALL
+	// SIX buffers are valid, or none are.
 	if (!d_nrcWeights_) {
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcWeights_), kNrcNumWeights * sizeof(float)));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcAdamM_), kNrcNumWeights * sizeof(float)));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcAdamV_), kNrcNumWeights * sizeof(float)));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcGradAccum_), kNrcNumWeights * sizeof(float)));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcTrainingRecords_), kNrcTrainingRecordCapacity * sizeof(NrcTrainingRecord)));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcValidRecordCounter_), sizeof(int)));
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_nrcGradAccum_), 0, kNrcNumWeights * sizeof(float), stream_));
-		wf_launch_nrc_reset_weights(
-			reinterpret_cast<float*>(d_nrcWeights_), reinterpret_cast<float*>(d_nrcAdamM_), reinterpret_cast<float*>(d_nrcAdamV_),
-			/*seed=*/0x9E3779B9u, stream_);
+		try {
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcWeights_), kNrcNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcAdamM_), kNrcNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcAdamV_), kNrcNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcGradAccum_), kNrcNumWeights * sizeof(float)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcTrainingRecords_), kNrcTrainingRecordCapacity * sizeof(NrcTrainingRecord)));
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nrcValidRecordCounter_), sizeof(int)));
+			CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_nrcGradAccum_), 0, kNrcNumWeights * sizeof(float), stream_));
+			wf_launch_nrc_reset_weights(
+				reinterpret_cast<float*>(d_nrcWeights_), reinterpret_cast<float*>(d_nrcAdamM_), reinterpret_cast<float*>(d_nrcAdamV_),
+				/*seed=*/0x9E3779B9u, stream_);
+		} catch (...) {
+			auto freeDev = [](CUdeviceptr& p) { if (p) { cudaFree(reinterpret_cast<void*>(p)); p = 0; } };
+			freeDev(d_nrcWeights_); freeDev(d_nrcAdamM_); freeDev(d_nrcAdamV_);
+			freeDev(d_nrcGradAccum_); freeDev(d_nrcTrainingRecords_); freeDev(d_nrcValidRecordCounter_);
+			throw;
+		}
 	}
 
 	// Scene AABB reused directly from probeGridMeta_ - see nrcAabbMin_/
@@ -1643,6 +1662,20 @@ void WavefrontPathTracer::launchNrcTrainingUpdate(const WavefrontLaunchParams& l
 	// scope.
 	// ------------------------------------------------------------------
 	resetQueueCounter(reinterpret_cast<int*>(d_rayCounter_));
+	// dielectricHitQueue/missQueue are never READ during training (see this
+	// method's own comment above - a training ray reaching either just
+	// terminates, no record) so, unlike hitCounter/simpleHitCounter/
+	// nextRayCounter/shadowCounter below, their own counters don't need
+	// resetting every depth - only once here, before the loop. The OptiX
+	// intersect launch still WRITES into them each depth (any training ray
+	// that hits a Dielectric/RoughDielectric surface or escapes the scene
+	// pushes into one), but the total across every depth this whole method
+	// ever runs (at most kNrcTrainingPathsPerFrame=4096 rays each) is far
+	// below queueCapacity_ (width*height), so letting the counts accumulate
+	// unreset across the up-to-5 depth iterations can never overflow either
+	// buffer.
+	resetQueueCounter(reinterpret_cast<int*>(d_dielectricHitCounter_));
+	resetQueueCounter(reinterpret_cast<int*>(d_missCounter_));
 	WorkQueue<RayWorkItem> initialRayQueue;
 	initialRayQueue.items = reinterpret_cast<RayWorkItem*>(d_rayItems_);
 	initialRayQueue.counter = reinterpret_cast<int*>(d_rayCounter_);
@@ -1657,8 +1690,6 @@ void WavefrontPathTracer::launchNrcTrainingUpdate(const WavefrontLaunchParams& l
 
 		resetQueueCounter(reinterpret_cast<int*>(d_hitCounter_));
 		resetQueueCounter(reinterpret_cast<int*>(d_simpleHitCounter_));
-		resetQueueCounter(reinterpret_cast<int*>(d_dielectricHitCounter_));
-		resetQueueCounter(reinterpret_cast<int*>(d_missCounter_));
 		resetQueueCounter(reinterpret_cast<int*>(d_nextRayCounter_));
 		resetQueueCounter(reinterpret_cast<int*>(d_shadowCounter_));
 

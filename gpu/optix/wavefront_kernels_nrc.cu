@@ -61,18 +61,32 @@
 // ---------------------------------------------------------------------------
 // Shared NEE + record-write helper - used by both nrc_training_shade_simple
 // (Lambertian) and nrc_training_shade_full (RoughMetal) below. Writes
-// `record`'s position/normal/roughness/albedo fields and its own emission
-// (folded in directly, no occlusion needed - mirrors probe_cache_shade's
-// identical emission handling), draws one NEE light sample, and - if a
-// valid, non-degenerate sample was drawn - pushes a real spectral shadow
-// ray tagged isNrcTrainingRay=true so accumulate_shadow (wavefront_kernels_
-// accumulate.cu) redirects its resolved Ld into record->directRadiance once
-// occlusion is resolved. Does NOT set position/outgoingDir/albedo/roughness/
-// flags/nextRecordIndex - the caller does that itself before/after calling
-// this, since those differ between the Lambertian/RoughMetal cases.
+// `record`'s own emission (folded in directly, no occlusion needed - mirrors
+// probe_cache_shade's identical emission handling), draws one NEE light
+// sample, evaluates the CALLER-SUPPLIED `brdfFn(toLight)` (the material's own
+// f(wo,wi) at the sampled light direction - see this function's own
+// `brdfFn` parameter comment), and - if a valid, non-degenerate sample was
+// drawn - pushes a real spectral shadow ray tagged isNrcTrainingRay=true so
+// accumulate_shadow (wavefront_kernels_accumulate.cu) redirects its resolved
+// Ld into record->directRadiance once occlusion is resolved. Does NOT set
+// position/outgoingDir/albedo/roughness/flags/nextRecordIndex - the caller
+// does that itself before/after calling this, since those differ between
+// the Lambertian/RoughMetal cases.
+//
+// `brdfFn` is a per-material BSDF evaluation callback taking the sampled
+// light direction (world space) and returning f(wo,wi) as a plain RGB
+// (NOT yet multiplied by cosTheta - that's applied uniformly below). An
+// earlier version of this function hardcoded a Lambertian albedo/pi formula
+// unconditionally, including for RoughMetal training vertices - a real,
+// confirmed bug (RoughMetal's real BRDF is GGX-based, not diffuse), fixed
+// by making the BRDF evaluation the caller's own responsibility, matching
+// how wf_finish_material_scatter's own real NEE block (wavefront_device_
+// helpers.h) dispatches to a per-material evalGlossyF/albedo-only formula
+// rather than assuming one BRDF shape for every material type.
 // ---------------------------------------------------------------------------
+template <typename BrdfFn>
 __device__ __forceinline__ void wf_nrc_do_nee(
-	float3 hitPoint, float3 normal, float3 albedoRgb, unsigned int& seed, float time,
+	float3 hitPoint, float3 normal, unsigned int& seed, float time,
 	int recordIdx, float3 emission,
 	const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
 	const BilinearPatchData* bilinearPatches, const DiskData* disks, const CylinderData* cylinders,
@@ -81,7 +95,8 @@ __device__ __forceinline__ void wf_nrc_do_nee(
 	const TextureData* textures, const unsigned char* texturePixels,
 	WfLightBvhContext lightBvh, float shadowRayEpsilon,
 	NrcTrainingRecord* records,
-	WorkQueue<ShadowRayWorkItem>& shadowQueue)
+	WorkQueue<ShadowRayWorkItem>& shadowQueue,
+	BrdfFn brdfFn)
 {
 	NrcTrainingRecord& record = records[recordIdx];
 	record.directRadiance.x += emission.x;
@@ -102,14 +117,16 @@ __device__ __forceinline__ void wf_nrc_do_nee(
 	const float cosTheta = dot(normal, toLight);
 	if (!(cosTheta > 0.0f) || !(lightPdf > 1e-6f)) return;
 
+	const float3 brdfVal = brdfFn(toLight);
+	if (brdfVal.x <= 0.0f && brdfVal.y <= 0.0f && brdfVal.z <= 0.0f) return;
+
 	using SS  = SampledSpectrum<kWFNWavelengths>;
 	using SWL = SampledWavelengths<kWFNWavelengths>;
 	const SWL swl = SWL::SampleVisible(wf_rand(seed));
 
-	const SS lightSpec  = wf_lift_rgb_to_spectrum(rawEmission, swl, /*isIlluminant=*/true);
-	const SS albedoSpec = wf_lift_rgb_to_spectrum(albedoRgb, swl, /*isIlluminant=*/false);
-	const float invPi = 1.0f / 3.14159265f;
-	const SS Ld = (cosTheta * invPi / lightPdf) * albedoSpec * lightSpec;
+	const SS lightSpec = wf_lift_rgb_to_spectrum(rawEmission, swl, /*isIlluminant=*/true);
+	const SS brdfSpec  = wf_lift_rgb_to_spectrum(brdfVal, swl, /*isIlluminant=*/false);
+	const SS Ld = (cosTheta / lightPdf) * brdfSpec * lightSpec;
 	if (!(bool)Ld) return;
 
 	ShadowRayWorkItem sr;
@@ -224,26 +241,31 @@ extern "C" __global__ void nrc_training_shade_simple(
 	record.nextRecordIndex = (depth + 1 < maxDepth) ? (depth + 1) * kNrcTrainingPathsPerFrame + h.pixelIndex : -1;
 
 	unsigned int seed = h.seed;
-	wf_nrc_do_nee(h.hitPoint, h.normal, mat.albedo, seed, h.time, recordIdx, mat.emission,
+	const float3 lambertianAlbedo = mat.albedo;
+	wf_nrc_do_nee(h.hitPoint, h.normal, seed, h.time, recordIdx, mat.emission,
 				  spheres, quads, triangles, bilinearPatches, disks, cylinders,
 				  materials, lightIndices, lightKinds, aliasTable, numLights,
-				  textures, texturePixels, lightBvh, shadowRayEpsilon, records, shadowQueue);
+				  textures, texturePixels, lightBvh, shadowRayEpsilon, records, shadowQueue,
+				  [lambertianAlbedo](float3 /*toLight*/) -> float3 {
+					  const float invPi = 1.0f / 3.14159265f;
+					  return make_float3(lambertianAlbedo.x * invPi, lambertianAlbedo.y * invPi, lambertianAlbedo.z * invPi);
+				  });
 
 	if (record.nextRecordIndex < 0) return;  // last allowed depth - no continuation traced
 
-	// Cosine-weighted hemisphere sample - the standard Lambertian scatter
-	// direction (matches every other Lambertian-scatter call site in this
-	// codebase). throughputToNext == albedo exactly for this sampling
-	// scheme (brdf=albedo/pi, pdf=cosTheta/pi, brdf*cosTheta/pdf == albedo -
-	// the same identity wf_finish_material_scatter's own Lambertian case
-	// relies on).
-	float3 tangent = (fabsf(h.normal.x) > 0.9f) ? make_float3(0, 1, 0) : make_float3(1, 0, 0);
-	tangent = normalize(cross(tangent, h.normal));
-	const float3 bitangent = cross(h.normal, tangent);
-	float lx, ly;
-	SampleUniformDiskConcentric<float>(wf_rand(seed), wf_rand(seed), lx, ly);
-	const float lz = sqrtf(fmaxf(0.0f, 1.0f - lx * lx - ly * ly));
-	const float3 scatterDir = normalize(lx * tangent + ly * bitangent + lz * h.normal);
+	// Cosine-weighted hemisphere sample via the sphere-offset trick (Malley's
+	// method) - the SAME one-line formula every real Lambertian-scatter call
+	// site in this codebase actually uses (e.g. wavefront_kernels_materials.cu/
+	// wavefront_kernels_materials_simple.cu's own Lambertian cases), not the
+	// disk-sample+tangent-frame reconstruction an earlier version of this
+	// function used instead (a different, needlessly more expensive way to
+	// draw the same distribution - its own comment claiming it "matches
+	// every other call site" was incorrect). throughputToNext == albedo
+	// exactly for this sampling scheme (brdf=albedo/pi, pdf=cosTheta/pi,
+	// brdf*cosTheta/pdf == albedo - the same identity wf_finish_material_
+	// scatter's own Lambertian case relies on).
+	float3 scatterDir = normalize(h.normal + wf_rand_unit(seed));
+	if (wf_near_zero(scatterDir)) scatterDir = h.normal;
 	record.outgoingDir = scatterDir;
 	record.throughputToNext = mat.albedo;
 
@@ -317,21 +339,53 @@ extern "C" __global__ void nrc_training_shade_full(
 	record.nextRecordIndex = (depth + 1 < maxDepth) ? (depth + 1) * kNrcTrainingPathsPerFrame + h.pixelIndex : -1;
 
 	unsigned int seed = h.seed;
-	wf_nrc_do_nee(h.hitPoint, n, mat.albedo, seed, h.time, recordIdx, mat.emission,
+	// GGX microfacet reflection BRDF, f(wo,wi) = D(wm)*G(wo,wi)/(4*|cosTheta_o|*|cosTheta_i|),
+	// times RoughMetal's own flat albedo tint (no complex Fresnel - see
+	// MaterialType::RoughMetal's own comment, wavefront_kernels_materials.cu).
+	// An earlier version of this function passed wf_nrc_do_nee a plain
+	// Lambertian albedo/pi formula unconditionally - a real, confirmed bug
+	// (see wf_nrc_do_nee's own header comment): RoughMetal's real BRDF is
+	// this GGX formula, not diffuse, and using the wrong one here corrupted
+	// every RoughMetal training record's own direct-lighting target.
+	const TrowbridgeReitz<float> dist(alpha, alpha);
+	const float3 metalAlbedo = mat.albedo;
+	wf_nrc_do_nee(h.hitPoint, n, seed, h.time, recordIdx, mat.emission,
 				  spheres, quads, triangles, bilinearPatches, disks, cylinders,
 				  materials, lightIndices, lightKinds, aliasTable, numLights,
-				  textures, texturePixels, lightBvh, shadowRayEpsilon, records, shadowQueue);
+				  textures, texturePixels, lightBvh, shadowRayEpsilon, records, shadowQueue,
+				  [dist, tangent, bitangent, n, wi_x, wi_y, wi_z, metalAlbedo](float3 toLight) -> float3 {
+					  const float lx = dot(toLight, tangent), ly = dot(toLight, bitangent), lz = dot(toLight, n);
+					  if (lz <= 0.0f) return make_float3(0.0f, 0.0f, 0.0f);
+					  float wmx = wi_x + lx, wmy = wi_y + ly, wmz = wi_z + lz;
+					  const float wmLen = sqrtf(wmx * wmx + wmy * wmy + wmz * wmz);
+					  if (wmLen < 1e-8f) return make_float3(0.0f, 0.0f, 0.0f);
+					  wmx /= wmLen; wmy /= wmLen; wmz /= wmLen;
+					  const float denom = 4.0f * fabsf(wi_z) * fabsf(lz);
+					  if (denom < 1e-8f) return make_float3(0.0f, 0.0f, 0.0f);
+					  const float brdfScalar = dist.D(wmx, wmy, wmz) * dist.G(wi_x, wi_y, wi_z, lx, ly, lz) / denom;
+					  return make_float3(metalAlbedo.x * brdfScalar, metalAlbedo.y * brdfScalar, metalAlbedo.z * brdfScalar);
+				  });
 
 	// GGX VNDF sample - plain (non-guided) TrowbridgeReitz sampling, the
 	// exact same math the main render path's own RoughMetal case uses
 	// (guidingHistograms=nullptr degenerates wf_sample_guided_glossy to
 	// plain, unmodified GGX/VNDF sampling - see that function's own header
 	// comment, wavefront_device_helpers.h).
-	TrowbridgeReitz<float> dist(alpha, alpha);
 	WfGuidedGlossySample sample = wf_sample_guided_glossy(
 		dist, wi_x, wi_y, wi_z, tangent, bitangent, n, alpha, alpha,
 		h.hitPoint, GpuProbeGridMeta{}, /*guidingHistograms=*/nullptr, /*guidingProbes=*/nullptr, seed);
-	if (!sample.scattered || record.nextRecordIndex < 0) return;
+	if (!sample.scattered) {
+		// This record's own nextRecordIndex was already set to a real slot
+		// above (before sampling was known to succeed) - reset it to -1 so
+		// nrc_bootstrap_and_train correctly sees "no continuation" instead
+		// of a dangling index into a slot nothing will ever write this
+		// frame (nrc_bootstrap_and_train's own hasValidNext check already
+		// treats an unwritten slot as invalid via its Valid-flag check, so
+		// this reset is defense-in-depth, not a currently-reachable defect).
+		record.nextRecordIndex = -1;
+		return;
+	}
+	if (record.nextRecordIndex < 0) return;
 
 	const float3 scatterDir = normalize(sample.wo_x * tangent + sample.wo_y * bitangent + sample.wo_z * n);
 	record.outgoingDir = scatterDir;
@@ -365,6 +419,31 @@ extern "C" __global__ void nrc_training_shade_full(
 // kNrcRecordFlagValid set (never visited by Phase A this frame - the exact
 // same "0 means untouched" convention GpuProbe::numRaysEverTraced==0 uses).
 // ---------------------------------------------------------------------------
+// Queried at vertex i's own (position, outgoingDir, normal, roughness,
+// albedo), the network must predict ONLY the radiance arriving at i via
+// CONTINUING the path beyond i (>=1 more bounce) - NOT vertex i's own
+// direct-lighting term. This is what makes the render-path substitution
+// (wf_finish_material_scatter, wavefront_device_helpers.h) additive with -
+// not double-counting against - the real NEE that function ALREADY performs
+// for the current hit before the NRC query ever runs: real NEE supplies the
+// zero-bounce direct term, NRC supplies everything from one bounce onward,
+// exactly mirroring how the world-space probe cache's own SH-L1 value is
+// genuinely one-bounce-indirect-only (built from a SEPARATE secondary ray
+// traced from the probe's own position - see probe_grid_types.h's own
+// header comment) rather than the queried point's own total radiance.
+//
+// An earlier version of this kernel trained record i's own target as
+// `directRadiance_i + throughputToNext_i * network(i+1)` - i.e. vertex i's
+// OWN total outgoing radiance, direct term included. That is what the REAL
+// paper's network represents, but substituting it at the SAME vertex whose
+// own real NEE had already run (this codebase's own integration shape,
+// unlike a reference implementation that skips real NEE whenever the cache
+// is about to fire) silently double-counted that vertex's own direct light.
+// Fixed here at the training-target level instead of restructuring the
+// render path's own NEE/RR/substitution ordering: record i's target is
+// computed from vertex i+1's OWN direct term plus vertex i+1's own
+// bootstrapped continuation (querying the network at vertex i+2), i.e. a
+// two-hop lookup ahead of i rather than one.
 extern "C" __global__ void nrc_bootstrap_and_train(
 	const NrcTrainingRecord* records,
 	int numRecords,
@@ -377,19 +456,35 @@ extern "C" __global__ void nrc_bootstrap_and_train(
 	const NrcTrainingRecord& record = records[i];
 	if ((record.flags & kNrcRecordFlagValid) == 0) return;
 
-	float3 target = record.directRadiance;
+	// No valid vertex i+1 - no continuation exists beyond i (dead end,
+	// escaped the scene, or the last allowed training-path depth). Target
+	// is a plain 0: "querying the cache here should predict no further
+	// contribution", a reasonable approximation for a vertex this training
+	// pass never saw continue further (see this project's own plan's
+	// discussion of the finite training-depth limitation).
+	float3 target = make_float3(0.0f, 0.0f, 0.0f);
 	const bool hasValidNext = record.nextRecordIndex >= 0 &&
 		(records[record.nextRecordIndex].flags & kNrcRecordFlagValid) != 0;
 	if (hasValidNext) {
 		const NrcTrainingRecord& next = records[record.nextRecordIndex];
-		float nextFeatures[kNrcInputDim];
-		wf_nrc_encode_features(next.position, next.outgoingDir, next.normal, next.roughness, next.albedo,
-								aabbMin, aabbExtent, nextFeatures);
-		NrcForwardCache nextCache;
-		wf_nrc_forward(weights, nextFeatures, nextCache);
-		target.x += record.throughputToNext.x * nextCache.out[0];
-		target.y += record.throughputToNext.y * nextCache.out[1];
-		target.z += record.throughputToNext.z * nextCache.out[2];
+		float3 nextTotal = next.directRadiance;
+		const bool hasValidNextNext = next.nextRecordIndex >= 0 &&
+			(records[next.nextRecordIndex].flags & kNrcRecordFlagValid) != 0;
+		if (hasValidNextNext) {
+			const NrcTrainingRecord& nextNext = records[next.nextRecordIndex];
+			float nextNextFeatures[kNrcInputDim];
+			wf_nrc_encode_features(nextNext.position, nextNext.outgoingDir, nextNext.normal,
+									nextNext.roughness, nextNext.albedo,
+									aabbMin, aabbExtent, nextNextFeatures);
+			NrcForwardCache nextNextCache;
+			wf_nrc_forward(weights, nextNextFeatures, nextNextCache);
+			nextTotal.x += next.throughputToNext.x * nextNextCache.out[0];
+			nextTotal.y += next.throughputToNext.y * nextNextCache.out[1];
+			nextTotal.z += next.throughputToNext.z * nextNextCache.out[2];
+		}
+		target.x = record.throughputToNext.x * nextTotal.x;
+		target.y = record.throughputToNext.y * nextTotal.y;
+		target.z = record.throughputToNext.z * nextTotal.z;
 	}
 
 	float features[kNrcInputDim];
