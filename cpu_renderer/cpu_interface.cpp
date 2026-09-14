@@ -496,6 +496,33 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// Apply camera config from registry
 		const CameraConfig& cc = scene_desc->camera;
 		applyCameraConfig(cam, cc, cam_x, cam_y, cam_z, force_camera_override);
+		// Depth-of-field override (RenderOptions::aperture_override/
+		// focus_distance_override - see their own comment, render_options.h).
+		// Applied here, not inside applyCameraConfig(), because that function
+		// is also shared by cpu_render_main_sppm() below, which has no
+		// RenderOptions parameter to source this from (same "default path
+		// tracer only" scope cut as max_component_value/seed/regularize).
+		if (options.aperture_override >= 0.0 || options.focus_distance_override >= 0.0) {
+			const double origFocusDist = cam.focus_dist;
+			const double effFocusDist = (options.focus_distance_override >= 0.0)
+				? options.focus_distance_override : origFocusDist;
+			// lens_radius (world units): the override value if given, else
+			// the scene's OWN aperture - recovered from its own (pre-
+			// override) defocus_angle/focus_dist pair via the inverse of
+			// pbrt_flatten::defocusAngleDegreesFor()'s formula. Without this
+			// fallback, overriding ONLY focus distance would silently scale
+			// the effective aperture too (defocus_angle encodes
+			// lens_radius/focus_dist jointly, not lens_radius alone).
+			const double lens_radius = (options.aperture_override >= 0.0)
+				? options.aperture_override * 0.5
+				: (origFocusDist > 0.0
+					? origFocusDist * std::tan((cam.defocus_angle * 3.14159265358979323846 / 180.0) / 2.0)
+					: 0.0);
+			cam.focus_dist = effFocusDist;
+			cam.defocus_angle = (lens_radius > 0.0 && effFocusDist > 0.0)
+				? 2.0 * std::atan(lens_radius / effFocusDist) * 180.0 / 3.14159265358979323846
+				: 0.0;
+		}
 		std::cout << "[cpu_interface] Camera: vfov=" << cc.vfov
 				  << " lookfrom=(" << cam.lookfrom.x() << "," << cam.lookfrom.y() << "," << cam.lookfrom.z() << ")"
 				  << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;

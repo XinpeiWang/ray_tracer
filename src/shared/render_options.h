@@ -79,6 +79,22 @@ struct RenderOptions {
 	// requested", so a scene's own cropwindow/pixelbounds directive still
 	// applies unless this differs. Both backends, default path tracer only.
 	double crop_x0 = 0.0, crop_y0 = 0.0, crop_x1 = 1.0, crop_y1 = 1.0;
+	// An explicit request to override the scene's own camera lens
+	// diameter ("lensradius"*2, world units) / focus distance
+	// ("focaldistance"/"focusdistance") - thin-lens depth-of-field math
+	// already exists end to end (pbrt_flatten::Camera::aperture/
+	// focusDistance, both CPU cameras, and the GPU pbrt-scene camera
+	// branch in scene_builder.cpp); this only lets a value be set/changed
+	// without hand-editing the scene file. -1.0 (not 1e9, unlike
+	// max_component_value above) means "not requested" for BOTH fields,
+	// since 0.0 is a legitimate aperture value (pinhole, no blur) that
+	// must remain distinguishable from "unset" - same "-1 = not
+	// requested" shape as seed below. Only applies to scenes loaded from
+	// a scene file (see gpu/optix/scene_builder.cpp's one pbrt-camera
+	// branch); has no effect on the hardcoded native demo-gallery
+	// scenes, which keep their own fixed camera.
+	double aperture_override = -1.0;
+	double focus_distance_override = -1.0;
 	// Real hero-wavelength spectral rendering instead of flat RGB. CPU
 	// default path tracer only, 6-material whitelist (see camera.h's
 	// ray_color_spectral()'s own comment).

@@ -1456,6 +1456,57 @@ void MainWindow::createRenderOptionsTab() {
 		"blurs its training data.")),
 		8, 0, 1, 4);
 
+	// Depth-of-field override - see RenderOptions::aperture_override's own
+	// comment (render_options.h). Unlike Neural Reconstruction above, no
+	// hard dependency on any other Live Preview control. Own row (9), after
+	// Neural Reconstruction's own row (8) above.
+	m_liveDofCheck = new QCheckBox(tr("Depth of Field"));
+	m_liveDofCheck->setChecked(m_liveDofEnabled);
+	styleCheckBox(m_liveDofCheck);
+	connect(m_liveDofCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_liveDofEnabled = checked;
+		saveLiveDofEnabled(checked);
+		pushLiveDofToSession();
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveDofCheck,
+		tr("Overrides the active scene's own camera lens diameter/focus "
+		"distance with the values below, without editing the scene file. "
+		"Only affects scenes loaded from a scene file - has no effect on "
+		"the built-in demo gallery, which keeps its own fixed camera.")),
+		9, 0, 1, 4);
+
+	m_liveApertureSpin = new QDoubleSpinBox();
+	m_liveApertureSpin->setRange(0.0, 100.0);
+	m_liveApertureSpin->setSingleStep(0.1);
+	m_liveApertureSpin->setValue(m_liveAperture);
+	styleSpinBox(m_liveApertureSpin);
+	connect(m_liveApertureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveAperture = value;
+		saveLiveAperture(value);
+		pushLiveDofToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Aperture:"),
+		tr("Lens diameter in world units - larger values blur more. 0 means "
+		"pinhole-sharp (no blur).")),
+		10, 0);
+	liveRenderSettingsGrid->addWidget(m_liveApertureSpin, 10, 1);
+
+	m_liveFocusDistanceSpin = new QDoubleSpinBox();
+	m_liveFocusDistanceSpin->setRange(0.01, 100000.0);
+	m_liveFocusDistanceSpin->setSingleStep(1.0);
+	m_liveFocusDistanceSpin->setValue(m_liveFocusDistance);
+	styleSpinBox(m_liveFocusDistanceSpin);
+	connect(m_liveFocusDistanceSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveFocusDistance = value;
+		saveLiveFocusDistance(value);
+		pushLiveDofToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Focus Distance:"),
+		tr("Distance from the camera to the plane of sharp focus, in world "
+		"units.")),
+		10, 2);
+	liveRenderSettingsGrid->addWidget(m_liveFocusDistanceSpin, 10, 3);
+
 	// The four numeric values grouped into their own clean 2-per-row grid
 	// (rows 5-6), separate from the checkboxes above.
 	m_liveExposureSpin = new QDoubleSpinBox();
@@ -1631,6 +1682,83 @@ void MainWindow::createRenderOptionsTab() {
 	layout->addWidget(cropGroup);
 
 	// ------------------------------------------------------------------
+	// Depth of Field group
+	// ------------------------------------------------------------------
+	// Not gated on isDefault/sppmSelected below (unlike maxComponentValue/
+	// crop/seed) - camera ray generation, and therefore this override, is
+	// shared by every integrator INCLUDING SPPM (see the accelerator/
+	// splitmethod comment further down for the identical reasoning) with
+	// one real exception: cpu_render_main_sppm()/optix_render_main_sppm()
+	// don't currently receive RenderOptions at all, so this override is
+	// silently a no-op under --sppm specifically, not just on the native
+	// demo gallery - a known, narrower-than-ideal limitation left for a
+	// follow-up rather than threading RenderOptions into the SPPM entry
+	// points too.
+	InfoGroupBox *dofGroup = new InfoGroupBox(tr("Depth of Field"), optionsTab);
+	styleGroupBox(dofGroup);
+	dofGroup->setInfoIcon(createInfoIcon(
+		tr("Override the active scene's own camera lens diameter/focus "
+		"distance without editing its scene file - only affects scenes "
+		"loaded from a scene file; built-in demo-gallery scenes keep their "
+		"own fixed camera.")));
+	QFormLayout *dofLayout = new QFormLayout(dofGroup);
+	dofLayout->setVerticalSpacing(10);
+	dofLayout->setHorizontalSpacing(10);
+	dofLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_dofOverrideCheck = new QCheckBox(tr("Override depth of field (--aperture/--focus-distance)"), optionsTab);
+	m_dofOverrideCheck->setToolTip(
+		tr("Sets the camera's lens diameter and focus distance, overriding\n"
+		"whatever the scene's own Camera directive requests. Only affects\n"
+		"scenes loaded from a scene file - has no effect on the built-in\n"
+		"demo gallery, which keeps its own fixed camera."));
+	styleCheckBox(m_dofOverrideCheck);
+	dofLayout->addRow(checkboxWithInfo(m_dofOverrideCheck,
+		tr("Thin-lens depth-of-field blur is already fully supported for any "
+		"scene loaded from a scene file - a \"lensradius\"/\"focaldistance\" "
+		"Camera directive in the file is all it takes. This lets you set or "
+		"change that without hand-editing the file: Aperture is the lens "
+		"diameter in world units (0 = pinhole-sharp, no blur), and Focus "
+		"Distance is how far away the plane of sharp focus sits.\n\n"
+		"Off by default (the scene's own camera, unchanged). Only affects "
+		"scenes loaded from a scene file - the built-in demo gallery's "
+		"scenes keep their own author-chosen fixed camera regardless of "
+		"this setting.")));
+
+	m_apertureSpin = new QDoubleSpinBox(optionsTab);
+	m_apertureSpin->setRange(0.0, 100.0);
+	m_apertureSpin->setSingleStep(0.1);
+	m_apertureSpin->setValue(1.0);
+	m_apertureSpin->setEnabled(false);
+	m_apertureSpin->setToolTip(m_dofOverrideCheck->toolTip());
+	styleSpinBox(m_apertureSpin);
+	QWidget *apertureLabel = labelWithInfo(tr("Aperture:"),
+		tr("Lens diameter in world units - larger values blur more. 0 means "
+		"pinhole-sharp (no blur)."));
+	dofLayout->addRow(apertureLabel, m_apertureSpin);
+
+	m_focusDistanceSpin = new QDoubleSpinBox(optionsTab);
+	m_focusDistanceSpin->setRange(0.01, 100000.0);
+	m_focusDistanceSpin->setSingleStep(1.0);
+	m_focusDistanceSpin->setValue(10.0);
+	m_focusDistanceSpin->setEnabled(false);
+	m_focusDistanceSpin->setToolTip(m_dofOverrideCheck->toolTip());
+	styleSpinBox(m_focusDistanceSpin);
+	QWidget *focusDistanceLabel = labelWithInfo(tr("Focus Distance:"),
+		tr("Distance from the camera to the plane of sharp focus, in world "
+		"units."));
+	dofLayout->addRow(focusDistanceLabel, m_focusDistanceSpin);
+
+	connect(m_dofOverrideCheck, &QCheckBox::toggled, m_apertureSpin, &QDoubleSpinBox::setEnabled);
+	connect(m_dofOverrideCheck, &QCheckBox::toggled, m_focusDistanceSpin, &QDoubleSpinBox::setEnabled);
+	connect(m_dofOverrideCheck, &QCheckBox::toggled, apertureLabel, &QWidget::setEnabled);
+	connect(m_dofOverrideCheck, &QCheckBox::toggled, focusDistanceLabel, &QWidget::setEnabled);
+	apertureLabel->setEnabled(m_dofOverrideCheck->isChecked());
+	focusDistanceLabel->setEnabled(m_dofOverrideCheck->isChecked());
+
+	layout->addWidget(dofGroup);
+
+	// ------------------------------------------------------------------
 	// Seed group
 	// ------------------------------------------------------------------
 	InfoGroupBox *seedGroup = new InfoGroupBox(tr("Reproducibility"), optionsTab);
@@ -1755,6 +1883,13 @@ void MainWindow::updateRenderOptionsEnabled() {
 	const bool splitMethodMeaningful =
 		!gpuSelected && m_acceleratorCombo->currentData().toString() != QStringLiteral("kdtree");
 	m_splitMethodCombo->setEnabled(splitMethodMeaningful);
+	// m_dofOverrideCheck/m_apertureSpin/m_focusDistanceSpin are likewise NOT
+	// gated on isDefault here, same reasoning as accelerator/splitmethod
+	// just above: depth-of-field lens sampling lives in camera ray
+	// generation itself (camera.h's get_ray()/GPU's wf_generate_primary_ray),
+	// shared unconditionally by every integrator (AO, SimplePath, BDPT/MLT,
+	// SPPM, the default path tracer), not gated behind any one integrator's
+	// own logic the way maxComponentValue/crop/seed above are.
 }
 
 void MainWindow::createPreviewTab() {
@@ -2092,7 +2227,8 @@ void MainWindow::startLivePreview() {
 								 m_liveProbeCacheEnabled, m_livePathGuidingEnabled,
 								 m_liveSamples, m_liveMaxDepth, m_liveFireflyClamp,
 								 m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor, m_liveNrcEnabled,
-								 m_liveNeuralUpscaleEnabled);
+								 m_liveNeuralUpscaleEnabled,
+							 m_liveDofEnabled, m_liveAperture, m_liveFocusDistance);
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -2219,6 +2355,11 @@ void MainWindow::pushLiveNrcToSession() {
 void MainWindow::pushLiveNeuralUpscaleToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setNeuralUpscale(m_liveNeuralUpscaleEnabled);
+}
+
+void MainWindow::pushLiveDofToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setDof(m_liveDofEnabled, m_liveAperture, m_liveFocusDistance);
 }
 
 void MainWindow::pushLiveTemporalUpscaleToSession() {
@@ -2505,6 +2646,36 @@ bool MainWindow::loadSavedLiveNeuralUpscaleEnabled() const {
 void MainWindow::saveLiveNeuralUpscaleEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewNeuralUpscaleEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLiveDofEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewDofEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLiveDofEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewDofEnabledKey, value);
+}
+
+double MainWindow::loadSavedLiveAperture() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewApertureKey, 1.0).toDouble();
+}
+
+void MainWindow::saveLiveAperture(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewApertureKey, value);
+}
+
+double MainWindow::loadSavedLiveFocusDistance() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewFocusDistanceKey, 10.0).toDouble();
+}
+
+void MainWindow::saveLiveFocusDistance(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewFocusDistanceKey, value);
 }
 
 int MainWindow::loadSavedLiveTemporalUpscaleFactor() const {

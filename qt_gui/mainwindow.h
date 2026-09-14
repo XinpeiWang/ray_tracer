@@ -350,6 +350,7 @@ private:
 	void pushLivePathGuidingToSession();
 	void pushLiveNrcToSession();
 	void pushLiveNeuralUpscaleToSession();
+	void pushLiveDofToSession();
 	void pushLiveTemporalUpscaleToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
@@ -449,6 +450,12 @@ private:
 	void saveLiveNrcEnabled(bool value) const;
 	bool loadSavedLiveNeuralUpscaleEnabled() const;
 	void saveLiveNeuralUpscaleEnabled(bool value) const;
+	bool loadSavedLiveDofEnabled() const;
+	void saveLiveDofEnabled(bool value) const;
+	double loadSavedLiveAperture() const;
+	void saveLiveAperture(double value) const;
+	double loadSavedLiveFocusDistance() const;
+	void saveLiveFocusDistance(double value) const;
 	int loadSavedLiveTemporalUpscaleFactor() const;
 	void saveLiveTemporalUpscaleFactor(int value) const;
 	double loadSavedLiveExposure() const;
@@ -917,6 +924,18 @@ private:
 	// own checkbox already established for its probe-cache dependency.
 	bool m_liveNeuralUpscaleEnabled = false;
 	QCheckBox *m_liveNeuralUpscaleCheck = nullptr;
+	// Depth-of-field override (RenderOptions::aperture_override/
+	// focus_distance_override's own comment, render_options.h). Unlike
+	// m_liveNeuralUpscaleEnabled above, has no hard dependency on any other
+	// Live Preview control - only affects scenes loaded from a scene file
+	// (see this project's own DOF plan for that scope decision); has no
+	// effect on the native demo-gallery scenes.
+	bool m_liveDofEnabled = false;
+	double m_liveAperture = 1.0;
+	double m_liveFocusDistance = 10.0;
+	QCheckBox *m_liveDofCheck = nullptr;
+	QDoubleSpinBox *m_liveApertureSpin = nullptr;
+	QDoubleSpinBox *m_liveFocusDistanceSpin = nullptr;
 	// Live Preview's temporal upscale feature (see this project's own plan).
 	// Plain int (1/2/4, not a bool+separate-int pair) since the combo's own
 	// selected factor IS the setting - no pre-existing bool pair to
@@ -1063,6 +1082,16 @@ private:
 	QDoubleSpinBox *m_cropY0Spin;
 	QDoubleSpinBox *m_cropX1Spin;
 	QDoubleSpinBox *m_cropY1Spin;
+	// --aperture/--focus-distance (both backends, scene-file-loaded scenes
+	// only - see RenderOptions::aperture_override's own comment,
+	// render_options.h). Both spinboxes only enabled/emitted when the
+	// checkbox is checked, same "avoid showing a confusing sentinel"
+	// reasoning as maxcomponentvalue/crop above. Not persisted, same as
+	// m_maxComponentValueCheck/Spin above (this pair has no Live Preview
+	// settings-backed counterpart the way m_liveDofCheck below does).
+	QCheckBox *m_dofOverrideCheck;
+	QDoubleSpinBox *m_apertureSpin;
+	QDoubleSpinBox *m_focusDistanceSpin;
 	// --seed (both backends, default path tracer only) - an explicit
 	// request for a reproducible render. Spinbox only enabled/emitted when
 	// the checkbox is checked, same "avoid showing a confusing sentinel"

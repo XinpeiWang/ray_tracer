@@ -189,5 +189,15 @@ bool build_scene(
 	bool has_custom_lookat = false,
 	double lookat_x = 0.0,
 	double lookat_y = 0.0,
-	double lookat_z = 0.0
+	double lookat_z = 0.0,
+	// Depth-of-field override (RenderOptions::aperture_override/
+	// focus_distance_override's own comment, render_options.h) - only
+	// consulted by the one pbrt-scene camera branch in scene_builder.cpp;
+	// the hardcoded native demo-gallery branches ignore it and keep their
+	// own fixed camera (see this project's own DOF plan for that scope
+	// decision). Same "extra trailing default params" shape as
+	// has_custom_lookat/lookat_x/y/z above.
+	bool has_dof_override = false,
+	double aperture_override = 0.0,
+	double focus_distance_override = 0.0
 );

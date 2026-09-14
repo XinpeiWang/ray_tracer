@@ -236,6 +236,17 @@ struct LaunchArgs {
 	// seeding) narrows to a 32-bit int, so a value is validated here
 	// rather than silently wrapping (possibly negative) further downstream.
 	long long seed = -1;
+	// An explicit override for the scene's own camera lens diameter
+	// ("lensradius"*2, world units) / focus distance - see
+	// RenderOptions::aperture_override's own comment (render_options.h)
+	// for the full "-1 = not requested, unlike max_component_value's 1e9"
+	// reasoning and the scene-file-only scope cut. parse_launch_args()
+	// (below) rejects a negative --aperture value at parse time (a
+	// negative lens diameter is meaningless, unlike --focus-distance
+	// which only needs to reject <= 0 since focus distance 0 is
+	// meaningless too, not just negative).
+	double aperture_override = -1.0;
+	double focus_distance_override = -1.0;
 	// Real hero-wavelength spectral rendering (camera.h's ray_color_spectral(),
 	// see its own comment) instead of the default flat-RGB ray_color() -
 	// CPU default path tracer only, same scope cut as exposure/sampler
@@ -513,6 +524,28 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 								if (v <= 0.0) {
 									std::cerr << "Warning: --maxcomponentvalue " << v
 											  << " is <= 0, every sample will clamp to black\n";
+								}
+								return v;
+							});
+		} else if (arg == render_flags::kAperture && i + 1 < argc) {
+			parseDoubleFlag(argv, i, consumed_args, out.aperture_override,
+							"Invalid --aperture value, ignoring\n", false, -1.0,
+							[](double v) {
+								if (v < 0.0) {
+									std::cerr << "Warning: --aperture " << v
+											  << " is negative (a lens diameter can't be), ignoring\n";
+									return -1.0;
+								}
+								return v;
+							});
+		} else if (arg == render_flags::kFocusDistance && i + 1 < argc) {
+			parseDoubleFlag(argv, i, consumed_args, out.focus_distance_override,
+							"Invalid --focus-distance value, ignoring\n", false, -1.0,
+							[](double v) {
+								if (v <= 0.0) {
+									std::cerr << "Warning: --focus-distance " << v
+											  << " is <= 0, ignoring\n";
+									return -1.0;
 								}
 								return v;
 							});

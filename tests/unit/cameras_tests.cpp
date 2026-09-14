@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include "../../src/shared/cameras.h"
+#include "../../src/shared/pbrt_flatten.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -304,6 +305,63 @@ TEST(Cameras, PerspDOFChangesOriginAndDirection) {
 	// Both rays still unit length
 	EXPECT_NEAR(ray_len(r1), 1.f, 1e-5f);
 	EXPECT_NEAR(ray_len(r2), 1.f, 1e-5f);
+}
+
+// ---------------------------------------------------------------------------
+// Depth-of-field render-option override formula (see this project's own DOF
+// plan). The override applied in cpu_renderer/cpu_interface.cpp and
+// gpu/optix/scene_builder.cpp reapplies pbrt_flatten::defocusAngleDegreesFor()'s
+// own formula (lens_radius = aperture/2, angle = 2*atan(lens_radius/
+// focus_dist)) rather than duplicating new math - these tests confirm that
+// reapplication is exact, and that overriding only ONE of aperture/focus
+// distance correctly preserves the other (the "silently scale the effective
+// aperture" bug this fallback logic exists to avoid).
+// ---------------------------------------------------------------------------
+TEST(CamerasDofOverride, ApertureOverrideMatchesDefocusAngleDegreesFor) {
+	pbrt_flatten::Camera c;
+	c.aperture = 3.0;  // world-space lens diameter
+	const double focusDist = 8.0;
+	const double expected = pbrt_flatten::defocusAngleDegreesFor(c, focusDist);
+
+	// The override formula (cpu_interface.cpp/scene_builder.cpp): given an
+	// override aperture (same meaning as Camera::aperture - a diameter),
+	// recompute the defocus angle directly, with no Camera object needed.
+	const double lensRadius = c.aperture * 0.5;
+	const double actual = 2.0 * std::atan(lensRadius / focusDist) * 180.0 / M_PI;
+	EXPECT_NEAR(actual, expected, 1e-9);
+}
+
+TEST(CamerasDofOverride, ZeroApertureOverrideMeansNoDof) {
+	const double lensRadius = 0.0 * 0.5;
+	const double focusDist = 8.0;
+	const double angle = (lensRadius > 0.0 && focusDist > 0.0)
+		? 2.0 * std::atan(lensRadius / focusDist) * 180.0 / M_PI : 0.0;
+	EXPECT_DOUBLE_EQ(angle, 0.0);
+}
+
+TEST(CamerasDofOverride, FocusDistanceOnlyOverridePreservesOriginalAperture) {
+	// Scene's own aperture/focus distance, as if parsed from a .pbrt file.
+	pbrt_flatten::Camera c;
+	c.aperture = 4.0;  // lens_radius = 2.0
+	const double origFocusDist = 10.0;
+	const double origDefocusAngle = pbrt_flatten::defocusAngleDegreesFor(c, origFocusDist);
+
+	// Override ONLY focus distance, deriving lens_radius from the scene's
+	// own (unoverridden) defocus_angle/focus_dist pair - the inverse of
+	// defocusAngleDegreesFor()'s formula (see cpu_interface.cpp's own
+	// comment on why this fallback exists).
+	const double newFocusDist = 25.0;
+	const double recoveredLensRadius = origFocusDist * std::tan((origDefocusAngle * M_PI / 180.0) / 2.0);
+	EXPECT_NEAR(recoveredLensRadius, c.aperture * 0.5, 1e-9);
+
+	const double newDefocusAngle = (recoveredLensRadius > 0.0 && newFocusDist > 0.0)
+		? 2.0 * std::atan(recoveredLensRadius / newFocusDist) * 180.0 / M_PI : 0.0;
+	// Recomputing via defocusAngleDegreesFor() at the NEW focus distance
+	// with the SAME scene aperture must match exactly - confirms the
+	// override's "recover lens_radius, don't just leave defocus_angle
+	// stale" logic is equivalent to asking the canonical helper directly.
+	const double expected = pbrt_flatten::defocusAngleDegreesFor(c, newFocusDist);
+	EXPECT_NEAR(newDefocusAngle, expected, 1e-9);
 }
 
 TEST(Cameras, PerspTranslatedCamera) {

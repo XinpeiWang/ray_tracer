@@ -141,6 +141,15 @@ struct AdvancedRenderFlags {
 	// only meaningful (and only emitted as --crop) when true.
 	bool cropEnabled = false;
 	double cropX0 = 0.0, cropY0 = 0.0, cropX1 = 1.0, cropY1 = 1.0;
+	// dofOverrideEnabled false = "not requested"; apertureOverride/
+	// focusDistanceOverride below are only meaningful (and only emitted as
+	// --aperture/--focus-distance) when true - same "boolean gate + raw
+	// fields" shape as cropEnabled/cropX0 above, not maxComponentValue's
+	// single-sentinel shape, since this is two related numbers rather than
+	// one. Only affects scenes loaded from a scene file (see
+	// RenderOptions::aperture_override's own comment, render_options.h).
+	bool dofOverrideEnabled = false;
+	double apertureOverride = 0.0, focusDistanceOverride = 0.0;
 	// -1 = "not requested" (matches the CLI's own sentinel exactly, unlike
 	// maxComponentValue/cropEnabled above - the CLI already rejects a
 	// negative --seed, so there's no separate GUI-only sentinel needed).

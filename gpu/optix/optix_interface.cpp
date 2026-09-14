@@ -81,7 +81,10 @@ static bool prepareSceneAndCamera(
 	bool has_custom_lookat = false,
 	double lookat_x = 0.0,
 	double lookat_y = 0.0,
-	double lookat_z = 0.0
+	double lookat_z = 0.0,
+	bool has_dof_override = false,
+	double aperture_override = 0.0,
+	double focus_distance_override = 0.0
 ) {
 	errorCode = 0;
 	if (verbose) {
@@ -116,13 +119,15 @@ static bool prepareSceneAndCamera(
 	if (verbose) {
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
 							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
-							   has_custom_lookat, lookat_x, lookat_y, lookat_z);
+							   has_custom_lookat, lookat_x, lookat_y, lookat_z,
+							   has_dof_override, aperture_override, focus_distance_override);
 	} else {
 		std::ostringstream discard;
 		std::streambuf* oldCerrBuf = std::cerr.rdbuf(discard.rdbuf());
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
 							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
-							   has_custom_lookat, lookat_x, lookat_y, lookat_z);
+							   has_custom_lookat, lookat_x, lookat_y, lookat_z,
+							   has_dof_override, aperture_override, focus_distance_override);
 		std::cerr.rdbuf(oldCerrBuf);
 	}
 
@@ -307,9 +312,18 @@ extern "C" int optix_render_main(
 
 		GpuCameraParams cameraExtra;
 		int prepareErrorCode = 0;
+		// Depth-of-field override (RenderOptions::aperture_override/
+		// focus_distance_override) - see prepareSceneAndCamera()'s own new
+		// trailing params. has_custom_lookat/lookat_x/y/z must be spelled
+		// out here (rather than left to their defaults) since C++ can't
+		// skip earlier default params to reach later ones by position -
+		// this offline single-frame path never uses a custom lookat.
 		if (!prepareSceneAndCamera(scene_id, image_width, image_height, cam_x, cam_y, cam_z,
 									 force_camera_override != 0, wavefrontMode, ptxPath, /*verbose=*/true,
-									 cameraExtra, prepareErrorCode)) {
+									 cameraExtra, prepareErrorCode,
+									 /*has_custom_lookat=*/false, /*lookat_x=*/0.0, /*lookat_y=*/0.0, /*lookat_z=*/0.0,
+									 /*has_dof_override=*/options.aperture_override >= 0.0 || options.focus_distance_override >= 0.0,
+									 options.aperture_override, options.focus_distance_override)) {
 			return prepareErrorCode;
 		}
 
@@ -581,7 +595,9 @@ extern "C" bool rt_realtime_render_frame(
 	unsigned int temporal_jitter_base_index,
 	bool enable_nrc,
 	bool enable_neural_upscale,
-	float* out_neural_upscale_buffer
+	float* out_neural_upscale_buffer,
+	double aperture_override,
+	double focus_distance_override
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -641,6 +657,14 @@ extern "C" bool rt_realtime_render_frame(
 		// cache entry.
 		static bool s_cachedHasCustomLookAt = false;
 		static double s_cachedLookAtX = 0.0, s_cachedLookAtY = 0.0, s_cachedLookAtZ = 0.0;
+		// Depth-of-field override is part of the cache key too, alongside
+		// lookat - changing the aperture/focus-distance sliders while the
+		// camera stays still must not hit a stale cameraExtra computed
+		// before that change (build_scene()'s pbrt-camera branch is where
+		// this override is actually applied, not read back out of
+		// GpuCameraParams afterward, so there's no cheaper way to detect
+		// "did the override change" than comparing the raw inputs here).
+		static double s_cachedApertureOverride = -1.0, s_cachedFocusDistanceOverride = -1.0;
 		static GpuCameraParams s_cachedCameraExtra{};
 		static bool s_haveCache = false;
 
@@ -657,7 +681,8 @@ extern "C" bool rt_realtime_render_frame(
 			s_cachedWidth == image_width && s_cachedHeight == image_height &&
 			s_cachedCamX == cam_x && s_cachedCamY == cam_y && s_cachedCamZ == cam_z &&
 			s_cachedHasCustomLookAt == has_custom_lookat &&
-			(!has_custom_lookat || (s_cachedLookAtX == lookat_x && s_cachedLookAtY == lookat_y && s_cachedLookAtZ == lookat_z));
+			(!has_custom_lookat || (s_cachedLookAtX == lookat_x && s_cachedLookAtY == lookat_y && s_cachedLookAtZ == lookat_z)) &&
+			s_cachedApertureOverride == aperture_override && s_cachedFocusDistanceOverride == focus_distance_override;
 
 		GpuCameraParams cameraExtra;
 		if (cacheHit) {
@@ -672,7 +697,9 @@ extern "C" bool rt_realtime_render_frame(
 										 /*force_camera_override=*/true, /*wavefrontMode=*/true,
 										 "wavefront_programs.ptx", /*verbose=*/false,
 										 cameraExtra, errorCode,
-										 has_custom_lookat, lookat_x, lookat_y, lookat_z)) {
+										 has_custom_lookat, lookat_x, lookat_y, lookat_z,
+										 /*has_dof_override=*/aperture_override >= 0.0 || focus_distance_override >= 0.0,
+										 aperture_override, focus_distance_override)) {
 				return false;
 			}
 			if (!g_renderer->isWavefrontActive()) return false;
@@ -683,6 +710,7 @@ extern "C" bool rt_realtime_render_frame(
 			s_cachedCamX = cam_x; s_cachedCamY = cam_y; s_cachedCamZ = cam_z;
 			s_cachedHasCustomLookAt = has_custom_lookat;
 			s_cachedLookAtX = lookat_x; s_cachedLookAtY = lookat_y; s_cachedLookAtZ = lookat_z;
+			s_cachedApertureOverride = aperture_override; s_cachedFocusDistanceOverride = focus_distance_override;
 			s_cachedCameraExtra = cameraExtra;
 			s_haveCache = true;
 		}

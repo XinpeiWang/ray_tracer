@@ -254,7 +254,18 @@ bool rt_realtime_render_frame(
 	// linear" contract as out_rgb_buffer, just at upscale_factor times the
 	// resolution. Appended at the very end of the parameter list, after
 	// enable_neural_upscale, per this function's own append-only convention.
-	float* out_neural_upscale_buffer = nullptr
+	float* out_neural_upscale_buffer = nullptr,
+	// Depth-of-field override (RenderOptions::aperture_override/
+	// focus_distance_override's own comment, render_options.h) - lens
+	// diameter (world units) / focus distance to use instead of the
+	// active scene's own, or -1.0 (both default) for "not overridden".
+	// Only affects scenes loaded from a scene file (see this project's
+	// own DOF plan for that scope decision); has no effect on the
+	// hardcoded native demo-gallery scenes. Appended at the very end of
+	// the parameter list, after out_neural_upscale_buffer, per this
+	// function's own append-only convention.
+	double aperture_override = -1.0,
+	double focus_distance_override = -1.0
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the

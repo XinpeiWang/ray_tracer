@@ -34,7 +34,8 @@ typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, d
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
 							   bool, float, const void*, bool, bool, bool,
 							   bool, int, unsigned int, bool,
-							   bool, float*);
+							   bool, float*,
+							   double, double);
 
 // const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
 // own comment. Same hand-duplication convention as RenderFrameFn above.
@@ -402,7 +403,8 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 								   double lookX, double lookY, double lookZ,
 								   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 								   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-								   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale) {
+								   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale,
+								   bool dofEnabled, double aperture, double focusDistance) {
 	m_sceneId = sceneId;
 	m_width = width;
 	m_height = height;
@@ -435,6 +437,9 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	m_upscaleFactor = temporalUpscaleFactor;
 	m_nrc = nrc;
 	m_neuralUpscale = neuralUpscale;
+	m_dofEnabled = dofEnabled;
+	m_aperture = aperture;
+	m_focusDistance = focusDistance;
 	m_spp = spp;
 	m_maxDepth = maxDepth;
 	m_fireflyClamp = fireflyClamp;
@@ -563,6 +568,25 @@ void RealtimePreviewWorker::setNeuralUpscale(bool enabled) {
 	}
 }
 
+void RealtimePreviewWorker::setDof(bool enabled, double aperture, double focusDistance) {
+	if (!m_running) return;
+	// Unlike setFireflyClamp() below, this DOES reset accumulation - see
+	// this method's own header comment (realtime_preview_session.h): it
+	// changes the camera rays themselves (sharp vs. blurred), not a post-
+	// process, so mixing pre-/post-change samples in one running mean
+	// would look wrong. Only resets when something actually changed, same
+	// "no-op if nothing moved" guard setTemporalUpscale()/setNeuralUpscale()
+	// use - the aperture/focusDistance values are irrelevant (and ignored
+	// downstream) while enabled is false, so a value-only change while
+	// disabled must not trigger a reset either.
+	const bool changed = (enabled != m_dofEnabled) ||
+		(enabled && (aperture != m_aperture || focusDistance != m_focusDistance));
+	m_dofEnabled = enabled;
+	m_aperture = aperture;
+	m_focusDistance = focusDistance;
+	if (changed) resetAccumulation();
+}
+
 void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
 	if (!m_running) return;
 	m_spp = spp;
@@ -664,7 +688,8 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
 						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding,
 						  useUpscale, m_upscaleFactor, m_temporalJitterCounter, m_nrc,
-						  m_neuralUpscale, (useUpscale && m_neuralUpscale) ? m_neuralUpscaleOut.data() : nullptr);
+						  m_neuralUpscale, (useUpscale && m_neuralUpscale) ? m_neuralUpscaleOut.data() : nullptr,
+						  m_dofEnabled ? m_aperture : -1.0, m_dofEnabled ? m_focusDistance : -1.0);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -985,7 +1010,8 @@ void RealtimePreviewSession::start(const QString &sceneId, int width, int height
 									double lookX, double lookY, double lookZ,
 									bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 									bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-									bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale) {
+									bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale,
+									bool dofEnabled, double aperture, double focusDistance) {
 	QMetaObject::invokeMethod(m_worker, "start", Qt::QueuedConnection,
 		Q_ARG(QString, sceneId), Q_ARG(int, width), Q_ARG(int, height),
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
@@ -993,7 +1019,8 @@ void RealtimePreviewSession::start(const QString &sceneId, int width, int height
 		Q_ARG(bool, denoise), Q_ARG(double, denoiseBlend), Q_ARG(bool, denoiseShowLatest), Q_ARG(bool, svgf),
 		Q_ARG(bool, restirGi), Q_ARG(bool, restirDi), Q_ARG(bool, probeCache), Q_ARG(bool, pathGuiding),
 		Q_ARG(int, spp), Q_ARG(int, maxDepth), Q_ARG(double, fireflyClamp),
-		Q_ARG(bool, temporalUpscale), Q_ARG(int, temporalUpscaleFactor), Q_ARG(bool, nrc), Q_ARG(bool, neuralUpscale));
+		Q_ARG(bool, temporalUpscale), Q_ARG(int, temporalUpscaleFactor), Q_ARG(bool, nrc), Q_ARG(bool, neuralUpscale),
+		Q_ARG(bool, dofEnabled), Q_ARG(double, aperture), Q_ARG(double, focusDistance));
 }
 
 void RealtimePreviewSession::stop() {
@@ -1053,6 +1080,11 @@ void RealtimePreviewSession::setSppAndMaxDepth(int spp, int maxDepth) {
 
 void RealtimePreviewSession::setFireflyClamp(double fireflyClamp) {
 	QMetaObject::invokeMethod(m_worker, "setFireflyClamp", Qt::QueuedConnection, Q_ARG(double, fireflyClamp));
+}
+
+void RealtimePreviewSession::setDof(bool enabled, double aperture, double focusDistance) {
+	QMetaObject::invokeMethod(m_worker, "setDof", Qt::QueuedConnection,
+		Q_ARG(bool, enabled), Q_ARG(double, aperture), Q_ARG(double, focusDistance));
 }
 
 void RealtimePreviewSession::setSvgfTuning(double temporalAlpha, double maxHistoryLength,

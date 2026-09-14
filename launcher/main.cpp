@@ -83,6 +83,8 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     render_opts.crop_x1 = args.crop_x1;
     render_opts.crop_y1 = args.crop_y1;
     render_opts.seed = args.seed;
+    render_opts.aperture_override = args.aperture_override;
+    render_opts.focus_distance_override = args.focus_distance_override;
     render_opts.spectral = args.spectral;
     render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
     render_opts.denoise = args.denoise;

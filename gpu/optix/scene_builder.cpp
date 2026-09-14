@@ -4083,7 +4083,15 @@ static bool build_loaded_pbrt_scene(
 	const double lookat_x,
 	const double lookat_y,
 	const double lookat_z,
-	GpuCameraParams* out_camera_extra
+	GpuCameraParams* out_camera_extra,
+	// Depth-of-field override - see build_scene()'s own comment
+	// (scene_builder.h) and RenderOptions::aperture_override's own comment
+	// (render_options.h). This is the ONE function that reads a scene's
+	// own parsed Camera::aperture/focusDistance, so it's the one place the
+	// override needs to plug in.
+	const bool has_dof_override = false,
+	const double aperture_override = 0.0,
+	const double focus_distance_override = 0.0
 ) {
 	// pbrt_load::loadFile() does real, scene-size-scaling work - disk I/O,
 	// full text parsing, PLY mesh loading, and infinite-light image decode -
@@ -4539,9 +4547,32 @@ static bool build_loaded_pbrt_scene(
 	// scene keeps the prior focus_dist=1.0f/no-DOF behavior untouched (see
 	// build_pinhole_camera_params's own viewport-scaling comment this
 	// replaces for why 1.0f, not a real distance, is deliberate there).
-	const float focus_dist_world = static_cast<float>(pbrt_flatten::focusDistanceFor(c));
-	const float defocus_angle_deg = static_cast<float>(
+	float focus_dist_world = static_cast<float>(pbrt_flatten::focusDistanceFor(c));
+	float defocus_angle_deg = static_cast<float>(
 		pbrt_flatten::defocusAngleDegreesFor(c, focus_dist_world));
+	// Depth-of-field override - computed BEFORE the "if (defocus_angle_deg
+	// > 0.0f)" gate below so the override can both ADD DOF to a pinhole
+	// scene and change/remove DOF on a scene that already has its own -
+	// see this project's own DOF plan.
+	if (has_dof_override) {
+		if (focus_distance_override > 0.0) focus_dist_world = static_cast<float>(focus_distance_override);
+		if (aperture_override >= 0.0) {
+			const double lens_radius = aperture_override * 0.5;
+			defocus_angle_deg = (lens_radius > 0.0 && focus_dist_world > 0.0)
+				? static_cast<float>(2.0 * std::atan(lens_radius / static_cast<double>(focus_dist_world)) * 180.0 / 3.14159265358979323846)
+				: 0.0f;
+		} else if (focus_distance_override > 0.0) {
+			// Aperture untouched but focus distance changed - the defocus
+			// angle depends on both, so recompute it for the NEW focus
+			// distance using the scene's OWN aperture (c.aperture) rather
+			// than silently scaling the effective aperture. Reuses
+			// defocusAngleDegreesFor() directly instead of duplicating its
+			// formula a second time (unlike the aperture-override branch
+			// above, which has no Camera object to call it on for an
+			// arbitrary override aperture).
+			defocus_angle_deg = static_cast<float>(pbrt_flatten::defocusAngleDegreesFor(c, focus_dist_world));
+		}
+	}
 	// Camera motion blur (pbrt-v4's real ActiveTransform "StartTime"/
 	// "EndTime" idiom, c.isAnimated - see pbrt_flatten::Camera::isAnimated's
 	// own comment). Perspective-only, matching CPU's camera_is_animated
@@ -4806,7 +4837,10 @@ bool build_scene(
 	bool has_custom_lookat,
 	double lookat_x,
 	double lookat_y,
-	double lookat_z
+	double lookat_z,
+	bool has_dof_override,
+	double aperture_override,
+	double focus_distance_override
 ) {
 	if (camera_params == nullptr) {
 		return false;  // Invalid camera parameter buffer
@@ -6423,7 +6457,8 @@ bool build_scene(
 											image_width, image_height,
 											cam_x, cam_y, cam_z, force_camera_override,
 											has_custom_lookat, lookat_x, lookat_y, lookat_z,
-											out_camera_extra);
+											out_camera_extra,
+											has_dof_override, aperture_override, focus_distance_override);
 									}
 
 									const char* name = cpu_scene_name_by_id(scene_id);

@@ -60,7 +60,8 @@ public slots:
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale);
+			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale,
+			   bool dofEnabled, double aperture, double focusDistance);
 
 	// Stops the loop after the in-flight frame (if any) finishes. Safe to
 	// call even if not running.
@@ -179,6 +180,21 @@ public slots:
 	// step reads from (m_neuralUpscaleOut vs. m_accumHi), the same "different
 	// reconstruction now" treatment. No-op if not running.
 	void setNeuralUpscale(bool enabled);
+
+	// Depth-of-field override (RenderOptions::aperture_override/
+	// focus_distance_override's own comment, render_options.h) - lens
+	// diameter (world units) / focus distance to render with instead of
+	// the active scene's own. `enabled=false` sends -1.0/-1.0 across the
+	// DLL boundary ("not overridden"), same sentinel meaning as the
+	// offline CLI path. Only affects scenes loaded from a scene file (see
+	// this project's own DOF plan for that scope decision) - has no
+	// effect on the native demo-gallery scenes. Resets accumulation when
+	// `enabled`/`aperture`/`focusDistance` actually change: like
+	// setTemporalUpscale() above, this changes the camera rays
+	// themselves (sharp vs. blurred), not just a post-process, so mixing
+	// pre- and post-change samples in the same running mean would look
+	// wrong. No-op if not running.
+	void setDof(bool enabled, double aperture, double focusDistance);
 
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
@@ -305,6 +321,16 @@ private:
 	// m_accumHi/m_worldPosHi's own write-step/reprojectAccumulationHi()
 	// entirely for that mode.
 	std::vector<float> m_neuralUpscaleOut;
+	// See setDof()'s own comment. Cross the DLL boundary as
+	// aperture_override/focus_distance_override, sent as -1.0/-1.0 (the
+	// "not overridden" sentinel) whenever m_dofEnabled is false, matching
+	// RenderOptions::aperture_override's own sentinel meaning
+	// (render_options.h). Defaults false/1.0/10.0 - nothing to preserve
+	// (shipped with this feature), and 1.0/10.0 are only ever consulted
+	// once m_dofEnabled is true.
+	bool m_dofEnabled = false;
+	double m_aperture = 1.0;
+	double m_focusDistance = 10.0;
 	// See setTemporalUpscale()'s own comment. Crosses the DLL boundary like
 	// m_pathGuiding above (generate_camera_rays' own jitter sequence choice
 	// is a GPU-side decision). Defaults false/2 for the same reason
@@ -457,7 +483,8 @@ public:
 			   double lookX, double lookY, double lookZ,
 			   bool denoise, double denoiseBlend, bool denoiseShowLatest, bool svgf,
 			   bool restirGi, bool restirDi, bool probeCache, bool pathGuiding, int spp, int maxDepth, double fireflyClamp,
-			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale);
+			   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale,
+			   bool dofEnabled, double aperture, double focusDistance);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
@@ -470,6 +497,7 @@ public:
 	void setNrc(bool nrc);
 	void setTemporalUpscale(bool enabled, int factor);
 	void setNeuralUpscale(bool enabled);
+	void setDof(bool enabled, double aperture, double focusDistance);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

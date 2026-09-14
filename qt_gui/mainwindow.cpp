@@ -298,6 +298,10 @@ void RenderController::start() {
 			 << QString::number(m_advancedFlags.cropX0) << QString::number(m_advancedFlags.cropY0)
 			 << QString::number(m_advancedFlags.cropX1) << QString::number(m_advancedFlags.cropY1);
 	}
+	if (m_advancedFlags.dofOverrideEnabled) {
+		args << render_flags::kAperture << QString::number(m_advancedFlags.apertureOverride)
+			 << render_flags::kFocusDistance << QString::number(m_advancedFlags.focusDistanceOverride);
+	}
 	if (m_advancedFlags.seed >= 0)
 		args << render_flags::kSeed << QString::number(m_advancedFlags.seed);
 
@@ -779,6 +783,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	m_livePathGuidingEnabled = loadSavedLivePathGuidingEnabled();
 	m_liveNrcEnabled = loadSavedLiveNrcEnabled();
 	m_liveNeuralUpscaleEnabled = loadSavedLiveNeuralUpscaleEnabled();
+	m_liveDofEnabled = loadSavedLiveDofEnabled();
+	m_liveAperture = loadSavedLiveAperture();
+	m_liveFocusDistance = loadSavedLiveFocusDistance();
 	m_liveTemporalUpscaleFactor = loadSavedLiveTemporalUpscaleFactor();
 	m_liveExposure = loadSavedLiveExposure();
 	m_liveSamples = loadSavedLiveSamples();
