@@ -1069,7 +1069,20 @@ QString MainWindow::plainTextToHtmlParagraphs(const QString &plainText) {
 }
 
 QString MainWindow::wrapTooltipHtml(const QString &plainText) {
-	return "<html><body style=\"width:320px;\">" + plainTextToHtmlParagraphs(plainText) + "</body></html>";
+	// Rich text builds its own QTextDocument, and QToolTip::setFont()
+	// (font_switch.cpp's applyFont()) only reaches a tooltip's plain-text
+	// QLabel path - once content is HTML, Qt's rich-text engine falls back
+	// to its own default font unless the family/size are spelled out in the
+	// HTML itself. The family list (not just the primary family) is carried
+	// over so the same CJK fallback chain applyFont() sets up still applies
+	// inside these tooltips.
+	QStringList quotedFamilies;
+	for (const QString &family : qApp->font().families())
+		quotedFamilies << "'" + family + "'";
+	const QString fontCss = QString("font-family:%1; font-size:%2pt;")
+		.arg(quotedFamilies.join(QStringLiteral(", ")))
+		.arg(qApp->font().pointSize());
+	return "<html><body style=\"width:320px; " + fontCss + "\">" + plainTextToHtmlParagraphs(plainText) + "</body></html>";
 }
 
 // A small, flat, icon-only "(i)" mark - the beginner-facing explanation
