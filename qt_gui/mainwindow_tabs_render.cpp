@@ -1677,6 +1677,23 @@ void MainWindow::startLivePreview() {
 								 m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor, m_liveNrcEnabled,
 								 m_liveNeuralUpscaleEnabled,
 							 m_liveDofEnabled, m_liveAperture, m_liveFocusDistance);
+	// A settings snapshot at the moment of start - the only record of what a
+	// given session actually ran with, since every m_live*Enabled member is
+	// live app state (not persisted per-session) and the toggle checkboxes
+	// keep going after this point. Reset alongside it: m_livePreviewFrameCount/
+	// m_livePreviewSessionTimer back this session's own stopLivePreview()
+	// duration/fps log, not a running total across repeated Start/Stop cycles.
+	onLogMessage(QString("[Live Preview] Starting: scene=%1, %2x%3, denoise=%4, svgf=%5, "
+		"restirGI=%6, restirDI=%7, probeCache=%8, pathGuiding=%9, nrc=%10, upscale=%11, dof=%12")
+		.arg(sceneId).arg(kPreviewWidth).arg(kPreviewHeight)
+		.arg(m_liveDenoiseEnabled ? "on" : "off", m_liveSvgfEnabled ? "on" : "off",
+			 m_liveRestirGiEnabled ? "on" : "off", m_liveRestirDiEnabled ? "on" : "off")
+		.arg(m_liveProbeCacheEnabled ? "on" : "off", m_livePathGuidingEnabled ? "on" : "off",
+			 m_liveNrcEnabled ? "on" : "off",
+			 m_liveTemporalUpscaleFactor > 1 ? QString("%1x").arg(m_liveTemporalUpscaleFactor) : QString("off"))
+		.arg(m_liveDofEnabled ? "on" : "off"));
+	m_livePreviewFrameCount = 0;
+	m_livePreviewSessionTimer.start();
 	// m_livePreviewRunning stays false until BOTH tab switches below have
 	// happened. addLivePreviewTab()'s own m_previewSubTabs->setCurrentIndex()
 	// call (and the m_tabWidget switch after it) synchronously re-emit
@@ -1710,6 +1727,14 @@ void MainWindow::stopLivePreview() {
 	// which calls this function before tearing the page down.
 	if (m_livePreviewLabel) m_livePreviewLabel->cancelDrag();
 	m_livePreviewStatusLabel->setText(tr("Stopped"));
+	// The only record of a session's actual duration/throughput -
+	// m_livePreviewFrameCount/m_livePreviewSessionTimer are reset together
+	// at the top of startLivePreview(), so this always reports against just
+	// the session that's ending, not a running total.
+	const double elapsedSec = m_livePreviewSessionTimer.elapsed() / 1000.0;
+	const double avgFps = elapsedSec > 0.0 ? m_livePreviewFrameCount / elapsedSec : 0.0;
+	onLogMessage(QString("[Live Preview] Stopped after %1s (%2 frames, avg %3 fps)")
+		.arg(elapsedSec, 0, 'f', 1).arg(m_livePreviewFrameCount).arg(avgFps, 0, 'f', 1));
 	updateTransportButtons();
 	updateActionStates();  // Escape (m_actStop) becomes disabled again
 }
@@ -1720,6 +1745,7 @@ void MainWindow::onLivePreviewFrameReady(QImage image, int sampleCount) {
 	// guarding both here rather than relying on that invariant costs
 	// nothing and doesn't assume a future edit can't decouple them.
 	if (!m_livePreviewLabel || !m_livePreviewStatusLabel) return;
+	++m_livePreviewFrameCount;
 	m_livePreviewLabel->setPreviewPixmap(QPixmap::fromImage(image));
 	// While effectively showing the latest frame instead of accumulating
 	// (RealtimePreviewWorker::renderLoop()'s own gating condition), sampleCount
@@ -1744,7 +1770,16 @@ void MainWindow::onLivePreviewStatus(QString text) {
 	// problem.
 	if (m_livePreviewStatusLabel) {
 		if (m_livePreviewStatusLabel->text() != text) {
-			onLogMessage(tr("Live Preview: %1").arg(text));
+			// "ERROR" (not just the message text on its own) guarantees
+			// render_output_parser.h's classifyLogLine() flags this as an
+			// error line (its containsNoCase(line, "error") rule) - the two
+			// actual messages ("realtime_renderer.dll not found...",
+			// "Render failed - scene may not be GPU-supported...") don't
+			// reliably match any of its rules on their own (lowercase
+			// "failed" misses the case-sensitive "FAILED" check), so without
+			// this a live preview failure rendered as a plain, unflagged
+			// line - much easier to miss than a real render's own failures.
+			onLogMessage(tr("[Live Preview] ERROR: %1").arg(text));
 		}
 		m_livePreviewStatusLabel->setText(text);
 	}
@@ -1765,54 +1800,84 @@ void MainWindow::updateLivePreviewCameraFromOrbit() {
 									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 }
 
+// Each pushLive*ToSession() below is the one choke point its setting's
+// checkbox/combo goes through regardless of whether it's being adjusted
+// before a session even exists (nothing logged - see m_livePreviewSession
+// guard) or live, mid-session (m_livePreviewRunning below) - only the
+// latter is interesting for debugging "why did the image just change", so
+// only that case logs. Exposure/samples/max-depth/firefly-clamp/SVGF-tuning
+// have no equivalent log line: those are continuous sliders that fire
+// repeatedly while being dragged, and would flood the Log Output tab.
 void MainWindow::pushLiveDenoiseToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setDenoise(m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] Denoise: %1").arg(m_liveDenoiseEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveSvgfToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setSvgf(m_liveSvgfEnabled);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] SVGF: %1").arg(m_liveSvgfEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveRestirGiToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setRestirGi(m_liveRestirGiEnabled);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] ReSTIR GI: %1").arg(m_liveRestirGiEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveRestirDiToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setRestirDi(m_liveRestirDiEnabled);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] ReSTIR DI: %1").arg(m_liveRestirDiEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveProbeCacheToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setProbeCache(m_liveProbeCacheEnabled);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] Probe Cache: %1").arg(m_liveProbeCacheEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLivePathGuidingToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setPathGuiding(m_livePathGuidingEnabled);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] Path Guiding: %1").arg(m_livePathGuidingEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveNrcToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setNrc(m_liveNrcEnabled);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] NRC: %1").arg(m_liveNrcEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveNeuralUpscaleToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setNeuralUpscale(m_liveNeuralUpscaleEnabled);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] Neural Upscale: %1").arg(m_liveNeuralUpscaleEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveDofToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setDof(m_liveDofEnabled, m_liveAperture, m_liveFocusDistance);
+	if (m_livePreviewRunning)
+		onLogMessage(QString("[Live Preview] Depth of Field: %1").arg(m_liveDofEnabled ? "on" : "off"));
 }
 
 void MainWindow::pushLiveTemporalUpscaleToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setTemporalUpscale(m_liveTemporalUpscaleFactor > 1, m_liveTemporalUpscaleFactor);
+	if (m_livePreviewRunning) {
+		onLogMessage(QString("[Live Preview] Temporal Upscale: %1")
+			.arg(m_liveTemporalUpscaleFactor > 1 ? QString("%1x").arg(m_liveTemporalUpscaleFactor) : QString("off")));
+	}
 }
 
 void MainWindow::pushLiveExposureToSession() {

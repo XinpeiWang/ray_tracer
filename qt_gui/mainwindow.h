@@ -889,6 +889,13 @@ private:
 	OrbitPreviewLabel *m_livePreviewLabel = nullptr;
 	QLabel *m_livePreviewStatusLabel = nullptr;
 	bool m_livePreviewRunning = false;
+	// Started in startLivePreview(), read back in stopLivePreview() to log
+	// the session's wall-clock duration and average fps
+	// (m_livePreviewFrameCount / elapsed) - the only place either is
+	// visible, since onLivePreviewFrameReady()'s own per-frame text is
+	// deliberately never logged (would flood the Log Output tab).
+	QElapsedTimer m_livePreviewSessionTimer;
+	qint64 m_livePreviewFrameCount = 0;
 	// Spherical coordinates of the live-preview camera around
 	// m_livePreviewLookAt (below) - see camera_math.h's OrbitCoordinates
 	// for the field meanings. This is the live-preview feature's OWN camera
