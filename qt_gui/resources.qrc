@@ -26,5 +26,13 @@
         <file>backgrounds/arcade.svg</file>
         <file>backgrounds/blossom.svg</file>
         <file>backgrounds/comicpop.svg</file>
+        <!-- Bundled so CJK glyphs are guaranteed to render regardless of
+             platform or which Font menu choice is active (font_switch.cpp's
+             applyFont()) - see fonts/OFL.txt for the SIL Open Font License
+             this ships under. Kept under this shared prefix="/" rather than
+             its own prefix="/fonts", same reason the comment above avoids a
+             separate "/icons" prefix - a "/fonts" prefix here would double
+             to ":/fonts/fonts/...". -->
+        <file>fonts/NotoSansSC-Regular.ttf</file>
     </qresource>
 </RCC>

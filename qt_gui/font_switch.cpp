@@ -5,6 +5,7 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QFont>
+#include <QFontDialog>
 #include <QFontInfo>
 #include <QMenu>
 #include <QMenuBar>
@@ -57,6 +58,10 @@ const QVector<FontChoice> &fontChoices() {
 			{"Cascadia Code", "Consolas", "Courier New", "monospace"}, 10},
 		{"rounded", QT_TRANSLATE_NOOP("MainWindow", "Rounded"),
 			{"Segoe UI Variable", "Calibri", "Verdana"}, 10},
+		{"compact", QT_TRANSLATE_NOOP("MainWindow", "Compact"),
+			{"Tahoma", "Segoe UI", "Arial"}, 9},
+		{"largeprint", QT_TRANSLATE_NOOP("MainWindow", "Large Print"),
+			{"Segoe UI", "Arial"}, 13},
 	};
 	return choices;
 }
@@ -80,10 +85,27 @@ void MainWindow::saveFontId(const QString &id) {
 	settings.setValue(settings_keys::kFontKey, id);
 }
 
+QString MainWindow::loadSavedCustomFontFamily() {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kFontCustomFamilyKey, QStringLiteral("Segoe UI")).toString();
+}
+
+int MainWindow::loadSavedCustomFontSize() {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kFontCustomSizeKey, 10).toInt();
+}
+
+void MainWindow::saveCustomFont(const QString &family, int pointSize) {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kFontCustomFamilyKey, family);
+	settings.setValue(settings_keys::kFontCustomSizeKey, pointSize);
+}
+
 // Exposed to mainwindow_style.cpp so applyTheme() can scale its font-size
 // rules without reaching into this file's anonymous namespace - see this
 // function's own declaration in mainwindow.h.
 int MainWindow::fontPointSizeForId(const QString &id) {
+	if (id == QLatin1String("custom")) return loadSavedCustomFontSize();
 	return fontChoiceById(id).pointSize;
 }
 
@@ -94,39 +116,58 @@ int MainWindow::fontPointSizeForId(const QString &id) {
 // preserves): bold is opt-in, on group-box titles and the primary button
 // only, not blanket-applied the way an earlier version of this app did.
 void MainWindow::applyFont(const QString &id) {
-	const FontChoice &choice = fontChoiceById(id);
-	// Resolved id (choice.id), not the raw argument - so a corrupt/unknown
-	// saved value settles on the same id the fallback actually applied,
-	// keeping this in agreement with createFontMenu()'s checkmark below.
-	m_activeFontId = QString::fromUtf8(choice.id);
-
 	QFont font;
-	QString primaryFamily = QStringLiteral("Arial");
-	bool familySet = false;
-	for (const QString &family : choice.families) {
-		font.setFamily(family);
-		if (QFontInfo(font).family() == family) {
-			primaryFamily = family;
-			familySet = true;
-			break;
-		}
-	}
-	if (!familySet) font.setFamily(primaryFamily);
+	QString primaryFamily;
+	int pointSize;
 
-	// None of the decorative chains above (or the Arial fallback) carry CJK
-	// glyphs, so without this, Chinese/Japanese text was left entirely to
-	// Windows' own implicit font substitution - usually passable, but never
-	// a choice this app actually made. setFamilies() (not just setFamily())
-	// makes Qt do real per-glyph fallback across this whole list: Latin text
-	// still renders from primaryFamily exactly as before, but any CJK glyph
-	// Qt can't find there now falls through to a deliberately-picked font
-	// instead. Applies regardless of the active UI language, so e.g. a
-	// Chinese scene name still renders well even while the app itself is in
-	// English.
+	if (id == QLatin1String("custom")) {
+		// The "Custom…" choice (createFontMenu()) has no FontChoice fallback
+		// chain to walk - QFontDialog already confirmed the family is
+		// installed, so it's used directly.
+		m_activeFontId = QStringLiteral("custom");
+		primaryFamily = loadSavedCustomFontFamily();
+		pointSize = loadSavedCustomFontSize();
+		font.setFamily(primaryFamily);
+	} else {
+		const FontChoice &choice = fontChoiceById(id);
+		// Resolved id (choice.id), not the raw argument - so a corrupt/unknown
+		// saved value settles on the same id the fallback actually applied,
+		// keeping this in agreement with createFontMenu()'s checkmark below.
+		m_activeFontId = QString::fromUtf8(choice.id);
+		pointSize = choice.pointSize;
+
+		primaryFamily = QStringLiteral("Arial");
+		bool familySet = false;
+		for (const QString &family : choice.families) {
+			font.setFamily(family);
+			if (QFontInfo(font).family() == family) {
+				primaryFamily = family;
+				familySet = true;
+				break;
+			}
+		}
+		if (!familySet) font.setFamily(primaryFamily);
+	}
+
+	// None of the decorative chains above (or a hand-picked custom font) are
+	// guaranteed to carry CJK glyphs, so without this, Chinese/Japanese text
+	// was left entirely to the OS's own implicit font substitution - usually
+	// passable on Windows, but never a choice this app actually made, and not
+	// guaranteed at all on other platforms. setFamilies() (not just
+	// setFamily()) makes Qt do real per-glyph fallback across this whole
+	// list: Latin text still renders from primaryFamily exactly as before,
+	// but any CJK glyph Qt can't find there now falls through to a
+	// deliberately-picked font instead. The Windows-only names are tried
+	// first so a native install still gets its own look; "Noto Sans SC"
+	// (bundled via QFontDatabase::addApplicationFont(), see main.cpp) is the
+	// guaranteed-present, cross-platform fallback after them. Applies
+	// regardless of the active UI language, so e.g. a Chinese scene name
+	// still renders well even while the app itself is in English.
 	font.setFamilies({primaryFamily,
 		QStringLiteral("Microsoft YaHei UI"), QStringLiteral("Microsoft YaHei"),
-		QStringLiteral("Yu Gothic UI"), QStringLiteral("Meiryo UI")});
-	font.setPointSize(choice.pointSize);
+		QStringLiteral("Yu Gothic UI"), QStringLiteral("Meiryo UI"),
+		QStringLiteral("Noto Sans SC")});
+	font.setPointSize(pointSize);
 	font.setWeight(QFont::Normal);
 	qApp->setFont(font);
 
@@ -141,11 +182,16 @@ void MainWindow::applyFont(const QString &id) {
 void MainWindow::switchFont(const QString &id) {
 	applyFont(id);
 	saveFontId(id);
+	// m_activeFontId is applyFont()'s resolved id (== id, unless id was
+	// unknown/corrupt and it fell back to fontChoices()[0]), so re-reading it
+	// here keeps this in agreement for "custom" too, which fontChoiceById()
+	// can't resolve on its own.
+	syncCheckedAction(m_fontActions, m_activeFontId);
 
-	const FontChoice &choice = fontChoiceById(id);
-	syncCheckedAction(m_fontActions, QString::fromUtf8(choice.id));
-
-	statusBar()->showMessage(tr("Font: %1").arg(tr(choice.name)), 3000);
+	const QString name = (m_activeFontId == QLatin1String("custom"))
+		? loadSavedCustomFontFamily()
+		: tr(fontChoiceById(m_activeFontId).name);
+	statusBar()->showMessage(tr("Font: %1").arg(name), 3000);
 }
 
 // Top-level menu, next to Theme - both are "appearance" choices. Same
@@ -157,8 +203,13 @@ void MainWindow::createFontMenu() {
 	group->setExclusive(true);
 
 	// Resolved id, not the raw m_startupFontId - see applyFont()'s own
-	// comment on why the resolved id is what has to match here too.
-	const QString activeId = QString::fromUtf8(fontChoiceById(m_startupFontId).id);
+	// comment on why the resolved id is what has to match here too. "custom"
+	// already IS resolved (fontChoiceById() only matters for the curated
+	// choices), so it's passed through as-is rather than round-tripped
+	// through fontChoiceById(), which can't recognize it.
+	const QString activeId = (m_startupFontId == QLatin1String("custom"))
+		? m_startupFontId
+		: QString::fromUtf8(fontChoiceById(m_startupFontId).id);
 	for (const FontChoice &choice : fontChoices()) {
 		const QString id = QString::fromUtf8(choice.id);
 		QAction *action = fontMenu->addAction(tr(choice.name));
@@ -172,4 +223,26 @@ void MainWindow::createFontMenu() {
 			switchFont(id);
 		});
 	}
+
+	fontMenu->addSeparator();
+	QAction *customAction = fontMenu->addAction(tr("Custom…"));
+	customAction->setCheckable(true);
+	customAction->setData(QStringLiteral("custom"));
+	customAction->setChecked(activeId == QLatin1String("custom"));
+	group->addAction(customAction);
+	m_fontActions.push_back(customAction);
+
+	connect(customAction, &QAction::triggered, this, [this]() {
+		bool ok = false;
+		QFont chosen = QFontDialog::getFont(&ok, qApp->font(), this, tr("Choose Font"));
+		if (!ok) {
+			// QActionGroup already moved the checkmark to "Custom…" the
+			// instant it was clicked, before this dialog's result was known -
+			// undo that back to whatever font is still actually active.
+			syncCheckedAction(m_fontActions, m_activeFontId);
+			return;
+		}
+		saveCustomFont(chosen.family(), chosen.pointSize());
+		switchFont(QStringLiteral("custom"));
+	});
 }

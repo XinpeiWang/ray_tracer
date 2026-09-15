@@ -14,6 +14,11 @@ constexpr const char *kOrg = "RayTracer";
 constexpr const char *kApp = "RayTracerGUI";
 constexpr const char *kThemeKey = "ui/theme";
 constexpr const char *kFontKey = "ui/font";
+// Only meaningful when kFontKey's value is "custom" (font_switch.cpp's
+// QFontDialog-backed choice) - the curated FontChoice entries carry their
+// own family/size baked into the id, with nothing to persist separately.
+constexpr const char *kFontCustomFamilyKey = "ui/fontCustomFamily";
+constexpr const char *kFontCustomSizeKey = "ui/fontCustomSize";
 constexpr const char *kLanguageKey = "ui/language";
 // QSettings array group name (beginWriteArray/beginReadArray) for the
 // Recent Renders list - see recent_renders.cpp. The first list-shaped

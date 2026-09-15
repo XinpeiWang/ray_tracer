@@ -586,6 +586,13 @@ private:
 	void createFontMenu();
 	static QString loadSavedFontId();
 	static void saveFontId(const QString &id);
+	// Backing storage for the "Custom…" Font menu entry (font_switch.cpp) -
+	// only consulted when the active font id is "custom". Defaults match
+	// the "System UI" curated choice's own family, a reasonable seed the
+	// first time QFontDialog opens before any custom font was ever chosen.
+	static QString loadSavedCustomFontFamily();
+	static int loadSavedCustomFontSize();
+	static void saveCustomFont(const QString &family, int pointSize);
 	// Base point size for a FontChoice id, defined in font_switch.cpp;
 	// exposed here so applyTheme() (mainwindow_style.cpp) can scale its own
 	// font-size rules to the active choice without reaching into font_switch.cpp's

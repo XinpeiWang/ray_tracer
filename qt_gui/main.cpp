@@ -1,9 +1,15 @@
 #include "mainwindow.h"
 #include <QApplication>
+#include <QFontDatabase>
 #include <QTranslator>
 
 int main(int argc, char *argv[]) {
 	QApplication app(argc, argv);
+
+	// Guarantees CJK glyph coverage cross-platform regardless of which Font
+	// menu choice is active (font_switch.cpp) - must run before MainWindow is
+	// constructed, since applyFont() runs during its startup.
+	QFontDatabase::addApplicationFont(":/fonts/NotoSansSC-Regular.ttf");
 
 	// Set application info
 	app.setApplicationName("Ray Tracer");
