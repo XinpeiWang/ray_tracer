@@ -177,6 +177,14 @@ void MainWindow::applyFont(const QString &id) {
 	// icons' tooltips silently kept the OS tooltip font regardless of the
 	// active Font choice until this explicit override was added.
 	QToolTip::setFont(font);
+	// Same root cause, same fix, for the menu bar (File/Render/View/.../Help)
+	// and its dropdown menus - mainwindow_style.cpp's QSS themes their
+	// colors/backgrounds but never sets font-family/font-size, so without
+	// this explicit per-class override they silently kept the Windows
+	// platform theme's own registered font regardless of the active Font
+	// choice, exactly like QToolTip above.
+	qApp->setFont(font, "QMenuBar");
+	qApp->setFont(font, "QMenu");
 	// QToolTip::setFont() only reaches a tooltip's plain-text path - every
 	// rich-text (wrapTooltipHtml()) tooltip already on screen had its font
 	// baked into its HTML when it was last built, which for most info icons
