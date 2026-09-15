@@ -1,0 +1,37 @@
+name: Unit tests
+
+# Builds and runs the portable, SDK-independent test target (tests/unit_tests,
+# see tests/CMakeLists.txt) on every push/PR. This project's full test suite
+# (tests/ray_tracer_tests.vcxproj) also covers the CUDA/OptiX-dependent GPU
+# code, but that needs a real NVIDIA GPU plus the CUDA Toolkit + OptiX SDK
+# installed, none of which a standard GitHub-hosted runner has - see
+# tests/CMakeLists.txt's own comments on exactly which files are excluded
+# from this portable target and why. Until a self-hosted GPU runner is
+# available, this is deliberately scoped to what CAN run here: the CPU-only
+# unit tests are still real, substantial coverage (BVH, materials, cameras,
+# sampling, BDPT, SPPM, volumetrics, pbrt scene loading), and having zero
+# automated testing at all was strictly worse than having this subset.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (CMake)
+        working-directory: tests
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build (Release)
+        working-directory: tests
+        run: cmake --build build --config Release
+
+      - name: Run unit_tests
+        working-directory: tests
+        run: .\build\Release\unit_tests.exe --gtest_color=yes

@@ -221,7 +221,14 @@ TEST_F(CPUGPUComparisonTest, CPUShowsColorVariation) {
 	RGBAverage avg = avg_channels(img);
 	float total = avg.r + avg.g + avg.b;
 
-	if (total < 0.001f) GTEST_SKIP() << "Image too dark to analyze color";
+	// A properly-lit Cornell box should never render near-black - skipping
+	// here (as this test used to) would silently pass over exactly the
+	// class of severe rendering regression (e.g. a broken light/material
+	// path) this test suite exists to catch, rather than the narrower
+	// "not enough signal to judge color balance" case it reads as.
+	ASSERT_GE(total, 0.001f) << "Image is unexpectedly near-black (total="
+		<< total << ") - this indicates a rendering regression, not just "
+		"insufficient data to judge color balance";
 
 	// Cornell box has red left wall and green right wall
 	// The image should have meaningful content in both R and G channels
@@ -244,7 +251,11 @@ TEST_F(CPUGPUComparisonTest, GPUShowsColorVariation) {
 	RGBAverage avg = avg_channels(img);
 	float total = avg.r + avg.g + avg.b;
 
-	if (total < 0.001f) GTEST_SKIP() << "Image too dark to analyze color";
+	// See CPUShowsColorVariation's own comment on why this fails rather
+	// than skips.
+	ASSERT_GE(total, 0.001f) << "GPU image is unexpectedly near-black (total="
+		<< total << ") - this indicates a rendering regression, not just "
+		"insufficient data to judge color balance";
 
 	float rFrac = avg.r / total;
 	float gFrac = avg.g / total;
