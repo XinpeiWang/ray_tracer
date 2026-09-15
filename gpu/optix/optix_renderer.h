@@ -768,6 +768,105 @@ private:
 	/// @brief Create OptiX device context and CUDA resources
 	bool createContext();
 
+	// -------------------------------------------------------------------
+	// buildScene() section helpers (optix_renderer_scene.cpp) - each
+	// uploads one self-contained slice of scene data to the device,
+	// touching only its own matching d_*_/num*_ members. Extracted out of
+	// buildScene() itself purely to keep that function's own top-to-bottom
+	// flow (geometry -> lights -> accel structures -> SBT) readable; call
+	// order/semantics are unchanged from when this was inline.
+	// -------------------------------------------------------------------
+
+	/// @brief Upload the scene's material array (d_materials_/numMaterials_).
+	void uploadMaterials(const std::vector<MaterialData>& materials);
+
+	/// @brief Upload texture metadata plus the shared pixel buffer it slices
+	///        into (d_textures_/numTextures_, d_texturePixels_).
+	void uploadTextures(const std::vector<TextureData>& textures,
+						 const std::vector<unsigned char>& texturePixels);
+
+	/// @brief Upload the scene's quad array (d_quads_/numQuads_).
+	void uploadQuads(const std::vector<QuadData>& quads);
+
+	/// @brief Upload the scene's bilinear patch array
+	///        (d_bilinearPatches_/numBilinearPatches_).
+	void uploadBilinearPatches(const std::vector<BilinearPatchData>& bilinearPatches);
+
+	/// @brief Upload the scene's disk array (d_disks_/numDisks_).
+	void uploadDisks(const std::vector<DiskData>& disks);
+
+	/// @brief Upload the scene's cylinder array (d_cylinders_/numCylinders_).
+	void uploadCylinders(const std::vector<CylinderData>& cylinders);
+
+	/// @brief Upload the RealisticCamera's host-precomputed lens element and
+	///        exit-pupil bounds tables (d_lensElements_/numLensElements_,
+	///        d_exitPupilBounds_/numExitPupilBounds_).
+	void uploadLensTables(const std::vector<GpuLensElement>& lensElements,
+						  const std::vector<GpuExitPupilBounds>& exitPupilBounds);
+
+	/// @brief Upload heterogeneous cloud media
+	///        (d_cloudMediums_/numCloudMediums_).
+	void uploadCloudMedia(const std::vector<CloudMedium<float>>& cloudMediums);
+
+	/// @brief Upload heterogeneous RGB grid media metadata plus the shared
+	///        flat voxel buffer it slices into (d_rgbGridMediums_/
+	///        numRgbGridMediums_, d_rgbGridData_/rgbGridDataCount_).
+	void uploadRgbGridMedia(const std::vector<GpuRgbGridMedium>& rgbGridMediums,
+							const std::vector<float>& rgbGridData);
+
+	/// @brief Upload heterogeneous single-channel grid media metadata plus
+	///        the shared flat voxel buffer it slices into
+	///        (d_gridMediums_/numGridMediums_, d_gridData_/gridDataCount_).
+	void uploadGridMedia(const std::vector<GpuGridMedium>& gridMediums,
+						 const std::vector<float>& gridData);
+
+	/// @brief Upload tabulated BSSRDF tables and their four shared flat
+	///        float buffers (d_bssrdfTables_/numBssrdfTables_,
+	///        d_bssrdfRhoSamples_, d_bssrdfRadiusSamples_, d_bssrdfProfile_,
+	///        d_bssrdfProfileCdf_).
+	void uploadBssrdfTables(const std::vector<GpuBssrdfTable>& bssrdfTables,
+							const std::vector<float>& bssrdfRhoSamples,
+							const std::vector<float>& bssrdfRadiusSamples,
+							const std::vector<float>& bssrdfProfile,
+							const std::vector<float>& bssrdfProfileCdf);
+
+	/// @brief Upload real tabulated measured-BRDF tables and their four
+	///        shared flat float buffers (d_measuredTables_/
+	///        numMeasuredTables_, d_measuredParamValues_, d_measuredData_,
+	///        d_measuredMcdf_, d_measuredCcdf_).
+	void uploadMeasuredTables(const std::vector<GpuMeasuredTable>& measuredTables,
+							  const std::vector<float>& measuredParamValues,
+							  const std::vector<float>& measuredData,
+							  const std::vector<float>& measuredMcdf,
+							  const std::vector<float>& measuredCcdf);
+
+	/// @brief Upload the real importance-sampled HDR sky distribution
+	///        (skyWidth_/skyHeight_/skyScale_/skyMarginalFuncInt_ and the
+	///        d_sky*_ flat buffers).
+	void uploadSkyLight(const std::vector<float>& skyImagePixels,
+						const std::vector<float>& skyMarginalCdf,
+						const std::vector<float>& skyMarginalFunc,
+						float skyMarginalFuncInt,
+						const std::vector<float>& skyConditionalCdf,
+						const std::vector<float>& skyConditionalFunc,
+						const std::vector<float>& skyConditionalFuncInt,
+						int skyWidth, int skyHeight, float skyScale);
+
+	/// @brief Upload the pbrt-v4 "portal" (windowed) infinite light
+	///        (portalWidth_/portalHeight_/portalScale_/portalFrame{X,Y,Z}_/
+	///        portalP0_/portalP2_ and the d_portal*_ flat buffers). Mutually
+	///        exclusive with uploadSkyLight() (matches CPU).
+	void uploadPortalLight(const std::vector<float>& portalRectifiedImage,
+						   const std::vector<float>& portalDistFunc,
+						   const std::vector<double>& portalSatSum,
+						   int portalWidth, int portalHeight, float portalScale,
+						   float3 portalFrameX, float3 portalFrameY, float3 portalFrameZ,
+						   float3 portalP0, float3 portalP2);
+
+	/// @brief Upload punctual (point/spot/distant) lights
+	///        (d_punctualLights_/numPunctualLights_).
+	void uploadPunctualLights(const std::vector<PunctualLightGPU>& punctualLights);
+
 	/// @brief World-space irradiance probe cache (Live Preview only) - builds
 	///        a merged scene bound from the given geometry, derives probe
 	///        spacing/dims from it, and uploads a freshly-zeroed GpuProbe

@@ -632,6 +632,367 @@ inline pbrt_scene::Matrix4 toMatrix4(const double (&m)[16]) {
 	return xform;
 }
 
+// ---------------------------------------------------------------------------
+// The following 7 helpers are sections extracted out of build()/emitGeometry()
+// below verbatim (a pure refactor, no behavior change). build() has no class
+// to hold shared state, so each takes an explicit small parameter list: the
+// cachedMaterial/addMediumIfPresent lambdas it needs (as template parameters,
+// so a real closure type is passed by reference rather than type-erased
+// through std::function), the world/lights hittable_list it emits into, and
+// the BuildResult count field(s) it accumulates into. Every one of these
+// still routes materials/media through the SAME cachedMaterial/
+// addMediumIfPresent closures its caller passes in (emitGeometry's own
+// materialCache/alphaMaskCache/nanovdbMediumCache, shared across triangles/
+// instances/animated-* too) - never a private cache of its own.
+
+// Shape "disk"/"cylinder" - see emitGeometry's own comment (pbrt_cpu_builder.h)
+// for why these keep their CTM unbaked and apply it at intersection time via
+// disk_hittable/cylinder_hittable.
+template <typename CachedMaterialFn, typename AddMediumFn>
+inline void buildDisksAndCylinders(const std::vector<pbrt_flatten::Disk> &disks,
+									const std::vector<pbrt_flatten::Cylinder> &cylinders,
+									hittable_list &world, hittable_list &lights,
+									std::size_t &diskCount, std::size_t &cylinderCount,
+									const CachedMaterialFn &cachedMaterial,
+									const AddMediumFn &addMediumIfPresent) {
+	for (const pbrt_flatten::Disk &d : disks) {
+		auto mat = cachedMaterial(d.material, d.areaLight);
+		auto disk = std::make_shared<disk_hittable>(
+			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg),
+			toMatrix4(d.xform), toMatrix4(d.xformEnd), mat);
+		world.add(disk);
+		if (d.areaLight >= 0) lights.add(disk);
+		addMediumIfPresent(disk, d.medium);
+	}
+	diskCount += disks.size();
+
+	for (const pbrt_flatten::Cylinder &c : cylinders) {
+		auto mat = cachedMaterial(c.material, c.areaLight);
+		auto cyl = std::make_shared<cylinder_hittable>(
+			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg),
+			toMatrix4(c.xform), toMatrix4(c.xformEnd), mat);
+		world.add(cyl);
+		if (c.areaLight >= 0) lights.add(cyl);
+		addMediumIfPresent(cyl, c.medium);
+	}
+	cylinderCount += cylinders.size();
+}
+
+// Shape "cone"/"paraboloid" - same unbaked-CTM technique as disk/cylinder
+// above.
+template <typename CachedMaterialFn, typename AddMediumFn>
+inline void buildConesAndParaboloids(const std::vector<pbrt_flatten::Cone> &cones,
+									  const std::vector<pbrt_flatten::Paraboloid> &paraboloids,
+									  hittable_list &world, hittable_list &lights,
+									  std::size_t &coneCount, std::size_t &paraboloidCount,
+									  const CachedMaterialFn &cachedMaterial,
+									  const AddMediumFn &addMediumIfPresent) {
+	for (const pbrt_flatten::Cone &cn : cones) {
+		auto mat = cachedMaterial(cn.material, cn.areaLight);
+		auto cone = std::make_shared<cone_hittable>(
+			cn.radius, cn.height, degrees_to_radians(cn.phiMaxDeg), toMatrix4(cn.xform), mat);
+		world.add(cone);
+		if (cn.areaLight >= 0) lights.add(cone);
+		addMediumIfPresent(cone, cn.medium);
+	}
+	coneCount += cones.size();
+
+	for (const pbrt_flatten::Paraboloid &pb : paraboloids) {
+		auto mat = cachedMaterial(pb.material, pb.areaLight);
+		auto para = std::make_shared<paraboloid_hittable>(
+			pb.radius, pb.zMin, pb.zMax, degrees_to_radians(pb.phiMaxDeg), toMatrix4(pb.xform), mat);
+		world.add(para);
+		if (pb.areaLight >= 0) lights.add(para);
+		addMediumIfPresent(para, pb.medium);
+	}
+	paraboloidCount += paraboloids.size();
+}
+
+// Shape "bilinearmesh" - see pbrt_flatten.h's BilinearPatch comment for why
+// only the single-patch form reaches here. No medium support for this shape
+// kind (unlike disk/cylinder/cone/paraboloid above), so no addMediumIfPresent
+// parameter.
+template <typename CachedMaterialFn>
+inline void buildBilinearPatches(const std::vector<pbrt_flatten::BilinearPatch> &patches,
+								  hittable_list &world, hittable_list &lights,
+								  std::size_t &bilinearPatchCount,
+								  const CachedMaterialFn &cachedMaterial) {
+	for (const pbrt_flatten::BilinearPatch &bp : patches) {
+		// gpuOnlyStaticFallback's own comment (emitGeometry, below): this
+		// entry is a StartTime-pose duplicate of a patch CPU already renders
+		// for real via scene.animatedBilinearPatches - skip it here or it
+		// would double-render on CPU.
+		if (bp.gpuOnlyStaticFallback) continue;
+		auto mat = cachedMaterial(bp.material, bp.areaLight);
+		auto patch = std::make_shared<bilinear_patch_hittable>(
+			point3(bp.p[0][0], bp.p[0][1], bp.p[0][2]),
+			point3(bp.p[1][0], bp.p[1][1], bp.p[1][2]),
+			point3(bp.p[2][0], bp.p[2][1], bp.p[2][2]),
+			point3(bp.p[3][0], bp.p[3][1], bp.p[3][2]),
+			mat);
+		world.add(patch);
+		if (bp.areaLight >= 0) lights.add(patch);
+	}
+	bilinearPatchCount += patches.size();
+}
+
+// Shape "curve" - see pbrt_flatten::Curve's own comment for scope (degree 2/3
+// Bezier and cubic B-spline all convert down to cubic Bezier before reaching
+// here). One CurveShape<double> per segment, wrapped in curve_shape_hittable.
+template <typename CachedMaterialFn>
+inline void buildCurves(const std::vector<pbrt_flatten::Curve> &curveDecls,
+						 hittable_list &world, hittable_list &lights,
+						 std::size_t &curveCount,
+						 const CachedMaterialFn &cachedMaterial) {
+	for (const pbrt_flatten::Curve &cd : curveDecls) {
+		// gpuOnlyStaticFallback's own comment (emitGeometry, below): this
+		// entry is a StartTime-pose duplicate of a curve CPU already renders
+		// for real via scene.animatedCurves - skip it here or it would
+		// double-render on CPU.
+		if (cd.gpuOnlyStaticFallback) continue;
+		// forCurve=true: see hair_material's own tangentIsDpdu comment - real
+		// curve geometry has a genuine fiber tangent (dpdu) available, unlike
+		// every other shape here, which only offers the shading normal as a
+		// proxy.
+		auto mat = cachedMaterial(cd.material, cd.areaLight, /*forCurve=*/true);
+		const CurveType type = (cd.curveType == "cylinder") ? CurveType::Cylinder
+			: (cd.curveType == "ribbon") ? CurveType::Ribbon : CurveType::Flat;
+		for (int seg = 0; seg < cd.nSegments; ++seg) {
+			double cpx[4], cpy[4], cpz[4];
+			for (int i = 0; i < 4; ++i) {
+				const std::size_t idx = (static_cast<std::size_t>(seg) * 4 + i) * 3;
+				cpx[i] = cd.cp[idx]; cpy[i] = cd.cp[idx + 1]; cpz[i] = cd.cp[idx + 2];
+			}
+			const double t0 = static_cast<double>(seg) / cd.nSegments;
+			const double t1 = static_cast<double>(seg + 1) / cd.nSegments;
+			const double segW0 = cd.width0 + (cd.width1 - cd.width0) * t0;
+			const double segW1 = cd.width0 + (cd.width1 - cd.width0) * t1;
+			CurveShape<double> curve = (type == CurveType::Ribbon)
+				? CurveShape<double>::make_ribbon(cpx, cpy, cpz, 0.0, 1.0, segW0, segW1,
+					cd.n[static_cast<std::size_t>(seg) * 3], cd.n[static_cast<std::size_t>(seg) * 3 + 1],
+					cd.n[static_cast<std::size_t>(seg) * 3 + 2],
+					cd.n[static_cast<std::size_t>(seg + 1) * 3], cd.n[static_cast<std::size_t>(seg + 1) * 3 + 1],
+					cd.n[static_cast<std::size_t>(seg + 1) * 3 + 2])
+				: CurveShape<double>::make(cpx, cpy, cpz, 0.0, 1.0, segW0, segW1, type);
+			auto ch = std::make_shared<curve_shape_hittable>(curve, mat);
+			world.add(ch);
+			if (cd.areaLight >= 0) lights.add(ch);
+		}
+	}
+	curveCount += curveDecls.size();
+}
+
+// ---- infinite/sky light -----------------------------------------------
+// Image-based when pbrt_load::loadFile() successfully decoded one
+// (imageWidth/imageHeight > 0 - see FlatScene::InfiniteLight's comment on why
+// the decode happens there and not here or in flatten()). Falls back to the
+// scene's constant L otherwise - either it never named an image, or naming
+// one failed to resolve/decode (a warning was already recorded for that
+// case).
+inline void buildSkyOrPortal(const pbrt_flatten::FlatScene &scene, BuildResult &out) {
+	if (scene.infiniteLight.present && scene.infiniteLight.hasPortal) {
+		if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0) {
+			// Windowed/portal infinite light (pbrt-v4 "point3 portal[4]") - a
+			// DIFFERENT image format (equal-area octahedral, not the
+			// equirectangular map plain sky_light/InfiniteLight expects - see
+			// PortalImageInfiniteLightData's own comment), so this does NOT
+			// also build a `sky` from the same pixels the way the plain
+			// image-based branch below does - see BuildResult::portal's own
+			// comment for why no separate `sky` fallback is needed either.
+			// PortalImageInfiniteLightData's own Vec3T (src/shared/vec3_frame.h's
+			// global Vec3<T> template) - NOT this codebase's own `vec3` class
+			// (a different, unrelated type; see that header's own comment on
+			// why it's kept separate from this project's vec3/point3/color).
+			std::array<Vec3<double>, 4> corners;
+			for (int i = 0; i < 4; ++i)
+				corners[i] = Vec3<double>(scene.infiniteLight.portal[i*3+0],
+				                          scene.infiniteLight.portal[i*3+1],
+				                          scene.infiniteLight.portal[i*3+2]);
+			out.portal = std::make_shared<PortalImageInfiniteLightData<double>>(
+				scene.infiniteLight.imagePixels.data(),
+				scene.infiniteLight.imageWidth, scene.infiniteLight.imageHeight,
+				scene.infiniteLight.scale, corners);
+		}
+		// else: a portal window was declared but its image never named, or
+		// named-and-failed to decode (pbrt_load.h already recorded a
+		// warning for that). Deliberately builds NEITHER out.portal NOR
+		// out.sky here - falling back to the plain-sky branch below would
+		// silently turn a windowed light into an unwindowed, full-strength
+		// sky flooding the whole scene with light from every direction
+		// (InfiniteLight defaults L to white, scale to 1.0), the opposite
+		// of what a portal author asked for. Failing closed (no sky light
+		// at all) matches this codebase's established "fail black rather
+		// than fail wrong" convention for unsupported portal combinations
+		// (see the SPPM/BDPT portal-skip comments in cpu_interface.cpp and
+		// cpu_interface_bdpt.cpp).
+	} else if (scene.infiniteLight.present) {
+		if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0) {
+			out.sky = std::make_shared<sky_light>(
+				scene.infiniteLight.imageWidth, scene.infiniteLight.imageHeight,
+				scene.infiniteLight.imagePixels.data(), scene.infiniteLight.scale);
+		} else {
+			out.sky = std::make_shared<sky_light>(color(
+				scene.infiniteLight.L[0] * scene.infiniteLight.scale,
+				scene.infiniteLight.L[1] * scene.infiniteLight.scale,
+				scene.infiniteLight.L[2] * scene.infiniteLight.scale));
+		}
+	}
+}
+
+// ---- camera medium --------------------------------------------------------
+// pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own comment) -
+// already resolved by flatten() to a valid homogeneous-only,
+// no-per-shape-medium-conflict index, or -1 if none/unsupported (both scope
+// cuts already warned about there) - this is just the same Medium-struct-to-
+// runtime-object construction addMediumIfPresent() (emitGeometry, below) does
+// for a per-shape medium, minus the boundary shape. `luminance` is passed in
+// (rather than duplicated here) so both call sites keep sharing the exact
+// same RGB-to-scalar collapse formula.
+template <typename LuminanceFn>
+inline void buildCameraMedium(const pbrt_flatten::FlatScene &scene, BuildResult &out,
+							   const LuminanceFn &luminance) {
+	if (scene.cameraMediumIndex >= 0 &&
+		static_cast<std::size_t>(scene.cameraMediumIndex) < scene.media.size()) {
+		const pbrt_flatten::Medium &m = scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)];
+		// Collapsed to a scalar extinction + chromatic albedo tint via the
+		// SAME `luminance` addMediumIfPresent() uses for a per-shape medium's
+		// identical homogeneous branch - luminance-weighted (not a flat
+		// per-channel average), tint derived from sigma_s alone (the
+		// scattering-only single-scattering-albedo direction), Le passed RAW
+		// since ambient_medium's own constructor (mirroring constant_medium's)
+		// already does the sigma_a/sigma_t weighting.
+		const double sig_a = luminance(m.sigma_a);
+		const double sig_s = luminance(m.sigma_s);
+		const color tint = (sig_s > 1e-9)
+			? color(m.sigma_s[0] / sig_s, m.sigma_s[1] / sig_s, m.sigma_s[2] / sig_s)
+			: color(1, 1, 1);
+		out.cameraMedium = std::make_shared<ambient_medium>(
+			sig_a, sig_s, tint, m.g, color(m.Le[0], m.Le[1], m.Le[2]));
+	}
+}
+
+// ---- punctual (delta) lights -----------------------------------------------
+// LightSource point/spot/distant/goniometric/projection - see
+// pbrt_flatten::PunctualLight's own comment for why this is a bridging job
+// onto punctual_light_objects.h's existing constructors, already proven by
+// this codebase's own C2-C6 showcase scenes, rather than new rendering math.
+inline void buildPunctualLights(const pbrt_flatten::FlatScene &scene, BuildResult &out) {
+	if (!scene.punctualLights.empty()) {
+		out.punctLights = std::make_shared<punctual_light_list>();
+		for (const pbrt_flatten::PunctualLight &pl : scene.punctualLights) {
+			switch (pl.kind) {
+			case pbrt_flatten::PunctualLightKind::Point:
+				out.punctLights->add_point(
+					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+					pl.scale);
+				break;
+			case pbrt_flatten::PunctualLightKind::Spot:
+				out.punctLights->add_spot(
+					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+					vec3(pl.dir[0], pl.dir[1], pl.dir[2]),
+					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+					pl.coneAngleDeg, pl.falloffStartAngleDeg, pl.scale);
+				break;
+			case pbrt_flatten::PunctualLightKind::Distant:
+				out.punctLights->add_distant(
+					vec3(pl.dir[0], pl.dir[1], pl.dir[2]),
+					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+					pl.sceneRadius, pl.scale);
+				break;
+			case pbrt_flatten::PunctualLightKind::Goniometric: {
+				double id[9];
+				for (int c = 0; c < 9; ++c) id[c] = pl.worldToLight[c];
+				// pl.filename is only ever non-empty after pbrt_load.h's
+				// post-flatten pass confirmed the file exists (PunctualLight::
+				// filename's own comment). GoniometricLight<T>'s own equal-
+				// area mapping requires a SQUARE image (see its make()'s own
+				// comment) - matches pbrt-v4's own GoniometricLight::Create,
+				// which ErrorExits on a non-square image; softened here to a
+				// silent fallback (same "rare enough, not worth a second
+				// probe-and-fallback dance" precedent as the Diffuse
+				// imagemap-texture case above) rather than aborting the load.
+				// pbrt-v4 collapses a multi-channel image down to one
+				// greyscale channel before use (lights.cpp's own
+				// GoniometricLight::Create) - a plain per-pixel RGB average
+				// approximates that collapse without needing this loader's
+				// own luminance-weight table.
+				bool usedRealProfile = false;
+				if (!pl.filename.empty()) {
+					rtw_image img = decodePunctualLightImageFile(pl.filename);
+					if (img.width() > 0 && img.width() == img.height()) {
+						const int n = img.width();
+						std::vector<double> image(static_cast<std::size_t>(n) * n);
+						for (int v = 0; v < n; ++v) {
+							for (int u = 0; u < n; ++u) {
+								const float *px = img.float_pixel_data(u, v);
+								image[static_cast<std::size_t>(v) * n + u] =
+									(px[0] + px[1] + px[2]) / 3.0;
+							}
+						}
+						out.punctLights->add_gonio(
+							point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+							color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+							pl.scale, id, image, n, n);
+						usedRealProfile = true;
+					}
+				}
+				if (!usedRealProfile) {
+					// Uniform (isotropic) fallback - same shape as
+					// GoniometricLight<T>::make_isotropic(), just built
+					// explicitly here so the real worldToLight rotation
+					// (rather than that helper's hardcoded identity) still
+					// carries through for a scene that rotated the light.
+					static const std::vector<double> kUniformImage(4 * 4, 1.0);
+					out.punctLights->add_gonio(
+						point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+						color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+						pl.scale, id, kUniformImage, 4, 4);
+				}
+				break;
+			}
+			case pbrt_flatten::PunctualLightKind::Projection: {
+				double wtl[9];
+				for (int c = 0; c < 9; ++c) wtl[c] = pl.worldToLight[c];
+				// pl.filename is only ever non-empty after pbrt_load.h's
+				// post-flatten pass confirmed the file exists.
+				bool usedRealSlide = false;
+				if (!pl.filename.empty()) {
+					rtw_image img = decodePunctualLightImageFile(pl.filename);
+					if (img.width() > 0 && img.height() > 0) {
+						const int nx = img.width(), ny = img.height();
+						std::vector<double> image(static_cast<std::size_t>(nx) * ny * 3);
+						for (int v = 0; v < ny; ++v) {
+							for (int u = 0; u < nx; ++u) {
+								const float *px = img.float_pixel_data(u, v);
+								const std::size_t i = (static_cast<std::size_t>(v) * nx + u) * 3;
+								image[i + 0] = px[0];
+								image[i + 1] = px[1];
+								image[i + 2] = px[2];
+							}
+						}
+						out.punctLights->add_projection(
+							point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+							pl.scale, wtl, pl.fovDeg, image, nx, ny);
+						usedRealSlide = true;
+					}
+				}
+				if (!usedRealSlide) {
+					// Uniform white 2x2 slide - reproduces a plain cone-
+					// shaped beam of the requested fov/scale/aim, matching
+					// ProjectionLight<T>::make_uniform()'s own fallback.
+					static const std::vector<double> kUniformSlide(2 * 2 * 3, 1.0);
+					out.punctLights->add_projection(
+						point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+						pl.scale, wtl, pl.fovDeg, kUniformSlide, 2, 2);
+				}
+				break;
+			}
+			}
+		}
+	}
+}
+
 // Turns flattened geometry into a BVH-accelerated world plus the light list
 // the integrator samples. Materials are created once per (material, emission)
 // pair rather than per primitive - a million-triangle mesh with one material
@@ -1362,78 +1723,28 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// (see pbrt_flatten::Disk/Cylinder's own comment for why) and apply it at
 	// intersection time via disk_hittable/cylinder_hittable, the same
 	// ray-into-object-space technique transform_instance.h already uses for
-	// object instancing.
-	for (const pbrt_flatten::Disk &d : disks) {
-		auto mat = cachedMaterial(d.material, d.areaLight);
-		auto disk = std::make_shared<disk_hittable>(
-			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg),
-			toMatrix4(d.xform), toMatrix4(d.xformEnd), mat);
-		world.add(disk);
-		if (d.areaLight >= 0) lights.add(disk);
-		addMediumIfPresent(disk, d.medium);
-	}
-	out.diskCount += disks.size();
-
-	for (const pbrt_flatten::Cylinder &c : cylinders) {
-		auto mat = cachedMaterial(c.material, c.areaLight);
-		auto cyl = std::make_shared<cylinder_hittable>(
-			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg),
-			toMatrix4(c.xform), toMatrix4(c.xformEnd), mat);
-		world.add(cyl);
-		if (c.areaLight >= 0) lights.add(cyl);
-		addMediumIfPresent(cyl, c.medium);
-	}
-	out.cylinderCount += cylinders.size();
+	// object instancing. Extracted to buildDisksAndCylinders() above.
+	buildDisksAndCylinders(disks, cylinders, world, lights,
+							out.diskCount, out.cylinderCount,
+							cachedMaterial, addMediumIfPresent);
 
 	// ---- cones / paraboloids -----------------------------------------------
 	// Shape "cone"/"paraboloid" - same unbaked-CTM technique as disk/cylinder
 	// above. Real AreaLightSource/MediumInterface support now (see
 	// pbrt_flatten::Cone/Paraboloid's own comment) - lights.add()/
 	// addMediumIfPresent() the identical way disk/cylinder already are.
-	for (const pbrt_flatten::Cone &cn : cones) {
-		auto mat = cachedMaterial(cn.material, cn.areaLight);
-		auto cone = std::make_shared<cone_hittable>(
-			cn.radius, cn.height, degrees_to_radians(cn.phiMaxDeg), toMatrix4(cn.xform), mat);
-		world.add(cone);
-		if (cn.areaLight >= 0) lights.add(cone);
-		addMediumIfPresent(cone, cn.medium);
-	}
-	out.coneCount += cones.size();
-
-	for (const pbrt_flatten::Paraboloid &pb : paraboloids) {
-		auto mat = cachedMaterial(pb.material, pb.areaLight);
-		auto para = std::make_shared<paraboloid_hittable>(
-			pb.radius, pb.zMin, pb.zMax, degrees_to_radians(pb.phiMaxDeg), toMatrix4(pb.xform), mat);
-		world.add(para);
-		if (pb.areaLight >= 0) lights.add(para);
-		addMediumIfPresent(para, pb.medium);
-	}
-	out.paraboloidCount += paraboloids.size();
+	// Extracted to buildConesAndParaboloids() above.
+	buildConesAndParaboloids(cones, paraboloids, world, lights,
+							  out.coneCount, out.paraboloidCount,
+							  cachedMaterial, addMediumIfPresent);
 
 	// ---- bilinear patches -------------------------------------------------
 	// Shape "bilinearmesh" - see pbrt_flatten.h's BilinearPatch comment for
 	// why only the single-patch form reaches here. bilinear_patch_hittable
 	// (scenes_advanced.h) now overrides pdf_value()/random() the same way
 	// quad does, so an emissive one is NEE-samplable, not just hittable.
-	for (const pbrt_flatten::BilinearPatch &bp : patches) {
-		// gpuOnlyStaticFallback's own comment: this entry is a StartTime-pose
-		// duplicate of a patch CPU already renders for real via
-		// scene.animatedBilinearPatches (below) - GPU has no concept of that
-		// separate list, so the duplicate exists purely to keep GPU
-		// rendering the shape at all; skip it here or it would double-render
-		// on CPU.
-		if (bp.gpuOnlyStaticFallback) continue;
-		auto mat = cachedMaterial(bp.material, bp.areaLight);
-		auto patch = std::make_shared<bilinear_patch_hittable>(
-			point3(bp.p[0][0], bp.p[0][1], bp.p[0][2]),
-			point3(bp.p[1][0], bp.p[1][1], bp.p[1][2]),
-			point3(bp.p[2][0], bp.p[2][1], bp.p[2][2]),
-			point3(bp.p[3][0], bp.p[3][1], bp.p[3][2]),
-			mat);
-		world.add(patch);
-		if (bp.areaLight >= 0) lights.add(patch);
-	}
-	out.bilinearPatchCount += patches.size();
+	// Extracted to buildBilinearPatches() above.
+	buildBilinearPatches(patches, world, lights, out.bilinearPatchCount, cachedMaterial);
 
 	// ---- curves ------------------------------------------------------------
 	// Shape "curve" - see pbrt_flatten::Curve's own comment for scope (degree
@@ -1444,44 +1755,9 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// re-lerped per segment (matching pbrt-v4's own Curve::Create,
 	// shapes.cpp:894-895 exactly: Lerp(seg/nSegments, width0,width1)) so a
 	// multi-segment strand tapers smoothly across its whole length rather than
-	// each segment re-tapering its own full width0->width1 range.
-	for (const pbrt_flatten::Curve &cd : curveDecls) {
-		// gpuOnlyStaticFallback's own comment: this entry is a StartTime-pose
-		// duplicate of a curve CPU already renders for real via
-		// scene.animatedCurves (below, fed back through this SAME
-		// emitGeometry lambda with object-space cp - see that block's own
-		// comment) - skip it here or it would double-render on CPU.
-		if (cd.gpuOnlyStaticFallback) continue;
-		// forCurve=true: see hair_material's own tangentIsDpdu comment - real
-		// curve geometry has a genuine fiber tangent (dpdu) available, unlike
-		// every other shape here, which only offers the shading normal as a
-		// proxy.
-		auto mat = cachedMaterial(cd.material, cd.areaLight, /*forCurve=*/true);
-		const CurveType type = (cd.curveType == "cylinder") ? CurveType::Cylinder
-			: (cd.curveType == "ribbon") ? CurveType::Ribbon : CurveType::Flat;
-		for (int seg = 0; seg < cd.nSegments; ++seg) {
-			double cpx[4], cpy[4], cpz[4];
-			for (int i = 0; i < 4; ++i) {
-				const std::size_t idx = (static_cast<std::size_t>(seg) * 4 + i) * 3;
-				cpx[i] = cd.cp[idx]; cpy[i] = cd.cp[idx + 1]; cpz[i] = cd.cp[idx + 2];
-			}
-			const double t0 = static_cast<double>(seg) / cd.nSegments;
-			const double t1 = static_cast<double>(seg + 1) / cd.nSegments;
-			const double segW0 = cd.width0 + (cd.width1 - cd.width0) * t0;
-			const double segW1 = cd.width0 + (cd.width1 - cd.width0) * t1;
-			CurveShape<double> curve = (type == CurveType::Ribbon)
-				? CurveShape<double>::make_ribbon(cpx, cpy, cpz, 0.0, 1.0, segW0, segW1,
-					cd.n[static_cast<std::size_t>(seg) * 3], cd.n[static_cast<std::size_t>(seg) * 3 + 1],
-					cd.n[static_cast<std::size_t>(seg) * 3 + 2],
-					cd.n[static_cast<std::size_t>(seg + 1) * 3], cd.n[static_cast<std::size_t>(seg + 1) * 3 + 1],
-					cd.n[static_cast<std::size_t>(seg + 1) * 3 + 2])
-				: CurveShape<double>::make(cpx, cpy, cpz, 0.0, 1.0, segW0, segW1, type);
-			auto ch = std::make_shared<curve_shape_hittable>(curve, mat);
-			world.add(ch);
-			if (cd.areaLight >= 0) lights.add(ch);
-		}
-	}
-	out.curveCount += curveDecls.size();
+	// each segment re-tapering its own full width0->width1 range. Extracted
+	// to buildCurves() above.
+	buildCurves(curveDecls, world, lights, out.curveCount, cachedMaterial);
 	};
 
 
@@ -1708,54 +1984,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// why the decode happens there and not here or in flatten()). Falls back
 	// to the scene's constant L otherwise - either it never named an image,
 	// or naming one failed to resolve/decode (a warning was already recorded
-	// for that case).
-	if (scene.infiniteLight.present && scene.infiniteLight.hasPortal) {
-		if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0) {
-			// Windowed/portal infinite light (pbrt-v4 "point3 portal[4]") - a
-			// DIFFERENT image format (equal-area octahedral, not the
-			// equirectangular map plain sky_light/InfiniteLight expects - see
-			// PortalImageInfiniteLightData's own comment), so this does NOT
-			// also build a `sky` from the same pixels the way the plain
-			// image-based branch below does - see BuildResult::portal's own
-			// comment for why no separate `sky` fallback is needed either.
-			// PortalImageInfiniteLightData's own Vec3T (src/shared/vec3_frame.h's
-			// global Vec3<T> template) - NOT this codebase's own `vec3` class
-			// (a different, unrelated type; see that header's own comment on
-			// why it's kept separate from this project's vec3/point3/color).
-			std::array<Vec3<double>, 4> corners;
-			for (int i = 0; i < 4; ++i)
-				corners[i] = Vec3<double>(scene.infiniteLight.portal[i*3+0],
-				                          scene.infiniteLight.portal[i*3+1],
-				                          scene.infiniteLight.portal[i*3+2]);
-			out.portal = std::make_shared<PortalImageInfiniteLightData<double>>(
-				scene.infiniteLight.imagePixels.data(),
-				scene.infiniteLight.imageWidth, scene.infiniteLight.imageHeight,
-				scene.infiniteLight.scale, corners);
-		}
-		// else: a portal window was declared but its image never named, or
-		// named-and-failed to decode (pbrt_load.h already recorded a
-		// warning for that). Deliberately builds NEITHER out.portal NOR
-		// out.sky here - falling back to the plain-sky branch below would
-		// silently turn a windowed light into an unwindowed, full-strength
-		// sky flooding the whole scene with light from every direction
-		// (InfiniteLight defaults L to white, scale to 1.0), the opposite
-		// of what a portal author asked for. Failing closed (no sky light
-		// at all) matches this codebase's established "fail black rather
-		// than fail wrong" convention for unsupported portal combinations
-		// (see the SPPM/BDPT portal-skip comments in cpu_interface.cpp and
-		// cpu_interface_bdpt.cpp).
-	} else if (scene.infiniteLight.present) {
-		if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0) {
-			out.sky = std::make_shared<sky_light>(
-				scene.infiniteLight.imageWidth, scene.infiniteLight.imageHeight,
-				scene.infiniteLight.imagePixels.data(), scene.infiniteLight.scale);
-		} else {
-			out.sky = std::make_shared<sky_light>(color(
-				scene.infiniteLight.L[0] * scene.infiniteLight.scale,
-				scene.infiniteLight.L[1] * scene.infiniteLight.scale,
-				scene.infiniteLight.L[2] * scene.infiniteLight.scale));
-		}
-	}
+	// for that case). Extracted to buildSkyOrPortal() above.
+	buildSkyOrPortal(scene, out);
 
 	// ---- camera medium ------------------------------------------------------
 	// pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own
@@ -1763,146 +1993,17 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// no-per-shape-medium-conflict index, or -1 if none/unsupported (both
 	// scope cuts already warned about there) - this is just the same
 	// Medium-struct-to-runtime-object construction addMediumIfPresent()
-	// below does for a per-shape medium, minus the boundary shape.
-	if (scene.cameraMediumIndex >= 0 &&
-		static_cast<std::size_t>(scene.cameraMediumIndex) < scene.media.size()) {
-		const pbrt_flatten::Medium &m = scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)];
-		// Collapsed to a scalar extinction + chromatic albedo tint via the
-		// SAME `luminance` addMediumIfPresent() (above) uses for a per-shape
-		// medium's identical homogeneous branch - luminance-weighted (not a
-		// flat per-channel average), tint derived from sigma_s alone (the
-		// scattering-only single-scattering-albedo direction), Le passed
-		// RAW since ambient_medium's own constructor (mirroring
-		// constant_medium's) already does the sigma_a/sigma_t weighting.
-		const double sig_a = luminance(m.sigma_a);
-		const double sig_s = luminance(m.sigma_s);
-		const color tint = (sig_s > 1e-9)
-			? color(m.sigma_s[0] / sig_s, m.sigma_s[1] / sig_s, m.sigma_s[2] / sig_s)
-			: color(1, 1, 1);
-		out.cameraMedium = std::make_shared<ambient_medium>(
-			sig_a, sig_s, tint, m.g, color(m.Le[0], m.Le[1], m.Le[2]));
-	}
+	// above does for a per-shape medium, minus the boundary shape. Extracted
+	// to buildCameraMedium() above.
+	buildCameraMedium(scene, out, luminance);
 
 	// ---- punctual (delta) lights -------------------------------------------
 	// LightSource point/spot/distant/goniometric/projection - see
 	// pbrt_flatten::PunctualLight's own comment for why this is a bridging
 	// job onto punctual_light_objects.h's existing constructors, already
 	// proven by this codebase's own C2-C6 showcase scenes, rather than new
-	// rendering math.
-	if (!scene.punctualLights.empty()) {
-		out.punctLights = std::make_shared<punctual_light_list>();
-		for (const pbrt_flatten::PunctualLight &pl : scene.punctualLights) {
-			switch (pl.kind) {
-			case pbrt_flatten::PunctualLightKind::Point:
-				out.punctLights->add_point(
-					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
-					pl.scale);
-				break;
-			case pbrt_flatten::PunctualLightKind::Spot:
-				out.punctLights->add_spot(
-					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-					vec3(pl.dir[0], pl.dir[1], pl.dir[2]),
-					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
-					pl.coneAngleDeg, pl.falloffStartAngleDeg, pl.scale);
-				break;
-			case pbrt_flatten::PunctualLightKind::Distant:
-				out.punctLights->add_distant(
-					vec3(pl.dir[0], pl.dir[1], pl.dir[2]),
-					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
-					pl.sceneRadius, pl.scale);
-				break;
-			case pbrt_flatten::PunctualLightKind::Goniometric: {
-				double id[9];
-				for (int c = 0; c < 9; ++c) id[c] = pl.worldToLight[c];
-				// pl.filename is only ever non-empty after pbrt_load.h's
-				// post-flatten pass confirmed the file exists (PunctualLight::
-				// filename's own comment). GoniometricLight<T>'s own equal-
-				// area mapping requires a SQUARE image (see its make()'s own
-				// comment) - matches pbrt-v4's own GoniometricLight::Create,
-				// which ErrorExits on a non-square image; softened here to a
-				// silent fallback (same "rare enough, not worth a second
-				// probe-and-fallback dance" precedent as the Diffuse
-				// imagemap-texture case above) rather than aborting the load.
-				// pbrt-v4 collapses a multi-channel image down to one
-				// greyscale channel before use (lights.cpp's own
-				// GoniometricLight::Create) - a plain per-pixel RGB average
-				// approximates that collapse without needing this loader's
-				// own luminance-weight table.
-				bool usedRealProfile = false;
-				if (!pl.filename.empty()) {
-					rtw_image img = decodePunctualLightImageFile(pl.filename);
-					if (img.width() > 0 && img.width() == img.height()) {
-						const int n = img.width();
-						std::vector<double> image(static_cast<std::size_t>(n) * n);
-						for (int v = 0; v < n; ++v) {
-							for (int u = 0; u < n; ++u) {
-								const float *px = img.float_pixel_data(u, v);
-								image[static_cast<std::size_t>(v) * n + u] =
-									(px[0] + px[1] + px[2]) / 3.0;
-							}
-						}
-						out.punctLights->add_gonio(
-							point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-							color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
-							pl.scale, id, image, n, n);
-						usedRealProfile = true;
-					}
-				}
-				if (!usedRealProfile) {
-					// Uniform (isotropic) fallback - same shape as
-					// GoniometricLight<T>::make_isotropic(), just built
-					// explicitly here so the real worldToLight rotation
-					// (rather than that helper's hardcoded identity) still
-					// carries through for a scene that rotated the light.
-					static const std::vector<double> kUniformImage(4 * 4, 1.0);
-					out.punctLights->add_gonio(
-						point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-						color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
-						pl.scale, id, kUniformImage, 4, 4);
-				}
-				break;
-			}
-			case pbrt_flatten::PunctualLightKind::Projection: {
-				double wtl[9];
-				for (int c = 0; c < 9; ++c) wtl[c] = pl.worldToLight[c];
-				// pl.filename is only ever non-empty after pbrt_load.h's
-				// post-flatten pass confirmed the file exists.
-				bool usedRealSlide = false;
-				if (!pl.filename.empty()) {
-					rtw_image img = decodePunctualLightImageFile(pl.filename);
-					if (img.width() > 0 && img.height() > 0) {
-						const int nx = img.width(), ny = img.height();
-						std::vector<double> image(static_cast<std::size_t>(nx) * ny * 3);
-						for (int v = 0; v < ny; ++v) {
-							for (int u = 0; u < nx; ++u) {
-								const float *px = img.float_pixel_data(u, v);
-								const std::size_t i = (static_cast<std::size_t>(v) * nx + u) * 3;
-								image[i + 0] = px[0];
-								image[i + 1] = px[1];
-								image[i + 2] = px[2];
-							}
-						}
-						out.punctLights->add_projection(
-							point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-							pl.scale, wtl, pl.fovDeg, image, nx, ny);
-						usedRealSlide = true;
-					}
-				}
-				if (!usedRealSlide) {
-					// Uniform white 2x2 slide - reproduces a plain cone-
-					// shaped beam of the requested fov/scale/aim, matching
-					// ProjectionLight<T>::make_uniform()'s own fallback.
-					static const std::vector<double> kUniformSlide(2 * 2 * 3, 1.0);
-					out.punctLights->add_projection(
-						point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-						pl.scale, wtl, pl.fovDeg, kUniformSlide, 2, 2);
-				}
-				break;
-			}
-			}
-		}
-	}
+	// rendering math. Extracted to buildPunctualLights() above.
+	buildPunctualLights(scene, out);
 
 	return out;
 }
