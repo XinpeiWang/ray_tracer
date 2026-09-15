@@ -156,6 +156,17 @@ void RenderController::resumeRender() {
 }
 
 void RenderController::start() {
+	// Every current caller happens to only ever call start() on a fresh
+	// instance or after the previous render finished, so this has never
+	// fired in practice - but start() itself had no guard of its own:
+	// calling it again on a live instance would overwrite m_renderProcess
+	// with a new QProcess while the old one (still connected to this same
+	// object's onReadyRead()/onProcessFinished() slots) kept running
+	// orphaned, and onReadyRead() would then read from the wrong process.
+	if (isRunning()) {
+		emit logMessage("start() called while a render is already running - ignoring.");
+		return;
+	}
 	emit logMessage(QString("Starting render..."));
 
 	// Look up scene name live from scene_metadata.dll
@@ -368,7 +379,18 @@ void RenderController::start() {
 		args << QString::number(m_camZ);     // Camera position Z
 	}
 
-	emit logMessage(QString("Command: %1 %2").arg(exePath, args.join(" ")));
+	// Quote any argument containing whitespace for this human-readable log
+	// line only - the actual QProcess::start(exePath, args) call below
+	// already quotes each QStringList argument correctly on its own and
+	// never sees this joined string. Without this, a copy-pasted "Command:"
+	// line is silently wrong (not just unquoted) whenever a path contains a
+	// space, e.g. "C:\Users\John Doe\...": the space would split into two
+	// separate shell tokens on a manual rerun.
+	QStringList quotedArgsForLog;
+	quotedArgsForLog.reserve(args.size());
+	for (const QString &a : args)
+		quotedArgsForLog << (a.contains(' ') ? QString("\"%1\"").arg(a) : a);
+	emit logMessage(QString("Command: %1 %2").arg(exePath, quotedArgsForLog.join(" ")));
 
 	// ========================================================================
 	// Launch ray_tracer.exe as Subprocess
@@ -520,6 +542,26 @@ void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exit
 		}
 
 		emit logMessage(QString("Result: SUCCESS  |  Output: %1").arg(actualOutputPath));
+		// render_output_parser.h's progress regexes match against
+		// ray_tracer.exe's exact stdout wording (an untested protocol before
+		// that header existed) and have already gone silently stale twice -
+		// see that header's own comment. A render that ran long enough to
+		// almost certainly have crossed at least one scanline/frame boundary
+		// but never advanced m_lastProgress past its initial 0 is exactly
+		// that failure mode ("progress bar frozen, nothing logged as
+		// wrong"), so it's worth a log line even though the render itself
+		// still succeeded. Gated on totalTime rather than firing
+		// unconditionally: a real (multi-second+) render matching this is
+		// suspicious, but a fast thumbnail-sized render finishing before
+		// ray_tracer.exe ever printed a single progress line is completely
+		// normal and would otherwise make this warning fire on every
+		// thumbnail batch, training everyone to ignore it.
+		if (m_lastProgress <= 0 && totalTime > 2.0) {
+			emit logMessage("Warning: no render progress was ever reported for "
+							 "this render, even though it ran for " + elapsedStr +
+							 " - the progress bar may be stale (see "
+							 "render_output_parser.h's own comment).");
+		}
 		emit progressUpdate(100);
 		finish(true, "Render completed successfully!", actualOutputPath);
 	} else {

@@ -1562,6 +1562,14 @@ private:
 		render_output::LogCategory category;
 	};
 	QVector<LoggedLine> m_logHistory;
+	// Trimmed (oldest-first) in onLogMessage() once m_logHistory exceeds this,
+	// so a long-running session (many renders/thumbnail batches, each
+	// possibly logging one line per scanline) can't grow it - and the O(n)
+	// re-append rebuildLogPane() does on every theme switch - without bound.
+	// createLogTab() caps m_logTextEdit itself to the same count via
+	// QTextDocument::setMaximumBlockCount() so the visible pane and this
+	// cached-for-rebuild copy never drift out of sync with each other.
+	static constexpr int kMaxLogHistoryLines = 20000;
 	void rebuildLogPane();
 
 	// Diagnostics

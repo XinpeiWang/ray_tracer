@@ -10,6 +10,7 @@
 #include "../src/shared/video_preset.h"
 
 #include <QTabBar>
+#include <QTextDocument>
 #include "scene_metadata_client.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -137,6 +138,10 @@ void MainWindow::createLogTab() {
 	m_logTextEdit->setReadOnly(true);
 	m_logTextEdit->setFont(QFont("Consolas", 9));
 	m_logTextEdit->setLineWrapMode(QTextEdit::NoWrap);
+	// Bounds the pane's own memory/reflow cost the same way m_logHistory is
+	// bounded (see kMaxLogHistoryLines's own comment, mainwindow.h) - drops
+	// oldest blocks automatically as new ones are appended past this count.
+	m_logTextEdit->document()->setMaximumBlockCount(MainWindow::kMaxLogHistoryLines);
 	// No stylesheet here: the global QTextEdit rule already supplies the
 	// surface, border and radius, and this local copy only duplicated it.
 

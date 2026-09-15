@@ -1541,12 +1541,16 @@ void MainWindow::onLogMessage(const QString &message) {
 		render_output::classifyLogLine(msg.toStdString());
 
 	m_logHistory.push_back({ts, escaped, category});
+	if (m_logHistory.size() > kMaxLogHistoryLines) {
+		// Batch-trim back to 90% of the cap rather than popping one line
+		// every push once at the cap - that would turn every single log
+		// line for the rest of the session into an O(n) QVector::remove().
+		m_logHistory.remove(0, m_logHistory.size() - (kMaxLogHistoryLines * 9 / 10));
+	}
 	m_logTextEdit->append(styleLogLine(category,
 									   m_activeTheme.colourFor(category.severity).name(),
 									   m_activeTheme.logSeparator.name(),
 									   ts, escaped));
-
-	qDebug() << msg;
 }
 
 // Re-renders every line the log has shown, in the current scheme. Called on a
