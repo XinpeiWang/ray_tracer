@@ -643,6 +643,7 @@ ThumbnailGenerator::ThumbnailGenerator(QObject *parent)
 	connect(m_controller, &RenderController::renderComplete, this,
 		[this](bool success, const QString &, double, const QString &) {
 			const QString finishedId = m_currentId;
+			++m_completedCount;
 			emit thumbnailReady(finishedId, success, m_outputPathForId(finishedId));
 			if (m_stopRequested) {
 				m_stopRequested = false;
@@ -661,6 +662,8 @@ void ThumbnailGenerator::start(const QStringList &sceneIds, std::function<QStrin
 		if (!QFile::exists(m_outputPathForId(id))) m_pending.enqueue(id);
 	}
 	m_stopRequested = false;
+	m_completedCount = 0;
+	m_totalCount = m_pending.size();
 	if (m_pending.isEmpty()) {
 		emit allDone();
 		return;
@@ -688,6 +691,7 @@ void ThumbnailGenerator::startNext() {
 		return;
 	}
 	m_currentId = m_pending.dequeue();
+	emit progress(m_completedCount, m_totalCount, m_currentId);
 
 	const QString pngPath = m_outputPathForId(m_currentId);
 	QDir().mkpath(QFileInfo(pngPath).absolutePath());

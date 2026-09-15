@@ -426,6 +426,13 @@ void MainWindow::createSettingsTab() {
 		"scene that doesn't already have one saved. Runs on the CPU only, at low resolution - it can\n"
 		"take a while the first time you do this."));
 	gridPageLayout->addWidget(m_generateThumbnailsButton);
+	// Hidden until generation actually starts (onGenerateThumbnailsClicked())
+	// and hidden again once it finishes (onThumbnailsAllDone()) - see
+	// m_thumbnailProgressBar's own comment (mainwindow.h).
+	m_thumbnailProgressBar = new QProgressBar(gridPage);
+	m_thumbnailProgressBar->setTextVisible(true);
+	m_thumbnailProgressBar->setVisible(false);
+	gridPageLayout->addWidget(m_thumbnailProgressBar);
 	m_sceneViewStack->addWidget(gridPage);
 
 	sceneGroupLayout->addWidget(m_sceneViewStack);

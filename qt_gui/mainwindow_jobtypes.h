@@ -446,6 +446,11 @@ signals:
 	// One per finished scene (success or failure) - MainWindow uses this to
 	// update that scene's grid item icon in place and advance status text.
 	void thumbnailReady(const QString &sceneId, bool success, const QString &outputPath);
+	// Fires right before each scene starts rendering - `completed`/`total`
+	// count against the queue AFTER already-cached scenes were filtered out
+	// in start() (not the raw sceneIds list passed in), so a caller driving
+	// a progress bar from this never has to duplicate that filtering itself.
+	void progress(int completed, int total, const QString &sceneId);
 	// Fires once after the last queued scene finishes (or stop() is called).
 	void allDone();
 
@@ -457,6 +462,8 @@ private:
 	std::function<QString(const QString &)> m_outputPathForId;
 	QString m_currentId;
 	bool m_stopRequested = false;
+	int m_totalCount = 0;
+	int m_completedCount = 0;
 };
 
 // A snapshot of every render-affecting UI field at the moment "Start Render"

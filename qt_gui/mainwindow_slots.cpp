@@ -16,6 +16,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QScrollBar>
+#include <QStatusBar>
 #include <QCoreApplication>
 #include <QSignalBlocker>
 #include <QIcon>
@@ -598,6 +599,8 @@ void MainWindow::onGenerateThumbnailsClicked() {
 		m_thumbnailGenerator = new ThumbnailGenerator(this);
 		connect(m_thumbnailGenerator, &ThumbnailGenerator::thumbnailReady,
 				this, &MainWindow::onThumbnailReady);
+		connect(m_thumbnailGenerator, &ThumbnailGenerator::progress,
+				this, &MainWindow::onThumbnailProgress);
 		connect(m_thumbnailGenerator, &ThumbnailGenerator::allDone,
 				this, &MainWindow::onThumbnailsAllDone);
 	}
@@ -616,12 +619,14 @@ void MainWindow::onGenerateThumbnailsClicked() {
 	}
 
 	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(false);
+	m_thumbnailFailedCount = 0;
 	onLogMessage(QString("Generating thumbnails for up to %1 scene(s)...").arg(ids.size()));
 	m_thumbnailGenerator->start(ids, [this](const QString &id) { return thumbnailCachePath(id); });
 }
 
 void MainWindow::onThumbnailReady(const QString &sceneId, bool success, const QString &outputPath) {
 	if (!success) {
+		++m_thumbnailFailedCount;
 		onLogMessage(QString("Thumbnail generation failed for scene %1").arg(sceneId));
 		return;
 	}
@@ -635,9 +640,22 @@ void MainWindow::onThumbnailReady(const QString &sceneId, bool success, const QS
 	}
 }
 
+void MainWindow::onThumbnailProgress(int completed, int total, const QString &sceneId) {
+	if (!m_thumbnailProgressBar) return;
+	m_thumbnailProgressBar->setRange(0, total);
+	m_thumbnailProgressBar->setValue(completed);
+	m_thumbnailProgressBar->setFormat(tr("Generating thumbnail %1 of %2: %3")
+		.arg(completed + 1).arg(total).arg(SceneMetadataClient::sceneName(sceneId)));
+	m_thumbnailProgressBar->setVisible(true);
+}
+
 void MainWindow::onThumbnailsAllDone() {
 	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(true);
+	if (m_thumbnailProgressBar) m_thumbnailProgressBar->setVisible(false);
 	onLogMessage(tr("Thumbnail generation finished."));
+	statusBar()->showMessage(m_thumbnailFailedCount > 0
+		? tr("Thumbnail generation finished - %1 failed.").arg(m_thumbnailFailedCount)
+		: tr("Thumbnail generation finished."), 5000);
 }
 
 void MainWindow::onStopClicked() {

@@ -204,6 +204,11 @@ private slots:
 	void onDiagnosticsFailed(const QString &message);
 	void onGenerateThumbnailsClicked();
 	void onThumbnailReady(const QString &sceneId, bool success, const QString &outputPath);
+	// Fired before each scene starts - drives m_thumbnailProgressBar's
+	// value/text (see ThumbnailGenerator::progress()'s own comment for why
+	// `completed`/`total` already exclude scenes that were skipped for
+	// having a cached thumbnail).
+	void onThumbnailProgress(int completed, int total, const QString &sceneId);
 	void onThumbnailsAllDone();
 
 	// Shared by the log tab's buttons and the File menu's actions.
@@ -1285,6 +1290,18 @@ private:
 	QStackedWidget *m_sceneViewStack = nullptr;   // page 0 = m_sceneCombo, page 1 = m_sceneGrid
 	QToolButton *m_sceneViewToggle = nullptr;     // checked = grid page showing
 	QPushButton *m_generateThumbnailsButton = nullptr;
+	// Hidden until the first "Generate Thumbnails" click, then shows live
+	// progress ("Generating 3 of 12: Bouncing Spheres") via its own format
+	// string (not the default "%p%") - see onThumbnailProgress(). Hidden
+	// again once onThumbnailsAllDone() fires. Deliberately its own widget
+	// rather than reusing m_progressBar (the real-render progress bar) -
+	// see ThumbnailGenerator's own class comment for why the two must never
+	// share chrome.
+	QProgressBar *m_thumbnailProgressBar = nullptr;
+	// Counts failures across one "Generate Thumbnails" run, reset at the
+	// start of onGenerateThumbnailsClicked() - onThumbnailsAllDone() folds
+	// this into its summary status message.
+	int m_thumbnailFailedCount = 0;
 	// Lazily created (and reused across multiple "Generate Thumbnails"
 	// clicks) by onGenerateThumbnailsClicked() the first time it's needed -
 	// see that slot's own comment.
