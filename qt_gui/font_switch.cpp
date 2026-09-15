@@ -177,24 +177,6 @@ void MainWindow::applyFont(const QString &id) {
 	// icons' tooltips silently kept the OS tooltip font regardless of the
 	// active Font choice until this explicit override was added.
 	QToolTip::setFont(font);
-	// mainwindow_style.cpp's QSS themes the menu bar (File/Render/View/.../
-	// Help) and its dropdown menus' colors/backgrounds but never sets
-	// font-family/font-size, so they need an explicit push too. The
-	// per-className qApp->setFont(font, "QMenuBar"/"QMenu") overload alone
-	// did NOT reliably reach the already-constructed menuBar()/its menus
-	// here - applyTheme() below reapplies a full qApp->setStyleSheet() every
-	// time this function runs (see its own header comment), and Fusion's
-	// stylesheet-aware font resolution didn't consistently repolish already-
-	// built QMenuBar/QMenu widgets from a later per-class default alone.
-	// Setting the font directly on the actual widgets sidesteps that
-	// entirely - createFontMenu()/menuBar()->addMenu() parents every menu to
-	// the menu bar, so findChildren() reaches all of them (File, Render,
-	// View, Theme, Font, Language, Help).
-	qApp->setFont(font, "QMenuBar");
-	qApp->setFont(font, "QMenu");
-	menuBar()->setFont(font);
-	for (QMenu *menu : menuBar()->findChildren<QMenu *>())
-		menu->setFont(font);
 	// QToolTip::setFont() only reaches a tooltip's plain-text path - every
 	// rich-text (wrapTooltipHtml()) tooltip already on screen had its font
 	// baked into its HTML when it was last built, which for most info icons
@@ -209,6 +191,29 @@ void MainWindow::applyFont(const QString &id) {
 	// just reapplied unchanged - the same full unpolish+polish qApp->setFont()
 	// alone still can't trigger on its own for already-styled widgets.
 	applyTheme(m_activeTheme);
+
+	// Must run AFTER applyTheme() above, not before: an earlier attempt set
+	// these before applyTheme()'s own qApp->setStyleSheet() call, which
+	// forces a full unpolish+repolish that recomputes the menu bar's font
+	// from the stylesheet/style cascade and silently discarded whatever was
+	// set here moments earlier - fine on first startup (menuBar() isn't
+	// shown/polished yet at that point, so the discard never visibly
+	// happened to catch), but it meant a later runtime Font-menu switch
+	// never actually changed the menu bar's rendered font at all, despite
+	// this code appearing to run. mainwindow_style.cpp's QSS themes the menu
+	// bar (File/Render/View/.../Help) and its dropdown menus' colors/
+	// backgrounds but never sets font-family/font-size, and the per-className
+	// qApp->setFont(font, "QMenuBar"/"QMenu") overload alone doesn't reliably
+	// reach an already-constructed menu bar either - setting the font
+	// directly on the actual widgets is what actually sticks.
+	// createFontMenu()/menuBar()->addMenu() parents every menu to the menu
+	// bar, so findChildren() reaches all of them (File, Render, View, Theme,
+	// Font, Language, Help).
+	qApp->setFont(font, "QMenuBar");
+	qApp->setFont(font, "QMenu");
+	menuBar()->setFont(font);
+	for (QMenu *menu : menuBar()->findChildren<QMenu *>())
+		menu->setFont(font);
 }
 
 void MainWindow::switchFont(const QString &id) {
