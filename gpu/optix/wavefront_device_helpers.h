@@ -1589,6 +1589,530 @@ __device__ __forceinline__ void wf_generate_primary_ray(
 	}
 }
 
+// Per-shading-point glossy-frame/path-guiding context, shared by
+// wf_finish_material_scatter()'s evalGlossyF lambda and its own
+// glossy_isType-gated matType switch further down - see
+// wf_setup_glossy_context()'s own comment for why this is computed once
+// per shading point rather than once per (up to 3) NEE query direction.
+struct GlossyCtx {
+	bool valid = false;
+	float3 tan = make_float3(0.0f, 0.0f, 0.0f);
+	float3 bit = make_float3(0.0f, 0.0f, 0.0f);
+	float wi_x = 0.0f, wi_y = 0.0f, wi_z = 0.0f;
+	float alpha = 0.0f;
+	float alpha_v = 0.0f;
+	float pGuide = 0.0f;
+	int guideProbeIdx = -1;
+};
+
+// Extracted out of wf_finish_material_scatter() (a code-health pass - that
+// function had grown to ~1500 lines) as the first, lowest-risk of several
+// planned extractions: no early returns, no lambda captures to convert,
+// pure input->output. Computed ONCE per shading point instead of on each
+// of the (up to) 3 calls evalGlossyF gets (area-light NEE, sky NEE,
+// punctual-light NEE) - normal/phaseWo/matType are all invariant across
+// those calls within one wf_finish_material_scatter() invocation, so
+// re-deriving the local frame/wi/guiding lookup on every call would redo
+// identical work up to 3x for no reason. `valid` folds both of
+// evalGlossyF's own early-outs (wrong matType, wi_z<=0) into one check the
+// caller no longer needs to redo itself.
+CPU_GPU GlossyCtx wf_setup_glossy_context(
+	MaterialType matType, const float3& normal, const float3& dpdu, const float3& phaseWo,
+	// See wf_finish_material_scatter()'s own glossyAlpha/glossyAlphaV
+	// parameter comments - already regularized/resolved by the caller, not
+	// re-derived here. alpha_v <0 (RoughMetal, or any non-glossy matType)
+	// falls back to alpha, matching MaterialData::roughnessV's own
+	// isotropic sentinel.
+	float glossyAlpha, float glossyAlphaV,
+	GpuProbeGridMeta guidingGridMeta, const GpuGuidingHistogram* guidingHistograms, const GpuProbe* guidingProbes,
+	const float3& hit_point) {
+	GlossyCtx ctx;
+	ctx.alpha = glossyAlpha;
+	ctx.alpha_v = (glossyAlphaV >= 0.0f) ? glossyAlphaV : ctx.alpha;
+	const bool glossy_isType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
+		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
+		matType == MaterialType::RoughMetal);
+	if (glossy_isType) {
+		// RoughMetal stays on the arbitrary frame (isotropic-only, no
+		// anisotropic variant exists - matches optix_device_helpers.h's
+		// identical RoughMetal exclusion); the other 4 glossy kinds get the
+		// real, UV-aligned frame.
+		if (matType == MaterialType::RoughMetal) {
+			BuildArbitraryTangentFrame(normal.x, normal.y, normal.z,
+			                            ctx.tan.x, ctx.tan.y, ctx.tan.z,
+			                            ctx.bit.x, ctx.bit.y, ctx.bit.z);
+		} else {
+			BuildDpduTangentFrame(normal.x, normal.y, normal.z, dpdu.x, dpdu.y, dpdu.z,
+			                       ctx.tan.x, ctx.tan.y, ctx.tan.z,
+			                       ctx.bit.x, ctx.bit.y, ctx.bit.z);
+		}
+		ctx.wi_x = dot(phaseWo, ctx.tan);
+		ctx.wi_y = dot(phaseWo, ctx.bit);
+		ctx.wi_z = dot(phaseWo, normal);
+		if (ctx.wi_z > 0.0f) ctx.valid = true;
+	}
+
+	// Real-time path guiding (Live Preview only) - v1 scope is Conductor/
+	// RoughMetal only (see guidingHistograms's own parameter comment,
+	// wf_finish_material_scatter()), computed ONCE here rather than inside
+	// evalGlossyF since the nearest probe/pGuide depend only on hit_point,
+	// not on which of the (up to 3) query directions evalGlossyF is asked
+	// about. Reaching here with is_specular==false already means
+	// evaluate_materials() itself found this Conductor/RoughMetal hit
+	// non-EffectivelySmooth (a smooth one sets is_specular=true and never
+	// reaches this whole NEE block) - so no separate EffectivelySmooth
+	// re-check is needed, matching that switch-arm's own guiding gate
+	// exactly.
+	if (ctx.valid && guidingHistograms != nullptr &&
+		(matType == MaterialType::Conductor || matType == MaterialType::RoughMetal)) {
+		ctx.guideProbeIdx = wf_guiding_nearest_probe(guidingGridMeta, guidingProbes, hit_point);
+		if (ctx.guideProbeIdx >= 0) {
+			ctx.pGuide = wf_guiding_probability(guidingHistograms[ctx.guideProbeIdx]);
+		}
+	}
+	return ctx;
+}
+
+// Result of wf_nee_pick_light() below - the ReSTIR-or-classic light draw
+// wf_finish_material_scatter()'s area-light NEE block consumes. Field names/
+// defaults mirror exactly what used to be plain locals inline in that
+// function: haveSample/to_light/max_dist/light_pdf/nee_norm/
+// light_emission_spec, initialized the same "no sample yet" way either path
+// left them in before either filled them in (or didn't, on a failed draw).
+struct NeeLightSample {
+	bool haveSample = false;
+	float3 to_light = make_float3(0.0f, 0.0f, 0.0f);
+	float max_dist = 0.0f;
+	float light_pdf = 0.0f;
+	float nee_norm = 0.0f;
+	SampledSpectrum<kWFNWavelengths> light_emission_spec = SampledSpectrum<kWFNWavelengths>(0.f);
+};
+
+// Extracted out of wf_finish_material_scatter() (item 4 sub-step 3 of this
+// project's own code-health plan) - the ReSTIR-or-classic direct-light draw
+// that used to sit inline between wf_setup_glossy_context's own call site
+// and the area-light shading block (wf_local_light_bsdf's own call site,
+// unchanged by this extraction - that block still lives in
+// wf_finish_material_scatter itself and still consumes this function's
+// return value exactly as it consumed the equivalent inline locals before).
+//
+// Unlike wf_local_light_bsdf, this has NO dependency on any of
+// wf_finish_material_scatter's other local lambdas (evalGlossyF,
+// liftUnboundedRGB, addToFramebuffer) - the only lambda it needs
+// (liftEmission) is self-contained (only reads `swl`, defined fresh below),
+// so - like wf_setup_glossy_context above - this becomes a real function
+// with an explicit parameter list instead of a local lambda. NOT tagged
+// CPU_GPU like wf_setup_glossy_context, though: several callees this
+// function makes (wf_generate_restir_candidate, wf_rand,
+// wf_restir_temporal_combine, wf_restir_volume_temporal_combine,
+// wf_reevaluate_light_geometry, wf_light_bvh_pmf, wf_light_raw_emission) are
+// themselves plain `__device__ __forceinline__` (device-only, no host
+// overload) - a CPU_GPU tag here would fail to compile for the host side of
+// this translation unit. __device__-only, matching wf_finish_material_scatter
+// itself exactly.
+//
+// Side effects (same ones the inline code had, now scoped to this function,
+// still firing at the exact same relative point in the overall NEE sequence
+// since this is called synchronously, once, from the same call site):
+//   - `restirReservoirs[pixelIndex] = res` / `restirCtx.normalOut[pixelIndex]`
+//     (surface ReSTIR persistence, useRestir && !isPhase only)
+//   - `restirVolumeReservoirs[pixelIndex] = volRes` and the
+//     volumeMatIdxOut/volumePhaseWoGOut/volumeEntryPointOut writes
+//     (volumetric ReSTIR persistence, useRestir && isPhase && non-null
+//     restirVolumeReservoirs only)
+//   - `seed` mutated by reference throughout (wf_generate_restir_candidate's
+//     own draws in the RIS loop, wf_rand() per candidate,
+//     wf_restir_temporal_combine/wf_restir_volume_temporal_combine's own
+//     internal draws, and the classic single-draw path's own
+//     wf_generate_restir_candidate call) - preserved bit-for-bit in the same
+//     order as before, since none of this moved relative to anything else.
+__device__ __forceinline__ NeeLightSample wf_nee_pick_light(
+	const float3& hit_point, unsigned int& seed, float time,
+	const SphereData* spheres, const QuadData* quads,
+	const TriangleData* triangles, const BilinearPatchData* bilinearPatches,
+	const DiskData* disks, const CylinderData* cylinders,
+	const MaterialData* materials,
+	const int* lightIndices, const GpuLightKind* lightKinds,
+	const GpuAliasEntry* aliasTable, unsigned int numLights,
+	const TextureData* textures, const unsigned char* texturePixels,
+	WfLightBvhContext lightBvh,
+	const SampledWavelengths<kWFNWavelengths>& swl,
+	int pixelIndex, int depth, int matIdx, bool isPhase,
+	const float3& normal, const float3& phaseWo, float phaseG,
+	GpuReservoir* restirReservoirs, const GpuRestirTemporalContext& restirCtx,
+	const float3& mediumEntryPoint, float mediumMeanFreePath,
+	GpuVolumeReservoir* restirVolumeReservoirs,
+	const GpuVolumeRestirTemporalContext& restirVolumeCtx,
+	int* volumeMatIdxOut, float4* volumePhaseWoGOut, float4* volumeEntryPointOut)
+{
+	using SS = SampledSpectrum<kWFNWavelengths>;
+
+	// ReSTIR DI (Live Preview only, restirReservoirs non-null - see this
+	// function's own parameter comment) replaces the single alias-table draw
+	// below with weighted resampling over kRestirCandidateCount candidates,
+	// for primary hits only (depth==0 - Bitterli 2020's canonical scope; an
+	// indirect bounce's NEE keeps the classic single-draw path even under
+	// real-time preview). haveSample/to_light/max_dist/light_pdf/nee_norm are
+	// filled by EITHER this block or the classic single-draw block just below
+	// it, then consumed identically by the caller's shared BSDF-evaluation/
+	// shadow-ray code - light_pdf remains the drawn/winning candidate's own
+	// selection_pdf*geom_pdf (used only for the MIS weight against BSDF
+	// sampling), while nee_norm is what actually normalizes the radiance
+	// contribution: 1/light_pdf classically, or the reservoir's own unbiased
+	// contribution weight W under ReSTIR (W already IS an unbiased estimator
+	// of that reciprocal - see restir_reservoir_add's own comment) - so the
+	// Ld formula the caller computes multiplies by nee_norm instead of
+	// dividing by light_pdf.
+	bool   haveSample = false;
+	float3 to_light = make_float3(0.0f, 0.0f, 0.0f);
+	float  max_dist = 0.0f;
+	float  light_pdf = 0.0f;
+	float  nee_norm = 0.0f;
+	SS light_emission_spec(0.f);
+
+	// A light's RGB colour is an ILLUMINANT (pbrt-v4 RGBIlluminantSpectrum:
+	// scale * rsp(lambda) * D65(lambda)), not a bare RGBUnboundedSpectrum
+	// (scale * rsp(lambda)) -- without the D65 factor, a grey light
+	// uplifts to a flat/equal-energy spectrum (chromaticity (0.333,
+	// 0.333)) instead of D65-white (0.3127,0.3290), which then
+	// reconstructs as a non-neutral RGB through wf_xyz_to_linear_rgb's
+	// D65-targeted matrix (R inflated ~20%, G/B suppressed ~5-11%) -- see
+	// dev_sample_d65()'s own comment in spectral_device.h for the full
+	// derivation.
+	auto liftEmission = [&](float3 le) -> SS {
+		float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
+							  : (le.y > le.z ? le.y : le.z);
+		float sc = 2.f * m;
+		if (sc <= 0.f) return SS(0.f);
+		float c0, c1, c2;
+		dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
+		RGBSigmoidPolynomial poly(c0, c1, c2);
+		SS s(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			s[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
+		return s;
+	};
+
+	// Gates on restirReservoirs (surface) alone, not restirVolumeReservoirs -
+	// safe ONLY because WavefrontPathTracer::render() always allocates/
+	// passes both together under the single restirEnabled_ toggle (no
+	// separate UI toggle for the volumetric feature - see
+	// restirVolumeReservoirs's own parameter comment below). The isPhase
+	// branches further down re-check restirVolumeReservoirs explicitly
+	// before touching it, so a null restirVolumeReservoirs with a non-null
+	// restirReservoirs degrades gracefully (volume RIS/persistence simply
+	// skipped) - but the reverse (restirVolumeReservoirs non-null,
+	// restirReservoirs null) would silently skip volumetric ReSTIR entirely
+	// despite a caller believing it was enabled. If this coupling is ever
+	// loosened (e.g. an independent volumetric-ReSTIR toggle), this gate
+	// needs to test both pointers - not a bare OR, though, since the surface
+	// persistence write below (`restirReservoirs[pixelIndex] = res`) still
+	// assumes restirReservoirs itself is non-null whenever useRestir is true.
+	const bool useRestir = (restirReservoirs != nullptr && depth == 0);
+	if (useRestir) {
+		GpuReservoir res;
+		for (int i = 0; i < kRestirCandidateCount; ++i) {
+			GpuLightSample cand; float3 candDir; float candMaxDist = 0.0f, candPdf = 0.0f; float3 candRaw;
+			if (!wf_generate_restir_candidate(hit_point, seed, time,
+					spheres, quads, triangles, bilinearPatches, disks, cylinders,
+					materials, lightIndices, lightKinds, aliasTable, numLights,
+					textures, texturePixels, cand, candDir, candMaxDist, candPdf, candRaw,
+					lightBvh))
+				// numLights==0/no aliasTable is a loop-invariant condition (every
+				// remaining draw would fail identically, so `break` was correct
+				// for that case alone) - but a light BVH's per-draw zero-
+				// importance reject (wf_generate_restir_candidate's own comment)
+				// is NOT loop-invariant: a DIFFERENT random draw can easily land
+				// in a light's cone of influence even when this one didn't.
+				// `continue`, not `break`, so a BVH-active scene still spends
+				// its full kRestirCandidateCount budget instead of aborting the
+				// reservoir after the first unlucky draw.
+				continue;
+			// 1e-6f, not a looser 1e-9f: matches the classic single-draw NEE
+			// path's own `light_pdf > 1e-6f` gate exactly (a few lines below)
+			// - that threshold is what already bounds the classic path's own
+			// worst-case 1/light_pdf to ~1e6, battle-tested by every existing
+			// non-ReSTIR render. A looser floor here let candidates with a
+			// near-degenerate geometric pdf (a shading point landing extremely
+			// close to a randomly sampled point on an area light) through,
+			// producing a risWeight up to 1000x larger than the classic path
+			// would ever accept - RIS then reservoir-selects that single
+			// candidate outright, giving the whole reservoir a correspondingly
+			// huge W that saturates the pixel white and, via spatial/temporal
+			// reuse, spreads into a visible blocky artifact across nearby
+			// pixels and following frames.
+			if (candPdf <= 1e-6f) continue;
+			// Resampling-only target proxy: a plain Lambertian-cosine-weighted
+			// luminance-like magnitude of the (already twoSided-gated) raw
+			// emission - NOT the exact per-material BSDF value (that's only
+			// evaluated once, below, for the FINAL winning sample). An
+			// approximate p_hat still yields an unbiased ReSTIR estimator (it
+			// only changes variance, not correctness - see restir_reservoir_
+			// ucw's own comment and wavefront_restir_helpers.h's header
+			// comment); evaluating the real per-material BSDF (glossy
+			// evalGlossyF included) for all kRestirCandidateCount draws every
+			// pixel every frame would be far more expensive for a resampling
+			// decision that only needs a reasonable importance proxy.
+			// isPhase: `normal` here is the medium BOUNDARY's entry-surface
+			// normal (h.normal, wavefront_kernels_materials.cu), unrelated to
+			// the actual interior scatter point - wf_restir_target_proxy's
+			// cosine term would silently zero/bias every candidate against
+			// it. wf_restir_target_proxy_phase replaces that cosine with the
+			// phase value between phaseWo (this vertex's own incoming
+			// direction) and the candidate light direction instead - see that
+			// function's own comment (wavefront_restir_math.h).
+			float pHat = isPhase
+				? wf_restir_target_proxy_phase(candRaw, candDir, phaseWo, phaseG)
+				: wf_restir_target_proxy(candRaw, candDir, normal);
+			float risWeight = pHat / candPdf;
+			restir_reservoir_add(res, cand, risWeight, 1, pHat, wf_rand(seed));
+		}
+		// Temporal reuse - folds in the reprojected previous-frame reservoir
+		// (if any) BEFORE finalizing, so W/pHat reflect the combined M, not
+		// just this frame's kRestirCandidateCount fresh draws. A no-op
+		// (restirCtx.historyValid false, the default) for every call site
+		// that doesn't pass a real context - see wf_restir_temporal_combine's
+		// own comment. Skipped entirely for isPhase: restirCtx is the
+		// SURFACE reservoir's history (indexed by pixel, populated by surface
+		// hits) - reprojecting it into a phase vertex's own RIS result would
+		// combine two incompatible sample kinds at the same pixel index.
+		if (!isPhase) {
+			wf_restir_temporal_combine(res, hit_point, normal, restirCtx, seed,
+				spheres, quads, triangles, bilinearPatches, disks, cylinders,
+				materials, textures, texturePixels);
+		} else if (restirVolumeReservoirs != nullptr) {
+			// Volumetric analog of the surface combine just above - keyed by
+			// mediumEntryPoint (stable) rather than hit_point (redrawn fresh
+			// every frame for a phase vertex), phaseWo/phaseG standing in for
+			// normal, and gated additionally on matIdx equality (see
+			// wf_restir_volume_temporal_combine's own comment,
+			// wavefront_restir_helpers.h). A no-op when
+			// restirVolumeCtx.historyValid is false (the default), same shape
+			// as wf_restir_temporal_combine above.
+			//
+			// wf_restir_volume_temporal_combine takes a GpuVolumeReservoir&,
+			// not `res` (GpuReservoir) - the two share the exact same core
+			// RIS fields (restir_reservoir_add's own template only ever
+			// touches those), so this bridges via a temporary that copies
+			// `res`'s own within-frame RIS result in, then copies the
+			// (possibly temporally-combined) result back out - `res` stays
+			// the single source of truth restir_finalize/the shading step
+			// below both read, regardless of isPhase.
+			GpuVolumeReservoir volRes;
+			volRes.sample = res.sample;
+			volRes.weightSum = res.weightSum;
+			volRes.M = res.M;
+			volRes.W = res.W;
+			volRes.pHat = res.pHat;
+			wf_restir_volume_temporal_combine(volRes, mediumEntryPoint, phaseWo, phaseG, matIdx,
+				restirVolumeCtx, seed,
+				spheres, quads, triangles, bilinearPatches, disks, cylinders,
+				materials, textures, texturePixels);
+			res.sample = volRes.sample;
+			res.weightSum = volRes.weightSum;
+			res.M = volRes.M;
+			res.W = volRes.W;
+			res.pHat = volRes.pHat;
+		}
+		restir_finalize(res);
+		// isPhase deliberately does NOT persist `res` into restirReservoirs/
+		// restirCtx.normalOut - see wf_restir_target_proxy_phase's own call
+		// site above for why a phase vertex's reservoir is incompatible with
+		// the surface buffer's Lambertian-cosine convention: this frame's
+		// depth==0 worldPos/normal AOV writes (evaluate_materials(), fired
+		// unconditionally for every depth==0 hit including a medium's own
+		// entry-surface point) already give a phase-vertex pixel a "valid"
+		// worldPos.w/normal from the SURFACE spatial-reuse pass's point of
+		// view; writing a phase-derived reservoir into the same buffer would
+		// let that pass and next frame's temporal reuse silently blend
+		// surface and volumetric samples together. `res` still drives THIS
+		// frame's own shading immediately below regardless - only cross-
+		// frame/cross-pixel persistence is skipped, so isPhase still gets the
+		// full within-frame RIS resampling benefit over classic single-draw
+		// NEE, just without carrying forward across frames or pixels (a
+		// deliberately narrower scope than surface DI's full temporal+
+		// spatial reuse - see this project's own plan for why).
+		if (!isPhase) {
+			// Written unconditionally (even an invalid/empty reservoir) - this
+			// is the CURRENT frame's own buffer, which the spatial-reuse pass
+			// (wavefront_kernels_restir.cu) reads next, and which next
+			// frame's temporal reuse ultimately reads via that pass's own
+			// output - must reflect this pixel's real outcome (including "no
+			// light reached this pixel this frame"), not be left stale from a
+			// reused allocation.
+			restirReservoirs[pixelIndex] = res;
+			if (restirCtx.normalOut) restirCtx.normalOut[pixelIndex] = normal;
+		} else if (restirVolumeReservoirs != nullptr) {
+			// Volumetric analog of the surface persistence write just above,
+			// into the SEPARATE d_volumeReservoirs_/d_volumeMatIdx_ buffers -
+			// never the surface restirReservoirs buffer above, which the
+			// surface spatial-reuse/temporal-combine code already assumes is
+			// exclusively Lambertian-cosine-convention samples (see this
+			// project's own plan for why the two are kept apart). Written
+			// unconditionally, same "reflect this pixel's real outcome, don't
+			// leave it stale" reasoning as the surface write. volumeMatIdxOut
+			// is written whenever a phase vertex is reached at all (not
+			// gated on res.valid()) - the spatial-reuse pass's own neighbor
+			// gate (wf_restir_volume_spatial_valid) needs this pixel's medium
+			// identity regardless of whether THIS frame's own RIS loop found
+			// a usable light candidate.
+			GpuVolumeReservoir volRes;
+			volRes.sample = res.sample;
+			volRes.weightSum = res.weightSum;
+			volRes.M = res.M;
+			volRes.W = res.W;
+			volRes.pHat = res.pHat;
+			volRes.mediumMatIdx = matIdx;
+			restirVolumeReservoirs[pixelIndex] = volRes;
+			if (volumeMatIdxOut) volumeMatIdxOut[pixelIndex] = matIdx;
+			if (volumePhaseWoGOut) volumePhaseWoGOut[pixelIndex] = make_float4(phaseWo.x, phaseWo.y, phaseWo.z, phaseG);
+			if (volumeEntryPointOut) volumeEntryPointOut[pixelIndex] = make_float4(mediumEntryPoint.x, mediumEntryPoint.y, mediumEntryPoint.z, mediumMeanFreePath);
+		}
+
+		if (res.valid() && res.W > 0.0f) {
+			float geomPdfAtHit = 0.0f;
+			// Re-derive from hit_point - exact, not an approximation, even
+			// when res.sample won by temporal reuse (a DIFFERENT pixel/
+			// frame's own origin, not hit_point) rather than this frame's own
+			// RIS loop: wf_reevaluate_light_geometry only ever needs the
+			// sample's already-fixed point/normal/time (GpuLightSample::time's
+			// own comment) plus the NEW query origin - no search/Jacobian
+			// required regardless of whether the origin actually changed (see
+			// that function's own header comment).
+			if (wf_reevaluate_light_geometry(res.sample, hit_point, spheres, quads, triangles,
+					bilinearPatches, disks, cylinders, to_light, max_dist, geomPdfAtHit) &&
+				geomPdfAtHit > 0.0f) {
+				// The winning reservoir sample may have been drawn (this frame,
+				// or via temporal/spatial reuse) using EITHER selection method -
+				// re-deriving its selection_pdf from the alias table unconditionally
+				// would be wrong whenever it was actually drawn via the light BVH's
+				// position-dependent pmf (a fixed, power-only alias pdf can differ
+				// from the BVH pmf by an order of magnitude or more at this exact
+				// hit_point), corrupting the MIS weight below (wf_mis(light_pdf,
+				// brdf_pdf_l)). wf_light_bvh_pmf() replays the bit-trail to recover
+				// the SAME pmf the BVH draw would have produced at this point,
+				// exactly like gpu_light_bvh_pmf() does for the recursive backend's
+				// own BSDF-hit MIS case (optix_device_helpers_lighting.h).
+				const float selection_pdf = (lightBvh.nodeCount > 0)
+					? wf_light_bvh_pmf(hit_point.x, hit_point.y, hit_point.z, res.sample.lightIdx, numLights,
+						lightBvh.nodes, lightBvh.bitTrail, lightBvh.nodeCount,
+						lightBvh.allBMinX, lightBvh.allBMinY, lightBvh.allBMinZ,
+						lightBvh.allBMaxX, lightBvh.allBMaxY, lightBvh.allBMaxZ)
+					: aliasTable[res.sample.lightIdx].pdf;
+				light_pdf = selection_pdf * geomPdfAtHit;
+				float3 raw = wf_light_raw_emission(res.sample, to_light, materials, spheres, quads, triangles,
+													bilinearPatches, disks, cylinders, textures, texturePixels);
+				light_emission_spec = liftEmission(raw);
+				nee_norm = res.W;
+				haveSample = true;
+			}
+		}
+	} else
+	if (numLights > 0 && aliasTable) {
+		// Same alias-table-draw + per-shape dispatch + twoSided-gated
+		// emission lookup the ReSTIR candidate loop above uses - shared via
+		// wf_generate_restir_candidate/wf_light_raw_emission (wavefront_
+		// restir_helpers.h) rather than a second hand-duplicated copy, so a
+		// future light-kind addition or texture-lookup fix only has one
+		// place to change instead of two that can silently drift apart.
+		// liftEmission() is the shared one declared above (this ReSTIR-aware
+		// function's own scope, used by both the ReSTIR and classic paths).
+		GpuLightSample cand;
+		float3 raw;
+		if (wf_generate_restir_candidate(hit_point, seed, time,
+				spheres, quads, triangles, bilinearPatches, disks, cylinders,
+				materials, lightIndices, lightKinds, aliasTable, numLights,
+				textures, texturePixels, cand, to_light, max_dist, light_pdf, raw,
+				lightBvh)) {
+			light_emission_spec = liftEmission(raw);
+			nee_norm = (light_pdf > 1e-6f) ? (1.0f / light_pdf) : 0.0f;
+			haveSample = true;
+		}
+	}
+
+	NeeLightSample result;
+	result.haveSample = haveSample;
+	result.to_light = to_light;
+	result.max_dist = max_dist;
+	result.light_pdf = light_pdf;
+	result.nee_norm = nee_norm;
+	result.light_emission_spec = light_emission_spec;
+	return result;
+}
+
+// Extracted out of wf_finish_material_scatter() (item 4 sub-step 4 of this
+// project's own code-health plan) - the shadow-ray build+push logic that was
+// near-identically repeated across the area-light, sky-light, and punctual-
+// light NEE blocks below. Like wf_setup_glossy_context/wf_nee_pick_light
+// above, this becomes a real function with an explicit parameter list rather
+// than a local lambda: it has no dependency on any of wf_finish_material_
+// scatter's OTHER local lambdas (evalGlossyF, wf_local_light_bsdf,
+// addToFramebuffer, liftEmission, ...), only on values already available as
+// wf_finish_material_scatter's own parameters or as plain locals computed
+// identically for all 3 call sites within one invocation (hit_point/normal/
+// isPhase/shadow_eps/filterWeight/swl/pixelIndex/time/shadowQueue).
+//
+// raw_cos is passed in rather than recomputed as dot(lightDir, normal) here:
+// every call site already derives its own raw_cos earlier (for its own
+// cos_l/cull-gate logic before ever reaching this function), so passing it
+// through avoids a redundant dot product and guarantees a bit-identical
+// result to what that site already used.
+//
+// tMax and shadowSeed are pre-computed BY THE CALLER rather than derived in
+// here, since they are the two genuinely call-site-varying-IN-KIND (not just
+// in value) pieces of the 3 sites' shadow-ray setup:
+//   - tMax: the area-light and punctual-light sites subtract a 0.002f
+//     near-light epsilon (max_dist - 0.002f / t_max - 0.002f) so the shadow
+//     ray doesn't self-intersect the light's own surface; the sky site
+//     passes the unadjusted 1e30f sentinel instead (an infinite light has no
+//     near-surface to avoid).
+//   - shadowSeed: the area-light and sky-light sites pass wf_pcg(seed)
+//     (each fires at most once per wf_finish_material_scatter call); the
+//     punctual-light loop instead mixes in `pli` (wf_pcg(seed ^ (pli *
+//     0x9E3779B9u))) since that loop can push several shadow rays per call,
+//     one per light, with no decorrelating wf_rand(seed) draw between
+//     iterations - see that call site's own comment.
+// Both are ordinary values by the time they reach here, so this function
+// itself stays free of any site-specific branching.
+__device__ __forceinline__ void wf_push_nee_shadow_ray(
+	WorkQueue<ShadowRayWorkItem>& shadowQueue,
+	const float3& hit_point, const float3& normal, bool isPhase, float shadow_eps,
+	float raw_cos, const float3& lightDir, float tMax,
+	const SampledSpectrum<kWFNWavelengths>& Ld, float filterWeight,
+	const SampledWavelengths<kWFNWavelengths>& swl,
+	int pixelIndex, float time, bool isGiCandidate, unsigned int shadowSeed)
+{
+	// See the area-light NEE block's own "0.01, not the original 0.001"
+	// comment (wf_finish_material_scatter, below) for the full story on why
+	// this is a combined normal+direction offset (not the normal alone), why
+	// isPhase skips the normal term entirely, and why the normal term uses
+	// copysignf(shadow_eps, raw_cos) rather than always +shadow_eps (only
+	// RoughDielectric's transmission side, raw_cos<0, ever nudges the origin
+	// to the far side of the surface instead of back into the same
+	// hemisphere the ray isn't going toward).
+	ShadowRayWorkItem shadow;
+	shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
+		+ shadow_eps * normalize(lightDir);
+	shadow.direction = lightDir;
+	shadow.tMax      = tMax;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
+		shadow.wavelengths[i]     = swl.lambda[i];
+		shadow.wavelength_pdfs[i] = swl.pdf[i];
+	}
+	shadow.pixelIndex = pixelIndex;
+	shadow.time = time;
+	// See giCandidateEligible's own comment (wf_finish_material_scatter,
+	// below).
+	shadow.isGiCandidate = isGiCandidate;
+	// See ShadowRayWorkItem::seed's own comment - shadowSeed is already the
+	// derived value (wf_pcg(seed), or wf_pcg(seed ^ (pli * 0x9E3779B9u)) for
+	// the punctual-light loop), not a consuming wf_rand(seed) draw itself, so
+	// this doesn't perturb the caller's own subsequent sampling.
+	shadow.seed = shadowSeed;
+	shadowQueue.push(shadow);
+}
+
 // ============================================================================
 // Material-scatter finish + RGB->spectral uplift (moved from
 // wavefront_kernels.cu when that file was split into per-kernel-family .cu
@@ -2039,65 +2563,34 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// affects variance, not correctness).
 	// Shared per-shading-point setup for evalGlossyF below, computed ONCE
 	// instead of on each of the (up to) 3 calls it gets per shading point
-	// (area-light NEE, sky NEE, punctual-light NEE) - normal/phaseWo/
-	// matType/matIdx are all invariant across those calls within a single
-	// wf_finish_material_scatter() invocation, so re-deriving the local
-	// frame, wi, and material lookup on every call redid identical work up
-	// to 3x for no reason. glossy_valid folds both of evalGlossyF's old
-	// early-outs (wrong matType, wi_z<=0) into one check the lambda itself
-	// no longer needs to redo.
-	bool glossy_isType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
+	// (area-light NEE, sky NEE, punctual-light NEE) via wf_setup_glossy_context()
+	// - normal/phaseWo/matType/matIdx are all invariant across those calls
+	// within a single wf_finish_material_scatter() invocation, so
+	// re-deriving the local frame, wi, and material lookup on every call
+	// redid identical work up to 3x for no reason. glossy_valid folds both
+	// of evalGlossyF's old early-outs (wrong matType, wi_z<=0) into one
+	// check the lambda itself no longer needs to redo. Unpacked into the
+	// same local names evalGlossyF below already captures by reference, so
+	// that lambda's own body needs no change from this extraction.
+	const GlossyCtx glossyCtx = wf_setup_glossy_context(matType, normal, dpdu, phaseWo,
+		glossyAlpha, glossyAlphaV, guidingGridMeta, guidingHistograms, guidingProbes, hit_point);
+	// Recomputed here (not carried on GlossyCtx) since it's also read much
+	// further down, outside evalGlossyF's own scope, in the 3x-duplicated
+	// matType switch this same function still has inline - a cheap, pure
+	// boolean re-check, not worth widening the struct's contract for.
+	const bool glossy_isType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
 		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
 		matType == MaterialType::RoughMetal);
-	float3 glossy_tan = make_float3(0.0f,0.0f,0.0f), glossy_bit = make_float3(0.0f,0.0f,0.0f);
-	float glossy_wi_x = 0.0f, glossy_wi_y = 0.0f, glossy_wi_z = 0.0f;
-	// See glossyAlpha's own parameter comment - already regularized by the
-	// caller, not re-derived here.
-	float glossy_alpha = glossyAlpha;
-	// See glossyAlphaV's own parameter comment - <0 (RoughMetal, or any
-	// non-glossy matType) falls back to glossy_alpha, matching
-	// MaterialData::roughnessV's own isotropic sentinel.
-	float glossy_alpha_v = (glossyAlphaV >= 0.0f) ? glossyAlphaV : glossy_alpha;
-	bool glossy_valid = false;
-	if (glossy_isType) {
-		// RoughMetal stays on the arbitrary frame (isotropic-only, no
-		// anisotropic variant exists - matches optix_device_helpers.h's
-		// identical RoughMetal exclusion); the other 4 glossy kinds get the
-		// real, UV-aligned frame.
-		if (matType == MaterialType::RoughMetal) {
-			BuildArbitraryTangentFrame(normal.x, normal.y, normal.z,
-			                            glossy_tan.x, glossy_tan.y, glossy_tan.z,
-			                            glossy_bit.x, glossy_bit.y, glossy_bit.z);
-		} else {
-			BuildDpduTangentFrame(normal.x, normal.y, normal.z, dpdu.x, dpdu.y, dpdu.z,
-			                       glossy_tan.x, glossy_tan.y, glossy_tan.z,
-			                       glossy_bit.x, glossy_bit.y, glossy_bit.z);
-		}
-		glossy_wi_x = dot(phaseWo, glossy_tan);
-		glossy_wi_y = dot(phaseWo, glossy_bit);
-		glossy_wi_z = dot(phaseWo, normal);
-		if (glossy_wi_z > 0.0f) glossy_valid = true;
-	}
-
-	// Real-time path guiding (Live Preview only) - v1 scope is Conductor/
-	// RoughMetal only (see guidingHistograms's own parameter comment above),
-	// computed ONCE here rather than inside evalGlossyF below since the
-	// nearest probe/pGuide depend only on hit_point, not on which of the
-	// (up to 3) query directions evalGlossyF is asked about. Reaching here
-	// with is_specular==false already means evaluate_materials() itself
-	// found this Conductor/RoughMetal hit non-EffectivelySmooth (a smooth
-	// one sets is_specular=true and never reaches this whole NEE block) - so
-	// no separate EffectivelySmooth re-check is needed, matching that
-	// switch-arm's own guiding gate exactly.
-	float glossy_pGuide = 0.0f;
-	int glossy_guideProbeIdx = -1;
-	if (glossy_valid && guidingHistograms != nullptr &&
-		(matType == MaterialType::Conductor || matType == MaterialType::RoughMetal)) {
-		glossy_guideProbeIdx = wf_guiding_nearest_probe(guidingGridMeta, guidingProbes, hit_point);
-		if (glossy_guideProbeIdx >= 0) {
-			glossy_pGuide = wf_guiding_probability(guidingHistograms[glossy_guideProbeIdx]);
-		}
-	}
+	const bool glossy_valid = glossyCtx.valid;
+	const float3 glossy_tan = glossyCtx.tan;
+	const float3 glossy_bit = glossyCtx.bit;
+	const float glossy_wi_x = glossyCtx.wi_x;
+	const float glossy_wi_y = glossyCtx.wi_y;
+	const float glossy_wi_z = glossyCtx.wi_z;
+	const float glossy_alpha = glossyCtx.alpha;
+	const float glossy_alpha_v = glossyCtx.alpha_v;
+	const float glossy_pGuide = glossyCtx.pGuide;
+	const int glossy_guideProbeIdx = glossyCtx.guideProbeIdx;
 
 	auto evalGlossyF = [&](const float3& queryDir, float3& outF, float& outPdf) -> bool {
 		if (!glossy_valid) return false;
@@ -2183,291 +2676,90 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		return s;
 	};
 
+	// Factors the matType-based BSDF value/color/pdf computation that used
+	// to be hand-duplicated identically across all three NEE light-sampling
+	// blocks below (area-light draw, sky/portal, punctual) - a code-health
+	// pass, see this project's own plan. A local lambda (not a free
+	// function) because it calls evalGlossyF above, itself a local lambda
+	// capturing per-shading-point state by reference - a real function
+	// can't reach a caller's own local lambda, so this waits for
+	// evalGlossyF's own eventual conversion to a real function (a separate,
+	// later step) before it could become one too. outGlossyPdf is always
+	// computed, even for the punctual-light call site below, which doesn't
+	// use it for MIS (delta lights have none) - matches that call site's
+	// own prior behavior of computing and discarding an identical unused
+	// pdf, not a new cost.
+	auto wf_local_light_bsdf = [&](float cos_l, const float3& lightDir,
+									float& outBsdfVal, SS& outBsdfColor, float& outGlossyPdf) {
+		outBsdfVal = 1.0f / 3.14159265f; // Lambertian default
+		// See this function's own attenuation-reuse rationale where this
+		// lambda's 3 call sites used to inline this same chain: `attenuation`
+		// already equals albedoSpectrum(mat.albedo) for Lambertian and the
+		// phase-scatter case, direction-independent, safe to reuse directly.
+		outBsdfColor = SS(1.f);
+		outGlossyPdf = 0.0f;
+		if (matType == MaterialType::Lambertian) {
+			outBsdfColor = attenuation;
+		} else if (matType == MaterialType::NormalizedFresnel) {
+			float inv_eta = 1.0f / nfEta;
+			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+			if (nf_c <= 0.0f) nf_c = 1e-6f;
+			float fr_l = FrDielectric(cos_l, nfEta);
+			outBsdfVal = (1.0f - fr_l) / (nf_c * 3.14159265f);
+		} else if (isPhase) {
+			outBsdfVal = wf_hg_phase_value(dot(phaseWo, lightDir), phaseG);
+			outBsdfColor = attenuation;
+		} else {
+			// Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor
+			// (glossy) - see evalGlossyF's own comment. bsdf_val=1 folds the
+			// whole per-channel f() into bsdf_color instead of splitting it
+			// into a scalar shape * color like the Lambertian/
+			// NormalizedFresnel cases above (those have an achromatic BRDF
+			// shape; this one doesn't). evalGlossyF itself returns false
+			// both for "not one of my 4 types" (in which case leave
+			// outBsdfVal/outBsdfColor at their Lambertian-shaped defaults,
+			// unchanged from before this else - matches e.g.
+			// NormalMappedLambertian's existing behavior) and "wrong
+			// hemisphere for one of my 4 types" (this light sits behind the
+			// glass' reflection side) - only the second case should zero
+			// the contribution, so explicitly re-check matType here rather
+			// than trusting evalGlossyF's return value alone.
+			float3 fRgb;
+			if (evalGlossyF(lightDir, fRgb, outGlossyPdf)) {
+				outBsdfVal = 1.0f;
+				outBsdfColor = liftUnboundedRGB(fRgb);
+			} else if (glossy_isType) {
+				outBsdfVal = 0.0f;
+			}
+		}
+	};
+
 	// -------------------------------------------------------------------------
 	// NEE: direct-light shadow ray (non-specular materials only)
 	// -------------------------------------------------------------------------
 	if (!is_specular) {
-	// ReSTIR DI (Live Preview only, restirReservoirs non-null - see this
-	// function's own parameter comment) replaces the single alias-table draw
-	// below with weighted resampling over kRestirCandidateCount candidates,
-	// for primary hits only (depth==0 - Bitterli 2020's canonical scope; an
-	// indirect bounce's NEE keeps the classic single-draw path even under
-	// real-time preview). haveSample/to_light/max_dist/light_pdf/nee_norm are
-	// filled by EITHER this block or the classic single-draw block just below
-	// it, then consumed identically by the shared BSDF-evaluation/shadow-ray
-	// code that follows - light_pdf remains the drawn/winning candidate's own
-	// selection_pdf*geom_pdf (used only for the MIS weight against BSDF
-	// sampling), while nee_norm is what actually normalizes the radiance
-	// contribution: 1/light_pdf classically, or the reservoir's own unbiased
-	// contribution weight W under ReSTIR (W already IS an unbiased estimator
-	// of that reciprocal - see restir_reservoir_add's own comment) - so the
-	// Ld formula below multiplies by nee_norm instead of dividing by light_pdf.
-	bool   haveSample = false;
-	float3 to_light = make_float3(0.0f, 0.0f, 0.0f);
-	float  max_dist = 0.0f;
-	float  light_pdf = 0.0f;
-	float  nee_norm = 0.0f;
-	SS light_emission_spec(0.f);
-
-	// A light's RGB colour is an ILLUMINANT (pbrt-v4 RGBIlluminantSpectrum:
-	// scale * rsp(lambda) * D65(lambda)), not a bare RGBUnboundedSpectrum
-	// (scale * rsp(lambda)) -- without the D65 factor, a grey light
-	// uplifts to a flat/equal-energy spectrum (chromaticity (0.333,
-	// 0.333)) instead of D65-white (0.3127,0.3290), which then
-	// reconstructs as a non-neutral RGB through wf_xyz_to_linear_rgb's
-	// D65-targeted matrix (R inflated ~20%, G/B suppressed ~5-11%) -- see
-	// dev_sample_d65()'s own comment in spectral_device.h for the full
-	// derivation.
-	auto liftEmission = [&](float3 le) -> SS {
-		float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
-							  : (le.y > le.z ? le.y : le.z);
-		float sc = 2.f * m;
-		if (sc <= 0.f) return SS(0.f);
-		float c0, c1, c2;
-		dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
-		RGBSigmoidPolynomial poly(c0, c1, c2);
-		SS s(0.f);
-		for (int i = 0; i < kWFNWavelengths; ++i)
-			s[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
-		return s;
-	};
-
-	// Gates on restirReservoirs (surface) alone, not restirVolumeReservoirs -
-	// safe ONLY because WavefrontPathTracer::render() always allocates/
-	// passes both together under the single restirEnabled_ toggle (no
-	// separate UI toggle for the volumetric feature - see
-	// restirVolumeReservoirs's own parameter comment below). The isPhase
-	// branches further down re-check restirVolumeReservoirs explicitly
-	// before touching it, so a null restirVolumeReservoirs with a non-null
-	// restirReservoirs degrades gracefully (volume RIS/persistence simply
-	// skipped) - but the reverse (restirVolumeReservoirs non-null,
-	// restirReservoirs null) would silently skip volumetric ReSTIR entirely
-	// despite a caller believing it was enabled. If this coupling is ever
-	// loosened (e.g. an independent volumetric-ReSTIR toggle), this gate
-	// needs to test both pointers - not a bare OR, though, since the surface
-	// persistence write below (`restirReservoirs[pixelIndex] = res`) still
-	// assumes restirReservoirs itself is non-null whenever useRestir is true.
-	const bool useRestir = (restirReservoirs != nullptr && depth == 0);
-	if (useRestir) {
-		GpuReservoir res;
-		for (int i = 0; i < kRestirCandidateCount; ++i) {
-			GpuLightSample cand; float3 candDir; float candMaxDist = 0.0f, candPdf = 0.0f; float3 candRaw;
-			if (!wf_generate_restir_candidate(hit_point, seed, time,
-					spheres, quads, triangles, bilinearPatches, disks, cylinders,
-					materials, lightIndices, lightKinds, aliasTable, numLights,
-					textures, texturePixels, cand, candDir, candMaxDist, candPdf, candRaw,
-					lightBvh))
-				// numLights==0/no aliasTable is a loop-invariant condition (every
-				// remaining draw would fail identically, so `break` was correct
-				// for that case alone) - but a light BVH's per-draw zero-
-				// importance reject (wf_generate_restir_candidate's own comment)
-				// is NOT loop-invariant: a DIFFERENT random draw can easily land
-				// in a light's cone of influence even when this one didn't.
-				// `continue`, not `break`, so a BVH-active scene still spends
-				// its full kRestirCandidateCount budget instead of aborting the
-				// reservoir after the first unlucky draw.
-				continue;
-			// 1e-6f, not a looser 1e-9f: matches the classic single-draw NEE
-			// path's own `light_pdf > 1e-6f` gate exactly (a few lines below)
-			// - that threshold is what already bounds the classic path's own
-			// worst-case 1/light_pdf to ~1e6, battle-tested by every existing
-			// non-ReSTIR render. A looser floor here let candidates with a
-			// near-degenerate geometric pdf (a shading point landing extremely
-			// close to a randomly sampled point on an area light) through,
-			// producing a risWeight up to 1000x larger than the classic path
-			// would ever accept - RIS then reservoir-selects that single
-			// candidate outright, giving the whole reservoir a correspondingly
-			// huge W that saturates the pixel white and, via spatial/temporal
-			// reuse, spreads into a visible blocky artifact across nearby
-			// pixels and following frames.
-			if (candPdf <= 1e-6f) continue;
-			// Resampling-only target proxy: a plain Lambertian-cosine-weighted
-			// luminance-like magnitude of the (already twoSided-gated) raw
-			// emission - NOT the exact per-material BSDF value (that's only
-			// evaluated once, below, for the FINAL winning sample). An
-			// approximate p_hat still yields an unbiased ReSTIR estimator (it
-			// only changes variance, not correctness - see restir_reservoir_
-			// ucw's own comment and wavefront_restir_helpers.h's header
-			// comment); evaluating the real per-material BSDF (glossy
-			// evalGlossyF included) for all kRestirCandidateCount draws every
-			// pixel every frame would be far more expensive for a resampling
-			// decision that only needs a reasonable importance proxy.
-			// isPhase: `normal` here is the medium BOUNDARY's entry-surface
-			// normal (h.normal, wavefront_kernels_materials.cu), unrelated to
-			// the actual interior scatter point - wf_restir_target_proxy's
-			// cosine term would silently zero/bias every candidate against
-			// it. wf_restir_target_proxy_phase replaces that cosine with the
-			// phase value between phaseWo (this vertex's own incoming
-			// direction) and the candidate light direction instead - see that
-			// function's own comment (wavefront_restir_math.h).
-			float pHat = isPhase
-				? wf_restir_target_proxy_phase(candRaw, candDir, phaseWo, phaseG)
-				: wf_restir_target_proxy(candRaw, candDir, normal);
-			float risWeight = pHat / candPdf;
-			restir_reservoir_add(res, cand, risWeight, 1, pHat, wf_rand(seed));
-		}
-		// Temporal reuse - folds in the reprojected previous-frame reservoir
-		// (if any) BEFORE finalizing, so W/pHat reflect the combined M, not
-		// just this frame's kRestirCandidateCount fresh draws. A no-op
-		// (restirCtx.historyValid false, the default) for every call site
-		// that doesn't pass a real context - see wf_restir_temporal_combine's
-		// own comment. Skipped entirely for isPhase: restirCtx is the
-		// SURFACE reservoir's history (indexed by pixel, populated by surface
-		// hits) - reprojecting it into a phase vertex's own RIS result would
-		// combine two incompatible sample kinds at the same pixel index.
-		if (!isPhase) {
-			wf_restir_temporal_combine(res, hit_point, normal, restirCtx, seed,
-				spheres, quads, triangles, bilinearPatches, disks, cylinders,
-				materials, textures, texturePixels);
-		} else if (restirVolumeReservoirs != nullptr) {
-			// Volumetric analog of the surface combine just above - keyed by
-			// mediumEntryPoint (stable) rather than hit_point (redrawn fresh
-			// every frame for a phase vertex), phaseWo/phaseG standing in for
-			// normal, and gated additionally on matIdx equality (see
-			// wf_restir_volume_temporal_combine's own comment,
-			// wavefront_restir_helpers.h). A no-op when
-			// restirVolumeCtx.historyValid is false (the default), same shape
-			// as wf_restir_temporal_combine above.
-			//
-			// wf_restir_volume_temporal_combine takes a GpuVolumeReservoir&,
-			// not `res` (GpuReservoir) - the two share the exact same core
-			// RIS fields (restir_reservoir_add's own template only ever
-			// touches those), so this bridges via a temporary that copies
-			// `res`'s own within-frame RIS result in, then copies the
-			// (possibly temporally-combined) result back out - `res` stays
-			// the single source of truth restir_finalize/the shading step
-			// below both read, regardless of isPhase.
-			GpuVolumeReservoir volRes;
-			volRes.sample = res.sample;
-			volRes.weightSum = res.weightSum;
-			volRes.M = res.M;
-			volRes.W = res.W;
-			volRes.pHat = res.pHat;
-			wf_restir_volume_temporal_combine(volRes, mediumEntryPoint, phaseWo, phaseG, matIdx,
-				restirVolumeCtx, seed,
-				spheres, quads, triangles, bilinearPatches, disks, cylinders,
-				materials, textures, texturePixels);
-			res.sample = volRes.sample;
-			res.weightSum = volRes.weightSum;
-			res.M = volRes.M;
-			res.W = volRes.W;
-			res.pHat = volRes.pHat;
-		}
-		restir_finalize(res);
-		// isPhase deliberately does NOT persist `res` into restirReservoirs/
-		// restirCtx.normalOut - see wf_restir_target_proxy_phase's own call
-		// site above for why a phase vertex's reservoir is incompatible with
-		// the surface buffer's Lambertian-cosine convention: this frame's
-		// depth==0 worldPos/normal AOV writes (evaluate_materials(), fired
-		// unconditionally for every depth==0 hit including a medium's own
-		// entry-surface point) already give a phase-vertex pixel a "valid"
-		// worldPos.w/normal from the SURFACE spatial-reuse pass's point of
-		// view; writing a phase-derived reservoir into the same buffer would
-		// let that pass and next frame's temporal reuse silently blend
-		// surface and volumetric samples together. `res` still drives THIS
-		// frame's own shading immediately below regardless - only cross-
-		// frame/cross-pixel persistence is skipped, so isPhase still gets the
-		// full within-frame RIS resampling benefit over classic single-draw
-		// NEE, just without carrying forward across frames or pixels (a
-		// deliberately narrower scope than surface DI's full temporal+
-		// spatial reuse - see this project's own plan for why).
-		if (!isPhase) {
-			// Written unconditionally (even an invalid/empty reservoir) - this
-			// is the CURRENT frame's own buffer, which the spatial-reuse pass
-			// (wavefront_kernels_restir.cu) reads next, and which next
-			// frame's temporal reuse ultimately reads via that pass's own
-			// output - must reflect this pixel's real outcome (including "no
-			// light reached this pixel this frame"), not be left stale from a
-			// reused allocation.
-			restirReservoirs[pixelIndex] = res;
-			if (restirCtx.normalOut) restirCtx.normalOut[pixelIndex] = normal;
-		} else if (restirVolumeReservoirs != nullptr) {
-			// Volumetric analog of the surface persistence write just above,
-			// into the SEPARATE d_volumeReservoirs_/d_volumeMatIdx_ buffers -
-			// never the surface restirReservoirs buffer above, which the
-			// surface spatial-reuse/temporal-combine code already assumes is
-			// exclusively Lambertian-cosine-convention samples (see this
-			// project's own plan for why the two are kept apart). Written
-			// unconditionally, same "reflect this pixel's real outcome, don't
-			// leave it stale" reasoning as the surface write. volumeMatIdxOut
-			// is written whenever a phase vertex is reached at all (not
-			// gated on res.valid()) - the spatial-reuse pass's own neighbor
-			// gate (wf_restir_volume_spatial_valid) needs this pixel's medium
-			// identity regardless of whether THIS frame's own RIS loop found
-			// a usable light candidate.
-			GpuVolumeReservoir volRes;
-			volRes.sample = res.sample;
-			volRes.weightSum = res.weightSum;
-			volRes.M = res.M;
-			volRes.W = res.W;
-			volRes.pHat = res.pHat;
-			volRes.mediumMatIdx = matIdx;
-			restirVolumeReservoirs[pixelIndex] = volRes;
-			if (volumeMatIdxOut) volumeMatIdxOut[pixelIndex] = matIdx;
-			if (volumePhaseWoGOut) volumePhaseWoGOut[pixelIndex] = make_float4(phaseWo.x, phaseWo.y, phaseWo.z, phaseG);
-			if (volumeEntryPointOut) volumeEntryPointOut[pixelIndex] = make_float4(mediumEntryPoint.x, mediumEntryPoint.y, mediumEntryPoint.z, mediumMeanFreePath);
-		}
-
-		if (res.valid() && res.W > 0.0f) {
-			float geomPdfAtHit = 0.0f;
-			// Re-derive from hit_point - exact, not an approximation, even
-			// when res.sample won by temporal reuse (a DIFFERENT pixel/
-			// frame's own origin, not hit_point) rather than this frame's own
-			// RIS loop: wf_reevaluate_light_geometry only ever needs the
-			// sample's already-fixed point/normal/time (GpuLightSample::time's
-			// own comment) plus the NEW query origin - no search/Jacobian
-			// required regardless of whether the origin actually changed (see
-			// that function's own header comment).
-			if (wf_reevaluate_light_geometry(res.sample, hit_point, spheres, quads, triangles,
-					bilinearPatches, disks, cylinders, to_light, max_dist, geomPdfAtHit) &&
-				geomPdfAtHit > 0.0f) {
-				// The winning reservoir sample may have been drawn (this frame,
-				// or via temporal/spatial reuse) using EITHER selection method -
-				// re-deriving its selection_pdf from the alias table unconditionally
-				// would be wrong whenever it was actually drawn via the light BVH's
-				// position-dependent pmf (a fixed, power-only alias pdf can differ
-				// from the BVH pmf by an order of magnitude or more at this exact
-				// hit_point), corrupting the MIS weight below (wf_mis(light_pdf,
-				// brdf_pdf_l)). wf_light_bvh_pmf() replays the bit-trail to recover
-				// the SAME pmf the BVH draw would have produced at this point,
-				// exactly like gpu_light_bvh_pmf() does for the recursive backend's
-				// own BSDF-hit MIS case (optix_device_helpers_lighting.h).
-				const float selection_pdf = (lightBvh.nodeCount > 0)
-					? wf_light_bvh_pmf(hit_point.x, hit_point.y, hit_point.z, res.sample.lightIdx, numLights,
-						lightBvh.nodes, lightBvh.bitTrail, lightBvh.nodeCount,
-						lightBvh.allBMinX, lightBvh.allBMinY, lightBvh.allBMinZ,
-						lightBvh.allBMaxX, lightBvh.allBMaxY, lightBvh.allBMaxZ)
-					: aliasTable[res.sample.lightIdx].pdf;
-				light_pdf = selection_pdf * geomPdfAtHit;
-				float3 raw = wf_light_raw_emission(res.sample, to_light, materials, spheres, quads, triangles,
-													bilinearPatches, disks, cylinders, textures, texturePixels);
-				light_emission_spec = liftEmission(raw);
-				nee_norm = res.W;
-				haveSample = true;
-			}
-		}
-	} else
-	if (numLights > 0 && aliasTable) {
-		// Same alias-table-draw + per-shape dispatch + twoSided-gated
-		// emission lookup the ReSTIR candidate loop above uses - shared via
-		// wf_generate_restir_candidate/wf_light_raw_emission (wavefront_
-		// restir_helpers.h) rather than a second hand-duplicated copy, so a
-		// future light-kind addition or texture-lookup fix only has one
-		// place to change instead of two that can silently drift apart.
-		// liftEmission() is the shared one declared above (this ReSTIR-aware
-		// block's own scope, used by both the ReSTIR and classic paths).
-		GpuLightSample cand;
-		float3 raw;
-		if (wf_generate_restir_candidate(hit_point, seed, time,
-				spheres, quads, triangles, bilinearPatches, disks, cylinders,
-				materials, lightIndices, lightKinds, aliasTable, numLights,
-				textures, texturePixels, cand, to_light, max_dist, light_pdf, raw,
-				lightBvh)) {
-			light_emission_spec = liftEmission(raw);
-			nee_norm = (light_pdf > 1e-6f) ? (1.0f / light_pdf) : 0.0f;
-			haveSample = true;
-		}
-	}
+	// The ReSTIR-or-classic direct-light draw - see wf_nee_pick_light's own
+	// header comment for the full ReSTIR-vs-classic rationale and side-
+	// effect inventory. haveSample/to_light/max_dist/light_pdf/nee_norm/
+	// light_emission_spec are filled by wf_nee_pick_light exactly as they
+	// used to be filled by this same code inline, then consumed identically
+	// by the shared BSDF-evaluation/shadow-ray code that follows.
+	NeeLightSample neeSample = wf_nee_pick_light(hit_point, seed, time,
+		spheres, quads, triangles, bilinearPatches, disks, cylinders,
+		materials, lightIndices, lightKinds, aliasTable, numLights,
+		textures, texturePixels, lightBvh, swl,
+		pixelIndex, depth, matIdx, isPhase,
+		normal, phaseWo, phaseG,
+		restirReservoirs, restirCtx,
+		mediumEntryPoint, mediumMeanFreePath,
+		restirVolumeReservoirs, restirVolumeCtx,
+		volumeMatIdxOut, volumePhaseWoGOut, volumeEntryPointOut);
+	bool   haveSample = neeSample.haveSample;
+	float3 to_light = neeSample.to_light;
+	float  max_dist = neeSample.max_dist;
+	float  light_pdf = neeSample.light_pdf;
+	float  nee_norm = neeSample.nee_norm;
+	SS light_emission_spec = neeSample.light_emission_spec;
 
 	// RoughDielectric NEE can reach lights on EITHER side of the
 	// interface (reflection when raw_cos>0, transmission/"seen through
@@ -2491,58 +2783,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			float cos_l = isPhase ? 1.0f
 				: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
 				: fmaxf(raw_cos, 0.0f);
-			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-			// Lambertian's BRDF is albedo/pi, direction-independent - `attenuation`
-			// already equals albedoSpectrum(mat.albedo) from the caller, so reuse
-			// it here instead of leaving the NEE contribution achromatic.
-			// NormalizedFresnel's bsdf_val below is already a complete,
-			// achromatic BRDF value (no color/texture involved), so it needs
-			// no equivalent multiply. Same reuse-attenuation-directly reasoning
-			// applies to the phase-scatter case: `attenuation` there already
-			// equals the medium's single-scatter albedo (mat.albedo).
-			SS bsdf_color(1.f);
-			// Set inside the glossy else-branch below (evalGlossyF's outPdf,
-			// the BSDF pdf at to_light) - 0 for every non-glossy material,
-			// declared here (not nested inside that branch) so it's visible
-			// where brdf_pdf_l is computed just below the if/else chain.
-			float glossyPdf = 0.0f;
-			if (matType == MaterialType::Lambertian) {
-				bsdf_color = attenuation;
-			} else if (matType == MaterialType::NormalizedFresnel) {
-				float inv_eta = 1.0f / nfEta;
-				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-				if (nf_c <= 0.0f) nf_c = 1e-6f;
-				float fr_l = FrDielectric(cos_l, nfEta);
-				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
-			} else if (isPhase) {
-				bsdf_val = wf_hg_phase_value(dot(phaseWo, to_light), phaseG);
-				bsdf_color = attenuation;
-			} else {
-				// Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor
-				// (glossy) - see evalGlossyF's own comment. bsdf_val=1 folds
-				// the whole per-channel f() into bsdf_color instead of
-				// splitting it into a scalar shape * color like the
-				// Lambertian/NormalizedFresnel cases above (those have an
-				// achromatic BRDF shape; this one doesn't). evalGlossyF
-				// itself returns false both for "not one of my 4 types" (in
-				// which case leave bsdf_val/bsdf_color at their Lambertian-
-				// shaped defaults, unchanged from before this else - matches
-				// e.g. NormalMappedLambertian's existing behavior, which
-				// reaches here as matType==NormalMappedLambertian, not
-				// Lambertian, and has relied on that same fallback since
-				// before this NEE extension existed) and "wrong hemisphere
-				// for one of my 4 types" (this light sits behind the glass'
-				// reflection side) - only the second case should zero the
-				// contribution, so explicitly re-check matType here rather
-				// than trusting evalGlossyF's return value alone.
-				float3 fRgb;
-				if (evalGlossyF(to_light, fRgb, glossyPdf)) {
-					bsdf_val = 1.0f;
-					bsdf_color = liftUnboundedRGB(fRgb);
-				} else if (glossy_isType) {
-					bsdf_val = 0.0f;
-				}
-			}
+			float bsdf_val, glossyPdf;
+			SS bsdf_color;
+			wf_local_light_bsdf(cos_l, to_light, bsdf_val, bsdf_color, glossyPdf);
 			// glossyPdf (the BSDF pdf evaluated AT to_light, from evalGlossyF
 			// above) takes priority for the 5 glossy types - brdf_pdf_override
 			// is the pdf at the unrelated BSDF-sampled continuation direction
@@ -2608,30 +2851,14 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// before - only RoughDielectric's transmission side (raw_cos<0)
 			// newly nudges the origin to the far side of the surface instead
 			// of back into the same hemisphere the ray isn't going toward.
-			ShadowRayWorkItem shadow;
-			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
-				+ shadow_eps * normalize(to_light);
-			shadow.direction = to_light;
-			shadow.tMax      = max_dist - 0.002f;
-			for (int i = 0; i < kWFNWavelengths; ++i) {
-				shadow.Ld[i]             = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
-				shadow.wavelengths[i]    = swl.lambda[i];
-				shadow.wavelength_pdfs[i] = swl.pdf[i];
-			}
-			shadow.pixelIndex = pixelIndex;
-			shadow.time = time;
-			// See giCandidateEligible's own comment - redirects this ray's Ld
-			// into the GI candidate buffer instead of the real framebuffer,
-			// once accumulate_shadow resolves occlusion, whenever this is a
-			// depth==1 hit whose originating x0 was GI-eligible; a no-op
-			// (false) for every other call (depth==0's own NEE, or GI
-			// disabled/ineligible this frame).
-			shadow.isGiCandidate = giCandidateEligible;
-			// See ShadowRayWorkItem::seed's own comment - a derived value, not
-			// a consuming wf_rand(seed) draw, so this doesn't perturb the
-			// caller's own subsequent sampling (continuation ray, etc.).
-			shadow.seed = wf_pcg(seed);
-			shadowQueue.push(shadow);
+			// giCandidateEligible redirects this ray's Ld into the GI candidate
+			// buffer instead of the real framebuffer, once accumulate_shadow
+			// resolves occlusion, whenever this is a depth==1 hit whose
+			// originating x0 was GI-eligible; a no-op (false) for every other
+			// call (depth==0's own NEE, or GI disabled/ineligible this frame).
+			wf_push_nee_shadow_ray(shadowQueue, hit_point, normal, isPhase, shadow_eps,
+				raw_cos, to_light, max_dist - 0.002f, Ld, filterWeight, swl,
+				pixelIndex, time, giCandidateEligible, wf_pcg(seed));
 		}
 	}
 	// -------------------------------------------------------------------------
@@ -2672,36 +2899,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// (src/TheRestOfYourLife/camera.h) and this file's own
 		// medium_phase_nee_mis()-equivalent pattern elsewhere.
 		if (pdf_sky > 0.0f && (isPhase || matType == MaterialType::RoughDielectric || cos_l > 0.0f)) {
-			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-			// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
-			// for Lambertian (direction-independent BRDF, safe to reuse here);
-			// NormalizedFresnel's bsdf_val is already a complete achromatic value.
-			SS bsdf_color(1.f);
-			// See the area-light block above for why this is declared here
-			// rather than nested inside the glossy else-branch.
-			float glossyPdf = 0.0f;
-			if (matType == MaterialType::Lambertian) {
-				bsdf_color = attenuation;
-			} else if (matType == MaterialType::NormalizedFresnel) {
-				float inv_eta = 1.0f / nfEta;
-				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-				if (nf_c <= 0.0f) nf_c = 1e-6f;
-				float fr_l = FrDielectric(cos_l, nfEta);
-				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
-			} else if (isPhase) {
-				bsdf_val = wf_hg_phase_value(dot(phaseWo, sky_dir), phaseG);
-				bsdf_color = attenuation;
-			} else {
-				// See the area-light block's identical else-branch for the
-				// full rationale (evalGlossyF/glossy_isType split).
-				float3 fRgb;
-				if (evalGlossyF(sky_dir, fRgb, glossyPdf)) {
-					bsdf_val = 1.0f;
-					bsdf_color = liftUnboundedRGB(fRgb);
-				} else if (glossy_isType) {
-					bsdf_val = 0.0f;
-				}
-			}
+			float bsdf_val, glossyPdf;
+			SS bsdf_color;
+			wf_local_light_bsdf(cos_l, sky_dir, bsdf_val, bsdf_color, glossyPdf);
 			// See the area-light block above: glossyPdf (pdf at sky_dir) takes
 			// priority over brdf_pdf_override (pdf at the unrelated
 			// continuation direction) for the 5 glossy types.
@@ -2728,29 +2928,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 
 			SS Ld = (mis_w * bsdf_val * cos_l / pdf_sky) * throughput * bsdf_color * sky_spec;
 
-			// See the area-light block above for why this is a combined
-			// normal+direction offset (not the normal alone), why isPhase
-			// skips the normal term entirely, and why the normal term uses
-			// copysignf(shadow_eps, raw_cos) rather than always +shadow_eps.
-			ShadowRayWorkItem shadow;
-			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
-				+ shadow_eps * normalize(sky_dir);
-			shadow.direction = sky_dir;
-			shadow.tMax      = 1e30f;
-			for (int i = 0; i < kWFNWavelengths; ++i) {
-				shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
-				shadow.wavelengths[i]     = swl.lambda[i];
-				shadow.wavelength_pdfs[i] = swl.pdf[i];
-			}
-			shadow.pixelIndex = pixelIndex;
-			shadow.time = time;
-			// See giCandidateEligible's own comment (this file's own area-
-			// light NEE block, above, has the identical comment in full).
-			shadow.isGiCandidate = giCandidateEligible;
-			// See ShadowRayWorkItem::seed's own comment / the area-light
-			// block's identical derivation above.
-			shadow.seed = wf_pcg(seed);
-			shadowQueue.push(shadow);
+			// See wf_push_nee_shadow_ray's own comment for why this is a
+			// combined normal+direction offset (not the normal alone), why
+			// isPhase skips the normal term entirely, why the normal term
+			// uses copysignf(shadow_eps, raw_cos) rather than always
+			// +shadow_eps, and why tMax is the unadjusted 1e30f sentinel here
+			// (unlike the area/punctual sites' max_dist/t_max - 0.002f).
+			wf_push_nee_shadow_ray(shadowQueue, hit_point, normal, isPhase, shadow_eps,
+				raw_cos, sky_dir, 1e30f, Ld, filterWeight, swl,
+				pixelIndex, time, giCandidateEligible, wf_pcg(seed));
 		}
 	}
 
@@ -2785,39 +2971,14 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		float cos_l = isPhase ? 1.0f
 			: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos) : raw_cos;
 
-		float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-		// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
-		// for Lambertian (direction-independent BRDF, safe to reuse here);
-		// NormalizedFresnel's bsdf_val is already a complete achromatic value.
-		// Same reuse-attenuation-directly reasoning applies to the
-		// phase-scatter case: `attenuation` there already equals the
-		// medium's single-scatter albedo (mat.albedo).
-		SS bsdf_color(1.f);
-		if (matType == MaterialType::Lambertian) {
-			bsdf_color = attenuation;
-		} else if (matType == MaterialType::NormalizedFresnel) {
-			float inv_eta = 1.0f / nfEta;
-			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-			if (nf_c <= 0.0f) nf_c = 1e-6f;
-			float fr_l = FrDielectric(cos_l, nfEta);
-			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
-		} else if (isPhase) {
-			bsdf_val = wf_hg_phase_value(dot(phaseWo, wi), phaseG);
-			bsdf_color = attenuation;
-		} else {
-			// See the area-light block's identical else-branch for the full
-			// rationale (evalGlossyF/glossy_isType split). No MIS weight for
-			// punctual (delta) lights, same as every other material here -
-			// the pdf-at-wi output isn't needed here, unlike the area/sky
-			// NEE blocks above.
-			float3 fRgb; float unusedPdf;
-			if (evalGlossyF(wi, fRgb, unusedPdf)) {
-				bsdf_val = 1.0f;
-				bsdf_color = liftUnboundedRGB(fRgb);
-			} else if (glossy_isType) {
-				bsdf_val = 0.0f;
-			}
-		}
+		// No MIS weight for punctual (delta) lights, same as every other
+		// material here - the pdf-at-wi output isn't needed here, unlike the
+		// area/sky NEE blocks above, but wf_local_light_bsdf always computes
+		// it anyway (matches this call site's own prior behavior of
+		// computing and discarding an identical unused pdf).
+		float bsdf_val, unusedPdf;
+		SS bsdf_color;
+		wf_local_light_bsdf(cos_l, wi, bsdf_val, bsdf_color, unusedPdf);
 
 		// Uplift RGB Li to spectrum (same pattern as liftEmission above,
 		// including the D65 illuminant factor -- see that lambda's own
@@ -2835,35 +2996,20 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 
 		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
 
-		// See the area-light block above for why this is a combined
-		// normal+direction offset, not the normal alone, why the normal
-		// term uses copysignf(shadow_eps, raw_cos) rather than always
-		// +shadow_eps (RoughDielectric's transmission side), and why isPhase
-		// skips the normal term entirely (no meaningful normal at a
-		// medium-interior scatter point).
-		ShadowRayWorkItem shadow;
-		shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
-			+ shadow_eps * normalize(wi);
-		shadow.direction = wi;
-		shadow.tMax      = t_max - 0.002f;
-		for (int i = 0; i < kWFNWavelengths; ++i) {
-			shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
-			shadow.wavelengths[i]     = swl.lambda[i];
-			shadow.wavelength_pdfs[i] = swl.pdf[i];
-		}
-		shadow.pixelIndex = pixelIndex;
-		shadow.time = time;
-		// See giCandidateEligible's own comment (this file's own area-light
-		// NEE block has the identical comment in full).
-		shadow.isGiCandidate = giCandidateEligible;
-		// See ShadowRayWorkItem::seed's own comment. Unlike the area/sky
-		// blocks above (each fires at most once per call), this loop can push
-		// several shadow rays per call, one per punctual light, with no
+		// See wf_push_nee_shadow_ray's own comment for why this is a combined
+		// normal+direction offset, not the normal alone, why the normal term
+		// uses copysignf(shadow_eps, raw_cos) rather than always +shadow_eps
+		// (RoughDielectric's transmission side), why isPhase skips the normal
+		// term entirely (no meaningful normal at a medium-interior scatter
+		// point), and why the seed mixes in `pli`: unlike the area/sky sites
+		// (each fires at most once per call), this loop can push several
+		// shadow rays per call, one per punctual light, with no
 		// wf_rand(seed)-consuming call between iterations to decorrelate them
-		// - mix in pli so two lights on the same hit don't get identical
-		// ratio-tracking noise if they both cross the same medium.
-		shadow.seed = wf_pcg(seed ^ (pli * 0x9E3779B9u));
-		shadowQueue.push(shadow);
+		// - mixing in pli keeps two lights on the same hit from getting
+		// identical ratio-tracking noise if they both cross the same medium.
+		wf_push_nee_shadow_ray(shadowQueue, hit_point, normal, isPhase, shadow_eps,
+			raw_cos, wi, t_max - 0.002f, Ld, filterWeight, swl,
+			pixelIndex, time, giCandidateEligible, wf_pcg(seed ^ (pli * 0x9E3779B9u)));
 	}
 
 	// Flush accumulated prior-bounce radiance (once, regardless of whether
