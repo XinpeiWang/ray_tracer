@@ -580,20 +580,30 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 }
 
 const QStringList &MainWindow::thumbnailCategories() {
+	// Every compiled-in category that actually has at least one
+	// self-contained (requires_files==false) scene, confirmed by surveying
+	// scene_registry_data.h - none of those scenes carry a "Very Slow"
+	// performance rating, so a low-res/low-spp thumbnail batch is a
+	// reasonable cost for all of them, not just the original 4. Left out:
+	// LargeScene (every entry uses build_curated_external_pbrt_scene_descriptor(),
+	// which hardcodes requires_files=true - zero eligible scenes) and
+	// CustomScenes (populated at runtime from whatever the user drops into
+	// the scenes folder - no compiled-in entries to vet, so no basis for
+	// assuming a quick low-spp render is safe for an arbitrary one).
 	static const QStringList categories = {
 		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Textures,
-		SceneCategories::Cameras
+		SceneCategories::Cameras, SceneCategories::Lights, SceneCategories::Volumes,
+		SceneCategories::Geometry, SceneCategories::Models, SceneCategories::Education
 	};
 	return categories;
 }
 
 // Fills in m_sceneGrid's preview tiles for whichever category tab is
-// CURRENTLY showing, within the curated, self-contained, fast-rendering
-// subset (Basics/Materials/Textures/Cameras) - see the scene-gallery plan's
-// phased-coverage decision for why the rest of the ~154-scene registry isn't
-// covered yet. Scoped to one category per click (not all four curated
-// categories at once, which an earlier version of this did) because the
-// button sits directly under that one category's grid - generating
+// CURRENTLY showing, within thumbnailCategories()'s curated set - see that
+// function's own comment for which categories qualify (every one with at
+// least one self-contained scene) and why CustomScenes/LargeScene don't.
+// Scoped to one category per click (not every curated category at once,
+// which an earlier version of this did) because the
 // thumbnails for scenes the user isn't even looking at, while the ones
 // actually on screen stay placeholders, was the surprising part. Disabled
 // (see createSettingsTab()'s button tooltip) while a real render is in
@@ -723,8 +733,8 @@ void MainWindow::updateGenerateThumbnailsButtonState() {
 	m_generateThumbnailsButton->setEnabled(supported);
 	m_generateThumbnailsButton->setToolTip(supported
 		? tr("Creates a small preview image for each ready-to-render scene in the CURRENT category tab\n"
-		"(Basics/Materials/Textures/Cameras only) that doesn't already have one saved. Runs on the CPU\n"
-		"only, at low resolution - it can take a while the first time you do this for a category.")
+		"that doesn't already have one saved. Not available for every category (e.g. Custom Scenes).\n"
+		"Runs on the CPU only, at low resolution - it can take a while the first time you do this for a category.")
 		: requiresFiles
 			? tr("Thumbnails are only available for Self-Contained scenes.")
 			: tr("Thumbnails aren't available for the \"%1\" category yet.").arg(currentCategory));
