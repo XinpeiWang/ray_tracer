@@ -210,6 +210,17 @@ private slots:
 	// having a cached thumbnail).
 	void onThumbnailProgress(int completed, int total, const QString &sceneId);
 	void onThumbnailsAllDone();
+	// Toggles like onPauseClicked() does for the real render - isPaused()
+	// (not a locally tracked bool) is the source of truth, so the button can
+	// never drift out of sync with what the process is actually doing.
+	void onThumbnailPauseClicked();
+	// Mirrors onControllerPauseStateChanged()'s own bookkeeping trick for
+	// m_thumbnailBatchStartTime: shifts the elapsed-time origin forward by
+	// however long the pause lasted, so onThumbnailsAllDone()'s plain
+	// wall-clock formula keeps reading correctly without a separate
+	// paused-time accumulator.
+	void onThumbnailPauseStateChanged(bool paused);
+	void onThumbnailStopClicked();
 	// Grays out m_generateThumbnailsButton (with an explanatory tooltip)
 	// whenever eligibleThumbnailIds() for the current category is empty -
 	// previously the button stayed enabled-looking on every category, and
@@ -1318,17 +1329,32 @@ private:
 	// see ThumbnailGenerator's own class comment for why the two must never
 	// share chrome.
 	QProgressBar *m_thumbnailProgressBar = nullptr;
+	// Same show/hide lifecycle as m_thumbnailProgressBar - visible only
+	// while a batch is running (onGenerateThumbnailsClicked()/
+	// onThumbnailsAllDone()). Stop mirrors the real render's Stop button;
+	// Pause toggles its own label between "Pause"/"Resume" the same way
+	// m_pauseButton does, driven by onThumbnailPauseStateChanged() rather
+	// than a locally tracked bool.
+	QPushButton *m_thumbnailPauseButton = nullptr;
+	QPushButton *m_thumbnailStopButton = nullptr;
 	// Counts successes/failures across one "Generate Thumbnails" run, reset
 	// at the start of onGenerateThumbnailsClicked() - onThumbnailsAllDone()
 	// folds both into its finish summary (log line + status message).
 	int m_thumbnailSucceededCount = 0;
 	int m_thumbnailFailedCount = 0;
-	// Wall-clock duration of one "Generate Thumbnails" run, started right
-	// before ThumbnailGenerator::start() - onThumbnailsAllDone() logs it in
-	// the finish summary so a slow run (e.g. every scene falling back to a
-	// software rasterizer) is visible without timestamp-subtracting the log
-	// by hand.
-	QElapsedTimer m_thumbnailBatchTimer;
+	// Wall-clock start of one "Generate Thumbnails" run, set right before
+	// ThumbnailGenerator::start() - onThumbnailsAllDone() logs the elapsed
+	// time in its finish summary so a slow run (e.g. every scene falling
+	// back to a software rasterizer) is visible without timestamp-
+	// subtracting the log by hand. A QDateTime rather than a QElapsedTimer
+	// so onThumbnailPauseStateChanged() can shift its origin forward by
+	// however long a pause lasted, the same trick RenderController uses for
+	// the totalTime it reports on a single render's completion - otherwise
+	// a batch paused over lunch would report a multi-hour "elapsed" for
+	// what was actually a few minutes of real work.
+	QDateTime m_thumbnailBatchStartTime;
+	// Valid only while paused - see onThumbnailPauseStateChanged().
+	QDateTime m_thumbnailPauseStartedAt;
 	// Lazily created (and reused across multiple "Generate Thumbnails"
 	// clicks) by onGenerateThumbnailsClicked() the first time it's needed -
 	// see that slot's own comment.

@@ -438,9 +438,24 @@ public:
 	void start(const QStringList &sceneIds, std::function<QString(const QString &)> outputPathForId);
 
 	// Kills the in-flight render (if any) and drops the rest of the queue.
+	// Safe to call while paused - RenderController::stopRender()'s own
+	// kill() works regardless of whether the child process's threads are
+	// currently suspended.
 	void stop();
 
+	// Suspends/resumes the CURRENTLY rendering scene's own process threads
+	// (RenderController::pauseRender()/resumeRender() - see that method's
+	// own comment on the OS-level mechanism and why it costs zero progress).
+	// The rest of the queue simply waits, since startNext() only ever runs
+	// from the current scene's renderComplete - a batch-level pause is just
+	// "the one scene in flight is paused", nothing extra to track. Both
+	// safe to call when nothing is running (no-op, matching
+	// RenderController's own contract).
+	void pause();
+	void resume();
+
 	bool isRunning() const;
+	bool isPaused() const;
 
 signals:
 	// One per finished scene (success or failure) - MainWindow uses this to
@@ -462,6 +477,9 @@ signals:
 	// it reads distinctly from the user's own queued renders once both land
 	// in the same Log Output tab (MainWindow::onLogMessage).
 	void logMessage(const QString &message);
+	// Forwarded straight from RenderController::pauseStateChanged() - see
+	// pause()/resume()'s own comment.
+	void pauseStateChanged(bool paused);
 	// Fires once after the last queued scene finishes (or stop() is called).
 	void allDone();
 

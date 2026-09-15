@@ -649,6 +649,7 @@ ThumbnailGenerator::ThumbnailGenerator(QObject *parent)
 	connect(m_controller, &RenderController::logMessage, this, [this](const QString &line) {
 		emit logMessage(QString("%1 [Thumbnail]").arg(line));
 	});
+	connect(m_controller, &RenderController::pauseStateChanged, this, &ThumbnailGenerator::pauseStateChanged);
 	connect(m_controller, &RenderController::renderComplete, this,
 		[this](bool success, const QString &, double totalTime, const QString &) {
 			const QString finishedId = m_currentId;
@@ -706,6 +707,10 @@ void ThumbnailGenerator::stop() {
 bool ThumbnailGenerator::isRunning() const {
 	return m_controller->isRunning();
 }
+
+void ThumbnailGenerator::pause() { m_controller->pauseRender(); }
+void ThumbnailGenerator::resume() { m_controller->resumeRender(); }
+bool ThumbnailGenerator::isPaused() const { return m_controller->isPaused(); }
 
 void ThumbnailGenerator::startNext() {
 	if (m_pending.isEmpty()) {

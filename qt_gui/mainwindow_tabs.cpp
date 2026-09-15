@@ -437,6 +437,20 @@ void MainWindow::createSettingsTab() {
 	m_thumbnailProgressBar->setTextVisible(true);
 	m_thumbnailProgressBar->setVisible(false);
 	gridPageLayout->addWidget(m_thumbnailProgressBar);
+	// Same show/hide lifecycle as m_thumbnailProgressBar just above - visible
+	// only while a batch is actually running, right below its own progress
+	// bar rather than reusing the real render's Stop/Pause row (which drives
+	// m_renderController/m_renderQueue, a completely separate job).
+	QHBoxLayout *thumbnailControlsRow = new QHBoxLayout();
+	m_thumbnailPauseButton = new QPushButton(tr("Pause"), gridPage);
+	m_thumbnailPauseButton->setVisible(false);
+	thumbnailControlsRow->addWidget(m_thumbnailPauseButton);
+	m_thumbnailStopButton = new QPushButton(tr("Stop"), gridPage);
+	m_thumbnailStopButton->setVisible(false);
+	thumbnailControlsRow->addWidget(m_thumbnailStopButton);
+	gridPageLayout->addLayout(thumbnailControlsRow);
+	connect(m_thumbnailPauseButton, &QPushButton::clicked, this, &MainWindow::onThumbnailPauseClicked);
+	connect(m_thumbnailStopButton, &QPushButton::clicked, this, &MainWindow::onThumbnailStopClicked);
 	m_sceneViewStack->addWidget(gridPage);
 
 	sceneGroupLayout->addWidget(m_sceneViewStack);
