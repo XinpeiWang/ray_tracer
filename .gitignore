@@ -411,6 +411,10 @@ total.txt
 # tests/CMakeLists.txt was already untracked because of this, despite being
 # a real, documented (README.md's "Option B: CMake (manual)") build file).
 !CMakeLists.txt
+# SIL Open Font License text bundled with qt_gui/fonts/NotoSansSC-Regular.ttf -
+# the OFL requires this file to ship alongside the font it licenses, not a
+# stray log the *.txt rule above was meant to catch.
+!qt_gui/fonts/OFL.txt
 # Generated/preprocessed test artifacts
 tests/generated/
 
