@@ -23,6 +23,27 @@
 #include <cmath>         // ceil/isnan - buildProbeGrid()'s own spacing/dims derivation
 #include <algorithm>     // min/max - buildProbeGrid()'s own spacing/dims derivation
 
+// RAII device-memory guard for the temp/output buffers each accel build
+// below allocates: frees the held pointer on scope exit (cudaFree(0) is a
+// documented no-op, so an empty/already-released guard is harmless) unless
+// disarmed via release() once the pointer has been safely handed off (an
+// output buffer folded into a live GAS) or already freed manually. Exists
+// because OPTIX_CHECK/CUDA_CHECK throw std::runtime_error on failure
+// (optix_types.h), and every accel-build block below used to hold its temp/
+// output buffers in bare CUdeviceptr locals with the cudaFree() calls placed
+// AFTER optixAccelBuild() - an accel-build failure (bad input, driver error,
+// OOM) unwound past those frees and permanently leaked the buffers. A
+// destructor-based guard frees correctly on both the normal and the
+// exception path with no change to the normal path's timing.
+struct ScopedCudaFree {
+	CUdeviceptr ptr = 0;
+	ScopedCudaFree() = default;
+	ScopedCudaFree(const ScopedCudaFree&) = delete;
+	ScopedCudaFree& operator=(const ScopedCudaFree&) = delete;
+	~ScopedCudaFree() { if (ptr) cudaFree(reinterpret_cast<void*>(ptr)); }
+	void release() { ptr = 0; }
+};
+
 // World-space AABB for a disk/cylinder given its object-space extent and
 // o2w transform - corner-by-corner (a naive transform of the object-space
 // box's own min/max would clip the geometry the moment a rotation is
@@ -1511,19 +1532,20 @@ bool OptiXRenderer::buildScene(
 			static_cast<unsigned int>(customBuildInputVec.size()), &customBufferSizes
 		));
 
-		CUdeviceptr d_customTemp;
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_customTemp), customBufferSizes.tempSizeInBytes));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gasCustomOutput), customBufferSizes.outputSizeInBytes));
+		ScopedCudaFree tempGuard, outputGuard;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&tempGuard.ptr), customBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&outputGuard.ptr), customBufferSizes.outputSizeInBytes));
 
 		OPTIX_CHECK(optixAccelBuild(
 			context_, stream_, &customAccelOptions, customBuildInputVec.data(),
 			static_cast<unsigned int>(customBuildInputVec.size()),
-			d_customTemp, customBufferSizes.tempSizeInBytes,
-			d_gasCustomOutput, customBufferSizes.outputSizeInBytes,
+			tempGuard.ptr, customBufferSizes.tempSizeInBytes,
+			outputGuard.ptr, customBufferSizes.outputSizeInBytes,
 			&gasCustomHandle_, nullptr, 0
 		));
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
-		cudaFree(reinterpret_cast<void*>(d_customTemp));
+		d_gasCustomOutput = outputGuard.ptr;
+		outputGuard.release();
 	}
 	cudaFree(reinterpret_cast<void*>(d_aabb));
 	cudaFree(reinterpret_cast<void*>(d_aabbKey1));  // cudaFree(0) is a documented no-op when motion wasn't used
@@ -1542,18 +1564,19 @@ bool OptiXRenderer::buildScene(
 			context_, &triAccelOptions, &triBuildInput, 1, &triBufferSizes
 		));
 
-		CUdeviceptr d_triTemp;
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_triTemp), triBufferSizes.tempSizeInBytes));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gasTriOutput), triBufferSizes.outputSizeInBytes));
+		ScopedCudaFree tempGuard, outputGuard;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&tempGuard.ptr), triBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&outputGuard.ptr), triBufferSizes.outputSizeInBytes));
 
 		OPTIX_CHECK(optixAccelBuild(
 			context_, stream_, &triAccelOptions, &triBuildInput, 1,
-			d_triTemp, triBufferSizes.tempSizeInBytes,
-			d_gasTriOutput, triBufferSizes.outputSizeInBytes,
+			tempGuard.ptr, triBufferSizes.tempSizeInBytes,
+			outputGuard.ptr, triBufferSizes.outputSizeInBytes,
 			&gasTriHandle_, nullptr, 0
 		));
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
-		cudaFree(reinterpret_cast<void*>(d_triTemp));
+		d_gasTriOutput = outputGuard.ptr;
+		outputGuard.release();
 	}
 	cudaFree(reinterpret_cast<void*>(d_triVertices));  // cudaFree(0) is a no-op when there were no triangles
 
@@ -1623,19 +1646,20 @@ bool OptiXRenderer::buildScene(
 			context_, &triAccelOptions, diskCylinderBuildInputVec.data(),
 			static_cast<unsigned int>(diskCylinderBuildInputVec.size()), &dcBufferSizes));
 
-		CUdeviceptr d_dcTemp;
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_dcTemp), dcBufferSizes.tempSizeInBytes));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gasDiskCylinderOutput), dcBufferSizes.outputSizeInBytes));
+		ScopedCudaFree tempGuard, outputGuard;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&tempGuard.ptr), dcBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&outputGuard.ptr), dcBufferSizes.outputSizeInBytes));
 
 		OPTIX_CHECK(optixAccelBuild(
 			context_, stream_, &triAccelOptions, diskCylinderBuildInputVec.data(),
 			static_cast<unsigned int>(diskCylinderBuildInputVec.size()),
-			d_dcTemp, dcBufferSizes.tempSizeInBytes,
-			d_gasDiskCylinderOutput, dcBufferSizes.outputSizeInBytes,
+			tempGuard.ptr, dcBufferSizes.tempSizeInBytes,
+			outputGuard.ptr, dcBufferSizes.outputSizeInBytes,
 			&gasDiskCylinderHandle_, nullptr, 0
 		));
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
-		cudaFree(reinterpret_cast<void*>(d_dcTemp));
+		d_gasDiskCylinderOutput = outputGuard.ptr;
+		outputGuard.release();
 	}
 	cudaFree(reinterpret_cast<void*>(d_diskCylinderAabb));  // cudaFree(0) is a no-op when there were none
 
@@ -1666,13 +1690,13 @@ bool OptiXRenderer::buildScene(
 			groupVertsHost.push_back(t.p1);
 			groupVertsHost.push_back(t.p2);
 		}
-		CUdeviceptr d_groupVerts = 0;
+		ScopedCudaFree groupVertsGuard;
 		size_t groupVertsSize = groupVertsHost.size() * sizeof(float3);
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupVerts), groupVertsSize));
-		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_groupVerts), groupVertsHost.data(),
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&groupVertsGuard.ptr), groupVertsSize));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(groupVertsGuard.ptr), groupVertsHost.data(),
 			groupVertsSize, cudaMemcpyHostToDevice));
 
-		CUdeviceptr d_groupVertKeys[1] = { d_groupVerts };
+		CUdeviceptr d_groupVertKeys[1] = { groupVertsGuard.ptr };
 		std::vector<uint32_t> groupFlags(1, OPTIX_GEOMETRY_FLAG_NONE);
 		OptixBuildInput groupBuildInput = {};
 		groupBuildInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
@@ -1691,20 +1715,19 @@ bool OptiXRenderer::buildScene(
 		OPTIX_CHECK(optixAccelComputeMemoryUsage(
 			context_, &triAccelOptions, &groupBuildInput, 1, &groupBufferSizes));
 
-		CUdeviceptr d_groupTemp = 0, d_groupOutput = 0;
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupTemp), groupBufferSizes.tempSizeInBytes));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupOutput), groupBufferSizes.outputSizeInBytes));
+		ScopedCudaFree tempGuard, outputGuard;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&tempGuard.ptr), groupBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&outputGuard.ptr), groupBufferSizes.outputSizeInBytes));
 
 		OPTIX_CHECK(optixAccelBuild(
 			context_, stream_, &triAccelOptions, &groupBuildInput, 1,
-			d_groupTemp, groupBufferSizes.tempSizeInBytes,
-			d_groupOutput, groupBufferSizes.outputSizeInBytes,
+			tempGuard.ptr, groupBufferSizes.tempSizeInBytes,
+			outputGuard.ptr, groupBufferSizes.outputSizeInBytes,
 			&gasGroupTriHandles_[g], nullptr, 0));
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
-		cudaFree(reinterpret_cast<void*>(d_groupTemp));
-		cudaFree(reinterpret_cast<void*>(d_groupVerts));
 
-		d_gasGroupTri_[g] = d_groupOutput;
+		d_gasGroupTri_[g] = outputGuard.ptr;
+		outputGuard.release();
 	}
 
 	// Spheres in a definition need a SECOND GAS of their own: they are custom
@@ -1731,13 +1754,13 @@ bool OptiXRenderer::buildScene(
 			groupAabbs.push_back(aabb);
 		}
 
-		CUdeviceptr d_groupAabb = 0;
+		ScopedCudaFree groupAabbGuard;
 		size_t groupAabbSize = groupAabbs.size() * sizeof(OptixAabb);
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupAabb), groupAabbSize));
-		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_groupAabb), groupAabbs.data(),
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&groupAabbGuard.ptr), groupAabbSize));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(groupAabbGuard.ptr), groupAabbs.data(),
 			groupAabbSize, cudaMemcpyHostToDevice));
 
-		CUdeviceptr d_groupAabbKeys[1] = { d_groupAabb };
+		CUdeviceptr d_groupAabbKeys[1] = { groupAabbGuard.ptr };
 		std::vector<uint32_t> groupSphereFlags(groupAabbs.size(), OPTIX_GEOMETRY_FLAG_NONE);
 		OptixBuildInput groupSphereInput = {};
 		groupSphereInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
@@ -1757,20 +1780,19 @@ bool OptiXRenderer::buildScene(
 		OPTIX_CHECK(optixAccelComputeMemoryUsage(
 			context_, &triAccelOptions, &groupSphereInput, 1, &groupBufferSizes));
 
-		CUdeviceptr d_groupTemp = 0, d_groupOutput = 0;
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupTemp), groupBufferSizes.tempSizeInBytes));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupOutput), groupBufferSizes.outputSizeInBytes));
+		ScopedCudaFree tempGuard, outputGuard;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&tempGuard.ptr), groupBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&outputGuard.ptr), groupBufferSizes.outputSizeInBytes));
 
 		OPTIX_CHECK(optixAccelBuild(
 			context_, stream_, &triAccelOptions, &groupSphereInput, 1,
-			d_groupTemp, groupBufferSizes.tempSizeInBytes,
-			d_groupOutput, groupBufferSizes.outputSizeInBytes,
+			tempGuard.ptr, groupBufferSizes.tempSizeInBytes,
+			outputGuard.ptr, groupBufferSizes.outputSizeInBytes,
 			&gasGroupSphereHandles_[g], nullptr, 0));
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
-		cudaFree(reinterpret_cast<void*>(d_groupTemp));
-		cudaFree(reinterpret_cast<void*>(d_groupAabb));
 
-		d_gasGroupSphere_[g] = d_groupOutput;
+		d_gasGroupSphere_[g] = outputGuard.ptr;
+		outputGuard.release();
 	}
 
 	if (d_gasCustom_) cudaFree(reinterpret_cast<void*>(d_gasCustom_));
@@ -1862,14 +1884,14 @@ bool OptiXRenderer::buildScene(
 		}
 	}
 
-	CUdeviceptr d_instances;
+	ScopedCudaFree instancesGuard;
 	size_t instancesSize = instances.size() * sizeof(OptixInstance);
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_instances), instancesSize));
-	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_instances), instances.data(), instancesSize, cudaMemcpyHostToDevice));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&instancesGuard.ptr), instancesSize));
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(instancesGuard.ptr), instances.data(), instancesSize, cudaMemcpyHostToDevice));
 
 	OptixBuildInput iasBuildInput = {};
 	iasBuildInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-	iasBuildInput.instanceArray.instances = d_instances;
+	iasBuildInput.instanceArray.instances = instancesGuard.ptr;
 	iasBuildInput.instanceArray.numInstances = static_cast<unsigned int>(instances.size());
 
 	OptixAccelBuildOptions iasAccelOptions = {};
@@ -1882,23 +1904,21 @@ bool OptiXRenderer::buildScene(
 		context_, &iasAccelOptions, &iasBuildInput, 1, &iasBufferSizes
 	));
 
-	CUdeviceptr d_iasTemp;
-	CUdeviceptr d_iasOutput;
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_iasTemp), iasBufferSizes.tempSizeInBytes));
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_iasOutput), iasBufferSizes.outputSizeInBytes));
+	ScopedCudaFree iasTempGuard, iasOutputGuard;
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&iasTempGuard.ptr), iasBufferSizes.tempSizeInBytes));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&iasOutputGuard.ptr), iasBufferSizes.outputSizeInBytes));
 
 	OPTIX_CHECK(optixAccelBuild(
 		context_, stream_, &iasAccelOptions, &iasBuildInput, 1,
-		d_iasTemp, iasBufferSizes.tempSizeInBytes,
-		d_iasOutput, iasBufferSizes.outputSizeInBytes,
+		iasTempGuard.ptr, iasBufferSizes.tempSizeInBytes,
+		iasOutputGuard.ptr, iasBufferSizes.outputSizeInBytes,
 		&gasHandle_, nullptr, 0
 	));
 	CUDA_CHECK(cudaStreamSynchronize(stream_));
-	cudaFree(reinterpret_cast<void*>(d_iasTemp));
-	cudaFree(reinterpret_cast<void*>(d_instances));
 
 	if (d_gas_) cudaFree(reinterpret_cast<void*>(d_gas_));
-	d_gas_ = d_iasOutput;
+	d_gas_ = iasOutputGuard.ptr;
+	iasOutputGuard.release();
 
 	// Upload the base table assembled alongside the instance array above.
 	// Rebuilt every call for the same reason as the GASes; left null (no
