@@ -12,6 +12,7 @@
 #include <QSettings>
 #include <QStatusBar>
 #include <QStringList>
+#include <QToolTip>
 #include <QVector>
 
 // ============================================================================
@@ -170,6 +171,12 @@ void MainWindow::applyFont(const QString &id) {
 	font.setPointSize(pointSize);
 	font.setWeight(QFont::Normal);
 	qApp->setFont(font);
+	// qApp->setFont() alone doesn't reach QToolTip's popup (QTipLabel) - on
+	// Windows in particular, the platform theme registers its own font for
+	// that class ahead of the generic application default, so the info
+	// icons' tooltips silently kept the OS tooltip font regardless of the
+	// active Font choice until this explicit override was added.
+	QToolTip::setFont(font);
 
 	// applyTheme()'s stylesheet bakes in font-size rules scaled from
 	// m_activeFontId (see this file's header comment), so making the new
