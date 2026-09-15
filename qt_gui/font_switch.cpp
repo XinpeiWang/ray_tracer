@@ -177,6 +177,13 @@ void MainWindow::applyFont(const QString &id) {
 	// icons' tooltips silently kept the OS tooltip font regardless of the
 	// active Font choice until this explicit override was added.
 	QToolTip::setFont(font);
+	// QToolTip::setFont() only reaches a tooltip's plain-text path - every
+	// rich-text (wrapTooltipHtml()) tooltip already on screen had its font
+	// baked into its HTML when it was last built, which for most info icons
+	// was back at startup, not now. Rebuild them all against the font that
+	// was just set above (mainwindow_style.cpp's setRichTooltip()/
+	// refreshRichTooltips()).
+	refreshRichTooltips();
 
 	// applyTheme()'s stylesheet bakes in font-size rules scaled from
 	// m_activeFontId (see this file's header comment), so making the new

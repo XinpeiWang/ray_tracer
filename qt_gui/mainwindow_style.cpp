@@ -1085,6 +1085,18 @@ QString MainWindow::wrapTooltipHtml(const QString &plainText) {
 	return "<html><body style=\"width:320px; " + fontCss + "\">" + plainTextToHtmlParagraphs(plainText) + "</body></html>";
 }
 
+void MainWindow::setRichTooltip(QWidget *widget, const QString &plainText) {
+	widget->setProperty("richTooltipPlainText", plainText);
+	widget->setToolTip(wrapTooltipHtml(plainText));
+}
+
+void MainWindow::refreshRichTooltips() {
+	for (QWidget *widget : findChildren<QWidget *>()) {
+		const QVariant plainText = widget->property("richTooltipPlainText");
+		if (plainText.isValid()) widget->setToolTip(wrapTooltipHtml(plainText.toString()));
+	}
+}
+
 // A small, flat, icon-only "(i)" mark - the beginner-facing explanation
 // layer this app didn't have before: every existing setToolTip() call in
 // this file describes what a control DOES, not the computer-graphics
@@ -1104,7 +1116,7 @@ QToolButton* MainWindow::createInfoIcon(const QString &helpText) {
 	// switch, so initializing with anything else here would make the icon
 	// visibly change shade the first time the user switches themes.
 	icon_tint::apply(icon, ":/icons/info.svg", icon_tint::Role::Body, m_activeTheme.textBody);
-	icon->setToolTip(wrapTooltipHtml(helpText));
+	setRichTooltip(icon, helpText);
 	return icon;
 }
 
@@ -1144,11 +1156,14 @@ QWidget* MainWindow::checkboxWithInfo(QCheckBox *checkBox, const QString &helpTe
 // mainwindow_tabs.cpp's populateSceneCombo()/populateSceneGrid()) so the
 // choice of "heading + note, or just the note" lives in one place instead
 // of each call site independently deciding how to combine them.
-QString MainWindow::sceneTooltipHtml(const QString &sceneId, bool includeHeading) {
+QString MainWindow::sceneTooltipPlainText(const QString &sceneId, bool includeHeading) {
 	const QString note = scene_technique_notes::forScene(sceneId);
-	if (!includeHeading) return wrapTooltipHtml(note);
-	return wrapTooltipHtml(
-		QString("[%1] %2\n\n%3").arg(sceneId, SceneMetadataClient::sceneName(sceneId), note));
+	if (!includeHeading) return note;
+	return QString("[%1] %2\n\n%3").arg(sceneId, SceneMetadataClient::sceneName(sceneId), note);
+}
+
+QString MainWindow::sceneTooltipHtml(const QString &sceneId, bool includeHeading) {
+	return wrapTooltipHtml(sceneTooltipPlainText(sceneId, includeHeading));
 }
 
 // Rewrites m_sceneTechInfoIcon's tooltip for the given scene - the one
@@ -1161,7 +1176,7 @@ QString MainWindow::sceneTooltipHtml(const QString &sceneId, bool includeHeading
 // knowledge stays in one place.
 void MainWindow::updateSceneTechInfoIcon(const QString &sceneId) {
 	if (!m_sceneTechInfoIcon) return;
-	m_sceneTechInfoIcon->setToolTip(sceneTooltipHtml(sceneId, /*includeHeading=*/false));
+	setRichTooltip(m_sceneTechInfoIcon, sceneTooltipPlainText(sceneId, /*includeHeading=*/false));
 }
 
 // Plain-text (not HTML-wrapped) description of what `mode` does - used by

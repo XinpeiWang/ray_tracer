@@ -659,6 +659,23 @@ private:
 	// the scene combo/grid's per-row tooltips (mainwindow_tabs.cpp) format
 	// scene_technique_notes.h's text the same way.
 	QString wrapTooltipHtml(const QString &plainText);
+	// Sets a rich-text (wrapTooltipHtml()) tooltip on `widget` AND stashes
+	// the plain text behind it as a dynamic property, so refreshRichTooltips()
+	// below can rebuild it later for a newly active font without needing to
+	// know what this particular widget's content actually is. Every
+	// wrapTooltipHtml()-backed widget tooltip (createInfoIcon() below and any
+	// call site that later overwrites one of its icons' tooltip, e.g.
+	// updateSceneTechInfoIcon()) should be set through here rather than
+	// setToolTip(wrapTooltipHtml(...)) directly - otherwise the tooltip keeps
+	// whatever font was active when it was last (re)computed even after the
+	// user picks a different Font menu choice.
+	void setRichTooltip(QWidget *widget, const QString &plainText);
+	// Rebuilds every setRichTooltip()-set tooltip still attached to a live
+	// child widget, using the CURRENT qApp->font() - called from
+	// font_switch.cpp's applyFont() so switching fonts at runtime doesn't
+	// leave already-built tooltips on the font that was active when they
+	// were first shown.
+	void refreshRichTooltips();
 	// Builds the wrapTooltipHtml()-formatted technique-note tooltip for
 	// `sceneId` - the one place that decides how to combine an id/name
 	// heading with scene_technique_notes::forScene()'s text, shared by the
@@ -670,6 +687,13 @@ private:
 	// true when it isn't (the grid's tiles only show the scene's name, not
 	// its id, as their own label).
 	QString sceneTooltipHtml(const QString &sceneId, bool includeHeading);
+	// The plain-text body sceneTooltipHtml() above wraps - factored out so
+	// updateSceneTechInfoIcon() can hand the same text to setRichTooltip()
+	// instead of the pre-wrapped HTML sceneTooltipHtml() returns (the info
+	// icon's tooltip needs the plain text to survive a later font change;
+	// the combo/grid call sites, which never get refreshed after their
+	// initial setItemData(), still go through sceneTooltipHtml() directly).
+	QString sceneTooltipPlainText(const QString &sceneId, bool includeHeading);
 	// Rewrites m_sceneTechInfoIcon's tooltip for `sceneId` (see
 	// scene_technique_notes.h) - called from refreshSceneInfoLabel().
 	void updateSceneTechInfoIcon(const QString &sceneId);

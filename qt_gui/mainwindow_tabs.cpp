@@ -1020,7 +1020,7 @@ void MainWindow::createSettingsTab() {
 		// Camera Path/Output half above does - re-concatenated on every
 		// recompute rather than split into two tooltips/icons (see this
 		// icon's own comment above for why one icon covers both).
-		m_videoInfoIcon->setToolTip(wrapTooltipHtml(tr(
+		setRichTooltip(m_videoInfoIcon, tr(
 			"Video Duration: %1 seconds (%2)\n\n"
 			"Camera Path: %3, always completes its full sweep regardless of speed\n\n"
 			"Output: frames will be saved to output/frames/\n\n"
@@ -1039,7 +1039,7 @@ void MainWindow::createSettingsTab() {
 			"(10-50) for quick previews, more (100-500) for production "
 			"quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes "
 			"on CPU."
-		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath)));
+		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath));
 	};
 
 	connect(m_videoFramesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
