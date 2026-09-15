@@ -579,6 +579,14 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 	if (m_diagTextEdit) m_diagTextEdit->setPlainText(tr("Diagnostics failed:\n\n%1").arg(message));
 }
 
+const QStringList &MainWindow::thumbnailCategories() {
+	static const QStringList categories = {
+		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Textures,
+		SceneCategories::Cameras
+	};
+	return categories;
+}
+
 // Fills in m_sceneGrid's preview tiles for whichever category tab is
 // CURRENTLY showing, within the curated, self-contained, fast-rendering
 // subset (Basics/Materials/Textures/Cameras) - see the scene-gallery plan's
@@ -600,13 +608,9 @@ void MainWindow::onGenerateThumbnailsClicked() {
 	}
 	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) return;
 
-	static const QStringList kThumbnailCategories = {
-		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Textures,
-		SceneCategories::Cameras
-	};
 	const QString currentCategory = (m_sceneCategoryTabs && m_sceneCategoryTabs->count() > 0)
 		? m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() : QString();
-	if (!kThumbnailCategories.contains(currentCategory)) {
+	if (!thumbnailCategories().contains(currentCategory)) {
 		setStatusWarning(tr("Thumbnails aren't available for the \"%1\" category yet.").arg(currentCategory));
 		return;
 	}
@@ -685,7 +689,12 @@ void MainWindow::onThumbnailProgress(int completed, int total, const QString &sc
 }
 
 void MainWindow::onThumbnailsAllDone() {
-	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(true);
+	// Not an unconditional setEnabled(true): the user may have switched to
+	// an unsupported category (e.g. "Models") while this run - started on a
+	// supported one - was still working in the background. Re-evaluating
+	// against whatever category is CURRENTLY showing avoids leaving the
+	// button wrongly enabled there.
+	updateGenerateThumbnailsButtonState();
 	if (m_thumbnailProgressBar) m_thumbnailProgressBar->setVisible(false);
 	onLogMessage(QString("Thumbnail generation finished: %1 succeeded, %2 failed, %3s elapsed.")
 		.arg(m_thumbnailSucceededCount).arg(m_thumbnailFailedCount)
@@ -693,6 +702,32 @@ void MainWindow::onThumbnailsAllDone() {
 	statusBar()->showMessage(m_thumbnailFailedCount > 0
 		? tr("Thumbnail generation finished - %1 failed.").arg(m_thumbnailFailedCount)
 		: tr("Thumbnail generation finished."), 5000);
+}
+
+void MainWindow::updateGenerateThumbnailsButtonState() {
+	if (!m_generateThumbnailsButton) return;
+	// A tab switch mid-generation must not fight onGenerateThumbnailsClicked()'s
+	// own disable - the button stays disabled until allDone() (which calls
+	// this function itself, see its own comment) re-evaluates for real.
+	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) return;
+
+	// A category name (e.g. "Basics") can hold BOTH self-contained and
+	// requires-files scenes - onGenerateThumbnailsClicked() only ever
+	// collects the self-contained ones (its own sceneRequiresFiles() filter),
+	// so the "Requires External Files" availability tab is never eligible
+	// regardless of which category happens to be showing.
+	const bool requiresFiles = m_sceneAvailabilityTabs && m_sceneAvailabilityTabs->currentIndex() == 1;
+	const QString currentCategory = (m_sceneCategoryTabs && m_sceneCategoryTabs->count() > 0)
+		? m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() : QString();
+	const bool supported = !requiresFiles && thumbnailCategories().contains(currentCategory);
+	m_generateThumbnailsButton->setEnabled(supported);
+	m_generateThumbnailsButton->setToolTip(supported
+		? tr("Creates a small preview image for each ready-to-render scene in the CURRENT category tab\n"
+		"(Basics/Materials/Textures/Cameras only) that doesn't already have one saved. Runs on the CPU\n"
+		"only, at low resolution - it can take a while the first time you do this for a category.")
+		: requiresFiles
+			? tr("Thumbnails are only available for Self-Contained scenes.")
+			: tr("Thumbnails aren't available for the \"%1\" category yet.").arg(currentCategory));
 }
 
 void MainWindow::onStopClicked() {

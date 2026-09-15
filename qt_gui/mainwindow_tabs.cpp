@@ -216,6 +216,11 @@ void MainWindow::selectSceneById(const QString &id) {
 	}
 
 	populateSceneViews(category);
+	// Both setCurrentIndex() calls above ran signal-blocked, so neither tab
+	// bar's own currentChanged handler (mainwindow_tabs.cpp's
+	// createSettingsTab()) fired to refresh this - do it explicitly, for
+	// both the early "scene not found" return below and the normal exit.
+	updateGenerateThumbnailsButtonState();
 	const int itemIndex = m_sceneCombo->findData(id);
 	if (itemIndex < 0) {
 		onLogMessage(QString("WARNING: video preset's scene \"%1\" not found under category \"%2\"")
@@ -420,11 +425,10 @@ void MainWindow::createSettingsTab() {
 	m_sceneGrid->setWordWrap(true);
 	m_sceneGrid->setMinimumHeight(260);
 	gridPageLayout->addWidget(m_sceneGrid, 1);
+	// Enabled state/tooltip both set for real by updateGenerateThumbnailsButtonState()
+	// once the category tabs exist below - this constructs enabled with a
+	// placeholder tooltip only because there's no category to check against yet.
 	m_generateThumbnailsButton = new QPushButton(tr("Generate Thumbnails"), gridPage);
-	m_generateThumbnailsButton->setToolTip(
-		tr("Creates a small preview image for each ready-to-render scene in the CURRENT category tab\n"
-		"(Basics/Materials/Textures/Cameras only) that doesn't already have one saved. Runs on the CPU\n"
-		"only, at low resolution - it can take a while the first time you do this for a category."));
 	gridPageLayout->addWidget(m_generateThumbnailsButton);
 	// Hidden until generation actually starts (onGenerateThumbnailsClicked())
 	// and hidden again once it finishes (onThumbnailsAllDone()) - see
@@ -469,6 +473,7 @@ void MainWindow::createSettingsTab() {
 	// Fill the dropdown/grid for whichever category the bar opened on.
 	if (m_sceneCategoryTabs->count() > 0)
 		populateSceneViews(m_sceneCategoryTabs->tabData(0).toString());
+	updateGenerateThumbnailsButtonState();
 
 	connect(m_sceneAvailabilityTabs, &QTabBar::currentChanged, this, [this](int tab) {
 		if (tab < 0) return;
@@ -488,6 +493,11 @@ void MainWindow::createSettingsTab() {
 			if (m_sceneGrid) m_sceneGrid->clear();
 		}
 		onSceneChanged(m_sceneCombo->currentIndex());
+		// "Requires External Files" scenes are never thumbnail-eligible
+		// (onGenerateThumbnailsClicked()'s own sceneRequiresFiles() filter),
+		// regardless of category - re-evaluate now rather than leaving
+		// whatever enabled state the Self-Contained side last left behind.
+		updateGenerateThumbnailsButtonState();
 	});
 
 	connect(m_sceneCategoryTabs, &QTabBar::currentChanged, this, [this](int tab) {
@@ -497,6 +507,7 @@ void MainWindow::createSettingsTab() {
 		// the newly selected scene is issued here - otherwise switching category
 		// would leave the description, SPP and camera describing the old scene.
 		onSceneChanged(m_sceneCombo->currentIndex());
+		updateGenerateThumbnailsButtonState();
 	});
 
 	// Re-narrows the current category's combo/grid on every keystroke -

@@ -210,6 +210,20 @@ private slots:
 	// having a cached thumbnail).
 	void onThumbnailProgress(int completed, int total, const QString &sceneId);
 	void onThumbnailsAllDone();
+	// Grays out m_generateThumbnailsButton (with an explanatory tooltip)
+	// whenever the current scene-category tab isn't one of
+	// thumbnailCategories()'s curated set - previously the button stayed
+	// enabled-looking on every category, and clicking it on an unsupported
+	// one (e.g. "Models") did nothing but flash a status-bar warning that
+	// was easy to miss, reading as the button being simply broken. Called
+	// on every category/availability tab change (mainwindow_tabs.cpp) and
+	// from onThumbnailsAllDone() - the latter so finishing a generation
+	// started on a supported category doesn't wrongly re-enable the button
+	// if the user switched to an unsupported one while it was still running.
+	// A no-op while m_thumbnailGenerator->isRunning(): that state's own
+	// disable (onGenerateThumbnailsClicked()) must not be fought by a tab
+	// switch mid-generation.
+	void updateGenerateThumbnailsButtonState();
 
 	// Shared by the log tab's buttons and the File menu's actions.
 	void copyLogToClipboard();
@@ -1337,6 +1351,16 @@ private:
 	// so category/availability/search apply identically to both views with
 	// no duplicated filter logic.
 	QStringList filteredSceneIds(const QString &category) const;
+
+	// The curated, self-contained, fast-rendering categories "Generate
+	// Thumbnails" (onGenerateThumbnailsClicked()) covers - see that slot's
+	// own comment for why the rest of the ~154-scene registry (e.g. "Models",
+	// which can hold large external-geometry scenes like the pbrt-v4
+	// "Killeroo" one) isn't included yet. Shared by
+	// updateGenerateThumbnailsButtonState() too, so the button's
+	// enabled/tooltip state can never drift out of sync with what a click
+	// actually does.
+	static const QStringList &thumbnailCategories();
 
 	// Refills m_sceneCombo with just the scenes in `category` that also match
 	// m_sceneAvailabilityTabs' current selection. Does NOT emit
