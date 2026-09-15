@@ -580,7 +580,6 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 }
 
 bool MainWindow::isThumbnailEligible(const QString &sceneId) {
-	if (SceneMetadataClient::sceneRequiresFiles(sceneId)) return false;
 	SceneMetadataClient::SceneMetadata meta;
 	// Same "can't query -> don't include" caution as every other
 	// SceneMetadataClient call site in this file: a scene this couldn't even
@@ -589,24 +588,30 @@ bool MainWindow::isThumbnailEligible(const QString &sceneId) {
 	return meta.performance != QLatin1String("Very Slow");
 }
 
-QStringList MainWindow::thumbnailCategories() {
-	QStringList categories;
-	const int count = SceneMetadataClient::sceneCount();
-	for (int i = 0; i < count; ++i) {
-		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
-		if (!isThumbnailEligible(id)) continue;
-		const QString category = SceneMetadataClient::sceneCategory(id);
-		if (!categories.contains(category)) categories << category;
+// The scenes a "Generate Thumbnails" click on `category` would actually
+// attempt - filteredSceneIds() already applies the same category/
+// availability-tab/search-box filter the visible grid itself uses (so a
+// "Requires External Files" scene is only ever included while that tab is
+// the one showing - if a required asset turns out to still be missing
+// locally, the render just fails and gets logged/counted like any other
+// failure, same as a real render of that scene would), narrowed further by
+// isThumbnailEligible()'s performance check. The one list both
+// onGenerateThumbnailsClicked() and updateGenerateThumbnailsButtonState()
+// read, so the button's enabled state can never drift out of sync with
+// what a click on it actually does.
+QStringList MainWindow::eligibleThumbnailIds(const QString &category) const {
+	QStringList ids;
+	for (const QString &id : filteredSceneIds(category)) {
+		if (isThumbnailEligible(id)) ids << id;
 	}
-	return categories;
+	return ids;
 }
 
-// Fills in m_sceneGrid's preview tiles for whichever category tab is
-// CURRENTLY showing, within thumbnailCategories()'s eligible set - see
-// isThumbnailEligible()/thumbnailCategories()'s own comments for exactly
-// what qualifies and why. Scoped to one category per click (not every
-// eligible category at once, which an earlier version of this did) because
-// the button sits directly under that one category's grid - generating
+// Fills in m_sceneGrid's preview tiles for whichever category/availability/
+// search combination is CURRENTLY showing - see eligibleThumbnailIds()'s own
+// comment for exactly what qualifies. Scoped to the current category alone
+// (not every category at once, which an earlier version of this did)
+// because the button sits directly under that one category's grid - generating
 // thumbnails for scenes the user isn't even looking at, while the ones
 // actually on screen stay placeholders, was the surprising part. Disabled
 // (see createSettingsTab()'s button tooltip) while a real render is in
@@ -623,8 +628,9 @@ void MainWindow::onGenerateThumbnailsClicked() {
 
 	const QString currentCategory = (m_sceneCategoryTabs && m_sceneCategoryTabs->count() > 0)
 		? m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() : QString();
-	if (!thumbnailCategories().contains(currentCategory)) {
-		setStatusWarning(tr("Thumbnails aren't available for the \"%1\" category yet.").arg(currentCategory));
+	const QStringList ids = eligibleThumbnailIds(currentCategory);
+	if (ids.isEmpty()) {
+		setStatusWarning(tr("Nothing to generate thumbnails for in the current view."));
 		return;
 	}
 
@@ -642,15 +648,6 @@ void MainWindow::onGenerateThumbnailsClicked() {
 				this, &MainWindow::onLogMessage);
 		connect(m_thumbnailGenerator, &ThumbnailGenerator::allDone,
 				this, &MainWindow::onThumbnailsAllDone);
-	}
-
-	QStringList ids;
-	const int count = SceneMetadataClient::sceneCount();
-	for (int i = 0; i < count; ++i) {
-		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
-		if (!isThumbnailEligible(id)) continue;
-		if (SceneMetadataClient::sceneCategory(id) != currentCategory) continue;
-		ids << id;
 	}
 
 	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(false);
@@ -724,23 +721,21 @@ void MainWindow::updateGenerateThumbnailsButtonState() {
 	// this function itself, see its own comment) re-evaluates for real.
 	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) return;
 
-	// A category name (e.g. "Basics") can hold BOTH self-contained and
-	// requires-files scenes - onGenerateThumbnailsClicked() only ever
-	// collects the self-contained ones (its own sceneRequiresFiles() filter),
-	// so the "Requires External Files" availability tab is never eligible
-	// regardless of which category happens to be showing.
-	const bool requiresFiles = m_sceneAvailabilityTabs && m_sceneAvailabilityTabs->currentIndex() == 1;
 	const QString currentCategory = (m_sceneCategoryTabs && m_sceneCategoryTabs->count() > 0)
 		? m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() : QString();
-	const bool supported = !requiresFiles && thumbnailCategories().contains(currentCategory);
+	// Same call onGenerateThumbnailsClicked() itself makes - the button's
+	// enabled state can never drift out of sync with what a click actually
+	// does, whether that's an empty category, a search term matching
+	// nothing, or (now that eligibleThumbnailIds() no longer excludes
+	// requires-files scenes) the "Requires External Files" availability tab
+	// simply having nothing eligible left after the performance filter.
+	const bool supported = !eligibleThumbnailIds(currentCategory).isEmpty();
 	m_generateThumbnailsButton->setEnabled(supported);
 	m_generateThumbnailsButton->setToolTip(supported
 		? tr("Creates a small preview image for each ready-to-render, not-too-slow scene in the CURRENT\n"
-		"category tab that doesn't already have one saved. Runs on the CPU only, at low resolution - it\n"
-		"can take a while the first time you do this for a category.")
-		: requiresFiles
-			? tr("Thumbnails are only available for Self-Contained scenes.")
-			: tr("Thumbnails aren't available for the \"%1\" category yet.").arg(currentCategory));
+		"view that doesn't already have one saved. Runs on the CPU only, at low resolution - it can take\n"
+		"a while the first time you do this, especially for a category that needs external files.")
+		: tr("Nothing to generate thumbnails for in the current view."));
 }
 
 void MainWindow::onStopClicked() {

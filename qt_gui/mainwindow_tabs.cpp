@@ -518,6 +518,10 @@ void MainWindow::createSettingsTab() {
 		if (m_sceneCategoryTabs->count() == 0) return;
 		populateSceneViews(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
 		onSceneChanged(m_sceneCombo->currentIndex());
+		// eligibleThumbnailIds() (mainwindow_slots.cpp) narrows by this same
+		// search text - a term matching nothing in the current category
+		// should gray the button out exactly like an empty category does.
+		updateGenerateThumbnailsButtonState();
 	});
 
 	m_sceneInfoLabel = new QLabel(basicTab);
