@@ -681,6 +681,16 @@ struct BilinearPatchShape {
               T rdx, T rdy, T rdz,
               T t_min, T t_max) const
     {
+        // Truncates to float even when T=double, unlike shapes.h's sibling
+        // shapes - not an oversight: blp_intersect() below is deliberately
+        // a plain (non-templated) float function so nvcc's non-template
+        // device-compilation pass can type-check it without std::optional
+        // (see its own header comment), and it's shared verbatim with GPU
+        // device code (gpu/optix/optix_intersection_bilinear_patch.h).
+        // Genuinely double-precision bilinear patches (scenes_advanced.h's
+        // BilinearPatchShape<double> usage) pay a real float-cancellation
+        // cost here in exchange for that CUDA compatibility + the existing
+        // tested-correct implementation staying untouched.
         float ro[3] = {(float)rox,(float)roy,(float)roz};
         float rd[3] = {(float)rdx,(float)rdy,(float)rdz};
         float sq00[3]={(float)p00x,(float)p00y,(float)p00z};

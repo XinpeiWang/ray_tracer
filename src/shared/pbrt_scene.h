@@ -325,7 +325,17 @@ struct Warning {
 // the tests exercise nesting, cycles and missing files from an in-memory map,
 // and the caller decides what "a path" means (working directory, scene
 // directory, an archive).
-using FileResolver = std::function<bool(const std::string &path, std::string &outContents)>;
+//
+// `openStack` is the caller's own live Include call stack: the raw paths of
+// every file currently being expanded, innermost (the immediate includer of
+// `path`) last, NOT every path ever resolved so far - a resolver that wants
+// "the directory of whichever file wrote this Include" needs exactly this,
+// since a finished sibling subtree's directory must not leak into an
+// unrelated later Include of the same or a different file (expandIncludes()
+// pushes right before recursing into a resolved file and pops right after,
+// so this always reflects genuinely-open ancestors only).
+using FileResolver = std::function<bool(const std::string &path, std::string &outContents,
+										 const std::vector<std::string> &openStack)>;
 
 // A named collection of shapes that exists once and is placed many times.
 struct ObjectDecl {
@@ -642,7 +652,7 @@ inline bool expandIncludes(const std::string &text, int fileIndex,
 		}
 
 		std::string contents;
-		if (!resolver(path, contents)) {
+		if (!resolver(path, contents, openStack)) {
 			error = "cannot open included file '" + path + "'";
 			return false;
 		}

@@ -25,6 +25,8 @@
 #include "compact_light_bounds.h"
 
 #include "cpu_gpu.h"
+#include <cstddef>       // offsetof, for the layout static_asserts below
+#include <type_traits>   // is_standard_layout, for the layout static_asserts below
 
 // ===========================================================================
 // LightBVHNode
@@ -77,6 +79,27 @@ struct alignas(32) LightBVHNode {
 		return LightBVHNode{cb, child1Index, 0u};
 	}
 };
+
+// This struct is written host-side (MSVC) and read device-side (NVCC) as raw
+// uploaded bytes, not re-parsed - see the struct's own comment on the real,
+// reproduced MSVC/NVCC bitfield-packing divergence that previously caused a
+// CUDA 700 illegal memory access. These asserts pin the exact regression
+// that already happened once (a reintroduced `childOrLightIndex:31` /
+// `isLeaf:1` bitfield, or a reordering, would change these offsets) as a
+// compile-time check in BOTH the host and device translation units that
+// include this shared header, so a future recurrence fails the build
+// instead of needing another multi-day debugging session to diagnose.
+static_assert(std::is_standard_layout<LightBVHNode>::value,
+			  "LightBVHNode must stay standard-layout (plain data members, "
+			  "no virtuals) for offsetof()/a raw host-to-device byte copy "
+			  "to be well-defined");
+static_assert(offsetof(LightBVHNode, childOrLightIndex) == sizeof(CompactLightBounds),
+			  "LightBVHNode::childOrLightIndex moved - verify MSVC and NVCC "
+			  "still agree on this struct's layout (see struct comment)");
+static_assert(offsetof(LightBVHNode, isLeaf) ==
+				  sizeof(CompactLightBounds) + sizeof(unsigned int),
+			  "LightBVHNode::isLeaf moved - verify MSVC and NVCC still "
+			  "agree on this struct's layout (see struct comment)");
 
 // Return type for a light-BVH traversal query - shared by both GPU backends'
 // own traversal code (gpu_light_bvh_sample_index(), optix_device_helpers_

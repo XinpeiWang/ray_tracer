@@ -252,6 +252,14 @@ public:
 		int max_depth = params_.max_depth;
 		if (max_depth <= 0)
 			max_depth = (int)std::round(8.0 + 1.3 * kd_detail::log2int(n));
+		// Clamped regardless of source (explicit or auto-computed): the
+		// traversal functions below push at most one "far child" per tree
+		// level onto a fixed-size todo[kMaxToVisit] stack, only assert-
+		// guarded (compiled out under NDEBUG) against overflow. The
+		// auto-computed formula never gets remotely close to this even for
+		// absurdly large scenes, but an explicit params_.max_depth from a
+		// caller had no upper bound at all before this clamp.
+		if (max_depth > 63) max_depth = 63;
 
 		// Compute per-primitive bounding boxes
 		std::vector<std::array<T, 6>> prim_bounds(n); // [xmin,ymin,zmin, xmax,ymax,zmax]

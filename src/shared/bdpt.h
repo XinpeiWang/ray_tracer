@@ -222,6 +222,9 @@ struct BDPTSurfaceData {
 	T area_Le[3];    // emitted radiance (zero if not an area light)
 	bool is_delta_bsdf;
 	int bsdf_id;     // opaque, passed back to scene for f/sample/pdf calls
+	int light_id;    // -1 if not an area light; else light index for PDF
+	                 // queries (mirrors BDPTHit::light_id) - distinct from
+	                 // bsdf_id, which indexes a different id space.
 };
 
 // Endpoint data: camera or light endpoint
@@ -346,6 +349,7 @@ struct BDPTVertex {
 		std::memcpy(v.si.area_Le,  hit.area_Le,   3*sizeof(T));
 		v.si.is_delta_bsdf = hit.is_delta_bsdf;
 		v.si.bsdf_id = hit.bsdf_id;
+		v.si.light_id = hit.light_id;
 		return v;
 	}
 
@@ -532,7 +536,7 @@ struct BDPTVertex {
 			pdf = T(1) / (T(3.14159265358979323846) * radius * radius);
 		} else {
 			T pdf_pos, pdf_dir;
-			int lid = (type==BDPTVertexType::Light) ? ei.light_id : si.bsdf_id; // area light
+			int lid = (type==BDPTVertexType::Light) ? ei.light_id : si.light_id; // area light
 			scene.LightPDFLe(lid, IsOnSurface() ? p() : nullptr,
 							 IsOnSurface() ? ng() : nullptr,
 							 wn, pdf_pos, pdf_dir);
@@ -557,7 +561,7 @@ struct BDPTVertex {
 			T w[3] = { v.p()[0]-p()[0], v.p()[1]-p()[1], v.p()[2]-p()[2] };
 			if (bdpt_detail::len2_3(w) == T(0)) return T(0);
 			bdpt_detail::norm3(w);
-			int lid = (type==BDPTVertexType::Light) ? ei.light_id : si.bsdf_id;
+			int lid = (type==BDPTVertexType::Light) ? ei.light_id : si.light_id;
 			T pdf_pos, pdf_dir;
 			scene.LightPDFLe(lid, IsOnSurface() ? p() : nullptr,
 							 IsOnSurface() ? ng() : nullptr,

@@ -236,7 +236,7 @@ void VolPathSampleLd(const T p[3], const T wo[3], const T n[3],
 
 				// Russian roulette on transmittance estimate
 				T Tr_est = (r_l + r_u_shadow) > T(0)
-					? T_ray / ((r_l + r_u_shadow) * T(0.5))
+					? T_ray / (r_l + r_u_shadow)
 					: T(0);
 				if (Tr_est < T(0.05)) {
 					T q = T(0.75);
@@ -265,6 +265,11 @@ void VolPathSampleLd(const T p[3], const T wo[3], const T n[3],
 	// Mirrors pbrt-v4:
 	//   delta: return beta * f_hat * T_ray * L / r_l.Average()
 	//   area:  return beta * f_hat * T_ray * L / (r_l + r_u).Average()
+	// pbrt-v4's Average() divides by the number of spectral wavelength
+	// samples (N_SPECTRUM_SAMPLES), not by the number of summed MIS
+	// terms - this renderer is scalar/RGB (no spectral dimension, i.e.
+	// N=1), so Average() is the identity here and the denominator is
+	// just the plain sum, with no extra scaling factor.
 	r_l       *= r_u * p_l;
 	r_u_shadow *= r_u * scatter_pdf;
 
@@ -272,7 +277,7 @@ void VolPathSampleLd(const T p[3], const T wo[3], const T n[3],
 	if (scene.IsDeltaLight(ls.light_id))
 		mis_denom = r_l;
 	else
-		mis_denom = (r_l + r_u_shadow) * T(0.5);  // Average() of 2-element sum
+		mis_denom = r_l + r_u_shadow;
 
 	if (mis_denom <= T(0)) return;
 
@@ -456,10 +461,12 @@ void VolPathLi(const T org[3], const T dir[3],
 						for (int c = 0; c < 3; ++c)
 							L[c] += beta[c] * Le_inf[c] / r_u;
 				} else {
-					// MIS: (r_u + r_l).Average()
+					// MIS: (r_u + r_l).Average() -- scalar/RGB has no
+					// spectral dimension, so this is just the plain sum
+					// (see VolPathSampleLd's comment on Average()).
 					T r_l_cur = r_l * scene.InfiniteLightPMF()
 							  * scene.InfiniteLightPDF_Li(ray_o, ray_d);
-					T denom = (r_u + r_l_cur) * T(0.5);
+					T denom = r_u + r_l_cur;
 					if (denom > T(0))
 						for (int c = 0; c < 3; ++c)
 							L[c] += beta[c] * Le_inf[c] / denom;
@@ -480,11 +487,12 @@ void VolPathLi(const T org[3], const T dir[3],
 						for (int c = 0; c < 3; ++c)
 							L[c] += beta[c] * Le[c] / r_u;
 				} else {
-					// MIS with light-sampling PDF
+					// MIS with light-sampling PDF (plain sum -- see
+					// VolPathSampleLd's comment on Average()).
 					T p_l = scene.LightPMF(hit.light_id)
 						  * scene.LightPDF_Li(hit.light_id, ray_o, ray_d);
 					T r_l_cur = r_l * p_l;
-					T denom = (r_u + r_l_cur) * T(0.5);
+					T denom = r_u + r_l_cur;
 					if (denom > T(0))
 						for (int c = 0; c < 3; ++c)
 							L[c] += beta[c] * Le[c] / denom;

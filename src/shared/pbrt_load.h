@@ -25,6 +25,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "accelerator_override.h"
@@ -275,25 +276,36 @@ inline LoadResult loadFile(const std::string &path,
 
 	// An included file's own includes resolve against ITS directory, not the
 	// top-level scene's - tracked by remembering the directory each resolved
-	// path came from. Without this, geometry/a.pbrt including "b.pbrt" would
-	// be looked for beside the scene rather than beside a.pbrt.
-	std::vector<std::pair<std::string, std::string>> resolvedDirs;
+	// path came from, keyed by that path so a nested Include can look up
+	// "the directory of whichever file wrote this Include" via the live
+	// openStack expandIncludes() now passes in (pbrt_scene.h's FileResolver
+	// doc comment). Without this, geometry/a.pbrt including "b.pbrt" would
+	// be looked for beside the scene rather than beside a.pbrt - and walking
+	// openStack (genuinely-open ancestors only) rather than every path ever
+	// resolved is what keeps a LATER, unrelated sibling Include of the same
+	// name from picking up an earlier, already-finished subtree's directory.
+	std::unordered_map<std::string, std::string> resolvedDirOf;
 	const pbrt_scene::FileResolver files =
-		[&](const std::string &want, std::string &contents) {
-			// Try the directory of whichever file most recently resolved,
+		[&](const std::string &want, std::string &contents,
+			const std::vector<std::string> &openStack) {
+			// Try the directory of whichever currently-open file wrote this
+			// Include, innermost first, then its own includer, and so on -
 			// then the scene directory, then the path as given.
-			for (auto it = resolvedDirs.rbegin(); it != resolvedDirs.rend(); ++it) {
-				if (readFile(join(it->second, want), contents)) {
-					resolvedDirs.emplace_back(want, directoryOf(join(it->second, want)));
+			for (auto it = openStack.rbegin(); it != openStack.rend(); ++it) {
+				auto dirIt = resolvedDirOf.find(*it);
+				if (dirIt == resolvedDirOf.end()) continue;
+				const std::string candidate = join(dirIt->second, want);
+				if (readFile(candidate, contents)) {
+					resolvedDirOf[want] = directoryOf(candidate);
 					return true;
 				}
 			}
 			if (readFile(join(sceneDir, want), contents)) {
-				resolvedDirs.emplace_back(want, directoryOf(join(sceneDir, want)));
+				resolvedDirOf[want] = directoryOf(join(sceneDir, want));
 				return true;
 			}
 			if (readFile(want, contents)) {
-				resolvedDirs.emplace_back(want, directoryOf(want));
+				resolvedDirOf[want] = directoryOf(want);
 				return true;
 			}
 			return false;

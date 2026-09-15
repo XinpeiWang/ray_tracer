@@ -383,13 +383,24 @@ struct CoatedConductorMaterial {
 
 		T iurough = eval_float_tex(interface_u_roughness, ctx);
 		T ivrough = eval_float_tex(interface_v_roughness, ctx);
+		// curough/cvrough are evaluated (matching pbrt-v4's real
+		// CoatedConductorMaterial API, which this constructor's parameter
+		// list mirrors) but NOT fed into CoatedConductorBxDF below -
+		// that struct only carries one shared alpha_x/alpha_y, reused for
+		// both the coat interface and the conductor's own GGX bump by
+		// design (see bxdfs_layered.h's layered_detail namespace comment:
+		// "not a per-interface roughness split"), so there is currently no
+		// slot for an independent conductor roughness to feed into. This
+		// class is not presently instantiated by the pbrt scene loader
+		// (material_pbrt.h's `coated_conductor` is what's actually used,
+		// and only ever exposed the one shared `coat_roughness`), so this
+		// is a latent API/model mismatch rather than a live rendering bug.
 		T curough = eval_float_tex(conductor_u_roughness, ctx);
 		T cvrough = eval_float_tex(conductor_v_roughness, ctx);
+		(void)curough; (void)cvrough;
 		if (remap_roughness) {
 			iurough = TrowbridgeReitz<T>::RoughnessToAlpha(iurough);
 			ivrough = TrowbridgeReitz<T>::RoughnessToAlpha(ivrough);
-			curough = TrowbridgeReitz<T>::RoughnessToAlpha(curough);
-			cvrough = TrowbridgeReitz<T>::RoughnessToAlpha(cvrough);
 		}
 		T thick = eval_float_tex(thickness, ctx);
 		// pbrt-v4: Clamp(texEval(g, ctx), -1, 1)

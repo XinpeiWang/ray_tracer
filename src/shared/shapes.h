@@ -2067,8 +2067,14 @@ struct TriangleShape {
 									: 0.5f - ptCurveDist / hitWidth;
 
 								// dpdu: tangent along curve at hit point (world space)
-								// cpW covers [u0,u1]; remap global u -> local t in [0,1]
-								float uLocal = (u1 > u0) ? (u - u0) / (u1 - u0) : 0.f;
+								// cpW is passed unchanged through every recursion level
+								// (see the calls above) and always covers this shape's
+								// full [uMin,uMax] range, NOT the leaf's own recursively-
+								// bisected [u0,u1] - so the remap to _eval_bezier's local
+								// [0,1] domain must use uMin/uMax (matching sample()'s own
+								// identical remap above), not this leaf's u0/u1.
+								float uLo = float(uMin), uHi = float(uMax);
+								float uLocal = (uHi > uLo) ? (u - uLo) / (uHi - uLo) : 0.f;
 								uLocal = uLocal < 0.f ? 0.f : (uLocal > 1.f ? 1.f : uLocal);
 								float pc_w[3], dpdu_ray[3];
 								_eval_bezier(cpW, uLocal, pc_w, dpdu_ray);

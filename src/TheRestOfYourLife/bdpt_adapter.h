@@ -324,10 +324,12 @@ class BDPTSceneAdapter {
 	// same numbering SampleLight/SampleLightLe hand out as light_id), and
 	// every REAL hit's bsdf_id is nEmitters_ + (a slot in ctx_pool_ below)
 	// -- see LightPMF/LightPDFLe's own comment for why these two numbering
-	// spaces have to coexist in a single `int id` parameter at all (bdpt.h
-	// itself reuses a Surface vertex's bsdf_id AS its light identifier when
-	// that surface turns out to be emissive -- see BDPTVertex::PDFLight()/
-	// PDFLightOrigin()'s `int lid = ... si.bsdf_id` line).
+	// spaces have to coexist in a single `int id` parameter at all.
+	// Intersect() below also populates BDPTHit::light_id directly (resolved
+	// via emitter_index_for_material()) whenever the hit is emissive, so a
+	// Surface vertex that turns out to be a light carries a real light_id
+	// of its own (BDPTVertex::PDFLight()/PDFLightOrigin() read `si.light_id`)
+	// instead of needing its bsdf_id resolved after the fact.
 	bool Intersect(const double org[3], const double dir[3], double t_max,
 	               BDPTHit<double>& hit) const {
 		ray r(point3(org[0], org[1], org[2]), vec3(dir[0], dir[1], dir[2]));
@@ -371,7 +373,15 @@ class BDPTSceneAdapter {
 		hit.is_medium_boundary = resolved_mat ? sppm_is_medium_boundary(resolved_mat.get()) : false;
 		hit.is_delta_bsdf = resolved_mat ? sppm_is_delta_material(resolved_mat.get(), rec) : false;
 		hit.bsdf_id = nEmitters_ + pool_idx;
-		hit.light_id = -1;   // unused by bdpt.h's own BDPTVertex construction (see class comment)
+		// Real light_id (not the bsdf_id fallback resolve_emitter_index()
+		// exists for - see that function's own comment): resolved directly
+		// from the material actually hit, right now while it's certainly
+		// current, rather than later via context_for()'s bounded ring
+		// buffer (ctx_pool_), which can return a stale/wrong material if
+		// enough other hits have cycled through the pool by the time
+		// PDFLight()/PDFLightOrigin() (bdpt.h) query it. -1 if this hit
+		// isn't a genuine area-light material.
+		hit.light_id = emitter_index_for_material(rec.mat.get());
 		return true;
 	}
 
@@ -997,10 +1007,9 @@ class BDPTSceneAdapter {
 	}
 
 	// id may be EITHER a unified light index (from SampleLight/
-	// SampleLightLe's own light_id, offset via toLightId() for anything
-	// past an area light) OR a bsdf_id (from a Surface vertex whose hit
-	// happened to be emissive -- see this class's own header comment on why
-	// bdpt.h reuses si.bsdf_id as a light identifier for that case).
+	// SampleLightLe's own light_id, or a Surface vertex's own resolved
+	// si.light_id - see Intersect()'s own header comment) OR, as a weaker
+	// fallback, a raw bsdf_id (see resolve_emitter_index()'s own comment).
 	// resolve_emitter_index() disambiguates and returns the resolved index
 	// into unifiedAlias_'s own 0..nTotal_-1 numbering either way.
 	double LightPMF(int id) const {
@@ -1365,14 +1374,30 @@ class BDPTSceneAdapter {
 		return center + sceneRadius_ * axisDir + sceneRadius_ * frame.transform(vec3(dx, dy, 0.0));
 	}
 
+	// Material-identity light lookup: the same scan Intersect() uses to
+	// populate BDPTHit::light_id directly, factored out so
+	// resolve_emitter_index()'s bsdf_id fallback (below) stays correct by
+	// construction instead of duplicating the loop.
+	int emitter_index_for_material(const material* m) const {
+		if (!m) return -1;
+		for (int k = 0; k < nEmitters_; ++k)
+			if (emitter_dl_[k].get() == m) return k;
+		return -1;
+	}
+
 	// Disambiguates the numbering spaces LightPMF/LightPDFLe can be called
 	// with -- an area-light index (< nEmitters_, used as-is), a punctual/
 	// sky light_id (>= nEmitters_+kLightIdOffset, see toLightId() above -
-	// unwrapped back to unifiedAlias_'s own numbering), or a bsdf_id (from
-	// a Surface vertex whose hit happened to be emissive -- see this
-	// class's own header comment on why bdpt.h reuses si.bsdf_id as a light
-	// identifier for that case). Returns the resolved index into
-	// unifiedAlias_'s own 0..nTotal_-1 numbering, or -1.
+	// unwrapped back to unifiedAlias_'s own numbering), or (fallback only -
+	// Intersect() now populates BDPTHit::light_id with a real resolved
+	// index whenever the hit is emissive, so bdpt.h's Surface vertices
+	// carry one directly and normally hit the first branch above instead)
+	// a bsdf_id, resolved the same way Intersect() does but via
+	// context_for()'s bounded ring buffer - see BDPTHit::light_id's own
+	// Intersect()-side comment on why that's a weaker, staleness-prone
+	// path kept only for whatever caller might still pass a raw bsdf_id.
+	// Returns the resolved index into unifiedAlias_'s own 0..nTotal_-1
+	// numbering, or -1.
 	int resolve_emitter_index(int id) const {
 		if (id >= 0 && id < nEmitters_) return id;
 		if (id >= nEmitters_ + kLightIdOffset) {
@@ -1380,11 +1405,7 @@ class BDPTSceneAdapter {
 			return (k < nTotal_) ? k : -1;
 		}
 		const SPPMShadingContext* ctx = context_for(id);
-		if (!ctx || !ctx->mat) return -1;
-		const material* m = ctx->mat.get();
-		for (int k = 0; k < nEmitters_; ++k)
-			if (emitter_dl_[k].get() == m) return k;
-		return -1;
+		return ctx ? emitter_index_for_material(ctx->mat.get()) : -1;
 	}
 
 	// quad/sphere/sphere_clipped_hittable/triangle expose get_material(); mirrors

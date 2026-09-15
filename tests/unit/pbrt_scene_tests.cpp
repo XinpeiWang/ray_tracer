@@ -769,7 +769,8 @@ namespace {
 // An in-memory filesystem, which is the whole reason parse() takes a resolver
 // callback instead of opening files itself.
 pbrt_scene::FileResolver mapResolver(std::map<std::string, std::string> files) {
-	return [files](const std::string &path, std::string &out) {
+	return [files](const std::string &path, std::string &out,
+				   const std::vector<std::string> & /*openStack*/) {
 		auto it = files.find(path);
 		if (it == files.end()) return false;
 		out = it->second;
