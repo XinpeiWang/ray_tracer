@@ -378,8 +378,17 @@ struct LaunchArgs {
 };
 
 // Parse command-line arguments into a LaunchArgs struct.
-// Returns false if the caller should exit immediately (e.g. --help printed).
-inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
+// Returns false if the caller should exit immediately - either because
+// --help was printed (a benign, deliberate exit: *help_requested, when
+// non-null, is set true) or because a real parse error was reported to
+// stderr (--video-preset/scene_id/etc. - *help_requested stays false).
+// `help_requested` defaults to nullptr so existing 3-argument call sites
+// (including tests/unit/launcher_args_bdpt_mlt_tests.cpp) keep compiling
+// unchanged; a caller that cares about the distinction (main.cpp, so it can
+// exit non-zero on a real error instead of silently exiting 0 as if the
+// render had happened - see main()'s own comment) passes a real pointer.
+inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
+							   bool* help_requested = nullptr) {
 	std::set<int> consumed_args;
 
 	for (int i = 1; i < argc; ++i) {
@@ -763,7 +772,16 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 				std::cerr << "Invalid speed, using default\n";
 			}
 		} else if ((arg == render_flags::kCameraPath || arg == "-p") && i + 1 < argc) {
-			out.camera_path = argv[i + 1];
+			// camera_path.h's own path_type dispatch silently falls back to
+			// "orbit" for anything it doesn't recognize (with no warning of
+			// its own - and it runs once per rendered frame, so warning
+			// there would spam rather than inform); validating once here,
+			// the same way --sampler/--accelerator/--splitmethod already
+			// do, catches a typo'd/stale preset id at parse time instead.
+			static const std::set<std::string> kValidCameraPaths = {
+				"orbit", "linear", "figure8", "spiral", "tour", "showcase"};
+			parseEnumFlag(argv[i + 1], kValidCameraPaths, out.camera_path, "--camera-path",
+						  "using default (orbit). Valid: orbit, linear, figure8, spiral, tour, showcase");
 			out.camera_path_explicit = true;
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
@@ -1004,7 +1022,24 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  cam_x/y/z  : Camera position - if omitted, uses the selected scene's own\n"
 					  << "               recommended camera (see src/TheRestOfYourLife/scene_registry.h),\n"
 					  << "               not a single fixed default across every scene\n";
+			if (help_requested) *help_requested = true;
 			return false;
+		} else if (arg.size() >= 2 && arg[0] == '-' && arg[1] == '-' && i + 1 >= argc) {
+			// Every value-taking flag above is gated on `&& i + 1 < argc`;
+			// a boolean/no-value flag (--regularize, --adaptive, etc.) has
+			// its own branch with no such gate and would already have
+			// matched above regardless of position. Reaching here as the
+			// LAST token means either an unrecognized flag, or a value-
+			// taking flag with its value missing/truncated from the command
+			// line - both previously fell through this whole if/else-if
+			// chain silently (never added to consumed_args, then also
+			// skipped by the positional-argument loop below since it starts
+			// with "--"), so a GUI-built command line truncated by a bug
+			// upstream rendered non-reproducibly with nothing in the log to
+			// explain why. Warn instead of guessing which case it is.
+			std::cerr << "Warning: \"" << arg << "\" is unrecognized, or is "
+					  << "missing the value it expects - ignoring\n";
+			consumed_args.insert(i);
 		}
 	}
 

@@ -99,8 +99,45 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
 // -1 if it could not be launched (e.g. the executable isn't found on PATH).
 //
 // Windows: CreateProcess re-tokenizes a single command-line string, so every
-// argument is wrapped in quotes (safe here since none of the arguments we
-// build contain literal quote characters).
+// argument needs real Windows command-line quoting - not just wrapping in a
+// literal '"'..'"' pair, which mishandles a trailing backslash (common in a
+// GUI-picked output directory, e.g. "C:\out\"): CreateProcess's parser
+// treats an odd run of backslashes immediately before a '"' as escaping that
+// quote rather than closing the argument, so the naive form silently merges
+// this argument with the next one on the command line instead of failing
+// loudly. win32_quote_arg() below implements Microsoft's own documented
+// quoting algorithm (doubling backslashes that precede the closing quote or
+// an embedded literal '"', and escaping any embedded '"') so every argument
+// round-trips exactly regardless of its content.
+#ifdef _WIN32
+static std::string win32_quote_arg(const std::string& arg) {
+    if (!arg.empty() && arg.find_first_of(" \t\n\v\"") == std::string::npos)
+        return arg;   // no special characters - safe to pass through unquoted
+
+    std::string out = "\"";
+    for (auto it = arg.begin(); ; ++it) {
+        int backslashes = 0;
+        while (it != arg.end() && *it == '\\') { ++backslashes; ++it; }
+        if (it == arg.end()) {
+            // Trailing backslashes are followed by our own closing quote -
+            // double them so they stay literal instead of escaping it.
+            out.append(static_cast<size_t>(backslashes) * 2, '\\');
+            break;
+        } else if (*it == '"') {
+            // Backslashes immediately before a literal quote must also be
+            // doubled, then the quote itself is escaped.
+            out.append(static_cast<size_t>(backslashes) * 2 + 1, '\\');
+            out.push_back('"');
+        } else {
+            // An ordinary run of backslashes not before a quote is literal.
+            out.append(static_cast<size_t>(backslashes), '\\');
+            out.push_back(*it);
+        }
+    }
+    out.push_back('"');
+    return out;
+}
+#endif
 //
 // POSIX (macOS/Linux): posix_spawnp takes argv[] directly with no
 // re-parsing, so no quoting is needed at all - the same argv vector is
@@ -118,7 +155,7 @@ static int run_subprocess(const std::vector<std::string>& argv) {
     std::string cmdline;
     for (size_t i = 0; i < argv.size(); ++i) {
         if (i > 0) cmdline += ' ';
-        cmdline += '"' + argv[i] + '"';
+        cmdline += win32_quote_arg(argv[i]);
     }
 
     STARTUPINFOA si{};
@@ -247,8 +284,14 @@ int main(int argc, char** argv) {
 
 	// Parse command-line arguments
 	LaunchArgs args;
-	if (!parse_launch_args(argc, argv, args)) {
-		return EXIT_SUCCESS;
+	bool help_requested = false;
+	if (!parse_launch_args(argc, argv, args, &help_requested)) {
+		// --help is a deliberate, benign exit; anything else is a real parse
+		// error already reported to stderr (bad scene_id, invalid
+		// --video-preset, etc.) - exiting 0 for that case used to make the
+		// GUI's RenderController (which trusts the exit code) report the
+		// render as successful even though no image was ever written.
+		return help_requested ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
 	// Unpack for readability in the rest of main
