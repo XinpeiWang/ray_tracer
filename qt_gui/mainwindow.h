@@ -220,6 +220,32 @@ private:
 	void setupUI();
 	void createSettingsTab();
 	void createRenderOptionsTab();
+#ifdef RT_GUI_HAVE_GPU
+	// Split out of createRenderOptionsTab() (a code-health pass - that
+	// function had grown to ~1779 lines as every Live Preview feature this
+	// session got appended to it) into qt_gui/mainwindow_tabs_render_live.cpp,
+	// its own translation unit - both are RT_GUI_HAVE_GPU-only, like every
+	// widget they build. buildDenoiserLivePreviewSubsection() builds the
+	// Denoiser tab's "Live Preview" sub-group (m_denoiserLivePreviewGroupBox);
+	// buildLivePreviewSettingsSection() builds the separate "Live Preview
+	// Settings" group (ReSTIR/Radiance Cache/Path Guiding/NRC/DOF/Temporal
+	// Upscale/Neural Reconstruction + their numeric fields). Both are called
+	// from createRenderOptionsTab() at the exact positions the inline code
+	// used to occupy - no behavior change, purely a file-organization split.
+	void buildDenoiserLivePreviewSubsection(QWidget *optionsTab);
+	void buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayout *layout);
+	// Collapses the construct+setChecked+styleCheckBox+connect(toggled,...)
+	// sequence hand-repeated for every Live Preview toggle checkbox
+	// (ReSTIR GI/DI, Radiance Cache, Path Guiding, NRC, DOF, Neural
+	// Reconstruction) in buildLivePreviewSettingsSection() into one call -
+	// returns the raw QCheckBox* (not wrapped in checkboxWithInfo()) since
+	// callers need it un-wrapped to pass to addWidget() with their own
+	// per-checkbox grid row/span, and a couple of callers also need to
+	// call setEnabled() on it afterward for a dependency (e.g. Neural
+	// Reconstruction on Temporal Upscale).
+	QCheckBox *createLiveToggleCheckbox(const QString &label, bool initialChecked,
+										  std::function<void(bool)> onToggled);
+#endif
 	// Single source of truth for m_samplerCombo/m_lightSamplerCombo/
 	// m_spectralCheck/m_exposureSpin/m_tonemapCombo/m_statsCheck/
 	// m_regularizeCheck/m_maxComponentValueCheck/m_cropCheck/m_seedCheck/
