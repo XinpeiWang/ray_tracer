@@ -422,9 +422,9 @@ void MainWindow::createSettingsTab() {
 	gridPageLayout->addWidget(m_sceneGrid, 1);
 	m_generateThumbnailsButton = new QPushButton(tr("Generate Thumbnails"), gridPage);
 	m_generateThumbnailsButton->setToolTip(
-		tr("Creates a small preview image for each ready-to-render Basics/Materials/Textures/Cameras\n"
-		"scene that doesn't already have one saved. Runs on the CPU only, at low resolution - it can\n"
-		"take a while the first time you do this."));
+		tr("Creates a small preview image for each ready-to-render scene in the CURRENT category tab\n"
+		"(Basics/Materials/Textures/Cameras only) that doesn't already have one saved. Runs on the CPU\n"
+		"only, at low resolution - it can take a while the first time you do this for a category."));
 	gridPageLayout->addWidget(m_generateThumbnailsButton);
 	// Hidden until generation actually starts (onGenerateThumbnailsClicked())
 	// and hidden again once it finishes (onThumbnailsAllDone()) - see

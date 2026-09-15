@@ -579,21 +579,37 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 	if (m_diagTextEdit) m_diagTextEdit->setPlainText(tr("Diagnostics failed:\n\n%1").arg(message));
 }
 
-// Fills in m_sceneGrid's preview tiles for the curated, self-contained,
-// fast-rendering subset (Basics/Materials/Textures/Cameras) - see the scene-gallery
-// plan's phased-coverage decision for why the rest of the ~154-scene
-// registry isn't covered yet. Disabled (see createSettingsTab()'s button
-// tooltip) while a real render is in flight so thumbnail generation can
-// never compete with the user's own queued work - m_thumbnailGenerator owns
-// a private RenderController instead of reusing m_renderController/
-// m_renderQueue precisely so it never needs to cooperate with those at all,
-// only avoid running alongside them.
+// Fills in m_sceneGrid's preview tiles for whichever category tab is
+// CURRENTLY showing, within the curated, self-contained, fast-rendering
+// subset (Basics/Materials/Textures/Cameras) - see the scene-gallery plan's
+// phased-coverage decision for why the rest of the ~154-scene registry isn't
+// covered yet. Scoped to one category per click (not all four curated
+// categories at once, which an earlier version of this did) because the
+// button sits directly under that one category's grid - generating
+// thumbnails for scenes the user isn't even looking at, while the ones
+// actually on screen stay placeholders, was the surprising part. Disabled
+// (see createSettingsTab()'s button tooltip) while a real render is in
+// flight so thumbnail generation can never compete with the user's own
+// queued work - m_thumbnailGenerator owns a private RenderController instead
+// of reusing m_renderController/m_renderQueue precisely so it never needs to
+// cooperate with those at all, only avoid running alongside them.
 void MainWindow::onGenerateThumbnailsClicked() {
 	if (m_isRendering || !m_renderQueue.isEmpty()) {
 		setStatusWarning("Can't generate thumbnails while a render is in progress or queued.");
 		return;
 	}
 	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) return;
+
+	static const QStringList kThumbnailCategories = {
+		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Textures,
+		SceneCategories::Cameras
+	};
+	const QString currentCategory = (m_sceneCategoryTabs && m_sceneCategoryTabs->count() > 0)
+		? m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() : QString();
+	if (!kThumbnailCategories.contains(currentCategory)) {
+		setStatusWarning(tr("Thumbnails aren't available for the \"%1\" category yet.").arg(currentCategory));
+		return;
+	}
 
 	if (!m_thumbnailGenerator) {
 		m_thumbnailGenerator = new ThumbnailGenerator(this);
@@ -605,22 +621,19 @@ void MainWindow::onGenerateThumbnailsClicked() {
 				this, &MainWindow::onThumbnailsAllDone);
 	}
 
-	static const QStringList kThumbnailCategories = {
-		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Textures,
-		SceneCategories::Cameras
-	};
 	QStringList ids;
 	const int count = SceneMetadataClient::sceneCount();
 	for (int i = 0; i < count; ++i) {
 		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
 		if (SceneMetadataClient::sceneRequiresFiles(id)) continue;
-		if (!kThumbnailCategories.contains(SceneMetadataClient::sceneCategory(id))) continue;
+		if (SceneMetadataClient::sceneCategory(id) != currentCategory) continue;
 		ids << id;
 	}
 
 	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(false);
 	m_thumbnailFailedCount = 0;
-	onLogMessage(QString("Generating thumbnails for up to %1 scene(s)...").arg(ids.size()));
+	onLogMessage(QString("Generating thumbnails for up to %1 scene(s) in \"%2\"...")
+		.arg(ids.size()).arg(currentCategory));
 	m_thumbnailGenerator->start(ids, [this](const QString &id) { return thumbnailCachePath(id); });
 }
 
