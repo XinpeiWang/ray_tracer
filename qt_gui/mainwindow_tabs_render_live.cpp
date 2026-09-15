@@ -95,10 +95,11 @@ void MainWindow::buildDenoiserLivePreviewSubsection(QWidget *optionsTab) {
 	// QFormLayout, so FormLabelEnabledSync can't do it automatically the
 	// way it does for Sampler:/Light Sampler:/etc.
 	QWidget *liveDenoiseBlendLabel = labelWithInfo(tr("Blend:"),
-		tr("OptiX AI Denoiser only. Blend between the noisy input and the "
-		"fully denoised output (0.0 = 100% denoised, 1.0 = original noisy "
-		"image), same meaning as the Image & Video subsection's own blend "
-		"control."));
+		tr("Only matters when the OptiX AI Denoiser is selected above. "
+		"Controls how much of the smoothing you actually see: 0.0 shows the "
+		"fully smoothed image, 1.0 shows the original grainy image with no "
+		"smoothing at all. Same control as the Image & Video subsection's "
+		"own Blend setting above, just set separately for Live Preview."));
 	liveDenoiseBlendLabel->setEnabled(m_liveDenoiseEnabled);
 
 	m_liveDenoiseShowLatestCheck = new QCheckBox(tr("Show latest frame instead of accumulating"));
@@ -149,18 +150,21 @@ void MainWindow::buildDenoiserLivePreviewSubsection(QWidget *optionsTab) {
 	});
 
 	liveDenoiseRowLayout->addWidget(labelWithInfo(tr("Denoiser:"),
-		tr("None: raw accumulated samples, no denoising.\n\n"
-		"OptiX AI Denoiser: cleans up Live Preview's noisy low-sample image "
-		"using the same OptiX AI denoiser the Image & Video subsection "
-		"above runs for finished renders - lets the view look reasonable "
-		"almost immediately instead of waiting many frames to converge. "
-		"Costs a small amount of GPU time per frame.\n\n"
-		"SVGF Denoiser: an alternative, experimental spatiotemporal filter - "
-		"tracks per-pixel variance over time and uses it to drive an "
-		"edge-aware spatial filter, which holds up better during camera "
-		"movement than the AI denoiser + running-mean combination. Always "
-		"shows the latest filtered frame rather than accumulating (see the "
-		"SVGF Advanced Tuning group below for its own tunable constants).")));
+		tr("None: shows the image exactly as it's rendered, with all its "
+		"natural graininess - no smoothing applied.\n\n"
+		"OptiX AI Denoiser: cleans up the grainy, low-detail look Live "
+		"Preview has while you're moving around, using the same AI-powered "
+		"smoothing the Image & Video subsection above applies to finished "
+		"renders. This makes the preview look reasonably clean right away "
+		"instead of waiting for it to gradually clear up on its own. Costs "
+		"a small amount of extra GPU time per frame.\n\n"
+		"SVGF Denoiser: an alternative, experimental noise-reduction filter. "
+		"Instead of blending many frames together, it tracks how much each "
+		"pixel's brightness has been changing over time and smooths it out "
+		"along natural edges - it holds up better than the AI Denoiser "
+		"while you're actively moving the camera. Always shows the latest "
+		"smoothed frame rather than gradually sharpening over time (see the "
+		"SVGF Advanced Tuning group below for its own fine-tuning options).")));
 	// Stretch factor on the combo itself (not a trailing addStretch()) so it
 	// grows to fill the row's full width, matching every other row's
 	// full-width fields on this tab.
@@ -172,13 +176,14 @@ void MainWindow::buildDenoiserLivePreviewSubsection(QWidget *optionsTab) {
 	// addStretch()) so the row fills the full line width, matching the
 	// Denoiser combo row above it.
 	liveDenoiseOptionsRowLayout->addWidget(checkboxWithInfo(m_liveDenoiseShowLatestCheck,
-		tr("OptiX AI Denoiser only. Displays each denoised frame as-is "
-		"instead of averaging it into a running mean with earlier frames. "
-		"Trades away the extra quality accumulating more samples would "
+		tr("Only matters when the OptiX AI Denoiser is selected above. "
+		"Shows each freshly smoothed frame on its own, instead of blending "
+		"it together with earlier frames into a running average. You give "
+		"up the extra quality that blending more frames together would "
 		"eventually reach, in exchange for a view that always reflects only "
 		"the most recent frame - useful while flying around with WASD, "
-		"where older accumulated frames are from a camera position you've "
-		"already left.")), 1);
+		"since older blended-in frames were rendered from a camera position "
+		"you've already left.")), 1);
 
 	denoiserLivePreviewLayout->addRow(liveDenoiseRow);
 	denoiserLivePreviewLayout->addRow(liveDenoiseOptionsRow);
@@ -213,53 +218,63 @@ void MainWindow::buildDenoiserLivePreviewSubsection(QWidget *optionsTab) {
 	};
 
 	m_liveSvgfTemporalAlphaSpin = addSvgfDoubleSpin(0, 0, tr("Temporal Alpha:"),
-		tr("Floor on the temporal blend rate - lower holds onto history "
-		"longer (less noise, more lag on a changing scene), higher adapts "
-		"faster (more noise, less lag)."),
+		tr("Controls how quickly the filter forgets older frames. Lower "
+		"values hold onto history longer, which gives smoother results but "
+		"reacts more slowly when the scene changes; higher values adapt "
+		"faster but leave more visible noise."),
 		0.01, 1.0, 0.01, 2, m_liveSvgfTemporalAlpha);
 	m_liveSvgfMaxHistoryLengthSpin = addSvgfDoubleSpin(0, 1, tr("Max History Length:"),
-		tr("Caps how many frames of history a converged pixel can accumulate "
-		"- bounds how \"sticky\" it gets."),
+		tr("The most frames of history a pixel is allowed to build up once "
+		"it has settled down. Puts a ceiling on how \"sticky\" - i.e. slow "
+		"to update - a settled pixel can become."),
 		1.0, 256.0, 1.0, 0, m_liveSvgfMaxHistoryLength);
 	m_liveSvgfVarianceBootstrapFramesSpin = addSvgfDoubleSpin(1, 0, tr("Variance Bootstrap Frames:"),
-		tr("Below this history length, variance is spatially prefiltered "
-		"from neighboring pixels instead of trusted alone - helps a fresh "
-		"or disoccluded pixel's edge-stopping weights before it has enough "
-		"of its own temporal history."),
+		tr("Until a pixel has built up at least this many frames of "
+		"history, its noise estimate is smoothed using its neighboring "
+		"pixels instead of trusted on its own. This helps a brand-new "
+		"pixel - for example, one just uncovered by a moving object - get "
+		"reasonable edge-detection behavior before it has enough history "
+		"of its own to judge from."),
 		0.0, 32.0, 1.0, 0, m_liveSvgfVarianceBootstrapFrames);
 	m_liveSvgfVarianceBootstrapRadiusSpin = addSvgfIntSpin(1, 1, tr("Variance Bootstrap Radius:"),
-		tr("Box radius (in pixels) used for the variance prefilter above - "
-		"radius 3 means a 7x7 box."),
+		tr("How far out, in pixels, the neighbor-smoothing described above "
+		"reaches. A radius of 3 means it looks at a 7x7 block of pixels."),
 		0, 8, m_liveSvgfVarianceBootstrapRadius);
 	m_liveSvgfSigmaNormalSpin = addSvgfDoubleSpin(2, 0, tr("Sigma Normal:"),
-		tr("Edge-stopping sensitivity to shading-normal differences - "
-		"higher rejects a smaller normal difference, preventing blur across "
-		"curved surfaces or silhouettes."),
+		tr("How sensitive the filter is to two neighboring pixels facing "
+		"different directions. Higher values treat a smaller difference "
+		"in surface angle as a different surface, which keeps the filter "
+		"from blurring across curved surfaces or object edges."),
 		1.0, 1024.0, 1.0, 0, m_liveSvgfSigmaNormal);
 	m_liveSvgfSigmaDepthSpin = addSvgfDoubleSpin(2, 1, tr("Sigma Depth:"),
-		tr("Edge-stopping sensitivity to depth differences, relative to the "
-		"local depth gradient - higher tolerates more depth variation "
-		"before rejecting a neighbor as a different surface."),
+		tr("How sensitive the filter is to two neighboring pixels sitting "
+		"at different distances from the camera. Higher values tolerate "
+		"more depth difference before treating a neighbor as a separate, "
+		"unrelated surface."),
 		0.01, 16.0, 0.1, 2, m_liveSvgfSigmaDepth);
 	m_liveSvgfSigmaLuminanceSpin = addSvgfDoubleSpin(3, 0, tr("Sigma Luminance:"),
-		tr("Edge-stopping sensitivity to luminance differences, relative to "
-		"the pixel's own estimated noise level - higher blurs across a "
-		"larger brightness difference."),
+		tr("How sensitive the filter is to two neighboring pixels having "
+		"different brightness. Higher values let it blend across bigger "
+		"brightness differences, which smooths more but risks blurring "
+		"away real detail."),
 		0.1, 32.0, 0.1, 1, m_liveSvgfSigmaLuminance);
 	m_liveSvgfAtrousRadiusSpin = addSvgfIntSpin(3, 1, tr("A-trous Radius:"),
-		tr("Filter footprint radius per A-trous pass - clamped to [0,2] "
-		"(radius 2 = 5x5) since the filter's own kernel weight table only "
-		"has 3 entries."),
+		tr("How wide an area, in pixels, each smoothing pass covers. "
+		"Limited to 0-2, where 2 covers a 5x5 block - the filter's "
+		"internal weighting table only supports that range."),
 		0, 2, m_liveSvgfAtrousRadius);
 	m_liveSvgfMinAlbedoSpin = addSvgfDoubleSpin(4, 0, tr("Min Albedo:"),
-		tr("Floor applied before dividing color by albedo (demodulation) - "
-		"prevents a near-zero-albedo pixel from blowing up or round-tripping "
-		"to black."),
+		tr("A minimum surface-color value the filter substitutes in when "
+		"it temporarily factors out surface color to smooth the lighting "
+		"on its own. Prevents a very dark or black surface from causing "
+		"math errors that would show up as flickering noise or a solid "
+		"black patch."),
 		0.001, 1.0, 0.001, 3, m_liveSvgfMinAlbedo);
 	m_liveSvgfAtrousPassesSpin = addSvgfIntSpin(4, 1, tr("A-trous Passes:"),
-		tr("Number of A-trous filter passes (step sizes double each pass: "
-		"1,2,4,8,...) - more passes cover a larger effective radius at "
-		"proportionally higher GPU cost."),
+		tr("How many smoothing passes the filter runs, each one covering "
+		"a wider area than the last (the step size doubles every pass: "
+		"1, 2, 4, 8, ...). More passes smooth a larger area but cost "
+		"proportionally more GPU time."),
 		0, 8, m_liveSvgfAtrousPasses);
 
 	QPushButton *svgfTuningResetButton = new QPushButton(tr("Reset to Defaults"));
@@ -330,12 +345,13 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	m_liveRenderSettingsGroupBox = new InfoGroupBox(tr("Live Preview Settings"), optionsTab);
 	styleGroupBox(m_liveRenderSettingsGroupBox);
 	m_liveRenderSettingsGroupBox->setInfoIcon(createInfoIcon(
-		tr("ReSTIR DI/GI, the radiance cache, path guiding, exposure, "
-		"samples/max-bounces per frame, and the firefly clamp - all "
-		"independent of the Advanced Parameters group below (which only "
-		"applies to Image/Video) and of the Denoiser section above. Only "
-		"takes effect when Output Mode above is \"Live Preview "
-		"(interactive)\", but stays editable in any mode.")));
+		tr("Covers ReSTIR DI/GI, the Radiance Cache, Path Guiding, "
+		"Exposure, Samples/Max Bounces per frame, and the Firefly Clamp - "
+		"all separate from the Advanced Parameters group below (which only "
+		"affects Image/Video renders) and from the Denoiser section above. "
+		"These settings only actually take effect when Output Mode above "
+		"is set to \"Live Preview (interactive)\", but you can still edit "
+		"them in any mode.")));
 	setGroupDimmed(m_liveRenderSettingsGroupBox, !isLiveMode());
 	QFormLayout *liveRenderSettingsLayout = new QFormLayout(m_liveRenderSettingsGroupBox);
 	liveRenderSettingsLayout->setVerticalSpacing(10);
@@ -362,10 +378,13 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveRestirGiToSession();
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveRestirGiCheck,
-		tr("Resampled one-bounce indirect lighting (ReSTIR GI) - independent "
-		"of which denoiser is active above. Disabling it falls back to the "
-		"classic single-sample indirect estimate, which is noisier but "
-		"cheaper per frame.")),
+		tr("Improves indirect lighting - light that's bounced off at "
+		"least one other surface before reaching what you're looking at - "
+		"by reusing good light samples found at nearby pixels and in "
+		"recent frames, instead of only trying once per pixel. Works "
+		"independently of whichever denoiser is active above. Turning it "
+		"off falls back to the simpler one-sample-per-pixel method, which "
+		"looks noisier but is cheaper to render.")),
 		0, 0, 1, 4);
 
 	// Own row too, same reasoning as ReSTIR GI's row above.
@@ -375,12 +394,16 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveRestirDiToSession();
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveRestirDiCheck,
-		tr("Resampled direct-light sampling (ReSTIR DI) - independent of "
-		"ReSTIR GI above (that resamples one-bounce INDIRECT lighting; this "
-		"resamples the direct-light draw classic next-event estimation would "
-		"otherwise make from a single global alias-table sample). Disabling "
-		"it falls back to that classic single-sample draw, which is noisier "
-		"in scenes with many lights but cheaper per frame.")),
+		tr("Improves direct lighting - light that reaches a surface "
+		"straight from a light source, with no bounces - the same way "
+		"ReSTIR GI above improves indirect lighting: by reusing good "
+		"light samples found at nearby pixels and in recent frames "
+		"instead of only trying once per pixel. Independent of ReSTIR GI "
+		"above (that one handles light that's already bounced at least "
+		"once; this one handles light hitting a surface directly). "
+		"Turning it off falls back to picking one light sample per pixel "
+		"the plain way, which is noisier in scenes with many lights but "
+		"cheaper to render.")),
 		1, 0, 1, 4);
 
 	// Own row too, same reasoning as ReSTIR GI/DI's rows above.
@@ -390,15 +413,18 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveProbeCacheToSession();
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveProbeCacheCheck,
-		tr("World-space irradiance probe cache - caches and resamples "
-		"diffuse lighting two or more bounces deep, independent of ReSTIR "
-		"GI above (that only resamples the FIRST indirect bounce; this "
-		"covers every bounce beyond it). Converges over many frames, so "
-		"expect it to look patchy or noisy for the first few seconds after "
-		"enabling it or moving the camera into a new area. Disabling it "
-		"falls back to classic next-event estimation for every bounce, "
-		"which is noisier in scenes with a lot of deep indirect light but "
-		"has no convergence delay.")),
+		tr("Caches and reuses estimates of indirect lighting - light "
+		"that's bounced two or more times - across frames and nearby "
+		"points in space, instead of recalculating it completely from "
+		"scratch every frame. Independent of ReSTIR GI above (that one "
+		"only improves the very first bounce; this one covers every "
+		"bounce after that). It needs a few seconds to catch up, so "
+		"expect the lighting to look patchy or noisy right after you turn "
+		"it on or fly the camera into a new area, then smooth out as it "
+		"builds up data. Turning it off falls back to computing every "
+		"bounce the plain way, which looks noisier in scenes with a lot "
+		"of deep indirect light, but shows the correct result immediately "
+		"with no warm-up delay.")),
 		2, 0, 1, 4);
 
 	// Own row too, same reasoning as the checkboxes above.
@@ -408,14 +434,15 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLivePathGuidingToSession();
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_livePathGuidingCheck,
-		tr("Importance-samples the bounce direction for glossy/metal "
-		"surfaces against a coarse, incrementally-learned estimate of where "
-		"incident light actually is, instead of relying purely on the "
-		"material's own reflection-lobe sampling. Requires the Radiance "
-		"Cache above to also be on - it reuses that cache's own grid and "
-		"update pipeline, and is a no-op without it. Like the Radiance "
-		"Cache, converges over several seconds; disabling it falls back to "
-		"the material's own unbiased reflection sampling.")),
+		tr("For shiny/metal surfaces, this learns roughly where the "
+		"brightest light is coming from at each point in the scene, so "
+		"bounce rays get aimed more toward useful directions instead of "
+		"just guessing based on the surface's own reflective properties. "
+		"Requires the Radiance Cache above to also be turned on - this "
+		"feature reuses that cache's own data and does nothing without "
+		"it. Like the Radiance Cache, it needs a few seconds to learn and "
+		"improve; turning it off falls back to the material's own plain "
+		"reflection-based guessing.")),
 		3, 0, 1, 4);
 
 	// Own row, grouped with the plain-checkbox rows above (independent of
@@ -428,14 +455,15 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveNrcToSession();
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveNrcCheck,
-		tr("A small neural network, trained online from traced paths, caches "
-		"and predicts indirect lighting for both diffuse and glossy/metal "
-		"surfaces - unlike the Radiance Cache above, which is diffuse-only "
-		"and has no notion of view direction. Converges over many frames "
-		"after enabling it or moving the camera into a new area, similar to "
-		"the Radiance Cache. Disabling it falls back to classic bounce "
-		"tracing (or the Radiance Cache, if that's also enabled) for every "
-		"affected bounce.")),
+		tr("A small AI model, trained live while you render, that learns "
+		"to predict indirect lighting for both plain matte surfaces and "
+		"shiny/metal ones - unlike the Radiance Cache above, which only "
+		"handles matte surfaces and doesn't account for the angle you're "
+		"viewing from. Like the Radiance Cache, it takes a while to catch "
+		"up, so expect it to need several frames to settle in after you "
+		"turn it on or move the camera into a new area. Turning it off "
+		"falls back to tracing every bounce the plain way (or to the "
+		"Radiance Cache, if that's also turned on).")),
 		4, 0, 1, 4);
 
 	// Depth-of-field override checkbox - see RenderOptions::aperture_override's
@@ -450,10 +478,11 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveDofToSession();
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveDofCheck,
-		tr("Overrides the active scene's own camera lens diameter/focus "
-		"distance with the values below, without editing the scene file. "
-		"Only affects scenes loaded from a scene file - has no effect on "
-		"the built-in demo gallery, which keeps its own fixed camera.")),
+		tr("Overrides the current scene's own camera lens size and focus "
+		"distance with the Aperture and Focus Distance values below, "
+		"without changing the scene file itself. Only works for scenes "
+		"loaded from a scene file - it has no effect on the built-in demo "
+		"gallery, which always uses its own fixed camera.")),
 		5, 0, 1, 4);
 
 	// Temporal upscale (see this project's own plan) - a 3-way factor
@@ -493,15 +522,17 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	});
 
 	liveTemporalUpscaleRowLayout->addWidget(labelWithInfo(tr("Temporal Upscale:"),
-		tr("Reconstructs a sharper image over several frames from a "
-		"deterministic sub-pixel jitter sequence, instead of Live Preview's "
-		"native low resolution just being stretched to fit the window. "
-		"Render cost per frame is unchanged - 2x/4x only changes how many "
-		"frames it takes to sharpen (4 or 16 respectively after a camera "
-		"move settles). 4x uses noticeably more memory (roughly 150-200 MB) "
-		"than 2x (roughly 40-50 MB). Mutually exclusive with the Denoiser "
-		"dropdown's SVGF mode and 'Show latest frame' option above - those "
-		"take priority when both are on.")));
+		tr("Builds up a sharper-looking image over several frames using a "
+		"repeating pixel-shift pattern, instead of just stretching Live "
+		"Preview's native low-resolution image to fit the window. The "
+		"cost of rendering each individual frame doesn't change - 2x vs. "
+		"4x only changes how many frames it takes to reach a sharp image "
+		"(4 frames for 2x, 16 frames for 4x, counting from when the "
+		"camera stops moving). 4x uses noticeably more memory (roughly "
+		"150-200 MB) than 2x (roughly 40-50 MB). This doesn't combine "
+		"with the Denoiser dropdown's SVGF mode or the 'Show latest "
+		"frame' option above - if either of those is on, it takes "
+		"priority instead.")));
 	liveTemporalUpscaleRowLayout->addWidget(m_liveTemporalUpscaleCombo, 1);
 
 	liveRenderSettingsGrid->addWidget(liveTemporalUpscaleRow, 6, 0, 1, 4);
@@ -519,15 +550,17 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	});
 	m_liveNeuralUpscaleCheck->setEnabled(m_liveTemporalUpscaleFactor > 1);
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveNeuralUpscaleCheck,
-		tr("Replaces Temporal Upscale's own reconstruction with a small "
-		"neural network, trained online, that learns to blend nearby "
-		"samples instead of a rigid pixel-block copy - reduces the blocky "
-		"ghosting the plain reconstruction can show at moving silhouette "
-		"edges. Requires Temporal Upscale above to be 2x or 4x (has no "
-		"effect at Off). Converges over a few seconds after enabling it, "
-		"similar to the Radiance Cache. Best with Samples/Frame set to 1 - "
-		"higher values are averaged before this feature sees them, which "
-		"blurs its training data.")),
+		tr("Replaces Temporal Upscale's own basic image-building method "
+		"with a small AI model, trained live while you render, that "
+		"blends nearby samples together more smartly instead of just "
+		"copying pixel blocks into place - this cuts down on the blocky, "
+		"ghost-like artifacts the plain method can show around moving "
+		"object edges. Requires Temporal Upscale above to be set to 2x or "
+		"4x (does nothing at Off). Like the Radiance Cache, it takes a "
+		"few seconds after you turn it on to start looking good. Works "
+		"best with Samples/Frame set to 1 - higher values get averaged "
+		"together before this feature sees them, which blurs the data "
+		"it's learning from.")),
 		7, 0, 1, 4);
 
 	// The numeric values grouped into their own clean 2-per-row grid (rows
@@ -543,9 +576,10 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveExposureToSession();
 	});
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Exposure:"),
-		tr("A flat brightness multiplier applied before tone-mapping, same "
-		"meaning as this tab's own Output-group Exposure control but "
-		"independently set for Live Preview.")),
+		tr("A flat brightness multiplier applied to the image before "
+		"final color adjustments. Same idea as this tab's own "
+		"Output-group Exposure control above, but set separately just "
+		"for Live Preview.")),
 		8, 0);
 	liveRenderSettingsGrid->addWidget(m_liveExposureSpin, 8, 1);
 
@@ -569,9 +603,10 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	};
 	connect(m_liveSamplesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Samples/Frame:"),
-		tr("Samples per pixel rendered on each Live Preview call - Live "
-		"Preview has its own independent value from the Advanced Parameters "
-		"group below, which only applies to Image/Video.")),
+		tr("How many light rays are traced per pixel each time Live "
+		"Preview renders a frame - more samples means a cleaner image but "
+		"a slower frame. Separate from the Advanced Parameters group "
+		"below, which only affects Image/Video renders.")),
 		8, 2);
 	liveRenderSettingsGrid->addWidget(m_liveSamplesSpinBox, 8, 3);
 
@@ -581,8 +616,12 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	styleSpinBox(m_liveMaxDepthSpinBox);
 	connect(m_liveMaxDepthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSppMaxDepth);
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Max Bounces:"),
-		tr("Maximum ray depth for Live Preview - independent from the "
-		"Advanced Parameters group below, which only applies to Image/Video.")),
+		tr("The most times a light ray is allowed to bounce off surfaces "
+		"before Live Preview stops tracing it - higher lets light reach "
+		"further into a scene (useful for mirrors, glass, or rooms lit "
+		"indirectly) at a higher cost per frame. Separate from the "
+		"Advanced Parameters group below, which only affects Image/Video "
+		"renders.")),
 		9, 0);
 	liveRenderSettingsGrid->addWidget(m_liveMaxDepthSpinBox, 9, 1);
 
@@ -598,9 +637,12 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveFireflyClampToSession();
 	});
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Firefly Clamp:"),
-		tr("Caps the brightest possible sample value to suppress fireflies, "
-		"at the cost of clipping genuinely bright highlights. Lower values "
-		"clamp more aggressively.")),
+		tr("Puts a ceiling on how bright any single sample is allowed to "
+		"be, to suppress fireflies - an isolated ray that happens to "
+		"catch a very bright, small light at just the right angle, "
+		"showing up as a stray bright speckle in the image. The tradeoff "
+		"is that genuinely bright highlights can get dimmed too. Lower "
+		"values clamp more aggressively.")),
 		9, 2);
 	liveRenderSettingsGrid->addWidget(m_liveFireflyClampSpin, 9, 3);
 
@@ -615,8 +657,9 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveDofToSession();
 	});
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Aperture:"),
-		tr("Lens diameter in world units - larger values blur more. 0 means "
-		"pinhole-sharp (no blur).")),
+		tr("How wide the camera's lens opening is, in scene units - "
+		"bigger values create more blur outside the focus distance. 0 "
+		"means a pinhole-sharp image with no blur at all.")),
 		10, 0);
 	liveRenderSettingsGrid->addWidget(m_liveApertureSpin, 10, 1);
 
@@ -631,8 +674,8 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		pushLiveDofToSession();
 	});
 	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Focus Distance:"),
-		tr("Distance from the camera to the plane of sharp focus, in world "
-		"units.")),
+		tr("How far from the camera things are in perfectly sharp focus, "
+		"in scene units.")),
 		10, 2);
 	liveRenderSettingsGrid->addWidget(m_liveFocusDistanceSpin, 10, 3);
 

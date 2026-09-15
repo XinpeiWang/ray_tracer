@@ -46,9 +46,9 @@ void MainWindow::createProgressTab() {
 
 	InfoGroupBox *progressGroup = new InfoGroupBox(tr("Progress"), progressWidget);
 	progressGroup->setInfoIcon(createInfoIcon(
-		tr("Live status for whichever job is currently rendering - which "
-		"job it is, percent complete, and elapsed/estimated time. Pause, "
-		"Stop, and Abandon act on this job specifically.")));
+		tr("Shows what's rendering right now - which job it is, how far "
+		"along it is (as a percentage), and how much time has passed and "
+		"is left. Pause, Stop, and Abandon only affect this job.")));
 	QVBoxLayout *progressLayout = new QVBoxLayout(progressGroup);
 
 	// Which job is actually running (scene/resolution/samples/renderer, same
@@ -90,10 +90,10 @@ void MainWindow::createProgressTab() {
 	// time the queue drains, rather than like a stable panel).
 	m_queueGroup = new InfoGroupBox(tr("Render Queue"), progressWidget);
 	m_queueGroup->setInfoIcon(createInfoIcon(
-		tr("Jobs queued behind the one currently rendering - clicking "
-		"Render while a job is already in progress adds another here "
-		"instead of interrupting it. Renders in order, automatically, as "
-		"each one finishes.")));
+		tr("Jobs waiting their turn behind the one currently rendering - "
+		"clicking Render while something is already in progress adds "
+		"another job here instead of interrupting it. Waiting jobs start "
+		"automatically, one after another, as each one finishes.")));
 	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
 
 	m_queueListWidget = new QListWidget(m_queueGroup);

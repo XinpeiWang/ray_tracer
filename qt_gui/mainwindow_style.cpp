@@ -1167,84 +1167,113 @@ QString MainWindow::integratorDescription(IntegratorMode mode) {
 	QString text;
 	switch (mode) {
 		case IntegratorMode::Default:
-			text = tr("The general-purpose importance-sampled path tracer used "
-			"everywhere else in this app - next-event estimation plus BSDF "
-			"importance sampling, combined via the power heuristic (MIS). "
-			"The well-tested default; start here unless you have a specific "
-			"reason not to.\n\n"
-			"The alternates below trade that generality for a specific "
-			"technique - photon mapping, bidirectional/Metropolis light "
-			"transport, or a handful of unbiased reference and debug "
-			"integrators. All are CPU-only except SPPM, and none can be "
-			"combined with Generate Video mode. Sampler/Spectral/Exposure/"
-			"Tonemap/Stats above only affect this default Path Tracer.");
+			text = tr("The general-purpose way this app simulates light, used "
+			"everywhere else in the program. At each bounce it both aims a "
+			"ray straight at a light (so straightforward lighting cleans up "
+			"quickly) and sends a ray off in a direction chosen to match how "
+			"the surface reflects light, then blends the two results "
+			"together so the image converges with less speckly noise than "
+			"either approach alone. It's the well-tested default; start "
+			"here unless you have a specific reason not to.\n\n"
+			"The alternates below trade that general-purpose approach for a "
+			"specific technique - simulating light as bouncing particles, "
+			"tracing extra paths starting from the light itself, or a "
+			"handful of plain reference/debug modes used mainly for testing. "
+			"All of them run on the CPU only except one (SPPM), and none "
+			"can be combined with Generate Video mode. The Sampler/"
+			"Spectral/Exposure/Tonemap/Stats settings above only affect "
+			"this default Path Tracer.");
 			break;
 		case IntegratorMode::Sppm:
-			text = tr("Stochastic Progressive Photon Mapping (pbrt-v4 style). "
-			"Best for hard caustic/glass scenes ordinary path tracing "
-			"struggles to resolve.\n\n"
-			"CPU: verified end-to-end on the Cornell Rough Glass scene; "
-			"other scenes are unverified and only support lambertian + "
-			"delta-BSDF materials.\n\n"
-			"GPU: capability-checked per scene - Lambertian/DiffuseLight, "
-			"RoughDielectric, Metal, Dielectric, Conductor, RoughMetal, and "
-			"DiffuseTransmission are supported (area lights only); an "
-			"unsupported scene falls back to an error - use CPU SPPM "
-			"instead.");
+			text = tr("Simulates light as a spray of particles that bounce "
+			"around the scene and settle near the camera. It's especially "
+			"good at rendering the bright, focused patterns of light you "
+			"see through glass or in water (like the shimmer at the bottom "
+			"of a pool) - scenes ordinary path tracing has a hard time "
+			"cleaning up.\n\n"
+			"CPU: confirmed to work correctly on the Cornell Rough Glass "
+			"scene; other scenes haven't been checked and only support "
+			"matte surfaces plus perfectly mirror-like or glass-like "
+			"materials.\n\n"
+			"GPU: only certain materials are supported, checked per scene - "
+			"matte surfaces and plain light sources, plus the Rough "
+			"Dielectric, Metal, Dielectric, Conductor, Rough Metal, and "
+			"Diffuse Transmission material types (and only with lights that "
+			"have a physical size or shape, not point or sky lights). A "
+			"scene using anything else shows an error - use the CPU version "
+			"of this mode instead.");
 			break;
 		case IntegratorMode::Bdpt:
-			text = tr("Bidirectional Path Tracing - traces subpaths from both "
-			"the camera and the light source and connects every pair, "
-			"better for some difficult lighting configurations path "
-			"tracing alone struggles with.\n\n"
-			"CPU only. Area lights only (no punctual/sky-light NEE yet). "
-			"Verified end-to-end on the Cornell Box scene only; other "
-			"scenes are unverified.");
+			text = tr("Builds partial light paths starting from both the "
+			"camera and the light source, then connects every pair of them "
+			"together. This can handle some tricky lighting setups - like "
+			"light squeezing through a narrow gap - better than tracing "
+			"from the camera alone.\n\n"
+			"CPU only. Only works with lights that have a physical size or "
+			"shape (point lights and a sky/environment light aren't "
+			"supported yet). Confirmed to work correctly on the Cornell "
+			"Box scene only; other scenes haven't been checked.");
 			break;
 		case IntegratorMode::Mlt:
-			text = tr("Metropolis Light Transport, built directly on BDPT's "
-			"subpath machinery - uses a Markov chain to concentrate "
-			"samples on light paths that already contribute, useful for "
-			"scenes with hard-to-find bright paths.\n\n"
-			"CPU only. Same area-lights-only scope and single-scene "
-			"(Cornell Box) verification as BDPT.");
+			text = tr("Builds on the same path-connecting approach as "
+			"Bidirectional Path Tracing above, but once it finds a light "
+			"path that actually contributes, it keeps taking small random "
+			"steps nearby to find more paths like it. Useful for scenes "
+			"where most of the light arrives through just a few "
+			"hard-to-find routes.\n\n"
+			"CPU only. Same lights-must-have-a-physical-size-or-shape "
+			"limitation and single-scene (Cornell Box) verification as "
+			"Bidirectional Path Tracing above.");
 			break;
 		case IntegratorMode::RandomWalk:
-			text = tr("pbrt-v4's unbiased reference path tracer - "
-			"uniform-sphere sampling, no next-event estimation or "
-			"multiple importance sampling. Simpler and noisier than the "
-			"default path tracer; useful as a ground-truth reference to "
-			"check other integrators against.\n\n"
+			text = tr("A bare-bones renderer that bounces rays off surfaces "
+			"in completely random directions, without any of the shortcuts "
+			"the default Path Tracer uses to clean up noise faster. It's "
+			"simpler, but the image stays grainy for much longer - useful "
+			"mainly as a trustworthy reference to double-check that other "
+			"modes are producing correct results.\n\n"
 			"CPU only.");
 			break;
 		case IntegratorMode::Ao:
-			text = tr("A visualization/debug mode, not a lit render - "
-			"measures how occluded each point is by nearby geometry, "
-			"ignoring material color and indirect lighting entirely.\n\n"
+			text = tr("A visualization/debug mode rather than a finished "
+			"picture - it shows how enclosed or exposed each point on a "
+			"surface is based on nearby objects blocking it, similar to "
+			"the soft shadows you see in the corners of a room. It ignores "
+			"material colors and any bounced light entirely.\n\n"
 			"CPU only.");
 			break;
 		case IntegratorMode::SimplePath:
-			text = tr("pbrt-v4's canonical reference path tracer - optional "
-			"next-event estimation and optional BSDF importance sampling, "
-			"both on by default (see the toggles below).\n\n"
-			"CPU only. NEE, when enabled, is area-lights-only, the same "
-			"scope as BDPT/MLT.");
+			text = tr("A straightforward reference path tracer with two "
+			"optional shortcuts, both on by default (see the toggles "
+			"below): aiming some rays directly at lights to clean up noise "
+			"faster, and biasing bounce directions toward the angles that "
+			"matter most for how the surface reflects light.\n\n"
+			"CPU only. When \"aim at lights\" is on, it only works with "
+			"lights that have a physical size or shape - the same "
+			"limitation as Bidirectional Path Tracing and Metropolis "
+			"Light Transport above.");
 			break;
 		case IntegratorMode::SimpleVolPath:
-			text = tr("pbrt-v4's simplest volumetric path tracer - pure "
-			"delta tracking, no NEE/MIS/surface BSDFs.\n\n"
-			"Reachable but medium-free in this integration, so it renders "
-			"mostly black on ordinary solid-geometry scenes except where "
-			"a camera ray lands directly on a light - matches pbrt-v4's "
-			"own upstream behavior on medium-free scenes.\n\n"
+			text = tr("The simplest mode for rendering see-through volumes "
+			"like smoke or fog - it steps through empty space until it "
+			"randomly hits something. It doesn't aim rays at lights, "
+			"doesn't do any of the noise-cleanup blending the default "
+			"Path Tracer uses, and doesn't handle solid surfaces at all.\n\n"
+			"This app doesn't currently have any smoke/fog to render with "
+			"it, so on ordinary solid-object scenes it mostly produces a "
+			"black image, except where a camera ray happens to look "
+			"straight at a light source - that matches the underlying "
+			"renderer's normal behavior when there's nothing to render.\n\n"
 			"CPU only.");
 			break;
 		case IntegratorMode::LightPath:
-			text = tr("A pure light tracer - the opposite direction of "
-			"every other integrator here: every sample starts at a light "
-			"and splats camera-connection contributions into the film, "
-			"instead of starting at the camera.\n\n"
-			"CPU only. Area lights only.");
+			text = tr("Works backwards compared to every other mode here: "
+			"instead of starting each ray at the camera, it starts at a "
+			"light source and traces outward, adding its contribution to "
+			"the image whenever a path happens to connect back to the "
+			"camera.\n\n"
+			"CPU only. Only works with lights that have a physical size "
+			"or shape.");
 			break;
 	}
 	return text;

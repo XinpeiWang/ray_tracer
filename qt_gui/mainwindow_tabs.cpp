@@ -279,8 +279,8 @@ void MainWindow::createSettingsTab() {
 	sceneGroup->setInfoIcon(createInfoIcon(
 		tr("Pick which scene to render. Scenes are grouped by category and "
 		"searchable; switch to the grid view for thumbnail previews. "
-		"Selecting a scene here also seeds its recommended camera/settings "
-		"hint below, if it has one.")));
+		"Selecting a scene here also fills in a suggested camera position "
+		"and settings hint below, if one exists for it.")));
 	QVBoxLayout *sceneGroupLayout = new QVBoxLayout(sceneGroup);
 	sceneGroupLayout->setContentsMargins(12, 20, 12, 10);
 	sceneGroupLayout->setSpacing(8);
@@ -373,8 +373,8 @@ void MainWindow::createSettingsTab() {
 	m_sceneSearchBox->setClearButtonEnabled(true);
 	searchRow->addWidget(m_sceneSearchBox, 1);
 	searchRow->addWidget(createInfoIcon(
-		tr("Narrows the scene list/grid below by substring match against "
-		"each scene's name, id, or description - on top of, not instead "
+		tr("Narrows the scene list/grid below to scenes whose name, id, or "
+		"description contains what you type - on top of, not instead "
 		"of, the availability and category tabs above.\n\n"
 		"Clear it (the small \"x\" inside the field) to see every scene "
 		"in the current category again.")));
@@ -396,12 +396,13 @@ void MainWindow::createSettingsTab() {
 	sceneRow->addWidget(new QLabel(tr("Scene:")));
 	sceneRow->addWidget(createInfoIcon(
 		tr("Every render starts from a scene - a description of what's in the "
-		"world: the geometry (shapes and meshes), materials (what surfaces "
-		"are made of), lights, and a camera.\n\n"
-		"This app ships with dozens of built-in scenes covering the basics "
-		"(a simple Cornell box) up through complex conductor/dielectric "
-		"materials, volumetric fog, and real photogrammetry-scale models - "
-		"pick one to render, or browse by category using the tabs above.")));
+		"virtual world: the shapes and objects, what their surfaces are "
+		"made of, the lights, and a camera.\n\n"
+		"This app ships with dozens of built-in scenes, ranging from simple "
+		"starter setups (a plain box-shaped room) up through scenes with "
+		"realistic metal and glass, fog and smoke effects, and highly "
+		"detailed 3D-scanned models - pick one to render, or browse by "
+		"category using the tabs above.")));
 	sceneRow->addWidget(m_sceneCombo, 1);
 	m_sceneViewStack->addWidget(comboPage);
 
@@ -421,8 +422,9 @@ void MainWindow::createSettingsTab() {
 	gridPageLayout->addWidget(m_sceneGrid, 1);
 	m_generateThumbnailsButton = new QPushButton(tr("Generate Thumbnails"), gridPage);
 	m_generateThumbnailsButton->setToolTip(
-		tr("Renders a small preview image for each self-contained Basics/Materials/Textures/Cameras\n"
-		"scene not already cached. CPU-only, low resolution - takes a while the first time."));
+		tr("Creates a small preview image for each ready-to-render Basics/Materials/Textures/Cameras\n"
+		"scene that doesn't already have one saved. Runs on the CPU only, at low resolution - it can\n"
+		"take a while the first time you do this."));
 	gridPageLayout->addWidget(m_generateThumbnailsButton);
 	m_sceneViewStack->addWidget(gridPage);
 
@@ -546,8 +548,8 @@ void MainWindow::createSettingsTab() {
 	recommendedSettingsLayout->addWidget(m_sceneRecommendedSettingsHint, 1);
 	m_applyRecommendedSettingsButton = new QPushButton(tr("Apply"), recommendedSettingsRow);
 	m_applyRecommendedSettingsButton->setToolTip(
-		tr("Set Sampler/Integrator/Light Sampler (Render Options tab) to "
-		"this scene's own recommended values."));
+		tr("Sets the rendering method options (Sampler, Integrator, Light Sampler - "
+		"on the Render Options tab) to the values this scene recommends."));
 	m_applyRecommendedSettingsButton->setVisible(false);
 	connect(m_applyRecommendedSettingsButton, &QPushButton::clicked,
 			this, &MainWindow::applyRecommendedSettings);
@@ -567,10 +569,11 @@ void MainWindow::createSettingsTab() {
 	styleGroupBox(renderGroup);
 	renderGroup->setInfoIcon(createInfoIcon(
 		tr("Choose Output Mode (Single Image, Video, or Live Preview) and "
-		"the renderer (GPU or CPU) here, plus a Quality/Resolution preset "
-		"or a manual override further down. Video- and Live-Preview-only "
-		"fields stay visible and editable even in Image mode, dimmed with "
-		"a note - so you can pre-configure them before switching modes.")));
+		"which hardware renders it (GPU or CPU) here, plus a Quality/"
+		"Resolution preset or your own manual settings further down. "
+		"Fields that only matter for Video or Live Preview stay visible "
+		"and editable even while in Image mode, just dimmed with a note "
+		"- so you can set them up ahead of time before switching modes.")));
 	QFormLayout *renderLayout = new QFormLayout(renderGroup);
 	renderLayout->setVerticalSpacing(10);
 	renderLayout->setHorizontalSpacing(10);
@@ -605,20 +608,20 @@ void MainWindow::createSettingsTab() {
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onModeChanged);
 	renderLayout->addRow(labelWithInfo(tr("Output Mode:"),
-		tr("Whether this render produces a single still frame, a "
-		"sequence of frames stitched into a video, or an interactive GPU "
-		"preview.\n\n"
+		tr("Whether this render produces a single still picture, a "
+		"sequence of pictures stitched into a video, or a live, "
+		"interactive preview on the GPU.\n\n"
 		"Single Image renders the scene once, from the camera set on "
 		"this tab. Generate Video instead moves "
 		"the camera along a path (Video Generation Settings, further "
-		"down this tab) and renders one frame per step, then assembles "
-		"them into an MP4 - taking roughly Frame Count times as long as "
+		"down this tab) and renders one picture per step, then stitches "
+		"them into an MP4 video - taking roughly Frame Count times as long as "
 		"a single image. Live Preview instead renders continuously at a "
 		"fixed, small resolution so you can click-drag/scroll to orbit "
-		"the camera and see the result converge in real time - it never "
+		"the camera and watch the image get clearer in real time - it never "
 		"writes an output file.\n\nGenerate Video cannot be combined with an alternate "
-		"Integrator - see the warning below if that combination is "
-		"picked.")),
+		"rendering method (Integrator) - see the warning below if that "
+		"combination is picked.")),
 		m_modeCombo);
 
 	// See m_integratorVideoWarningLabelBasic's own comment (mainwindow.h) -
@@ -644,88 +647,95 @@ void MainWindow::createSettingsTab() {
 #endif
 
 	m_modeCombo->setToolTip(
-		tr("Single Image renders one frame.\n"
-		"Generate Video renders a camera path frame by frame and assembles an MP4.\n"
-		"Live Preview renders continuously with an orbitable camera - GPU only."));
+		tr("Single Image renders one picture.\n"
+		"Generate Video renders a moving camera path frame by frame and assembles an MP4.\n"
+		"Live Preview renders continuously with a camera you can freely orbit - GPU only."));
 
 	m_renderModeCombo = new QComboBox(basicTab);
 #ifdef RT_GUI_HAVE_GPU
 	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (CUDA) - Fast"), true, m_activeTheme.textBody);
 	m_renderModeCombo->setItemData(m_renderModeCombo->count() - 1, wrapTooltipHtml(
-		tr("NVIDIA OptiX hardware ray tracing. Typically orders of "
-		"magnitude faster than CPU, but needs a CUDA-capable NVIDIA GPU "
-		"and doesn't yet implement every material the CPU path does.")),
+		tr("Uses your NVIDIA graphics card's dedicated ray-tracing hardware "
+		"to render. Usually dramatically faster than using the CPU, but "
+		"requires a compatible NVIDIA graphics card, and can't yet handle "
+		"every type of material the CPU option supports.")),
 		Qt::ToolTipRole);
 #endif
 	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", tr("CPU - High Quality"), false, m_activeTheme.textBody);
 	m_renderModeCombo->setItemData(m_renderModeCombo->count() - 1, wrapTooltipHtml(
-		tr("The full importance-sampled path tracer. Runs on any machine "
-		"and supports every scene and material this app implements, "
-		"including the handful the GPU backend hasn't caught up to yet - "
-		"at the cost of being much slower.")),
+		tr("The renderer's complete, most capable rendering method. Runs on "
+		"any machine and supports every scene and material this app "
+		"implements, including the handful the GPU option can't handle "
+		"yet - at the cost of being much slower.")),
 		Qt::ToolTipRole);
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
 #ifdef RT_GUI_HAVE_GPU
 	m_renderModeCombo->setToolTip(
-		tr("GPU: OptiX hardware ray tracing — typically orders of magnitude faster.\n"
-		"CPU: importance-sampled path tracer — supports every scene and material,\n"
-		"including the handful the GPU backend does not implement."));
+		tr("GPU: uses your graphics card's ray-tracing hardware — typically much faster.\n"
+		"CPU: the full-featured rendering method — supports every scene and material,\n"
+		"including the handful the GPU option does not implement."));
 #else
 	// This build's CLI (ray_tracer, from root CMakeLists.txt) has no
 	// CUDA/OptiX support at all - see launcher/optix_stub.h - so GPU was
 	// never a real option here and isn't offered as one.
 	m_renderModeCombo->setToolTip(
-		tr("Importance-sampled CPU path tracer — supports every scene and material.\n"
+		tr("The full-featured CPU rendering method — supports every scene and material.\n"
 		"GPU rendering is not available in this build."));
 #endif
 	renderLayout->addRow(labelWithInfo(tr("Renderer:"),
-		tr("Both trace the exact same rays and produce the same image - the "
-		"difference is speed and hardware, not physics.\n\n"
-		"GPU (OptiX) uses NVIDIA's dedicated ray-tracing cores to trace "
-		"thousands of rays in parallel, typically far faster. CPU uses "
-		"ordinary processor cores instead: much slower, but works on any "
-		"machine and supports every material this app implements, "
-		"including a couple the GPU path hasn't caught up to yet.")),
+		tr("Both options do the exact same calculations and produce the "
+		"same image - the only difference is speed and which hardware "
+		"does the work, not the physics.\n\n"
+		"GPU uses your NVIDIA graphics card's dedicated ray-tracing "
+		"hardware to process thousands of light rays at once, so it's "
+		"typically far faster. CPU uses your computer's regular processor "
+		"instead: much slower, but works on any machine and supports "
+		"every material this app implements, including a couple the GPU "
+		"option hasn't caught up to yet.")),
 		m_renderModeCombo);
 
 #ifdef RT_GUI_HAVE_GPU
 	m_gpuBackendCombo = new QComboBox(basicTab);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Recursive (Default)"), false, m_activeTheme.textBody);
 	m_gpuBackendCombo->setItemData(m_gpuBackendCombo->count() - 1, wrapTooltipHtml(
-		tr("One thread per pixel, tracing each ray recursively bounce by "
-		"bounce. The default GPU path tracer - broad, battle-tested "
-		"coverage of scenes and materials.")),
+		tr("Processes each pixel on its own, following a light ray through "
+		"all of its bounces before moving to the next pixel. The default "
+		"GPU rendering method - broadly tested and works with the widest "
+		"range of scenes and materials.")),
 		Qt::ToolTipRole);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Wavefront (Experimental)"), true, m_activeTheme.textBody);
 	m_gpuBackendCombo->setItemData(m_gpuBackendCombo->count() - 1, wrapTooltipHtml(
-		tr("Splits each bounce into separate queue-passed kernel launches, "
-		"batching rays doing the same kind of work together. Better GPU "
-		"utilization on complex, divergent scenes - but a newer, less "
-		"exercised code path.")),
+		tr("Groups light rays that are currently doing the same kind of "
+		"work together and processes each bounce for the whole group at "
+		"once, instead of pixel by pixel. This can make better use of the "
+		"graphics card on complex scenes with lots of different materials "
+		"- but it's a newer option that's been tested less than "
+		"Recursive.")),
 		Qt::ToolTipRole);
 	m_gpuBackendCombo->setCurrentIndex(0);
 	styleComboBox(m_gpuBackendCombo);
 	m_gpuBackendCombo->setToolTip(
-		tr("Recursive: one thread per pixel, the default GPU path tracer — broad, battle-tested coverage.\n"
-		"Wavefront: splits each bounce into separate queue-passed kernel launches — better GPU\n"
-		"utilization on complex/divergent scenes, but a newer, less exercised code path.\n"
+		tr("Recursive: the default GPU rendering method — broadly tested, works with the widest range of scenes.\n"
+		"Wavefront: groups similar rays together for better use of the graphics card on complex scenes,\n"
+		"but it's newer and less tested than Recursive.\n"
 		"Only applies when Renderer is set to GPU."));
 	// Starts disabled/enabled in sync with the initial Renderer selection (GPU,
 	// index 0/true above) - the connect() in the constructor keeps it synced
 	// afterwards whenever the user changes Renderer.
 	m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
 	renderLayout->addRow(labelWithInfo(tr("GPU Backend:"),
-		tr("Two different ways of organizing the SAME ray-tracing work on the "
-		"GPU.\n\n"
-		"Recursive traces one ray per thread from start to finish, "
-		"bouncing recursively - simple and battle-tested. Wavefront "
-		"instead groups all rays currently doing the same kind of work "
-		"(e.g. \"just hit glass\") into a batch and processes them "
-		"together - better use of the GPU's parallel hardware on complex "
+		tr("Two different ways of organizing the SAME rendering work on your "
+		"graphics card - they produce the same image, just computed "
+		"differently.\n\n"
+		"Recursive follows each light ray from start to finish, one ray "
+		"at a time - simple and thoroughly tested. Wavefront instead "
+		"groups together all the rays currently doing the same kind of "
+		"work (e.g. \"just hit a glass surface\") and processes them as a "
+		"batch - this can make better use of the graphics card on complex "
 		"scenes with lots of different materials, at the cost of being a "
-		"newer, less-tested code path.")),
+		"newer, less-tested option.")),
 		m_gpuBackendCombo);
 #else
 	// No GPU support in this build (see above) - the combo simply doesn't
@@ -757,7 +767,7 @@ void MainWindow::createSettingsTab() {
 	// quantitative; spell out what each actually sets. Keep in sync with
 	// onQualityPresetChanged()'s presetSamples/presetDepth tables.
 	m_qualityPresetCombo->setToolTip(
-		tr("Samples per pixel / max ray depth:\n"
+		tr("Samples per pixel (image cleanliness) / max ray depth (light bounces allowed):\n"
 		"  Draft    25 spp,  depth 10\n"
 		"  Preview  50 spp,  depth 20\n"
 		"  Good    100 spp,  depth 50\n"
@@ -765,7 +775,8 @@ void MainWindow::createSettingsTab() {
 		"  Ultra  1000 spp,  depth 100\n"
 		"  Maximum 5000 spp, depth 100\n"
 		"Custom leaves the Samples/Max Depth fields below untouched.\n"
-		"Render time scales roughly linearly with samples per pixel."));
+		"Render time scales roughly in proportion to samples per pixel - twice\n"
+		"the samples takes roughly twice as long."));
 	renderLayout->addRow(labelWithInfo(tr("Quality:"),
 		tr("A shortcut that sets both Samples per Pixel and Max Ray Depth "
 		"together, since they're the two dials that trade render time "
@@ -879,10 +890,10 @@ void MainWindow::createSettingsTab() {
 		tr("How the camera moves over the frame sequence:\n"
 		"  Orbit     — full circle around the scene, always looking at its centre\n"
 		"  Linear    — straight sweep past the scene\n"
-		"  Figure-8  — lemniscate, crossing back through the middle\n"
+		"  Figure-8  — a figure-eight loop, crossing back through the middle\n"
 		"  Spiral    — orbits while moving steadily closer\n"
 		"  Tour      — sways side to side and glides forward while looking around, like walking through a room\n"
-		"  Showcase  — one eased turn that pushes in and arcs up-then-down, like a product ad\n"
+		"  Showcase  — one smooth turn that pushes in and rises then falls, like a product ad\n"
 		"Every path starts from the camera position set below."));
 	m_cameraPathCombo->setCurrentIndex(0);
 	styleComboBox(m_cameraPathCombo);
@@ -890,14 +901,15 @@ void MainWindow::createSettingsTab() {
 		tr("How the camera moves across the sequence of frames.\n\n"
 		"Orbit circles fully around the scene, always facing its center "
 		"- the classic \"turntable\" shot. Linear sweeps past in a "
-		"straight line. Figure-8 traces a lemniscate, crossing back "
-		"through the middle. Spiral orbits while steadily moving closer. "
-		"Tour sways side to side and glides forward while its look-at "
-		"point drifts too, like an actual visitor walking through and "
-		"looking around a room. Showcase turns once around the subject "
-		"with an eased push-in and a gentle rise-and-fall, like a "
-		"product advertisement's hero shot. Every path starts from "
-		"wherever the camera is positioned further down this tab.")),
+		"straight line. Figure-8 traces a figure-eight loop, crossing "
+		"back through the middle. Spiral orbits while steadily moving "
+		"closer. Tour sways side to side and glides forward while its "
+		"look-at point drifts too, like an actual visitor walking "
+		"through and looking around a room. Showcase turns once around "
+		"the subject with a smooth push-in and a gentle rise-and-fall, "
+		"like a product advertisement's hero shot. Every path starts "
+		"from wherever the camera is positioned further down this "
+		"tab.")),
 		m_cameraPathCombo);
 
 	// Frame Count + Frames Per Second on one line - same 4-column-grid-as-
@@ -1012,9 +1024,10 @@ void MainWindow::createSettingsTab() {
 			"Video Duration: %1 seconds (%2)\n\n"
 			"Camera Path: %3, always completes its full sweep regardless of speed\n\n"
 			"Output: frames will be saved to output/frames/\n\n"
-			"Requires ffmpeg: video encoding uses ffmpeg (libx264), which must "
-			"be installed and on your PATH - get it from ffmpeg.org if the "
-			"render log reports it's missing.\n\n"
+			"Requires ffmpeg: turning the rendered frames into a video needs "
+			"a free program called ffmpeg, which must be installed on your "
+			"computer and available from the command line - get it from "
+			"ffmpeg.org if the render log reports it's missing.\n\n"
 			"After rendering all frames, the video is automatically assembled "
 			"and opened.\n\n"
 			"Step 1: Configure Video Generation Settings above (camera path, "
@@ -1022,8 +1035,8 @@ void MainWindow::createSettingsTab() {
 			"Step 2: Configure quality settings further down this tab.\n\n"
 			"Step 3: Click START VIDEO RENDER and wait.\n\n"
 			"Step 4: Video automatically assembles and opens when done!\n\n"
-			"Tips: use GPU mode for faster rendering. Lower samples/pixel "
-			"(10-50) for quick previews, higher (100-500) for production "
+			"Tips: use GPU mode for faster rendering. Fewer samples per pixel "
+			"(10-50) for quick previews, more (100-500) for production "
 			"quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes "
 			"on CPU."
 		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath)));
@@ -1062,9 +1075,10 @@ void MainWindow::createSettingsTab() {
 		"movement + Left/Right/+/- feel in Live Preview. Only takes effect "
 		"when Output Mode above is \"Live Preview (interactive)\", but "
 		"stays editable in any mode.\n\n"
-		"Looking for ReSTIR/Exposure/Samples/Max Bounces/Firefly Clamp? "
-		"Those are render-behavior settings now on the Render Options tab's "
-		"own Live Preview Settings group, next to the Denoiser section.")));
+		"Looking for the image-quality settings (ReSTIR, Exposure, Samples "
+		"per Frame, Max Bounces, Firefly Clamp)? Those now live on the "
+		"Render Options tab's own Live Preview Settings group, next to the "
+		"Denoiser section.")));
 	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
 	QFormLayout *liveModeSettingsLayout = new QFormLayout(m_liveModeSettingsGroupBox);
 	liveModeSettingsLayout->setVerticalSpacing(10);
@@ -1190,9 +1204,11 @@ void MainWindow::createSettingsTab() {
 	m_samplesSpinBox->setValue(100);
 	styleSpinBox(m_samplesSpinBox);
 	m_samplesSpinBox->setToolTip(
-		tr("Rays traced per pixel. This is the main quality/time dial: noise falls\n"
-		"as the square root of this value, so halving the noise costs about 4x\n"
-		"the render time. Setting it here switches Quality to Custom."));
+		tr("How many random light samples are averaged per pixel. This is the main\n"
+		"quality/time dial: more samples make the image cleaner, but with\n"
+		"diminishing returns - cutting the noise in half needs roughly 4x as many\n"
+		"samples, which takes roughly 4x as long to render. Setting it here\n"
+		"switches Quality to Custom."));
 	advancedGrid->addWidget(labelWithInfo(tr("Samples per Pixel:"),
 		tr("Ray tracing estimates each pixel's color by firing many random "
 		"rays and averaging the results, like polling a lot of people and "
@@ -1210,9 +1226,10 @@ void MainWindow::createSettingsTab() {
 	m_maxDepthSpinBox->setValue(50);
 	styleSpinBox(m_maxDepthSpinBox);
 	m_maxDepthSpinBox->setToolTip(
-		tr("How many times a ray may bounce before it is terminated. Low values\n"
-		"darken glass and mirrors, which need many bounces to resolve; scenes\n"
-		"of plain diffuse surfaces look the same well below the maximum."));
+		tr("How many times a light ray is allowed to bounce off surfaces before\n"
+		"the renderer stops following it. Low values darken glass and mirrors,\n"
+		"which need many bounces to look right; scenes with only plain, matte\n"
+		"surfaces look the same well below the maximum."));
 	advancedGrid->addWidget(labelWithInfo(tr("Max Ray Depth:"),
 		tr("A depth of 1 means a ray only sees what it hits directly, with "
 		"no bounced light at all - like a scene with no reflections or "
@@ -1417,11 +1434,15 @@ void MainWindow::createSettingsTab() {
 		tr("Where the rendered file is saved. Video mode appends the "
 		"correct extension automatically; Live Preview ignores this "
 		"entirely since it never writes a file.\n\n"
-		"Type or Browse to a .exr path instead of .png/.ppm for linear, "
-		"full-precision HDR output (no tone mapping baked in) - useful for "
-		"compositing. If Denoise is also on and GPU Backend is Recursive, "
-		"an _albedo.exr and _normal.exr guide-buffer pair is written "
-		"alongside it automatically (Wavefront doesn't produce these yet).")));
+		"Type or Browse to a .exr path instead of .png/.ppm to get a "
+		"high-dynamic-range file that stores the full range of brightness "
+		"values without compressing them for a normal screen - useful if "
+		"you plan to edit the image further in other software. If "
+		"Denoise is also on and GPU Backend is Recursive, two extra "
+		"helper files (_albedo.exr and _normal.exr, storing surface "
+		"color and surface direction) are saved alongside it "
+		"automatically to help with that cleanup (Wavefront doesn't "
+		"produce these yet).")));
 	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
 	outputLayout->setSpacing(8);
 	outputLayout->setContentsMargins(15, 20, 15, 12);
@@ -1444,7 +1465,7 @@ void MainWindow::createSettingsTab() {
 	m_outputPathEdit->setToolTip(
 		tr("Where the rendered image is written. A .png is always saved alongside\n"
 		"the raw .ppm, and it is the .png the Preview tab displays.\n\n"
-		"Enter a .exr path instead for linear HDR output with no PNG sibling -\n"
+		"Enter a .exr path instead for a high-dynamic-range file with no PNG copy -\n"
 		"the Preview tab opens it in your system's EXR viewer instead of showing\n"
 		"it inline."));
 	// Trailing ellipsis (U+2026, not three periods) marks an action that needs
@@ -1467,10 +1488,12 @@ void MainWindow::createSettingsTab() {
 		"alongside it automatically - the Preview tab always shows the "
 		".png, since most image viewers (and this app's own preview) "
 		"can't open .ppm directly.\n\n"
-		"Choosing a .exr path instead skips both: it writes one linear, "
-		"un-tonemapped, full-float-precision file directly - the format "
-		"compositing/VFX tools expect, and the only way to get HDR values "
-		"out of this app rather than an already-tonemapped image.")));
+		"Choosing a .exr path instead skips both: it writes one file "
+		"that stores the full range of brightness values with no "
+		"adjustment for a normal screen - the format professional photo/"
+		"video editing tools expect, and the only way to get the raw "
+		"brightness data out of this app instead of an image already "
+		"adjusted to look right on a regular monitor.")));
 	pathLayout->addWidget(m_outputPathEdit);
 	pathLayout->addWidget(m_browseButton);
 	outputLayout->addLayout(pathLayout);
