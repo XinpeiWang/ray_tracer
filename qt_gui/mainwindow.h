@@ -1298,10 +1298,17 @@ private:
 	// see ThumbnailGenerator's own class comment for why the two must never
 	// share chrome.
 	QProgressBar *m_thumbnailProgressBar = nullptr;
-	// Counts failures across one "Generate Thumbnails" run, reset at the
-	// start of onGenerateThumbnailsClicked() - onThumbnailsAllDone() folds
-	// this into its summary status message.
+	// Counts successes/failures across one "Generate Thumbnails" run, reset
+	// at the start of onGenerateThumbnailsClicked() - onThumbnailsAllDone()
+	// folds both into its finish summary (log line + status message).
+	int m_thumbnailSucceededCount = 0;
 	int m_thumbnailFailedCount = 0;
+	// Wall-clock duration of one "Generate Thumbnails" run, started right
+	// before ThumbnailGenerator::start() - onThumbnailsAllDone() logs it in
+	// the finish summary so a slow run (e.g. every scene falling back to a
+	// software rasterizer) is visible without timestamp-subtracting the log
+	// by hand.
+	QElapsedTimer m_thumbnailBatchTimer;
 	// Lazily created (and reused across multiple "Generate Thumbnails"
 	// clicks) by onGenerateThumbnailsClicked() the first time it's needed -
 	// see that slot's own comment.

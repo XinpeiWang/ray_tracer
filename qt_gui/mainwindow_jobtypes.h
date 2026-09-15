@@ -451,6 +451,17 @@ signals:
 	// in start() (not the raw sceneIds list passed in), so a caller driving
 	// a progress bar from this never has to duplicate that filtering itself.
 	void progress(int completed, int total, const QString &sceneId);
+	// Forwards this generator's own private RenderController's logMessage
+	// lines (RenderController::finish()'s usual "Process finished"/
+	// "Result: SUCCESS|FAILED"/"=== ERROR DETAILS ===" lines, the same ones
+	// a user-requested render already surfaces) plus a couple of this
+	// class's own (e.g. how many scenes start() skipped as already-cached).
+	// Without this, a thumbnail failure was silent beyond "failed for scene
+	// X" - no way to tell WHY (missing exe, bad scene id, non-zero exit
+	// code, ...) short of a debugger. Each line is tagged "[Thumbnail]" so
+	// it reads distinctly from the user's own queued renders once both land
+	// in the same Log Output tab (MainWindow::onLogMessage).
+	void logMessage(const QString &message);
 	// Fires once after the last queued scene finishes (or stop() is called).
 	void allDone();
 

@@ -640,10 +640,26 @@ void DiagnosticsRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exi
 // not what the rest of the app does.
 ThumbnailGenerator::ThumbnailGenerator(QObject *parent)
 	: QObject(parent), m_controller(new RenderController(this)) {
+	// Otherwise silently discarded - see logMessage()'s own comment for why
+	// that made a failed thumbnail nearly impossible to debug. Tagged as a
+	// SUFFIX, not a prefix: render_output_parser.h's classifyLogLine() reads
+	// several of these lines (e.g. "Result: SUCCESS...") via startsWith(),
+	// which a leading "[Thumbnail] " would break, losing their color-coding
+	// in the Log Output tab.
+	connect(m_controller, &RenderController::logMessage, this, [this](const QString &line) {
+		emit logMessage(QString("%1 [Thumbnail]").arg(line));
+	});
 	connect(m_controller, &RenderController::renderComplete, this,
-		[this](bool success, const QString &, double, const QString &) {
+		[this](bool success, const QString &, double totalTime, const QString &) {
 			const QString finishedId = m_currentId;
 			++m_completedCount;
+			// The forwarded logMessage lines just above already spelled out
+			// WHY on a failure (Result: FAILED/=== ERROR DETAILS ===/etc,
+			// from RenderController::finish()) - this is just the one-line
+			// per-scene bookend a Ctrl+F for the scene id lands on.
+			emit logMessage(QString("[Thumbnail] %1 %2 in %3s")
+				.arg(finishedId, success ? "finished" : "FAILED")
+				.arg(totalTime, 0, 'f', 1));
 			emit thumbnailReady(finishedId, success, m_outputPathForId(finishedId));
 			if (m_stopRequested) {
 				m_stopRequested = false;
@@ -658,12 +674,18 @@ void ThumbnailGenerator::start(const QStringList &sceneIds, std::function<QStrin
 	if (isRunning()) return;
 	m_outputPathForId = outputPathForId;
 	m_pending.clear();
+	int alreadyCached = 0;
 	for (const QString &id : sceneIds) {
-		if (!QFile::exists(m_outputPathForId(id))) m_pending.enqueue(id);
+		if (QFile::exists(m_outputPathForId(id))) ++alreadyCached;
+		else m_pending.enqueue(id);
 	}
 	m_stopRequested = false;
 	m_completedCount = 0;
 	m_totalCount = m_pending.size();
+	if (alreadyCached > 0) {
+		emit logMessage(QString("[Thumbnail] Skipping %1 already-cached scene(s); %2 to generate.")
+			.arg(alreadyCached).arg(m_totalCount));
+	}
 	if (m_pending.isEmpty()) {
 		emit allDone();
 		return;

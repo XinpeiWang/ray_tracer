@@ -617,6 +617,12 @@ void MainWindow::onGenerateThumbnailsClicked() {
 				this, &MainWindow::onThumbnailReady);
 		connect(m_thumbnailGenerator, &ThumbnailGenerator::progress,
 				this, &MainWindow::onThumbnailProgress);
+		// Forwards this generator's own private RenderController's log
+		// lines (see ThumbnailGenerator::logMessage()'s own comment) into
+		// the same Log Output tab a user-requested render uses - without
+		// this, a failed thumbnail gave no way to tell WHY.
+		connect(m_thumbnailGenerator, &ThumbnailGenerator::logMessage,
+				this, &MainWindow::onLogMessage);
 		connect(m_thumbnailGenerator, &ThumbnailGenerator::allDone,
 				this, &MainWindow::onThumbnailsAllDone);
 	}
@@ -631,7 +637,9 @@ void MainWindow::onGenerateThumbnailsClicked() {
 	}
 
 	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(false);
+	m_thumbnailSucceededCount = 0;
 	m_thumbnailFailedCount = 0;
+	m_thumbnailBatchTimer.start();
 	onLogMessage(QString("Generating thumbnails for up to %1 scene(s) in \"%2\"...")
 		.arg(ids.size()).arg(currentCategory));
 	m_thumbnailGenerator->start(ids, [this](const QString &id) { return thumbnailCachePath(id); });
@@ -643,17 +651,31 @@ void MainWindow::onThumbnailReady(const QString &sceneId, bool success, const QS
 		onLogMessage(QString("Thumbnail generation failed for scene %1").arg(sceneId));
 		return;
 	}
+	++m_thumbnailSucceededCount;
 	if (!m_sceneGrid) return;
+	bool matched = false;
 	for (int i = 0; i < m_sceneGrid->count(); ++i) {
 		QListWidgetItem *item = m_sceneGrid->item(i);
 		if (item->data(Qt::UserRole).toString() == sceneId) {
 			item->setIcon(QIcon(outputPath));
+			matched = true;
 			break;
 		}
 	}
+	// Not a failure - just means the grid moved on to a different category
+	// tab while this scene was still rendering in the background - but
+	// silently doing nothing here previously looked identical to a real bug
+	// ("why didn't my thumbnail show up?") from the Log Output tab alone.
+	if (!matched)
+		onLogMessage(QString("Thumbnail for %1 saved, but it's not in the currently-shown grid.").arg(sceneId));
 }
 
 void MainWindow::onThumbnailProgress(int completed, int total, const QString &sceneId) {
+	// A permanent record of the same text the progress bar shows only while
+	// it's visible - onThumbnailsAllDone() hides the bar, so this is the
+	// only place that sequence survives to be scrolled back through.
+	onLogMessage(QString("[Thumbnail] (%1/%2) Rendering %3 (%4)...")
+		.arg(completed + 1).arg(total).arg(SceneMetadataClient::sceneName(sceneId), sceneId));
 	if (!m_thumbnailProgressBar) return;
 	m_thumbnailProgressBar->setRange(0, total);
 	m_thumbnailProgressBar->setValue(completed);
@@ -665,7 +687,9 @@ void MainWindow::onThumbnailProgress(int completed, int total, const QString &sc
 void MainWindow::onThumbnailsAllDone() {
 	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(true);
 	if (m_thumbnailProgressBar) m_thumbnailProgressBar->setVisible(false);
-	onLogMessage(tr("Thumbnail generation finished."));
+	onLogMessage(QString("Thumbnail generation finished: %1 succeeded, %2 failed, %3s elapsed.")
+		.arg(m_thumbnailSucceededCount).arg(m_thumbnailFailedCount)
+		.arg(m_thumbnailBatchTimer.elapsed() / 1000.0, 0, 'f', 1));
 	statusBar()->showMessage(m_thumbnailFailedCount > 0
 		? tr("Thumbnail generation finished - %1 failed.").arg(m_thumbnailFailedCount)
 		: tr("Thumbnail generation finished."), 5000);
