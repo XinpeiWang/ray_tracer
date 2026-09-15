@@ -4929,6 +4929,32 @@ bool build_scene(
 		build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
 	};
 
+	// Shared camera setup for the many single-subject "gallery" scenes below
+	// (Stanford meshes, teapot, dragon, and similar) - every one of them
+	// looks at a fixed lookfrom offset from the origin (resolved through
+	// resolve_fixed_lookfrom(), so force_camera_override/Live Preview still
+	// wins the same way it does everywhere else in this switch), a fixed
+	// lookat point, a fixed vfov, and an optional flat background color -
+	// nothing else varies between them. A code-review pass found this
+	// 5-8 line block hand-repeated ~50 times with only these four values
+	// changing; collapsing it here means a future change to how any of
+	// these values gets applied (e.g. the has_custom_lookat substitution
+	// build_pinhole_camera_params's own shadow lambda above already
+	// handles) only needs updating in this one place. Deliberately calls
+	// the SHADOWED local build_pinhole_camera_params (not ::build_pinhole_
+	// camera_params) - that's what makes has_custom_lookat/Live Preview's
+	// free-fly override keep working for every scene using this helper.
+	const auto apply_mesh_camera = [&](const float3& offset, const float3& lookat, float vfov,
+										bool hasBackground = false, const float3& background = make_float3(0.0f, 0.0f, 0.0f)) {
+		const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, offset.x, offset.y, offset.z);
+		const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+		const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+		build_pinhole_camera_params(lookfrom, lookat, vup, vfov, aspect, 1.0f, camera_params);
+		if (out_camera_extra && hasBackground) {
+			out_camera_extra->backgroundColor = background;
+		}
+	};
+
 	// Build requested scene
 	switch (legacy_scene_id) {
 		case 0:  // Cornell Box
@@ -5017,11 +5043,7 @@ bool build_scene(
 					// camera at whatever Cornell-Box-scale position happened
 					// to be leftover from a previous scene.
 					{
-						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 13.0f, 2.0f, 3.0f);
-						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
-						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
+						apply_mesh_camera(make_float3(13.0f, 2.0f, 3.0f), make_float3(0.0f, 0.0f, 0.0f), 20.0f);
 
 						// Warm sunset-ish flat background, matching CPU registry's
 						// bg=(0.90,0.75,0.55) for this scene - fits the "planet"
@@ -5059,11 +5081,7 @@ bool build_scene(
 
 					// Same Fixed-mode situation as scenes 1/2/3 above.
 					{
-						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 13.0f, 2.0f, 3.0f);
-						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
-						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
+						apply_mesh_camera(make_float3(13.0f, 2.0f, 3.0f), make_float3(0.0f, 0.0f, 0.0f), 20.0f);
 
 						// Flat light-blue background, matching CPU registry's
 						// bg=(0.70,0.80,1.00) for this scene (see
@@ -5117,11 +5135,7 @@ bool build_scene(
 						// CPU, UNLESS force_camera_override is set (video mode's
 						// per-frame animated position), same convention as
 						// scenes 1-4 above.
-						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 478.0f, 278.0f, -600.0f);
-						const float3 lookat = make_float3(278.0f, 278.0f, 0.0f);
-						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-						build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+						apply_mesh_camera(make_float3(478.0f, 278.0f, -600.0f), make_float3(278.0f, 278.0f, 0.0f), 40.0f);
 						// Subtle deep ambient instead of pure black, matching CPU
 						// registry's bg=(0.03,0.025,0.02) - the box-grid ground and
 						// negative space used to render into a stark void even
@@ -5671,11 +5685,7 @@ bool build_scene(
 								// lookfrom/vfov widened/pulled back so all 3 spheres (spanning
 								// x=+-4) actually fit in frame - matches CPU CameraConfig row
 								// for scene 24.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.3f, 15.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 42.0f, aspect, 1.0f, camera_params);  // 42: matches CPU CameraConfig row for scene 24
+								apply_mesh_camera(make_float3(0.0f, 2.3f, 15.0f), make_float3(0.0f, 1.0f, 0.0f), 42.0f);
 
 								if (out_camera_extra) {
 									// CPU's build_hdri_sky() now actually uses its procedural
@@ -5694,61 +5704,25 @@ bool build_scene(
 								build_cloud_medium_scene_gpu(scene);
 								// lookfrom/vfov widened/pulled back (was 20 deg at (0,5,20)) - matches
 								// CPU CameraConfig row for scene 31; see that row's comment.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 26.0f);
-								const float3 lookat   = make_float3(0.0f, 2.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 31
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 31 - this is the scene's
-									// ONLY light source (no emissive geometry), so a missing/black
-									// background here means zero illumination anywhere in the image.
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 4.0f, 26.0f), make_float3(0.0f, 2.0f, 0.0f), 40.0f, true, make_float3(0.5f, 0.7f, 1.0f));
 								break;
 							}
 
 							case 69: {  // Dielectric Medium Showcase (glass spheres w/ colored fog)
 								build_dielectric_medium_scene_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 18.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 69
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 69 - same reasoning as
-									// scene 31 (Cloud Medium): this scene's only light source.
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 18.0f), make_float3(0.0f, 1.5f, 0.0f), 40.0f, true, make_float3(0.5f, 0.7f, 1.0f));
 								break;
 							}
 
 							case 70: {  // RGB Grid Medium (heterogeneous per-voxel R/G/B nebula)
 								build_rgb_grid_medium_scene_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 5.0f, 30.0f);
-								const float3 lookat   = make_float3(0.0f, 3.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 70
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 70 - same reasoning as
-									// scene 31 (Cloud Medium): this scene's only light source.
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 5.0f, 30.0f), make_float3(0.0f, 3.0f, 0.0f), 45.0f, true, make_float3(0.5f, 0.7f, 1.0f));
 								break;
 							}
 
 							case 72: {  // Curve Fibers (see build_curve_fibers_scene_gpu's comment)
 								build_curve_fibers_scene_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 6.5f);
-								const float3 lookat   = make_float3(0.0f, 0.7f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 38.0f, aspect, 1.0f, camera_params);  // 38: matches CPU CameraConfig row for scene 72
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 72.
-									out_camera_extra->backgroundColor = make_float3(0.04f, 0.045f, 0.06f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 2.0f, 6.5f), make_float3(0.0f, 0.7f, 0.0f), 38.0f, true, make_float3(0.04f, 0.045f, 0.06f));
 								break;
 							}
 
@@ -5756,16 +5730,7 @@ bool build_scene(
 								build_hair_fibers_gpu(scene);
 								// lookfrom/vfov widened/pulled back to fit the now wider-spaced
 								// cluster - matches CPU CameraConfig row for scene 19.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.5f, 14.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 19
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 19 (dim ambient - the
-									// only light source, no emissive geometry in this scene).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.07f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 2.5f, 14.0f), make_float3(0.0f, 1.0f, 0.0f), 45.0f, true, make_float3(0.05f, 0.05f, 0.07f));
 								break;
 							}
 
@@ -5774,11 +5739,7 @@ bool build_scene(
 								// lookfrom/vfov widened/pulled back so all 5 spheres (spanning
 								// x=+-5) actually fit in frame - matches CPU CameraConfig row for
 								// scene 34.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.2f, 17.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 42.0f, aspect, 1.0f, camera_params);  // 42: matches CPU CameraConfig row for scene 34
+								apply_mesh_camera(make_float3(0.0f, 3.2f, 17.0f), make_float3(0.0f, 1.0f, 0.0f), 42.0f);
 								// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) - this
 								// scene has a real emissive light sphere, unlike scenes 19/31.
 								break;
@@ -5786,16 +5747,7 @@ bool build_scene(
 
 							case 37: {  // Triangle Mesh (see build_triangle_mesh_scene_gpu's comment)
 								build_triangle_mesh_scene_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 8.0f);
-								const float3 lookat   = make_float3(0.0f, 2.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 37
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 37 (dim ambient - real
-									// light sphere is the main source, matches scene 19's style).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 4.0f, 8.0f), make_float3(0.0f, 2.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
@@ -5804,72 +5756,31 @@ bool build_scene(
 								// lookfrom/vfov widened/pulled back so all 7 spheres (spanning
 								// x=+-7 after the spacing fix) actually fit in frame - matches
 								// CPU CameraConfig row for scene 18.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.7f, 17.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 18
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 18 (dim ambient - no
-									// emissive geometry in this scene, same style as scenes 19/31/37).
-									out_camera_extra->backgroundColor = make_float3(0.10f, 0.10f, 0.12f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 2.7f, 17.0f), make_float3(0.0f, 1.0f, 0.0f), 45.0f, true, make_float3(0.10f, 0.10f, 0.12f));
 								break;
 							}
 
 							case 38: {  // Stanford Bunny (see build_stanford_bunny_gpu's comment)
 								build_stanford_bunny_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 38
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 38.
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 39: {  // Stanford Armadillo (see build_stanford_armadillo_gpu's comment)
 								build_stanford_armadillo_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 39
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 39 (same as scene 38's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 40: {  // Stanford Happy Buddha (see build_stanford_happy_buddha_gpu's comment)
 								build_stanford_happy_buddha_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 40
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 40 (same as scenes 38/39's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 41: {  // Stanford Lucy (see build_stanford_lucy_gpu's comment)
 								build_stanford_lucy_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 41
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 41 (same as scenes 38-40's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
@@ -5879,15 +5790,7 @@ bool build_scene(
 								// (0,3,7) - the dragon's lunging pose is much wider than tall
 								// and cropped at the default framing - matches CPU
 								// CameraConfig row for scene 42.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 12.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 42
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 42 (same as scenes 38-41's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 4.0f, 12.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
@@ -5897,29 +5800,13 @@ bool build_scene(
 								// default (0,3,7) - matches CPU CameraConfig row for scene 43,
 								// see its comment in scene_registry.h for why (the teapot's
 								// spout+handle make it much wider than tall).
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 6.0f, 20.0f);
-								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 43
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 43 (same as scenes 38-42's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 6.0f, 20.0f), make_float3(0.0f, 1.2f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 44: {  // Spot the Cow (see build_spot_cow_gpu's comment)
 								build_spot_cow_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 44
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 44 (same as scenes 38-43's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
@@ -5930,129 +5817,65 @@ bool build_scene(
 								// pulled in to look at roughly eye height instead of the
 								// generic statue eye-level camera - matches CPU CameraConfig
 								// row for scene 45.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.1f, 6.5f);
-								const float3 lookat   = make_float3(0.0f, 1.9f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 45
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 45 (same as scenes 38-44's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 2.1f, 6.5f), make_float3(0.0f, 1.9f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 46: {  // Nefertiti Bust (see build_nefertiti_gpu's comment)
 								build_nefertiti_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 46
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 46 (same as scenes 38-45's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 47: {  // Horse (see build_horse_gpu's comment)
 								build_horse_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 47
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 47 (same as scenes 38-46's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 48: {  // Cheburashka (see build_cheburashka_gpu's comment)
 								build_cheburashka_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 48
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 48 (same as scenes 38-47's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 49: {  // Trophy Room (see build_trophy_room_gpu's comment)
 								build_trophy_room_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.3f, 14.0f);
-								const float3 lookat   = make_float3(0.0f, 0.9f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 34.0f, aspect, 1.0f, camera_params);  // 34: matches CPU CameraConfig row for scene 49
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 49 (same as scenes 38-48's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 2.3f, 14.0f), make_float3(0.0f, 0.9f, 0.0f), 34.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 							case 50: {  // Glass Dragon (see build_glass_dragon_gpu's comment)
 								build_glass_dragon_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 50
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 50 (same as scenes 38-49's).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
 								break;
 							}
 
 
 							case 51: {  // Beast (see build_beast_gpu's comment)
 								build_beast_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
 							case 52: {  // VW Beetle (see build_beetle_gpu's comment)
 								build_beetle_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 16.0f);
-								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 16.0f), make_float3(0.0f, 1.2f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
 							case 54: {  // Bimba (see build_bimba_gpu's comment)
 								build_bimba_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
 							case 55: {  // Cow (see build_cow_gpu's comment)
 								build_cow_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
@@ -6063,22 +5886,14 @@ bool build_scene(
 								// statue framing - matches CPU CameraConfig row for scene 56 -
 								// this mesh's proportions are shallow along the default view
 								// axis and a face-on shot hid the model's sharp creases.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 4.0f, 9.0f, 4.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(4.0f, 9.0f, 4.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
 							case 57: {  // Homer (see build_homer_gpu's comment)
 								build_homer_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
@@ -6088,33 +5903,21 @@ bool build_scene(
 								// Lowered/pulled back from an earlier raised, steeply-down
 								// camera that framed the crown of the skull instead of the
 								// face - matches CPU CameraConfig row for scene 58.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 5.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 5.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
 							case 59: {  // Max Planck (see build_max_planck_gpu's comment)
 								build_max_planck_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, -7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, -7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
 							case 60: {  // Ogre (see build_ogre_gpu's comment)
 								build_ogre_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 3.0f, 7.0f), make_float3(0.0f, 1.5f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
@@ -6124,28 +5927,14 @@ bool build_scene(
 								// Pulled back/up further than originally set - the previous
 								// framing cropped the two boss/lobe cylinders at the top of
 								// the part - matches CPU CameraConfig row for scene 61.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 12.0f);
-								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(0.0f, 4.0f, 12.0f), make_float3(0.0f, 1.2f, 0.0f), 35.0f);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
 							case 62: {  // Crytek Sponza (see build_sponza_gpu's comment)
 								build_sponza_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -800.0f, 300.0f, 0.0f);
-								const float3 lookat   = make_float3(800.0f, 300.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 70.0f, aspect, 1.0f, camera_params);  // 70: matches CPU CameraConfig row for scene 62
-								if (out_camera_extra) {
-									// Matches CPU build_sponza_sky()'s brightened sky_light(1.3,1.56,1.9) -
-									// see that function's comment (the interior corridor is severely
-									// light-starved by geometric occlusion at the original brightness).
-									out_camera_extra->backgroundColor = make_float3(1.3f, 1.56f, 1.9f);
-								}
+								apply_mesh_camera(make_float3(-800.0f, 300.0f, 0.0f), make_float3(800.0f, 300.0f, 0.0f), 70.0f, true, make_float3(1.3f, 1.56f, 1.9f));
 								break;
 							}
 
@@ -6155,69 +5944,31 @@ bool build_scene(
 								// scene 63 - see scene_registry.h's H2 comment): a decorative
 								// streetlamp post sat directly in the foreground as a fully-black
 								// silhouette; the shift turns it into a pleasant framing element.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 1500.0f, 700.0f, 1700.0f);
-								const float3 lookat   = make_float3(4000.0f, 700.0f, 2000.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 60.0f, aspect, 1.0f, camera_params);  // 60: matches CPU CameraConfig row for scene 63
-								if (out_camera_extra) {
-									// Matches CPU build_bistro_exterior_sky()'s solid-color sky_light(0.55,0.72,0.95).
-									out_camera_extra->backgroundColor = make_float3(0.55f, 0.72f, 0.95f);
-								}
+								apply_mesh_camera(make_float3(1500.0f, 700.0f, 1700.0f), make_float3(4000.0f, 700.0f, 2000.0f), 60.0f, true, make_float3(0.55f, 0.72f, 0.95f));
 								break;
 							}
 
 							case 64: {  // Rungholt (see build_rungholt_gpu's comment)
 								build_rungholt_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 400.0f, 300.0f, 400.0f);
-								const float3 lookat   = make_float3(0.0f, 40.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 64
-								if (out_camera_extra) {
-									// Matches CPU build_rungholt_sky()'s solid-color sky_light(0.55,0.72,0.95).
-									out_camera_extra->backgroundColor = make_float3(0.55f, 0.72f, 0.95f);
-								}
+								apply_mesh_camera(make_float3(400.0f, 300.0f, 400.0f), make_float3(0.0f, 40.0f, 0.0f), 45.0f, true, make_float3(0.55f, 0.72f, 0.95f));
 								break;
 							}
 
 							case 73: {  // Fireplace Room (see build_fireplace_room_gpu's comment)
 								build_fireplace_room_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -2.0f, 1.6f, -1.5f);
-								const float3 lookat   = make_float3(0.0f, 1.3f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 55.0f, aspect, 1.0f, camera_params);  // 55: matches CPU CameraConfig row for scene 73
-								if (out_camera_extra) {
-									// Matches CPU build_fireplace_room_sky()'s solid-color sky_light(0.6,0.75,0.95).
-									out_camera_extra->backgroundColor = make_float3(0.6f, 0.75f, 0.95f);
-								}
+								apply_mesh_camera(make_float3(-2.0f, 1.6f, -1.5f), make_float3(0.0f, 1.3f, 0.0f), 55.0f, true, make_float3(0.6f, 0.75f, 0.95f));
 								break;
 							}
 
 							case 74: {  // San Miguel (see build_san_miguel_gpu's comment)
 								build_san_miguel_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 10.0f, 3.0f, 5.0f);
-								const float3 lookat   = make_float3(0.0f, 3.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 74
-								if (out_camera_extra) {
-									// Matches CPU build_san_miguel_sky()'s brightened sky_light(1.4,1.68,2.0) -
-									// see that function's comment (the colonnaded courtyard is light-starved
-									// by geometric occlusion at the original brightness, same issue as Sponza).
-									out_camera_extra->backgroundColor = make_float3(1.4f, 1.68f, 2.0f);
-								}
+								apply_mesh_camera(make_float3(10.0f, 3.0f, 5.0f), make_float3(0.0f, 3.0f, 0.0f), 45.0f, true, make_float3(1.4f, 1.68f, 2.0f));
 								break;
 							}
 
 							case 75: {  // Sibenik Cathedral (see build_sibenik_cathedral_gpu's comment)
 								build_sibenik_cathedral_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -15.0f, 1.7f, 0.0f);
-								const float3 lookat   = make_float3(15.0f, 5.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 60.0f, aspect, 1.0f, camera_params);  // 60: matches CPU CameraConfig row for scene 75
+								apply_mesh_camera(make_float3(-15.0f, 1.7f, 0.0f), make_float3(15.0f, 5.0f, 0.0f), 60.0f);
 								if (out_camera_extra) {
 									// Matches CPU build_sibenik_cathedral_sky()'s heavily brightened
 									// sky_light(4.5,4.8,5.2) - see that function's comment (Sibenik's
@@ -6236,88 +5987,37 @@ bool build_scene(
 
 							case 76: {  // Breakfast Room (see build_breakfast_room_gpu's comment)
 								build_breakfast_room_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -3.0f, 1.5f, 3.0f);
-								const float3 lookat   = make_float3(2.5f, 1.3f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 70.0f, aspect, 1.0f, camera_params);  // 70: matches CPU CameraConfig row for scene 76
-								if (out_camera_extra) {
-									// Matches CPU build_breakfast_room_sky()'s modestly brightened
-									// sky_light(1.1,1.2,1.35) - see that function's comment.
-									out_camera_extra->backgroundColor = make_float3(1.1f, 1.2f, 1.35f);
-								}
+								apply_mesh_camera(make_float3(-3.0f, 1.5f, 3.0f), make_float3(2.5f, 1.3f, 0.0f), 70.0f, true, make_float3(1.1f, 1.2f, 1.35f));
 								break;
 							}
 
 							case 77: {  // Salle de Bain (see build_salle_de_bain_gpu's comment)
 								build_salle_de_bain_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 10.0f, 15.0f, -5.0f);
-								const float3 lookat   = make_float3(-10.0f, 12.0f, 5.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 50.0f, aspect, 1.0f, camera_params);  // 50: matches CPU CameraConfig row for scene 77
-								if (out_camera_extra) {
-									// Salle de Bain is lit by its own real Ke "Light" material (NEE),
-									// not the sky - matches CPU's dim ambient sky_light(0.4,0.45,0.5).
-									out_camera_extra->backgroundColor = make_float3(0.4f, 0.45f, 0.5f);
-								}
+								apply_mesh_camera(make_float3(10.0f, 15.0f, -5.0f), make_float3(-10.0f, 12.0f, 5.0f), 50.0f, true, make_float3(0.4f, 0.45f, 0.5f));
 								break;
 							}
 
 							case 78: {  // Gallery (see build_gallery_gpu's comment)
 								build_gallery_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.2f, -5.0f);
-								const float3 lookat   = make_float3(0.0f, 2.2f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 55.0f, aspect, 1.0f, camera_params);  // 55: matches CPU CameraConfig row for scene 78
-								if (out_camera_extra) {
-									// Matches CPU build_gallery_sky()'s brightened sky_light(3.0,3.2,3.6) -
-									// see that function's comment.
-									out_camera_extra->backgroundColor = make_float3(3.0f, 3.2f, 3.6f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 2.2f, -5.0f), make_float3(0.0f, 2.2f, 0.0f), 55.0f, true, make_float3(3.0f, 3.2f, 3.6f));
 								break;
 							}
 
 							case 79: {  // Lost Empire (see build_lost_empire_gpu's comment)
 								build_lost_empire_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 60.0f, 100.0f);
-								const float3 lookat   = make_float3(0.0f, 10.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 55.0f, aspect, 1.0f, camera_params);  // 55: matches CPU CameraConfig row for scene 79
-								if (out_camera_extra) {
-									// Matches CPU build_lost_empire_sky()'s open sky_light(0.5,0.6,0.8).
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.6f, 0.8f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 60.0f, 100.0f), make_float3(0.0f, 10.0f, 0.0f), 55.0f, true, make_float3(0.5f, 0.6f, 0.8f));
 								break;
 							}
 
 							case 80: {  // Vokselia Spawn (see build_vokselia_spawn_gpu's comment)
 								build_vokselia_spawn_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 4.5f, 0.9f, 4.5f);
-								const float3 lookat   = make_float3(0.0f, 0.25f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 80
-								if (out_camera_extra) {
-									// Matches CPU build_vokselia_spawn_sky()'s open sky_light(0.5,0.6,0.8).
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.6f, 0.8f);
-								}
+								apply_mesh_camera(make_float3(4.5f, 0.9f, 4.5f), make_float3(0.0f, 0.25f, 0.0f), 40.0f, true, make_float3(0.5f, 0.6f, 0.8f));
 								break;
 							}
 
 							case 81: {  // Power Plant (see build_power_plant_gpu's comment)
 								build_power_plant_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 130.0f, 85.0f, 130.0f);
-								const float3 lookat   = make_float3(-55.0f, 40.0f, -35.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 81
-								if (out_camera_extra) {
-									// Matches CPU build_power_plant_sky()'s open sky_light(0.5,0.6,0.8).
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.6f, 0.8f);
-								}
+								apply_mesh_camera(make_float3(130.0f, 85.0f, 130.0f), make_float3(-55.0f, 40.0f, -35.0f), 40.0f, true, make_float3(0.5f, 0.6f, 0.8f));
 								break;
 							}
 
@@ -6331,14 +6031,7 @@ bool build_scene(
 								build_hdri_sky_world_gpu(scene);
 								// Identical camera setup to case 24 (C1) - same CameraConfig row,
 								// reused verbatim rather than re-derived.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.3f, 15.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 42.0f, aspect, 1.0f, camera_params);
-								if (out_camera_extra) {
-									out_camera_extra->backgroundColor = make_float3(0.4f, 0.5f, 0.53f);
-								}
+								apply_mesh_camera(make_float3(0.0f, 2.3f, 15.0f), make_float3(0.0f, 1.0f, 0.0f), 42.0f, true, make_float3(0.4f, 0.5f, 0.53f));
 								break;
 							}
 
@@ -6415,31 +6108,19 @@ bool build_scene(
 
 							case 139: {  // I5: SPPM: Rough Glass Caustic (same world as B3 Cornell Rough Glass - see that entry's own comment) - GPU default path tracer only here; --sppm --gpu goes through its own dedicated pipeline (gpu/optix/optix_interface.cpp), not this switch.
 								build_cornell_rough_glass(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
-								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(278.0f, 278.0f, -800.0f), make_float3(278.0f, 278.0f, 278.0f), 40.0f);
 								break;
 							}
 
 							case 140: {  // I6: BDPT / MLT: Bidirectional Light Transport (same world as A1 Cornell Box - see that entry's own comment) - GPU default path tracer only; BDPT/MLT themselves have no GPU implementation at all.
 								build_cornell_box(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
-								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(278.0f, 278.0f, -800.0f), make_float3(278.0f, 278.0f, 278.0f), 40.0f);
 								break;
 							}
 
 							case 158: {  // I10: Firefly Suppression: Regularize / Clamp (same world as B3 Cornell Rough Glass - see that entry's own comment and I5/case 139's identical reuse)
 								build_cornell_rough_glass(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
-								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								apply_mesh_camera(make_float3(278.0f, 278.0f, -800.0f), make_float3(278.0f, 278.0f, 278.0f), 40.0f);
 								break;
 							}
 
