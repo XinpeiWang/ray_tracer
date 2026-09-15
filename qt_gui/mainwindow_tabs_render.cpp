@@ -57,7 +57,7 @@
 void MainWindow::populateComboEntries(QComboBox *combo, std::initializer_list<ComboEntry> entries) {
 	for (const ComboEntry &entry : entries) {
 		icon_tint::addItem(combo, ":/icons/info.svg", entry.label, entry.value, m_activeTheme.textBody);
-		combo->setItemData(combo->count() - 1, wrapTooltipHtml(entry.tooltip), Qt::ToolTipRole);
+		setRichItemTooltip(combo, combo->count() - 1, entry.tooltip);
 	}
 }
 
@@ -138,8 +138,8 @@ void MainWindow::createRenderOptionsTab() {
 		for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
 			icon_tint::addItem(m_integratorCombo, ":/icons/info.svg", labels[i],
 				static_cast<int>(modes[i]), m_activeTheme.textBody);
-			m_integratorCombo->setItemData(m_integratorCombo->count() - 1,
-				wrapTooltipHtml(integratorDescription(modes[i])), Qt::ToolTipRole);
+			setRichItemTooltip(m_integratorCombo, m_integratorCombo->count() - 1,
+				integratorDescription(modes[i]));
 		}
 	}
 	styleComboBox(m_integratorCombo);

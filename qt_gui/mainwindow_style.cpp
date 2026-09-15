@@ -1090,10 +1090,34 @@ void MainWindow::setRichTooltip(QWidget *widget, const QString &plainText) {
 	widget->setToolTip(wrapTooltipHtml(plainText));
 }
 
+void MainWindow::setRichItemTooltip(QComboBox *combo, int index, const QString &plainText) {
+	combo->setItemData(index, plainText, kRichTooltipPlainTextRole);
+	combo->setItemData(index, wrapTooltipHtml(plainText), Qt::ToolTipRole);
+}
+
+void MainWindow::setRichItemTooltip(QListWidgetItem *item, const QString &plainText) {
+	item->setData(kRichTooltipPlainTextRole, plainText);
+	item->setToolTip(wrapTooltipHtml(plainText));
+}
+
 void MainWindow::refreshRichTooltips() {
 	for (QWidget *widget : findChildren<QWidget *>()) {
 		const QVariant plainText = widget->property("richTooltipPlainText");
 		if (plainText.isValid()) widget->setToolTip(wrapTooltipHtml(plainText.toString()));
+	}
+	for (QComboBox *combo : findChildren<QComboBox *>()) {
+		for (int i = 0; i < combo->count(); ++i) {
+			const QVariant plainText = combo->itemData(i, kRichTooltipPlainTextRole);
+			if (plainText.isValid())
+				combo->setItemData(i, wrapTooltipHtml(plainText.toString()), Qt::ToolTipRole);
+		}
+	}
+	for (QListWidget *list : findChildren<QListWidget *>()) {
+		for (int i = 0; i < list->count(); ++i) {
+			QListWidgetItem *item = list->item(i);
+			const QVariant plainText = item->data(kRichTooltipPlainTextRole);
+			if (plainText.isValid()) item->setToolTip(wrapTooltipHtml(plainText.toString()));
+		}
 	}
 }
 
@@ -1162,15 +1186,11 @@ QString MainWindow::sceneTooltipPlainText(const QString &sceneId, bool includeHe
 	return QString("[%1] %2\n\n%3").arg(sceneId, SceneMetadataClient::sceneName(sceneId), note);
 }
 
-QString MainWindow::sceneTooltipHtml(const QString &sceneId, bool includeHeading) {
-	return wrapTooltipHtml(sceneTooltipPlainText(sceneId, includeHeading));
-}
-
 // Rewrites m_sceneTechInfoIcon's tooltip for the given scene - the one
 // standalone info icon in this app whose content changes after construction
 // instead of being fixed for its whole lifetime (see scene_technique_notes.h
 // for the per-scene text; the scene combo/grid in mainwindow_tabs.cpp show
-// the same text per-row instead, via sceneTooltipHtml() above). Routed
+// the same text per-row instead, via sceneTooltipPlainText() above). Routed
 // through here rather than called directly from refreshSceneInfoLabel()
 // (mainwindow_slots.cpp) so the "which widget does this icon belong to"
 // knowledge stays in one place.

@@ -670,29 +670,36 @@ private:
 	// whatever font was active when it was last (re)computed even after the
 	// user picks a different Font menu choice.
 	void setRichTooltip(QWidget *widget, const QString &plainText);
+	// Same idea as setRichTooltip() above, but for one row of a QComboBox's
+	// popup list or a QListWidget item - neither is a QObject, so there's no
+	// dynamic property to stash the plain text on; a parallel item-data role
+	// stands in for it instead. Every wrapTooltipHtml()-backed
+	// setItemData(..., Qt::ToolTipRole)/QListWidgetItem::setToolTip() call
+	// (populateSceneCombo()/populateSceneGrid(), populateComboEntries(), and
+	// every hand-rolled combo-row tooltip in mainwindow_tabs.cpp/
+	// mainwindow_tabs_render.cpp) should go through one of these two
+	// overloads instead, for the same reason setRichTooltip() itself exists.
+	static constexpr int kRichTooltipPlainTextRole = Qt::UserRole + 900;
+	void setRichItemTooltip(QComboBox *combo, int index, const QString &plainText);
+	void setRichItemTooltip(QListWidgetItem *item, const QString &plainText);
 	// Rebuilds every setRichTooltip()-set tooltip still attached to a live
 	// child widget, using the CURRENT qApp->font() - called from
 	// font_switch.cpp's applyFont() so switching fonts at runtime doesn't
 	// leave already-built tooltips on the font that was active when they
 	// were first shown.
 	void refreshRichTooltips();
-	// Builds the wrapTooltipHtml()-formatted technique-note tooltip for
-	// `sceneId` - the one place that decides how to combine an id/name
-	// heading with scene_technique_notes::forScene()'s text, shared by the
-	// 3 call sites that used to each assemble this independently
+	// Builds the technique-note tooltip text for `sceneId` - the one place
+	// that decides how to combine an id/name heading with
+	// scene_technique_notes::forScene()'s text, shared by the 3 call sites
+	// that used to each assemble this independently
 	// (mainwindow_tabs.cpp's populateSceneCombo()/populateSceneGrid(), and
 	// updateSceneTechInfoIcon() below). includeHeading=false when the id/name
 	// is already visible right next to the tooltip's own widget (the combo
 	// row's own text, the standalone info icon's neighboring scene picker);
 	// true when it isn't (the grid's tiles only show the scene's name, not
-	// its id, as their own label).
-	QString sceneTooltipHtml(const QString &sceneId, bool includeHeading);
-	// The plain-text body sceneTooltipHtml() above wraps - factored out so
-	// updateSceneTechInfoIcon() can hand the same text to setRichTooltip()
-	// instead of the pre-wrapped HTML sceneTooltipHtml() returns (the info
-	// icon's tooltip needs the plain text to survive a later font change;
-	// the combo/grid call sites, which never get refreshed after their
-	// initial setItemData(), still go through sceneTooltipHtml() directly).
+	// its id, as their own label). Plain text, not pre-wrapped HTML - every
+	// call site now goes through setRichTooltip()/setRichItemTooltip() so
+	// the wrapping (and the font baked into it) can be rebuilt later.
 	QString sceneTooltipPlainText(const QString &sceneId, bool includeHeading);
 	// Rewrites m_sceneTechInfoIcon's tooltip for `sceneId` (see
 	// scene_technique_notes.h) - called from refreshSceneInfoLabel().

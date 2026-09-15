@@ -127,8 +127,8 @@ void MainWindow::populateSceneCombo(const QString &category) {
 		// switch's restyleThemedWidgets() -> retintItems() sweep recolours
 		// these the same way every other combo's icons already do.
 		icon_tint::addItem(m_sceneCombo, ":/icons/info.svg", text, id, m_activeTheme.textBody);
-		m_sceneCombo->setItemData(m_sceneCombo->count() - 1,
-			sceneTooltipHtml(id, /*includeHeading=*/false), Qt::ToolTipRole);
+		setRichItemTooltip(m_sceneCombo, m_sceneCombo->count() - 1,
+			sceneTooltipPlainText(id, /*includeHeading=*/false));
 	}
 }
 
@@ -151,9 +151,9 @@ void MainWindow::populateSceneGrid(const QString &category) {
 		// no note to show, so its tooltip stays the plain id/name heading
 		// instead of promising one that can only ever fall back to
 		// "not written yet".
-		item->setToolTip(SceneMetadataClient::sceneRequiresFiles(id)
-			? wrapTooltipHtml(QString("[%1] %2").arg(id, SceneMetadataClient::sceneName(id)))
-			: sceneTooltipHtml(id, /*includeHeading=*/true));
+		setRichItemTooltip(item, SceneMetadataClient::sceneRequiresFiles(id)
+			? QString("[%1] %2").arg(id, SceneMetadataClient::sceneName(id))
+			: sceneTooltipPlainText(id, /*includeHeading=*/true));
 		m_sceneGrid->addItem(item);
 	}
 }
@@ -654,20 +654,18 @@ void MainWindow::createSettingsTab() {
 	m_renderModeCombo = new QComboBox(basicTab);
 #ifdef RT_GUI_HAVE_GPU
 	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (CUDA) - Fast"), true, m_activeTheme.textBody);
-	m_renderModeCombo->setItemData(m_renderModeCombo->count() - 1, wrapTooltipHtml(
+	setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
 		tr("Uses your NVIDIA graphics card's dedicated ray-tracing hardware "
 		"to render. Usually dramatically faster than using the CPU, but "
 		"requires a compatible NVIDIA graphics card, and can't yet handle "
-		"every type of material the CPU option supports.")),
-		Qt::ToolTipRole);
+		"every type of material the CPU option supports."));
 #endif
 	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", tr("CPU - High Quality"), false, m_activeTheme.textBody);
-	m_renderModeCombo->setItemData(m_renderModeCombo->count() - 1, wrapTooltipHtml(
+	setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
 		tr("The renderer's complete, most capable rendering method. Runs on "
 		"any machine and supports every scene and material this app "
 		"implements, including the handful the GPU option can't handle "
-		"yet - at the cost of being much slower.")),
-		Qt::ToolTipRole);
+		"yet - at the cost of being much slower."));
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
@@ -699,21 +697,19 @@ void MainWindow::createSettingsTab() {
 #ifdef RT_GUI_HAVE_GPU
 	m_gpuBackendCombo = new QComboBox(basicTab);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Recursive (Default)"), false, m_activeTheme.textBody);
-	m_gpuBackendCombo->setItemData(m_gpuBackendCombo->count() - 1, wrapTooltipHtml(
+	setRichItemTooltip(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1,
 		tr("Processes each pixel on its own, following a light ray through "
 		"all of its bounces before moving to the next pixel. The default "
 		"GPU rendering method - broadly tested and works with the widest "
-		"range of scenes and materials.")),
-		Qt::ToolTipRole);
+		"range of scenes and materials."));
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Wavefront (Experimental)"), true, m_activeTheme.textBody);
-	m_gpuBackendCombo->setItemData(m_gpuBackendCombo->count() - 1, wrapTooltipHtml(
+	setRichItemTooltip(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1,
 		tr("Groups light rays that are currently doing the same kind of "
 		"work together and processes each bounce for the whole group at "
 		"once, instead of pixel by pixel. This can make better use of the "
 		"graphics card on complex scenes with lots of different materials "
 		"- but it's a newer option that's been tested less than "
-		"Recursive.")),
-		Qt::ToolTipRole);
+		"Recursive."));
 	m_gpuBackendCombo->setCurrentIndex(0);
 	styleComboBox(m_gpuBackendCombo);
 	m_gpuBackendCombo->setToolTip(
