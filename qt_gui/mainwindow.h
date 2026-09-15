@@ -1352,15 +1352,29 @@ private:
 	// no duplicated filter logic.
 	QStringList filteredSceneIds(const QString &category) const;
 
-	// The curated, self-contained, fast-rendering categories "Generate
-	// Thumbnails" (onGenerateThumbnailsClicked()) covers - see that slot's
-	// own comment for why the rest of the ~154-scene registry (e.g. "Models",
-	// which can hold large external-geometry scenes like the pbrt-v4
-	// "Killeroo" one) isn't included yet. Shared by
-	// updateGenerateThumbnailsButtonState() too, so the button's
-	// enabled/tooltip state can never drift out of sync with what a click
-	// actually does.
-	static const QStringList &thumbnailCategories();
+	// True for a scene "Generate Thumbnails" (onGenerateThumbnailsClicked())
+	// will actually consider: self-contained (no missing external assets -
+	// the DLL can't render what it can't load) and not "Very Slow" (skips
+	// individual scenes an automatic background batch shouldn't silently
+	// spend minutes on, without needing to pre-vet or hand-maintain a list
+	// of which whole CATEGORIES are "safe"). The one predicate both
+	// onGenerateThumbnailsClicked() and thumbnailCategories() below apply,
+	// so a category's derived eligibility can never drift out of sync with
+	// what a click on it actually does.
+	static bool isThumbnailEligible(const QString &sceneId);
+	// Every category holding at least one isThumbnailEligible() scene,
+	// computed fresh from the current registry rather than a hand-maintained
+	// list - the previous hardcoded version quietly missed "Models" (it
+	// has exactly one eligible scene, "Killeroo") until a user noticed the
+	// button did nothing there, and would keep missing whatever's added
+	// next. Naturally excludes LargeScene (every entry requires the
+	// separate pbrt-v4-scenes asset bundle) and CustomScenes on a fresh
+	// checkout (nothing dropped into the scenes folder yet), while still
+	// picking up a self-contained custom scene the moment one exists - no
+	// extra code needed either way. Shared with
+	// updateGenerateThumbnailsButtonState() so the button's enabled/tooltip
+	// state matches what a click actually does.
+	static QStringList thumbnailCategories();
 
 	// Refills m_sceneCombo with just the scenes in `category` that also match
 	// m_sceneAvailabilityTabs' current selection. Does NOT emit

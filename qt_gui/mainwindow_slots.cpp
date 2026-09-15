@@ -579,31 +579,34 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 	if (m_diagTextEdit) m_diagTextEdit->setPlainText(tr("Diagnostics failed:\n\n%1").arg(message));
 }
 
-const QStringList &MainWindow::thumbnailCategories() {
-	// Every compiled-in category that actually has at least one
-	// self-contained (requires_files==false) scene, confirmed by surveying
-	// scene_registry_data.h - none of those scenes carry a "Very Slow"
-	// performance rating, so a low-res/low-spp thumbnail batch is a
-	// reasonable cost for all of them, not just the original 4. Left out:
-	// LargeScene (every entry uses build_curated_external_pbrt_scene_descriptor(),
-	// which hardcodes requires_files=true - zero eligible scenes) and
-	// CustomScenes (populated at runtime from whatever the user drops into
-	// the scenes folder - no compiled-in entries to vet, so no basis for
-	// assuming a quick low-spp render is safe for an arbitrary one).
-	static const QStringList categories = {
-		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Textures,
-		SceneCategories::Cameras, SceneCategories::Lights, SceneCategories::Volumes,
-		SceneCategories::Geometry, SceneCategories::Models, SceneCategories::Education
-	};
+bool MainWindow::isThumbnailEligible(const QString &sceneId) {
+	if (SceneMetadataClient::sceneRequiresFiles(sceneId)) return false;
+	SceneMetadataClient::SceneMetadata meta;
+	// Same "can't query -> don't include" caution as every other
+	// SceneMetadataClient call site in this file: a scene this couldn't even
+	// fetch metadata for is not one to blindly hand to a CPU render.
+	if (!SceneMetadataClient::sceneMetadata(sceneId, meta)) return false;
+	return meta.performance != QLatin1String("Very Slow");
+}
+
+QStringList MainWindow::thumbnailCategories() {
+	QStringList categories;
+	const int count = SceneMetadataClient::sceneCount();
+	for (int i = 0; i < count; ++i) {
+		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
+		if (!isThumbnailEligible(id)) continue;
+		const QString category = SceneMetadataClient::sceneCategory(id);
+		if (!categories.contains(category)) categories << category;
+	}
 	return categories;
 }
 
 // Fills in m_sceneGrid's preview tiles for whichever category tab is
-// CURRENTLY showing, within thumbnailCategories()'s curated set - see that
-// function's own comment for which categories qualify (every one with at
-// least one self-contained scene) and why CustomScenes/LargeScene don't.
-// Scoped to one category per click (not every curated category at once,
-// which an earlier version of this did) because the
+// CURRENTLY showing, within thumbnailCategories()'s eligible set - see
+// isThumbnailEligible()/thumbnailCategories()'s own comments for exactly
+// what qualifies and why. Scoped to one category per click (not every
+// eligible category at once, which an earlier version of this did) because
+// the button sits directly under that one category's grid - generating
 // thumbnails for scenes the user isn't even looking at, while the ones
 // actually on screen stay placeholders, was the surprising part. Disabled
 // (see createSettingsTab()'s button tooltip) while a real render is in
@@ -645,7 +648,7 @@ void MainWindow::onGenerateThumbnailsClicked() {
 	const int count = SceneMetadataClient::sceneCount();
 	for (int i = 0; i < count; ++i) {
 		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
-		if (SceneMetadataClient::sceneRequiresFiles(id)) continue;
+		if (!isThumbnailEligible(id)) continue;
 		if (SceneMetadataClient::sceneCategory(id) != currentCategory) continue;
 		ids << id;
 	}
@@ -732,9 +735,9 @@ void MainWindow::updateGenerateThumbnailsButtonState() {
 	const bool supported = !requiresFiles && thumbnailCategories().contains(currentCategory);
 	m_generateThumbnailsButton->setEnabled(supported);
 	m_generateThumbnailsButton->setToolTip(supported
-		? tr("Creates a small preview image for each ready-to-render scene in the CURRENT category tab\n"
-		"that doesn't already have one saved. Not available for every category (e.g. Custom Scenes).\n"
-		"Runs on the CPU only, at low resolution - it can take a while the first time you do this for a category.")
+		? tr("Creates a small preview image for each ready-to-render, not-too-slow scene in the CURRENT\n"
+		"category tab that doesn't already have one saved. Runs on the CPU only, at low resolution - it\n"
+		"can take a while the first time you do this for a category.")
 		: requiresFiles
 			? tr("Thumbnails are only available for Self-Contained scenes.")
 			: tr("Thumbnails aren't available for the \"%1\" category yet.").arg(currentCategory));
