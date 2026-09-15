@@ -370,7 +370,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			   here is pixels sooner the whole strip gives up stretching (see
 			   ExpandingTabBar, mainwindow.h) and switches to scroll arrows as
 			   the window narrows. */
-			padding: 8px 12px;
+			padding: %TAB_PAD_V%px 12px;
 			color: %TEXT_MUTED%;
 			font-size: %FS_P1%;
 			/* No minimum width: ExpandingTabBar (mainwindow.h) already grows
@@ -404,7 +404,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		   1px underline rather than 2px. Same accent, less weight - it should
 		   read as subordinate to the tabs it sits under. */
 		QTabBar#sceneCategoryTabs::tab {
-			padding: 5px 12px;
+			padding: %SCENE_TAB_PAD_V%px 12px;
 			font-size: %FS_M1%;
 			min-width: 0px;
 			margin-right: 1px;
@@ -424,7 +424,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border-right: 1px solid %BORDER%;
 			border-top-left-radius: %RADIUS%;
 			border-bottom-left-radius: %RADIUS%;
-			padding: 10px 14px;
+			padding: %PREVIEW_TAB_PAD_V%px 14px;
 			color: %TEXT_MUTED%;
 			font-size: %FS_M1%;
 			min-width: 0px;
@@ -819,7 +819,21 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		.replace("%FS_M1%", QStringLiteral("%1pt").arg(basePt - 1))
 		.replace("%FS_0%",  QStringLiteral("%1pt").arg(basePt))
 		.replace("%FS_P1%", QStringLiteral("%1pt").arg(basePt + 1))
-		.replace("%FS_P2%", QStringLiteral("%1pt").arg(basePt + 2));
+		.replace("%FS_P2%", QStringLiteral("%1pt").arg(basePt + 2))
+		// The three tab bars' own vertical padding, same basePt-relative
+		// scaling idea as %FS_*% above but for padding instead of font-size:
+		// each was authored (8px/5px/10px) against basePt==11 (Cyberpunk),
+		// and stayed a fixed pixel count while %FS_*%'s point size grew with
+		// a later font choice - fine up to 11pt, but "Large Print" (13pt)
+		// or a large custom size (font_switch.cpp's QFontDialog choice has
+		// no upper bound) grows a tab's text tall enough that a descender
+		// (the "g" in "Settings") gets clipped by the tab's own unpolished
+		// height. Never shrinks below each tab's original padding - basePt
+		// down at "Compact" (9pt) never clipped, so there's nothing to fix
+		// on that side, only growth above the 11pt baseline this was tuned for.
+		.replace("%TAB_PAD_V%", QString::number(8 + qMax(0, basePt - 11) * 2))
+		.replace("%SCENE_TAB_PAD_V%", QString::number(5 + qMax(0, basePt - 11) * 2))
+		.replace("%PREVIEW_TAB_PAD_V%", QString::number(10 + qMax(0, basePt - 11) * 2));
 
 	qApp->setStyleSheet(stylesheet);
 }
