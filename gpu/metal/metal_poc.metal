@@ -41,15 +41,84 @@ struct Uniforms {
     uint frameSeed;
 };
 
-// materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular).
-// Real materials would carry a full BxDF id + parameters (IOR, roughness,
-// ...); this POC only needs enough to prove the shader can branch on
-// per-primitive material data at all, the same reason step 1's per-
-// primitive colour existed.
+// materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular),
+// 2 = dielectric (glass). `ior` is only meaningful for materialType == 2 -
+// carried on every material anyway (rather than a separate per-type
+// struct) since this POC values "one flat array, index by primitive_id"
+// simplicity over saving 4 bytes on non-dielectric entries.
 struct TriangleMaterial {
     packed_float3 color;
     uint materialType;
+    float ior;
 };
+
+// A sphere is a custom (non-triangle) primitive - Metal has no built-in
+// sphere intersection the way it does for triangles, so this needs an
+// explicit bounding-box geometry + an intersection function (below) to
+// tell the intersector how to test a ray against one. center/radius is
+// the whole shape; material lives in a separate 1:1-indexed array (own
+// buffer, not embedded here) purely so sphereIntersectionFunction - which
+// only needs geometry, never material - doesn't have to carry material
+// data through the intersection-function boundary at all.
+struct SphereData {
+    packed_float3 center;
+    float radius;
+};
+
+// Bounding-box intersection functions report their result through
+// attribute-tagged fields exactly like this, not a plain return value -
+// [[accept_intersection]] tells the intersector whether to keep searching
+// past this candidate, [[distance]] is what intersection_result::distance
+// reads back on the calling side if accepted.
+struct SphereIntersectionResult {
+    bool accept [[accept_intersection]];
+    float distance [[distance]];
+};
+
+// The tag list here (triangle_data, instancing) has to match the calling
+// intersector<instancing, triangle_data>/intersection_function_table<...>'s
+// own tags exactly, not just declare bounding_box - a mismatched tag set
+// compiles fine but the function silently never gets dispatched at trace
+// time (found by bisection: an unconditional-accept version of this
+// function still produced zero sphere hits until the tags matched).
+// Otherwise: this is callable FROM an intersector, not a kernel entry
+// point itself, so no [[buffer(N)]] index collision with primaryRayKernel's
+// own bindings to worry about - intersection functions have their own
+// independent argument table, bound via MTLIntersectionFunctionTable on
+// the host side, not shared with the calling kernel's buffer(0..N)
+// bindings at all.
+[[intersection(bounding_box, triangle_data, instancing)]]
+SphereIntersectionResult sphereIntersectionFunction(
+    float3 origin [[origin]],
+    float3 direction [[direction]],
+    float minDistance [[min_distance]],
+    float maxDistance [[max_distance]],
+    uint primitiveIndex [[primitive_id]],
+    device const SphereData* spheres [[buffer(0)]])
+{
+    SphereIntersectionResult result;
+    result.accept = false;
+
+    SphereData sphere = spheres[primitiveIndex];
+    float3 center = float3(sphere.center);
+    float3 oc = origin - center;
+    float a = dot(direction, direction);
+    float bHalf = dot(oc, direction);
+    float c = dot(oc, oc) - sphere.radius * sphere.radius;
+    float discriminant = bHalf * bHalf - a * c;
+    if (discriminant < 0.0) return result;
+
+    float sqrtDisc = sqrt(discriminant);
+    float t = (-bHalf - sqrtDisc) / a;
+    if (t < minDistance || t > maxDistance) {
+        t = (-bHalf + sqrtDisc) / a;
+        if (t < minDistance || t > maxDistance) return result;
+    }
+
+    result.accept = true;
+    result.distance = t;
+    return result;
+}
 
 // ---------------------------------------------------------------------------
 // PCG32-ish hash-based PRNG, stateless per call (no persistent generator
@@ -100,12 +169,25 @@ inline float3 faceNormalFor(uint primId, device const packed_float3* vertices) {
     return normalize(cross(v1 - v0, v2 - v0));
 }
 
+// Schlick's approximation - the standard cheap stand-in for the full
+// Fresnel dielectric reflectance formula, same one pbrt-v4 and this
+// project's own CPU dielectric material use for the reflect-vs-refract
+// decision.
+inline float schlickReflectance(float cosine, float refractionRatio) {
+    float r0 = (1.0 - refractionRatio) / (1.0 + refractionRatio);
+    r0 = r0 * r0;
+    return r0 + (1.0 - r0) * pow(1.0 - cosine, 5.0);
+}
+
 kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
     device const packed_float3* vertices [[buffer(3)]],
+    device const TriangleMaterial* sphereMaterials [[buffer(4)]],
+    device const SphereData* spheres [[buffer(5)]],
+    intersection_function_table<instancing, triangle_data> functionTable [[buffer(6)]],
     uint2 tid [[thread_position_in_grid]])
 {
     if (tid.x >= uniforms.width || tid.y >= uniforms.height) return;
@@ -115,8 +197,12 @@ kernel void primaryRayKernel(
     const float3 skyTop = float3(0.9, 0.95, 1.0);
     const float3 skyBottom = float3(0.3, 0.5, 0.9);
 
+    // No assume_geometry_type() hint here (step 1/2 had one, for
+    // triangle-only) - the scene now mixes triangle geometry (the room)
+    // with bounding-box/custom geometry (the sphere) across two
+    // instances in the same instance_acceleration_structure, so the
+    // intersector genuinely needs to handle both.
     intersector<instancing, triangle_data> isect;
-    isect.assume_geometry_type(geometry_type::triangle);
 
     uint rngState = tid.x * 9781u + tid.y * 6271u + uniforms.frameSeed * 26699u + 1u;
 
@@ -148,7 +234,8 @@ kernel void primaryRayKernel(
             r.min_distance = 0.001f;
             r.max_distance = 1e6f;
 
-            intersection_result<instancing, triangle_data> result = isect.intersect(r, accelStructure);
+            intersection_result<instancing, triangle_data> result =
+                isect.intersect(r, accelStructure, functionTable);
 
             if (result.type == intersection_type::none) {
                 float skyT = 0.5 * (rayDir.y + 1.0);
@@ -158,20 +245,75 @@ kernel void primaryRayKernel(
 
             uint primId = result.primitive_id;
             float3 hitPoint = rayOrigin + rayDir * result.distance;
-            float3 normal = faceNormalFor(primId, vertices);
-            if (dot(normal, rayDir) > 0.0) normal = -normal;
 
-            TriangleMaterial mat = triMaterials[primId];
+            // Geometric normal: derived from the triangle's own vertices
+            // for a triangle hit (as before), or from the sphere's centre
+            // for a bounding-box hit - a sphere has no "vertices" to pull
+            // a face normal from, but (hitPoint - centre) is exact for a
+            // perfect sphere, no approximation.
+            bool isSphere = (result.type == intersection_type::bounding_box);
+            float3 normal;
+            TriangleMaterial mat;
+            if (isSphere) {
+                SphereData sphere = spheres[primId];
+                normal = normalize(hitPoint - float3(sphere.center));
+                mat = sphereMaterials[primId];
+            } else {
+                normal = faceNormalFor(primId, vertices);
+                mat = triMaterials[primId];
+            }
+            // Raw (outward, unflipped) normal kept separately from here -
+            // dielectric handling below needs to know which side of the
+            // surface the ray is entering from (front vs back face) to
+            // pick the right eta ratio, information the flipped-to-face-
+            // the-ray version used by every other material below discards.
+            bool frontFace = dot(normal, rayDir) < 0.0;
+            float3 facingNormal = frontFace ? normal : -normal;
+
             float3 albedo = float3(mat.color);
 
-            if (mat.materialType == 1u) {
+            if (mat.materialType == 2u) {
+                // Dielectric (glass): Schlick-approximated Fresnel decides
+                // reflect vs refract stochastically each bounce - same
+                // "one importance-sampled choice per hit, unbiased in
+                // expectation" approach pbrt-v4 and this project's own CPU
+                // dielectric material use, not a 50/50 split of energy.
+                float refractionRatio = frontFace ? (1.0 / mat.ior) : mat.ior;
+                float3 unitDir = normalize(rayDir);
+                float cosTheta = min(dot(-unitDir, facingNormal), 1.0);
+                float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+                bool cannotRefract = refractionRatio * sinTheta > 1.0;
+
+                float3 newDir;
+                if (cannotRefract || schlickReflectance(cosTheta, refractionRatio) > randFloat(rngState)) {
+                    newDir = reflect(unitDir, facingNormal);
+                } else {
+                    newDir = refract(unitDir, facingNormal, refractionRatio);
+                }
+                rayDir = newDir;
+                // Offset along the GEOMETRIC (unflipped-for-facing) normal
+                // signed toward the new ray direction, not always
+                // `facingNormal` - reflect() and refract() can each send
+                // the continuation ray to either side of the surface here
+                // (reflect always exits the front face refract() entered
+                // from; total internal reflection inside the sphere does
+                // not), and offsetting on the wrong side re-intersects the
+                // same surface immediately (self-shadowing acne).
+                rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
+                // Glass is delta-transmissive/reflective, same "no NEE, a
+                // shadow ray toward a point light has zero probability of
+                // landing exactly on the one direction that mattered" logic
+                // as the mirror branch below - throughput stays at the
+                // glass's own tint (near-1.0/clear for realistic glass).
+                throughput *= albedo;
+            } else if (mat.materialType == 1u) {
                 // Mirror: deterministic reflection, no light sampling (a
                 // specular surface has zero probability of the shadow ray
                 // toward a delta light landing exactly on the reflection
                 // vector - NEE simply doesn't apply here, same reason the
                 // CPU renderer's own BSDFs skip NEE for specular lobes).
-                rayDir = reflect(rayDir, normal);
-                rayOrigin = hitPoint + normal * 0.001f;
+                rayDir = reflect(rayDir, facingNormal);
+                rayOrigin = hitPoint + facingNormal * 0.001f;
                 throughput *= albedo;
             } else {
                 // Lambertian: next-event estimation against the one
@@ -180,22 +322,22 @@ kernel void primaryRayKernel(
                 // light. Two separate rays per bounce - direct (shadow)
                 // and the continuation - is the standard NEE split this
                 // project's own CPU path_integrator.h also uses.
-                float ndotl = max(dot(normal, lightDir), 0.0);
+                float ndotl = max(dot(facingNormal, lightDir), 0.0);
                 if (ndotl > 0.0) {
                     ray shadowRay;
-                    shadowRay.origin = hitPoint + normal * 0.001f;
+                    shadowRay.origin = hitPoint + facingNormal * 0.001f;
                     shadowRay.direction = lightDir;
                     shadowRay.min_distance = 0.001f;
                     shadowRay.max_distance = 1e6f;
                     intersection_result<instancing, triangle_data> shadowResult =
-                        isect.intersect(shadowRay, accelStructure);
+                        isect.intersect(shadowRay, accelStructure, functionTable);
                     if (shadowResult.type == intersection_type::none) {
                         radiance += throughput * albedo * lightColor * ndotl * (1.0 / M_PI_F);
                     }
                 }
 
-                rayDir = cosineSampleHemisphere(normal, rngState);
-                rayOrigin = hitPoint + normal * 0.001f;
+                rayDir = cosineSampleHemisphere(facingNormal, rngState);
+                rayOrigin = hitPoint + facingNormal * 0.001f;
                 // Cosine-weighted sampling's pdf (cos(theta)/pi) cancels
                 // the BSDF's own cos(theta)/pi exactly, leaving the flat
                 // albedo below - textbook importance-sampled Lambertian,
