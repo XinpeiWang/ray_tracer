@@ -60,6 +60,17 @@ struct Uniforms {
     // exact same origin regardless of its sampled time, i.e. the original
     // static camera exactly - purely additive, like lensRadius == 0 above.
     packed_float3 cameraVelocity;
+    // Homogeneous participating medium (fog) filling the WHOLE scene
+    // volume - not attached to any one object's geometry, the simplest
+    // possible "is this ray inside the medium" answer (always yes,
+    // camera to first surface hit), avoiding needing boundary tracking
+    // (entering/exiting a fog volume's own geometry) this POC doesn't
+    // have any other reason to build yet. fogSigmaT == 0 (every earlier
+    // PR's own scenes) skips the medium-interaction branch entirely -
+    // purely additive, same pattern as lensRadius/cameraVelocity above.
+    float fogSigmaT; // extinction coefficient (scalar - shared across
+                      // RGB channels for distance sampling, not spectral)
+    packed_float3 fogAlbedo; // single-scattering albedo (sigma_s/sigma_t), per channel
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -331,6 +342,23 @@ inline float2 sampleUnitDisk(thread uint& rngState) {
     float r = sqrt(u1);
     float theta = 2.0 * M_PI_F * u2;
     return float2(r * cos(theta), r * sin(theta));
+}
+
+// Uniform sample over the FULL sphere (4*pi steradians, pdf = 1/(4*pi)
+// everywhere) - an isotropic phase function's own scattering
+// distribution, used only by the fog/participating-medium code below.
+// Every other direction sampler in this POC (cosineSampleHemisphere,
+// sampleGGXVNDF) is a HEMISPHERE sampler oriented around a surface
+// normal; a volume scattering event has no surface/normal to orient
+// around at all, so this is a genuinely different sampling domain, not
+// a variant of an existing one.
+inline float3 sampleUniformSphere(thread uint& rngState) {
+    float u1 = randFloat(rngState);
+    float u2 = randFloat(rngState);
+    float z = 1.0 - 2.0 * u1;
+    float r = sqrt(max(0.0, 1.0 - z * z));
+    float phi = 2.0 * M_PI_F * u2;
+    return float3(r * cos(phi), r * sin(phi), z);
 }
 
 inline float3 cosineSampleHemisphere(float3 normal, thread uint& rngState) {
@@ -641,6 +669,83 @@ kernel void primaryRayKernel(
             intersection_result<instancing, triangle_data> result =
                 isect.intersect(r, accelStructure, functionTable);
 
+            // Homogeneous-medium free-flight distance sampling: draws a
+            // random scattering distance from the medium's own
+            // transmittance distribution (t = -ln(1-u)/sigmaT) and
+            // compares it against the surface hit's own distance (or
+            // FLT_MAX on a miss, so a scattering event can still occur
+            // even on a ray that would otherwise have escaped to the
+            // sky). This ONE stochastic comparison is what makes BOTH
+            // "reached the surface without scattering" and "scattered
+            // partway there" come out unbiased with NO extra
+            // transmittance/pdf-ratio multiplier needed in either case -
+            // a well-known result (the pdf of sampling t this way, p(t) =
+            // sigmaT*exp(-sigmaT*t), exactly cancels the extinction
+            // term(s) either way):
+            //   scatter event (t < surfaceDist): weight = sigmaS*T(t)/p(t)
+            //     = sigmaS/sigmaT (the albedo below, nothing else)
+            //   reached surface (t >= surfaceDist): weight =
+            //     T(surfaceDist)/P(t>=surfaceDist) = 1 exactly (survival
+            //     probability under an exponential distribution IS the
+            //     transmittance) - so the existing surface-shading code
+            //     below needs NO changes at all for this case.
+            bool scatteredInMedium = false;
+            if (uniforms.fogSigmaT > 0.0) {
+                float surfaceDist = (result.type == intersection_type::none) ? FLT_MAX : result.distance;
+                float u = randFloat(rngState);
+                float t = -log(max(1.0 - u, 1e-6)) / uniforms.fogSigmaT;
+                if (t < surfaceDist) {
+                    scatteredInMedium = true;
+                    float3 scatterPoint = rayOrigin + rayDir * t;
+
+                    // NEE from the scatter point - same sampleAreaLight()/
+                    // area-to-solid-angle/MIS machinery every surface
+                    // material's own NEE branch already uses, with an
+                    // ISOTROPIC phase function (constant 1/(4*pi), no
+                    // cosine term - a volume scattering event has no
+                    // surface to cosine-weight against, unlike a BRDF)
+                    // standing in for the BSDF value. `exp(-sigmaT*dist)`
+                    // attenuates this shadow ray's own contribution by the
+                    // medium's transmittance along ITS length too - the
+                    // free-flight sampling above only accounts for the
+                    // PRIMARY ray's path, a shadow ray is a separate,
+                    // deterministic occlusion test that needs this factor
+                    // applied explicitly or it would silently ignore the
+                    // fog lying between the scatter point and the light.
+                    const float isotropicPhase = 1.0 / (4.0 * M_PI_F);
+                    LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+                    float3 toLight = ls.point - scatterPoint;
+                    float distSq = dot(toLight, toLight);
+                    float dist = sqrt(distSq);
+                    float3 wi = toLight / dist;
+                    float cosLight = dot(ls.normal, -wi);
+                    if (cosLight > 0.0) {
+                        ray shadowRay;
+                        shadowRay.origin = scatterPoint;
+                        shadowRay.direction = wi;
+                        shadowRay.min_distance = 0.001f;
+                        shadowRay.max_distance = dist - 0.002f;
+                        intersection_result<instancing, triangle_data> shadowResult =
+                            isect.intersect(shadowRay, accelStructure, functionTable);
+                        if (shadowResult.type == intersection_type::none) {
+                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
+                            float weight = (pdfSolidAngle * pdfSolidAngle)
+                                / (pdfSolidAngle * pdfSolidAngle + isotropicPhase * isotropicPhase);
+                            float transmittance = exp(-uniforms.fogSigmaT * dist);
+                            radiance += throughput * isotropicPhase * ls.emission * transmittance
+                                        / pdfSolidAngle * weight;
+                        }
+                    }
+
+                    rayDir = sampleUniformSphere(rngState);
+                    rayOrigin = scatterPoint;
+                    throughput *= float3(uniforms.fogAlbedo);
+                    bsdfPdf = isotropicPhase;
+                    specularBounce = false;
+                }
+            }
+
+            if (!scatteredInMedium) {
             if (result.type == intersection_type::none) {
                 float skyT = 0.5 * (rayDir.y + 1.0);
                 radiance += throughput * mix(skyBottom, skyTop, skyT);
@@ -917,7 +1022,12 @@ kernel void primaryRayKernel(
                             float pdfBsdf = (Dh * ggxG1(NdotO, alpha)) / max(4.0 * NdotO, 1e-6);
                             float weight = (pdfSolidAngle * pdfSolidAngle)
                                 / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
-                            radiance += throughput * brdf * ls.emission * cosSurface / pdfSolidAngle * weight;
+                            // exp(-sigmaT*dist): the fog's own attenuation
+                            // along THIS shadow ray - a no-op (1.0) when
+                            // fogSigmaT == 0, same purely-additive pattern
+                            // as every other fog-related change here.
+                            float transmittance = exp(-uniforms.fogSigmaT * dist);
+                            radiance += throughput * brdf * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
                         }
                     }
                 }
@@ -1019,8 +1129,12 @@ kernel void primaryRayKernel(
                             float pdfBsdfForThisDir = cosSurface / M_PI_F;
                             float weight = (pdfSolidAngle * pdfSolidAngle)
                                 / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
+                            // exp(-sigmaT*dist): the fog's own attenuation
+                            // along THIS shadow ray - a no-op (1.0) when
+                            // fogSigmaT == 0.
+                            float transmittance = exp(-uniforms.fogSigmaT * dist);
                             radiance += throughput * albedo * (1.0 / M_PI_F)
-                                        * ls.emission * cosSurface / pdfSolidAngle * weight;
+                                        * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
                         }
                     }
                 }
@@ -1040,6 +1154,7 @@ kernel void primaryRayKernel(
                 bsdfPdf = max(dot(facingNormal, rayDir), 0.0001) / M_PI_F;
                 specularBounce = false;
             }
+            } // !scatteredInMedium
 
             // Russian roulette after a few bounces, same "let cheap paths
             // terminate early, keep expensive ones unbiased" shape as

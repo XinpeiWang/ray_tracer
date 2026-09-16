@@ -1152,3 +1152,70 @@ not a meaningful cost addition).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 26. Proof-of-concept, step 17: a homogeneous participating medium (fog) (done)
+
+Section 23's own "what this explicitly is NOT" list named volumetric
+media as one of the pieces missing from this POC's material/light/shape
+coverage. This adds the simplest real version of it: a single, uniform
+fog filling the ENTIRE scene volume (not attached to any one object's
+geometry), avoiding the boundary-tracking problem (detecting when a ray
+enters/exits a fog volume's own bounds) a more general per-object medium
+would need and this POC has no other reason to build yet.
+
+The technique is textbook free-flight distance sampling: each bounce
+draws a random scattering distance `t = -ln(1-u)/sigmaT` from the
+medium's own exponential transmittance distribution and compares it to
+the surface hit's own distance. This single stochastic comparison is
+what makes BOTH outcomes come out unbiased with NO extra transmittance
+multiplier needed in either branch - a well-known result worth stating
+precisely since it's easy to get backwards: reaching the surface without
+scattering needs weight 1 exactly (the survival probability under an
+exponential distribution IS the transmittance, so they cancel), and a
+scattering event needs weight `sigmaS/sigmaT` exactly (the scattering
+coefficient over the SAME pdf that generated `t`, with the transmittance
+terms cancelling the same way). Neither of those derivations was taken on
+faith - both were worked through algebraically before being committed to
+code, the same "don't ship unverified math" discipline step 13's own
+rough-dielectric writeup argued for (and, unlike that step, this one
+didn't need to fall back to a documented simplification - isotropic
+scattering has no analogous non-conservative shortcut to worry about).
+
+A scattering event spawns a continuation ray via `sampleUniformSphere()`
+(a new, genuinely different sampling domain from every existing
+BSDF/phase function in this POC - every other direction sampler is a
+HEMISPHERE sampler oriented around a surface normal; a volume scattering
+point has no surface/normal to orient around at all) with an isotropic
+phase function (constant `1/(4*pi)`, no cosine term), and does its own
+NEE against the light list using the same `sampleAreaLight()`/MIS
+machinery every surface material's NEE branch already shares. Getting
+this consistent needed one more fix: shadow rays are a separate,
+deterministic occlusion test, not routed through the same free-flight
+sampling as the primary ray, so they don't automatically account for the
+medium's own attenuation along their length - an explicit
+`exp(-sigmaT*shadowDist)` transmittance factor was added to EVERY NEE
+contribution in the shader (the new volume one, and both existing
+surface ones - Lambertian/textured and the GGX conductor), or a foggy
+scene would have looked inconsistent: correctly hazy in-scattering, but
+surfaces lit as if the fog wasn't there at all.
+
+**Result, verified three ways**: an A/B render with `fogSigmaT = 0`
+reproduces step 16's own committed render pixel-plausibly identically,
+confirming the medium code path is a true no-op when disabled. The
+committed scene (`sigmaT = 0.05`, a faint cool-tinted albedo) shows a
+subtle, physically-plausible atmospheric haze - soft depth-based
+darkening, most visible in the room's far corners and in the mirror
+disk's own reflection, without fighting every other material's own
+visibility. A third render at `sigmaT = 0.25` (five times stronger, for
+verification only, not committed) shows a dramatically thicker,
+unmistakable haze with much steeper depth falloff - confirming the
+effect's STRENGTH scales with the physical parameter the way it should,
+not just "some haze appears at some arbitrary fixed strength." 700×700 @
+384spp @ depth 10 renders in ~46 seconds on an M2, up from step 16's
+~20s at 256spp - a real, expected cost increase (an extra shadow ray and
+branch on every bounce, on top of the higher sample count used here to
+keep the medium's own extra stochastic variance clean), not a regression
+in any existing material's own cost.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

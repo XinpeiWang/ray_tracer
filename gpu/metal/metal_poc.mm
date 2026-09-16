@@ -80,6 +80,8 @@ struct Uniforms {
     float lensRadius;
     float focusDistance;
     PackedFloat3 cameraVelocity;
+    float fogSigmaT;
+    PackedFloat3 fogAlbedo;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -1049,6 +1051,13 @@ int main(int argc, const char** argv) {
         // additional Metal API surface this increment intentionally
         // doesn't take on).
         uniforms.cameraVelocity = PackedFloat3{0.015f, 0.0f, 0.0f};
+        // Homogeneous fog filling the whole room - subtle (transmittance
+        // ~0.7 over the ~4-unit camera-to-back-wall sightline: exp(-0.08*4)
+        // ~ 0.73), meant to read as a light atmospheric haze visible in
+        // the light shafts/depth falloff, not an opaque room-filling mist
+        // that would fight every other material's own visibility.
+        uniforms.fogSigmaT = 0.05f;
+        uniforms.fogAlbedo = PackedFloat3{0.85f, 0.88f, 0.95f}; // mostly-scattering, faint cool tint
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
