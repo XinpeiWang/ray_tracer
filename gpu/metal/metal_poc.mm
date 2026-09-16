@@ -79,6 +79,7 @@ struct Uniforms {
     uint32_t lightCount;
     float lensRadius;
     float focusDistance;
+    PackedFloat3 cameraVelocity;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -854,6 +855,16 @@ int main(int argc, const char** argv) {
         // model, not just a uniform blur filter over the whole frame.
         uniforms.lensRadius = 0.05f;
         uniforms.focusDistance = uniforms.cameraPos.z - spheres[1].center.z; // gold sphere's own z
+        // Shutter motion blur: a small horizontal dolly over the frame's
+        // simulated exposure - chosen (over, say, an object moving) since
+        // it needs no acceleration-structure/intersection-function
+        // changes at all, purely a primary-ray-generation addition (see
+        // metal_poc.metal's own comment on why: a moving CUSTOM primitive
+        // would need per-sample time threaded into
+        // sphereIntersectionFunction's own, separate argument table, real
+        // additional Metal API surface this increment intentionally
+        // doesn't take on).
+        uniforms.cameraVelocity = PackedFloat3{0.015f, 0.0f, 0.0f};
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------

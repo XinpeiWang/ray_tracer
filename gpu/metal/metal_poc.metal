@@ -47,6 +47,19 @@ struct Uniforms {
     // not a replacement for the pinhole path.
     float lensRadius;
     float focusDistance;
+    // Camera (shutter) motion blur: the camera translates by
+    // `cameraVelocity` (world-space, full displacement) over the frame's
+    // simulated [0,1] shutter interval - each primary-ray SAMPLE draws
+    // its own uniform-random shutter time and offsets the camera origin
+    // by that fraction of the velocity before casting, so different
+    // samples for the same pixel see the camera at different points along
+    // its path, and averaging them (the same multi-sample loop every
+    // other feature in this POC already reuses) is what produces the
+    // blur - no separate accumulation pass needed. `cameraVelocity ==
+    // (0,0,0)` (every earlier PR's own scenes) makes every sample use the
+    // exact same origin regardless of its sampled time, i.e. the original
+    // static camera exactly - purely additive, like lensRadius == 0 above.
+    packed_float3 cameraVelocity;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -458,7 +471,14 @@ kernel void primaryRayKernel(
         screen.x *= uniforms.aspect;
         screen *= uniforms.tanHalfFov;
 
-        float3 rayOrigin = float3(uniforms.cameraPos);
+        // Shutter motion blur: this sample's own random point in time
+        // over [0,1] decides how far along `cameraVelocity` the camera
+        // has moved for THIS ray - drawn once per sample (not once per
+        // pixel), same as the pixel jitter above, so different samples
+        // genuinely see a moving camera rather than one shared static
+        // offset re-jittered.
+        float shutterT = randFloat(rngState);
+        float3 rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
         float3 rayDir = normalize(float3(uniforms.cameraForward)
                                    + screen.x * float3(uniforms.cameraRight)
                                    + screen.y * float3(uniforms.cameraUp));
