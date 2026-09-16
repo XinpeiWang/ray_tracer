@@ -44,17 +44,23 @@ struct Uniforms {
 // materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular),
 // 2 = dielectric (glass), 3 = textured Lambertian (same BSDF/NEE code path
 // as 0, just samples `earthTexture` at the hit's interpolated UV for
-// albedo instead of reading `color` - see the shading loop below).
-// `ior` is only meaningful for materialType == 2 - carried on every
-// material anyway (rather than a separate per-type struct) since this
-// POC values "one flat array, index by primitive_id" simplicity over
-// saving a few bytes on entries that don't use every field. `emission` is
-// nonzero only for the one light quad's two triangles (see kLight* below) -
-// same "just carry it, don't special-case a rare field" reasoning as ior.
-// Checking it unconditionally on every hit (regardless of material type)
-// is what makes a light source visible at all when a camera/GI ray lands
-// on it directly, on top of the light-SAMPLING code below which handles
-// every other surface's direct illumination FROM it.
+// albedo instead of reading `color` - see the shading loop below), 4 =
+// rough conductor (GGX microfacet metal - `color` is the conductor's
+// normal-incidence reflectance F0, not a diffuse albedo).
+// `ior` is meaningful for materialType == 2 (refraction index) and
+// reused, differently, for materialType == 4 (perceptual roughness in
+// [0,1], squared into the GGX alpha parameter below) - the two never
+// coexist on one primitive, so sharing the slot avoids a second
+// otherwise-almost-always-zero field. Carried on every material anyway
+// (rather than a separate per-type struct) since this POC values "one
+// flat array, index by primitive_id" simplicity over saving a few bytes
+// on entries that don't use every field. `emission` is nonzero only for
+// the one light quad's two triangles (see kLight* below) - same "just
+// carry it, don't special-case a rare field" reasoning. Checking it
+// unconditionally on every hit (regardless of material type) is what
+// makes a light source visible at all when a camera/GI ray lands on it
+// directly, on top of the light-SAMPLING code below which handles every
+// other surface's direct illumination FROM it.
 struct TriangleMaterial {
     packed_float3 color;
     uint materialType;
@@ -214,6 +220,98 @@ inline float schlickReflectance(float cosine, float refractionRatio) {
     float r0 = (1.0 - refractionRatio) / (1.0 + refractionRatio);
     r0 = r0 * r0;
     return r0 + (1.0 - r0) * pow(1.0 - cosine, 5.0);
+}
+
+// ---------------------------------------------------------------------------
+// GGX / Trowbridge-Reitz microfacet distribution + height-correlated Smith
+// masking-shadowing - the standard model materialType == 4 (rough
+// conductor) uses below, same formulation pbrt-v4's own
+// TrowbridgeReitzDistribution implements (isotropic case: alpha_x ==
+// alpha_y). All three take `NdotX`/`alpha` already-computed rather than
+// raw vectors, since every call site here already has the dot product on
+// hand from building its own local shading frame - keeps these as pure,
+// reusable scalar functions.
+// ---------------------------------------------------------------------------
+inline float ggxD(float NdotH, float alpha) {
+    float a2 = alpha * alpha;
+    float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    return a2 / max(M_PI_F * d * d, 1e-9);
+}
+
+// Smith's Lambda function (isotropic GGX closed form) - how much of a
+// microfacet's neighbourhood is masked/shadowed as seen from direction
+// `w`, folded into G1/G below rather than used standalone.
+inline float ggxLambda(float NdotW, float alpha) {
+    float NdotW2 = max(NdotW * NdotW, 1e-6);
+    float tan2Theta = max(0.0, 1.0 - NdotW2) / NdotW2;
+    return 0.5 * (sqrt(1.0 + alpha * alpha * tan2Theta) - 1.0);
+}
+
+inline float ggxG1(float NdotW, float alpha) {
+    return 1.0 / (1.0 + ggxLambda(NdotW, alpha));
+}
+
+// Height-correlated Smith masking-shadowing for a full reflection lobe
+// (both the view and light direction masked/shadowed jointly, not treated
+// as independent) - the same correlated form pbrt-v4 uses, less energy
+// loss at grazing angles than a naive G1(wo)*G1(wi) product.
+inline float ggxG(float NdotO, float NdotI, float alpha) {
+    return 1.0 / (1.0 + ggxLambda(NdotO, alpha) + ggxLambda(NdotI, alpha));
+}
+
+// Schlick's Fresnel approximation for a CONDUCTOR: F0 (reflectance at
+// normal incidence) is itself an RGB colour here, not derived from a
+// scalar IOR the way schlickReflectance()'s dielectric version is - a
+// metal's complex refractive index (real eta + imaginary k, wavelength-
+// dependent) is what actually produces that colour, and approximating the
+// whole curve from its F0 value is the same "Schlick, not the full
+// Fresnel equations" trade this POC's dielectric material already makes.
+inline float3 fresnelSchlickConductor(float cosTheta, float3 F0) {
+    float t = pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+    return F0 + (float3(1.0) - F0) * t;
+}
+
+// Builds an orthonormal (tangent, bitangent) frame around `n` - same Duff
+// et al. construction cosineSampleHemisphere uses inline, factored out
+// here since GGX sampling needs to move both the outgoing direction and
+// the sampled half-vector between world space and this local frame
+// explicitly (unlike cosineSampleHemisphere, which only ever produces a
+// world-space result and never needs the frame itself back).
+inline void buildOnb(float3 n, thread float3& tangent, thread float3& bitangent) {
+    float sign = n.z >= 0.0 ? 1.0 : -1.0;
+    float a = -1.0 / (sign + n.z);
+    float b = n.x * n.y * a;
+    tangent = float3(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x);
+    bitangent = float3(b, sign + n.y * n.y * a, -n.y);
+}
+
+// Samples a half-vector from the GGX distribution of VISIBLE normals
+// (Heitz 2018, "Sampling the GGX Distribution of Visible Normals"), given
+// the outgoing direction `woLocal` already in the local (Z-up == shading
+// normal) frame. Dramatically lower variance than importance-sampling
+// D(h) directly, especially near grazing angles - the same algorithm
+// pbrt-v4's TrowbridgeReitzDistribution::Sample_wm implements, chosen
+// here for the same reason: it's what makes a rough-conductor path
+// tracer converge in a reasonable sample count instead of needing far
+// more samples to beat down grazing-angle noise.
+inline float3 sampleGGXVNDF(float3 woLocal, float alpha, thread uint& rngState) {
+    float3 Vh = normalize(float3(alpha * woLocal.x, alpha * woLocal.y, woLocal.z));
+    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+    float3 T1 = lensq > 0.0 ? float3(-Vh.y, Vh.x, 0.0) / sqrt(lensq) : float3(1.0, 0.0, 0.0);
+    float3 T2 = cross(Vh, T1);
+
+    float u1 = randFloat(rngState);
+    float u2 = randFloat(rngState);
+    float r = sqrt(u1);
+    float phi = 2.0 * M_PI_F * u2;
+    float t1 = r * cos(phi);
+    float t2 = r * sin(phi);
+    float s = 0.5 * (1.0 + Vh.z);
+    t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+
+    float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+    float3 Ne = float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z));
+    return normalize(Ne);
 }
 
 kernel void primaryRayKernel(
@@ -420,6 +518,99 @@ kernel void primaryRayKernel(
                 // glass's own tint (near-1.0/clear for realistic glass).
                 throughput *= albedo;
                 specularBounce = true;
+            } else if (mat.materialType == 4u) {
+                // Rough conductor (GGX metal): structurally the same NEE +
+                // BSDF-sampled-continuation + MIS shape as the Lambertian
+                // branch below - only the BRDF/sampling math changes, from
+                // a cosine-weighted diffuse lobe to an importance-sampled
+                // microfacet one. `albedo` here is F0 (per-primitive
+                // reflectance colour), not a diffuse albedo - see
+                // TriangleMaterial's own comment.
+                float roughness = mat.ior;
+                float alpha = max(roughness * roughness, 0.0009);
+                float3 tangent, bitangent;
+                buildOnb(facingNormal, tangent, bitangent);
+                float3 woWorld = -rayDir;
+                float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
+                woLocal.z = max(woLocal.z, 0.0001);
+
+                if (all(mat.emission == float3(0.0))) {
+                    float2 u = float2(randFloat(rngState), randFloat(rngState));
+                    float3 lightPoint = kLightCenter + float3(
+                        (u.x * 2.0 - 1.0) * kLightHalfExtents.x, 0.0, (u.y * 2.0 - 1.0) * kLightHalfExtents.y);
+                    float3 toLight = lightPoint - hitPoint;
+                    float distSq = dot(toLight, toLight);
+                    float dist = sqrt(distSq);
+                    float3 wi = toLight / dist;
+                    float cosSurface = dot(facingNormal, wi);
+                    float cosLight = dot(kLightNormal, -wi);
+                    if (cosSurface > 0.0 && cosLight > 0.0) {
+                        float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
+                        float3 h = normalize(woLocal + wiLocal);
+                        float NdotH = max(h.z, 0.0001);
+                        float NdotO = woLocal.z;
+                        float NdotI = max(wiLocal.z, 0.0001);
+                        float Dh = ggxD(NdotH, alpha);
+                        float G = ggxG(NdotO, NdotI, alpha);
+                        float3 F = fresnelSchlickConductor(max(dot(woLocal, h), 0.0), albedo);
+                        float3 brdf = Dh * G * F / max(4.0 * NdotO * NdotI, 1e-6);
+
+                        ray shadowRay;
+                        shadowRay.origin = hitPoint + facingNormal * 0.001f;
+                        shadowRay.direction = wi;
+                        shadowRay.min_distance = 0.001f;
+                        shadowRay.max_distance = dist - 0.002f;
+                        intersection_result<instancing, triangle_data> shadowResult =
+                            isect.intersect(shadowRay, accelStructure, functionTable);
+                        if (shadowResult.type == intersection_type::none) {
+                            float pdfSolidAngle = distSq / (kLightArea * cosLight);
+                            // VNDF sampling's own pdf(wi) for this same
+                            // direction - pdf(h) = D(h)*G1(wo)*max(0,dot
+                            // (wo,h))/NdotO, converted to a solid-angle-of-
+                            // wi pdf via the standard reflection Jacobian
+                            // 1/(4*dot(wo,h)) - the counterpart the
+                            // continuation-ray branch below computes for
+                            // its OWN sampled direction.
+                            float pdfBsdf = (Dh * ggxG1(NdotO, alpha)) / max(4.0 * NdotO, 1e-6);
+                            float weight = (pdfSolidAngle * pdfSolidAngle)
+                                / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
+                            radiance += throughput * brdf * kLightEmission * cosSurface / pdfSolidAngle * weight;
+                        }
+                    }
+                }
+
+                float3 hLocal = sampleGGXVNDF(woLocal, alpha, rngState);
+                float3 wiLocal = reflect(-woLocal, hLocal);
+                if (wiLocal.z <= 0.0) {
+                    // Sampled a half-vector whose reflection lands below
+                    // the hemisphere (possible at grazing angles/high
+                    // roughness) - a real BRDF value of zero, not a bug;
+                    // terminate this path rather than continue with an
+                    // invalid direction.
+                    break;
+                }
+                float3 wiWorld = normalize(wiLocal.x * tangent + wiLocal.y * bitangent + wiLocal.z * facingNormal);
+
+                float NdotO = woLocal.z;
+                float NdotI = max(wiLocal.z, 0.0001);
+                float NdotH = max(hLocal.z, 0.0001);
+                float G = ggxG(NdotO, NdotI, alpha);
+                float G1 = ggxG1(NdotO, alpha);
+                float3 F = fresnelSchlickConductor(max(dot(woLocal, hLocal), 0.0), albedo);
+                // f(wo,wi)*cosI/pdf(wi) collapses to F*G/G1(wo) for a
+                // VNDF-sampled direction - the D and 4*NdotO*NdotI terms
+                // in the BRDF exactly cancel the same terms in pdf(wi)'s
+                // own Jacobian-converted form, leaving only the Fresnel
+                // term and the ratio of the full (both-directions) to
+                // single-direction (view-only) Smith masking-shadowing
+                // term. Same simplification pbrt-v4's own conductor
+                // Sample_f relies on for VNDF-sampled reflection.
+                throughput *= F * (G / max(G1, 1e-6));
+
+                rayDir = wiWorld;
+                rayOrigin = hitPoint + facingNormal * 0.001f;
+                bsdfPdf = (ggxD(NdotH, alpha) * G1) / max(4.0 * NdotO, 1e-6);
+                specularBounce = false;
             } else if (mat.materialType == 1u) {
                 // Mirror: deterministic reflection, no light sampling (a
                 // specular surface has zero probability of the shadow ray
