@@ -1020,3 +1020,75 @@ estimates for what's still ahead: the wavefront restructuring, scene-
 builder integration, and remaining feature-parity work are each
 independently a multi-week-to-months undertaking, not a continuation of
 this same PR-sized incremental pattern.
+
+## 24. Proof-of-concept, step 15: non-identity instance transforms (done)
+
+Every instance in every earlier step used the identity transform -
+`instanceDescs[i].transformationMatrix` was always the same hardcoded
+identity matrix, for both the room+mesh geometry and the sphere
+primitives. A real port would place many object instances with real
+per-instance transforms (pbrt's own `ObjectInstance` is exactly this),
+and this POC had never actually exercised that: every "different
+position" in every earlier scene was really a different WORLD-SPACE
+vertex position baked in at load time, not an instance transform doing
+real work.
+
+Suzanne now gets her own, separate primitive acceleration structure
+(previously her geometry was merged into the same buffer/AS as the room
+quads and Spot) loaded once in OBJECT space (centred at the origin), then
+referenced by **two** instance descriptors with **different** transforms:
+instance A is a plain translation back to her original world position (a
+direct continuation of every earlier screenshot's own placement, an
+identity-rotation sanity check by construction); instance B is rotated 45
+degrees about Y, uniformly scaled down, and translated to a new floating
+position near the ceiling. One GPU-resident BVH, reused from two
+different world-space placements - the actual point of instancing, not
+demonstrated by anything in this POC before now.
+
+**The real new piece, and the one Metal doesn't hand you for free**:
+`intersection_result<instancing, triangle_data>` does NOT expose the
+hit instance's own object-to-world transform as a queryable field -
+confirmed by directly probing the compiler (`object_to_world_transform`,
+`world_to_object_transform`, and several other plausible names all fail
+with "no member named..."), unlike OptiX's own
+`optixGetWorldToObjectTransformMatrix()`. Object-space per-vertex normals
+still need transforming into world space for correct shading on a
+rotated instance, so this POC built its own side-channel: an
+`InstanceTransform` buffer (one entry per `instanceDescs[]` slot,
+mirroring `MTLPackedFloat4x3`'s own 4-packed-column layout byte-for-
+byte), indexed in the shader by `intersection_result::instance_id`
+(which IS exposed) and populated host-side from the exact same
+column/translation values used to build each instance descriptor's own
+`transformationMatrix` - by construction, via one shared `addInstance()`
+helper, so the two copies of the same transform can't drift apart. Only
+the 3x3 linear part is applied to a normal (translation is meaningless
+for a direction); this assumes a RIGID transform (rotation + uniform
+scale, no shear/non-uniform scale) rather than implementing the general
+inverse-transpose case - a real one would need that, but every transform
+this POC's own scene ever constructs is rigid, and that's documented
+rather than silently assumed away.
+
+Placing the rotated instance needed two attempts, the same lesson
+sections 20/21 already ran into: the first position (back-left corner,
+floor level) sat almost exactly along the camera-to-gold-sphere sightline
+and was nearly invisible - a 3D-non-overlap check doesn't catch 2D
+screen-space occlusion from one particular camera angle. Moved to a
+floating position near the ceiling instead.
+
+**Result, verified two ways**: visually, the floating instance reads as
+a clearly separate, smaller, rotated duplicate of the same face/mascot
+shape sitting below it - unmistakably the same mesh, unmistakably a
+different placement, with no obviously-wrong (inverted/flipped) shading
+that a normal-transform bug would produce. An A/B render with the
+rotation angle set to 0 (translation + scale only) shows the floating
+instance snap back to the SAME front-facing orientation as the ground
+instance - confirming the rotation matrix construction is actually doing
+what it claims, not just producing a plausible-looking blob. 700×700 @
+256spp @ depth 10 renders in ~20 seconds on an M2, up from step 14's
+~16s - a real cost increase this time, not noise: a second triangle
+acceleration structure plus a second traversed instance adds genuine
+BVH-traversal overhead, unlike several earlier steps whose "new" work
+was pure shading-side math with no extra scene complexity.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

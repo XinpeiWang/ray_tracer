@@ -118,6 +118,16 @@ struct SphereData {
     float radius;
 };
 
+// Mirrors metal_poc.metal's InstanceTransform byte-for-byte (4 packed
+// columns, same layout MTLPackedFloat4x3 itself uses - see that file's
+// own comment on why this side-channel buffer exists at all).
+struct InstanceTransform {
+    PackedFloat3 col0;
+    PackedFloat3 col1;
+    PackedFloat3 col2;
+    PackedFloat3 col3;
+};
+
 // A quad (4 verts, wound as 2 triangles) sharing one flat colour and
 // material type - the smallest scene-authoring shape that can build a
 // real Cornell box without hand-listing 30 individual vertices. `normals`
@@ -435,6 +445,17 @@ int main(int argc, const char** argv) {
         // axis-aligned quad. Lambertian so its form reads clearly via
         // shading rather than showing room reflections. RT_MODELS_DIR
         // mirrors RT_METAL_SHADER_DIR's own fallback shape below.
+        //
+        // Loaded into ITS OWN vertex/normal/uv/material vectors (not the
+        // shared `verts`/`normals`/`uvs`/`materials` the room quads and
+        // Spot still use) - Suzanne gets her own acceleration structure
+        // below, instanced twice with two DIFFERENT transforms, the one
+        // piece of this scene that actually exercises a non-identity
+        // instance transform. A shared-buffer object can only ever have
+        // ONE position (it's baked directly into world-space vertex
+        // positions at load time); testing instancing needs the SAME
+        // object-space geometry referenced from more than one instance
+        // descriptor, which needs its own acceleration structure.
 #ifdef RT_MODELS_DIR
         NSString* modelsDir = @(RT_MODELS_DIR);
 #else
@@ -443,8 +464,12 @@ int main(int argc, const char** argv) {
 #endif
         NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
         const float3 bronze{0.55f, 0.35f, 0.15f};
-        if (!loadObjMesh(suzannePath.UTF8String, verts, normals, uvs, materials, bronze,
-                          /*center=*/float3{-0.05f, -0.55f, -0.3f}, /*targetSize=*/0.75f)) {
+        std::vector<PackedFloat3> suzanneVerts;
+        std::vector<PackedFloat3> suzanneNormals;
+        std::vector<PackedFloat2> suzanneUVs;
+        std::vector<TriangleMaterial> suzanneMaterials;
+        if (!loadObjMesh(suzannePath.UTF8String, suzanneVerts, suzanneNormals, suzanneUVs, suzanneMaterials, bronze,
+                          /*center=*/float3{0.0f, 0.0f, 0.0f}, /*targetSize=*/0.75f)) {
             fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
         }
 
@@ -571,6 +596,14 @@ int main(int argc, const char** argv) {
         id<MTLBuffer> sphereMaterialBuffer = [device newBufferWithBytes:sphereMaterials.data()
             length:sphereMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
 
+        const uint32_t suzanneTriangleCount = (uint32_t)suzanneMaterials.size();
+        id<MTLBuffer> suzanneVertexBuffer = [device newBufferWithBytes:suzanneVerts.data()
+            length:suzanneVerts.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> suzanneNormalBuffer = [device newBufferWithBytes:suzanneNormals.data()
+            length:suzanneNormals.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> suzanneMaterialBuffer = [device newBufferWithBytes:suzanneMaterials.data()
+            length:suzanneMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+
         // --- Primitive acceleration structure (the mesh's own BVH) ------
         MTLAccelerationStructureTriangleGeometryDescriptor* geomDesc =
             [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
@@ -662,38 +695,113 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
-        // --- Instance acceleration structure: two instances, one per ---
-        // primitive AS above (identity transform on both - a real
-        // renderer would have one instance per pbrt Shape/ObjectInstance,
-        // scaled/positioned by its own transform; this POC's two shapes
-        // are both already authored in world space directly).
-        MTLAccelerationStructureInstanceDescriptor instanceDescs[2] = {};
-        MTLPackedFloat4x3 identity;
-        identity.columns[0] = MTLPackedFloat3Make(1, 0, 0);
-        identity.columns[1] = MTLPackedFloat3Make(0, 1, 0);
-        identity.columns[2] = MTLPackedFloat3Make(0, 0, 1);
-        identity.columns[3] = MTLPackedFloat3Make(0, 0, 0);
+        // --- Third primitive acceleration structure: Suzanne's own ------
+        // geometry, built once, referenced by TWO different instances
+        // below with two different transforms - unlike primAS/sphereAS
+        // (each instanced exactly once, at identity), this is what
+        // actually exercises instancing's whole point: reusing one GPU-
+        // resident BVH from more than one world-space placement, rather
+        // than building/storing the geometry twice.
+        MTLAccelerationStructureTriangleGeometryDescriptor* suzanneGeomDesc =
+            [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
+        suzanneGeomDesc.vertexBuffer = suzanneVertexBuffer;
+        suzanneGeomDesc.vertexStride = sizeof(PackedFloat3);
+        suzanneGeomDesc.triangleCount = suzanneTriangleCount;
+        suzanneGeomDesc.opaque = YES;
 
-        instanceDescs[0].accelerationStructureIndex = 0; // primAS (triangles)
-        instanceDescs[0].options = MTLAccelerationStructureInstanceOptionNone;
-        instanceDescs[0].mask = 0xFF;
-        instanceDescs[0].intersectionFunctionTableOffset = 0;
-        instanceDescs[0].transformationMatrix = identity;
+        MTLPrimitiveAccelerationStructureDescriptor* suzanneAccelDesc =
+            [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+        suzanneAccelDesc.geometryDescriptors = @[suzanneGeomDesc];
 
-        instanceDescs[1].accelerationStructureIndex = 1; // sphereAS (bounding box)
-        instanceDescs[1].options = MTLAccelerationStructureInstanceOptionNone;
-        instanceDescs[1].mask = 0xFF;
-        instanceDescs[1].intersectionFunctionTableOffset = 0;
-        instanceDescs[1].transformationMatrix = identity;
+        MTLAccelerationStructureSizes suzanneSizes = [device accelerationStructureSizesWithDescriptor:suzanneAccelDesc];
+        id<MTLAccelerationStructure> suzanneAS = [device newAccelerationStructureWithSize:suzanneSizes.accelerationStructureSize];
+        id<MTLBuffer> suzanneScratch = [device newBufferWithLength:suzanneSizes.buildScratchBufferSize
+            options:MTLResourceStorageModePrivate];
 
-        id<MTLBuffer> instanceBuffer = [device newBufferWithBytes:instanceDescs
-            length:sizeof(instanceDescs)
+        id<MTLCommandBuffer> suzanneBuildCmd = [queue commandBuffer];
+        id<MTLAccelerationStructureCommandEncoder> suzanneBuildEnc = [suzanneBuildCmd accelerationStructureCommandEncoder];
+        [suzanneBuildEnc buildAccelerationStructure:suzanneAS descriptor:suzanneAccelDesc scratchBuffer:suzanneScratch scratchBufferOffset:0];
+        [suzanneBuildEnc endEncoding];
+        [suzanneBuildCmd commit];
+        [suzanneBuildCmd waitUntilCompleted];
+        if (suzanneBuildCmd.status == MTLCommandBufferStatusError) {
+            fprintf(stderr, "Suzanne AS build failed: %s\n", suzanneBuildCmd.error.localizedDescription.UTF8String);
+            return 1;
+        }
+
+        // --- Instance acceleration structure: four instances over three -
+        // primitive ASes (primAS/sphereAS each instanced once at
+        // identity, suzanneAS instanced TWICE with different transforms -
+        // see that AS's own comment). `addInstance()` builds one
+        // MTLAccelerationStructureInstanceDescriptor AND its matching
+        // InstanceTransform side-channel entry from the SAME
+        // column/translation values in one place, so the two can't drift
+        // out of sync with each other the way two independently-hand-
+        // authored copies of the same transform could.
+        std::vector<MTLAccelerationStructureInstanceDescriptor> instanceDescs;
+        std::vector<InstanceTransform> instanceTransforms;
+        auto addInstance = [&](uint32_t accelStructureIndex, float3 col0, float3 col1, float3 col2, float3 col3) {
+            MTLAccelerationStructureInstanceDescriptor desc{};
+            desc.accelerationStructureIndex = accelStructureIndex;
+            desc.options = MTLAccelerationStructureInstanceOptionNone;
+            desc.mask = 0xFF;
+            desc.intersectionFunctionTableOffset = 0;
+            desc.transformationMatrix.columns[0] = MTLPackedFloat3Make(col0.x, col0.y, col0.z);
+            desc.transformationMatrix.columns[1] = MTLPackedFloat3Make(col1.x, col1.y, col1.z);
+            desc.transformationMatrix.columns[2] = MTLPackedFloat3Make(col2.x, col2.y, col2.z);
+            desc.transformationMatrix.columns[3] = MTLPackedFloat3Make(col3.x, col3.y, col3.z);
+            instanceDescs.push_back(desc);
+            instanceTransforms.push_back(InstanceTransform{
+                PackedFloat3{col0.x, col0.y, col0.z}, PackedFloat3{col1.x, col1.y, col1.z},
+                PackedFloat3{col2.x, col2.y, col2.z}, PackedFloat3{col3.x, col3.y, col3.z}});
+        };
+
+        const float3 identityCol0{1, 0, 0}, identityCol1{0, 1, 0}, identityCol2{0, 0, 1}, identityCol3{0, 0, 0};
+        addInstance(0, identityCol0, identityCol1, identityCol2, identityCol3); // primAS (room + Spot)
+        addInstance(1, identityCol0, identityCol1, identityCol2, identityCol3); // sphereAS
+
+        // Suzanne instance A: translation only, at the same world position
+        // the single non-instanced Suzanne used to sit at - an identity-
+        // rotation instance is the direct continuation of every earlier
+        // screenshot's own Suzanne placement.
+        addInstance(2, identityCol0, identityCol1, identityCol2, float3{-0.05f, -0.55f, -0.3f});
+
+        // Suzanne instance B: rotated 45 degrees about Y and scaled down
+        // (uniform scale only - transformNormalByInstance()'s own
+        // rigid-transform assumption over in metal_poc.metal stays valid
+        // under a uniform scale, since normalize() cancels a uniform
+        // factor exactly; it would NOT under a non-uniform one), placed
+        // high near the back of the ceiling. A first attempt at a back-
+        // left-corner floor placement (x=-0.7, z=-0.55) turned out to sit
+        // along almost the same camera sightline as the gold sphere
+        // (x/z ratio ~0.19 vs. the gold sphere's own ~0.2) and was
+        // nearly fully hidden behind it - the exact same 2D-screen-space-
+        // occlusion lesson Spot's own placement (step 12) and the rough
+        // dielectric sphere's own placement (step 13) already ran into,
+        // caught here the same way: render, look, reposition. The one
+        // instance in this whole scene whose object-space normals
+        // actually need transforming before shading - everywhere else,
+        // an identity transform makes that transform a no-op.
+        {
+            const float theta = 0.785398f; // 45 degrees, radians
+            const float s = 0.55f;
+            float3 rotCol0{s * cosf(theta), 0.0f, -s * sinf(theta)};
+            float3 rotCol1{0.0f, s, 0.0f};
+            float3 rotCol2{s * sinf(theta), 0.0f, s * cosf(theta)};
+            addInstance(2, rotCol0, rotCol1, rotCol2, float3{0.0f, 0.75f, -0.3f});
+        }
+
+        id<MTLBuffer> instanceBuffer = [device newBufferWithBytes:instanceDescs.data()
+            length:instanceDescs.size() * sizeof(MTLAccelerationStructureInstanceDescriptor)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> instanceTransformBuffer = [device newBufferWithBytes:instanceTransforms.data()
+            length:instanceTransforms.size() * sizeof(InstanceTransform)
             options:MTLResourceStorageModeShared];
 
         MTLInstanceAccelerationStructureDescriptor* instAccelDesc =
             [MTLInstanceAccelerationStructureDescriptor descriptor];
-        instAccelDesc.instancedAccelerationStructures = @[primAS, sphereAS];
-        instAccelDesc.instanceCount = 2;
+        instAccelDesc.instancedAccelerationStructures = @[primAS, sphereAS, suzanneAS];
+        instAccelDesc.instanceCount = (uint32_t)instanceDescs.size();
         instAccelDesc.instanceDescriptorBuffer = instanceBuffer;
 
         MTLAccelerationStructureSizes instSizes = [device accelerationStructureSizesWithDescriptor:instAccelDesc];
@@ -883,12 +991,18 @@ int main(int argc, const char** argv) {
         [enc setBuffer:normalBuffer offset:0 atIndex:7];
         [enc setBuffer:uvBuffer offset:0 atIndex:8];
         [enc setBuffer:lightBuffer offset:0 atIndex:9];
+        [enc setBuffer:suzanneNormalBuffer offset:0 atIndex:10];
+        [enc setBuffer:suzanneMaterialBuffer offset:0 atIndex:11];
+        [enc setBuffer:instanceTransformBuffer offset:0 atIndex:12];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
-        // acceleration structures referencing primitive ones (now two:
-        // the triangle mesh's and the sphere's bounding-box geometry).
+        // acceleration structures referencing primitive ones (now three:
+        // the room+Spot triangle mesh, the sphere's bounding-box
+        // geometry, and Suzanne's own - referenced by TWO instances, but
+        // only needs marking used once here, not once per instance).
         [enc useResource:primAS usage:MTLResourceUsageRead];
         [enc useResource:sphereAS usage:MTLResourceUsageRead];
+        [enc useResource:suzanneAS usage:MTLResourceUsageRead];
 
         MTLSize gridSize = MTLSizeMake(width, height, 1);
         NSUInteger w = pipeline.threadExecutionWidth;
