@@ -39,8 +39,13 @@
 // setProcessThreadsSuspended() below, which is the documented way to build
 // one out of per-thread primitives. Scoped to this .cpp (not needed by any
 // other translation unit) rather than added to a shared header.
+#ifdef _WIN32
 #include <windows.h>
 #include <tlhelp32.h>
+#else
+#include <csignal>
+#include <sys/types.h>
+#endif
 
 namespace {
 // Suspends (or resumes) every thread currently belonging to process `pid`.
@@ -53,6 +58,7 @@ namespace {
 // state render, since ray_tracer.exe spins up its worker pool once at
 // startup) would not be caught, but that's an acceptable gap for a
 // best-effort pause rather than a correctness-critical one.
+#ifdef _WIN32
 void setProcessThreadsSuspended(DWORD pid, bool suspend) {
 	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
 	if (snapshot == INVALID_HANDLE_VALUE) return;
@@ -71,6 +77,13 @@ void setProcessThreadsSuspended(DWORD pid, bool suspend) {
 	}
 	CloseHandle(snapshot);
 }
+#else
+// POSIX equivalent: SIGSTOP/SIGCONT suspend/resume the whole target process
+// (every thread) directly, so there's no per-thread enumeration to do.
+void setProcessThreadsSuspended(qint64 pid, bool suspend) {
+	kill(static_cast<pid_t>(pid), suspend ? SIGSTOP : SIGCONT);
+}
+#endif
 } // namespace
 
 // RenderController Implementation
@@ -138,7 +151,11 @@ void RenderController::abandonRender() {
 
 void RenderController::pauseRender() {
 	if (!isRunning() || m_isPaused) return;
+#ifdef _WIN32
 	setProcessThreadsSuspended(static_cast<DWORD>(m_renderProcess->processId()), true);
+#else
+	setProcessThreadsSuspended(m_renderProcess->processId(), true);
+#endif
 	m_isPaused = true;
 	m_pauseStartMs = QDateTime::currentMSecsSinceEpoch();
 	emit logMessage("Render paused.");
@@ -147,7 +164,11 @@ void RenderController::pauseRender() {
 
 void RenderController::resumeRender() {
 	if (!isRunning() || !m_isPaused) return;
+#ifdef _WIN32
 	setProcessThreadsSuspended(static_cast<DWORD>(m_renderProcess->processId()), false);
+#else
+	setProcessThreadsSuspended(m_renderProcess->processId(), false);
+#endif
 	m_isPaused = false;
 	m_pausedAccumMs += QDateTime::currentMSecsSinceEpoch() - m_pauseStartMs;
 	m_pauseStartMs = -1;

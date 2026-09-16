@@ -63,6 +63,17 @@ extern char** environ;
 #include "launcher/launcher_args.h"   // Argument parsing
 #include "launcher/diagnostics.h"     // --diagnose
 
+// _putenv_s (MSVC CRT) has no POSIX equivalent - setenv() takes the same
+// name/value pair with an added overwrite flag, always 1 here to match
+// _putenv_s's unconditional-overwrite behavior.
+static void set_env_var(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
 // Builds the RenderOptions the plain path-tracer branches pass to
 // cpu_render_main()/optix_render_main() from the parsed CLI args. Shared by
 // both the video-mode per-frame loop and the single-image dispatch below so
@@ -367,10 +378,10 @@ int main(int argc, char** argv) {
 	// once here so it's in effect for both single-image and per-frame video
 	// renders below. Meaningless under CPU/SPPM, so only set for a plain GPU render.
 	if (use_gpu && !use_sppm && args.use_wavefront) {
-		_putenv_s("RAY_TRACER_WAVEFRONT", "1");
+		set_env_var("RAY_TRACER_WAVEFRONT", "1");
 	}
 	if (use_gpu && !use_sppm && args.optix_validate) {
-		_putenv_s("RAY_TRACER_OPTIX_VALIDATION", "1");
+		set_env_var("RAY_TRACER_OPTIX_VALIDATION", "1");
 	}
 	// Same env-var pattern as RAY_TRACER_WAVEFRONT above, but read by
 	// wavefront_path_tracer.cpp's own "[WF-STATS]" block - not gated by
@@ -380,7 +391,7 @@ int main(int argc, char** argv) {
 	// so a leftover count from an earlier render (e.g. --video's per-frame
 	// loop below) never bleeds into this one's printed stats.
 	if (args.stats) {
-		_putenv_s("RAY_TRACER_STATS", "1");
+		set_env_var("RAY_TRACER_STATS", "1");
 	}
 	render_stats::reset();
 
@@ -662,7 +673,7 @@ int main(int argc, char** argv) {
         if (!use_gpu && !std::getenv("RAY_TRACER_THREADS")) {
             unsigned int nthreads = determine_render_thread_count();
             std::string nthreads_str = std::to_string(nthreads);
-            _putenv_s("RAY_TRACER_THREADS", nthreads_str.c_str());
+            set_env_var("RAY_TRACER_THREADS", nthreads_str.c_str());
             std::cout << "Pinned CPU thread count to " << nthreads << " for the whole video (skips per-frame detection)." << std::endl;
         }
 
