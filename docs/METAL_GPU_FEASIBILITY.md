@@ -1219,3 +1219,56 @@ in any existing material's own cost.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 27. A CTest smoke test (done)
+
+Seventeen incremental features (sections 8-26) had accumulated with
+**zero automated regression coverage** - every one was verified by
+rendering the scene and inspecting the image by hand, real verification
+(it caught genuine bugs - see section 20's own account of the two review
+findings), but nothing that runs automatically the next time an edit
+touches shared code (a helper function, a buffer index, a struct layout)
+and silently breaks something that isn't the specific feature being
+changed. Section 5 point 3 of this document's own recommended approach
+named "some parity coverage against the CPU backend... reusing the
+existing `MaterialCpuGpuParityTest` pattern" as a real gap; full CPU/GPU
+parity testing is its own separate undertaking, but the cheapest
+possible version of "notice when something is badly broken" was still
+missing entirely, so this adds it.
+
+`metal_poc_validate.cpp` is a small, standalone second executable (not a
+flag added to `metal_poc` itself - keeps the renderer's own code
+untouched) that loads a rendered PNG via the already-vendored
+`stb_image.h` and checks two things that need no knowledge of this
+specific scene's own expected content: the image isn't all-black (mean
+pixel value near zero - what a crashed or never-dispatched kernel would
+leave in the output texture, still at its cleared/zero-initialized
+state) and it isn't a flat single colour (near-zero standard deviation -
+what a shading bug that collapses every pixel to the same value would
+produce). Two `add_test()` entries wire this into `ctest`: one runs
+`metal_poc` itself at a small, fast size (128×128, 16spp, depth 4 - a
+smoke test, not a quality benchmark), the second validates its output,
+both scoped inside the existing `if(RT_BUILD_METAL)` block so
+`enable_testing()` and both tests are invisible to `ctest` entirely
+unless `RT_BUILD_METAL=ON` - the same additive posture as every earlier
+choice in that block.
+
+**Verified working both directions**: the intended pass case
+(`ctest --output-on-failure` after a normal build) passes both tests.
+The failure paths were checked directly too, not assumed: running
+`metal_poc_validate` against a nonexistent file reports "could not
+load" and exits 1; running it with a deliberately wrong expected
+width/height against the real rendered output correctly reports the
+dimension mismatch and exits 1 - confirming the validator actually
+fails when it should, not just passes vacuously. A full default CMake
+configure (no `RT_BUILD_METAL`) was also re-run to confirm this change
+has zero effect on the CPU/GPU-OptiX build path at all.
+
+This CTest integration is **local-only for now** - the project's actual
+CI workflow (`.github/workflows/*.yml`) builds `tests/unit_tests` via
+`tests/CMakeLists.txt` directly on a Windows runner, not the root
+`CMakeLists.txt` this test lives in, and Metal itself only exists on
+Apple hardware a GitHub-hosted Windows/Linux runner doesn't have - so
+this doesn't (and currently can't) run in CI. It's real coverage for
+anyone building `RT_BUILD_METAL=ON` locally on a Mac, which is this
+POC's entire audience today.

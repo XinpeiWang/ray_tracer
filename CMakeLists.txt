@@ -354,4 +354,27 @@ if(RT_BUILD_METAL)
     set_target_properties(metal_poc PROPERTIES
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
     target_compile_options(metal_poc PRIVATE -fobjc-arc)
+
+    # --- Smoke test: does metal_poc still run and produce a real image? -
+    # Seventeen incremental features (docs/METAL_GPU_FEASIBILITY.md
+    # sections 8-26) accumulated in this POC with zero automated
+    # regression coverage - every one was verified by rendering and
+    # looking at the image by hand, which catches real bugs but leaves
+    # nothing running automatically the next time an edit silently
+    # breaks something else. metal_poc_validate.cpp is deliberately NOT
+    # full CPU/GPU parity testing (real, separate future work) - just a
+    # cheap catch for "the renderer crashed" or "the whole image
+    # collapsed to one flat colour." enable_testing()/add_test() are
+    # scoped inside this RT_BUILD_METAL block only - `ctest` still finds
+    # nothing here unless RT_BUILD_METAL=ON, same additive posture as
+    # every other choice in this block.
+    add_executable(metal_poc_validate gpu/metal/metal_poc_validate.cpp)
+
+    enable_testing()
+    set(METAL_POC_SMOKE_OUTPUT "${CMAKE_BINARY_DIR}/metal_poc_smoke_test.png")
+    add_test(NAME metal_poc_smoke_render
+        COMMAND metal_poc 128 128 "${METAL_POC_SMOKE_OUTPUT}" 16 4)
+    add_test(NAME metal_poc_smoke_validate
+        COMMAND metal_poc_validate "${METAL_POC_SMOKE_OUTPUT}" 128 128)
+    set_tests_properties(metal_poc_smoke_validate PROPERTIES DEPENDS metal_poc_smoke_render)
 endif()
