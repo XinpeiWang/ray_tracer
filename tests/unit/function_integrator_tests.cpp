@@ -166,7 +166,7 @@ TEST(FunctionIntegrator, IntegrateZeroSamplesReturnsZero) {
 // mse() — error should be small for large stratified sample count
 // ---------------------------------------------------------------------------
 
-TEST(FunctionIntegrator, MSEDecreasesWith­MoreSamples) {
+TEST(FunctionIntegrator, MSEDecreasesWithMoreSamples) {
 	auto f    = FunctionIntegrator::step();
 	double ref = 1.0;
 

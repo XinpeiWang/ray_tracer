@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -136,10 +137,9 @@ class CpuBuilderTempTree : public ::testing::Test {
 protected:
 	void SetUp() override {
 		const char *tmp = std::getenv("TEMP");
+		if (!tmp) tmp = std::getenv("TMPDIR");
 		root_ = std::string(tmp ? tmp : ".") + "/pbrt_cpu_builder_tests/";
-		std::string cmd = "if not exist \"" + root_ + "\" mkdir \"" + root_ + "\" >nul 2>&1";
-		for (char &c : cmd) if (c == '/') c = '\\';
-		std::system(cmd.c_str());
+		std::filesystem::create_directories(root_);
 	}
 	void TearDown() override {
 		for (const std::string &f : written_) std::remove(f.c_str());

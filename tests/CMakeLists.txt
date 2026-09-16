@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.14)
-project(ray_tracer_tests CXX)
+project(ray_tracer_tests CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
