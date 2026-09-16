@@ -1232,9 +1232,25 @@ kernel void primaryRayKernel(
                 // toward a delta light landing exactly on the reflection
                 // vector - NEE simply doesn't apply here, same reason the
                 // CPU renderer's own BSDFs skip NEE for specular lobes).
-                rayDir = reflect(rayDir, facingNormal);
+                //
+                // Fresnel-weighted, not a flat `albedo` multiply the way
+                // every earlier version of this branch did: a real
+                // mirror's reflectance rises toward white/uncolored at
+                // grazing angles regardless of its base tint (the same
+                // physical effect the GGX conductor material already
+                // models via this exact function - `albedo` doubles as
+                // this surface's own F0 here, the same "colour IS the
+                // normal-incidence reflectance" convention that material
+                // already established). A flat multiply is only correct
+                // exactly at normal incidence (cosTheta == 1, where this
+                // reduces to F0 == albedo); it silently under-brightens
+                // every grazing-angle reflection otherwise.
+                float3 newDir = reflect(rayDir, facingNormal);
+                float cosTheta = max(dot(facingNormal, -rayDir), 0.0001);
+                float3 fresnel = fresnelSchlickConductor(cosTheta, albedo);
+                rayDir = newDir;
                 rayOrigin = hitPoint + facingNormal * 0.001f;
-                throughput *= albedo;
+                throughput *= fresnel;
                 specularBounce = true;
             } else {
                 // Lambertian (materialType 0, or 3 - textured, the only
