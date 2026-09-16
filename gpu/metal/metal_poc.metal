@@ -71,6 +71,13 @@ struct Uniforms {
     float fogSigmaT; // extinction coefficient (scalar - shared across
                       // RGB channels for distance sampling, not spectral)
     packed_float3 fogAlbedo; // single-scattering albedo (sigma_s/sigma_t), per channel
+    // useEnvironmentMap == 0 (every earlier PR's own scenes) keeps the
+    // original flat two-colour sky gradient exactly; != 0 replaces it
+    // with an equirectangular sample of `earthTexture` by ray DIRECTION
+    // instead of by surface UV - reusing the same texture already loaded
+    // for materialType 3, sampled a completely different way. Purely
+    // additive/toggleable, same pattern as every other uniform above.
+    uint useEnvironmentMap;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -416,6 +423,20 @@ inline float2 texCoordFor(uint primId, float2 barycentric, device const packed_f
     return w0 * uv0 + barycentric.x * uv1 + barycentric.y * uv2;
 }
 
+// Standard equirectangular direction-to-UV mapping (longitude from
+// atan2, latitude from asin) - a genuinely different way of sampling
+// `earthTexture` than texCoordFor()'s own per-vertex-UV lookup above:
+// this one has no notion of a surface or a mesh at all, just a ray
+// DIRECTION, the way a real environment/IBL map is sampled for a miss
+// ray (or, in a fuller renderer, for image-based lighting on rough
+// surfaces too - not implemented here, this POC only uses it for the
+// miss/"sky" case).
+inline float2 equirectangularUV(float3 dir) {
+    float u = atan2(dir.z, dir.x) * (1.0 / (2.0 * M_PI_F)) + 0.5;
+    float v = asin(clamp(dir.y, -1.0, 1.0)) * (1.0 / M_PI_F) + 0.5;
+    return float2(u, v);
+}
+
 // Schlick's approximation - the standard cheap stand-in for the full
 // Fresnel dielectric reflectance formula, same one pbrt-v4 and this
 // project's own CPU dielectric material use for the reflect-vs-refract
@@ -672,16 +693,13 @@ kernel void primaryRayKernel(
             // Homogeneous-medium free-flight distance sampling: draws a
             // random scattering distance from the medium's own
             // transmittance distribution (t = -ln(1-u)/sigmaT) and
-            // compares it against the surface hit's own distance (or
-            // FLT_MAX on a miss, so a scattering event can still occur
-            // even on a ray that would otherwise have escaped to the
-            // sky). This ONE stochastic comparison is what makes BOTH
-            // "reached the surface without scattering" and "scattered
-            // partway there" come out unbiased with NO extra
-            // transmittance/pdf-ratio multiplier needed in either case -
-            // a well-known result (the pdf of sampling t this way, p(t) =
-            // sigmaT*exp(-sigmaT*t), exactly cancels the extinction
-            // term(s) either way):
+            // compares it against the surface hit's own distance. This
+            // ONE stochastic comparison is what makes BOTH "reached the
+            // surface without scattering" and "scattered partway there"
+            // come out unbiased with NO extra transmittance/pdf-ratio
+            // multiplier needed in either case - a well-known result (the
+            // pdf of sampling t this way, p(t) = sigmaT*exp(-sigmaT*t),
+            // exactly cancels the extinction term(s) either way):
             //   scatter event (t < surfaceDist): weight = sigmaS*T(t)/p(t)
             //     = sigmaS/sigmaT (the albedo below, nothing else)
             //   reached surface (t >= surfaceDist): weight =
@@ -689,9 +707,32 @@ kernel void primaryRayKernel(
             //     probability under an exponential distribution IS the
             //     transmittance) - so the existing surface-shading code
             //     below needs NO changes at all for this case.
+            //
+            // Gated on an ACTUAL surface hit existing at all
+            // (result.type != none) - the fog fills the scene's INTERIOR
+            // (bounded implicitly by the room's own geometry, see this
+            // struct's own comment), not empty space beyond a miss. An
+            // earlier version of this code used FLT_MAX as a miss ray's
+            // own "surface distance," which is a bug, not a deliberately
+            // unbounded medium: since a sampled t is a finite real number
+            // with probability 1, `t < FLT_MAX` is true for EVERY miss
+            // ray, meaning no ray could ever actually reach the sky/
+            // environment-map code below once fog was enabled at all -
+            // every escaping ray incorrectly kept "scattering" in a
+            // medium that should have already ended at the scene's own
+            // boundary. Invisible in this POC's own default scene (the
+            // room's 5 closed walls mean almost every PRIMARY ray already
+            // hits something at 40 degrees FOV - only secondary/GI
+            // bounces reflecting out through the open front ever actually
+            // missed, a small enough fraction to not read as an obvious
+            // artifact), but a real correctness bug, caught by this PR's
+            // own wide-FOV/pulled-back verification render for the
+            // environment-map feature - that render came back an
+            // unexplained near-black speckled mess, and tracing why
+            // surfaced this.
             bool scatteredInMedium = false;
-            if (uniforms.fogSigmaT > 0.0) {
-                float surfaceDist = (result.type == intersection_type::none) ? FLT_MAX : result.distance;
+            if (uniforms.fogSigmaT > 0.0 && result.type != intersection_type::none) {
+                float surfaceDist = result.distance;
                 float u = randFloat(rngState);
                 float t = -log(max(1.0 - u, 1e-6)) / uniforms.fogSigmaT;
                 if (t < surfaceDist) {
@@ -747,8 +788,13 @@ kernel void primaryRayKernel(
 
             if (!scatteredInMedium) {
             if (result.type == intersection_type::none) {
-                float skyT = 0.5 * (rayDir.y + 1.0);
-                radiance += throughput * mix(skyBottom, skyTop, skyT);
+                if (uniforms.useEnvironmentMap != 0u) {
+                    float2 envUV = equirectangularUV(normalize(rayDir));
+                    radiance += throughput * earthTexture.sample(textureSampler, envUV).rgb;
+                } else {
+                    float skyT = 0.5 * (rayDir.y + 1.0);
+                    radiance += throughput * mix(skyBottom, skyTop, skyT);
+                }
                 break;
             }
 
