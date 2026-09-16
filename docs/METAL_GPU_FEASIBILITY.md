@@ -467,3 +467,46 @@ underlying algorithm suggests - the expensive, unpredictable part of this
 POC so far has consistently been new Metal API surface (custom
 primitives, intersection function tables), not new rendering math on top
 of surface already proven to work.
+
+## 14. Proof-of-concept, step 6: loading a real mesh (done)
+
+Every object through step 5 was either hand-authored (quads, listed
+vertex-by-vertex in source) or analytic (the sphere, defined by a centre
+and radius, no vertex data at all). This step added the first genuinely
+**data-driven** geometry: `models/suzanne.obj` (Blender's monkey mascot,
+507 vertices, 500 faces - mostly quads, fan-triangulated to 968 triangles)
+loaded through a minimal hand-written OBJ parser (`v`/`f` only - no
+texcoords, materials, groups, or `vn`-driven smooth shading; every
+triangle still gets the same flat face-normal treatment as every other
+object in the scene) and auto-fit (bounding-box-normalized scale +
+recentring) into the room, replacing the earlier flat "mirror test" quad
+(mirror-MATERIAL coverage was already proven in #5's screenshots; what
+this scene hadn't tested was real mesh SCALE and DATA-DRIVEN vertex
+positions, not hand-listed axis-aligned corners).
+
+**Result, visually confirmed**: unmistakably Suzanne, correctly flat-
+shaded (visible per-triangle facets on the ears/cheeks/forehead - the
+expected look without normal interpolation, not a bug), correctly
+occluded behind/beside the glass sphere, and correctly refracted-through
+where the sphere overlaps it. The acceleration structure now holds ~980
+real triangles (vs. 14 in every prior step), built and traced with no
+special-casing beyond "more triangles in the same vertex/material
+buffers" - `MTLAccelerationStructureTriangleGeometryDescriptor` scales to
+mesh-sized geometry the same way it handled a dozen hand-authored
+triangles, exactly as expected (Section 3 rated this "Low" risk, and nothing
+here changes that rating). 700×700 @ 256spp @ depth 10 renders in ~9.0
+seconds on an M2 - triangle count roughly 70x higher than step 5, wall-
+clock time barely higher, which is itself a useful confirmation that the
+bottleneck in this scene is sample count/bounce depth, not primitive
+count, at least at this modest scale.
+
+**What this still isn't**: a real scene *loader* in the
+`pbrt_gpu_builder.h`/`scene_builder.cpp` sense - no materials-per-face, no
+smooth (vertex-normal-interpolated) shading, no instancing, no texture
+coordinates, and it only reads Wavefront OBJ, not this project's actual
+`.pbrt` scene format at all. Section 3's "Medium-High, mostly from sheer
+size" rating for the real scene builder stands unchanged - this step
+de-risks "can an arbitrary real mesh's vertex data reach a Metal
+acceleration structure and render correctly," not "can this project's own
+scene format be loaded," which remains a substantially larger, separate
+piece of work.

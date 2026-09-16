@@ -340,13 +340,15 @@ if(RT_BUILD_METAL)
     add_executable(metal_poc
         gpu/metal/metal_poc.mm
     )
-    # RT_METAL_SHADER_DIR (not a __FILE__-relative lookup) so the shader
-    # source resolves correctly regardless of the build directory's
-    # location relative to the source tree - out-of-tree builds are the
-    # CMake norm, and __FILE__ isn't guaranteed to stay a path anyone can
-    # navigate back to gpu/metal/ from an arbitrary build dir.
+    # RT_METAL_SHADER_DIR/RT_MODELS_DIR (not __FILE__-relative lookups) so
+    # both the shader source and models/suzanne.obj resolve correctly
+    # regardless of the build directory's location relative to the source
+    # tree - out-of-tree builds are the CMake norm, and __FILE__ isn't
+    # guaranteed to stay a path anyone can navigate back to gpu/metal/ or
+    # models/ from an arbitrary build dir.
     target_compile_definitions(metal_poc PRIVATE
-        RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal")
+        RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal"
+        RT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/models")
     target_link_libraries(metal_poc PRIVATE
         "-framework Metal" "-framework Foundation")
     set_target_properties(metal_poc PROPERTIES
