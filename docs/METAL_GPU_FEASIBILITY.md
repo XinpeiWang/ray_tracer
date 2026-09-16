@@ -325,3 +325,67 @@ old `__FILE__` behaviour when building outside CMake entirely, so the
 original ad-hoc `clang++ metal_poc.mm ...` workflow from section 7 still
 works unchanged. Verified: the CMake-built binary renders byte-plausible-
 identical output to the hand-compiled one from section 9.
+
+## 11. Proof-of-concept, step 3: a dielectric material and a custom (sphere) primitive (done)
+
+Everything through section 10 used triangles only. This step added the
+scene's first non-triangle primitive — a glass sphere — closing out
+section 3's one genuinely "Medium risk, unconfirmed" line item
+(custom-primitive intersection) with a real, working example instead of a
+prediction. Also added a third material, dielectric (glass), alongside the
+existing Lambertian/mirror pair — Schlick-approximated Fresnel choosing
+reflect vs. refract stochastically each bounce, same approach pbrt-v4 and
+this project's own CPU dielectric material use.
+
+**Result, visually confirmed**: a correctly refracting glass sphere —
+visible bending of the room's colours through it, a subtle caustic-like
+light-focusing patch on the floor beneath it, and the existing mirror
+still correctly reflecting both the sphere and the green wall behind the
+new geometry. 600×600 @ 256spp @ depth 10 renders in ~3.3 seconds on an
+M2.
+
+**This took real debugging to get working, and the two bugs found are
+worth recording in detail — this is exactly the kind of cost a
+prediction-only feasibility study can't surface, only building something
+can:**
+
+1. **A custom-primitive geometry and a triangle geometry cannot safely
+   share an instance acceleration structure without each geometry's
+   `opaque` flag set explicitly.** Adding the sphere (a second instance,
+   bounding-box geometry) made the *existing, previously-working* triangle
+   room vanish entirely — not just the sphere. Root cause: once any
+   intersection-function table is bound at trace time at all, a geometry
+   without `opaque = YES` set explicitly can get routed through that table
+   for hit confirmation instead of accepting the hardware triangle
+   intersector's result directly — and the sphere's intersection function,
+   invoked with a triangle's `primitive_id`, has no way to produce a
+   sensible result. Fixed by setting `.opaque = YES` explicitly on *both*
+   the triangle and bounding-box geometry descriptors, rather than relying
+   on whatever Metal's default happens to be. **Rule for the real port**:
+   every geometry descriptor sets `opaque` explicitly, full stop — the
+   same "design the ambiguity out, don't reason through the default"
+   lesson section 9 already drew for struct packing, now for a second,
+   unrelated API surface.
+2. **An intersection function's `[[intersection(...)]]` tag list must
+   match the calling `intersector<...>`/`intersection_function_table<...>`
+   tags exactly — not just declare the primitive type it handles.**
+   `[[intersection(bounding_box)]]` compiles cleanly and *looks* complete
+   (it names the right primitive type), but silently never gets dispatched
+   at trace time when the intersector/table were declared with additional
+   tags (`instancing`, `triangle_data`) that the function itself doesn't
+   also declare. This is the more dangerous of the two bugs: it fails
+   *silently* — no compile error, no runtime validation error even with
+   `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1` both enabled, just zero
+   hits ever reported, indistinguishable from "the geometry genuinely
+   isn't there" until isolated by bisection (confirmed via an
+   unconditional-accept version of the function, which *still* produced
+   zero hits until the tags were fixed — ruling out the geometric test
+   itself before the tag mismatch was even suspected). Fixed:
+   `[[intersection(bounding_box, triangle_data, instancing)]]`, tags
+   copied verbatim from the intersector's own declaration.
+
+Both fixes are now load-bearing comments in `metal_poc.metal`/`.mm`
+directly, not just here — the real port should treat "geometry opacity"
+and "intersection function tag parity" as two explicit checklist items
+when any custom primitive enters the scene, not incidental details to
+rediscover by the same bisection process this POC needed.
