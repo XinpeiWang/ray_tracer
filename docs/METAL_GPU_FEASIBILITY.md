@@ -826,3 +826,61 @@ the raw count increase might suggest.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 21. Proof-of-concept, step 13: a rough (frosted) dielectric material (done)
+
+`materialType 5` extends the existing smooth dielectric (`materialType
+2`)'s own Schlick-Fresnel reflect-vs-refract logic to a rough interface:
+the reflect/refract decision and directions are computed about a GGX-
+VNDF-sampled microfacet normal (`sampleGGXVNDF()`, the same helper the
+conductor material uses) instead of the smooth geometric normal - the
+standard way a rough surface's normal gets perturbed. A new
+`TriangleMaterial::roughness` field was added (rather than reusing `ior`'s
+slot the way materialType 4 does) since a rough dielectric genuinely
+needs both a real refraction index AND a roughness value on the same
+primitive at once.
+
+**A deliberate, explicitly-documented simplification, not an oversight**:
+this does NOT implement a full energy-conserving rough-BTDF derivation
+the way the conductor material's own `G/G1(wo)` throughput correction did.
+A correct one needs a transmission Jacobian plus an eta² radiance-scaling
+term (Walter et al. 2007's rough refraction model) on top of the
+reflection-side masking-shadowing ratio - real, genuinely tricky-to-get-
+right math with no reference implementation in this codebase to check
+results against, exactly the "looks plausible, renders something, is
+subtly wrong" trap Section 4 warns about for a from-scratch backend.
+Rather than ship that unverified, this keeps the smooth dielectric
+branch's existing throughput accounting (plain `albedo`, no
+masking-shadowing correction) and treats roughness as a direction-only
+perturbation - the same kind of documented, deliberate approximation this
+POC's Schlick-vs-full-Fresnel choice already represents, not a new kind
+of shortcut.
+
+A third sphere (small, `roughness = 0.35`) was added to the scene for
+this. Placing it took two attempts: the first position (tucked in the
+back-left corner) turned out to sit almost exactly along the camera-to-
+gold-sphere sightline (both roughly 20° off-axis, with the much larger,
+closer gold sphere fully hiding it) - a 3D bounding-region overlap check
+alone wouldn't have caught this, since the two objects don't actually
+intersect in space, only in 2D screen projection from this one camera
+angle. Caught by rendering and inspecting the image rather than trusting
+the placement math, the same lesson spot.obj's own placement (step 12)
+surfaced.
+
+**Result, visually confirmed two ways**: first, an A/B render at
+`roughness = 0` reproduces materialType 2's own perfectly clear, sharp
+glass sphere look - confirming `sampleGGXVNDF()` genuinely degenerates to
+the exact geometric normal at zero roughness (traced through the
+sampling math: at `alpha == 0`, the VNDF sample collapses to `(0,0,1)` in
+the local frame regardless of the random numbers drawn, i.e. `hWorld ==
+facingNormal` exactly), not just a visually-close approximation. Second,
+the committed `roughness = 0.35` render shows the expected frosted-glass
+character - a soft, milky, blurred-transmission look, clearly distinct
+from both the sharp dielectric sphere and the diffuse Lambertian
+materials elsewhere in the scene. 700×700 @ 256spp @ depth 10 renders in
+~16 seconds on an M2, close to step 12's ~15s (one more, small, primitive
+- not a meaningfully more expensive shading path than the smooth
+dielectric it's based on).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

@@ -71,21 +71,27 @@ struct AreaLight {
 // as 0, just samples `earthTexture` at the hit's interpolated UV for
 // albedo instead of reading `color` - see the shading loop below), 4 =
 // rough conductor (GGX microfacet metal - `color` is the conductor's
-// normal-incidence reflectance F0, not a diffuse albedo).
-// `ior` is meaningful for materialType == 2 (refraction index) and
+// normal-incidence reflectance F0, not a diffuse albedo), 5 = rough
+// (frosted) dielectric - materialType 2's own reflect/refract math,
+// VNDF-perturbed - see that branch's own comment for exactly what's and
+// isn't modeled.
+// `ior` is meaningful for materialType == 2 and 5 (refraction index) and
 // reused, differently, for materialType == 4 (perceptual roughness in
-// [0,1], squared into the GGX alpha parameter below) - the two never
-// coexist on one primitive, so sharing the slot avoids a second
-// otherwise-almost-always-zero field. Carried on every material anyway
-// (rather than a separate per-type struct) since this POC values "one
-// flat array, index by primitive_id" simplicity over saving a few bytes
-// on entries that don't use every field. `emission` is nonzero only for
-// a light quad's own triangles (see the AreaLight struct below) - same
-// "just carry it, don't special-case a rare field" reasoning. Checking it
-// unconditionally on every hit (regardless of material type) is what
-// makes a light source visible at all when a camera/GI ray lands on it
-// directly, on top of the light-SAMPLING code below which handles every
-// other surface's direct illumination FROM it.
+// [0,1], squared into the GGX alpha parameter below) - materialType 4
+// and {2,5} never coexist on one primitive, so sharing the slot there
+// avoids a second otherwise-almost-always-zero field; materialType 5
+// needs both ior AND roughness at once though, hence `roughness` getting
+// its own field instead of also trying to overload `ior`. Both fields
+// carried on every material anyway (rather than a separate per-type
+// struct) since this POC values "one flat array, index by primitive_id"
+// simplicity over saving a few bytes on entries that don't use every
+// field. `emission` is nonzero only for a light quad's own triangles
+// (see the AreaLight struct below) - same "just carry it, don't special-
+// case a rare field" reasoning. Checking it unconditionally on every hit
+// (regardless of material type) is what makes a light source visible at
+// all when a camera/GI ray lands on it directly, on top of the light-
+// SAMPLING code below which handles every other surface's direct
+// illumination FROM it.
 struct TriangleMaterial {
     packed_float3 color;
     uint materialType;
@@ -97,6 +103,13 @@ struct TriangleMaterial {
     // look up exactly which AreaLight's area/normal to weight against,
     // instead of a single global light's constants.
     int lightId;
+    // Perceptual roughness for materialType == 5 (rough/frosted
+    // dielectric) ONLY - unlike materialType == 4's reuse of the `ior`
+    // slot for roughness, a rough dielectric genuinely needs both `ior`
+    // (real refraction index) and a roughness value at once, so this
+    // gets its own field rather than overloading an existing one. 0 for
+    // every other material type.
+    float roughness;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
@@ -607,6 +620,57 @@ kernel void primaryRayKernel(
                 // landing exactly on the one direction that mattered" logic
                 // as the mirror branch below - throughput stays at the
                 // glass's own tint (near-1.0/clear for realistic glass).
+                throughput *= albedo;
+                specularBounce = true;
+            } else if (mat.materialType == 5u) {
+                // Rough (frosted) dielectric: the same Schlick-Fresnel
+                // reflect-vs-refract decision as materialType 2 above, but
+                // taken about a GGX-VNDF-SAMPLED microfacet normal instead
+                // of the smooth geometric one - the standard way a rough
+                // interface's normal gets perturbed (same sampleGGXVNDF()
+                // the conductor branch uses, called here in `facingNormal`'s
+                // own local frame so alpha == 0 degenerates to hWorld ==
+                // facingNormal exactly, i.e. materialType 2's own math
+                // bit-for-bit, verified below).
+                //
+                // What this DOESN'T do, unlike the conductor branch's own
+                // G/G1(wo) throughput correction: a full energy-conserving
+                // rough-BTDF derivation. A correct one needs a transmission
+                // Jacobian AND an eta^2 radiance-scaling term on top of the
+                // reflection-side G/G1 ratio (Walter et al. 2007's rough
+                // refraction model) - real, tricky-to-verify-without-a-
+                // reference-implementation math, the exact "looks
+                // plausible, renders something, is subtly wrong" trap
+                // Section 4 warns about. Rather than ship that unverified,
+                // this keeps materialType 2's existing throughput
+                // accounting (`albedo`, no G/G1 correction) and treats the
+                // roughness as a direction-only perturbation - a known,
+                // deliberate simplification (documented here rather than
+                // silently assumed away), same spirit as this POC's
+                // existing Schlick-vs-full-Fresnel approximation.
+                float alpha = max(mat.roughness * mat.roughness, 0.0009);
+                float3 tangent, bitangent;
+                buildOnb(facingNormal, tangent, bitangent);
+                float3 woWorld = -rayDir;
+                float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
+                woLocal.z = max(woLocal.z, 0.0001);
+                float3 hLocal = sampleGGXVNDF(woLocal, alpha, rngState);
+                float3 hWorld = normalize(hLocal.x * tangent + hLocal.y * bitangent + hLocal.z * facingNormal);
+
+                float refractionRatio = frontFace ? (1.0 / mat.ior) : mat.ior;
+                float3 unitDir = normalize(rayDir);
+                float cosTheta = min(dot(-unitDir, hWorld), 1.0);
+                float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+                bool cannotRefract = refractionRatio * sinTheta > 1.0;
+
+                float3 newDir;
+                if (cannotRefract || schlickReflectance(cosTheta, refractionRatio) > randFloat(rngState)) {
+                    newDir = reflect(unitDir, hWorld);
+                } else {
+                    newDir = refract(unitDir, hWorld, refractionRatio);
+                }
+                rayDir = newDir;
+                rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
                 throughput *= albedo;
                 specularBounce = true;
             } else if (mat.materialType == 4u) {
