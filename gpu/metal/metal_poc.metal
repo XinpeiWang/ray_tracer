@@ -148,6 +148,44 @@ struct SphereIntersectionResult {
     float distance [[distance]];
 };
 
+// Mirrors MTLPackedFloat4x3's own layout (4 packed_float3 COLUMNS, no
+// padding) byte-for-byte - a plain side-channel buffer of per-instance
+// transforms, one entry per `instanceDescs[]` slot on the host side,
+// indexed here by `intersection_result::instance_id`. Metal's own
+// `intersection_result<instancing, ...>` type does NOT expose the
+// instance's object-to-world transform as a queryable field (confirmed
+// by probing the compiler directly - `object_to_world_transform` and
+// several other plausible names all fail to compile, "no member
+// named..."), unlike OptiX's `optixGetWorldToObjectTransformMatrix()`
+// equivalent. This buffer is this POC's own stand-in: uploaded with
+// EXACTLY the same transform values used to build each instance
+// descriptor's own `transformationMatrix` (see metal_poc.mm's
+// addTransformedSuzanneInstance()), so the two can't drift apart from
+// each other by construction.
+struct InstanceTransform {
+    packed_float3 col0;
+    packed_float3 col1;
+    packed_float3 col2;
+    packed_float3 col3;
+};
+
+// Applies only the 3x3 LINEAR part (columns 0-2; column 3 is translation,
+// meaningless for a direction) of an instance's own transform to an
+// object-space normal, producing the correct world-space one - needed
+// for any instance whose transform isn't the identity (translation alone
+// leaves a normal's direction unchanged, but Suzanne's second instance
+// below also rotates, which does not). Assumes a RIGID transform
+// (rotation + translation, no non-uniform scale) - the correct general
+// case would need the inverse-transpose of the linear part instead of
+// the linear part itself, but every instance transform this POC's own
+// scene ever constructs is rigid, so that distinction is deliberately
+// not implemented here (documented, not silently assumed away, same
+// spirit as this POC's other explicitly-scoped simplifications).
+inline float3 transformNormalByInstance(float3 objectNormal, InstanceTransform xf) {
+    float3x3 linear = float3x3(float3(xf.col0), float3(xf.col1), float3(xf.col2));
+    return normalize(linear * objectNormal);
+}
+
 // The tag list here (triangle_data, instancing) has to match the calling
 // intersector<instancing, triangle_data>/intersection_function_table<...>'s
 // own tags exactly, not just declare bounding_box - a mismatched tag set
@@ -433,6 +471,9 @@ kernel void primaryRayKernel(
     device const packed_float3* normals [[buffer(7)]],
     device const packed_float2* uvs [[buffer(8)]],
     device const AreaLight* lights [[buffer(9)]],
+    device const packed_float3* suzanneNormals [[buffer(10)]],
+    device const TriangleMaterial* suzanneMaterials [[buffer(11)]],
+    device const InstanceTransform* instanceTransforms [[buffer(12)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -546,12 +587,34 @@ kernel void primaryRayKernel(
             // a face normal from, but (hitPoint - centre) is exact for a
             // perfect sphere, no approximation.
             bool isSphere = (result.type == intersection_type::bounding_box);
+            // Suzanne is instanced TWICE (instance_id 2 and 3, matching
+            // metal_poc.mm's own instanceDescs[] ordering - see that
+            // file's addTransformedSuzanneInstance()) from the SAME
+            // object-space geometry/AS - the one thing in this scene that
+            // actually exercises a non-identity instance transform; every
+            // other instance (the combined room+Spot geometry, the
+            // sphere primitives) still uses the identity transform this
+            // POC's very first version already had. Hardcoding the
+            // instance_id threshold here (rather than deriving it) is
+            // the same "explicitly documented, scene-specific constant"
+            // approach this POC already uses for its light geometry.
+            bool isSuzanneInstance = !isSphere && (result.instance_id >= 2u);
             float3 normal;
             TriangleMaterial mat;
             if (isSphere) {
                 SphereData sphere = spheres[primId];
                 normal = normalize(hitPoint - float3(sphere.center));
                 mat = sphereMaterials[primId];
+            } else if (isSuzanneInstance) {
+                // Object-space normal (Suzanne's own per-vertex data,
+                // just like the non-instanced case below) transformed
+                // into world space by THIS hit's own instance transform -
+                // the one piece of shading math instancing actually adds
+                // over the room/Spot geometry's own single-identity-
+                // instance path.
+                float3 objectNormal = shadingNormalFor(primId, result.triangle_barycentric_coord, suzanneNormals);
+                normal = transformNormalByInstance(objectNormal, instanceTransforms[result.instance_id]);
+                mat = suzanneMaterials[primId];
             } else {
                 normal = shadingNormalFor(primId, result.triangle_barycentric_coord, normals);
                 mat = triMaterials[primId];
