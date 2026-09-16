@@ -1444,3 +1444,66 @@ per-bounce cost category).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 31. POC series status update (sections 24-30)
+
+Section 23 was written after step 14 (PR #16); seven more increments
+(PRs #19-#25, sections 24-30) have landed since, adding real breadth
+Section 23's own "what's been proven" list didn't yet cover. This is a
+short update to that synthesis, not a replacement for it - everything
+Section 23 said about the wavefront architecture, scene-builder
+integration, app integration, and remaining feature-parity work still
+being multi-week-to-months undertakings, not PR-sized ones, is
+unchanged and still the right framing.
+
+**Newly proven since Section 23:**
+
+- **Non-identity instance transforms** (step 15) - every instance before
+  this used the identity matrix; Suzanne is now instanced twice (one
+  translated, one rotated + uniformly scaled) from ONE acceleration
+  structure, with object-space normals correctly transformed per-instance
+  for shading. Also surfaced a real Metal API gap worth remembering:
+  `intersection_result` does not expose an instance's own object-to-world
+  transform, unlike OptiX's equivalent query - this POC built its own
+  side-channel buffer for it.
+- **A second, distinct custom-primitive shape** (step 16) - a disk, via
+  a genuinely second intersection function at function-table slot 1
+  (every custom primitive before this shared slot 0), and multiple
+  heterogeneous geometries coexisting in one acceleration structure.
+- **A homogeneous participating medium** (step 17) - free-flight distance
+  sampling, verified algebraically before being committed, not taken on
+  faith - plus a real bug this itself introduced (miss rays trapped in
+  infinite scattering) that a LATER step's own verification method
+  happened to catch (step 18) and fixed.
+- **Environment-mapped lighting** (step 18) - direction-based (not
+  surface-UV-based) texture sampling, reusing an already-loaded texture
+  a second way.
+- **A CTest smoke test** (Section 27, PR #22, no "step" number of its
+  own) - the first automated regression coverage this POC has ever had,
+  even though it's local-only (Metal needs Apple hardware CI doesn't
+  have).
+- **A directional (Henyey-Greenstein) phase function** (step 19) -
+  replacing the fog's own isotropic scattering, verified via the
+  unmistakable "god ray" signature only real directional scattering
+  produces.
+- **Beer-Lambert absorption for dielectrics** (step 20) - real coloured
+  glass, verified via the thickness-dependent saturation gradient a flat
+  per-bounce tint cannot produce; also the point where `TriangleMaterial
+  ::color` picked up its THIRD distinct meaning depending on
+  materialType (reflectance for most types, F0 for the conductor,
+  absorption coefficient for the two dielectrics) - worth knowing before
+  reading any of this struct's fields without also checking which
+  material type they belong to.
+
+**Bottom line, updated**: the architecture-level de-risking Section 23
+described has gotten broader still - instancing, multi-shape custom
+primitives, volumetric media, and image-based lighting are now added to
+the list of things proven on real hardware, not just materials/lights/
+cameras/meshes. Automated regression coverage exists for the first time,
+even if narrow and local-only. None of this changes Section 6's own
+effort estimates for what a real port still needs - if anything, each
+new proven piece is one more confirmation that the remaining gap is
+breadth-of-effort (porting/rewriting a large, specific feature set) and
+architecture-level integration (wavefront restructuring, scene-builder,
+app integration), not remaining architectural risk in the Metal/MetalRT
+approach itself.
