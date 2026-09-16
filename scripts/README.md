@@ -28,10 +28,19 @@ Utility scripts for building, packaging, and testing the ray tracer.
 - **`deploy_qt_gui.ps1`** - Copies the Qt runtime DLLs next to RayTracerGUI.exe
 
 ### Packaging (for sharing a release with others)
-- **`package.ps1`** - Builds and assembles a clean, standalone, tiered
-  distribution package into its own `RayTracer_Package_<Tier>\` folder
-  (never the shared dev `RayTracer_Package\` above, so tiers don't clobber
-  each other or your own local build).
+- **`package.ps1`** - Builds and assembles a clean, tiered distribution
+  package directly into the same `RayTracer_Package\` folder as the local
+  dev build above (windeployqt + VC++ redist DLLs + README/launcher on top
+  of whatever's already there) - not a separate copy. The folder itself is
+  never wiped/pruned (RayTracerGUI.exe and its Qt runtime have no other
+  copy to rebuild from, so deleting them to "downgrade" a tier would
+  destroy the only copy of that build), but `-Zip`'s output always matches
+  the current `-Tier`: it excludes any higher-tier files left over from a
+  previous run (e.g. `-Tier Lite -Zip` after a previous `-Tier Full` build
+  excludes `RayTracerGUI.exe`, the Qt runtime, and the GPU DLLs/PTX from
+  the zip). Without `-Zip`, running the folder directly can still launch
+  more than the requested tier if a higher tier was built there before -
+  the script warns when this applies.
   - `-Tier Lite|Medium|Full` (default `Full`):
     - `Lite` - RayTracer.exe (CLI) only, CPU rendering, no Qt/GUI
     - `Medium` - + RayTracerGUI.exe + Qt runtime, CPU rendering only
@@ -67,10 +76,15 @@ Utility scripts for building, packaging, and testing the ray tracer.
 
 ### Create Distribution Package
 ```powershell
-# From repository root - builds and packages in one step
-.\scripts\package.ps1 -Tier Full -Zip     # everything, GPU + GUI
-.\scripts\package.ps1 -Tier Medium -Zip   # GUI, CPU rendering only
+# From repository root - builds and packages in one step.
+# Most setups only ever build one tier. If you need more than one tier's
+# zip from a single build cycle, build smallest to largest as shown below -
+# all tiers share one RayTracer_Package\ folder and are additive, so
+# building Full first would leave its extra GPU/GUI files sitting in what's
+# supposed to be a smaller Lite/Medium package.
 .\scripts\package.ps1 -Tier Lite -Zip     # CLI only, smallest
+.\scripts\package.ps1 -Tier Medium -Zip   # GUI, CPU rendering only
+.\scripts\package.ps1 -Tier Full -Zip     # everything, GPU + GUI
 ```
 
 ### Compare Two Renders

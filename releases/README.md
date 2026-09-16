@@ -18,10 +18,16 @@ publish; a release doesn't have to include all three.
    separate manual build step anymore):
    ```powershell
    .\scripts\package.ps1 -Tier Full -Zip
-   .\scripts\package.ps1 -Tier Medium -Zip
-   .\scripts\package.ps1 -Tier Lite -Zip
    ```
    Each `-Zip` run produces `releases\RayTracer_<Tier>_<yyyyMMdd>.zip`.
+
+   All tiers assemble into the same `RayTracer_Package\` folder now (see
+   `scripts/README.md`), additively - Medium adds files on top of Lite,
+   Full adds files on top of Medium - and the folder itself is never wiped
+   between runs. `-Zip` still always matches its own `-Tier` regardless of
+   build order: it excludes any higher-tier leftovers at zip time rather
+   than deleting them from the folder, so each `-Zip` run reflects exactly
+   what its `-Tier` promises even if a larger tier was built there first.
 
 2. Test each package you're publishing:
    - Extract its zip to a clean directory (not next to the repo - a stray
@@ -46,22 +52,26 @@ For current version info, see main `/README.md`.
 
 ## Package Structure
 
+All tiers assemble into the same `RayTracer_Package\` folder (the same one
+`RayTracerGUI.pro`'s DESTDIR and every MSBuild post-build step already
+write your local dev build into) - not a separate folder per tier:
+
 ```
-RayTracer_Package_Lite/
-├── RayTracer.exe           # CLI renderer, CPU-only
+RayTracer_Package/
+├── RayTracer.exe             # CLI renderer, CPU-only - every tier
 ├── launcher.bat
 ├── README.txt
 └── output/
 
-RayTracer_Package_Medium/    # everything Lite has, plus:
+# -Tier Medium or Full also adds:
 ├── RayTracerGUI.exe
 ├── scene_metadata.dll
 ├── Qt6*.dll, platforms/, styles/, imageformats/, multimedia/, ...
 
-RayTracer_Package_Full/      # everything Medium has, plus:
-├── realtime_renderer.dll    # GPU Live Preview
-├── optix_programs.ptx       # GPU shaders, JIT-compiled against the
-├── wavefront_programs.ptx   #   target machine's own NVIDIA driver at launch
+# -Tier Full also adds:
+├── realtime_renderer.dll     # GPU Live Preview
+├── optix_programs.ptx        # GPU shaders, JIT-compiled against the
+├── wavefront_programs.ptx    #   target machine's own NVIDIA driver at launch
 ```
 
 ## Distribution

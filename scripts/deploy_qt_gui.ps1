@@ -42,6 +42,18 @@ if (-not (Test-Path $packageDir)) {
 	Write-Host "[INFO] Created package directory: $packageDir`n" -ForegroundColor Green
 }
 
+# README.txt/launcher.bat only exist here when package.ps1 wrote them - they
+# mark "this folder is a vetted, tier-labeled release package". This script
+# runs both for a plain dev deploy (build_all.ps1 -Deploy, no packaging
+# involved) and as package.ps1's own Qt-deployment step. Clearing them here
+# means a plain dev deploy correctly stops advertising this folder as a
+# package it didn't actually assemble; when package.ps1 calls this script,
+# it always writes fresh copies of both right afterward anyway, so this is
+# never a net loss for the packaging path.
+foreach ($marker in @("$packageDir\README.txt", "$packageDir\launcher.bat")) {
+	if (Test-Path $marker) { Remove-Item $marker -Force }
+}
+
 Write-Host "[Step 1/2] Copying Qt GUI executable..." -ForegroundColor Cyan
 $qtGuiBuildDir = "$repoRoot\qt_gui\$($Configuration.ToLower())"
 $qtGuiSourceExe = "$qtGuiBuildDir\RayTracerGUI.exe"

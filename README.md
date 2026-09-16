@@ -402,60 +402,31 @@ scenes need this.
 
 ### Creating a Distribution Package
 
-After building in Release mode, you can create a portable package:
+`scripts/package.ps1` builds and packages in one step, in one of three
+tiers (Lite/Medium/Full):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1
+.\scripts\package.ps1 -Tier Full -Zip
 ```
 
-This will:
-- Copy the executable and rename it to `RayTracer.exe`
-- Bundle all required runtime DLLs (CUDA, Visual C++)
-- Include launcher scripts and documentation
-- Create a `RayTracer_Package` folder ready for distribution
+This builds the required projects, assembles a self-contained
+`RayTracer_Package\` folder (executable renamed to `RayTracer.exe`, bundled
+Qt/VC++ runtime DLLs, launcher script and README), and - with `-Zip` -
+produces `releases\RayTracer_Full_<date>.zip`.
 
-Then create a ZIP for easy distribution:
-```powershell
-Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_vX.X_Portable.zip
-```
+See `scripts/README.md`'s "Packaging" section for the full flag reference
+and `releases/README.md` for the complete step-by-step release process
+(tagging, testing, publishing) - including one important step: **always
+test a package by extracting its zip to a clean directory outside the
+repo**, not by running it in place inside `RayTracer_Package\`. That folder
+doubles as the everyday local dev-build output, so a stray relative-path
+bug could resolve against repo files there and pass locally while still
+failing on a real user's machine.
 
 ### Creating a GitHub Release
 
-**Prerequisites:**
-- Build successful in Release|x64 configuration
-- All tests passing
-- Documentation updated
-- Version number decided (e.g., `vX.X`)
-
-**Step-by-Step Process:**
-
-1. **Build the Release**
-   ```cmd
-   # From VS Developer Command Prompt
-   msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
-   ```
-
-2. **Create the Package**
-   ```powershell
-   # Run packaging script
-   powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1
-
-   # Verify package contents
-   dir RayTracer_Package
-
-   # Test the package
-   cd RayTracer_Package
-   .\RayTracerGUI.exe
-   cd ..
-   ```
-
-3. **Create Distribution ZIP**
-   ```powershell
-   # Substitute the actual version number in the filename
-   Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_vX.X_Portable.zip
-   ```
-
-4. **Create GitHub Release**
+See `releases/README.md` for the current, authoritative step-by-step
+process.
 
    a. Go to your repository: https://github.com/XinpeiWang/ray_tracer
 

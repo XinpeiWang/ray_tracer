@@ -136,9 +136,19 @@ CMakeLists.txt.user*
 RayTracer_Package/*.exe
 RayTracer_Package/*.dll
 RayTracer_Package/*.ptx
+RayTracer_Package/*.bat
 RayTracer_Package/output/
 RayTracer_Package/platforms/
 RayTracer_Package/styles/
+# windeployqt's other plugin subfolders - package.ps1 now deploys directly
+# into RayTracer_Package/ instead of a separate RayTracer_Package_Full/
+# copy, so these need their own rules here too.
+RayTracer_Package/generic/
+RayTracer_Package/iconengines/
+RayTracer_Package/imageformats/
+RayTracer_Package/multimedia/
+RayTracer_Package/networkinformation/
+RayTracer_Package/tls/
 
 # Keep deployment script
 !RayTracer_Package/*.ps1
