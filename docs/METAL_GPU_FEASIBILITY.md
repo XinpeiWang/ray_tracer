@@ -1706,3 +1706,63 @@ truly negligible cost deltas were.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 36. Proof-of-concept, step 25: a spot light (done)
+
+Step 24's point light is omnidirectional - its `1/distSq` falloff
+depends only on distance, never on direction, so it cannot produce the
+one signature effect a real spotlight is built around: a "pool of
+light" with a sharp-ish edge, invisible outside its cone no matter how
+close a surface is. A spot light is the same delta-light math as step
+24 (still zero area, zero solid angle, still always full NEE weight, no
+MIS, no pdf conversion) with one addition: a direction vector and an
+inner/outer half-angle, multiplying the emission by an angular falloff
+term instead of leaving it isotropic.
+
+`PointLight`/`PointLightData` gained `direction`, `cosOuterAngle`, and
+`cosInnerAngle` fields (comparing cosines instead of angles avoids an
+`acos` per shadow ray). `cosOuterAngle <= -1.0` is the sentinel for "no
+cone at all" - every point light added before this step left these new
+fields at their default-initialized omnidirectional values, so step
+24's own light and its A/B renders are reproduced exactly without
+touching a single existing call site's own logic, only the falloff
+factor each one already multiplies in. Between the two angles the
+falloff is smoothstep-blended (`3t^2 - 2t^3`, Blinn/pbrt-style), not a
+hard cutoff - a hard-edged cone aliases badly under Monte Carlo
+integration, since every sample straddling the boundary either gets the
+full contribution or none of it with no way to average toward a
+correct in-between value.
+
+Added a second point light, positioned above and aimed down at Spot-the-
+cow's own floor area (25 degree outer / 15 degree inner cone) - a
+genuinely different "shape" of illumination from step 24's glow patch,
+not a recolored copy of it, and the same fog volume this scene already
+has makes the cone itself visible as a shaft in the air, not just its
+footprint on the floor.
+
+**Verification took an extra step this time**: the committed scene's
+own renders (700x700 @ 128spp and a 1000x1000 zoomed crop) didn't make
+the cone unambiguous at a glance next to the existing area lights and
+point light's own illumination, so - rather than assume the shader logic
+was wrong OR right from a marginal image - an isolated diagnostic build
+was compiled with the spot's emission boosted 10x and the first point
+light's emission zeroed (both edits applied to a throwaway copy of
+`metal_poc.mm`, never committed). That render shows an unambiguous,
+correctly-shaped cone: narrow at the light, widening toward the target,
+visible as a distinct fog-lit shaft with a matching bright patch where
+it lands - confirming the falloff math and aim were correct all along,
+and the ambiguity in the first renders was just intensity, not a bug.
+The committed scene's own spot emission was then raised (`(3,2.6,4)` to
+`(7.5,6.5,10)`, roughly 2.5x) to read clearly at normal exposure without
+the 10x diagnostic boost's own oversaturation.
+
+Re-verified two ways at the final intensity: the showcase render shows
+the cone as a clear, distinctly-shaped shaft next to the existing point
+light's glow and the two area lights, landing on Spot's floor area as
+intended. An A/B render with the spot entry removed from `pointLights`
+(keeping step 24's own light) reproduces that light's own committed
+render exactly, with only the cone and its footprint missing - confirming
+the two lights' contributions are genuinely independent, not entangled.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

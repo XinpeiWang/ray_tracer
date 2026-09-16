@@ -134,10 +134,41 @@ struct AreaLight {
 // there is for choosing among many area lights, every point light's
 // contribution is simply summed each bounce instead (see the shading
 // loop's own point-light loop below).
+// `direction`/`cosOuterAngle`/`cosInnerAngle` turn this into a SPOT light
+// when set (Blinn/pbrt-v4's own smoothstep cone falloff between the two
+// angles - full emission inside the inner cone, smoothly fading to zero
+// at the outer one, not a hard-edged cone) - `cosOuterAngle <= -1.0`
+// (every point light added before this one, and this struct's own
+// default) means "omnidirectional, not a spot," skipping the falloff
+// computation entirely rather than risking a degenerate `smoothstep`
+// with equal edges. A spot light is still fundamentally the SAME delta
+// light PointLight already is (zero area, no MIS/pdf needed, summed
+// unconditionally, never picked) - the cone is a multiplicative falloff
+// on its own emission, not a different light TYPE requiring different
+// integration math.
 struct PointLight {
     packed_float3 position;
     packed_float3 emission;
+    packed_float3 direction;
+    float cosOuterAngle;
+    float cosInnerAngle;
 };
+
+// Blinn/pbrt-v4's own smooth cone falloff: 0 outside the outer cone, 1
+// inside the inner cone, smoothstep-interpolated in between - `wiFromLight`
+// points FROM the light TOWARD the shading point (the direction the
+// spot's own light actually travels), compared against the spot's own
+// aim `direction`.
+inline float spotLightFalloff(float3 wiFromLight, float3 direction, float cosOuterAngle, float cosInnerAngle) {
+    if (cosOuterAngle <= -1.0) {
+        return 1.0; // omnidirectional - every point light before this one
+    }
+    float cosAngle = dot(normalize(wiFromLight), normalize(direction));
+    if (cosAngle < cosOuterAngle) return 0.0;
+    if (cosAngle > cosInnerAngle) return 1.0;
+    float t = (cosAngle - cosOuterAngle) / max(cosInnerAngle - cosOuterAngle, 1e-6);
+    return t * t * (3.0 - 2.0 * t); // smoothstep
+}
 
 // materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular),
 // 2 = dielectric (glass), 3 = textured Lambertian (same BSDF/NEE code path
@@ -975,7 +1006,8 @@ kernel void primaryRayKernel(
                         if (plShadowResult.type == intersection_type::none) {
                             float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), uniforms.fogAsymmetryG);
                             float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
-                            radiance += throughput * plPhaseValue * float3(pl.emission) * plTransmittance / plDistSq;
+                            float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                            radiance += throughput * plPhaseValue * float3(pl.emission) * plSpot * plTransmittance / plDistSq;
                         }
                     }
 
@@ -1333,7 +1365,8 @@ kernel void primaryRayKernel(
                                 isect.intersect(plShadowRay, accelStructure, functionTable);
                             if (plShadowResult.type == intersection_type::none) {
                                 float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
-                                radiance += throughput * plBrdf * float3(pl.emission) * plCosSurface * plTransmittance / plDistSq;
+                                float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                                radiance += throughput * plBrdf * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
                             }
                         }
                     }
@@ -1481,8 +1514,9 @@ kernel void primaryRayKernel(
                                 isect.intersect(plShadowRay, accelStructure, functionTable);
                             if (plShadowResult.type == intersection_type::none) {
                                 float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                                float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
                                 radiance += throughput * albedo * (1.0 / M_PI_F)
-                                            * float3(pl.emission) * plCosSurface * plTransmittance / plDistSq;
+                                            * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
                             }
                         }
                     }
