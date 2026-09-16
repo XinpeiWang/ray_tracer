@@ -510,3 +510,49 @@ de-risks "can an arbitrary real mesh's vertex data reach a Metal
 acceleration structure and render correctly," not "can this project's own
 scene format be loaded," which remains a substantially larger, separate
 piece of work.
+
+## 15. Proof-of-concept, step 7: smooth (per-vertex-normal-interpolated) shading (done)
+
+Step 6 explicitly flagged Suzanne rendering faceted as "a real (if
+visually rougher) limitation, not a bug," deferred for exactly this
+reason: it needed barycentric-coordinate plumbing the POC didn't have
+yet. This step added it: `intersection_result<instancing, triangle_data>`
+already carries `triangle_barycentric_coord` for a triangle hit - the
+`triangle_data` tag has been on every `intersect()` call since the very
+first working version of this POC, previously read only for
+`primitive_id`. A new per-triangle-corner normal buffer (parallel to the
+vertex buffer, same indexing) feeds
+a barycentric blend (`shadingNormalFor()`) that replaces the flat
+cross-product face normal used everywhere until now.
+
+The OBJ loader now parses `vn` and each face token's own normal index
+(`v//vn`), falling back to a computed flat normal per-triangle when a
+face is missing one (a real files-are-inconsistent case the loader
+handles rather than assumes away) - `suzanne.obj` turned out to have `vn`
+on every one of its 500 faces, so this render uses zero fallbacks, all
+real interpolated data. The hand-authored room quads get the *same* new
+normal buffer, just with all three corners of each triangle carrying an
+identical value (that quad's own flat face normal) - interpolating three
+identical values trivially reproduces the old flat-shading result, so
+every previously-correct object in the scene stays pixel-plausible-
+identical; only Suzanne, the one object with genuinely different per-
+corner values, looks different.
+
+**Result, visually confirmed, and it's a real difference**: Suzanne now
+renders with smooth, continuously-curving surfaces - no visible per-
+triangle facets anywhere, including on the previously most-faceted areas
+(ears, cheeks, forehead). Same 968 triangles as step 6, same scene,
+same sample count - the *only* change is which normal gets used at each
+shaded point. 700×700 @ 256spp @ depth 10 renders in ~9.9 seconds on an
+M2, statistically indistinguishable in cost from step 6's ~9.0 seconds -
+confirming (as step 6 itself predicted) that per-triangle-corner data
+lookups and one extra buffer read are not where this scene's cost lives.
+
+This is also the cleanest confirmation yet of section 13's observation
+about where this POC's real costs are: `triangle_barycentric_coord` was
+already sitting on every `intersection_result` this POC has produced
+since the first working triangle intersection, unused. Turning it into a
+visible feature took one new helper function, one new host-side buffer,
+and reusing the existing per-corner indexing convention - genuinely
+incremental, no new Metal API surface, no debugging odyssey like sections
+9 and 11's custom-primitive work needed.
