@@ -431,3 +431,39 @@ abstraction (the light's shape is hardcoded twice, once in each file, by
 hand-kept-in-sync constants - a real port needs the CPU renderer's own
 light-sampler abstraction, not a hardcoded quad), and still only one
 light.
+
+## 13. Proof-of-concept, step 5: multiple importance sampling (done)
+
+Step 4 (above) explicitly flagged its NEE-only lighting as "correct but
+higher-variance than MIS would give." This step closed that gap: the
+light quad can now be reached two ways per bounce - explicit light
+sampling (NEE) or landing on it by chance via a Lambertian BSDF-sampled
+continuation ray - and both are power-heuristic-weighted (beta=2, the
+same exponent this project's own CPU/GPU-OptiX integrators use per
+`docs/FEATURE_INVENTORY.md`) instead of either double-counted or only one
+strategy used. A `specularBounce`/`bsdfPdf` pair of loop-carried state
+variables track whether the *previous* bounce was a Lambertian BSDF
+sample (mirror/glass bounces and the camera ray itself always count as
+"specular" for MIS purposes - no competing NEE sample could have produced
+that exact hit, so their direct light-hits stay full weight, unweighted).
+
+**Result, quantitatively confirmed, not just visually plausible**: an A/B
+render at matched 8 samples/pixel - pre-MIS state (PR #6) vs. this step,
+same scene, same seed pattern - shows visibly less noise in the MIS
+version, most noticeably near the ceiling/light area where the NEE-only
+version's variance was worst. This is exactly the outcome MIS is supposed
+to produce, confirmed by direct comparison rather than assumed from the
+math being textbook-correct.
+
+Unlike step 4, this one also didn't need a new Metal API - it's a
+restructuring of loop-carried state plus one more solid-angle PDF
+evaluation (reusing the exact conversion step 4 already established) at
+the point a BSDF-sampled ray happens to land on the light. Two changes
+this size in a row without a new gotcha is itself informative for the
+effort estimates in section 6: once the *infrastructure* (accel
+structures, the intersector, per-primitive data, shadow rays) is in
+place, some real integrator features really are as incremental as the
+underlying algorithm suggests - the expensive, unpredictable part of this
+POC so far has consistently been new Metal API surface (custom
+primitives, intersection function tables), not new rendering math on top
+of surface already proven to work.
