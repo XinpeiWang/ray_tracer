@@ -120,6 +120,10 @@ struct AreaLight {
 // isn't modeled. `color` means something different again for {2,5}: a
 // per-unit-distance Beer-Lambert ABSORPTION coefficient, not a
 // reflectance/tint - see applyBeerLambertAbsorption()'s own comment.
+// 6 = procedural checkerboard Lambertian (same BSDF/NEE code path as 0/3
+// again - `color` is tile A, tile B is a fixed fraction of it, computed
+// analytically from UV with no texture/sampler involved at all, unlike
+// materialType 3's image lookup - see checkerColor()'s own comment).
 // `ior` is meaningful for materialType == 2 and 5 (refraction index) and
 // reused, differently, for materialType == 4 (perceptual roughness in
 // [0,1], squared into the GGX alpha parameter below) - materialType 4
@@ -432,6 +436,19 @@ inline float2 equirectangularUV(float3 dir) {
     float u = atan2(dir.z, dir.x) * (1.0 / (2.0 * M_PI_F)) + 0.5;
     float v = asin(clamp(dir.y, -1.0, 1.0)) * (1.0 / M_PI_F) + 0.5;
     return float2(u, v);
+}
+
+// A PROCEDURAL texture (materialType 6) - analytic, computed directly
+// from the hit's own UV, no image/sampler involved at all, unlike
+// materialType 3's earthTexture lookup or step 18's equirectangularUV()
+// (both still ultimately a texture2d::sample() call). `scale` tiles are
+// per UV unit; alternating tiles pick `colorA`/`colorB` based on the
+// parity of floor(u*scale)+floor(v*scale) - the textbook checkerboard
+// construction, same one this project's own CPU checker_texture.h uses.
+inline float3 checkerColor(float2 uv, float scale, float3 colorA, float3 colorB) {
+    float2 tile = floor(uv * scale);
+    float parity = fmod(tile.x + tile.y, 2.0);
+    return (abs(parity) < 0.5) ? colorA : colorB;
 }
 
 // Schlick's approximation - the standard cheap stand-in for the full
@@ -965,6 +982,20 @@ kernel void primaryRayKernel(
             if (mat.materialType == 3u) {
                 float2 uv = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 albedo = earthTexture.sample(textureSampler, uv).rgb;
+            } else if (mat.materialType == 6u) {
+                // Procedural checker (Lambertian, same BSDF/NEE code path
+                // as 0/3 below - only where albedo comes from differs):
+                // `color` is the tile-A colour; tile B is a fixed
+                // fraction of it, not a second stored colour - reusing
+                // `emission` for that (an otherwise-unused field on a
+                // non-emissive material, the same kind of repurposing
+                // `ior`/`roughness` already do for materialTypes 2/4/5)
+                // would have been read by the UNCONDITIONAL emissive-hit
+                // check below (`any(mat.emission) > 0`) as "this triangle
+                // is a light," making the floor incorrectly glow - a real
+                // near-miss caught before it shipped, not a hypothetical.
+                float2 uv = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                albedo = checkerColor(uv, 8.0, float3(mat.color), float3(mat.color) * 0.15);
             } else {
                 albedo = float3(mat.color);
             }

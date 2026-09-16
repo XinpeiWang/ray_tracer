@@ -434,8 +434,14 @@ int main(int argc, const char** argv) {
         const float3 red{0.65f, 0.05f, 0.05f};
         const float3 green{0.12f, 0.45f, 0.15f};
 
-        // Floor (y = -1)
-        addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
+        // Floor (y = -1) - procedural checkerboard (materialType 6), the
+        // one surface in the scene that samples NO texture/image at all
+        // for its albedo, a genuinely different technique from
+        // materialType 3's earthTexture lookup (analytic UV math instead
+        // of a sampler call). addQuad()'s own planar 0-1 UVs across the
+        // whole floor, combined with checkerColor()'s own 8-tiles-per-UV-
+        // unit scale, give 8x8 tiles across the room's own floor.
+        addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white, /*materialType=*/6);
         // Ceiling (y = 1)
         addQuad(verts, normals, uvs, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
         // Back wall (z = -1) - textured (materialType 3): the one surface

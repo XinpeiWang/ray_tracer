@@ -1507,3 +1507,45 @@ breadth-of-effort (porting/rewriting a large, specific feature set) and
 architecture-level integration (wavefront restructuring, scene-builder,
 app integration), not remaining architectural risk in the Metal/MetalRT
 approach itself.
+
+## 32. Proof-of-concept, step 21: a procedural checkerboard texture (done)
+
+Every textured surface so far (`materialType 3`) has sampled a real
+IMAGE (`earthTexture`) - a genuinely different, and arguably more
+fundamental, technique in production rendering is a PROCEDURAL texture:
+computed analytically from the hit's own UV, no sampler/image involved
+at all. `materialType 6` adds the textbook example of one -
+`checkerColor()`, alternating between a colour and a fixed-fraction-
+darker version of it based on the parity of `floor(u*scale) +
+floor(v*scale)` - applied to the room's floor (previously plain white
+Lambertian), reusing `addQuad()`'s own existing planar 0-1 UVs with no
+scene-authoring changes needed beyond the one material-type flag.
+
+**A real near-miss, caught before it shipped, not after**: the natural-
+seeming choice for tile B's colour would have been reusing
+`TriangleMaterial::emission` (an otherwise-unused field on a non-
+emissive material, the exact kind of repurposing `ior`/`roughness`
+already do for materialTypes 2/4/5). That would have been wrong -
+`emission` is read UNCONDITIONALLY by the shading loop's own "is this
+hit a light source" check (`any(mat.emission) > 0`), regardless of
+materialType, so a nonzero tile-B colour stored there would have made
+the checkerboard floor incorrectly glow as if it were an area light.
+Caught while writing the code, before ever compiling or rendering it,
+by re-reading how `emission` is actually consumed elsewhere rather than
+assuming a field being "currently unused for this materialType" means
+it's safe to repurpose - not every unused-looking field is actually
+free. Fixed by deriving tile B analytically (a fixed darkening factor)
+instead of storing a second colour at all.
+
+**Result, verified two ways**: the committed scene shows a clean 8x8
+checkerboard floor, visible directly and correctly reflected in both
+the mirror disk and the glass/frosted spheres (confirming the pattern
+participates in indirect light transport normally, not just primary
+visibility). An A/B render with the floor's materialType reverted to 0
+reproduces the original plain white floor exactly. 700×700 @ 384spp @
+depth 10 renders in ~37 seconds on an M2, statistically indistinguishable
+from step 20's own ~38s (one analytic `floor()`/`fmod()` computation
+added to an existing albedo lookup, not a new cost category).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
