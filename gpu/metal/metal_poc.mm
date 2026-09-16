@@ -153,26 +153,39 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId});
 }
 
-// A minimal Wavefront OBJ loader: positions, vertex normals, and faces
-// (`v`/`vn`/`f`) only - no texcoords/materials/groups. This project's own
-// real loaders (src/shared/pbrt_load.h -> pbrt_cpu_builder.h/
-// pbrt_gpu_builder.h) are full pbrt-v4 scene parsers; this is
-// deliberately the smallest thing that can prove "load an arbitrary real
-// mesh, not just hand-authored axis-aligned quads and an analytic
-// sphere" - the first genuinely data-driven geometry in this POC. Faces
-// are fan-triangulated (n>3 polygon -> n-2 triangles sharing vertex 0),
-// matching how this project's own CPU loader handles polygons that
-// aren't already triangles.
+// A minimal Wavefront OBJ loader: positions, vertex normals, texture
+// coordinates, and faces (`v`/`vn`/`vt`/`f`) - no materials/groups. This
+// project's own real loaders (src/shared/pbrt_load.h ->
+// pbrt_cpu_builder.h/pbrt_gpu_builder.h) are full pbrt-v4 scene parsers;
+// this is deliberately the smallest thing that can prove "load an
+// arbitrary real mesh, not just hand-authored axis-aligned quads and an
+// analytic sphere" - the first genuinely data-driven geometry in this
+// POC. Faces are fan-triangulated (n>3 polygon -> n-2 triangles sharing
+// vertex 0), matching how this project's own CPU loader handles polygons
+// that aren't already triangles.
 //
 // Per-corner shading normal: a face token's own `vn` index is used when
 // present (`v//vn` or `v/vt/vn`); a face missing normal indices entirely
 // falls back to that triangle's own computed flat face normal - real
-// files are inconsistent about this in practice (this one, suzanne.obj,
-// has vn on every face, but the loader has to handle one that doesn't
-// without producing degenerate normals). This is what makes
+// files are inconsistent about this in practice (suzanne.obj has `vn` on
+// every face; spot.obj, added for real UV testing below, has NONE at
+// all, so both code paths get real exercise across this POC's two mesh
+// files, not just the fallback-free one). This is what makes
 // metal_poc.metal's barycentric shadingNormalFor() interpolation produce
 // a genuinely smooth result instead of the flat-per-triangle look every
 // other object in this scene has.
+//
+// Per-corner texture coordinate: same idea, a face token's own `vt`
+// index (`v/vt` or `v/vt/vn`) when present, (0,0) fallback otherwise -
+// this is the real-data counterpart to addQuad()'s hand-authored planar
+// UVs, the piece the texture-mapping PR explicitly deferred ("parsing
+// real vt/f v/vt/vn tokens was judged out of scope for this increment").
+// suzanne.obj has no `vt` data at all (every corner falls back), so it
+// keeps its materialType 0; spot.obj DOES (3225 `vt` entries, one per
+// face corner), the caller passes materialType 3 for it, and
+// texCoordFor()'s barycentric interpolation on real per-corner data
+// produces a real (if mismatched-content, earthmap.jpg was never meant
+// for a cow) textured mesh, not just a textured flat quad.
 //
 // The mesh is auto-fit to `targetSize` (its largest bounding-box
 // dimension scaled to that value) and recentred at `center` - real .obj
@@ -185,7 +198,8 @@ static bool loadObjMesh(const std::string& path,
                          std::vector<PackedFloat3>& normals,
                          std::vector<PackedFloat2>& uvs,
                          std::vector<TriangleMaterial>& materials,
-                         float3 color, float3 center, float targetSize) {
+                         float3 color, float3 center, float targetSize,
+                         uint32_t materialType = 0) {
     std::ifstream in(path);
     if (!in) {
         fprintf(stderr, "Could not open OBJ file: %s\n", path.c_str());
@@ -194,11 +208,12 @@ static bool loadObjMesh(const std::string& path,
 
     std::vector<float3> positions;
     std::vector<float3> fileNormals;
-    // Each face vertex is (positionIndex, normalIndex-or--1), 0-based
-    // post-fixup - keeping the pair together (rather than two parallel
-    // index lists) is what lets a face's own vn reference survive fan
-    // triangulation below unchanged.
-    struct FaceVertex { int posIdx; int normalIdx; };
+    std::vector<simd::float2> fileUVs;
+    // Each face vertex is (positionIndex, normalIndex-or--1,
+    // uvIndex-or--1), 0-based post-fixup - keeping the triple together
+    // (rather than three parallel index lists) is what lets a face's own
+    // vn/vt references survive fan triangulation below unchanged.
+    struct FaceVertex { int posIdx; int normalIdx; int uvIdx; };
     std::vector<std::vector<FaceVertex>> faces;
 
     auto parseObjIndex = [](const std::string& token, size_t countAtParseTime) -> int {
@@ -223,6 +238,10 @@ static bool loadObjMesh(const std::string& path,
             float x, y, z;
             ss >> x >> y >> z;
             fileNormals.push_back(simd::make_float3(x, y, z));
+        } else if (tag == "vt") {
+            float u, v;
+            ss >> u >> v;
+            fileUVs.push_back(simd::float2{u, v});
         } else if (tag == "f") {
             std::vector<FaceVertex> faceVerts;
             std::string token;
@@ -232,10 +251,21 @@ static bool loadObjMesh(const std::string& path,
                 size_t lastSlash = token.rfind('/');
                 int posIdx = parseObjIndex(token.substr(0, firstSlash), positions.size());
                 int normalIdx = -1;
+                int uvIdx = -1;
                 if (firstSlash != std::string::npos && lastSlash != firstSlash) {
                     normalIdx = parseObjIndex(token.substr(lastSlash + 1), fileNormals.size());
                 }
-                faceVerts.push_back({posIdx, normalIdx});
+                if (firstSlash != std::string::npos) {
+                    // The vt slot sits between the two slashes for
+                    // "v/vt/vn", or from the first slash to the token's
+                    // end for "v/vt" (no vn at all, spot.obj's own
+                    // format) - lastSlash == firstSlash in that case, so
+                    // this substring naturally runs to end-of-string.
+                    size_t vtEnd = (lastSlash != firstSlash) ? lastSlash : token.size();
+                    std::string vtToken = token.substr(firstSlash + 1, vtEnd - firstSlash - 1);
+                    uvIdx = parseObjIndex(vtToken, fileUVs.size());
+                }
+                faceVerts.push_back({posIdx, normalIdx, uvIdx});
             }
             if (faceVerts.size() >= 3) faces.push_back(faceVerts);
         }
@@ -269,6 +299,7 @@ static bool loadObjMesh(const std::string& path,
 
     uint32_t triangleCount = 0;
     uint32_t normalFallbackCount = 0;
+    uint32_t uvFallbackCount = 0;
     for (const std::vector<FaceVertex>& face : faces) {
         // Fan triangulation from vertex 0 - correct for the convex/near-
         // convex polygons a typical modeled mesh's faces are (this file's
@@ -286,13 +317,21 @@ static bool loadObjMesh(const std::string& path,
             verts.push_back(PackedFloat3{a.x, a.y, a.z});
             verts.push_back(PackedFloat3{b.x, b.y, b.z});
             verts.push_back(PackedFloat3{c.x, c.y, c.z});
-            // No .obj texcoord (vt) parsing - this loader is only ever used
-            // for Suzanne, which stays materialType 0 (never sampled), so a
-            // default UV is harmless filler kept only for buffer-layout
-            // parity with the vertex/normal buffers.
-            uvs.push_back(PackedFloat2{0, 0});
-            uvs.push_back(PackedFloat2{0, 0});
-            uvs.push_back(PackedFloat2{0, 0});
+
+            bool haveAllUVs =
+                fv0.uvIdx >= 0 && fv0.uvIdx < (int)fileUVs.size() &&
+                fv1.uvIdx >= 0 && fv1.uvIdx < (int)fileUVs.size() &&
+                fv2.uvIdx >= 0 && fv2.uvIdx < (int)fileUVs.size();
+            if (haveAllUVs) {
+                uvs.push_back(PackedFloat2{fileUVs[fv0.uvIdx].x, fileUVs[fv0.uvIdx].y});
+                uvs.push_back(PackedFloat2{fileUVs[fv1.uvIdx].x, fileUVs[fv1.uvIdx].y});
+                uvs.push_back(PackedFloat2{fileUVs[fv2.uvIdx].x, fileUVs[fv2.uvIdx].y});
+            } else {
+                uvs.push_back(PackedFloat2{0, 0});
+                uvs.push_back(PackedFloat2{0, 0});
+                uvs.push_back(PackedFloat2{0, 0});
+                ++uvFallbackCount;
+            }
 
             bool haveAllNormals =
                 fv0.normalIdx >= 0 && fv0.normalIdx < (int)fileNormals.size() &&
@@ -318,13 +357,13 @@ static bool loadObjMesh(const std::string& path,
     }
 
     PackedFloat3 packedColor{color.x, color.y, color.z};
-    TriangleMaterial mat{packedColor, /*materialType=*/0, 1.0f, PackedFloat3{0, 0, 0}};
+    TriangleMaterial mat{packedColor, materialType, 1.0f, PackedFloat3{0, 0, 0}};
     for (uint32_t i = 0; i < triangleCount; ++i) materials.push_back(mat);
 
-    fprintf(stderr, "Loaded %s: %zu positions, %zu normals, %u triangles (%u flat-normal "
-                     "fallback), scale %.4f\n",
-            path.c_str(), positions.size(), fileNormals.size(), triangleCount,
-            normalFallbackCount, scale);
+    fprintf(stderr, "Loaded %s: %zu positions, %zu normals, %zu uvs, %u triangles "
+                     "(%u flat-normal fallback, %u zero-uv fallback), scale %.4f\n",
+            path.c_str(), positions.size(), fileNormals.size(), fileUVs.size(), triangleCount,
+            normalFallbackCount, uvFallbackCount, scale);
     return true;
 }
 
@@ -402,6 +441,27 @@ int main(int argc, const char** argv) {
         if (!loadObjMesh(suzannePath.UTF8String, verts, normals, uvs, materials, bronze,
                           /*center=*/float3{-0.05f, -0.55f, -0.3f}, /*targetSize=*/0.75f)) {
             fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
+        }
+
+        // Spot (Keenan Crane's textured cow model, models/spot.obj) - unlike
+        // suzanne.obj, this file has real per-face-corner `vt` data (3225
+        // entries) and NO `vn` at all, the exact inverse case from Suzanne's
+        // own (vn on every face, no vt) - loading it exercises
+        // loadObjMesh()'s real-UV path (not just its zero-fallback path)
+        // and its flat-normal fallback path in the same call, closing the
+        // texture-mapping PR's own explicitly-deferred "real vt/f v/vt/vn
+        // parsing" item. materialType 3 (textured) reuses `earthTexture` -
+        // wrapping a world map onto a cow is a deliberately silly texture
+        // choice for a mesh that was never authored to use it, but it's
+        // exactly what makes this a REAL demonstration of per-vertex UV
+        // interpolation rather than a coincidentally-plausible-looking
+        // result: the world map's grid lines and coastlines have to follow
+        // spot's actual surface curvature for this to look right at all.
+        NSString* spotPath = [modelsDir stringByAppendingPathComponent:@"spot.obj"];
+        if (!loadObjMesh(spotPath.UTF8String, verts, normals, uvs, materials, white,
+                          /*center=*/float3{0.78f, -0.75f, 0.6f}, /*targetSize=*/0.42f,
+                          /*materialType=*/3)) {
+            fprintf(stderr, "Continuing without Spot - check RT_MODELS_DIR / models/spot.obj.\n");
         }
 
         // Area lights: real geometry, hanging just under the ceiling
