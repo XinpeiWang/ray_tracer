@@ -316,6 +316,10 @@ RayTracer_Package/cornell_*
 
 # Portable release packages
 RayTracer_Package/
+# scripts/package.ps1's own tiered output folders (RayTracer_Package_Lite/,
+# _Medium/, _Full/) - a separate pattern from the exact-match rule above,
+# since gitignore doesn't prefix-match.
+RayTracer_Package_*/
 RayTracer_v1.0_Portable/
 *_Portable/
 releases/*.zip

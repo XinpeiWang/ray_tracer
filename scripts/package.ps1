@@ -175,7 +175,12 @@ function Copy-RequiredFile([string]$Src, [string]$DstName) {
 Copy-RequiredFile "$BuildDir\ray_tracer.exe" "RayTracer.exe"
 
 if ($Tier -ne "Lite") {
-	Copy-RequiredFile "$BuildDir\RayTracerGUI.exe"
+	# NOT $BuildDir - RayTracerGUI.pro's own DESTDIR sends qmake/nmake's
+	# link output straight to the shared dev RayTracer_Package\ folder
+	# (confirmed by this project's own build log: "link ... /OUT:
+	# ..\RayTracer_Package\RayTracerGUI.exe"), never to x64\$Configuration\
+	# the way every MSBuild-based .vcxproj target here does.
+	Copy-RequiredFile "$RepoRoot\RayTracer_Package\RayTracerGUI.exe"
 	Copy-RequiredFile "$BuildDir\scene_metadata.dll"
 
 	if ($Tier -eq "Full") {
