@@ -1092,3 +1092,63 @@ was pure shading-side math with no extra scene complexity.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 25. Proof-of-concept, step 16: a second custom-primitive shape (a disk) (done)
+
+Every custom (non-triangle) primitive in this POC before now - however
+many spheres accumulated across earlier steps - has gone through the
+SAME intersection function, at the SAME function-table slot (0). Section
+3's own risk table lists "Custom-primitive intersection (sphere/quad/
+disk/cylinder/bilinear patch)" as one item covering five shape types;
+this POC had only ever proven ONE of them, and more importantly, had
+never proven the mechanism a real multi-shape renderer actually needs:
+more than one DISTINCT intersection function living in the same function
+table at once, dispatched by `geometryDescriptor.intersectionFunction
+TableOffset`.
+
+A disk primitive (plane intersection + in-plane radius check -
+`diskIntersectionFunction`, textbook math, same shape this project's own
+CPU `disk.h` uses in spirit) is added as a SECOND `geometryDescriptor`
+within the SAME primitive acceleration structure the spheres already
+use (Metal supports multiple heterogeneous geometries in one AS - this
+wasn't previously exercised either), at function-table slot 1. Two real
+things had to be gotten right that the single-function case never
+needed to think about:
+
+1. **A shared argument namespace.** Both intersection functions live in
+   the SAME `MTLIntersectionFunctionTable`, and `setBuffer:atIndex:N`
+   binds buffer N for the WHOLE table, not per-function - so
+   `sphereIntersectionFunction` and `diskIntersectionFunction` had to
+   declare DIFFERENT `[[buffer(N)]]` indices in their own MSL signatures
+   (0 and 1) for their host-side bindings not to collide.
+2. **Disambiguating hits.** Both a sphere hit and a disk hit report
+   `intersection_type::bounding_box` - identical to each other from the
+   calling kernel's point of view - so `isSphere = (type ==
+   bounding_box)` (every earlier step's own check) stopped being
+   sufficient. `intersection_result::geometry_id` (the geometryDescriptors
+   array index within the hit AS: spheres at 0, disk at 1) is what
+   actually tells them apart - the first time this POC has needed that
+   field for anything.
+
+The disk is also, incidentally, the first object in this ENTIRE scene to
+actually use `materialType 1` (mirror) - it's existed in the shader since
+the very first multi-material step, but nothing rendered had used it
+since the original mirror test quad was replaced by the dielectric
+sphere back in step 6.
+
+**Result, visually confirmed**: a circular mirror mounted on the right
+(green) wall, correctly showing a crisp circular silhouette (not the
+AABB's own square bounding shape, confirming the radius check is doing
+real work, not just accepting anything inside the bounding box), a
+plausible mirror reflection of the room's ceiling/back-wall area, and a
+correct soft shadow/darkening on the wall directly behind it. Both
+spheres and the disk coexist correctly in the same render - direct
+confirmation the two-slot function table dispatches each geometry to
+its own correct intersection function rather than one silently
+overriding or only-sometimes-invoking the other. 700×700 @ 256spp @
+depth 10 renders in ~20 seconds on an M2, statistically indistinguishable
+from step 15's own ~20s (one more small, cheap-to-intersect primitive,
+not a meaningful cost addition).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

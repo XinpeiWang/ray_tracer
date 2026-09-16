@@ -128,6 +128,13 @@ struct InstanceTransform {
     PackedFloat3 col3;
 };
 
+// Mirrors metal_poc.metal's DiskData byte-for-byte.
+struct DiskData {
+    PackedFloat3 center;
+    PackedFloat3 normal;
+    float radius;
+};
+
 // A quad (4 verts, wound as 2 triangles) sharing one flat colour and
 // material type - the smallest scene-authoring shape that can build a
 // real Cornell box without hand-listing 30 individual vertices. `normals`
@@ -573,8 +580,27 @@ int main(int argc, const char** argv) {
                              /*lightId=*/-1, /*roughness=*/0.35f},
         };
 
+        // A wall-mounted mirror disk (materialType 1) - a second, distinct
+        // custom-primitive SHAPE, not just another sphere. Every custom
+        // primitive so far (however many) has gone through the SAME
+        // intersection function at function-table slot 0; this is what
+        // actually exercises a second, different function at slot 1 (see
+        // metal_poc.metal's own comment on diskIntersectionFunction).
+        // Also, incidentally, the first object in this whole scene to use
+        // materialType 1 (mirror) at all - it's existed in the shader
+        // since the very first multi-material step but nothing had
+        // actually used it since the mirror test quad was replaced by the
+        // dielectric sphere back in step 6.
+        std::vector<DiskData> disks = {
+            DiskData{PackedFloat3{0.97f, 0.3f, -0.3f}, PackedFloat3{-1.0f, 0.0f, 0.0f}, 0.22f},
+        };
+        std::vector<TriangleMaterial> diskMaterials = {
+            TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/1, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
+        };
+
         const uint32_t triangleCount = (uint32_t)materials.size();
-        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu lights\n", triangleCount, spheres.size(), lights.size());
+        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights\n",
+                triangleCount, spheres.size(), disks.size(), lights.size());
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
@@ -595,6 +621,10 @@ int main(int argc, const char** argv) {
             length:spheres.size() * sizeof(SphereData) options:MTLResourceStorageModeShared];
         id<MTLBuffer> sphereMaterialBuffer = [device newBufferWithBytes:sphereMaterials.data()
             length:sphereMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> diskBuffer = [device newBufferWithBytes:disks.data()
+            length:disks.size() * sizeof(DiskData) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> diskMaterialBuffer = [device newBufferWithBytes:diskMaterials.data()
+            length:diskMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
 
         const uint32_t suzanneTriangleCount = (uint32_t)suzanneMaterials.size();
         id<MTLBuffer> suzanneVertexBuffer = [device newBufferWithBytes:suzanneVerts.data()
@@ -664,8 +694,10 @@ int main(int argc, const char** argv) {
         bboxGeomDesc.boundingBoxCount = (uint32_t)sphereBoundsList.size();
         // intersectionFunctionTableOffset here is this GEOMETRY's own
         // slot within whatever function table gets bound at trace time -
-        // 0 since sphereIntersectionFunction is the only entry in it
-        // (set up below, alongside the compute pipeline).
+        // 0, sphereIntersectionFunction's own slot (set up below,
+        // alongside the compute pipeline). The disk geometry added below
+        // uses slot 1 instead - the first time this POC's function table
+        // has needed more than one entry.
         bboxGeomDesc.intersectionFunctionTableOffset = 0;
         // Opaque here too: sphereIntersectionFunction is the REQUIRED
         // primitive-intersection test for this custom geometry (always
@@ -675,9 +707,40 @@ int main(int argc, const char** argv) {
         // exactly this POC's one-test-decides-it shape.
         bboxGeomDesc.opaque = YES;
 
+        // The disk's own bounding-box geometry, a SECOND geometryDescriptor
+        // within the SAME primitive AS as the spheres (not a separate AS -
+        // Metal supports multiple heterogeneous geometries in one
+        // acceleration structure, distinguished at trace time by
+        // `geometry_id`, matching this array's own index order: spheres
+        // at 0, disk at 1 - see metal_poc.metal's own comment on why that
+        // distinction is needed now). Padded uniformly by a small epsilon
+        // in every axis (not just the disk's own zero-thickness normal
+        // axis) - simplest bound that's correct regardless of which axis
+        // the disk's normal happens to be aligned with, at the cost of a
+        // slightly looser-than-optimal box for a single small primitive.
+        const float diskBoundsEpsilon = 0.01f;
+        std::vector<MTLAxisAlignedBoundingBox> diskBoundsList;
+        for (const DiskData& d : disks) {
+            float r = d.radius + diskBoundsEpsilon;
+            MTLAxisAlignedBoundingBox bounds;
+            bounds.min = MTLPackedFloat3Make(d.center.x - r, d.center.y - r, d.center.z - r);
+            bounds.max = MTLPackedFloat3Make(d.center.x + r, d.center.y + r, d.center.z + r);
+            diskBoundsList.push_back(bounds);
+        }
+        id<MTLBuffer> diskBoundingBoxBuffer = [device newBufferWithBytes:diskBoundsList.data()
+            length:diskBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
+
+        MTLAccelerationStructureBoundingBoxGeometryDescriptor* diskGeomDesc =
+            [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
+        diskGeomDesc.boundingBoxBuffer = diskBoundingBoxBuffer;
+        diskGeomDesc.boundingBoxStride = sizeof(MTLAxisAlignedBoundingBox);
+        diskGeomDesc.boundingBoxCount = (uint32_t)diskBoundsList.size();
+        diskGeomDesc.intersectionFunctionTableOffset = 1; // diskIntersectionFunction's own slot
+        diskGeomDesc.opaque = YES;
+
         MTLPrimitiveAccelerationStructureDescriptor* sphereAccelDesc =
             [MTLPrimitiveAccelerationStructureDescriptor descriptor];
-        sphereAccelDesc.geometryDescriptors = @[bboxGeomDesc];
+        sphereAccelDesc.geometryDescriptors = @[bboxGeomDesc, diskGeomDesc];
 
         MTLAccelerationStructureSizes sphereSizes = [device accelerationStructureSizesWithDescriptor:sphereAccelDesc];
         id<MTLAccelerationStructure> sphereAS = [device newAccelerationStructureWithSize:sphereSizes.accelerationStructureSize];
@@ -849,6 +912,7 @@ int main(int argc, const char** argv) {
         }
         id<MTLFunction> kernelFn = [library newFunctionWithName:@"primaryRayKernel"];
         id<MTLFunction> sphereIntersectFn = [library newFunctionWithName:@"sphereIntersectionFunction"];
+        id<MTLFunction> diskIntersectFn = [library newFunctionWithName:@"diskIntersectionFunction"];
 
         // The intersection function has to be LINKED into the compute
         // pipeline (MTLLinkedFunctions) before an MTLIntersectionFunction
@@ -859,7 +923,7 @@ int main(int argc, const char** argv) {
         MTLComputePipelineDescriptor* pipelineDesc = [MTLComputePipelineDescriptor new];
         pipelineDesc.computeFunction = kernelFn;
         MTLLinkedFunctions* linkedFns = [MTLLinkedFunctions new];
-        linkedFns.functions = @[sphereIntersectFn];
+        linkedFns.functions = @[sphereIntersectFn, diskIntersectFn];
         pipelineDesc.linkedFunctions = linkedFns;
 
         id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithDescriptor:pipelineDesc
@@ -869,21 +933,33 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
-        // --- Intersection function table: one slot (index 0), matching --
-        // every geometry's intersectionFunctionTableOffset above (bboxGeomDesc's
-        // and instanceDescs[1]'s, both 0) - a real multi-custom-primitive
-        // scene would have one slot per distinct intersection function,
-        // indexed by whatever offsets those geometries/instances declare.
+        // --- Intersection function table: two slots now, matching --------
+        // bboxGeomDesc's own intersectionFunctionTableOffset (0) and
+        // diskGeomDesc's (1) above - this POC's first real "one slot per
+        // distinct intersection function" table, not just one slot
+        // reused by every custom primitive. `setBuffer:atIndex:N` here
+        // sets buffer N in the table's OWN shared argument namespace
+        // (every function in ONE table draws from the same set of bound
+        // buffers/textures) - sphereIntersectionFunction and
+        // diskIntersectionFunction each declare a DIFFERENT `[[buffer(N)]]`
+        // in their own MSL signature (0 and 1 respectively) specifically
+        // so binding sphereBuffer at atIndex:0 and diskBuffer at
+        // atIndex:1 here reaches the right function's own data, not a
+        // shared/overwritten slot.
         MTLIntersectionFunctionTableDescriptor* fnTableDesc = [MTLIntersectionFunctionTableDescriptor new];
-        fnTableDesc.functionCount = 1;
+        fnTableDesc.functionCount = 2;
         id<MTLIntersectionFunctionTable> functionTable = [pipeline newIntersectionFunctionTableWithDescriptor:fnTableDesc];
         id<MTLFunctionHandle> sphereHandle = [pipeline functionHandleWithFunction:sphereIntersectFn];
+        id<MTLFunctionHandle> diskHandle = [pipeline functionHandleWithFunction:diskIntersectFn];
         [functionTable setFunction:sphereHandle atIndex:0];
-        // sphereIntersectionFunction reads its own `spheres` buffer
-        // (metal_poc.metal buffer(0), a SEPARATE argument table from the
-        // calling kernel's buffer(0..6) - see that file's own comment) -
+        [functionTable setFunction:diskHandle atIndex:1];
+        // sphereIntersectionFunction/diskIntersectionFunction each read
+        // their own geometry buffer (metal_poc.metal buffer(0)/buffer(1)
+        // respectively - a SEPARATE argument table from the calling
+        // kernel's own buffer(0..14), see that file's own comment) -
         // bound here, on the function table, not on the compute encoder.
         [functionTable setBuffer:sphereBuffer offset:0 atIndex:0];
+        [functionTable setBuffer:diskBuffer offset:0 atIndex:1];
 
         // --- Output texture + uniforms ----------------------------------
         MTLTextureDescriptor* texDesc = [MTLTextureDescriptor
@@ -994,6 +1070,8 @@ int main(int argc, const char** argv) {
         [enc setBuffer:suzanneNormalBuffer offset:0 atIndex:10];
         [enc setBuffer:suzanneMaterialBuffer offset:0 atIndex:11];
         [enc setBuffer:instanceTransformBuffer offset:0 atIndex:12];
+        [enc setBuffer:diskBuffer offset:0 atIndex:13];
+        [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
         // acceleration structures referencing primitive ones (now three:
