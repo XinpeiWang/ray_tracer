@@ -246,6 +246,19 @@ kernel void primaryRayKernel(
 
         float3 throughput = float3(1.0);
         float3 radiance = float3(0.0);
+        // MIS bookkeeping across bounces: the light quad can be reached
+        // two ways - explicit light sampling below (NEE), or landing on
+        // it by chance via a Lambertian BSDF-sampled continuation ray.
+        // Adding BOTH at full weight double-counts and adding only one
+        // wastes the other strategy's lower-variance samples - the power
+        // heuristic (beta=2, same choice this project's own CPU/GPU-OptiX
+        // integrators make per docs/FEATURE_INVENTORY.md) blends them.
+        // specularBounce starts true (a camera ray has no competing NEE
+        // strategy to weight against, so its own hits - direct light
+        // visibility - are always full weight, same as a mirror/glass
+        // bounce's next hit); bsdfPdf is only meaningful when false.
+        bool specularBounce = true;
+        float bsdfPdf = 0.0;
 
         for (uint depth = 0; depth < uniforms.maxDepth; ++depth) {
             ray r;
@@ -292,14 +305,34 @@ kernel void primaryRayKernel(
 
             float3 albedo = float3(mat.color);
 
-            // Unconditional, regardless of material type: this is what
-            // makes the light quad itself visible when a camera ray or a
-            // GI bounce lands on it directly (mirror/glass included - a
-            // mirror reflecting toward the light correctly shows it,
-            // since this fires for THEIR reflected/refracted rays' next
-            // hit too, not just Lambertian ones). Every non-light surface
-            // has emission == 0, so this is a no-op for them.
-            radiance += throughput * float3(mat.emission);
+            // Unconditional check (regardless of material type) for
+            // whether this hit is the light quad - covers a camera ray or
+            // a GI bounce landing on it directly, mirror/glass included (a
+            // mirror reflecting toward the light correctly shows it, since
+            // this fires for THEIR reflected/refracted rays' next hit too,
+            // not just Lambertian ones). Every non-light surface has
+            // emission == 0, so `any(...)` below is false and this whole
+            // block is a no-op for them.
+            if (any(float3(mat.emission) > float3(0.0))) {
+                if (specularBounce) {
+                    // No competing NEE sample could have produced this
+                    // exact hit (camera ray, or a mirror/glass bounce -
+                    // both skip NEE entirely, see their own branches
+                    // below), so there's nothing to weight against.
+                    radiance += throughput * float3(mat.emission);
+                } else {
+                    // Reached via a Lambertian BSDF-sampled continuation
+                    // ray - weight by the power heuristic against what
+                    // the light-sampling strategy's own PDF would have
+                    // been for this exact hit, using the same area-to-
+                    // solid-angle conversion the NEE branch below uses.
+                    float distSq = result.distance * result.distance;
+                    float cosLight = max(dot(kLightNormal, -rayDir), 0.0001);
+                    float pdfLight = distSq / (kLightArea * cosLight);
+                    float weight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfLight * pdfLight);
+                    radiance += throughput * float3(mat.emission) * weight;
+                }
+            }
 
             if (mat.materialType == 2u) {
                 // Dielectric (glass): Schlick-approximated Fresnel decides
@@ -335,6 +368,7 @@ kernel void primaryRayKernel(
                 // as the mirror branch below - throughput stays at the
                 // glass's own tint (near-1.0/clear for realistic glass).
                 throughput *= albedo;
+                specularBounce = true;
             } else if (mat.materialType == 1u) {
                 // Mirror: deterministic reflection, no light sampling (a
                 // specular surface has zero probability of the shadow ray
@@ -344,6 +378,7 @@ kernel void primaryRayKernel(
                 rayDir = reflect(rayDir, facingNormal);
                 rayOrigin = hitPoint + facingNormal * 0.001f;
                 throughput *= albedo;
+                specularBounce = true;
             } else {
                 // Lambertian: next-event estimation against the area
                 // light (uniform-area-sampled point + solid-angle PDF
@@ -383,8 +418,17 @@ kernel void primaryRayKernel(
                             // pdf_area = 1/kLightArea for uniform sampling -
                             // textbook area-light NEE, not an approximation.
                             float pdfSolidAngle = distSq / (kLightArea * cosLight);
+                            // MIS weight against what the BSDF-sampling
+                            // strategy's own PDF would be for this same
+                            // direction wi (cosine-weighted: cosSurface/pi) -
+                            // symmetric counterpart to the weight applied
+                            // to a BSDF-sampled ray landing on the light
+                            // above.
+                            float pdfBsdfForThisDir = cosSurface / M_PI_F;
+                            float weight = (pdfSolidAngle * pdfSolidAngle)
+                                / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
                             radiance += throughput * albedo * (1.0 / M_PI_F)
-                                        * kLightEmission * cosSurface / pdfSolidAngle;
+                                        * kLightEmission * cosSurface / pdfSolidAngle * weight;
                         }
                     }
                 }
@@ -396,6 +440,13 @@ kernel void primaryRayKernel(
                 // albedo below - textbook importance-sampled Lambertian,
                 // not an approximation.
                 throughput *= albedo;
+                // Recorded for next iteration's MIS weighting of a
+                // direct-light-hit encountered via THIS sampled direction -
+                // cosine-weighted sampling's own PDF is cos(theta)/pi,
+                // theta measured against the same facingNormal it was
+                // sampled around.
+                bsdfPdf = max(dot(facingNormal, rayDir), 0.0001) / M_PI_F;
+                specularBounce = false;
             }
 
             // Russian roulette after a few bounces, same "let cheap paths
