@@ -382,7 +382,12 @@ struct LightSample {
 };
 
 inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState) {
-    uint idx = min(uint(randFloat(rngState) * float(lightCount)), lightCount - 1);
+    // max(lightCount, 1u) guards the `- 1` below from underflowing (uint
+    // wraps to 0xFFFFFFFF, not -1) if this were ever called on a 0-light
+    // scene - not reachable with this POC's own hardcoded 2-light scene,
+    // but every NEE call site calls this unconditionally with no count
+    // check of its own, so this needs to be safe on its own terms.
+    uint idx = min(uint(randFloat(rngState) * float(lightCount)), max(lightCount, 1u) - 1);
     AreaLight light = lights[idx];
     float3 edgeU = float3(light.edgeU);
     float3 edgeV = float3(light.edgeV);
@@ -679,7 +684,18 @@ kernel void primaryRayKernel(
 
                 float refractionRatio = frontFace ? (1.0 / mat.ior) : mat.ior;
                 float3 unitDir = normalize(rayDir);
-                float cosTheta = min(dot(-unitDir, hWorld), 1.0);
+                // Unlike materialType 2's own dot(-unitDir, facingNormal)
+                // (provably >= 0, since facingNormal is always built to
+                // oppose the ray), hWorld here is a VNDF-sampled
+                // microfacet normal perturbed away from facingNormal - at
+                // grazing incidence combined with high roughness, the
+                // angle between the view direction and THIS particular
+                // sampled half-vector can exceed 90 degrees even though
+                // the angle to facingNormal itself never does, so this
+                // needs its own lower clamp too (schlickReflectance's
+                // pow(1-cosine, 5) term overshoots past 1 on a negative
+                // cosine otherwise, over-weighting the reflect branch).
+                float cosTheta = clamp(dot(-unitDir, hWorld), 0.0, 1.0);
                 float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
                 bool cannotRefract = refractionRatio * sinTheta > 1.0;
 
