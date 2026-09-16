@@ -1549,3 +1549,45 @@ added to an existing albedo lookup, not a new cost category).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 33. Proof-of-concept, step 22: Fresnel-weighted mirror reflectance (done)
+
+The mirror material (`materialType 1`) has multiplied `throughput` by a
+flat `albedo` on every reflection since the very first multi-material
+step - correct only exactly at normal incidence. A real mirror's
+reflectance rises toward white/uncolored at grazing angles regardless of
+its base tint (the same physical effect the GGX conductor material
+already models); a flat multiply silently under-brightens every
+grazing-angle reflection instead. Fixed by reusing
+`fresnelSchlickConductor()` - already written, already verified, for the
+GGX conductor material - with `albedo` doubling as this surface's own F0
+(the same "colour IS the normal-incidence reflectance" convention that
+material already established for its own F0 parameter). A small, low-
+risk fix: no new sampling math, no new struct fields, just an existing,
+already-trusted function applied to an existing material that hadn't
+been using it.
+
+**Why this had gone unnoticed for eight prior steps**: the scene's own
+mirror (the wall disk added in step 16) uses a near-white albedo
+(`{0.9, 0.9, 0.9}`), close enough to F0-at-white already that the
+correction is real but visually subtle in the committed scene - Schlick
+grazing-angle whitening asymptotically approaches white regardless of F0,
+so a near-white F0 has little room left to visibly change.
+
+**Result, verified with a dedicated colour choice, not the committed
+one**: a temporary copper-coloured mirror (F0 ≈ `{0.7, 0.25, 0.1}`, chosen
+specifically because it has plenty of room to show the effect) makes the
+difference unambiguous - the OLD flat-multiply version renders uniformly
+copper-tinted across the whole disk regardless of viewing angle; the NEW
+Fresnel-weighted version shows the copper tint concentrated near the
+disk's centre (closer to normal incidence from the camera) and visibly
+whitened/desaturated toward its edges (closer to grazing), exactly the
+signature real Fresnel reflectance produces and a flat multiply cannot.
+The committed scene's own near-white disk shows the same effect, just
+proportionally smaller given its own F0 choice. 700×700 @ 384spp @ depth
+10 renders in ~36 seconds on an M2, statistically indistinguishable from
+step 21's own ~37s (one existing function call added to an existing
+material, not a new cost category).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
