@@ -304,3 +304,24 @@ carrying forward as a rule for the real port: **any struct that crosses
 the host/device boundary uses packed types, full stop** — don't rely on
 reasoning through MSL's default packing rules per-field, design the
 ambiguity out.
+
+## 10. CMake integration (done)
+
+`metal_poc` is now a real CMake target, not an ad-hoc `clang++` invocation:
+`cmake -B build -DRT_BUILD_METAL=ON && cmake --build build --target
+metal_poc`. Mirrors `RT_BUILD_GPU`'s existing posture in this file exactly
+— off by default, purely additive (verified: a default `cmake -B build`
+with no flags produces byte-identical `cpu_renderer`/`ray_tracer`/
+`scene_metadata` targets, no OBJCXX language probe, no `metal_poc` target
+at all), fails with a clear message rather than a raw CMake error if
+`RT_BUILD_METAL=ON` is passed on a non-Apple platform. Needed enabling
+CMake's `OBJCXX` language (Objective-C++, first-class since CMake 3.16)
+conditionally, the same "only raise the version floor for the path that
+actually needs it" shape `RT_BUILD_GPU` already uses for CUDA's 3.18
+requirement. Also switched the shader-source lookup from a `__FILE__`-
+relative path (fragile once a real build directory can live anywhere) to
+an explicit `RT_METAL_SHADER_DIR` compile definition — falls back to the
+old `__FILE__` behaviour when building outside CMake entirely, so the
+original ad-hoc `clang++ metal_poc.mm ...` workflow from section 7 still
+works unchanged. Verified: the CMake-built binary renders byte-plausible-
+identical output to the hand-compiled one from section 9.
