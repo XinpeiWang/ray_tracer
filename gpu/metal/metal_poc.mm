@@ -34,34 +34,47 @@ struct PackedFloat3 {
     float x, y, z;
 };
 
+// Mirrors metal_poc.metal's Uniforms/TriangleMaterial byte-for-byte -
+// PackedFloat3 (not simd::float3) for every vector field, same reasoning
+// as that file's own comment: simd::float3 is 16-byte aligned inside a
+// struct, PackedFloat3 is a plain 12-byte triple with no padding, and a
+// host/device struct-layout mismatch is a silent, hard-to-spot bug class
+// worth designing out rather than debugging into.
 struct Uniforms {
-    float3 cameraPos;
-    float3 cameraForward;
-    float3 cameraRight;
-    float3 cameraUp;
+    PackedFloat3 cameraPos;
+    PackedFloat3 cameraForward;
+    PackedFloat3 cameraRight;
+    PackedFloat3 cameraUp;
     float tanHalfFov;
     float aspect;
     uint32_t width;
     uint32_t height;
+    uint32_t samplesPerPixel;
+    uint32_t maxDepth;
+    uint32_t frameSeed;
 };
 
-struct TriangleColor {
-    float3 color;
+// materialType: 0 = Lambertian, 1 = mirror - see metal_poc.metal's own
+// comment on this struct for why it's this minimal.
+struct TriangleMaterial {
+    PackedFloat3 color;
+    uint32_t materialType;
 };
 
-// A quad (4 verts, wound as 2 triangles) sharing one flat colour - the
-// smallest scene-authoring shape that can build a real Cornell box without
-// hand-listing 30 individual vertices.
+// A quad (4 verts, wound as 2 triangles) sharing one flat colour and
+// material type - the smallest scene-authoring shape that can build a
+// real Cornell box without hand-listing 30 individual vertices.
 static void addQuad(std::vector<PackedFloat3>& verts,
-                     std::vector<TriangleColor>& colors,
+                     std::vector<TriangleMaterial>& materials,
                      float3 a, float3 b, float3 c, float3 d,
-                     float3 color) {
+                     float3 color, uint32_t materialType = 0) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
     push(a); push(c); push(d);
-    colors.push_back({color});
-    colors.push_back({color});
+    PackedFloat3 packedColor{color.x, color.y, color.z};
+    materials.push_back({packedColor, materialType});
+    materials.push_back({packedColor, materialType});
 }
 
 int main(int argc, const char** argv) {
@@ -97,38 +110,41 @@ int main(int argc, const char** argv) {
         // dimensions - this POC's scene is entirely separate authored data,
         // not a shared asset with cpu_renderer/.
         std::vector<PackedFloat3> verts;
-        std::vector<TriangleColor> colors;
+        std::vector<TriangleMaterial> materials;
 
         const float3 white{0.73f, 0.73f, 0.73f};
         const float3 red{0.65f, 0.05f, 0.05f};
         const float3 green{0.12f, 0.45f, 0.15f};
-        const float3 blue{0.20f, 0.35f, 0.75f};
+        const float3 mirrorTint{0.95f, 0.95f, 0.95f};
 
         // Floor (y = -1)
-        addQuad(verts, colors, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
+        addQuad(verts, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
         // Ceiling (y = 1)
-        addQuad(verts, colors, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
+        addQuad(verts, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
         // Back wall (z = -1)
-        addQuad(verts, colors, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white);
+        addQuad(verts, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white);
         // Left wall (x = -1), red
-        addQuad(verts, colors, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
+        addQuad(verts, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
         // Right wall (x = 1), green
-        addQuad(verts, colors, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
-        // A small tilted object in the middle, blue, floating just above
-        // the floor - proves per-primitive colour indexing (primitive_id)
-        // works, not just "one big mesh, one colour".
-        addQuad(verts, colors,
+        addQuad(verts, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
+        // A small tilted mirror in the middle, floating just above the
+        // floor - proves per-primitive material-TYPE branching works (not
+        // just per-primitive colour, which step 1 already covered): a
+        // correct render shows the room reflected in it, not a flat grey
+        // quad.
+        addQuad(verts, materials,
                 float3{-0.35f,-0.9f,-0.3f}, float3{0.25f,-0.9f,-0.5f},
-                float3{0.25f,-0.2f,-0.5f}, float3{-0.35f,-0.2f,-0.3f}, blue);
+                float3{0.25f,-0.2f,-0.5f}, float3{-0.35f,-0.2f,-0.3f},
+                mirrorTint, /*materialType=*/1);
 
-        const uint32_t triangleCount = (uint32_t)colors.size();
+        const uint32_t triangleCount = (uint32_t)materials.size();
         fprintf(stderr, "Scene: %u triangles\n", triangleCount);
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
             options:MTLResourceStorageModeShared];
-        id<MTLBuffer> colorBuffer = [device newBufferWithBytes:colors.data()
-            length:colors.size() * sizeof(TriangleColor)
+        id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
+            length:materials.size() * sizeof(TriangleMaterial)
             options:MTLResourceStorageModeShared];
 
         // --- Primitive acceleration structure (the mesh's own BVH) ------
@@ -230,15 +246,23 @@ int main(int argc, const char** argv) {
         texDesc.storageMode = MTLStorageModeShared;
         id<MTLTexture> outTexture = [device newTextureWithDescriptor:texDesc];
 
+        const uint32_t samplesPerPixel = (argc > 4) ? (uint32_t)atoi(argv[4]) : 64;
+        const uint32_t maxDepth = (argc > 5) ? (uint32_t)atoi(argv[5]) : 8;
+        fprintf(stderr, "Samples/pixel: %u, max depth: %u\n", samplesPerPixel, maxDepth);
+
         Uniforms uniforms{};
-        uniforms.cameraPos = {0.0f, 0.0f, 3.2f};
-        uniforms.cameraForward = simd::normalize(float3{0,0,-1});
-        uniforms.cameraRight = {1,0,0};
-        uniforms.cameraUp = {0,1,0};
+        uniforms.cameraPos = PackedFloat3{0.0f, 0.0f, 3.2f};
+        float3 forward = simd::normalize(float3{0, 0, -1});
+        uniforms.cameraForward = PackedFloat3{forward.x, forward.y, forward.z};
+        uniforms.cameraRight = PackedFloat3{1, 0, 0};
+        uniforms.cameraUp = PackedFloat3{0, 1, 0};
         uniforms.tanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
         uniforms.aspect = (float)width / (float)height;
         uniforms.width = width;
         uniforms.height = height;
+        uniforms.samplesPerPixel = samplesPerPixel;
+        uniforms.maxDepth = maxDepth;
+        uniforms.frameSeed = 1u;
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
@@ -248,7 +272,7 @@ int main(int argc, const char** argv) {
         [enc setTexture:outTexture atIndex:0];
         [enc setAccelerationStructure:instAS atBufferIndex:0];
         [enc setBuffer:uniformBuffer offset:0 atIndex:1];
-        [enc setBuffer:colorBuffer offset:0 atIndex:2];
+        [enc setBuffer:materialBuffer offset:0 atIndex:2];
         [enc setBuffer:vertexBuffer offset:0 atIndex:3];
         // Mark the AS + its dependent primitive AS as used so Metal knows
         // about the indirection - required for instance acceleration
