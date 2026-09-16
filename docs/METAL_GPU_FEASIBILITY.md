@@ -1651,3 +1651,58 @@ changed).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 35. Proof-of-concept, step 24: a true delta point light (done)
+
+Every light in this POC has been an `AreaLight` - finite area, uniform-
+sampled, needing the area-to-solid-angle pdf conversion and power-
+heuristic MIS every NEE branch has carried since step 5. A point light
+is a fundamentally simpler case, not just a smaller area light: it has
+zero area and zero solid angle (a true delta distribution), which means
+it has EXACTLY zero probability of ever being hit by a BSDF-sampled
+continuation ray - the same "measure zero" reasoning the mirror/
+dielectric materials already use to skip NEE for their OWN delta lobes,
+mirrored here from the light's side instead of the material's. A point
+light's own NEE contribution therefore needs no MIS weight at all
+(always full weight) and no area-sampling pdf (just an idealized
+`1/distSq` falloff) - the textbook simplest possible light type, and a
+deliberately different one from every `AreaLight` so far, not a
+variation on the same theme.
+
+Point lights are NOT folded into the existing `lights[]`/light-picking
+scheme - there's no variance-reduction benefit to stochastically picking
+among a handful of always-fully-weighted point lights the way there is
+for choosing among several area lights, so a SEPARATE, small
+`pointLights` buffer/count is summed unconditionally each bounce instead
+(every point light's contribution added, not one picked at random).
+Added consistently to every existing NEE call site that already handles
+area lights: the Lambertian branch, the GGX conductor branch (with its
+own full anisotropic BRDF evaluation, reusing `ggxD`/`ggxG` exactly as
+the area-light NEE already does), and the fog's own volume-scattering
+NEE (phase-function value instead of a BRDF, same as its area-light
+counterpart).
+
+Placement took two iterations, the same "verify by rendering, not by
+distance-math alone" lesson this POC keeps re-learning: the first
+position/intensity was close enough to a wall that its own `1/distSq`
+falloff blew the nearby geometry out to solid white - not a bug, exactly
+the physically-correct (if impractical) behaviour a point light produces
+near a surface, but not what this increment meant to demonstrate. Moved
+to a position with generous clearance from every surface, well above the
+existing objects.
+
+**Result, verified two ways**: the committed scene shows a distinct
+soft glow patch on the back wall, visibly separate from - not blended
+into or hidden by - the two existing area lights' own illumination and
+the two rectangular ceiling-light reflections, confirming the point
+light is genuinely contributing radiance rather than sitting unused in
+its buffer. An A/B render with `pointLightCount = 0` removes exactly
+that glow patch and nothing else, reproducing step 23's own committed
+render exactly. 700×700 @ 384spp @ depth 10 renders in ~62 seconds on an
+M2, up from step 23's own ~36s - a REAL cost increase this time (one
+extra shadow ray per bounce in three separate code paths, not
+statistical noise), not glossed over the way several earlier steps'
+truly negligible cost deltas were.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

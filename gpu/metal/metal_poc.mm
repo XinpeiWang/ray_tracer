@@ -84,6 +84,7 @@ struct Uniforms {
     PackedFloat3 fogAlbedo;
     uint32_t useEnvironmentMap;
     float fogAsymmetryG;
+    uint32_t pointLightCount;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -93,6 +94,12 @@ struct AreaLightData {
     PackedFloat3 edgeV;
     PackedFloat3 normal;
     float area;
+    PackedFloat3 emission;
+};
+
+// Mirrors metal_poc.metal's PointLight byte-for-byte.
+struct PointLightData {
+    PackedFloat3 position;
     PackedFloat3 emission;
 };
 
@@ -630,9 +637,21 @@ int main(int argc, const char** argv) {
             TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/1, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
         };
 
+        // A true delta point light - genuinely different from every
+        // AreaLight above (zero area, hard-edged shadows, no NEE/MIS
+        // weighting needed at all - see metal_poc.metal's own PointLight
+        // comment). Placed off-axis from both area lights so it adds a
+        // THIRD, distinctly-positioned specular highlight to the
+        // reflective spheres/disk rather than blending into an existing
+        // one - the easiest way to visually confirm it's really
+        // contributing light, not just present in the buffer unused.
+        std::vector<PointLightData> pointLights = {
+            PointLightData{PackedFloat3{0.0f, 0.3f, 0.3f}, PackedFloat3{0.9f, 0.65f, 1.1f}},
+        };
+
         const uint32_t triangleCount = (uint32_t)materials.size();
-        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights\n",
-                triangleCount, spheres.size(), disks.size(), lights.size());
+        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights\n",
+                triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size());
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
@@ -645,6 +664,9 @@ int main(int argc, const char** argv) {
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> lightBuffer = [device newBufferWithBytes:lights.data()
             length:lights.size() * sizeof(AreaLightData)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> pointLightBuffer = [device newBufferWithBytes:pointLights.data()
+            length:pointLights.size() * sizeof(PointLightData)
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
             length:materials.size() * sizeof(TriangleMaterial)
@@ -1102,6 +1124,7 @@ int main(int argc, const char** argv) {
         // difference from isotropic reads as a stylistic tint on the fog
         // rather than a dramatic visible change).
         uniforms.fogAsymmetryG = 0.4f;
+        uniforms.pointLightCount = (uint32_t)pointLights.size();
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
@@ -1125,6 +1148,7 @@ int main(int argc, const char** argv) {
         [enc setBuffer:instanceTransformBuffer offset:0 atIndex:12];
         [enc setBuffer:diskBuffer offset:0 atIndex:13];
         [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
+        [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
         // acceleration structures referencing primitive ones (now three:

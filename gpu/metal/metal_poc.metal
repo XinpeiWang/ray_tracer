@@ -90,6 +90,12 @@ struct Uniforms {
     // - fog/haze/water droplets in reality skew strongly forward, g
     // around 0.7-0.9 in Mie scattering terms), negative = backward.
     float fogAsymmetryG;
+    // How many entries in the SEPARATE `pointLights` buffer are live -
+    // not part of `lightCount`/`lights[]` above (see PointLight's own
+    // comment on why delta lights aren't folded into the area-light
+    // picking scheme). 0 (every earlier scene) skips the point-light NEE
+    // loop entirely in every material branch - purely additive.
+    uint pointLightCount;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -106,6 +112,30 @@ struct AreaLight {
     packed_float3 edgeV;
     packed_float3 normal;
     float area;
+    packed_float3 emission;
+};
+
+// A true DELTA light - zero-area, zero-solid-angle, unlike every AreaLight
+// above. Fundamentally simpler to importance-sample than an area light,
+// not just a smaller version of one: a delta light has probability
+// EXACTLY zero of ever being hit by a BSDF-sampled continuation ray (the
+// same "measure zero" reasoning the mirror/dielectric materials already
+// use to skip NEE for THEIR own delta lobes, mirrored here from the
+// light's side instead of the material's), so there is no competing
+// BSDF-sampling strategy to weight against at all - every point light's
+// own NEE contribution is added at full weight, unconditionally, with no
+// power-heuristic MIS blend and no area-to-solid-angle pdf conversion
+// (a delta light's own "pdf" only ever appears as an idealized 1/distSq
+// falloff, not a real probability density needing normalization the way
+// a light-PICKING probability or an area-sampling pdf does). Point lights
+// are NOT part of the `lights[]` array/light-picking scheme above at
+// all - since there is no variance-reduction benefit to stochastically
+// picking among a handful of always-fully-weighted point lights the way
+// there is for choosing among many area lights, every point light's
+// contribution is simply summed each bounce instead (see the shading
+// loop's own point-light loop below).
+struct PointLight {
+    packed_float3 position;
     packed_float3 emission;
 };
 
@@ -726,6 +756,7 @@ kernel void primaryRayKernel(
     device const InstanceTransform* instanceTransforms [[buffer(12)]],
     device const DiskData* disks [[buffer(13)]],
     device const TriangleMaterial* diskMaterials [[buffer(14)]],
+    device const PointLight* pointLights [[buffer(15)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -923,6 +954,28 @@ kernel void primaryRayKernel(
                             float transmittance = exp(-uniforms.fogSigmaT * dist);
                             radiance += throughput * phaseValue * ls.emission * transmittance
                                         / pdfSolidAngle * weight;
+                        }
+                    }
+
+                    // Point lights: summed unconditionally, not picked,
+                    // full weight, no MIS - see PointLight's own comment.
+                    for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+                        PointLight pl = pointLights[pli];
+                        float3 toPointLight = float3(pl.position) - scatterPoint;
+                        float plDistSq = dot(toPointLight, toPointLight);
+                        float plDist = sqrt(plDistSq);
+                        float3 plWi = toPointLight / plDist;
+                        ray plShadowRay;
+                        plShadowRay.origin = scatterPoint;
+                        plShadowRay.direction = plWi;
+                        plShadowRay.min_distance = 0.001f;
+                        plShadowRay.max_distance = plDist - 0.002f;
+                        intersection_result<instancing, triangle_data> plShadowResult =
+                            isect.intersect(plShadowRay, accelStructure, functionTable);
+                        if (plShadowResult.type == intersection_type::none) {
+                            float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), uniforms.fogAsymmetryG);
+                            float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                            radiance += throughput * plPhaseValue * float3(pl.emission) * plTransmittance / plDistSq;
                         }
                     }
 
@@ -1251,6 +1304,39 @@ kernel void primaryRayKernel(
                             radiance += throughput * brdf * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
                         }
                     }
+
+                    // Point lights: summed unconditionally, not picked,
+                    // full weight, no MIS - see PointLight's own comment.
+                    for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+                        PointLight pl = pointLights[pli];
+                        float3 toPointLight = float3(pl.position) - hitPoint;
+                        float plDistSq = dot(toPointLight, toPointLight);
+                        float plDist = sqrt(plDistSq);
+                        float3 plWi = toPointLight / plDist;
+                        float plCosSurface = dot(facingNormal, plWi);
+                        if (plCosSurface > 0.0) {
+                            float3 plWiLocal = float3(dot(plWi, tangent), dot(plWi, bitangent), dot(plWi, facingNormal));
+                            float3 plH = normalize(woLocal + plWiLocal);
+                            float plNdotO = woLocal.z;
+                            float plNdotI = max(plWiLocal.z, 0.0001);
+                            float plDh = ggxD(plH, alphaX, alphaY);
+                            float plG = ggxG(woLocal, plWiLocal, alphaX, alphaY);
+                            float3 plF = fresnelSchlickConductor(max(dot(woLocal, plH), 0.0), albedo);
+                            float3 plBrdf = plDh * plG * plF / max(4.0 * plNdotO * plNdotI, 1e-6);
+
+                            ray plShadowRay;
+                            plShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                            plShadowRay.direction = plWi;
+                            plShadowRay.min_distance = 0.001f;
+                            plShadowRay.max_distance = plDist - 0.002f;
+                            intersection_result<instancing, triangle_data> plShadowResult =
+                                isect.intersect(plShadowRay, accelStructure, functionTable);
+                            if (plShadowResult.type == intersection_type::none) {
+                                float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                                radiance += throughput * plBrdf * float3(pl.emission) * plCosSurface * plTransmittance / plDistSq;
+                            }
+                        }
+                    }
                 }
 
                 float3 hLocal = sampleGGXVNDF(woLocal, alphaX, alphaY, rngState);
@@ -1370,6 +1456,34 @@ kernel void primaryRayKernel(
                             float transmittance = exp(-uniforms.fogSigmaT * dist);
                             radiance += throughput * albedo * (1.0 / M_PI_F)
                                         * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
+                        }
+                    }
+
+                    // Point lights: summed unconditionally, not picked -
+                    // see PointLight's own comment on why a delta light
+                    // needs no MIS weight and no area-to-solid-angle pdf
+                    // conversion at all, just an idealized 1/distSq
+                    // falloff.
+                    for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+                        PointLight pl = pointLights[pli];
+                        float3 toPointLight = float3(pl.position) - hitPoint;
+                        float plDistSq = dot(toPointLight, toPointLight);
+                        float plDist = sqrt(plDistSq);
+                        float3 plWi = toPointLight / plDist;
+                        float plCosSurface = dot(facingNormal, plWi);
+                        if (plCosSurface > 0.0) {
+                            ray plShadowRay;
+                            plShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                            plShadowRay.direction = plWi;
+                            plShadowRay.min_distance = 0.001f;
+                            plShadowRay.max_distance = plDist - 0.002f;
+                            intersection_result<instancing, triangle_data> plShadowResult =
+                                isect.intersect(plShadowRay, accelStructure, functionTable);
+                            if (plShadowResult.type == intersection_type::none) {
+                                float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                                radiance += throughput * albedo * (1.0 / M_PI_F)
+                                            * float3(pl.emission) * plCosSurface * plTransmittance / plDistSq;
+                            }
                         }
                     }
                 }
