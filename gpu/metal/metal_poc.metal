@@ -231,6 +231,73 @@ SphereIntersectionResult sphereIntersectionFunction(
     return result;
 }
 
+// A second, genuinely DIFFERENT custom-primitive shape - not another
+// sphere (spheres already prove "N primitives sharing ONE intersection
+// function", via boundingBoxCount and a shared function/buffer, since
+// step 3/PR #4). Every custom primitive in this POC before now has gone
+// through function-table SLOT 0 (every geometry's own
+// intersectionFunctionTableOffset was 0). This disk goes through slot 1
+// instead, next to the spheres' geometry within the SAME primitive
+// acceleration structure (metal_poc.mm's own sphereAccelDesc now has TWO
+// geometryDescriptors, not one) - the first time this POC's function
+// table actually has more than one distinct entry, and the first time
+// `intersection_result::geometry_id` (not just primitive_id) matters for
+// telling two hits apart.
+struct DiskData {
+    packed_float3 center;
+    packed_float3 normal;
+    float radius;
+};
+
+struct DiskIntersectionResult {
+    bool accept [[accept_intersection]];
+    float distance [[distance]];
+};
+
+// Plain ray-plane intersection (t = dot(center - origin, normal) /
+// dot(direction, normal)) followed by a radius check on the in-plane
+// distance from the disk's own centre - the textbook disk-primitive test,
+// same shape this project's own CPU disk.h shape uses in spirit (plane
+// test + radial bound), not an approximation of it. Declares its OWN
+// `[[buffer(1)]]` (not buffer(0), which the sphere intersection function
+// above already claims) - within ONE shared MTLIntersectionFunctionTable,
+// every function's buffer/texture bindings share a single argument
+// namespace, so two DIFFERENT functions needing different data must use
+// DIFFERENT buffer indices, bound on the host side via two separate
+// `setBuffer:atIndex:` calls on the same table (see metal_poc.mm's own
+// comment on this at the function-table setup site) - discovered by
+// reasoning through what "shared argument table" actually implies here,
+// not by trial and error.
+[[intersection(bounding_box, triangle_data, instancing)]]
+DiskIntersectionResult diskIntersectionFunction(
+    float3 origin [[origin]],
+    float3 direction [[direction]],
+    float minDistance [[min_distance]],
+    float maxDistance [[max_distance]],
+    uint primitiveIndex [[primitive_id]],
+    device const DiskData* disks [[buffer(1)]])
+{
+    DiskIntersectionResult result;
+    result.accept = false;
+
+    DiskData disk = disks[primitiveIndex];
+    float3 center = float3(disk.center);
+    float3 normal = float3(disk.normal);
+    float denom = dot(direction, normal);
+    if (fabs(denom) < 1e-6) return result; // ray parallel to the disk's plane
+
+    float t = dot(center - origin, normal) / denom;
+    if (t < minDistance || t > maxDistance) return result;
+
+    float3 hitPoint = origin + direction * t;
+    float distSq = length_squared(hitPoint - center);
+    if (distSq > disk.radius * disk.radius) return result;
+
+    result.accept = true;
+    result.distance = t;
+    return result;
+}
+
 // ---------------------------------------------------------------------------
 // PCG32-ish hash-based PRNG, stateless per call (no persistent generator
 // object needed across bounces - each call is reseeded from a running
@@ -474,6 +541,8 @@ kernel void primaryRayKernel(
     device const packed_float3* suzanneNormals [[buffer(10)]],
     device const TriangleMaterial* suzanneMaterials [[buffer(11)]],
     device const InstanceTransform* instanceTransforms [[buffer(12)]],
+    device const DiskData* disks [[buffer(13)]],
+    device const TriangleMaterial* diskMaterials [[buffer(14)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -586,7 +655,21 @@ kernel void primaryRayKernel(
             // for a bounding-box hit - a sphere has no "vertices" to pull
             // a face normal from, but (hitPoint - centre) is exact for a
             // perfect sphere, no approximation.
-            bool isSphere = (result.type == intersection_type::bounding_box);
+            //
+            // Both spheres AND the disk report intersection_type::
+            // bounding_box (neither is a hardware-native triangle) - they
+            // only stop being ambiguous once `geometry_id` is checked too:
+            // sphereAS's own geometryDescriptors array has the spheres'
+            // bounding-box geometry at index 0 and the disk's at index 1
+            // (metal_poc.mm's own sphereAccelDesc.geometryDescriptors),
+            // and geometry_id reports exactly that array index for a
+            // bounding-box hit - the first time this POC's shading loop
+            // has needed geometry_id at all (every earlier custom
+            // primitive was the ONLY bounding-box geometry in its AS, so
+            // "bounding_box == sphere" was unambiguous until now).
+            bool isBoundingBox = (result.type == intersection_type::bounding_box);
+            bool isDisk = isBoundingBox && (result.geometry_id == 1u);
+            bool isSphere = isBoundingBox && !isDisk;
             // Suzanne is instanced TWICE (instance_id 2 and 3, matching
             // metal_poc.mm's own instanceDescs[] ordering - see that
             // file's addTransformedSuzanneInstance()) from the SAME
@@ -598,13 +681,21 @@ kernel void primaryRayKernel(
             // instance_id threshold here (rather than deriving it) is
             // the same "explicitly documented, scene-specific constant"
             // approach this POC already uses for its light geometry.
-            bool isSuzanneInstance = !isSphere && (result.instance_id >= 2u);
+            bool isSuzanneInstance = !isSphere && !isDisk && (result.instance_id >= 2u);
             float3 normal;
             TriangleMaterial mat;
             if (isSphere) {
                 SphereData sphere = spheres[primId];
                 normal = normalize(hitPoint - float3(sphere.center));
                 mat = sphereMaterials[primId];
+            } else if (isDisk) {
+                // Flat and planar - the disk's own stored normal IS the
+                // shading normal directly, no per-hit computation needed
+                // (unlike a sphere's hitPoint-relative one or a triangle's
+                // barycentric-interpolated one).
+                DiskData disk = disks[primId];
+                normal = float3(disk.normal);
+                mat = diskMaterials[0];
             } else if (isSuzanneInstance) {
                 // Object-space normal (Suzanne's own per-vertex data,
                 // just like the non-instanced case below) transformed
