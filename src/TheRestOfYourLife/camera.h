@@ -380,10 +380,14 @@ class camera {
         }
 
         if (!out) {
-            if (const char* tmp = std::getenv("TEMP")) {
-                out_path = std::string(tmp) + "\\" + filename;
-            } else if (const char* tmp2 = std::getenv("TMP")) {
-                out_path = std::string(tmp2) + "\\" + filename;
+            // TEMP/TMP are the Windows convention, TMPDIR is POSIX's - '/' as
+            // separator works for iostream file I/O on both platforms, so no
+            // need to branch on it too.
+            const char* tmp = std::getenv("TEMP");
+            if (!tmp) tmp = std::getenv("TMP");
+            if (!tmp) tmp = std::getenv("TMPDIR");
+            if (tmp) {
+                out_path = std::string(tmp) + "/" + filename;
             }
             std::clog << "Attempting temp path: " << out_path << std::endl;
             out.open(out_path, std::ios::out | std::ios::binary);

@@ -71,11 +71,13 @@ add_library(cpu_renderer STATIC
     src/external/stb_image_impl.cpp
     src/external/tinyexr_impl.cpp
     src/external/miniz.c
+    src/data/rgb_spectrum_table_data.cpp
 )
 target_include_directories(cpu_renderer PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/TheRestOfYourLife
     ${CMAKE_SOURCE_DIR}/src/shared
+    ${CMAKE_SOURCE_DIR}/src/external
     ${CMAKE_SOURCE_DIR}/cpu_renderer
 )
 

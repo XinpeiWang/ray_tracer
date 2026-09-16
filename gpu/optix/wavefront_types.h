@@ -14,12 +14,18 @@
 // Minimal float3 stub for host-only compilation
 #ifndef __VECTOR_TYPES_H__
 struct float3 { float x, y, z; };
+inline float3 make_float3(float x, float y, float z) { return float3{x, y, z}; }
 #endif
 // CPU_GPU (used by GpuGiSample/GpuGiReservoir/GpuGiOriginContext's own
 // valid() methods below) - normally pulled in transitively via
 // optix_types.h's own include of this same header, which the branch above
 // skips entirely on a host-only compile.
 #include "../../src/shared/cpu_gpu.h"
+// LightBVHNode (used by LightBVHTraversalContext below) - likewise normally
+// pulled in transitively via optix_types.h on the real GPU path. It is
+// plain, host-compilable C++ (no CUDA/OptiX dependency of its own), so it's
+// safe to include directly here for the host-only stub.
+#include "../../src/shared/light_bvh_node.h"
 #endif
 
 // ============================================================================
