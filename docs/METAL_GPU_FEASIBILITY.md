@@ -741,3 +741,38 @@ was expected).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 19. Proof-of-concept, step 11: thin-lens depth of field (done)
+
+A lighter increment after the last two heavier ones (a new BSDF algorithm
+in step 9, a structural light-list rewrite in step 10) - pure camera
+math, touching only primary-ray generation, no new buffers, no shading-
+loop changes. `Uniforms` gained `lensRadius`/`focusDistance`; the primary
+ray's origin gets jittered across a simulated circular aperture
+(`sampleUnitDisk()`, area-uniform via `r = sqrt(u1)`) and re-aimed through
+the same fixed point on the focus plane the original pinhole ray would
+have hit - the standard thin-lens camera model (same one pbrt-v4's
+`PerspectiveCamera` and this project's own CPU `camera.h` implement).
+`lensRadius == 0` skips the whole block, so this is strictly additive:
+every earlier PR's pinhole camera behaviour is still reachable exactly,
+not replaced.
+
+The scene's camera now focuses on the gold conductor sphere (the nearest
+object to the camera) with `lensRadius = 0.05`.
+
+**Result, visually confirmed two ways**: first, an A/B render at
+`lensRadius = 0` reproduces the original pinhole-sharp image essentially
+identically (confirming the DOF code path is a true no-op when disabled,
+not just visually close). Second, the depth-of-field render itself shows
+the expected FALLOFF, not a uniform blur: the gold sphere at the focus
+distance stays sharp, the dielectric sphere only ~0.3 units further back
+stays nearly sharp, and the back wall/Suzanne - both well over a unit
+further from the camera - show clearly increasing defocus blur the
+further they are from the focus plane. That falloff shape (blur radius
+scaling with distance from the focus plane, not a flat per-pixel blur) is
+exactly what a real lens model produces and a fake post-process blur
+would not, without deriving depth per pixel and doing the same math this
+kernel already does inline.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

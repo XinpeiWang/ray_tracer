@@ -40,6 +40,13 @@ struct Uniforms {
     uint maxDepth;
     uint frameSeed;
     uint lightCount;
+    // Thin-lens depth of field: lensRadius == 0 reduces to the original
+    // pinhole camera exactly (no lens-sample branch taken below), so
+    // every earlier PR's own screenshots stay reproducible bit-for-bit
+    // reasoning-wise by just leaving this at 0 - DOF is purely additive,
+    // not a replacement for the pinhole path.
+    float lensRadius;
+    float focusDistance;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -179,6 +186,20 @@ inline uint pcgHash(thread uint& state) {
 
 inline float randFloat(thread uint& state) {
     return float(pcgHash(state)) / float(0xFFFFFFFFu);
+}
+
+// Uniform sample on a unit disk (r = sqrt(u1) for area-uniform density,
+// not r = u1 - the same sqrt used for the hemisphere sample's own radius
+// below, same reason: linear r would bunch samples toward the centre).
+// Used only by the thin-lens depth-of-field sample in the kernel below -
+// a camera aperture is a flat disk, not a hemisphere, so this is its own
+// small helper rather than reusing cosineSampleHemisphere's.
+inline float2 sampleUnitDisk(thread uint& rngState) {
+    float u1 = randFloat(rngState);
+    float u2 = randFloat(rngState);
+    float r = sqrt(u1);
+    float theta = 2.0 * M_PI_F * u2;
+    return float2(r * cos(theta), r * sin(theta));
 }
 
 inline float3 cosineSampleHemisphere(float3 normal, thread uint& rngState) {
@@ -428,6 +449,23 @@ kernel void primaryRayKernel(
         float3 rayDir = normalize(float3(uniforms.cameraForward)
                                    + screen.x * float3(uniforms.cameraRight)
                                    + screen.y * float3(uniforms.cameraUp));
+
+        // Thin-lens depth of field: jitter the ray's ORIGIN across a disk
+        // (the camera's simulated aperture) and re-aim it through the same
+        // fixed point on the focus plane the un-jittered pinhole ray would
+        // have hit - everything exactly at focusDistance stays pixel-sharp
+        // (every jittered origin re-aims through the identical focus
+        // point), everything nearer/farther blurs, because a jittered
+        // origin's ray toward that SAME focus point diverges from the
+        // pinhole ray more the further the actual hit surface is from the
+        // focus plane. lensRadius == 0 (every earlier PR's own scenes)
+        // skips this block entirely - see Uniforms' own comment.
+        if (uniforms.lensRadius > 0.0) {
+            float2 lensSample = uniforms.lensRadius * sampleUnitDisk(rngState);
+            float3 focusPoint = rayOrigin + rayDir * uniforms.focusDistance;
+            rayOrigin += lensSample.x * float3(uniforms.cameraRight) + lensSample.y * float3(uniforms.cameraUp);
+            rayDir = normalize(focusPoint - rayOrigin);
+        }
 
         float3 throughput = float3(1.0);
         float3 radiance = float3(0.0);
