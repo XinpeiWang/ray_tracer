@@ -82,8 +82,15 @@ struct SphereData {
 
 // A quad (4 verts, wound as 2 triangles) sharing one flat colour and
 // material type - the smallest scene-authoring shape that can build a
-// real Cornell box without hand-listing 30 individual vertices.
+// real Cornell box without hand-listing 30 individual vertices. `normals`
+// is parallel to `verts` (same per-triangle-corner indexing
+// metal_poc.metal's shadingNormalFor() reads) - every corner of a flat
+// quad gets the SAME computed face normal, which is what makes the
+// shader's barycentric interpolation reduce to exact flat shading here
+// (only a mesh with genuinely different per-corner normals, i.e.
+// loadObjMesh() below, produces a different, smoothly-varying result).
 static void addQuad(std::vector<PackedFloat3>& verts,
+                     std::vector<PackedFloat3>& normals,
                      std::vector<TriangleMaterial>& materials,
                      float3 a, float3 b, float3 c, float3 d,
                      float3 color, uint32_t materialType = 0,
@@ -92,27 +99,35 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
     push(a); push(c); push(d);
+    float3 faceNormal = simd::normalize(simd::cross(b - a, c - a));
+    PackedFloat3 packedNormal{faceNormal.x, faceNormal.y, faceNormal.z};
+    for (int i = 0; i < 6; ++i) normals.push_back(packedNormal);
     PackedFloat3 packedColor{color.x, color.y, color.z};
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
     materials.push_back({packedColor, materialType, 1.0f, packedEmission});
     materials.push_back({packedColor, materialType, 1.0f, packedEmission});
 }
 
-// A minimal Wavefront OBJ loader: positions + faces only (`v`/`f`), no
-// texcoords/materials/groups/smoothing - this project's own real loaders
-// (src/shared/pbrt_load.h -> pbrt_cpu_builder.h/pbrt_gpu_builder.h) are
-// full pbrt-v4 scene parsers; this is deliberately the smallest thing that
-// can prove "load an arbitrary real mesh, not just hand-authored
-// axis-aligned quads and an analytic sphere" - the first genuinely
-// data-driven geometry in this POC. Faces are fan-triangulated (n>3
-// polygon -> n-2 triangles sharing vertex 0), matching how this project's
-// own CPU loader handles polygons that aren't already triangles. Vertex
-// normals (`vn`) in the file are read but NOT used - every triangle still
-// gets a flat face normal computed from its own 3 positions (faceNormalFor
-// in metal_poc.metal), same as every other mesh in this scene; smooth
-// per-vertex-normal interpolation would need barycentric-coordinate
-// plumbing this POC doesn't have yet, so Suzanne renders faceted here, a
-// real (if visually rougher) limitation, not a bug.
+// A minimal Wavefront OBJ loader: positions, vertex normals, and faces
+// (`v`/`vn`/`f`) only - no texcoords/materials/groups. This project's own
+// real loaders (src/shared/pbrt_load.h -> pbrt_cpu_builder.h/
+// pbrt_gpu_builder.h) are full pbrt-v4 scene parsers; this is
+// deliberately the smallest thing that can prove "load an arbitrary real
+// mesh, not just hand-authored axis-aligned quads and an analytic
+// sphere" - the first genuinely data-driven geometry in this POC. Faces
+// are fan-triangulated (n>3 polygon -> n-2 triangles sharing vertex 0),
+// matching how this project's own CPU loader handles polygons that
+// aren't already triangles.
+//
+// Per-corner shading normal: a face token's own `vn` index is used when
+// present (`v//vn` or `v/vt/vn`); a face missing normal indices entirely
+// falls back to that triangle's own computed flat face normal - real
+// files are inconsistent about this in practice (this one, suzanne.obj,
+// has vn on every face, but the loader has to handle one that doesn't
+// without producing degenerate normals). This is what makes
+// metal_poc.metal's barycentric shadingNormalFor() interpolation produce
+// a genuinely smooth result instead of the flat-per-triangle look every
+// other object in this scene has.
 //
 // The mesh is auto-fit to `targetSize` (its largest bounding-box
 // dimension scaled to that value) and recentred at `center` - real .obj
@@ -122,6 +137,7 @@ static void addQuad(std::vector<PackedFloat3>& verts,
 // one file.
 static bool loadObjMesh(const std::string& path,
                          std::vector<PackedFloat3>& verts,
+                         std::vector<PackedFloat3>& normals,
                          std::vector<TriangleMaterial>& materials,
                          float3 color, float3 center, float targetSize) {
     std::ifstream in(path);
@@ -131,7 +147,22 @@ static bool loadObjMesh(const std::string& path,
     }
 
     std::vector<float3> positions;
-    std::vector<std::vector<int>> faceVertexIndices; // 0-based, post-fixup
+    std::vector<float3> fileNormals;
+    // Each face vertex is (positionIndex, normalIndex-or--1), 0-based
+    // post-fixup - keeping the pair together (rather than two parallel
+    // index lists) is what lets a face's own vn reference survive fan
+    // triangulation below unchanged.
+    struct FaceVertex { int posIdx; int normalIdx; };
+    std::vector<std::vector<FaceVertex>> faces;
+
+    auto parseObjIndex = [](const std::string& token, size_t countAtParseTime) -> int {
+        int idx = std::atoi(token.c_str());
+        if (idx == 0) return -1; // absent (e.g. the "vt" slot in "v/vt/vn")
+        // OBJ indices are 1-based; a negative index is relative to the
+        // current count (rare, but real files use it).
+        if (idx < 0) idx = (int)countAtParseTime + idx + 1;
+        return idx - 1;
+    };
 
     std::string line;
     while (std::getline(in, line)) {
@@ -142,24 +173,29 @@ static bool loadObjMesh(const std::string& path,
             float x, y, z;
             ss >> x >> y >> z;
             positions.push_back(simd::make_float3(x, y, z));
+        } else if (tag == "vn") {
+            float x, y, z;
+            ss >> x >> y >> z;
+            fileNormals.push_back(simd::make_float3(x, y, z));
         } else if (tag == "f") {
-            std::vector<int> indices;
+            std::vector<FaceVertex> faceVerts;
             std::string token;
             while (ss >> token) {
-                // Token is "v", "v/vt", "v//vn", or "v/vt/vn" - only the
-                // first (position) index matters here.
-                int vIdx = std::atoi(token.c_str());
-                // OBJ indices are 1-based; a negative index is relative to
-                // the current vertex count (rare, but real files use it) -
-                // both normalized to a plain 0-based index here.
-                if (vIdx < 0) vIdx = (int)positions.size() + vIdx + 1;
-                indices.push_back(vIdx - 1);
+                // Token is "v", "v/vt", "v//vn", or "v/vt/vn".
+                size_t firstSlash = token.find('/');
+                size_t lastSlash = token.rfind('/');
+                int posIdx = parseObjIndex(token.substr(0, firstSlash), positions.size());
+                int normalIdx = -1;
+                if (firstSlash != std::string::npos && lastSlash != firstSlash) {
+                    normalIdx = parseObjIndex(token.substr(lastSlash + 1), fileNormals.size());
+                }
+                faceVerts.push_back({posIdx, normalIdx});
             }
-            if (indices.size() >= 3) faceVertexIndices.push_back(indices);
+            if (faceVerts.size() >= 3) faces.push_back(faceVerts);
         }
     }
 
-    if (positions.empty() || faceVertexIndices.empty()) {
+    if (positions.empty() || faces.empty()) {
         fprintf(stderr, "OBJ file had no usable geometry: %s\n", path.c_str());
         return false;
     }
@@ -179,25 +215,51 @@ static bool loadObjMesh(const std::string& path,
     auto transform = [&](const float3& p) -> float3 {
         return (p - bboxCenter) * scale + center;
     };
+    // Normals only need the scale's sign/shear behaviour, not translation -
+    // a uniform positive scale (this loader's only kind) leaves direction
+    // unchanged, so this is really just "no-op, pass through," kept as its
+    // own step for clarity and in case a future non-uniform scale needs it.
+    auto transformNormal = [&](const float3& n) -> float3 { return simd::normalize(n); };
 
     uint32_t triangleCount = 0;
-    for (const std::vector<int>& face : faceVertexIndices) {
+    uint32_t normalFallbackCount = 0;
+    for (const std::vector<FaceVertex>& face : faces) {
         // Fan triangulation from vertex 0 - correct for the convex/near-
         // convex polygons a typical modeled mesh's faces are (this file's
         // own quads included), not a general concave-polygon triangulator.
         for (size_t i = 1; i + 1 < face.size(); ++i) {
-            int i0 = face[0], i1 = face[i], i2 = face[i + 1];
-            if (i0 < 0 || i0 >= (int)positions.size() ||
-                i1 < 0 || i1 >= (int)positions.size() ||
-                i2 < 0 || i2 >= (int)positions.size()) {
+            FaceVertex fv0 = face[0], fv1 = face[i], fv2 = face[i + 1];
+            if (fv0.posIdx < 0 || fv0.posIdx >= (int)positions.size() ||
+                fv1.posIdx < 0 || fv1.posIdx >= (int)positions.size() ||
+                fv2.posIdx < 0 || fv2.posIdx >= (int)positions.size()) {
                 continue; // malformed index - skip rather than crash
             }
-            float3 a = transform(positions[i0]);
-            float3 b = transform(positions[i1]);
-            float3 c = transform(positions[i2]);
+            float3 a = transform(positions[fv0.posIdx]);
+            float3 b = transform(positions[fv1.posIdx]);
+            float3 c = transform(positions[fv2.posIdx]);
             verts.push_back(PackedFloat3{a.x, a.y, a.z});
             verts.push_back(PackedFloat3{b.x, b.y, b.z});
             verts.push_back(PackedFloat3{c.x, c.y, c.z});
+
+            bool haveAllNormals =
+                fv0.normalIdx >= 0 && fv0.normalIdx < (int)fileNormals.size() &&
+                fv1.normalIdx >= 0 && fv1.normalIdx < (int)fileNormals.size() &&
+                fv2.normalIdx >= 0 && fv2.normalIdx < (int)fileNormals.size();
+            if (haveAllNormals) {
+                float3 n0 = transformNormal(fileNormals[fv0.normalIdx]);
+                float3 n1 = transformNormal(fileNormals[fv1.normalIdx]);
+                float3 n2 = transformNormal(fileNormals[fv2.normalIdx]);
+                normals.push_back(PackedFloat3{n0.x, n0.y, n0.z});
+                normals.push_back(PackedFloat3{n1.x, n1.y, n1.z});
+                normals.push_back(PackedFloat3{n2.x, n2.y, n2.z});
+            } else {
+                float3 flat = simd::normalize(simd::cross(b - a, c - a));
+                PackedFloat3 packedFlat{flat.x, flat.y, flat.z};
+                normals.push_back(packedFlat);
+                normals.push_back(packedFlat);
+                normals.push_back(packedFlat);
+                ++normalFallbackCount;
+            }
             ++triangleCount;
         }
     }
@@ -206,8 +268,10 @@ static bool loadObjMesh(const std::string& path,
     TriangleMaterial mat{packedColor, /*materialType=*/0, 1.0f, PackedFloat3{0, 0, 0}};
     for (uint32_t i = 0; i < triangleCount; ++i) materials.push_back(mat);
 
-    fprintf(stderr, "Loaded %s: %zu positions, %u triangles (scale %.4f)\n",
-            path.c_str(), positions.size(), triangleCount, scale);
+    fprintf(stderr, "Loaded %s: %zu positions, %zu normals, %u triangles (%u flat-normal "
+                     "fallback), scale %.4f\n",
+            path.c_str(), positions.size(), fileNormals.size(), triangleCount,
+            normalFallbackCount, scale);
     return true;
 }
 
@@ -244,6 +308,7 @@ int main(int argc, const char** argv) {
         // dimensions - this POC's scene is entirely separate authored data,
         // not a shared asset with cpu_renderer/.
         std::vector<PackedFloat3> verts;
+        std::vector<PackedFloat3> normals;
         std::vector<TriangleMaterial> materials;
 
         const float3 white{0.73f, 0.73f, 0.73f};
@@ -251,15 +316,15 @@ int main(int argc, const char** argv) {
         const float3 green{0.12f, 0.45f, 0.15f};
 
         // Floor (y = -1)
-        addQuad(verts, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
+        addQuad(verts, normals, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
         // Ceiling (y = 1)
-        addQuad(verts, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
+        addQuad(verts, normals, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
         // Back wall (z = -1)
-        addQuad(verts, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white);
+        addQuad(verts, normals, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white);
         // Left wall (x = -1), red
-        addQuad(verts, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
+        addQuad(verts, normals, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
         // Right wall (x = 1), green
-        addQuad(verts, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
+        addQuad(verts, normals, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
         // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
         // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
         // test object": mirror MATERIAL coverage is already proven (the
@@ -277,7 +342,7 @@ int main(int argc, const char** argv) {
 #endif
         NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
         const float3 bronze{0.55f, 0.35f, 0.15f};
-        if (!loadObjMesh(suzannePath.UTF8String, verts, materials, bronze,
+        if (!loadObjMesh(suzannePath.UTF8String, verts, normals, materials, bronze,
                           /*center=*/float3{-0.05f, -0.55f, -0.3f}, /*targetSize=*/0.75f)) {
             fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
         }
@@ -291,7 +356,7 @@ int main(int argc, const char** argv) {
         // stay in sync with this quad's own position/size/orientation by
         // hand (this POC's one deliberately-hardcoded light, not a real
         // light-list abstraction - see that file's comment on why).
-        addQuad(verts, materials,
+        addQuad(verts, normals, materials,
                 float3{-0.3f,0.98f,-0.3f}, float3{0.3f,0.98f,-0.3f},
                 float3{0.3f,0.98f,0.3f}, float3{-0.3f,0.98f,0.3f},
                 white, /*materialType=*/0, /*emission=*/float3{15.0f,15.0f,14.0f});
@@ -313,6 +378,9 @@ int main(int argc, const char** argv) {
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> normalBuffer = [device newBufferWithBytes:normals.data()
+            length:normals.size() * sizeof(PackedFloat3)
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
             length:materials.size() * sizeof(TriangleMaterial)
@@ -563,6 +631,7 @@ int main(int argc, const char** argv) {
         [enc setBuffer:sphereMaterialBuffer offset:0 atIndex:4];
         [enc setBuffer:sphereBuffer offset:0 atIndex:5];
         [enc setIntersectionFunctionTable:functionTable atBufferIndex:6];
+        [enc setBuffer:normalBuffer offset:0 atIndex:7];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
         // acceleration structures referencing primitive ones (now two:

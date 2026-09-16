@@ -169,11 +169,24 @@ inline float3 cosineSampleHemisphere(float3 normal, thread uint& rngState) {
     return normalize(x * tangent + y * bitangent + z * normal);
 }
 
-inline float3 faceNormalFor(uint primId, device const packed_float3* vertices) {
-    float3 v0 = float3(vertices[primId * 3 + 0]);
-    float3 v1 = float3(vertices[primId * 3 + 1]);
-    float3 v2 = float3(vertices[primId * 3 + 2]);
-    return normalize(cross(v1 - v0, v2 - v0));
+// Barycentric-interpolated shading normal - replaces the earlier flat
+// per-triangle face normal (cross product of two edges, same value at
+// every point of a triangle) with a real per-vertex-normal blend, using
+// the hit's own barycentric coordinates (triangle_data tag on the
+// intersector/intersection_result is what makes those available at all).
+// For the hand-authored room quads, the three corner normals stored in
+// `normals` are all identical (the quad's own flat face normal, written
+// that way host-side) so this reduces to exactly the old flat-shading
+// behaviour there - only a real mesh with genuinely different per-vertex
+// normals (Suzanne's own `vn` data) sees a different, smoothly-varying
+// result. Same interpolation `.obj`/pbrt-v4/this project's own CPU
+// triangle.h use for a shading normal, not an approximation of it.
+inline float3 shadingNormalFor(uint primId, float2 barycentric, device const packed_float3* normals) {
+    float3 n0 = float3(normals[primId * 3 + 0]);
+    float3 n1 = float3(normals[primId * 3 + 1]);
+    float3 n2 = float3(normals[primId * 3 + 2]);
+    float w0 = 1.0 - barycentric.x - barycentric.y;
+    return normalize(w0 * n0 + barycentric.x * n1 + barycentric.y * n2);
 }
 
 // Schlick's approximation - the standard cheap stand-in for the full
@@ -195,6 +208,7 @@ kernel void primaryRayKernel(
     device const TriangleMaterial* sphereMaterials [[buffer(4)]],
     device const SphereData* spheres [[buffer(5)]],
     intersection_function_table<instancing, triangle_data> functionTable [[buffer(6)]],
+    device const packed_float3* normals [[buffer(7)]],
     uint2 tid [[thread_position_in_grid]])
 {
     if (tid.x >= uniforms.width || tid.y >= uniforms.height) return;
@@ -292,7 +306,7 @@ kernel void primaryRayKernel(
                 normal = normalize(hitPoint - float3(sphere.center));
                 mat = sphereMaterials[primId];
             } else {
-                normal = faceNormalFor(primId, vertices);
+                normal = shadingNormalFor(primId, result.triangle_barycentric_coord, normals);
                 mat = triMaterials[primId];
             }
             // Raw (outward, unflipped) normal kept separately from here -
