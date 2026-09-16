@@ -938,3 +938,85 @@ not a new per-bounce cost).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 23. POC series status: what's been proven, and what a real port still needs
+
+Sections 8-22 cover fourteen incremental steps (PRs #2-#16) built on top of
+this document's own Section 7 "suggested next step" - a triangle + one-
+material spike to validate the pipeline shape. That original, deliberately
+minimal goal has been substantially exceeded; this section is the
+synthesis Section 7 didn't have the hindsight to write, laying out what
+that now actually adds up to and, as importantly, what it doesn't.
+
+**What's been proven, concretely, on real Apple Silicon hardware:**
+
+- **Geometry**: triangle meshes (hand-authored quads AND real loaded
+  `.obj` files, with genuine per-vertex normals and UVs, smooth-shaded)
+  mixed with a custom (non-triangle) bounding-box-intersected primitive
+  (spheres, 1-N of them sharing one intersection function) in a single
+  `instance_acceleration_structure` - Section 3's "Low risk" (triangle
+  BVH) and "Medium risk" (custom-primitive intersection) predictions both
+  held up, the second only after finding the two real bugs Section 11
+  documents.
+- **Materials**: Lambertian diffuse (flat AND textured), mirror, smooth
+  dielectric, rough (frosted) dielectric, and a physically-based rough
+  conductor (GGX/Trowbridge-Reitz with VNDF importance sampling and
+  height-correlated Smith masking-shadowing) - six materialTypes
+  spanning delta, glossy, and diffuse BSDF families, not just "one
+  material to prove the pipeline."
+- **Lighting**: a genuine multi-entry light LIST (not a single hardcoded
+  light) with next-event estimation, uniform light-picking, and multiple
+  importance sampling (power heuristic) between light- and BSDF-sampling
+  strategies, correctly generalized across every non-delta material.
+- **Camera**: thin-lens depth of field and shutter-time motion blur, both
+  purely additive to the base pinhole/static-camera path.
+- **Verified correctness methodology, not just "it renders something"**:
+  A/B comparisons that toggle a new parameter to its degenerate value and
+  confirm the OLD behaviour reproduces exactly (DOF's `lensRadius == 0`,
+  motion blur's `cameraVelocity == 0`, rough dielectric's `roughness ==
+  0`, MIS's own noise-comparison in step 5); load-time fallback counters
+  that prove both a real-data code path and its fallback path actually
+  execute (step 12's complementary Suzanne/Spot logs); visual
+  falsifiability chosen deliberately when possible (step 10's two-light
+  scene, chosen specifically because a light-list bug would plausibly
+  still "render something," just wrong).
+
+**What this explicitly is NOT, and Section 6's effort estimates for each
+remain the right scale (weeks-to-months, not PR-sized) even now:**
+
+- **Not the wavefront architecture.** Every step above still runs inside
+  one compute kernel per sample (`primaryRayKernel`'s own bounce loop),
+  not the queue-of-separate-compute-passes (intersect/shade/shadow/
+  accumulate) design Section 2 identified as the real architectural
+  target for a production port. This POC proves the underlying
+  primitives (inline intersection, custom primitives, buffers) that a
+  wavefront restructuring would be built FROM, not the restructuring
+  itself.
+- **Not scene-builder-integrated.** Every scene in this POC is hardcoded
+  host-side C++ (`main()`'s own `addQuad()`/`loadObjMesh()`/sphere-array
+  calls) - there is no path from a real `.pbrt` file to this renderer;
+  `scene_builder.cpp`/`pbrt_gpu_builder.h`'s own 7,500+ lines remain
+  entirely unaddressed, still Section 3's own "Medium-High" risk item.
+- **Not app-integrated.** `metal_poc` remains a standalone CLI tool with
+  its own `main()`, never called from `launcher/main.cpp` or the Qt GUI -
+  by design (Section 5 point 5), but worth restating plainly: there is no
+  `--gpu-metal` flag on the real `ray_tracer` binary.
+- **Missing real feature-parity breadth**, even setting the above aside:
+  no BSSRDF/subsurface scattering, no spectral/hero-wavelength rendering,
+  no hair BSDF, no measured/tabulated BRDFs, no volumetric media, no
+  additional shape types (disks, cylinders, bilinear patches), no
+  ReSTIR DI/GI, no SVGF denoising, no NRC, no OptiX-AI-Denoiser
+  equivalent - the entirety of Section 3's "Medium" through "Dead end
+  as-is" rows beyond what's listed above as proven.
+
+**Bottom line**: the architecture-level bets Sections 2-3 made have now
+been tested across a genuinely broad slice of this project's own material/
+light/shape/camera feature space, on real hardware, with real bugs found
+and fixed along the way (Section 11's two, this section's own list of
+verification methodology) - not just the single triangle + one material
+Section 7 originally called for. That substantially de-risks a real port
+at the ARCHITECTURE level. It does not shrink Section 6's own effort
+estimates for what's still ahead: the wavefront restructuring, scene-
+builder integration, and remaining feature-parity work are each
+independently a multi-week-to-months undertaking, not a continuation of
+this same PR-sized incremental pattern.
