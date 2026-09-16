@@ -77,6 +77,8 @@ struct Uniforms {
     uint32_t maxDepth;
     uint32_t frameSeed;
     uint32_t lightCount;
+    float lensRadius;
+    float focusDistance;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -768,6 +770,14 @@ int main(int argc, const char** argv) {
         uniforms.maxDepth = maxDepth;
         uniforms.frameSeed = 1u;
         uniforms.lightCount = (uint32_t)lights.size();
+        // Thin-lens depth of field: focused on the gold conductor sphere
+        // (the nearest object to the camera), so it renders pixel-sharp
+        // while the dielectric sphere just behind it and the back
+        // wall/Suzanne further back show progressively more defocus blur -
+        // the falloff is what actually demonstrates this is a real lens
+        // model, not just a uniform blur filter over the whole frame.
+        uniforms.lensRadius = 0.05f;
+        uniforms.focusDistance = uniforms.cameraPos.z - spheres[1].center.z; // gold sphere's own z
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
