@@ -82,6 +82,7 @@ struct Uniforms {
     PackedFloat3 cameraVelocity;
     float fogSigmaT;
     PackedFloat3 fogAlbedo;
+    uint32_t useEnvironmentMap;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -1058,6 +1059,14 @@ int main(int argc, const char** argv) {
         // that would fight every other material's own visibility.
         uniforms.fogSigmaT = 0.05f;
         uniforms.fogAlbedo = PackedFloat3{0.85f, 0.88f, 0.95f}; // mostly-scattering, faint cool tint
+        // On: a miss ray samples earthTexture by direction (equirectangular)
+        // instead of the flat two-colour gradient - the room's open front
+        // means most miss rays are secondary/GI bounces (a mirror/glass
+        // surface reflecting/refracting outward), not primary camera rays,
+        // so this mostly shows up subtly rather than as an obvious visible
+        // backdrop - see docs/METAL_GPU_FEASIBILITY.md's own note on
+        // verifying this with a dedicated wide-FOV test render.
+        uniforms.useEnvironmentMap = 1u;
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------

@@ -1272,3 +1272,68 @@ Apple hardware a GitHub-hosted Windows/Linux runner doesn't have - so
 this doesn't (and currently can't) run in CI. It's real coverage for
 anyone building `RT_BUILD_METAL=ON` locally on a Mac, which is this
 POC's entire audience today.
+
+## 28. Proof-of-concept, step 18: environment-mapped sky (and a real fog bug, found and fixed) (done)
+
+A miss ray (`result.type == intersection_type::none`) now optionally
+samples `earthTexture` by DIRECTION (standard equirectangular mapping,
+`equirectangularUV()`: longitude from `atan2`, latitude from `asin`)
+instead of the flat two-colour `skyBottom`/`skyTop` gradient every
+earlier step used - reusing the same texture already loaded for
+`materialType 3`, sampled a genuinely different way (by ray direction,
+not by a mesh's own per-vertex UVs). `uniforms.useEnvironmentMap == 0`
+keeps the original gradient exactly, purely additive like every earlier
+toggle.
+
+**A real, pre-existing bug was found and fixed while verifying this.**
+The room's 5 closed walls plus its ~40-degree camera FOV mean almost
+every PRIMARY ray already hits something (the room's own open-front
+"opening," as seen from the camera, almost exactly fills the frame -
+this was noted back when depth of field was first added in step 11) -
+so a dedicated wide-FOV, pulled-back test render was needed to actually
+exercise miss rays directly, the way step 11/13's own out-of-band
+verification renders did for their own features. That render came back
+an unexplained near-black frame with sparse bright specks - not the
+expected Earth backdrop. Tracing it down: step 17's fog code compared a
+sampled scattering distance against `FLT_MAX` for a miss ray's own
+"surface distance," intending to let fog still scatter a ray that would
+otherwise have escaped. Since a sampled distance is some finite real
+number with probability 1, `t < FLT_MAX` is true for EVERY miss ray -
+meaning no ray could ever actually reach the sky/environment-map code
+at all once fog was enabled: every escaping ray kept "scattering" in a
+medium that should have already ended at the scene's own boundary,
+wandering further and further from the room while its throughput slowly
+decayed, the NEE-against-a-now-astronomically-distant-light contribution
+these lost rays evaluate approaching zero with rare firefly-like
+exceptions - exactly what the black-with-sparse-specks render showed.
+Fixed by gating the fog-scattering branch on an actual surface hit
+existing (`result.type != intersection_type::none`) - the fog fills the
+scene's INTERIOR, implicitly bounded by the room's own geometry, not
+empty space beyond a miss. This was invisible in every one of this
+POC's own committed scenes up to this point (only secondary/GI bounces
+escaping through the room's open front were ever affected, a small
+enough fraction to not read as an obvious artifact in any of step 17's
+own screenshots) - a genuine instance of the "looks plausible, renders
+something, is subtly wrong" failure mode Section 4 warns about, caught
+here specifically because THIS step's own verification method happened
+to stress exactly the code path the bug lived in.
+
+**Result, verified three ways**: the dedicated wide-FOV render, post-fix,
+shows the Earth texture correctly wrapping the room in every direction -
+recognizable continents, ocean, and grid lines, no flipping or mirroring
+artifacts, confirming both the equirectangular mapping AND the fog fix
+are correct. The committed scene (`useEnvironmentMap = 1`) shows a
+subtle but real difference from before: the gold conductor sphere's own
+reflection now shows a small patch of Earth-like blue/green where it
+catches a GI ray that escapes toward the room's open front. An A/B
+render with `useEnvironmentMap = 0` removes exactly that patch and
+nothing else, confirming the toggle controls only what it claims to.
+700×700 @ 384spp @ depth 10 renders in ~37 seconds on an M2 - actually
+FASTER than step 17's own ~46s at the same sample count, consistent with
+the fog-bug fix: fewer rays now spend their entire remaining depth
+budget wandering through an unbounded medium that should have let them
+terminate immediately instead.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (added in the previous step)
+continues to pass.
