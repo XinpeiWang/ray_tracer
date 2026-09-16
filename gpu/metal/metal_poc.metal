@@ -117,7 +117,9 @@ struct AreaLight {
 // normal-incidence reflectance F0, not a diffuse albedo), 5 = rough
 // (frosted) dielectric - materialType 2's own reflect/refract math,
 // VNDF-perturbed - see that branch's own comment for exactly what's and
-// isn't modeled.
+// isn't modeled. `color` means something different again for {2,5}: a
+// per-unit-distance Beer-Lambert ABSORPTION coefficient, not a
+// reflectance/tint - see applyBeerLambertAbsorption()'s own comment.
 // `ior` is meaningful for materialType == 2 and 5 (refraction index) and
 // reused, differently, for materialType == 4 (perceptual roughness in
 // [0,1], squared into the GGX alpha parameter below) - materialType 4
@@ -440,6 +442,35 @@ inline float schlickReflectance(float cosine, float refractionRatio) {
     float r0 = (1.0 - refractionRatio) / (1.0 + refractionRatio);
     r0 = r0 * r0;
     return r0 + (1.0 - r0) * pow(1.0 - cosine, 5.0);
+}
+
+// Beer-Lambert colour absorption for a dielectric (materialType 2/5) -
+// real tinted glass absorbs light proportionally to how far it travels
+// THROUGH the medium (a thick paperweight reads far more saturated than
+// a thin windowpane of the same glass), not by a flat per-bounce
+// multiply the way every earlier version of this POC's dielectric
+// branches applied `albedo`. Only fires when `!frontFace` (this hit is
+// on the surface's own BACKFACE, i.e. the ray is exiting, not entering) -
+// for a CONVEX primitive (true of every dielectric shape this POC has,
+// the sphere), the segment just travelled (the previous bounce's own
+// entry point to this exit hit) was entirely inside the medium, so
+// `result.distance` at the EXIT hit is exactly the in-medium path
+// length Beer's law needs, no separate distance-tracking state required.
+// A concave dielectric could re-enter/exit multiple times without this
+// simple per-hit check catching every segment correctly - not handled,
+// same "document the assumption, don't silently rely on it" approach
+// this POC's other simplifications use.
+//
+// `mat.color` is reinterpreted here as a per-unit-distance absorption
+// COEFFICIENT, not the flat reflectance/tint every other material reads
+// it as - {0,0,0} means zero absorption (exp(-0*dist) == 1 exactly, a
+// true no-op reproducing perfectly clear glass), not "black," the
+// opposite of what {0,0,0} would mean as a reflectance colour elsewhere
+// in this same struct.
+inline void applyBeerLambertAbsorption(thread float3& throughput, packed_float3 absorption, bool frontFace, float distance) {
+    if (!frontFace) {
+        throughput *= exp(-float3(absorption) * distance);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1003,9 +1034,8 @@ kernel void primaryRayKernel(
                 // Glass is delta-transmissive/reflective, same "no NEE, a
                 // shadow ray toward a point light has zero probability of
                 // landing exactly on the one direction that mattered" logic
-                // as the mirror branch below - throughput stays at the
-                // glass's own tint (near-1.0/clear for realistic glass).
-                throughput *= albedo;
+                // as the mirror branch below.
+                applyBeerLambertAbsorption(throughput, mat.color, frontFace, result.distance);
                 specularBounce = true;
             } else if (mat.materialType == 5u) {
                 // Rough (frosted) dielectric: the same Schlick-Fresnel
@@ -1067,7 +1097,7 @@ kernel void primaryRayKernel(
                 }
                 rayDir = newDir;
                 rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
-                throughput *= albedo;
+                applyBeerLambertAbsorption(throughput, mat.color, frontFace, result.distance);
                 specularBounce = true;
             } else if (mat.materialType == 4u) {
                 // Rough conductor (GGX metal): structurally the same NEE +

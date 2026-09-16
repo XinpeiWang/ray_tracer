@@ -577,10 +577,21 @@ int main(int argc, const char** argv) {
             SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
             SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
         };
+        // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
+        // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
+        // comment), not a reflectance/tint the way every other material's
+        // `color` field is read - {1,1,1} would have meant "absorb
+        // everything, render black" under this new interpretation, so
+        // both dielectric spheres' old placeholder {1,1,1} "clear glass"
+        // values were replaced with real per-channel absorption:
+        // sphere 0 is emerald-tinted (absorbs red/blue faster than
+        // green, getting more richly green toward its own thicker
+        // centre), sphere 2 a much milder amber (still reads mostly
+        // frosted-white, just warmed slightly).
         std::vector<TriangleMaterial> sphereMaterials = {
-            TriangleMaterial{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
+            TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.35f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
             TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*roughness=*/0.15f, PackedFloat3{0, 0, 0}},
-            TriangleMaterial{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
+            TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
                              /*lightId=*/-1, /*roughness=*/0.35f},
         };
 
