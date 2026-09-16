@@ -60,12 +60,14 @@ struct Uniforms {
 
 // materialType: 0 = Lambertian, 1 = mirror, 2 = dielectric (glass) - see
 // metal_poc.metal's own comment on this struct for why it's this minimal.
-// ior is only meaningful for materialType == 2, carried on every entry
-// anyway - see that file's comment on the same tradeoff.
+// ior is only meaningful for materialType == 2, emission only nonzero for
+// the light quad - both carried on every entry anyway, see that file's
+// comment on the same tradeoff.
 struct TriangleMaterial {
     PackedFloat3 color;
     uint32_t materialType;
     float ior;
+    PackedFloat3 emission;
 };
 
 // Mirrors metal_poc.metal's SphereData byte-for-byte.
@@ -80,14 +82,16 @@ struct SphereData {
 static void addQuad(std::vector<PackedFloat3>& verts,
                      std::vector<TriangleMaterial>& materials,
                      float3 a, float3 b, float3 c, float3 d,
-                     float3 color, uint32_t materialType = 0) {
+                     float3 color, uint32_t materialType = 0,
+                     float3 emission = simd::make_float3(0, 0, 0)) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
     push(a); push(c); push(d);
     PackedFloat3 packedColor{color.x, color.y, color.z};
-    materials.push_back({packedColor, materialType, 1.0f});
-    materials.push_back({packedColor, materialType, 1.0f});
+    PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
+    materials.push_back({packedColor, materialType, 1.0f, packedEmission});
+    materials.push_back({packedColor, materialType, 1.0f, packedEmission});
 }
 
 int main(int argc, const char** argv) {
@@ -150,6 +154,20 @@ int main(int argc, const char** argv) {
                 float3{0.25f,-0.2f,-0.5f}, float3{-0.35f,-0.2f,-0.3f},
                 mirrorTint, /*materialType=*/1);
 
+        // Area light: a small quad hanging just under the ceiling
+        // (y=0.98, not y=1 itself - avoids z-fighting/coplanar overlap
+        // with the ceiling's own quad above), facing straight down. Real
+        // geometry with nonzero emission, replacing the earlier hardcoded
+        // directional light entirely - see metal_poc.metal's own comment
+        // on kLightCenter/kLightHalfExtents/kLightNormal, which have to
+        // stay in sync with this quad's own position/size/orientation by
+        // hand (this POC's one deliberately-hardcoded light, not a real
+        // light-list abstraction - see that file's comment on why).
+        addQuad(verts, materials,
+                float3{-0.3f,0.98f,-0.3f}, float3{0.3f,0.98f,-0.3f},
+                float3{0.3f,0.98f,0.3f}, float3{-0.3f,0.98f,0.3f},
+                white, /*materialType=*/0, /*emission=*/float3{15.0f,15.0f,14.0f});
+
         // One glass sphere, right side of the floor - a custom (non-
         // triangle) primitive via a bounding-box acceleration structure +
         // intersection function (metal_poc.metal's sphereIntersectionFunction),
@@ -159,7 +177,8 @@ int main(int argc, const char** argv) {
         // matches common glass, same value this project's own CPU Cornell
         // box scene (A1) uses for its glass sphere.
         SphereData sphere{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f};
-        TriangleMaterial sphereMaterial{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/2, /*ior=*/1.5f};
+        TriangleMaterial sphereMaterial{
+            PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}};
 
         const uint32_t triangleCount = (uint32_t)materials.size();
         fprintf(stderr, "Scene: %u triangles, 1 sphere\n", triangleCount);

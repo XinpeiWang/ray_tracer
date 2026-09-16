@@ -45,11 +45,18 @@ struct Uniforms {
 // 2 = dielectric (glass). `ior` is only meaningful for materialType == 2 -
 // carried on every material anyway (rather than a separate per-type
 // struct) since this POC values "one flat array, index by primitive_id"
-// simplicity over saving 4 bytes on non-dielectric entries.
+// simplicity over saving 4 bytes on non-dielectric entries. `emission` is
+// nonzero only for the one light quad's two triangles (see kLight* below) -
+// same "just carry it, don't special-case a rare field" reasoning as ior.
+// Checking it unconditionally on every hit (regardless of material type)
+// is what makes a light source visible at all when a camera/GI ray lands
+// on it directly, on top of the light-SAMPLING code below which handles
+// every other surface's direct illumination FROM it.
 struct TriangleMaterial {
     packed_float3 color;
     uint materialType;
     float ior;
+    packed_float3 emission;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
@@ -192,8 +199,21 @@ kernel void primaryRayKernel(
 {
     if (tid.x >= uniforms.width || tid.y >= uniforms.height) return;
 
-    const float3 lightDir = normalize(float3(0.4, 0.8, 0.3));
-    const float3 lightColor = float3(1.0, 0.98, 0.92);
+    // Area light: a small quad hanging just under the ceiling, facing
+    // straight down - real geometry (added via addQuad() host-side, see
+    // metal_poc.mm) with nonzero TriangleMaterial::emission on its two
+    // triangles, not a separate light type. Its extent/normal/area are
+    // hardcoded here to match that geometry exactly rather than derived
+    // from it at trace time - a real port would carry a proper light list
+    // (this project's own CPU src/TheRestOfYourLife/*light_sampler*.h is
+    // exactly that abstraction) instead of one hardcoded light's shape
+    // baked into the integrator.
+    const float3 kLightCenter = float3(0.0, 0.98, 0.0);
+    const float2 kLightHalfExtents = float2(0.3, 0.3); // x, z half-widths
+    const float3 kLightNormal = float3(0.0, -1.0, 0.0);
+    const float kLightArea = (2.0 * kLightHalfExtents.x) * (2.0 * kLightHalfExtents.y);
+    const float3 kLightEmission = float3(15.0, 15.0, 14.0);
+
     const float3 skyTop = float3(0.9, 0.95, 1.0);
     const float3 skyBottom = float3(0.3, 0.5, 0.9);
 
@@ -272,6 +292,15 @@ kernel void primaryRayKernel(
 
             float3 albedo = float3(mat.color);
 
+            // Unconditional, regardless of material type: this is what
+            // makes the light quad itself visible when a camera ray or a
+            // GI bounce lands on it directly (mirror/glass included - a
+            // mirror reflecting toward the light correctly shows it,
+            // since this fires for THEIR reflected/refracted rays' next
+            // hit too, not just Lambertian ones). Every non-light surface
+            // has emission == 0, so this is a no-op for them.
+            radiance += throughput * float3(mat.emission);
+
             if (mat.materialType == 2u) {
                 // Dielectric (glass): Schlick-approximated Fresnel decides
                 // reflect vs refract stochastically each bounce - same
@@ -316,23 +345,47 @@ kernel void primaryRayKernel(
                 rayOrigin = hitPoint + facingNormal * 0.001f;
                 throughput *= albedo;
             } else {
-                // Lambertian: next-event estimation against the one
-                // directional light (shadow ray), then continue the path
-                // via cosine-weighted hemisphere sampling for indirect
-                // light. Two separate rays per bounce - direct (shadow)
-                // and the continuation - is the standard NEE split this
-                // project's own CPU path_integrator.h also uses.
-                float ndotl = max(dot(facingNormal, lightDir), 0.0);
-                if (ndotl > 0.0) {
-                    ray shadowRay;
-                    shadowRay.origin = hitPoint + facingNormal * 0.001f;
-                    shadowRay.direction = lightDir;
-                    shadowRay.min_distance = 0.001f;
-                    shadowRay.max_distance = 1e6f;
-                    intersection_result<instancing, triangle_data> shadowResult =
-                        isect.intersect(shadowRay, accelStructure, functionTable);
-                    if (shadowResult.type == intersection_type::none) {
-                        radiance += throughput * albedo * lightColor * ndotl * (1.0 / M_PI_F);
+                // Lambertian: next-event estimation against the area
+                // light (uniform-area-sampled point + solid-angle PDF
+                // conversion, shadow ray up to just short of the light
+                // rather than infinite), then continue the path via
+                // cosine-weighted hemisphere sampling for indirect light.
+                // Two separate rays per bounce - direct (shadow) and the
+                // continuation - is the standard NEE split this project's
+                // own CPU path_integrator.h also uses; the light-quad's
+                // OWN two triangles skip this (mat.emission's already-
+                // added contribution above is their entire direct
+                // lighting - sampling the light FROM itself is degenerate).
+                if (all(mat.emission == float3(0.0))) {
+                    float2 u = float2(randFloat(rngState), randFloat(rngState));
+                    float3 lightPoint = kLightCenter + float3(
+                        (u.x * 2.0 - 1.0) * kLightHalfExtents.x, 0.0, (u.y * 2.0 - 1.0) * kLightHalfExtents.y);
+                    float3 toLight = lightPoint - hitPoint;
+                    float distSq = dot(toLight, toLight);
+                    float dist = sqrt(distSq);
+                    float3 wi = toLight / dist;
+                    float cosSurface = dot(facingNormal, wi);
+                    float cosLight = dot(kLightNormal, -wi);
+                    if (cosSurface > 0.0 && cosLight > 0.0) {
+                        ray shadowRay;
+                        shadowRay.origin = hitPoint + facingNormal * 0.001f;
+                        shadowRay.direction = wi;
+                        shadowRay.min_distance = 0.001f;
+                        // Short of the light's own surface, not infinite -
+                        // an infinite shadow ray would hit the light quad
+                        // ITSELF and always report "occluded".
+                        shadowRay.max_distance = dist - 0.002f;
+                        intersection_result<instancing, triangle_data> shadowResult =
+                            isect.intersect(shadowRay, accelStructure, functionTable);
+                        if (shadowResult.type == intersection_type::none) {
+                            // Area-to-solid-angle PDF conversion:
+                            // pdf_omega = pdf_area * dist^2 / cosLight,
+                            // pdf_area = 1/kLightArea for uniform sampling -
+                            // textbook area-light NEE, not an approximation.
+                            float pdfSolidAngle = distSq / (kLightArea * cosLight);
+                            radiance += throughput * albedo * (1.0 / M_PI_F)
+                                        * kLightEmission * cosSurface / pdfSolidAngle;
+                        }
                     }
                 }
 
