@@ -389,3 +389,45 @@ directly, not just here — the real port should treat "geometry opacity"
 and "intersection function tag parity" as two explicit checklist items
 when any custom primitive enters the scene, not incidental details to
 rediscover by the same bisection process this POC needed.
+
+## 12. Proof-of-concept, step 4: a real area light (done)
+
+Every step through #11 used a single hardcoded directional (delta) light.
+This step replaced it entirely with an actual area light: a small emissive
+quad hanging just under the ceiling, sampled with proper area-to-solid-
+angle PDF conversion, shadow-tested up to just short of the light's own
+surface rather than to infinity. The light is real scene geometry (added
+via the same `addQuad()` every other surface uses, now carrying a nonzero
+`emission` field) rather than a special-cased light type - visible
+directly to camera/GI rays that land on it, exactly like every other
+project's own CPU integrator already treats area lights.
+
+**Result, visually confirmed**: a visibly glowing ceiling panel, soft
+shadow falloff (bright directly under the light, dimming with distance -
+a delta light can't produce this at all, since every point either sees it
+or doesn't), correct occlusion from both the sphere and mirror, and a
+visible specular highlight of the light itself reflected in the glass
+sphere's surface. 700×700 @ 512spp @ depth 10 renders in ~9.9 seconds on
+an M2.
+
+This one didn't surface a new API gotcha the way sections 9 and 11 did -
+area-light NEE is pure math (uniform sample the quad, convert its area
+PDF to solid angle via `distance² / (lightArea · cosθ_light)`, MIS-free
+single-strategy NEE plus an unconditional emission check on every hit for
+the indirect/direct-view case) layered on infrastructure sections 8-11
+already proved works (shadow rays, the intersector, per-primitive material
+data). Worth calling out for the opposite reason: not every increment in
+a port this size hits new API territory - some are exactly as
+straightforward as the underlying math suggests, and it's worth not
+over-discounting those against effort estimates just because the harder
+ones make for more interesting reading.
+
+**What this still doesn't have**, worth being explicit about since a
+glowing rectangle can look deceptively complete: no multiple-importance
+sampling (BSDF-sampled rays that happen to hit the light aren't PDF-
+weighted against the light-sampling strategy, just added at full value -
+correct but higher-variance than MIS would give), no light-list
+abstraction (the light's shape is hardcoded twice, once in each file, by
+hand-kept-in-sync constants - a real port needs the CPU renderer's own
+light-sampler abstraction, not a hardcoded quad), and still only one
+light.
