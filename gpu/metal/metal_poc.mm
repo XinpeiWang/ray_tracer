@@ -105,6 +105,10 @@ struct TriangleMaterial {
     // to, or -1 for every non-emissive material - see metal_poc.metal's
     // own comment on the mirrored field.
     int32_t lightId = -1;
+    // Rough-dielectric-only roughness (materialType == 5) - see
+    // metal_poc.metal's own comment on the mirrored field for why this
+    // isn't just reusing `ior`'s slot the way materialType 4 does.
+    float roughness = 0.0f;
 };
 
 // Mirrors metal_poc.metal's SphereData byte-for-byte.
@@ -522,13 +526,25 @@ int main(int argc, const char** argv) {
         // 0.15 (a fairly tight but visibly non-mirror highlight), placed on
         // the opposite side of the room so both new-material spheres read
         // clearly side by side.
+        // Sphere 2: rough (frosted) dielectric, materialType 5 - small,
+        // front-and-centre between the other two spheres and just in
+        // front of Suzanne. An earlier back-left-corner placement turned
+        // out to sit almost exactly along the camera-to-gold-sphere
+        // sightline (both ~20% off-axis, gold sphere much closer/larger)
+        // and was fully hidden - caught by actually rendering and
+        // inspecting the image, not by the bounding-region math alone
+        // (which only rules out 3D overlap, not 2D screen-space
+        // occlusion) - this position was checked against both.
         std::vector<SphereData> spheres = {
             SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
             SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
+            SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
         };
         std::vector<TriangleMaterial> sphereMaterials = {
             TriangleMaterial{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
             TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*roughness=*/0.15f, PackedFloat3{0, 0, 0}},
+            TriangleMaterial{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
+                             /*lightId=*/-1, /*roughness=*/0.35f},
         };
 
         const uint32_t triangleCount = (uint32_t)materials.size();
