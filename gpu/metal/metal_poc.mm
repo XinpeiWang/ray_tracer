@@ -400,20 +400,32 @@ int main(int argc, const char** argv) {
                 float3{0.3f,0.98f,0.3f}, float3{-0.3f,0.98f,0.3f},
                 white, /*materialType=*/0, /*emission=*/float3{15.0f,15.0f,14.0f});
 
-        // One glass sphere, right side of the floor - a custom (non-
-        // triangle) primitive via a bounding-box acceleration structure +
-        // intersection function (metal_poc.metal's sphereIntersectionFunction),
-        // the one "Medium risk, unconfirmed" item docs/METAL_GPU_
-        // FEASIBILITY.md section 3 flagged that the room/mirror geometry
-        // so far hadn't actually exercised (triangles only). ior 1.5
-        // matches common glass, same value this project's own CPU Cornell
-        // box scene (A1) uses for its glass sphere.
-        SphereData sphere{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f};
-        TriangleMaterial sphereMaterial{
-            PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}};
+        // Two spheres, both custom (non-triangle) primitives via a shared
+        // bounding-box acceleration structure + intersection function
+        // (metal_poc.metal's sphereIntersectionFunction indexes into
+        // `spheres`/`sphereMaterials` by primitive_id, so any number of
+        // spheres share one geometry/one intersection function - adding a
+        // second one below is purely a host-side array-of-2 change, no
+        // shader change) - the one "Medium risk, unconfirmed" item
+        // docs/METAL_GPU_FEASIBILITY.md section 3 originally flagged that
+        // the room/mirror geometry alone hadn't exercised (triangles only).
+        // Sphere 0: glass, ior 1.5 matches common glass, same value this
+        // project's own CPU Cornell box scene (A1) uses for its glass
+        // sphere. Sphere 1: a rough (GGX) conductor - gold-ish F0, roughness
+        // 0.15 (a fairly tight but visibly non-mirror highlight), placed on
+        // the opposite side of the room so both new-material spheres read
+        // clearly side by side.
+        std::vector<SphereData> spheres = {
+            SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
+            SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
+        };
+        std::vector<TriangleMaterial> sphereMaterials = {
+            TriangleMaterial{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
+            TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*roughness=*/0.15f, PackedFloat3{0, 0, 0}},
+        };
 
         const uint32_t triangleCount = (uint32_t)materials.size();
-        fprintf(stderr, "Scene: %u triangles, 1 sphere\n", triangleCount);
+        fprintf(stderr, "Scene: %u triangles, %zu spheres\n", triangleCount, spheres.size());
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
@@ -427,10 +439,10 @@ int main(int argc, const char** argv) {
         id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
             length:materials.size() * sizeof(TriangleMaterial)
             options:MTLResourceStorageModeShared];
-        id<MTLBuffer> sphereBuffer = [device newBufferWithBytes:&sphere
-            length:sizeof(SphereData) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> sphereMaterialBuffer = [device newBufferWithBytes:&sphereMaterial
-            length:sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> sphereBuffer = [device newBufferWithBytes:spheres.data()
+            length:spheres.size() * sizeof(SphereData) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> sphereMaterialBuffer = [device newBufferWithBytes:sphereMaterials.data()
+            length:sphereMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
 
         // --- Primitive acceleration structure (the mesh's own BVH) ------
         MTLAccelerationStructureTriangleGeometryDescriptor* geomDesc =
@@ -467,25 +479,29 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
-        // --- Second primitive acceleration structure: the sphere's own --
+        // --- Second primitive acceleration structure: the spheres' own --
         // bounding-box geometry (a custom/non-triangle primitive has no
         // vertex data at all as far as the acceleration structure is
         // concerned - just an AABB per primitive, with the real
         // intersection test deferred to sphereIntersectionFunction at
-        // trace time).
-        MTLAxisAlignedBoundingBox sphereBounds;
-        sphereBounds.min = MTLPackedFloat3Make(
-            sphere.center.x - sphere.radius, sphere.center.y - sphere.radius, sphere.center.z - sphere.radius);
-        sphereBounds.max = MTLPackedFloat3Make(
-            sphere.center.x + sphere.radius, sphere.center.y + sphere.radius, sphere.center.z + sphere.radius);
-        id<MTLBuffer> boundingBoxBuffer = [device newBufferWithBytes:&sphereBounds
-            length:sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
+        // trace time). One AABB per entry in `spheres`, same index order -
+        // sphereIntersectionFunction's own primitive_id indexes both this
+        // buffer and `spheres`/`sphereMaterials` identically.
+        std::vector<MTLAxisAlignedBoundingBox> sphereBoundsList;
+        for (const SphereData& s : spheres) {
+            MTLAxisAlignedBoundingBox bounds;
+            bounds.min = MTLPackedFloat3Make(s.center.x - s.radius, s.center.y - s.radius, s.center.z - s.radius);
+            bounds.max = MTLPackedFloat3Make(s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius);
+            sphereBoundsList.push_back(bounds);
+        }
+        id<MTLBuffer> boundingBoxBuffer = [device newBufferWithBytes:sphereBoundsList.data()
+            length:sphereBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
 
         MTLAccelerationStructureBoundingBoxGeometryDescriptor* bboxGeomDesc =
             [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
         bboxGeomDesc.boundingBoxBuffer = boundingBoxBuffer;
         bboxGeomDesc.boundingBoxStride = sizeof(MTLAxisAlignedBoundingBox);
-        bboxGeomDesc.boundingBoxCount = 1;
+        bboxGeomDesc.boundingBoxCount = (uint32_t)sphereBoundsList.size();
         // intersectionFunctionTableOffset here is this GEOMETRY's own
         // slot within whatever function table gets bound at trace time -
         // 0 since sphereIntersectionFunction is the only entry in it

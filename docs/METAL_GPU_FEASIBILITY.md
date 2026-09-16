@@ -617,3 +617,70 @@ out-of-tree build directory the same way the existing `RT_METAL_SHADER_DIR`/
 A missing-file fallback (a solid white 1×1 texture) keeps the shader's
 always-bound texture slot valid even if `earthmap.jpg` can't be found,
 rather than crashing or reading undefined data.
+
+## 17. Proof-of-concept, step 9: a rough (GGX) conductor material (done)
+
+Every specular-ish surface so far has been a delta BSDF (mirror, glass) -
+sampled with a single deterministic direction, no NEE, because a delta
+lobe has zero probability of a shadow ray landing exactly on it. This step
+adds the first *glossy* (non-delta, non-diffuse) material: `materialType
+== 4`, a rough conductor using the Trowbridge-Reitz/GGX microfacet
+distribution with height-correlated Smith masking-shadowing, matching
+pbrt-v4's own `TrowbridgeReitzDistribution` formulation (see
+[`docs/FEATURE_INVENTORY.md`](FEATURE_INVENTORY.md)'s materials table).
+Unlike the previous two "no new API surface" steps, this one is a
+genuinely new *algorithm* addition, not new Metal API surface - it's still
+the same inline `intersector`/kernel machinery, applied to more elaborate
+BSDF math.
+
+`TriangleMaterial::ior` is reused as a perceptual roughness value for this
+material type (squared into the GGX `alpha` parameter, the same
+roughness→alpha remap pbrt-v4 uses) - dielectric IOR and conductor
+roughness never coexist on one primitive, so sharing the slot avoids
+adding a field that would sit unused on every other material. `color`
+becomes the conductor's F0 (reflectance at normal incidence, an RGB
+colour for a metal, not a scalar IOR) - Fresnel is Schlick-approximated
+from it, the same "Schlick, not the full complex-IOR Fresnel equations"
+simplification the existing dielectric material already makes.
+
+Sampling uses Heitz (2018)'s "Sampling the GGX Distribution of Visible
+Normals" (VNDF) rather than naive distribution-only importance sampling -
+substantially lower variance at grazing angles, and what pbrt-v4's own
+`Sample_wm` implements, so this isn't a simplified stand-in but the same
+algorithm a production path tracer uses. The BSDF-sampled-continuation
+weight (`f(wo,wi) * cosI / pdf(wi)`) collapses algebraically to `F *
+G(wo,wi) / G1(wo)` for a VNDF-sampled direction - the distribution term
+and the `4 * NdotO * NdotI` denominator cancel exactly against the same
+terms in the Jacobian-converted pdf, leaving only Fresnel and a masking-
+shadowing ratio. NEE against the area light evaluates the full BRDF (`D *
+G * F / (4 * NdotO * NdotI)`) for the light-sampled direction and MIS-
+weights it via the power heuristic against the BSDF strategy's own pdf for
+that same direction - structurally identical to the Lambertian branch's
+NEE/MIS shape, just with the microfacet math swapping in for the cosine-
+weighted diffuse lobe.
+
+The scene gained a second sphere (a gold-ish rough conductor, roughness
+0.15) alongside the existing glass one - proving multiple custom
+primitives share one bounding-box geometry/intersection function cleanly:
+`sphereIntersectionFunction` already indexed into its `spheres` buffer by
+`primitive_id`, so going from one sphere to an array of two was purely a
+host-side change (`boundingBoxCount`, buffer sizes), no shader-side
+modification at all.
+
+**Result, visually confirmed**: the gold sphere shows blurred, glossy
+reflections of the room (not perfect-mirror-sharp, not diffuse-flat) with
+a clear specular highlight from the area light, correctly tinted toward
+gold rather than reflecting colours at full saturation. An A/B render at
+roughness 0.6 (vs. the committed 0.15) confirms the lobe genuinely widens
+with roughness - the same sphere goes from a recognizable blurred
+reflection of the red/green walls to a soft, almost-diffuse-looking
+highlight with no distinguishable wall reflections at all, exactly the
+qualitative behaviour a correct GGX implementation should show. 700×700 @
+256spp @ depth 10 renders in ~14 seconds on an M2 - up from step 8's
+~8.5s, the expected cost of a second NEE shadow ray + full BRDF evaluation
+per bounce for the new sphere, plus one more object's intersections
+across the whole scene, not a regression in the existing materials' own
+cost.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.
