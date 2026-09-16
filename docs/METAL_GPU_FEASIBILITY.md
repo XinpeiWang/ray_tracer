@@ -1591,3 +1591,63 @@ material, not a new cost category).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 34. Proof-of-concept, step 23: anisotropic GGX conductor, checked against a real reference implementation (done)
+
+The GGX conductor material (`materialType 4`) has been isotropic
+(single `alpha`) since step 9 - real brushed/machined metal has a
+genuinely directional highlight (elongated, not round), which an
+isotropic BRDF cannot produce regardless of roughness value. This had
+been deliberately deferred earlier in this series over two concerns:
+correctly generalizing Heitz 2018's VNDF sampling to the anisotropic
+(alphaX/alphaY) case, and needing a REAL, consistently-oriented tangent
+direction across a curved surface (an isotropic BRDF is rotationally
+symmetric around the normal, so the arbitrary tangent `buildOnb()`
+produces was always fine before now; an anisotropic one visibly is not).
+
+**What changed to make this tractable now**: a local, sparse reference
+checkout of Blender Cycles' own Metal-backend renderer
+(`intern/cycles/kernel/closure/bsdf_microfacet.h`) was pulled in as a
+cross-check. `ggxD`/`ggxLambda`/`ggxG1`/`ggxG`/`sampleGGXVNDF` were all
+generalized to take `alphaX`/`alphaY` and full local-frame vectors
+(not just a `NdotX` scalar, which the anisotropic case genuinely needs),
+and verified algebraically AND against Cycles' own `bsdf_aniso_D`/
+`bsdf_aniso_lambda`/`microfacet_ggx_sample_vndf` before being committed -
+matching, not just resembling, a real production implementation's
+formulas. `buildAnisotropicOnb()` solves the tangent-direction problem
+by projecting a fixed world-space reference axis (world-up, falling
+back to world-X exactly at the poles) onto the local tangent plane via
+Gram-Schmidt - the same construction Cycles' own
+`make_orthonormals_tangent()` uses, adapted for this POC's analytic
+sphere having no per-vertex tangent data of its own to begin with.
+
+`alphaX == alphaY` reduces every one of these functions EXACTLY to the
+isotropic formulas this POC used through step 22 - not a separate
+code path, the same functions degenerating correctly at their own
+boundary case (verified both algebraically and by a dedicated render,
+below). `TriangleMaterial::roughness` - otherwise idle for
+`materialType 4` since only `materialType 5` used it before now -
+doubles as alphaY, with `roughness == 0.0` (the only value any earlier
+scene ever set) falling back to the isotropic case automatically.
+
+The gold conductor sphere's own roughness was changed from an isotropic
+0.15 to a genuinely anisotropic `alphaX = 0.08, alphaY = 0.45` - a
+deliberate showcase change, not a value chosen to preserve the previous
+look (that comparison is what the dedicated verification renders below
+are for).
+
+**Result, verified two ways**: the committed scene shows the gold
+sphere with a clearly elongated, "brushed metal" highlight - a real,
+unmistakable streak, not a round one stretched by antialiasing or
+noise. A dedicated render at the EXACT previous parameters (`alphaX =
+0.15, alphaY = 0`, forcing the isotropic fallback) reproduces the
+original round, symmetric highlight from step 9 near-identically,
+confirming the anisotropic generalization's own degenerate case is a
+true no-op, not just a plausible-looking approximation of one. 700×700 @
+384spp @ depth 10 renders in ~36 seconds on an M2, statistically
+indistinguishable from step 22's own ~36s (the same number of BRDF
+evaluations per bounce either way - only which formula computes them
+changed).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

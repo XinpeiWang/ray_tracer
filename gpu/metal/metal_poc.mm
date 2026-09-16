@@ -110,9 +110,10 @@ struct TriangleMaterial {
     // to, or -1 for every non-emissive material - see metal_poc.metal's
     // own comment on the mirrored field.
     int32_t lightId = -1;
-    // Rough-dielectric-only roughness (materialType == 5) - see
-    // metal_poc.metal's own comment on the mirrored field for why this
-    // isn't just reusing `ior`'s slot the way materialType 4 does.
+    // Rough-dielectric roughness (materialType == 5), ALSO reused as
+    // anisotropic alphaY for materialType == 4 (0.0 there falls back to
+    // isotropic) - see metal_poc.metal's own comment on the mirrored
+    // field for the full explanation.
     float roughness = 0.0f;
 };
 
@@ -596,7 +597,17 @@ int main(int argc, const char** argv) {
         // frosted-white, just warmed slightly).
         std::vector<TriangleMaterial> sphereMaterials = {
             TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.35f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
-            TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*roughness=*/0.15f, PackedFloat3{0, 0, 0}},
+            // Genuinely ANISOTROPIC now (alphaX from `ior`, alphaY from
+            // `roughness` - see TriangleMaterial's own comment): a tight
+            // 0.08 in one tangent direction and a much broader 0.45 in
+            // the other, the classic "brushed metal" look - a real,
+            // deliberate change from the previously-isotropic 0.15 this
+            // sphere used through step 22, not a value chosen to
+            // preserve the old appearance (that A/B check is done via a
+            // dedicated verification render instead, not the committed
+            // scene - see docs/METAL_GPU_FEASIBILITY.md's own note).
+            TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*alphaX=*/0.08f, PackedFloat3{0, 0, 0},
+                             /*lightId=*/-1, /*alphaY=*/0.45f},
             TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
                              /*lightId=*/-1, /*roughness=*/0.35f},
         };

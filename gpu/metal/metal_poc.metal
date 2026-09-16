@@ -153,11 +153,15 @@ struct TriangleMaterial {
     // instead of a single global light's constants.
     int lightId;
     // Perceptual roughness for materialType == 5 (rough/frosted
-    // dielectric) ONLY - unlike materialType == 4's reuse of the `ior`
-    // slot for roughness, a rough dielectric genuinely needs both `ior`
-    // (real refraction index) and a roughness value at once, so this
-    // gets its own field rather than overloading an existing one. 0 for
-    // every other material type.
+    // dielectric) - unlike materialType == 4's reuse of the `ior` slot
+    // for roughness, a rough dielectric genuinely needs both `ior` (real
+    // refraction index) and a roughness value at once, so this gets its
+    // own field rather than overloading an existing one. ALSO reused,
+    // differently again, by materialType == 4 as its own alphaY
+    // (anisotropic Y-axis roughness, alongside `ior`'s own alphaX) -
+    // `roughness == 0.0` there falls back to the isotropic case (alphaY
+    // == alphaX), so this stays a safe no-op for every scene that never
+    // sets it. 0 for every other material type.
     float roughness;
 };
 
@@ -494,37 +498,46 @@ inline void applyBeerLambertAbsorption(thread float3& throughput, packed_float3 
 // GGX / Trowbridge-Reitz microfacet distribution + height-correlated Smith
 // masking-shadowing - the standard model materialType == 4 (rough
 // conductor) uses below, same formulation pbrt-v4's own
-// TrowbridgeReitzDistribution implements (isotropic case: alpha_x ==
-// alpha_y). All three take `NdotX`/`alpha` already-computed rather than
-// raw vectors, since every call site here already has the dot product on
-// hand from building its own local shading frame - keeps these as pure,
-// reusable scalar functions.
+// TrowbridgeReitzDistribution implements. Genuinely ANISOTROPIC (alphaX,
+// alphaY, not a single scalar alpha) - all four take full LOCAL-frame
+// vectors (tangent/bitangent/normal components), not just a `NdotX`
+// scalar, since the anisotropic case needs the vector's azimuthal
+// (tangent/bitangent) components too, not only its angle to the normal.
+// Passing alphaX == alphaY reduces every one of these EXACTLY to the
+// isotropic formulas this POC used through step 22 (verified
+// algebraically, not just assumed) - not a separate code path, the same
+// formula degenerating correctly at its own isotropic boundary case,
+// same spirit as the Henyey-Greenstein phase function's own g==0 case
+// (step 19). Cross-checked against Blender Cycles' own anisotropic GGX
+// implementation (`bsdf_aniso_D`/`bsdf_aniso_lambda` in
+// intern/cycles/kernel/closure/bsdf_microfacet.h) before being committed
+// here, not derived from first principles alone this time.
 // ---------------------------------------------------------------------------
-inline float ggxD(float NdotH, float alpha) {
-    float a2 = alpha * alpha;
-    float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
-    return a2 / max(M_PI_F * d * d, 1e-9);
+inline float ggxD(float3 hLocal, float alphaX, float alphaY) {
+    float3 hr = float3(hLocal.x / alphaX, hLocal.y / alphaY, hLocal.z);
+    float lenSq = max(dot(hr, hr), 1e-12);
+    return (1.0 / M_PI_F) / max(alphaX * alphaY * lenSq * lenSq, 1e-12);
 }
 
-// Smith's Lambda function (isotropic GGX closed form) - how much of a
+// Smith's Lambda function (anisotropic GGX closed form) - how much of a
 // microfacet's neighbourhood is masked/shadowed as seen from direction
-// `w`, folded into G1/G below rather than used standalone.
-inline float ggxLambda(float NdotW, float alpha) {
-    float NdotW2 = max(NdotW * NdotW, 1e-6);
-    float tan2Theta = max(0.0, 1.0 - NdotW2) / NdotW2;
-    return 0.5 * (sqrt(1.0 + alpha * alpha * tan2Theta) - 1.0);
+// `wLocal`, folded into G1/G below rather than used standalone.
+inline float ggxLambda(float3 wLocal, float alphaX, float alphaY) {
+    float wz2 = max(wLocal.z * wLocal.z, 1e-12);
+    float sqrAlphaTanN = (alphaX * alphaX * wLocal.x * wLocal.x + alphaY * alphaY * wLocal.y * wLocal.y) / wz2;
+    return 0.5 * (sqrt(1.0 + sqrAlphaTanN) - 1.0);
 }
 
-inline float ggxG1(float NdotW, float alpha) {
-    return 1.0 / (1.0 + ggxLambda(NdotW, alpha));
+inline float ggxG1(float3 wLocal, float alphaX, float alphaY) {
+    return 1.0 / (1.0 + ggxLambda(wLocal, alphaX, alphaY));
 }
 
 // Height-correlated Smith masking-shadowing for a full reflection lobe
 // (both the view and light direction masked/shadowed jointly, not treated
 // as independent) - the same correlated form pbrt-v4 uses, less energy
 // loss at grazing angles than a naive G1(wo)*G1(wi) product.
-inline float ggxG(float NdotO, float NdotI, float alpha) {
-    return 1.0 / (1.0 + ggxLambda(NdotO, alpha) + ggxLambda(NdotI, alpha));
+inline float ggxG(float3 woLocal, float3 wiLocal, float alphaX, float alphaY) {
+    return 1.0 / (1.0 + ggxLambda(woLocal, alphaX, alphaY) + ggxLambda(wiLocal, alphaX, alphaY));
 }
 
 // Schlick's Fresnel approximation for a CONDUCTOR: F0 (reflectance at
@@ -551,6 +564,33 @@ inline void buildOnb(float3 n, thread float3& tangent, thread float3& bitangent)
     float b = n.x * n.y * a;
     tangent = float3(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x);
     bitangent = float3(b, sign + n.y * n.y * a, -n.y);
+}
+
+// Unlike buildOnb() above (an ARBITRARY orthonormal frame - fine for an
+// isotropic BRDF/phase function, which is rotationally symmetric around
+// the normal so any tangent choice gives an identical result), an
+// ANISOTROPIC material's highlight orientation depends on which
+// direction the tangent actually points - an arbitrary, discontinuously-
+// varying tangent (buildOnb()'s own choice depends on the normal's sign
+// bit) would make the anisotropy direction jump around incoherently
+// across a curved surface instead of reading as a single consistent
+// "brushed" direction. This projects a FIXED world-space reference axis
+// onto the tangent plane instead (Gram-Schmidt: bitangent = normalize
+// (cross(normal, ref)), tangent = cross(bitangent, normal)) - the same
+// construction Blender Cycles' own make_orthonormals_tangent() uses,
+// given a real per-vertex tangent there; this POC's analytic sphere has
+// no per-vertex tangent data to begin with, so a fixed world axis
+// (world-up, falling back to world-X exactly at the poles where up is
+// parallel to the normal and the projection would be degenerate) is the
+// simplest thing that gives a consistent "lines of longitude" brushed-
+// metal pattern instead of an arbitrary one.
+inline void buildAnisotropicOnb(float3 normal, thread float3& tangent, thread float3& bitangent) {
+    float3 refDir = float3(0.0, 1.0, 0.0);
+    if (abs(dot(refDir, normal)) > 0.999) {
+        refDir = float3(1.0, 0.0, 0.0);
+    }
+    bitangent = normalize(cross(normal, refDir));
+    tangent = cross(bitangent, normal);
 }
 
 // Henyey-Greenstein phase function - the standard analytic model for
@@ -642,8 +682,14 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
     return result;
 }
 
-inline float3 sampleGGXVNDF(float3 woLocal, float alpha, thread uint& rngState) {
-    float3 Vh = normalize(float3(alpha * woLocal.x, alpha * woLocal.y, woLocal.z));
+// Generalized to anisotropic alphaX/alphaY (Heitz 2018's own Section
+// 3.2/3.4 stretch-and-unstretch steps, using alphaX/alphaY on their
+// respective axes instead of one shared alpha) - alphaX == alphaY
+// reduces this exactly to the isotropic version this POC used through
+// step 22, cross-checked against Blender Cycles' own
+// `microfacet_ggx_sample_vndf` before being committed here.
+inline float3 sampleGGXVNDF(float3 woLocal, float alphaX, float alphaY, thread uint& rngState) {
+    float3 Vh = normalize(float3(alphaX * woLocal.x, alphaY * woLocal.y, woLocal.z));
     float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
     float3 T1 = lensq > 0.0 ? float3(-Vh.y, Vh.x, 0.0) / sqrt(lensq) : float3(1.0, 0.0, 0.0);
     float3 T2 = cross(Vh, T1);
@@ -658,7 +704,7 @@ inline float3 sampleGGXVNDF(float3 woLocal, float alpha, thread uint& rngState) 
     t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
 
     float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
-    float3 Ne = float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z));
+    float3 Ne = float3(alphaX * Nh.x, alphaY * Nh.y, max(0.0, Nh.z));
     return normalize(Ne);
 }
 
@@ -1100,7 +1146,11 @@ kernel void primaryRayKernel(
                 float3 woWorld = -rayDir;
                 float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
                 woLocal.z = max(woLocal.z, 0.0001);
-                float3 hLocal = sampleGGXVNDF(woLocal, alpha, rngState);
+                // Isotropic here (alphaX == alphaY == alpha) - this
+                // branch's own tangent frame is buildOnb()'s arbitrary
+                // one, which only gives a consistent result when the
+                // distribution has no azimuthal dependence at all.
+                float3 hLocal = sampleGGXVNDF(woLocal, alpha, alpha, rngState);
                 float3 hWorld = normalize(hLocal.x * tangent + hLocal.y * bitangent + hLocal.z * facingNormal);
 
                 float refractionRatio = frontFace ? (1.0 / mat.ior) : mat.ior;
@@ -1138,10 +1188,20 @@ kernel void primaryRayKernel(
                 // microfacet one. `albedo` here is F0 (per-primitive
                 // reflectance colour), not a diffuse albedo - see
                 // TriangleMaterial's own comment.
-                float roughness = mat.ior;
-                float alpha = max(roughness * roughness, 0.0009);
+                //
+                // Genuinely ANISOTROPIC: `ior` gives alphaX as before,
+                // and `roughness` - otherwise idle for this materialType,
+                // since materialType 5 is the only other reader of that
+                // field - now doubles as alphaY. `roughness == 0.0`
+                // (every scene before this one) falls back to alphaY ==
+                // alphaX, the exact isotropic case this material used
+                // through step 22 - not a separate code path, the same
+                // fallback shape this POC already uses for HG's g == 0
+                // and rough dielectric's roughness == 0.
+                float alphaX = max(mat.ior * mat.ior, 0.0009);
+                float alphaY = (mat.roughness > 0.0) ? max(mat.roughness * mat.roughness, 0.0009) : alphaX;
                 float3 tangent, bitangent;
-                buildOnb(facingNormal, tangent, bitangent);
+                buildAnisotropicOnb(facingNormal, tangent, bitangent);
                 float3 woWorld = -rayDir;
                 float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
                 woLocal.z = max(woLocal.z, 0.0001);
@@ -1157,11 +1217,10 @@ kernel void primaryRayKernel(
                     if (cosSurface > 0.0 && cosLight > 0.0) {
                         float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
                         float3 h = normalize(woLocal + wiLocal);
-                        float NdotH = max(h.z, 0.0001);
                         float NdotO = woLocal.z;
                         float NdotI = max(wiLocal.z, 0.0001);
-                        float Dh = ggxD(NdotH, alpha);
-                        float G = ggxG(NdotO, NdotI, alpha);
+                        float Dh = ggxD(h, alphaX, alphaY);
+                        float G = ggxG(woLocal, wiLocal, alphaX, alphaY);
                         float3 F = fresnelSchlickConductor(max(dot(woLocal, h), 0.0), albedo);
                         float3 brdf = Dh * G * F / max(4.0 * NdotO * NdotI, 1e-6);
 
@@ -1181,7 +1240,7 @@ kernel void primaryRayKernel(
                             // 1/(4*dot(wo,h)) - the counterpart the
                             // continuation-ray branch below computes for
                             // its OWN sampled direction.
-                            float pdfBsdf = (Dh * ggxG1(NdotO, alpha)) / max(4.0 * NdotO, 1e-6);
+                            float pdfBsdf = (Dh * ggxG1(woLocal, alphaX, alphaY)) / max(4.0 * NdotO, 1e-6);
                             float weight = (pdfSolidAngle * pdfSolidAngle)
                                 / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
                             // exp(-sigmaT*dist): the fog's own attenuation
@@ -1194,7 +1253,7 @@ kernel void primaryRayKernel(
                     }
                 }
 
-                float3 hLocal = sampleGGXVNDF(woLocal, alpha, rngState);
+                float3 hLocal = sampleGGXVNDF(woLocal, alphaX, alphaY, rngState);
                 float3 wiLocal = reflect(-woLocal, hLocal);
                 if (wiLocal.z <= 0.0) {
                     // Sampled a half-vector whose reflection lands below
@@ -1207,10 +1266,8 @@ kernel void primaryRayKernel(
                 float3 wiWorld = normalize(wiLocal.x * tangent + wiLocal.y * bitangent + wiLocal.z * facingNormal);
 
                 float NdotO = woLocal.z;
-                float NdotI = max(wiLocal.z, 0.0001);
-                float NdotH = max(hLocal.z, 0.0001);
-                float G = ggxG(NdotO, NdotI, alpha);
-                float G1 = ggxG1(NdotO, alpha);
+                float G = ggxG(woLocal, wiLocal, alphaX, alphaY);
+                float G1 = ggxG1(woLocal, alphaX, alphaY);
                 float3 F = fresnelSchlickConductor(max(dot(woLocal, hLocal), 0.0), albedo);
                 // f(wo,wi)*cosI/pdf(wi) collapses to F*G/G1(wo) for a
                 // VNDF-sampled direction - the D and 4*NdotO*NdotI terms
@@ -1224,7 +1281,7 @@ kernel void primaryRayKernel(
 
                 rayDir = wiWorld;
                 rayOrigin = hitPoint + facingNormal * 0.001f;
-                bsdfPdf = (ggxD(NdotH, alpha) * G1) / max(4.0 * NdotO, 1e-6);
+                bsdfPdf = (ggxD(hLocal, alphaX, alphaY) * G1) / max(4.0 * NdotO, 1e-6);
                 specularBounce = false;
             } else if (mat.materialType == 1u) {
                 // Mirror: deterministic reflection, no light sampling (a
