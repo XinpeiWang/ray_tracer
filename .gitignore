@@ -415,6 +415,10 @@ total.txt
 # the OFL requires this file to ship alongside the font it licenses, not a
 # stray log the *.txt rule above was meant to catch.
 !qt_gui/fonts/OFL.txt
+# In-package README template scripts/package.ps1 copies into every built
+# release (with {TIER} substituted) - a real, hand-written source file, not
+# a stray log the *.txt rule above was meant to catch.
+!scripts/templates/README_PACKAGE.txt
 # Generated/preprocessed test artifacts
 tests/generated/
 

@@ -129,7 +129,7 @@ Write-Host "Building: launcher, cpu_renderer, optix_renderer$(if (-not $SkipGui)
 
 if ($SkipTests) {
 	# Build only the main projects
-	msbuild launcher/launcher.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /v:minimal /m
+	msbuild launcher/launcher.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /p:SolutionDir="$PWD\" /v:minimal /m
 	# scene_metadata.dll/realtime_renderer.dll are NOT launcher.vcxproj
 	# ProjectReferences - the Qt GUI loads them at runtime via LoadLibrary
 	# instead (see qt_gui/cross_abi_library.h) - so the launcher-only build
@@ -141,9 +141,23 @@ if ($SkipTests) {
 	# not these two - build them here whenever the GUI itself is being
 	# built, regardless of $SkipTests.
 	if ($LASTEXITCODE -eq 0 -and -not $SkipGui) {
-		msbuild scene_metadata/scene_metadata.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /v:minimal /m
+		# /p:SolutionDir explicit on every individual-project msbuild call in
+		# this branch (this one, launcher above, realtime_renderer below) -
+		# MSBuild only auto-populates $(SolutionDir) when building THROUGH a
+		# .sln; invoking a single .vcxproj directly (as this whole branch
+		# does) leaves it resolving to that project's own directory instead
+		# (e.g. "scene_metadata\" not the repo root), which silently sends
+		# each project's post-build "copy to RayTracer_Package" step to a
+		# wrong nested "scene_metadata\RayTracer_Package\" (etc.) that the
+		# real package never sees - confirmed to actually happen, not just a
+		# theoretical risk, since these post-build events assume the
+		# solution-build convention. Passing the real repo root here directly
+		# (this script's own $PWD, since it's expected to run from there) is
+		# what every other MSBuild invocation in this file already gets for
+		# free by going through ray_tracer.sln instead.
+		msbuild scene_metadata/scene_metadata.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /p:SolutionDir="$PWD\" /v:minimal /m
 		if ($LASTEXITCODE -eq 0) {
-			msbuild realtime_renderer/realtime_renderer.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /v:minimal /m
+			msbuild realtime_renderer/realtime_renderer.vcxproj /p:Configuration=$Configuration /p:Platform=x64 /p:SolutionDir="$PWD\" /v:minimal /m
 		}
 	}
 } else {
