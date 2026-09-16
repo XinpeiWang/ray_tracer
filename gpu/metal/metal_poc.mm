@@ -83,6 +83,7 @@ struct Uniforms {
     float fogSigmaT;
     PackedFloat3 fogAlbedo;
     uint32_t useEnvironmentMap;
+    float fogAsymmetryG;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -1067,6 +1068,12 @@ int main(int argc, const char** argv) {
         // backdrop - see docs/METAL_GPU_FEASIBILITY.md's own note on
         // verifying this with a dedicated wide-FOV test render.
         uniforms.useEnvironmentMap = 1u;
+        // Moderate forward scattering (real fog/haze skews strongly
+        // forward in reality - Mie scattering off water droplets often
+        // has g around 0.7-0.9 - 0.4 is deliberately more modest, so the
+        // difference from isotropic reads as a stylistic tint on the fog
+        // rather than a dramatic visible change).
+        uniforms.fogAsymmetryG = 0.4f;
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
