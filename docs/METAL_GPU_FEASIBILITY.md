@@ -259,3 +259,48 @@ Net effect: this POC didn't surface anything that changes Section 6's
 effort estimates or Section 4's "not a recompile" framing — the
 architecture-level bets in Sections 2-3 held up — but it did surface two
 API-level gotchas cheaply, exactly what a time-boxed spike is for.
+
+## 9. Proof-of-concept, step 2: a real path integrator (done)
+
+Step 1 (above) was a single-bounce raycast — no shadow rays, no GI, no
+material branching. This step turned it into an actual minimal Monte Carlo
+path tracer, still in the same standalone `gpu/metal/metal_poc.mm`/`.metal`
+files:
+
+- **Shadow-ray occlusion** against the one directional light (proper NEE,
+  not just an unoccluded `dot(N,L)` term)
+- **Multi-bounce indirect lighting** via cosine-weighted hemisphere sampling
+  with Russian-roulette termination after depth 3 — the same unbiased
+  early-termination shape this project's CPU integrator uses
+  (`path_integrator.h`)
+- **A second material** (mirror/perfect specular) to prove per-primitive
+  *material-type* branching, not just per-primitive colour — a correct
+  render shows the room genuinely reflected in the mirror object, not a
+  flat grey quad
+- **Multi-sample antialiasing** via jittered primary rays, with an
+  SPP/max-depth CLI-configurable loop
+
+**Result, visually confirmed**: correct reflections in the mirror (the
+ceiling and side wall visibly reflected at the expected angle), a real
+contact shadow cast by the mirror object onto the floor, and subtle red/
+green colour bleeding onto the back wall near the corresponding walls —
+genuine diffuse GI, not direct lighting alone. 600×600 at 256 samples/pixel,
+max depth 8, rendered in ~2.2 seconds wall-clock (including acceleration-
+structure build and runtime shader compilation) on an M2. Noise at low
+sample counts (32 spp) converges to a clean image at higher counts, the
+expected Monte Carlo behaviour.
+
+**One more design decision this step forced, worth recording**: MSL's
+`float3` inside a struct shared between host and device code is 16-byte
+*aligned* but only 12 bytes in *size* — a host-side `simd::float3` and a
+device-side `float3` field at the same struct offset are not guaranteed to
+agree on where the *next* field starts. This is exactly the kind of silent
+layout mismatch that "compiles fine, runs fine, renders wrong" — no crash,
+no validation error, just data landing in the wrong field. Fixed by using
+`packed_float3` (size 12, align 4, no padding) on both sides of every
+shared struct (`Uniforms`, `TriangleMaterial`) instead, with explicit
+`float3(...)` conversions at math call sites inside the shader. Worth
+carrying forward as a rule for the real port: **any struct that crosses
+the host/device boundary uses packed types, full stop** — don't rely on
+reasoning through MSL's default packing rules per-field, design the
+ambiguity out.
