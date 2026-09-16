@@ -776,3 +776,53 @@ kernel already does inline.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 20. Proof-of-concept, step 12: real OBJ `vt` (UV) parsing (done)
+
+The texture-mapping PR (step 8) explicitly deferred this: "parsing real
+`vt`/`f v/vt/vn` tokens was judged out of scope for this increment," since
+`suzanne.obj` - this POC's only mesh at the time - has no `vt` data at
+all. This closes it: `loadObjMesh()` now parses `vt` lines and each face
+token's own `vt` index (`v/vt` or `v/vt/vn`), the same per-corner-index-
+survives-fan-triangulation approach the existing `vn` parsing already
+established, falling back to `(0,0)` (tracked via a new
+`uvFallbackCount`, mirroring `normalFallbackCount`'s own logging) when a
+face is missing one.
+
+Testing this needed a real mesh with actual `vt` data - `suzanne.obj` has
+none, so `models/spot.obj` (Keenan Crane's textured cow model, a common
+graphics-teaching asset, 5856 triangles, 3225 `vt` entries) was added to
+the scene instead. It turns out to be the exact inverse case from
+Suzanne: full `vt` coverage, **zero** `vn` data at all - loading it
+exercises both `loadObjMesh()`'s real-UV path and its flat-normal-
+fallback path in the same call, and confirms both meshes' own load logs
+now show complementary fallback counts (`0 flat-normal fallback, 968
+zero-uv fallback` for Suzanne; `5856 flat-normal fallback, 0 zero-uv
+fallback` for Spot) - directly-inspectable proof neither path is
+silently going unused. Spot is given `materialType 3` and reuses
+`earthTexture` (`images/earthmap.jpg`) - wrapping a world map onto a cow
+was never the texture's intended use, which is exactly what makes it a
+meaningful test: a coincidentally-plausible result is much less likely
+than with a texture actually designed for the mesh, so seeing the map's
+coastlines and grid lines correctly follow the body's curvature (not
+stretched, swum, or offset) is real evidence the per-corner UV data and
+`texCoordFor()`'s barycentric interpolation are both working on genuine
+mesh data, not just the hand-authored planar quad UVs step 8 originally
+verified.
+
+**Result, visually confirmed**: Spot renders with the earthmap texture
+correctly wrapped around its curved body and head, following the mesh's
+actual surface rather than looking flat-projected or misaligned. Placing
+it required care - an early attempt positioned it almost directly behind
+the dielectric sphere along the camera's sightline and it was nearly
+invisible, caught by inspecting the render rather than assuming the
+scene-graph math was right; the corrected position both models sit in
+the same frame without one being an obviously camera-angle-dependent
+accident. 700×700 @ 256spp @ depth 10 renders in ~15 seconds on an M2, up
+slightly from step 11's ~14s - expected, the scene's triangle count
+roughly septupled (982 -> 6838) with Spot's 5856 triangles, though BVH
+traversal cost grows sub-linearly with triangle count, not the near-7x
+the raw count increase might suggest.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.
