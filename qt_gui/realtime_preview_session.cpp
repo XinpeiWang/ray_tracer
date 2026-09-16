@@ -126,25 +126,11 @@ void RealtimePreviewWorker::resetAccumulation() {
 	m_accumScratch.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
 	m_sampleCountsScratch.assign(static_cast<size_t>(m_width) * m_height, 0);
 
-	// Adaptive-sampling variance/mask state - only allocated while the
-	// feature is actually in use this session, same "no cost when unused"
-	// gating m_accumHi gets from useTemporalUpscale() just below. A fresh
-	// VarianceEstimator/1 (active) is the correct "no history yet" starting
-	// point either way - has_converged() already requires Count()>=2 before
-	// ever reporting converged (adaptive_sampling.h), so a brand-new pixel
-	// reads as "still needs sampling" until real data arrives.
-	if (useAdaptiveSampling()) {
-		const size_t numPixels = static_cast<size_t>(m_width) * m_height;
-		m_pixelVariance.assign(numPixels, VarianceEstimator<double>{});
-		m_activeMask.assign(numPixels, uint8_t{1});
-		m_pixelVarianceScratch.assign(numPixels, VarianceEstimator<double>{});
-		m_activeMaskScratch.assign(numPixels, uint8_t{1});
-	} else {
-		m_pixelVariance.clear();
-		m_activeMask.clear();
-		m_pixelVarianceScratch.clear();
-		m_activeMaskScratch.clear();
-	}
+	// Adaptive-sampling variance state - factored into its own function so
+	// setAdaptiveSampling() can resize just this without wiping everything
+	// else resetAccumulation() also touches - see that function's own
+	// comment.
+	resetAdaptiveSamplingBuffers();
 
 	// Temporal upscale's own higher-resolution reconstruction buffers - only
 	// allocated (Wh*Hh-sized) while the feature is ACTUALLY going to be used
@@ -281,7 +267,6 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 	const bool trackVariance = useAdaptiveSampling();
 	if (trackVariance) {
 		std::fill(m_pixelVarianceScratch.begin(), m_pixelVarianceScratch.end(), VarianceEstimator<double>{});
-		std::fill(m_activeMaskScratch.begin(), m_activeMaskScratch.end(), uint8_t{1});
 	}
 
 	for (int y = 0; y < m_height; ++y) {
@@ -313,8 +298,25 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 			newAccum[newColorIdx + 2] = m_accum[oldColorIdx + 2];
 			newSampleCounts[pixel] = std::min(m_sampleCounts[oldPixel], kMaxHistorySamples);
 			if (trackVariance) {
-				m_pixelVarianceScratch[pixel] = m_pixelVariance[oldPixel];
-				m_activeMaskScratch[pixel] = m_activeMask[oldPixel];
+				// Same history cap as newSampleCounts just above, applied to
+				// the carried-forward VarianceEstimator instead of a plain
+				// count - a prior version of this code copied the variance
+				// estimator forward completely uncapped, so its internal
+				// Welford sample count could grow unbounded across a long
+				// session of continuous small camera moves, making the mean
+				// (and therefore the convergence test) progressively less
+				// responsive to genuinely new noise - exactly the staleness
+				// problem kMaxHistorySamples exists to prevent for
+				// newSampleCounts. Capping n directly (rather than resetting)
+				// isn't an option: VarianceEstimator's Variance() = S/(n-1),
+				// so shrinking n alone without touching S would ARTIFICIALLY
+				// INFLATE the reported variance - resetting to a fresh
+				// estimator is the safe, honest choice, and self-corrects
+				// within a handful of frames like any newly-disoccluded pixel
+				// already does.
+				m_pixelVarianceScratch[pixel] = (m_pixelVariance[oldPixel].Count() > kMaxHistorySamples)
+					? VarianceEstimator<double>{}
+					: m_pixelVariance[oldPixel];
 			}
 		}
 	}
@@ -328,7 +330,6 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 	std::swap(m_sampleCounts, newSampleCounts);
 	if (trackVariance) {
 		std::swap(m_pixelVariance, m_pixelVarianceScratch);
-		std::swap(m_activeMask, m_activeMaskScratch);
 	}
 }
 
@@ -444,17 +445,27 @@ void RealtimePreviewWorker::reprojectAccumulationHi() {
 	std::swap(m_worldPosHi, newWorldPosHi);
 }
 
-// See m_activeMask's own comment. Reuses pixel_convergence::has_converged()
-// (src/shared/adaptive_sampling.h) verbatim - same relative-standard-error-
-// vs-threshold test, near-black short-circuit, and exposure handling the
-// CPU offline path already uses, just fed this class's own per-frame-batch
-// variance estimate instead of per-raw-sample ones.
-void RealtimePreviewWorker::updateActiveMask() {
-	const int numPixels = m_width * m_height;
-	for (int pixel = 0; pixel < numPixels; ++pixel) {
-		const bool converged = pixel_convergence::has_converged(
-			m_pixelVariance[pixel], m_adaptiveSamplingThreshold, /*black_floor=*/1e-4, m_exposure);
-		m_activeMask[pixel] = converged ? uint8_t{0} : uint8_t{1};
+// See m_pixelVariance's own comment (header). Only allocated while
+// useAdaptiveSampling() is actually true (same "no cost when unused" gating
+// m_accumHi gets from useTemporalUpscale()) - a fresh VarianceEstimator (its
+// default constructor, Count()==0) is the correct "no history yet" starting
+// point, since has_converged() already requires Count()>=2 before ever
+// reporting converged (adaptive_sampling.h), so a brand-new pixel reads as
+// "still needs sampling" until real data arrives. Called from
+// resetAccumulation() (sizes this alongside everything else on a real
+// reset) AND directly from setAdaptiveSampling() (resizes JUST this when
+// the feature is toggled while already running, without resetAccumulation()'s
+// own unconditional wipe of the rest of the accumulation state - see that
+// method's own comment on why a diagnostic-only toggle must not discard a
+// converged image).
+void RealtimePreviewWorker::resetAdaptiveSamplingBuffers() {
+	if (useAdaptiveSampling()) {
+		const size_t numPixels = static_cast<size_t>(m_width) * m_height;
+		m_pixelVariance.assign(numPixels, VarianceEstimator<double>{});
+		m_pixelVarianceScratch.assign(numPixels, VarianceEstimator<double>{});
+	} else {
+		m_pixelVariance.clear();
+		m_pixelVarianceScratch.clear();
 	}
 }
 
@@ -660,20 +671,29 @@ void RealtimePreviewWorker::setFireflyClamp(double fireflyClamp) {
 void RealtimePreviewWorker::setAdaptiveSampling(bool enabled, double threshold) {
 	// NOT gated on m_running - see this method's own header comment. When
 	// called before start() (m_running still false), wasUsingIt is forced
-	// false so no premature resetAccumulation() runs against m_width/
-	// m_height's still-stale values; start()'s own unconditional
-	// resetAccumulation() call picks up the already-set members correctly
-	// once real dimensions are in place.
+	// false so no premature resize runs against m_width/m_height's still-
+	// stale values; start()'s own unconditional resetAccumulation() (which
+	// itself calls resetAdaptiveSamplingBuffers()) picks up the already-set
+	// members correctly once real dimensions are in place.
 	const bool wasUsingIt = m_running && useAdaptiveSampling();
 	m_adaptiveSamplingEnabled = enabled;
 	m_adaptiveSamplingThreshold = threshold;
-	// Same "only reset when the EFFECTIVE allocation-affecting state
+	// Same "only resize when the EFFECTIVE allocation-affecting state
 	// changes" reasoning as setTemporalUpscale()/setNeuralUpscale() - a
 	// threshold-only change while already enabled (or staying disabled)
-	// touches no buffer's size, so resetAccumulation() would just discard
-	// real accumulation progress for nothing.
+	// touches no buffer's size, so there's nothing to resize.
+	//
+	// Calls resetAdaptiveSamplingBuffers() directly, NOT the full
+	// resetAccumulation() - toggling this checkbox is documented (this
+	// method's own header comment) as a side-effect-free, diagnostic-only
+	// action with "no effect on which pixels actually get sampled" yet, so
+	// it must not discard the whole converged image (m_accum/m_tmp/
+	// m_worldPos*/m_sampleCounts) just to resize a buffer nothing else
+	// depends on. A prior version of this method called
+	// resetAccumulation() here, which did exactly that - confirmed by this
+	// project's own code review as a real, easily-triggered UX regression.
 	if (m_running && useAdaptiveSampling() != wasUsingIt) {
-		resetAccumulation();
+		resetAdaptiveSamplingBuffers();
 	}
 }
 
@@ -1004,11 +1024,24 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 					if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
 					minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
 					if (trackVariance) {
-						m_pixelVariance[pixel].Add(
-							pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]));
+						const double lum = pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]);
+						// A NaN/Inf raw sample (a degenerate BSDF/light-sampling
+						// case the firefly clamp doesn't always catch) would
+						// otherwise permanently poison this pixel's Welford
+						// mean/S to NaN - has_converged()'s comparisons against
+						// NaN are always false, so that pixel would get stuck
+						// reading "still needs sampling" forever with no
+						// self-correction, unlike m_accum's own display (a few
+						// lines below) which already guards isfinite() before
+						// use. Simplest fix: just don't feed a non-finite
+						// sample into the estimator at all - skipping one
+						// batch's worth of variance data for one pixel is
+						// harmless.
+						if (std::isfinite(lum)) {
+							m_pixelVariance[pixel].Add(lum);
+						}
 					}
 				}
-				if (trackVariance) updateActiveMask();
 			}
 			m_sampleCount = minSampleCount;
 
@@ -1021,17 +1054,35 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 			// See useAdaptiveSampling()'s own comment - Stage 1 of this
 			// project's own adaptive-sampling plan wires the feature only to
 			// this debug visualization, not to GPU sampling yet. White where
-			// m_activeMask says "still needs sampling", black where it's
-			// converged - a direct, 1:1 view of the exact boolean decision a
-			// later stage will act on, deliberately NOT run through the
-			// ACES+sRGB tonemap below (this is a diagnostic overlay, not a
-			// radiance value).
+			// the pixel still needs sampling, black where
+			// pixel_convergence::has_converged() (src/shared/
+			// adaptive_sampling.h) says it's converged - deliberately NOT run
+			// through the ACES+sRGB tonemap below (this is a diagnostic
+			// overlay, not a radiance value). Computed on demand here rather
+			// than cached in a separate m_activeMask buffer - see
+			// m_pixelVariance's own comment (header) for why that buffer was
+			// removed as pure redundancy.
 			if (useAdaptiveSampling()) {
+				// has_converged() itself only requires Count()>=2 (Welford's
+				// variance is undefined below that), but a 2-sample variance
+				// ESTIMATE is not yet a trustworthy one - the CPU offline
+				// path this feature mirrors (src/TheRestOfYourLife/camera.h)
+				// never trusts its own identical estimator below
+				// min_samples_before_check (up to 32 raw samples) for exactly
+				// this reason. This is the same floor's spirit applied to
+				// this class's own per-frame-BATCH granularity (coarser than
+				// the CPU path's per-raw-sample one - m_pixelVariance's own
+				// header comment) rather than a literal copy of its formula,
+				// since a "batch" here already IS an m_spp-sample average.
+				constexpr int64_t kMinBatchesBeforeConverged = 8;
 				for (int y = 0; y < m_height; ++y) {
 					uchar* row = m_displayImage.scanLine(y);
 					for (int x = 0; x < m_width; ++x) {
 						const int pixel = y * m_width + x;
-						const uchar v = m_activeMask[pixel] ? uchar{255} : uchar{0};
+						const bool converged = m_pixelVariance[pixel].Count() >= kMinBatchesBeforeConverged &&
+							pixel_convergence::has_converged(m_pixelVariance[pixel], m_adaptiveSamplingThreshold,
+															  /*black_floor=*/1e-4, m_exposure);
+						const uchar v = converged ? uchar{0} : uchar{255};
 						row[x * 3 + 0] = v;
 						row[x * 3 + 1] = v;
 						row[x * 3 + 2] = v;

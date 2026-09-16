@@ -225,16 +225,17 @@ public slots:
 	// NOT gated on m_running - same reasoning as setExposure()/
 	// setSvgfTuning(): the caller pushes this BEFORE start() so the very
 	// first rendered frame already reflects it, not just frame 2 onward.
-	// Only actually resets accumulation (like setTemporalUpscale()/
-	// setNeuralUpscale() do - this changes which buffers resetAccumulation()
-	// allocates, m_pixelVariance/m_activeMask, sized only while the feature
-	// is actually in use, same "no cost when unused" gating m_accumHi
-	// already gets from useTemporalUpscale()) when called WHILE running and
-	// the effective state actually changes - calling this before start()
-	// just primes the member fields for start()'s own unconditional
-	// resetAccumulation() to pick up correctly once m_width/m_height are
-	// set. `threshold` changes alone never reset - same "post-process
-	// decision on the same converging signal" reasoning as setExposure().
+	// Only actually resizes m_pixelVariance (via resetAdaptiveSamplingBuffers(),
+	// NOT the full resetAccumulation() - toggling this is meant to be a
+	// side-effect-free diagnostic action, so it must not discard the whole
+	// converged image just to size this one unrelated buffer) when called
+	// WHILE running and the effective state actually changes - calling this
+	// before start() just primes the member fields for start()'s own
+	// unconditional resetAccumulation() (which itself calls
+	// resetAdaptiveSamplingBuffers()) to pick up correctly once m_width/
+	// m_height are set. `threshold` changes alone never resize anything -
+	// same "post-process decision on the same converging signal" reasoning
+	// as setExposure().
 	void setAdaptiveSampling(bool enabled, double threshold);
 
 	// SVGF advanced tuning (gpu/optix/svgf_tuning_params.h's SvgfTuningParams,
@@ -276,13 +277,15 @@ private:
 	// upscaleFactor x upscaleFactor cell block per low-res pixel, since the
 	// GPU still only ever produces one world position per low-res pixel.
 	void reprojectAccumulationHi();
-	// Fills m_activeMask from m_pixelVariance + m_adaptiveSamplingThreshold -
-	// see m_activeMask's own comment. Called once per renderLoop() iteration
-	// (not per inner sample - see this project's own plan for why re-
-	// evaluating more often than the data can meaningfully change is wasted
-	// work), right after the running-mean fold-in loop feeds this frame's
-	// batch into m_pixelVariance.
-	void updateActiveMask();
+	// Allocates (while useAdaptiveSampling() is true) or clears (otherwise)
+	// m_pixelVariance/m_pixelVarianceScratch - factored out of
+	// resetAccumulation() so setAdaptiveSampling() can resize just this
+	// state on its own, without resetAccumulation()'s own unconditional
+	// wipe of m_accum/m_tmp/m_worldPos*/m_sampleCounts. Toggling the
+	// Adaptive Sampling checkbox is meant to be a side-effect-free,
+	// diagnostic-only action (its own header comment) - it must not discard
+	// a converged image just to size an unrelated buffer.
+	void resetAdaptiveSamplingBuffers();
 	// `(m_denoise && m_denoiseShowLatest) || m_svgf` - the single "treat
 	// m_tmp as already-final, don't blend into m_accum" condition, computed
 	// in one place and reused by setDenoise()/setSvgf()/renderLoop() instead
@@ -482,29 +485,31 @@ private:
 	std::vector<uint16_t> m_sampleCountsScratch;
 	// See setAdaptiveSampling()'s own comment. Only allocated while
 	// useAdaptiveSampling() is actually true (same "no cost when unused"
-	// gating m_accumHi gets from useTemporalUpscale(), resetAccumulation()).
-	// VarianceEstimator<double> (not <float>) specifically to match
-	// pixel_convergence::has_converged()'s exact signature (adaptive_
-	// sampling.h) with zero changes to that shared header. One .Add() per
-	// pixel per renderLoop() iteration, fed the SAME m_tmp batch average
-	// m_accum's own running mean folds in - coarser than the CPU offline
-	// path's per-raw-sample granularity (m_spp is typically 1-8 here), which
-	// is an accepted, documented scope narrowing, not an oversight.
+	// gating m_accumHi gets from useTemporalUpscale(); see
+	// resetAdaptiveSamplingBuffers()). VarianceEstimator<double> (not
+	// <float>) specifically to match pixel_convergence::has_converged()'s
+	// exact signature (adaptive_sampling.h) with zero changes to that
+	// shared header. One .Add() per pixel per renderLoop() iteration, fed
+	// the SAME m_tmp batch average m_accum's own running mean folds in -
+	// coarser than the CPU offline path's per-raw-sample granularity
+	// (m_spp is typically 1-8 here), which is an accepted, documented scope
+	// narrowing, not an oversight. Whether a pixel currently reads as
+	// converged is computed ON DEMAND from this (pixel_convergence::
+	// has_converged(), plus renderLoop()'s own minimum-batch floor) rather
+	// than cached in a separate m_activeMask buffer - an earlier version of
+	// this class kept one, but it was fully redundant with this buffer
+	// (its only consumer, the heatmap display step, already has this
+	// buffer plus the threshold/exposure in scope) and cost an extra
+	// allocation, an extra per-pixel reprojection copy, and a whole extra
+	// O(width*height) pass every frame for nothing Stage 1 needed.
 	std::vector<VarianceEstimator<double>> m_pixelVariance;
-	// 1 = still needs sampling (not yet converged, or feature off entirely -
-	// see updateActiveMask()'s own comment), 0 = converged per
-	// pixel_convergence::has_converged(). Read by the noise-heatmap display
-	// step today; Stage 2 of this project's own plan is what will actually
-	// send this to the GPU to skip resampling.
-	std::vector<uint8_t> m_activeMask;
-	// Reprojection scratch for the two buffers above, same in-place-clobber-
-	// avoidance reasoning as m_accumScratch/m_sampleCountsScratch.
+	// Reprojection scratch, same in-place-clobber-avoidance reasoning as
+	// m_accumScratch/m_sampleCountsScratch.
 	std::vector<VarianceEstimator<double>> m_pixelVarianceScratch;
-	std::vector<uint8_t> m_activeMaskScratch;
 	// See setAdaptiveSampling()'s own comment. No accumulation-structure
-	// side effect on its own (only m_activeMask's CONTENTS change, not its
-	// size/allocation) - a threshold-only change doesn't need
-	// resetAccumulation(), same reasoning setExposure() gives.
+	// side effect on its own (only m_pixelVariance's CONTENTS change, not
+	// its size/allocation) - a threshold-only change doesn't need
+	// resetAdaptiveSamplingBuffers(), same reasoning setExposure() gives.
 	bool m_adaptiveSamplingEnabled = false;
 	double m_adaptiveSamplingThreshold = 0.01;
 	QImage m_displayImage;        // tonemapped result, re-filled in place each frame
