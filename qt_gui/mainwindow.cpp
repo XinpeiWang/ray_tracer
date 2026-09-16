@@ -777,6 +777,18 @@ void ThumbnailGenerator::startNext() {
 	m_controller->setParameters(/*useGPU=*/false, /*width=*/128, /*height=*/128,
 		/*samples=*/16, /*maxDepth=*/8, m_currentId, /*camX=*/0, /*camY=*/0, /*camZ=*/0,
 		/*camExplicit=*/false, ppmPath, /*useWavefront=*/false);
+
+	// Interactive scene selection (onSceneChanged(), mainwindow_slots.cpp)
+	// pre-fills the exposure spinbox from the scene's own recommended
+	// exposure before rendering - without that, a scene tuned dim-by-design
+	// (e.g. crown.pbrt's dispersion showcase, recommended_exposure 30.0)
+	// renders as a near-black tile at this generator's fixed 16spp/depth-8
+	// budget. Mirror that lookup here so the thumbnail matches what the user
+	// would actually see after picking the scene themselves.
+	AdvancedRenderFlags flags;
+	SceneMetadataClient::SceneMetadata meta;
+	if (SceneMetadataClient::sceneMetadata(m_currentId, meta)) flags.exposure = meta.recommendedExposure;
+	m_controller->setAdvancedFlags(flags);
 	m_controller->start();
 }
 

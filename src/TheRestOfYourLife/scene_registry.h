@@ -903,6 +903,29 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // each hand-writing its own copy.
         wire_pbrt_backed_scene(s, d, d.path);
 
+        // A curated entry for this exact file (build_curated_pbrt_scene_
+        // descriptor()/build_curated_external_pbrt_scene_descriptor(), both
+        // of which register paths() themselves as part of building
+        // get_builtin_scene_registry() - already fully done by the time
+        // append() runs) may have hand-tuned recommended_exposure, e.g.
+        // H19's crown.pbrt needs roughly 30x the engine's neutral default to
+        // read as anything but a near-black silhouette (see
+        // SceneDescriptor::recommended_exposure's own comment). Without
+        // this, the same file's auto-discovered twin registered right below
+        // would default back to 1.0 and render just as unusably dark.
+        // Matched via std::filesystem::equivalent rather than string
+        // equality: a curated entry and this scan can resolve the same file
+        // through different-looking path strings (different separators, or
+        // a different defaultSearchPaths() entry winning for each).
+        for (const auto& [existing_id, existing_path] : paths()) {
+            std::error_code ec;
+            if (!std::filesystem::equivalent(existing_path, d.path, ec) || ec) continue;
+            for (const SceneDescriptor& existing : registry) {
+                if (existing.id == existing_id) { s.recommended_exposure = existing.recommended_exposure; break; }
+            }
+            break;
+        }
+
         paths()[s.id] = d.path;
         registry.push_back(s);
     }
