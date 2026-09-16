@@ -20,6 +20,13 @@
 # workflow. See the RT_BUILD_GPU block below for what it does and does not
 # replicate.
 #
+# On macOS, pass -DRT_BUILD_METAL=ON to also build metal_poc - a standalone
+# Metal ray tracing proof of concept (gpu/metal/), NOT part of the ray_tracer
+# CLI/Qt GUI and nowhere near feature parity with either the CPU or
+# CUDA/OptiX GPU backends. See docs/METAL_GPU_FEASIBILITY.md for what this
+# is, why it's separate, and what porting the real GPU renderer to Metal
+# would actually take.
+#
 # tests/CMakeLists.txt is separate and unaffected by this file - it already
 # proved this project's CPU/shared header-only code (src/TheRestOfYourLife/*.h,
 # src/shared/*.h) compiles cleanly under CMake/C++17.
@@ -32,6 +39,7 @@
 
 cmake_minimum_required(VERSION 3.14)
 option(RT_BUILD_GPU "Also build the CUDA/OptiX GPU renderer (Windows + NVIDIA GPU + CUDA/OptiX SDK only)" OFF)
+option(RT_BUILD_METAL "Also build the standalone Metal ray tracing proof of concept (macOS + Apple GPU only)" OFF)
 project(ray_tracer_cpu CXX C)
 
 # Checked (not unconditionally enable_language'd) so RT_BUILD_GPU=ON on a
@@ -53,6 +61,22 @@ if(RT_BUILD_GPU)
         message(FATAL_ERROR "RT_BUILD_GPU=ON but no CUDA compiler was found - install the CUDA Toolkit or build without -DRT_BUILD_GPU=ON")
     endif()
     enable_language(CUDA)
+endif()
+
+# Same soft-optional posture as RT_BUILD_GPU above: fail clearly, not with
+# a raw language-detection error, and only raise requirements/enable the
+# language when actually asked for.
+if(RT_BUILD_METAL)
+    if(NOT APPLE)
+        message(FATAL_ERROR "RT_BUILD_METAL=ON but this is not macOS - Metal only exists on Apple platforms")
+    endif()
+    # OBJCXX (Objective-C++) became a first-class enable_language() target
+    # in CMake 3.16 - the CPU-only build this file exists for has no reason
+    # to require anything newer than the 3.14 floor above, so this only
+    # raises the bar for the RT_BUILD_METAL path, same shape as RT_BUILD_GPU
+    # raising it for CUDA above.
+    cmake_minimum_required(VERSION 3.16)
+    enable_language(OBJCXX)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -300,4 +324,32 @@ if(RT_BUILD_GPU)
     target_link_libraries(ray_tracer PRIVATE optix_renderer CUDA::cudart_static CUDA::cuda_driver)
     set_target_properties(ray_tracer PROPERTIES
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
+
+# =============================================================================
+# metal_poc - standalone Metal ray tracing proof of concept, only when
+# -DRT_BUILD_METAL=ON. See docs/METAL_GPU_FEASIBILITY.md for what this is
+# and is not (not part of ray_tracer/scene_metadata, no CPU/GPU-OptiX
+# feature parity, a design-and-feasibility spike, not the start of the real
+# GPU-on-macOS backend). Entirely independent of RT_BUILD_GPU/optix_renderer
+# above - the two can never both be relevant on the same machine (CUDA
+# needs an NVIDIA GPU, which cannot exist on the Apple Silicon this targets)
+# but nothing here assumes RT_BUILD_GPU is OFF, they just don't interact.
+# =============================================================================
+if(RT_BUILD_METAL)
+    add_executable(metal_poc
+        gpu/metal/metal_poc.mm
+    )
+    # RT_METAL_SHADER_DIR (not a __FILE__-relative lookup) so the shader
+    # source resolves correctly regardless of the build directory's
+    # location relative to the source tree - out-of-tree builds are the
+    # CMake norm, and __FILE__ isn't guaranteed to stay a path anyone can
+    # navigate back to gpu/metal/ from an arbitrary build dir.
+    target_compile_definitions(metal_poc PRIVATE
+        RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal")
+    target_link_libraries(metal_poc PRIVATE
+        "-framework Metal" "-framework Foundation")
+    set_target_properties(metal_poc PROPERTIES
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
+    target_compile_options(metal_poc PRIVATE -fobjc-arc)
 endif()

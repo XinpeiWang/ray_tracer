@@ -7,11 +7,15 @@
 // output path the CPU renderer already uses, so the two are trivially
 // visually comparable.
 //
-// Deliberately standalone (own main(), not wired into launcher/main.cpp or
-// CMakeLists.txt yet): this is the "self-contained, time-boxed spike" the
-// feasibility doc's Suggested Next Step calls for, proving the pipeline
-// shape works before any of the real material/light/shape porting work
-// starts.
+// Deliberately standalone (own main(), a separate CLI tool from
+// ray_tracer/scene_metadata, not called by launcher/main.cpp or the Qt
+// GUI): this is the "self-contained, time-boxed spike" the feasibility
+// doc's Suggested Next Step calls for, proving the pipeline shape works
+// before any of the real material/light/shape porting work starts. It IS
+// now CMake-integrated (root CMakeLists.txt's RT_BUILD_METAL option) as
+// its own metal_poc target, separately from ray_tracer/optix_renderer -
+// build with `cmake -B build -DRT_BUILD_METAL=ON && cmake --build build
+// --target metal_poc`.
 
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
@@ -217,8 +221,19 @@ int main(int argc, const char** argv) {
 
         // --- Compile the shader library from source at runtime ---------
         NSError* error = nil;
-        NSString* shaderPath = @(__FILE__);
-        shaderPath = [[shaderPath stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"metal_poc.metal"];
+        // RT_METAL_SHADER_DIR is set by CMakeLists.txt's metal_poc target
+        // (RT_BUILD_METAL=ON path) to gpu/metal/'s absolute source
+        // directory. Falls back to a __FILE__-relative lookup for the
+        // ad-hoc `clang++ metal_poc.mm ...` invocation this POC started
+        // as (docs/METAL_GPU_FEASIBILITY.md section 7/8/9) and still
+        // works fine for a quick manual rebuild without going through
+        // CMake at all.
+#ifdef RT_METAL_SHADER_DIR
+        NSString* shaderDir = @(RT_METAL_SHADER_DIR);
+#else
+        NSString* shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
+#endif
+        NSString* shaderPath = [shaderDir stringByAppendingPathComponent:@"metal_poc.metal"];
         NSString* shaderSource = [NSString stringWithContentsOfFile:shaderPath encoding:NSUTF8StringEncoding error:&error];
         if (!shaderSource) {
             fprintf(stderr, "Failed to read shader source at %s: %s\n",
