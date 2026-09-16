@@ -76,6 +76,17 @@ struct Uniforms {
     uint32_t samplesPerPixel;
     uint32_t maxDepth;
     uint32_t frameSeed;
+    uint32_t lightCount;
+};
+
+// Mirrors metal_poc.metal's AreaLight byte-for-byte.
+struct AreaLightData {
+    PackedFloat3 center;
+    PackedFloat3 edgeU;
+    PackedFloat3 edgeV;
+    PackedFloat3 normal;
+    float area;
+    PackedFloat3 emission;
 };
 
 // materialType: 0 = Lambertian, 1 = mirror, 2 = dielectric (glass) - see
@@ -88,6 +99,10 @@ struct TriangleMaterial {
     uint32_t materialType;
     float ior;
     PackedFloat3 emission;
+    // Index into the AreaLight list this material's own triangles belong
+    // to, or -1 for every non-emissive material - see metal_poc.metal's
+    // own comment on the mirrored field.
+    int32_t lightId = -1;
 };
 
 // Mirrors metal_poc.metal's SphereData byte-for-byte.
@@ -115,7 +130,8 @@ static void addQuad(std::vector<PackedFloat3>& verts,
                      std::vector<TriangleMaterial>& materials,
                      float3 a, float3 b, float3 c, float3 d,
                      float3 color, uint32_t materialType = 0,
-                     float3 emission = simd::make_float3(0, 0, 0)) {
+                     float3 emission = simd::make_float3(0, 0, 0),
+                     int32_t lightId = -1) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
@@ -131,8 +147,8 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     uvs.push_back(PackedFloat2{0, 1});
     PackedFloat3 packedColor{color.x, color.y, color.z};
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
-    materials.push_back({packedColor, materialType, 1.0f, packedEmission});
-    materials.push_back({packedColor, materialType, 1.0f, packedEmission});
+    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId});
+    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId});
 }
 
 // A minimal Wavefront OBJ loader: positions, vertex normals, and faces
@@ -386,19 +402,48 @@ int main(int argc, const char** argv) {
             fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
         }
 
-        // Area light: a small quad hanging just under the ceiling
+        // Area lights: real geometry, hanging just under the ceiling
         // (y=0.98, not y=1 itself - avoids z-fighting/coplanar overlap
-        // with the ceiling's own quad above), facing straight down. Real
-        // geometry with nonzero emission, replacing the earlier hardcoded
-        // directional light entirely - see metal_poc.metal's own comment
-        // on kLightCenter/kLightHalfExtents/kLightNormal, which have to
-        // stay in sync with this quad's own position/size/orientation by
-        // hand (this POC's one deliberately-hardcoded light, not a real
-        // light-list abstraction - see that file's comment on why).
-        addQuad(verts, normals, uvs, materials,
-                float3{-0.3f,0.98f,-0.3f}, float3{0.3f,0.98f,-0.3f},
-                float3{0.3f,0.98f,0.3f}, float3{-0.3f,0.98f,0.3f},
-                white, /*materialType=*/0, /*emission=*/float3{15.0f,15.0f,14.0f});
+        // with the ceiling's own quad above), facing straight down. Two
+        // separate lights (not one, as every previous PR up through #11
+        // had) - the smallest scene change that actually exercises
+        // `lights` as a genuine LIST rather than a single renamed
+        // constant: a warm light and a cool light side by side prove the
+        // shader's own light-picking/MIS code path handles more than one
+        // entry, visibly (two independently-coloured highlights/shadow
+        // directions), not just structurally. `addAreaLight` keeps each
+        // call's geometry (addQuad, tagged with this light's own index
+        // via materialType/lightId) and its AreaLightData entry (same
+        // corners, reduced to center/edgeU/edgeV/normal/area) in sync by
+        // construction, rather than needing two hand-authored, separately-
+        // maintained descriptions of the same quad the way the single-
+        // light version's kLightCenter/kLightHalfExtents/kLightNormal
+        // constants over in metal_poc.metal used to (see that file's
+        // AreaLight struct comment for the "replacing..." history).
+        std::vector<AreaLightData> lights;
+        auto addAreaLight = [&](float3 a, float3 b, float3 c, float3 d, float3 emission) {
+            int32_t lightId = (int32_t)lights.size();
+            addQuad(verts, normals, uvs, materials, a, b, c, d, white,
+                    /*materialType=*/0, emission, lightId);
+            float3 edgeU = b - a;
+            float3 edgeV = d - a;
+            float3 normal = simd::normalize(simd::cross(edgeU, edgeV));
+            float area = simd::length(simd::cross(edgeU, edgeV));
+            float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+            lights.push_back(AreaLightData{
+                PackedFloat3{center.x, center.y, center.z},
+                PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+                PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+                PackedFloat3{normal.x, normal.y, normal.z},
+                area,
+                PackedFloat3{emission.x, emission.y, emission.z}});
+        };
+        addAreaLight(float3{-0.58f,0.98f,-0.25f}, float3{-0.22f,0.98f,-0.25f},
+                     float3{-0.22f,0.98f,0.25f}, float3{-0.58f,0.98f,0.25f},
+                     /*emission=*/float3{15.0f,10.0f,6.0f});   // warm
+        addAreaLight(float3{0.22f,0.98f,-0.25f}, float3{0.58f,0.98f,-0.25f},
+                     float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
+                     /*emission=*/float3{6.0f,10.0f,18.0f});   // cool
 
         // Two spheres, both custom (non-triangle) primitives via a shared
         // bounding-box acceleration structure + intersection function
@@ -425,7 +470,7 @@ int main(int argc, const char** argv) {
         };
 
         const uint32_t triangleCount = (uint32_t)materials.size();
-        fprintf(stderr, "Scene: %u triangles, %zu spheres\n", triangleCount, spheres.size());
+        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu lights\n", triangleCount, spheres.size(), lights.size());
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
@@ -435,6 +480,9 @@ int main(int argc, const char** argv) {
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> uvBuffer = [device newBufferWithBytes:uvs.data()
             length:uvs.size() * sizeof(PackedFloat2)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> lightBuffer = [device newBufferWithBytes:lights.data()
+            length:lights.size() * sizeof(AreaLightData)
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
             length:materials.size() * sizeof(TriangleMaterial)
@@ -719,6 +767,7 @@ int main(int argc, const char** argv) {
         uniforms.samplesPerPixel = samplesPerPixel;
         uniforms.maxDepth = maxDepth;
         uniforms.frameSeed = 1u;
+        uniforms.lightCount = (uint32_t)lights.size();
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
@@ -736,6 +785,7 @@ int main(int argc, const char** argv) {
         [enc setIntersectionFunctionTable:functionTable atBufferIndex:6];
         [enc setBuffer:normalBuffer offset:0 atIndex:7];
         [enc setBuffer:uvBuffer offset:0 atIndex:8];
+        [enc setBuffer:lightBuffer offset:0 atIndex:9];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
         // acceleration structures referencing primitive ones (now two:
