@@ -684,3 +684,60 @@ cost.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 18. Proof-of-concept, step 10: a real light list (done)
+
+Every step through 17 carried exactly one hardcoded light - `kLightCenter`/
+`kLightHalfExtents`/`kLightNormal`/`kLightArea`/`kLightEmission` constants
+baked directly into the shading kernel, with steps 4/5's own comments
+explicitly flagging this as a known simplification: "a real port would
+carry a proper light list... instead of one hardcoded light's shape baked
+into the integrator." This step replaces those constants with an actual
+`AreaLight` buffer (`center`/`edgeU`/`edgeV`/`normal`/`area`/`emission`,
+precomputed host-side per light) and a `uniforms.lightCount`, matching the
+abstraction this project's own CPU `src/TheRestOfYourLife/*light_sampler*.h`
+already is.
+
+NEE now **picks a light uniformly at random** from the list before
+sampling a point on it (`sampleAreaLight()`, factored out once and shared
+between the Lambertian and GGX-conductor branches, which previously had
+their own near-duplicate copies of the single-light sampling code) - the
+same one-sample-MIS-over-a-light-list approach pbrt-v4's own
+`UniformLightSampler` uses, with the `1/lightCount` pick probability
+folded into the existing area-to-solid-angle PDF conversion. The harder
+half of this change is the OTHER direction: when a camera/GI ray lands
+directly on an emissive triangle (rather than via NEE), the MIS weight
+needs to know exactly which light that triangle belongs to, to look up
+the right area/normal for the competing NEE strategy's pdf. Solved with a
+new `TriangleMaterial::lightId` field (index into `lights`, -1 for every
+non-emissive material) - set once, host-side, when a light's own quad is
+authored (`addAreaLight()`'s lambda keeps a light's geometry, material
+tag, and `AreaLight` buffer entry in sync by construction, instead of
+needing hand-synchronized constants the way the single-light version's
+comment on `kLightCenter`/etc. warned against).
+
+The scene now has **two** lights (a warm one and a cool one, side by
+side under the ceiling) instead of one - the smallest change that
+actually exercises `lights` as a genuine list rather than a renamed
+single constant, and one deliberately chosen to be visually falsifiable:
+a bug in light-picking, per-light pdf, or the `lightId`-based MIS lookup
+would very plausibly still "render something," just wrong (missing one
+light's contribution, double-counting, or an incorrectly-biased result
+that undersamples one light) - the same "looks plausible, is subtly
+wrong" failure mode Section 4 calls out as the highest-risk bug class
+for a from-scratch backend.
+
+**Result, visually confirmed**: both the rough-conductor and dielectric
+spheres show two distinct specular highlights (previously one), each
+reflecting one of the two lights, and the ceiling shows two separate lit
+panels rather than one - direct, easily-inspectable proof that both
+lights are being intersected, sampled, and shaded independently rather
+than one light silently dominating or the second light's contribution
+going missing. 700×700 @ 256spp @ depth 10 renders in ~14 seconds on an
+M2, statistically indistinguishable from step 9's own ~14s (same total
+NEE ray count per bounce - one shadow ray either way, just toward a
+randomly-chosen light instead of the sole light - so no cost increase
+was expected).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

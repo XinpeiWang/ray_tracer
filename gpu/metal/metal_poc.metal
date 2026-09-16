@@ -39,6 +39,24 @@ struct Uniforms {
     uint samplesPerPixel;
     uint maxDepth;
     uint frameSeed;
+    uint lightCount;
+};
+
+// A real light LIST entry, replacing the single hardcoded kLightCenter/
+// kLightHalfExtents/kLightNormal/kLightArea/kLightEmission constants
+// steps 4/5's own comments explicitly flagged as "one hardcoded light's
+// shape baked into the integrator... a real port would carry a proper
+// light list instead." A general parallelogram (center + two full edge
+// vectors, not axis-aligned half-extents) rather than the old x/z-only
+// shape - edgeU/edgeV/normal/area are precomputed host-side once, not
+// re-derived per shading sample.
+struct AreaLight {
+    packed_float3 center;
+    packed_float3 edgeU;
+    packed_float3 edgeV;
+    packed_float3 normal;
+    float area;
+    packed_float3 emission;
 };
 
 // materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular),
@@ -55,8 +73,8 @@ struct Uniforms {
 // (rather than a separate per-type struct) since this POC values "one
 // flat array, index by primitive_id" simplicity over saving a few bytes
 // on entries that don't use every field. `emission` is nonzero only for
-// the one light quad's two triangles (see kLight* below) - same "just
-// carry it, don't special-case a rare field" reasoning. Checking it
+// a light quad's own triangles (see the AreaLight struct below) - same
+// "just carry it, don't special-case a rare field" reasoning. Checking it
 // unconditionally on every hit (regardless of material type) is what
 // makes a light source visible at all when a camera/GI ray lands on it
 // directly, on top of the light-SAMPLING code below which handles every
@@ -66,6 +84,12 @@ struct TriangleMaterial {
     uint materialType;
     float ior;
     packed_float3 emission;
+    // Index into the `lights` buffer for a hit ON one of a light's own
+    // emissive triangles - -1 for every non-emissive material. Lets the
+    // direct-hit MIS weight (see the emission check in the shading loop)
+    // look up exactly which AreaLight's area/normal to weight against,
+    // instead of a single global light's constants.
+    int lightId;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
@@ -294,6 +318,36 @@ inline void buildOnb(float3 n, thread float3& tangent, thread float3& bitangent)
 // here for the same reason: it's what makes a rough-conductor path
 // tracer converge in a reasonable sample count instead of needing far
 // more samples to beat down grazing-angle noise.
+// Picks one light uniformly at random from `lights` and samples a
+// uniform point on its parallelogram - the "pick a light, then a point on
+// it" step every NEE call site (Lambertian and GGX conductor both) shares
+// verbatim; only what happens with the sampled point differs per BSDF.
+// The 1/lightCount light-PICKING pdf is folded in by each call site
+// itself (alongside its own area-to-solid-angle conversion), not returned
+// here, since it's a plain scalar constant for a given uniforms.lightCount
+// and every caller already needs to multiply it into an existing pdf
+// expression rather than use it standalone.
+struct LightSample {
+    float3 point;
+    float3 normal;
+    float3 emission;
+    float area;
+};
+
+inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState) {
+    uint idx = min(uint(randFloat(rngState) * float(lightCount)), lightCount - 1);
+    AreaLight light = lights[idx];
+    float3 edgeU = float3(light.edgeU);
+    float3 edgeV = float3(light.edgeV);
+    float2 u = float2(randFloat(rngState), randFloat(rngState));
+    LightSample result;
+    result.point = float3(light.center) - 0.5 * edgeU - 0.5 * edgeV + u.x * edgeU + u.y * edgeV;
+    result.normal = float3(light.normal);
+    result.emission = float3(light.emission);
+    result.area = light.area;
+    return result;
+}
+
 inline float3 sampleGGXVNDF(float3 woLocal, float alpha, thread uint& rngState) {
     float3 Vh = normalize(float3(alpha * woLocal.x, alpha * woLocal.y, woLocal.z));
     float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
@@ -326,6 +380,7 @@ kernel void primaryRayKernel(
     intersection_function_table<instancing, triangle_data> functionTable [[buffer(6)]],
     device const packed_float3* normals [[buffer(7)]],
     device const packed_float2* uvs [[buffer(8)]],
+    device const AreaLight* lights [[buffer(9)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -336,20 +391,13 @@ kernel void primaryRayKernel(
     constexpr sampler textureSampler(coord::normalized, address::repeat, filter::linear);
     if (tid.x >= uniforms.width || tid.y >= uniforms.height) return;
 
-    // Area light: a small quad hanging just under the ceiling, facing
-    // straight down - real geometry (added via addQuad() host-side, see
-    // metal_poc.mm) with nonzero TriangleMaterial::emission on its two
-    // triangles, not a separate light type. Its extent/normal/area are
-    // hardcoded here to match that geometry exactly rather than derived
-    // from it at trace time - a real port would carry a proper light list
-    // (this project's own CPU src/TheRestOfYourLife/*light_sampler*.h is
-    // exactly that abstraction) instead of one hardcoded light's shape
-    // baked into the integrator.
-    const float3 kLightCenter = float3(0.0, 0.98, 0.0);
-    const float2 kLightHalfExtents = float2(0.3, 0.3); // x, z half-widths
-    const float3 kLightNormal = float3(0.0, -1.0, 0.0);
-    const float kLightArea = (2.0 * kLightHalfExtents.x) * (2.0 * kLightHalfExtents.y);
-    const float3 kLightEmission = float3(15.0, 15.0, 14.0);
+    // Area lights: real geometry (added via addQuad() host-side with a
+    // matching AreaLight entry, see metal_poc.mm) with nonzero
+    // TriangleMaterial::emission on their triangles, not a separate light
+    // type - `lights`/`uniforms.lightCount` (bound above) is the light
+    // LIST this project's own CPU src/TheRestOfYourLife/*light_sampler*.h
+    // is the equivalent abstraction for, replacing the single hardcoded
+    // light this POC started with (steps 4/5).
 
     const float3 skyTop = float3(0.9, 0.95, 1.0);
     const float3 skyBottom = float3(0.3, 0.5, 0.9);
@@ -470,14 +518,19 @@ kernel void primaryRayKernel(
                     // below), so there's nothing to weight against.
                     radiance += throughput * float3(mat.emission);
                 } else {
-                    // Reached via a Lambertian BSDF-sampled continuation
-                    // ray - weight by the power heuristic against what
-                    // the light-sampling strategy's own PDF would have
-                    // been for this exact hit, using the same area-to-
-                    // solid-angle conversion the NEE branch below uses.
+                    // Reached via a BSDF-sampled continuation ray (diffuse
+                    // or conductor) - weight by the power heuristic against
+                    // what the light-sampling strategy's own PDF would have
+                    // been for this exact hit. mat.lightId names exactly
+                    // which AreaLight this triangle belongs to, so this
+                    // works for any number of lights, not just one -
+                    // uniform light-picking pdf (1/lightCount) folded in
+                    // alongside the same area-to-solid-angle conversion
+                    // the NEE branches below use.
+                    AreaLight light = lights[mat.lightId];
                     float distSq = result.distance * result.distance;
-                    float cosLight = max(dot(kLightNormal, -rayDir), 0.0001);
-                    float pdfLight = distSq / (kLightArea * cosLight);
+                    float cosLight = max(dot(float3(light.normal), -rayDir), 0.0001);
+                    float pdfLight = (distSq / (light.area * cosLight)) / float(uniforms.lightCount);
                     float weight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfLight * pdfLight);
                     radiance += throughput * float3(mat.emission) * weight;
                 }
@@ -535,15 +588,13 @@ kernel void primaryRayKernel(
                 woLocal.z = max(woLocal.z, 0.0001);
 
                 if (all(mat.emission == float3(0.0))) {
-                    float2 u = float2(randFloat(rngState), randFloat(rngState));
-                    float3 lightPoint = kLightCenter + float3(
-                        (u.x * 2.0 - 1.0) * kLightHalfExtents.x, 0.0, (u.y * 2.0 - 1.0) * kLightHalfExtents.y);
-                    float3 toLight = lightPoint - hitPoint;
+                    LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+                    float3 toLight = ls.point - hitPoint;
                     float distSq = dot(toLight, toLight);
                     float dist = sqrt(distSq);
                     float3 wi = toLight / dist;
                     float cosSurface = dot(facingNormal, wi);
-                    float cosLight = dot(kLightNormal, -wi);
+                    float cosLight = dot(ls.normal, -wi);
                     if (cosSurface > 0.0 && cosLight > 0.0) {
                         float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
                         float3 h = normalize(woLocal + wiLocal);
@@ -563,7 +614,7 @@ kernel void primaryRayKernel(
                         intersection_result<instancing, triangle_data> shadowResult =
                             isect.intersect(shadowRay, accelStructure, functionTable);
                         if (shadowResult.type == intersection_type::none) {
-                            float pdfSolidAngle = distSq / (kLightArea * cosLight);
+                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
                             // VNDF sampling's own pdf(wi) for this same
                             // direction - pdf(h) = D(h)*G1(wo)*max(0,dot
                             // (wo,h))/NdotO, converted to a solid-angle-of-
@@ -574,7 +625,7 @@ kernel void primaryRayKernel(
                             float pdfBsdf = (Dh * ggxG1(NdotO, alpha)) / max(4.0 * NdotO, 1e-6);
                             float weight = (pdfSolidAngle * pdfSolidAngle)
                                 / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
-                            radiance += throughput * brdf * kLightEmission * cosSurface / pdfSolidAngle * weight;
+                            radiance += throughput * brdf * ls.emission * cosSurface / pdfSolidAngle * weight;
                         }
                     }
                 }
@@ -625,27 +676,27 @@ kernel void primaryRayKernel(
                 // Lambertian (materialType 0, or 3 - textured, the only
                 // difference already resolved above into `albedo`, the
                 // BSDF/NEE math below has no idea where albedo came
-                // from): next-event estimation against the area light
-                // (uniform-area-sampled point + solid-angle PDF
-                // conversion, shadow ray up to just short of the light
-                // rather than infinite), then continue the path via
-                // cosine-weighted hemisphere sampling for indirect light.
-                // Two separate rays per bounce - direct (shadow) and the
-                // continuation - is the standard NEE split this project's
-                // own CPU path_integrator.h also uses; the light-quad's
-                // OWN two triangles skip this (mat.emission's already-
-                // added contribution above is their entire direct
-                // lighting - sampling the light FROM itself is degenerate).
+                // from): next-event estimation against a RANDOMLY PICKED
+                // light from `lights` (uniform-area-sampled point on it +
+                // solid-angle PDF conversion, shadow ray up to just short
+                // of the light rather than infinite), then continue the
+                // path via cosine-weighted hemisphere sampling for
+                // indirect light. Two separate rays per bounce - direct
+                // (shadow) and the continuation - is the standard NEE
+                // split this project's own CPU path_integrator.h also
+                // uses; any light's OWN triangles skip this (mat.emission's
+                // already-added contribution above is their entire direct
+                // lighting - sampling a light FROM itself, including a
+                // DIFFERENT light, would double count that light's own
+                // emission).
                 if (all(mat.emission == float3(0.0))) {
-                    float2 u = float2(randFloat(rngState), randFloat(rngState));
-                    float3 lightPoint = kLightCenter + float3(
-                        (u.x * 2.0 - 1.0) * kLightHalfExtents.x, 0.0, (u.y * 2.0 - 1.0) * kLightHalfExtents.y);
-                    float3 toLight = lightPoint - hitPoint;
+                    LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+                    float3 toLight = ls.point - hitPoint;
                     float distSq = dot(toLight, toLight);
                     float dist = sqrt(distSq);
                     float3 wi = toLight / dist;
                     float cosSurface = dot(facingNormal, wi);
-                    float cosLight = dot(kLightNormal, -wi);
+                    float cosLight = dot(ls.normal, -wi);
                     if (cosSurface > 0.0 && cosLight > 0.0) {
                         ray shadowRay;
                         shadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -660,9 +711,13 @@ kernel void primaryRayKernel(
                         if (shadowResult.type == intersection_type::none) {
                             // Area-to-solid-angle PDF conversion:
                             // pdf_omega = pdf_area * dist^2 / cosLight,
-                            // pdf_area = 1/kLightArea for uniform sampling -
-                            // textbook area-light NEE, not an approximation.
-                            float pdfSolidAngle = distSq / (kLightArea * cosLight);
+                            // pdf_area = 1/ls.area for uniform sampling -
+                            // textbook area-light NEE, not an approximation -
+                            // times 1/lightCount for the uniform light-pick
+                            // probability (one-sample MIS over the light
+                            // list, same approach pbrt-v4's own
+                            // UniformLightSampler uses).
+                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
                             // MIS weight against what the BSDF-sampling
                             // strategy's own PDF would be for this same
                             // direction wi (cosine-weighted: cosSurface/pi) -
@@ -673,7 +728,7 @@ kernel void primaryRayKernel(
                             float weight = (pdfSolidAngle * pdfSolidAngle)
                                 / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
                             radiance += throughput * albedo * (1.0 / M_PI_F)
-                                        * kLightEmission * cosSurface / pdfSolidAngle * weight;
+                                        * ls.emission * cosSurface / pdfSolidAngle * weight;
                         }
                     }
                 }
