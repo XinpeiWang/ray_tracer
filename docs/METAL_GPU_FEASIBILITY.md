@@ -1389,3 +1389,58 @@ it's evaluated).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 30. Proof-of-concept, step 20: Beer-Lambert absorption for dielectrics (done)
+
+Every dielectric material (types 2 and 5) has multiplied `throughput` by
+a flat per-bounce `albedo` on every reflect/refract event since step
+6/11 - and since every scene up to this point set that colour to
+`{1,1,1}`, this line has been a pure no-op the entire time, real glass
+rendered perfectly clear rather than tinted. Real coloured glass doesn't
+tint by a flat per-bounce factor - it absorbs proportionally to how far
+light actually travels THROUGH the medium (Beer-Lambert's law), which is
+why a thick paperweight of some glass reads far more saturated than a
+thin windowpane of the identical material. `applyBeerLambertAbsorption()`
+implements this: on the hit where the ray EXITS a dielectric surface
+(`!frontFace`), it multiplies throughput by `exp(-absorption *
+result.distance)`, where `result.distance` is exactly the in-medium path
+length just travelled - correct with no separate distance-tracking state
+needed, for one specific, explicitly-documented reason: every dielectric
+shape this POC has is CONVEX (the sphere), so a ray hitting the surface
+again after entering must have travelled the whole way through the
+interior with nothing else in between. A concave dielectric could
+re-enter/exit multiple times in a way this simple per-hit check wouldn't
+correctly attribute - not handled, the same "state the assumption
+explicitly rather than silently rely on it" approach this POC's other
+simplifications (rough dielectric's own energy-conservation shortcut,
+Section 21) already use.
+
+`TriangleMaterial::color` now means something different for materialTypes
+2/5 than it does everywhere else in the same struct: a per-unit-distance
+absorption COEFFICIENT, not a reflectance/tint - `{0,0,0}` means ZERO
+absorption (`exp(-0*dist) == 1` exactly, perfectly clear glass), the
+opposite of what `{0,0,0}` would mean as a reflectance colour for every
+other material type sharing this same field. Both dielectric spheres'
+old placeholder `{1,1,1}` "clear glass" values (which, under the OLD
+per-bounce-multiply interpretation, meant "no tint"; under absorption,
+`{1,1,1}` would have meant "absorb essentially everything, render
+black") were replaced with real per-channel absorption: the smooth glass
+sphere is now emerald-tinted (absorbs red/blue faster than green), the
+frosted sphere a much milder amber.
+
+**Result, verified two ways**: the committed scene shows the glass
+sphere clearly green-tinted, and - the specific signature that confirms
+this is genuine Beer-Lambert absorption and not just a flat colour
+multiply - visibly MORE saturated/darker toward the sphere's own thicker
+centre and closer to clear/colourless near its thin edges, exactly the
+gradient real coloured glass shows and a flat per-bounce tint cannot
+produce. An A/B render with the glass sphere's absorption set back to
+`{0,0,0}` reproduces the original perfectly clear glass look exactly,
+confirming the code path is a true no-op at its own documented
+degenerate value. 700×700 @ 384spp @ depth 10 renders in ~38 seconds on
+an M2, statistically indistinguishable from step 19's own ~37s (one
+`exp()` call added only on a dielectric's own exit hit, not a new
+per-bounce cost category).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
