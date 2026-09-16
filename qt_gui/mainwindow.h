@@ -1401,21 +1401,21 @@ private:
 	QStringList filteredSceneIds(const QString &category) const;
 
 	// True for a scene "Generate Thumbnails" (onGenerateThumbnailsClicked())
-	// will actually consider: not "Very Slow" - skips individual scenes an
-	// automatic background batch shouldn't silently spend minutes on,
-	// without needing to pre-vet or hand-maintain a list of which whole
-	// CATEGORIES (or availability buckets) are "safe". Deliberately does NOT
-	// check requires_files: whether a scene's external assets are actually
-	// present is exactly what a render attempt itself already determines
-	// (see eligibleThumbnailIds() below) - excluding by that flag would
-	// permanently block a scene from ever getting a thumbnail even after
-	// the user goes and downloads the assets it needs.
+	// will actually consider: currently just "could its metadata be
+	// fetched at all" (see this function's own definition,
+	// mainwindow_slots.cpp, for why the earlier "Very Slow" exclusion was
+	// removed). Deliberately does NOT check requires_files: whether a
+	// scene's external assets are actually present is exactly what a
+	// render attempt itself already determines (see eligibleThumbnailIds()
+	// below) - excluding by that flag would permanently block a scene from
+	// ever getting a thumbnail even after the user goes and downloads the
+	// assets it needs.
 	static bool isThumbnailEligible(const QString &sceneId);
 	// The scenes a "Generate Thumbnails" click on `category` would actually
 	// attempt - see this function's own definition (mainwindow_slots.cpp)
 	// for exactly how filteredSceneIds()'s category/availability-tab/
-	// search-box filter and isThumbnailEligible()'s performance check
-	// combine. Shared with updateGenerateThumbnailsButtonState() so the
+	// search-box filter and isThumbnailEligible()'s own check combine.
+	// Shared with updateGenerateThumbnailsButtonState() so the
 	// button's enabled/tooltip state can never drift out of sync with what
 	// a click on it actually does.
 	QStringList eligibleThumbnailIds(const QString &category) const;

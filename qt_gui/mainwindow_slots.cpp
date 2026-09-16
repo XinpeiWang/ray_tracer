@@ -584,8 +584,19 @@ bool MainWindow::isThumbnailEligible(const QString &sceneId) {
 	// Same "can't query -> don't include" caution as every other
 	// SceneMetadataClient call site in this file: a scene this couldn't even
 	// fetch metadata for is not one to blindly hand to a CPU render.
-	if (!SceneMetadataClient::sceneMetadata(sceneId, meta)) return false;
-	return meta.performance != QLatin1String("Very Slow");
+	//
+	// Used to also exclude "Very Slow" scenes here, on the theory that a bulk
+	// "Generate Thumbnails" click could look hung for a very long time on a
+	// multi-million-triangle whole-environment mesh (Bistro, Rungholt, ...) -
+	// loading and BVH-building geometry that size is a real, substantial
+	// fixed cost independent of the thumbnail's own tiny 128x128/16spp
+	// render settings. Removed at the user's own request: the pause/stop
+	// controls and per-scene progress log (onThumbnailProgress()'s own
+	// "(N/M) Rendering <scene>..." line) already give a way to see what's
+	// happening and cancel if a particular category turns out to take too
+	// long, so excluding these scenes entirely was more caution than the
+	// existing UI actually needed.
+	return SceneMetadataClient::sceneMetadata(sceneId, meta);
 }
 
 // The scenes a "Generate Thumbnails" click on `category` would actually
@@ -595,7 +606,7 @@ bool MainWindow::isThumbnailEligible(const QString &sceneId) {
 // the one showing - if a required asset turns out to still be missing
 // locally, the render just fails and gets logged/counted like any other
 // failure, same as a real render of that scene would), narrowed further by
-// isThumbnailEligible()'s performance check. The one list both
+// isThumbnailEligible()'s own check. The one list both
 // onGenerateThumbnailsClicked() and updateGenerateThumbnailsButtonState()
 // read, so the button's enabled state can never drift out of sync with
 // what a click on it actually does.
@@ -778,14 +789,16 @@ void MainWindow::updateGenerateThumbnailsButtonState() {
 	// enabled state can never drift out of sync with what a click actually
 	// does, whether that's an empty category, a search term matching
 	// nothing, or (now that eligibleThumbnailIds() no longer excludes
-	// requires-files scenes) the "Requires External Files" availability tab
-	// simply having nothing eligible left after the performance filter.
+	// requires-files OR Very Slow scenes) simply every scene in view
+	// already having a cached thumbnail.
 	const bool supported = !eligibleThumbnailIds(currentCategory).isEmpty();
 	m_generateThumbnailsButton->setEnabled(supported);
 	m_generateThumbnailsButton->setToolTip(supported
-		? tr("Creates a small preview image for each ready-to-render, not-too-slow scene in the CURRENT\n"
-		"view that doesn't already have one saved. Runs on the CPU only, at low resolution - it can take\n"
-		"a while the first time you do this, especially for a category that needs external files.")
+		? tr("Creates a small preview image for each ready-to-render scene in the CURRENT view that\n"
+		"doesn't already have one saved. Runs on the CPU only, at low resolution - it can still take a\n"
+		"while for a \"Very Slow\" whole-environment scene, since loading and BVH-building a\n"
+		"multi-million-triangle mesh costs the same regardless of the thumbnail's own small size.\n"
+		"Use the pause/stop controls if a category turns out to take too long.")
 		: tr("Nothing to generate thumbnails for in the current view."));
 }
 
