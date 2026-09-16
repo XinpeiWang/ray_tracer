@@ -42,10 +42,13 @@ struct Uniforms {
 };
 
 // materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular),
-// 2 = dielectric (glass). `ior` is only meaningful for materialType == 2 -
-// carried on every material anyway (rather than a separate per-type
-// struct) since this POC values "one flat array, index by primitive_id"
-// simplicity over saving 4 bytes on non-dielectric entries. `emission` is
+// 2 = dielectric (glass), 3 = textured Lambertian (same BSDF/NEE code path
+// as 0, just samples `earthTexture` at the hit's interpolated UV for
+// albedo instead of reading `color` - see the shading loop below).
+// `ior` is only meaningful for materialType == 2 - carried on every
+// material anyway (rather than a separate per-type struct) since this
+// POC values "one flat array, index by primitive_id" simplicity over
+// saving a few bytes on entries that don't use every field. `emission` is
 // nonzero only for the one light quad's two triangles (see kLight* below) -
 // same "just carry it, don't special-case a rare field" reasoning as ior.
 // Checking it unconditionally on every hit (regardless of material type)
@@ -189,6 +192,20 @@ inline float3 shadingNormalFor(uint primId, float2 barycentric, device const pac
     return normalize(w0 * n0 + barycentric.x * n1 + barycentric.y * n2);
 }
 
+// Same barycentric-blend idea as shadingNormalFor(), for texture
+// coordinates instead of normals - a UV buffer parallel to
+// vertices/normals, same per-triangle-corner indexing. Every non-textured
+// primitive's three corners carry (0,0) (see addQuad()'s/loadObjMesh()'s
+// host-side default), which interpolates to (0,0) too - harmless, since
+// only materialType == 3 ever reads it.
+inline float2 texCoordFor(uint primId, float2 barycentric, device const packed_float2* uvs) {
+    float2 uv0 = uvs[primId * 3 + 0];
+    float2 uv1 = uvs[primId * 3 + 1];
+    float2 uv2 = uvs[primId * 3 + 2];
+    float w0 = 1.0 - barycentric.x - barycentric.y;
+    return w0 * uv0 + barycentric.x * uv1 + barycentric.y * uv2;
+}
+
 // Schlick's approximation - the standard cheap stand-in for the full
 // Fresnel dielectric reflectance formula, same one pbrt-v4 and this
 // project's own CPU dielectric material use for the reflect-vs-refract
@@ -201,6 +218,7 @@ inline float schlickReflectance(float cosine, float refractionRatio) {
 
 kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
+    texture2d<float, access::sample> earthTexture [[texture(1)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
@@ -209,8 +227,15 @@ kernel void primaryRayKernel(
     device const SphereData* spheres [[buffer(5)]],
     intersection_function_table<instancing, triangle_data> functionTable [[buffer(6)]],
     device const packed_float3* normals [[buffer(7)]],
+    device const packed_float2* uvs [[buffer(8)]],
     uint2 tid [[thread_position_in_grid]])
 {
+    // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
+    // texture (the earth-map's own left/right edges are meant to tile
+    // seamlessly at the date line) - constexpr so it's resolved at
+    // compile time, same as every Metal sample/tutorial's own pattern for
+    // a sampler that never needs to change at runtime.
+    constexpr sampler textureSampler(coord::normalized, address::repeat, filter::linear);
     if (tid.x >= uniforms.width || tid.y >= uniforms.height) return;
 
     // Area light: a small quad hanging just under the ceiling, facing
@@ -317,7 +342,19 @@ kernel void primaryRayKernel(
             bool frontFace = dot(normal, rayDir) < 0.0;
             float3 facingNormal = frontFace ? normal : -normal;
 
-            float3 albedo = float3(mat.color);
+            // materialType == 3 (textured Lambertian) only ever occurs on
+            // a triangle (the back wall - see metal_poc.mm's scene setup),
+            // never the sphere, so texCoordFor()'s triangle-only inputs
+            // (primId, barycentric_coord) are always valid when this
+            // fires - no isSphere guard needed here the way the normal/
+            // material lookup above needed one.
+            float3 albedo;
+            if (mat.materialType == 3u) {
+                float2 uv = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                albedo = earthTexture.sample(textureSampler, uv).rgb;
+            } else {
+                albedo = float3(mat.color);
+            }
 
             // Unconditional check (regardless of material type) for
             // whether this hit is the light quad - covers a camera ray or
@@ -394,8 +431,11 @@ kernel void primaryRayKernel(
                 throughput *= albedo;
                 specularBounce = true;
             } else {
-                // Lambertian: next-event estimation against the area
-                // light (uniform-area-sampled point + solid-angle PDF
+                // Lambertian (materialType 0, or 3 - textured, the only
+                // difference already resolved above into `albedo`, the
+                // BSDF/NEE math below has no idea where albedo came
+                // from): next-event estimation against the area light
+                // (uniform-area-sampled point + solid-angle PDF
                 // conversion, shadow ray up to just short of the light
                 // rather than infinite), then continue the path via
                 // cosine-weighted hemisphere sampling for indirect light.

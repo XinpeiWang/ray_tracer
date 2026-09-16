@@ -22,6 +22,13 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../../src/external/stb_image_write.h"
+// STB_IMAGE_IMPLEMENTATION here is a separate translation unit from
+// src/external/stb_image_impl.cpp's own definition of it (that one is
+// compiled into cpu_renderer, which metal_poc doesn't link against at
+// all - two different executables, no ODR conflict) - loading
+// images/earthmap.jpg for the textured-material test below.
+#define STB_IMAGE_IMPLEMENTATION
+#include "../../src/external/stb_image.h"
 
 #include <vector>
 #include <cstdio>
@@ -40,6 +47,15 @@ using simd::float3;
 // (no simd padding) is what actually matches a tight vertexStride.
 struct PackedFloat3 {
     float x, y, z;
+};
+
+// Mirrors metal_poc.metal's UV buffer element type - simd::float2 has no
+// padding-inside-a-struct issue the way float3 does (2 floats is already
+// its own natural 8-byte alignment), but named separately from simd::float2
+// for the same "obviously the wire format, not incidentally compatible
+// with it" clarity PackedFloat3 gives the position/normal buffers.
+struct PackedFloat2 {
+    float u, v;
 };
 
 // Mirrors metal_poc.metal's Uniforms/TriangleMaterial byte-for-byte -
@@ -89,8 +105,13 @@ struct SphereData {
 // shader's barycentric interpolation reduce to exact flat shading here
 // (only a mesh with genuinely different per-corner normals, i.e.
 // loadObjMesh() below, produces a different, smoothly-varying result).
+// `uvs` is the same shape again but for texCoordFor() - a standard
+// planar (0,0)-(1,1) mapping across a-b-c-d, meaningful only when
+// materialType == 3 (textured); every other quad's UVs are simply never
+// read by the shader.
 static void addQuad(std::vector<PackedFloat3>& verts,
                      std::vector<PackedFloat3>& normals,
+                     std::vector<PackedFloat2>& uvs,
                      std::vector<TriangleMaterial>& materials,
                      float3 a, float3 b, float3 c, float3 d,
                      float3 color, uint32_t materialType = 0,
@@ -102,6 +123,12 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     float3 faceNormal = simd::normalize(simd::cross(b - a, c - a));
     PackedFloat3 packedNormal{faceNormal.x, faceNormal.y, faceNormal.z};
     for (int i = 0; i < 6; ++i) normals.push_back(packedNormal);
+    uvs.push_back(PackedFloat2{0, 0});
+    uvs.push_back(PackedFloat2{1, 0});
+    uvs.push_back(PackedFloat2{1, 1});
+    uvs.push_back(PackedFloat2{0, 0});
+    uvs.push_back(PackedFloat2{1, 1});
+    uvs.push_back(PackedFloat2{0, 1});
     PackedFloat3 packedColor{color.x, color.y, color.z};
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
     materials.push_back({packedColor, materialType, 1.0f, packedEmission});
@@ -138,6 +165,7 @@ static void addQuad(std::vector<PackedFloat3>& verts,
 static bool loadObjMesh(const std::string& path,
                          std::vector<PackedFloat3>& verts,
                          std::vector<PackedFloat3>& normals,
+                         std::vector<PackedFloat2>& uvs,
                          std::vector<TriangleMaterial>& materials,
                          float3 color, float3 center, float targetSize) {
     std::ifstream in(path);
@@ -240,6 +268,13 @@ static bool loadObjMesh(const std::string& path,
             verts.push_back(PackedFloat3{a.x, a.y, a.z});
             verts.push_back(PackedFloat3{b.x, b.y, b.z});
             verts.push_back(PackedFloat3{c.x, c.y, c.z});
+            // No .obj texcoord (vt) parsing - this loader is only ever used
+            // for Suzanne, which stays materialType 0 (never sampled), so a
+            // default UV is harmless filler kept only for buffer-layout
+            // parity with the vertex/normal buffers.
+            uvs.push_back(PackedFloat2{0, 0});
+            uvs.push_back(PackedFloat2{0, 0});
+            uvs.push_back(PackedFloat2{0, 0});
 
             bool haveAllNormals =
                 fv0.normalIdx >= 0 && fv0.normalIdx < (int)fileNormals.size() &&
@@ -309,6 +344,7 @@ int main(int argc, const char** argv) {
         // not a shared asset with cpu_renderer/.
         std::vector<PackedFloat3> verts;
         std::vector<PackedFloat3> normals;
+        std::vector<PackedFloat2> uvs;
         std::vector<TriangleMaterial> materials;
 
         const float3 white{0.73f, 0.73f, 0.73f};
@@ -316,15 +352,18 @@ int main(int argc, const char** argv) {
         const float3 green{0.12f, 0.45f, 0.15f};
 
         // Floor (y = -1)
-        addQuad(verts, normals, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
+        addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
         // Ceiling (y = 1)
-        addQuad(verts, normals, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
-        // Back wall (z = -1)
-        addQuad(verts, normals, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white);
+        addQuad(verts, normals, uvs, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
+        // Back wall (z = -1) - textured (materialType 3): the one surface
+        // in the scene that samples earthTexture, chosen because it's the
+        // large flat backdrop the camera looks straight at, showing the
+        // whole 0-1 UV mapping unobstructed.
+        addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white, /*materialType=*/3);
         // Left wall (x = -1), red
-        addQuad(verts, normals, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
+        addQuad(verts, normals, uvs, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
         // Right wall (x = 1), green
-        addQuad(verts, normals, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
+        addQuad(verts, normals, uvs, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
         // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
         // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
         // test object": mirror MATERIAL coverage is already proven (the
@@ -342,7 +381,7 @@ int main(int argc, const char** argv) {
 #endif
         NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
         const float3 bronze{0.55f, 0.35f, 0.15f};
-        if (!loadObjMesh(suzannePath.UTF8String, verts, normals, materials, bronze,
+        if (!loadObjMesh(suzannePath.UTF8String, verts, normals, uvs, materials, bronze,
                           /*center=*/float3{-0.05f, -0.55f, -0.3f}, /*targetSize=*/0.75f)) {
             fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
         }
@@ -356,7 +395,7 @@ int main(int argc, const char** argv) {
         // stay in sync with this quad's own position/size/orientation by
         // hand (this POC's one deliberately-hardcoded light, not a real
         // light-list abstraction - see that file's comment on why).
-        addQuad(verts, normals, materials,
+        addQuad(verts, normals, uvs, materials,
                 float3{-0.3f,0.98f,-0.3f}, float3{0.3f,0.98f,-0.3f},
                 float3{0.3f,0.98f,0.3f}, float3{-0.3f,0.98f,0.3f},
                 white, /*materialType=*/0, /*emission=*/float3{15.0f,15.0f,14.0f});
@@ -381,6 +420,9 @@ int main(int argc, const char** argv) {
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> normalBuffer = [device newBufferWithBytes:normals.data()
             length:normals.size() * sizeof(PackedFloat3)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> uvBuffer = [device newBufferWithBytes:uvs.data()
+            length:uvs.size() * sizeof(PackedFloat2)
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
             length:materials.size() * sizeof(TriangleMaterial)
@@ -600,6 +642,50 @@ int main(int argc, const char** argv) {
         texDesc.storageMode = MTLStorageModeShared;
         id<MTLTexture> outTexture = [device newTextureWithDescriptor:texDesc];
 
+        // --- Earth texture (the back wall's materialType=3 source) -----
+        // stb_image decodes straight to interleaved 8-bit RGBA regardless
+        // of the source JPEG's channel count (the 4th `desiredChannels`
+        // arg below), which is exactly MTLPixelFormatRGBA8Unorm's own
+        // layout - no repacking needed between stbi_load's buffer and
+        // replaceRegion:.
+#ifdef RT_MODELS_DIR
+        NSString* imagesDir = [[@(RT_MODELS_DIR) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"images"];
+#else
+        NSString* imagesDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"../../images"];
+#endif
+        NSString* earthPath = [imagesDir stringByAppendingPathComponent:@"earthmap.jpg"];
+        int earthW = 0, earthH = 0, earthChannels = 0;
+        unsigned char* earthPixels = stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
+        id<MTLTexture> earthTexture = nil;
+        if (earthPixels) {
+            MTLTextureDescriptor* earthDesc = [MTLTextureDescriptor
+                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                width:(NSUInteger)earthW height:(NSUInteger)earthH mipmapped:NO];
+            earthDesc.usage = MTLTextureUsageShaderRead;
+            earthDesc.storageMode = MTLStorageModeShared;
+            earthTexture = [device newTextureWithDescriptor:earthDesc];
+            MTLRegion earthRegion = MTLRegionMake2D(0, 0, (NSUInteger)earthW, (NSUInteger)earthH);
+            [earthTexture replaceRegion:earthRegion mipmapLevel:0 withBytes:earthPixels
+                bytesPerRow:(NSUInteger)earthW * 4];
+            stbi_image_free(earthPixels);
+            fprintf(stderr, "Loaded %s: %dx%d, %d channels\n", earthPath.UTF8String, earthW, earthH, earthChannels);
+        } else {
+            fprintf(stderr, "Could not load %s - back wall will read black/undefined texture data.\n",
+                earthPath.UTF8String);
+            // A 1x1 white fallback keeps the shader's unconditional
+            // texture bind valid (Metal requires SOME texture at the
+            // bound slot) even if the JPEG is missing.
+            MTLTextureDescriptor* fallbackDesc = [MTLTextureDescriptor
+                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:1 height:1 mipmapped:NO];
+            fallbackDesc.usage = MTLTextureUsageShaderRead;
+            fallbackDesc.storageMode = MTLStorageModeShared;
+            earthTexture = [device newTextureWithDescriptor:fallbackDesc];
+            uint8_t white4[4] = {255, 255, 255, 255};
+            [earthTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:white4 bytesPerRow:4];
+        }
+
         const uint32_t samplesPerPixel = (argc > 4) ? (uint32_t)atoi(argv[4]) : 64;
         const uint32_t maxDepth = (argc > 5) ? (uint32_t)atoi(argv[5]) : 8;
         fprintf(stderr, "Samples/pixel: %u, max depth: %u\n", samplesPerPixel, maxDepth);
@@ -624,6 +710,7 @@ int main(int argc, const char** argv) {
         id<MTLComputeCommandEncoder> enc = [renderCmd computeCommandEncoder];
         [enc setComputePipelineState:pipeline];
         [enc setTexture:outTexture atIndex:0];
+        [enc setTexture:earthTexture atIndex:1];
         [enc setAccelerationStructure:instAS atBufferIndex:0];
         [enc setBuffer:uniformBuffer offset:0 atIndex:1];
         [enc setBuffer:materialBuffer offset:0 atIndex:2];
@@ -632,6 +719,7 @@ int main(int argc, const char** argv) {
         [enc setBuffer:sphereBuffer offset:0 atIndex:5];
         [enc setIntersectionFunctionTable:functionTable atBufferIndex:6];
         [enc setBuffer:normalBuffer offset:0 atIndex:7];
+        [enc setBuffer:uvBuffer offset:0 atIndex:8];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
         // acceleration structures referencing primitive ones (now two:
