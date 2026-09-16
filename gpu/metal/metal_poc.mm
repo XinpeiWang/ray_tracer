@@ -101,6 +101,13 @@ struct AreaLightData {
 struct PointLightData {
     PackedFloat3 position;
     PackedFloat3 emission;
+    // Defaults make every point light omnidirectional (see
+    // metal_poc.metal's own PointLight/spotLightFalloff() comments) unless
+    // explicitly overridden - the existing point light's own literal
+    // doesn't need to change at all for this to stay backward compatible.
+    PackedFloat3 direction = PackedFloat3{0.0f, -1.0f, 0.0f};
+    float cosOuterAngle = -1.0f;
+    float cosInnerAngle = -1.0f;
 };
 
 // materialType: 0 = Lambertian, 1 = mirror, 2 = dielectric (glass) - see
@@ -645,8 +652,22 @@ int main(int argc, const char** argv) {
         // reflective spheres/disk rather than blending into an existing
         // one - the easiest way to visually confirm it's really
         // contributing light, not just present in the buffer unused.
+        // Second point light: a genuine SPOT (cone-restricted), unlike the
+        // first one's omnidirectional glow - aimed down at Spot-the-cow's
+        // own floor area, a real "pool of light" cone signature an
+        // omnidirectional point light cannot produce at all (its own
+        // illumination falls off with distance everywhere, never with
+        // ANGLE the way a spot's does). 25 degree outer / 15 degree inner
+        // cone (smoothstep-blended between them, not a hard edge).
+        const float3 spotPos = float3{0.65f, 0.9f, -0.1f};
+        const float3 spotTarget = float3{0.7f, -1.0f, 0.4f};
+        const float3 spotDir = simd::normalize(spotTarget - spotPos);
         std::vector<PointLightData> pointLights = {
             PointLightData{PackedFloat3{0.0f, 0.3f, 0.3f}, PackedFloat3{0.9f, 0.65f, 1.1f}},
+            PointLightData{PackedFloat3{spotPos.x, spotPos.y, spotPos.z}, PackedFloat3{7.5f, 6.5f, 10.0f},
+                           PackedFloat3{spotDir.x, spotDir.y, spotDir.z},
+                           /*cosOuterAngle=*/cosf(25.0f * (float)M_PI / 180.0f),
+                           /*cosInnerAngle=*/cosf(15.0f * (float)M_PI / 180.0f)},
         };
 
         const uint32_t triangleCount = (uint32_t)materials.size();
