@@ -26,6 +26,10 @@
 #include <vector>
 #include <cstdio>
 #include <cstdlib>
+#include <cfloat>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <simd/simd.h>
 
 using simd::float3;
@@ -94,6 +98,119 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     materials.push_back({packedColor, materialType, 1.0f, packedEmission});
 }
 
+// A minimal Wavefront OBJ loader: positions + faces only (`v`/`f`), no
+// texcoords/materials/groups/smoothing - this project's own real loaders
+// (src/shared/pbrt_load.h -> pbrt_cpu_builder.h/pbrt_gpu_builder.h) are
+// full pbrt-v4 scene parsers; this is deliberately the smallest thing that
+// can prove "load an arbitrary real mesh, not just hand-authored
+// axis-aligned quads and an analytic sphere" - the first genuinely
+// data-driven geometry in this POC. Faces are fan-triangulated (n>3
+// polygon -> n-2 triangles sharing vertex 0), matching how this project's
+// own CPU loader handles polygons that aren't already triangles. Vertex
+// normals (`vn`) in the file are read but NOT used - every triangle still
+// gets a flat face normal computed from its own 3 positions (faceNormalFor
+// in metal_poc.metal), same as every other mesh in this scene; smooth
+// per-vertex-normal interpolation would need barycentric-coordinate
+// plumbing this POC doesn't have yet, so Suzanne renders faceted here, a
+// real (if visually rougher) limitation, not a bug.
+//
+// The mesh is auto-fit to `targetSize` (its largest bounding-box
+// dimension scaled to that value) and recentred at `center` - real .obj
+// files come in whatever units/scale their author used, and this scene's
+// room is a fixed [-1,1] box, so SOME normalization is unavoidable rather
+// than a hardcoded scale constant that would only happen to work for this
+// one file.
+static bool loadObjMesh(const std::string& path,
+                         std::vector<PackedFloat3>& verts,
+                         std::vector<TriangleMaterial>& materials,
+                         float3 color, float3 center, float targetSize) {
+    std::ifstream in(path);
+    if (!in) {
+        fprintf(stderr, "Could not open OBJ file: %s\n", path.c_str());
+        return false;
+    }
+
+    std::vector<float3> positions;
+    std::vector<std::vector<int>> faceVertexIndices; // 0-based, post-fixup
+
+    std::string line;
+    while (std::getline(in, line)) {
+        std::istringstream ss(line);
+        std::string tag;
+        ss >> tag;
+        if (tag == "v") {
+            float x, y, z;
+            ss >> x >> y >> z;
+            positions.push_back(simd::make_float3(x, y, z));
+        } else if (tag == "f") {
+            std::vector<int> indices;
+            std::string token;
+            while (ss >> token) {
+                // Token is "v", "v/vt", "v//vn", or "v/vt/vn" - only the
+                // first (position) index matters here.
+                int vIdx = std::atoi(token.c_str());
+                // OBJ indices are 1-based; a negative index is relative to
+                // the current vertex count (rare, but real files use it) -
+                // both normalized to a plain 0-based index here.
+                if (vIdx < 0) vIdx = (int)positions.size() + vIdx + 1;
+                indices.push_back(vIdx - 1);
+            }
+            if (indices.size() >= 3) faceVertexIndices.push_back(indices);
+        }
+    }
+
+    if (positions.empty() || faceVertexIndices.empty()) {
+        fprintf(stderr, "OBJ file had no usable geometry: %s\n", path.c_str());
+        return false;
+    }
+
+    float3 bboxMin = simd::make_float3(FLT_MAX, FLT_MAX, FLT_MAX);
+    float3 bboxMax = simd::make_float3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+    for (const float3& p : positions) {
+        bboxMin = simd::min(bboxMin, p);
+        bboxMax = simd::max(bboxMax, p);
+    }
+
+    float3 extent = bboxMax - bboxMin;
+    float largestDim = std::max(extent.x, std::max(extent.y, extent.z));
+    float scale = (largestDim > 0.0f) ? (targetSize / largestDim) : 1.0f;
+    float3 bboxCenter = (bboxMin + bboxMax) * 0.5f;
+
+    auto transform = [&](const float3& p) -> float3 {
+        return (p - bboxCenter) * scale + center;
+    };
+
+    uint32_t triangleCount = 0;
+    for (const std::vector<int>& face : faceVertexIndices) {
+        // Fan triangulation from vertex 0 - correct for the convex/near-
+        // convex polygons a typical modeled mesh's faces are (this file's
+        // own quads included), not a general concave-polygon triangulator.
+        for (size_t i = 1; i + 1 < face.size(); ++i) {
+            int i0 = face[0], i1 = face[i], i2 = face[i + 1];
+            if (i0 < 0 || i0 >= (int)positions.size() ||
+                i1 < 0 || i1 >= (int)positions.size() ||
+                i2 < 0 || i2 >= (int)positions.size()) {
+                continue; // malformed index - skip rather than crash
+            }
+            float3 a = transform(positions[i0]);
+            float3 b = transform(positions[i1]);
+            float3 c = transform(positions[i2]);
+            verts.push_back(PackedFloat3{a.x, a.y, a.z});
+            verts.push_back(PackedFloat3{b.x, b.y, b.z});
+            verts.push_back(PackedFloat3{c.x, c.y, c.z});
+            ++triangleCount;
+        }
+    }
+
+    PackedFloat3 packedColor{color.x, color.y, color.z};
+    TriangleMaterial mat{packedColor, /*materialType=*/0, 1.0f, PackedFloat3{0, 0, 0}};
+    for (uint32_t i = 0; i < triangleCount; ++i) materials.push_back(mat);
+
+    fprintf(stderr, "Loaded %s: %zu positions, %u triangles (scale %.4f)\n",
+            path.c_str(), positions.size(), triangleCount, scale);
+    return true;
+}
+
 int main(int argc, const char** argv) {
     @autoreleasepool {
         const uint32_t width = (argc > 1) ? (uint32_t)atoi(argv[1]) : 400;
@@ -132,7 +249,6 @@ int main(int argc, const char** argv) {
         const float3 white{0.73f, 0.73f, 0.73f};
         const float3 red{0.65f, 0.05f, 0.05f};
         const float3 green{0.12f, 0.45f, 0.15f};
-        const float3 mirrorTint{0.95f, 0.95f, 0.95f};
 
         // Floor (y = -1)
         addQuad(verts, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white);
@@ -144,15 +260,27 @@ int main(int argc, const char** argv) {
         addQuad(verts, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
         // Right wall (x = 1), green
         addQuad(verts, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
-        // A small tilted mirror in the middle, floating just above the
-        // floor - proves per-primitive material-TYPE branching works (not
-        // just per-primitive colour, which step 1 already covered): a
-        // correct render shows the room reflected in it, not a flat grey
-        // quad.
-        addQuad(verts, materials,
-                float3{-0.35f,-0.9f,-0.3f}, float3{0.25f,-0.9f,-0.5f},
-                float3{0.25f,-0.2f,-0.5f}, float3{-0.35f,-0.2f,-0.3f},
-                mirrorTint, /*materialType=*/1);
+        // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
+        // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
+        // test object": mirror MATERIAL coverage is already proven (the
+        // sphere/dielectric PR's own mirror-quad screenshots), what this
+        // scene hadn't tested yet is real, DATA-DRIVEN geometry with
+        // genuine per-triangle normal variation, not a hand-authored
+        // axis-aligned quad. Lambertian so its form reads clearly via
+        // shading rather than showing room reflections. RT_MODELS_DIR
+        // mirrors RT_METAL_SHADER_DIR's own fallback shape below.
+#ifdef RT_MODELS_DIR
+        NSString* modelsDir = @(RT_MODELS_DIR);
+#else
+        NSString* modelsDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"../../models"];
+#endif
+        NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
+        const float3 bronze{0.55f, 0.35f, 0.15f};
+        if (!loadObjMesh(suzannePath.UTF8String, verts, materials, bronze,
+                          /*center=*/float3{-0.05f, -0.55f, -0.3f}, /*targetSize=*/0.75f)) {
+            fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
+        }
 
         // Area light: a small quad hanging just under the ceiling
         // (y=0.98, not y=1 itself - avoids z-fighting/coplanar overlap
