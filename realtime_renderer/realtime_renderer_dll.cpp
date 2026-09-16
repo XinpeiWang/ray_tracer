@@ -52,7 +52,9 @@ RT_REALTIME_API bool realtime_render_frame(
 	bool enable_neural_upscale,
 	float* out_neural_upscale_buffer,
 	double aperture_override,
-	double focus_distance_override
+	double focus_distance_override,
+	bool enable_adaptive_sampling,
+	const unsigned char* in_active_pixel_mask
 ) {
 	return rt_realtime_render_frame(scene_id, image_width, image_height,
 		samples_per_pixel, max_depth, cam_x, cam_y, cam_z,
@@ -62,7 +64,8 @@ RT_REALTIME_API bool realtime_render_frame(
 		enable_probe_cache, enable_path_guiding,
 		enable_temporal_upscale, temporal_upscale_factor, temporal_jitter_base_index,
 		enable_nrc, enable_neural_upscale, out_neural_upscale_buffer,
-		aperture_override, focus_distance_override);
+		aperture_override, focus_distance_override,
+		enable_adaptive_sampling, in_active_pixel_mask);
 }
 
 RT_REALTIME_API const char* realtime_get_last_error() {

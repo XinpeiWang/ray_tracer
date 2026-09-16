@@ -27,6 +27,9 @@ extern "C" void wf_launch_generate_camera_rays(
 	unsigned int frameNumber,
 	float* d_weightBuffer,
 	bool checkerboardActive,
+	// Adaptive sampling - see generate_camera_rays's own activePixelMask
+	// parameter comment (wavefront_kernels_camera.cu).
+	const unsigned char* activePixelMask,
 	// Live Preview's temporal upscale feature - see generate_camera_rays's
 	// own temporalJitterEnabled parameter comment (wavefront_kernels_camera.cu).
 	bool temporalJitterEnabled,

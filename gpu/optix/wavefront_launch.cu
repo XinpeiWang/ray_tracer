@@ -17,6 +17,7 @@
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem>, unsigned int, unsigned int,
 	GpuCameraParams, unsigned int, unsigned int, float*, bool,
+	const unsigned char*,
 	bool, unsigned int, int);
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
@@ -178,6 +179,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	unsigned int frameNumber,
 	float* d_weightBuffer,
 	bool checkerboardActive,
+	const unsigned char* activePixelMask,
 	bool temporalJitterEnabled,
 	unsigned int temporalJitterIndex,
 	int temporalUpscaleFactor,
@@ -204,7 +206,7 @@ extern "C" void wf_launch_generate_camera_rays(
 		rq, (unsigned int)width, (unsigned int)height,
 		camera,
 		(unsigned int)sampleIdx, frameNumber, d_weightBuffer, checkerboardActive,
-		temporalJitterEnabled, temporalJitterIndex, temporalUpscaleFactor);
+		activePixelMask, temporalJitterEnabled, temporalJitterIndex, temporalUpscaleFactor);
 }
 
 extern "C" void wf_launch_evaluate_materials(

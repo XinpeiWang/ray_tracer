@@ -679,24 +679,23 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		10, 2);
 	liveRenderSettingsGrid->addWidget(m_liveFocusDistanceSpin, 10, 3);
 
-	// Adaptive sampling (Stage 1 of this project's own plan) - own row,
+	// Adaptive sampling (Stage 2a of this project's own plan) - own row,
 	// grouped with the plain-checkbox rows above in spirit, but appended
 	// here at the end rather than renumbering rows 0-10 above to insert it
-	// earlier. Currently only drives the noise-heatmap debug view below,
-	// not real GPU sampling - see RealtimePreviewWorker::
-	// setAdaptiveSampling()'s own comment for the staging.
+	// earlier. Stops resampling a pixel once it's converged (real compute
+	// savings) AND shows a noise heatmap in place of the normal preview -
+	// see RealtimePreviewWorker::setAdaptiveSampling()'s own comment.
 	m_liveAdaptiveSamplingCheck = createLiveToggleCheckbox(tr("Adaptive Sampling"), m_liveAdaptiveSamplingEnabled, [this](bool checked) {
 		m_liveAdaptiveSamplingEnabled = checked;
 		saveLiveAdaptiveSamplingEnabled(checked);
 		pushLiveAdaptiveSamplingToSession();
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveAdaptiveSamplingCheck,
-		tr("Tracks how noisy each pixel still is and, once enabled, shows a "
-		"black-and-white heatmap instead of the normal preview: white where "
-		"a pixel is still noisy enough to need more samples (per the "
-		"Convergence Threshold below), black where it's already converged. "
-		"This is a diagnostic view for now - it doesn't yet change which "
-		"pixels actually get sampled.")),
+		tr("Stops resampling a pixel once it's converged, and shows a "
+		"black-and-white heatmap instead of the normal preview while it's "
+		"on: white where a pixel is still noisy enough to need more samples "
+		"(per the Convergence Threshold below), black where it's already "
+		"converged and no longer being resampled.")),
 		11, 0, 1, 4);
 
 	m_liveAdaptiveSamplingThresholdSpin = new QDoubleSpinBox();

@@ -30,6 +30,12 @@
 //   13. checkerboardActive=true: exactly half of a frame's pixels are
 //       active, and the active set exactly complements the previous
 //       frame's (same pixel, frameNumber vs frameNumber+1)
+// wf_adaptive_pixel_active
+//   14. activeMask=nullptr: every pixel is active, regardless of what a
+//       real mask at the same coordinates would say
+//   15. Reads the exact byte at py*width+px - a pixel this test marks
+//       inactive (0) reads inactive, every other pixel (1) reads active,
+//       and a neighbor one row/column away is unaffected
 
 #include <gtest/gtest.h>
 #include "wavefront_svgf_math.h"
@@ -141,5 +147,31 @@ TEST(WfCheckerboardPixelActive, ExactlyHalfActivePerFrameAndComplementsNextFrame
 			}
 		}
 		EXPECT_EQ(activeCount, width * height / 2) << "frame " << frame;
+	}
+}
+
+TEST(WfAdaptivePixelActive, NullMaskMeansEveryPixelIsActive) {
+	for (int py = 0; py < 4; ++py) {
+		for (int px = 0; px < 4; ++px) {
+			EXPECT_TRUE(wf_adaptive_pixel_active(px, py, /*width=*/4, /*activeMask=*/nullptr));
+		}
+	}
+}
+
+TEST(WfAdaptivePixelActive, ReadsExactByteAtRowMajorIndex) {
+	constexpr int width = 4, height = 3;
+	unsigned char mask[width * height];
+	for (int i = 0; i < width * height; ++i) mask[i] = 1;
+	// Mark exactly one pixel converged (inactive) - every other pixel, in
+	// particular its immediate row/column neighbors, must read unaffected.
+	constexpr int convergedPx = 2, convergedPy = 1;
+	mask[convergedPy * width + convergedPx] = 0;
+
+	for (int py = 0; py < height; ++py) {
+		for (int px = 0; px < width; ++px) {
+			const bool expectedActive = !(px == convergedPx && py == convergedPy);
+			EXPECT_EQ(wf_adaptive_pixel_active(px, py, width, mask), expectedActive)
+				<< "pixel (" << px << "," << py << ")";
+		}
 	}
 }

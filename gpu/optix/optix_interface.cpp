@@ -597,7 +597,9 @@ extern "C" bool rt_realtime_render_frame(
 	bool enable_neural_upscale,
 	float* out_neural_upscale_buffer,
 	double aperture_override,
-	double focus_distance_override
+	double focus_distance_override,
+	bool enable_adaptive_sampling,
+	const unsigned char* in_active_pixel_mask
 ) {
 	// Live-preview entry point (progressive-refinement mode): shares
 	// prepareSceneAndCamera() with optix_render_main() above (build/upload/
@@ -771,6 +773,12 @@ extern "C" bool rt_realtime_render_frame(
 		// Neural temporal upscale (gpu/optix/wavefront_upscale_*.h) - see
 		// this project's own plan and enableNeuralUpscale()'s own comment.
 		g_renderer->enableNeuralUpscale(enable_neural_upscale);
+		// Live Preview's adaptive sampling - see setActivePixelMask()'s own
+		// comment. Gated here (not just left to wf_adaptive_pixel_active()'s
+		// own null-check) so `enable_adaptive_sampling=false` is a complete
+		// no-op regardless of what in_active_pixel_mask holds, matching every
+		// sibling enable_X parameter's own "false always wins" contract.
+		g_renderer->setActivePixelMask(enable_adaptive_sampling ? in_active_pixel_mask : nullptr);
 		// SVGF (gpu/optix/wavefront_svgf_math.h) - unlike DI/GI above, this
 		// is genuinely opt-in per call (the CALLER's own `enable_svgf`
 		// parameter), not unconditionally forced on - it's an alternative

@@ -340,6 +340,18 @@ public:
 	///        setNeuralUpscaleEnabled() inside render() below.
 	void enableNeuralUpscale(bool enable) { neuralUpscaleEnabled_ = enable; }
 
+	/// @brief Live Preview's adaptive sampling (gpu/optix/wavefront_svgf_
+	///        math.h's wf_adaptive_pixel_active()) - `mask` is a host-
+	///        resident array of width*height bytes (1=keep sampling,
+	///        0=converged), rebuilt by the caller once per frame. Not owned
+	///        or copied here - only valid for the duration of the next
+	///        render() call. Forwarded to WavefrontPathTracer::
+	///        setActivePixelMask() inside render() below; `mask=nullptr`
+	///        (the default) is a complete no-op, same "opt-in, batch/
+	///        offline rendering never pays for it" shape as
+	///        enableProbeCache() above.
+	void setActivePixelMask(const unsigned char* mask) { activePixelMaskHost_ = mask; }
+
 	/// @brief Sets SVGF's advanced tuning constants (gpu/optix/
 	///        svgf_tuning_params.h) - formerly hardcoded kSvgf* literals in
 	///        wavefront_kernels_svgf.cu. Forwarded to wavefrontTracer_ inside
@@ -750,6 +762,7 @@ private:
 	int temporalUpscaleFactor_ = 2;
 	unsigned int temporalJitterBaseIndex_ = 0;
 	bool neuralUpscaleEnabled_ = false;             ///< See enableNeuralUpscale()
+	const unsigned char* activePixelMaskHost_ = nullptr;  ///< See setActivePixelMask()
 
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - evaluated deterministically, not via the alias table.

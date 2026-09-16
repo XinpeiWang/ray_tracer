@@ -265,7 +265,22 @@ bool rt_realtime_render_frame(
 	// the parameter list, after out_neural_upscale_buffer, per this
 	// function's own append-only convention.
 	double aperture_override = -1.0,
-	double focus_distance_override = -1.0
+	double focus_distance_override = -1.0,
+	// Live Preview's adaptive sampling (gpu/optix/wavefront_svgf_math.h's
+	// wf_adaptive_pixel_active()) - see this project's own plan.
+	// `in_active_pixel_mask` is a CALLER-owned array of
+	// image_width*image_height bytes (1=keep sampling, 0=this pixel's
+	// variance has already converged this frame), rebuilt by the caller
+	// once per frame from its own per-pixel variance estimate; not
+	// retained past this call (copied to a device buffer before returning).
+	// `enable_adaptive_sampling=false` (the default, every existing call
+	// site) is a complete no-op regardless of what `in_active_pixel_mask`
+	// holds - every pixel is resampled exactly as before this feature
+	// existed. Appended at the very end of the parameter list, after
+	// focus_distance_override, per this function's own append-only
+	// convention.
+	bool enable_adaptive_sampling = false,
+	const unsigned char* in_active_pixel_mask = nullptr
 );
 
 // Detail for the most recent rt_realtime_render_frame() failure on the

@@ -1049,7 +1049,8 @@ void WavefrontPathTracer::resetQueueCounter(int* d_counter) {
 
 void WavefrontPathTracer::launchGenerateCameraRays(
 	int width, int height, int sampleIdx,
-	const GpuCameraParams& camera, float* d_weightBuffer, bool checkerboardActive)
+	const GpuCameraParams& camera, float* d_weightBuffer, bool checkerboardActive,
+	const unsigned char* d_activePixelMask)
 {
 	WorkQueue<RayWorkItem> rq;
 	rq.items    = reinterpret_cast<RayWorkItem*>(d_rayItems_);
@@ -1063,7 +1064,7 @@ void WavefrontPathTracer::launchGenerateCameraRays(
 	// varies seed's own random stream call to call.
 	const unsigned int temporalJitterIndex = temporalJitterBaseIndex_ + (unsigned int)sampleIdx;
 	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, d_weightBuffer, checkerboardActive,
-		temporalUpscaleJitterEnabled_, temporalJitterIndex, temporalUpscaleFactor_, stream_);
+		d_activePixelMask, temporalUpscaleJitterEnabled_, temporalJitterIndex, temporalUpscaleFactor_, stream_);
 }
 
 GpuRestirTemporalContext WavefrontPathTracer::buildRestirTemporalContext() const {
@@ -2301,6 +2302,26 @@ bool WavefrontPathTracer::render(
 							   numPixels * sizeof(float), stream_));
 	float* d_weightPtr = reinterpret_cast<float*>(d_weight);
 
+	// Live Preview's adaptive sampling - see setActivePixelMask()'s own
+	// comment. Only allocated/uploaded when the caller actually supplied a
+	// mask THIS call; nullptr is forwarded to launchGenerateCameraRays()
+	// otherwise (wf_adaptive_pixel_active()'s own "no mask -> always active"
+	// contract), so a feature-off caller (or one that hasn't called
+	// setActivePixelMask() yet) pays nothing beyond this one branch. Unlike
+	// d_fb_/d_weight_ above, this buffer is not zeroed here - it's fully
+	// overwritten by the memcpy below every time it's used at all.
+	CUdeviceptr d_activePixelMaskPtr = 0;
+	if (activePixelMaskHost_) {
+		if (activePixelMaskCapacity_ != numPixels) {
+			if (d_activePixelMask_) { cudaFree(reinterpret_cast<void*>(d_activePixelMask_)); d_activePixelMask_ = 0; }
+			CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_activePixelMask_), numPixels * sizeof(unsigned char)));
+			activePixelMaskCapacity_ = numPixels;
+		}
+		CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_activePixelMask_), activePixelMaskHost_,
+									numPixels * sizeof(unsigned char), cudaMemcpyHostToDevice, stream_));
+		d_activePixelMaskPtr = d_activePixelMask_;
+	}
+
 	// Denoiser guide-layer AOV buffers (--denoise, OR SVGF - see this
 	// project's own SVGF plan for why SVGF reuses these same two buffers
 	// instead of a third near-duplicate albedo/normal source: it needs
@@ -2761,7 +2782,8 @@ bool WavefrontPathTracer::render(
 
 		// Reset ray queue counter, generate primary rays
 		resetQueueCounter(reinterpret_cast<int*>(d_rayCounter_));
-		launchGenerateCameraRays(width, height, sampleIdx, camera, d_weightPtr, checkerboardActive);
+		launchGenerateCameraRays(width, height, sampleIdx, camera, d_weightPtr, checkerboardActive,
+			reinterpret_cast<const unsigned char*>(d_activePixelMaskPtr));
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 		// -------------------------------------------------------------------------
@@ -3317,6 +3339,8 @@ void WavefrontPathTracer::cleanup() {
 	if (d_fb_) { cudaFree(reinterpret_cast<void*>(d_fb_)); d_fb_ = 0; }
 	if (d_weight_) { cudaFree(reinterpret_cast<void*>(d_weight_)); d_weight_ = 0; }
 	fbCapacity_ = 0;
+	if (d_activePixelMask_) { cudaFree(reinterpret_cast<void*>(d_activePixelMask_)); d_activePixelMask_ = 0; }
+	activePixelMaskCapacity_ = 0;
 	if (d_worldPos_) { cudaFree(reinterpret_cast<void*>(d_worldPos_)); d_worldPos_ = 0; }
 	worldPosCapacity_ = 0;
 

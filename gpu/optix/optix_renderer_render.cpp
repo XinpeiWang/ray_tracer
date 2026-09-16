@@ -129,6 +129,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setNrcEnabled(nrcEnabled_);
 		wavefrontTracer_->setTemporalUpscaleJitter(temporalUpscaleJitterEnabled_, temporalUpscaleFactor_, temporalJitterBaseIndex_);
 		wavefrontTracer_->setNeuralUpscaleEnabled(neuralUpscaleEnabled_);
+		wavefrontTracer_->setActivePixelMask(activePixelMaskHost_);
 		// See invalidateRestirHistory()'s own comment on why this is
 		// deferred-then-forwarded here instead of calling straight through.
 		if (restirHistoryInvalidationPending_) {

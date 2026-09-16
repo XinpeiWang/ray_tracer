@@ -72,6 +72,25 @@ CPU_GPU inline bool wf_checkerboard_pixel_active(
 	return ((px + py) & 1) == static_cast<int>(frameNumber & 1u);
 }
 
+// Adaptive-sampling active-pixel predicate: a pixel whose accumulated
+// variance has already converged doesn't need another sample this frame -
+// the exact same "never enqueue, never touch weightBuffer" shape
+// wf_checkerboard_pixel_active() above already uses, so normalize_
+// framebuffer's existing `w > 0.0f` guard does double duty here too.
+// `activeMask` is a host-built, per-frame-refreshed array of width*height
+// bytes (1=keep sampling, 0=converged) - see RealtimePreviewWorker::
+// renderLoop()'s own mask-build comment (qt_gui/realtime_preview_session.cpp)
+// for where it comes from and WavefrontPathTracer::setActivePixelMask()'s
+// own comment for how it reaches the device. `activeMask=nullptr` (the
+// default, every non-Live-Preview call site, or Live Preview with the
+// feature toggled off) is always the safe/default answer: every pixel
+// active, byte-identical to the pre-adaptive-sampling behavior.
+CPU_GPU inline bool wf_adaptive_pixel_active(
+		int px, int py, int width, const unsigned char* activeMask) {
+	if (!activeMask) return true;
+	return activeMask[py * width + px] != 0;
+}
+
 // A-trous edge-stopping weights (Schied et al. eq. 4) - each in [0,1],
 // multiplied together by the caller to get one neighbor's total filter
 // weight. Un-normalized (the caller divides by the sum of all sampled

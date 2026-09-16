@@ -216,26 +216,27 @@ public slots:
 	// reset needed. No-op if not running.
 	void setFireflyClamp(double fireflyClamp);
 
-	// Toggles per-pixel variance tracking (Stage 1 of this project's own
-	// adaptive-sampling plan - GPU-side sampling isn't gated by this yet,
-	// only Live Preview's own noise-heatmap debug view is: white where a
-	// pixel's running relative standard error is still above `threshold`,
-	// black where pixel_convergence::has_converged() (src/shared/
-	// adaptive_sampling.h, reused verbatim) already says it's converged).
+	// Toggles per-pixel variance-guided adaptive sampling (Stage 2a of this
+	// project's own adaptive-sampling plan): once a pixel's running relative
+	// standard error drops below `threshold` (pixel_convergence::
+	// has_converged(), src/shared/adaptive_sampling.h, reused verbatim), the
+	// GPU stops resampling it and the CPU-side accumulation leaves it
+	// untouched (see renderLoop()'s own m_activePixelMask comment) - real
+	// compute savings, not just Stage 1's noise-heatmap debug view (still
+	// shown identically: white where still-active, black where converged).
 	// NOT gated on m_running - same reasoning as setExposure()/
 	// setSvgfTuning(): the caller pushes this BEFORE start() so the very
 	// first rendered frame already reflects it, not just frame 2 onward.
-	// Only actually resizes m_pixelVariance (via resetAdaptiveSamplingBuffers(),
-	// NOT the full resetAccumulation() - toggling this is meant to be a
-	// side-effect-free diagnostic action, so it must not discard the whole
-	// converged image just to size this one unrelated buffer) when called
-	// WHILE running and the effective state actually changes - calling this
-	// before start() just primes the member fields for start()'s own
-	// unconditional resetAccumulation() (which itself calls
-	// resetAdaptiveSamplingBuffers()) to pick up correctly once m_width/
-	// m_height are set. `threshold` changes alone never resize anything -
-	// same "post-process decision on the same converging signal" reasoning
-	// as setExposure().
+	// Only actually resizes m_pixelVariance/m_activePixelMask (via
+	// resetAdaptiveSamplingBuffers(), NOT the full resetAccumulation() -
+	// toggling this must not discard the whole converged image just to size
+	// this state) when called WHILE running and the effective state
+	// actually changes - calling this before start() just primes the member
+	// fields for start()'s own unconditional resetAccumulation() (which
+	// itself calls resetAdaptiveSamplingBuffers()) to pick up correctly once
+	// m_width/m_height are set. `threshold` changes alone never resize
+	// anything - same "post-process decision on the same converging signal"
+	// reasoning as setExposure().
 	void setAdaptiveSampling(bool enabled, double threshold);
 
 	// SVGF advanced tuning (gpu/optix/svgf_tuning_params.h's SvgfTuningParams,
@@ -278,13 +279,12 @@ private:
 	// GPU still only ever produces one world position per low-res pixel.
 	void reprojectAccumulationHi();
 	// Allocates (while useAdaptiveSampling() is true) or clears (otherwise)
-	// m_pixelVariance/m_pixelVarianceScratch - factored out of
-	// resetAccumulation() so setAdaptiveSampling() can resize just this
+	// m_pixelVariance/m_pixelVarianceScratch/m_activePixelMask - factored out
+	// of resetAccumulation() so setAdaptiveSampling() can resize just this
 	// state on its own, without resetAccumulation()'s own unconditional
 	// wipe of m_accum/m_tmp/m_worldPos*/m_sampleCounts. Toggling the
-	// Adaptive Sampling checkbox is meant to be a side-effect-free,
-	// diagnostic-only action (its own header comment) - it must not discard
-	// a converged image just to size an unrelated buffer.
+	// Adaptive Sampling checkbox does not discard the converged image just
+	// to (re)size this state.
 	void resetAdaptiveSamplingBuffers();
 	// `(m_denoise && m_denoiseShowLatest) || m_svgf` - the single "treat
 	// m_tmp as already-final, don't blend into m_accum" condition, computed
@@ -506,6 +506,23 @@ private:
 	// Reprojection scratch, same in-place-clobber-avoidance reasoning as
 	// m_accumScratch/m_sampleCountsScratch.
 	std::vector<VarianceEstimator<double>> m_pixelVarianceScratch;
+	// Stage 2a of this project's own adaptive-sampling plan: 1=keep
+	// sampling, 0=this pixel's variance has already converged. Rebuilt from
+	// scratch every renderLoop() iteration (from m_pixelVariance's state as
+	// of the END of the PREVIOUS frame - see renderLoop()'s own comment for
+	// why one frame of staleness here is an accepted, documented lag), so
+	// unlike m_pixelVariance itself this needs no reprojection-migration
+	// logic of its own: reprojectAccumulation() already migrates
+	// m_pixelVariance, and this is always fully recomputed from that
+	// (correct, post-reprojection) state before the very next render call.
+	// Persisted (not a local/scratch in renderLoop()) purely so its
+	// allocation is sized once here, alongside m_pixelVariance, rather than
+	// every frame. Three consumers read this exact same buffer each frame:
+	// the GPU render call (crosses the DLL boundary as a raw byte array),
+	// the CPU-side Welford fold-in loop's own skip gate, and the noise-
+	// heatmap display step - all three must agree on the same decision for
+	// a given frame, which computing it once and sharing it guarantees.
+	std::vector<uint8_t> m_activePixelMask;
 	// See setAdaptiveSampling()'s own comment. No accumulation-structure
 	// side effect on its own (only m_pixelVariance's CONTENTS change, not
 	// its size/allocation) - a threshold-only change doesn't need

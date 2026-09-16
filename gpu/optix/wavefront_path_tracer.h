@@ -175,6 +175,22 @@ public:
     /// comment) - toggling this off and back on does not reset them.
     void setNrcEnabled(bool enabled) { nrcEnabled_ = enabled; }
 
+    /// Live Preview's adaptive sampling (gpu/optix/wavefront_svgf_math.h's
+    /// wf_adaptive_pixel_active()) - `mask` is a host-resident array of
+    /// width*height bytes (1=keep sampling, 0=this pixel's variance has
+    /// already converged), rebuilt by the CALLER (RealtimePreviewWorker::
+    /// renderLoop()) once per frame from its own per-pixel Welford variance
+    /// estimate. This class does not own `mask` or copy it here - only
+    /// valid for the duration of the next render() call, which uploads it
+    /// to a persisted device buffer fresh every time (same resolution-keyed
+    /// allocate-once/only-realloc-on-change lifecycle as d_fb_/fbCapacity_
+    /// above, but re-memcpy'd every call since content changes every frame,
+    /// unlike d_fb_ which is only zeroed). `mask=nullptr` (the default,
+    /// every non-Live-Preview call site, or Live Preview with the feature
+    /// toggled off) is a complete no-op: every pixel stays active, byte-
+    /// identical to the pre-adaptive-sampling behavior.
+    void setActivePixelMask(const unsigned char* mask) { activePixelMaskHost_ = mask; }
+
     /// Live Preview's temporal upscale feature (gpu/optix/
     /// wavefront_temporal_upscale_math.h) - see this project's own plan.
     /// `enabled=false` (the default) is a complete no-op: generate_camera_rays'
@@ -409,7 +425,8 @@ private:
     bool allocateQueues(int numPixels);
     void freeQueues();
     void launchGenerateCameraRays(int width, int height, int sampleIdx,
-        const GpuCameraParams& camera, float* d_weightBuffer, bool checkerboardActive);
+        const GpuCameraParams& camera, float* d_weightBuffer, bool checkerboardActive,
+        const unsigned char* d_activePixelMask);
     // Builds this call's ReSTIR temporal-reuse context from d_reservoirsHistory_/
     // d_worldPosHistory_/d_restirNormal_/prevRestirCamera_/restirHistoryValid_/
     // restirImageWidth_/restirImageHeight_ - shared by all 3 launchEvaluateMaterials*()
@@ -956,6 +973,16 @@ private:
     CUdeviceptr  d_fb_ = 0;
     CUdeviceptr  d_weight_ = 0;
     int          fbCapacity_ = 0;
+
+    // Live Preview's adaptive sampling - see setActivePixelMask()'s own
+    // comment. activePixelMaskHost_ is NOT owned by this class (points into
+    // the caller's own per-frame buffer); d_activePixelMask_ IS owned here,
+    // same resolution-keyed allocate-once/only-realloc-on-change lifecycle
+    // as d_fb_/fbCapacity_ just above, tracked by its own capacity since
+    // it's a 1-byte-per-pixel buffer, not float3/float-sized like those.
+    const unsigned char* activePixelMaskHost_ = nullptr;  ///< see setActivePixelMask()
+    CUdeviceptr  d_activePixelMask_ = 0;
+    int          activePixelMaskCapacity_ = 0;
 
     // --denoise support (see setDenoiseEnabled()/denoise()) - own instance
     // of the shared DenoiserResources (optix_denoiser.h), persisted across

@@ -10,7 +10,7 @@
 #endif
 
 #include "wavefront_device_helpers.h"
-#include "wavefront_svgf_math.h"  // wf_checkerboard_pixel_active
+#include "wavefront_svgf_math.h"  // wf_checkerboard_pixel_active, wf_adaptive_pixel_active
 #include "wavefront_temporal_upscale_math.h"  // wf_temporal_upscale_jitter
 
 extern "C" __global__ void generate_camera_rays(
@@ -29,6 +29,13 @@ extern "C" __global__ void generate_camera_rays(
 	// (wavefront_device_helpers.h) for the shared parity check every
 	// consumer of "was this pixel sampled this frame" must agree on.
 	bool checkerboardActive,
+	// Adaptive sampling (Live Preview only) - see wf_adaptive_pixel_active()'s
+	// own comment (wavefront_svgf_math.h) for the shared per-pixel predicate
+	// every consumer of "was this pixel resampled this frame" must agree on,
+	// same reasoning as checkerboardActive just above. nullptr (the default,
+	// every non-Live-Preview call site, or Live Preview with the feature
+	// toggled off) is a complete no-op: every pixel stays active.
+	const unsigned char* activePixelMask = nullptr,
 	// Live Preview's temporal upscale feature (Live Preview only, gpu/optix/
 	// wavefront_temporal_upscale_math.h) - see this project's own plan.
 	// false (the default, every non-Live-Preview call site, or Live Preview
@@ -78,6 +85,12 @@ extern "C" __global__ void generate_camera_rays(
 	// signal every downstream SVGF/GI kernel uses to tell "held over from
 	// last frame" apart from "genuinely sampled this frame."
 	if (!wf_checkerboard_pixel_active(px, py, frameNumber, checkerboardActive)) return;
+
+	// Adaptive sampling: an already-converged pixel gets neither a queued
+	// ray nor a weightBuffer increment this frame - same shape as the
+	// checkerboard gate just above. See wf_adaptive_pixel_active()'s own
+	// comment (wavefront_svgf_math.h).
+	if (!wf_adaptive_pixel_active(px, py, (int)width, activePixelMask)) return;
 
 	int pixelIdx = py * (int)width + px;
 	unsigned int seed = wf_pcg(wf_pcg(pixelIdx + sampleIdx * width * height) ^ frameNumber);

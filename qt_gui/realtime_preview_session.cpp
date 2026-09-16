@@ -26,16 +26,18 @@ namespace {
 // export signature - see this file's own header comment on why there's no
 // shared header/versioning across this boundary. New parameters are always
 // appended at the end, never inserted in the middle - enable_restir_di,
-// enable_probe_cache, enable_path_guiding, and now the 3 temporal-upscale
-// params are all appended last for exactly this reason, even though
-// enable_path_guiding logically pairs with enable_probe_cache (it
-// hard-depends on it) rather than sitting at the end.
+// enable_probe_cache, enable_path_guiding, the 3 temporal-upscale params,
+// and now enable_adaptive_sampling/in_active_pixel_mask are all appended
+// last for exactly this reason, even though enable_path_guiding logically
+// pairs with enable_probe_cache (it hard-depends on it) rather than sitting
+// at the end.
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
 							   bool, double, double, double, bool, double, float*, float*, float*, bool,
 							   bool, float, const void*, bool, bool, bool,
 							   bool, int, unsigned int, bool,
 							   bool, float*,
-							   double, double);
+							   double, double,
+							   bool, const unsigned char*);
 
 // const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
 // own comment. Same hand-duplication convention as RenderFrameFn above.
@@ -463,9 +465,13 @@ void RealtimePreviewWorker::resetAdaptiveSamplingBuffers() {
 		const size_t numPixels = static_cast<size_t>(m_width) * m_height;
 		m_pixelVariance.assign(numPixels, VarianceEstimator<double>{});
 		m_pixelVarianceScratch.assign(numPixels, VarianceEstimator<double>{});
+		// 1 = active (keep sampling) - matches a fresh VarianceEstimator's own
+		// "no history yet, not converged" starting point above.
+		m_activePixelMask.assign(numPixels, uint8_t{1});
 	} else {
 		m_pixelVariance.clear();
 		m_pixelVarianceScratch.clear();
+		m_activePixelMask.clear();
 	}
 }
 
@@ -684,14 +690,15 @@ void RealtimePreviewWorker::setAdaptiveSampling(bool enabled, double threshold) 
 	// touches no buffer's size, so there's nothing to resize.
 	//
 	// Calls resetAdaptiveSamplingBuffers() directly, NOT the full
-	// resetAccumulation() - toggling this checkbox is documented (this
-	// method's own header comment) as a side-effect-free, diagnostic-only
-	// action with "no effect on which pixels actually get sampled" yet, so
-	// it must not discard the whole converged image (m_accum/m_tmp/
-	// m_worldPos*/m_sampleCounts) just to resize a buffer nothing else
-	// depends on. A prior version of this method called
-	// resetAccumulation() here, which did exactly that - confirmed by this
-	// project's own code review as a real, easily-triggered UX regression.
+	// resetAccumulation() - toggling this checkbox only needs to (re)size
+	// m_pixelVariance/m_activePixelMask; m_accum/m_tmp/m_worldPos*/
+	// m_sampleCounts are untouched either way, so there is nothing there to
+	// discard. A prior version of this method called resetAccumulation()
+	// here, which DID discard the whole converged image on every toggle -
+	// confirmed by this project's own code review as a real, easily-
+	// triggered UX regression, back when this feature was Stage 1's
+	// diagnostic-only heatmap (no GPU-side effect yet) and had even less
+	// reason to justify wiping accumulation.
 	if (m_running && useAdaptiveSampling() != wasUsingIt) {
 		resetAdaptiveSamplingBuffers();
 	}
@@ -755,6 +762,38 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	// project's own code review caught it), not just a theoretical one.
 	const bool useUpscale = useTemporalUpscale();
 
+	// Live Preview's adaptive sampling (Stage 2a of this project's own
+	// plan) - computed here, before the render call, from m_pixelVariance's
+	// state as of the END of the PREVIOUS frame, so the mask actually SENT
+	// to the GPU this frame is the exact same one the CPU-side fold-in gate
+	// and the heatmap display step act on once the call returns (same
+	// "compute once, share the decision" reasoning as useUpscale just
+	// above). This means a pixel that would newly converge (or de-converge)
+	// based on THIS frame's own incoming sample doesn't reflect that until
+	// the NEXT frame - the same one-frame lag every other cross-frame Live
+	// Preview mechanism (reprojection, SVGF history) already tolerates.
+	//
+	// has_converged() itself only requires Count()>=2 (Welford's variance is
+	// undefined below that), but a 2-sample variance ESTIMATE is not yet a
+	// trustworthy one - the CPU offline path this feature mirrors (src/
+	// TheRestOfYourLife/camera.h) never trusts its own identical estimator
+	// below min_samples_before_check (up to 32 raw samples) for exactly
+	// this reason. kMinBatchesBeforeConverged is the same floor's spirit
+	// applied to this class's own per-frame-BATCH granularity (coarser than
+	// the CPU path's per-raw-sample one - m_pixelVariance's own header
+	// comment) rather than a literal copy of its formula.
+	const bool useAdaptive = useAdaptiveSampling();
+	if (useAdaptive) {
+		constexpr int64_t kMinBatchesBeforeConverged = 8;
+		const int numPixels = m_width * m_height;
+		for (int pixel = 0; pixel < numPixels; ++pixel) {
+			const bool converged = m_pixelVariance[pixel].Count() >= kMinBatchesBeforeConverged &&
+				pixel_convergence::has_converged(m_pixelVariance[pixel], m_adaptiveSamplingThreshold,
+												  /*black_floor=*/1e-4, m_exposure);
+			m_activePixelMask[pixel] = converged ? uint8_t{0} : uint8_t{1};
+		}
+	}
+
 	RenderFrameFn renderFrame = handle().renderFrameFn;
 	bool ok = false;
 	if (!renderFrame) {
@@ -788,7 +827,8 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding,
 						  useUpscale, m_upscaleFactor, m_temporalJitterCounter, m_nrc,
 						  m_neuralUpscale, (useUpscale && m_neuralUpscale) ? m_neuralUpscaleOut.data() : nullptr,
-						  m_dofEnabled ? m_aperture : -1.0, m_dofEnabled ? m_focusDistance : -1.0);
+						  m_dofEnabled ? m_aperture : -1.0, m_dofEnabled ? m_focusDistance : -1.0,
+						  useAdaptive, useAdaptive ? m_activePixelMask.data() : nullptr);
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -1011,11 +1051,31 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				const int numPixels = m_width * m_height;
 				// See m_pixelVariance's own comment - fed the same m_tmp batch
 				// average m_accum's own mean folds in below, one .Add() per
-				// pixel per iteration. Checked once here rather than per-pixel
-				// (useAdaptiveSampling() is a handful of bool reads, not worth
-				// re-evaluating 3x per pixel via a branch inside the hot loop).
-				const bool trackVariance = useAdaptiveSampling();
+				// pixel per iteration. Just an alias for the already-computed
+				// useAdaptive local (above, before the render call) - kept as
+				// its own name here since this loop's variance-tracking and
+				// pixel-skip roles are conceptually separate, even though
+				// today they happen to share one condition.
+				const bool trackVariance = useAdaptive;
+				// True once at least one pixel actually updates below - lets
+				// the fully-converged edge case (every pixel skipped this
+				// frame) fall back to the PREVIOUS m_sampleCount afterward
+				// instead of reporting kMaxSampleCount's raw sentinel value.
+				bool anyPixelUpdated = false;
 				for (int pixel = 0; pixel < numPixels; ++pixel) {
+					// Load-bearing: a pixel useAdaptive marked inactive this
+					// frame (m_activePixelMask built above, before the render
+					// call) was never resampled GPU-side either - the SAME
+					// mask crossed the DLL boundary this call - so m_tmp holds
+					// nothing meaningful for it (normalize_framebuffer's own
+					// zero-weight guard leaves a never-enqueued pixel at
+					// black). Skipping the mean/count/variance update entirely
+					// leaves it exactly as it was, rather than dragging an
+					// already-converged pixel toward black. See
+					// wf_adaptive_pixel_active()'s own comment (gpu/optix/
+					// wavefront_svgf_math.h) for the GPU-side half of this gate.
+					if (useAdaptive && !m_activePixelMask[pixel]) continue;
+					anyPixelUpdated = true;
 					const int n = m_sampleCounts[pixel];
 					const size_t idx = static_cast<size_t>(pixel) * 3;
 					for (int c = 0; c < 3; ++c) {
@@ -1042,6 +1102,10 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						}
 					}
 				}
+				// Every pixel converged and was skipped this frame - keep
+				// reporting whatever m_sampleCount already held rather than
+				// kMaxSampleCount's raw, never-updated sentinel value.
+				if (!anyPixelUpdated) minSampleCount = m_sampleCount;
 			}
 			m_sampleCount = minSampleCount;
 
@@ -1051,38 +1115,20 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 			m_worldPosPrev = m_worldPos;
 			m_prevCameraBasis = m_cameraBasis;
 
-			// See useAdaptiveSampling()'s own comment - Stage 1 of this
-			// project's own adaptive-sampling plan wires the feature only to
-			// this debug visualization, not to GPU sampling yet. White where
-			// the pixel still needs sampling, black where
-			// pixel_convergence::has_converged() (src/shared/
-			// adaptive_sampling.h) says it's converged - deliberately NOT run
+			// Noise-heatmap debug view: white where m_activePixelMask says
+			// still-active, black where converged - deliberately NOT run
 			// through the ACES+sRGB tonemap below (this is a diagnostic
-			// overlay, not a radiance value). Computed on demand here rather
-			// than cached in a separate m_activeMask buffer - see
-			// m_pixelVariance's own comment (header) for why that buffer was
-			// removed as pure redundancy.
-			if (useAdaptiveSampling()) {
-				// has_converged() itself only requires Count()>=2 (Welford's
-				// variance is undefined below that), but a 2-sample variance
-				// ESTIMATE is not yet a trustworthy one - the CPU offline
-				// path this feature mirrors (src/TheRestOfYourLife/camera.h)
-				// never trusts its own identical estimator below
-				// min_samples_before_check (up to 32 raw samples) for exactly
-				// this reason. This is the same floor's spirit applied to
-				// this class's own per-frame-BATCH granularity (coarser than
-				// the CPU path's per-raw-sample one - m_pixelVariance's own
-				// header comment) rather than a literal copy of its formula,
-				// since a "batch" here already IS an m_spp-sample average.
-				constexpr int64_t kMinBatchesBeforeConverged = 8;
+			// overlay, not a radiance value). Reads the SAME mask this
+			// frame's render call and fold-in loop just used (built once,
+			// before the render call - see its own comment above) rather
+			// than recomputing has_converged() a second time, so the heatmap
+			// can never disagree with what was actually skipped this frame.
+			if (useAdaptive) {
 				for (int y = 0; y < m_height; ++y) {
 					uchar* row = m_displayImage.scanLine(y);
 					for (int x = 0; x < m_width; ++x) {
 						const int pixel = y * m_width + x;
-						const bool converged = m_pixelVariance[pixel].Count() >= kMinBatchesBeforeConverged &&
-							pixel_convergence::has_converged(m_pixelVariance[pixel], m_adaptiveSamplingThreshold,
-															  /*black_floor=*/1e-4, m_exposure);
-						const uchar v = converged ? uchar{0} : uchar{255};
+						const uchar v = m_activePixelMask[pixel] ? uchar{255} : uchar{0};
 						row[x * 3 + 0] = v;
 						row[x * 3 + 1] = v;
 						row[x * 3 + 2] = v;
