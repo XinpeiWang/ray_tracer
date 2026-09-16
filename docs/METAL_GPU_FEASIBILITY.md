@@ -1337,3 +1337,55 @@ terminate immediately instead.
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (added in the previous step)
 continues to pass.
+
+## 29. Proof-of-concept, step 19: Henyey-Greenstein phase function (directional fog) (done)
+
+Step 17's fog scattered isotropically - a constant `1/(4*pi)` phase
+function, uniform in every direction, chosen at the time because it
+needed no analogous non-conservative shortcut the way rough dielectric
+did (Section 21's own writeup made that comparison explicitly). Real fog
+and haze don't scatter uniformly - light continues mostly FORWARD after
+a scattering event (Mie scattering off water droplets is strongly
+forward-peaked), which is what makes real fog show visible "god rays"
+around a light source rather than a flat uniform glow. This replaces the
+constant isotropic phase function with Henyey-Greenstein (`
+henyeyGreensteinPhase()`/`sampleHenyeyGreenstein()`), the standard
+analytic directional phase model - same one pbrt-v4's own
+`HGPhaseFunction` implements - controlled by a new asymmetry parameter
+`g` (`uniforms.fogAsymmetryG`, positive = forward scattering).
+
+Both the phase VALUE (used for NEE) and its own importance-sampling
+distribution (used for the continuation ray) are defined relative to
+`wo` (the direction back toward where the ray came from, the exact same
+convention `-rayDir` already used by the GGX conductor code) - a
+property that made the MIS weighting simpler than the rough-dielectric
+or GGX cases needed: HG's own sampling pdf EQUALS its own phase-function
+value at the same angle exactly, a defining property of the
+distribution, so `henyeyGreensteinPhase()` alone serves as both the
+"BSDF" value AND its own competing MIS pdf, with no separate pdf
+expression to derive or verify against it. `g == 0` is not a separate
+code path either - it's the same formula's own documented degenerate
+case, which reduces exactly to the same uniform-over-the-sphere
+DISTRIBUTION step 17's isotropic phase function produced (a
+rotationally-invariant distribution is identical whether sampled
+relative to world axes or an arbitrary local frame like `wo`) - and
+`sampleUniformSphere()`, now genuinely unused, was deleted rather than
+left as dead code.
+
+**Result, verified three ways**: an isolated render at `g = 0`
+reproduces step 17's own isotropic haze look, no visible directional
+character. A strong verification render (`g = 0.9`, denser fog for
+legibility, not committed) shows an unmistakable glow/halo concentrated
+around both ceiling lights - the classic forward-scattering "god ray"
+signature no isotropic medium can produce, direct visual confirmation
+the directionality is real, not just a scalar brightness change. The
+committed scene (`g = 0.4`, a more modest asymmetry) shows a subtler
+version of the same effect layered into the existing haze. 700×700 @
+384spp @ depth 10 renders in ~37 seconds on an M2, statistically
+indistinguishable from step 18's own ~37s (the same number of shadow
+rays and bounces per scattering event either way - only which formula
+computes the phase value/sampled direction changed, not how many times
+it's evaluated).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

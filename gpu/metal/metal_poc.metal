@@ -78,6 +78,18 @@ struct Uniforms {
     // for materialType 3, sampled a completely different way. Purely
     // additive/toggleable, same pattern as every other uniform above.
     uint useEnvironmentMap;
+    // Henyey-Greenstein phase-function asymmetry, [-1,1]. 0 (isotropic)
+    // reproduces the same uniform-over-sphere DISTRIBUTION step 17's own
+    // isotropic phase function used (HG's own g==0 case reduces to
+    // uniform-over-sphere sampling, just relative to a local frame
+    // instead of absolute world axes - a rotationally-invariant
+    // distribution is identical either way) -
+    // not a separate toggle, this field alone controls both the isotropic
+    // and directional cases. Positive g = forward scattering (favours
+    // continuing roughly the same direction light was already travelling
+    // - fog/haze/water droplets in reality skew strongly forward, g
+    // around 0.7-0.9 in Mie scattering terms), negative = backward.
+    float fogAsymmetryG;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -351,23 +363,6 @@ inline float2 sampleUnitDisk(thread uint& rngState) {
     return float2(r * cos(theta), r * sin(theta));
 }
 
-// Uniform sample over the FULL sphere (4*pi steradians, pdf = 1/(4*pi)
-// everywhere) - an isotropic phase function's own scattering
-// distribution, used only by the fog/participating-medium code below.
-// Every other direction sampler in this POC (cosineSampleHemisphere,
-// sampleGGXVNDF) is a HEMISPHERE sampler oriented around a surface
-// normal; a volume scattering event has no surface/normal to orient
-// around at all, so this is a genuinely different sampling domain, not
-// a variant of an existing one.
-inline float3 sampleUniformSphere(thread uint& rngState) {
-    float u1 = randFloat(rngState);
-    float u2 = randFloat(rngState);
-    float z = 1.0 - 2.0 * u1;
-    float r = sqrt(max(0.0, 1.0 - z * z));
-    float phi = 2.0 * M_PI_F * u2;
-    return float3(r * cos(phi), r * sin(phi), z);
-}
-
 inline float3 cosineSampleHemisphere(float3 normal, thread uint& rngState) {
     float u1 = randFloat(rngState);
     float u2 = randFloat(rngState);
@@ -508,6 +503,51 @@ inline void buildOnb(float3 n, thread float3& tangent, thread float3& bitangent)
     float b = n.x * n.y * a;
     tangent = float3(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x);
     bitangent = float3(b, sign + n.y * n.y * a, -n.y);
+}
+
+// Henyey-Greenstein phase function - the standard analytic model for
+// directional (not just isotropic) volume scattering, same one pbrt-v4's
+// own HGPhaseFunction implements. `cosTheta` here is dot(wo, wi) in the
+// SAME `wo` convention the GGX conductor code above already uses (wo
+// points back toward where the ray came from, i.e. `-rayDir`) - under
+// that convention, g > 0 peaking at cosTheta == -1 (wi antiparallel to
+// wo, i.e. wi roughly EQUAL to the ray's own original travel direction)
+// is exactly "forward scattering," matching the physical convention;
+// getting this sign backwards is the single easiest mistake to make with
+// this formula, so it's called out explicitly rather than left to be
+// inferred from the algebra alone.
+inline float henyeyGreensteinPhase(float cosTheta, float g) {
+    float denom = 1.0 + g * g + 2.0 * g * cosTheta;
+    return (1.0 - g * g) / (4.0 * M_PI_F * denom * sqrt(max(denom, 1e-6)));
+}
+
+// Samples a direction from the HG phase function's own distribution
+// relative to `wo` (same convention as the evaluation function above -
+// the local frame's own Z axis IS wo, via buildOnb(), so the returned
+// direction's dot product with wo equals the sampled `cosTheta` by
+// construction, consistent with what henyeyGreensteinPhase() expects to
+// be called with for MIS/NEE against this same sample). At g == 0 this
+// reduces to a uniform-over-the-sphere DISTRIBUTION - a rotationally-
+// invariant distribution is identical whether sampled relative to world
+// axes or relative to an arbitrary local frame like `wo` - not a
+// separate code path that happens to agree, the same formula
+// degenerating correctly at its own
+// boundary case.
+inline float3 sampleHenyeyGreenstein(float3 wo, float g, thread uint& rngState) {
+    float u1 = randFloat(rngState);
+    float u2 = randFloat(rngState);
+    float cosTheta;
+    if (abs(g) < 1e-3) {
+        cosTheta = 1.0 - 2.0 * u1;
+    } else {
+        float sqrTerm = (1.0 - g * g) / (1.0 + g - 2.0 * g * u1);
+        cosTheta = -1.0 / (2.0 * g) * (1.0 + g * g - sqrTerm * sqrTerm);
+    }
+    float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+    float phi = 2.0 * M_PI_F * u2;
+    float3 tangent, bitangent;
+    buildOnb(wo, tangent, bitangent);
+    return sinTheta * cos(phi) * tangent + sinTheta * sin(phi) * bitangent + cosTheta * wo;
 }
 
 // Samples a half-vector from the GGX distribution of VISIBLE normals
@@ -741,11 +781,15 @@ kernel void primaryRayKernel(
 
                     // NEE from the scatter point - same sampleAreaLight()/
                     // area-to-solid-angle/MIS machinery every surface
-                    // material's own NEE branch already uses, with an
-                    // ISOTROPIC phase function (constant 1/(4*pi), no
-                    // cosine term - a volume scattering event has no
-                    // surface to cosine-weight against, unlike a BRDF)
-                    // standing in for the BSDF value. `exp(-sigmaT*dist)`
+                    // material's own NEE branch already uses, with the
+                    // Henyey-Greenstein phase function VALUE (no cosine
+                    // term - a volume scattering event has no surface to
+                    // cosine-weight against, unlike a BRDF) standing in
+                    // for the BSDF value. `wo` (direction back toward
+                    // where this ray came from) is captured BEFORE
+                    // `rayDir` gets overwritten below by the sampled
+                    // continuation direction, same `wo` convention the
+                    // GGX conductor code uses. `exp(-sigmaT*dist)`
                     // attenuates this shadow ray's own contribution by the
                     // medium's transmittance along ITS length too - the
                     // free-flight sampling above only accounts for the
@@ -753,7 +797,7 @@ kernel void primaryRayKernel(
                     // deterministic occlusion test that needs this factor
                     // applied explicitly or it would silently ignore the
                     // fog lying between the scatter point and the light.
-                    const float isotropicPhase = 1.0 / (4.0 * M_PI_F);
+                    float3 wo = -rayDir;
                     LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
                     float3 toLight = ls.point - scatterPoint;
                     float distSq = dot(toLight, toLight);
@@ -770,18 +814,29 @@ kernel void primaryRayKernel(
                             isect.intersect(shadowRay, accelStructure, functionTable);
                         if (shadowResult.type == intersection_type::none) {
                             float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
+                            // HG's own sampling pdf for direction wi EQUALS
+                            // its own phase function value at the same
+                            // cosTheta - a defining property (the phase
+                            // function IS already a normalized pdf over
+                            // the sphere), so the same call serves both as
+                            // the "BSDF" value AND its own competing MIS
+                            // pdf, no separate pdf expression needed the
+                            // way a surface BRDF's importance-sampled pdf
+                            // usually differs from its raw value.
+                            float phaseValue = henyeyGreensteinPhase(dot(wo, wi), uniforms.fogAsymmetryG);
                             float weight = (pdfSolidAngle * pdfSolidAngle)
-                                / (pdfSolidAngle * pdfSolidAngle + isotropicPhase * isotropicPhase);
+                                / (pdfSolidAngle * pdfSolidAngle + phaseValue * phaseValue);
                             float transmittance = exp(-uniforms.fogSigmaT * dist);
-                            radiance += throughput * isotropicPhase * ls.emission * transmittance
+                            radiance += throughput * phaseValue * ls.emission * transmittance
                                         / pdfSolidAngle * weight;
                         }
                     }
 
-                    rayDir = sampleUniformSphere(rngState);
+                    float3 newDir = sampleHenyeyGreenstein(wo, uniforms.fogAsymmetryG, rngState);
+                    rayDir = newDir;
                     rayOrigin = scatterPoint;
                     throughput *= float3(uniforms.fogAlbedo);
-                    bsdfPdf = isotropicPhase;
+                    bsdfPdf = henyeyGreensteinPhase(dot(wo, newDir), uniforms.fogAsymmetryG);
                     specularBounce = false;
                 }
             }
