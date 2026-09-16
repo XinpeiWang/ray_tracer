@@ -679,6 +679,47 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		10, 2);
 	liveRenderSettingsGrid->addWidget(m_liveFocusDistanceSpin, 10, 3);
 
+	// Adaptive sampling (Stage 1 of this project's own plan) - own row,
+	// grouped with the plain-checkbox rows above in spirit, but appended
+	// here at the end rather than renumbering rows 0-10 above to insert it
+	// earlier. Currently only drives the noise-heatmap debug view below,
+	// not real GPU sampling - see RealtimePreviewWorker::
+	// setAdaptiveSampling()'s own comment for the staging.
+	m_liveAdaptiveSamplingCheck = createLiveToggleCheckbox(tr("Adaptive Sampling"), m_liveAdaptiveSamplingEnabled, [this](bool checked) {
+		m_liveAdaptiveSamplingEnabled = checked;
+		saveLiveAdaptiveSamplingEnabled(checked);
+		pushLiveAdaptiveSamplingToSession();
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveAdaptiveSamplingCheck,
+		tr("Tracks how noisy each pixel still is and, once enabled, shows a "
+		"black-and-white heatmap instead of the normal preview: white where "
+		"a pixel is still noisy enough to need more samples (per the "
+		"Convergence Threshold below), black where it's already converged. "
+		"This is a diagnostic view for now - it doesn't yet change which "
+		"pixels actually get sampled.")),
+		11, 0, 1, 4);
+
+	m_liveAdaptiveSamplingThresholdSpin = new QDoubleSpinBox();
+	m_liveAdaptiveSamplingThresholdSpin->setRange(0.001, 0.5);
+	m_liveAdaptiveSamplingThresholdSpin->setSingleStep(0.005);
+	m_liveAdaptiveSamplingThresholdSpin->setDecimals(3);
+	m_liveAdaptiveSamplingThresholdSpin->setValue(m_liveAdaptiveSamplingThreshold);
+	styleSpinBox(m_liveAdaptiveSamplingThresholdSpin);
+	connect(m_liveAdaptiveSamplingThresholdSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_liveAdaptiveSamplingThreshold = value;
+		saveLiveAdaptiveSamplingThreshold(value);
+		pushLiveAdaptiveSamplingToSession();
+	});
+	liveRenderSettingsGrid->addWidget(labelWithInfo(tr("Convergence Threshold:"),
+		tr("How settled a pixel's brightness needs to be, relative to its "
+		"own noise level, before Adaptive Sampling above considers it "
+		"converged - lower values demand more certainty (more of the image "
+		"reads as still-noisy for longer) before treating a pixel as done. "
+		"0.01 matches this project's own CPU/offline --adaptive-threshold "
+		"default and Blender Cycles' own default.")),
+		12, 0);
+	liveRenderSettingsGrid->addWidget(m_liveAdaptiveSamplingThresholdSpin, 12, 1);
+
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
 	layout->addWidget(m_liveRenderSettingsGroupBox);

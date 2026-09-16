@@ -47,6 +47,8 @@ constexpr const char *kLivePreviewExposureKey = "livePreview/exposure";
 constexpr const char *kLivePreviewSamplesKey = "livePreview/samples";
 constexpr const char *kLivePreviewMaxDepthKey = "livePreview/maxDepth";
 constexpr const char *kLivePreviewFireflyClampKey = "livePreview/fireflyClamp";
+constexpr const char *kLivePreviewAdaptiveSamplingEnabledKey = "livePreview/adaptiveSamplingEnabled";
+constexpr const char *kLivePreviewAdaptiveSamplingThresholdKey = "livePreview/adaptiveSamplingThreshold";
 // SVGF advanced tuning - see gpu/optix/svgf_tuning_params.h's own comment for
 // each field's meaning and literature-default value.
 constexpr const char *kLivePreviewSvgfTemporalAlphaKey = "livePreview/svgfTemporalAlpha";

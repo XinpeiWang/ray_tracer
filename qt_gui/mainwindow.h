@@ -410,6 +410,13 @@ private:
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
 	void pushLiveFireflyClampToSession();
+	// Adaptive sampling (Stage 1 of this project's own plan) - bundles
+	// enabled+threshold in one push, matching setAdaptiveSampling()'s own
+	// two-argument shape (realtime_preview_session.h) rather than splitting
+	// into two independent pushes the way every OTHER pair above stays
+	// independent - there's no meaningful way to push just one half of this
+	// particular call.
+	void pushLiveAdaptiveSamplingToSession();
 	// SVGF's own advanced tuning knobs (gpu/optix/svgf_tuning_params.h) -
 	// bundled into one push helper since they're always sent together as a
 	// single SvgfTuningParams, unlike the independent knobs above.
@@ -521,6 +528,10 @@ private:
 	void saveLiveMaxDepth(int value) const;
 	double loadSavedLiveFireflyClamp() const;
 	void saveLiveFireflyClamp(double value) const;
+	bool loadSavedLiveAdaptiveSamplingEnabled() const;
+	void saveLiveAdaptiveSamplingEnabled(bool value) const;
+	double loadSavedLiveAdaptiveSamplingThreshold() const;
+	void saveLiveAdaptiveSamplingThreshold(double value) const;
 	// SVGF advanced tuning - one load/save pair per SvgfTuningParams field,
 	// same shape as the knobs above.
 	double loadSavedLiveSvgfTemporalAlpha() const;
@@ -1052,6 +1063,18 @@ private:
 	QSpinBox *m_liveMaxDepthSpinBox = nullptr;
 	double m_liveFireflyClamp = 50.0;
 	QDoubleSpinBox *m_liveFireflyClampSpin = nullptr;
+	// Adaptive sampling (Stage 1 of this project's own plan, src/shared/
+	// adaptive_sampling.h) - same shape as m_liveProbeCacheEnabled above,
+	// defaults false for the same reason (shipped WITH the feature, nothing
+	// to preserve). Threshold default 0.01 matches the CPU offline path's
+	// own --adaptive-threshold default (launcher/launcher_args.h) and
+	// Blender Cycles' own convention. Currently only drives Live Preview's
+	// noise-heatmap debug view, not real GPU sampling - see
+	// RealtimePreviewWorker::setAdaptiveSampling()'s own comment.
+	bool m_liveAdaptiveSamplingEnabled = false;
+	double m_liveAdaptiveSamplingThreshold = 0.01;
+	QCheckBox *m_liveAdaptiveSamplingCheck = nullptr;
+	QDoubleSpinBox *m_liveAdaptiveSamplingThresholdSpin = nullptr;
 	// Own top-level group on the Render Options tab (mainwindow_tabs_render.cpp),
 	// right after the Denoiser group - holds the ReSTIR GI/DI checkboxes and
 	// Exposure/Samples/Max Bounces/Firefly Clamp spinboxes above. Same

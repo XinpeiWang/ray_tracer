@@ -126,6 +126,26 @@ void RealtimePreviewWorker::resetAccumulation() {
 	m_accumScratch.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
 	m_sampleCountsScratch.assign(static_cast<size_t>(m_width) * m_height, 0);
 
+	// Adaptive-sampling variance/mask state - only allocated while the
+	// feature is actually in use this session, same "no cost when unused"
+	// gating m_accumHi gets from useTemporalUpscale() just below. A fresh
+	// VarianceEstimator/1 (active) is the correct "no history yet" starting
+	// point either way - has_converged() already requires Count()>=2 before
+	// ever reporting converged (adaptive_sampling.h), so a brand-new pixel
+	// reads as "still needs sampling" until real data arrives.
+	if (useAdaptiveSampling()) {
+		const size_t numPixels = static_cast<size_t>(m_width) * m_height;
+		m_pixelVariance.assign(numPixels, VarianceEstimator<double>{});
+		m_activeMask.assign(numPixels, uint8_t{1});
+		m_pixelVarianceScratch.assign(numPixels, VarianceEstimator<double>{});
+		m_activeMaskScratch.assign(numPixels, uint8_t{1});
+	} else {
+		m_pixelVariance.clear();
+		m_activeMask.clear();
+		m_pixelVarianceScratch.clear();
+		m_activeMaskScratch.clear();
+	}
+
 	// Temporal upscale's own higher-resolution reconstruction buffers - only
 	// allocated (Wh*Hh-sized) while the feature is ACTUALLY going to be used
 	// this session, cleared to empty otherwise so a disabled/inactive session
@@ -247,6 +267,23 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 	std::vector<float> &newAccum = m_accumScratch;
 	std::vector<uint16_t> &newSampleCounts = m_sampleCountsScratch;
 
+	// A pixel's noise level is a property of the SURFACE visible there
+	// (material roughness, light visibility), not of the camera pose - if
+	// the disocclusion test below already accepted this pixel's color
+	// history as valid to carry forward, its noise-level history is valid
+	// to carry forward for the same reason, not reset to "freshly noisy"
+	// (see this project's own adaptive-sampling plan for why resetting
+	// variance-but-not-color would be actively counterproductive: it would
+	// force needless resampling right when reprojection was supposed to be
+	// saving work). Guarded on useAdaptiveSampling() since these buffers
+	// are only sized (and only meaningful) while the feature is in use -
+	// see resetAccumulation()'s own comment.
+	const bool trackVariance = useAdaptiveSampling();
+	if (trackVariance) {
+		std::fill(m_pixelVarianceScratch.begin(), m_pixelVarianceScratch.end(), VarianceEstimator<double>{});
+		std::fill(m_activeMaskScratch.begin(), m_activeMaskScratch.end(), uint8_t{1});
+	}
+
 	for (int y = 0; y < m_height; ++y) {
 		for (int x = 0; x < m_width; ++x) {
 			const int pixel = y * m_width + x;
@@ -275,6 +312,10 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 			newAccum[newColorIdx + 1] = m_accum[oldColorIdx + 1];
 			newAccum[newColorIdx + 2] = m_accum[oldColorIdx + 2];
 			newSampleCounts[pixel] = std::min(m_sampleCounts[oldPixel], kMaxHistorySamples);
+			if (trackVariance) {
+				m_pixelVarianceScratch[pixel] = m_pixelVariance[oldPixel];
+				m_activeMaskScratch[pixel] = m_activeMask[oldPixel];
+			}
 		}
 	}
 
@@ -285,6 +326,10 @@ void RealtimePreviewWorker::reprojectAccumulation() {
 	// contents), ready to be built into again.
 	std::swap(m_accum, newAccum);
 	std::swap(m_sampleCounts, newSampleCounts);
+	if (trackVariance) {
+		std::swap(m_pixelVariance, m_pixelVarianceScratch);
+		std::swap(m_activeMask, m_activeMaskScratch);
+	}
 }
 
 // Temporal upscale's own reprojection (see this project's own plan) - same
@@ -397,6 +442,20 @@ void RealtimePreviewWorker::reprojectAccumulationHi() {
 	// no allocation).
 	std::swap(m_accumHi, newAccumHi);
 	std::swap(m_worldPosHi, newWorldPosHi);
+}
+
+// See m_activeMask's own comment. Reuses pixel_convergence::has_converged()
+// (src/shared/adaptive_sampling.h) verbatim - same relative-standard-error-
+// vs-threshold test, near-black short-circuit, and exposure handling the
+// CPU offline path already uses, just fed this class's own per-frame-batch
+// variance estimate instead of per-raw-sample ones.
+void RealtimePreviewWorker::updateActiveMask() {
+	const int numPixels = m_width * m_height;
+	for (int pixel = 0; pixel < numPixels; ++pixel) {
+		const bool converged = pixel_convergence::has_converged(
+			m_pixelVariance[pixel], m_adaptiveSamplingThreshold, /*black_floor=*/1e-4, m_exposure);
+		m_activeMask[pixel] = converged ? uint8_t{0} : uint8_t{1};
+	}
 }
 
 void RealtimePreviewWorker::start(QString sceneId, int width, int height, double camX, double camY, double camZ,
@@ -596,6 +655,26 @@ void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
 void RealtimePreviewWorker::setFireflyClamp(double fireflyClamp) {
 	if (!m_running) return;
 	m_fireflyClamp = fireflyClamp;
+}
+
+void RealtimePreviewWorker::setAdaptiveSampling(bool enabled, double threshold) {
+	// NOT gated on m_running - see this method's own header comment. When
+	// called before start() (m_running still false), wasUsingIt is forced
+	// false so no premature resetAccumulation() runs against m_width/
+	// m_height's still-stale values; start()'s own unconditional
+	// resetAccumulation() call picks up the already-set members correctly
+	// once real dimensions are in place.
+	const bool wasUsingIt = m_running && useAdaptiveSampling();
+	m_adaptiveSamplingEnabled = enabled;
+	m_adaptiveSamplingThreshold = threshold;
+	// Same "only reset when the EFFECTIVE allocation-affecting state
+	// changes" reasoning as setTemporalUpscale()/setNeuralUpscale() - a
+	// threshold-only change while already enabled (or staying disabled)
+	// touches no buffer's size, so resetAccumulation() would just discard
+	// real accumulation progress for nothing.
+	if (m_running && useAdaptiveSampling() != wasUsingIt) {
+		resetAccumulation();
+	}
 }
 
 void RealtimePreviewWorker::setSvgfTuning(double temporalAlpha, double maxHistoryLength,
@@ -910,6 +989,12 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				constexpr uint16_t kMaxSampleCount = 65535;
 				minSampleCount = kMaxSampleCount;
 				const int numPixels = m_width * m_height;
+				// See m_pixelVariance's own comment - fed the same m_tmp batch
+				// average m_accum's own mean folds in below, one .Add() per
+				// pixel per iteration. Checked once here rather than per-pixel
+				// (useAdaptiveSampling() is a handful of bool reads, not worth
+				// re-evaluating 3x per pixel via a branch inside the hot loop).
+				const bool trackVariance = useAdaptiveSampling();
 				for (int pixel = 0; pixel < numPixels; ++pixel) {
 					const int n = m_sampleCounts[pixel];
 					const size_t idx = static_cast<size_t>(pixel) * 3;
@@ -918,7 +1003,12 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 					}
 					if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
 					minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
+					if (trackVariance) {
+						m_pixelVariance[pixel].Add(
+							pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]));
+					}
 				}
+				if (trackVariance) updateActiveMask();
 			}
 			m_sampleCount = minSampleCount;
 
@@ -928,30 +1018,51 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 			m_worldPosPrev = m_worldPos;
 			m_prevCameraBasis = m_cameraBasis;
 
-			// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
-			// project's CPU/GPU display convention exactly - see tone_map.h)
-			// into m_displayImage IN PLACE. Tonemapping the per-call noisy
-			// sample instead would defeat the whole point of accumulating in
-			// linear space first.
-			for (int y = 0; y < m_height; ++y) {
-				uchar* row = m_displayImage.scanLine(y);
-				for (int x = 0; x < m_width; ++x) {
-					const size_t idx = (static_cast<size_t>(y) * m_width + x) * 3;
-					double r = m_accum[idx + 0], g = m_accum[idx + 1], b = m_accum[idx + 2];
-					if (!std::isfinite(r)) r = 0.0;
-					if (!std::isfinite(g)) g = 0.0;
-					if (!std::isfinite(b)) b = 0.0;
-					// Same exposure multiply the batch/CLI path applies right
-					// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
-					// see m_exposure's own comment for why Live Preview needs this
-					// pulled down further than batch's default for the same scene.
-					r *= m_exposure; g *= m_exposure; b *= m_exposure;
-					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
-					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
-					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
-					row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
-					row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
-					row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+			// See useAdaptiveSampling()'s own comment - Stage 1 of this
+			// project's own adaptive-sampling plan wires the feature only to
+			// this debug visualization, not to GPU sampling yet. White where
+			// m_activeMask says "still needs sampling", black where it's
+			// converged - a direct, 1:1 view of the exact boolean decision a
+			// later stage will act on, deliberately NOT run through the
+			// ACES+sRGB tonemap below (this is a diagnostic overlay, not a
+			// radiance value).
+			if (useAdaptiveSampling()) {
+				for (int y = 0; y < m_height; ++y) {
+					uchar* row = m_displayImage.scanLine(y);
+					for (int x = 0; x < m_width; ++x) {
+						const int pixel = y * m_width + x;
+						const uchar v = m_activeMask[pixel] ? uchar{255} : uchar{0};
+						row[x * 3 + 0] = v;
+						row[x * 3 + 1] = v;
+						row[x * 3 + 2] = v;
+					}
+				}
+			} else {
+				// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
+				// project's CPU/GPU display convention exactly - see tone_map.h)
+				// into m_displayImage IN PLACE. Tonemapping the per-call noisy
+				// sample instead would defeat the whole point of accumulating in
+				// linear space first.
+				for (int y = 0; y < m_height; ++y) {
+					uchar* row = m_displayImage.scanLine(y);
+					for (int x = 0; x < m_width; ++x) {
+						const size_t idx = (static_cast<size_t>(y) * m_width + x) * 3;
+						double r = m_accum[idx + 0], g = m_accum[idx + 1], b = m_accum[idx + 2];
+						if (!std::isfinite(r)) r = 0.0;
+						if (!std::isfinite(g)) g = 0.0;
+						if (!std::isfinite(b)) b = 0.0;
+						// Same exposure multiply the batch/CLI path applies right
+						// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
+						// see m_exposure's own comment for why Live Preview needs this
+						// pulled down further than batch's default for the same scene.
+						r *= m_exposure; g *= m_exposure; b *= m_exposure;
+						r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+						g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+						b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+						row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
+						row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
+						row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+					}
 				}
 			}
 		}
@@ -1095,4 +1206,9 @@ void RealtimePreviewSession::setSvgfTuning(double temporalAlpha, double maxHisto
 		Q_ARG(double, temporalAlpha), Q_ARG(double, maxHistoryLength), Q_ARG(double, varianceBootstrapFrames),
 		Q_ARG(int, varianceBootstrapRadius), Q_ARG(double, sigmaNormal), Q_ARG(double, sigmaDepth),
 		Q_ARG(double, sigmaLuminance), Q_ARG(int, atrousRadius), Q_ARG(double, minAlbedo), Q_ARG(int, atrousPasses));
+}
+
+void RealtimePreviewSession::setAdaptiveSampling(bool enabled, double threshold) {
+	QMetaObject::invokeMethod(m_worker, "setAdaptiveSampling", Qt::QueuedConnection,
+		Q_ARG(bool, enabled), Q_ARG(double, threshold));
 }

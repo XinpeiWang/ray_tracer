@@ -1668,6 +1668,7 @@ void MainWindow::startLivePreview() {
 	// queued AFTER start() would only take effect starting with frame 2.
 	m_livePreviewSession->setExposure(m_liveExposure);
 	pushLiveSvgfTuningToSession();
+	pushLiveAdaptiveSamplingToSession();
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z,
 								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
 								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
@@ -1893,6 +1894,11 @@ void MainWindow::pushLiveSppMaxDepthToSession() {
 void MainWindow::pushLiveFireflyClampToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setFireflyClamp(m_liveFireflyClamp);
+}
+
+void MainWindow::pushLiveAdaptiveSamplingToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setAdaptiveSampling(m_liveAdaptiveSamplingEnabled, m_liveAdaptiveSamplingThreshold);
 }
 
 void MainWindow::pushLiveSvgfTuningToSession() {
@@ -2239,6 +2245,26 @@ double MainWindow::loadSavedLiveFireflyClamp() const {
 void MainWindow::saveLiveFireflyClamp(double value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewFireflyClampKey, value);
+}
+
+bool MainWindow::loadSavedLiveAdaptiveSamplingEnabled() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewAdaptiveSamplingEnabledKey, false).toBool();
+}
+
+void MainWindow::saveLiveAdaptiveSamplingEnabled(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewAdaptiveSamplingEnabledKey, value);
+}
+
+double MainWindow::loadSavedLiveAdaptiveSamplingThreshold() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLivePreviewAdaptiveSamplingThresholdKey, 0.01).toDouble();
+}
+
+void MainWindow::saveLiveAdaptiveSamplingThreshold(double value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewAdaptiveSamplingThresholdKey, value);
 }
 
 double MainWindow::loadSavedLiveSvgfTemporalAlpha() const {

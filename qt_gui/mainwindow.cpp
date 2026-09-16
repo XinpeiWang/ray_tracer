@@ -864,6 +864,8 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	m_liveSamples = loadSavedLiveSamples();
 	m_liveMaxDepth = loadSavedLiveMaxDepth();
 	m_liveFireflyClamp = loadSavedLiveFireflyClamp();
+	m_liveAdaptiveSamplingEnabled = loadSavedLiveAdaptiveSamplingEnabled();
+	m_liveAdaptiveSamplingThreshold = loadSavedLiveAdaptiveSamplingThreshold();
 	m_liveSvgfTemporalAlpha = loadSavedLiveSvgfTemporalAlpha();
 	m_liveSvgfMaxHistoryLength = loadSavedLiveSvgfMaxHistoryLength();
 	m_liveSvgfVarianceBootstrapFrames = loadSavedLiveSvgfVarianceBootstrapFrames();
