@@ -556,3 +556,64 @@ visible feature took one new helper function, one new host-side buffer,
 and reusing the existing per-corner indexing convention - genuinely
 incremental, no new Metal API surface, no debugging odyssey like sections
 9 and 11's custom-primitive work needed.
+
+## 16. Proof-of-concept, step 8: texture mapping (done)
+
+Every material so far has been a flat, hardcoded colour. This step adds
+a fourth material type (`materialType == 3`, textured Lambertian) that
+samples a real image instead: the back wall now shows `images/
+earthmap.jpg`, decoded via the already-vendored `stb_image.h` (no new
+third-party dependency - `metal_poc.mm` already carried `stb_image_write.h`
+for PNG output since step 1; adding the matching read-side header is a
+one-line include, `STB_IMAGE_IMPLEMENTATION`/`STB_IMAGE_WRITE_IMPLEMENTATION`
+each guard their own single translation unit so there's no ODR conflict
+having both in one file).
+
+This is genuinely new Metal API surface for this POC: `texture2d<float,
+access::sample>` as a kernel parameter, a `constexpr sampler` (`coord::
+normalized, address::repeat, filter::linear`), and `MTLTexture` host-side
+upload via `replaceRegion:mipmapLevel:withBytes:bytesPerRow:` - none of
+the previous seven steps touched texture objects at all (`outTexture`,
+present since step 1, is `access::write`-only, the render target, not a
+sampled input). UV coordinates needed their own new per-triangle-corner
+buffer (`uvs`, buffer index 8), following the exact same indexing
+convention steps 7's normal buffer established: parallel to `vertices`,
+one value per triangle corner, read back in the shader via a new
+`texCoordFor()` barycentric-interpolation helper that's structurally
+identical to `shadingNormalFor()` but blends `float2` instead of `float3`.
+
+`addQuad()` now generates a standard planar `(0,0)-(1,0)-(1,1)-(0,1)`
+UV mapping across its four corners for every quad it builds (not just the
+one that ends up textured) - harmless, since the shader only ever reads
+`uvs` when `materialType == 3`, and it means any future quad can become
+textured by changing one argument rather than re-deriving UVs later.
+`loadObjMesh()` gained the same `uvs` output parameter for buffer-layout
+parity, but pushes all-zero filler: `suzanne.obj` has no `vt` data and
+stays `materialType 0`, so those UVs are declared but never sampled -
+parsing real `vt`/`f v/vt/vn` tokens was judged out of scope for this
+increment (the OBJ loader would need a third fan-triangulation-surviving
+index alongside `posIdx`/`normalIdx`, doable but a separate, cleaner change
+than bolting it onto a same-PR texture increment).
+
+**Result, visually confirmed**: the back wall renders the Earth map
+correctly - continents, cloud bands, and the equirectangular grid lines
+all sharp and correctly oriented, with `address::repeat` + `filter::linear`
+producing clean bilinear sampling and no visible seams. The glass sphere's
+refraction/reflection correctly picks up the textured wall too, confirming
+the texture is read through the same BSDF/path-tracing machinery as every
+other material, not a separate special-cased code path. 700×700 @ 256spp @
+depth 10 renders in ~8.5 seconds on an M2 - the texture sample itself adds
+no measurable cost over step 7's ~9.9s (if anything faster, within this
+POC's run-to-run noise, since a single `.sample()` call per bounce is
+cheap relative to everything else already happening per-ray).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and run correctly, and both resolve `images/earthmap.jpg` via the
+same `RT_MODELS_DIR`-relative-sibling-directory pattern (`RT_MODELS_DIR`
+points at `<repo>/models`; `images/` is `<repo>/images`, so `..`-ing up
+one level from `RT_MODELS_DIR` and appending `images` reaches it from an
+out-of-tree build directory the same way the existing `RT_METAL_SHADER_DIR`/
+`RT_MODELS_DIR` definitions already do for the shader source and Suzanne).
+A missing-file fallback (a solid white 1×1 texture) keeps the shader's
+always-bound texture slot valid even if `earthmap.jpg` can't be found,
+rather than crashing or reading undefined data.
