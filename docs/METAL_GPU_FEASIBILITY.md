@@ -884,3 +884,57 @@ dielectric it's based on).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 22. Proof-of-concept, step 14: camera (shutter) motion blur (done)
+
+A camera translation (`Uniforms::cameraVelocity`, world-space, full
+displacement over the frame's simulated [0,1] shutter interval) applied
+to the primary ray's origin, weighted by a per-SAMPLE uniform-random
+shutter time drawn the same way the existing pixel jitter and DOF lens
+sample already are - different samples for the same pixel see the camera
+at different points along its path, and the multi-sample averaging loop
+every other feature in this POC already reuses is what produces the
+blur, no separate accumulation/reprojection pass needed.
+`cameraVelocity == (0,0,0)` (every earlier PR's own scenes) makes every
+sample use the identical origin regardless of its sampled time - the
+original static camera exactly, purely additive like `lensRadius == 0`.
+
+**Deliberately scoped to CAMERA motion, not object motion**: a moving
+custom (bounding-box) primitive would need the per-sample shutter time
+threaded into `sphereIntersectionFunction` itself, which has its own,
+separate argument table (bound via `MTLIntersectionFunctionTable`, not
+shared with the calling kernel's buffers - documented back in section 11)
+- doable, but genuinely new, uninvestigated Metal API surface (whether/how
+a custom intersection function's `[[buffer(N)]]` table can carry a value
+that varies per-thread per-sample, not just per-primitive) rather than a
+known quantity. Camera motion blur needed none of that: the whole effect
+lives in primary-ray generation, touching nothing downstream of it - a
+deliberately similar risk profile to step 11's own DOF addition.
+
+Tuning the velocity's magnitude took two passes: the initial value
+(0.12 world units over the shutter) produced an almost illegibly smeared
+frame - the room is only ~2 units across and the camera is several units
+away, so even a "small-looking" translation is a large angular sweep at
+that scale. Settled on 0.015 for the committed scene, subtle enough to
+read as a deliberate stylistic choice layered on top of the existing
+depth-of-field blur rather than looking like a broken/noisy render.
+
+**Result, verified two ways**: an isolated render (motion blur only,
+`lensRadius = 0`) at a larger velocity (0.06, chosen purely to make the
+effect unambiguous for this one verification image) shows a horizontal
+smear across the ENTIRE frame regardless of depth - correctly distinct
+from DOF's own depth-DEPENDENT blur (which leaves the focus plane sharp
+and blurs progressively with distance from it), confirming this is
+genuinely a different blur mechanism, not DOF's code path accidentally
+doing double duty. The committed combined render (motion blur + DOF
+together, both live in the same default scene now) shows a subtle
+additional directional streak on top of the existing focus falloff,
+most visible in the specular highlights on the metal/glass spheres and
+the ceiling lights' own edges - exactly where motion blur reads most
+clearly in real photography and other renderers. 700×700 @ 256spp @
+depth 10 renders in ~16 seconds on an M2, statistically indistinguishable
+from step 13's own ~16s (one more scalar multiply-add in ray generation,
+not a new per-bounce cost).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.
