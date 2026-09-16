@@ -382,6 +382,16 @@ extern "C" int optix_render_main(
 		// otherwise keep allocating/populating d_worldPos_/d_worldPosHistory_
 		// it never asked for and this function never reads back.
 		g_renderer->enableWorldPosOutput(false);
+		// Same leaked-state class as the three flags above, but a dangling
+		// pointer rather than a stale bool: a prior Live Preview call with
+		// adaptive sampling on leaves activePixelMaskHost_ pointing at THAT
+		// call's own mask buffer (e.g. a Qt worker's per-session vector, or
+		// - as this project's own tests do - a local std::vector already
+		// destroyed by the time a later batch render runs on this same
+		// process-lifetime singleton). WavefrontPathTracer::render() would
+		// cudaMemcpyAsync from that dangling pointer - a use-after-free read,
+		// not just a stale-boolean logic bug like its siblings.
+		g_renderer->setActivePixelMask(nullptr);
 
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;

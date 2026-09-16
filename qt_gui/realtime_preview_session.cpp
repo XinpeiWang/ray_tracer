@@ -784,13 +784,36 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	// comment) rather than a literal copy of its formula.
 	const bool useAdaptive = useAdaptiveSampling();
 	if (useAdaptive) {
-		constexpr int64_t kMinBatchesBeforeConverged = 8;
-		const int numPixels = m_width * m_height;
-		for (int pixel = 0; pixel < numPixels; ++pixel) {
-			const bool converged = m_pixelVariance[pixel].Count() >= kMinBatchesBeforeConverged &&
-				pixel_convergence::has_converged(m_pixelVariance[pixel], m_adaptiveSamplingThreshold,
-												  /*black_floor=*/1e-4, m_exposure);
-			m_activePixelMask[pixel] = converged ? uint8_t{0} : uint8_t{1};
+		if (cameraJustMoved) {
+			// Load-bearing, not just an optimization skip: m_pixelVariance
+			// still reflects the OLD camera's screen alignment right now -
+			// reprojectAccumulation() (below, after the render call) is what
+			// remaps it into the NEW alignment, and it can only do that once
+			// THIS frame's own world-position buffer exists, which the
+			// render() call this very mask feeds into is what produces. So
+			// there is no way to know, at this point, which pixels the move
+			// is about to disocclude - has_converged() against the
+			// pre-move variance would mark a soon-to-be-disoccluded pixel
+			// "converged" from whatever UNRELATED content used to be at that
+			// screen position, and both the GPU and the fold-in loop below
+			// would then skip resampling it for this frame, leaving it at
+			// reprojectAccumulation()'s own zero-fill for a disoccluded
+			// pixel with no real sample to replace it - a one-frame-late,
+			// incorrect "converged" readout right at the moving edges the
+			// user is actively looking at. Forcing every pixel active on
+			// exactly the frame the camera moves costs one frame of the
+			// optimization; convergence resumes normally next frame, built
+			// from the now-correctly-reprojected variance below.
+			std::fill(m_activePixelMask.begin(), m_activePixelMask.end(), uint8_t{1});
+		} else {
+			constexpr int64_t kMinBatchesBeforeConverged = 8;
+			const int numPixels = m_width * m_height;
+			for (int pixel = 0; pixel < numPixels; ++pixel) {
+				const bool converged = m_pixelVariance[pixel].Count() >= kMinBatchesBeforeConverged &&
+					pixel_convergence::has_converged(m_pixelVariance[pixel], m_adaptiveSamplingThreshold,
+													  /*black_floor=*/1e-4, m_exposure);
+				m_activePixelMask[pixel] = converged ? uint8_t{0} : uint8_t{1};
+			}
 		}
 	}
 
@@ -1048,7 +1071,6 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				// box filter, no splatting).
 				constexpr uint16_t kMaxSampleCount = 65535;
 				minSampleCount = kMaxSampleCount;
-				const int numPixels = m_width * m_height;
 				// See m_pixelVariance's own comment - fed the same m_tmp batch
 				// average m_accum's own mean folds in below, one .Add() per
 				// pixel per iteration. Just an alias for the already-computed
@@ -1062,43 +1084,71 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				// frame) fall back to the PREVIOUS m_sampleCount afterward
 				// instead of reporting kMaxSampleCount's raw sentinel value.
 				bool anyPixelUpdated = false;
-				for (int pixel = 0; pixel < numPixels; ++pixel) {
-					// Load-bearing: a pixel useAdaptive marked inactive this
-					// frame (m_activePixelMask built above, before the render
-					// call) was never resampled GPU-side either - the SAME
-					// mask crossed the DLL boundary this call - so m_tmp holds
-					// nothing meaningful for it (normalize_framebuffer's own
-					// zero-weight guard leaves a never-enqueued pixel at
-					// black). Skipping the mean/count/variance update entirely
-					// leaves it exactly as it was, rather than dragging an
-					// already-converged pixel toward black. See
-					// wf_adaptive_pixel_active()'s own comment (gpu/optix/
-					// wavefront_svgf_math.h) for the GPU-side half of this gate.
-					if (useAdaptive && !m_activePixelMask[pixel]) continue;
-					anyPixelUpdated = true;
-					const int n = m_sampleCounts[pixel];
-					const size_t idx = static_cast<size_t>(pixel) * 3;
-					for (int c = 0; c < 3; ++c) {
-						m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) / static_cast<float>(n + 1);
-					}
-					if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
-					minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
-					if (trackVariance) {
-						const double lum = pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]);
-						// A NaN/Inf raw sample (a degenerate BSDF/light-sampling
-						// case the firefly clamp doesn't always catch) would
-						// otherwise permanently poison this pixel's Welford
-						// mean/S to NaN - has_converged()'s comparisons against
-						// NaN are always false, so that pixel would get stuck
-						// reading "still needs sampling" forever with no
-						// self-correction, unlike m_accum's own display (a few
-						// lines below) which already guards isfinite() before
-						// use. Simplest fix: just don't feed a non-finite
-						// sample into the estimator at all - skipping one
-						// batch's worth of variance data for one pixel is
-						// harmless.
-						if (std::isfinite(lum)) {
-							m_pixelVariance[pixel].Add(lum);
+				// Row-major (not a flat 0..numPixels loop) so the noise-
+				// heatmap write below (useAdaptive only) can share this same
+				// pass instead of a second full-resolution walk afterward -
+				// scanLine(y) is looked up once per row here, same call
+				// frequency the heatmap's own separate loop already paid,
+				// rather than once per PIXEL if that write were bolted onto
+				// a flat per-pixel loop instead.
+				for (int y = 0; y < m_height; ++y) {
+					uchar* row = useAdaptive ? m_displayImage.scanLine(y) : nullptr;
+					for (int x = 0; x < m_width; ++x) {
+						const int pixel = y * m_width + x;
+						if (useAdaptive) {
+							// Noise-heatmap debug view: white where still-
+							// active, black where converged - deliberately
+							// NOT run through the ACES+sRGB tonemap below
+							// (this is a diagnostic overlay, not a radiance
+							// value). Written for EVERY pixel here (active or
+							// not), before the skip-gate just below, so an
+							// inactive pixel still gets its (black) heatmap
+							// byte even though it skips the rest of this
+							// iteration.
+							const uchar v = m_activePixelMask[pixel] ? uchar{255} : uchar{0};
+							row[x * 3 + 0] = v;
+							row[x * 3 + 1] = v;
+							row[x * 3 + 2] = v;
+						}
+						// Load-bearing: a pixel useAdaptive marked inactive
+						// this frame (m_activePixelMask built above, before
+						// the render call) was never resampled GPU-side
+						// either - the SAME mask crossed the DLL boundary
+						// this call - so m_tmp holds nothing meaningful for
+						// it (normalize_framebuffer's own zero-weight guard
+						// leaves a never-enqueued pixel at black). Skipping
+						// the mean/count/variance update entirely leaves it
+						// exactly as it was, rather than dragging an
+						// already-converged pixel toward black. See
+						// wf_adaptive_pixel_active()'s own comment (gpu/optix/
+						// wavefront_svgf_math.h) for the GPU-side half of
+						// this gate.
+						if (useAdaptive && !m_activePixelMask[pixel]) continue;
+						anyPixelUpdated = true;
+						const int n = m_sampleCounts[pixel];
+						const size_t idx = static_cast<size_t>(pixel) * 3;
+						for (int c = 0; c < 3; ++c) {
+							m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) / static_cast<float>(n + 1);
+						}
+						if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
+						minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
+						if (trackVariance) {
+							const double lum = pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]);
+							// A NaN/Inf raw sample (a degenerate BSDF/light-sampling
+							// case the firefly clamp doesn't always catch) would
+							// otherwise permanently poison this pixel's Welford
+							// mean/S to NaN - has_converged()'s comparisons against
+							// NaN are always false, so that pixel would get stuck
+							// reading "still needs sampling" forever with no
+							// self-correction, unlike m_accum's own display (a few
+							// lines below) which already guards isfinite() before
+							// use. Simplest fix: just don't feed a non-finite
+							// sample into the estimator at all - skipping one
+							// batch's worth of variance data for one pixel is
+							// harmless.
+							if (std::isfinite(lum)) {
+								m_pixelVariance[pixel].Add(lum);
+							}
 						}
 					}
 				}
@@ -1123,18 +1173,10 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 			// before the render call - see its own comment above) rather
 			// than recomputing has_converged() a second time, so the heatmap
 			// can never disagree with what was actually skipped this frame.
-			if (useAdaptive) {
-				for (int y = 0; y < m_height; ++y) {
-					uchar* row = m_displayImage.scanLine(y);
-					for (int x = 0; x < m_width; ++x) {
-						const int pixel = y * m_width + x;
-						const uchar v = m_activePixelMask[pixel] ? uchar{255} : uchar{0};
-						row[x * 3 + 0] = v;
-						row[x * 3 + 1] = v;
-						row[x * 3 + 2] = v;
-					}
-				}
-			} else {
+			// useAdaptive's own display (the noise heatmap) was already
+			// written above, merged into the fold-in loop itself - nothing
+			// left to do here for that case.
+			if (!useAdaptive) {
 				// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
 				// project's CPU/GPU display convention exactly - see tone_map.h)
 				// into m_displayImage IN PLACE. Tonemapping the per-call noisy
