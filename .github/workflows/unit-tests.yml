@@ -26,7 +26,20 @@ jobs:
 
       - name: Configure (CMake)
         working-directory: tests
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+        # No explicit -G here on purpose: CMake auto-selects the newest
+        # installed Visual Studio generator on Windows when none is given.
+        # This job used to hardcode -G "Visual Studio 17 2022", which
+        # broke outright (not flaky - every single run failed with "could
+        # not find any instance of Visual Studio") once GitHub's own
+        # windows-latest image moved to windows-2025-vs2026 (Visual Studio
+        # 2026, whose own CMake generator is a DIFFERENT string, "Visual
+        # Studio 18 2026", added in CMake 4.2) - VS 2022 itself is no
+        # longer installed on that image at all. Every run in this
+        # project's own history was silently treating that hard failure
+        # as "expected pre-existing noise" instead of a real, fixable bug.
+        # Letting CMake auto-detect avoids hardcoding a version string
+        # that will go stale again the next time GitHub bumps the image.
+        run: cmake -B build -A x64
 
       - name: Build (Release)
         working-directory: tests
