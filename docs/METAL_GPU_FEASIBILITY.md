@@ -3435,3 +3435,61 @@ material already uses).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests) continues to pass.
+
+## 68. Fixing a real tangent-frame seam bug in the anisotropic conductor (done)
+
+Found via code review, not symptom-chasing (the same discipline that
+found this session's earlier bugs) while surveying `src/shared/
+microfacet.h` for anything else worth porting: its own
+`BuildArbitraryTangentFrame()` comment explicitly documents replacing
+an EARLIER construction - "pick whichever of world X/Y is less
+parallel to n" - because it "had a hard discontinuity at |n.x|=0.9...
+invisible while roughness was always isotropic..., but a real, visible
+seam on curved surfaces once real per-axis alpha made the frame's
+orientation matter." `metal_poc.metal`'s own `buildAnisotropicOnb()`
+turned out to be EXACTLY that already-fixed-elsewhere construction,
+unfixed here: `if (abs(dot(refDir, normal)) > 0.999) refDir = ...` -
+a hard switch between two different world reference axes, with no
+continuous transition as `normal` crosses that threshold. Its ONLY
+caller is materialType 4 (the genuinely anisotropic - alphaX != alphaY
+- GGX conductor sphere, gold-tinted since section 66); isotropic
+callers would never have noticed, since an isotropic GGX lobe is
+rotationally symmetric in the tangent plane and the frame's own
+orientation never affects the result there.
+
+The fix ports `BuildArbitraryTangentFrame()` verbatim (Duff, Burgess,
+Christensen, Hery, Kensler, Liani, Villemin, "Building an Orthonormal
+Basis, Revisited," JCGT 2017) into `buildAnisotropicOnb()`'s own body -
+same name, same call site, only the internals change. This
+construction has NO singularity anywhere on the unit sphere (the
+denominator `sign + normal.z` is bounded away from zero for every
+possible unit normal, confirmed algebraically: it's in `[1,2]` when
+`normal.z >= 0` and `[-2,-1]` otherwise, never near zero) - a
+genuinely different guarantee from the threshold-based construction it
+replaces, not just a differently-placed threshold.
+
+**Verified three ways**: (1) a new device-side test kernel
+(`test_buildAnisotropicOnb`) plus a matching `metal_poc_shader_tests.mm`
+case checks orthonormality (tangent/bitangent both unit length, all
+three of tangent/bitangent/normal mutually perpendicular) at 6
+directions - including both exact poles (`(0,0,+-1)`) and a pair of
+directions straddling the OLD construction's own 0.999-threshold
+(one just inside, one just outside) - every case must pass, since the
+new construction has no special/degenerate directions to exempt,
+unlike a test that only checked "easy" arbitrary directions would have
+been able to claim; deliberately corrupted one expected value,
+confirmed the suite caught it, then reverted. (2) A before/after render
+of the gold sphere's own screen region shows a REAL, substantial change
+(54.5% of its subpixels differ by more than 3, mean absolute difference
+17.4) - switching construction methods changes the entire normal-to-
+tangent mapping, not just a localized seam region, so a broad
+difference here is the EXPECTED signature of a correct fix, not a
+red flag. (3) Visual inspection of a zoomed crop confirms the new
+brushed-metal streak pattern reads as smooth and continuous across the
+sphere's visible surface, with no seam/discontinuity band anywhere
+(unlike the earlier construction's own less-regular banding near the
+sphere's own near-vertical-normal region).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests, `buildAnisotropicOnb`
+now covered) passes.

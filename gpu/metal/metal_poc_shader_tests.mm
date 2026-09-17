@@ -362,6 +362,46 @@ static void testFrComplexRGB(id<MTLDevice> device, id<MTLLibrary> library, id<MT
     }
 }
 
+static void testBuildAnisotropicOnb(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // Orthonormality check (tangent/bitangent/normal mutually
+    // perpendicular, all unit length) at a spread of directions
+    // INCLUDING both exact poles (0,0,+-1) and directions straddling the
+    // OLD construction's own 0.999-dot-product discontinuity threshold
+    // (see buildAnisotropicOnb's own comment) - the new construction has
+    // no singularity anywhere, so every one of these must pass, not just
+    // the "easy" arbitrary directions a pre-fix test might have picked.
+    simd::float3 normals[6] = {
+        simd::normalize(simd::float3{0.0f, 1.0f, 0.0f}),
+        simd::normalize(simd::float3{0.0f, -1.0f, 0.0f}),
+        simd::normalize(simd::float3{0.0f, 0.0f, 1.0f}),
+        simd::normalize(simd::float3{0.02f, 0.9998f, 0.0f}),   // just inside the old 0.999 threshold
+        simd::normalize(simd::float3{0.05f, 0.9990f, 0.0f}),   // just outside it
+        simd::normalize(simd::float3{0.3f, 0.5f, 0.8124f}),
+    };
+    int n = 6;
+    id<MTLBuffer> normalBuf = makeBuffer(device, normals, sizeof(normals));
+    id<MTLBuffer> tangentBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    id<MTLBuffer> bitangentBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    if (!runKernel(device, library, queue, @"test_buildAnisotropicOnb",
+                   @[normalBuf, tangentBuf, bitangentBuf], nil, n)) return;
+    simd::float3* tangents = (simd::float3*)tangentBuf.contents;
+    simd::float3* bitangents = (simd::float3*)bitangentBuf.contents;
+    for (int i = 0; i < n; ++i) {
+        char label[160];
+        simd::float3 t = tangents[i], b = bitangents[i], nrm = normals[i];
+        snprintf(label, sizeof(label), "buildAnisotropicOnb tangent is unit length (case %d)", i);
+        expectNear(label, simd::length(t), 1.0, 1e-4);
+        snprintf(label, sizeof(label), "buildAnisotropicOnb bitangent is unit length (case %d)", i);
+        expectNear(label, simd::length(b), 1.0, 1e-4);
+        snprintf(label, sizeof(label), "buildAnisotropicOnb tangent perpendicular to normal (case %d)", i);
+        expectNear(label, simd::dot(t, nrm), 0.0, 1e-4);
+        snprintf(label, sizeof(label), "buildAnisotropicOnb bitangent perpendicular to normal (case %d)", i);
+        expectNear(label, simd::dot(b, nrm), 0.0, 1e-4);
+        snprintf(label, sizeof(label), "buildAnisotropicOnb tangent perpendicular to bitangent (case %d)", i);
+        expectNear(label, simd::dot(t, b), 0.0, 1e-4);
+    }
+}
+
 static void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // g == 0 (isotropic) must give the SAME value - 1/(4*pi) - for every
     // cosTheta, since an isotropic phase function has no directional
@@ -640,6 +680,7 @@ int main() {
         testSpotLightFalloff(device, library, queue);
         testFresnelSchlickConductor(device, library, queue);
         testFrComplexRGB(device, library, queue);
+        testBuildAnisotropicOnb(device, library, queue);
         testHenyeyGreensteinPhase(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);
