@@ -2284,3 +2284,55 @@ off-centre one.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 48. Proof-of-concept, step 34: lateral chromatic aberration (done)
+
+The last piece of the "lens realism" set alongside steps 32/33's own
+aperture-shape/vignette work: a real lens focuses different wavelengths
+at very slightly different magnifications, so red and blue fringe
+outward/inward from green toward the frame's own edges (worse toward
+the corners, exactly zero at the optical centre) - the recognisable
+colour fringing around high-contrast edges near a photo's own border
+real camera lenses are well known for.
+
+Modelled the simplest physically-motivated way: `chromaticAberration()`
+resamples the red channel from a position scaled slightly OUTWARD from
+frame centre and blue slightly INWARD, leaving green as the untouched
+reference channel - a pure radial scale about the centre already gives
+zero shift exactly at the centre and a shift growing with radius
+everywhere else, with no need to compute a radius explicitly. Needed a
+new building block, `sampleChannelBilinear()`, since (unlike
+`vignetteFactor()`/`acesFilmicTonemap()`, which only ever touch a
+pixel's own already-fetched value) this is the first post-process step
+that needs to resample a NEIGHBOURING pixel's own value. `strength ==
+0.0` is an exact no-op.
+
+**A real bug, caught by a targeted test rather than a casual look**:
+the first version computed the frame centre as `width * 0.5` but the
+per-pixel offset as `float(px) + 0.5 - centre` (a pixel-CENTRE
+convention), while `sampleChannelBilinear()` treats its own input
+coordinates as pixel-INDEX-aligned (an integer coordinate means "exactly
+that pixel," not "the corner before it") - two different, incompatible
+conventions mixed in one calculation. The bug was invisible on this
+POC's own default EVEN-width renders (900, with no single centre pixel
+to check exactly) and even looked deceptively fine on a naive check of
+the nearest-to-centre pixel, since the resulting sub-pixel misalignment
+was small enough to often round to the same 8-bit value. Caught by
+rendering at an ODD resolution instead (901, which has one true,
+exactly-centred pixel) and confirming its own R/B channels had shifted
+anyway - mathematically impossible at genuine zero shift, so a real bug,
+not noise. Fixed by computing both the centre and the per-pixel offset
+in the same index-aligned convention `sampleChannelBilinear()` itself
+uses.
+
+**Result, verified two ways**: after the fix, the same odd-resolution
+test confirms the frame's own true centre pixel is exactly byte-identical
+with the effect on vs. off - genuine zero shift, not an approximation of
+one. Visually, the committed (even-resolution) scene shows a clear,
+recognisable blue/purple fringe along the sharpest high-contrast
+boundary near the frame's own edge (a ceiling light's own edge against
+the dark ceiling corner) - the classic real-camera CA signature - while
+staying subtle everywhere else, not garish or broken-looking.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
