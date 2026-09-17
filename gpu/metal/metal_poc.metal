@@ -146,6 +146,20 @@ struct AreaLight {
     // exact quad) as the pattern's own UV, needing no new per-light UV
     // data at all. <= 0.0 means "no pattern," see above.
     float patternScale;
+    // Power-proportional light-picking data, host-computed once by
+    // metal_poc.mm's buildPowerLightSampler() (a direct port of
+    // src/shared/power_light_sampler_scaffold.h's own PowerLightSampler -
+    // see that function's own comment for the full "why"). `pmf` is this
+    // light's own overall selection probability (`power[i] / totalPower`),
+    // used directly by both sampleAreaLight() and the direct-hit MIS
+    // branch below in place of this POC's old flat `1.0 / lightCount`.
+    // `aliasProb`/`aliasIndex` are this light's own Vose alias-table slot
+    // (threshold + fallback index) - together they let sampleAreaLight()
+    // pick a power-weighted light index in O(1), no loop or running-sum
+    // search over `lights` needed despite the non-uniform probabilities.
+    float pmf;
+    float aliasProb;
+    uint aliasIndex;
 };
 
 // A true DELTA light - zero-area, zero-solid-angle, unlike every AreaLight
@@ -1028,20 +1042,22 @@ inline float3 sampleHenyeyGreenstein(float3 wo, float g, thread uint& rngState) 
 // here for the same reason: it's what makes a rough-conductor path
 // tracer converge in a reasonable sample count instead of needing far
 // more samples to beat down grazing-angle noise.
-// Picks one light uniformly at random from `lights` and samples a
-// uniform point on its parallelogram - the "pick a light, then a point on
-// it" step every NEE call site (Lambertian and GGX conductor both) shares
-// verbatim; only what happens with the sampled point differs per BSDF.
-// The 1/lightCount light-PICKING pdf is folded in by each call site
-// itself (alongside its own area-to-solid-angle conversion), not returned
-// here, since it's a plain scalar constant for a given uniforms.lightCount
-// and every caller already needs to multiply it into an existing pdf
-// expression rather than use it standalone.
+// Picks one light from `lights`, power-proportionally (see AreaLight's own
+// `pmf`/`aliasProb`/`aliasIndex` comment - replaces this POC's old uniform
+// 1/lightCount picking), and samples a uniform point on its parallelogram -
+// the "pick a light, then a point on it" step every NEE call site
+// (Lambertian and GGX conductor both) shares verbatim; only what happens
+// with the sampled point differs per BSDF. The picked light's own `pmf` is
+// returned (not a flat 1/lightCount constant anymore, so it can no longer
+// be folded in as a plain scalar the way the old comment here described) -
+// every caller multiplies `ls.pmf` into its own area-to-solid-angle pdf
+// expression instead.
 struct LightSample {
     float3 point;
     float3 normal;
     float3 emission;
     float area;
+    float pmf;
 };
 
 inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState) {
@@ -1050,7 +1066,19 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
     // scene - not reachable with this POC's own hardcoded 2-light scene,
     // but every NEE call site calls this unconditionally with no count
     // check of its own, so this needs to be safe on its own terms.
-    uint idx = min(uint(randFloat(rngState) * float(lightCount)), max(lightCount, 1u) - 1);
+    uint lastIdx = max(lightCount, 1u) - 1;
+    // Vose alias-table sample (see PowerLightSampler::sample() in
+    // src/shared/power_light_sampler_scaffold.h, ported verbatim): map u
+    // into [0, lightCount), split into a slot index and its own
+    // fractional remainder, then either accept that slot or fall through
+    // to its precomputed alias - O(1) regardless of how skewed the
+    // per-light probabilities are, unlike a running-sum/binary-search CDF
+    // walk over `lights`.
+    float scaled = randFloat(rngState) * float(lightCount);
+    uint slot = min(uint(scaled), lastIdx);
+    float frac = scaled - float(slot);
+    uint idx = (frac < lights[slot].aliasProb) ? slot : lights[slot].aliasIndex;
+    idx = min(idx, lastIdx);
     AreaLight light = lights[idx];
     float3 edgeU = float3(light.edgeU);
     float3 edgeV = float3(light.edgeV);
@@ -1067,6 +1095,7 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
         ? checkerColor(u, light.patternScale, float3(light.emission), float3(light.emission) * light.patternTileB)
         : float3(light.emission);
     result.area = light.area;
+    result.pmf = light.pmf;
     return result;
 }
 
@@ -1323,7 +1352,7 @@ kernel void primaryRayKernel(
                         intersection_result<instancing, triangle_data> shadowResult =
                             isect.intersect(shadowRay, accelStructure, functionTable);
                         if (shadowResult.type == intersection_type::none) {
-                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
+                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
                             // HG's own sampling pdf for direction wi EQUALS
                             // its own phase function value at the same
                             // cosTheta - a defining property (the phase
@@ -1578,13 +1607,15 @@ kernel void primaryRayKernel(
                     // been for this exact hit. mat.lightId names exactly
                     // which AreaLight this triangle belongs to, so this
                     // works for any number of lights, not just one -
-                    // uniform light-picking pdf (1/lightCount) folded in
-                    // alongside the same area-to-solid-angle conversion
-                    // the NEE branches below use.
+                    // this light's own power-proportional picking pdf
+                    // (`light.pmf`, see AreaLight's own comment - replaces
+                    // this POC's old flat 1/lightCount) folded in alongside
+                    // the same area-to-solid-angle conversion the NEE
+                    // branches below use.
                     AreaLight light = lights[mat.lightId];
                     float distSq = result.distance * result.distance;
                     float cosLight = max(dot(float3(light.normal), -rayDir), 0.0001);
-                    float pdfLight = (distSq / (light.area * cosLight)) / float(uniforms.lightCount);
+                    float pdfLight = (distSq / (light.area * cosLight)) * light.pmf;
                     float weight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfLight * pdfLight);
                     radiance += throughput * hitEmission * weight;
                 }
@@ -1763,7 +1794,7 @@ kernel void primaryRayKernel(
                         intersection_result<instancing, triangle_data> shadowResult =
                             isect.intersect(shadowRay, accelStructure, functionTable);
                         if (shadowResult.type == intersection_type::none) {
-                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
+                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
                             // VNDF sampling's own pdf(wi) for this same
                             // direction - pdf(h) = D(h)*G1(wo)*max(0,dot
                             // (wo,h))/NdotO, converted to a solid-angle-of-
@@ -1954,7 +1985,7 @@ kernel void primaryRayKernel(
                             intersection_result<instancing, triangle_data> shadowResult =
                                 isect.intersect(shadowRay, accelStructure, functionTable);
                             if (shadowResult.type == intersection_type::none) {
-                                float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
+                                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
                                 float pdfBsdfForThisDir = cosSurface / M_PI_F;
                                 float weight = (pdfSolidAngle * pdfSolidAngle)
                                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
@@ -2057,11 +2088,11 @@ kernel void primaryRayKernel(
                             // pdf_omega = pdf_area * dist^2 / cosLight,
                             // pdf_area = 1/ls.area for uniform sampling -
                             // textbook area-light NEE, not an approximation -
-                            // times 1/lightCount for the uniform light-pick
-                            // probability (one-sample MIS over the light
-                            // list, same approach pbrt-v4's own
-                            // UniformLightSampler uses).
-                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
+                            // times ls.pmf for this light's own power-
+                            // proportional pick probability (one-sample MIS
+                            // over the light list, same approach pbrt-v4's
+                            // own PowerLightSampler uses).
+                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
                             // MIS weight against what the BSDF-sampling
                             // strategy's own PDF would be for this same
                             // direction wi (cosine-weighted: cosSurface/pi) -

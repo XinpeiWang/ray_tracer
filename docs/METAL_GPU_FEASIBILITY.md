@@ -2726,3 +2726,76 @@ operator's own math predicts, not just a generic "looks different."
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 57. Power-proportional area-light picking (done - correct, honestly modest on the committed scene)
+
+Sections 18 and 52 both explicitly flagged this POC's own NEE light
+picking as a documented simplification: "a real port would... sample
+lights proportional to their own power," instead of the flat `1/N`
+uniform pick this POC has used since its very first multi-light PR.
+Closes that gap: `sampleAreaLight()` now picks a light with probability
+proportional to its own approximate radiant power
+(`luminance(emission) * area`) via a Vose alias table, a direct port of
+`src/shared/power_light_sampler_scaffold.h`'s own `PowerLightSampler`
+construction/sampling algorithm (itself documented there as orphaned
+scaffolding with zero production callers in this project - but a real,
+correct implementation of pbrt-v4's own `PowerLightSampler`, exactly
+the kind of tested-but-unused reference worth porting from rather than
+re-deriving). `buildPowerLightSampler()` (metal_poc.mm) builds the
+table host-side once, after every `addAreaLight()` call; each
+`AreaLight` (metal_poc.metal) now carries its own `pmf`/`aliasProb`/
+`aliasIndex`, so `sampleAreaLight()` samples a power-weighted light
+index in O(1) - no loop or running-sum search over `lights` needed
+despite the non-uniform probabilities. All five places that used to
+divide an NEE/MIS pdf by `uniforms.lightCount` (four `sampleAreaLight()`
+call sites plus the direct-hit MIS branch) now multiply by the picked
+light's own `pmf` instead - the same one-sample-MIS-over-a-light-list
+shape, just with a non-uniform pick probability threaded through.
+
+**An honest finding, discovered before any verification render**: a new
+per-light diagnostic log line (`Light N: power=... pmf=...`) shows the
+committed scene's own two ceiling lights are, by coincidence, very
+nearly equal in power (pmf 0.5049 vs. 0.4951 - both lights were tuned
+for a similar visual brightness by eye in earlier PRs, evidently landing
+close in true radiant power too). Power-proportional picking is
+mathematically correct regardless, but on this specific scene it's
+almost indistinguishable from the uniform picking it replaces - the
+committed showcase render looks essentially unchanged, and isn't
+meaningful evidence either way for whether the mechanism actually works.
+
+**Real verification instead used a separate, temporary diagnostic scene**
+(not committed - the same "isolated diagnostic render" pattern bump
+mapping, chromatic aberration, and others needed before it) with one
+light's emission scaled down ~25x, built and rendered twice: once
+against this PR's power-proportional code, once against the prior
+commit's own uniform-picking code (via `git stash`/`git show HEAD:...`),
+both with the identical imbalanced-light scene. The alias table itself
+correctly recovered the expected ~96%/~4% pick split from that power
+ratio (confirmed via the same diagnostic log line). A high-pass local-
+variance proxy (residual after a 5x5 box-blur, computed per-region on a
+single render rather than needing a multi-seed ensemble) in the dark
+mural background - a region with little direct indirect-bounce
+complexity of its own, so its noise is a reasonable proxy for NEE
+variance - showed a real, consistent reduction with power picking: at
+32spp, 207.18 -> 198.67 (~4.1%); at 12spp (noisier, where the effect
+should show more clearly), 582.41 -> 525.94 (~9.7%). Visually confirmed
+too: the 12spp power-sampled render shows visibly less speckle in that
+same region side by side with the uniform-sampled one.
+
+**Modest, not dramatic, and reported honestly rather than oversold**:
+even with a 25x power imbalance concentrating ~96% of NEE picks on one
+light, the measured noise reduction is single-digit percent in the
+region tested, not the large win a first-principles read of "now nearly
+all NEE rays go toward the light that actually matters" might suggest.
+The likely reason: NEE light-picking variance is only ONE term in this
+integrator's total per-pixel variance, alongside BSDF-sampled indirect
+bounces, DOF/motion-blur jitter, fog sampling, and every glossy/
+dielectric material's own stochastic choices - all of which are
+completely unaffected by this change. A similar lesson to PR #44's own
+firefly-clamp finding: a mathematically-correct, real improvement to
+one specific variance source doesn't automatically dominate a renderer's
+total noise budget, and that's worth verifying and reporting rather
+than assuming from the algorithm's own textbook motivation alone.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
