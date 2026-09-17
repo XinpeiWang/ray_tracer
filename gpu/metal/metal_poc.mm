@@ -417,6 +417,29 @@ static bool loadObjMesh(const std::string& path,
     return true;
 }
 
+// ACES filmic tonemap (Krzysztof Narkowicz's widely-used fitted
+// approximation of the ACES RRT+ODT curve) - replaces this POC's old
+// direct clamp-to-[0,1] before the 8-bit gamma encode. A raw linear
+// radiance value above 1.0 used to hard-clip straight to solid white -
+// every area/point/spot/directional light's own bright core, and any
+// surface catching more than one of them at once, does this constantly,
+// visible as flat white patches with no rolloff in this POC's own
+// earlier renders (the ceiling light panels, the directional light's own
+// raking highlight). This rolls off smoothly instead, the standard
+// reason a renderer tonemaps before display rather than clamping raw
+// linear radiance - applied per channel, in LINEAR space, BEFORE the
+// sRGB-ish gamma encode below (the correct ordering; gamma-encoding
+// first and tonemapping second would double-correct the curve).
+static float acesFilmicTonemap(float x) {
+    const float a = 2.51f;
+    const float b = 0.03f;
+    const float c = 2.43f;
+    const float d = 0.59f;
+    const float e = 0.14f;
+    float mapped = (x * (a * x + b)) / (x * (c * x + d) + e);
+    return fminf(fmaxf(mapped, 0.0f), 1.0f);
+}
+
 int main(int argc, const char** argv) {
     @autoreleasepool {
         const uint32_t width = (argc > 1) ? (uint32_t)atoi(argv[1]) : 400;
@@ -1249,8 +1272,8 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
-        // --- Read back + write PNG (8-bit sRGB-ish gamma, same simple ---
-        // 1/2.2 approximation good enough for a POC comparison image)
+        // --- Read back + write PNG (ACES filmic tonemap, then the same ---
+        // 8-bit sRGB-ish 1/2.2 gamma approximation this POC already used)
         std::vector<float> pixels(width * height * 4);
         MTLRegion region = MTLRegionMake2D(0, 0, width, height);
         [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
@@ -1258,9 +1281,9 @@ int main(int argc, const char** argv) {
         std::vector<uint8_t> ldr(width * height * 3);
         for (uint32_t i = 0; i < width * height; ++i) {
             for (int c = 0; c < 3; ++c) {
-                float v = pixels[i * 4 + c];
-                v = powf(fmaxf(v, 0.0f), 1.0f / 2.2f);
-                v = fminf(v, 1.0f);
+                float v = fmaxf(pixels[i * 4 + c], 0.0f);
+                v = acesFilmicTonemap(v);
+                v = powf(v, 1.0f / 2.2f);
                 ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
             }
         }

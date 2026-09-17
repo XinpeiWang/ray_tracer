@@ -1906,3 +1906,43 @@ a true, isolated, zero-at-zero effect.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 39. Proof-of-concept, step 28: ACES filmic tonemapping (done)
+
+Every render this POC has ever produced went through the exact same
+final step: read back the linear HDR float buffer, clamp straight to
+`[0,1]`, then gamma-encode to 8-bit. That clamp is a hard cliff, not a
+curve - any pixel at 1.3x "full white" and any pixel at 30x "full white"
+both become identical solid white, discarding all the shape of exactly
+how overexposed something was. Every light this POC has added (area,
+point, spot, directional) makes this MORE visible, not less - more
+things in the committed scene are now bright enough to clip. This step
+replaces that clamp with `acesFilmicTonemap()`, Krzysztof Narkowicz's
+widely-used fitted approximation of the ACES RRT+ODT curve - a smooth
+compressive rolloff instead of a cliff, the same reason virtually every
+production renderer/game engine tonemaps before display rather than
+clamping raw linear radiance. Applied per channel, in linear space,
+BEFORE the existing 1/2.2 gamma approximation - the correct ordering,
+not the reverse (gamma-encoding first would feed the curve fit the wrong
+input range entirely).
+
+Purely a host-side, post-process change to `metal_poc.mm`'s own
+readback loop - no shader, scene, or integrator code touched at all, the
+narrowest possible scope for a change that still affects every pixel of
+every future render.
+
+**Result, verified via a direct before/after crop comparison** (same
+scene, same seed, same sample count, only the readback function
+changed): a genuinely emissive light source's own core (radiance far
+above 1.0 by design) still reads as solid white either way - no
+tonemapping operator un-clips a light that's ACTUALLY that many times
+overexposed, and this doesn't try to. The real difference shows up in
+MODERATELY overexposed regions - the directional light's own raking
+highlight on the back wall (step 26), previously a flat, textureless
+white patch, now retains a faint gradient and a hint of the mirror
+disk's own colour bleeding through at its edge, exactly the kind of
+subtle highlight detail a hard clamp discards and a filmic curve
+preserves.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
