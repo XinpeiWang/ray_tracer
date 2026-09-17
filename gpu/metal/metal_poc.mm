@@ -133,8 +133,10 @@ struct TriangleMaterial {
     int32_t lightId = -1;
     // Rough-dielectric roughness (materialType == 5), ALSO reused as
     // anisotropic alphaY for materialType == 4 (0.0 there falls back to
-    // isotropic) - see metal_poc.metal's own comment on the mirrored
-    // field for the full explanation.
+    // isotropic), ALSO reused again as procedural bump strength for
+    // materialType == 7 (0.0 there falls back to a perfectly flat
+    // Lambertian, identical to materialType == 0) - see metal_poc.metal's
+    // own comment on the mirrored field for the full explanation.
     float roughness = 0.0f;
 };
 
@@ -181,7 +183,7 @@ static void addQuad(std::vector<PackedFloat3>& verts,
                      float3 a, float3 b, float3 c, float3 d,
                      float3 color, uint32_t materialType = 0,
                      float3 emission = simd::make_float3(0, 0, 0),
-                     int32_t lightId = -1) {
+                     int32_t lightId = -1, float roughness = 0.0f) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
@@ -197,8 +199,8 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     uvs.push_back(PackedFloat2{0, 1});
     PackedFloat3 packedColor{color.x, color.y, color.z};
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
-    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId});
-    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId});
+    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId, roughness});
+    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId, roughness});
 }
 
 // A minimal Wavefront OBJ loader: positions, vertex normals, texture
@@ -475,6 +477,32 @@ int main(int argc, const char** argv) {
         addQuad(verts, normals, uvs, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
         // Right wall (x = 1), green
         addQuad(verts, normals, uvs, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
+        // A small procedurally bump-mapped panel (materialType 7),
+        // flush-mounted just in front of the back wall (z = -0.99, the
+        // same off-surface margin the mirror disk/other flush-mounted
+        // geometry already uses to avoid z-fighting) rather than a side
+        // wall - the one surface in the scene whose shading normal is
+        // perturbed AWAY from its own true (perfectly flat) geometric
+        // normal, an analytic egg-carton height field rather than a
+        // stored normal-map texture (no new image asset needed - see
+        // metal_poc.metal's own proceduralBumpNormal() comment).
+        // Positioned in the region the directional light (see
+        // metal_poc.metal's own DirectionalLight comment) hits closest to
+        // head-on, not tucked against a side wall - a first attempt
+        // mounted on the red wall got barely any direct light at all
+        // (nearly the same shallow self-shadowing the directional light's
+        // own doc describes for that wall), making the bump invisible
+        // under GI-only ambient lighting; moved here after that render
+        // came back looking completely flat, not assumed correct from
+        // the code alone. `roughness` here means bump strength, not a
+        // BRDF parameter - materialType 7's own reuse of that field, see
+        // TriangleMaterial's comment above.
+        addQuad(verts, normals, uvs, materials,
+                float3{0.15f, -0.3f, -0.99f}, float3{0.15f, 0.3f, -0.99f},
+                float3{0.75f, 0.3f, -0.99f}, float3{0.75f, -0.3f, -0.99f},
+                float3{0.55f, 0.5f, 0.45f}, /*materialType=*/7,
+                /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
+                /*roughness(bump strength)=*/0.6f);
         // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
         // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
         // test object": mirror MATERIAL coverage is already proven (the

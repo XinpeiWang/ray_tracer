@@ -223,6 +223,13 @@ constant float kDirectionalLightMaxDistance = 10.0f;
 // again - `color` is tile A, tile B is a fixed fraction of it, computed
 // analytically from UV with no texture/sampler involved at all, unlike
 // materialType 3's image lookup - see checkerColor()'s own comment).
+// 7 = procedurally bump-mapped Lambertian (same BSDF/NEE code path as
+// 0/3/6 yet again - the ONLY difference is which NORMAL that shared code
+// shades with: `facingNormal` is perturbed in tangent space by
+// proceduralBumpNormal() before any of it runs, rather than albedo
+// changing the way it does for 3/6). Only ever assigned to a primary-
+// triangle-buffer primitive (never a sphere/disk/Suzanne instance) since
+// tangentFor() needs that buffer's own flat vertex/uv indexing.
 // `ior` is meaningful for materialType == 2 and 5 (refraction index) and
 // reused, differently, for materialType == 4 (perceptual roughness in
 // [0,1], squared into the GGX alpha parameter below) - materialType 4
@@ -525,6 +532,80 @@ inline float2 texCoordFor(uint primId, float2 barycentric, device const packed_f
     float2 uv2 = uvs[primId * 3 + 2];
     float w0 = 1.0 - barycentric.x - barycentric.y;
     return w0 * uv0 + barycentric.x * uv1 + barycentric.y * uv2;
+}
+
+// A per-triangle tangent (constant across the triangle, same "flat is
+// fine here" reasoning addQuad()'s own flat face normal already relies
+// on - every quad this POC hand-authors is planar with a single UV
+// gradient, not a smoothly-varying mesh surface): the standard position/
+// UV partial-derivative construction (solve for the UV-space basis that
+// maps to world-space edge1/edge2), same technique pbrt-v4's own
+// triangle tangent setup uses. `primId`-indexed the same flat, 3-per-
+// triangle way vertices/uvs already are - reuses those two buffers
+// directly, no new per-triangle data needed host-side.
+inline float3 tangentFor(uint primId, device const packed_float3* verts, device const packed_float2* uvs) {
+    float3 p0 = float3(verts[primId * 3 + 0]);
+    float3 p1 = float3(verts[primId * 3 + 1]);
+    float3 p2 = float3(verts[primId * 3 + 2]);
+    float2 uv0 = uvs[primId * 3 + 0];
+    float2 uv1 = uvs[primId * 3 + 1];
+    float2 uv2 = uvs[primId * 3 + 2];
+    float3 edge1 = p1 - p0;
+    float3 edge2 = p2 - p0;
+    float2 duv1 = uv1 - uv0;
+    float2 duv2 = uv2 - uv0;
+    float det = duv1.x * duv2.y - duv2.x * duv1.y;
+    // A degenerate UV mapping (det == 0, e.g. every corner sharing (0,0) -
+    // every non-materialType-7 primitive's own default UVs) has no real
+    // tangent to solve for; returning SOME unit vector rather than NaN
+    // keeps this safe to call unconditionally, even though only
+    // materialType == 7 ever actually uses the result.
+    if (abs(det) < 1e-10) {
+        return normalize(edge1);
+    }
+    float f = 1.0 / det;
+    float3 tangent = f * (duv2.y * edge1 - duv1.y * edge2);
+    return normalize(tangent);
+}
+
+// Procedural "egg carton" bump map - an analytic height field h(u,v)
+// instead of a sampled normal-map texture (no new image asset needed for
+// this POC to demonstrate genuine tangent-space shading-normal
+// perturbation): standard bump-mapping math, perturbing the normal by
+// the height field's own partial derivatives along the tangent/
+// bitangent axes (`normal - dh/du * tangent - dh/dv * bitangent`,
+// renormalized) rather than actually displacing geometry - the textbook
+// distinction between bump mapping (shading only, what this is) and
+// real displacement mapping (which this is NOT). `strength` scales the
+// derivative term directly - 0.0 (every material type other than 7)
+// exactly reproduces the unperturbed normal, a true no-op, not just a
+// visually-close approximation of one.
+inline float3 proceduralBumpNormal(float3 normal, float3 tangent, float2 uv, float strength) {
+    float3 bitangent = cross(normal, tangent);
+    const float freqU = 4.0;
+    const float freqV = 4.0;
+    float au = uv.x * 2.0 * M_PI_F * freqU;
+    float av = uv.y * 2.0 * M_PI_F * freqV;
+    // `strength` scales the slope DIRECTLY (capped at 1 by cos/sin, so
+    // `strength` itself is the max tilt magnitude along each tangent
+    // axis) rather than also carrying a 2*pi*freq amplitude factor - a
+    // literal height-field derivative would include that factor, but even
+    // at this modest freqU/freqV it inflates to ~25x, drowning out the
+    // unit normal entirely regardless of how small `strength` is. Tuned
+    // as a slope, not a physical height, the same "whatever reads well"
+    // spirit checkerColor()'s own tile-B-darkening fraction already uses
+    // instead of a physically-derived constant. freqU/freqV == 4 (a few
+    // bumps across this panel's own 0-1 UV span) rather than something
+    // higher-frequency - a bump's own spatial period needs to stay well
+    // above this scene's pixel footprint per UV unit, or it aliases into
+    // per-pixel noise indistinguishable from Monte Carlo grain instead of
+    // a visible bump shape (a real mistake this PR's own first attempt at
+    // this material made, caught by inspecting a raw shading-normal
+    // visualization render, not assumed away).
+    float dhdu = strength * cos(au) * sin(av);
+    float dhdv = strength * sin(au) * cos(av);
+    float3 bumped = normal - (dhdu * tangent + dhdv * bitangent);
+    return normalize(bumped);
 }
 
 // Standard equirectangular direction-to-UV mapping (longitude from
@@ -1161,6 +1242,22 @@ kernel void primaryRayKernel(
             // the-ray version used by every other material below discards.
             bool frontFace = dot(normal, rayDir) < 0.0;
             float3 facingNormal = frontFace ? normal : -normal;
+
+            // materialType == 7 (procedurally bump-mapped Lambertian):
+            // perturb ONLY the shading normal used by the BSDF/NEE math
+            // below, never `normal`/the ray-offset direction above - the
+            // textbook bump-mapping distinction between what LOOKS
+            // perturbed (shading) and what stays geometrically flat (ray
+            // origins, self-intersection avoidance). Guarded to the
+            // primary triangle buffer, the only place tangentFor()'s own
+            // primId-indexed vertex/uv lookup is valid (see materialType
+            // 7's own comment above) - never true for a sphere/disk/
+            // Suzanne-instance hit, so this is simply skipped for those.
+            if (mat.materialType == 7u && !isSphere && !isDisk && !isSuzanneInstance) {
+                float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                float3 tangent = tangentFor(primId, vertices, uvs);
+                facingNormal = proceduralBumpNormal(facingNormal, tangent, bumpUV, mat.roughness);
+            }
 
             // materialType == 3 (textured Lambertian) only ever occurs on
             // a triangle (the back wall - see metal_poc.mm's scene setup),
