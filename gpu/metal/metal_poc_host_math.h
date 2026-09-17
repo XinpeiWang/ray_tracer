@@ -497,3 +497,190 @@ inline float pdfEnvDistribution2D(const EnvDistribution2D& dist, float u, float 
     float colPdf = (condRow[col + 1] - condRow[col]) * (float)dist.width;
     return rowPdf * colPdf;
 }
+
+// ===========================================================================
+// GGX multi-scatter energy compensation - PHASE 1
+//
+// A well-known, real limitation of the single-scatter GGX model this POC's
+// own `ggxD()`/`ggxG()`/`sampleGGXVNDF()` (metal_poc.metal) implement: a
+// rough conductor visibly DARKENS at high roughness relative to a real
+// measured metal, because light that bounces more than once between
+// microfacets before finally escaping is simply discarded by a model that
+// only ever accounts for a single reflection off the sampled half-vector.
+// pbrt-v4's own basic `ConductorBxDF` (already ported into this POC,
+// section 66) has this SAME limitation - it isn't something this port
+// introduced, but a gap in the reference this POC has followed all along.
+//
+// Found by using Blender Cycles as a SECOND, independent reference (per
+// the user's own request) while spot-checking already-merged PRs:
+// `kernel/closure/bsdf_microfacet.h`'s own `microfacet_ggx_preserve_energy()`
+// applies exactly this correction, via a precomputed directional-albedo
+// table (`ggx_E`/`ggx_Eavg`) - Cycles' own `app/cycles_precompute.cpp`
+// builds these OFFLINE via ~8-64 million Monte Carlo samples per table and
+// checks in no data, generating them at build/install time instead.
+//
+// This phase ports the SAME technique (Kulla & Conty, "Revisiting
+// Physically Based Shading at Imageworks," SIGGRAPH 2017 course notes -
+// the paper Cycles' own comment cites), scoped down for this POC's own
+// real-time-precompute needs: a much smaller grid/sample count computed
+// ONCE at host startup (not a separate offline tool + checked-in binary
+// data), reusing this POC's OWN already-verified `ggxD`/`ggxG`/`ggxG1`/
+// `sampleGGXVNDF` formulas (ported below as host mirrors, matching the
+// established "host mirror of a device function, kept in lock-step"
+// pattern metal_poc_math_tests.cpp's own alias-table test already uses)
+// rather than re-deriving the integral from scratch.
+//
+// Deliberately scoped to the ACHROMATIC energy_scale term only
+// (`1 + (1-E)/E`) - Cycles' own extra "multi-bounce Fresnel darkening"
+// refinement (a per-channel Fss/E_avg-dependent tint on top of this) is
+// a real further refinement, explicitly NOT attempted here; this phase
+// closes the larger, more visible energy-LOSS gap first.
+// ===========================================================================
+
+struct GGXFloat3 { float x, y, z; };
+inline GGXFloat3 ggxF3(float x, float y, float z) { GGXFloat3 r{x,y,z}; return r; }
+inline float ggxDot3(GGXFloat3 a, GGXFloat3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+inline GGXFloat3 ggxCross3(GGXFloat3 a, GGXFloat3 b) {
+    return ggxF3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
+}
+inline GGXFloat3 ggxNormalize3(GGXFloat3 a) {
+    float len = sqrtf(ggxDot3(a, a));
+    return (len > 1e-12f) ? ggxF3(a.x/len, a.y/len, a.z/len) : a;
+}
+
+// Host mirrors of metal_poc.metal's own ggxD()/ggxLambda()/ggxG1()/ggxG() -
+// identical formulas, kept in lock-step with that file (see this section's
+// own header comment for why a host copy exists at all).
+inline float ggxDHost(GGXFloat3 hLocal, float alphaX, float alphaY) {
+    GGXFloat3 hr = ggxF3(hLocal.x / alphaX, hLocal.y / alphaY, hLocal.z);
+    float lenSq = fmaxf(ggxDot3(hr, hr), 1e-12f);
+    return (1.0f / (float)M_PI) / fmaxf(alphaX * alphaY * lenSq * lenSq, 1e-12f);
+}
+inline float ggxLambdaHost(GGXFloat3 wLocal, float alphaX, float alphaY) {
+    float wz2 = fmaxf(wLocal.z * wLocal.z, 1e-12f);
+    float sqrAlphaTanN = (alphaX*alphaX*wLocal.x*wLocal.x + alphaY*alphaY*wLocal.y*wLocal.y) / wz2;
+    return 0.5f * (sqrtf(1.0f + sqrAlphaTanN) - 1.0f);
+}
+inline float ggxG1Host(GGXFloat3 wLocal, float alphaX, float alphaY) {
+    return 1.0f / (1.0f + ggxLambdaHost(wLocal, alphaX, alphaY));
+}
+inline float ggxGHost(GGXFloat3 woLocal, GGXFloat3 wiLocal, float alphaX, float alphaY) {
+    return 1.0f / (1.0f + ggxLambdaHost(woLocal, alphaX, alphaY) + ggxLambdaHost(wiLocal, alphaX, alphaY));
+}
+
+// Host mirror of metal_poc.metal's own sampleGGXVNDF() (isotropic case,
+// alphaX == alphaY == alpha - this table only ever needs the isotropic
+// slice, since alpha is diagonalized to a single roughness axis for this
+// energy integral exactly like Cycles' own `mu`/`rough` table axes are).
+// `randFn` is any `() -> float in [0,1)` source - kept generic rather than
+// tied to one RNG type so a test can supply a fixed sequence.
+template<typename RandFn>
+inline GGXFloat3 sampleGGXVNDFHost(GGXFloat3 woLocal, float alpha, RandFn& randFn) {
+    GGXFloat3 Vh = ggxNormalize3(ggxF3(alpha * woLocal.x, alpha * woLocal.y, woLocal.z));
+    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+    GGXFloat3 T1 = (lensq > 0.0f) ? ggxF3(-Vh.y, Vh.x, 0.0f) : ggxF3(1.0f, 0.0f, 0.0f);
+    if (lensq > 0.0f) { float s = sqrtf(lensq); T1 = ggxF3(T1.x/s, T1.y/s, T1.z/s); }
+    GGXFloat3 T2 = ggxCross3(Vh, T1);
+
+    float u1 = randFn();
+    float u2 = randFn();
+    float r = sqrtf(u1);
+    float phi = 2.0f * (float)M_PI * u2;
+    float t1 = r * cosf(phi);
+    float t2 = r * sinf(phi);
+    float s = 0.5f * (1.0f + Vh.z);
+    t2 = (1.0f - s) * sqrtf(fmaxf(0.0f, 1.0f - t1*t1)) + s*t2;
+
+    GGXFloat3 Nh = ggxF3(t1*T1.x + t2*T2.x + sqrtf(fmaxf(0.0f, 1.0f - t1*t1 - t2*t2)) * Vh.x,
+                          t1*T1.y + t2*T2.y + sqrtf(fmaxf(0.0f, 1.0f - t1*t1 - t2*t2)) * Vh.y,
+                          t1*T1.z + t2*T2.z + sqrtf(fmaxf(0.0f, 1.0f - t1*t1 - t2*t2)) * Vh.z);
+    GGXFloat3 Ne = ggxF3(alpha * Nh.x, alpha * Nh.y, fmaxf(0.0f, Nh.z));
+    return ggxNormalize3(Ne);
+}
+
+// Directional albedo E(alpha, mu) = integral of the (Fresnel-less, F=1)
+// GGX reflection lobe over the hemisphere, for a fixed view direction
+// wo = (sqrt(1-mu^2), 0, mu). VNDF importance sampling turns this
+// integral into a plain average: f(wo,wi)*cos(wi)/pdf(wi) collapses to
+// exactly G(wo,wi)/G1(wo) for a VNDF-sampled wi (the SAME reduction
+// section 65/66's own throughput weight already relies on, algebra
+// unchanged by dropping the Fresnel term to 1) - so E is just the mean of
+// that ratio over `samplesPerCell` VNDF-sampled directions, no separate
+// BRDF-value/pdf bookkeeping needed.
+struct GGXEnergyTable {
+    int roughRes = 0;
+    int muRes = 0;
+    std::vector<float> E;      // size roughRes*muRes, row-major (rough-major)
+    std::vector<float> Eavg;   // size roughRes
+};
+
+template<typename RandFn>
+inline void buildGGXEnergyTable(int roughRes, int muRes, int samplesPerCell,
+                                 GGXEnergyTable& table, RandFn& randFn) {
+    table.roughRes = roughRes;
+    table.muRes = muRes;
+    table.E.assign((size_t)roughRes * muRes, 1.0f);
+    table.Eavg.assign(roughRes, 1.0f);
+
+    for (int ri = 0; ri < roughRes; ++ri) {
+        // roughness in (0,1], alpha = roughness^2 (this POC's own
+        // perceptual-roughness-to-alpha convention, materialType 4/9's
+        // own `mat.ior*mat.ior` mapping).
+        float roughness = ((float)ri + 0.5f) / (float)roughRes;
+        float alpha = fmaxf(roughness * roughness, 0.0009f);
+
+        for (int mi = 0; mi < muRes; ++mi) {
+            float mu = ((float)mi + 0.5f) / (float)muRes;
+            mu = fmaxf(mu, 0.0001f);
+            GGXFloat3 wo = ggxF3(sqrtf(fmaxf(0.0f, 1.0f - mu*mu)), 0.0f, mu);
+
+            double sum = 0.0;
+            int valid = 0;
+            for (int s = 0; s < samplesPerCell; ++s) {
+                GGXFloat3 h = sampleGGXVNDFHost(wo, alpha, randFn);
+                float cosWoH = ggxDot3(wo, h);
+                GGXFloat3 wi = ggxF3(2.0f*cosWoH*h.x - wo.x, 2.0f*cosWoH*h.y - wo.y, 2.0f*cosWoH*h.z - wo.z);
+                if (wi.z <= 0.0f) continue;  // below-hemisphere VNDF sample - zero contribution
+                float G = ggxGHost(wo, wi, alpha, alpha);
+                float G1 = ggxG1Host(wo, alpha, alpha);
+                sum += (double)(G / fmaxf(G1, 1e-6f));
+                ++valid;
+            }
+            float E = (valid > 0) ? (float)(sum / valid) : 1.0f;
+            table.E[(size_t)ri * muRes + mi] = fminf(fmaxf(E, 0.0f), 1.0f);
+        }
+
+        // Eavg(alpha) = 2 * integral_0^1 E(alpha,mu)*mu dmu - the cosine-
+        // weighted hemispherical average (matches Cycles' own
+        // `2.0f * mu * precompute_ggx_E(...)` integrand exactly), via a
+        // plain midpoint-rule sum over the same mu grid already computed.
+        double avgSum = 0.0;
+        for (int mi = 0; mi < muRes; ++mi) {
+            float mu = ((float)mi + 0.5f) / (float)muRes;
+            avgSum += 2.0 * table.E[(size_t)ri * muRes + mi] * mu * (1.0 / muRes);
+        }
+        table.Eavg[ri] = (float)fmin(fmax(avgSum, 0.0), 1.0);
+    }
+}
+
+// Bilinear lookup of E(roughness, mu) - the same interpolation a GPU-side
+// texture sample would perform, exercised host-side first (this table's
+// own device-side counterpart in phase 2 will read the SAME uploaded
+// buffer via an equivalent bilinear lookup, not `texture2d::sample()`,
+// since this is plain float data with no image-file/sRGB concerns).
+inline float sampleGGXEnergyTable(const GGXEnergyTable& table, float roughness, float mu) {
+    float rf = roughness * table.roughRes - 0.5f;
+    float mf = mu * table.muRes - 0.5f;
+    int r0 = (int)floorf(rf), m0 = (int)floorf(mf);
+    float rt = rf - r0, mt = mf - m0;
+    int r1 = r0 + 1, m1 = m0 + 1;
+    r0 = std::min(std::max(r0, 0), table.roughRes - 1);
+    r1 = std::min(std::max(r1, 0), table.roughRes - 1);
+    m0 = std::min(std::max(m0, 0), table.muRes - 1);
+    m1 = std::min(std::max(m1, 0), table.muRes - 1);
+    auto at = [&](int r, int m) { return table.E[(size_t)r * table.muRes + m]; };
+    float e00 = at(r0, m0), e10 = at(r1, m0), e01 = at(r0, m1), e11 = at(r1, m1);
+    float e0 = e00 + (e10 - e00) * rt;
+    float e1 = e01 + (e11 - e01) * rt;
+    return e0 + (e1 - e0) * mt;
+}

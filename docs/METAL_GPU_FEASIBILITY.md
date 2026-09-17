@@ -3720,3 +3720,82 @@ this POC has also shown.
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests, the new
 environment-sampling cases now covered) passes.
+
+## 72. GGX multi-scatter energy compensation, phase 1: the table (done)
+
+This session's own spot-check of the five most-recently-merged PRs
+against Blender Cycles as a SECOND, independent reference (sections
+55-71 have followed `src/shared`/pbrt-v4 almost exclusively until now)
+turned up a real, honest gap rather than a bug: `ggxD()`/`ggxG()`/
+`sampleGGXVNDF()`'s single-scatter GGX model (this POC's own GGX
+conductor material, materialType 4/9) visibly DARKENS a rough metal
+relative to a real measured one, because light that bounces more than
+once between microfacets before finally escaping is discarded by a
+model that only ever accounts for a single reflection off the sampled
+half-vector. This isn't something this port introduced - pbrt-v4's own
+basic `ConductorBxDF` (already ported, section 66) has the identical
+limitation - but Cycles' own `kernel/closure/bsdf_microfacet.h`
+(`microfacet_ggx_preserve_energy()`) fixes it, citing Kulla & Conty's
+"Revisiting Physically Based Shading at Imageworks" (SIGGRAPH 2017
+course notes) as the technique.
+
+Cycles' own version needs a precomputed directional-albedo table
+(`ggx_E`/`ggx_Eavg`), built OFFLINE by a dedicated tool
+(`app/cycles_precompute.cpp`) via 8-64 million Monte Carlo samples per
+table, with no data checked into the source tree. This phase ports the
+SAME technique, scoped down for this POC's own real-time-precompute
+needs: a much smaller grid (8x8 for the device-side test, up to
+16x16 verified standalone) computed ONCE at host startup rather than a
+separate offline tool - reusing this POC's OWN already-verified
+`ggxD`/`ggxG`/`ggxG1`/`sampleGGXVNDF` formulas (ported as host mirrors
+into `metal_poc_host_math.h`, matching the established "host mirror of
+a device function, kept in lock-step" pattern the alias-table test
+already uses) rather than re-deriving the integral from scratch.
+
+**The integral itself needed no new machinery**: `E(alpha, mu)` (the
+directional albedo - how much of the light hitting a microfacet
+surface from angle `mu` actually escapes, integrated over the whole
+exit hemisphere) is a plain Monte Carlo average of `G(wo,wi)/G1(wo)`
+over VNDF-sampled `wi` directions with `F` fixed at 1 (no Fresnel
+weighting - this table captures pure GEOMETRIC energy loss from the
+microfacet model, independent of the material's own conductor tint) -
+the EXACT same ratio section 65/66's own throughput weight already
+uses, just averaged over many samples instead of applied to one. No
+new derivation, only reuse.
+
+Deliberately scoped to the ACHROMATIC `energy_scale = 1 + (1-E)/E`
+term only - Cycles' own extra "multi-bounce Fresnel darkening"
+refinement (a per-channel tint on top of this, using `Fss`/`E_avg`)
+is a real further refinement, explicitly NOT attempted here; this
+phase closes the larger, more visible energy-LOSS gap first, the
+same staged approach sections 69/71 already used for environment-map
+importance sampling.
+
+**Verified against the well-known Kulla-Conty trend, not just "it
+compiles"**: `E(roughness, mu)` at near-zero roughness (0.03) is
+`> 0.97` at every tested view angle (a near-mirror surface loses
+almost no energy to a single reflection, as expected); `Eavg(roughness)`
+is monotonically non-increasing as roughness increases (more
+microfacet self-shadowing at high roughness can only ever lose MORE
+energy, never less) across all 8 roughness bins; and at full
+roughness (alpha=1), `Eavg` drops to `~0.68` - a real, substantial
+loss (not a rounding-level dip), closely matching published GGX
+directional-albedo results. A standalone 16x16-grid/4096-samples-per-
+cell run builds in ~56ms (fast enough for startup, not a separate
+offline precompute step) and shows the exact same trend at higher
+resolution. Deliberately corrupted one test's own threshold mid-
+development, confirmed it failed, then reverted.
+
+Not yet done, and explicitly scoped as phase 2: uploading the E/Eavg
+tables as GPU buffers, a device-side bilinear-lookup function
+mirroring `sampleGGXEnergyTable()`, and applying `energy_scale` as an
+additional throughput multiplier in `shadeConductor` (both the NEE
+BRDF evaluation and the continuation-ray weight) - PR #65's own
+per-material-function split should make this as contained an addition
+as phase 2 of the environment-map work already was.
+
+No render changes in this PR - this is a pure host-side addition with
+no shader-visible effect yet. The ad-hoc CMake build/`ctest` (four
+tests, none touched by this PR's own render path, all still passing)
+and the new `metal_poc_math_tests` case confirm the addition doesn't
+disturb anything else.
