@@ -256,13 +256,31 @@ inline float rayBoxExitDistance(float3 origin, float3 dir, float3 boxMin, float3
 // changing the way it does for 3/6). Only ever assigned to a primary-
 // triangle-buffer primitive (never a sphere/disk/Suzanne instance) since
 // tangentFor() needs that buffer's own flat vertex/uv indexing.
+// 9 = procedurally roughness-mapped GGX conductor - the SAME NEE/BSDF
+// shape materialType 4 already uses, but `alphaX`/`alphaY` are computed
+// from an analytic UV-space checker pattern (reusing checkerColor(),
+// picking between two roughness values instead of two colours) rather
+// than being one constant per primitive - patches of near-mirror-smooth
+// and rough microfacet regions on the SAME surface, a "worn/scratched
+// metal" look. Genuinely different from materialType 4's own anisotropy
+// (varies BY DIRECTION at a single point) - this varies BY LOCATION
+// (isotropic at any single point, but which isotropic alpha changes
+// across the surface). Only ever assigned to a SPHERE in this scene:
+// `equirectangularUV()` on the hit's own object-space normal gives a
+// texture-space coordinate for free (the same technique the environment
+// map already uses for direction-based sampling), rather than needing
+// materialType 7's own tangentFor()/real mesh UVs.
 // `ior` is meaningful for materialType == 2 and 5 (refraction index) and
 // reused, differently, for materialType == 4 (perceptual roughness in
 // [0,1], squared into the GGX alpha parameter below) - materialType 4
 // and {2,5} never coexist on one primitive, so sharing the slot there
 // avoids a second otherwise-almost-always-zero field; materialType 5
 // needs both ior AND roughness at once though, hence `roughness` getting
-// its own field instead of also trying to overload `ior`. Both fields
+// its own field instead of also trying to overload `ior`. materialType 9
+// reuses BOTH the same way materialType 5 does - `ior` the smooth
+// patch's own perceptual roughness, `roughness` the rough patch's - two
+// roughness values instead of one, picked between by location rather
+// than both applying at once the way 5's ior/roughness do. Both fields
 // carried on every material anyway (rather than a separate per-type
 // struct) since this POC values "one flat array, index by primitive_id"
 // simplicity over saving a few bytes on entries that don't use every
@@ -1466,7 +1484,7 @@ kernel void primaryRayKernel(
                 rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
                 applyBeerLambertAbsorption(throughput, mat.color, frontFace, result.distance);
                 specularBounce = true;
-            } else if (mat.materialType == 4u) {
+            } else if (mat.materialType == 4u || mat.materialType == 9u) {
                 // Rough conductor (GGX metal): structurally the same NEE +
                 // BSDF-sampled-continuation + MIS shape as the Lambertian
                 // branch below - only the BRDF/sampling math changes, from
@@ -1475,17 +1493,35 @@ kernel void primaryRayKernel(
                 // reflectance colour), not a diffuse albedo - see
                 // TriangleMaterial's own comment.
                 //
-                // Genuinely ANISOTROPIC: `ior` gives alphaX as before,
-                // and `roughness` - otherwise idle for this materialType,
-                // since materialType 5 is the only other reader of that
-                // field - now doubles as alphaY. `roughness == 0.0`
-                // (every scene before this one) falls back to alphaY ==
-                // alphaX, the exact isotropic case this material used
-                // through step 22 - not a separate code path, the same
-                // fallback shape this POC already uses for HG's g == 0
-                // and rough dielectric's roughness == 0.
-                float alphaX = max(mat.ior * mat.ior, 0.0009);
-                float alphaY = (mat.roughness > 0.0) ? max(mat.roughness * mat.roughness, 0.0009) : alphaX;
+                // Genuinely ANISOTROPIC (materialType 4): `ior` gives
+                // alphaX as before, and `roughness` - otherwise idle for
+                // this materialType, since materialType 5 is the only
+                // other reader of that field - now doubles as alphaY.
+                // `roughness == 0.0` (every scene before this one) falls
+                // back to alphaY == alphaX, the exact isotropic case this
+                // material used through step 22 - not a separate code
+                // path, the same fallback shape this POC already uses
+                // for HG's g == 0 and rough dielectric's roughness == 0.
+                //
+                // Genuinely SPATIALLY-VARYING instead (materialType 9,
+                // see its own comment above): alpha is ISOTROPIC at any
+                // one point (alphaX == alphaY always), but which of the
+                // two roughness values applies switches across the
+                // surface via an analytic UV-space checker pattern - a
+                // "worn/scratched metal" look, not a smoothly-blended
+                // one (checkerColor()'s own hard tile edges, reused
+                // as-is, not softened).
+                float alphaX, alphaY;
+                if (mat.materialType == 9u) {
+                    float2 roughnessUV = equirectangularUV(normal);
+                    float alphaSmooth = max(mat.ior * mat.ior, 0.0009);
+                    float alphaRough = max(mat.roughness * mat.roughness, 0.0009);
+                    alphaX = checkerColor(roughnessUV, 6.0, float3(alphaSmooth), float3(alphaRough)).x;
+                    alphaY = alphaX;
+                } else {
+                    alphaX = max(mat.ior * mat.ior, 0.0009);
+                    alphaY = (mat.roughness > 0.0) ? max(mat.roughness * mat.roughness, 0.0009) : alphaX;
+                }
                 float3 tangent, bitangent;
                 buildAnisotropicOnb(facingNormal, tangent, bitangent);
                 float3 woWorld = -rayDir;

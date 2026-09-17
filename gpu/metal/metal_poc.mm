@@ -702,10 +702,24 @@ int main(int argc, const char** argv) {
         // inspecting the image, not by the bounding-region math alone
         // (which only rules out 3D overlap, not 2D screen-space
         // occlusion) - this position was checked against both.
+        // Sphere 3: a procedurally roughness-mapped GGX conductor
+        // (materialType 9) - a "worn/scratched copper" look, patches of
+        // near-mirror-smooth and rough microfacet regions on the SAME
+        // surface (see metal_poc.metal's own materialType 9 comment).
+        // Genuinely different from sphere 1's own anisotropic roughness:
+        // that one varies BY DIRECTION at a single point (one alpha per
+        // tangent axis, constant everywhere on the sphere); this one
+        // varies BY LOCATION (alpha itself is a function of where on the
+        // sphere you look, isotropic at any single point). Placed
+        // resting on the floor (`y = -1 + radius`, matching every other
+        // floor sphere's own convention) at the room's front-right,
+        // clear of the gold sphere/Spot/the disk mirror - checked by
+        // rendering and inspecting, not just the bounding-sphere math.
         std::vector<SphereData> spheres = {
             SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
             SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
             SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
+            SphereData{PackedFloat3{-0.78f, -0.78f, 0.7f}, 0.18f},
         };
         // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
         // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
@@ -733,6 +747,13 @@ int main(int argc, const char** argv) {
                              /*lightId=*/-1, /*alphaY=*/0.45f},
             TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
                              /*lightId=*/-1, /*roughness=*/0.35f},
+            // materialType 9: `ior` is the SMOOTH patch's own perceptual
+            // roughness, `roughness` the ROUGH patch's - both squared
+            // into GGX alpha exactly like materialType 4 already does,
+            // just picked between by an analytic UV-space checker
+            // pattern instead of being one constant.
+            TriangleMaterial{PackedFloat3{0.8f, 0.45f, 0.2f}, /*materialType=*/9, /*ior(smooth)=*/0.05f, PackedFloat3{0, 0, 0},
+                             /*lightId=*/-1, /*roughness(rough)=*/0.6f},
         };
 
         // A wall-mounted mirror disk (materialType 1) - a second, distinct
