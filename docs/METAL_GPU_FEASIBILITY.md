@@ -2075,3 +2075,41 @@ side, confirming the fix didn't accidentally invert which face is
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 43. Bug fix: the earth texture was never sRGB-decoded (found while reviewing texture setup, done)
+
+Found the same way step 42's bug was: reading code for something else
+entirely and noticing a real problem. `earthTexture` (step 8's own
+texture-mapping addition, later reused for step 18's environment map)
+has been created as `MTLPixelFormatRGBA8Unorm` since the very first
+texture-mapping PR - a plain linear 8-bit format. An ordinary JPEG/PNG's
+own stored bytes are sRGB-gamma-ENCODED, not linear (a well-known
+convention: perceptually-spaced storage gives dark tones more of the
+available 8-bit precision) - sampling those bytes directly as if they
+were already linear, the way `RGBA8Unorm` does, silently darkens every
+midtone this texture (or anything it bounces light onto via GI) ever
+produced. This is a classic, well-known bug class in real-time and
+offline renderers alike, not a subtle or exotic one - it's just been
+sitting here unnoticed since step 8.
+
+Fixed by switching both the real texture's descriptor and its 1x1 white
+fallback to `MTLPixelFormatRGBA8Unorm_sRGB` - the hardware-accelerated,
+standard fix (Metal's own texture sampler decodes sRGB to linear
+automatically for this pixel format, before the shader ever sees a
+value), not a manual `pow(c, 2.2)` after sampling in the shader. The
+white fallback's own colour is unaffected either way (pure white
+round-trips through sRGB<->linear unchanged) - included only for
+consistency between the two descriptors.
+
+**Result, verified via a direct before/after render comparison**: this
+is a LARGE, obvious, immediately visible difference, unlike step 42's
+own subtle one - the earth texture's oceans go from a washed-out, pale
+purple-blue to a properly saturated deep navy, its landmasses from pale
+washed green to a richer, more contrasted green, and Spot-the-cow's own
+texture-mapped fur reads noticeably darker and more saturated overall.
+Exactly the signature this bug class produces (uniformly washed-out
+midtones), not a colour-balance shift or a lighting change - confirming
+this was a real, meaningful correctness bug, not a cosmetic tweak.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

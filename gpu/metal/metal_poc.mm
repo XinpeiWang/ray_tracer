@@ -1188,9 +1188,20 @@ int main(int argc, const char** argv) {
         // --- Earth texture (the back wall's materialType=3 source) -----
         // stb_image decodes straight to interleaved 8-bit RGBA regardless
         // of the source JPEG's channel count (the 4th `desiredChannels`
-        // arg below), which is exactly MTLPixelFormatRGBA8Unorm's own
-        // layout - no repacking needed between stbi_load's buffer and
-        // replaceRegion:.
+        // arg below), which is exactly MTLPixelFormatRGBA8Unorm_sRGB's own
+        // BYTE layout - no repacking needed between stbi_load's buffer and
+        // replaceRegion:. The `_sRGB` pixel format (not plain
+        // `RGBA8Unorm`, this POC's own format up through PR #37) matters
+        // for more than naming: an ordinary 8-bit JPEG/PNG's own stored
+        // bytes are sRGB-gamma-ENCODED (perceptually, not linearly,
+        // spaced) - every earlier render sampled those bytes directly as
+        // if they were already linear radiance, silently darkening every
+        // midtone the earth texture (and, via GI, everything it bounces
+        // light onto) ever produced. `_sRGB` makes the texture SAMPLE
+        // instruction itself convert sRGB to linear before the shader
+        // ever sees a value - the standard, hardware-accelerated way to
+        // do this, rather than a manual `pow(c, 2.2)` after sampling in
+        // the shader.
 #ifdef RT_MODELS_DIR
         NSString* imagesDir = [[@(RT_MODELS_DIR) stringByDeletingLastPathComponent]
             stringByAppendingPathComponent:@"images"];
@@ -1204,7 +1215,7 @@ int main(int argc, const char** argv) {
         id<MTLTexture> earthTexture = nil;
         if (earthPixels) {
             MTLTextureDescriptor* earthDesc = [MTLTextureDescriptor
-                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB
                 width:(NSUInteger)earthW height:(NSUInteger)earthH mipmapped:NO];
             earthDesc.usage = MTLTextureUsageShaderRead;
             earthDesc.storageMode = MTLStorageModeShared;
@@ -1219,9 +1230,12 @@ int main(int argc, const char** argv) {
                 earthPath.UTF8String);
             // A 1x1 white fallback keeps the shader's unconditional
             // texture bind valid (Metal requires SOME texture at the
-            // bound slot) even if the JPEG is missing.
+            // bound slot) even if the JPEG is missing. `_sRGB` for
+            // consistency with the real texture above, though pure white
+            // (255,255,255) round-trips through the sRGB<->linear
+            // conversion unchanged either way.
             MTLTextureDescriptor* fallbackDesc = [MTLTextureDescriptor
-                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:1 height:1 mipmapped:NO];
+                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB width:1 height:1 mipmapped:NO];
             fallbackDesc.usage = MTLTextureUsageShaderRead;
             fallbackDesc.storageMode = MTLStorageModeShared;
             earthTexture = [device newTextureWithDescriptor:fallbackDesc];
