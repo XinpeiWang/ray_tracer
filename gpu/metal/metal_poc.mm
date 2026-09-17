@@ -564,6 +564,70 @@ static float acesFilmicTonemap(float x) {
     return fminf(fmaxf(mapped, 0.0f), 1.0f);
 }
 
+// Edge-preserving bilateral denoise, applied to the final 8-bit LDR
+// image (after tonemapping/gamma, not the linear HDR buffer - the
+// standard display-referred way to do this: a range kernel compared
+// directly against raw HDR values would be dominated by the huge
+// magnitude gap between a light source and everything else, rather than
+// meaningfully distinguishing "real edge" from "Monte Carlo noise").
+// A follow-on to the firefly clamp: that PR found (and honestly
+// reported) this scene's own worst noise - high-variance fog/volumetric
+// sampling near the spot light's own cone - wasn't the rare-extreme-
+// outlier kind firefly clamping targets, so it barely helped there.
+// Spatial denoising targets exactly that kind of noise instead: every
+// neighbouring pixel contributes to the output, weighted by BOTH how
+// close it is (`sigmaSpatial`, a Gaussian in pixel distance) and how
+// similar its own LUMINANCE is to the centre pixel's (`sigmaRange`, a
+// Gaussian in luminance difference) - two nearby pixels with similar
+// brightness (likely the same underlying surface, differing only by
+// noise) get smoothed together; two nearby pixels with very different
+// brightness (likely a real edge - a shadow boundary, a specular
+// highlight, a checker tile seam) barely influence each other at all,
+// which is what keeps this from just being a uniform blur. The SAME
+// per-pixel weight (derived from luminance alone) is applied to all
+// three colour channels together, not computed separately per channel -
+// preserves each pixel's own hue relationship to its neighbours instead
+// of letting R/G/B drift independently.
+static void bilateralDenoise(const std::vector<uint8_t>& ldrIn, std::vector<uint8_t>& ldrOut,
+                              uint32_t width, uint32_t height, int radius,
+                              float sigmaSpatial, float sigmaRange) {
+    std::vector<float> luminance(width * height);
+    for (uint32_t i = 0; i < width * height; ++i) {
+        luminance[i] = 0.2126f * ldrIn[i * 3 + 0] + 0.7152f * ldrIn[i * 3 + 1] + 0.0722f * ldrIn[i * 3 + 2];
+    }
+    float invSpatial2 = 1.0f / (2.0f * sigmaSpatial * sigmaSpatial);
+    float invRange2 = 1.0f / (2.0f * sigmaRange * sigmaRange);
+    for (int32_t y = 0; y < (int32_t)height; ++y) {
+        for (int32_t x = 0; x < (int32_t)width; ++x) {
+            uint32_t centerIdx = (uint32_t)y * width + (uint32_t)x;
+            float centerLum = luminance[centerIdx];
+            float sumWeight = 0.0f;
+            float sumRGB[3] = {0.0f, 0.0f, 0.0f};
+            for (int32_t dy = -radius; dy <= radius; ++dy) {
+                int32_t ny = y + dy;
+                if (ny < 0 || ny >= (int32_t)height) continue;
+                for (int32_t dx = -radius; dx <= radius; ++dx) {
+                    int32_t nx = x + dx;
+                    if (nx < 0 || nx >= (int32_t)width) continue;
+                    uint32_t nIdx = (uint32_t)ny * width + (uint32_t)nx;
+                    float spatialTerm = float(dx * dx + dy * dy) * invSpatial2;
+                    float lumDiff = luminance[nIdx] - centerLum;
+                    float rangeTerm = lumDiff * lumDiff * invRange2;
+                    float weight = expf(-(spatialTerm + rangeTerm));
+                    sumWeight += weight;
+                    sumRGB[0] += weight * float(ldrIn[nIdx * 3 + 0]);
+                    sumRGB[1] += weight * float(ldrIn[nIdx * 3 + 1]);
+                    sumRGB[2] += weight * float(ldrIn[nIdx * 3 + 2]);
+                }
+            }
+            for (int c = 0; c < 3; ++c) {
+                float v = sumRGB[c] / fmaxf(sumWeight, 1e-6f);
+                ldrOut[centerIdx * 3 + c] = (uint8_t)fminf(fmaxf(v + 0.5f, 0.0f), 255.0f);
+            }
+        }
+    }
+}
+
 int main(int argc, const char** argv) {
     @autoreleasepool {
         const uint32_t width = (argc > 1) ? (uint32_t)atoi(argv[1]) : 400;
@@ -1488,7 +1552,19 @@ int main(int argc, const char** argv) {
                 ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
             }
         }
-        stbi_write_png(outPath, width, height, 3, ldr.data(), width * 3);
+        // Bilateral denoise - see that function's own comment. Radius 3
+        // (7x7), sigmaSpatial 2.5, sigmaRange 20.0 (in 0-255 luminance
+        // units) - tuned the same way every other post-process knob this
+        // POC has added was: by rendering and comparing, not from theory
+        // alone. A much more aggressive setting (radius 4, sigmaRange 80)
+        // was also tried and rejected - it visibly softened the crystal
+        // ball's own sharp specular highlight and the checkerboard
+        // floor's own tile edges, confirming this knob really can wash
+        // out real detail if pushed too far, not just theoretically.
+        std::vector<uint8_t> denoised(width * height * 3);
+        bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
+
+        stbi_write_png(outPath, width, height, 3, denoised.data(), width * 3);
         fprintf(stderr, "Wrote %s (%ux%u)\n", outPath, width, height);
     }
     return 0;
