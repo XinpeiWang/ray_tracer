@@ -2113,3 +2113,46 @@ this was a real, meaningful correctness bug, not a cosmetic tweak.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 44. Closing a documented gap: directional-light fog attenuation (done)
+
+Step 26's own `DirectionalLight` comment explicitly documented a
+simplification: unlike the point/spot lights' real, finite shadow-ray
+distance (`exp(-fogSigmaT * dist)`), a directional light's shadow ray
+has no target distance at all (the light is at infinity), so its own
+fog attenuation was skipped entirely rather than guessing at an
+arbitrary sentinel length's worth of Beer-Lambert. This step closes that
+gap properly instead of leaving it permanent: since this scene's own fog
+fills exactly the room's solid geometry (a fixed, known `[-1,1]^3` box -
+see the floor/ceiling/wall `addQuad()` calls in step 1's own scene), and
+an UNOCCLUDED directional-light shadow ray (by definition, since this
+code only runs when the real intersection test found nothing) can only
+have exited through the room's own single gap (the open front - see
+step 26's own aiming comment), the distance to where that same ray
+crosses the room's bounds IS the real fog path length, not a guess.
+
+`rayBoxExitDistance()` is the standard axis-aligned-box "far" slab-test
+distance, assuming the ray origin is inside the box (true for every
+shading point in this scene). Wired into all three directional-light NEE
+branches (Lambertian, GGX conductor, fog volumetric) exactly the same
+way the point/spot lights' own real distance already is - the two
+"kinds" of delta light now share the identical fog-attenuation shape,
+just computed differently (a real traced distance for one, an analytic
+box-exit distance for the other).
+
+**Result, verified two ways**: at this scene's own actual (fairly
+subtle) fog density, an `stb_image`-based pixel-diff shows the expected
+small, widespread effect - about 45% of subpixels differ, but by a small
+amount (average 0.72/255, max 5/255), consistent with a modest,
+physically-correct dimming spread across many surfaces rather than a
+dramatic change. At a deliberately exaggerated fog density (`fogSigmaT`
+raised 20x, non-committed, diagnostic only), the effect becomes
+dramatic and unambiguous: virtually every pixel differs (99.97% of
+subpixels, average difference 46.7/255) and the directional light's own
+visible "god ray" fog beam - previously shining through the dense fog
+completely unattenuated - is now correctly extinguished, exactly the
+signature Beer-Lambert absorption is supposed to produce at high optical
+depth.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
