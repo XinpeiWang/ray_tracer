@@ -1989,3 +1989,39 @@ coincidence worth ignoring.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 41. Proof-of-concept, step 30: blackbody-derived area light colours (done)
+
+A small, narrowly-scoped follow-on to step 29: the scene's own two
+ceiling `AreaLight`s (added all the way back in step 4/section 12, "a
+warm light and a cool light side by side") were the last hand-picked-RGB
+lights left in the scene after step 29 converted the point/spot/
+directional ones - this closes that out, so every light in the scene now
+gets its colour from `blackbodyColor()` at a named temperature: 2700 K
+(a standard incandescent bulb) for the warm one, 20000 K (near the top
+of the fit's own valid range - a very hot, blue-white source) for the
+cool one.
+
+**A genuinely interesting, honestly-reported limitation surfaced here**:
+20000 K's own derived colour (`(0.669, 0.778, 1.0)`) is nowhere near as
+saturated a blue as the hand-picked `(6, 10, 18)` it replaces (a much
+higher red:blue contrast ratio). Checked numerically before settling on
+this: even at 40000 K, the very top of the fit's valid range, the
+derived colour only reaches `(0.595, 0.728, 1.0)` - real blackbody
+radiation never produces a deeply saturated blue the way an artistic RGB
+pick can, since a thermal emitter's spectrum always retains substantial
+energy across the visible range even as its peak shifts blue. This is a
+genuine physical fact this derivation surfaces, not a bug to work around
+- documented in the scene comment rather than swapping in a less-honest
+temperature or abandoning the derivation for this one light.
+
+**Result, verified**: numerically (both temperatures' own RGB output
+checked against the same standalone reference program step 29 used,
+before rendering), and visually (a full-scene render shows a visibly
+less blue-saturated cool light and correspondingly less blue ambient
+bounce on the green wall/ceiling than the previous hand-tuned version,
+consistent with the numeric difference above - an honest, expected
+change, not a regression).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
