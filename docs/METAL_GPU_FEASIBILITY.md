@@ -3577,3 +3577,66 @@ no shader-visible effect yet. The ad-hoc CMake build/`ctest` (four
 tests, none touched by this PR, all still passing) and the new
 `metal_poc_math_tests` cases confirm the addition doesn't disturb
 anything else.
+
+## 70. Refactor: splitting primaryRayKernel's per-material dispatch into separate functions (done)
+
+`metal_poc.metal`'s own `primaryRayKernel` had grown, one PR at a time
+across sections 55-69, into a single 1,625-line function - the shader-
+side analogue of the same size problem section 56 (an earlier session)
+already found and fixed on the host side (`metal_poc.mm`'s own `main()`,
+split into `MetalPocApp`'s five methods). Every one of the 8 material
+types' own NEE + BSDF-sampled-continuation logic (dielectric, rough
+dielectric, GGX conductor, mirror, thin dielectric, clearcoat, diffuse
+transmission, Lambertian) was inlined directly into one giant
+`if`/`else if` chain, making the function - and each individual
+material's own logic within it - hard to navigate as a whole.
+
+Extracted each material's own branch into its own `inline` (non-`kernel`)
+Metal function - `shadeDielectric`, `shadeRoughDielectric`,
+`shadeConductor`, `shadeMirror`, `shadeThinDielectric`, `shadeClearcoat`,
+`shadeDiffuseTransmission`, `shadeLambertian` - taking the read-only
+per-hit context each needs (material, albedo, hit geometry) plus
+whatever scene resources its own NEE actually reads (only the four
+NEE-capable materials need light buffers/textures/the intersector at
+all), and mutating the bounce loop's own running path state (`rayDir`,
+`rayOrigin`, `throughput`, `radiance`, `bsdfPdf`, `specularBounce`,
+`rngState`) via `thread &` reference parameters - the exact same
+variables the inlined code used to write to directly. `primaryRayKernel`
+itself shrank from 1,625 to roughly 650 lines, now mostly a dispatcher.
+
+**A real wrinkle this refactor needed to handle, found before it became
+a bug**: one of the 8 branches (the GGX conductor's own VNDF-sampled-
+below-the-hemisphere case) has a `break` that used to exit
+`primaryRayKernel`'s own bounce loop directly - impossible once that
+code lives in a separate function. Every extracted function returns
+`bool` (`true` = path continues, `false` = terminate) even though only
+this ONE branch ever actually returns `false` - a uniform convention
+applied to all 8 call sites (`if (!shadeXxx(...)) break;`) rather than
+special-casing just the one branch that needs it, so a future material
+added the same way doesn't need to remember which specific case
+requires this at the call site to get it right.
+
+**A real technical question this refactor needed to answer, not
+assumed**: can Metal Shading Language pass opaque resource types
+(`intersector<instancing, triangle_data>`, `instance_acceleration_
+structure`, `intersection_function_table<instancing, triangle_data>`,
+`texture2d<float, access::sample>`, `sampler`) as ordinary parameters to
+a non-`kernel` function, the same way regular device buffers can? Yes -
+confirmed empirically (a clean `xcrun -sdk macosx metal -c` compile with
+zero warnings), not assumed from documentation alone.
+
+**Verified via the exact same discipline section 56's own refactor
+established**: full CMake build + `ctest` (four tests, all passing,
+including every device-side test kernel this POC has accumulated -
+`buildAnisotropicOnb`, `frComplexRGB`, `ggxD`, etc. - none of which this
+refactor touched, since they're shared helper functions called BY the
+new per-material functions, not moved themselves) - and a direct
+before/after pixel comparison at 900x900/128spp against the pre-refactor
+commit. Unlike section 56's own refactor (17 of 750,000 subpixels
+differed by exactly 1, attributed to GPU thread-scheduling noise), this
+comparison came back PIXEL-IDENTICAL: 0 of 2,430,000 subpixel values
+differ at all, at any threshold - a Metal shader dispatch's own RNG
+progression and floating-point evaluation order is fully deterministic
+per-thread for a fixed input, so a behavior-preserving refactor of
+GPU-side code can (and here, does) reproduce bit-for-bit, not just
+"within noise."
