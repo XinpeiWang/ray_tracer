@@ -2156,3 +2156,52 @@ depth.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 45. Proof-of-concept, step 31: procedurally roughness-mapped GGX conductor (done)
+
+A new material (materialType 9) reusing materialType 4's own exact NEE +
+BSDF-sampled-continuation + MIS structure, but with `alphaX`/`alphaY`
+computed from an analytic UV-space checker pattern (`checkerColor()`,
+picking between two roughness values instead of two colours) instead of
+being one constant per primitive - patches of near-mirror-smooth and
+rough microfacet regions on the SAME surface, a "worn/scratched metal"
+look. Genuinely different in KIND from step 23's own anisotropic
+conductor: that one varies alpha BY DIRECTION at a single point (one
+alphaX, one alphaY, constant everywhere on the surface); this one varies
+alpha BY LOCATION (isotropic at any single point, but which isotropic
+value applies changes across the surface).
+
+Restricted to sphere primitives, using `equirectangularUV()` on the
+hit's own object-space normal for a texture-space coordinate - the same
+technique the environment map already uses for direction-based
+sampling, reused here for a second purpose. This sidesteps needing real
+mesh UVs/`tangentFor()` the way step 27's bump-mapped Lambertian
+(materialType 7, triangle-only) needed - a sphere's own hit normal
+already gives a natural, free coordinate, no new per-primitive data
+needed host-side at all. `ior`/`roughness` reused a FOURTH and FIFTH way
+(after materialTypes 4/5/7's own reuses) as the smooth/rough patches'
+own perceptual roughness values respectively.
+
+Added as a new fourth sphere (copper-tinted), placed at the room's
+front-left. Placement took a few iterations, the same "verify by
+rendering" lesson this POC keeps re-learning for new geometry: the
+first two positions tried landed the sphere fully out of camera view
+(the first hidden behind Spot-the-cow along a near-identical sightline,
+confirmed by the `4 spheres` scene-summary line printing correctly while
+nothing new appeared on screen) - not a rendering bug, a placement one,
+caught by actually looking rather than trusting the 3D coordinates
+alone.
+
+**Result, verified two ways**: the committed scene shows the new sphere
+with a visibly different sheen between two regions of its own surface -
+small in this framing (partially at the frame's own edge, the same
+"partially cropped is fine" precedent the giraffe's own foot already
+sets in every prior render). A dedicated, non-committed diagnostic
+render (the same sphere enlarged and moved to fill the frame, verifying
+composition rather than the committed scene) makes the effect
+unambiguous: a real checkerboard of alternating sharp mirror
+reflections and blurred, matte highlights on one continuous surface, not
+a subtle hint.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
