@@ -3861,3 +3861,77 @@ regressed.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 74. A 13th material: Oren-Nayar rough diffuse (done)
+
+Surveyed all of Blender Cycles' own `kernel/closure/` BSDFs (per the
+user's own request, after sections 72/73's GGX energy-compensation
+work also came from that reference) against what this POC already
+has. Most are either already covered (diffuse/translucent, GGX
+microfacet) or a poor fit here (hair BSDFs need curve geometry,
+BSSRDF needs a whole subsurface architecture - both too large for a
+single increment). One clean, well-scoped gap stood out: every
+existing diffuse-family material in this POC is ideal Lambertian - no
+ROUGH diffuse model at all, the classic real-world "clay/plaster/lunar
+regolith reads flatter than a smooth diffuse ball" look.
+
+Ports Cycles' own "Improved Oren-Nayar" (Fujii's reformulation of
+Oren & Nayar 1994, cited directly in `kernel/closure/
+bsdf_oren_nayar.h`) as materialType 13. `mat.roughness` doubles as
+this material's own sigma parameter (materialType 4/5/7/9/10 already
+reuse this same field their own way - one more reuse, not a new
+struct field). Deliberately scoped to the SINGLE-scatter term only -
+Cycles' own further energy-preserving MULTI-scatter compensation (an
+OpenPBR-spec-based colored refinement on top of this) is explicitly
+deferred, the same "close the bigger, more visible gap first" staging
+sections 72/73 already used for GGX energy compensation.
+
+`orenNayarF(wo, wi, n, sigma)` computes `a + b*t` where `a`/`b` are
+precomputed from `sigma` alone (`a = 1/(pi + sigma*(pi/2-2/3))`,
+`b = sigma*a`) and `t` measures how aligned `wi`/`wo` are in azimuth
+once their shared `n`-component is removed - `sigma == 0` makes
+`b == 0`, collapsing this to exactly `a == 1/pi`, i.e. plain
+Lambertian's own constant BRDF value, a strict generalization not a
+separate code path. Structurally a near-identical copy of
+`shadeLambertian` (same NEE across all 6 light-sampling strategies,
+same cosine-weighted continuation sampling - PR #65's own per-
+material-function split made this a clean copy-adapt rather than
+another branch squeezed into a shared function) with every constant
+`(1.0/M_PI_F)` BRDF factor replaced by `orenNayarF(...)` evaluated at
+that light's own direction, and the continuation ray's own throughput
+update generalized from `albedo` (Lambertian's own MC weight) to
+`albedo * orenNayarF(...) * pi` (the same weight formula, now
+direction-dependent since `orenNayarF` isn't a constant).
+
+**A real placement bug found and fixed via the established
+diagnostic-recolour discipline, not assumed correct from the
+coordinates alone**: the demonstration sphere's first placement
+(`z=1.3`) put it OUTSIDE the room's own `[-1,1]` bounding box entirely,
+and its `y=-0.88` (with radius `0.15`) clipped through the floor - a
+diagnostic magenta-Lambertian recolour render (the same technique
+sections 33/59/64 already established) showed no visible sphere
+anywhere in frame at all, confirming the placement itself was broken,
+not just subtle. Fixed by moving it to `z=0.9, y=-0.85` (matching the
+existing spheres' own room-relative scale).
+
+**Verified against a fresh standalone double-precision C port of
+Cycles' own single-scatter formula** (not reused from any earlier
+session): `sigma == 0` reproduces Lambertian's own `1/pi` exactly at
+both a near-normal and a grazing test direction pair; a rough
+(`sigma == 1`) grazing, azimuth-aligned view/light pair reads
+`~3.18x` BRIGHTER than Lambertian - the real, well-known
+retroreflective "flat moon" effect this material exists to capture,
+not a vague "greater than" check but matched to the reference
+program's own exact computed value. A device-side test kernel
+(`test_orenNayarF`) checks the SAME three values from the GPU's own
+compiled shader code; deliberately corrupted one expected value,
+confirmed the suite caught it, then reverted. A before/after render
+(the demonstration sphere's own `materialType` swapped between 13 and
+0, same albedo, same everything else) shows a real, substantial
+difference: 21.2% of its own screen region's subpixels differ by more
+than 3, mean absolute difference 2.97 - genuinely different shading,
+not a no-op.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests, `orenNayarF` now
+covered) passes.
