@@ -3373,3 +3373,65 @@ grazing-angle behaviour the dominant visual driver.
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests, `frComplexRGB`
 now covered) passes.
+
+## 67. A 12th material: diffuse transmission (done)
+
+Every material this POC has added so far either reflects (Lambertian,
+conductor, clearcoat) or transmits SPECULARLY (smooth/rough/thin
+dielectric). None scatter DIFFUSELY on both sides of a surface at
+once - the real behaviour of a genuinely translucent thin diffuser:
+paper, a lampshade panel, a leaf. `src/shared/bxdfs_layered.h`'s
+`DiffuseTransmissionBxDF` (pbrt-v4's own) is exactly this: a
+reflectance tint `R` and a transmittance tint `T`, picked between by a
+single russian-roulette draw with probability `max(R)/(max(R)+max(T))`,
+then cosine-sampled on whichever side (the surface's own normal
+hemisphere for reflect, the flipped one for transmit) that draw
+selected.
+
+New materialType 12. `TriangleMaterial` gains one new field,
+`transmitColor` (`color`/`albedo` doubles as the reflectance tint,
+same convention as materialType 0). The key implementation insight
+that kept this from doubling the size of every light-sampling loop it
+touches: for any ONE hit point, a given light/continuation direction
+falls on exactly ONE side of `facingNormal` - so each of the 5 existing
+light-sampling loops (area light + 4 delta types) needed only a SINGLE
+added sign check (`cosSurface > 0` selects the reflect lobe/tint/pdf-
+weight/shadow-ray-offset-direction; `< 0` selects transmit's), not two
+separate passes per light. The continuation ray follows
+`DiffuseTransmissionBxDF::sample()` exactly: pick reflect vs. transmit
+by the same probability ratio, cosine-sample the corresponding
+hemisphere, and the throughput update collapses to exactly the chosen
+tint (`albedo` or `transmitColor`) with no extra scaling - the same
+cosine-pdf/cosine-BRDF cancellation materialType 0's own Lambertian
+update, and materialType 8's own coat-vs-base stochastic pick, already
+rely on.
+
+The demonstration object is placed with real intent, not just "put it
+somewhere open": a small green-tinted panel positioned almost exactly
+at the scene's first point light's own depth, so the camera sees that
+light BACKLIT through the panel - the one placement that actually
+exercises the transmission lobe's own NEE path (every other open-space
+placement this session has used for a new material - the goniometric
+light's profile texture, the thin-dielectric glass pane - only ever
+needed front-lighting). Reflectance and transmittance are deliberately
+DIFFERENT tints (`{0.25,0.45,0.12}` vs. a lighter, more saturated
+`{0.18,0.6,0.1}`), the same asymmetry a real backlit leaf shows (its
+transmitted colour reads brighter/warmer than its reflected one, not
+just a dimmer copy) - visible in the render as a distinctly bright
+glowing patch where the point light sits directly behind the panel.
+
+**Verified**: a before/after render (the panel's own `addQuad()` call
+commented out vs. present, same seed/settings) shows the panel's own
+screen-space region 87.5% of subpixels differing by more than 3, mean
+SIGNED difference +49.3 (a strong, correctly-positive brightening,
+from both the backlit glow and the panel now occluding a darker
+background) - not merely a fringe/noise-floor change. No new device-
+side test kernel was added, matching materialType 8/11's own
+precedent - this material introduces no new standalone pure function
+(unlike section 66's `frComplexRGB()`), only new inline shading logic
+reusing already-tested building blocks (`cosineSampleHemisphere()`,
+the same NEE/shadow-ray/MIS pattern every other diffuse-family
+material already uses).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests) continues to pass.
