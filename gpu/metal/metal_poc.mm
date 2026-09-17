@@ -417,6 +417,43 @@ static bool loadObjMesh(const std::string& path,
     return true;
 }
 
+// Blackbody-temperature-to-RGB (Tanner Helland's widely-used polynomial
+// fit to the Planckian locus) - converts an actual physical temperature
+// in Kelvin to an approximate linear-ish RGB tint, valid over roughly
+// [1000, 40000] K (clamped at the low end, where the fit diverges).
+// Used below to derive several of this scene's own light colours from a
+// NAMED physical quantity (5778 K for the directional "sun" light - the
+// Sun's real photosphere temperature; 3000 K for a warm tungsten-style
+// spot; 9000 K for a cool, moonlight-style point light) instead of a
+// hand-picked RGB tuple - the same "derive it, don't guess it"
+// preference this POC's own Fresnel/GGX/Beer-Lambert math already favors
+// over an arbitrary-looking constant.
+static float3 blackbodyColor(float kelvinIn) {
+    float kelvin = fmaxf(kelvinIn, 1000.0f) / 100.0f;
+    float r, g, b;
+    if (kelvin <= 66.0f) {
+        r = 255.0f;
+    } else {
+        r = 329.698727446f * powf(kelvin - 60.0f, -0.1332047592f);
+    }
+    if (kelvin <= 66.0f) {
+        g = 99.4708025861f * logf(kelvin) - 161.1195681661f;
+    } else {
+        g = 288.1221695283f * powf(kelvin - 60.0f, -0.0755148492f);
+    }
+    if (kelvin >= 66.0f) {
+        b = 255.0f;
+    } else if (kelvin <= 19.0f) {
+        b = 0.0f;
+    } else {
+        b = 138.5177312231f * logf(kelvin - 10.0f) - 305.0447927307f;
+    }
+    r = fminf(fmaxf(r, 0.0f), 255.0f) / 255.0f;
+    g = fminf(fmaxf(g, 0.0f), 255.0f) / 255.0f;
+    b = fminf(fmaxf(b, 0.0f), 255.0f) / 255.0f;
+    return float3{r, g, b};
+}
+
 // ACES filmic tonemap (Krzysztof Narkowicz's widely-used fitted
 // approximation of the ACES RRT+ODT curve) - replaces this POC's old
 // direct clamp-to-[0,1] before the 8-bit gamma encode. A raw linear
@@ -717,12 +754,24 @@ int main(int argc, const char** argv) {
         // illumination falls off with distance everywhere, never with
         // ANGLE the way a spot's does). 25 degree outer / 15 degree inner
         // cone (smoothstep-blended between them, not a hard edge).
+        //
+        // All three lights below get their own colour from
+        // blackbodyColor() at a NAMED physical temperature rather than a
+        // hand-picked RGB tuple - 9000 K (cool, moonlight-ish) for this
+        // first point light, 3000 K (warm tungsten) for the spot, 5778 K
+        // (the Sun's own real photosphere temperature) for the
+        // directional light below. Each still scaled by a plain
+        // intensity multiplier chosen to land in roughly the same
+        // brightness range this scene's own lights already used - only
+        // the HUE is now derived, not the overall exposure.
         const float3 spotPos = float3{0.65f, 0.9f, -0.1f};
         const float3 spotTarget = float3{0.7f, -1.0f, 0.4f};
         const float3 spotDir = simd::normalize(spotTarget - spotPos);
+        const float3 pointLight1Color = blackbodyColor(9000.0f) * 1.0f;
+        const float3 spotLightColor = blackbodyColor(3000.0f) * 11.3f;
         std::vector<PointLightData> pointLights = {
-            PointLightData{PackedFloat3{0.0f, 0.3f, 0.3f}, PackedFloat3{0.9f, 0.65f, 1.1f}},
-            PointLightData{PackedFloat3{spotPos.x, spotPos.y, spotPos.z}, PackedFloat3{7.5f, 6.5f, 10.0f},
+            PointLightData{PackedFloat3{0.0f, 0.3f, 0.3f}, PackedFloat3{pointLight1Color.x, pointLight1Color.y, pointLight1Color.z}},
+            PointLightData{PackedFloat3{spotPos.x, spotPos.y, spotPos.z}, PackedFloat3{spotLightColor.x, spotLightColor.y, spotLightColor.z},
                            PackedFloat3{spotDir.x, spotDir.y, spotDir.z},
                            /*cosOuterAngle=*/cosf(25.0f * (float)M_PI / 180.0f),
                            /*cosInnerAngle=*/cosf(15.0f * (float)M_PI / 180.0f)},
@@ -740,8 +789,9 @@ int main(int argc, const char** argv) {
         // before it would cross the ceiling (y=1) or either side wall,
         // rather than being trivially self-shadowed by this room's own
         // geometry on every shading point.
+        const float3 sunColor = blackbodyColor(5778.0f) * 2.7f;
         std::vector<DirectionalLightData> directionalLights = {
-            DirectionalLightData{PackedFloat3{0.1f, -0.15f, -1.0f}, PackedFloat3{2.8f, 2.6f, 2.4f}},
+            DirectionalLightData{PackedFloat3{0.1f, -0.15f, -1.0f}, PackedFloat3{sunColor.x, sunColor.y, sunColor.z}},
         };
 
         const uint32_t triangleCount = (uint32_t)materials.size();

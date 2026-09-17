@@ -1946,3 +1946,46 @@ preserves.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 40. Proof-of-concept, step 29: blackbody-temperature light colours (done)
+
+Every light this POC has ever added picked its own emission colour as a
+hand-tuned RGB tuple - reasonable for placement/intensity tuning (steps
+24-26's own docs are full of exactly that kind of iteration), but the
+COLOUR itself was always just "whatever looked right," with no physical
+grounding. This step adds `blackbodyColor()` - Tanner Helland's widely-
+used polynomial fit to the Planckian locus, converting an actual
+temperature in Kelvin to an approximate RGB tint - and uses it to derive
+three of this scene's existing light colours from a NAMED physical
+quantity instead: 9000 K (cool, moonlight-ish) for the first point
+light, 3000 K (warm tungsten) for the spot, and 5778 K - the Sun's own
+real photosphere temperature - for the directional light. Each colour is
+still scaled by a plain intensity multiplier chosen to land in roughly
+the same brightness range the scene's own lights already used, so only
+the HUE is newly derived, not the overall exposure balance this POC has
+already tuned scene-by-scene.
+
+Purely a host-side utility and three call-site changes in
+`metal_poc.mm` - no shader or integration math touched at all, the same
+narrow scope step 28's tonemap change had.
+
+**Verified two ways**: first numerically, against a small standalone
+C program computing the exact same formula (`bb(9000)`, `bb(3000)`,
+`bb(5778)`) to confirm the in-repo function's own output before ever
+rendering anything - `(0.822, 0.874, 1.000)`, `(1.000, 0.695, 0.431)`,
+and `(1.000, 0.951, 0.904)` respectively, all matching visual
+expectations for those temperatures (progressively bluer above ~6600 K,
+progressively warmer/oranger below it). Then visually, via a direct
+before/after crop of the first point light's own wall-glow patch (step
+24's own signature verification image): the derived 9000 K colour reads
+distinctly cooler/bluer than the hand-picked `(0.9, 0.65, 1.1)` it
+replaced, confirming the hue shift actually reaches the final image, not
+just the formula's own output. Also notable: the derived 5778 K sun
+colour (`(1.0, 0.951, 0.904) * 2.7 ≈ (2.7, 2.57, 2.44)`) came out nearly
+IDENTICAL to step 26's own hand-tuned `(2.8, 2.6, 2.4)` - a satisfying
+confirmation that the earlier manual tuning had already converged on
+something close to physically correct for a real sun-like light, not a
+coincidence worth ignoring.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
