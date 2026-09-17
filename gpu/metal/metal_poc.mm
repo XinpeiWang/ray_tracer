@@ -89,6 +89,7 @@ struct Uniforms {
     float fogAsymmetryG;
     uint32_t pointLightCount;
     uint32_t directionalLightCount;
+    uint32_t projectionLightCount;
     uint32_t adaptiveSampling;
 };
 
@@ -195,6 +196,45 @@ struct DirectionalLightData {
     PackedFloat3 direction;
     PackedFloat3 emission;
 };
+
+// Mirrors metal_poc.metal's ProjectionLight byte-for-byte.
+struct ProjectionLightData {
+    PackedFloat3 position;
+    PackedFloat3 forward;
+    PackedFloat3 right;
+    PackedFloat3 up;
+    float tanHalfFovX;
+    float tanHalfFovY;
+    float scale;
+};
+
+// Builds a ProjectionLightData aimed from `position` at `target`, with a
+// world-space `worldUp` hint (the usual "look-at" convention every other
+// camera/light-aiming helper uses) to disambiguate the roll around the
+// forward axis - mirrors metal_poc.metal's own ProjectionLight comment on
+// why `right`/`up`/`forward` are precomputed once here rather than
+// re-derived per shading sample. `fovDegrees` is the FULL vertical field
+// of view (matching this project's own camera.h/cameras.h convention,
+// not a half-angle); `aspect` (width/height of the projected image, NOT
+// the render's own output aspect) sets the horizontal FOV independently,
+// the same way projection_light.h's own screenBounds derivation folds an
+// image's aspect ratio into an otherwise-square frustum.
+static ProjectionLightData makeProjectionLight(float3 position, float3 target, float3 worldUp,
+                                                float fovDegrees, float aspect, float scale) {
+    float3 forward = simd::normalize(target - position);
+    float3 right = simd::normalize(simd::cross(forward, worldUp));
+    float3 up = simd::cross(right, forward);
+    float tanHalfFovY = tanf(fovDegrees * 0.5f * (float)M_PI / 180.0f);
+    float tanHalfFovX = tanHalfFovY * aspect;
+    return ProjectionLightData{
+        PackedFloat3{position.x, position.y, position.z},
+        PackedFloat3{forward.x, forward.y, forward.z},
+        PackedFloat3{right.x, right.y, right.z},
+        PackedFloat3{up.x, up.y, up.z},
+        tanHalfFovX,
+        tanHalfFovY,
+        scale};
+}
 
 // materialType: 0 = Lambertian, 1 = mirror, 2 = dielectric (glass) - see
 // metal_poc.metal's own comment on this struct for why it's this minimal.
@@ -1183,9 +1223,32 @@ int main(int argc, const char** argv) {
             DirectionalLightData{PackedFloat3{0.1f, -0.15f, -1.0f}, PackedFloat3{sunColor.x, sunColor.y, sunColor.z}},
         };
 
+        // A "slide projector" light - see metal_poc.metal's own
+        // ProjectionLight comment. Mounted near the ceiling on the room's
+        // centre-left, aimed down and across at the green (right, x=1)
+        // wall's own lower-mid area - a plain, otherwise-undecorated flat
+        // Lambertian surface (unlike the back wall, already carrying its
+        // own mural texture), so the projected earthmap image reads as
+        // unambiguously new rather than blending into existing detail.
+        // Reuses `earthTexture` (already loaded for materialType 3's own
+        // back-wall texture, see that PR's own comment) as the projected
+        // image, rather than a separate asset - the same "a world map
+        // projected like a slide" idea, just illuminating a wall instead
+        // of decorating one. 32 degree (full vertical) FOV keeps this
+        // reading as a defined projector "beam," not floodlighting the
+        // whole wall; aspect 2.0 roughly matches earthmap.jpg's own
+        // 2048x1025 (~2:1) proportions so the projected image isn't
+        // visibly stretched.
+        std::vector<ProjectionLightData> projectionLights = {
+            makeProjectionLight(/*position=*/float3{0.1f, 0.85f, -0.15f},
+                                 /*target=*/float3{1.0f, -0.05f, -0.15f},
+                                 /*worldUp=*/float3{0.0f, 1.0f, 0.0f},
+                                 /*fovDegrees=*/38.0f, /*aspect=*/2.0f, /*scale=*/25.0f),
+        };
+
         const uint32_t triangleCount = (uint32_t)materials.size();
-        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights\n",
-                triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size());
+        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights, %zu projection lights\n",
+                triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size(), projectionLights.size());
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
@@ -1204,6 +1267,9 @@ int main(int argc, const char** argv) {
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> directionalLightBuffer = [device newBufferWithBytes:directionalLights.data()
             length:directionalLights.size() * sizeof(DirectionalLightData)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> projectionLightBuffer = [device newBufferWithBytes:projectionLights.data()
+            length:projectionLights.size() * sizeof(ProjectionLightData)
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
             length:materials.size() * sizeof(TriangleMaterial)
@@ -1683,6 +1749,7 @@ int main(int argc, const char** argv) {
         uniforms.fogAsymmetryG = 0.4f;
         uniforms.pointLightCount = (uint32_t)pointLights.size();
         uniforms.directionalLightCount = (uint32_t)directionalLights.size();
+        uniforms.projectionLightCount = (uint32_t)projectionLights.size();
         // Single-pass adaptive sampling (see metal_poc.metal's own
         // shading-loop comment) - enabled by default for this scene:
         // converged pixels (most of the flat-coloured walls/ceiling)
@@ -1717,6 +1784,7 @@ int main(int argc, const char** argv) {
         [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
         [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
         [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
+        [enc setBuffer:projectionLightBuffer offset:0 atIndex:17];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
         // acceleration structures referencing primitive ones (now three:

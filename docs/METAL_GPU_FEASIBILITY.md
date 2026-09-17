@@ -2799,3 +2799,58 @@ than assuming from the algorithm's own textbook motivation alone.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 58. A fourth delta light type: the "slide projector" light (done)
+
+Adds `ProjectionLight` (`src/shared/projection_light.h`, pbrt-v4's own
+`ProjectionLight`, section 12.5) - a fourth delta light alongside point/
+spot/directional, same "summed unconditionally every bounce, never
+picked, no MIS/pdf needed" integration shape every earlier delta light
+already established (four call sites: fog scattering, GGX conductor,
+clearcoat's diffuse base, and plain Lambertian - the same four places
+point/directional lights already touch). Unlike a spot light's own
+smooth scalar cone falloff, this one projects an actual IMAGE through a
+perspective frustum, a real gobo/slide-projector effect: reject
+anything behind the projector or outside its own screen-space frustum
+bounds, then sample an image at the resulting UV. Reuses this POC's
+already-loaded `earthTexture` (bound at `texture(1)` since the very
+first texture-mapping PR, step 8) as the projected image rather than
+needing a second texture binding or a new asset - a world map projected
+like a slide, illuminating a wall instead of decorating one.
+`makeProjectionLight()` (metal_poc.mm) builds a light-space orthonormal
+basis (`right`/`up`/`forward`) from a simple look-at (`position`,
+`target`, `worldUp`) the same way this POC's own camera setup already
+does, rather than requiring a caller to hand-derive a rotation matrix.
+
+Mounted near the ceiling, aimed down and across at the green (right)
+wall's own lower-mid area - a plain, otherwise-undecorated flat surface
+(unlike the back wall, which already carries its own mural texture),
+so the projected image reads as unambiguously new.
+
+**A real debugging step worth recording**: the first committed attempt
+(`scale=5`) was genuinely invisible in a full render - not a bug, but
+this scene's existing area/point/directional lights already flood the
+target wall with enough ambient illumination that a modest projector
+contribution didn't read as a visible change by eye. Caught the same
+way bump mapping (step 33) and clearcoat needed isolated diagnostic
+renders: a temporary, NOT-committed test at `scale=80` produced an
+unmistakable, geometrically-correct bright patch exactly where the
+`position`/`target` math predicted, proving the mechanism itself was
+correct before concluding the committed value just needed retuning
+rather than debugging further. Settled on `scale=25` and widened the
+FOV slightly (32→38 degrees) and re-aimed (`target` moved up the wall
+to keep the projected patch further from the frame's bottom edge) for
+the final committed scene - a visible, if intentionally modest, lighter
+patch on the green wall rather than an overexposed blown-out one.
+
+**Verified via a direct off/on comparison** (`projectionLightCount` 0
+vs. 1, same seed/settings, same 700x700 @ 48spp view): a distinctly
+brighter, texture-varying patch appears on the green wall exactly where
+the projector aims, visible both in the full-frame comparison and in a
+cropped close-up. A separate isolated diagnostic (`scale=80`, described
+above) independently confirmed the same patch's position and shape
+scale linearly with intensity, the expected behaviour for a correctly-
+implemented image-projection term, not a coincidental brightening.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
