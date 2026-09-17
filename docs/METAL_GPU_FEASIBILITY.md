@@ -3009,3 +3009,66 @@ same shader source file does not affect `primaryRayKernel` in any way.
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (now four tests) continues to
 pass.
+
+## 61. Refactor: decompose `metal_poc.mm`'s ~1020-line `main()` (done)
+
+Asked directly whether any file needed refactoring, and answered
+honestly: `metal_poc.mm`'s own `main()` had grown to roughly 1020 of the
+file's 1545 lines - CLI parsing, Metal device setup, scene construction,
+GPU buffer upload, four acceleration-structure builds, shader compile,
+dispatch, and post-processing, all in one function, with ~30 local
+variables threaded through the whole thing. `metal_poc.metal`'s own
+~1242-line `primaryRayKernel` was flagged too, but judged lower-value/
+higher-risk to split: it's the normal shape for a mega-kernel path
+tracer (this project's own OptiX "recursive" backend has the identical
+pattern), splitting it into multiple *kernels* would mean a real
+wavefront-style redesign (explicitly out of scope for this POC per this
+document's own Section 2), and splitting just the *source file* fights
+the "compile one string from one file at runtime" simplicity this POC
+has relied on since its very first PR (`newLibraryWithSource:` can't
+`#include` a sibling file at runtime the way an offline `metal` compile
+can).
+
+`main()`'s own decomposition uses a plain struct, `MetalPocApp`, holding
+every one of those ~30 variables as public members instead of locals,
+split into five named methods (`parseArgsAndCreateDevice()`,
+`buildScene()`, `buildGPUResources()`, `compileShaderAndDispatch()`,
+`postProcessAndWrite()`) called in sequence from a now-five-line
+`main()`. Extracted mechanically (`sed`-sliced out of the original file
+by exact, verified line boundaries, not retyped from scratch) specifically
+to avoid a transcription bug across this much Metal API surface.
+
+**A real bug this refactor's own verification caught, not a cosmetic
+concern**: turning locals into members means every one of those ~30
+names' OWN FIRST DECLARATION in the original code (`id<MTLBuffer>
+vertexBuffer = ...`, `std::vector<PackedFloat3> verts;`, `const uint32_t
+width = ...`) - left as originally written - silently REDECLARES a
+same-named local that SHADOWS the member for the rest of that one
+function, leaving the actual member permanently nil/empty for every
+OTHER method to read. This isn't a hypothetical: the first assembled
+version crashed outright (`buildGPUResources()`'s own `@[primAS,
+sphereAS, suzanneAS]` array construction, built from a still-nil
+`primAS` member, since `id<MTLAccelerationStructure> primAS = ...` had
+shadowed it) and, after that specific crash was fixed, silently ignored
+every CLI argument (`width`/`height`/`outPath` stayed at their compiled-
+in defaults regardless of `argv`, for the identical reason). Fixed by
+stripping the type annotation from every such first-declaration line
+(turning it into a plain assignment to the member) and deleting every
+no-initializer declaration outright (the member is already default-
+constructed) - a real, necessary correctness fix this refactor needed,
+not a cosmetic side effect of moving code around.
+
+**Verified three ways**: a direct pixel-diff between the pre-refactor
+and post-refactor binaries at matched settings (500x500 @ 48spp) shows
+17 of 750,000 subpixels differing, all by exactly 1 - the same tiny
+GPU-thread-scheduling noise floor this POC has measured before between
+two nominally-identical runs (PR #51's own tonemap-mode-default check
+found 8/750,000 differing by 1 under the same conditions), not a
+behavioural regression. A full 900x900 @ 384spp showcase render is
+visually identical to every prior PR's own screenshot, including the
+projection light's own patch on the green wall. And the full CMake
+build + all four `ctest` cases (including the newly-added host-math and
+device-shader test suites from PRs #54/#55) continue to pass unchanged.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests) continues to pass.
