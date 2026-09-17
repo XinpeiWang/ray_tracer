@@ -3126,3 +3126,47 @@ positioned effect, not a subtle one this time.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests) continues to pass.
+
+## 63. Closing a gap in the gap-closer: goniometric-light device tests (done)
+
+PR #57 (section 62) added `equalAreaSphereToSquare()` and
+`goniometricLightRadiance()` to `metal_poc.metal` - and, because it
+landed AFTER PR #55's own device-side test suite (section 60), added
+them with zero unit coverage of their own, the exact gap section 60
+exists to close for every other device-side function. Closes it: two
+new test kernels (`test_equalAreaSphereToSquare`,
+`test_goniometricLightRadiance`) plus matching host-side cases in
+`metal_poc_shader_tests.mm`.
+
+`equalAreaSphereToSquare()` is checked against a FRESH standalone
+double-precision C reference program (not copied from an earlier
+session) at four directions: the mapping's own dead-centre (`(0,0,1) ->
+(0.5,0.5)`, exact by construction), its far corner (`(0,0,-1) ->
+(1,1)`), the equator (`(1,0,0)`), and a general off-axis direction -
+the last two checked to 1e-4 against the reference program's own
+output, not a hand-derived approximation.
+
+`goniometricLightRadiance()` uses the same "mark a texel, check an
+exact nearest-filtered sample lands on it" technique
+`test_projectionLightRadiance()` (section 60) already established - but
+NOT the same RGB-multi-channel test image that one used. A real
+mid-development finding, not a cosmetic one: `goniometricLightRadiance()`
+only ever samples the image's own R channel and multiplies uniformly by
+`emission`, so with the same monochromatic `emission = (1,1,1)` this
+test started with, EVERY output channel is necessarily identical -
+`projectionLightRadiance()`'s own "mark a different channel to
+distinguish two texels" trick doesn't work here at all, since there is
+no separate channel information ever reaching the output. Fixed by
+marking two texels with two DIFFERENT R intensities (full vs. half)
+instead of two different channels, and checking each direction's own
+exact expected numeric result (not just "brighter than the other
+channel").
+
+Verified the suite still genuinely catches failures, not just passes
+trivially: deliberately corrupted one of `equalAreaSphereToSquare()`'s
+own reference values mid-development, confirmed the suite caught it
+with a precise message, then reverted - the same discipline section 60
+already established, applied to this PR's own new tests too.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests) continues to pass.
