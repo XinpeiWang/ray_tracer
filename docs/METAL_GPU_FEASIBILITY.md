@@ -2582,3 +2582,48 @@ documented lesson about this architecture, not a discarded dead end.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 54. Bug fix: replace the approximate gamma encode with the real sRGB OETF (done)
+
+Step 38 fixed this POC's own missing sRGB DECODE (the earth-map JPEG's
+own bytes were sampled as if already linear). This closes the matching
+gap on the WRITE side: every render this POC has ever produced encoded
+its final linear image with a flat `powf(v, 1.0f / 2.2f)` - a common,
+LOOSE approximation of the real sRGB standard (IEC 61966-2-1), which is
+actually a piecewise curve (`12.92 * v` below a small threshold,
+`1.055 * v^(1/2.4) - 0.055` above it) with a genuinely different
+exponent (2.4, not 2.2) and a linear "toe" segment near black the flat
+power curve has no equivalent of at all.
+
+`linearToSRGB()` is a direct, numerically-exact port of this project's
+own CPU renderer (`src/shared/color_encoding.h`'s own `LinearToSRGB()`,
+itself mirroring pbrt-v4/enoki) - a minimax rational-polynomial
+approximation of the true piecewise curve, not the curve's own
+if/pow branches reimplemented from scratch. Checked against the
+reference piecewise formula directly (a small standalone test program)
+before ever touching the render pipeline: matches to 6 decimal places
+across the full range tested.
+
+**A striking numeric finding, checked before rendering anything**: the
+old `pow(v, 1/2.2)` approximation was NOT a subtle rounding difference
+from the real curve - at `v = 0.001` (a genuinely dark shadow tone), the
+old curve returned `0.043`, the correct value is `0.013` - the old
+approximation was rendering that tone well over 3x too bright. The gap
+narrows steadily toward brighter values (at `v = 0.5`, `0.730` vs the
+correct `0.735` - close), consistent with a flat power curve and the
+real piecewise curve converging in midtones/highlights and diverging
+sharply near black, where the real curve's own linear segment matters
+most.
+
+**Result, verified via a direct before/after render comparison**: a
+visible, real difference - richer contrast and noticeably deeper
+shadows (the room's dark corners, the mural's own dark navy background,
+under the crystal ball), while bright surfaces stay close to unchanged.
+Quantified per region rather than just eyeballed: pixels darker than 50
+(out of 255) show a mean absolute difference of 4.77, more than FIVE
+TIMES the 0.87 mean difference among pixels brighter than 200 - exactly
+the signature this fix's own numeric analysis predicted, not a
+coincidence.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

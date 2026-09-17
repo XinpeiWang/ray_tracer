@@ -569,6 +569,39 @@ static float acesFilmicTonemap(float x) {
     return fminf(fmaxf(mapped, 0.0f), 1.0f);
 }
 
+// The REAL sRGB OETF (IEC 61966-2-1) - a numerically-stable minimax
+// rational-polynomial approximation of the true piecewise curve
+// (`12.92 * v` below a small threshold, `1.055 * v^(1/2.4) - 0.055`
+// above it), ported directly from this project's own CPU renderer
+// (src/shared/color_encoding.h's own LinearToSRGB(), itself mirroring
+// pbrt-v4/enoki exactly) - replaces this POC's own long-standing
+// `powf(v, 1.0f/2.2f)` approximation, the SAME kind of "close but not
+// exact" gap step 38's own sRGB-DECODE fix closed on the read side
+// (loading a texture); this closes the matching gap on the WRITE side
+// (encoding the final image). A flat 1/2.2 power curve has no linear
+// toe segment near black at all, so the two curves diverge most in
+// shadows/near-black tones, not midtones - exactly where this fix's own
+// verification render should show the clearest difference.
+static float linearToSRGB(float value) {
+    if (value <= 0.0031308f) {
+        return 12.92f * value;
+    }
+    float s = sqrtf(value);
+    float p = -0.0016829072605308378f
+            + s * (  0.03453868659826638f
+            + s * (  0.7642611304733891f
+            + s * (  2.0041169284241644f
+            + s * (  0.7551545191665577f
+            + s * (-0.016202083165206348f)))));
+    float q =  4.178892964897981e-7f
+            + s * (-0.00004375359692957097f
+            + s * (  0.03467195408529984f
+            + s * (  0.6085338522168684f
+            + s * (  1.8970238036421054f
+            + s))));
+    return p / q * value;
+}
+
 // Edge-preserving bilateral denoise, applied to the final 8-bit LDR
 // image (after tonemapping/gamma, not the linear HDR buffer - the
 // standard display-referred way to do this: a range kernel compared
@@ -1580,8 +1613,7 @@ int main(int argc, const char** argv) {
         }
 
         // --- Read back + write PNG (chromatic aberration, then lens ---
-        // vignette, then ACES filmic tonemap, then the same 8-bit sRGB-ish
-        // 1/2.2 gamma approximation this POC already used)
+        // vignette, then ACES filmic tonemap, then the real sRGB OETF)
         std::vector<float> pixels(width * height * 4);
         MTLRegion region = MTLRegionMake2D(0, 0, width, height);
         [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
@@ -1599,7 +1631,7 @@ int main(int argc, const char** argv) {
             for (int c = 0; c < 3; ++c) {
                 float v = fmaxf(rgb[c], 0.0f) * vignette;
                 v = acesFilmicTonemap(v);
-                v = powf(v, 1.0f / 2.2f);
+                v = linearToSRGB(v);
                 ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
             }
         }
