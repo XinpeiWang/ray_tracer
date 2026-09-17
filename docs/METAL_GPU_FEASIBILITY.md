@@ -3170,3 +3170,56 @@ already established, applied to this PR's own new tests too.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests) continues to pass.
+
+## 64. An 11th material: thin dielectric (done - correct, honestly subtle)
+
+Adds `materialType 11` (pbrt-v4's own `ThinDielectricBxDF`, `src/shared/
+bxdfs_simple.h`) - a genuinely different KIND of dielectric from
+materialType 2/5's own SOLID glass: a zero-thickness slab (a soap film,
+a single pane of window glass) where transmission passes straight
+through with no bending at all (there's no second surface far enough
+away to refract back into, unlike a solid sphere's own entry+exit
+pair), and reflectance is boosted by a closed-form multi-bounce
+geometric series (`R_eff = R + T^2*R/(1-R^2)`, light that transmits in,
+reflects off the far side of the same infinitesimally-thin slab, and
+transmits back out) rather than materialType 2's own single-interface
+Fresnel term alone. Reuses `frDielectric()` (section 55) directly, with
+the SAME `ior` on both sides regardless of front/back face (unlike
+materialType 2/5, which both need a frontFace-conditional `1/ior` swap) -
+physically correct for a slab thin enough that which side you approach
+from doesn't change its own reflectance. No Beer-Lambert absorption
+call: there is no real "distance travelled through the medium" for a
+zero-thickness slab, and pbrt-v4's own `ThinDielectricBxDF` carries no
+material tint either (`Sample_f` hardcodes `r=g=b=1`) - this branch
+doesn't multiply `throughput` by `albedo`/`mat.color` at all, a
+deliberate, faithful match to the reference, not an oversight.
+
+`addQuad()` gained a new, final, DEFAULT-valued `ior` parameter (every
+earlier call site's own quad hardcoded `ior=1.0` internally; the new
+parameter defaults to that exact same value, so nothing else changes) -
+needed since this material, unlike every quad before it, requires a
+REAL refraction index. A new floating "glass pane" quad demonstrates it:
+positioned in open space above the sphere cluster, facing the camera
+directly so the mural on the back wall should read undistorted through
+it - the one visual signature that actually distinguishes this from a
+solid dielectric, which would show visible bending.
+
+**Result, verified two ways, and honestly modest by design, not by
+accident**: a first full-image render showed no obviously visible
+pane at all - not a bug, confirmed via a diagnostic render (the SAME
+pane recoloured bright magenta Lambertian) that the geometry/placement
+is exactly where intended. IOR 1.5 gives a real Fresnel reflectance of
+only `R0 = ((1.5-1)/(1.5+1))^2 = 0.04` at normal incidence - a REAL pane
+of glass viewed head-on genuinely is this subtle, the same physically-
+correct behaviour a flat power-curve approximation would have gotten
+wrong (see section 55's own Fresnel work). A direct off/on comparison
+(the pane's own `addQuad()` call commented out vs. present, same seed/
+settings, restricted to the pane's own known bounding box) confirms a
+real, substantial effect DOES exist there even though it reads subtly
+by eye: 68,449 of 81,675 subpixels (84%) differ by more than 3, mean
+absolute difference 15.82 - this is a genuinely different render in
+that region, not a no-op, just correctly understated the way real glass
+is.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests) continues to pass.

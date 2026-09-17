@@ -554,6 +554,15 @@ inline float rayBoxExitDistance(float3 origin, float3 dir, float3 boxMin, float3
 // own `patternTileB`/`patternScale` comment for the NEE-side half of
 // this (a DIFFERENT point on the same light, so a different UV, hence
 // two separate places evaluating the same pattern rather than one).
+// 11 = thin dielectric (pbrt-v4's own ThinDielectricBxDF) - a zero-
+// thickness slab (soap film, single window pane), genuinely different
+// from materialType 2/5's own SOLID glass: transmission passes straight
+// through with no bending at all, and reflectance uses a closed-form
+// multi-bounce geometric series instead of a single-interface Fresnel
+// term - see the shading loop's own comment on this materialType for
+// the full formula. `ior` is meaningful here too (same slot, same
+// meaning as materialType 2/5's own refraction index), `roughness` is
+// unused (a thin dielectric has no rough/frosted variant modeled here).
 // `ior` is meaningful for materialType == 2 and 5 (refraction index) and
 // reused, differently, for materialType == 4 (perceptual roughness in
 // [0,1], squared into the GGX alpha parameter below) - materialType 4
@@ -2234,6 +2243,52 @@ kernel void primaryRayKernel(
                 rayDir = newDir;
                 rayOrigin = hitPoint + facingNormal * 0.001f;
                 throughput *= fresnel;
+                specularBounce = true;
+            } else if (mat.materialType == 11u) {
+                // Thin dielectric (pbrt-v4's own ThinDielectricBxDF,
+                // src/shared/bxdfs_simple.h) - a genuinely different KIND
+                // of dielectric from materialType 2/5's own SOLID glass:
+                // models a zero-thickness slab (a soap film, a single
+                // pane of window glass) where transmission passes
+                // STRAIGHT THROUGH with no bending at all (there's no
+                // second surface far enough away to refract back INTO
+                // the way a solid sphere's own entry+exit pair has), and
+                // reflectance is boosted by a closed-form multi-bounce
+                // geometric series (light that transmits in, reflects
+                // off the FAR side of the same infinitesimally-thin
+                // slab, and transmits back out - R_eff = R +
+                // T^2*R/(1-R^2)) rather than materialType 2's own single-
+                // interface Fresnel term alone. Same `ior` regardless of
+                // front/back face (frDielectric() called with `mat.ior`
+                // directly, no frontFace-conditional 1/ior swap the way
+                // materialType 2/5 both need) - physically correct for a
+                // slab thin enough that which side you approach from
+                // doesn't change its own reflectance.
+                float cosTheta = max(abs(dot(facingNormal, -rayDir)), 0.0001);
+                float thinR = frDielectric(cosTheta, mat.ior);
+                if (thinR < 1.0) {
+                    float thinT = 1.0 - thinR;
+                    thinR += thinT * thinT * thinR / max(1.0 - thinR * thinR, 1e-6);
+                }
+                float3 newDir = (randFloat(rngState) < thinR)
+                    ? reflect(rayDir, facingNormal)
+                    : rayDir; // straight-through, no bending - zero-thickness slab
+                rayDir = newDir;
+                // Offset toward whichever side the (possibly unbent)
+                // continuation ray actually exits on - same "don't
+                // assume facingNormal" reasoning materialType 2/5's own
+                // rayOrigin offset already documents.
+                rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
+                // No Beer-Lambert absorption call here at all (unlike
+                // materialType 2/5) - there is no real "distance
+                // travelled through the medium" for a slab this
+                // project's own frDielectric()/pbrt-v4 both treat as
+                // having zero thickness; pbrt-v4's own
+                // ThinDielectricBxDF carries no material colour/tint
+                // either (its own Sample_f hardcodes r=g=b=1), so this
+                // branch doesn't multiply `throughput` by `albedo`/
+                // `mat.color` at all - a deliberate, faithful match to
+                // the reference, not an oversight.
                 specularBounce = true;
             } else if (mat.materialType == 8u) {
                 // Clearcoat (glossy plastic/car-paint) - see TriangleMaterial's
