@@ -2792,3 +2792,27 @@ kernel void test_sampleAreaLight_pmf(
     LightSample ls = sampleAreaLight(lights, lightCount, rngState);
     outPmfs[tid] = ls.pmf;
 }
+
+// Added alongside PR #57's own GoniometricLight/equalAreaSphereToSquare()
+// - neither had any device-side test coverage at all until now, the
+// exact gap this whole "Device-side unit-test kernels" section exists to
+// close for every OTHER function already here.
+kernel void test_equalAreaSphereToSquare(
+    device const float3* directions [[buffer(0)]],
+    device float2* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = equalAreaSphereToSquare(directions[tid]);
+}
+
+kernel void test_goniometricLightRadiance(
+    device const float3* wiFromLights [[buffer(0)]],
+    constant GoniometricLight& light [[buffer(1)]],
+    device float3* outputs [[buffer(2)]],
+    texture2d<float, access::sample> testImage [[texture(0)]],
+    uint tid [[thread_position_in_grid]])
+{
+    constexpr sampler nearestSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
+    outputs[tid] = goniometricLightRadiance(wiFromLights[tid], light.forward, light.right, light.up,
+                                             light.emission, light.scale, testImage, nearestSampler);
+}

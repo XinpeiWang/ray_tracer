@@ -71,6 +71,18 @@ struct ProjectionLightGPU {
     float scale;
 };
 
+// Mirrors metal_poc.metal's GoniometricLight byte-for-byte - needed to
+// build the constant-buffer argument test_goniometricLightRadiance
+// expects.
+struct GoniometricLightGPU {
+    PackedFloat3 position;
+    PackedFloat3 forward;
+    PackedFloat3 right;
+    PackedFloat3 up;
+    PackedFloat3 emission;
+    float scale;
+};
+
 // Mirrors metal_poc.metal's AreaLight byte-for-byte - needed to build the
 // light list test_sampleAreaLight_pmf dispatches against.
 struct AreaLightGPU {
@@ -438,6 +450,116 @@ static void testSampleAreaLightAliasTable(id<MTLDevice> device, id<MTLLibrary> l
     }
 }
 
+static void testEqualAreaSphereToSquare(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // Reference values computed independently via a standalone double-
+    // precision C program mirroring EqualAreaSphereToSquare's own formula
+    // (src/shared/sampling_extra.h) - not copied from memory - see this
+    // PR's own commit message for that program's exact output. Added
+    // alongside PR #57's own GoniometricLight increment, which is the
+    // first (and so far only) caller of this mapping in this file.
+    // The fourth direction (0.3, 0.4, 0.866025) is already unit-length
+    // (0.3^2 + 0.4^2 + 0.866025^2 = 1.0), matching the exact triple the
+    // reference program used - written out explicitly rather than via
+    // simd::normalize() so it's obviously the SAME input, not a
+    // renormalized approximation of one.
+    simd::float3 dirs[4] = {
+        simd::float3{0, 0, 1},           // dead centre of the square
+        simd::float3{0, 0, -1},          // opposite pole - the far corner (1,1)
+        simd::float3{1, 0, 0},           // equator, +X axis
+        simd::float3{0.3f, 0.4f, 0.866025f},
+    };
+
+    simd::float2 expected[4] = {
+        {0.5f, 0.5f},
+        {1.0f, 1.0f},
+        {0.99999797f, 0.50000203f},
+        {0.57497354f, 0.60803916f},
+    };
+    int n = 4;
+    id<MTLBuffer> inBuf = makeBuffer(device, dirs, sizeof(dirs));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(simd::float2));
+    if (!runKernel(device, library, queue, @"test_equalAreaSphereToSquare", @[inBuf, outBuf], nil, n)) return;
+    simd::float2* out = (simd::float2*)outBuf.contents;
+    const char* names[4] = {"equalAreaSphereToSquare(0,0,1) is the square's own dead centre",
+                             "equalAreaSphereToSquare(0,0,-1) is the square's own far corner",
+                             "equalAreaSphereToSquare(1,0,0) matches the reference program",
+                             "equalAreaSphereToSquare(0.3,0.4,0.866) matches the reference program"};
+    for (int i = 0; i < n; ++i) {
+        expectNear(names[i], out[i].x, expected[i].x, 1e-4);
+        char label[128];
+        snprintf(label, sizeof(label), "%s (v component)", names[i]);
+        expectNear(label, out[i].y, expected[i].y, 1e-4);
+    }
+}
+
+static void testGoniometricLightRadiance(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // A tiny 4x4 single-channel test image (R8Unorm - the SAME pixel
+    // format the real committed scene's own goniometric texture uses,
+    // see metal_poc.mm's own buildGoniometricProfileImage() call site) -
+    // goniometricLightRadiance() only ever reads the R channel
+    // (`image.sample(s, uv).r`), so with a MONOCHROMATIC `emission`
+    // every output channel is necessarily identical - there is no
+    // "mark a different channel" trick available the way
+    // testProjectionLightRadiance()'s own RGB test image used. Two
+    // texels instead get two DIFFERENT R intensities.
+    const int texSize = 4;
+    std::vector<uint8_t> pixels(texSize * texSize, 0);
+    // uv=(0.5,0.5) (the light's own forward direction, see below) lands
+    // on texel (2,2) with nearest filtering on a 4x4 texture
+    // (floor(0.5*4)=2) - full intensity.
+    pixels[2 * texSize + 2] = 255;
+    // uv=(1.0,1.0) (the light's own exact backward direction) clamps to
+    // the last valid texel, (3,3) (floor(1.0*4)=4, clamped to size-1=3)
+    // under clamp_to_edge addressing - HALF intensity, a different
+    // value from the centre texel's, not a different channel.
+    pixels[3 * texSize + 3] = 128;
+
+    MTLTextureDescriptor* texDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                                                                        width:texSize height:texSize mipmapped:NO];
+    texDesc.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> testImage = [device newTextureWithDescriptor:texDesc];
+    [testImage replaceRegion:MTLRegionMake2D(0, 0, texSize, texSize) mipmapLevel:0
+                    withBytes:pixels.data() bytesPerRow:texSize];
+
+    // A trivial identity-ish light frame (forward=+Z, right=+X, up=+Y) -
+    // the same reasoning testProjectionLightRadiance() already used for
+    // its own light frame: keeps the expected UV for each test direction
+    // computable by hand instead of needing a second "look-at"
+    // construction to trust.
+    GoniometricLightGPU light{};
+    light.position = PackedFloat3{0, 0, 0};
+    light.forward = PackedFloat3{0, 0, 1};
+    light.right = PackedFloat3{1, 0, 0};
+    light.up = PackedFloat3{0, 1, 0};
+    light.emission = PackedFloat3{1, 1, 1};
+    light.scale = 2.0f;
+
+    simd::float3 wiFromLights[2] = {
+        simd::float3{0, 0, 1},  // exactly the light's own forward direction - should sample the full-intensity centre texel
+        simd::float3{0, 0, -1}, // exactly backward - should sample the half-intensity back texel
+    };
+    int n = 2;
+    id<MTLBuffer> wiBuf = makeBuffer(device, wiFromLights, sizeof(wiFromLights));
+    id<MTLBuffer> lightBuf = makeBuffer(device, &light, sizeof(light));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    if (!runKernel(device, library, queue, @"test_goniometricLightRadiance", @[wiBuf, lightBuf, outBuf], testImage, n)) return;
+    simd::float3* out = (simd::float3*)outBuf.contents;
+
+    // `scale=2.0`, `emission=(1,1,1)`: forward direction (full-intensity
+    // texel, 255/255=1.0) should read ~2.0; backward (half-intensity,
+    // 128/255~=0.502) should read ~1.004 - both checked against the
+    // ACTUAL expected number (not just "some positive value"), which
+    // also confirms `scale`/`emission` genuinely multiply into the
+    // result rather than the raw texture sample passing through
+    // unscaled.
+    expectNear("goniometricLightRadiance at forward direction reads ~2.0 (full-intensity texel * scale)",
+               out[0].x, 2.0, 0.05);
+    expectNear("goniometricLightRadiance at backward direction reads ~1.004 (half-intensity texel * scale)",
+               out[1].x, 1.004, 0.05);
+    expectTrue("goniometricLightRadiance's forward and backward results are genuinely different",
+               std::fabs(out[0].x - out[1].x) > 0.5f);
+}
+
 int main() {
     @autoreleasepool {
         id<MTLDevice> device = nil;
@@ -482,6 +604,8 @@ int main() {
         testHenyeyGreensteinPhase(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);
+        testEqualAreaSphereToSquare(device, library, queue);
+        testGoniometricLightRadiance(device, library, queue);
 
         if (g_failures > 0) {
             fprintf(stderr, "FAIL: %d check(s) failed\n", g_failures);
