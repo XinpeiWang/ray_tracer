@@ -47,6 +47,14 @@ struct Uniforms {
     // not a replacement for the pinhole path.
     float lensRadius;
     float focusDistance;
+    // Aperture SHAPE for the lens sample above - 0/1/2 (every scene
+    // before this one) means "circular" (sampleUnitDisk()); 3 or more is
+    // a regular polygon with this many sides/blades (samplePolygonAperture()),
+    // the real reason out-of-focus highlights in an actual photo read as
+    // hexagons/pentagons rather than perfect circles. Purely additive,
+    // same "0 reproduces the exact prior behaviour" shape lensRadius == 0
+    // itself already has - never affects anything when lensRadius == 0.
+    uint apertureBlades;
     // Camera (shutter) motion blur: the camera translates by
     // `cameraVelocity` (world-space, full displacement) over the frame's
     // simulated [0,1] shutter interval - each primary-ray SAMPLE draws
@@ -521,6 +529,30 @@ inline float2 sampleUnitDisk(thread uint& rngState) {
     float r = sqrt(u1);
     float theta = 2.0 * M_PI_F * u2;
     return float2(r * cos(theta), r * sin(theta));
+}
+
+// A regular-polygon aperture instead of a circular one - real camera
+// lenses focus light through a finite number of physical aperture
+// blades, not a perfect circle, which is exactly why out-of-focus
+// highlights ("bokeh") in a real photo read as hexagons/pentagons/etc.
+// rather than perfectly round discs; `sampleUnitDisk()` above is the
+// idealized circular-aperture limit (infinite blades), a real
+// approximation this POC's own DOF used unconditionally through step 19.
+// Samples uniformly by picking one of `sides` equal triangular wedges
+// (origin - vertex_k - vertex_{k+1}) uniformly at random, then a point
+// within that wedge via the standard sqrt-for-uniform-triangle-area
+// trick - the textbook regular-polygon sampling construction, not an
+// approximation of one.
+inline float2 samplePolygonAperture(uint sides, thread uint& rngState) {
+    float u1 = randFloat(rngState);
+    float u2 = randFloat(rngState);
+    float u3 = randFloat(rngState);
+    uint blade = min(uint(u1 * float(sides)), sides - 1);
+    float angleStep = 2.0 * M_PI_F / float(sides);
+    float2 vertexA = float2(cos(angleStep * float(blade)), sin(angleStep * float(blade)));
+    float2 vertexB = float2(cos(angleStep * float(blade + 1)), sin(angleStep * float(blade + 1)));
+    float s = sqrt(u2);
+    return s * ((1.0 - u3) * vertexA + u3 * vertexB);
 }
 
 inline float3 cosineSampleHemisphere(float3 normal, thread uint& rngState) {
@@ -1018,7 +1050,10 @@ kernel void primaryRayKernel(
         // focus plane. lensRadius == 0 (every earlier PR's own scenes)
         // skips this block entirely - see Uniforms' own comment.
         if (uniforms.lensRadius > 0.0) {
-            float2 lensSample = uniforms.lensRadius * sampleUnitDisk(rngState);
+            float2 apertureSample = (uniforms.apertureBlades >= 3u)
+                ? samplePolygonAperture(uniforms.apertureBlades, rngState)
+                : sampleUnitDisk(rngState);
+            float2 lensSample = uniforms.lensRadius * apertureSample;
             float3 focusPoint = rayOrigin + rayDir * uniforms.focusDistance;
             rayOrigin += lensSample.x * float3(uniforms.cameraRight) + lensSample.y * float3(uniforms.cameraUp);
             rayDir = normalize(focusPoint - rayOrigin);
