@@ -295,6 +295,25 @@ inline float rayBoxExitDistance(float3 origin, float3 dir, float3 boxMin, float3
 // changing the way it does for 3/6). Only ever assigned to a primary-
 // triangle-buffer primitive (never a sphere/disk/Suzanne instance) since
 // tangentFor() needs that buffer's own flat vertex/uv indexing.
+// 8 = clearcoat (glossy plastic/car-paint): a stochastic Fresnel-
+// weighted MIX of a smooth dielectric clear coat (fixed IOR 1.5, F0 =
+// 0.04, always colourless/non-metal - unlike materialType 1's own
+// tinted mirror) over a Lambertian diffuse base (`color`, the same
+// meaning it has for materialType 0). At each hit, a single random draw
+// against the coat's own Fresnel reflectance decides which LOBE this
+// bounce samples - the specular coat (probability == its own
+// reflectance, so no NEE, same delta-lobe reasoning materialType 1
+// already uses) or the diffuse base (probability == 1 - that
+// reflectance, full NEE + cosine-sampling, same code shape as
+// materialType 0's own branch) - never a blend of both in one bounce.
+// This is the standard way to stochastically combine two BRDF lobes
+// without bias: sampling each lobe with probability exactly equal to
+// its own weight makes that weight cancel out of the estimator
+// entirely, so NEITHER branch needs an extra scaling factor at the
+// point of the random decision - see the shading loop's own comment on
+// this material for why duplicating the diffuse NEE code here (instead
+// of falling through to materialType 0's shared branch) is necessary,
+// not just convenient.
 // 9 = procedurally roughness-mapped GGX conductor - the SAME NEE/BSDF
 // shape materialType 4 already uses, but `alphaX`/`alphaY` are computed
 // from an analytic UV-space checker pattern (reusing checkerColor(),
@@ -1765,6 +1784,114 @@ kernel void primaryRayKernel(
                 rayOrigin = hitPoint + facingNormal * 0.001f;
                 throughput *= fresnel;
                 specularBounce = true;
+            } else if (mat.materialType == 8u) {
+                // Clearcoat (glossy plastic/car-paint) - see TriangleMaterial's
+                // own comment on this materialType for the full "why".
+                // `albedo` is the diffuse base colour underneath the coat
+                // here (materialType 0's own convention), NOT an F0 the
+                // way materialType 1/4/9's own `albedo`/`color` field is.
+                float cosThetaCoat = max(dot(facingNormal, -rayDir), 0.0001);
+                const float kClearcoatF0 = 0.04; // IOR 1.5, always non-metal
+                float coatFresnel = fresnelSchlickConductor(cosThetaCoat, float3(kClearcoatF0)).x;
+                if (randFloat(rngState) < coatFresnel) {
+                    // Specular coat bounce - sampled with EXACTLY
+                    // probability coatFresnel, which is also the true
+                    // reflectance here, so the two cancel and throughput
+                    // needs no extra scaling (see this material's own
+                    // comment) - same delta-lobe, no-NEE shape
+                    // materialType 1's own mirror branch above uses.
+                    float3 newDir = reflect(rayDir, facingNormal);
+                    rayDir = newDir;
+                    rayOrigin = hitPoint + facingNormal * 0.001f;
+                    specularBounce = true;
+                } else {
+                    // Diffuse base bounce - probability (1 - coatFresnel)
+                    // exactly matches the fraction of light that reaches
+                    // this lobe (not reflected by the coat), so this also
+                    // needs no extra scaling - full Lambertian NEE +
+                    // cosine-sampling, the same code shape materialType
+                    // 0/3/6/7's own shared branch below uses, duplicated
+                    // here rather than shared since the stochastic coat
+                    // decision above has to happen first.
+                    if (all(mat.emission == float3(0.0))) {
+                        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+                        float3 toLight = ls.point - hitPoint;
+                        float distSq = dot(toLight, toLight);
+                        float dist = sqrt(distSq);
+                        float3 wi = toLight / dist;
+                        float cosSurface = dot(facingNormal, wi);
+                        float cosLight = dot(ls.normal, -wi);
+                        if (cosSurface > 0.0 && cosLight > 0.0) {
+                            ray shadowRay;
+                            shadowRay.origin = hitPoint + facingNormal * 0.001f;
+                            shadowRay.direction = wi;
+                            shadowRay.min_distance = 0.001f;
+                            shadowRay.max_distance = dist - 0.002f;
+                            intersection_result<instancing, triangle_data> shadowResult =
+                                isect.intersect(shadowRay, accelStructure, functionTable);
+                            if (shadowResult.type == intersection_type::none) {
+                                float pdfSolidAngle = (distSq / (ls.area * cosLight)) / float(uniforms.lightCount);
+                                float pdfBsdfForThisDir = cosSurface / M_PI_F;
+                                float weight = (pdfSolidAngle * pdfSolidAngle)
+                                    / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
+                                float transmittance = exp(-uniforms.fogSigmaT * dist);
+                                radiance += throughput * albedo * (1.0 / M_PI_F)
+                                            * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
+                            }
+                        }
+
+                        for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+                            PointLight pl = pointLights[pli];
+                            float3 toPointLight = float3(pl.position) - hitPoint;
+                            float plDistSq = dot(toPointLight, toPointLight);
+                            float plDist = sqrt(plDistSq);
+                            float3 plWi = toPointLight / plDist;
+                            float plCosSurface = dot(facingNormal, plWi);
+                            if (plCosSurface > 0.0) {
+                                ray plShadowRay;
+                                plShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                plShadowRay.direction = plWi;
+                                plShadowRay.min_distance = 0.001f;
+                                plShadowRay.max_distance = plDist - 0.002f;
+                                intersection_result<instancing, triangle_data> plShadowResult =
+                                    isect.intersect(plShadowRay, accelStructure, functionTable);
+                                if (plShadowResult.type == intersection_type::none) {
+                                    float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                                    float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                                    radiance += throughput * albedo * (1.0 / M_PI_F)
+                                                * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
+                                }
+                            }
+                        }
+
+                        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+                            DirectionalLight dl = directionalLights[dli];
+                            float3 dlWi = normalize(-float3(dl.direction));
+                            float dlCosSurface = dot(facingNormal, dlWi);
+                            if (dlCosSurface > 0.0) {
+                                ray dlShadowRay;
+                                dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                dlShadowRay.direction = dlWi;
+                                dlShadowRay.min_distance = 0.001f;
+                                dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                                intersection_result<instancing, triangle_data> dlShadowResult =
+                                    isect.intersect(dlShadowRay, accelStructure, functionTable);
+                                if (dlShadowResult.type == intersection_type::none) {
+                                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                                    radiance += throughput * albedo * (1.0 / M_PI_F)
+                                                * float3(dl.emission) * dlCosSurface * dlTransmittance;
+                                }
+                            }
+                        }
+                    }
+
+                    rayDir = cosineSampleHemisphere(facingNormal, rngState);
+                    rayOrigin = hitPoint + facingNormal * 0.001f;
+                    throughput *= albedo;
+                    bsdfPdf = max(dot(facingNormal, rayDir), 0.0001) / M_PI_F;
+                    specularBounce = false;
+                }
             } else {
                 // Lambertian (materialType 0, or 3 - textured, the only
                 // difference already resolved above into `albedo`, the

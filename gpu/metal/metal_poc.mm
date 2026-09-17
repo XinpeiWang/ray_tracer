@@ -866,11 +866,24 @@ int main(int argc, const char** argv) {
         // floor sphere's own convention) at the room's front-right,
         // clear of the gold sphere/Spot/the disk mirror - checked by
         // rendering and inspecting, not just the bounding-sphere math.
+        // Sphere 4: clearcoat/glossy-plastic (materialType 8) - a deep
+        // red "car paint" look, a sharp specular highlight riding on top
+        // of a genuinely diffuse (not metallic) coloured base, the
+        // signature that distinguishes this from every reflective
+        // material already in the scene (mirror/GGX conductor are
+        // colour-tinted AT the reflection itself; clearcoat's own
+        // reflection stays colourless/white, only the diffuse base
+        // beneath carries colour). Placed at the room's front-right,
+        // deliberately at a different x AND z from Spot-the-cow (this
+        // POC's own established near-miss from sphere 3's own placement:
+        // sharing an x coordinate with a closer foreground object hid it
+        // completely) and the gold sphere.
         std::vector<SphereData> spheres = {
             SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
             SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
             SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
             SphereData{PackedFloat3{-0.78f, -0.78f, 0.7f}, 0.18f},
+            SphereData{PackedFloat3{0.8f, -0.85f, 1.0f}, 0.15f},
         };
         // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
         // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
@@ -905,6 +918,11 @@ int main(int argc, const char** argv) {
             // pattern instead of being one constant.
             TriangleMaterial{PackedFloat3{0.8f, 0.45f, 0.2f}, /*materialType=*/9, /*ior(smooth)=*/0.05f, PackedFloat3{0, 0, 0},
                              /*lightId=*/-1, /*roughness(rough)=*/0.6f},
+            // materialType 8: `color` is the diffuse BASE colour under
+            // the coat (materialType 0's own convention) - a deep,
+            // fairly saturated red, since the coat's own reflection
+            // stays colourless regardless.
+            TriangleMaterial{PackedFloat3{0.55f, 0.05f, 0.06f}, /*materialType=*/8, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
         };
 
         // A wall-mounted mirror disk (materialType 1) - a second, distinct
