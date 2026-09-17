@@ -97,6 +97,10 @@ struct AreaLightData {
     PackedFloat3 normal;
     float area;
     PackedFloat3 emission;
+    // Defaults keep every light before this one exactly flat (no
+    // pattern) - see metal_poc.metal's own AreaLight comment.
+    float patternTileB = 0.0f;
+    float patternScale = 0.0f;
 };
 
 // Mirrors metal_poc.metal's PointLight byte-for-byte.
@@ -791,10 +795,20 @@ int main(int argc, const char** argv) {
         // constants over in metal_poc.metal used to (see that file's
         // AreaLight struct comment for the "replacing..." history).
         std::vector<AreaLightData> lights;
-        auto addAreaLight = [&](float3 a, float3 b, float3 c, float3 d, float3 emission) {
+        // `patternTileB`/`patternScale` default to 0 (flat emission,
+        // materialType 0) - see AreaLightData's own comment. Passing a
+        // nonzero `patternScale` switches the light's own triangles to
+        // materialType 10 too, so a direct hit and an NEE sample both
+        // evaluate the SAME checker pattern (just at each one's own
+        // different point on the light - see metal_poc.metal's own
+        // comments on materialType 10 and AreaLight for why that needs
+        // two separate evaluations, not one shared value).
+        auto addAreaLight = [&](float3 a, float3 b, float3 c, float3 d, float3 emission,
+                                 float patternTileB = 0.0f, float patternScale = 0.0f) {
             int32_t lightId = (int32_t)lights.size();
+            uint32_t materialType = (patternScale > 0.0f) ? 10u : 0u;
             addQuad(verts, normals, uvs, materials, a, b, c, d, white,
-                    /*materialType=*/0, emission, lightId);
+                    materialType, emission, lightId, /*roughness(pattern tileB)=*/patternTileB);
             float3 edgeU = b - a;
             float3 edgeV = d - a;
             float3 normal = simd::normalize(simd::cross(edgeU, edgeV));
@@ -806,7 +820,9 @@ int main(int argc, const char** argv) {
                 PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
                 PackedFloat3{normal.x, normal.y, normal.z},
                 area,
-                PackedFloat3{emission.x, emission.y, emission.z}});
+                PackedFloat3{emission.x, emission.y, emission.z},
+                patternTileB,
+                patternScale});
         };
         // Both ceiling lights' own colours now come from blackbodyColor()
         // (see that function's own comment, added for the point/spot/
@@ -825,9 +841,16 @@ int main(int argc, const char** argv) {
         addAreaLight(float3{-0.58f,0.98f,-0.25f}, float3{-0.22f,0.98f,-0.25f},
                      float3{-0.22f,0.98f,0.25f}, float3{-0.58f,0.98f,0.25f},
                      /*emission=*/warmAreaLightColor);
+        // The cool light also gets a patterned diffuser-grid look
+        // (materialType 10 - see that comment for the full "why"), a
+        // real fixture detail the flat-emission warm light doesn't have:
+        // tile B at 40% of tile A's own brightness (a translucent grid,
+        // not fully opaque black bars) across a 6x6 tiling of the
+        // light's own 0-1 UV span.
         addAreaLight(float3{0.22f,0.98f,-0.25f}, float3{0.58f,0.98f,-0.25f},
                      float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
-                     /*emission=*/coolAreaLightColor);
+                     /*emission=*/coolAreaLightColor,
+                     /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
 
         // Two spheres, both custom (non-triangle) primitives via a shared
         // bounding-box acceleration structure + intersection function

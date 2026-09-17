@@ -125,6 +125,21 @@ struct AreaLight {
     packed_float3 normal;
     float area;
     packed_float3 emission;
+    // Spatially-varying emission via the SAME checkerboard idea
+    // materialType 6 already uses for albedo (checkerColor(), tile A is
+    // `emission` above, tile B a fixed fraction of it) - `patternTileB`
+    // is that fraction; 0.0 (every light before this one) means "tile B
+    // is pure black," which combined with `patternScale <= 0.0` below
+    // instead SKIPPING the pattern entirely reproduces flat, uniform
+    // emission exactly - purely additive, the same "0 is an exact no-op"
+    // shape this POC's own knobs already use.
+    float patternTileB;
+    // Tiles per 0-1 UV unit - reuses the light's OWN NEE sample point
+    // (`u.x, u.y` in sampleAreaLight(), the same planar 0-1
+    // parameterization addQuad()'s own UVs already establish for this
+    // exact quad) as the pattern's own UV, needing no new per-light UV
+    // data at all. <= 0.0 means "no pattern," see above.
+    float patternScale;
 };
 
 // A true DELTA light - zero-area, zero-solid-angle, unlike every AreaLight
@@ -328,6 +343,16 @@ inline float rayBoxExitDistance(float3 origin, float3 dir, float3 boxMin, float3
 // texture-space coordinate for free (the same technique the environment
 // map already uses for direction-based sampling), rather than needing
 // materialType 7's own tangentFor()/real mesh UVs.
+// 10 = patterned emissive AreaLight surface - otherwise materialType
+// 0's own Lambertian (the SAME light-quad-doubles-as-diffuse-reflector
+// behaviour every earlier AreaLight already has for indirect bounces
+// landing on it), except the "did a ray land directly on the light"
+// check earlier in this loop evaluates a checkerboard pattern
+// (checkerColor(), `roughness` as the tile-B fraction) at the hit's own
+// UV instead of using `emission` as a flat constant - see AreaLight's
+// own `patternTileB`/`patternScale` comment for the NEE-side half of
+// this (a DIFFERENT point on the same light, so a different UV, hence
+// two separate places evaluating the same pattern rather than one).
 // `ior` is meaningful for materialType == 2 and 5 (refraction index) and
 // reused, differently, for materialType == 4 (perceptual roughness in
 // [0,1], squared into the GGX alpha parameter below) - materialType 4
@@ -983,7 +1008,14 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
     LightSample result;
     result.point = float3(light.center) - 0.5 * edgeU - 0.5 * edgeV + u.x * edgeU + u.y * edgeV;
     result.normal = float3(light.normal);
-    result.emission = float3(light.emission);
+    // Patterned emission (see AreaLight's own comment): the SAME (u.x,
+    // u.y) this NEE sample point was just built from doubles as the
+    // pattern's own UV coordinate, no separate UV needed. `patternScale
+    // <= 0.0` (every light before this one) skips this entirely,
+    // reproducing flat `light.emission` exactly.
+    result.emission = (light.patternScale > 0.0)
+        ? checkerColor(u, light.patternScale, float3(light.emission), float3(light.emission) * light.patternTileB)
+        : float3(light.emission);
     result.area = light.area;
     return result;
 }
@@ -1444,12 +1476,28 @@ kernel void primaryRayKernel(
             // already computed above for the dielectric branch's own eta
             // selection - reused here, not recomputed.
             if (any(float3(mat.emission) > float3(0.0)) && frontFace) {
+                // Patterned emission (materialType 10 - see AreaLight's
+                // own comment): a DIRECT hit needs the checker pattern
+                // evaluated at THIS hit's own interpolated UV
+                // (texCoordFor(), the same triangle-only lookup
+                // materialType 3/6's own albedo already uses), not the
+                // light-sample point's (u.x, u.y) sampleAreaLight() uses -
+                // two different points on the same light quad, each
+                // needing its own UV. `roughness` reused a SIXTH way here
+                // (after materialTypes 4/5/7/9's own reuses) as this
+                // pattern's own tile-B fraction, mirroring AreaLight's
+                // `patternTileB`.
+                float3 hitEmission = float3(mat.emission);
+                if (mat.materialType == 10u) {
+                    float2 patUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                    hitEmission = checkerColor(patUV, 6.0, hitEmission, hitEmission * mat.roughness);
+                }
                 if (specularBounce) {
                     // No competing NEE sample could have produced this
                     // exact hit (camera ray, or a mirror/glass bounce -
                     // both skip NEE entirely, see their own branches
                     // below), so there's nothing to weight against.
-                    radiance += throughput * float3(mat.emission);
+                    radiance += throughput * hitEmission;
                 } else {
                     // Reached via a BSDF-sampled continuation ray (diffuse
                     // or conductor) - weight by the power heuristic against
@@ -1465,7 +1513,7 @@ kernel void primaryRayKernel(
                     float cosLight = max(dot(float3(light.normal), -rayDir), 0.0001);
                     float pdfLight = (distSq / (light.area * cosLight)) / float(uniforms.lightCount);
                     float weight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfLight * pdfLight);
-                    radiance += throughput * float3(mat.emission) * weight;
+                    radiance += throughput * hitEmission * weight;
                 }
             }
 
