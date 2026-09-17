@@ -624,7 +624,11 @@ struct TriangleMaterial {
     // (anisotropic Y-axis roughness, alongside `ior`'s own alphaX) -
     // `roughness == 0.0` there falls back to the isotropic case (alphaY
     // == alphaX), so this stays a safe no-op for every scene that never
-    // sets it. 0 for every other material type.
+    // sets it. ALSO reused a further time by materialType == 13 (Oren-
+    // Nayar rough diffuse) as its own sigma parameter - `roughness ==
+    // 0.0` there reduces EXACTLY to plain Lambertian, the same "0 is a
+    // safe no-op" contract every other reuse of this field already
+    // follows. 0 for every other material type.
     float roughness;
     // Complex IOR (eta + i*k) per RGB channel, materialType == 4/9 only -
     // the real physically-based conductor Fresnel (frComplexRGB(), see
@@ -2607,6 +2611,240 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
     return true;
 }
 
+// "Improved Oren-Nayar" rough diffuse (Fujii's reformulation of Oren &
+// Nayar 1994, https://mimosa-pudica.net/improved-oren-nayar.html) -
+// found via Blender Cycles as reference (kernel/closure/
+// bsdf_oren_nayar.h), where it's the modern replacement for the
+// classic model. A rough (not perfectly Lambertian) diffuse surface -
+// clay, plaster, the Moon's own regolith - reads visibly FLATTER/less
+// shaded than ideal Lambertian: light and view directions both near
+// grazing (and roughly aligned in azimuth) brighten noticeably (the
+// classic "flat full moon" retroreflective look, real microfacet
+// self-shadowing/masking within the rough surface concentrating
+// reflected light back toward the source), while head-on illumination
+// reads slightly DARKER than Lambertian - a real energy redistribution,
+// not just a brightness knob. `mat.roughness` doubles as this
+// material's own sigma parameter (materialType 5/4/7/9/10 already
+// reuse this same field their own way, per TriangleMaterial's own
+// comment - one more reuse, not a new struct field).
+//
+// Deliberately scoped to the SINGLE-scatter term only - Cycles' own
+// version adds a further energy-preserving MULTI-scatter compensation
+// term (OpenPBR-spec-based) on top of this, explicitly deferred here
+// (the same "close the bigger, more visible gap first" staging this
+// POC's own GGX energy-compensation work, sections 72/73, already
+// used) - `sigma == 0` still reduces EXACTLY to plain Lambertian
+// (`a == 1/pi`, `b == 0`), verified below, so this is a strict
+// generalization, not a replacement with different edge-case behaviour.
+inline float orenNayarF(float3 wo, float3 wi, float3 n, float sigma) {
+    float nl = max(dot(n, wi), 0.0);
+    float nv = max(dot(n, wo), 0.0);
+    float a = 1.0 / (M_PI_F + sigma * (M_PI_F * 0.5 - 2.0 / 3.0));
+    float b = sigma * a;
+    if (b <= 0.0) {
+        return a;
+    }
+    float t = dot(wi, wo) - nl * nv;
+    if (t > 0.0) {
+        t /= max(max(nl, nv), 1e-6);
+    }
+    return a + b * t;
+}
+
+inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint, float3 facingNormal,
+                            constant Uniforms& uniforms,
+                            device const AreaLight* lights,
+                            device const PointLight* pointLights,
+                            device const DirectionalLight* directionalLights,
+                            device const ProjectionLight* projectionLights,
+                            device const GoniometricLight* goniometricLights,
+                            device const float* envMarginalCDF,
+                            device const float* envConditionalCDF,
+                            uint envMapWidth, uint envMapHeight,
+                            texture2d<float, access::sample> earthTexture,
+                            texture2d<float, access::sample> goniometricTexture,
+                            sampler textureSampler,
+                            intersector<instancing, triangle_data> isect,
+                            instance_acceleration_structure accelStructure,
+                            intersection_function_table<instancing, triangle_data> functionTable,
+                            thread float3& rayDir, thread float3& rayOrigin,
+                            thread float3& throughput, thread float3& radiance,
+                            thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState) {
+    float3 woWorld = -rayDir;
+
+    if (all(mat.emission == float3(0.0))) {
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+        float3 toLight = ls.point - hitPoint;
+        float distSq = dot(toLight, toLight);
+        float dist = sqrt(distSq);
+        float3 wi = toLight / dist;
+        float cosSurface = dot(facingNormal, wi);
+        float cosLight = dot(ls.normal, -wi);
+        if (cosSurface > 0.0 && cosLight > 0.0) {
+            ray shadowRay;
+            shadowRay.origin = hitPoint + facingNormal * 0.001f;
+            shadowRay.direction = wi;
+            shadowRay.min_distance = 0.001f;
+            shadowRay.max_distance = dist - 0.002f;
+            intersection_result<instancing, triangle_data> shadowResult =
+                isect.intersect(shadowRay, accelStructure, functionTable);
+            if (shadowResult.type == intersection_type::none) {
+                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                float pdfBsdfForThisDir = cosSurface / M_PI_F;
+                float weight = (pdfSolidAngle * pdfSolidAngle)
+                    / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
+                float transmittance = exp(-uniforms.fogSigmaT * dist);
+                radiance += throughput * albedo * orenNayarF(woWorld, wi, facingNormal, mat.roughness)
+                            * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
+            }
+        }
+
+        for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+            PointLight pl = pointLights[pli];
+            float3 toPointLight = float3(pl.position) - hitPoint;
+            float plDistSq = dot(toPointLight, toPointLight);
+            float plDist = sqrt(plDistSq);
+            float3 plWi = toPointLight / plDist;
+            float plCosSurface = dot(facingNormal, plWi);
+            if (plCosSurface > 0.0) {
+                ray plShadowRay;
+                plShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                plShadowRay.direction = plWi;
+                plShadowRay.min_distance = 0.001f;
+                plShadowRay.max_distance = plDist - 0.002f;
+                intersection_result<instancing, triangle_data> plShadowResult =
+                    isect.intersect(plShadowRay, accelStructure, functionTable);
+                if (plShadowResult.type == intersection_type::none) {
+                    float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                    float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                    radiance += throughput * albedo * orenNayarF(woWorld, plWi, facingNormal, mat.roughness)
+                                * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
+                }
+            }
+        }
+
+        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+            DirectionalLight dl = directionalLights[dli];
+            float3 dlWi = normalize(-float3(dl.direction));
+            float dlCosSurface = dot(facingNormal, dlWi);
+            if (dlCosSurface > 0.0) {
+                ray dlShadowRay;
+                dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                dlShadowRay.direction = dlWi;
+                dlShadowRay.min_distance = 0.001f;
+                dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                intersection_result<instancing, triangle_data> dlShadowResult =
+                    isect.intersect(dlShadowRay, accelStructure, functionTable);
+                if (dlShadowResult.type == intersection_type::none) {
+                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    radiance += throughput * albedo * orenNayarF(woWorld, dlWi, facingNormal, mat.roughness)
+                                * float3(dl.emission) * dlCosSurface * dlTransmittance;
+                }
+            }
+        }
+
+        for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+            ProjectionLight pj = projectionLights[pji];
+            float3 toProjLight = float3(pj.position) - hitPoint;
+            float pjDistSq = dot(toProjLight, toProjLight);
+            float pjDist = sqrt(pjDistSq);
+            float3 pjWi = toProjLight / pjDist;
+            float pjCosSurface = dot(facingNormal, pjWi);
+            if (pjCosSurface > 0.0) {
+                float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                             pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                             earthTexture, textureSampler);
+                if (any(pjRadiance > float3(0.0))) {
+                    ray pjShadowRay;
+                    pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    pjShadowRay.direction = pjWi;
+                    pjShadowRay.min_distance = 0.001f;
+                    pjShadowRay.max_distance = pjDist - 0.002f;
+                    intersection_result<instancing, triangle_data> pjShadowResult =
+                        isect.intersect(pjShadowRay, accelStructure, functionTable);
+                    if (pjShadowResult.type == intersection_type::none) {
+                        float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                        radiance += throughput * albedo * orenNayarF(woWorld, pjWi, facingNormal, mat.roughness)
+                                    * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
+                    }
+                }
+            }
+        }
+
+        for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+            GoniometricLight gl = goniometricLights[gli];
+            float3 toGoniLight = float3(gl.position) - hitPoint;
+            float glDistSq = dot(toGoniLight, toGoniLight);
+            float glDist = sqrt(glDistSq);
+            float3 glWi = toGoniLight / glDist;
+            float glCosSurface = dot(facingNormal, glWi);
+            if (glCosSurface > 0.0) {
+                float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                              gl.emission, gl.scale,
+                                                              goniometricTexture, textureSampler);
+                if (any(glRadiance > float3(0.0))) {
+                    ray glShadowRay;
+                    glShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    glShadowRay.direction = glWi;
+                    glShadowRay.min_distance = 0.001f;
+                    glShadowRay.max_distance = glDist - 0.002f;
+                    intersection_result<instancing, triangle_data> glShadowResult =
+                        isect.intersect(glShadowRay, accelStructure, functionTable);
+                    if (glShadowResult.type == intersection_type::none) {
+                        float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                        radiance += throughput * albedo * orenNayarF(woWorld, glWi, facingNormal, mat.roughness)
+                                    * glRadiance * glCosSurface * glTransmittance / glDistSq;
+                    }
+                }
+            }
+        }
+
+        if (envMapWidth > 0u) {
+            float envPdfSolidAngle;
+            float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                       int(envMapWidth), int(envMapHeight),
+                                                       randFloat(rngState), randFloat(rngState), envPdfSolidAngle);
+            float envCosSurface = dot(facingNormal, envWi);
+            if (envCosSurface > 0.0 && envPdfSolidAngle > 1e-9) {
+                ray envShadowRay;
+                envShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                envShadowRay.direction = envWi;
+                envShadowRay.min_distance = 0.001f;
+                envShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> envShadowResult =
+                    isect.intersect(envShadowRay, accelStructure, functionTable);
+                if (envShadowResult.type == intersection_type::none) {
+                    float2 envUV = equirectangularUV(envWi);
+                    float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
+                    float envPdfBsdf = envCosSurface / M_PI_F;
+                    float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
+                        / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
+                    radiance += throughput * albedo * orenNayarF(woWorld, envWi, facingNormal, mat.roughness)
+                                * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
+    }
+
+    // Continuation ray: still plain cosine-weighted hemisphere sampling
+    // (NOT importance-sampled to this BRDF's own a+b*t shape - the same
+    // simplification Cycles' own bsdf_oren_nayar_sample() makes too),
+    // so the pdf stays cosTheta/pi exactly like Lambertian. The MC
+    // weight f*cosTheta/pdf therefore collapses to
+    // `albedo*orenNayarF(...)*pi` - Lambertian's own `throughput *=
+    // albedo` is the special case of this at sigma == 0, where
+    // orenNayarF() returns the constant `1/pi` and the two `pi`s cancel
+    // back to exactly `albedo`.
+    float3 newDir = cosineSampleHemisphere(facingNormal, rngState);
+    rayDir = newDir;
+    rayOrigin = hitPoint + facingNormal * 0.001f;
+    throughput *= albedo * orenNayarF(woWorld, newDir, facingNormal, mat.roughness) * M_PI_F;
+    bsdfPdf = max(dot(facingNormal, newDir), 0.0001) / M_PI_F;
+    specularBounce = false;
+    return true;
+}
+
 kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
     texture2d<float, access::sample> earthTexture [[texture(1)]],
@@ -3222,6 +3460,13 @@ kernel void primaryRayKernel(
                                                earthTexture, goniometricTexture, textureSampler,
                                                isect, accelStructure, functionTable,
                                                rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
+            } else if (mat.materialType == 13u) {
+                if (!shadeOrenNayar(mat, albedo, hitPoint, facingNormal, uniforms,
+                                     lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                     envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
+                                     earthTexture, goniometricTexture, textureSampler,
+                                     isect, accelStructure, functionTable,
+                                     rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else {
                 if (!shadeLambertian(mat, albedo, hitPoint, facingNormal, uniforms,
                                       lights, pointLights, directionalLights, projectionLights, goniometricLights,
@@ -3436,6 +3681,17 @@ kernel void test_sampleGGXEnergyTableDevice(
 {
     outputs[tid] = sampleGGXEnergyTableDevice(E, dims[0].x, dims[0].y,
                                                roughnessMuPairs[tid].x, roughnessMuPairs[tid].y);
+}
+
+kernel void test_orenNayarF(
+    device const float3* wos [[buffer(0)]],
+    device const float3* wis [[buffer(1)]],
+    device const float3* ns [[buffer(2)]],
+    device const float* sigmas [[buffer(3)]],
+    device float* outputs [[buffer(4)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = orenNayarF(wos[tid], wis[tid], ns[tid], sigmas[tid]);
 }
 
 kernel void test_henyeyGreensteinPhase(

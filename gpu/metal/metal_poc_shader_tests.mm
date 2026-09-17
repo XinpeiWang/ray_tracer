@@ -516,6 +516,47 @@ static void testSampleGGXEnergyTableDevice(id<MTLDevice> device, id<MTLLibrary> 
     }
 }
 
+static void testOrenNayarF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // Reference values from a fresh standalone double-precision C port
+    // of Blender Cycles' own bsdf_oren_nayar.h (its single-scatter term
+    // only - the multiscatter energy-compensation refinement is
+    // deliberately not ported, see orenNayarF's own comment), not reused
+    // from any earlier session: (1) sigma == 0 must reduce EXACTLY to
+    // plain Lambertian's own 1/pi; (2) a grazing, azimuth-aligned view/
+    // light pair at high roughness must read substantially BRIGHTER than
+    // Lambertian (the real, well-known retroreflective "flat moon"
+    // effect this whole material exists to capture) - checked against
+    // the reference program's own computed value, not just "greater
+    // than," so a sign error or a wrong-by-a-constant-factor bug would
+    // still be caught.
+    simd::float3 wos[3] = {
+        {0.3f, 0.0f, 0.9539f}, {0.9539f, 0.0f, 0.3f}, {0.9539f, 0.0f, 0.3f},
+    };
+    simd::float3 wis[3] = {
+        {-0.2f, 0.1f, 0.9747f}, {0.9747f, 0.0f, 0.2f}, {0.9747f, 0.0f, 0.2f},
+    };
+    simd::float3 ns[3] = {{0, 0, 1}, {0, 0, 1}, {0, 0, 1}};
+    float sigmas[3] = {0.0f, 0.0f, 1.0f};
+    float expected[3] = {1.0f / (float)M_PI, 1.0f / (float)M_PI, 1.0132f};
+    int n = 3;
+    id<MTLBuffer> woBuf = makeBuffer(device, wos, sizeof(wos));
+    id<MTLBuffer> wiBuf = makeBuffer(device, wis, sizeof(wis));
+    id<MTLBuffer> nBuf = makeBuffer(device, ns, sizeof(ns));
+    id<MTLBuffer> sigmaBuf = makeBuffer(device, sigmas, sizeof(sigmas));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (!runKernel(device, library, queue, @"test_orenNayarF",
+                   @[woBuf, wiBuf, nBuf, sigmaBuf, outBuf], nil, n)) return;
+    float* out = (float*)outBuf.contents;
+    const char* names[3] = {
+        "orenNayarF at sigma=0 matches Lambertian's own 1/pi (case 0, near-normal)",
+        "orenNayarF at sigma=0 matches Lambertian's own 1/pi (case 1, grazing)",
+        "orenNayarF at sigma=1 shows the real grazing-angle retroreflective brightening",
+    };
+    for (int i = 0; i < n; ++i) {
+        expectNear(names[i], out[i], expected[i], 1e-3);
+    }
+}
+
 static void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // g == 0 (isotropic) must give the SAME value - 1/(4*pi) - for every
     // cosTheta, since an isotropic phase function has no directional
@@ -797,6 +838,7 @@ int main() {
         testBuildAnisotropicOnb(device, library, queue);
         testEnvironmentDirectionSampling(device, library, queue);
         testSampleGGXEnergyTableDevice(device, library, queue);
+        testOrenNayarF(device, library, queue);
         testHenyeyGreensteinPhase(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);

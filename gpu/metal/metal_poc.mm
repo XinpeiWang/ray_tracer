@@ -1054,6 +1054,17 @@ void MetalPocApp::buildScene() {
         SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
         SphereData{PackedFloat3{-0.78f, -0.78f, 0.7f}, 0.18f},
         SphereData{PackedFloat3{0.8f, -0.85f, 1.0f}, 0.15f},
+        // A 6th sphere (materialType 13, Oren-Nayar rough diffuse) - a
+        // different x from every sphere above it (the established "same
+        // x as a nearer object hides the new one completely" lesson,
+        // step 34's own note). z=0.9/y=-0.85 keeps it just inside the
+        // room's own [-1,1] bounding box and resting on the floor -
+        // an EARLIER placement attempt (z=1.3, y=-0.88) put it outside
+        // the room entirely and clipping through the floor, confirmed
+        // invisible via a diagnostic magenta-Lambertian recolour render
+        // before this fix, not assumed correct from the coordinates
+        // alone.
+        SphereData{PackedFloat3{-0.3f, -0.85f, 0.9f}, 0.15f},
     };
     // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
     // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
@@ -1108,6 +1119,15 @@ void MetalPocApp::buildScene() {
         // fairly saturated red, since the coat's own reflection
         // stays colourless regardless.
         TriangleMaterial{PackedFloat3{0.55f, 0.05f, 0.06f}, /*materialType=*/8, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
+        // materialType 13: Oren-Nayar rough diffuse - `roughness` is this
+        // material's own sigma parameter (see TriangleMaterial's own
+        // comment), 0.9 deliberately high so the grazing-angle
+        // retroreflective brightening/head-on darkening relative to
+        // plain Lambertian reads clearly, not subtly. A warm terracotta/
+        // clay tint - the real-world material family this BxDF was
+        // originally designed to model.
+        TriangleMaterial{PackedFloat3{0.75f, 0.55f, 0.4f}, /*materialType=*/13, /*ior=*/0.0f, PackedFloat3{0, 0, 0},
+                         /*lightId=*/-1, /*roughness(sigma)=*/0.9f},
     };
 
     // A wall-mounted mirror disk (materialType 1) - a second, distinct
