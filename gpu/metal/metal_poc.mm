@@ -83,6 +83,10 @@ struct Uniforms {
     uint32_t projectionLightCount;
     uint32_t goniometricLightCount;
     uint32_t adaptiveSampling;
+    // Environment-map importance sampling - see metal_poc.metal's own
+    // mirrored comment.
+    uint32_t envMapWidth = 0;
+    uint32_t envMapHeight = 0;
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -1656,6 +1660,17 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     int earthW = 0, earthH = 0, earthChannels = 0;
     unsigned char* earthPixels = stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
     id<MTLTexture> earthTexture = nil;
+    // Environment-map importance sampling (phase 2 - see section 69 for
+    // phase 1's own host-side EnvDistribution2D, built and independently
+    // verified there but not yet wired to anything). Built from the SAME
+    // decoded `earthPixels` bytes right before they're freed below - the
+    // shader-side NEE counterpart to `earthTexture`'s own miss-path
+    // lookup (equirectangularUV()), which previously had no importance-
+    // sampling strategy at all. Left default-constructed (empty arrays)
+    // in the fallback/missing-JPEG case below; `envMapWidth`/
+    // `envMapHeight` stay 0 in that case too, which the shader's own
+    // Uniforms comment documents as "skip this NEE strategy entirely."
+    EnvDistribution2D envDist;
     if (earthPixels) {
         MTLTextureDescriptor* earthDesc = [MTLTextureDescriptor
             texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB
@@ -1666,6 +1681,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         MTLRegion earthRegion = MTLRegionMake2D(0, 0, (NSUInteger)earthW, (NSUInteger)earthH);
         [earthTexture replaceRegion:earthRegion mipmapLevel:0 withBytes:earthPixels
             bytesPerRow:(NSUInteger)earthW * 4];
+        buildEnvDistribution2D(earthPixels, earthW, earthH, envDist);
         stbi_image_free(earthPixels);
         fprintf(stderr, "Loaded %s: %dx%d, %d channels\n", earthPath.UTF8String, earthW, earthH, earthChannels);
     } else {
@@ -1684,6 +1700,30 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         earthTexture = [device newTextureWithDescriptor:fallbackDesc];
         uint8_t white4[4] = {255, 255, 255, 255};
         [earthTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:white4 bytesPerRow:4];
+    }
+
+    // envMarginalCDF/envConditionalCDF buffers - a real (non-empty)
+    // envDist above uploads its own arrays directly; the fallback case
+    // (missing JPEG) still needs SOME buffer bound at these indices
+    // (Metal requires a real resource at every declared buffer slot,
+    // the same reason earthTexture's own fallback path exists above),
+    // hence the single-float dummy - `envMapWidth`/`envMapHeight`
+    // staying 0 is what actually keeps the shader from ever reading
+    // past it.
+    uint32_t envMapWidth = 0, envMapHeight = 0;
+    id<MTLBuffer> envMarginalCDFBuffer;
+    id<MTLBuffer> envConditionalCDFBuffer;
+    if (!envDist.marginalCDF.empty()) {
+        envMarginalCDFBuffer = [device newBufferWithBytes:envDist.marginalCDF.data()
+            length:envDist.marginalCDF.size() * sizeof(float) options:MTLResourceStorageModeShared];
+        envConditionalCDFBuffer = [device newBufferWithBytes:envDist.conditionalCDF.data()
+            length:envDist.conditionalCDF.size() * sizeof(float) options:MTLResourceStorageModeShared];
+        envMapWidth = (uint32_t)envDist.width;
+        envMapHeight = (uint32_t)envDist.height;
+    } else {
+        float dummy = 0.0f;
+        envMarginalCDFBuffer = [device newBufferWithBytes:&dummy length:sizeof(float) options:MTLResourceStorageModeShared];
+        envConditionalCDFBuffer = [device newBufferWithBytes:&dummy length:sizeof(float) options:MTLResourceStorageModeShared];
     }
 
     const uint32_t samplesPerPixel = (argc > 4) ? (uint32_t)atoi(argv[4]) : 64;
@@ -1762,6 +1802,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // (ideally) no visible quality cost, verified via a dedicated
     // A/B render, not assumed.
     uniforms.adaptiveSampling = 1u;
+    uniforms.envMapWidth = envMapWidth;
+    uniforms.envMapHeight = envMapHeight;
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
     // --- Dispatch ----------------------------------------------------
@@ -1790,6 +1832,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
     [enc setBuffer:projectionLightBuffer offset:0 atIndex:17];
     [enc setBuffer:goniometricLightBuffer offset:0 atIndex:18];
+    [enc setBuffer:envMarginalCDFBuffer offset:0 atIndex:19];
+    [enc setBuffer:envConditionalCDFBuffer offset:0 atIndex:20];
     // Mark the AS + its dependent primitive ASes as used so Metal
     // knows about the indirection - required for instance
     // acceleration structures referencing primitive ones (now three:

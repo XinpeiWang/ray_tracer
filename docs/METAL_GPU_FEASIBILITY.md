@@ -3640,3 +3640,83 @@ progression and floating-point evaluation order is fully deterministic
 per-thread for a fixed input, so a behavior-preserving refactor of
 GPU-side code can (and here, does) reproduce bit-for-bit, not just
 "within noise."
+
+## 71. Environment-map importance sampling, phase 2: shader wiring (done)
+
+Phase 1 (section 69) built and independently verified the host-side
+`EnvDistribution2D` sampling structure but deliberately left it
+unwired - no GPU buffers, no shader-visible effect. This closes the
+gap it explicitly deferred: `earthTexture`'s own equirectangular
+environment/"sky" lookup now has a real NEE/importance-sampling
+strategy, not just the unconditional miss-path contribution every
+earlier PR left it with.
+
+**Host side**: the SAME decoded `earthPixels` bytes already uploaded to
+`earthTexture` build an `EnvDistribution2D` (via phase 1's own
+`buildEnvDistribution2D()`) before they're freed; its `marginalCDF`/
+`conditionalCDF` arrays upload as two new GPU buffers (`buffer(19)`/
+`buffer(20)`), and `Uniforms` gains `envMapWidth`/`envMapHeight` (0 in
+the fallback/missing-JPEG case, which the shader treats as "skip this
+NEE strategy entirely" - the same "0 reproduces prior behaviour
+exactly" contract every other optional feature here already follows).
+
+**Device side**: `sampleEnvironmentDirection()`/`pdfEnvironmentDirection()`
+mirror phase 1's own host-side sampling/evaluation functions exactly
+(same CDF-slope-as-pdf convention, same binary search), then invert
+`equirectangularUV()` (`phi = 2*pi*(u-0.5)`, `lambda = pi*(v-0.5)`,
+`dir = (cos(lambda)*cos(phi), sin(lambda), cos(lambda)*sin(phi))`) and
+apply the equirectangular solid-angle Jacobian
+(`dOmega = 2*pi^2*cos(lambda)*du*dv`, and `cos(lambda) == sin(pi*v)` -
+derived from `lambda = pi*v - pi/2`) to convert an image-space density
+into the solid-angle pdf every other light-sampling strategy in this
+shader already returns.
+
+**Wired into all four NEE-capable materials** (`shadeConductor`,
+`shadeClearcoat`, `shadeDiffuseTransmission`, `shadeLambertian` -
+PR #65's own per-material-function split made this a clean, contained
+addition to each function rather than another edit to one 1,625-line
+kernel) as an ADDITIONAL light-sampling strategy alongside the area
+light and four delta lights already there, not a replacement - same
+NEE/MIS shape (sample a direction, shadow ray toward "infinity"
+`1e5f`, MIS-weight against this material's own BSDF pdf for that same
+direction). `shadeDiffuseTransmission` reuses its own established
+signed-lobe-pick pattern (section 67) since the ENV-sampled direction,
+unlike a fixed-position light, can land on either side of
+`facingNormal`. The miss-path's own previously-UNCONDITIONAL
+contribution is now MIS-weighted too, against `pdfEnvironmentDirection()`
+evaluated at the escaping ray's own direction - mirroring the area
+light's own direct-hit MIS weight, with the same two escape hatches
+(`specularBounce` or `envMapWidth == 0`) giving full weight when no
+competing NEE strategy exists to double-count against.
+
+**Verified four ways**: (1) A new device-side test
+(`test_sampleEnvironmentDirection`/`test_pdfEnvironmentDirection`, a
+device-side port of phase 1's own host-side self-consistency test,
+built from the SAME `buildEnvDistribution2D()` the real render path
+calls) confirms every sampled direction is unit length, every pdf
+strictly positive and finite, and re-evaluating `pdfEnvironmentDirection()`
+at a sample's own direction reproduces that sample's own pdf - 64
+cases, all passing; deliberately corrupted one expected value,
+confirmed the suite caught it, then reverted. (2) A dedicated wide-FOV,
+pulled-back diagnostic render (matching section 18's own precedent for
+exercising the miss path directly) at HIGH sample count (256spp)
+compared before/after: 99.5% of the full frame is unchanged, and the
+0.47% that differs is entirely within the small object cluster's own
+screen region (specular/glossy materials, mean absolute difference
+1.19 out of 255) - the expected signature of residual Monte Carlo
+noise converging toward the same answer, not a systematic bias. (3)
+The same diagnostic render shows the Earth texture correctly (no
+flipping/distortion) at only 16spp with visibly smooth, low-noise
+shading. (4) The committed scene's own before/after (32spp) shows a
+real, substantial difference (48.8% of subpixels differ, mean absolute
+difference 7.7) - expected and correct, not a red flag: this NEE
+strategy now applies across every diffuse-family material's own
+indirect lighting throughout the room (not just objects with a direct
+view of open sky), and adding new `randFloat()` draws per bounce
+shifts every subsequent sample's own RNG sequence, the same "changed
+almost everywhere" signature every earlier new light type addition in
+this POC has also shown.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests, the new
+environment-sampling cases now covered) passes.
