@@ -614,6 +614,12 @@ struct TriangleMaterial {
     // there).
     packed_float3 conductorEta;
     packed_float3 conductorK;
+    // Diffuse TRANSMITTANCE tint, materialType == 12 only (`color` is
+    // this material's own diffuse REFLECTANCE tint, same convention as
+    // materialType 0/3/6/7) - a two-sided translucent diffuser (paper, a
+    // leaf, a thin frosted panel), pbrt-v4's own DiffuseTransmissionBxDF
+    // (src/shared/bxdfs_layered.h). 0 for every other material type.
+    packed_float3 transmitColor;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
@@ -2556,6 +2562,188 @@ kernel void primaryRayKernel(
                     bsdfPdf = max(dot(facingNormal, rayDir), 0.0001) / M_PI_F;
                     specularBounce = false;
                 }
+            } else if (mat.materialType == 12u) {
+                // Diffuse transmission (a two-sided translucent diffuser -
+                // paper, a leaf, a thin frosted panel): pbrt-v4's own
+                // DiffuseTransmissionBxDF (src/shared/bxdfs_layered.h) -
+                // the first material in this POC that genuinely scatters
+                // diffusely on BOTH sides of a surface, not just reflects
+                // off the front. `albedo` (this material's own `color`,
+                // same convention as materialType 0) is the REFLECTANCE
+                // tint; `mat.transmitColor` (a new field) the
+                // TRANSMITTANCE tint. For any ONE hit point, a given
+                // light/continuation direction falls on exactly one side
+                // of `facingNormal` - which lobe (reflect/transmit tint,
+                // pdf weight, shadow-ray offset direction) applies is
+                // decided by that single sign, not two separate passes
+                // over each light.
+                float pr = max(albedo.x, max(albedo.y, albedo.z));
+                float pt = max(mat.transmitColor.x, max(mat.transmitColor.y, mat.transmitColor.z));
+                float pSum = max(pr + pt, 1e-6);
+
+                if (all(mat.emission == float3(0.0))) {
+                    LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+                    float3 toLight = ls.point - hitPoint;
+                    float distSq = dot(toLight, toLight);
+                    float dist = sqrt(distSq);
+                    float3 wi = toLight / dist;
+                    float cosSurface = dot(facingNormal, wi);
+                    float cosLight = dot(ls.normal, -wi);
+                    if (cosSurface != 0.0 && cosLight > 0.0) {
+                        bool reflect = cosSurface > 0.0;
+                        float3 lobeTint = reflect ? albedo : mat.transmitColor;
+                        float lobeProb = reflect ? (pr / pSum) : (pt / pSum);
+                        float absCos = abs(cosSurface);
+                        ray shadowRay;
+                        shadowRay.origin = hitPoint + (reflect ? facingNormal : -facingNormal) * 0.001f;
+                        shadowRay.direction = wi;
+                        shadowRay.min_distance = 0.001f;
+                        shadowRay.max_distance = dist - 0.002f;
+                        intersection_result<instancing, triangle_data> shadowResult =
+                            isect.intersect(shadowRay, accelStructure, functionTable);
+                        if (shadowResult.type == intersection_type::none) {
+                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                            float pdfBsdfForThisDir = lobeProb * absCos / M_PI_F;
+                            float weight = (pdfSolidAngle * pdfSolidAngle)
+                                / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
+                            float transmittance = exp(-uniforms.fogSigmaT * dist);
+                            radiance += throughput * lobeTint * (1.0 / M_PI_F)
+                                        * ls.emission * absCos * transmittance / pdfSolidAngle * weight;
+                        }
+                    }
+
+                    for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+                        PointLight pl = pointLights[pli];
+                        float3 toPointLight = float3(pl.position) - hitPoint;
+                        float plDistSq = dot(toPointLight, toPointLight);
+                        float plDist = sqrt(plDistSq);
+                        float3 plWi = toPointLight / plDist;
+                        float plCosSurface = dot(facingNormal, plWi);
+                        if (plCosSurface != 0.0) {
+                            bool plReflect = plCosSurface > 0.0;
+                            float3 plLobeTint = plReflect ? albedo : mat.transmitColor;
+                            float plAbsCos = abs(plCosSurface);
+                            ray plShadowRay;
+                            plShadowRay.origin = hitPoint + (plReflect ? facingNormal : -facingNormal) * 0.001f;
+                            plShadowRay.direction = plWi;
+                            plShadowRay.min_distance = 0.001f;
+                            plShadowRay.max_distance = plDist - 0.002f;
+                            intersection_result<instancing, triangle_data> plShadowResult =
+                                isect.intersect(plShadowRay, accelStructure, functionTable);
+                            if (plShadowResult.type == intersection_type::none) {
+                                float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                                float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                                radiance += throughput * plLobeTint * (1.0 / M_PI_F)
+                                            * float3(pl.emission) * plAbsCos * plSpot * plTransmittance / plDistSq;
+                            }
+                        }
+                    }
+
+                    for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+                        DirectionalLight dl = directionalLights[dli];
+                        float3 dlWi = normalize(-float3(dl.direction));
+                        float dlCosSurface = dot(facingNormal, dlWi);
+                        if (dlCosSurface != 0.0) {
+                            bool dlReflect = dlCosSurface > 0.0;
+                            float3 dlLobeTint = dlReflect ? albedo : mat.transmitColor;
+                            float dlAbsCos = abs(dlCosSurface);
+                            ray dlShadowRay;
+                            dlShadowRay.origin = hitPoint + (dlReflect ? facingNormal : -facingNormal) * 0.001f;
+                            dlShadowRay.direction = dlWi;
+                            dlShadowRay.min_distance = 0.001f;
+                            dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                            intersection_result<instancing, triangle_data> dlShadowResult =
+                                isect.intersect(dlShadowRay, accelStructure, functionTable);
+                            if (dlShadowResult.type == intersection_type::none) {
+                                float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                                float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                                radiance += throughput * dlLobeTint * (1.0 / M_PI_F)
+                                            * float3(dl.emission) * dlAbsCos * dlTransmittance;
+                            }
+                        }
+                    }
+
+                    for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+                        ProjectionLight pj = projectionLights[pji];
+                        float3 toProjLight = float3(pj.position) - hitPoint;
+                        float pjDistSq = dot(toProjLight, toProjLight);
+                        float pjDist = sqrt(pjDistSq);
+                        float3 pjWi = toProjLight / pjDist;
+                        float pjCosSurface = dot(facingNormal, pjWi);
+                        if (pjCosSurface != 0.0) {
+                            float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                                         pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                                         earthTexture, textureSampler);
+                            if (any(pjRadiance > float3(0.0))) {
+                                bool pjReflect = pjCosSurface > 0.0;
+                                float3 pjLobeTint = pjReflect ? albedo : mat.transmitColor;
+                                float pjAbsCos = abs(pjCosSurface);
+                                ray pjShadowRay;
+                                pjShadowRay.origin = hitPoint + (pjReflect ? facingNormal : -facingNormal) * 0.001f;
+                                pjShadowRay.direction = pjWi;
+                                pjShadowRay.min_distance = 0.001f;
+                                pjShadowRay.max_distance = pjDist - 0.002f;
+                                intersection_result<instancing, triangle_data> pjShadowResult =
+                                    isect.intersect(pjShadowRay, accelStructure, functionTable);
+                                if (pjShadowResult.type == intersection_type::none) {
+                                    float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                                    radiance += throughput * pjLobeTint * (1.0 / M_PI_F)
+                                                * pjRadiance * pjAbsCos * pjTransmittance / pjDistSq;
+                                }
+                            }
+                        }
+                    }
+
+                    for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+                        GoniometricLight gl = goniometricLights[gli];
+                        float3 toGoniLight = float3(gl.position) - hitPoint;
+                        float glDistSq = dot(toGoniLight, toGoniLight);
+                        float glDist = sqrt(glDistSq);
+                        float3 glWi = toGoniLight / glDist;
+                        float glCosSurface = dot(facingNormal, glWi);
+                        if (glCosSurface != 0.0) {
+                            float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                                          gl.emission, gl.scale,
+                                                                          goniometricTexture, textureSampler);
+                            if (any(glRadiance > float3(0.0))) {
+                                bool glReflect = glCosSurface > 0.0;
+                                float3 glLobeTint = glReflect ? albedo : mat.transmitColor;
+                                float glAbsCos = abs(glCosSurface);
+                                ray glShadowRay;
+                                glShadowRay.origin = hitPoint + (glReflect ? facingNormal : -facingNormal) * 0.001f;
+                                glShadowRay.direction = glWi;
+                                glShadowRay.min_distance = 0.001f;
+                                glShadowRay.max_distance = glDist - 0.002f;
+                                intersection_result<instancing, triangle_data> glShadowResult =
+                                    isect.intersect(glShadowRay, accelStructure, functionTable);
+                                if (glShadowResult.type == intersection_type::none) {
+                                    float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                                    radiance += throughput * glLobeTint * (1.0 / M_PI_F)
+                                                * glRadiance * glAbsCos * glTransmittance / glDistSq;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Continuation ray: pick reflect vs transmit with
+                // probability pr/(pr+pt) (russian-roulette on each lobe's
+                // own max-channel magnitude, matching
+                // DiffuseTransmissionBxDF::sample() exactly), then
+                // cosine-sample the corresponding hemisphere. f*cosTheta/
+                // pdf collapses to exactly `lobeTint` regardless of which
+                // lobe was picked - the same cosine-pdf/cosine-BRDF
+                // cancellation materialType 0's own Lambertian throughput
+                // update already relies on, with the stochastic lobe-
+                // selection probability cancelling the same way
+                // materialType 8's own coat-vs-base pick already does.
+                bool reflect = randFloat(rngState) < (pr / pSum);
+                float3 lobeNormal = reflect ? facingNormal : -facingNormal;
+                rayDir = cosineSampleHemisphere(lobeNormal, rngState);
+                rayOrigin = hitPoint + lobeNormal * 0.001f;
+                throughput *= reflect ? albedo : mat.transmitColor;
+                bsdfPdf = (reflect ? (pr / pSum) : (pt / pSum)) * max(dot(lobeNormal, rayDir), 0.0001) / M_PI_F;
+                specularBounce = false;
             } else {
                 // Lambertian (materialType 0, or 3 - textured, the only
                 // difference already resolved above into `albedo`, the

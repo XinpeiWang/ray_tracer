@@ -277,6 +277,10 @@ struct TriangleMaterial {
     // see metal_poc.metal's own mirrored comment.
     PackedFloat3 conductorEta{0, 0, 0};
     PackedFloat3 conductorK{0, 0, 0};
+    // Diffuse TRANSMITTANCE tint, materialType == 12 only (`color` is
+    // this material's own diffuse REFLECTANCE tint, same convention as
+    // materialType 0) - see metal_poc.metal's own mirrored comment.
+    PackedFloat3 transmitColor{0, 0, 0};
 };
 
 // Mirrors metal_poc.metal's SphereData byte-for-byte.
@@ -330,7 +334,11 @@ static void addQuad(std::vector<PackedFloat3>& verts,
                      // them; only a quad that actually needs a REAL
                      // refraction index (materialType 11's own glass-pane
                      // object) passes something else.
-                     float ior = 1.0f) {
+                     float ior = 1.0f,
+                     // Diffuse TRANSMITTANCE tint, materialType == 12
+                     // only - defaults to black (every quad before that
+                     // material existed had no transmission at all).
+                     float3 transmitColor = simd::make_float3(0, 0, 0)) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
@@ -346,8 +354,10 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     uvs.push_back(PackedFloat2{0, 1});
     PackedFloat3 packedColor{color.x, color.y, color.z};
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
-    materials.push_back({packedColor, materialType, ior, packedEmission, lightId, roughness});
-    materials.push_back({packedColor, materialType, ior, packedEmission, lightId, roughness});
+    TriangleMaterial mat{packedColor, materialType, ior, packedEmission, lightId, roughness};
+    mat.transmitColor = PackedFloat3{transmitColor.x, transmitColor.y, transmitColor.z};
+    materials.push_back(mat);
+    materials.push_back(mat);
 }
 
 // A minimal Wavefront OBJ loader: positions, vertex normals, texture
@@ -824,6 +834,28 @@ void MetalPocApp::buildScene() {
             white, /*materialType=*/11,
             /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
             /*roughness=*/0.0f, /*ior=*/1.5f);
+    // A translucent "leaf" panel (materialType 12, diffuse transmission) -
+    // see metal_poc.metal's own comment on this materialType for the full
+    // "why" (a two-sided diffuser, unlike materialType 11's own
+    // undistorted-straight-through specular transmission just above).
+    // Deliberately placed almost exactly AT the first point light's own
+    // depth (PackedFloat3{0,0.3,0.3} below, z=0.3 - this quad sits at
+    // z=0.35, just in front of it from the camera's own +Z-facing view)
+    // so that light is genuinely BACKLIT through this panel, not merely
+    // side-lit - the one placement that actually exercises the
+    // transmission lobe's own NEE path, not just the reflection lobe
+    // every other diffuse material in this scene already covers.
+    // Reflectance (`color`) and transmittance are DIFFERENT tints (a
+    // real leaf's own transmitted colour is warmer/brighter, not just a
+    // dimmer copy of its reflected one) - the classic "backlit leaf
+    // glows a lighter green" effect this placement is chosen to show.
+    addQuad(verts, normals, uvs, materials,
+            float3{-0.22f, 0.08f, 0.35f}, float3{0.22f, 0.08f, 0.35f},
+            float3{0.22f, 0.5f, 0.35f}, float3{-0.22f, 0.5f, 0.35f},
+            /*color(reflectance)=*/float3{0.25f, 0.45f, 0.12f}, /*materialType=*/12,
+            /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
+            /*roughness=*/0.0f, /*ior=*/1.0f,
+            /*transmitColor=*/float3{0.18f, 0.6f, 0.1f});
     // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
     // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
     // test object": mirror MATERIAL coverage is already proven (the
