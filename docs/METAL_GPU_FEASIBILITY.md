@@ -2025,3 +2025,53 @@ change, not a regression).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 42. Bug fix: area lights emitted from both sides (found while reviewing shading code, done)
+
+Every `AreaLight` NEE branch has always correctly checked `cosLight >
+0.0` before contributing - a light only illuminates surfaces on the
+side its own `normal` points toward. The unconditional "did a ray land
+directly on the light quad" check (covering camera rays and BSDF-
+sampled continuation rays, since NEE alone can't explain a ray that
+happens to hit the light by chance) had NO equivalent check at all -
+`if (any(mat.emission) > 0.0)` fired regardless of which face was hit,
+meaning a ray reaching the light's own BACK side still read its full
+emission. Found by re-reading this exact block while looking at
+something else entirely, not by chasing a visible symptom - the
+inconsistency with every NEE branch's own already-correct one-sidedness
+was the tell.
+
+**Invisible in the committed scene**: every light here is mounted flush
+against the ceiling (`y = 0.98`, the ceiling quad itself at `y = 1.0`),
+so its back face is physically inaccessible from inside the room - this
+bug produced ZERO visible difference in any of this POC's own renders
+to date. Fixed anyway, since a shading model that's only "one-sided" by
+geometric accident rather than by its own logic will eventually bite a
+scene that isn't this one (a light floating in open space, viewable from
+both directions, would have shown it immediately).
+
+Fixed by reusing `frontFace` (already computed a few lines above for the
+dielectric branch's own eta selection) as an extra condition on the
+emissive check - a one-line, minimal-risk change.
+
+**Verified two ways**: an isolated diagnostic scene (a throwaway light
+quad floating in open space, deliberately wound so its normal points
+AWAY from the camera) makes the bug and fix unambiguous - the pre-fix
+render shows the camera looking straight at a huge, blown-out white
+glow from the quad's own BACK face; the post-fix render shows the exact
+same quad correctly reading as a plain, unlit grey panel (ambient
+GI-lit only, since it's still a valid Lambertian surface underneath -
+just no longer glowing from the wrong side). Separately, a pixel-diff
+of the actual committed scene (`stb_image`-based comparison tool,
+64spp, same seed, before vs after) confirms the fix's real-world impact
+here is exactly as small as expected: only 1504 of 750000 subpixels
+differ at all, average difference 0.0028 (out of 255) - consistent with
+rare grazing GI bounce rays clipping through the thin 0.02-unit gap
+between a ceiling light and the ceiling quad above it, not a wholesale
+change to the scene's own appearance. Both ceiling lights still glow
+exactly as brightly as before from their own correct (downward-facing)
+side, confirming the fix didn't accidentally invert which face is
+"front."
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
