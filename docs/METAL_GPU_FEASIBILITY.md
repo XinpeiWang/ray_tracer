@@ -3493,3 +3493,87 @@ sphere's own near-vertical-normal region).
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests, `buildAnisotropicOnb`
 now covered) passes.
+
+## 69. Environment-map importance sampling, phase 1: the sampling structure (done)
+
+`earthTexture`'s own equirectangular environment/"sky" lookup
+(`equirectangularUV()`, section 18) is currently reached ONLY on a miss
+ray - there is no NEE/importance-sampling strategy for it at all, unlike
+every other light type this POC has (area lights, point, spot,
+directional, projection, goniometric). A bright, spatially-concentrated
+region of the environment image can currently only ever contribute light
+via a BSDF-sampled ray getting lucky enough to escape toward it - the
+same high-variance-under-a-small-bright-light problem NEE/MIS already
+solves everywhere else in this shader.
+
+This is deliberately scoped as PHASE 1 of 2, not the full feature: the
+sampling STRUCTURE itself, built and independently verified, with the
+(considerably larger, touching essentially every material's own NEE
+code and the miss-path's own MIS weight) shader-wiring half explicitly
+deferred to its own follow-up PR - the same kind of honest, bounded
+scoping this POC has used before (section 21's rough-dielectric gap,
+closed much later in section 65) rather than attempting the whole thing
+at once and risking a rushed, hard-to-verify MIS bug.
+
+`gpu/metal/metal_poc_host_math.h` gains `EnvDistribution2D` and four
+functions (`buildEnvDistribution2D`, `sampleEnvDistribution2D`,
+`pdfEnvDistribution2D`, `findCdfInterval`) - a piecewise-constant 2D
+importance-sampling structure mirroring pbrt-v4's own Distribution2D/
+ImageInfiniteLight construction: a row-marginal CDF plus a per-row
+conditional CDF, each row weighted by BOTH its own pixel luminance AND
+the equirectangular mapping's own `sin(theta)` solid-angle Jacobian (so
+the poles - which cover less real solid angle per pixel than the
+equator - aren't over-sampled just for having more raw pixels pointed
+at them). Only the CDF arrays are stored (no separate pdf/`funcInt`
+field) - the local density for whichever bucket a sample lands in is
+always recoverable from that bucket's own CDF slope
+(`(cdf[i+1]-cdf[i]) * bucketCount`), which is also exactly the layout a
+GPU-side binary search will want to upload as buffers in phase 2.
+
+**Verified four ways**: (1) a synthetic 32x16 image, black everywhere
+except an 8x4 "sun" block covering only 6.25% of the image's own pixel
+area - 20,000 samples land inside that block over 95% of the time (a
+uniform sampler would land there ~6.25% of the time), confirming the
+sampler genuinely concentrates draws where the image is bright, not
+just in aggregate but overwhelmingly. (2) A self-consistency check: for
+500 samples drawn from a smooth (non-degenerate) 64x32 gradient image,
+independently RE-EVALUATING `pdfEnvDistribution2D()` at each sample's
+own `(u,v)` matches that sample's own returned pdf to `1e-3` - the
+sampling path and the evaluation path read the same underlying CDF
+arithmetic, so any drift between them (e.g. a row/col indexing mistake
+in one but not the other) would show up here even though the bright-
+block test above couldn't distinguish "correct" from "correct but
+slightly mis-weighted." (3) A uniform (constant-colour) test image
+reduces to an EXACTLY uniform per-row conditional CDF (checked at every
+column boundary to `1e-5`) - the degenerate case every importance
+sampler should collapse to when there's genuinely nothing to
+concentrate on. (4) A throwaway verification program (not part of
+`ctest` - avoids adding an `stb_image` link dependency to
+`metal_poc_math_tests` for a one-off check) built the REAL
+`earthmap.jpg` (2048x1025): builds in ~48ms, every CDF entry finite,
+`marginalCDF` correctly bounded `[0,1]`, and 200,000 real samples all
+returned a strictly positive, finite pdf with no single row dominating
+more than 0.6% of samples - a real photographic sky, unlike the
+synthetic tests' own deliberately extreme single-block case, sensibly
+shows no one region overwhelming every other. Deliberately corrupted
+one test's own pass threshold to an impossible value mid-development,
+confirmed it failed, then reverted - the same discipline this POC's
+device-side test additions already established, applied here to a
+host-side one.
+
+Not yet done, and explicitly scoped as phase 2: uploading these CDF
+arrays as GPU buffers, a device-side binary-search sampling/evaluation
+pair mirroring the host-side functions above, a new NEE block in each
+material's own light-sampling loop (reusing the exact
+`radiance += throughput * bsdf * light / pdf * misWeight` shape every
+other light type already uses), and MIS-weighting the miss-path's own
+existing unconditional environment contribution against
+`pdfEnvDistribution2D()` evaluated at the escaping ray's own direction -
+mirroring the area light's own direct-hit MIS weight (the "check for an
+emissive hit" block earlier in the shading loop).
+
+No render changes in this PR - this is a pure host-side addition with
+no shader-visible effect yet. The ad-hoc CMake build/`ctest` (four
+tests, none touched by this PR, all still passing) and the new
+`metal_poc_math_tests` cases confirm the addition doesn't disturb
+anything else.

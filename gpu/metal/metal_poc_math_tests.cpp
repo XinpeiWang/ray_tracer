@@ -320,6 +320,121 @@ static void testVignetteFactor() {
                vignetteFactor(0, 0, width, height, 0.0f), 1.0, 1e-9);
 }
 
+// A small (32x16) synthetic RGBA8 test image: black everywhere except a
+// bright white 8x4 block in one quadrant (rows 8-11, cols 16-23) - a
+// deliberately EXTREME case (a "sun" against a black sky) so a sampler
+// that isn't actually concentrating draws where the image is bright
+// would be caught immediately, not hidden in a gentle gradient.
+static void buildQuadrantTestImage(std::vector<unsigned char>& rgba, int width, int height,
+                                    int bx0, int by0, int bx1, int by1) {
+    rgba.assign((size_t)width * height * 4, 0);
+    for (int y = by0; y < by1; ++y) {
+        for (int x = bx0; x < bx1; ++x) {
+            unsigned char* px = &rgba[((size_t)y * width + x) * 4];
+            px[0] = px[1] = px[2] = 255;
+            px[3] = 255;
+        }
+    }
+}
+
+static void testEnvDistribution2DConcentratesOnBrightRegion() {
+    const int width = 32, height = 16;
+    const int bx0 = 16, by0 = 8, bx1 = 24, by1 = 12;
+    std::vector<unsigned char> rgba;
+    buildQuadrantTestImage(rgba, width, height, bx0, by0, bx1, by1);
+
+    EnvDistribution2D dist;
+    buildEnvDistribution2D(rgba.data(), width, height, dist);
+
+    // Draw a large number of samples via a simple deterministic
+    // low-discrepancy-ish sweep (not std::rand - keeps this test
+    // reproducible with no seed to manage) and check the overwhelming
+    // majority land inside the bright block's own (u,v) footprint - the
+    // bright block covers only (8*4)/(32*16) = 6.25% of the image's own
+    // pixel AREA, so landing there >95% of the time is only possible if
+    // the sampler is genuinely concentrating draws where the image is
+    // bright, not sampling uniformly.
+    const int N = 20000;
+    int insideBlock = 0;
+    for (int i = 0; i < N; ++i) {
+        float u1 = ((float)i + 0.5f) / N;
+        float u2 = fmodf(u1 * 97.0f + 0.37f, 1.0f);  // decorrelate the 2nd coordinate
+        float su, sv, pdf;
+        sampleEnvDistribution2D(dist, u1, u2, su, sv, pdf);
+        expectTrue("sampleEnvDistribution2D pdf is positive and finite",
+                   pdf > 0.0f && std::isfinite(pdf));
+        int col = (int)(su * width), row = (int)(sv * height);
+        if (col >= bx0 && col < bx1 && row >= by0 && row < by1) ++insideBlock;
+    }
+    double fraction = (double)insideBlock / N;
+    expectTrue("sampleEnvDistribution2D concentrates the overwhelming majority of "
+               "draws inside the image's own bright block (got a lower fraction than expected)",
+               fraction > 0.95);
+}
+
+// Self-consistency: pdfEnvDistribution2D(u,v), evaluated at the EXACT
+// (u,v) a sample just landed on, must equal that sample's own returned
+// pdf - both are reading the same underlying CDF-slope arithmetic, so
+// any mismatch here means the sampling path and the evaluation path
+// have DRIFTED apart (e.g. a row/col indexing mistake in one but not
+// the other) - a bug the bright-block test above couldn't distinguish
+// from "correct but slightly mis-weighted."
+static void testEnvDistribution2DPdfMatchesSample() {
+    const int width = 64, height = 32;
+    std::vector<unsigned char> rgba((size_t)width * height * 4);
+    // A smooth (non-degenerate, non-constant) gradient image - every
+    // row/column gets a genuinely different weight, unlike the single-
+    // block image above, so this exercises many different CDF buckets.
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            unsigned char* px = &rgba[((size_t)y * width + x) * 4];
+            px[0] = (unsigned char)(x * 255 / (width - 1));
+            px[1] = (unsigned char)(y * 255 / (height - 1));
+            px[2] = 128;
+            px[3] = 255;
+        }
+    }
+    EnvDistribution2D dist;
+    buildEnvDistribution2D(rgba.data(), width, height, dist);
+
+    for (int i = 0; i < 500; ++i) {
+        float u1 = ((float)i + 0.5f) / 500.0f;
+        float u2 = fmodf(u1 * 61.0f + 0.13f, 1.0f);
+        float su, sv, samplePdf;
+        sampleEnvDistribution2D(dist, u1, u2, su, sv, samplePdf);
+        float evalPdf = pdfEnvDistribution2D(dist, su, sv);
+        char label[128];
+        snprintf(label, sizeof(label), "pdfEnvDistribution2D(%.4f,%.4f) matches its own sample's pdf", su, sv);
+        expectNear(label, evalPdf, samplePdf, 1e-3);
+    }
+}
+
+// A uniform (constant-colour) image must reduce to an EXACTLY uniform
+// distribution over u (every column bucket the same width) - the
+// direction-independent degenerate case every importance sampler
+// should collapse to when there is genuinely nothing to concentrate on,
+// the same "0 reproduces uniform/prior behaviour" contract this POC's
+// own other optional features already follow (see vignetteFactor's own
+// strength=0 case). NOT true for v (a flat image's OWN row weights
+// still vary via the sin(theta) solid-angle Jacobian - only genuinely
+// equal-solid-angle-per-pixel would make v uniform too, which an
+// equirectangular image never is), so only the conditional (per-row)
+// CDF is checked here.
+static void testEnvDistribution2DUniformImageIsUniformInU() {
+    const int width = 16, height = 8;
+    std::vector<unsigned char> rgba((size_t)width * height * 4, 200);
+    for (size_t i = 3; i < rgba.size(); i += 4) rgba[i] = 255;  // alpha
+    EnvDistribution2D dist;
+    buildEnvDistribution2D(rgba.data(), width, height, dist);
+
+    const float* row0 = &dist.conditionalCDF[0];
+    for (int col = 0; col <= width; ++col) {
+        char label[96];
+        snprintf(label, sizeof(label), "uniform image's row-0 conditional CDF is linear at col=%d", col);
+        expectNear(label, row0[col], (double)col / width, 1e-5);
+    }
+}
+
 int main() {
     testLinearToSRGB();
     testChromaticAberrationZeroShiftAtCentre();
@@ -328,6 +443,9 @@ int main() {
     testPowerLightSamplerAliasTableSampling();
     testBlackbodyColor();
     testVignetteFactor();
+    testEnvDistribution2DConcentratesOnBrightRegion();
+    testEnvDistribution2DPdfMatchesSample();
+    testEnvDistribution2DUniformImageIsUniformInU();
 
     if (g_failures > 0) {
         fprintf(stderr, "FAIL: %d check(s) failed\n", g_failures);

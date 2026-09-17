@@ -327,3 +327,173 @@ inline float linearToSRGB(float value) {
             + s))));
     return p / q * value;
 }
+
+// ===========================================================================
+// Environment-map importance sampling (Distribution2D) - PHASE 1
+//
+// `earthTexture` (equirectangularUV(), section 18) is currently only
+// ever REACHED on a miss ray - there is no NEE/importance-sampling
+// strategy for it at all, so a bright, spatially-concentrated region of
+// the environment image (a "sun") can only ever contribute light via a
+// BSDF-sampled ray getting lucky enough to escape toward it, the same
+// high-variance-under-a-bright-small-light problem NEE/MIS already
+// solves for every other light type in this POC.
+//
+// This is the FIRST of two increments closing that gap: a piecewise-
+// constant 2D importance-sampling structure built once, at load time,
+// from the SAME decoded image bytes metal_poc.mm already has in hand
+// for `earthTexture` - mirrors pbrt-v4's own Distribution2D/
+// ImageInfiniteLight construction (row-marginal CDF + per-row
+// conditional CDFs, each row weighted by BOTH its own pixel luminance
+// AND the equirectangular mapping's own sin(theta) solid-angle
+// Jacobian, so the poles - which cover less real solid angle per pixel
+// than the equator - aren't over-sampled just for having more raw
+// pixels pointed at them). Deliberately NOT yet wired into the shader's
+// own NEE loops or uploaded to the GPU at all - this increment is
+// scoped to the sampling STRUCTURE itself, built and independently
+// verified (metal_poc_math_tests.cpp) before the (considerably larger,
+// touching every material's own NEE code and the miss-path's own MIS
+// weight) shader-wiring half lands as its own follow-up PR.
+//
+// CDF-only storage (no separate `pdf`/`funcInt` field): the local PDF
+// for whichever bucket a sample lands in is always recoverable from
+// that bucket's own CDF slope - `(cdf[i+1]-cdf[i]) * bucketCount` - so
+// storing only the CDF arrays is both sufficient and exactly what a
+// GPU-side binary search would want to upload as buffers later.
+struct EnvDistribution2D {
+    int width = 0;
+    int height = 0;
+    std::vector<float> marginalCDF;     // size height+1, monotonic 0..1
+    std::vector<float> conditionalCDF;  // size height*(width+1), row-major
+};
+
+// sRGB (0-255) -> linear, the real piecewise inverse of linearToSRGB()
+// above - matches this project's own decode convention (the same one
+// `earthTexture`'s own `_sRGB` pixel format applies automatically in
+// the shader) so the importance weights below are built from LINEAR
+// luminance, not raw gamma-encoded byte values.
+inline float srgbByteToLinear(unsigned char c) {
+    float s = c / 255.0f;
+    return (s <= 0.04045f) ? (s / 12.92f) : powf((s + 0.055f) / 1.055f, 2.4f);
+}
+
+// Builds the distribution from a decoded RGBA8 image (row-major, 4
+// bytes/pixel - the exact layout `stbi_load(..., 4)` already produces
+// for `earthPixels` in metal_poc.mm). An all-black row/image falls back
+// to a UNIFORM CDF for that row/the marginal (rather than leaving every
+// entry at its default-constructed 0.0f, which would make every
+// interval degenerate and any sample land in bucket 0 forever) - a
+// well-defined, if unlikely-to-matter, edge case rather than undefined
+// behaviour.
+inline void buildEnvDistribution2D(const unsigned char* rgba, int width, int height,
+                                    EnvDistribution2D& dist) {
+    dist.width = width;
+    dist.height = height;
+    dist.marginalCDF.assign((size_t)height + 1, 0.0f);
+    dist.conditionalCDF.assign((size_t)height * (width + 1), 0.0f);
+
+    std::vector<double> rowWeight((size_t)height, 0.0);
+    std::vector<double> f((size_t)width, 0.0);
+    for (int row = 0; row < height; ++row) {
+        double sinTheta = sin(M_PI * (row + 0.5) / (double)height);
+        double rowSum = 0.0;
+        for (int col = 0; col < width; ++col) {
+            const unsigned char* px = rgba + ((size_t)row * width + col) * 4;
+            double lr = srgbByteToLinear(px[0]);
+            double lg = srgbByteToLinear(px[1]);
+            double lb = srgbByteToLinear(px[2]);
+            double luminance = 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+            f[col] = luminance * sinTheta;
+            rowSum += f[col];
+        }
+        rowWeight[row] = rowSum;
+        float* cdfRow = &dist.conditionalCDF[(size_t)row * (width + 1)];
+        cdfRow[0] = 0.0f;
+        if (rowSum > 0.0) {
+            double acc = 0.0;
+            for (int col = 0; col < width; ++col) {
+                acc += f[col];
+                cdfRow[col + 1] = (float)(acc / rowSum);
+            }
+        } else {
+            for (int col = 0; col < width; ++col) cdfRow[col + 1] = (float)(col + 1) / (float)width;
+        }
+        cdfRow[width] = 1.0f;
+    }
+    double totalWeight = 0.0;
+    for (int row = 0; row < height; ++row) totalWeight += rowWeight[row];
+    dist.marginalCDF[0] = 0.0f;
+    if (totalWeight > 0.0) {
+        double acc = 0.0;
+        for (int row = 0; row < height; ++row) {
+            acc += rowWeight[row];
+            dist.marginalCDF[row + 1] = (float)(acc / totalWeight);
+        }
+    } else {
+        for (int row = 0; row < height; ++row) dist.marginalCDF[row + 1] = (float)(row + 1) / (float)height;
+    }
+    dist.marginalCDF[height] = 1.0f;
+}
+
+// Largest `i` such that `cdf[i] <= u`, clamped to `[0, n-1]` - a plain
+// binary search (`cdf` has `n+1` monotonic entries, `cdf[0]==0`,
+// `cdf[n]==1`); the same lookup a GPU-side binary search over the
+// uploaded buffer would perform, exercised here host-side first.
+inline int findCdfInterval(const float* cdf, int n, float u) {
+    int lo = 0, hi = n;
+    while (lo + 1 < hi) {
+        int mid = (lo + hi) / 2;
+        if (cdf[mid] <= u) lo = mid; else hi = mid;
+    }
+    return (lo < n - 1) ? lo : (n - 1);
+}
+
+// Draws a continuous (u,v) in [0,1)^2 from the distribution given two
+// independent uniform randoms, and returns the IMAGE-SPACE pdf (a
+// density w.r.t. du*dv over the unit square, NOT yet a solid-angle
+// pdf - that conversion needs the equirectangular Jacobian, which is
+// direction-dependent and belongs on the device side once a world
+// direction exists) - mirrors pbrt-v4's own Distribution2D::
+// SampleContinuous: pick the row bucket via the marginal CDF, the
+// column bucket via THAT row's own conditional CDF, then linearly
+// interpolate a continuous offset within each bucket from the CDF's
+// own local slope.
+inline void sampleEnvDistribution2D(const EnvDistribution2D& dist, float u1, float u2,
+                                     float& outU, float& outV, float& outPdf) {
+    int row = findCdfInterval(dist.marginalCDF.data(), dist.height, u1);
+    float rowLo = dist.marginalCDF[row], rowHi = dist.marginalCDF[row + 1];
+    float rowSpan = (rowHi - rowLo > 1e-9f) ? (rowHi - rowLo) : 1e-9f;
+    float dv = (u1 - rowLo) / rowSpan;
+    outV = (row + dv) / (float)dist.height;
+    float rowPdf = rowSpan * (float)dist.height;
+
+    const float* condRow = &dist.conditionalCDF[(size_t)row * (dist.width + 1)];
+    int col = findCdfInterval(condRow, dist.width, u2);
+    float colLo = condRow[col], colHi = condRow[col + 1];
+    float colSpan = (colHi - colLo > 1e-9f) ? (colHi - colLo) : 1e-9f;
+    float du = (u2 - colLo) / colSpan;
+    outU = (col + du) / (float)dist.width;
+    float colPdf = colSpan * (float)dist.width;
+
+    outPdf = rowPdf * colPdf;
+}
+
+// Evaluates the SAME image-space pdf at an arbitrary (u,v) - not by
+// drawing a new sample, but by looking up which cell (u,v) already
+// falls in and reading that cell's own CDF slope. This is what a
+// BSDF-sampled ray that escaped toward some direction needs for its own
+// MIS weight (section 65/66's own established "power heuristic against
+// what the OTHER strategy's pdf would have been for THIS exact
+// direction" pattern) - the direction was picked by the BSDF, not this
+// sampler, so there is no "sample" here to draw, only a density to
+// evaluate at a point.
+inline float pdfEnvDistribution2D(const EnvDistribution2D& dist, float u, float v) {
+    int row = (int)(v * dist.height);
+    if (row < 0) row = 0; else if (row >= dist.height) row = dist.height - 1;
+    int col = (int)(u * dist.width);
+    if (col < 0) col = 0; else if (col >= dist.width) col = dist.width - 1;
+    float rowPdf = (dist.marginalCDF[row + 1] - dist.marginalCDF[row]) * (float)dist.height;
+    const float* condRow = &dist.conditionalCDF[(size_t)row * (dist.width + 1)];
+    float colPdf = (condRow[col + 1] - condRow[col]) * (float)dist.width;
+    return rowPdf * colPdf;
+}
