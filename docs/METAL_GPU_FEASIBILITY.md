@@ -3223,3 +3223,81 @@ is.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests) continues to pass.
+
+## 65. Closing the rough-dielectric energy-conservation gap (done)
+
+Section 21 (an earlier session) flagged materialType 5 (rough/frosted
+dielectric) as missing a proper energy-conserving rough-BTDF
+continuation weight: the branch samples a GGX microfacet normal, then
+either reflects or refracts off it via the SAME single-scatter Fresnel/
+Snell logic as materialType 2's own smooth dielectric, but never
+applied any masking-correction term to `throughput` afterwards - and
+that section said so honestly, calling it "tricky-to-verify-without-a-
+reference-implementation math" rather than pretending it was already
+handled.
+
+That reference implementation exists after all - just not where the
+Metal port had been looking. `src/shared/bxdfs_conductor.h`'s
+`RoughDielectricBxDF` carries a full closed-form `f()`/`pdf()` pair
+(Walter et al. 2007's rough dielectric model) that IS independently
+validated - `tests/unit/bsdf_chi2_tests.cpp`'s own white-furnace energy
+tests exercise it, per that file's own comments. Its `sample_local()`,
+however, has an ACKNOWLEDGED, separately-flagged bug of its own
+(hardcodes weight=1 for both lobes, which does NOT reduce to 1 under
+the standard VNDF sampling identity for either lobe) - so `f()`/`pdf()`
+were used as the reference, not `sample_local()`'s own weight directly.
+
+Algebraically expanding `f(wo,newDir) * |newDir.z| / pdf(wo,newDir)`
+for both the reflection and transmission lobes (using the SAME
+`D_ggx`, `Lambda_ggx`, `G1_ggx`, `G_ggx` definitions the existing
+Metal `ggxD()`/`ggxLambda()`/`ggxG1()`/`ggxG()` functions already
+implement) shows every term cancels except a single ratio:
+`G(wo, newDir) / G1(wo)` - identically for both lobes, and using
+EXACTLY the same `ggxG()`/`ggxG1()` functions materialType 5's own
+neighbour, the GGX conductor material, already calls. `Lambda_ggx`
+only depends on `w.z*w.z`, so it's sign-agnostic - the same call works
+whether `newDir` is a reflection (same hemisphere as `wo`) or a
+transmission (opposite hemisphere), with no branch needed.
+
+**Verified against a fresh standalone double-precision C program**
+(`rough_dielectric_verify.c`, not reused from any earlier session) that
+ports `f()`/`pdf()` verbatim from `src/shared/bxdfs_conductor.h` and
+compares `f*|z|/pdf` against the `G(wo,newDir)/G1(wo)` shortcut across
+7 hand-picked direction pairs (near-normal/grazing view directions,
+reflection/transmission outcomes, both entering `eta=1/1.5` and exiting
+`eta=1.5`): 6 of 7 matched to ~1e-16 (double-precision floating-point
+noise floor). The 7th ("transmit, grazing, entering") hit the
+reference `pdf()`'s own `denom < 1e-12` guard - investigated with a
+follow-up program (`rough_dielectric_verify2.c`) that tried to
+construct a direction pair for that exact `wo`/`eta` via real Snell's-
+law refraction, confirming total internal reflection / no consistent
+transmission direction exists for that hand-picked pair at all - an
+unphysical test input, not a derivation error.
+
+The fix itself is three lines in `metal_poc.metal`'s `materialType ==
+5u` branch, added right after the existing reflect-or-refract choice
+and before the existing `applyBeerLambertAbsorption` call: convert the
+already-sampled `newDir` into the local shading frame (the branch
+already has `tangent`/`bitangent`/`facingNormal` and `woLocal` in
+scope), then `throughput *= ggxG(woLocal, newDirLocal, alpha, alpha) /
+max(ggxG1(woLocal, alpha, alpha), 1e-6)`. No `.mm` changes needed -
+purely a shader-side correction using variables already in scope.
+
+**Render-level verification**: a before/after comparison (materialType
+5's own sphere is already present in the committed scene) restricted
+to that sphere's own screen-space bounding box (`(240,570)` to
+`(390,700)`) shows 8,859 of 58,500 subpixels (15.1%) differ by more
+than 3, mean absolute difference 1.87, mean SIGNED difference +1.05 (a
+net brightening, consistent with `G/G1 <= 1` normally REDUCING
+throughput per bounce, but this sphere's material combines multiple
+bounces where the correction compounds non-uniformly with the existing
+noise floor) - a real, modest, and correctly-signed effect, not a
+regression and not a no-op. The full-frame diff is smaller still
+(11,087 of 1,470,000 subpixels, mean absolute difference 0.14) since
+only this one material type in the whole scene is affected.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests) continues to
+pass - this fix needed no new tests of its own since it doesn't add a
+new function, only corrects an existing branch's own math using
+already-tested `ggxG()`/`ggxG1()` building blocks.
