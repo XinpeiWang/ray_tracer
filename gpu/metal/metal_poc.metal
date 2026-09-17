@@ -186,16 +186,18 @@ inline float spotLightFalloff(float3 wiFromLight, float3 direction, float cosOut
 // the sun toward the scene), matching PointLight's own `direction`
 // convention for the spot cone.
 //
-// Known simplification: unlike PointLight's shadow ray (a known finite
-// distance, so `exp(-fogSigmaT * dist)` is a real Beer-Lambert
-// attenuation), a directional light's shadow ray has no well-defined
-// finite path length through the fog before it exits the room's open
-// front - so this light's own NEE contribution does NOT attenuate
-// through fog at all (unconditionally full contribution when
-// unoccluded), rather than picking an arbitrary sentinel distance that
-// would silently misrepresent the fog's real optical depth. Skipped
-// deliberately, not an oversight - the same "don't fake it" judgement
-// call step 24's own point light doc applied to GGX energy compensation.
+// Originally shipped with fog attenuation skipped entirely for this
+// light (unlike PointLight's own shadow ray, which has a known finite
+// distance `exp(-fogSigmaT * dist)` can use directly) - a directional
+// light's shadow ray has no target distance at all, the light being at
+// infinity. Fixed below (`rayBoxExitDistance()`) rather than left as a
+// permanent gap: since this scene's own fog fills exactly the room's
+// solid geometry, and an UNOCCLUDED shadow ray (by definition, this
+// branch only runs when the real scene intersection test found nothing)
+// can only have exited through this room's one gap (the open front),
+// the distance to where that ray crosses this room's own `[-1,1]^3`
+// bounds is exactly the real fog path length - not an arbitrary
+// sentinel standing in for one.
 struct DirectionalLight {
     packed_float3 direction;
     packed_float3 emission;
@@ -207,6 +209,30 @@ struct DirectionalLight {
 // reads as having genuinely exited the scene rather than being clipped
 // short of a real occluder.
 constant float kDirectionalLightMaxDistance = 10.0f;
+
+// This scene's own room bounds (see metal_poc.mm's own floor/ceiling/
+// wall addQuad() calls) - an explicit, documented scene-specific
+// constant, the same category as this file's own hardcoded Suzanne
+// instance_id threshold, not a general-purpose scene-bounds mechanism.
+constant float3 kRoomBoundsMin = float3(-1.0, -1.0, -1.0);
+constant float3 kRoomBoundsMax = float3(1.0, 1.0, 1.0);
+
+// Distance from `origin` (assumed INSIDE the box) to where a ray leaves
+// the axis-aligned box `[boxMin, boxMax]` - the standard "far" slab-test
+// distance (the near one is behind the ray, since origin is inside).
+// Used to give the directional light's own fog attenuation a REAL path
+// length instead of skipping it (see DirectionalLight's own comment):
+// valid specifically because it's only ever called on an UNOCCLUDED
+// shadow ray, which therefore can only have exited through this room's
+// one actual gap, not through a solid wall this box-only test doesn't
+// know about.
+inline float rayBoxExitDistance(float3 origin, float3 dir, float3 boxMin, float3 boxMax) {
+    float3 invDir = 1.0 / dir;
+    float3 tPlane1 = (boxMin - origin) * invDir;
+    float3 tPlane2 = (boxMax - origin) * invDir;
+    float3 tFar = max(tPlane1, tPlane2);
+    return min(min(tFar.x, tFar.y), tFar.z);
+}
 
 // materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular),
 // 2 = dielectric (glass), 3 = textured Lambertian (same BSDF/NEE code path
@@ -1133,8 +1159,9 @@ kernel void primaryRayKernel(
 
                     // Directional lights: summed unconditionally, not
                     // picked - see DirectionalLight's own comment. No
-                    // distance falloff and (deliberately) no fog
-                    // attenuation, unlike the point/spot loop just above.
+                    // distance falloff, but fog attenuation now DOES
+                    // apply, using rayBoxExitDistance() as the real path
+                    // length - see that function's own comment.
                     for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
                         DirectionalLight dl = directionalLights[dli];
                         float3 dlWi = normalize(-float3(dl.direction));
@@ -1147,7 +1174,9 @@ kernel void primaryRayKernel(
                             isect.intersect(dlShadowRay, accelStructure, functionTable);
                         if (dlShadowResult.type == intersection_type::none) {
                             float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), uniforms.fogAsymmetryG);
-                            radiance += throughput * dlPhaseValue * float3(dl.emission);
+                            float dlExitDist = rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                            float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                            radiance += throughput * dlPhaseValue * float3(dl.emission) * dlTransmittance;
                         }
                     }
 
@@ -1545,8 +1574,9 @@ kernel void primaryRayKernel(
 
                     // Directional lights: summed unconditionally, not
                     // picked - see DirectionalLight's own comment. No
-                    // distance falloff and (deliberately) no fog
-                    // attenuation, unlike the point/spot loop just above.
+                    // distance falloff, but fog attenuation now DOES
+                    // apply, using rayBoxExitDistance() as the real path
+                    // length - see that function's own comment.
                     for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
                         DirectionalLight dl = directionalLights[dli];
                         float3 dlWi = normalize(-float3(dl.direction));
@@ -1569,7 +1599,9 @@ kernel void primaryRayKernel(
                             intersection_result<instancing, triangle_data> dlShadowResult =
                                 isect.intersect(dlShadowRay, accelStructure, functionTable);
                             if (dlShadowResult.type == intersection_type::none) {
-                                radiance += throughput * dlBrdf * float3(dl.emission) * dlCosSurface;
+                                float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                                float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                                radiance += throughput * dlBrdf * float3(dl.emission) * dlCosSurface * dlTransmittance;
                             }
                         }
                     }
@@ -1726,9 +1758,9 @@ kernel void primaryRayKernel(
 
                     // Directional lights: summed unconditionally, not
                     // picked - see DirectionalLight's own comment. No
-                    // distance falloff and (deliberately, see that same
-                    // comment) no fog attenuation, unlike the point/spot
-                    // loop just above.
+                    // distance falloff, but fog attenuation now DOES
+                    // apply, using rayBoxExitDistance() as the real path
+                    // length - see that function's own comment.
                     for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
                         DirectionalLight dl = directionalLights[dli];
                         float3 dlWi = normalize(-float3(dl.direction));
@@ -1742,8 +1774,10 @@ kernel void primaryRayKernel(
                             intersection_result<instancing, triangle_data> dlShadowResult =
                                 isect.intersect(dlShadowRay, accelStructure, functionTable);
                             if (dlShadowResult.type == intersection_type::none) {
+                                float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                                float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
                                 radiance += throughput * albedo * (1.0 / M_PI_F)
-                                            * float3(dl.emission) * dlCosSurface;
+                                            * float3(dl.emission) * dlCosSurface * dlTransmittance;
                             }
                         }
                     }
