@@ -2379,3 +2379,50 @@ the sample counts this POC actually ships renders at.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 50. Bilateral (edge-preserving) denoise pass (done)
+
+A direct follow-on to step 49's own honest finding: firefly clamping
+barely helped this scene's own worst noise, because that noise turned
+out to be generally high-variance fog/volumetric sampling near the spot
+light's own cone, not the rare-extreme-outlier kind clamping targets.
+Spatial denoising is the right tool for THAT kind of noise instead.
+`bilateralDenoise()` computes each output pixel as a weighted average of
+its own neighbours, weighted by both spatial distance (a Gaussian in
+pixel distance, `sigmaSpatial`) and how similar each neighbour's own
+LUMINANCE is to the centre pixel's (a Gaussian in luminance difference,
+`sigmaRange`) - two nearby pixels with similar brightness (likely the
+same underlying surface, differing only by noise) smooth together;
+two nearby pixels with very different brightness (likely a real edge)
+barely influence each other, which is what keeps this from being a
+uniform blur. Applied to the final 8-bit LDR image (after tonemapping/
+gamma, not the linear HDR buffer) - the standard display-referred
+approach, since a range kernel compared against raw linear values would
+be dominated by the huge magnitude gap between a light source and
+everything else rather than meaningfully separating "real edge" from
+noise. The SAME per-pixel weight (from luminance alone) is applied to
+all three colour channels together, preserving each pixel's own hue
+relationship to its neighbours.
+
+**Tuned by rendering and comparing, the same way this POC's other post-
+process knobs were**: settled on radius 3 (7×7), `sigmaSpatial = 2.5`,
+`sigmaRange = 20.0`. A more aggressive setting (radius 4, `sigmaRange =
+80`) was tried and rejected - it visibly softened the crystal ball's own
+sharp specular highlight and the checkerboard floor's own tile edges,
+confirming this knob really can wash out real detail if pushed too far,
+not just in theory.
+
+**Result, verified two ways**: at 16 samples/pixel, a local variance
+measurement in the scene's own previously-identified worst region (the
+same fog/volumetric hotspot step 49's own doc measured) shows a real,
+substantially larger reduction than firefly clamping alone achieved -
+std-dev 47.14 → 38.09 (roughly 19%), against clamping's own ~1.3% there.
+Whole-image std-dev also dropped (57.21 → 54.55). Visually, walls read
+noticeably smoother at both 16spp and the scene's own full-quality
+384spp showcase render, while the checkerboard floor's tile seams and
+the crystal ball's own sharp specular highlight both stay crisp -
+confirming the edge-preserving behaviour is real, not just a blur in
+disguise.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
