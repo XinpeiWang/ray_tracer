@@ -811,14 +811,37 @@ inline float3 checkerColor(float2 uv, float scale, float3 colorA, float3 colorB)
     return (abs(parity) < 0.5) ? colorA : colorB;
 }
 
-// Schlick's approximation - the standard cheap stand-in for the full
-// Fresnel dielectric reflectance formula, same one pbrt-v4 and this
-// project's own CPU dielectric material use for the reflect-vs-refract
-// decision.
-inline float schlickReflectance(float cosine, float refractionRatio) {
-    float r0 = (1.0 - refractionRatio) / (1.0 + refractionRatio);
-    r0 = r0 * r0;
-    return r0 + (1.0 - r0) * pow(1.0 - cosine, 5.0);
+// The REAL (unpolarized, real-valued-IOR) Fresnel dielectric
+// reflectance - ported directly from this project's own CPU renderer
+// (src/shared/fresnel.h's own FrDielectric(), mirroring pbrt-v4's
+// scattering.h exactly), NOT Schlick's approximation. An earlier
+// version of this comment claimed Schlick's approximation was "the same
+// one... this project's own CPU dielectric material use[s]" for this
+// exact reflect-vs-refract decision - checked while reviewing this
+// exact code and found to be WRONG: this project's own `dielectric`
+// material (src/TheRestOfYourLife/material_simple.h) uses
+// `DielectricBxDF`, which itself calls FrDielectric, not Schlick - a
+// documentation inaccuracy as much as a missed accuracy opportunity.
+// `cosThetaI` here is ALREADY guaranteed non-negative by construction
+// (computed via `facingNormal`, which always faces the incoming ray -
+// see the call site), so the `< 0` flip branch below is dead code for
+// how this is actually invoked here, kept anyway for a faithful,
+// recognizable port rather than a call-site-specific simplification.
+inline float frDielectric(float cosThetaI, float eta) {
+    cosThetaI = clamp(cosThetaI, -1.0, 1.0);
+    if (cosThetaI < 0.0) {
+        eta = 1.0 / eta;
+        cosThetaI = -cosThetaI;
+    }
+    float sin2ThetaI = 1.0 - cosThetaI * cosThetaI;
+    float sin2ThetaT = sin2ThetaI / (eta * eta);
+    if (sin2ThetaT >= 1.0) {
+        return 1.0; // Total internal reflection.
+    }
+    float cosThetaT = sqrt(max(0.0, 1.0 - sin2ThetaT));
+    float rParl = (eta * cosThetaI - cosThetaT) / (eta * cosThetaI + cosThetaT);
+    float rPerp = (cosThetaI - eta * cosThetaT) / (cosThetaI + eta * cosThetaT);
+    return (rParl * rParl + rPerp * rPerp) / 2.0;
 }
 
 // Beer-Lambert colour absorption for a dielectric (materialType 2/5) -
@@ -898,11 +921,13 @@ inline float ggxG(float3 woLocal, float3 wiLocal, float alphaX, float alphaY) {
 
 // Schlick's Fresnel approximation for a CONDUCTOR: F0 (reflectance at
 // normal incidence) is itself an RGB colour here, not derived from a
-// scalar IOR the way schlickReflectance()'s dielectric version is - a
+// scalar IOR the way frDielectric()'s own real-valued formula is - a
 // metal's complex refractive index (real eta + imaginary k, wavelength-
-// dependent) is what actually produces that colour, and approximating the
-// whole curve from its F0 value is the same "Schlick, not the full
-// Fresnel equations" trade this POC's dielectric material already makes.
+// dependent) is what actually produces that colour, and this whole curve
+// is approximated from its own F0 value rather than solving the full
+// complex-Fresnel equations, unlike this POC's own dielectric material,
+// which now uses the exact real-valued formula (frDielectric()) instead
+// of Schlick's own approximation of it.
 inline float3 fresnelSchlickConductor(float cosTheta, float3 F0) {
     float t = pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
     return F0 + (float3(1.0) - F0) * t;
@@ -1566,9 +1591,10 @@ kernel void primaryRayKernel(
             }
 
             if (mat.materialType == 2u) {
-                // Dielectric (glass): Schlick-approximated Fresnel decides
-                // reflect vs refract stochastically each bounce - same
-                // "one importance-sampled choice per hit, unbiased in
+                // Dielectric (glass): the exact Fresnel dielectric
+                // reflectance (frDielectric(), see its own comment)
+                // decides reflect vs refract stochastically each bounce -
+                // the "one importance-sampled choice per hit, unbiased in
                 // expectation" approach pbrt-v4 and this project's own CPU
                 // dielectric material use, not a 50/50 split of energy.
                 float refractionRatio = frontFace ? (1.0 / mat.ior) : mat.ior;
@@ -1578,7 +1604,7 @@ kernel void primaryRayKernel(
                 bool cannotRefract = refractionRatio * sinTheta > 1.0;
 
                 float3 newDir;
-                if (cannotRefract || schlickReflectance(cosTheta, refractionRatio) > randFloat(rngState)) {
+                if (cannotRefract || frDielectric(cosTheta, 1.0 / refractionRatio) > randFloat(rngState)) {
                     newDir = reflect(unitDir, facingNormal);
                 } else {
                     newDir = refract(unitDir, facingNormal, refractionRatio);
@@ -1648,15 +1674,17 @@ kernel void primaryRayKernel(
                 // angle between the view direction and THIS particular
                 // sampled half-vector can exceed 90 degrees even though
                 // the angle to facingNormal itself never does, so this
-                // needs its own lower clamp too (schlickReflectance's
-                // pow(1-cosine, 5) term overshoots past 1 on a negative
-                // cosine otherwise, over-weighting the reflect branch).
+                // needs its own lower clamp too (frDielectric() assumes
+                // its own internal `cosThetaI < 0` flip branch is dead
+                // for how this file calls it - see that function's own
+                // comment - which only holds if the caller keeps
+                // cosThetaI clamped to non-negative itself).
                 float cosTheta = clamp(dot(-unitDir, hWorld), 0.0, 1.0);
                 float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
                 bool cannotRefract = refractionRatio * sinTheta > 1.0;
 
                 float3 newDir;
-                if (cannotRefract || schlickReflectance(cosTheta, refractionRatio) > randFloat(rngState)) {
+                if (cannotRefract || frDielectric(cosTheta, 1.0 / refractionRatio) > randFloat(rngState)) {
                     newDir = reflect(unitDir, hWorld);
                 } else {
                     newDir = refract(unitDir, hWorld, refractionRatio);
