@@ -38,6 +38,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <random>
 
 static int g_failures = 0;
 
@@ -435,6 +436,50 @@ static void testEnvDistribution2DUniformImageIsUniformInU() {
     }
 }
 
+// GGX multi-scatter energy-compensation table (found via spot-checking
+// this POC's own GGX conductor material against Blender Cycles as a
+// second reference - see buildGGXEnergyTable's own header comment for the
+// full "why"). Checks the well-known Kulla-Conty trend: E(roughness,mu)
+// must be close to 1.0 (near-zero energy loss) at low roughness, and
+// must DECREASE as roughness increases - a real, checkable physical
+// property, not an arbitrary numeric coincidence.
+static void testGGXEnergyTableTrend() {
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> unitDist(0.0f, 1.0f);
+    auto randFn = [&]() { return unitDist(rng); };
+
+    GGXEnergyTable table;
+    buildGGXEnergyTable(8, 8, 2048, table, randFn);
+
+    // Every table entry must be a valid directional albedo: in (0,1].
+    for (float e : table.E) {
+        expectTrue("GGXEnergyTable E value is within (0,1]", e > 0.0f && e <= 1.0001f);
+    }
+    for (float e : table.Eavg) {
+        expectTrue("GGXEnergyTable Eavg value is within (0,1]", e > 0.0f && e <= 1.0001f);
+    }
+
+    // Near-smooth (alpha close to the 0.0009 floor) must lose almost no
+    // energy at any view angle - a mirror-like surface's own single-
+    // bounce reflection already captures essentially all the light.
+    float smoothE = sampleGGXEnergyTable(table, 0.03f, 0.7f);
+    expectTrue("GGXEnergyTable E is close to 1.0 at near-zero roughness", smoothE > 0.97f);
+
+    // Eavg must be monotonically non-increasing as roughness increases -
+    // more microfacet self-shadowing/masking at high roughness can only
+    // ever lose MORE energy to inter-reflection, never less.
+    for (int ri = 1; ri < table.roughRes; ++ri) {
+        char label[96];
+        snprintf(label, sizeof(label), "GGXEnergyTable Eavg is non-increasing at roughness bin %d", ri);
+        expectTrue(label, table.Eavg[ri] <= table.Eavg[ri - 1] + 1e-3f);
+    }
+
+    // Fully rough (alpha=1) must show REAL, substantial energy loss - the
+    // whole reason this table exists - not just a rounding-level dip.
+    expectTrue("GGXEnergyTable Eavg at full roughness shows real energy loss (< 0.9)",
+               table.Eavg[table.roughRes - 1] < 0.9f);
+}
+
 int main() {
     testLinearToSRGB();
     testChromaticAberrationZeroShiftAtCentre();
@@ -446,6 +491,7 @@ int main() {
     testEnvDistribution2DConcentratesOnBrightRegion();
     testEnvDistribution2DPdfMatchesSample();
     testEnvDistribution2DUniformImageIsUniformInU();
+    testGGXEnergyTableTrend();
 
     if (g_failures > 0) {
         fprintf(stderr, "FAIL: %d check(s) failed\n", g_failures);
