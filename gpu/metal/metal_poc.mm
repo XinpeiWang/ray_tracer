@@ -473,6 +473,74 @@ static float vignetteFactor(uint32_t x, uint32_t y, uint32_t width, uint32_t hei
     return 1.0f - strength * r2 * r2;
 }
 
+// Bilinearly samples ONE channel of the linear HDR pixel buffer at a
+// fractional (x, y) - the building block chromaticAberration() below
+// needs to resample the red/blue channels at a shifted position, unlike
+// vignetteFactor()/acesFilmicTonemap() which only ever touch a pixel's
+// own already-fetched value. Coordinates are clamped to the buffer's
+// own bounds (a shift can walk slightly off the edge, especially near
+// the frame's own corners) rather than reading out of range.
+static float sampleChannelBilinear(const std::vector<float>& pixels, uint32_t width, uint32_t height,
+                                    float x, float y, int channel) {
+    x = fmaxf(0.0f, fminf(x, float(width) - 1.001f));
+    y = fmaxf(0.0f, fminf(y, float(height) - 1.001f));
+    uint32_t x0 = (uint32_t)x;
+    uint32_t y0 = (uint32_t)y;
+    uint32_t x1 = std::min(x0 + 1, width - 1);
+    uint32_t y1 = std::min(y0 + 1, height - 1);
+    float fx = x - float(x0);
+    float fy = y - float(y0);
+    float v00 = pixels[(y0 * width + x0) * 4 + channel];
+    float v10 = pixels[(y0 * width + x1) * 4 + channel];
+    float v01 = pixels[(y1 * width + x0) * 4 + channel];
+    float v11 = pixels[(y1 * width + x1) * 4 + channel];
+    float v0 = v00 * (1.0f - fx) + v10 * fx;
+    float v1 = v01 * (1.0f - fx) + v11 * fx;
+    return v0 * (1.0f - fy) + v1 * fy;
+}
+
+// Lateral chromatic aberration - a real lens focuses different
+// wavelengths at very slightly different magnifications, so red/blue
+// fringe outward/inward from green at the frame's own edges (worse
+// toward the corners, exactly zero at the optical centre) - the same
+// "colour fringing around high-contrast edges near a photo's own
+// border" real camera lenses are well known for. Modelled the simplest
+// physically-motivated way: the red channel is resampled from a
+// position scaled slightly OUTWARD from frame centre, blue slightly
+// INWARD, green left untouched as the reference channel - a pure
+// radial scale about the centre already gives zero shift exactly at
+// `r == 0` and a shift growing with radius everywhere else, with no
+// need to compute `r` explicitly. `strength == 0.0` is an exact no-op
+// (scale factors of 1.0, sampling each channel at its own unshifted
+// position).
+static void chromaticAberration(const std::vector<float>& pixels, uint32_t width, uint32_t height,
+                                 uint32_t px, uint32_t py, float strength,
+                                 float* outR, float* outG, float* outB) {
+    // Index-space centre (NOT pixel-CENTRE `+0.5` convention) - matching
+    // sampleChannelBilinear()'s own convention, where an integer (x, y)
+    // means "exactly pixel (x, y)", not "the corner before it". Mixing
+    // the two conventions here was a real bug this PR's own first
+    // attempt had: computing `cx` as `width * 0.5` while adding `+ 0.5`
+    // to `px` left the "centre" pixel's own `dx` at exactly 0.5 instead
+    // of 0.0, so even the un-shifted red/blue channels sampled a blend
+    // of two neighbouring pixels there instead of the exact centre pixel
+    // itself - caught by rendering an ODD-sized image (so a true single
+    // centre pixel exists) and finding its R/B channels had shifted
+    // anyway, which should be mathematically impossible at true zero
+    // shift.
+    float cx = float(width - 1) * 0.5f;
+    float cy = float(height - 1) * 0.5f;
+    float dx = float(px) - cx;
+    float dy = float(py) - cy;
+    float redX = cx + dx * (1.0f + strength);
+    float redY = cy + dy * (1.0f + strength);
+    float blueX = cx + dx * (1.0f - strength);
+    float blueY = cy + dy * (1.0f - strength);
+    *outR = sampleChannelBilinear(pixels, width, height, redX, redY, 0);
+    *outG = pixels[(py * width + px) * 4 + 1];
+    *outB = sampleChannelBilinear(pixels, width, height, blueX, blueY, 2);
+}
+
 // ACES filmic tonemap (Krzysztof Narkowicz's widely-used fitted
 // approximation of the ACES RRT+ODT curve) - replaces this POC's old
 // direct clamp-to-[0,1] before the 8-bit gamma encode. A raw linear
@@ -1396,21 +1464,25 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
-        // --- Read back + write PNG (lens vignette, then ACES filmic ---
-        // tonemap, then the same 8-bit sRGB-ish 1/2.2 gamma approximation
-        // this POC already used)
+        // --- Read back + write PNG (chromatic aberration, then lens ---
+        // vignette, then ACES filmic tonemap, then the same 8-bit sRGB-ish
+        // 1/2.2 gamma approximation this POC already used)
         std::vector<float> pixels(width * height * 4);
         MTLRegion region = MTLRegionMake2D(0, 0, width, height);
         [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
 
         const float vignetteStrength = 0.18f;
+        const float chromaticAberrationStrength = 0.004f;
         std::vector<uint8_t> ldr(width * height * 3);
         for (uint32_t i = 0; i < width * height; ++i) {
             uint32_t px = i % width;
             uint32_t py = i / width;
             float vignette = vignetteFactor(px, py, width, height, vignetteStrength);
+            float rgb[3];
+            chromaticAberration(pixels, width, height, px, py, chromaticAberrationStrength,
+                                 &rgb[0], &rgb[1], &rgb[2]);
             for (int c = 0; c < 3; ++c) {
-                float v = fmaxf(pixels[i * 4 + c], 0.0f) * vignette;
+                float v = fmaxf(rgb[c], 0.0f) * vignette;
                 v = acesFilmicTonemap(v);
                 v = powf(v, 1.0f / 2.2f);
                 ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
