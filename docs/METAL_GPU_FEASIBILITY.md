@@ -3935,3 +3935,69 @@ not a no-op.
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests, `orenNayarF` now
 covered) passes.
+
+## 75. A 14th material: Ashikhmin velvet (done)
+
+Continuing the survey of Blender Cycles' own `kernel/closure/` BSDFs
+(section 74's own note flagged this as the natural next pick): the
+MODERN "sheen" model (`kernel/closure/bsdf_sheen.h`, Zeltner/Burley/
+Chiang 2022's "Practical Multiple-Scattering Sheen Using Linearly
+Transformed Cosines") needs precomputed LTC (Linearly Transformed
+Cosines) FITTING tables - not a simple Monte Carlo average like
+section 72's own GGX energy-compensation table, but an iterative
+least-squares FIT against a reference distribution, a genuinely bigger
+undertaking not attempted here. The OLDER, still-shipping
+`kernel/closure/bsdf_ashikhmin_velvet.h` (Ashikhmin & Shirley 2000,
+adapted from Open Shading Language) is a plain closed-form model with
+no precomputed data at all - a much better match for this POC's own
+established "port a small closed-form BxDF" pattern.
+
+`velvetF(wo, wi, n, sigma)` computes a Blinn-Phong-shaped microfacet
+distribution `D` (peaked when the half-vector sits near the TANGENT
+plane, unlike every other glossy material in this POC, which peaks
+near the surface normal) times a heuristic geometric term `G` (the
+reference's own "TODO: derive G from D analytically" comment is
+Cycles' own, left as-is rather than silently "fixing" a known,
+accepted heuristic in the original source). `mat.ior` doubles as this
+material's own `sigma` spread parameter (materialType 2/4/5/9/11
+already each reuse this same field their own way). Sampled via plain
+UNIFORM (not cosine-weighted) hemisphere sampling, matching Cycles'
+own `bsdf_ashikhmin_velvet_sample()` - the same "don't bother
+importance-sampling a niche lobe's own oddly-shaped distribution"
+simplification section 74's own Oren-Nayar material already made too,
+needing a new `sampleUniformHemisphere()` (this POC's first genuinely
+non-cosine-weighted diffuse-family sampler) with a CONSTANT
+`1/(2*pi)` pdf, not the `cosTheta/pi` every earlier diffuse-family
+material here has used.
+
+**Real, checkable physical signature, not assumed from the formula
+alone**: velvet's own BRDF is near-ZERO for head-on view/light (no
+highlight at all straight back at the viewer - a real, distinctive
+departure from every other glossy material in this POC, which all
+show SOME response at normal incidence), and rises to a real peak
+somewhere around 75-80 degrees before falling off again approaching
+true 90-degree grazing - not a monotonic curve, the well-known
+Ashikhmin-Shirley "fuzzy rim" signature, confirmed against a fresh
+standalone double-precision C reference program before ever touching
+the shader.
+
+**Verified three ways**: (1) The same standalone C reference program,
+ported into a device-side test (`test_velvetF`): perfectly head-on
+view/light gives EXACTLY zero (not just "small"), and two grazing,
+azimuth-aligned direction pairs (one hand-picked, one at a clean
+75-degree angle) match the reference program's own exact values.
+Deliberately corrupted one expected value, confirmed the suite caught
+it, then reverted. (2) A before/after render (the demonstration
+sphere's own `materialType` swapped between 14 and 0, same albedo)
+shows a real, LARGE, correctly-signed difference: 47.2% of its own
+screen region's subpixels differ by more than 3, mean signed
+difference -30.1 (velvet reads substantially DARKER than Lambertian
+at this camera's own mostly-non-grazing viewing angle to the sphere -
+exactly the expected qualitative behaviour, not a red flag: most of a
+sphere's own visible surface, seen from a typical camera position,
+sits well short of the 75-80-degree grazing peak this material's own
+BRDF needs to brighten at all). (3) Full CMake build/`ctest` (four
+tests, all passing) confirms nothing else regressed.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

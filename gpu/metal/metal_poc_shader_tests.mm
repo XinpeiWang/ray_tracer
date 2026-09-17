@@ -557,6 +557,44 @@ static void testOrenNayarF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLC
     }
 }
 
+static void testVelvetF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // Reference values from a fresh standalone double-precision C port
+    // of Blender Cycles' own bsdf_ashikhmin_velvet.h, not reused from
+    // any earlier session: (1) perfectly head-on view AND light must be
+    // EXACTLY zero - velvet's own signature "no highlight straight back
+    // at you" behaviour, unlike every other glossy material in this
+    // POC; (2) a grazing, azimuth-aligned view/light pair must show the
+    // real, substantial "fuzzy rim" brightening this material exists to
+    // capture, matched to the reference program's own exact value, not
+    // just "greater than zero."
+    simd::float3 wos[3] = {
+        {0.0f, 0.0f, 1.0f}, {0.97072832f, 0.0f, 0.24018020f}, {0.96592583f, 0.0f, 0.25881905f},
+    };
+    simd::float3 wis[3] = {
+        {0.0f, 0.0f, 1.0f}, {0.97072832f, 0.0f, 0.24018020f}, {0.96592583f, 0.0f, 0.25881905f},
+    };
+    simd::float3 ns[3] = {{0, 0, 1}, {0, 0, 1}, {0, 0, 1}};
+    float sigmas[3] = {0.3f, 0.3f, 0.3f};
+    float expected[3] = {0.0f, 0.24227969f, 0.23677936f};
+    int n = 3;
+    id<MTLBuffer> woBuf = makeBuffer(device, wos, sizeof(wos));
+    id<MTLBuffer> wiBuf = makeBuffer(device, wis, sizeof(wis));
+    id<MTLBuffer> nBuf = makeBuffer(device, ns, sizeof(ns));
+    id<MTLBuffer> sigmaBuf = makeBuffer(device, sigmas, sizeof(sigmas));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (!runKernel(device, library, queue, @"test_velvetF",
+                   @[woBuf, wiBuf, nBuf, sigmaBuf, outBuf], nil, n)) return;
+    float* out = (float*)outBuf.contents;
+    const char* names[3] = {
+        "velvetF is exactly zero at perfectly head-on view/light",
+        "velvetF matches the reference at a grazing, aligned pair (case 1)",
+        "velvetF matches the reference at a grazing, aligned pair (case 2, 75deg)",
+    };
+    for (int i = 0; i < n; ++i) {
+        expectNear(names[i], out[i], expected[i], 1e-3);
+    }
+}
+
 static void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // g == 0 (isotropic) must give the SAME value - 1/(4*pi) - for every
     // cosTheta, since an isotropic phase function has no directional
@@ -839,6 +877,7 @@ int main() {
         testEnvironmentDirectionSampling(device, library, queue);
         testSampleGGXEnergyTableDevice(device, library, queue);
         testOrenNayarF(device, library, queue);
+        testVelvetF(device, library, queue);
         testHenyeyGreensteinPhase(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);

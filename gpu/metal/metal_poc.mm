@@ -1065,6 +1065,12 @@ void MetalPocApp::buildScene() {
         // before this fix, not assumed correct from the coordinates
         // alone.
         SphereData{PackedFloat3{-0.3f, -0.85f, 0.9f}, 0.15f},
+        // A 7th sphere (materialType 14, Ashikhmin velvet) - a further
+        // different x again from every sphere above (same lesson as the
+        // Oren-Nayar sphere's own comment), and kept well inside the
+        // room's own [-1,1] bounding box/resting on the floor this time,
+        // not repeating that sphere's own first-attempt mistake.
+        SphereData{PackedFloat3{0.15f, -0.85f, 0.75f}, 0.15f},
     };
     // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
     // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
@@ -1128,6 +1134,13 @@ void MetalPocApp::buildScene() {
         // originally designed to model.
         TriangleMaterial{PackedFloat3{0.75f, 0.55f, 0.4f}, /*materialType=*/13, /*ior=*/0.0f, PackedFloat3{0, 0, 0},
                          /*lightId=*/-1, /*roughness(sigma)=*/0.9f},
+        // materialType 14: Ashikhmin velvet - `ior` is this material's
+        // own sigma (spread) parameter (see TriangleMaterial's own
+        // comment), 0.3 matching the value this material's own
+        // verification reference program used. A deep red "velvet
+        // cloth" tint - the real-world material family this BxDF was
+        // originally designed to model.
+        TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.15f}, /*materialType=*/14, /*ior(sigma)=*/0.3f, PackedFloat3{0, 0, 0}},
     };
 
     // A wall-mounted mirror disk (materialType 1) - a second, distinct
