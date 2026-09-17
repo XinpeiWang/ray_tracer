@@ -1832,3 +1832,77 @@ scene.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 38. Proof-of-concept, step 27: procedural bump mapping (done)
+
+Steps 24-26 were all lights; this step returns to materials with a new
+Lambertian variant (materialType 7) that perturbs the SHADING normal in
+tangent space rather than changing albedo the way materialTypes 3/6
+already do - genuinely different from every earlier "same BSDF/NEE code
+path, different albedo source" material (3's texture sample, 6's
+analytic checker), since here the BSDF math is unchanged and what the
+surface's own local frame POINTS is what varies instead. An analytic
+"egg carton" height field (`h(u,v)`) generates the perturbation rather
+than a sampled normal-map texture, so this needs no new image asset:
+`proceduralBumpNormal()` perturbs the normal by that height field's own
+partial derivatives along a tangent/bitangent basis, the textbook bump-
+mapping construction (shading-only; this does NOT displace geometry, a
+deliberately different, cheaper effect from real displacement mapping).
+The true geometric normal is left untouched for ray-offset/self-
+intersection purposes - only `facingNormal`, the value the BSDF/NEE math
+downstream actually shades with, gets perturbed.
+
+A new `tangentFor()` helper solves for the per-triangle tangent from the
+standard position/UV partial-derivative construction (pbrt-v4's own
+technique), reusing the primary triangle buffer's existing flat
+`vertices`/`uvs` indexing rather than needing new per-triangle host-side
+data - deliberately scoped to that buffer only (never a sphere/disk/
+Suzanne-instance hit, guarded explicitly), since only it has both a
+`vertices` and `uvs` array following the same flat `primId * 3 + i`
+convention `tangentFor()` relies on. `roughness` picks up a FOURTH
+distinct meaning for materialType 7 (bump strength) alongside its
+existing 2/5 reuse - 0.0 there is a true no-op, exactly the unperturbed
+normal, not an approximation of one.
+
+**Two real bugs, both caught by inspecting a render rather than trusting
+the math**, the same "verify by rendering" discipline this POC's light
+PRs already established, now applied to a material:
+
+1. The first version's derivative scaling literally included the
+   height field's own `2*pi*frequency` amplitude factor - mathematically
+   "correct" for a literal height-field derivative, but at this bump's
+   own frequency that factor alone was ~63x, drowning the unit normal
+   entirely regardless of how small the strength parameter was set. A
+   render at even an extreme strength value showed zero visible change -
+   traced to ground truth by temporarily replacing the shaded output
+   with a direct false-colour visualization of `facingNormal` itself,
+   which confirmed the normal WAS varying, just not translating into any
+   visible shading difference. Fixed by dropping the redundant factor and
+   re-deriving `strength` as a direct slope scale instead.
+2. Even after that fix, the committed panel (originally flush-
+   mounted on the red side wall) still rendered completely flat. The
+   panel's own placement - hugging `x = -0.99`, a hair off the red wall
+   at `x = -1` - put it in almost exactly the same near-total-self-
+   shadow condition step 26's own directional-light doc describes for
+   that wall, on top of receiving only a steep grazing angle from the
+   overhead area lights: correct bump math, but with no real direct
+   light ever reaching the surface to reveal it, since a Lambertian
+   bump's visibility depends on a well-defined light direction, not
+   ambient/GI-only illumination. Fixed by relocating the panel to the
+   back wall, in the region the directional light hits closest to head-
+   on - not a code change at all, a scene/lighting placement fix, the
+   same category of fix step 24's own point-light placement iterations
+   needed.
+
+**Result, verified two ways** at the final placement/parameters (back
+wall, `strength = 0.6`, bump frequency lowered from an initial, badly-
+aliasing 10 cycles to 4 across the panel's own UV span - the first
+frequency produced per-pixel noise indistinguishable from Monte Carlo
+grain instead of a visible bump shape): the showcase render shows clear
+diagonal bump-shading bands across the panel, a real "egg carton" look,
+not a subtle hint. An A/B render with `strength = 0.0` reproduces a
+perfectly flat, uniformly-shaded panel - confirming the perturbation is
+a true, isolated, zero-at-zero effect.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
