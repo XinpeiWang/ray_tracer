@@ -108,6 +108,12 @@ struct Uniforms {
     // buffer (see DirectionalLight's own comment). 0 (every earlier
     // scene) skips that loop entirely - purely additive.
     uint directionalLightCount;
+    // Single-pass adaptive sampling toggle - see the shading loop's own
+    // comment on `convergedCount`/`kAdaptiveThreshold` for the full
+    // "why" and the CPU integrator this was ported from. 0 (every scene
+    // before this one) skips the convergence check entirely, an exact
+    // no-op.
+    uint adaptiveSampling;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -263,6 +269,25 @@ constant float kDirectionalLightMaxDistance = 10.0f;
 // noise is real and worth that small trade, and it is invisible at this
 // scene's own committed high-quality sample counts either way.
 constant float kFireflyClampLuminance = 20.0f;
+
+// Adaptive sampling's own convergence parameters, ported directly from
+// this project's own CPU integrator (src/shared/adaptive_sampling.h) -
+// same values, not re-tuned for this scene, since they're already a
+// real, working default (Cycles' own adaptive_threshold) rather than an
+// arbitrary starting guess. `kAdaptiveThreshold`: a pixel is "converged"
+// once its own running mean's standard error, relative to that mean,
+// drops below this. `kAdaptiveBlackFloor`: a near-black pixel (mean
+// below this) is converged unconditionally rather than divided into a
+// permanently-large relative error by a near-zero mean - matches
+// Cycles' own behaviour of not endlessly re-sampling background/shadow
+// pixels correctly converging toward zero. `kAdaptiveMinSamples`: never
+// even CHECK convergence before this many samples - the CPU version's
+// own `min(2 * sqrt_spp, 32)` doesn't translate directly (this POC's
+// own sample loop isn't the CPU's stratified sqrt_spp x sqrt_spp grid),
+// so a flat, comparably-sized minimum is used instead.
+constant float kAdaptiveThreshold = 0.01f;
+constant float kAdaptiveBlackFloor = 1e-4f;
+constant uint kAdaptiveMinSamples = 16u;
 
 // This scene's own room bounds (see metal_poc.mm's own floor/ceiling/
 // wall addQuad() calls) - an explicit, documented scene-specific
@@ -1097,6 +1122,29 @@ kernel void primaryRayKernel(
     uint rngState = tid.x * 9781u + tid.y * 6271u + uniforms.frameSeed * 26699u + 1u;
 
     float3 accumColor = float3(0.0);
+    // Single-pass adaptive sampling - ported from this project's own CPU
+    // integrator (src/shared/adaptive_sampling.h's own
+    // pixel_convergence::has_converged(), camera.h's render loop): once
+    // a pixel's own running per-sample LUMINANCE estimate is confident
+    // enough (relative standard error below kAdaptiveThreshold) that
+    // more samples wouldn't change its mean much, stop early instead of
+    // spending this pixel's full samplesPerPixel budget on it - a
+    // genuinely converged sky/shadow/matte-wall region needs far fewer
+    // samples than a noisy caustic or grazing-light region does. Unlike
+    // the CPU's own version, this fires within ONE kernel dispatch's own
+    // per-pixel loop (no cross-dispatch/cross-pixel budget
+    // reallocation), the same single-thread-per-pixel structure the CPU
+    // integrator's own per-pixel loop already has - ported faithfully,
+    // not reinvented, using Welford's online algorithm (the same
+    // mean/M2 update VarianceEstimator uses) rather than the CPU's own
+    // templated class, since this is plain MSL, not C++.
+    // `uniforms.adaptiveSampling == 0` (every scene before this one)
+    // skips the convergence check entirely below - a true no-op, this
+    // sample count and this loop behave EXACTLY as before.
+    uint convergedCount = 0;
+    float convergedMean = 0.0;
+    float convergedM2 = 0.0;
+    uint actualSamples = uniforms.samplesPerPixel;
 
     for (uint s = 0; s < uniforms.samplesPerPixel; ++s) {
         // Jittered pixel sample - the multi-sample loop's own antialiasing,
@@ -2101,8 +2149,38 @@ kernel void primaryRayKernel(
             radiance *= kFireflyClampLuminance / sampleMax;
         }
         accumColor += radiance;
+
+        // Adaptive-sampling convergence check - see this kernel's own
+        // opening comment. Welford's online update (matching
+        // VarianceEstimator::Add()'s own formula exactly) on THIS
+        // sample's own luminance, then the same has_converged() test the
+        // CPU integrator uses: sample variance (M2/(n-1), undefined
+        // below n=2, hence the `> 1u` guard) turned into a standard
+        // error, compared against the running mean - relative, so scale-
+        // invariant regardless of this scene's own absolute brightness.
+        if (uniforms.adaptiveSampling != 0u) {
+            float lum = 0.2126 * radiance.x + 0.7152 * radiance.y + 0.0722 * radiance.z;
+            convergedCount += 1;
+            float delta = lum - convergedMean;
+            convergedMean += delta / float(convergedCount);
+            float delta2 = lum - convergedMean;
+            convergedM2 += delta * delta2;
+            if (convergedCount >= kAdaptiveMinSamples) {
+                bool blackConverged = convergedMean < kAdaptiveBlackFloor;
+                bool relativeConverged = false;
+                if (!blackConverged && convergedCount > 1u) {
+                    float variance = convergedM2 / float(convergedCount - 1u);
+                    float standardError = sqrt(variance / float(convergedCount));
+                    relativeConverged = (standardError / convergedMean) < kAdaptiveThreshold;
+                }
+                if (blackConverged || relativeConverged) {
+                    actualSamples = s + 1;
+                    break;
+                }
+            }
+        }
     }
 
-    accumColor /= float(uniforms.samplesPerPixel);
+    accumColor /= float(actualSamples);
     outTexture.write(float4(accumColor, 1.0), tid);
 }
