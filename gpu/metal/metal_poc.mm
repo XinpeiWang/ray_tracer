@@ -455,6 +455,24 @@ static float3 blackbodyColor(float kelvinIn) {
     return float3{r, g, b};
 }
 
+// Natural (lens) vignetting - real camera lenses transmit less light to
+// the sensor at the edges/corners of the frame than at the centre (the
+// classic `cos^4` falloff law), darkening corners even with no light
+// physically blocked by a hood/filter ring ("mechanical" vignetting,
+// which this is NOT modelling). Applied as a MULTIPLICATIVE attenuation
+// on LINEAR radiance, before tonemapping/gamma - the physically correct
+// place for it, the same reason tonemapping itself happens on linear
+// values rather than after the gamma encode. `strength` scales how much
+// the corners darken; 0.0 is an exact no-op (`vignette` reduces to 1.0
+// everywhere), the same "0 reproduces prior behaviour exactly" shape
+// this POC's own `lensRadius`/`apertureBlades` already use.
+static float vignetteFactor(uint32_t x, uint32_t y, uint32_t width, uint32_t height, float strength) {
+    float nx = (float(x) + 0.5f) / float(width) * 2.0f - 1.0f;
+    float ny = (float(y) + 0.5f) / float(height) * 2.0f - 1.0f;
+    float r2 = nx * nx + ny * ny;
+    return 1.0f - strength * r2 * r2;
+}
+
 // ACES filmic tonemap (Krzysztof Narkowicz's widely-used fitted
 // approximation of the ACES RRT+ODT curve) - replaces this POC's old
 // direct clamp-to-[0,1] before the 8-bit gamma encode. A raw linear
@@ -1378,16 +1396,21 @@ int main(int argc, const char** argv) {
             return 1;
         }
 
-        // --- Read back + write PNG (ACES filmic tonemap, then the same ---
-        // 8-bit sRGB-ish 1/2.2 gamma approximation this POC already used)
+        // --- Read back + write PNG (lens vignette, then ACES filmic ---
+        // tonemap, then the same 8-bit sRGB-ish 1/2.2 gamma approximation
+        // this POC already used)
         std::vector<float> pixels(width * height * 4);
         MTLRegion region = MTLRegionMake2D(0, 0, width, height);
         [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
 
+        const float vignetteStrength = 0.18f;
         std::vector<uint8_t> ldr(width * height * 3);
         for (uint32_t i = 0; i < width * height; ++i) {
+            uint32_t px = i % width;
+            uint32_t py = i / width;
+            float vignette = vignetteFactor(px, py, width, height, vignetteStrength);
             for (int c = 0; c < 3; ++c) {
-                float v = fmaxf(pixels[i * 4 + c], 0.0f);
+                float v = fmaxf(pixels[i * 4 + c], 0.0f) * vignette;
                 v = acesFilmicTonemap(v);
                 v = powf(v, 1.0f / 2.2f);
                 ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);

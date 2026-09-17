@@ -2248,3 +2248,39 @@ fallback's own exactness.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 47. Proof-of-concept, step 33: natural lens vignetting (done)
+
+A small companion to step 32's own polygonal aperture - another real
+camera-lens signature this POC's own image had never modelled: a real
+lens transmits less light to the sensor at the frame's own edges/corners
+than at its centre (the classic natural/`cos^4` vignetting law),
+darkening corners even with nothing physically blocking light the way a
+lens hood or filter ring would ("mechanical" vignetting, which this is
+NOT modelling). `vignetteFactor()` computes a radial falloff
+(`1 - strength * r^4`, `r` the normalized distance from frame centre)
+and multiplies it into each pixel's own LINEAR radiance, in
+`metal_poc.mm`'s own readback loop - BEFORE tonemapping/gamma, the
+physically correct place for it (the same reason tonemapping itself
+operates on linear values, not gamma-encoded ones). `strength == 0.0`
+is an exact no-op; the committed scene uses `0.18`, tuned down from an
+initial `0.35` that read as an unnaturally heavy "tunnel vision" darkening
+rather than a subtle, realistic lens characteristic - caught by
+rendering both and comparing, not assumed from the formula alone.
+
+Purely a host-side, post-process addition - no shader, scene, or
+integrator code touched, the same narrow scope steps 28/29's own
+tonemap/blackbody-colour changes had.
+
+**Result, verified two ways**: visually, a before/after render shows a
+natural-reading darkened frame border, most visible at the corners,
+without an obvious hard edge or artificial-looking cutoff. Numerically,
+a direct pixel comparison confirms the falloff shape exactly: the
+FRAME'S OWN CENTRE pixel is byte-identical before and after (vignette
+== 1.0 there by construction, `r == 0`), while a corner pixel shows
+real, substantial darkening - confirming the effect is a true radial
+falloff centred on the frame, not a uniform darkening or an
+off-centre one.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
