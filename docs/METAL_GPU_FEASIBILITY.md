@@ -2533,3 +2533,52 @@ none where it shouldn't.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 53. Single-pass adaptive sampling (done - correct, but a real GPU-vs-CPU architecture lesson)
+
+Ported directly from this project's own CPU integrator
+(`src/shared/adaptive_sampling.h`'s own `pixel_convergence::
+has_converged()`, wired into `camera.h`'s render loop): once a pixel's
+own running per-sample LUMINANCE estimate is confident enough (its
+relative standard error below a threshold - `0.01`, reused unchanged
+from Cycles' own `adaptive_threshold` default the CPU integrator already
+uses) that more samples wouldn't change its mean much, stop sampling
+that pixel early instead of spending its full `samplesPerPixel` budget.
+Uses Welford's online mean/variance update (matching `VarianceEstimator
+::Add()`'s own formula exactly, reimplemented as plain scalars since
+this is MSL, not the CPU's own C++ template class) and the identical
+near-black fast-path (a pixel converging toward zero is treated as
+converged immediately, matching Cycles' own behaviour of not endlessly
+re-sampling background/shadow regions). The CPU version's own
+`min(2 * sqrt_spp, 32)` minimum-samples-before-checking doesn't
+translate directly (that integrator visits a STRATIFIED sqrt_spp x
+sqrt_spp grid, this one a flat sample count), so a comparable flat
+minimum (16) is used instead - the one deliberate adaptation, not a
+faithfulness gap. `adaptiveSampling == 0` (available, though the
+committed scene doesn't use it) is an exact no-op - none of the new
+per-sample bookkeeping runs, and the final division is by the SAME
+`samplesPerPixel` as before.
+
+**A genuinely important finding, verified rather than assumed**: this
+correctly REDUCES sample counts (confirmed - a full-quality on/off
+comparison shows only 0.3% of the image's own subpixels differ at all,
+by a negligible amount, exactly what "some pixels converged with fewer,
+still-statistically-valid samples" should look like) but produces ZERO
+measured wall-clock speedup on this GPU (two full 384spp renders,
+identical scene, adaptive on vs off: 3m4.083s vs 3m4.507s - within
+noise of each other). The reason is a real, worth-remembering GPU-vs-CPU
+architectural difference this feasibility study exists to surface: the
+CPU integrator's own per-pixel loop runs on independent threads where an
+early `break` genuinely frees that thread to move on: a GPU compute
+kernel schedules threads in SIMD-width execution groups that run in
+LOCKSTEP, so an individual thread's own early exit does NOT free real
+hardware time unless every OTHER thread sharing its execution group has
+ALSO finished - and this scene's own per-pixel convergence times vary
+too much across neighbouring pixels (a checkerboard tile edge next to a
+converged flat wall, a DOF-blurred near/far boundary, a specular
+highlight next to matte shadow) for that to happen in practice. Kept in
+the codebase anyway - it is correct, harmless when on, and a genuine,
+documented lesson about this architecture, not a discarded dead end.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

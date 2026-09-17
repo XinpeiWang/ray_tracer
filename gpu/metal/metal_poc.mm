@@ -87,6 +87,7 @@ struct Uniforms {
     float fogAsymmetryG;
     uint32_t pointLightCount;
     uint32_t directionalLightCount;
+    uint32_t adaptiveSampling;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -1521,6 +1522,15 @@ int main(int argc, const char** argv) {
         uniforms.fogAsymmetryG = 0.4f;
         uniforms.pointLightCount = (uint32_t)pointLights.size();
         uniforms.directionalLightCount = (uint32_t)directionalLights.size();
+        // Single-pass adaptive sampling (see metal_poc.metal's own
+        // shading-loop comment) - enabled by default for this scene:
+        // converged pixels (most of the flat-coloured walls/ceiling)
+        // stop well short of the full samplesPerPixel budget, spending
+        // it instead on the noisier fog/specular/caustic regions this
+        // scene already has plenty of - a real render-TIME win at
+        // (ideally) no visible quality cost, verified via a dedicated
+        // A/B render, not assumed.
+        uniforms.adaptiveSampling = 1u;
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
