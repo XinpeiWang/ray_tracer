@@ -2946,3 +2946,66 @@ attempted here.
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (now three tests, not two)
 continues to pass.
+
+## 60. Closing the OTHER half of the testing gap: device-side shader unit tests (done)
+
+Section 59's own "what this does NOT close" named the exact gap directly:
+every function that only ever runs on the GPU - `frDielectric()`, the GGX
+distribution/masking-shadowing math, `checkerColor()`,
+`spotLightFalloff()`, `fresnelSchlickConductor()`,
+`henyeyGreensteinPhase()`, `projectionLightRadiance()`, and
+`sampleAreaLight()`'s own REAL alias-table lookup - had zero unit
+coverage, only the full-scene smoke test's own "not flat/black" check.
+This closes it, the same way section 59 closed the host-side half:
+small, purpose-built test kernels added directly to `metal_poc.metal`
+itself (a new "Device-side unit-test kernels" section, right after
+`primaryRayKernel`, purely additive - nothing above it touched), each
+calling exactly one already-existing function with no reimplementation,
+dispatched by a new host harness (`metal_poc_shader_tests.mm`, wired
+into `ctest` as a fourth test) with known inputs, checked against
+independently-derived reference values.
+
+**What's actually checked**:
+- `frDielectric()` against a standalone double-precision C reference
+  program (not copied from memory/an earlier session - recomputed fresh
+  for this PR) at normal incidence (exact `R0` identity), 60 and 85
+  degrees, and a genuine total-internal-reflection case.
+- `ggxD()` at normal incidence, where it has an exact closed form
+  (`1/(pi*alpha^2)`) regardless of alpha.
+- `ggxG1()` approaching 1 at near-zero roughness (the smooth-surface
+  limit every microfacet model must reduce to).
+- `checkerColor()`'s own tile parity at four known UV points.
+- `spotLightFalloff()`'s three structurally distinct cases: the
+  omnidirectional flag, aligned-inside-the-inner-cone, and
+  90-degrees-outside-the-outer-cone.
+- `fresnelSchlickConductor()` at normal incidence (`F(1,F0) == F0`
+  exactly) and grazing incidence (`F(0,F0) == white` exactly, regardless
+  of `F0`).
+- `henyeyGreensteinPhase()`'s isotropic (`g=0`) case giving the same
+  `1/(4*pi)` value at three different `cosTheta` inputs.
+- `projectionLightRadiance()` against a tiny hand-built 4x4 test texture
+  with one marked texel: dead-centre lands on that texel exactly,
+  directly-behind-the-projector and outside-the-frustum are both exactly
+  black.
+- `sampleAreaLight()`'s own device-side alias-table lookup, dispatched
+  200,000 times against a deliberately-imbalanced three-light list
+  (1x/3x/6x power) and checked statistically against each light's own
+  `pmf` - the exact gap section 59 called out by name (its own
+  alias-table test only checked a host-side MIRROR of this logic, not
+  the real thing).
+
+**Verified this is genuinely catching real failures, not just passing
+trivially**: deliberately corrupted one of `frDielectric()`'s own
+reference values mid-development and confirmed the test suite caught it
+with a precise "got X, expected Y" message before reverting - the same
+"prove the test can fail" discipline worth applying to a new test file
+as much as to the code it checks.
+
+Confirmed purely additive: a full showcase render (700x700 @ 128spp)
+before and after adding these test kernels to `metal_poc.metal` is
+visually identical - appending new, unrelated kernel entry points to the
+same shader source file does not affect `primaryRayKernel` in any way.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (now four tests) continues to
+pass.

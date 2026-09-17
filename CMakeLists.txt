@@ -383,8 +383,31 @@ if(RT_BUILD_METAL)
     # - just plain math, checked against known-correct reference values.
     add_executable(metal_poc_math_tests gpu/metal/metal_poc_math_tests.cpp)
 
+    # --- The device-side half of that same regression coverage - see
+    # gpu/metal/metal_poc_shader_tests.mm's own comment. Dispatches small,
+    # purpose-built test kernels (metal_poc.metal's own "Device-side
+    # unit-test kernels" section) against frDielectric(), the GGX
+    # microfacet math, checkerColor(), spotLightFalloff(),
+    # fresnelSchlickConductor(), henyeyGreensteinPhase(),
+    # projectionLightRadiance(), and sampleAreaLight()'s own real
+    # alias-table lookup - everything metal_poc_math_tests above couldn't
+    # reach, since none of it has a host-side equivalent at all. Needs
+    # Metal/Foundation and a real device (unlike metal_poc_math_tests),
+    # same requirement metal_poc/metal_poc_smoke_render already have, and
+    # the same RT_METAL_SHADER_DIR definition so it finds metal_poc.metal's
+    # own source to compile at runtime regardless of build directory.
+    add_executable(metal_poc_shader_tests gpu/metal/metal_poc_shader_tests.mm)
+    target_compile_definitions(metal_poc_shader_tests PRIVATE
+        RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal")
+    target_link_libraries(metal_poc_shader_tests PRIVATE
+        "-framework Metal" "-framework Foundation")
+    set_target_properties(metal_poc_shader_tests PROPERTIES
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
+    target_compile_options(metal_poc_shader_tests PRIVATE -fobjc-arc)
+
     enable_testing()
     add_test(NAME metal_poc_math_tests COMMAND metal_poc_math_tests)
+    add_test(NAME metal_poc_shader_tests COMMAND metal_poc_shader_tests)
     set(METAL_POC_SMOKE_OUTPUT "${CMAKE_BINARY_DIR}/metal_poc_smoke_test.png")
     add_test(NAME metal_poc_smoke_render
         COMMAND metal_poc 128 128 "${METAL_POC_SMOKE_OUTPUT}" 16 4)
