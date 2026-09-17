@@ -71,7 +71,11 @@ GUI_BUILD_DIR="$REPO_ROOT/qt_gui/build_macos"
 mkdir -p "$GUI_BUILD_DIR"
 ( cd "$GUI_BUILD_DIR" && qmake ../RayTracerGUI.pro CONFIG+=release && make -j"$(sysctl -n hw.ncpu)" )
 
-APP_BUNDLE="$GUI_BUILD_DIR/$APP_NAME.app"
+# RayTracerGUI.pro's own DESTDIR ($$PWD/../RayTracer_Package) is NOT
+# inside $GUI_BUILD_DIR - it's unconditional (no macx{}/win32{} split) and
+# points at the same RayTracer_Package/ folder the Windows packager uses,
+# so the built .app lands there regardless of qmake's own build directory.
+APP_BUNDLE="$REPO_ROOT/RayTracer_Package/$APP_NAME.app"
 [[ -d "$APP_BUNDLE" ]] || { echo "ERROR: $APP_BUNDLE not found after build" >&2; exit 1; }
 
 echo
@@ -103,7 +107,10 @@ rm -rf "$DEPLOY_DIR"
 mkdir -p "$DEPLOY_DIR"
 cp -R "$APP_BUNDLE" "$DEPLOY_DIR/"
 if [[ "$SKIP_DMG" -eq 0 ]]; then
-	DMG_PATH="$GUI_BUILD_DIR/$APP_NAME.dmg"
+	# macdeployqt writes the .dmg next to the .app bundle it was given,
+	# i.e. next to $APP_BUNDLE - NOT in $GUI_BUILD_DIR (see the DESTDIR
+	# note above APP_BUNDLE's own assignment).
+	DMG_PATH="$(dirname "$APP_BUNDLE")/$APP_NAME.dmg"
 	if [[ -f "$DMG_PATH" ]]; then
 		cp "$DMG_PATH" "$DEPLOY_DIR/"
 		echo "DMG:  $DEPLOY_DIR/$APP_NAME.dmg"
