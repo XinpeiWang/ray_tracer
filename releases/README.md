@@ -11,9 +11,11 @@ matches their own OS.
 
 ## Contents
 
-- **`RayTracer_v1.5_Clean.zip`** - Version 1.5 clean build
-- **`RayTracer_v1.6_Distribution.zip`** - Version 1.6 distribution package
-- **`RayTracer_Download.html`** - Download page template
+This folder is gitignored except for this file and
+`RayTracer_Download.html` (a download-page template) - built packages
+(`.zip`/`.dmg`) land here locally when you run the steps below, but are
+never committed (see "Distribution" below for why). Don't expect to find
+built packages here in a fresh checkout.
 
 ## Creating New Releases (Windows)
 
