@@ -318,7 +318,15 @@ static void addQuad(std::vector<PackedFloat3>& verts,
                      float3 a, float3 b, float3 c, float3 d,
                      float3 color, uint32_t materialType = 0,
                      float3 emission = simd::make_float3(0, 0, 0),
-                     int32_t lightId = -1, float roughness = 0.0f) {
+                     int32_t lightId = -1, float roughness = 0.0f,
+                     // Defaults to 1.0 (every quad before materialType 11's
+                     // own thin-dielectric PR) - matches every earlier
+                     // call site's own hardcoded `ior` literal exactly, so
+                     // adding this parameter changes nothing for any of
+                     // them; only a quad that actually needs a REAL
+                     // refraction index (materialType 11's own glass-pane
+                     // object) passes something else.
+                     float ior = 1.0f) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
@@ -334,8 +342,8 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     uvs.push_back(PackedFloat2{0, 1});
     PackedFloat3 packedColor{color.x, color.y, color.z};
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
-    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId, roughness});
-    materials.push_back({packedColor, materialType, 1.0f, packedEmission, lightId, roughness});
+    materials.push_back({packedColor, materialType, ior, packedEmission, lightId, roughness});
+    materials.push_back({packedColor, materialType, ior, packedEmission, lightId, roughness});
 }
 
 // A minimal Wavefront OBJ loader: positions, vertex normals, texture
@@ -793,6 +801,25 @@ void MetalPocApp::buildScene() {
             float3{0.55f, 0.5f, 0.45f}, /*materialType=*/7,
             /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
             /*roughness(bump strength)=*/0.6f);
+    // A thin dielectric "glass pane" (materialType 11) - see
+    // metal_poc.metal's own comment on this materialType for the full
+    // "why" (a zero-thickness slab, transmits straight through with no
+    // bending at all, unlike materialType 2/5's own SOLID glass sphere).
+    // Floating in open space above the sphere cluster and below the
+    // ceiling lights (y=0.05-0.55), facing the camera directly (normal
+    // along +Z) so the mural on the back wall reads UNDISTORTED through
+    // it - the one visual signature that actually distinguishes this
+    // from a solid dielectric, which would show visible bending/
+    // magnification of whatever's behind it. `color` is unused by this
+    // materialType (see that comment) - passed as white only because
+    // addQuad() itself has no "no colour" concept, not because it means
+    // anything here.
+    addQuad(verts, normals, uvs, materials,
+            float3{-0.25f, 0.05f, 0.0f}, float3{0.25f, 0.05f, 0.0f},
+            float3{0.25f, 0.55f, 0.0f}, float3{-0.25f, 0.55f, 0.0f},
+            white, /*materialType=*/11,
+            /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
+            /*roughness=*/0.0f, /*ior=*/1.5f);
     // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
     // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
     // test object": mirror MATERIAL coverage is already proven (the
