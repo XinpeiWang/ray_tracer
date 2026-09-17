@@ -523,1023 +523,1116 @@ static void bilateralDenoise(const std::vector<uint8_t>& ldrIn, std::vector<uint
     }
 }
 
+// main()'s own body used to be one ~1020-line function carrying roughly
+// thirty local variables from CLI parsing all the way through to the
+// final PNG write - device/queue, every scene-data vector, every GPU
+// buffer, every acceleration structure, the linear HDR pixel buffer -
+// with no natural place to split it without threading most of that state
+// through explicit parameters at each new boundary. `MetalPocApp` turns
+// those locals into members instead: every method below relocates a
+// contiguous span of the ORIGINAL main() body largely unchanged
+// (extracted mechanically via `sed`, not retyped from scratch, so
+// `verts`/`device`/`pixels`/etc. keep resolving exactly the way they did
+// as bare local variables, via implicit `this->`) - EXCEPT each such
+// name's own FIRST declaration in the original code (e.g. `id<MTLBuffer>
+// vertexBuffer = ...`) had its type annotation stripped down to a plain
+// assignment (`vertexBuffer = ...`), and every no-initializer declaration
+// (e.g. `std::vector<PackedFloat3> verts;`) was deleted outright - both
+// real, necessary fixes, not cosmetic ones: left as originally written,
+// each would have silently REDECLARED a same-named LOCAL that shadows
+// the member of the same name for the rest of that one function, leaving
+// the actual member permanently nil/empty for every OTHER method to read
+// - caught by an actual crash (`buildGPUResources()`'s own instance-AS
+// setup dereferencing a still-nil `primAS`) and a silently-wrong CLI
+// default (width/height/outPath staying at their compiled-in defaults
+// regardless of argv) during this refactor's own verification, not
+// assumed safe from the mechanical extraction alone. A plain struct, not
+// a class with any encapsulation of its own - every member public,
+// matching this POC's existing preference for direct scene-authoring
+// code over machinery it has no use for.
+struct MetalPocApp {
+    // --- Parsed CLI config, set by parseArgsAndCreateDevice() ----------
+    uint32_t width = 400;
+    uint32_t height = 400;
+    const char* outPath = "/tmp/metal_poc_render.png";
+    ToneMapMode toneMapMode = ToneMapMode::ACES;
+
+    // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
+    id<MTLDevice> device = nil;
+    id<MTLCommandQueue> queue = nil;
+
+    // --- Host-side scene data, built by buildScene() --------------------
+    std::vector<PackedFloat3> verts, normals;
+    std::vector<PackedFloat2> uvs;
+    std::vector<TriangleMaterial> materials;
+    std::vector<PackedFloat3> suzanneVerts, suzanneNormals;
+    std::vector<PackedFloat2> suzanneUVs;
+    std::vector<TriangleMaterial> suzanneMaterials;
+    std::vector<AreaLightData> lights;
+    std::vector<SphereData> spheres;
+    std::vector<TriangleMaterial> sphereMaterials;
+    std::vector<DiskData> disks;
+    std::vector<TriangleMaterial> diskMaterials;
+    std::vector<PointLightData> pointLights;
+    std::vector<DirectionalLightData> directionalLights;
+    std::vector<ProjectionLightData> projectionLights;
+    uint32_t triangleCount = 0;
+
+    // --- GPU-resident buffers + acceleration structures, built by
+    // buildGPUResources() ------------------------------------------------
+    id<MTLBuffer> vertexBuffer, normalBuffer, uvBuffer, lightBuffer;
+    id<MTLBuffer> pointLightBuffer, directionalLightBuffer, projectionLightBuffer;
+    id<MTLBuffer> materialBuffer, sphereBuffer, sphereMaterialBuffer;
+    id<MTLBuffer> diskBuffer, diskMaterialBuffer;
+    id<MTLBuffer> suzanneVertexBuffer, suzanneNormalBuffer, suzanneMaterialBuffer;
+    id<MTLBuffer> instanceTransformBuffer;
+    id<MTLAccelerationStructure> primAS, sphereAS, suzanneAS, instAS;
+
+    // --- Render output: written by compileShaderAndDispatch(), read by
+    // postProcessAndWrite() ----------------------------------------------
+    std::vector<float> pixels;
+
+    bool parseArgsAndCreateDevice(int argc, const char** argv);
+    void buildScene();
+    bool buildGPUResources();
+    bool compileShaderAndDispatch(int argc, const char** argv);
+    void postProcessAndWrite();
+};
+
+// --- Stage 1: CLI args + Metal device -----------------------------------
+bool MetalPocApp::parseArgsAndCreateDevice(int argc, const char** argv) {
+    width = (argc > 1) ? (uint32_t)atoi(argv[1]) : 400;
+    height = (argc > 2) ? (uint32_t)atoi(argv[2]) : 400;
+    outPath = (argc > 3) ? argv[3] : "/tmp/metal_poc_render.png";
+    toneMapMode = parseToneMapMode((argc > 6) ? argv[6] : nullptr);
+
+    // MTLCreateSystemDefaultDevice() is explicitly documented as
+    // unsupported for command-line/daemon processes (confirmed via
+    // `log show`: "Use of MTLCreateSystemDefaultDevice is not
+    // supported for non-interactive (commandline or daemon) apps. Use
+    // MTLCopyAllDevices(WithObserver) instead.") - this POC is a plain
+    // CLI tool, not an app bundle, so it needs the enumeration API.
+    NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
+    if (devices.count > 0) device = devices[0];
+    if (!device) {
+        fprintf(stderr, "No Metal device available.\n");
+        return false;
+    }
+    fprintf(stderr, "Metal device: %s\n", device.name.UTF8String);
+    if (!device.supportsRaytracing) {
+        fprintf(stderr, "Device does not support hardware raytracing.\n");
+        return false;
+    }
+
+    queue = [device newCommandQueue];
+    return true;
+}
+
+// --- Stage 2: build the scene's own host-side data ----------------------
+void MetalPocApp::buildScene() {
+    // --- Scene: a Cornell-box-like room, world units ~[-1,1] --------
+    // Matches this project's CPU Cornell box in spirit (floor/ceiling/
+    // back wall + coloured side walls + an object), not in exact
+    // dimensions - this POC's scene is entirely separate authored data,
+    // not a shared asset with cpu_renderer/.
+
+    const float3 white{0.73f, 0.73f, 0.73f};
+    const float3 red{0.65f, 0.05f, 0.05f};
+    const float3 green{0.12f, 0.45f, 0.15f};
+
+    // Floor (y = -1) - procedural checkerboard (materialType 6), the
+    // one surface in the scene that samples NO texture/image at all
+    // for its albedo, a genuinely different technique from
+    // materialType 3's earthTexture lookup (analytic UV math instead
+    // of a sampler call). addQuad()'s own planar 0-1 UVs across the
+    // whole floor, combined with checkerColor()'s own 8-tiles-per-UV-
+    // unit scale, give 8x8 tiles across the room's own floor.
+    addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white, /*materialType=*/6);
+    // Ceiling (y = 1)
+    addQuad(verts, normals, uvs, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
+    // Back wall (z = -1) - textured (materialType 3): the one surface
+    // in the scene that samples earthTexture, chosen because it's the
+    // large flat backdrop the camera looks straight at, showing the
+    // whole 0-1 UV mapping unobstructed.
+    addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white, /*materialType=*/3);
+    // Left wall (x = -1), red
+    addQuad(verts, normals, uvs, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
+    // Right wall (x = 1), green
+    addQuad(verts, normals, uvs, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
+    // A small procedurally bump-mapped panel (materialType 7),
+    // flush-mounted just in front of the back wall (z = -0.99, the
+    // same off-surface margin the mirror disk/other flush-mounted
+    // geometry already uses to avoid z-fighting) rather than a side
+    // wall - the one surface in the scene whose shading normal is
+    // perturbed AWAY from its own true (perfectly flat) geometric
+    // normal, an analytic egg-carton height field rather than a
+    // stored normal-map texture (no new image asset needed - see
+    // metal_poc.metal's own proceduralBumpNormal() comment).
+    // Positioned in the region the directional light (see
+    // metal_poc.metal's own DirectionalLight comment) hits closest to
+    // head-on, not tucked against a side wall - a first attempt
+    // mounted on the red wall got barely any direct light at all
+    // (nearly the same shallow self-shadowing the directional light's
+    // own doc describes for that wall), making the bump invisible
+    // under GI-only ambient lighting; moved here after that render
+    // came back looking completely flat, not assumed correct from
+    // the code alone. `roughness` here means bump strength, not a
+    // BRDF parameter - materialType 7's own reuse of that field, see
+    // TriangleMaterial's comment above.
+    addQuad(verts, normals, uvs, materials,
+            float3{0.15f, -0.3f, -0.99f}, float3{0.15f, 0.3f, -0.99f},
+            float3{0.75f, 0.3f, -0.99f}, float3{0.75f, -0.3f, -0.99f},
+            float3{0.55f, 0.5f, 0.45f}, /*materialType=*/7,
+            /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
+            /*roughness(bump strength)=*/0.6f);
+    // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
+    // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
+    // test object": mirror MATERIAL coverage is already proven (the
+    // sphere/dielectric PR's own mirror-quad screenshots), what this
+    // scene hadn't tested yet is real, DATA-DRIVEN geometry with
+    // genuine per-triangle normal variation, not a hand-authored
+    // axis-aligned quad. Lambertian so its form reads clearly via
+    // shading rather than showing room reflections. RT_MODELS_DIR
+    // mirrors RT_METAL_SHADER_DIR's own fallback shape below.
+    //
+    // Loaded into ITS OWN vertex/normal/uv/material vectors (not the
+    // shared `verts`/`normals`/`uvs`/`materials` the room quads and
+    // Spot still use) - Suzanne gets her own acceleration structure
+    // below, instanced twice with two DIFFERENT transforms, the one
+    // piece of this scene that actually exercises a non-identity
+    // instance transform. A shared-buffer object can only ever have
+    // ONE position (it's baked directly into world-space vertex
+    // positions at load time); testing instancing needs the SAME
+    // object-space geometry referenced from more than one instance
+    // descriptor, which needs its own acceleration structure.
+#ifdef RT_MODELS_DIR
+    NSString* modelsDir = @(RT_MODELS_DIR);
+#else
+    NSString* modelsDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+        stringByAppendingPathComponent:@"../../models"];
+#endif
+    NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
+    const float3 bronze{0.55f, 0.35f, 0.15f};
+    if (!loadObjMesh(suzannePath.UTF8String, suzanneVerts, suzanneNormals, suzanneUVs, suzanneMaterials, bronze,
+                      /*center=*/float3{0.0f, 0.0f, 0.0f}, /*targetSize=*/0.75f)) {
+        fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
+    }
+
+    // Spot (Keenan Crane's textured cow model, models/spot.obj) - unlike
+    // suzanne.obj, this file has real per-face-corner `vt` data (3225
+    // entries) and NO `vn` at all, the exact inverse case from Suzanne's
+    // own (vn on every face, no vt) - loading it exercises
+    // loadObjMesh()'s real-UV path (not just its zero-fallback path)
+    // and its flat-normal fallback path in the same call, closing the
+    // texture-mapping PR's own explicitly-deferred "real vt/f v/vt/vn
+    // parsing" item. materialType 3 (textured) reuses `earthTexture` -
+    // wrapping a world map onto a cow is a deliberately silly texture
+    // choice for a mesh that was never authored to use it, but it's
+    // exactly what makes this a REAL demonstration of per-vertex UV
+    // interpolation rather than a coincidentally-plausible-looking
+    // result: the world map's grid lines and coastlines have to follow
+    // spot's actual surface curvature for this to look right at all.
+    NSString* spotPath = [modelsDir stringByAppendingPathComponent:@"spot.obj"];
+    if (!loadObjMesh(spotPath.UTF8String, verts, normals, uvs, materials, white,
+                      /*center=*/float3{0.78f, -0.75f, 0.6f}, /*targetSize=*/0.42f,
+                      /*materialType=*/3)) {
+        fprintf(stderr, "Continuing without Spot - check RT_MODELS_DIR / models/spot.obj.\n");
+    }
+
+    // Area lights: real geometry, hanging just under the ceiling
+    // (y=0.98, not y=1 itself - avoids z-fighting/coplanar overlap
+    // with the ceiling's own quad above), facing straight down. Two
+    // separate lights (not one, as every previous PR up through #11
+    // had) - the smallest scene change that actually exercises
+    // `lights` as a genuine LIST rather than a single renamed
+    // constant: a warm light and a cool light side by side prove the
+    // shader's own light-picking/MIS code path handles more than one
+    // entry, visibly (two independently-coloured highlights/shadow
+    // directions), not just structurally. `addAreaLight` keeps each
+    // call's geometry (addQuad, tagged with this light's own index
+    // via materialType/lightId) and its AreaLightData entry (same
+    // corners, reduced to center/edgeU/edgeV/normal/area) in sync by
+    // construction, rather than needing two hand-authored, separately-
+    // maintained descriptions of the same quad the way the single-
+    // light version's kLightCenter/kLightHalfExtents/kLightNormal
+    // constants over in metal_poc.metal used to (see that file's
+    // AreaLight struct comment for the "replacing..." history).
+    // `patternTileB`/`patternScale` default to 0 (flat emission,
+    // materialType 0) - see AreaLightData's own comment. Passing a
+    // nonzero `patternScale` switches the light's own triangles to
+    // materialType 10 too, so a direct hit and an NEE sample both
+    // evaluate the SAME checker pattern (just at each one's own
+    // different point on the light - see metal_poc.metal's own
+    // comments on materialType 10 and AreaLight for why that needs
+    // two separate evaluations, not one shared value).
+    auto addAreaLight = [&](float3 a, float3 b, float3 c, float3 d, float3 emission,
+                             float patternTileB = 0.0f, float patternScale = 0.0f) {
+        int32_t lightId = (int32_t)lights.size();
+        uint32_t materialType = (patternScale > 0.0f) ? 10u : 0u;
+        addQuad(verts, normals, uvs, materials, a, b, c, d, white,
+                materialType, emission, lightId, /*roughness(pattern tileB)=*/patternTileB);
+        float3 edgeU = b - a;
+        float3 edgeV = d - a;
+        float3 normal = simd::normalize(simd::cross(edgeU, edgeV));
+        float area = simd::length(simd::cross(edgeU, edgeV));
+        float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normal.x, normal.y, normal.z},
+            area,
+            PackedFloat3{emission.x, emission.y, emission.z},
+            patternTileB,
+            patternScale});
+    };
+    // Both ceiling lights' own colours now come from blackbodyColor()
+    // (see that function's own comment, added for the point/spot/
+    // directional lights) rather than the hand-picked tuples above -
+    // 2700 K (a standard incandescent bulb) for the warm one, 20000 K
+    // (near the top of the fit's own valid range, a very hot/blue-
+    // white source) for the cool one. Notably, 20000K's own derived
+    // colour is nowhere near as saturated a blue as the hand-picked
+    // (6, 10, 18) it replaces - real blackbody radiation never gets
+    // that saturated; no amount of temperature produces a deeply
+    // saturated blue the way an artistic RGB pick can. A real,
+    // honestly-reported limitation of deriving colour from physical
+    // temperature, not swept under the rug.
+    const float3 warmAreaLightColor = blackbodyColor(2700.0f) * 15.5f;
+    const float3 coolAreaLightColor = blackbodyColor(20000.0f) * 13.9f;
+    addAreaLight(float3{-0.58f,0.98f,-0.25f}, float3{-0.22f,0.98f,-0.25f},
+                 float3{-0.22f,0.98f,0.25f}, float3{-0.58f,0.98f,0.25f},
+                 /*emission=*/warmAreaLightColor);
+    // The cool light also gets a patterned diffuser-grid look
+    // (materialType 10 - see that comment for the full "why"), a
+    // real fixture detail the flat-emission warm light doesn't have:
+    // tile B at 40% of tile A's own brightness (a translucent grid,
+    // not fully opaque black bars) across a 6x6 tiling of the
+    // light's own 0-1 UV span.
+    addAreaLight(float3{0.22f,0.98f,-0.25f}, float3{0.58f,0.98f,-0.25f},
+                 float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
+                 /*emission=*/coolAreaLightColor,
+                 /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
+    // Builds each light's own pmf/aliasProb/aliasIndex in place - see
+    // buildPowerLightSampler()'s own comment. Must run after every
+    // addAreaLight() call above (needs the full, final light list) and
+    // before `lights` gets uploaded to the GPU buffer below.
+    buildPowerLightSampler(lights, logPowerLightSamplerLine);
+
+    // Two spheres, both custom (non-triangle) primitives via a shared
+    // bounding-box acceleration structure + intersection function
+    // (metal_poc.metal's sphereIntersectionFunction indexes into
+    // `spheres`/`sphereMaterials` by primitive_id, so any number of
+    // spheres share one geometry/one intersection function - adding a
+    // second one below is purely a host-side array-of-2 change, no
+    // shader change) - the one "Medium risk, unconfirmed" item
+    // docs/METAL_GPU_FEASIBILITY.md section 3 originally flagged that
+    // the room/mirror geometry alone hadn't exercised (triangles only).
+    // Sphere 0: glass, ior 1.5 matches common glass, same value this
+    // project's own CPU Cornell box scene (A1) uses for its glass
+    // sphere. Sphere 1: a rough (GGX) conductor - gold-ish F0, roughness
+    // 0.15 (a fairly tight but visibly non-mirror highlight), placed on
+    // the opposite side of the room so both new-material spheres read
+    // clearly side by side.
+    // Sphere 2: rough (frosted) dielectric, materialType 5 - small,
+    // front-and-centre between the other two spheres and just in
+    // front of Suzanne. An earlier back-left-corner placement turned
+    // out to sit almost exactly along the camera-to-gold-sphere
+    // sightline (both ~20% off-axis, gold sphere much closer/larger)
+    // and was fully hidden - caught by actually rendering and
+    // inspecting the image, not by the bounding-region math alone
+    // (which only rules out 3D overlap, not 2D screen-space
+    // occlusion) - this position was checked against both.
+    // Sphere 3: a procedurally roughness-mapped GGX conductor
+    // (materialType 9) - a "worn/scratched copper" look, patches of
+    // near-mirror-smooth and rough microfacet regions on the SAME
+    // surface (see metal_poc.metal's own materialType 9 comment).
+    // Genuinely different from sphere 1's own anisotropic roughness:
+    // that one varies BY DIRECTION at a single point (one alpha per
+    // tangent axis, constant everywhere on the sphere); this one
+    // varies BY LOCATION (alpha itself is a function of where on the
+    // sphere you look, isotropic at any single point). Placed
+    // resting on the floor (`y = -1 + radius`, matching every other
+    // floor sphere's own convention) at the room's front-right,
+    // clear of the gold sphere/Spot/the disk mirror - checked by
+    // rendering and inspecting, not just the bounding-sphere math.
+    // Sphere 4: clearcoat/glossy-plastic (materialType 8) - a deep
+    // red "car paint" look, a sharp specular highlight riding on top
+    // of a genuinely diffuse (not metallic) coloured base, the
+    // signature that distinguishes this from every reflective
+    // material already in the scene (mirror/GGX conductor are
+    // colour-tinted AT the reflection itself; clearcoat's own
+    // reflection stays colourless/white, only the diffuse base
+    // beneath carries colour). Placed at the room's front-right,
+    // deliberately at a different x AND z from Spot-the-cow (this
+    // POC's own established near-miss from sphere 3's own placement:
+    // sharing an x coordinate with a closer foreground object hid it
+    // completely) and the gold sphere.
+    spheres = {
+        SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
+        SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
+        SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
+        SphereData{PackedFloat3{-0.78f, -0.78f, 0.7f}, 0.18f},
+        SphereData{PackedFloat3{0.8f, -0.85f, 1.0f}, 0.15f},
+    };
+    // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
+    // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
+    // comment), not a reflectance/tint the way every other material's
+    // `color` field is read - {1,1,1} would have meant "absorb
+    // everything, render black" under this new interpretation, so
+    // both dielectric spheres' old placeholder {1,1,1} "clear glass"
+    // values were replaced with real per-channel absorption:
+    // sphere 0 is emerald-tinted (absorbs red/blue faster than
+    // green, getting more richly green toward its own thicker
+    // centre), sphere 2 a much milder amber (still reads mostly
+    // frosted-white, just warmed slightly).
+    sphereMaterials = {
+        TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.35f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
+        // Genuinely ANISOTROPIC now (alphaX from `ior`, alphaY from
+        // `roughness` - see TriangleMaterial's own comment): a tight
+        // 0.08 in one tangent direction and a much broader 0.45 in
+        // the other, the classic "brushed metal" look - a real,
+        // deliberate change from the previously-isotropic 0.15 this
+        // sphere used through step 22, not a value chosen to
+        // preserve the old appearance (that A/B check is done via a
+        // dedicated verification render instead, not the committed
+        // scene - see docs/METAL_GPU_FEASIBILITY.md's own note).
+        TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*alphaX=*/0.08f, PackedFloat3{0, 0, 0},
+                         /*lightId=*/-1, /*alphaY=*/0.45f},
+        TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
+                         /*lightId=*/-1, /*roughness=*/0.35f},
+        // materialType 9: `ior` is the SMOOTH patch's own perceptual
+        // roughness, `roughness` the ROUGH patch's - both squared
+        // into GGX alpha exactly like materialType 4 already does,
+        // just picked between by an analytic UV-space checker
+        // pattern instead of being one constant.
+        TriangleMaterial{PackedFloat3{0.8f, 0.45f, 0.2f}, /*materialType=*/9, /*ior(smooth)=*/0.05f, PackedFloat3{0, 0, 0},
+                         /*lightId=*/-1, /*roughness(rough)=*/0.6f},
+        // materialType 8: `color` is the diffuse BASE colour under
+        // the coat (materialType 0's own convention) - a deep,
+        // fairly saturated red, since the coat's own reflection
+        // stays colourless regardless.
+        TriangleMaterial{PackedFloat3{0.55f, 0.05f, 0.06f}, /*materialType=*/8, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
+    };
+
+    // A wall-mounted mirror disk (materialType 1) - a second, distinct
+    // custom-primitive SHAPE, not just another sphere. Every custom
+    // primitive so far (however many) has gone through the SAME
+    // intersection function at function-table slot 0; this is what
+    // actually exercises a second, different function at slot 1 (see
+    // metal_poc.metal's own comment on diskIntersectionFunction).
+    // Also, incidentally, the first object in this whole scene to use
+    // materialType 1 (mirror) at all - it's existed in the shader
+    // since the very first multi-material step but nothing had
+    // actually used it since the mirror test quad was replaced by the
+    // dielectric sphere back in step 6.
+    disks = {
+        DiskData{PackedFloat3{0.97f, 0.3f, -0.3f}, PackedFloat3{-1.0f, 0.0f, 0.0f}, 0.22f},
+    };
+    diskMaterials = {
+        TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/1, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
+    };
+
+    // A true delta point light - genuinely different from every
+    // AreaLight above (zero area, hard-edged shadows, no NEE/MIS
+    // weighting needed at all - see metal_poc.metal's own PointLight
+    // comment). Placed off-axis from both area lights so it adds a
+    // THIRD, distinctly-positioned specular highlight to the
+    // reflective spheres/disk rather than blending into an existing
+    // one - the easiest way to visually confirm it's really
+    // contributing light, not just present in the buffer unused.
+    // Second point light: a genuine SPOT (cone-restricted), unlike the
+    // first one's omnidirectional glow - aimed down at Spot-the-cow's
+    // own floor area, a real "pool of light" cone signature an
+    // omnidirectional point light cannot produce at all (its own
+    // illumination falls off with distance everywhere, never with
+    // ANGLE the way a spot's does). 25 degree outer / 15 degree inner
+    // cone (smoothstep-blended between them, not a hard edge).
+    //
+    // All three lights below get their own colour from
+    // blackbodyColor() at a NAMED physical temperature rather than a
+    // hand-picked RGB tuple - 9000 K (cool, moonlight-ish) for this
+    // first point light, 3000 K (warm tungsten) for the spot, 5778 K
+    // (the Sun's own real photosphere temperature) for the
+    // directional light below. Each still scaled by a plain
+    // intensity multiplier chosen to land in roughly the same
+    // brightness range this scene's own lights already used - only
+    // the HUE is now derived, not the overall exposure.
+    const float3 spotPos = float3{0.65f, 0.9f, -0.1f};
+    const float3 spotTarget = float3{0.7f, -1.0f, 0.4f};
+    const float3 spotDir = simd::normalize(spotTarget - spotPos);
+    const float3 pointLight1Color = blackbodyColor(9000.0f) * 1.0f;
+    const float3 spotLightColor = blackbodyColor(3000.0f) * 11.3f;
+    pointLights = {
+        PointLightData{PackedFloat3{0.0f, 0.3f, 0.3f}, PackedFloat3{pointLight1Color.x, pointLight1Color.y, pointLight1Color.z}},
+        PointLightData{PackedFloat3{spotPos.x, spotPos.y, spotPos.z}, PackedFloat3{spotLightColor.x, spotLightColor.y, spotLightColor.z},
+                       PackedFloat3{spotDir.x, spotDir.y, spotDir.z},
+                       /*cosOuterAngle=*/cosf(25.0f * (float)M_PI / 180.0f),
+                       /*cosInnerAngle=*/cosf(15.0f * (float)M_PI / 180.0f)},
+    };
+
+    // A directional ("sun") light - genuinely different in KIND from
+    // both point-light entries above: parallel rays with no position
+    // and no distance falloff at all, rather than one more delta
+    // light radiating from a finite point (see metal_poc.metal's own
+    // DirectionalLight comment). Aimed through the room's own open
+    // front (the z=1 face has no wall - see the floor/ceiling/wall
+    // addQuad() calls above): `direction` points mostly along -z with
+    // a slight -y/+x tilt, so tracing back toward the light from
+    // anywhere in the [-1,1]^3 room exits through that open face
+    // before it would cross the ceiling (y=1) or either side wall,
+    // rather than being trivially self-shadowed by this room's own
+    // geometry on every shading point.
+    const float3 sunColor = blackbodyColor(5778.0f) * 2.7f;
+    directionalLights = {
+        DirectionalLightData{PackedFloat3{0.1f, -0.15f, -1.0f}, PackedFloat3{sunColor.x, sunColor.y, sunColor.z}},
+    };
+
+    // A "slide projector" light - see metal_poc.metal's own
+    // ProjectionLight comment. Mounted near the ceiling on the room's
+    // centre-left, aimed down and across at the green (right, x=1)
+    // wall's own lower-mid area - a plain, otherwise-undecorated flat
+    // Lambertian surface (unlike the back wall, already carrying its
+    // own mural texture), so the projected earthmap image reads as
+    // unambiguously new rather than blending into existing detail.
+    // Reuses `earthTexture` (already loaded for materialType 3's own
+    // back-wall texture, see that PR's own comment) as the projected
+    // image, rather than a separate asset - the same "a world map
+    // projected like a slide" idea, just illuminating a wall instead
+    // of decorating one. 32 degree (full vertical) FOV keeps this
+    // reading as a defined projector "beam," not floodlighting the
+    // whole wall; aspect 2.0 roughly matches earthmap.jpg's own
+    // 2048x1025 (~2:1) proportions so the projected image isn't
+    // visibly stretched.
+    projectionLights = {
+        makeProjectionLight(/*position=*/float3{0.1f, 0.85f, -0.15f},
+                             /*target=*/float3{1.0f, -0.05f, -0.15f},
+                             /*worldUp=*/float3{0.0f, 1.0f, 0.0f},
+                             /*fovDegrees=*/38.0f, /*aspect=*/2.0f, /*scale=*/25.0f),
+    };
+
+    triangleCount = (uint32_t)materials.size();
+    fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights, %zu projection lights\n",
+            triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size(), projectionLights.size());
+}
+
+// --- Stage 3: upload GPU buffers + build acceleration structures --------
+bool MetalPocApp::buildGPUResources() {
+    vertexBuffer = [device newBufferWithBytes:verts.data()
+        length:verts.size() * sizeof(PackedFloat3)
+        options:MTLResourceStorageModeShared];
+    normalBuffer = [device newBufferWithBytes:normals.data()
+        length:normals.size() * sizeof(PackedFloat3)
+        options:MTLResourceStorageModeShared];
+    uvBuffer = [device newBufferWithBytes:uvs.data()
+        length:uvs.size() * sizeof(PackedFloat2)
+        options:MTLResourceStorageModeShared];
+    lightBuffer = [device newBufferWithBytes:lights.data()
+        length:lights.size() * sizeof(AreaLightData)
+        options:MTLResourceStorageModeShared];
+    pointLightBuffer = [device newBufferWithBytes:pointLights.data()
+        length:pointLights.size() * sizeof(PointLightData)
+        options:MTLResourceStorageModeShared];
+    directionalLightBuffer = [device newBufferWithBytes:directionalLights.data()
+        length:directionalLights.size() * sizeof(DirectionalLightData)
+        options:MTLResourceStorageModeShared];
+    projectionLightBuffer = [device newBufferWithBytes:projectionLights.data()
+        length:projectionLights.size() * sizeof(ProjectionLightData)
+        options:MTLResourceStorageModeShared];
+    materialBuffer = [device newBufferWithBytes:materials.data()
+        length:materials.size() * sizeof(TriangleMaterial)
+        options:MTLResourceStorageModeShared];
+    sphereBuffer = [device newBufferWithBytes:spheres.data()
+        length:spheres.size() * sizeof(SphereData) options:MTLResourceStorageModeShared];
+    sphereMaterialBuffer = [device newBufferWithBytes:sphereMaterials.data()
+        length:sphereMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+    diskBuffer = [device newBufferWithBytes:disks.data()
+        length:disks.size() * sizeof(DiskData) options:MTLResourceStorageModeShared];
+    diskMaterialBuffer = [device newBufferWithBytes:diskMaterials.data()
+        length:diskMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+
+    const uint32_t suzanneTriangleCount = (uint32_t)suzanneMaterials.size();
+    suzanneVertexBuffer = [device newBufferWithBytes:suzanneVerts.data()
+        length:suzanneVerts.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
+    suzanneNormalBuffer = [device newBufferWithBytes:suzanneNormals.data()
+        length:suzanneNormals.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
+    suzanneMaterialBuffer = [device newBufferWithBytes:suzanneMaterials.data()
+        length:suzanneMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+
+    // --- Primitive acceleration structure (the mesh's own BVH) ------
+    MTLAccelerationStructureTriangleGeometryDescriptor* geomDesc =
+        [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
+    geomDesc.vertexBuffer = vertexBuffer;
+    geomDesc.vertexStride = sizeof(PackedFloat3);
+    geomDesc.triangleCount = triangleCount;
+    // Explicit, not relying on the default: opaque means no any-hit
+    // shader gets consulted for this geometry's hits at all, so the
+    // hardware triangle intersector's result is taken directly - this
+    // matters once a function table is bound at trace time at all
+    // (added below, for the sphere), since without this a triangle
+    // hit could otherwise get routed through the SAME table slot the
+    // sphere's own intersection function occupies.
+    geomDesc.opaque = YES;
+
+    MTLPrimitiveAccelerationStructureDescriptor* primDesc =
+        [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+    primDesc.geometryDescriptors = @[geomDesc];
+
+    MTLAccelerationStructureSizes primSizes = [device accelerationStructureSizesWithDescriptor:primDesc];
+    primAS = [device newAccelerationStructureWithSize:primSizes.accelerationStructureSize];
+    id<MTLBuffer> primScratch = [device newBufferWithLength:primSizes.buildScratchBufferSize
+        options:MTLResourceStorageModePrivate];
+
+    id<MTLCommandBuffer> buildCmd = [queue commandBuffer];
+    id<MTLAccelerationStructureCommandEncoder> buildEnc = [buildCmd accelerationStructureCommandEncoder];
+    [buildEnc buildAccelerationStructure:primAS descriptor:primDesc scratchBuffer:primScratch scratchBufferOffset:0];
+    [buildEnc endEncoding];
+    [buildCmd commit];
+    [buildCmd waitUntilCompleted];
+    if (buildCmd.status == MTLCommandBufferStatusError) {
+        fprintf(stderr, "Primitive AS build failed: %s\n", buildCmd.error.localizedDescription.UTF8String);
+        return false;
+    }
+
+    // --- Second primitive acceleration structure: the spheres' own --
+    // bounding-box geometry (a custom/non-triangle primitive has no
+    // vertex data at all as far as the acceleration structure is
+    // concerned - just an AABB per primitive, with the real
+    // intersection test deferred to sphereIntersectionFunction at
+    // trace time). One AABB per entry in `spheres`, same index order -
+    // sphereIntersectionFunction's own primitive_id indexes both this
+    // buffer and `spheres`/`sphereMaterials` identically.
+    std::vector<MTLAxisAlignedBoundingBox> sphereBoundsList;
+    for (const SphereData& s : spheres) {
+        MTLAxisAlignedBoundingBox bounds;
+        bounds.min = MTLPackedFloat3Make(s.center.x - s.radius, s.center.y - s.radius, s.center.z - s.radius);
+        bounds.max = MTLPackedFloat3Make(s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius);
+        sphereBoundsList.push_back(bounds);
+    }
+    id<MTLBuffer> boundingBoxBuffer = [device newBufferWithBytes:sphereBoundsList.data()
+        length:sphereBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
+
+    MTLAccelerationStructureBoundingBoxGeometryDescriptor* bboxGeomDesc =
+        [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
+    bboxGeomDesc.boundingBoxBuffer = boundingBoxBuffer;
+    bboxGeomDesc.boundingBoxStride = sizeof(MTLAxisAlignedBoundingBox);
+    bboxGeomDesc.boundingBoxCount = (uint32_t)sphereBoundsList.size();
+    // intersectionFunctionTableOffset here is this GEOMETRY's own
+    // slot within whatever function table gets bound at trace time -
+    // 0, sphereIntersectionFunction's own slot (set up below,
+    // alongside the compute pipeline). The disk geometry added below
+    // uses slot 1 instead - the first time this POC's function table
+    // has needed more than one entry.
+    bboxGeomDesc.intersectionFunctionTableOffset = 0;
+    // Opaque here too: sphereIntersectionFunction is the REQUIRED
+    // primitive-intersection test for this custom geometry (always
+    // invoked, opaque or not - there's no hardware fallback for a
+    // bounding-box primitive), so opaque just means "accept its
+    // result directly," skip a second any-hit pass on top of it,
+    // exactly this POC's one-test-decides-it shape.
+    bboxGeomDesc.opaque = YES;
+
+    // The disk's own bounding-box geometry, a SECOND geometryDescriptor
+    // within the SAME primitive AS as the spheres (not a separate AS -
+    // Metal supports multiple heterogeneous geometries in one
+    // acceleration structure, distinguished at trace time by
+    // `geometry_id`, matching this array's own index order: spheres
+    // at 0, disk at 1 - see metal_poc.metal's own comment on why that
+    // distinction is needed now). Padded uniformly by a small epsilon
+    // in every axis (not just the disk's own zero-thickness normal
+    // axis) - simplest bound that's correct regardless of which axis
+    // the disk's normal happens to be aligned with, at the cost of a
+    // slightly looser-than-optimal box for a single small primitive.
+    const float diskBoundsEpsilon = 0.01f;
+    std::vector<MTLAxisAlignedBoundingBox> diskBoundsList;
+    for (const DiskData& d : disks) {
+        float r = d.radius + diskBoundsEpsilon;
+        MTLAxisAlignedBoundingBox bounds;
+        bounds.min = MTLPackedFloat3Make(d.center.x - r, d.center.y - r, d.center.z - r);
+        bounds.max = MTLPackedFloat3Make(d.center.x + r, d.center.y + r, d.center.z + r);
+        diskBoundsList.push_back(bounds);
+    }
+    id<MTLBuffer> diskBoundingBoxBuffer = [device newBufferWithBytes:diskBoundsList.data()
+        length:diskBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
+
+    MTLAccelerationStructureBoundingBoxGeometryDescriptor* diskGeomDesc =
+        [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
+    diskGeomDesc.boundingBoxBuffer = diskBoundingBoxBuffer;
+    diskGeomDesc.boundingBoxStride = sizeof(MTLAxisAlignedBoundingBox);
+    diskGeomDesc.boundingBoxCount = (uint32_t)diskBoundsList.size();
+    diskGeomDesc.intersectionFunctionTableOffset = 1; // diskIntersectionFunction's own slot
+    diskGeomDesc.opaque = YES;
+
+    MTLPrimitiveAccelerationStructureDescriptor* sphereAccelDesc =
+        [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+    sphereAccelDesc.geometryDescriptors = @[bboxGeomDesc, diskGeomDesc];
+
+    MTLAccelerationStructureSizes sphereSizes = [device accelerationStructureSizesWithDescriptor:sphereAccelDesc];
+    sphereAS = [device newAccelerationStructureWithSize:sphereSizes.accelerationStructureSize];
+    id<MTLBuffer> sphereScratch = [device newBufferWithLength:sphereSizes.buildScratchBufferSize
+        options:MTLResourceStorageModePrivate];
+
+    id<MTLCommandBuffer> sphereBuildCmd = [queue commandBuffer];
+    id<MTLAccelerationStructureCommandEncoder> sphereBuildEnc = [sphereBuildCmd accelerationStructureCommandEncoder];
+    [sphereBuildEnc buildAccelerationStructure:sphereAS descriptor:sphereAccelDesc scratchBuffer:sphereScratch scratchBufferOffset:0];
+    [sphereBuildEnc endEncoding];
+    [sphereBuildCmd commit];
+    [sphereBuildCmd waitUntilCompleted];
+    if (sphereBuildCmd.status == MTLCommandBufferStatusError) {
+        fprintf(stderr, "Sphere AS build failed: %s\n", sphereBuildCmd.error.localizedDescription.UTF8String);
+        return false;
+    }
+
+    // --- Third primitive acceleration structure: Suzanne's own ------
+    // geometry, built once, referenced by TWO different instances
+    // below with two different transforms - unlike primAS/sphereAS
+    // (each instanced exactly once, at identity), this is what
+    // actually exercises instancing's whole point: reusing one GPU-
+    // resident BVH from more than one world-space placement, rather
+    // than building/storing the geometry twice.
+    MTLAccelerationStructureTriangleGeometryDescriptor* suzanneGeomDesc =
+        [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
+    suzanneGeomDesc.vertexBuffer = suzanneVertexBuffer;
+    suzanneGeomDesc.vertexStride = sizeof(PackedFloat3);
+    suzanneGeomDesc.triangleCount = suzanneTriangleCount;
+    suzanneGeomDesc.opaque = YES;
+
+    MTLPrimitiveAccelerationStructureDescriptor* suzanneAccelDesc =
+        [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+    suzanneAccelDesc.geometryDescriptors = @[suzanneGeomDesc];
+
+    MTLAccelerationStructureSizes suzanneSizes = [device accelerationStructureSizesWithDescriptor:suzanneAccelDesc];
+    suzanneAS = [device newAccelerationStructureWithSize:suzanneSizes.accelerationStructureSize];
+    id<MTLBuffer> suzanneScratch = [device newBufferWithLength:suzanneSizes.buildScratchBufferSize
+        options:MTLResourceStorageModePrivate];
+
+    id<MTLCommandBuffer> suzanneBuildCmd = [queue commandBuffer];
+    id<MTLAccelerationStructureCommandEncoder> suzanneBuildEnc = [suzanneBuildCmd accelerationStructureCommandEncoder];
+    [suzanneBuildEnc buildAccelerationStructure:suzanneAS descriptor:suzanneAccelDesc scratchBuffer:suzanneScratch scratchBufferOffset:0];
+    [suzanneBuildEnc endEncoding];
+    [suzanneBuildCmd commit];
+    [suzanneBuildCmd waitUntilCompleted];
+    if (suzanneBuildCmd.status == MTLCommandBufferStatusError) {
+        fprintf(stderr, "Suzanne AS build failed: %s\n", suzanneBuildCmd.error.localizedDescription.UTF8String);
+        return false;
+    }
+
+    // --- Instance acceleration structure: four instances over three -
+    // primitive ASes (primAS/sphereAS each instanced once at
+    // identity, suzanneAS instanced TWICE with different transforms -
+    // see that AS's own comment). `addInstance()` builds one
+    // MTLAccelerationStructureInstanceDescriptor AND its matching
+    // InstanceTransform side-channel entry from the SAME
+    // column/translation values in one place, so the two can't drift
+    // out of sync with each other the way two independently-hand-
+    // authored copies of the same transform could.
+    std::vector<MTLAccelerationStructureInstanceDescriptor> instanceDescs;
+    std::vector<InstanceTransform> instanceTransforms;
+    auto addInstance = [&](uint32_t accelStructureIndex, float3 col0, float3 col1, float3 col2, float3 col3) {
+        MTLAccelerationStructureInstanceDescriptor desc{};
+        desc.accelerationStructureIndex = accelStructureIndex;
+        desc.options = MTLAccelerationStructureInstanceOptionNone;
+        desc.mask = 0xFF;
+        desc.intersectionFunctionTableOffset = 0;
+        desc.transformationMatrix.columns[0] = MTLPackedFloat3Make(col0.x, col0.y, col0.z);
+        desc.transformationMatrix.columns[1] = MTLPackedFloat3Make(col1.x, col1.y, col1.z);
+        desc.transformationMatrix.columns[2] = MTLPackedFloat3Make(col2.x, col2.y, col2.z);
+        desc.transformationMatrix.columns[3] = MTLPackedFloat3Make(col3.x, col3.y, col3.z);
+        instanceDescs.push_back(desc);
+        instanceTransforms.push_back(InstanceTransform{
+            PackedFloat3{col0.x, col0.y, col0.z}, PackedFloat3{col1.x, col1.y, col1.z},
+            PackedFloat3{col2.x, col2.y, col2.z}, PackedFloat3{col3.x, col3.y, col3.z}});
+    };
+
+    const float3 identityCol0{1, 0, 0}, identityCol1{0, 1, 0}, identityCol2{0, 0, 1}, identityCol3{0, 0, 0};
+    addInstance(0, identityCol0, identityCol1, identityCol2, identityCol3); // primAS (room + Spot)
+    addInstance(1, identityCol0, identityCol1, identityCol2, identityCol3); // sphereAS
+
+    // Suzanne instance A: translation only, at the same world position
+    // the single non-instanced Suzanne used to sit at - an identity-
+    // rotation instance is the direct continuation of every earlier
+    // screenshot's own Suzanne placement.
+    addInstance(2, identityCol0, identityCol1, identityCol2, float3{-0.05f, -0.55f, -0.3f});
+
+    // Suzanne instance B: rotated 45 degrees about Y and scaled down
+    // (uniform scale only - transformNormalByInstance()'s own
+    // rigid-transform assumption over in metal_poc.metal stays valid
+    // under a uniform scale, since normalize() cancels a uniform
+    // factor exactly; it would NOT under a non-uniform one), placed
+    // high near the back of the ceiling. A first attempt at a back-
+    // left-corner floor placement (x=-0.7, z=-0.55) turned out to sit
+    // along almost the same camera sightline as the gold sphere
+    // (x/z ratio ~0.19 vs. the gold sphere's own ~0.2) and was
+    // nearly fully hidden behind it - the exact same 2D-screen-space-
+    // occlusion lesson Spot's own placement (step 12) and the rough
+    // dielectric sphere's own placement (step 13) already ran into,
+    // caught here the same way: render, look, reposition. The one
+    // instance in this whole scene whose object-space normals
+    // actually need transforming before shading - everywhere else,
+    // an identity transform makes that transform a no-op.
+    {
+        const float theta = 0.785398f; // 45 degrees, radians
+        const float s = 0.55f;
+        float3 rotCol0{s * cosf(theta), 0.0f, -s * sinf(theta)};
+        float3 rotCol1{0.0f, s, 0.0f};
+        float3 rotCol2{s * sinf(theta), 0.0f, s * cosf(theta)};
+        addInstance(2, rotCol0, rotCol1, rotCol2, float3{0.0f, 0.75f, -0.3f});
+    }
+
+    id<MTLBuffer> instanceBuffer = [device newBufferWithBytes:instanceDescs.data()
+        length:instanceDescs.size() * sizeof(MTLAccelerationStructureInstanceDescriptor)
+        options:MTLResourceStorageModeShared];
+    instanceTransformBuffer = [device newBufferWithBytes:instanceTransforms.data()
+        length:instanceTransforms.size() * sizeof(InstanceTransform)
+        options:MTLResourceStorageModeShared];
+
+    MTLInstanceAccelerationStructureDescriptor* instAccelDesc =
+        [MTLInstanceAccelerationStructureDescriptor descriptor];
+    instAccelDesc.instancedAccelerationStructures = @[primAS, sphereAS, suzanneAS];
+    instAccelDesc.instanceCount = (uint32_t)instanceDescs.size();
+    instAccelDesc.instanceDescriptorBuffer = instanceBuffer;
+
+    MTLAccelerationStructureSizes instSizes = [device accelerationStructureSizesWithDescriptor:instAccelDesc];
+    instAS = [device newAccelerationStructureWithSize:instSizes.accelerationStructureSize];
+    id<MTLBuffer> instScratch = [device newBufferWithLength:instSizes.buildScratchBufferSize
+        options:MTLResourceStorageModePrivate];
+
+    id<MTLCommandBuffer> buildCmd2 = [queue commandBuffer];
+    id<MTLAccelerationStructureCommandEncoder> buildEnc2 = [buildCmd2 accelerationStructureCommandEncoder];
+    [buildEnc2 buildAccelerationStructure:instAS descriptor:instAccelDesc scratchBuffer:instScratch scratchBufferOffset:0];
+    [buildEnc2 endEncoding];
+    [buildCmd2 commit];
+    [buildCmd2 waitUntilCompleted];
+    if (buildCmd2.status == MTLCommandBufferStatusError) {
+        fprintf(stderr, "Instance AS build failed: %s\n", buildCmd2.error.localizedDescription.UTF8String);
+        return false;
+    }
+    return true;
+}
+
+// --- Stage 4: compile the shader, dispatch the render, read back -------
+bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
+    // --- Compile the shader library from source at runtime ---------
+    NSError* error = nil;
+    // RT_METAL_SHADER_DIR is set by CMakeLists.txt's metal_poc target
+    // (RT_BUILD_METAL=ON path) to gpu/metal/'s absolute source
+    // directory. Falls back to a __FILE__-relative lookup for the
+    // ad-hoc `clang++ metal_poc.mm ...` invocation this POC started
+    // as (docs/METAL_GPU_FEASIBILITY.md section 7/8/9) and still
+    // works fine for a quick manual rebuild without going through
+    // CMake at all.
+#ifdef RT_METAL_SHADER_DIR
+    NSString* shaderDir = @(RT_METAL_SHADER_DIR);
+#else
+    NSString* shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
+#endif
+    NSString* shaderPath = [shaderDir stringByAppendingPathComponent:@"metal_poc.metal"];
+    NSString* shaderSource = [NSString stringWithContentsOfFile:shaderPath encoding:NSUTF8StringEncoding error:&error];
+    if (!shaderSource) {
+        fprintf(stderr, "Failed to read shader source at %s: %s\n",
+            shaderPath.UTF8String, error.localizedDescription.UTF8String);
+        return false;
+    }
+    MTLCompileOptions* compileOpts = [MTLCompileOptions new];
+    id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:compileOpts error:&error];
+    if (!library) {
+        fprintf(stderr, "Shader compile failed: %s\n", error.localizedDescription.UTF8String);
+        return false;
+    }
+    id<MTLFunction> kernelFn = [library newFunctionWithName:@"primaryRayKernel"];
+    id<MTLFunction> sphereIntersectFn = [library newFunctionWithName:@"sphereIntersectionFunction"];
+    id<MTLFunction> diskIntersectFn = [library newFunctionWithName:@"diskIntersectionFunction"];
+
+    // The intersection function has to be LINKED into the compute
+    // pipeline (MTLLinkedFunctions) before an MTLIntersectionFunction
+    // Table naming it can be built - a plain newComputePipelineState
+    // WithFunction: (used for step 1/2's triangle-only pipeline) has
+    // nowhere to put that linkage, hence the switch to the descriptor-
+    // based pipeline creation call here.
+    MTLComputePipelineDescriptor* pipelineDesc = [MTLComputePipelineDescriptor new];
+    pipelineDesc.computeFunction = kernelFn;
+    MTLLinkedFunctions* linkedFns = [MTLLinkedFunctions new];
+    linkedFns.functions = @[sphereIntersectFn, diskIntersectFn];
+    pipelineDesc.linkedFunctions = linkedFns;
+
+    id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithDescriptor:pipelineDesc
+        options:MTLPipelineOptionNone reflection:nil error:&error];
+    if (!pipeline) {
+        fprintf(stderr, "Pipeline creation failed: %s\n", error.localizedDescription.UTF8String);
+        return false;
+    }
+
+    // --- Intersection function table: two slots now, matching --------
+    // bboxGeomDesc's own intersectionFunctionTableOffset (0) and
+    // diskGeomDesc's (1) above - this POC's first real "one slot per
+    // distinct intersection function" table, not just one slot
+    // reused by every custom primitive. `setBuffer:atIndex:N` here
+    // sets buffer N in the table's OWN shared argument namespace
+    // (every function in ONE table draws from the same set of bound
+    // buffers/textures) - sphereIntersectionFunction and
+    // diskIntersectionFunction each declare a DIFFERENT `[[buffer(N)]]`
+    // in their own MSL signature (0 and 1 respectively) specifically
+    // so binding sphereBuffer at atIndex:0 and diskBuffer at
+    // atIndex:1 here reaches the right function's own data, not a
+    // shared/overwritten slot.
+    MTLIntersectionFunctionTableDescriptor* fnTableDesc = [MTLIntersectionFunctionTableDescriptor new];
+    fnTableDesc.functionCount = 2;
+    id<MTLIntersectionFunctionTable> functionTable = [pipeline newIntersectionFunctionTableWithDescriptor:fnTableDesc];
+    id<MTLFunctionHandle> sphereHandle = [pipeline functionHandleWithFunction:sphereIntersectFn];
+    id<MTLFunctionHandle> diskHandle = [pipeline functionHandleWithFunction:diskIntersectFn];
+    [functionTable setFunction:sphereHandle atIndex:0];
+    [functionTable setFunction:diskHandle atIndex:1];
+    // sphereIntersectionFunction/diskIntersectionFunction each read
+    // their own geometry buffer (metal_poc.metal buffer(0)/buffer(1)
+    // respectively - a SEPARATE argument table from the calling
+    // kernel's own buffer(0..14), see that file's own comment) -
+    // bound here, on the function table, not on the compute encoder.
+    [functionTable setBuffer:sphereBuffer offset:0 atIndex:0];
+    [functionTable setBuffer:diskBuffer offset:0 atIndex:1];
+
+    // --- Output texture + uniforms ----------------------------------
+    MTLTextureDescriptor* texDesc = [MTLTextureDescriptor
+        texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+        width:width height:height mipmapped:NO];
+    texDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+    texDesc.storageMode = MTLStorageModeShared;
+    id<MTLTexture> outTexture = [device newTextureWithDescriptor:texDesc];
+
+    // --- Earth texture (the back wall's materialType=3 source) -----
+    // stb_image decodes straight to interleaved 8-bit RGBA regardless
+    // of the source JPEG's channel count (the 4th `desiredChannels`
+    // arg below), which is exactly MTLPixelFormatRGBA8Unorm_sRGB's own
+    // BYTE layout - no repacking needed between stbi_load's buffer and
+    // replaceRegion:. The `_sRGB` pixel format (not plain
+    // `RGBA8Unorm`, this POC's own format up through PR #37) matters
+    // for more than naming: an ordinary 8-bit JPEG/PNG's own stored
+    // bytes are sRGB-gamma-ENCODED (perceptually, not linearly,
+    // spaced) - every earlier render sampled those bytes directly as
+    // if they were already linear radiance, silently darkening every
+    // midtone the earth texture (and, via GI, everything it bounces
+    // light onto) ever produced. `_sRGB` makes the texture SAMPLE
+    // instruction itself convert sRGB to linear before the shader
+    // ever sees a value - the standard, hardware-accelerated way to
+    // do this, rather than a manual `pow(c, 2.2)` after sampling in
+    // the shader.
+#ifdef RT_MODELS_DIR
+    NSString* imagesDir = [[@(RT_MODELS_DIR) stringByDeletingLastPathComponent]
+        stringByAppendingPathComponent:@"images"];
+#else
+    NSString* imagesDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+        stringByAppendingPathComponent:@"../../images"];
+#endif
+    NSString* earthPath = [imagesDir stringByAppendingPathComponent:@"earthmap.jpg"];
+    int earthW = 0, earthH = 0, earthChannels = 0;
+    unsigned char* earthPixels = stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
+    id<MTLTexture> earthTexture = nil;
+    if (earthPixels) {
+        MTLTextureDescriptor* earthDesc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB
+            width:(NSUInteger)earthW height:(NSUInteger)earthH mipmapped:NO];
+        earthDesc.usage = MTLTextureUsageShaderRead;
+        earthDesc.storageMode = MTLStorageModeShared;
+        earthTexture = [device newTextureWithDescriptor:earthDesc];
+        MTLRegion earthRegion = MTLRegionMake2D(0, 0, (NSUInteger)earthW, (NSUInteger)earthH);
+        [earthTexture replaceRegion:earthRegion mipmapLevel:0 withBytes:earthPixels
+            bytesPerRow:(NSUInteger)earthW * 4];
+        stbi_image_free(earthPixels);
+        fprintf(stderr, "Loaded %s: %dx%d, %d channels\n", earthPath.UTF8String, earthW, earthH, earthChannels);
+    } else {
+        fprintf(stderr, "Could not load %s - back wall will read black/undefined texture data.\n",
+            earthPath.UTF8String);
+        // A 1x1 white fallback keeps the shader's unconditional
+        // texture bind valid (Metal requires SOME texture at the
+        // bound slot) even if the JPEG is missing. `_sRGB` for
+        // consistency with the real texture above, though pure white
+        // (255,255,255) round-trips through the sRGB<->linear
+        // conversion unchanged either way.
+        MTLTextureDescriptor* fallbackDesc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB width:1 height:1 mipmapped:NO];
+        fallbackDesc.usage = MTLTextureUsageShaderRead;
+        fallbackDesc.storageMode = MTLStorageModeShared;
+        earthTexture = [device newTextureWithDescriptor:fallbackDesc];
+        uint8_t white4[4] = {255, 255, 255, 255};
+        [earthTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:white4 bytesPerRow:4];
+    }
+
+    const uint32_t samplesPerPixel = (argc > 4) ? (uint32_t)atoi(argv[4]) : 64;
+    const uint32_t maxDepth = (argc > 5) ? (uint32_t)atoi(argv[5]) : 8;
+    fprintf(stderr, "Samples/pixel: %u, max depth: %u\n", samplesPerPixel, maxDepth);
+
+    Uniforms uniforms{};
+    uniforms.cameraPos = PackedFloat3{0.0f, 0.0f, 3.2f};
+    float3 forward = simd::normalize(float3{0, 0, -1});
+    uniforms.cameraForward = PackedFloat3{forward.x, forward.y, forward.z};
+    uniforms.cameraRight = PackedFloat3{1, 0, 0};
+    uniforms.cameraUp = PackedFloat3{0, 1, 0};
+    uniforms.tanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    uniforms.aspect = (float)width / (float)height;
+    uniforms.width = width;
+    uniforms.height = height;
+    uniforms.samplesPerPixel = samplesPerPixel;
+    uniforms.maxDepth = maxDepth;
+    uniforms.frameSeed = 1u;
+    uniforms.lightCount = (uint32_t)lights.size();
+    // Thin-lens depth of field: focused on the gold conductor sphere
+    // (the nearest object to the camera), so it renders pixel-sharp
+    // while the dielectric sphere just behind it and the back
+    // wall/Suzanne further back show progressively more defocus blur -
+    // the falloff is what actually demonstrates this is a real lens
+    // model, not just a uniform blur filter over the whole frame.
+    uniforms.lensRadius = 0.05f;
+    uniforms.focusDistance = uniforms.cameraPos.z - spheres[1].center.z; // gold sphere's own z
+    // A hexagonal (6-blade) aperture rather than a perfectly circular
+    // one - see Uniforms' own apertureBlades comment. The classic
+    // photographic blade count; out-of-focus highlights (area/point/
+    // spot light reflections on the defocused back-wall geometry)
+    // should now read as hexagons, not perfect circles.
+    uniforms.apertureBlades = 6;
+    // Shutter motion blur: a small horizontal dolly over the frame's
+    // simulated exposure - chosen (over, say, an object moving) since
+    // it needs no acceleration-structure/intersection-function
+    // changes at all, purely a primary-ray-generation addition (see
+    // metal_poc.metal's own comment on why: a moving CUSTOM primitive
+    // would need per-sample time threaded into
+    // sphereIntersectionFunction's own, separate argument table, real
+    // additional Metal API surface this increment intentionally
+    // doesn't take on).
+    uniforms.cameraVelocity = PackedFloat3{0.015f, 0.0f, 0.0f};
+    // Homogeneous fog filling the whole room - subtle (transmittance
+    // ~0.7 over the ~4-unit camera-to-back-wall sightline: exp(-0.08*4)
+    // ~ 0.73), meant to read as a light atmospheric haze visible in
+    // the light shafts/depth falloff, not an opaque room-filling mist
+    // that would fight every other material's own visibility.
+    uniforms.fogSigmaT = 0.05f;
+    uniforms.fogAlbedo = PackedFloat3{0.85f, 0.88f, 0.95f}; // mostly-scattering, faint cool tint
+    // On: a miss ray samples earthTexture by direction (equirectangular)
+    // instead of the flat two-colour gradient - the room's open front
+    // means most miss rays are secondary/GI bounces (a mirror/glass
+    // surface reflecting/refracting outward), not primary camera rays,
+    // so this mostly shows up subtly rather than as an obvious visible
+    // backdrop - see docs/METAL_GPU_FEASIBILITY.md's own note on
+    // verifying this with a dedicated wide-FOV test render.
+    uniforms.useEnvironmentMap = 1u;
+    // Moderate forward scattering (real fog/haze skews strongly
+    // forward in reality - Mie scattering off water droplets often
+    // has g around 0.7-0.9 - 0.4 is deliberately more modest, so the
+    // difference from isotropic reads as a stylistic tint on the fog
+    // rather than a dramatic visible change).
+    uniforms.fogAsymmetryG = 0.4f;
+    uniforms.pointLightCount = (uint32_t)pointLights.size();
+    uniforms.directionalLightCount = (uint32_t)directionalLights.size();
+    uniforms.projectionLightCount = (uint32_t)projectionLights.size();
+    // Single-pass adaptive sampling (see metal_poc.metal's own
+    // shading-loop comment) - enabled by default for this scene:
+    // converged pixels (most of the flat-coloured walls/ceiling)
+    // stop well short of the full samplesPerPixel budget, spending
+    // it instead on the noisier fog/specular/caustic regions this
+    // scene already has plenty of - a real render-TIME win at
+    // (ideally) no visible quality cost, verified via a dedicated
+    // A/B render, not assumed.
+    uniforms.adaptiveSampling = 1u;
+    id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
+
+    // --- Dispatch ----------------------------------------------------
+    id<MTLCommandBuffer> renderCmd = [queue commandBuffer];
+    id<MTLComputeCommandEncoder> enc = [renderCmd computeCommandEncoder];
+    [enc setComputePipelineState:pipeline];
+    [enc setTexture:outTexture atIndex:0];
+    [enc setTexture:earthTexture atIndex:1];
+    [enc setAccelerationStructure:instAS atBufferIndex:0];
+    [enc setBuffer:uniformBuffer offset:0 atIndex:1];
+    [enc setBuffer:materialBuffer offset:0 atIndex:2];
+    [enc setBuffer:vertexBuffer offset:0 atIndex:3];
+    [enc setBuffer:sphereMaterialBuffer offset:0 atIndex:4];
+    [enc setBuffer:sphereBuffer offset:0 atIndex:5];
+    [enc setIntersectionFunctionTable:functionTable atBufferIndex:6];
+    [enc setBuffer:normalBuffer offset:0 atIndex:7];
+    [enc setBuffer:uvBuffer offset:0 atIndex:8];
+    [enc setBuffer:lightBuffer offset:0 atIndex:9];
+    [enc setBuffer:suzanneNormalBuffer offset:0 atIndex:10];
+    [enc setBuffer:suzanneMaterialBuffer offset:0 atIndex:11];
+    [enc setBuffer:instanceTransformBuffer offset:0 atIndex:12];
+    [enc setBuffer:diskBuffer offset:0 atIndex:13];
+    [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
+    [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
+    [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
+    [enc setBuffer:projectionLightBuffer offset:0 atIndex:17];
+    // Mark the AS + its dependent primitive ASes as used so Metal
+    // knows about the indirection - required for instance
+    // acceleration structures referencing primitive ones (now three:
+    // the room+Spot triangle mesh, the sphere's bounding-box
+    // geometry, and Suzanne's own - referenced by TWO instances, but
+    // only needs marking used once here, not once per instance).
+    [enc useResource:primAS usage:MTLResourceUsageRead];
+    [enc useResource:sphereAS usage:MTLResourceUsageRead];
+    [enc useResource:suzanneAS usage:MTLResourceUsageRead];
+
+    MTLSize gridSize = MTLSizeMake(width, height, 1);
+    NSUInteger w = pipeline.threadExecutionWidth;
+    NSUInteger h = pipeline.maxTotalThreadsPerThreadgroup / w;
+    MTLSize threadgroupSize = MTLSizeMake(w, h, 1);
+    [enc dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
+    [enc endEncoding];
+    [renderCmd commit];
+    [renderCmd waitUntilCompleted];
+    if (renderCmd.status == MTLCommandBufferStatusError) {
+        fprintf(stderr, "Render dispatch failed: %s\n", renderCmd.error.localizedDescription.UTF8String);
+        return false;
+    }
+
+    // --- Read back into `pixels` (post-processed and written to disk
+    // by postProcessAndWrite(), below) --------------------------------
+    pixels.resize(width * height * 4);
+    MTLRegion region = MTLRegionMake2D(0, 0, width, height);
+    [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
+    return true;
+}
+
+// --- Stage 5: post-process the linear HDR buffer and write the PNG -----
+// (chromatic aberration, then lens vignette, then the selected tonemap
+// operator, then the real sRGB OETF, then bilateral denoise)
+void MetalPocApp::postProcessAndWrite() {
+    const float vignetteStrength = 0.18f;
+    const float chromaticAberrationStrength = 0.004f;
+    std::vector<uint8_t> ldr(width * height * 3);
+    for (uint32_t i = 0; i < width * height; ++i) {
+        uint32_t px = i % width;
+        uint32_t py = i / width;
+        float vignette = vignetteFactor(px, py, width, height, vignetteStrength);
+        float rgb[3];
+        chromaticAberration(pixels, width, height, px, py, chromaticAberrationStrength,
+                             &rgb[0], &rgb[1], &rgb[2]);
+        for (int c = 0; c < 3; ++c) {
+            float v = fmaxf(rgb[c], 0.0f) * vignette;
+            v = applyToneMap(v, toneMapMode);
+            v = linearToSRGB(v);
+            ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
+        }
+    }
+    // Bilateral denoise - see that function's own comment. Radius 3
+    // (7x7), sigmaSpatial 2.5, sigmaRange 20.0 (in 0-255 luminance
+    // units) - tuned the same way every other post-process knob this
+    // POC has added was: by rendering and comparing, not from theory
+    // alone. A much more aggressive setting (radius 4, sigmaRange 80)
+    // was also tried and rejected - it visibly softened the crystal
+    // ball's own sharp specular highlight and the checkerboard
+    // floor's own tile edges, confirming this knob really can wash
+    // out real detail if pushed too far, not just theoretically.
+    std::vector<uint8_t> denoised(width * height * 3);
+    bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
+
+    stbi_write_png(outPath, width, height, 3, denoised.data(), width * 3);
+    fprintf(stderr, "Wrote %s (%ux%u)\n", outPath, width, height);
+}
+
 int main(int argc, const char** argv) {
     @autoreleasepool {
-        const uint32_t width = (argc > 1) ? (uint32_t)atoi(argv[1]) : 400;
-        const uint32_t height = (argc > 2) ? (uint32_t)atoi(argv[2]) : 400;
-        const char* outPath = (argc > 3) ? argv[3] : "/tmp/metal_poc_render.png";
-        const ToneMapMode toneMapMode = parseToneMapMode((argc > 6) ? argv[6] : nullptr);
-
-        // MTLCreateSystemDefaultDevice() is explicitly documented as
-        // unsupported for command-line/daemon processes (confirmed via
-        // `log show`: "Use of MTLCreateSystemDefaultDevice is not
-        // supported for non-interactive (commandline or daemon) apps. Use
-        // MTLCopyAllDevices(WithObserver) instead.") - this POC is a plain
-        // CLI tool, not an app bundle, so it needs the enumeration API.
-        id<MTLDevice> device = nil;
-        NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
-        if (devices.count > 0) device = devices[0];
-        if (!device) {
-            fprintf(stderr, "No Metal device available.\n");
-            return 1;
-        }
-        fprintf(stderr, "Metal device: %s\n", device.name.UTF8String);
-        if (!device.supportsRaytracing) {
-            fprintf(stderr, "Device does not support hardware raytracing.\n");
-            return 1;
-        }
-
-        id<MTLCommandQueue> queue = [device newCommandQueue];
-
-        // --- Scene: a Cornell-box-like room, world units ~[-1,1] --------
-        // Matches this project's CPU Cornell box in spirit (floor/ceiling/
-        // back wall + coloured side walls + an object), not in exact
-        // dimensions - this POC's scene is entirely separate authored data,
-        // not a shared asset with cpu_renderer/.
-        std::vector<PackedFloat3> verts;
-        std::vector<PackedFloat3> normals;
-        std::vector<PackedFloat2> uvs;
-        std::vector<TriangleMaterial> materials;
-
-        const float3 white{0.73f, 0.73f, 0.73f};
-        const float3 red{0.65f, 0.05f, 0.05f};
-        const float3 green{0.12f, 0.45f, 0.15f};
-
-        // Floor (y = -1) - procedural checkerboard (materialType 6), the
-        // one surface in the scene that samples NO texture/image at all
-        // for its albedo, a genuinely different technique from
-        // materialType 3's earthTexture lookup (analytic UV math instead
-        // of a sampler call). addQuad()'s own planar 0-1 UVs across the
-        // whole floor, combined with checkerColor()'s own 8-tiles-per-UV-
-        // unit scale, give 8x8 tiles across the room's own floor.
-        addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white, /*materialType=*/6);
-        // Ceiling (y = 1)
-        addQuad(verts, normals, uvs, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
-        // Back wall (z = -1) - textured (materialType 3): the one surface
-        // in the scene that samples earthTexture, chosen because it's the
-        // large flat backdrop the camera looks straight at, showing the
-        // whole 0-1 UV mapping unobstructed.
-        addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white, /*materialType=*/3);
-        // Left wall (x = -1), red
-        addQuad(verts, normals, uvs, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
-        // Right wall (x = 1), green
-        addQuad(verts, normals, uvs, materials, float3{1,-1,-1}, float3{1,1,-1}, float3{1,1,1}, float3{1,-1,1}, green);
-        // A small procedurally bump-mapped panel (materialType 7),
-        // flush-mounted just in front of the back wall (z = -0.99, the
-        // same off-surface margin the mirror disk/other flush-mounted
-        // geometry already uses to avoid z-fighting) rather than a side
-        // wall - the one surface in the scene whose shading normal is
-        // perturbed AWAY from its own true (perfectly flat) geometric
-        // normal, an analytic egg-carton height field rather than a
-        // stored normal-map texture (no new image asset needed - see
-        // metal_poc.metal's own proceduralBumpNormal() comment).
-        // Positioned in the region the directional light (see
-        // metal_poc.metal's own DirectionalLight comment) hits closest to
-        // head-on, not tucked against a side wall - a first attempt
-        // mounted on the red wall got barely any direct light at all
-        // (nearly the same shallow self-shadowing the directional light's
-        // own doc describes for that wall), making the bump invisible
-        // under GI-only ambient lighting; moved here after that render
-        // came back looking completely flat, not assumed correct from
-        // the code alone. `roughness` here means bump strength, not a
-        // BRDF parameter - materialType 7's own reuse of that field, see
-        // TriangleMaterial's comment above.
-        addQuad(verts, normals, uvs, materials,
-                float3{0.15f, -0.3f, -0.99f}, float3{0.15f, 0.3f, -0.99f},
-                float3{0.75f, 0.3f, -0.99f}, float3{0.75f, -0.3f, -0.99f},
-                float3{0.55f, 0.5f, 0.45f}, /*materialType=*/7,
-                /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
-                /*roughness(bump strength)=*/0.6f);
-        // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
-        // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
-        // test object": mirror MATERIAL coverage is already proven (the
-        // sphere/dielectric PR's own mirror-quad screenshots), what this
-        // scene hadn't tested yet is real, DATA-DRIVEN geometry with
-        // genuine per-triangle normal variation, not a hand-authored
-        // axis-aligned quad. Lambertian so its form reads clearly via
-        // shading rather than showing room reflections. RT_MODELS_DIR
-        // mirrors RT_METAL_SHADER_DIR's own fallback shape below.
-        //
-        // Loaded into ITS OWN vertex/normal/uv/material vectors (not the
-        // shared `verts`/`normals`/`uvs`/`materials` the room quads and
-        // Spot still use) - Suzanne gets her own acceleration structure
-        // below, instanced twice with two DIFFERENT transforms, the one
-        // piece of this scene that actually exercises a non-identity
-        // instance transform. A shared-buffer object can only ever have
-        // ONE position (it's baked directly into world-space vertex
-        // positions at load time); testing instancing needs the SAME
-        // object-space geometry referenced from more than one instance
-        // descriptor, which needs its own acceleration structure.
-#ifdef RT_MODELS_DIR
-        NSString* modelsDir = @(RT_MODELS_DIR);
-#else
-        NSString* modelsDir = [[@(__FILE__) stringByDeletingLastPathComponent]
-            stringByAppendingPathComponent:@"../../models"];
-#endif
-        NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
-        const float3 bronze{0.55f, 0.35f, 0.15f};
-        std::vector<PackedFloat3> suzanneVerts;
-        std::vector<PackedFloat3> suzanneNormals;
-        std::vector<PackedFloat2> suzanneUVs;
-        std::vector<TriangleMaterial> suzanneMaterials;
-        if (!loadObjMesh(suzannePath.UTF8String, suzanneVerts, suzanneNormals, suzanneUVs, suzanneMaterials, bronze,
-                          /*center=*/float3{0.0f, 0.0f, 0.0f}, /*targetSize=*/0.75f)) {
-            fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
-        }
-
-        // Spot (Keenan Crane's textured cow model, models/spot.obj) - unlike
-        // suzanne.obj, this file has real per-face-corner `vt` data (3225
-        // entries) and NO `vn` at all, the exact inverse case from Suzanne's
-        // own (vn on every face, no vt) - loading it exercises
-        // loadObjMesh()'s real-UV path (not just its zero-fallback path)
-        // and its flat-normal fallback path in the same call, closing the
-        // texture-mapping PR's own explicitly-deferred "real vt/f v/vt/vn
-        // parsing" item. materialType 3 (textured) reuses `earthTexture` -
-        // wrapping a world map onto a cow is a deliberately silly texture
-        // choice for a mesh that was never authored to use it, but it's
-        // exactly what makes this a REAL demonstration of per-vertex UV
-        // interpolation rather than a coincidentally-plausible-looking
-        // result: the world map's grid lines and coastlines have to follow
-        // spot's actual surface curvature for this to look right at all.
-        NSString* spotPath = [modelsDir stringByAppendingPathComponent:@"spot.obj"];
-        if (!loadObjMesh(spotPath.UTF8String, verts, normals, uvs, materials, white,
-                          /*center=*/float3{0.78f, -0.75f, 0.6f}, /*targetSize=*/0.42f,
-                          /*materialType=*/3)) {
-            fprintf(stderr, "Continuing without Spot - check RT_MODELS_DIR / models/spot.obj.\n");
-        }
-
-        // Area lights: real geometry, hanging just under the ceiling
-        // (y=0.98, not y=1 itself - avoids z-fighting/coplanar overlap
-        // with the ceiling's own quad above), facing straight down. Two
-        // separate lights (not one, as every previous PR up through #11
-        // had) - the smallest scene change that actually exercises
-        // `lights` as a genuine LIST rather than a single renamed
-        // constant: a warm light and a cool light side by side prove the
-        // shader's own light-picking/MIS code path handles more than one
-        // entry, visibly (two independently-coloured highlights/shadow
-        // directions), not just structurally. `addAreaLight` keeps each
-        // call's geometry (addQuad, tagged with this light's own index
-        // via materialType/lightId) and its AreaLightData entry (same
-        // corners, reduced to center/edgeU/edgeV/normal/area) in sync by
-        // construction, rather than needing two hand-authored, separately-
-        // maintained descriptions of the same quad the way the single-
-        // light version's kLightCenter/kLightHalfExtents/kLightNormal
-        // constants over in metal_poc.metal used to (see that file's
-        // AreaLight struct comment for the "replacing..." history).
-        std::vector<AreaLightData> lights;
-        // `patternTileB`/`patternScale` default to 0 (flat emission,
-        // materialType 0) - see AreaLightData's own comment. Passing a
-        // nonzero `patternScale` switches the light's own triangles to
-        // materialType 10 too, so a direct hit and an NEE sample both
-        // evaluate the SAME checker pattern (just at each one's own
-        // different point on the light - see metal_poc.metal's own
-        // comments on materialType 10 and AreaLight for why that needs
-        // two separate evaluations, not one shared value).
-        auto addAreaLight = [&](float3 a, float3 b, float3 c, float3 d, float3 emission,
-                                 float patternTileB = 0.0f, float patternScale = 0.0f) {
-            int32_t lightId = (int32_t)lights.size();
-            uint32_t materialType = (patternScale > 0.0f) ? 10u : 0u;
-            addQuad(verts, normals, uvs, materials, a, b, c, d, white,
-                    materialType, emission, lightId, /*roughness(pattern tileB)=*/patternTileB);
-            float3 edgeU = b - a;
-            float3 edgeV = d - a;
-            float3 normal = simd::normalize(simd::cross(edgeU, edgeV));
-            float area = simd::length(simd::cross(edgeU, edgeV));
-            float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
-            lights.push_back(AreaLightData{
-                PackedFloat3{center.x, center.y, center.z},
-                PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
-                PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
-                PackedFloat3{normal.x, normal.y, normal.z},
-                area,
-                PackedFloat3{emission.x, emission.y, emission.z},
-                patternTileB,
-                patternScale});
-        };
-        // Both ceiling lights' own colours now come from blackbodyColor()
-        // (see that function's own comment, added for the point/spot/
-        // directional lights) rather than the hand-picked tuples above -
-        // 2700 K (a standard incandescent bulb) for the warm one, 20000 K
-        // (near the top of the fit's own valid range, a very hot/blue-
-        // white source) for the cool one. Notably, 20000K's own derived
-        // colour is nowhere near as saturated a blue as the hand-picked
-        // (6, 10, 18) it replaces - real blackbody radiation never gets
-        // that saturated; no amount of temperature produces a deeply
-        // saturated blue the way an artistic RGB pick can. A real,
-        // honestly-reported limitation of deriving colour from physical
-        // temperature, not swept under the rug.
-        const float3 warmAreaLightColor = blackbodyColor(2700.0f) * 15.5f;
-        const float3 coolAreaLightColor = blackbodyColor(20000.0f) * 13.9f;
-        addAreaLight(float3{-0.58f,0.98f,-0.25f}, float3{-0.22f,0.98f,-0.25f},
-                     float3{-0.22f,0.98f,0.25f}, float3{-0.58f,0.98f,0.25f},
-                     /*emission=*/warmAreaLightColor);
-        // The cool light also gets a patterned diffuser-grid look
-        // (materialType 10 - see that comment for the full "why"), a
-        // real fixture detail the flat-emission warm light doesn't have:
-        // tile B at 40% of tile A's own brightness (a translucent grid,
-        // not fully opaque black bars) across a 6x6 tiling of the
-        // light's own 0-1 UV span.
-        addAreaLight(float3{0.22f,0.98f,-0.25f}, float3{0.58f,0.98f,-0.25f},
-                     float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
-                     /*emission=*/coolAreaLightColor,
-                     /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
-        // Builds each light's own pmf/aliasProb/aliasIndex in place - see
-        // buildPowerLightSampler()'s own comment. Must run after every
-        // addAreaLight() call above (needs the full, final light list) and
-        // before `lights` gets uploaded to the GPU buffer below.
-        buildPowerLightSampler(lights, logPowerLightSamplerLine);
-
-        // Two spheres, both custom (non-triangle) primitives via a shared
-        // bounding-box acceleration structure + intersection function
-        // (metal_poc.metal's sphereIntersectionFunction indexes into
-        // `spheres`/`sphereMaterials` by primitive_id, so any number of
-        // spheres share one geometry/one intersection function - adding a
-        // second one below is purely a host-side array-of-2 change, no
-        // shader change) - the one "Medium risk, unconfirmed" item
-        // docs/METAL_GPU_FEASIBILITY.md section 3 originally flagged that
-        // the room/mirror geometry alone hadn't exercised (triangles only).
-        // Sphere 0: glass, ior 1.5 matches common glass, same value this
-        // project's own CPU Cornell box scene (A1) uses for its glass
-        // sphere. Sphere 1: a rough (GGX) conductor - gold-ish F0, roughness
-        // 0.15 (a fairly tight but visibly non-mirror highlight), placed on
-        // the opposite side of the room so both new-material spheres read
-        // clearly side by side.
-        // Sphere 2: rough (frosted) dielectric, materialType 5 - small,
-        // front-and-centre between the other two spheres and just in
-        // front of Suzanne. An earlier back-left-corner placement turned
-        // out to sit almost exactly along the camera-to-gold-sphere
-        // sightline (both ~20% off-axis, gold sphere much closer/larger)
-        // and was fully hidden - caught by actually rendering and
-        // inspecting the image, not by the bounding-region math alone
-        // (which only rules out 3D overlap, not 2D screen-space
-        // occlusion) - this position was checked against both.
-        // Sphere 3: a procedurally roughness-mapped GGX conductor
-        // (materialType 9) - a "worn/scratched copper" look, patches of
-        // near-mirror-smooth and rough microfacet regions on the SAME
-        // surface (see metal_poc.metal's own materialType 9 comment).
-        // Genuinely different from sphere 1's own anisotropic roughness:
-        // that one varies BY DIRECTION at a single point (one alpha per
-        // tangent axis, constant everywhere on the sphere); this one
-        // varies BY LOCATION (alpha itself is a function of where on the
-        // sphere you look, isotropic at any single point). Placed
-        // resting on the floor (`y = -1 + radius`, matching every other
-        // floor sphere's own convention) at the room's front-right,
-        // clear of the gold sphere/Spot/the disk mirror - checked by
-        // rendering and inspecting, not just the bounding-sphere math.
-        // Sphere 4: clearcoat/glossy-plastic (materialType 8) - a deep
-        // red "car paint" look, a sharp specular highlight riding on top
-        // of a genuinely diffuse (not metallic) coloured base, the
-        // signature that distinguishes this from every reflective
-        // material already in the scene (mirror/GGX conductor are
-        // colour-tinted AT the reflection itself; clearcoat's own
-        // reflection stays colourless/white, only the diffuse base
-        // beneath carries colour). Placed at the room's front-right,
-        // deliberately at a different x AND z from Spot-the-cow (this
-        // POC's own established near-miss from sphere 3's own placement:
-        // sharing an x coordinate with a closer foreground object hid it
-        // completely) and the gold sphere.
-        std::vector<SphereData> spheres = {
-            SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
-            SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
-            SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
-            SphereData{PackedFloat3{-0.78f, -0.78f, 0.7f}, 0.18f},
-            SphereData{PackedFloat3{0.8f, -0.85f, 1.0f}, 0.15f},
-        };
-        // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
-        // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
-        // comment), not a reflectance/tint the way every other material's
-        // `color` field is read - {1,1,1} would have meant "absorb
-        // everything, render black" under this new interpretation, so
-        // both dielectric spheres' old placeholder {1,1,1} "clear glass"
-        // values were replaced with real per-channel absorption:
-        // sphere 0 is emerald-tinted (absorbs red/blue faster than
-        // green, getting more richly green toward its own thicker
-        // centre), sphere 2 a much milder amber (still reads mostly
-        // frosted-white, just warmed slightly).
-        std::vector<TriangleMaterial> sphereMaterials = {
-            TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.35f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
-            // Genuinely ANISOTROPIC now (alphaX from `ior`, alphaY from
-            // `roughness` - see TriangleMaterial's own comment): a tight
-            // 0.08 in one tangent direction and a much broader 0.45 in
-            // the other, the classic "brushed metal" look - a real,
-            // deliberate change from the previously-isotropic 0.15 this
-            // sphere used through step 22, not a value chosen to
-            // preserve the old appearance (that A/B check is done via a
-            // dedicated verification render instead, not the committed
-            // scene - see docs/METAL_GPU_FEASIBILITY.md's own note).
-            TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*alphaX=*/0.08f, PackedFloat3{0, 0, 0},
-                             /*lightId=*/-1, /*alphaY=*/0.45f},
-            TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
-                             /*lightId=*/-1, /*roughness=*/0.35f},
-            // materialType 9: `ior` is the SMOOTH patch's own perceptual
-            // roughness, `roughness` the ROUGH patch's - both squared
-            // into GGX alpha exactly like materialType 4 already does,
-            // just picked between by an analytic UV-space checker
-            // pattern instead of being one constant.
-            TriangleMaterial{PackedFloat3{0.8f, 0.45f, 0.2f}, /*materialType=*/9, /*ior(smooth)=*/0.05f, PackedFloat3{0, 0, 0},
-                             /*lightId=*/-1, /*roughness(rough)=*/0.6f},
-            // materialType 8: `color` is the diffuse BASE colour under
-            // the coat (materialType 0's own convention) - a deep,
-            // fairly saturated red, since the coat's own reflection
-            // stays colourless regardless.
-            TriangleMaterial{PackedFloat3{0.55f, 0.05f, 0.06f}, /*materialType=*/8, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
-        };
-
-        // A wall-mounted mirror disk (materialType 1) - a second, distinct
-        // custom-primitive SHAPE, not just another sphere. Every custom
-        // primitive so far (however many) has gone through the SAME
-        // intersection function at function-table slot 0; this is what
-        // actually exercises a second, different function at slot 1 (see
-        // metal_poc.metal's own comment on diskIntersectionFunction).
-        // Also, incidentally, the first object in this whole scene to use
-        // materialType 1 (mirror) at all - it's existed in the shader
-        // since the very first multi-material step but nothing had
-        // actually used it since the mirror test quad was replaced by the
-        // dielectric sphere back in step 6.
-        std::vector<DiskData> disks = {
-            DiskData{PackedFloat3{0.97f, 0.3f, -0.3f}, PackedFloat3{-1.0f, 0.0f, 0.0f}, 0.22f},
-        };
-        std::vector<TriangleMaterial> diskMaterials = {
-            TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/1, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
-        };
-
-        // A true delta point light - genuinely different from every
-        // AreaLight above (zero area, hard-edged shadows, no NEE/MIS
-        // weighting needed at all - see metal_poc.metal's own PointLight
-        // comment). Placed off-axis from both area lights so it adds a
-        // THIRD, distinctly-positioned specular highlight to the
-        // reflective spheres/disk rather than blending into an existing
-        // one - the easiest way to visually confirm it's really
-        // contributing light, not just present in the buffer unused.
-        // Second point light: a genuine SPOT (cone-restricted), unlike the
-        // first one's omnidirectional glow - aimed down at Spot-the-cow's
-        // own floor area, a real "pool of light" cone signature an
-        // omnidirectional point light cannot produce at all (its own
-        // illumination falls off with distance everywhere, never with
-        // ANGLE the way a spot's does). 25 degree outer / 15 degree inner
-        // cone (smoothstep-blended between them, not a hard edge).
-        //
-        // All three lights below get their own colour from
-        // blackbodyColor() at a NAMED physical temperature rather than a
-        // hand-picked RGB tuple - 9000 K (cool, moonlight-ish) for this
-        // first point light, 3000 K (warm tungsten) for the spot, 5778 K
-        // (the Sun's own real photosphere temperature) for the
-        // directional light below. Each still scaled by a plain
-        // intensity multiplier chosen to land in roughly the same
-        // brightness range this scene's own lights already used - only
-        // the HUE is now derived, not the overall exposure.
-        const float3 spotPos = float3{0.65f, 0.9f, -0.1f};
-        const float3 spotTarget = float3{0.7f, -1.0f, 0.4f};
-        const float3 spotDir = simd::normalize(spotTarget - spotPos);
-        const float3 pointLight1Color = blackbodyColor(9000.0f) * 1.0f;
-        const float3 spotLightColor = blackbodyColor(3000.0f) * 11.3f;
-        std::vector<PointLightData> pointLights = {
-            PointLightData{PackedFloat3{0.0f, 0.3f, 0.3f}, PackedFloat3{pointLight1Color.x, pointLight1Color.y, pointLight1Color.z}},
-            PointLightData{PackedFloat3{spotPos.x, spotPos.y, spotPos.z}, PackedFloat3{spotLightColor.x, spotLightColor.y, spotLightColor.z},
-                           PackedFloat3{spotDir.x, spotDir.y, spotDir.z},
-                           /*cosOuterAngle=*/cosf(25.0f * (float)M_PI / 180.0f),
-                           /*cosInnerAngle=*/cosf(15.0f * (float)M_PI / 180.0f)},
-        };
-
-        // A directional ("sun") light - genuinely different in KIND from
-        // both point-light entries above: parallel rays with no position
-        // and no distance falloff at all, rather than one more delta
-        // light radiating from a finite point (see metal_poc.metal's own
-        // DirectionalLight comment). Aimed through the room's own open
-        // front (the z=1 face has no wall - see the floor/ceiling/wall
-        // addQuad() calls above): `direction` points mostly along -z with
-        // a slight -y/+x tilt, so tracing back toward the light from
-        // anywhere in the [-1,1]^3 room exits through that open face
-        // before it would cross the ceiling (y=1) or either side wall,
-        // rather than being trivially self-shadowed by this room's own
-        // geometry on every shading point.
-        const float3 sunColor = blackbodyColor(5778.0f) * 2.7f;
-        std::vector<DirectionalLightData> directionalLights = {
-            DirectionalLightData{PackedFloat3{0.1f, -0.15f, -1.0f}, PackedFloat3{sunColor.x, sunColor.y, sunColor.z}},
-        };
-
-        // A "slide projector" light - see metal_poc.metal's own
-        // ProjectionLight comment. Mounted near the ceiling on the room's
-        // centre-left, aimed down and across at the green (right, x=1)
-        // wall's own lower-mid area - a plain, otherwise-undecorated flat
-        // Lambertian surface (unlike the back wall, already carrying its
-        // own mural texture), so the projected earthmap image reads as
-        // unambiguously new rather than blending into existing detail.
-        // Reuses `earthTexture` (already loaded for materialType 3's own
-        // back-wall texture, see that PR's own comment) as the projected
-        // image, rather than a separate asset - the same "a world map
-        // projected like a slide" idea, just illuminating a wall instead
-        // of decorating one. 32 degree (full vertical) FOV keeps this
-        // reading as a defined projector "beam," not floodlighting the
-        // whole wall; aspect 2.0 roughly matches earthmap.jpg's own
-        // 2048x1025 (~2:1) proportions so the projected image isn't
-        // visibly stretched.
-        std::vector<ProjectionLightData> projectionLights = {
-            makeProjectionLight(/*position=*/float3{0.1f, 0.85f, -0.15f},
-                                 /*target=*/float3{1.0f, -0.05f, -0.15f},
-                                 /*worldUp=*/float3{0.0f, 1.0f, 0.0f},
-                                 /*fovDegrees=*/38.0f, /*aspect=*/2.0f, /*scale=*/25.0f),
-        };
-
-        const uint32_t triangleCount = (uint32_t)materials.size();
-        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights, %zu projection lights\n",
-                triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size(), projectionLights.size());
-
-        id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
-            length:verts.size() * sizeof(PackedFloat3)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> normalBuffer = [device newBufferWithBytes:normals.data()
-            length:normals.size() * sizeof(PackedFloat3)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> uvBuffer = [device newBufferWithBytes:uvs.data()
-            length:uvs.size() * sizeof(PackedFloat2)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> lightBuffer = [device newBufferWithBytes:lights.data()
-            length:lights.size() * sizeof(AreaLightData)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> pointLightBuffer = [device newBufferWithBytes:pointLights.data()
-            length:pointLights.size() * sizeof(PointLightData)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> directionalLightBuffer = [device newBufferWithBytes:directionalLights.data()
-            length:directionalLights.size() * sizeof(DirectionalLightData)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> projectionLightBuffer = [device newBufferWithBytes:projectionLights.data()
-            length:projectionLights.size() * sizeof(ProjectionLightData)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
-            length:materials.size() * sizeof(TriangleMaterial)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> sphereBuffer = [device newBufferWithBytes:spheres.data()
-            length:spheres.size() * sizeof(SphereData) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> sphereMaterialBuffer = [device newBufferWithBytes:sphereMaterials.data()
-            length:sphereMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> diskBuffer = [device newBufferWithBytes:disks.data()
-            length:disks.size() * sizeof(DiskData) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> diskMaterialBuffer = [device newBufferWithBytes:diskMaterials.data()
-            length:diskMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
-
-        const uint32_t suzanneTriangleCount = (uint32_t)suzanneMaterials.size();
-        id<MTLBuffer> suzanneVertexBuffer = [device newBufferWithBytes:suzanneVerts.data()
-            length:suzanneVerts.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> suzanneNormalBuffer = [device newBufferWithBytes:suzanneNormals.data()
-            length:suzanneNormals.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> suzanneMaterialBuffer = [device newBufferWithBytes:suzanneMaterials.data()
-            length:suzanneMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
-
-        // --- Primitive acceleration structure (the mesh's own BVH) ------
-        MTLAccelerationStructureTriangleGeometryDescriptor* geomDesc =
-            [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
-        geomDesc.vertexBuffer = vertexBuffer;
-        geomDesc.vertexStride = sizeof(PackedFloat3);
-        geomDesc.triangleCount = triangleCount;
-        // Explicit, not relying on the default: opaque means no any-hit
-        // shader gets consulted for this geometry's hits at all, so the
-        // hardware triangle intersector's result is taken directly - this
-        // matters once a function table is bound at trace time at all
-        // (added below, for the sphere), since without this a triangle
-        // hit could otherwise get routed through the SAME table slot the
-        // sphere's own intersection function occupies.
-        geomDesc.opaque = YES;
-
-        MTLPrimitiveAccelerationStructureDescriptor* primDesc =
-            [MTLPrimitiveAccelerationStructureDescriptor descriptor];
-        primDesc.geometryDescriptors = @[geomDesc];
-
-        MTLAccelerationStructureSizes primSizes = [device accelerationStructureSizesWithDescriptor:primDesc];
-        id<MTLAccelerationStructure> primAS = [device newAccelerationStructureWithSize:primSizes.accelerationStructureSize];
-        id<MTLBuffer> primScratch = [device newBufferWithLength:primSizes.buildScratchBufferSize
-            options:MTLResourceStorageModePrivate];
-
-        id<MTLCommandBuffer> buildCmd = [queue commandBuffer];
-        id<MTLAccelerationStructureCommandEncoder> buildEnc = [buildCmd accelerationStructureCommandEncoder];
-        [buildEnc buildAccelerationStructure:primAS descriptor:primDesc scratchBuffer:primScratch scratchBufferOffset:0];
-        [buildEnc endEncoding];
-        [buildCmd commit];
-        [buildCmd waitUntilCompleted];
-        if (buildCmd.status == MTLCommandBufferStatusError) {
-            fprintf(stderr, "Primitive AS build failed: %s\n", buildCmd.error.localizedDescription.UTF8String);
-            return 1;
-        }
-
-        // --- Second primitive acceleration structure: the spheres' own --
-        // bounding-box geometry (a custom/non-triangle primitive has no
-        // vertex data at all as far as the acceleration structure is
-        // concerned - just an AABB per primitive, with the real
-        // intersection test deferred to sphereIntersectionFunction at
-        // trace time). One AABB per entry in `spheres`, same index order -
-        // sphereIntersectionFunction's own primitive_id indexes both this
-        // buffer and `spheres`/`sphereMaterials` identically.
-        std::vector<MTLAxisAlignedBoundingBox> sphereBoundsList;
-        for (const SphereData& s : spheres) {
-            MTLAxisAlignedBoundingBox bounds;
-            bounds.min = MTLPackedFloat3Make(s.center.x - s.radius, s.center.y - s.radius, s.center.z - s.radius);
-            bounds.max = MTLPackedFloat3Make(s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius);
-            sphereBoundsList.push_back(bounds);
-        }
-        id<MTLBuffer> boundingBoxBuffer = [device newBufferWithBytes:sphereBoundsList.data()
-            length:sphereBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
-
-        MTLAccelerationStructureBoundingBoxGeometryDescriptor* bboxGeomDesc =
-            [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
-        bboxGeomDesc.boundingBoxBuffer = boundingBoxBuffer;
-        bboxGeomDesc.boundingBoxStride = sizeof(MTLAxisAlignedBoundingBox);
-        bboxGeomDesc.boundingBoxCount = (uint32_t)sphereBoundsList.size();
-        // intersectionFunctionTableOffset here is this GEOMETRY's own
-        // slot within whatever function table gets bound at trace time -
-        // 0, sphereIntersectionFunction's own slot (set up below,
-        // alongside the compute pipeline). The disk geometry added below
-        // uses slot 1 instead - the first time this POC's function table
-        // has needed more than one entry.
-        bboxGeomDesc.intersectionFunctionTableOffset = 0;
-        // Opaque here too: sphereIntersectionFunction is the REQUIRED
-        // primitive-intersection test for this custom geometry (always
-        // invoked, opaque or not - there's no hardware fallback for a
-        // bounding-box primitive), so opaque just means "accept its
-        // result directly," skip a second any-hit pass on top of it,
-        // exactly this POC's one-test-decides-it shape.
-        bboxGeomDesc.opaque = YES;
-
-        // The disk's own bounding-box geometry, a SECOND geometryDescriptor
-        // within the SAME primitive AS as the spheres (not a separate AS -
-        // Metal supports multiple heterogeneous geometries in one
-        // acceleration structure, distinguished at trace time by
-        // `geometry_id`, matching this array's own index order: spheres
-        // at 0, disk at 1 - see metal_poc.metal's own comment on why that
-        // distinction is needed now). Padded uniformly by a small epsilon
-        // in every axis (not just the disk's own zero-thickness normal
-        // axis) - simplest bound that's correct regardless of which axis
-        // the disk's normal happens to be aligned with, at the cost of a
-        // slightly looser-than-optimal box for a single small primitive.
-        const float diskBoundsEpsilon = 0.01f;
-        std::vector<MTLAxisAlignedBoundingBox> diskBoundsList;
-        for (const DiskData& d : disks) {
-            float r = d.radius + diskBoundsEpsilon;
-            MTLAxisAlignedBoundingBox bounds;
-            bounds.min = MTLPackedFloat3Make(d.center.x - r, d.center.y - r, d.center.z - r);
-            bounds.max = MTLPackedFloat3Make(d.center.x + r, d.center.y + r, d.center.z + r);
-            diskBoundsList.push_back(bounds);
-        }
-        id<MTLBuffer> diskBoundingBoxBuffer = [device newBufferWithBytes:diskBoundsList.data()
-            length:diskBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
-
-        MTLAccelerationStructureBoundingBoxGeometryDescriptor* diskGeomDesc =
-            [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
-        diskGeomDesc.boundingBoxBuffer = diskBoundingBoxBuffer;
-        diskGeomDesc.boundingBoxStride = sizeof(MTLAxisAlignedBoundingBox);
-        diskGeomDesc.boundingBoxCount = (uint32_t)diskBoundsList.size();
-        diskGeomDesc.intersectionFunctionTableOffset = 1; // diskIntersectionFunction's own slot
-        diskGeomDesc.opaque = YES;
-
-        MTLPrimitiveAccelerationStructureDescriptor* sphereAccelDesc =
-            [MTLPrimitiveAccelerationStructureDescriptor descriptor];
-        sphereAccelDesc.geometryDescriptors = @[bboxGeomDesc, diskGeomDesc];
-
-        MTLAccelerationStructureSizes sphereSizes = [device accelerationStructureSizesWithDescriptor:sphereAccelDesc];
-        id<MTLAccelerationStructure> sphereAS = [device newAccelerationStructureWithSize:sphereSizes.accelerationStructureSize];
-        id<MTLBuffer> sphereScratch = [device newBufferWithLength:sphereSizes.buildScratchBufferSize
-            options:MTLResourceStorageModePrivate];
-
-        id<MTLCommandBuffer> sphereBuildCmd = [queue commandBuffer];
-        id<MTLAccelerationStructureCommandEncoder> sphereBuildEnc = [sphereBuildCmd accelerationStructureCommandEncoder];
-        [sphereBuildEnc buildAccelerationStructure:sphereAS descriptor:sphereAccelDesc scratchBuffer:sphereScratch scratchBufferOffset:0];
-        [sphereBuildEnc endEncoding];
-        [sphereBuildCmd commit];
-        [sphereBuildCmd waitUntilCompleted];
-        if (sphereBuildCmd.status == MTLCommandBufferStatusError) {
-            fprintf(stderr, "Sphere AS build failed: %s\n", sphereBuildCmd.error.localizedDescription.UTF8String);
-            return 1;
-        }
-
-        // --- Third primitive acceleration structure: Suzanne's own ------
-        // geometry, built once, referenced by TWO different instances
-        // below with two different transforms - unlike primAS/sphereAS
-        // (each instanced exactly once, at identity), this is what
-        // actually exercises instancing's whole point: reusing one GPU-
-        // resident BVH from more than one world-space placement, rather
-        // than building/storing the geometry twice.
-        MTLAccelerationStructureTriangleGeometryDescriptor* suzanneGeomDesc =
-            [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
-        suzanneGeomDesc.vertexBuffer = suzanneVertexBuffer;
-        suzanneGeomDesc.vertexStride = sizeof(PackedFloat3);
-        suzanneGeomDesc.triangleCount = suzanneTriangleCount;
-        suzanneGeomDesc.opaque = YES;
-
-        MTLPrimitiveAccelerationStructureDescriptor* suzanneAccelDesc =
-            [MTLPrimitiveAccelerationStructureDescriptor descriptor];
-        suzanneAccelDesc.geometryDescriptors = @[suzanneGeomDesc];
-
-        MTLAccelerationStructureSizes suzanneSizes = [device accelerationStructureSizesWithDescriptor:suzanneAccelDesc];
-        id<MTLAccelerationStructure> suzanneAS = [device newAccelerationStructureWithSize:suzanneSizes.accelerationStructureSize];
-        id<MTLBuffer> suzanneScratch = [device newBufferWithLength:suzanneSizes.buildScratchBufferSize
-            options:MTLResourceStorageModePrivate];
-
-        id<MTLCommandBuffer> suzanneBuildCmd = [queue commandBuffer];
-        id<MTLAccelerationStructureCommandEncoder> suzanneBuildEnc = [suzanneBuildCmd accelerationStructureCommandEncoder];
-        [suzanneBuildEnc buildAccelerationStructure:suzanneAS descriptor:suzanneAccelDesc scratchBuffer:suzanneScratch scratchBufferOffset:0];
-        [suzanneBuildEnc endEncoding];
-        [suzanneBuildCmd commit];
-        [suzanneBuildCmd waitUntilCompleted];
-        if (suzanneBuildCmd.status == MTLCommandBufferStatusError) {
-            fprintf(stderr, "Suzanne AS build failed: %s\n", suzanneBuildCmd.error.localizedDescription.UTF8String);
-            return 1;
-        }
-
-        // --- Instance acceleration structure: four instances over three -
-        // primitive ASes (primAS/sphereAS each instanced once at
-        // identity, suzanneAS instanced TWICE with different transforms -
-        // see that AS's own comment). `addInstance()` builds one
-        // MTLAccelerationStructureInstanceDescriptor AND its matching
-        // InstanceTransform side-channel entry from the SAME
-        // column/translation values in one place, so the two can't drift
-        // out of sync with each other the way two independently-hand-
-        // authored copies of the same transform could.
-        std::vector<MTLAccelerationStructureInstanceDescriptor> instanceDescs;
-        std::vector<InstanceTransform> instanceTransforms;
-        auto addInstance = [&](uint32_t accelStructureIndex, float3 col0, float3 col1, float3 col2, float3 col3) {
-            MTLAccelerationStructureInstanceDescriptor desc{};
-            desc.accelerationStructureIndex = accelStructureIndex;
-            desc.options = MTLAccelerationStructureInstanceOptionNone;
-            desc.mask = 0xFF;
-            desc.intersectionFunctionTableOffset = 0;
-            desc.transformationMatrix.columns[0] = MTLPackedFloat3Make(col0.x, col0.y, col0.z);
-            desc.transformationMatrix.columns[1] = MTLPackedFloat3Make(col1.x, col1.y, col1.z);
-            desc.transformationMatrix.columns[2] = MTLPackedFloat3Make(col2.x, col2.y, col2.z);
-            desc.transformationMatrix.columns[3] = MTLPackedFloat3Make(col3.x, col3.y, col3.z);
-            instanceDescs.push_back(desc);
-            instanceTransforms.push_back(InstanceTransform{
-                PackedFloat3{col0.x, col0.y, col0.z}, PackedFloat3{col1.x, col1.y, col1.z},
-                PackedFloat3{col2.x, col2.y, col2.z}, PackedFloat3{col3.x, col3.y, col3.z}});
-        };
-
-        const float3 identityCol0{1, 0, 0}, identityCol1{0, 1, 0}, identityCol2{0, 0, 1}, identityCol3{0, 0, 0};
-        addInstance(0, identityCol0, identityCol1, identityCol2, identityCol3); // primAS (room + Spot)
-        addInstance(1, identityCol0, identityCol1, identityCol2, identityCol3); // sphereAS
-
-        // Suzanne instance A: translation only, at the same world position
-        // the single non-instanced Suzanne used to sit at - an identity-
-        // rotation instance is the direct continuation of every earlier
-        // screenshot's own Suzanne placement.
-        addInstance(2, identityCol0, identityCol1, identityCol2, float3{-0.05f, -0.55f, -0.3f});
-
-        // Suzanne instance B: rotated 45 degrees about Y and scaled down
-        // (uniform scale only - transformNormalByInstance()'s own
-        // rigid-transform assumption over in metal_poc.metal stays valid
-        // under a uniform scale, since normalize() cancels a uniform
-        // factor exactly; it would NOT under a non-uniform one), placed
-        // high near the back of the ceiling. A first attempt at a back-
-        // left-corner floor placement (x=-0.7, z=-0.55) turned out to sit
-        // along almost the same camera sightline as the gold sphere
-        // (x/z ratio ~0.19 vs. the gold sphere's own ~0.2) and was
-        // nearly fully hidden behind it - the exact same 2D-screen-space-
-        // occlusion lesson Spot's own placement (step 12) and the rough
-        // dielectric sphere's own placement (step 13) already ran into,
-        // caught here the same way: render, look, reposition. The one
-        // instance in this whole scene whose object-space normals
-        // actually need transforming before shading - everywhere else,
-        // an identity transform makes that transform a no-op.
-        {
-            const float theta = 0.785398f; // 45 degrees, radians
-            const float s = 0.55f;
-            float3 rotCol0{s * cosf(theta), 0.0f, -s * sinf(theta)};
-            float3 rotCol1{0.0f, s, 0.0f};
-            float3 rotCol2{s * sinf(theta), 0.0f, s * cosf(theta)};
-            addInstance(2, rotCol0, rotCol1, rotCol2, float3{0.0f, 0.75f, -0.3f});
-        }
-
-        id<MTLBuffer> instanceBuffer = [device newBufferWithBytes:instanceDescs.data()
-            length:instanceDescs.size() * sizeof(MTLAccelerationStructureInstanceDescriptor)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> instanceTransformBuffer = [device newBufferWithBytes:instanceTransforms.data()
-            length:instanceTransforms.size() * sizeof(InstanceTransform)
-            options:MTLResourceStorageModeShared];
-
-        MTLInstanceAccelerationStructureDescriptor* instAccelDesc =
-            [MTLInstanceAccelerationStructureDescriptor descriptor];
-        instAccelDesc.instancedAccelerationStructures = @[primAS, sphereAS, suzanneAS];
-        instAccelDesc.instanceCount = (uint32_t)instanceDescs.size();
-        instAccelDesc.instanceDescriptorBuffer = instanceBuffer;
-
-        MTLAccelerationStructureSizes instSizes = [device accelerationStructureSizesWithDescriptor:instAccelDesc];
-        id<MTLAccelerationStructure> instAS = [device newAccelerationStructureWithSize:instSizes.accelerationStructureSize];
-        id<MTLBuffer> instScratch = [device newBufferWithLength:instSizes.buildScratchBufferSize
-            options:MTLResourceStorageModePrivate];
-
-        id<MTLCommandBuffer> buildCmd2 = [queue commandBuffer];
-        id<MTLAccelerationStructureCommandEncoder> buildEnc2 = [buildCmd2 accelerationStructureCommandEncoder];
-        [buildEnc2 buildAccelerationStructure:instAS descriptor:instAccelDesc scratchBuffer:instScratch scratchBufferOffset:0];
-        [buildEnc2 endEncoding];
-        [buildCmd2 commit];
-        [buildCmd2 waitUntilCompleted];
-        if (buildCmd2.status == MTLCommandBufferStatusError) {
-            fprintf(stderr, "Instance AS build failed: %s\n", buildCmd2.error.localizedDescription.UTF8String);
-            return 1;
-        }
-
-        // --- Compile the shader library from source at runtime ---------
-        NSError* error = nil;
-        // RT_METAL_SHADER_DIR is set by CMakeLists.txt's metal_poc target
-        // (RT_BUILD_METAL=ON path) to gpu/metal/'s absolute source
-        // directory. Falls back to a __FILE__-relative lookup for the
-        // ad-hoc `clang++ metal_poc.mm ...` invocation this POC started
-        // as (docs/METAL_GPU_FEASIBILITY.md section 7/8/9) and still
-        // works fine for a quick manual rebuild without going through
-        // CMake at all.
-#ifdef RT_METAL_SHADER_DIR
-        NSString* shaderDir = @(RT_METAL_SHADER_DIR);
-#else
-        NSString* shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
-#endif
-        NSString* shaderPath = [shaderDir stringByAppendingPathComponent:@"metal_poc.metal"];
-        NSString* shaderSource = [NSString stringWithContentsOfFile:shaderPath encoding:NSUTF8StringEncoding error:&error];
-        if (!shaderSource) {
-            fprintf(stderr, "Failed to read shader source at %s: %s\n",
-                shaderPath.UTF8String, error.localizedDescription.UTF8String);
-            return 1;
-        }
-        MTLCompileOptions* compileOpts = [MTLCompileOptions new];
-        id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:compileOpts error:&error];
-        if (!library) {
-            fprintf(stderr, "Shader compile failed: %s\n", error.localizedDescription.UTF8String);
-            return 1;
-        }
-        id<MTLFunction> kernelFn = [library newFunctionWithName:@"primaryRayKernel"];
-        id<MTLFunction> sphereIntersectFn = [library newFunctionWithName:@"sphereIntersectionFunction"];
-        id<MTLFunction> diskIntersectFn = [library newFunctionWithName:@"diskIntersectionFunction"];
-
-        // The intersection function has to be LINKED into the compute
-        // pipeline (MTLLinkedFunctions) before an MTLIntersectionFunction
-        // Table naming it can be built - a plain newComputePipelineState
-        // WithFunction: (used for step 1/2's triangle-only pipeline) has
-        // nowhere to put that linkage, hence the switch to the descriptor-
-        // based pipeline creation call here.
-        MTLComputePipelineDescriptor* pipelineDesc = [MTLComputePipelineDescriptor new];
-        pipelineDesc.computeFunction = kernelFn;
-        MTLLinkedFunctions* linkedFns = [MTLLinkedFunctions new];
-        linkedFns.functions = @[sphereIntersectFn, diskIntersectFn];
-        pipelineDesc.linkedFunctions = linkedFns;
-
-        id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithDescriptor:pipelineDesc
-            options:MTLPipelineOptionNone reflection:nil error:&error];
-        if (!pipeline) {
-            fprintf(stderr, "Pipeline creation failed: %s\n", error.localizedDescription.UTF8String);
-            return 1;
-        }
-
-        // --- Intersection function table: two slots now, matching --------
-        // bboxGeomDesc's own intersectionFunctionTableOffset (0) and
-        // diskGeomDesc's (1) above - this POC's first real "one slot per
-        // distinct intersection function" table, not just one slot
-        // reused by every custom primitive. `setBuffer:atIndex:N` here
-        // sets buffer N in the table's OWN shared argument namespace
-        // (every function in ONE table draws from the same set of bound
-        // buffers/textures) - sphereIntersectionFunction and
-        // diskIntersectionFunction each declare a DIFFERENT `[[buffer(N)]]`
-        // in their own MSL signature (0 and 1 respectively) specifically
-        // so binding sphereBuffer at atIndex:0 and diskBuffer at
-        // atIndex:1 here reaches the right function's own data, not a
-        // shared/overwritten slot.
-        MTLIntersectionFunctionTableDescriptor* fnTableDesc = [MTLIntersectionFunctionTableDescriptor new];
-        fnTableDesc.functionCount = 2;
-        id<MTLIntersectionFunctionTable> functionTable = [pipeline newIntersectionFunctionTableWithDescriptor:fnTableDesc];
-        id<MTLFunctionHandle> sphereHandle = [pipeline functionHandleWithFunction:sphereIntersectFn];
-        id<MTLFunctionHandle> diskHandle = [pipeline functionHandleWithFunction:diskIntersectFn];
-        [functionTable setFunction:sphereHandle atIndex:0];
-        [functionTable setFunction:diskHandle atIndex:1];
-        // sphereIntersectionFunction/diskIntersectionFunction each read
-        // their own geometry buffer (metal_poc.metal buffer(0)/buffer(1)
-        // respectively - a SEPARATE argument table from the calling
-        // kernel's own buffer(0..14), see that file's own comment) -
-        // bound here, on the function table, not on the compute encoder.
-        [functionTable setBuffer:sphereBuffer offset:0 atIndex:0];
-        [functionTable setBuffer:diskBuffer offset:0 atIndex:1];
-
-        // --- Output texture + uniforms ----------------------------------
-        MTLTextureDescriptor* texDesc = [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
-            width:width height:height mipmapped:NO];
-        texDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
-        texDesc.storageMode = MTLStorageModeShared;
-        id<MTLTexture> outTexture = [device newTextureWithDescriptor:texDesc];
-
-        // --- Earth texture (the back wall's materialType=3 source) -----
-        // stb_image decodes straight to interleaved 8-bit RGBA regardless
-        // of the source JPEG's channel count (the 4th `desiredChannels`
-        // arg below), which is exactly MTLPixelFormatRGBA8Unorm_sRGB's own
-        // BYTE layout - no repacking needed between stbi_load's buffer and
-        // replaceRegion:. The `_sRGB` pixel format (not plain
-        // `RGBA8Unorm`, this POC's own format up through PR #37) matters
-        // for more than naming: an ordinary 8-bit JPEG/PNG's own stored
-        // bytes are sRGB-gamma-ENCODED (perceptually, not linearly,
-        // spaced) - every earlier render sampled those bytes directly as
-        // if they were already linear radiance, silently darkening every
-        // midtone the earth texture (and, via GI, everything it bounces
-        // light onto) ever produced. `_sRGB` makes the texture SAMPLE
-        // instruction itself convert sRGB to linear before the shader
-        // ever sees a value - the standard, hardware-accelerated way to
-        // do this, rather than a manual `pow(c, 2.2)` after sampling in
-        // the shader.
-#ifdef RT_MODELS_DIR
-        NSString* imagesDir = [[@(RT_MODELS_DIR) stringByDeletingLastPathComponent]
-            stringByAppendingPathComponent:@"images"];
-#else
-        NSString* imagesDir = [[@(__FILE__) stringByDeletingLastPathComponent]
-            stringByAppendingPathComponent:@"../../images"];
-#endif
-        NSString* earthPath = [imagesDir stringByAppendingPathComponent:@"earthmap.jpg"];
-        int earthW = 0, earthH = 0, earthChannels = 0;
-        unsigned char* earthPixels = stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
-        id<MTLTexture> earthTexture = nil;
-        if (earthPixels) {
-            MTLTextureDescriptor* earthDesc = [MTLTextureDescriptor
-                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB
-                width:(NSUInteger)earthW height:(NSUInteger)earthH mipmapped:NO];
-            earthDesc.usage = MTLTextureUsageShaderRead;
-            earthDesc.storageMode = MTLStorageModeShared;
-            earthTexture = [device newTextureWithDescriptor:earthDesc];
-            MTLRegion earthRegion = MTLRegionMake2D(0, 0, (NSUInteger)earthW, (NSUInteger)earthH);
-            [earthTexture replaceRegion:earthRegion mipmapLevel:0 withBytes:earthPixels
-                bytesPerRow:(NSUInteger)earthW * 4];
-            stbi_image_free(earthPixels);
-            fprintf(stderr, "Loaded %s: %dx%d, %d channels\n", earthPath.UTF8String, earthW, earthH, earthChannels);
-        } else {
-            fprintf(stderr, "Could not load %s - back wall will read black/undefined texture data.\n",
-                earthPath.UTF8String);
-            // A 1x1 white fallback keeps the shader's unconditional
-            // texture bind valid (Metal requires SOME texture at the
-            // bound slot) even if the JPEG is missing. `_sRGB` for
-            // consistency with the real texture above, though pure white
-            // (255,255,255) round-trips through the sRGB<->linear
-            // conversion unchanged either way.
-            MTLTextureDescriptor* fallbackDesc = [MTLTextureDescriptor
-                texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB width:1 height:1 mipmapped:NO];
-            fallbackDesc.usage = MTLTextureUsageShaderRead;
-            fallbackDesc.storageMode = MTLStorageModeShared;
-            earthTexture = [device newTextureWithDescriptor:fallbackDesc];
-            uint8_t white4[4] = {255, 255, 255, 255};
-            [earthTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:white4 bytesPerRow:4];
-        }
-
-        const uint32_t samplesPerPixel = (argc > 4) ? (uint32_t)atoi(argv[4]) : 64;
-        const uint32_t maxDepth = (argc > 5) ? (uint32_t)atoi(argv[5]) : 8;
-        fprintf(stderr, "Samples/pixel: %u, max depth: %u\n", samplesPerPixel, maxDepth);
-
-        Uniforms uniforms{};
-        uniforms.cameraPos = PackedFloat3{0.0f, 0.0f, 3.2f};
-        float3 forward = simd::normalize(float3{0, 0, -1});
-        uniforms.cameraForward = PackedFloat3{forward.x, forward.y, forward.z};
-        uniforms.cameraRight = PackedFloat3{1, 0, 0};
-        uniforms.cameraUp = PackedFloat3{0, 1, 0};
-        uniforms.tanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
-        uniforms.aspect = (float)width / (float)height;
-        uniforms.width = width;
-        uniforms.height = height;
-        uniforms.samplesPerPixel = samplesPerPixel;
-        uniforms.maxDepth = maxDepth;
-        uniforms.frameSeed = 1u;
-        uniforms.lightCount = (uint32_t)lights.size();
-        // Thin-lens depth of field: focused on the gold conductor sphere
-        // (the nearest object to the camera), so it renders pixel-sharp
-        // while the dielectric sphere just behind it and the back
-        // wall/Suzanne further back show progressively more defocus blur -
-        // the falloff is what actually demonstrates this is a real lens
-        // model, not just a uniform blur filter over the whole frame.
-        uniforms.lensRadius = 0.05f;
-        uniforms.focusDistance = uniforms.cameraPos.z - spheres[1].center.z; // gold sphere's own z
-        // A hexagonal (6-blade) aperture rather than a perfectly circular
-        // one - see Uniforms' own apertureBlades comment. The classic
-        // photographic blade count; out-of-focus highlights (area/point/
-        // spot light reflections on the defocused back-wall geometry)
-        // should now read as hexagons, not perfect circles.
-        uniforms.apertureBlades = 6;
-        // Shutter motion blur: a small horizontal dolly over the frame's
-        // simulated exposure - chosen (over, say, an object moving) since
-        // it needs no acceleration-structure/intersection-function
-        // changes at all, purely a primary-ray-generation addition (see
-        // metal_poc.metal's own comment on why: a moving CUSTOM primitive
-        // would need per-sample time threaded into
-        // sphereIntersectionFunction's own, separate argument table, real
-        // additional Metal API surface this increment intentionally
-        // doesn't take on).
-        uniforms.cameraVelocity = PackedFloat3{0.015f, 0.0f, 0.0f};
-        // Homogeneous fog filling the whole room - subtle (transmittance
-        // ~0.7 over the ~4-unit camera-to-back-wall sightline: exp(-0.08*4)
-        // ~ 0.73), meant to read as a light atmospheric haze visible in
-        // the light shafts/depth falloff, not an opaque room-filling mist
-        // that would fight every other material's own visibility.
-        uniforms.fogSigmaT = 0.05f;
-        uniforms.fogAlbedo = PackedFloat3{0.85f, 0.88f, 0.95f}; // mostly-scattering, faint cool tint
-        // On: a miss ray samples earthTexture by direction (equirectangular)
-        // instead of the flat two-colour gradient - the room's open front
-        // means most miss rays are secondary/GI bounces (a mirror/glass
-        // surface reflecting/refracting outward), not primary camera rays,
-        // so this mostly shows up subtly rather than as an obvious visible
-        // backdrop - see docs/METAL_GPU_FEASIBILITY.md's own note on
-        // verifying this with a dedicated wide-FOV test render.
-        uniforms.useEnvironmentMap = 1u;
-        // Moderate forward scattering (real fog/haze skews strongly
-        // forward in reality - Mie scattering off water droplets often
-        // has g around 0.7-0.9 - 0.4 is deliberately more modest, so the
-        // difference from isotropic reads as a stylistic tint on the fog
-        // rather than a dramatic visible change).
-        uniforms.fogAsymmetryG = 0.4f;
-        uniforms.pointLightCount = (uint32_t)pointLights.size();
-        uniforms.directionalLightCount = (uint32_t)directionalLights.size();
-        uniforms.projectionLightCount = (uint32_t)projectionLights.size();
-        // Single-pass adaptive sampling (see metal_poc.metal's own
-        // shading-loop comment) - enabled by default for this scene:
-        // converged pixels (most of the flat-coloured walls/ceiling)
-        // stop well short of the full samplesPerPixel budget, spending
-        // it instead on the noisier fog/specular/caustic regions this
-        // scene already has plenty of - a real render-TIME win at
-        // (ideally) no visible quality cost, verified via a dedicated
-        // A/B render, not assumed.
-        uniforms.adaptiveSampling = 1u;
-        id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
-
-        // --- Dispatch ----------------------------------------------------
-        id<MTLCommandBuffer> renderCmd = [queue commandBuffer];
-        id<MTLComputeCommandEncoder> enc = [renderCmd computeCommandEncoder];
-        [enc setComputePipelineState:pipeline];
-        [enc setTexture:outTexture atIndex:0];
-        [enc setTexture:earthTexture atIndex:1];
-        [enc setAccelerationStructure:instAS atBufferIndex:0];
-        [enc setBuffer:uniformBuffer offset:0 atIndex:1];
-        [enc setBuffer:materialBuffer offset:0 atIndex:2];
-        [enc setBuffer:vertexBuffer offset:0 atIndex:3];
-        [enc setBuffer:sphereMaterialBuffer offset:0 atIndex:4];
-        [enc setBuffer:sphereBuffer offset:0 atIndex:5];
-        [enc setIntersectionFunctionTable:functionTable atBufferIndex:6];
-        [enc setBuffer:normalBuffer offset:0 atIndex:7];
-        [enc setBuffer:uvBuffer offset:0 atIndex:8];
-        [enc setBuffer:lightBuffer offset:0 atIndex:9];
-        [enc setBuffer:suzanneNormalBuffer offset:0 atIndex:10];
-        [enc setBuffer:suzanneMaterialBuffer offset:0 atIndex:11];
-        [enc setBuffer:instanceTransformBuffer offset:0 atIndex:12];
-        [enc setBuffer:diskBuffer offset:0 atIndex:13];
-        [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
-        [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
-        [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
-        [enc setBuffer:projectionLightBuffer offset:0 atIndex:17];
-        // Mark the AS + its dependent primitive ASes as used so Metal
-        // knows about the indirection - required for instance
-        // acceleration structures referencing primitive ones (now three:
-        // the room+Spot triangle mesh, the sphere's bounding-box
-        // geometry, and Suzanne's own - referenced by TWO instances, but
-        // only needs marking used once here, not once per instance).
-        [enc useResource:primAS usage:MTLResourceUsageRead];
-        [enc useResource:sphereAS usage:MTLResourceUsageRead];
-        [enc useResource:suzanneAS usage:MTLResourceUsageRead];
-
-        MTLSize gridSize = MTLSizeMake(width, height, 1);
-        NSUInteger w = pipeline.threadExecutionWidth;
-        NSUInteger h = pipeline.maxTotalThreadsPerThreadgroup / w;
-        MTLSize threadgroupSize = MTLSizeMake(w, h, 1);
-        [enc dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
-        [enc endEncoding];
-        [renderCmd commit];
-        [renderCmd waitUntilCompleted];
-        if (renderCmd.status == MTLCommandBufferStatusError) {
-            fprintf(stderr, "Render dispatch failed: %s\n", renderCmd.error.localizedDescription.UTF8String);
-            return 1;
-        }
-
-        // --- Read back + write PNG (chromatic aberration, then lens ---
-        // vignette, then ACES filmic tonemap, then the real sRGB OETF)
-        std::vector<float> pixels(width * height * 4);
-        MTLRegion region = MTLRegionMake2D(0, 0, width, height);
-        [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
-
-        const float vignetteStrength = 0.18f;
-        const float chromaticAberrationStrength = 0.004f;
-        std::vector<uint8_t> ldr(width * height * 3);
-        for (uint32_t i = 0; i < width * height; ++i) {
-            uint32_t px = i % width;
-            uint32_t py = i / width;
-            float vignette = vignetteFactor(px, py, width, height, vignetteStrength);
-            float rgb[3];
-            chromaticAberration(pixels, width, height, px, py, chromaticAberrationStrength,
-                                 &rgb[0], &rgb[1], &rgb[2]);
-            for (int c = 0; c < 3; ++c) {
-                float v = fmaxf(rgb[c], 0.0f) * vignette;
-                v = applyToneMap(v, toneMapMode);
-                v = linearToSRGB(v);
-                ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
-            }
-        }
-        // Bilateral denoise - see that function's own comment. Radius 3
-        // (7x7), sigmaSpatial 2.5, sigmaRange 20.0 (in 0-255 luminance
-        // units) - tuned the same way every other post-process knob this
-        // POC has added was: by rendering and comparing, not from theory
-        // alone. A much more aggressive setting (radius 4, sigmaRange 80)
-        // was also tried and rejected - it visibly softened the crystal
-        // ball's own sharp specular highlight and the checkerboard
-        // floor's own tile edges, confirming this knob really can wash
-        // out real detail if pushed too far, not just theoretically.
-        std::vector<uint8_t> denoised(width * height * 3);
-        bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
-
-        stbi_write_png(outPath, width, height, 3, denoised.data(), width * 3);
-        fprintf(stderr, "Wrote %s (%ux%u)\n", outPath, width, height);
+        MetalPocApp app;
+        if (!app.parseArgsAndCreateDevice(argc, argv)) return 1;
+        app.buildScene();
+        if (!app.buildGPUResources()) return 1;
+        if (!app.compileShaderAndDispatch(argc, argv)) return 1;
+        app.postProcessAndWrite();
     }
     return 0;
 }
