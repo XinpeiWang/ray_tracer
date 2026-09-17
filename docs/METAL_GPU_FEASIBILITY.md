@@ -2426,3 +2426,60 @@ disguise.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 51. Proof-of-concept, step 35: clearcoat (glossy plastic) material (done)
+
+A genuinely new material (materialType 8, left unused since step 27's
+own numbering skipped straight to 9) rather than a variation on an
+existing one: "car paint"/glossy plastic - a colourless specular clear
+coat sitting over a genuinely diffuse, coloured base, the one look
+nothing already in this scene produces (the mirror and both GGX
+conductors all TINT their own reflection by the surface's own colour;
+clearcoat's reflection stays colourless regardless of the base colour
+underneath, exactly the physical difference between a metal and a
+coated dielectric).
+
+Modelled as a stochastic MIX of two existing, already-proven lobes - a
+smooth dielectric specular coat (fixed IOR 1.5, F0 = 0.04, the same
+Schlick-Fresnel helper the mirror material already uses) and a
+Lambertian diffuse base - rather than a genuinely new BRDF. At each hit,
+ONE random draw against the coat's own Fresnel reflectance decides which
+single lobe this bounce samples (never a blend of both at once): the
+specular coat with probability equal to its own reflectance (no NEE,
+same delta-lobe reasoning the mirror material already uses), or the
+diffuse base with the complementary probability (full NEE + cosine-
+sampling, the same code shape the Lambertian branch already uses).
+Sampling each lobe with probability EXACTLY equal to its own weight is
+what makes this unbiased with no extra scaling at the point of the
+random decision - the probability and the true contribution cancel
+exactly, for both branches.
+
+**A deliberate implementation choice worth documenting**: the diffuse
+half of this material duplicates the Lambertian branch's own NEE code
+(area + point + directional lights) rather than falling through to that
+shared branch, unlike materialTypes 3/6/7's own "share the code, vary
+only how albedo/the normal is computed upstream" pattern. This is
+necessary here, not just convenient - the stochastic coat-vs-diffuse
+decision has to happen BEFORE any NEE, so there is no single shared
+entry point left to reuse. A second, fully self-contained branch keeps
+this addition from touching (and risking) any of the four already-
+proven material types sharing that code.
+
+Added as a fifth sphere, a deep red "car paint" look, placed close to
+the camera on the room's front-right (deliberately at a different x
+than the gold sphere it would otherwise sit right next to, and in FRONT
+of rather than behind Spot-the-cow - a lesson learned from step 34's own
+placement, where sharing an x coordinate with a nearer object hid the
+new sphere completely).
+
+**Result, verified via a dedicated diagnostic** (the same sphere
+enlarged and moved to fill the frame, the same technique step 34's own
+verification used): unambiguous - a rich, saturated matte red base with
+two sharp, distinctly colourless specular highlights from the two
+ceiling area lights riding on top, the textbook clearcoat signature, not
+a subtle hint. The committed scene shows the same sphere, smaller and
+partially at the frame's own edge (the same "partially cropped is fine"
+precedent the giraffe/step 34's own sphere already set).
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
