@@ -2854,3 +2854,95 @@ implemented image-projection term, not a coincidental brightening.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 59. Closing part of a real testing gap: host-math unit tests (done)
+
+Asked directly ("do we have good logging and testing?") and answered
+honestly: logging is decent (every failure path - no device, AS build
+failures, shader compile, pipeline creation, render dispatch - logs the
+real Metal error string; every setup stage logs a stat line), but
+testing was minimal by design. The entire automated suite through PR #53
+was two CTest cases (`metal_poc_smoke_render`/`metal_poc_smoke_validate`)
+that only check "did it crash" and "is the image not flat/black" -
+`metal_poc_validate.cpp`'s own comment is explicit that this is
+deliberately NOT correctness testing. None of the 10 material types, 4
+light types, the Fresnel fix, the power-light-sampler alias table, or
+the tonemap operators had a permanent regression test - every one was
+verified once, by hand, via a throwaway numeric/visual script during its
+own PR, then discarded.
+
+This closes the PART of that gap that doesn't need a GPU at all:
+`blackbodyColor()`, `vignetteFactor()`, `chromaticAberration()` (+its
+`sampleChannelBilinear()` helper), the three tonemap operators
+(`acesFilmicTonemap()`/`reinhardTonemap()`/`applyToneMap()`/
+`parseToneMapMode()`), `linearToSRGB()`, and `buildPowerLightSampler()`
+are all plain, GPU-independent host C++ - extracted out of `metal_poc.mm`
+into a new shared header, `gpu/metal/metal_poc_host_math.h`, so a tiny
+new CPU-only test executable (`metal_poc_math_tests.cpp`, wired into
+`ctest` as a third test) can exercise the EXACT same code metal_poc.mm's
+own render path calls, not a hand-copied shadow reimplementation that
+could silently drift from the real thing. `AreaLightData`/
+`PackedFloat3`/`PackedFloat2` moved into the same header (needed by
+`buildPowerLightSampler()`'s own signature); everything else in
+`metal_poc.mm` is unchanged, confirmed via a direct log-line/render
+comparison before and after the extraction (identical `Light N:
+power=.../pmf=...` diagnostic output, identical showcase render).
+
+**What's actually checked, and why each one specifically**:
+- `linearToSRGB()` against the REAL piecewise sRGB formula at seven
+  points (0 through 1.0) - the same numeric check PR #49's own throwaway
+  verification script did once, now permanent.
+- `chromaticAberration()` at an ODD width has EXACTLY zero shift at the
+  true centre pixel, and a REAL shift at an off-centre one - a direct,
+  permanent regression test for the real, shipped PR #43 bug (invisible
+  at this POC's own default even resolution, which is exactly why it's
+  tested at an odd one here too).
+- The three tonemap operators via `applyToneMap()`: ACES and Reinhard
+  must actually produce different values above 1.0 (the entire point of
+  PR #51), `None` must be an exact hard clamp with zero rolloff, and
+  `parseToneMapMode()`'s name dispatch is checked directly (a typo in the
+  dispatch table would otherwise silently just always select ACES).
+- `buildPowerLightSampler()`'s own `pmf` field, checked against the true
+  power ratio across three constructed cases (equal powers, one light
+  25x dominant - the exact ratio PR #52's own thrown-away diagnostic
+  scene used - and an all-zero-emission fallback-to-uniform case), PLUS
+  a 200,000-sample statistical check that the alias table's own LOOKUP
+  (`sampleAreaLightAliasTable()`, a host-side test mirror of
+  `sampleAreaLight()`'s device-side alias-table logic) actually
+  reproduces those `pmf` values when sampled, not just that the field
+  looks right in isolation.
+- `blackbodyColor()`/`vignetteFactor()`: output range and known
+  monotonic/relative properties (2700K warmer than 20000K, frame centre
+  undarkened, corner darker than centre).
+
+**A real catch during the writing of these tests, not the underlying
+code**: an early version of the vignette test asserted
+`vignetteFactor()` never returns negative at `strength = 0.5` - this
+failed, but `vignetteFactor()` itself was correct. It's a plain `1 -
+s*r^4` curve with no floor at all; a strength that high genuinely can
+push the frame corner negative (solve `s > 1/r_max^4`), and this POC's
+own actual committed strength (`0.18`) sits comfortably below that
+threshold, with any hypothetical negative value downstream harmlessly
+clamped to black by every tonemap operator anyway. Fixed by testing
+against the real committed value instead of an arbitrary one - a small,
+concrete reminder that a new test can itself encode a wrong assumption,
+and needs the same "did this actually catch what I meant it to" scrutiny
+as the code it's checking.
+
+**What this does NOT close**: every function that lives device-side in
+`metal_poc.metal` itself - `frDielectric()`, the GGX distribution/
+masking-shadowing functions, `checkerColor()`, `spotLightFalloff()`,
+`projectionLightRadiance()`, and `sampleAreaLight()`'s own REAL
+alias-table lookup - has zero unit coverage; only the full-scene smoke
+test exercises them at all (and only checks "not flat/black"), and only
+this PR's own host-side test MIRROR of the alias-table lookup is
+directly regression-tested, not the actual device-side one it's
+mirroring. Real coverage of the Metal-side math would need either a
+small standalone test compute kernel (dispatch with known inputs, read
+back results, assert against reference values in C++) or a committed
+golden-image regression render - both real, separate future work, not
+attempted here.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (now three tests, not two)
+continues to pass.

@@ -370,7 +370,21 @@ if(RT_BUILD_METAL)
     # every other choice in this block.
     add_executable(metal_poc_validate gpu/metal/metal_poc_validate.cpp)
 
+    # --- Real regression coverage, not just a smoke test - see
+    # gpu/metal/metal_poc_host_math.h and gpu/metal/metal_poc_math_tests.cpp's
+    # own comments for the full "why" (closing the gap the smoke test
+    # above deliberately doesn't: every material/light/tonemap correctness
+    # fix documented in docs/METAL_GPU_FEASIBILITY.md - Fresnel, the
+    # power-light-sampler alias table, the PR #43 chromatic-aberration
+    # bug, the sRGB OETF - was verified once by hand and never re-checked
+    # automatically again). No Metal/Foundation link dependency at all
+    # (every function under test is plain, GPU-independent host C++), so
+    # this doesn't need an actual device or acceleration structure to run
+    # - just plain math, checked against known-correct reference values.
+    add_executable(metal_poc_math_tests gpu/metal/metal_poc_math_tests.cpp)
+
     enable_testing()
+    add_test(NAME metal_poc_math_tests COMMAND metal_poc_math_tests)
     set(METAL_POC_SMOKE_OUTPUT "${CMAKE_BINARY_DIR}/metal_poc_smoke_test.png")
     add_test(NAME metal_poc_smoke_render
         COMMAND metal_poc 128 128 "${METAL_POC_SMOKE_OUTPUT}" 16 4)
