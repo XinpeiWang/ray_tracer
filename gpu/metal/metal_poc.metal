@@ -1898,21 +1898,31 @@ kernel void primaryRayKernel(
                 // facingNormal exactly, i.e. materialType 2's own math
                 // bit-for-bit, verified below).
                 //
-                // What this DOESN'T do, unlike the conductor branch's own
-                // G/G1(wo) throughput correction: a full energy-conserving
-                // rough-BTDF derivation. A correct one needs a transmission
-                // Jacobian AND an eta^2 radiance-scaling term on top of the
-                // reflection-side G/G1 ratio (Walter et al. 2007's rough
-                // refraction model) - real, tricky-to-verify-without-a-
-                // reference-implementation math, the exact "looks
-                // plausible, renders something, is subtly wrong" trap
-                // Section 4 warns about. Rather than ship that unverified,
-                // this keeps materialType 2's existing throughput
-                // accounting (`albedo`, no G/G1 correction) and treats the
-                // roughness as a direction-only perturbation - a known,
-                // deliberate simplification (documented here rather than
-                // silently assumed away), same spirit as this POC's
-                // existing Schlick-vs-full-Fresnel approximation.
+                // Energy-conserving throughput correction, below (G/G1(wo),
+                // see this branch's own tail) - an earlier version of this
+                // comment called the math for this "tricky-to-verify-
+                // without-a-reference-implementation" and shipped without
+                // it, a known, deliberately-documented gap. Closed here
+                // after finding a real reference this project already has:
+                // `src/shared/bxdfs_conductor.h`'s own `RoughDielectricBxDF`
+                // (a full, chi-squared-energy-tested closed-form f()/pdf()
+                // pair for rough dielectric reflection+transmission,
+                // Walter et al. 2007's own model). Deriving this POC's own
+                // BSDF-sampled-continuation weight (f(wo,wi)*cosI/pdf(wi))
+                // from THAT reference's f()/pdf() pair algebraically
+                // reduces to EXACTLY G(wo,wi)/G1(wo) for BOTH the
+                // reflection AND transmission lobes (the D term, the
+                // Jacobian, and even the reflection-vs-transmission-
+                // specific factors all cancel identically either way) -
+                // the SAME ratio the conductor branch below already uses
+                // for its own reflection-only lobe, just now also applied
+                // here. `ggxG()`/`ggxG1()` (already defined above) need no
+                // changes to support this: Smith's Lambda function only
+                // ever uses `w.z*w.z` (squared), so it's already sign-
+                // agnostic between a same-side (reflected) and opposite-
+                // side (refracted) direction - reusable as-is, not a
+                // reflection-specific special case that would need a
+                // transmission-specific twin.
                 float alpha = max(mat.roughness * mat.roughness, 0.0009);
                 float3 tangent, bitangent;
                 buildOnb(facingNormal, tangent, bitangent);
@@ -1951,6 +1961,19 @@ kernel void primaryRayKernel(
                 } else {
                     newDir = refract(unitDir, hWorld, refractionRatio);
                 }
+                // See this branch's own leading comment: G(wo,wiSampled)/
+                // G1(wo) is the correct BSDF-sampled-continuation weight
+                // for EITHER lobe, derived from RoughDielectricBxDF's own
+                // validated f()/pdf() pair - `newDir` here plays the role
+                // that reference's own `wo` (its SAMPLED direction, not
+                // its `wi` input parameter, which corresponds to THIS
+                // POC's `woLocal`/view direction below) plays in that
+                // derivation, regardless of which lobe (reflect or
+                // refract) actually produced it.
+                float3 newDirLocal = float3(dot(newDir, tangent), dot(newDir, bitangent), dot(newDir, facingNormal));
+                float roughDielectricG = ggxG(woLocal, newDirLocal, alpha, alpha);
+                float roughDielectricG1 = ggxG1(woLocal, alpha, alpha);
+                throughput *= roughDielectricG / max(roughDielectricG1, 1e-6);
                 rayDir = newDir;
                 rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
                 applyBeerLambertAbsorption(throughput, mat.color, frontFace, result.distance);
