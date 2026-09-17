@@ -2682,3 +2682,47 @@ energy.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 56. Alternate tonemap operators: Reinhard and "none" (done)
+
+Every render this POC has produced since its own ACES fix used exactly
+one tonemap operator, hardcoded. This project's shared CPU/OptiX
+reference (`src/shared/tone_map.h`) has carried three named operators
+all along - `aces` (default), `reinhard`, and `none` (clamp only, its
+own documented "legacy behavior for scenes without HDR") - selectable via
+a `--tonemap` flag both of those backends already share so they can't
+drift on what a given name means. This POC had no equivalent: no flag
+parsing of any kind exists in `metal_poc.mm` at all, every argument is a
+bare positional CLI value.
+
+Added `reinhardTonemap()` (`x / (1 + x)`, `src/shared/tone_map.h`'s own
+`reinhard()`) and a `ToneMapMode` enum (`ACES`/`Reinhard`/`None`)
+alongside the existing `acesFilmicTonemap()`, matching the same three
+named values (and the same "unrecognized name falls back to the
+existing default" contract `tone_map_mode_from_name()` uses, since this
+POC has no scene/CLI mismatch warning machinery to plug into). Wired in
+as a 6th positional argument (`width height outPath spp maxDepth
+[tonemap]`), defaulting to `aces` when omitted - every earlier PR's own
+invocation (four positional args or five) is unaffected, purely
+additive the same way `lensRadius == 0`/`cameraVelocity == (0,0,0)`
+were for DOF and motion blur.
+
+**Result, verified two ways**: first, a same-scene render with the
+argument omitted vs. explicitly passed `aces` differ by only 8 of
+750,000 subpixels, each by exactly 1 (this scene's own inherent
+Monte-Carlo run-to-run noise from independent RNG streams across two
+separate invocations, not a code path difference) - confirms the
+default genuinely IS the `aces` path, not a separate near-identical
+implementation. Second, a same-scene comparison (500x500 @ 48spp) at
+`aces` vs. `reinhard` vs. `none` shows real, substantial, and
+qualitatively distinct differences from `aces` in both other modes
+(735,816/750,000 and 731,531/750,000 differing subpixels respectively)
+- `reinhard` reads visibly flatter and less contrasty with lighter,
+less-deep shadows (no filmic "shoulder" the way ACES's own S-curve
+has), while `none` shows the harder, flatter-topped highlight clipping
+on the ceiling light panels this POC's own earlier ACES fix was written
+specifically to replace - both exactly the qualitative behaviour each
+operator's own math predicts, not just a generic "looks different."
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.

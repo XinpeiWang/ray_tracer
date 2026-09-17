@@ -20,6 +20,8 @@
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 
+#include <cstring>
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../../src/external/stb_image_write.h"
 // STB_IMAGE_IMPLEMENTATION here is a separate translation unit from
@@ -569,6 +571,55 @@ static float acesFilmicTonemap(float x) {
     return fminf(fmaxf(mapped, 0.0f), 1.0f);
 }
 
+// Reinhard tonemap (`L' = L / (1 + L)`) - ported directly from this
+// project's own CPU/OptiX-shared reference (`src/shared/tone_map.h`'s own
+// `reinhard()`). Simpler and cheaper than ACES, with a very different
+// character: it preserves hue at low-to-moderate values (each channel maps
+// independently, but the curve's own compression is gentle enough there
+// that saturated colours stay saturated) but has no filmic "shoulder" at
+// all - bright values approach 1.0 much more gradually and asymptotically
+// rather than rolling off with ACES's own S-curve, which in practice reads
+// as a flatter, less contrasty, slightly washed-out highlight rendition
+// next to ACES on the same scene.
+static float reinhardTonemap(float x) {
+    if (x <= 0.0f) return 0.0f;
+    return x / (1.0f + x);
+}
+
+// Mirrors `src/shared/tone_map.h`'s own `ToneMapMode` - kept as a plain
+// enum (not the shared header itself) since that header also drags in
+// `tone_map_mode_from_name()`'s std::string plumbing this positional-args
+// POC has no use for; the three named values and their meaning are what's
+// shared, not the parsing machinery.
+enum class ToneMapMode {
+    ACES,
+    Reinhard,
+    None
+};
+
+// Same three names `--tonemap` accepts on the CPU/OptiX side
+// (`tone_map_mode_from_name()`), so a scene/workflow note like "compare
+// with --tonemap reinhard" translates directly to this POC's own 6th
+// positional argument. Falls back to ACES (this POC's long-standing
+// default, unchanged) on anything unrecognized rather than failing the
+// render outright - there's no scene/CLI split to warn about a mismatch
+// for here, just one flat argument list.
+static ToneMapMode parseToneMapMode(const char* name) {
+    if (!name) return ToneMapMode::ACES;
+    if (strcmp(name, "reinhard") == 0) return ToneMapMode::Reinhard;
+    if (strcmp(name, "none") == 0) return ToneMapMode::None;
+    return ToneMapMode::ACES;
+}
+
+static float applyToneMap(float x, ToneMapMode mode) {
+    switch (mode) {
+        case ToneMapMode::Reinhard: return reinhardTonemap(x);
+        case ToneMapMode::None:     return fminf(fmaxf(x, 0.0f), 1.0f);
+        case ToneMapMode::ACES:
+        default:                    return acesFilmicTonemap(x);
+    }
+}
+
 // The REAL sRGB OETF (IEC 61966-2-1) - a numerically-stable minimax
 // rational-polynomial approximation of the true piecewise curve
 // (`12.92 * v` below a small threshold, `1.055 * v^(1/2.4) - 0.055`
@@ -671,6 +722,7 @@ int main(int argc, const char** argv) {
         const uint32_t width = (argc > 1) ? (uint32_t)atoi(argv[1]) : 400;
         const uint32_t height = (argc > 2) ? (uint32_t)atoi(argv[2]) : 400;
         const char* outPath = (argc > 3) ? argv[3] : "/tmp/metal_poc_render.png";
+        const ToneMapMode toneMapMode = parseToneMapMode((argc > 6) ? argv[6] : nullptr);
 
         // MTLCreateSystemDefaultDevice() is explicitly documented as
         // unsupported for command-line/daemon processes (confirmed via
@@ -1630,7 +1682,7 @@ int main(int argc, const char** argv) {
                                  &rgb[0], &rgb[1], &rgb[2]);
             for (int c = 0; c < 3; ++c) {
                 float v = fmaxf(rgb[c], 0.0f) * vignette;
-                v = acesFilmicTonemap(v);
+                v = applyToneMap(v, toneMapMode);
                 v = linearToSRGB(v);
                 ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
             }
