@@ -2627,3 +2627,58 @@ coincidence.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 55. Bug fix: replace Schlick's dielectric Fresnel approximation with the exact formula (done)
+
+Both dielectric material types (materialType 2, smooth glass, and
+materialType 5, rough/frosted glass) used `schlickReflectance()` -
+Schlick's well-known `R0 + (1 - R0) * (1 - cosTheta)^5` approximation -
+to decide, stochastically, whether a ray reflects or refracts at the
+surface. A comment near that code claimed this was "the same
+approximation this project's own CPU dielectric material uses" for the
+identical decision. Checked while reviewing this exact code, following
+[[project-metal-poc-status]]'s own advice to check `src/shared/` before
+trusting an existing claim or inventing something new: `grep -rln
+"FrDielectric" src/` and reading `src/TheRestOfYourLife/material_simple.h`
+showed this was WRONG. The CPU renderer's real `dielectric` material
+uses `DielectricBxDF`, which itself calls `FrDielectric` - the exact,
+real-valued-IOR Fresnel dielectric formula (mirroring pbrt-v4's
+`scattering.h`), not Schlick's approximation at all. A documentation
+inaccuracy as much as a missed accuracy opportunity on the GPU side.
+
+`frDielectric()` is a direct port of `src/shared/fresnel.h`'s own
+`FrDielectric()`: compute `sin2ThetaT` from Snell's law, detect total
+internal reflection when `sin2ThetaT >= 1`, then average the parallel
+and perpendicular polarization reflectances (`rParl`, `rPerp`) rather
+than Schlick's single power-curve fit. Both dielectric branches'
+reflect-vs-refract call sites were switched from
+`schlickReflectance(cosTheta, refractionRatio)` to
+`frDielectric(cosTheta, 1.0 / refractionRatio)`, and `schlickReflectance()`
+itself was deleted (confirmed via `grep` to have zero remaining
+references - no dead code left behind).
+
+**Numeric verification, checked before rendering anything**: a
+standalone C program comparing `frDielectric` against Schlick at eight
+angles for IOR = 1.5 (air to glass) found real, non-trivial divergence
+at mid-to-grazing angles - at 60 degrees, exact = 0.08919 vs.
+Schlick = 0.07000 (about 27% relative difference); at 85 degrees,
+exact = 0.61280 vs. Schlick = 0.64849. The two formulas agree closely
+near normal incidence (where both must reduce to the same `R0`) and
+diverge as the angle steepens, which is exactly Schlick's own known
+weakness - it was fit to be a cheap, good-near-normal approximation,
+not an accurate one at grazing angles.
+
+**Result, verified via a direct before/after render comparison**: a
+900x900 @ 192spp render taken from `main` (Schlick) compared pixel-by-pixel
+against the same scene rendered with `frDielectric()`. 938,565 of
+2,430,000 subpixels differ (38.6%), with the single largest difference
+(91 out of 255) at pixel (690, 701). Cropping both images around that
+pixel shows an internal caustic-like bright highlight inside the smooth
+glass sphere (materialType 2, sphere 0) that shifts in both position and
+intensity between the two renders - exactly the expected signature of a
+more accurate grazing-angle/internal-reflection Fresnel term changing
+which internal light paths inside a refractive sphere carry the most
+energy.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
