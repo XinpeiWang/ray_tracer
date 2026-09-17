@@ -1295,7 +1295,23 @@ kernel void primaryRayKernel(
             // not just Lambertian ones). Every non-light surface has
             // emission == 0, so `any(...)` below is false and this whole
             // block is a no-op for them.
-            if (any(float3(mat.emission) > float3(0.0))) {
+            //
+            // `&& frontFace`: an AreaLight only emits from the side its own
+            // `normal` points toward - the same one-sidedness the NEE
+            // branches below already enforce via their own `cosLight > 0.0`
+            // check (see e.g. this scene's own ceiling lights, which only
+            // shine down into the room). Without this, a camera ray or
+            // BSDF-sampled bounce landing on the BACK of a light quad would
+            // still read its emission unconditionally - invisible in this
+            // committed scene (every light is mounted flush against the
+            // ceiling, its own back face physically inaccessible from
+            // inside the room) but a genuine correctness gap: this is the
+            // one place in the shader a light's own emission was reachable
+            // without a facing check at all, inconsistent with every NEE
+            // branch's own already-correct behaviour. `frontFace` is
+            // already computed above for the dielectric branch's own eta
+            // selection - reused here, not recomputed.
+            if (any(float3(mat.emission) > float3(0.0)) && frontFace) {
                 if (specularBounce) {
                     // No competing NEE sample could have produced this
                     // exact hit (camera ray, or a mirror/glass bounce -
