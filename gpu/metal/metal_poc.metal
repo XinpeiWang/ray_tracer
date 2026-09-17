@@ -607,6 +607,12 @@ inline float rayBoxExitDistance(float3 origin, float3 dir, float3 boxMin, float3
 struct TriangleMaterial {
     packed_float3 color;
     uint materialType;
+    // Real refraction index for materialType == 2/5/11 (see each
+    // branch's own comment); reused again, differently, by materialType
+    // == 4/9 (anisotropic/patchy conductor's own alphaX) and now
+    // materialType == 14 (velvet's own `sigma` spread parameter, see
+    // shadeVelvet's own comment) - the same "one scalar slot, per-
+    // materialType meaning" pattern `roughness` already uses below.
     float ior;
     packed_float3 emission;
     // Index into the `lights` buffer for a hit ON one of a light's own
@@ -890,6 +896,35 @@ inline float3 cosineSampleHemisphere(float3 normal, thread uint& rngState) {
     // Build an orthonormal basis around `normal` (Duff et al.'s branchless
     // construction) - same "pick any tangent frame, only the normal
     // matters" approach this project's own onb.h uses for the CPU path.
+    float sign = normal.z >= 0.0 ? 1.0 : -1.0;
+    float a = -1.0 / (sign + normal.z);
+    float b = normal.x * normal.y * a;
+    float3 tangent = float3(1.0 + sign * normal.x * normal.x * a, sign * b, -sign * normal.x);
+    float3 bitangent = float3(b, sign + normal.y * normal.y * a, -normal.y);
+
+    return normalize(x * tangent + y * bitangent + z * normal);
+}
+
+// UNIFORM (not cosine-weighted) hemisphere sampling - materialType 14's
+// own velvet material needs this: Ashikhmin & Shirley's own velvet BRDF
+// (see shadeVelvet's own comment) is sampled uniformly in the reference
+// this was ported from (Blender Cycles' own bsdf_ashikhmin_velvet.h),
+// the same "don't bother importance-sampling a niche lobe's own oddly-
+// shaped distribution, plain uniform/cosine sampling is simpler and
+// still unbiased, just higher-variance" simplification this POC's own
+// Oren-Nayar material (materialType 13) already makes too. Same Duff et
+// al. branchless ONB construction as cosineSampleHemisphere() above -
+// only the (x,y,z) distribution differs (z = u1 directly, not sqrt(u1),
+// the standard uniform-over-solid-angle construction).
+inline float3 sampleUniformHemisphere(float3 normal, thread uint& rngState) {
+    float u1 = randFloat(rngState);
+    float u2 = randFloat(rngState);
+    float z = u1;
+    float r = sqrt(max(0.0, 1.0 - z * z));
+    float theta = 2.0 * M_PI_F * u2;
+    float x = r * cos(theta);
+    float y = r * sin(theta);
+
     float sign = normal.z >= 0.0 ? 1.0 : -1.0;
     float a = -1.0 / (sign + normal.z);
     float b = normal.x * normal.y * a;
@@ -2845,6 +2880,245 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
     return true;
 }
 
+// Ashikhmin & Shirley's own velvet BRDF (2000; this exact port, though,
+// mirrors Blender Cycles' own kernel/closure/bsdf_ashikhmin_velvet.h,
+// itself adapted from Open Shading Language) - the classic fabric/
+// cloth "fuzzy grazing-angle rim glow" look: a Blinn-Phong-shaped
+// microfacet distribution `D` (peaked when the half-vector sits near
+// the TANGENT plane, not near the normal the way every specular
+// material in this POC so far peaks) times a heuristic geometric term
+// `G`, giving a BRDF that's genuinely near-ZERO for head-on view/light
+// (no highlight at all, unlike every other glossy material here) and
+// rises toward a real peak somewhere around 75-80 degrees before
+// falling off again approaching true grazing - not a monotonic curve,
+// a real physical signature confirmed against a fresh reference
+// program below, not assumed from the formula alone. `sigma` (this
+// material's own roughness-like spread parameter) reuses `mat.ior`
+// (materialType 2/4/5/9/11 already each reuse this same field their
+// own way - one more reuse, not a new struct field); `G`'s own "TODO:
+// derive G from D analytically" comment in the reference is Cycles'
+// own, not this port's - a known, accepted heuristic in the original
+// source, left exactly as-is here rather than silently "fixing" it.
+inline float velvetF(float3 wo, float3 wi, float3 n, float sigma) {
+    float invSigma2 = 1.0 / (sigma * sigma);
+    float cosNO = dot(n, wo);
+    float cosNI = dot(n, wi);
+    if (cosNO <= 0.0 || cosNI <= 0.0) {
+        return 0.0;
+    }
+    float3 h = normalize(wo + wi);
+    float cosNH = dot(n, h);
+    float cosH = abs(dot(wo, h));
+    if (abs(cosNH) >= 1.0 - 1e-5 || cosH <= 1e-5) {
+        return 0.0;
+    }
+    float cosNHdivH = max(cosNH / cosH, 1e-5);
+    float fac1 = 2.0 * abs(cosNHdivH * cosNO);
+    float fac2 = 2.0 * abs(cosNHdivH * cosNI);
+    float sinNH2 = 1.0 - cosNH * cosNH;
+    float sinNH4 = sinNH2 * sinNH2;
+    float cot2 = (cosNH * cosNH) / sinNH2;
+    float D = exp(-cot2 * invSigma2) * invSigma2 * M_1_PI_F / sinNH4;
+    float G = min(1.0, min(fac1, fac2));
+    return 0.25 * (D * G) / cosNO;
+}
+
+inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, float3 facingNormal,
+                          constant Uniforms& uniforms,
+                          device const AreaLight* lights,
+                          device const PointLight* pointLights,
+                          device const DirectionalLight* directionalLights,
+                          device const ProjectionLight* projectionLights,
+                          device const GoniometricLight* goniometricLights,
+                          device const float* envMarginalCDF,
+                          device const float* envConditionalCDF,
+                          uint envMapWidth, uint envMapHeight,
+                          texture2d<float, access::sample> earthTexture,
+                          texture2d<float, access::sample> goniometricTexture,
+                          sampler textureSampler,
+                          intersector<instancing, triangle_data> isect,
+                          instance_acceleration_structure accelStructure,
+                          intersection_function_table<instancing, triangle_data> functionTable,
+                          thread float3& rayDir, thread float3& rayOrigin,
+                          thread float3& throughput, thread float3& radiance,
+                          thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState) {
+    float3 woWorld = -rayDir;
+    // UNIFORM hemisphere sampling (not cosine-weighted, see
+    // sampleUniformHemisphere's own comment) - the competing BSDF pdf
+    // for MIS against every light below is the CONSTANT 1/(2*pi), not
+    // Lambertian/Oren-Nayar's own direction-dependent cosTheta/pi.
+    float uniformPdf = 1.0 / (2.0 * M_PI_F);
+
+    if (all(mat.emission == float3(0.0))) {
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+        float3 toLight = ls.point - hitPoint;
+        float distSq = dot(toLight, toLight);
+        float dist = sqrt(distSq);
+        float3 wi = toLight / dist;
+        float cosSurface = dot(facingNormal, wi);
+        float cosLight = dot(ls.normal, -wi);
+        if (cosSurface > 0.0 && cosLight > 0.0) {
+            ray shadowRay;
+            shadowRay.origin = hitPoint + facingNormal * 0.001f;
+            shadowRay.direction = wi;
+            shadowRay.min_distance = 0.001f;
+            shadowRay.max_distance = dist - 0.002f;
+            intersection_result<instancing, triangle_data> shadowResult =
+                isect.intersect(shadowRay, accelStructure, functionTable);
+            if (shadowResult.type == intersection_type::none) {
+                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                float weight = (pdfSolidAngle * pdfSolidAngle)
+                    / (pdfSolidAngle * pdfSolidAngle + uniformPdf * uniformPdf);
+                float transmittance = exp(-uniforms.fogSigmaT * dist);
+                radiance += throughput * albedo * velvetF(woWorld, wi, facingNormal, mat.ior)
+                            * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
+            }
+        }
+
+        for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+            PointLight pl = pointLights[pli];
+            float3 toPointLight = float3(pl.position) - hitPoint;
+            float plDistSq = dot(toPointLight, toPointLight);
+            float plDist = sqrt(plDistSq);
+            float3 plWi = toPointLight / plDist;
+            float plCosSurface = dot(facingNormal, plWi);
+            if (plCosSurface > 0.0) {
+                ray plShadowRay;
+                plShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                plShadowRay.direction = plWi;
+                plShadowRay.min_distance = 0.001f;
+                plShadowRay.max_distance = plDist - 0.002f;
+                intersection_result<instancing, triangle_data> plShadowResult =
+                    isect.intersect(plShadowRay, accelStructure, functionTable);
+                if (plShadowResult.type == intersection_type::none) {
+                    float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                    float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                    radiance += throughput * albedo * velvetF(woWorld, plWi, facingNormal, mat.ior)
+                                * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
+                }
+            }
+        }
+
+        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+            DirectionalLight dl = directionalLights[dli];
+            float3 dlWi = normalize(-float3(dl.direction));
+            float dlCosSurface = dot(facingNormal, dlWi);
+            if (dlCosSurface > 0.0) {
+                ray dlShadowRay;
+                dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                dlShadowRay.direction = dlWi;
+                dlShadowRay.min_distance = 0.001f;
+                dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                intersection_result<instancing, triangle_data> dlShadowResult =
+                    isect.intersect(dlShadowRay, accelStructure, functionTable);
+                if (dlShadowResult.type == intersection_type::none) {
+                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    radiance += throughput * albedo * velvetF(woWorld, dlWi, facingNormal, mat.ior)
+                                * float3(dl.emission) * dlCosSurface * dlTransmittance;
+                }
+            }
+        }
+
+        for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+            ProjectionLight pj = projectionLights[pji];
+            float3 toProjLight = float3(pj.position) - hitPoint;
+            float pjDistSq = dot(toProjLight, toProjLight);
+            float pjDist = sqrt(pjDistSq);
+            float3 pjWi = toProjLight / pjDist;
+            float pjCosSurface = dot(facingNormal, pjWi);
+            if (pjCosSurface > 0.0) {
+                float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                             pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                             earthTexture, textureSampler);
+                if (any(pjRadiance > float3(0.0))) {
+                    ray pjShadowRay;
+                    pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    pjShadowRay.direction = pjWi;
+                    pjShadowRay.min_distance = 0.001f;
+                    pjShadowRay.max_distance = pjDist - 0.002f;
+                    intersection_result<instancing, triangle_data> pjShadowResult =
+                        isect.intersect(pjShadowRay, accelStructure, functionTable);
+                    if (pjShadowResult.type == intersection_type::none) {
+                        float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                        radiance += throughput * albedo * velvetF(woWorld, pjWi, facingNormal, mat.ior)
+                                    * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
+                    }
+                }
+            }
+        }
+
+        for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+            GoniometricLight gl = goniometricLights[gli];
+            float3 toGoniLight = float3(gl.position) - hitPoint;
+            float glDistSq = dot(toGoniLight, toGoniLight);
+            float glDist = sqrt(glDistSq);
+            float3 glWi = toGoniLight / glDist;
+            float glCosSurface = dot(facingNormal, glWi);
+            if (glCosSurface > 0.0) {
+                float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                              gl.emission, gl.scale,
+                                                              goniometricTexture, textureSampler);
+                if (any(glRadiance > float3(0.0))) {
+                    ray glShadowRay;
+                    glShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    glShadowRay.direction = glWi;
+                    glShadowRay.min_distance = 0.001f;
+                    glShadowRay.max_distance = glDist - 0.002f;
+                    intersection_result<instancing, triangle_data> glShadowResult =
+                        isect.intersect(glShadowRay, accelStructure, functionTable);
+                    if (glShadowResult.type == intersection_type::none) {
+                        float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                        radiance += throughput * albedo * velvetF(woWorld, glWi, facingNormal, mat.ior)
+                                    * glRadiance * glCosSurface * glTransmittance / glDistSq;
+                    }
+                }
+            }
+        }
+
+        if (envMapWidth > 0u) {
+            float envPdfSolidAngle;
+            float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                       int(envMapWidth), int(envMapHeight),
+                                                       randFloat(rngState), randFloat(rngState), envPdfSolidAngle);
+            float envCosSurface = dot(facingNormal, envWi);
+            if (envCosSurface > 0.0 && envPdfSolidAngle > 1e-9) {
+                ray envShadowRay;
+                envShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                envShadowRay.direction = envWi;
+                envShadowRay.min_distance = 0.001f;
+                envShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> envShadowResult =
+                    isect.intersect(envShadowRay, accelStructure, functionTable);
+                if (envShadowResult.type == intersection_type::none) {
+                    float2 envUV = equirectangularUV(envWi);
+                    float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
+                    float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
+                        / (envPdfSolidAngle * envPdfSolidAngle + uniformPdf * uniformPdf);
+                    radiance += throughput * albedo * velvetF(woWorld, envWi, facingNormal, mat.ior)
+                                * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
+    }
+
+    // Continuation ray: UNIFORM (not cosine-weighted) hemisphere
+    // sampling, matching Cycles' own bsdf_ashikhmin_velvet_sample() -
+    // pdf stays the constant 1/(2*pi) regardless of direction, so the MC
+    // weight f*cosTheta/pdf is `albedo*velvetF(...)*cosTheta*2*pi`, NOT
+    // Lambertian/Oren-Nayar's own pi-only factor (their own cosTheta/pi
+    // pdf already cancels one power of cosTheta that this uniform pdf
+    // does not).
+    float3 newDir = sampleUniformHemisphere(facingNormal, rngState);
+    rayDir = newDir;
+    rayOrigin = hitPoint + facingNormal * 0.001f;
+    float newDirCos = max(dot(facingNormal, newDir), 0.0001);
+    throughput *= albedo * velvetF(woWorld, newDir, facingNormal, mat.ior) * newDirCos * (2.0 * M_PI_F);
+    bsdfPdf = uniformPdf;
+    specularBounce = false;
+    return true;
+}
+
 kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
     texture2d<float, access::sample> earthTexture [[texture(1)]],
@@ -3467,6 +3741,13 @@ kernel void primaryRayKernel(
                                      earthTexture, goniometricTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
+            } else if (mat.materialType == 14u) {
+                if (!shadeVelvet(mat, albedo, hitPoint, facingNormal, uniforms,
+                                  lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                  envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
+                                  earthTexture, goniometricTexture, textureSampler,
+                                  isect, accelStructure, functionTable,
+                                  rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else {
                 if (!shadeLambertian(mat, albedo, hitPoint, facingNormal, uniforms,
                                       lights, pointLights, directionalLights, projectionLights, goniometricLights,
@@ -3692,6 +3973,17 @@ kernel void test_orenNayarF(
     uint tid [[thread_position_in_grid]])
 {
     outputs[tid] = orenNayarF(wos[tid], wis[tid], ns[tid], sigmas[tid]);
+}
+
+kernel void test_velvetF(
+    device const float3* wos [[buffer(0)]],
+    device const float3* wis [[buffer(1)]],
+    device const float3* ns [[buffer(2)]],
+    device const float* sigmas [[buffer(3)]],
+    device float* outputs [[buffer(4)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = velvetF(wos[tid], wis[tid], ns[tid], sigmas[tid]);
 }
 
 kernel void test_henyeyGreensteinPhase(
