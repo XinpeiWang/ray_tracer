@@ -96,6 +96,10 @@ struct Uniforms {
     // picking scheme). 0 (every earlier scene) skips the point-light NEE
     // loop entirely in every material branch - purely additive.
     uint pointLightCount;
+    // Same idea as pointLightCount, for the separate `directionalLights`
+    // buffer (see DirectionalLight's own comment). 0 (every earlier
+    // scene) skips that loop entirely - purely additive.
+    uint directionalLightCount;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -169,6 +173,40 @@ inline float spotLightFalloff(float3 wiFromLight, float3 direction, float cosOut
     float t = (cosAngle - cosOuterAngle) / max(cosInnerAngle - cosOuterAngle, 1e-6);
     return t * t * (3.0 - 2.0 * t); // smoothstep
 }
+
+// A directional ("sun") light - like PointLight, a true delta light
+// (zero solid angle, always full NEE weight, no MIS, no pdf conversion),
+// but positioned at infinity rather than at a finite point: every shading
+// point sees the SAME fixed incoming direction, and there is no 1/distSq
+// falloff at all (a real sun's own distance makes that falloff
+// imperceptibly close to constant across any scene-sized region) - the
+// limit of a point light as distance goes to infinity and emission grows
+// to compensate, not a separate kind of light needing new integration
+// theory. `direction` is the direction the light itself travels (from
+// the sun toward the scene), matching PointLight's own `direction`
+// convention for the spot cone.
+//
+// Known simplification: unlike PointLight's shadow ray (a known finite
+// distance, so `exp(-fogSigmaT * dist)` is a real Beer-Lambert
+// attenuation), a directional light's shadow ray has no well-defined
+// finite path length through the fog before it exits the room's open
+// front - so this light's own NEE contribution does NOT attenuate
+// through fog at all (unconditionally full contribution when
+// unoccluded), rather than picking an arbitrary sentinel distance that
+// would silently misrepresent the fog's real optical depth. Skipped
+// deliberately, not an oversight - the same "don't fake it" judgement
+// call step 24's own point light doc applied to GGX energy compensation.
+struct DirectionalLight {
+    packed_float3 direction;
+    packed_float3 emission;
+};
+
+// A shadow ray toward a directional light has no real target distance
+// (the light is at infinity) - this is just "farther than anything in
+// this room's own [-1,1]^3 extent could be," so an unoccluded shadow ray
+// reads as having genuinely exited the scene rather than being clipped
+// short of a real occluder.
+constant float kDirectionalLightMaxDistance = 10.0f;
 
 // materialType: 0 = Lambertian diffuse, 1 = mirror (perfect specular),
 // 2 = dielectric (glass), 3 = textured Lambertian (same BSDF/NEE code path
@@ -788,6 +826,7 @@ kernel void primaryRayKernel(
     device const DiskData* disks [[buffer(13)]],
     device const TriangleMaterial* diskMaterials [[buffer(14)]],
     device const PointLight* pointLights [[buffer(15)]],
+    device const DirectionalLight* directionalLights [[buffer(16)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -1008,6 +1047,26 @@ kernel void primaryRayKernel(
                             float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
                             float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
                             radiance += throughput * plPhaseValue * float3(pl.emission) * plSpot * plTransmittance / plDistSq;
+                        }
+                    }
+
+                    // Directional lights: summed unconditionally, not
+                    // picked - see DirectionalLight's own comment. No
+                    // distance falloff and (deliberately) no fog
+                    // attenuation, unlike the point/spot loop just above.
+                    for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+                        DirectionalLight dl = directionalLights[dli];
+                        float3 dlWi = normalize(-float3(dl.direction));
+                        ray dlShadowRay;
+                        dlShadowRay.origin = scatterPoint;
+                        dlShadowRay.direction = dlWi;
+                        dlShadowRay.min_distance = 0.001f;
+                        dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                        intersection_result<instancing, triangle_data> dlShadowResult =
+                            isect.intersect(dlShadowRay, accelStructure, functionTable);
+                        if (dlShadowResult.type == intersection_type::none) {
+                            float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), uniforms.fogAsymmetryG);
+                            radiance += throughput * dlPhaseValue * float3(dl.emission);
                         }
                     }
 
@@ -1370,6 +1429,37 @@ kernel void primaryRayKernel(
                             }
                         }
                     }
+
+                    // Directional lights: summed unconditionally, not
+                    // picked - see DirectionalLight's own comment. No
+                    // distance falloff and (deliberately) no fog
+                    // attenuation, unlike the point/spot loop just above.
+                    for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+                        DirectionalLight dl = directionalLights[dli];
+                        float3 dlWi = normalize(-float3(dl.direction));
+                        float dlCosSurface = dot(facingNormal, dlWi);
+                        if (dlCosSurface > 0.0) {
+                            float3 dlWiLocal = float3(dot(dlWi, tangent), dot(dlWi, bitangent), dot(dlWi, facingNormal));
+                            float3 dlH = normalize(woLocal + dlWiLocal);
+                            float dlNdotO = woLocal.z;
+                            float dlNdotI = max(dlWiLocal.z, 0.0001);
+                            float dlDh = ggxD(dlH, alphaX, alphaY);
+                            float dlG = ggxG(woLocal, dlWiLocal, alphaX, alphaY);
+                            float3 dlF = fresnelSchlickConductor(max(dot(woLocal, dlH), 0.0), albedo);
+                            float3 dlBrdf = dlDh * dlG * dlF / max(4.0 * dlNdotO * dlNdotI, 1e-6);
+
+                            ray dlShadowRay;
+                            dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                            dlShadowRay.direction = dlWi;
+                            dlShadowRay.min_distance = 0.001f;
+                            dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                            intersection_result<instancing, triangle_data> dlShadowResult =
+                                isect.intersect(dlShadowRay, accelStructure, functionTable);
+                            if (dlShadowResult.type == intersection_type::none) {
+                                radiance += throughput * dlBrdf * float3(dl.emission) * dlCosSurface;
+                            }
+                        }
+                    }
                 }
 
                 float3 hLocal = sampleGGXVNDF(woLocal, alphaX, alphaY, rngState);
@@ -1517,6 +1607,30 @@ kernel void primaryRayKernel(
                                 float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
                                 radiance += throughput * albedo * (1.0 / M_PI_F)
                                             * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
+                            }
+                        }
+                    }
+
+                    // Directional lights: summed unconditionally, not
+                    // picked - see DirectionalLight's own comment. No
+                    // distance falloff and (deliberately, see that same
+                    // comment) no fog attenuation, unlike the point/spot
+                    // loop just above.
+                    for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+                        DirectionalLight dl = directionalLights[dli];
+                        float3 dlWi = normalize(-float3(dl.direction));
+                        float dlCosSurface = dot(facingNormal, dlWi);
+                        if (dlCosSurface > 0.0) {
+                            ray dlShadowRay;
+                            dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                            dlShadowRay.direction = dlWi;
+                            dlShadowRay.min_distance = 0.001f;
+                            dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                            intersection_result<instancing, triangle_data> dlShadowResult =
+                                isect.intersect(dlShadowRay, accelStructure, functionTable);
+                            if (dlShadowResult.type == intersection_type::none) {
+                                radiance += throughput * albedo * (1.0 / M_PI_F)
+                                            * float3(dl.emission) * dlCosSurface;
                             }
                         }
                     }

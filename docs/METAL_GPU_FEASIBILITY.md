@@ -1766,3 +1766,69 @@ the two lights' contributions are genuinely independent, not entangled.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 37. Proof-of-concept, step 26: a directional ("sun") light (done)
+
+Steps 24-25 added two delta lights, but both radiate from a finite
+POINT - a spot is just a point light with an angular mask, not a
+different underlying shape of illumination. A directional light is
+genuinely different in kind: parallel rays with no position at all and
+no `1/distSq` falloff, the idealized limit of a point light as its
+distance goes to infinity and its emission grows to compensate. Still
+the same delta-light integration math as steps 24-25 (zero solid angle,
+always full NEE weight, no MIS, no area-sampling pdf) - only the
+geometry of "which direction is the light in" changes, from
+`normalize(lightPos - hitPoint)` to a single fixed vector shared by
+every shading point in the scene.
+
+`DirectionalLight`/`DirectionalLightData` carry just `direction` and
+`emission` - no position, matching `PointLight`'s own `direction`
+convention (the direction the light itself travels). Because a
+directional light's shadow ray has no real target distance, its
+`max_distance` uses a sentinel (`kDirectionalLightMaxDistance = 10.0`,
+comfortably larger than this room's own `[-1,1]^3` extent) rather than a
+computed one. This forced one explicit, documented simplification: a
+point/spot light's fog attenuation (`exp(-fogSigmaT * plDist)`) uses a
+REAL finite distance, but a directional light has no such distance
+before it exits the room's own open front - rather than Beer-Lambert
+across an arbitrary sentinel length (which would either silently
+over- or under-attenuate depending on what constant was picked), this
+light's own NEE contribution skips fog attenuation entirely. Documented
+in the shader as a deliberate scope decision, the same judgement call
+step 24's own doc applied to GGX energy compensation, not a
+quietly-wrong approximation.
+
+Added one directional light, aimed with a slight downward/sideways tilt
+(`direction = (0.1, -0.15, -1.0)`, mostly -z) through the room's own
+open front (the `z=1` face has no wall - see the floor/ceiling/wall
+`addQuad()` calls in step 1's own scene). Verification surfaced a real,
+non-obvious geometric interaction worth recording: an isolated
+diagnostic render (emission boosted ~10x, the other two point lights
+zeroed, never committed) showed the room's LEFT half staying dark while
+the RIGHT half lit up brightly, a hard diagonal boundary between them -
+not a bug, but genuine self-shadowing. The light's shallow entry angle
+means a shading point near the red (`x=-1`) wall traces back toward the
+light along a path that re-hits that SAME wall's own surface almost
+immediately, before it can ever reach the open front at `z=1`; a point
+near the green (`x=1`) wall traces back along a path moving AWAY from
+any wall, reaching the opening freely. A real optical effect a shallow
+directional light produces near a parallel surface, the same family of
+"verify by rendering, not by geometry math alone" lesson step 24's own
+placement iterations already taught this POC, applied to a new light
+shape.
+
+**Result, verified two ways**: the committed scene's showcase render
+shows a clear, tasteful raking highlight across the back wall and green
+wall's own right-hand portion (tuned to `(2.8, 2.6, 2.4)` after an
+intermediate `(4.5, 4.2, 3.9)` clipped that patch to solid white -
+dialed back once, the same "verify at the committed intensity, not just
+the diagnostic one" step this POC's light PRs keep repeating), distinct
+from the two area lights, the point light's own glow, and the spot's own
+cone. An A/B render with `directionalLightCount = 0` reproduces the
+prior committed (spot-light) render exactly, with only that raking
+highlight missing - confirming the new light's contribution is genuinely
+isolated, not entangled with the two point/spot lights already in the
+scene.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
