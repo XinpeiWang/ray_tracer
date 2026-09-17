@@ -108,6 +108,11 @@ struct Uniforms {
     // buffer (see DirectionalLight's own comment). 0 (every earlier
     // scene) skips that loop entirely - purely additive.
     uint directionalLightCount;
+    // Same idea again, for the separate `projectionLights` buffer (see
+    // ProjectionLight's own comment) - a fourth delta-light type, summed
+    // unconditionally like the other three, never picked. 0 (every
+    // earlier scene) skips that loop entirely - purely additive.
+    uint projectionLightCount;
     // Single-pass adaptive sampling toggle - see the shading loop's own
     // comment on `convergedCount`/`kAdaptiveThreshold` for the full
     // "why" and the CPU integrator this was ported from. 0 (every scene
@@ -245,6 +250,76 @@ struct DirectionalLight {
     packed_float3 direction;
     packed_float3 emission;
 };
+
+// A "slide projector" light (pbrt-v4's own ProjectionLight, src/shared/
+// projection_light.h section 12.5) - a FOURTH delta light type alongside
+// PointLight/spot/DirectionalLight, same "summed unconditionally every
+// bounce, never picked, no MIS/pdf needed" integration shape every
+// earlier delta light already established. Unlike a spot light's own
+// smooth cone falloff (a single scalar), this one projects an actual
+// IMAGE through a perspective frustum - a real gobo/slide-projector
+// effect, not just a differently-shaped intensity curve. Reuses the
+// scene's own already-loaded `earthTexture` (bound at texture(1) since
+// this POC's very first texture-mapping PR) as the projected image
+// rather than needing a second texture binding - a world map projected
+// onto a wall/floor like a slide projector, not a new asset.
+// `right`/`up`/`forward` are a precomputed (host-side, once)
+// orthonormal light-space basis - the same "precompute once, don't
+// re-derive per shading sample" approach AreaLight's own edgeU/edgeV/
+// normal already uses. `tanHalfFovX`/`tanHalfFovY` fold the frustum's
+// half-angle AND aspect ratio into two scalars (rather than a separate
+// fov + aspect the way pbrt-v4's own screenBounds derivation does),
+// since this POC only ever needs the two independent screen-space
+// extents, not pbrt-v4's own more general aspect>=1-vs-aspect<1 code
+// path.
+struct ProjectionLight {
+    packed_float3 position;
+    packed_float3 forward;
+    packed_float3 right;
+    packed_float3 up;
+    float tanHalfFovX;
+    float tanHalfFovY;
+    float scale;
+};
+
+// Evaluates a ProjectionLight's own emitted intensity toward a shading
+// point, given `wiFromLight` (the direction the light itself travels,
+// FROM the light TOWARD the shading point - the same convention
+// spotLightFalloff() already uses for its own `wiFromLight`). Mirrors
+// pbrt-v4 ProjectionLight::I(): reject anything behind the projector
+// (`lz <= hither`, a small positive epsilon rather than exactly 0, same
+// reasoning pbrt-v4's own default hither has - avoids a degenerate
+// divide right at the projector's own image plane), perspective-project
+// into normalized screen space, reject anything outside the frustum's
+// own screen bounds, then sample the image at the resulting UV. No
+// separate falloff curve the way spotLightFalloff() has - the image
+// itself (all zero outside the visible frustum, real pixel values
+// inside it) already IS the full directional intensity function.
+inline float3 projectionLightRadiance(float3 wiFromLight, packed_float3 lightForward,
+                                       packed_float3 lightRight, packed_float3 lightUp,
+                                       float tanHalfFovX, float tanHalfFovY, float scale,
+                                       texture2d<float, access::sample> image, sampler s) {
+    float3 wi = normalize(wiFromLight);
+    float lz = dot(wi, float3(lightForward));
+    const float kHither = 0.001;
+    if (lz <= kHither) {
+        return float3(0.0); // Behind (or exactly at) the projector's own image plane.
+    }
+    float lx = dot(wi, float3(lightRight)) / lz;
+    float ly = dot(wi, float3(lightUp)) / lz;
+    float sx = lx / tanHalfFovX;
+    float sy = ly / tanHalfFovY;
+    if (abs(sx) > 1.0 || abs(sy) > 1.0) {
+        return float3(0.0); // Outside the projector's own frustum.
+    }
+    // Screen space [-1,1]^2 -> image UV [0,1]^2. Y flipped (screen +Y is
+    // "up," image +V is conventionally "down," the same flip every other
+    // texture-sampling UV convention in this file already assumes) so
+    // the projected image reads right-side-up from the projector's own
+    // point of view, not mirrored top-to-bottom.
+    float2 uv = float2(sx * 0.5 + 0.5, 0.5 - sy * 0.5);
+    return image.sample(s, uv).rgb * scale;
+}
 
 // A shadow ray toward a directional light has no real target distance
 // (the light is at infinity) - this is just "farther than anything in
@@ -1145,6 +1220,7 @@ kernel void primaryRayKernel(
     device const TriangleMaterial* diskMaterials [[buffer(14)]],
     device const PointLight* pointLights [[buffer(15)]],
     device const DirectionalLight* directionalLights [[buffer(16)]],
+    device const ProjectionLight* projectionLights [[buffer(17)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -1414,6 +1490,35 @@ kernel void primaryRayKernel(
                             float dlExitDist = rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
                             float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
                             radiance += throughput * dlPhaseValue * float3(dl.emission) * dlTransmittance;
+                        }
+                    }
+
+                    // Projection ("slide projector") lights: same
+                    // unconditional-sum, no-MIS shape as every other
+                    // delta light here - see ProjectionLight's own
+                    // comment.
+                    for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+                        ProjectionLight pj = projectionLights[pji];
+                        float3 toProjLight = float3(pj.position) - scatterPoint;
+                        float pjDistSq = dot(toProjLight, toProjLight);
+                        float pjDist = sqrt(pjDistSq);
+                        float3 pjWi = toProjLight / pjDist;
+                        float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                                     pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                                     earthTexture, textureSampler);
+                        if (any(pjRadiance > float3(0.0))) {
+                            ray pjShadowRay;
+                            pjShadowRay.origin = scatterPoint;
+                            pjShadowRay.direction = pjWi;
+                            pjShadowRay.min_distance = 0.001f;
+                            pjShadowRay.max_distance = pjDist - 0.002f;
+                            intersection_result<instancing, triangle_data> pjShadowResult =
+                                isect.intersect(pjShadowRay, accelStructure, functionTable);
+                            if (pjShadowResult.type == intersection_type::none) {
+                                float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), uniforms.fogAsymmetryG);
+                                float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                                radiance += throughput * pjPhaseValue * pjRadiance * pjTransmittance / pjDistSq;
+                            }
                         }
                     }
 
@@ -1881,6 +1986,43 @@ kernel void primaryRayKernel(
                             }
                         }
                     }
+
+                    // Projection lights - see ProjectionLight's own comment.
+                    for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+                        ProjectionLight pj = projectionLights[pji];
+                        float3 toProjLight = float3(pj.position) - hitPoint;
+                        float pjDistSq = dot(toProjLight, toProjLight);
+                        float pjDist = sqrt(pjDistSq);
+                        float3 pjWi = toProjLight / pjDist;
+                        float pjCosSurface = dot(facingNormal, pjWi);
+                        if (pjCosSurface > 0.0) {
+                            float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                                         pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                                         earthTexture, textureSampler);
+                            if (any(pjRadiance > float3(0.0))) {
+                                float3 pjWiLocal = float3(dot(pjWi, tangent), dot(pjWi, bitangent), dot(pjWi, facingNormal));
+                                float3 pjH = normalize(woLocal + pjWiLocal);
+                                float pjNdotO = woLocal.z;
+                                float pjNdotI = max(pjWiLocal.z, 0.0001);
+                                float pjDh = ggxD(pjH, alphaX, alphaY);
+                                float pjG = ggxG(woLocal, pjWiLocal, alphaX, alphaY);
+                                float3 pjF = fresnelSchlickConductor(max(dot(woLocal, pjH), 0.0), albedo);
+                                float3 pjBrdf = pjDh * pjG * pjF / max(4.0 * pjNdotO * pjNdotI, 1e-6);
+
+                                ray pjShadowRay;
+                                pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                pjShadowRay.direction = pjWi;
+                                pjShadowRay.min_distance = 0.001f;
+                                pjShadowRay.max_distance = pjDist - 0.002f;
+                                intersection_result<instancing, triangle_data> pjShadowResult =
+                                    isect.intersect(pjShadowRay, accelStructure, functionTable);
+                                if (pjShadowResult.type == intersection_type::none) {
+                                    float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                                    radiance += throughput * pjBrdf * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 float3 hLocal = sampleGGXVNDF(woLocal, alphaX, alphaY, rngState);
@@ -2039,6 +2181,35 @@ kernel void primaryRayKernel(
                                 }
                             }
                         }
+
+                        // Projection lights - see ProjectionLight's own comment.
+                        for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+                            ProjectionLight pj = projectionLights[pji];
+                            float3 toProjLight = float3(pj.position) - hitPoint;
+                            float pjDistSq = dot(toProjLight, toProjLight);
+                            float pjDist = sqrt(pjDistSq);
+                            float3 pjWi = toProjLight / pjDist;
+                            float pjCosSurface = dot(facingNormal, pjWi);
+                            if (pjCosSurface > 0.0) {
+                                float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                                             pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                                             earthTexture, textureSampler);
+                                if (any(pjRadiance > float3(0.0))) {
+                                    ray pjShadowRay;
+                                    pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                    pjShadowRay.direction = pjWi;
+                                    pjShadowRay.min_distance = 0.001f;
+                                    pjShadowRay.max_distance = pjDist - 0.002f;
+                                    intersection_result<instancing, triangle_data> pjShadowResult =
+                                        isect.intersect(pjShadowRay, accelStructure, functionTable);
+                                    if (pjShadowResult.type == intersection_type::none) {
+                                        float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                                        radiance += throughput * albedo * (1.0 / M_PI_F)
+                                                    * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     rayDir = cosineSampleHemisphere(facingNormal, rngState);
@@ -2162,6 +2333,35 @@ kernel void primaryRayKernel(
                                 float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
                                 radiance += throughput * albedo * (1.0 / M_PI_F)
                                             * float3(dl.emission) * dlCosSurface * dlTransmittance;
+                            }
+                        }
+                    }
+
+                    // Projection lights - see ProjectionLight's own comment.
+                    for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+                        ProjectionLight pj = projectionLights[pji];
+                        float3 toProjLight = float3(pj.position) - hitPoint;
+                        float pjDistSq = dot(toProjLight, toProjLight);
+                        float pjDist = sqrt(pjDistSq);
+                        float3 pjWi = toProjLight / pjDist;
+                        float pjCosSurface = dot(facingNormal, pjWi);
+                        if (pjCosSurface > 0.0) {
+                            float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                                         pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                                         earthTexture, textureSampler);
+                            if (any(pjRadiance > float3(0.0))) {
+                                ray pjShadowRay;
+                                pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                pjShadowRay.direction = pjWi;
+                                pjShadowRay.min_distance = 0.001f;
+                                pjShadowRay.max_distance = pjDist - 0.002f;
+                                intersection_result<instancing, triangle_data> pjShadowResult =
+                                    isect.intersect(pjShadowRay, accelStructure, functionTable);
+                                if (pjShadowResult.type == intersection_type::none) {
+                                    float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                                    radiance += throughput * albedo * (1.0 / M_PI_F)
+                                                * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
+                                }
                             }
                         }
                     }
