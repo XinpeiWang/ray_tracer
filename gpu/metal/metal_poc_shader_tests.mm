@@ -32,6 +32,8 @@
 #include <vector>
 #include <simd/simd.h>
 
+#include "metal_poc_host_math.h"
+
 using simd::float3;
 
 static int g_failures = 0;
@@ -51,12 +53,11 @@ static void expectTrue(const char* label, bool condition) {
     }
 }
 
-// Mirrors metal_poc.mm's PackedFloat3 - a separate, deliberately
-// duplicate 12-byte definition rather than an #include of
-// metal_poc_host_math.h, since this file only needs the bare struct
-// layout (to build a couple of small GPU-bound buffers), not any of that
-// header's own math functions.
-struct PackedFloat3 { float x, y, z; };
+// PackedFloat3 itself now comes from metal_poc_host_math.h (included
+// above for EnvDistribution2D/buildEnvDistribution2D, section 71) -
+// identical 12-byte layout to what this file used to define separately
+// here, just no longer duplicated now that a real dependency on that
+// header exists anyway.
 
 // Mirrors metal_poc.metal's ProjectionLight byte-for-byte (see that
 // struct's own comment) - needed to build the constant-buffer argument
@@ -402,6 +403,77 @@ static void testBuildAnisotropicOnb(id<MTLDevice> device, id<MTLLibrary> library
     }
 }
 
+static void testEnvironmentDirectionSampling(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // Same synthetic "bright block against a black background" image
+    // metal_poc_math_tests.cpp's own testEnvDistribution2DConcentrates
+    // OnBrightRegion() uses (section 69, phase 1) - reused here via
+    // buildEnvDistribution2D() itself (the exact same host-side function
+    // metal_poc.mm's own render path calls to build the real CDF arrays
+    // this test then uploads) rather than hand-deriving a device-side-
+    // only fixture, so this test exercises the SAME CDF layout the real
+    // render path produces, not a hand-rolled approximation of it.
+    const int width = 32, height = 16;
+    std::vector<unsigned char> rgba((size_t)width * height * 4, 0);
+    for (int y = 8; y < 12; ++y) {
+        for (int x = 16; x < 24; ++x) {
+            unsigned char* px = &rgba[((size_t)y * width + x) * 4];
+            px[0] = px[1] = px[2] = 255;
+            px[3] = 255;
+        }
+    }
+    EnvDistribution2D dist;
+    buildEnvDistribution2D(rgba.data(), width, height, dist);
+
+    id<MTLBuffer> marginalBuf = makeBuffer(device, dist.marginalCDF.data(), dist.marginalCDF.size() * sizeof(float));
+    id<MTLBuffer> conditionalBuf = makeBuffer(device, dist.conditionalCDF.data(), dist.conditionalCDF.size() * sizeof(float));
+    simd::int2 dims[1] = {{width, height}};
+    id<MTLBuffer> dimsBuf = makeBuffer(device, dims, sizeof(dims));
+
+    const int n = 64;
+    simd::float2 uvSamples[n];
+    for (int i = 0; i < n; ++i) {
+        float u1 = ((float)i + 0.5f) / n;
+        uvSamples[i] = {u1, fmodf(u1 * 71.0f + 0.19f, 1.0f)};
+    }
+    id<MTLBuffer> uvBuf = makeBuffer(device, uvSamples, sizeof(uvSamples));
+    id<MTLBuffer> dirOutBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    id<MTLBuffer> pdfOutBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (!runKernel(device, library, queue, @"test_sampleEnvironmentDirection",
+                   @[marginalBuf, conditionalBuf, dimsBuf, uvBuf, dirOutBuf, pdfOutBuf], nil, n)) return;
+    simd::float3* dirs = (simd::float3*)dirOutBuf.contents;
+    float* samplePdfs = (float*)pdfOutBuf.contents;
+
+    // Every sampled direction must be unit length and every pdf strictly
+    // positive/finite - the same basic sanity check the host-side
+    // sampler's own test already established, now for the device-side
+    // port of it.
+    for (int i = 0; i < n; ++i) {
+        char label[96];
+        snprintf(label, sizeof(label), "sampleEnvironmentDirection returns a unit direction (case %d)", i);
+        expectNear(label, simd::length(dirs[i]), 1.0, 1e-3);
+        expectTrue("sampleEnvironmentDirection pdf is positive and finite",
+                   samplePdfs[i] > 0.0f && std::isfinite(samplePdfs[i]));
+    }
+
+    // Self-consistency (mirrors metal_poc_math_tests.cpp's own
+    // testEnvDistribution2DPdfMatchesSample()): re-evaluating
+    // pdfEnvironmentDirection() at each sample's own returned direction
+    // must reproduce that SAME sample's own pdf - the sampling path and
+    // the evaluation path read the same underlying CDF arithmetic (plus
+    // the same equirectangular Jacobian), so any drift between them
+    // would show up here.
+    id<MTLBuffer> dirInBuf = makeBuffer(device, dirs, n * sizeof(simd::float3));
+    id<MTLBuffer> evalPdfOutBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (!runKernel(device, library, queue, @"test_pdfEnvironmentDirection",
+                   @[marginalBuf, conditionalBuf, dimsBuf, dirInBuf, evalPdfOutBuf], nil, n)) return;
+    float* evalPdfs = (float*)evalPdfOutBuf.contents;
+    for (int i = 0; i < n; ++i) {
+        char label[96];
+        snprintf(label, sizeof(label), "pdfEnvironmentDirection matches its own sample's pdf (case %d)", i);
+        expectNear(label, evalPdfs[i], samplePdfs[i], 1e-2);
+    }
+}
+
 static void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // g == 0 (isotropic) must give the SAME value - 1/(4*pi) - for every
     // cosTheta, since an isotropic phase function has no directional
@@ -681,6 +753,7 @@ int main() {
         testFresnelSchlickConductor(device, library, queue);
         testFrComplexRGB(device, library, queue);
         testBuildAnisotropicOnb(device, library, queue);
+        testEnvironmentDirectionSampling(device, library, queue);
         testHenyeyGreensteinPhase(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);

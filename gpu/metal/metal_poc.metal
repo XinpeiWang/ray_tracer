@@ -124,6 +124,17 @@ struct Uniforms {
     // before this one) skips the convergence check entirely, an exact
     // no-op.
     uint adaptiveSampling;
+    // Environment-map importance sampling (section 69's own
+    // EnvDistribution2D, uploaded as the `envMarginalCDF`/
+    // `envConditionalCDF` buffers below) - the image dimensions its own
+    // CDF arrays were built at, needed by the device-side binary search/
+    // evaluation functions to index them correctly. 0 (every scene before
+    // this one, or `useEnvironmentMap == 0`) skips the environment
+    // light's own NEE sampling entirely in every material's own shading
+    // function - purely additive, same "0 reproduces prior behaviour
+    // exactly" pattern every other optional feature here already uses.
+    uint envMapWidth;
+    uint envMapHeight;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -997,6 +1008,81 @@ inline float2 equirectangularUV(float3 dir) {
     return float2(u, v);
 }
 
+// --- Environment-map importance sampling (phase 2) --------------------
+// Device-side counterpart to gpu/metal/metal_poc_host_math.h's own
+// EnvDistribution2D/findCdfInterval/sampleEnvDistribution2D/
+// pdfEnvDistribution2D (section 69, phase 1) - same CDF-slope-as-pdf
+// convention, same piecewise-constant-bucket binary search, just
+// reading `device const float*` buffers instead of a `std::vector`, and
+// folding the equirectangular direction<->UV conversion (equirectangularUV()
+// above, inverted here) and its own sin(theta) solid-angle Jacobian in
+// directly, since a device-side caller wants a world DIRECTION and a
+// solid-angle pdf, not an image-space (u,v) and an image-space density -
+// that conversion has nowhere else to live.
+
+inline int findCdfIntervalDevice(device const float* cdf, int n, float u) {
+    int lo = 0, hi = n;
+    while (lo + 1 < hi) {
+        int mid = (lo + hi) / 2;
+        if (cdf[mid] <= u) lo = mid; else hi = mid;
+    }
+    return (lo < n - 1) ? lo : (n - 1);
+}
+
+// Draws a world direction from the environment map's own importance
+// distribution and returns its solid-angle pdf - mirrors
+// sampleEnvDistribution2D()'s own image-space sampling exactly, then
+// inverts equirectangularUV() (phi = 2*pi*(u-0.5), lambda = pi*(v-0.5),
+// dir = (cos(lambda)*cos(phi), sin(lambda), cos(lambda)*sin(phi))) and
+// applies the equirectangular Jacobian (dOmega = 2*pi^2*cos(lambda)
+// du*dv, and cos(lambda) == sin(pi*v) - see docs section 71's own
+// derivation) to convert the image-space pdf into the solid-angle one
+// every other light-sampling strategy in this shader already returns.
+inline float3 sampleEnvironmentDirection(device const float* marginalCDF, device const float* conditionalCDF,
+                                          int width, int height, float u1, float u2,
+                                          thread float& pdfSolidAngle) {
+    int row = findCdfIntervalDevice(marginalCDF, height, u1);
+    float rowLo = marginalCDF[row], rowHi = marginalCDF[row + 1];
+    float rowSpan = max(rowHi - rowLo, 1e-9);
+    float dv = (u1 - rowLo) / rowSpan;
+    float v = (float(row) + dv) / float(height);
+    float rowPdf = rowSpan * float(height);
+
+    device const float* condRow = conditionalCDF + row * (width + 1);
+    int col = findCdfIntervalDevice(condRow, width, u2);
+    float colLo = condRow[col], colHi = condRow[col + 1];
+    float colSpan = max(colHi - colLo, 1e-9);
+    float du = (u2 - colLo) / colSpan;
+    float u = (float(col) + du) / float(width);
+    float colPdf = colSpan * float(width);
+
+    float pdfImage = rowPdf * colPdf;
+    float sinTheta = max(sin(M_PI_F * v), 1e-6);
+    pdfSolidAngle = pdfImage / (2.0 * M_PI_F * M_PI_F * sinTheta);
+
+    float phi = 2.0 * M_PI_F * (u - 0.5);
+    float lambda = M_PI_F * (v - 0.5);
+    float cosLambda = cos(lambda);
+    return float3(cosLambda * cos(phi), sin(lambda), cosLambda * sin(phi));
+}
+
+// Evaluates the SAME solid-angle pdf at an arbitrary world direction -
+// what a BSDF-sampled ray that escaped toward some direction needs for
+// its own MIS weight against this strategy (the miss-path's own
+// contribution, see primaryRayKernel's own comment on this).
+inline float pdfEnvironmentDirection(device const float* marginalCDF, device const float* conditionalCDF,
+                                      int width, int height, float3 dir) {
+    float2 uv = equirectangularUV(dir);
+    int row = clamp(int(uv.y * float(height)), 0, height - 1);
+    int col = clamp(int(uv.x * float(width)), 0, width - 1);
+    float rowPdf = (marginalCDF[row + 1] - marginalCDF[row]) * float(height);
+    device const float* condRow = conditionalCDF + row * (width + 1);
+    float colPdf = (condRow[col + 1] - condRow[col]) * float(width);
+    float pdfImage = rowPdf * colPdf;
+    float sinTheta = max(sin(M_PI_F * uv.y), 1e-6);
+    return pdfImage / (2.0 * M_PI_F * M_PI_F * sinTheta);
+}
+
 // A PROCEDURAL texture (materialType 6) - analytic, computed directly
 // from the hit's own UV, no image/sampler involved at all, unlike
 // materialType 3's earthTexture lookup or step 18's equirectangularUV()
@@ -1555,6 +1641,9 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                             device const DirectionalLight* directionalLights,
                             device const ProjectionLight* projectionLights,
                             device const GoniometricLight* goniometricLights,
+                            device const float* envMarginalCDF,
+                            device const float* envConditionalCDF,
+                            uint envMapWidth, uint envMapHeight,
                             texture2d<float, access::sample> earthTexture,
                             texture2d<float, access::sample> goniometricTexture,
                             sampler textureSampler,
@@ -1762,6 +1851,49 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 }
             }
         }
+
+        // Environment map (importance-sampled NEE, section 71) - an
+        // additional light-sampling strategy alongside the ones above,
+        // not a replacement: see shadeLambertian's own comment for the
+        // full "why." No fog-transmittance factor here (unlike the
+        // delta lights above) - the miss-path's own existing
+        // unconditional environment contribution (primaryRayKernel's
+        // own comment) never applied one either, so this NEE addition
+        // stays consistent with that pre-existing limitation rather
+        // than introducing a new correctness asymmetry between the two.
+        if (envMapWidth > 0u) {
+            float envPdfSolidAngle;
+            float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                       int(envMapWidth), int(envMapHeight),
+                                                       randFloat(rngState), randFloat(rngState), envPdfSolidAngle);
+            float envCosSurface = dot(facingNormal, envWi);
+            if (envCosSurface > 0.0 && envPdfSolidAngle > 1e-9) {
+                float3 envWiLocal = float3(dot(envWi, tangent), dot(envWi, bitangent), dot(envWi, facingNormal));
+                float3 envH = normalize(woLocal + envWiLocal);
+                float envNdotO = woLocal.z;
+                float envNdotI = max(envWiLocal.z, 0.0001);
+                float envDh = ggxD(envH, alphaX, alphaY);
+                float envG = ggxG(woLocal, envWiLocal, alphaX, alphaY);
+                float3 envF = frComplexRGB(max(dot(woLocal, envH), 0.0), mat.conductorEta, mat.conductorK);
+                float3 envBrdf = envDh * envG * envF / max(4.0 * envNdotO * envNdotI, 1e-6);
+
+                ray envShadowRay;
+                envShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                envShadowRay.direction = envWi;
+                envShadowRay.min_distance = 0.001f;
+                envShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> envShadowResult =
+                    isect.intersect(envShadowRay, accelStructure, functionTable);
+                if (envShadowResult.type == intersection_type::none) {
+                    float2 envUV = equirectangularUV(envWi);
+                    float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
+                    float envPdfBsdf = (envDh * ggxG1(woLocal, alphaX, alphaY)) / max(4.0 * envNdotO, 1e-6);
+                    float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
+                        / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
+                    radiance += throughput * envBrdf * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
     }
 
     float3 hLocal = sampleGGXVNDF(woLocal, alphaX, alphaY, rngState);
@@ -1795,6 +1927,9 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             device const DirectionalLight* directionalLights,
                             device const ProjectionLight* projectionLights,
                             device const GoniometricLight* goniometricLights,
+                            device const float* envMarginalCDF,
+                            device const float* envConditionalCDF,
+                            uint envMapWidth, uint envMapHeight,
                             texture2d<float, access::sample> earthTexture,
                             texture2d<float, access::sample> goniometricTexture,
                             sampler textureSampler,
@@ -1949,6 +2084,34 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     }
                 }
             }
+
+            // Environment map (importance-sampled NEE, section 71) - see
+            // shadeLambertian's own comment for the full "why."
+            if (envMapWidth > 0u) {
+                float envPdfSolidAngle;
+                float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                           int(envMapWidth), int(envMapHeight),
+                                                           randFloat(rngState), randFloat(rngState), envPdfSolidAngle);
+                float envCosSurface = dot(facingNormal, envWi);
+                if (envCosSurface > 0.0 && envPdfSolidAngle > 1e-9) {
+                    ray envShadowRay;
+                    envShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    envShadowRay.direction = envWi;
+                    envShadowRay.min_distance = 0.001f;
+                    envShadowRay.max_distance = 1e5f;
+                    intersection_result<instancing, triangle_data> envShadowResult =
+                        isect.intersect(envShadowRay, accelStructure, functionTable);
+                    if (envShadowResult.type == intersection_type::none) {
+                        float2 envUV = equirectangularUV(envWi);
+                        float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
+                        float envPdfBsdf = envCosSurface / M_PI_F;
+                        float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
+                            / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
+                        radiance += throughput * albedo * (1.0 / M_PI_F)
+                                    * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                    }
+                }
+            }
         }
 
         rayDir = cosineSampleHemisphere(facingNormal, rngState);
@@ -1967,6 +2130,9 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                                       device const DirectionalLight* directionalLights,
                                       device const ProjectionLight* projectionLights,
                                       device const GoniometricLight* goniometricLights,
+                                      device const float* envMarginalCDF,
+                                      device const float* envConditionalCDF,
+                                      uint envMapWidth, uint envMapHeight,
                                       texture2d<float, access::sample> earthTexture,
                                       texture2d<float, access::sample> goniometricTexture,
                                       sampler textureSampler,
@@ -2130,6 +2296,43 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                 }
             }
         }
+
+        // Environment map (importance-sampled NEE, section 71) - see
+        // shadeLambertian's own comment for the full "why." Same signed-
+        // lobe-pick shape as every other light above in this function:
+        // the sampled direction can land on EITHER side of `facingNormal`
+        // (unlike a fixed-position light, whose side is decided once per
+        // hit point), so which lobe/tint/pdf-weight/shadow-ray-offset
+        // applies is decided by that sign, exactly as above.
+        if (envMapWidth > 0u) {
+            float envPdfSolidAngle;
+            float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                       int(envMapWidth), int(envMapHeight),
+                                                       randFloat(rngState), randFloat(rngState), envPdfSolidAngle);
+            float envCosSurface = dot(facingNormal, envWi);
+            if (envCosSurface != 0.0 && envPdfSolidAngle > 1e-9) {
+                bool envReflect = envCosSurface > 0.0;
+                float3 envLobeTint = envReflect ? albedo : mat.transmitColor;
+                float envLobeProb = envReflect ? (pr / pSum) : (pt / pSum);
+                float envAbsCos = abs(envCosSurface);
+                ray envShadowRay;
+                envShadowRay.origin = hitPoint + (envReflect ? facingNormal : -facingNormal) * 0.001f;
+                envShadowRay.direction = envWi;
+                envShadowRay.min_distance = 0.001f;
+                envShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> envShadowResult =
+                    isect.intersect(envShadowRay, accelStructure, functionTable);
+                if (envShadowResult.type == intersection_type::none) {
+                    float2 envUV = equirectangularUV(envWi);
+                    float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
+                    float envPdfBsdf = envLobeProb * envAbsCos / M_PI_F;
+                    float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
+                        / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
+                    radiance += throughput * envLobeTint * (1.0 / M_PI_F)
+                                * envRadiance * envAbsCos / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
     }
 
     bool reflect = randFloat(rngState) < (pr / pSum);
@@ -2149,6 +2352,9 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                              device const DirectionalLight* directionalLights,
                              device const ProjectionLight* projectionLights,
                              device const GoniometricLight* goniometricLights,
+                             device const float* envMarginalCDF,
+                             device const float* envConditionalCDF,
+                             uint envMapWidth, uint envMapHeight,
                              texture2d<float, access::sample> earthTexture,
                              texture2d<float, access::sample> goniometricTexture,
                              sampler textureSampler,
@@ -2290,6 +2496,47 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                 }
             }
         }
+
+        // Environment map (importance-sampled NEE, section 71): a NEW
+        // light-sampling strategy for `earthTexture`'s own equirectangular
+        // sample - previously reachable only via a BSDF-sampled ray that
+        // happened to escape toward a bright region (high variance under
+        // a small/bright environment feature, exactly the problem NEE/MIS
+        // already solves for every light type above). Samples a
+        // direction from the environment image's own importance
+        // distribution (phase 1, section 69 - bright regions picked more
+        // often), checks visibility with a shadow ray toward "infinity"
+        // (`1e5f`, matching this scene's own room-scale units), and MIS-
+        // weights against this material's own cosine-weighted BSDF pdf
+        // for that same direction - the same NEE/MIS shape the area
+        // light above already uses, just with a direction-dependent (not
+        // point) light source and an importance-sampled (not uniform)
+        // sampling strategy.
+        if (envMapWidth > 0u) {
+            float envPdfSolidAngle;
+            float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                       int(envMapWidth), int(envMapHeight),
+                                                       randFloat(rngState), randFloat(rngState), envPdfSolidAngle);
+            float envCosSurface = dot(facingNormal, envWi);
+            if (envCosSurface > 0.0 && envPdfSolidAngle > 1e-9) {
+                ray envShadowRay;
+                envShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                envShadowRay.direction = envWi;
+                envShadowRay.min_distance = 0.001f;
+                envShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> envShadowResult =
+                    isect.intersect(envShadowRay, accelStructure, functionTable);
+                if (envShadowResult.type == intersection_type::none) {
+                    float2 envUV = equirectangularUV(envWi);
+                    float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
+                    float envPdfBsdf = envCosSurface / M_PI_F;
+                    float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
+                        / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
+                    radiance += throughput * albedo * (1.0 / M_PI_F)
+                                * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
     }
 
     rayDir = cosineSampleHemisphere(facingNormal, rngState);
@@ -2323,6 +2570,8 @@ kernel void primaryRayKernel(
     device const DirectionalLight* directionalLights [[buffer(16)]],
     device const ProjectionLight* projectionLights [[buffer(17)]],
     device const GoniometricLight* goniometricLights [[buffer(18)]],
+    device const float* envMarginalCDF [[buffer(19)]],
+    device const float* envConditionalCDF [[buffer(20)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -2665,7 +2914,30 @@ kernel void primaryRayKernel(
             if (result.type == intersection_type::none) {
                 if (uniforms.useEnvironmentMap != 0u) {
                     float2 envUV = equirectangularUV(normalize(rayDir));
-                    radiance += throughput * earthTexture.sample(textureSampler, envUV).rgb;
+                    float3 envColor = earthTexture.sample(textureSampler, envUV).rgb;
+                    // MIS weight against the environment-light NEE
+                    // strategy's own pdf for this EXACT escaping
+                    // direction (section 71) - this ray was BSDF-
+                    // sampled, not env-light-sampled, so `bsdfPdf`
+                    // (recorded by whichever material's own shading
+                    // function ran last bounce) is the competing
+                    // strategy's own pdf here, same "check for a hit
+                    // reachable two ways" MIS shape the area light's own
+                    // direct-hit weight below already uses. `specularBounce`
+                    // (a delta/specular material has no NEE strategy to
+                    // weight against at all) or `envMapWidth == 0` (no
+                    // NEE strategy exists to double-count against in the
+                    // first place) both mean full weight, unweighted -
+                    // exactly the same two escape hatches the area
+                    // light's own weight below already has.
+                    float envMissWeight = 1.0;
+                    if (!specularBounce && uniforms.envMapWidth > 0u) {
+                        float pdfEnv = pdfEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                                int(uniforms.envMapWidth), int(uniforms.envMapHeight),
+                                                                normalize(rayDir));
+                        envMissWeight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfEnv * pdfEnv);
+                    }
+                    radiance += throughput * envColor * envMissWeight;
                 } else {
                     float skyT = 0.5 * (rayDir.y + 1.0);
                     radiance += throughput * mix(skyBottom, skyTop, skyT);
@@ -2865,6 +3137,7 @@ kernel void primaryRayKernel(
             } else if (mat.materialType == 4u || mat.materialType == 9u) {
                 if (!shadeConductor(mat, hitPoint, normal, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                     envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      earthTexture, goniometricTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
@@ -2876,18 +3149,21 @@ kernel void primaryRayKernel(
             } else if (mat.materialType == 8u) {
                 if (!shadeClearcoat(mat, albedo, hitPoint, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                     envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      earthTexture, goniometricTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 12u) {
                 if (!shadeDiffuseTransmission(mat, albedo, hitPoint, facingNormal, uniforms,
                                                lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                               envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                                earthTexture, goniometricTexture, textureSampler,
                                                isect, accelStructure, functionTable,
                                                rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else {
                 if (!shadeLambertian(mat, albedo, hitPoint, facingNormal, uniforms,
                                       lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                       earthTexture, goniometricTexture, textureSampler,
                                       isect, accelStructure, functionTable,
                                       rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
@@ -3060,6 +3336,33 @@ kernel void test_buildAnisotropicOnb(
     buildAnisotropicOnb(normals[tid], t, b);
     tangentOutputs[tid] = t;
     bitangentOutputs[tid] = b;
+}
+
+kernel void test_sampleEnvironmentDirection(
+    device const float* marginalCDF [[buffer(0)]],
+    device const float* conditionalCDF [[buffer(1)]],
+    device const int2* dims [[buffer(2)]],
+    device const float2* uvSamples [[buffer(3)]],
+    device float3* dirOutputs [[buffer(4)]],
+    device float* pdfOutputs [[buffer(5)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float pdf;
+    float3 dir = sampleEnvironmentDirection(marginalCDF, conditionalCDF, dims[0].x, dims[0].y,
+                                             uvSamples[tid].x, uvSamples[tid].y, pdf);
+    dirOutputs[tid] = dir;
+    pdfOutputs[tid] = pdf;
+}
+
+kernel void test_pdfEnvironmentDirection(
+    device const float* marginalCDF [[buffer(0)]],
+    device const float* conditionalCDF [[buffer(1)]],
+    device const int2* dims [[buffer(2)]],
+    device const float3* dirs [[buffer(3)]],
+    device float* pdfOutputs [[buffer(4)]],
+    uint tid [[thread_position_in_grid]])
+{
+    pdfOutputs[tid] = pdfEnvironmentDirection(marginalCDF, conditionalCDF, dims[0].x, dims[0].y, dirs[tid]);
 }
 
 kernel void test_henyeyGreensteinPhase(
