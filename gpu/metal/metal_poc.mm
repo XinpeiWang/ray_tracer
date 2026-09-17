@@ -104,7 +104,78 @@ struct AreaLightData {
     // pattern) - see metal_poc.metal's own AreaLight comment.
     float patternTileB = 0.0f;
     float patternScale = 0.0f;
+    // Power-proportional light-picking data (Vose alias table, built
+    // host-side by buildPowerLightSampler() below, mirroring
+    // src/shared/power_light_sampler_scaffold.h's own PowerLightSampler)
+    // - see metal_poc.metal's AreaLight/sampleAreaLight() for how these
+    // three get used. Defaults reproduce exact uniform 1/N picking (every
+    // light before this one) if this ever got skipped: pmf = 0 would be
+    // wrong, so buildPowerLightSampler() always runs, never left at these
+    // raw defaults for an actual render.
+    float pmf = 0.0f;
+    float aliasProb = 1.0f;
+    uint32_t aliasIndex = 0;
 };
+
+// Power-proportional light picking - a direct port of the Vose alias-
+// table CONSTRUCTION algorithm in src/shared/power_light_sampler_scaffold.h's
+// own PowerLightSampler::build() (that class itself is documented there as
+// orphaned scaffolding with zero callers anywhere in this project, not
+// wired into either the CPU or OptiX-GPU renderer - but the algorithm it
+// implements is a real, correct port of pbrt-v4's own PowerLightSampler,
+// exactly the kind of "tested reference, not proven-in-production
+// caller" src/shared/ can still be worth porting from). Replaces this
+// POC's own uniform 1/N area-light picking (section 18/52's own
+// documented simplification: "a real port would... sample lights
+// proportional to their own power"), so a bright light gets picked (and
+// therefore NEE-sampled) more often than a dim one, reducing variance on
+// the bright light without wasting samples equally on a light contributing
+// almost nothing to the image.
+//
+// `power` here is `luminance(emission) * area` per light - proportional
+// to each quad light's true total radiant power up to a factor (pi times
+// a Lambertian-emitter solid-angle constant) that's the SAME for every
+// light in this POC (all planar, all diffuse emitters), so it cancels
+// out of the relative weighting a sampler only ever needs.
+static void buildPowerLightSampler(std::vector<AreaLightData>& lights) {
+    int n = (int)lights.size();
+    if (n == 0) return;
+    std::vector<double> power(n), pmf(n), scaled(n);
+    double total = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const PackedFloat3& e = lights[i].emission;
+        double luminance = 0.2126 * e.x + 0.7152 * e.y + 0.0722 * e.z;
+        power[i] = luminance * lights[i].area;
+        total += power[i];
+    }
+    bool useUniform = (total <= 0.0);
+    double uniformP = 1.0 / (double)n;
+    for (int i = 0; i < n; ++i) {
+        pmf[i] = useUniform ? uniformP : power[i] / total;
+        scaled[i] = pmf[i] * (double)n;
+        lights[i].pmf = (float)pmf[i];
+        lights[i].aliasProb = 0.0f;
+        lights[i].aliasIndex = (uint32_t)i;
+    }
+    std::vector<int> small, large;
+    for (int i = 0; i < n; ++i) {
+        (scaled[i] < 1.0 ? small : large).push_back(i);
+    }
+    while (!small.empty() && !large.empty()) {
+        int s = small.back(); small.pop_back();
+        int l = large.back(); large.pop_back();
+        lights[s].aliasProb = (float)scaled[s];
+        lights[s].aliasIndex = (uint32_t)l;
+        scaled[l] = (scaled[l] + scaled[s]) - 1.0;
+        (scaled[l] < 1.0 ? small : large).push_back(l);
+    }
+    while (!large.empty()) { int l = large.back(); large.pop_back(); lights[l].aliasProb = 1.0f; lights[l].aliasIndex = (uint32_t)l; }
+    while (!small.empty()) { int s = small.back(); small.pop_back(); lights[s].aliasProb = 1.0f; lights[s].aliasIndex = (uint32_t)s; }
+    for (int i = 0; i < n; ++i) {
+        fprintf(stderr, "Light %d: power=%.4f pmf=%.4f (uniform would be %.4f)\n",
+                i, power[i], pmf[i], 1.0 / (double)n);
+    }
+}
 
 // Mirrors metal_poc.metal's PointLight byte-for-byte.
 struct PointLightData {
@@ -937,6 +1008,11 @@ int main(int argc, const char** argv) {
                      float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
                      /*emission=*/coolAreaLightColor,
                      /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
+        // Builds each light's own pmf/aliasProb/aliasIndex in place - see
+        // buildPowerLightSampler()'s own comment. Must run after every
+        // addAreaLight() call above (needs the full, final light list) and
+        // before `lights` gets uploaded to the GPU buffer below.
+        buildPowerLightSampler(lights);
 
         // Two spheres, both custom (non-triangle) primitives via a shared
         // bounding-box acceleration structure + intersection function
