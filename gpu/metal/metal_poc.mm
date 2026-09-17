@@ -657,12 +657,26 @@ int main(int argc, const char** argv) {
                 area,
                 PackedFloat3{emission.x, emission.y, emission.z}});
         };
+        // Both ceiling lights' own colours now come from blackbodyColor()
+        // (see that function's own comment, added for the point/spot/
+        // directional lights) rather than the hand-picked tuples above -
+        // 2700 K (a standard incandescent bulb) for the warm one, 20000 K
+        // (near the top of the fit's own valid range, a very hot/blue-
+        // white source) for the cool one. Notably, 20000K's own derived
+        // colour is nowhere near as saturated a blue as the hand-picked
+        // (6, 10, 18) it replaces - real blackbody radiation never gets
+        // that saturated; no amount of temperature produces a deeply
+        // saturated blue the way an artistic RGB pick can. A real,
+        // honestly-reported limitation of deriving colour from physical
+        // temperature, not swept under the rug.
+        const float3 warmAreaLightColor = blackbodyColor(2700.0f) * 15.5f;
+        const float3 coolAreaLightColor = blackbodyColor(20000.0f) * 13.9f;
         addAreaLight(float3{-0.58f,0.98f,-0.25f}, float3{-0.22f,0.98f,-0.25f},
                      float3{-0.22f,0.98f,0.25f}, float3{-0.58f,0.98f,0.25f},
-                     /*emission=*/float3{15.0f,10.0f,6.0f});   // warm
+                     /*emission=*/warmAreaLightColor);
         addAreaLight(float3{0.22f,0.98f,-0.25f}, float3{0.58f,0.98f,-0.25f},
                      float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
-                     /*emission=*/float3{6.0f,10.0f,18.0f});   // cool
+                     /*emission=*/coolAreaLightColor);
 
         // Two spheres, both custom (non-triangle) primitives via a shared
         // bounding-box acceleration structure + intersection function
