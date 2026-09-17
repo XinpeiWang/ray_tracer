@@ -606,6 +606,14 @@ struct TriangleMaterial {
     // == alphaX), so this stays a safe no-op for every scene that never
     // sets it. 0 for every other material type.
     float roughness;
+    // Complex IOR (eta + i*k) per RGB channel, materialType == 4/9 only -
+    // the real physically-based conductor Fresnel (frComplexRGB(), see
+    // its own comment) these two materials now use in place of the flat-
+    // tint Schlick approximation fresnelSchlickConductor() still is for
+    // materialType == 1's mirror. 0 for every other material type (unread
+    // there).
+    packed_float3 conductorEta;
+    packed_float3 conductorK;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
@@ -1116,6 +1124,70 @@ inline float ggxG(float3 woLocal, float3 wiLocal, float alphaX, float alphaY) {
 inline float3 fresnelSchlickConductor(float cosTheta, float3 F0) {
     float t = pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
     return F0 + (float3(1.0) - F0) * t;
+}
+
+// frComplex() - the REAL complex-valued Fresnel reflectance for a
+// conductor interface (pbrt-v4's own FrComplex, src/pbrt/util/
+// scattering.h; ported from this POC's own reference copy at
+// src/shared/fresnel.h). Unlike fresnelSchlickConductor()'s single-F0
+// curve (which can only ever interpolate towards white at grazing
+// angles), a genuine complex index of refraction (eta + i*k, both
+// wavelength/channel-dependent) reproduces the real per-channel colour
+// SHIFT actual metals show at grazing incidence - the same kind of
+// upgrade frDielectric() (section 55) already made for this POC's
+// dielectric materials over Schlick's own approximation of THAT curve.
+// All complex arithmetic expanded manually (no complex<> type on
+// Metal), identical to the reference's own GPU-compatible expansion.
+inline float frComplex(float cosThetaI, float etaR, float etaK) {
+    cosThetaI = clamp(cosThetaI, 0.0, 1.0);
+    float sin2I = 1.0 - cosThetaI * cosThetaI;
+
+    // Complex Snell's law: sin2T = sin2I / (etaR + i*etaK)^2
+    float denomR = etaR * etaR - etaK * etaK;
+    float denomI = 2.0 * etaR * etaK;
+    float denomSq = denomR * denomR + denomI * denomI;
+    float sin2TR = sin2I * denomR / denomSq;
+    float sin2TI = -sin2I * denomI / denomSq;
+
+    // cosT = sqrt(1 - sin2T) via the standard complex sqrt formula.
+    float cR = 1.0 - sin2TR;
+    float cI = -sin2TI;
+    float mag = sqrt(cR * cR + cI * cI);
+    float cosTR = sqrt(max(0.0, (mag + cR) * 0.5));
+    float cosTI = (cI >= 0.0 ? 1.0 : -1.0) * sqrt(max(0.0, (mag - cR) * 0.5));
+
+    // r_parl = (eta*cosI - cosT) / (eta*cosI + cosT), eta = etaR + i*etaK.
+    float ecR = etaR * cosThetaI - cosTR;
+    float ecI = etaK * cosThetaI - cosTI;
+    float edR = etaR * cosThetaI + cosTR;
+    float edI = etaK * cosThetaI + cosTI;
+    float edSq = edR * edR + edI * edI;
+    float rpR = (ecR * edR + ecI * edI) / edSq;
+    float rpI = (ecI * edR - ecR * edI) / edSq;
+    float rParlSq = rpR * rpR + rpI * rpI;
+
+    // r_perp = (cosI - eta*cosT) / (cosI + eta*cosT).
+    float etcR = etaR * cosTR - etaK * cosTI;
+    float etcI = etaR * cosTI + etaK * cosTR;
+    float ncR = cosThetaI - etcR;
+    float ncI = -etcI;
+    float ndR = cosThetaI + etcR;
+    float ndI = etcI;
+    float ndSq = ndR * ndR + ndI * ndI;
+    float rsR = (ncR * ndR + ncI * ndI) / ndSq;
+    float rsI = (ncI * ndR - ncR * ndI) / ndSq;
+    float rPerpSq = rsR * rsR + rsI * rsI;
+
+    return (rParlSq + rPerpSq) * 0.5;
+}
+
+// Evaluates frComplex() independently per RGB channel - the real
+// per-channel complex Fresnel this POC's GGX conductor material
+// (materialType 4/9) now uses in place of fresnelSchlickConductor().
+inline float3 frComplexRGB(float cosThetaI, float3 eta, float3 k) {
+    return float3(frComplex(cosThetaI, eta.x, k.x),
+                  frComplex(cosThetaI, eta.y, k.y),
+                  frComplex(cosThetaI, eta.z, k.z));
 }
 
 // Builds an orthonormal (tangent, bitangent) frame around `n` - same Duff
@@ -1983,9 +2055,14 @@ kernel void primaryRayKernel(
                 // BSDF-sampled-continuation + MIS shape as the Lambertian
                 // branch below - only the BRDF/sampling math changes, from
                 // a cosine-weighted diffuse lobe to an importance-sampled
-                // microfacet one. `albedo` here is F0 (per-primitive
-                // reflectance colour), not a diffuse albedo - see
-                // TriangleMaterial's own comment.
+                // microfacet one. Fresnel here is `frComplexRGB(...,
+                // mat.conductorEta, mat.conductorK)` - the REAL per-channel
+                // complex conductor Fresnel (see that function's own
+                // comment), not a flat `albedo`-as-F0 tint; `mat.color`
+                // (this material's `albedo`, per TriangleMaterial's own
+                // comment) is unread by this branch as a result, unlike
+                // materialType 1's mirror, which still uses it as its own
+                // Schlick F0.
                 //
                 // Genuinely ANISOTROPIC (materialType 4): `ior` gives
                 // alphaX as before, and `roughness` - otherwise idle for
@@ -2037,7 +2114,7 @@ kernel void primaryRayKernel(
                         float NdotI = max(wiLocal.z, 0.0001);
                         float Dh = ggxD(h, alphaX, alphaY);
                         float G = ggxG(woLocal, wiLocal, alphaX, alphaY);
-                        float3 F = fresnelSchlickConductor(max(dot(woLocal, h), 0.0), albedo);
+                        float3 F = frComplexRGB(max(dot(woLocal, h), 0.0), mat.conductorEta, mat.conductorK);
                         float3 brdf = Dh * G * F / max(4.0 * NdotO * NdotI, 1e-6);
 
                         ray shadowRay;
@@ -2084,7 +2161,7 @@ kernel void primaryRayKernel(
                             float plNdotI = max(plWiLocal.z, 0.0001);
                             float plDh = ggxD(plH, alphaX, alphaY);
                             float plG = ggxG(woLocal, plWiLocal, alphaX, alphaY);
-                            float3 plF = fresnelSchlickConductor(max(dot(woLocal, plH), 0.0), albedo);
+                            float3 plF = frComplexRGB(max(dot(woLocal, plH), 0.0), mat.conductorEta, mat.conductorK);
                             float3 plBrdf = plDh * plG * plF / max(4.0 * plNdotO * plNdotI, 1e-6);
 
                             ray plShadowRay;
@@ -2118,7 +2195,7 @@ kernel void primaryRayKernel(
                             float dlNdotI = max(dlWiLocal.z, 0.0001);
                             float dlDh = ggxD(dlH, alphaX, alphaY);
                             float dlG = ggxG(woLocal, dlWiLocal, alphaX, alphaY);
-                            float3 dlF = fresnelSchlickConductor(max(dot(woLocal, dlH), 0.0), albedo);
+                            float3 dlF = frComplexRGB(max(dot(woLocal, dlH), 0.0), mat.conductorEta, mat.conductorK);
                             float3 dlBrdf = dlDh * dlG * dlF / max(4.0 * dlNdotO * dlNdotI, 1e-6);
 
                             ray dlShadowRay;
@@ -2155,7 +2232,7 @@ kernel void primaryRayKernel(
                                 float pjNdotI = max(pjWiLocal.z, 0.0001);
                                 float pjDh = ggxD(pjH, alphaX, alphaY);
                                 float pjG = ggxG(woLocal, pjWiLocal, alphaX, alphaY);
-                                float3 pjF = fresnelSchlickConductor(max(dot(woLocal, pjH), 0.0), albedo);
+                                float3 pjF = frComplexRGB(max(dot(woLocal, pjH), 0.0), mat.conductorEta, mat.conductorK);
                                 float3 pjBrdf = pjDh * pjG * pjF / max(4.0 * pjNdotO * pjNdotI, 1e-6);
 
                                 ray pjShadowRay;
@@ -2192,7 +2269,7 @@ kernel void primaryRayKernel(
                                 float glNdotI = max(glWiLocal.z, 0.0001);
                                 float glDh = ggxD(glH, alphaX, alphaY);
                                 float glG = ggxG(woLocal, glWiLocal, alphaX, alphaY);
-                                float3 glF = fresnelSchlickConductor(max(dot(woLocal, glH), 0.0), albedo);
+                                float3 glF = frComplexRGB(max(dot(woLocal, glH), 0.0), mat.conductorEta, mat.conductorK);
                                 float3 glBrdf = glDh * glG * glF / max(4.0 * glNdotO * glNdotI, 1e-6);
 
                                 ray glShadowRay;
@@ -2226,7 +2303,7 @@ kernel void primaryRayKernel(
                 float NdotO = woLocal.z;
                 float G = ggxG(woLocal, wiLocal, alphaX, alphaY);
                 float G1 = ggxG1(woLocal, alphaX, alphaY);
-                float3 F = fresnelSchlickConductor(max(dot(woLocal, hLocal), 0.0), albedo);
+                float3 F = frComplexRGB(max(dot(woLocal, hLocal), 0.0), mat.conductorEta, mat.conductorK);
                 // f(wo,wi)*cosI/pdf(wi) collapses to F*G/G1(wo) for a
                 // VNDF-sampled direction - the D and 4*NdotO*NdotI terms
                 // in the BRDF exactly cancel the same terms in pdf(wi)'s
@@ -2818,6 +2895,16 @@ kernel void test_fresnelSchlickConductor(
     uint tid [[thread_position_in_grid]])
 {
     outputs[tid] = fresnelSchlickConductor(cosThetas[tid], f0s[tid]);
+}
+
+kernel void test_frComplexRGB(
+    device const float* cosThetas [[buffer(0)]],
+    device const float3* etas [[buffer(1)]],
+    device const float3* ks [[buffer(2)]],
+    device float3* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = frComplexRGB(cosThetas[tid], etas[tid], ks[tid]);
 }
 
 kernel void test_henyeyGreensteinPhase(

@@ -273,6 +273,10 @@ struct TriangleMaterial {
     // Lambertian, identical to materialType == 0) - see metal_poc.metal's
     // own comment on the mirrored field for the full explanation.
     float roughness = 0.0f;
+    // Complex IOR (eta + i*k) per RGB channel, materialType == 4/9 only -
+    // see metal_poc.metal's own mirrored comment.
+    PackedFloat3 conductorEta{0, 0, 0};
+    PackedFloat3 conductorK{0, 0, 0};
 };
 
 // Mirrors metal_poc.metal's SphereData byte-for-byte.
@@ -1032,8 +1036,18 @@ void MetalPocApp::buildScene() {
         // preserve the old appearance (that A/B check is done via a
         // dedicated verification render instead, not the committed
         // scene - see docs/METAL_GPU_FEASIBILITY.md's own note).
+        // conductorEta/conductorK: real gold (Au) complex IOR, sampled at
+        // the sRGB primary wavelengths (630/532/467nm) from pbrt-v4's own
+        // spectral tables - src/shared/conductor_data.h's kConductorAu,
+        // matching this sphere's own approximate gold tint above (which
+        // is now vestigial as a Fresnel input - see this branch's own
+        // comment in metal_poc.metal - but left in place unchanged so
+        // every other reader of `color` on this material, if any existed,
+        // stays unaffected).
         TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*alphaX=*/0.08f, PackedFloat3{0, 0, 0},
-                         /*lightId=*/-1, /*alphaY=*/0.45f},
+                         /*lightId=*/-1, /*alphaY=*/0.45f,
+                         /*conductorEta=*/PackedFloat3{0.184f, 0.457f, 1.354f},
+                         /*conductorK=*/PackedFloat3{3.070f, 2.408f, 1.818f}},
         TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
                          /*lightId=*/-1, /*roughness=*/0.35f},
         // materialType 9: `ior` is the SMOOTH patch's own perceptual
@@ -1041,8 +1055,13 @@ void MetalPocApp::buildScene() {
         // into GGX alpha exactly like materialType 4 already does,
         // just picked between by an analytic UV-space checker
         // pattern instead of being one constant.
+        // conductorEta/conductorK: real copper (Cu) complex IOR (same
+        // source/sampling as the gold sphere above's own comment),
+        // matching this sphere's own approximate copper tint.
         TriangleMaterial{PackedFloat3{0.8f, 0.45f, 0.2f}, /*materialType=*/9, /*ior(smooth)=*/0.05f, PackedFloat3{0, 0, 0},
-                         /*lightId=*/-1, /*roughness(rough)=*/0.6f},
+                         /*lightId=*/-1, /*roughness(rough)=*/0.6f,
+                         /*conductorEta=*/PackedFloat3{0.246f, 1.072f, 1.155f},
+                         /*conductorK=*/PackedFloat3{3.378f, 2.591f, 2.469f}},
         // materialType 8: `color` is the diffuse BASE colour under
         // the coat (materialType 0's own convention) - a deep,
         // fairly saturated red, since the coat's own reflection

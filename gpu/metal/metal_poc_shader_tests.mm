@@ -324,6 +324,44 @@ static void testFresnelSchlickConductor(id<MTLDevice> device, id<MTLLibrary> lib
                simd::length(out[1] - simd::float3{1, 1, 1}), 0.0, 1e-5);
 }
 
+static void testFrComplexRGB(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // Reference values from a fresh standalone double-precision C port of
+    // src/shared/fresnel.h's FrComplex (frcomplex_ref.c, not reused from
+    // any earlier session): real gold (Au) and copper (Cu) complex IOR at
+    // normal incidence, plus a k=0 degenerate case that must reduce to
+    // the ORDINARY real-valued dielectric Fresnel formula exactly
+    // (R0 = ((eta-1)/(eta+1))^2 = 0.04 for eta=1.5).
+    float cosThetas[3] = {1.0f, 1.0f, 1.0f};
+    simd::float3 etas[3] = {
+        simd::float3{0.184f, 0.457f, 1.354f},  // Au
+        simd::float3{0.246f, 1.072f, 1.155f},  // Cu
+        simd::float3{1.5f, 1.5f, 1.5f},        // k=0 dielectric-degenerate
+    };
+    simd::float3 ks[3] = {
+        simd::float3{3.070f, 2.408f, 1.818f},
+        simd::float3{3.378f, 2.591f, 2.469f},
+        simd::float3{0.0f, 0.0f, 0.0f},
+    };
+    simd::float3 expected[3] = {
+        simd::float3{0.932020f, 0.769230f, 0.387776f},
+        simd::float3{0.924094f, 0.610411f, 0.569832f},
+        simd::float3{0.04f, 0.04f, 0.04f},
+    };
+    int n = 3;
+    id<MTLBuffer> cosBuf = makeBuffer(device, cosThetas, sizeof(cosThetas));
+    id<MTLBuffer> etaBuf = makeBuffer(device, etas, sizeof(etas));
+    id<MTLBuffer> kBuf = makeBuffer(device, ks, sizeof(ks));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    if (!runKernel(device, library, queue, @"test_frComplexRGB", @[cosBuf, etaBuf, kBuf, outBuf], nil, n)) return;
+    simd::float3* out = (simd::float3*)outBuf.contents;
+    const char* names[3] = {"frComplexRGB matches reference for gold (Au) at normal incidence",
+                             "frComplexRGB matches reference for copper (Cu) at normal incidence",
+                             "frComplexRGB with k=0 reduces to the real dielectric Fresnel formula"};
+    for (int i = 0; i < n; ++i) {
+        expectNear(names[i], simd::length(out[i] - expected[i]), 0.0, 1e-4);
+    }
+}
+
 static void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // g == 0 (isotropic) must give the SAME value - 1/(4*pi) - for every
     // cosTheta, since an isotropic phase function has no directional
@@ -601,6 +639,7 @@ int main() {
         testCheckerColor(device, library, queue);
         testSpotLightFalloff(device, library, queue);
         testFresnelSchlickConductor(device, library, queue);
+        testFrComplexRGB(device, library, queue);
         testHenyeyGreensteinPhase(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);
