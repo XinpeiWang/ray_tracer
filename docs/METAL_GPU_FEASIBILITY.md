@@ -3072,3 +3072,57 @@ device-shader test suites from PRs #54/#55) continue to pass unchanged.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` (four tests) continues to pass.
+
+## 62. A fifth delta light type: the goniometric ("IES-profile") light (done)
+
+Adds `GoniometricLight` (pbrt-v4's own `GoniometricLight`, `src/shared/
+goniometric_light.h`, §12.4) - a fifth delta light alongside point/spot/
+directional/projection, same "summed unconditionally every bounce,
+never picked, no MIS/pdf needed" shape every earlier delta light already
+established (the same four call sites: fog scattering, GGX conductor,
+clearcoat's diffuse base, plain Lambertian). Unlike a spot light's own
+single monotonic cone falloff, this models a REAL light fixture's own
+photometric profile: intensity as an arbitrary 2D function of direction,
+capable of producing patterns (rings, lobes, asymmetric shapes) a
+scalar cone falloff can never reproduce.
+
+No real IES data file exists in this repo, so the "image" a goniometric
+light indexes is a small (64x64), PROCEDURALLY generated pattern
+(`buildGoniometricProfileImage()`) rather than a new binary asset - the
+same choice this POC's own bump-mapping and patterned-light materials
+already made for a missing real-world input. Two independently-tunable,
+multiplied factors: a forward-facing LOBE (smoothstep falloff, zero
+behind the light) and a RING modulation (`cos` of the polar angle,
+scaled by a frequency) - the ring term specifically, since it's what
+makes this a genuine test of a real 2D-image-indexed light rather than
+a reskinned spot light.
+
+The image itself is indexed by pbrt-v4's own EQUAL-AREA octahedral
+sphere<->square mapping (`src/shared/sampling_extra.h`'s
+`EqualAreaSphereToSquare()`/`EqualAreaSquareToSphere()`, Clarberg 2008's
+minimax-polynomial approximation of atan - a direct, faithful port, not
+a re-derivation), ported BOTH directions: the device-side shader needs
+only the forward (direction-to-UV) mapping to evaluate the light, but
+generating the procedural image host-side needs the INVERSE (UV-to-
+direction) mapping, to know which direction each texel actually
+represents. Deliberately NOT `equirectangularUV()`'s own longitude/
+latitude scheme (already used for the environment map) - that one
+distorts area heavily near the poles, exactly the property a real
+goniometric light's own stored image needs to avoid (pbrt-v4 requires
+the equal-area mapping specifically so a uniformly-sampled image pixel
+corresponds to a uniformly-likely direction).
+
+**Result, verified two ways**: unlike the projection light (PR #53),
+which needed real debugging to become visible at all, this one produced
+a clearly visible, unmistakable concentric-ring pattern on the red wall
+on the very first render - mounted near the ceiling, aimed at the room's
+one remaining plain flat wall (a clean mirror of the projection light's
+own placement on the green wall). A direct off/on comparison (`scale`
+0 vs. 1, same seed/settings, 700x700 @ 64spp) confirms this
+quantitatively: 250,822 of 1,470,000 subpixels differ by more than 5
+(out of 255), mean absolute difference 3.37, concentrated on the red
+wall exactly where the light aims - a real, substantial, correctly-
+positioned effect, not a subtle one this time.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests) continues to pass.

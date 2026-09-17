@@ -113,6 +113,11 @@ struct Uniforms {
     // unconditionally like the other three, never picked. 0 (every
     // earlier scene) skips that loop entirely - purely additive.
     uint projectionLightCount;
+    // Same idea again, for the separate `goniometricLights` buffer (see
+    // GoniometricLight's own comment) - a fifth delta-light type, summed
+    // unconditionally like the other four, never picked. 0 (every
+    // earlier scene) skips that loop entirely - purely additive.
+    uint goniometricLightCount;
     // Single-pass adaptive sampling toggle - see the shading loop's own
     // comment on `convergedCount`/`kAdaptiveThreshold` for the full
     // "why" and the CPU integrator this was ported from. 0 (every scene
@@ -319,6 +324,88 @@ inline float3 projectionLightRadiance(float3 wiFromLight, packed_float3 lightFor
     // point of view, not mirrored top-to-bottom.
     float2 uv = float2(sx * 0.5 + 0.5, 0.5 - sy * 0.5);
     return image.sample(s, uv).rgb * scale;
+}
+
+// pbrt-v4's own equal-area octahedral sphere<->square mapping
+// (src/shared/sampling_extra.h's EqualAreaSphereToSquare(), itself
+// mirroring pbrt-v4 util/math.cpp) - a direct, faithful port (Clarberg
+// 2008's minimax polynomial approximation of atan, not a re-derivation).
+// Unlike equirectangularUV()'s own longitude/latitude mapping (which
+// distorts area heavily near the poles - equal SOLID ANGLE regions map
+// to very UNEQUAL image-space area there), this maps the WHOLE sphere to
+// a single [0,1]^2 square with equal-AREA fidelity everywhere, the
+// standard choice for a goniometric (IES-profile) light's own stored
+// image: pbrt-v4 requires it specifically so a uniformly-sampled image
+// pixel corresponds to a uniformly-likely direction, not a pole-biased
+// one - this POC only ever uses the forward (direction-to-UV) half
+// below (a goniometric light's own `eval_I` is a pure lookup, never an
+// image-guided direction SAMPLE), so only EqualAreaSphereToSquare
+// itself is ported, not its own inverse or WrapEqualAreaSquare.
+inline float2 equalAreaSphereToSquare(float3 w) {
+    float x = abs(w.x), y = abs(w.y), z = abs(w.z);
+    float r = sqrt(max(0.0, 1.0 - z));
+    float a = max(x, y);
+    float b = min(x, y);
+    b = (a == 0.0) ? 0.0 : b / a;
+
+    const float t1 = 0.406758566246788489601959989e-5;
+    const float t2 = 0.636226545274016134946890922156;
+    const float t3 = 0.61572017898280213493197203466e-2;
+    const float t4 = -0.247333733281268944196501420480;
+    const float t5 = 0.881770664775316294736387951347e-1;
+    const float t6 = 0.419038818029165735901852432784e-1;
+    const float t7 = -0.251390972343483509333252996350e-1;
+    float phi = t1 + b * (t2 + b * (t3 + b * (t4 + b * (t5 + b * (t6 + b * t7)))));
+    if (x < y) phi = 1.0 - phi;
+
+    float vv = phi * r;
+    float uu = r - vv;
+    if (w.z < 0.0) {
+        float tmp = uu;
+        uu = 1.0 - vv;
+        vv = 1.0 - tmp;
+    }
+    uu = copysign(uu, w.x);
+    vv = copysign(vv, w.y);
+    return float2(0.5 * (uu + 1.0), 0.5 * (vv + 1.0));
+}
+
+// A "goniometric" light (pbrt-v4's own GoniometricLight, src/shared/
+// goniometric_light.h) - a FIFTH delta light type, modeling a real IES
+// photometric profile: unlike a spot light's own single symmetric cone,
+// a genuine light fixture's intensity can vary in complex, non-radially-
+// symmetric ways (real IES files often show scalloped, multi-lobed, or
+// asymmetric distributions) - captured here as a 2D image indexed by
+// direction (via equalAreaSphereToSquare()), the same "the image itself
+// IS the directional intensity function" idea projectionLightRadiance()
+// already uses, just addressed by DIRECTION FROM the light instead of
+// a perspective-projected UV onto a distant plane. No real IES data file
+// exists in this repo, so `image` here is a small PROCEDURALLY generated
+// pattern (metal_poc.mm's own buildGoniometricProfileImage()) rather
+// than a new binary asset - concentric rings of varying brightness
+// around the light's own forward axis, chosen specifically because it's
+// a directional pattern a plain scalar cone falloff (spotLightFalloff())
+// could never produce, the same "prove this is doing something a
+// simpler existing light couldn't" reasoning every earlier delta light
+// increment already used.
+struct GoniometricLight {
+    packed_float3 position;
+    packed_float3 forward;
+    packed_float3 right;
+    packed_float3 up;
+    packed_float3 emission;
+    float scale;
+};
+
+inline float3 goniometricLightRadiance(float3 wiFromLight, packed_float3 lightForward,
+                                        packed_float3 lightRight, packed_float3 lightUp,
+                                        packed_float3 emission, float scale,
+                                        texture2d<float, access::sample> image, sampler s) {
+    float3 wi = normalize(wiFromLight);
+    float3 local = float3(dot(wi, float3(lightRight)), dot(wi, float3(lightUp)), dot(wi, float3(lightForward)));
+    float2 uv = equalAreaSphereToSquare(local);
+    float intensity = image.sample(s, uv).r;
+    return float3(emission) * intensity * scale;
 }
 
 // A shadow ray toward a directional light has no real target distance
@@ -1203,6 +1290,7 @@ inline float3 sampleGGXVNDF(float3 woLocal, float alphaX, float alphaY, thread u
 kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
     texture2d<float, access::sample> earthTexture [[texture(1)]],
+    texture2d<float, access::sample> goniometricTexture [[texture(2)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
@@ -1221,6 +1309,7 @@ kernel void primaryRayKernel(
     device const PointLight* pointLights [[buffer(15)]],
     device const DirectionalLight* directionalLights [[buffer(16)]],
     device const ProjectionLight* projectionLights [[buffer(17)]],
+    device const GoniometricLight* goniometricLights [[buffer(18)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -1518,6 +1607,34 @@ kernel void primaryRayKernel(
                                 float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), uniforms.fogAsymmetryG);
                                 float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
                                 radiance += throughput * pjPhaseValue * pjRadiance * pjTransmittance / pjDistSq;
+                            }
+                        }
+                    }
+
+                    // Goniometric lights: same unconditional-sum, no-MIS
+                    // shape as every other delta light here - see
+                    // GoniometricLight's own comment.
+                    for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+                        GoniometricLight gl = goniometricLights[gli];
+                        float3 toGoniLight = float3(gl.position) - scatterPoint;
+                        float glDistSq = dot(toGoniLight, toGoniLight);
+                        float glDist = sqrt(glDistSq);
+                        float3 glWi = toGoniLight / glDist;
+                        float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                                      gl.emission, gl.scale,
+                                                                      goniometricTexture, textureSampler);
+                        if (any(glRadiance > float3(0.0))) {
+                            ray glShadowRay;
+                            glShadowRay.origin = scatterPoint;
+                            glShadowRay.direction = glWi;
+                            glShadowRay.min_distance = 0.001f;
+                            glShadowRay.max_distance = glDist - 0.002f;
+                            intersection_result<instancing, triangle_data> glShadowResult =
+                                isect.intersect(glShadowRay, accelStructure, functionTable);
+                            if (glShadowResult.type == intersection_type::none) {
+                                float glPhaseValue = henyeyGreensteinPhase(dot(wo, glWi), uniforms.fogAsymmetryG);
+                                float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                                radiance += throughput * glPhaseValue * glRadiance * glTransmittance / glDistSq;
                             }
                         }
                     }
@@ -2023,6 +2140,43 @@ kernel void primaryRayKernel(
                             }
                         }
                     }
+
+                    // Goniometric lights - see GoniometricLight's own comment.
+                    for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+                        GoniometricLight gl = goniometricLights[gli];
+                        float3 toGoniLight = float3(gl.position) - hitPoint;
+                        float glDistSq = dot(toGoniLight, toGoniLight);
+                        float glDist = sqrt(glDistSq);
+                        float3 glWi = toGoniLight / glDist;
+                        float glCosSurface = dot(facingNormal, glWi);
+                        if (glCosSurface > 0.0) {
+                            float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                                          gl.emission, gl.scale,
+                                                                          goniometricTexture, textureSampler);
+                            if (any(glRadiance > float3(0.0))) {
+                                float3 glWiLocal = float3(dot(glWi, tangent), dot(glWi, bitangent), dot(glWi, facingNormal));
+                                float3 glH = normalize(woLocal + glWiLocal);
+                                float glNdotO = woLocal.z;
+                                float glNdotI = max(glWiLocal.z, 0.0001);
+                                float glDh = ggxD(glH, alphaX, alphaY);
+                                float glG = ggxG(woLocal, glWiLocal, alphaX, alphaY);
+                                float3 glF = fresnelSchlickConductor(max(dot(woLocal, glH), 0.0), albedo);
+                                float3 glBrdf = glDh * glG * glF / max(4.0 * glNdotO * glNdotI, 1e-6);
+
+                                ray glShadowRay;
+                                glShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                glShadowRay.direction = glWi;
+                                glShadowRay.min_distance = 0.001f;
+                                glShadowRay.max_distance = glDist - 0.002f;
+                                intersection_result<instancing, triangle_data> glShadowResult =
+                                    isect.intersect(glShadowRay, accelStructure, functionTable);
+                                if (glShadowResult.type == intersection_type::none) {
+                                    float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                                    radiance += throughput * glBrdf * glRadiance * glCosSurface * glTransmittance / glDistSq;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 float3 hLocal = sampleGGXVNDF(woLocal, alphaX, alphaY, rngState);
@@ -2210,6 +2364,35 @@ kernel void primaryRayKernel(
                                 }
                             }
                         }
+
+                        // Goniometric lights - see GoniometricLight's own comment.
+                        for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+                            GoniometricLight gl = goniometricLights[gli];
+                            float3 toGoniLight = float3(gl.position) - hitPoint;
+                            float glDistSq = dot(toGoniLight, toGoniLight);
+                            float glDist = sqrt(glDistSq);
+                            float3 glWi = toGoniLight / glDist;
+                            float glCosSurface = dot(facingNormal, glWi);
+                            if (glCosSurface > 0.0) {
+                                float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                                              gl.emission, gl.scale,
+                                                                              goniometricTexture, textureSampler);
+                                if (any(glRadiance > float3(0.0))) {
+                                    ray glShadowRay;
+                                    glShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                    glShadowRay.direction = glWi;
+                                    glShadowRay.min_distance = 0.001f;
+                                    glShadowRay.max_distance = glDist - 0.002f;
+                                    intersection_result<instancing, triangle_data> glShadowResult =
+                                        isect.intersect(glShadowRay, accelStructure, functionTable);
+                                    if (glShadowResult.type == intersection_type::none) {
+                                        float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                                        radiance += throughput * albedo * (1.0 / M_PI_F)
+                                                    * glRadiance * glCosSurface * glTransmittance / glDistSq;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     rayDir = cosineSampleHemisphere(facingNormal, rngState);
@@ -2361,6 +2544,35 @@ kernel void primaryRayKernel(
                                     float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
                                     radiance += throughput * albedo * (1.0 / M_PI_F)
                                                 * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
+                                }
+                            }
+                        }
+                    }
+
+                    // Goniometric lights - see GoniometricLight's own comment.
+                    for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+                        GoniometricLight gl = goniometricLights[gli];
+                        float3 toGoniLight = float3(gl.position) - hitPoint;
+                        float glDistSq = dot(toGoniLight, toGoniLight);
+                        float glDist = sqrt(glDistSq);
+                        float3 glWi = toGoniLight / glDist;
+                        float glCosSurface = dot(facingNormal, glWi);
+                        if (glCosSurface > 0.0) {
+                            float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                                          gl.emission, gl.scale,
+                                                                          goniometricTexture, textureSampler);
+                            if (any(glRadiance > float3(0.0))) {
+                                ray glShadowRay;
+                                glShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                                glShadowRay.direction = glWi;
+                                glShadowRay.min_distance = 0.001f;
+                                glShadowRay.max_distance = glDist - 0.002f;
+                                intersection_result<instancing, triangle_data> glShadowResult =
+                                    isect.intersect(glShadowRay, accelStructure, functionTable);
+                                if (glShadowResult.type == intersection_type::none) {
+                                    float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                                    radiance += throughput * albedo * (1.0 / M_PI_F)
+                                                * glRadiance * glCosSurface * glTransmittance / glDistSq;
                                 }
                             }
                         }

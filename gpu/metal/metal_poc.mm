@@ -81,6 +81,7 @@ struct Uniforms {
     uint32_t pointLightCount;
     uint32_t directionalLightCount;
     uint32_t projectionLightCount;
+    uint32_t goniometricLightCount;
     uint32_t adaptiveSampling;
 };
 
@@ -152,6 +153,103 @@ static ProjectionLightData makeProjectionLight(float3 position, float3 target, f
         tanHalfFovX,
         tanHalfFovY,
         scale};
+}
+
+// Mirrors metal_poc.metal's GoniometricLight byte-for-byte.
+struct GoniometricLightData {
+    PackedFloat3 position;
+    PackedFloat3 forward;
+    PackedFloat3 right;
+    PackedFloat3 up;
+    PackedFloat3 emission;
+    float scale;
+};
+
+// Builds a GoniometricLightData the same look-at way makeProjectionLight()
+// above builds a ProjectionLightData - see that function's own comment.
+static GoniometricLightData makeGoniometricLight(float3 position, float3 target, float3 worldUp,
+                                                  float3 emission, float scale) {
+    float3 forward = simd::normalize(target - position);
+    float3 right = simd::normalize(simd::cross(forward, worldUp));
+    float3 up = simd::cross(right, forward);
+    return GoniometricLightData{
+        PackedFloat3{position.x, position.y, position.z},
+        PackedFloat3{forward.x, forward.y, forward.z},
+        PackedFloat3{right.x, right.y, right.z},
+        PackedFloat3{up.x, up.y, up.z},
+        PackedFloat3{emission.x, emission.y, emission.z},
+        scale};
+}
+
+// pbrt-v4's own equal-area octahedral SQUARE-to-sphere mapping
+// (src/shared/sampling_extra.h's EqualAreaSquareToSphere(), the INVERSE
+// of metal_poc.metal's own equalAreaSphereToSquare() - ported here, host-
+// side, purely to GENERATE the procedural goniometric image below: for
+// each texel's own (u,v), this recovers exactly which direction that
+// texel represents, so the image can be filled in by a function of
+// DIRECTION (the natural way to author a goniometric profile) rather
+// than needing to reason about the forward mapping's own distorted
+// texel layout directly.
+static float3 equalAreaSquareToSphere(float u, float v) {
+    float uu = 2.0f * u - 1.0f, vv = 2.0f * v - 1.0f;
+    float up_ = fabsf(uu), vp = fabsf(vv);
+    float signedDist = 1.0f - (up_ + vp);
+    float d = fabsf(signedDist);
+    float r = 1.0f - d;
+    float phi = (r == 0.0f ? 1.0f : (vp - up_) / r + 1.0f) * ((float)M_PI / 4.0f);
+    float z = copysignf(1.0f - r * r, signedDist);
+    float cosPhi = cosf(phi);
+    float sinPhi = sinf(phi);
+    float xyR = r * sqrtf(fmaxf(0.0f, 2.0f - r * r));
+    float x = copysignf(cosPhi * xyR, uu);
+    float y = copysignf(sinPhi * xyR, vv);
+    return float3{x, y, z};
+}
+
+// Procedurally generates a small goniometric intensity image - see
+// metal_poc.metal's own GoniometricLight comment for the full "why" (no
+// real IES data file exists in this repo, and this POC's own established
+// pattern for a missing real-world asset is an analytic stand-in, the
+// same choice bump mapping's own egg-carton height field and the
+// checkerboard/patterned-light materials already made). Single-channel
+// (R8Unorm), `size`x`size`, equal-area-indexed (texel (u,v) represents
+// the direction equalAreaSquareToSphere(u,v) gives, in the light's own
+// local frame - +Z is the light's own `forward` aim direction).
+//
+// Two multiplied factors, each independently verifiable: a forward-
+// facing LOBE (a smoothstep falloff in the direction's own Z component -
+// full intensity dead-centre, fading to zero by `cosCutoff`, zero
+// everywhere behind the light) and a RING modulation (`cos` of the polar
+// angle scaled by `ringFrequency`, remapped to [0,1]) - the ring term is
+// what makes this a genuine test of a real 2D-image-indexed light
+// instead of a reskinned spot light: spotLightFalloff() can only ever
+// produce a single monotonic centre-to-edge falloff, never concentric
+// bright/dark BANDS within one cone, since it has no notion of a stored
+// image at all.
+static std::vector<uint8_t> buildGoniometricProfileImage(int size, float cosCutoff, float ringFrequency) {
+    // Plain C++ has no built-in smoothstep (that's a GLSL/MSL intrinsic,
+    // not a standard-library function) - the textbook 3t^2-2t^3 Hermite
+    // form, same formula this project's own metal_poc.metal spells out
+    // by hand for spotLightFalloff()'s own cone falloff.
+    auto smoothstepHermite = [](float edge0, float edge1, float x) -> float {
+        float t = fminf(fmaxf((x - edge0) / fmaxf(edge1 - edge0, 1e-6f), 0.0f), 1.0f);
+        return t * t * (3.0f - 2.0f * t);
+    };
+    std::vector<uint8_t> image(size * size);
+    for (int v = 0; v < size; ++v) {
+        for (int u = 0; u < size; ++u) {
+            float uu = (float(u) + 0.5f) / float(size);
+            float vv = (float(v) + 0.5f) / float(size);
+            float3 dir = equalAreaSquareToSphere(uu, vv);
+            float cosTheta = fminf(fmaxf(dir.z, -1.0f), 1.0f);
+            float lobe = smoothstepHermite(cosCutoff, 1.0f, cosTheta);
+            float theta = acosf(cosTheta);
+            float ring = 0.5f + 0.5f * cosf(theta * ringFrequency);
+            float intensity = lobe * ring;
+            image[v * size + u] = (uint8_t)(fminf(fmaxf(intensity, 0.0f), 1.0f) * 255.0f + 0.5f);
+        }
+    }
+    return image;
 }
 
 // materialType: 0 = Lambertian, 1 = mirror, 2 = dielectric (glass) - see
@@ -576,17 +674,27 @@ struct MetalPocApp {
     std::vector<PointLightData> pointLights;
     std::vector<DirectionalLightData> directionalLights;
     std::vector<ProjectionLightData> projectionLights;
+    std::vector<GoniometricLightData> goniometricLights;
+    // The goniometric light's own procedurally-generated intensity image
+    // (see buildGoniometricProfileImage()'s own comment) - built by
+    // buildScene() alongside `goniometricLights`, uploaded as a real
+    // MTLTexture by buildGPUResources() (needs `device`, not available
+    // yet inside buildScene()).
+    std::vector<uint8_t> goniometricImage;
+    int goniometricImageSize = 0;
     uint32_t triangleCount = 0;
 
     // --- GPU-resident buffers + acceleration structures, built by
     // buildGPUResources() ------------------------------------------------
     id<MTLBuffer> vertexBuffer, normalBuffer, uvBuffer, lightBuffer;
     id<MTLBuffer> pointLightBuffer, directionalLightBuffer, projectionLightBuffer;
+    id<MTLBuffer> goniometricLightBuffer;
     id<MTLBuffer> materialBuffer, sphereBuffer, sphereMaterialBuffer;
     id<MTLBuffer> diskBuffer, diskMaterialBuffer;
     id<MTLBuffer> suzanneVertexBuffer, suzanneNormalBuffer, suzanneMaterialBuffer;
     id<MTLBuffer> instanceTransformBuffer;
     id<MTLAccelerationStructure> primAS, sphereAS, suzanneAS, instAS;
+    id<MTLTexture> goniometricTexture = nil;
 
     // --- Render output: written by compileShaderAndDispatch(), read by
     // postProcessAndWrite() ----------------------------------------------
@@ -1011,9 +1119,33 @@ void MetalPocApp::buildScene() {
                              /*fovDegrees=*/38.0f, /*aspect=*/2.0f, /*scale=*/25.0f),
     };
 
+    // A goniometric ("IES-profile") light - see metal_poc.metal's own
+    // GoniometricLight comment. Mounted near the ceiling on the room's
+    // centre-right, aimed down and across at the RED (left, x=-1) wall's
+    // own lower-mid area - a clean mirror of the projection light's own
+    // placement on the green wall above, on the one remaining plain,
+    // undecorated flat wall this scene has. 35-degree cosCutoff keeps
+    // this reading as a defined beam, not floodlighting the whole wall;
+    // ringFrequency=25 gives a handful of visible concentric bands within
+    // that cone - tuned by rendering and inspecting (the same way every
+    // other post-process/lighting knob in this POC was), not picked from
+    // theory alone.
+    const float3 goniometricColor = blackbodyColor(4500.0f) * 13.0f;
+    goniometricLights = {
+        makeGoniometricLight(/*position=*/float3{-0.1f, 0.85f, -0.15f},
+                              /*target=*/float3{-1.0f, -0.05f, -0.15f},
+                              /*worldUp=*/float3{0.0f, 1.0f, 0.0f},
+                              /*emission=*/goniometricColor, /*scale=*/1.0f),
+    };
+    goniometricImageSize = 64;
+    goniometricImage =
+        buildGoniometricProfileImage(goniometricImageSize, /*cosCutoff=*/cosf(35.0f * (float)M_PI / 180.0f),
+                                      /*ringFrequency=*/25.0f);
+
     triangleCount = (uint32_t)materials.size();
-    fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights, %zu projection lights\n",
-            triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size(), projectionLights.size());
+    fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights, %zu projection lights, %zu goniometric lights\n",
+            triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size(),
+            projectionLights.size(), goniometricLights.size());
 }
 
 // --- Stage 3: upload GPU buffers + build acceleration structures --------
@@ -1039,6 +1171,26 @@ bool MetalPocApp::buildGPUResources() {
     projectionLightBuffer = [device newBufferWithBytes:projectionLights.data()
         length:projectionLights.size() * sizeof(ProjectionLightData)
         options:MTLResourceStorageModeShared];
+    goniometricLightBuffer = [device newBufferWithBytes:goniometricLights.data()
+        length:goniometricLights.size() * sizeof(GoniometricLightData)
+        options:MTLResourceStorageModeShared];
+    // The goniometric light's own procedural intensity image (built by
+    // buildScene()) - a plain single-channel (R8Unorm) texture, sampled
+    // device-side via goniometricLightRadiance()'s own bilinear
+    // `textureSampler`. `address::repeat` (the same sampler every other
+    // texture read in this file already uses) is a genuine no-op here in
+    // practice: equalAreaSphereToSquare() always returns a UV strictly
+    // inside [0,1]^2 for a valid unit direction, never walking off the
+    // image's own edge the way a perspective-projected UV occasionally
+    // needs wrapping/clamping to handle.
+    MTLTextureDescriptor* goniometricDesc = [MTLTextureDescriptor
+        texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+        width:(NSUInteger)goniometricImageSize height:(NSUInteger)goniometricImageSize mipmapped:NO];
+    goniometricDesc.usage = MTLTextureUsageShaderRead;
+    goniometricDesc.storageMode = MTLStorageModeShared;
+    goniometricTexture = [device newTextureWithDescriptor:goniometricDesc];
+    [goniometricTexture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)goniometricImageSize, (NSUInteger)goniometricImageSize)
+        mipmapLevel:0 withBytes:goniometricImage.data() bytesPerRow:(NSUInteger)goniometricImageSize];
     materialBuffer = [device newBufferWithBytes:materials.data()
         length:materials.size() * sizeof(TriangleMaterial)
         options:MTLResourceStorageModeShared];
@@ -1522,6 +1674,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uniforms.pointLightCount = (uint32_t)pointLights.size();
     uniforms.directionalLightCount = (uint32_t)directionalLights.size();
     uniforms.projectionLightCount = (uint32_t)projectionLights.size();
+    uniforms.goniometricLightCount = (uint32_t)goniometricLights.size();
     // Single-pass adaptive sampling (see metal_poc.metal's own
     // shading-loop comment) - enabled by default for this scene:
     // converged pixels (most of the flat-coloured walls/ceiling)
@@ -1539,6 +1692,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setComputePipelineState:pipeline];
     [enc setTexture:outTexture atIndex:0];
     [enc setTexture:earthTexture atIndex:1];
+    [enc setTexture:goniometricTexture atIndex:2];
     [enc setAccelerationStructure:instAS atBufferIndex:0];
     [enc setBuffer:uniformBuffer offset:0 atIndex:1];
     [enc setBuffer:materialBuffer offset:0 atIndex:2];
@@ -1557,6 +1711,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
     [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
     [enc setBuffer:projectionLightBuffer offset:0 atIndex:17];
+    [enc setBuffer:goniometricLightBuffer offset:0 atIndex:18];
     // Mark the AS + its dependent primitive ASes as used so Metal
     // knows about the indirection - required for instance
     // acceleration structures referencing primitive ones (now three:
