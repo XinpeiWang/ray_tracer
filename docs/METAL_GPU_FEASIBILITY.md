@@ -3799,3 +3799,65 @@ no shader-visible effect yet. The ad-hoc CMake build/`ctest` (four
 tests, none touched by this PR's own render path, all still passing)
 and the new `metal_poc_math_tests` case confirm the addition doesn't
 disturb anything else.
+
+## 73. GGX multi-scatter energy compensation, phase 2: shader wiring (done)
+
+Phase 1 (section 72) built and independently verified the host-side
+`GGXEnergyTable` (a Kulla-Conty directional-albedo table, found by
+spot-checking this POC's GGX conductor material against Blender
+Cycles as a second reference) but deliberately left it unwired - no
+GPU buffer, no shader-visible effect. This closes that gap: the
+single-scatter energy this POC's GGX conductor material (materialType
+4/9) was silently discarding at high roughness is now recovered.
+
+**Host side**: `buildGGXEnergyTable()` runs ONCE at startup (a real-
+time Monte Carlo precompute - 32x32 grid, 2048 samples/cell, negligible
+overhead against this POC's own shader-compile/scene-build time), and
+its `E` array uploads as a single new GPU buffer (`buffer(21)` - unlike
+the environment map's own optional `envMapWidth == 0` escape hatch,
+this table is unconditional: `Eavg` stays unused device-side, since
+that only feeds the "multi-bounce Fresnel darkening" refinement this
+phase still doesn't attempt).
+
+**Device side**: `sampleGGXEnergyTableDevice()` mirrors the host-side
+bilinear lookup exactly (same index math, same clamping), reading the
+table as a plain `device const float*` buffer (not a texture - no
+image-file/sRGB concerns for raw float data). Wired into
+`shadeConductor` only (materialType 4/9's own branch - the one
+material this table's own math applies to): looked up once per hit
+using a representative isotropic `sqrt(alphaX*alphaY)` for
+materialType 4's genuinely anisotropic case (an approximation Cycles
+itself also makes, rather than building a full anisotropic third table
+axis this phase doesn't attempt), then applied as `energyScale = 1/E`
+- multiplied into every one of the 6 BRDF values this function's own
+NEE loops compute (area light, point, directional, projection,
+goniometric, and section 71's own environment-map NEE - all six,
+found by grepping for every `...Brdf = ` line in the function, not
+guessed from memory) AND the continuation ray's own throughput update
+at the function's tail, since all seven need the identical correction
+(it depends only on this hit's own alpha/view-angle, not on which
+light/direction is being evaluated).
+
+**Verified three ways**: (1) A new device-side test
+(`test_sampleGGXEnergyTableDevice`) builds the SAME table via
+`buildGGXEnergyTable()` (the exact function `metal_poc.mm`'s own
+render path calls) and confirms the device-side bilinear lookup
+reproduces the host-side one (`sampleGGXEnergyTable()`) at 20
+(roughness, mu) pairs to `1e-4` - both read the identical uploaded
+array, so this isolates the interpolation code itself from the
+table's own values (already checked against the real Kulla-Conty
+trend in phase 1). Deliberately corrupted one expected value,
+confirmed the suite caught it, then reverted. (2) A before/after
+render (materialType 4's own gold sphere, isotropic-equivalent
+roughness ~0.44) shows a real, correctly-SIGNED brightening: 2.3% of
+the sphere-cluster region's subpixels differ by more than 3, mean
+signed difference +0.18 (positive - energy recovered, not lost) -
+honestly modest at this material's own moderate roughness (matching
+the Kulla-Conty trend's own Eavg~0.95-0.97 there), not a dramatic
+visual change, the same "correct but subtle" pattern sections 52/64
+already established for other physically-motivated fixes. (3) Full
+CMake build/`ctest` (four tests, all passing) confirms nothing else
+regressed.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly.

@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include <random>
 #include <simd/simd.h>
 
 #include "metal_poc_host_math.h"
@@ -474,6 +475,47 @@ static void testEnvironmentDirectionSampling(id<MTLDevice> device, id<MTLLibrary
     }
 }
 
+static void testSampleGGXEnergyTableDevice(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // Builds the SAME table (via buildGGXEnergyTable(), the exact
+    // function metal_poc.mm's own render path calls at startup) and
+    // checks the device-side bilinear lookup reproduces the host-side
+    // one (sampleGGXEnergyTable()) at a spread of (roughness, mu) pairs -
+    // both read the identical uploaded array, so any drift here means
+    // the two interpolation implementations have diverged, not that the
+    // table itself is wrong (metal_poc_math_tests.cpp's own
+    // testGGXEnergyTableTrend() already checks the table's own values
+    // against the real Kulla-Conty physical trend).
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<float> unitDist(0.0f, 1.0f);
+    auto randFn = [&]() { return unitDist(rng); };
+    GGXEnergyTable table;
+    buildGGXEnergyTable(8, 8, 512, table, randFn);
+
+    id<MTLBuffer> tableBuf = makeBuffer(device, table.E.data(), table.E.size() * sizeof(float));
+    simd::uint2 dims[1] = {{(uint32_t)table.roughRes, (uint32_t)table.muRes}};
+    id<MTLBuffer> dimsBuf = makeBuffer(device, dims, sizeof(dims));
+
+    const int n = 20;
+    simd::float2 pairs[n];
+    for (int i = 0; i < n; ++i) {
+        float roughness = ((float)i + 0.5f) / n;
+        float mu = fmodf(roughness * 53.0f + 0.31f, 1.0f);
+        pairs[i] = {roughness, mu};
+    }
+    id<MTLBuffer> pairsBuf = makeBuffer(device, pairs, sizeof(pairs));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (!runKernel(device, library, queue, @"test_sampleGGXEnergyTableDevice",
+                   @[tableBuf, dimsBuf, pairsBuf, outBuf], nil, n)) return;
+    float* out = (float*)outBuf.contents;
+    for (int i = 0; i < n; ++i) {
+        float hostValue = sampleGGXEnergyTable(table, pairs[i].x, pairs[i].y);
+        char label[128];
+        snprintf(label, sizeof(label), "sampleGGXEnergyTableDevice matches host lookup (roughness=%.3f, mu=%.3f)",
+                 pairs[i].x, pairs[i].y);
+        expectNear(label, out[i], hostValue, 1e-4);
+    }
+}
+
 static void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // g == 0 (isotropic) must give the SAME value - 1/(4*pi) - for every
     // cosTheta, since an isotropic phase function has no directional
@@ -754,6 +796,7 @@ int main() {
         testFrComplexRGB(device, library, queue);
         testBuildAnisotropicOnb(device, library, queue);
         testEnvironmentDirectionSampling(device, library, queue);
+        testSampleGGXEnergyTableDevice(device, library, queue);
         testHenyeyGreensteinPhase(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);

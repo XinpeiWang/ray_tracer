@@ -135,6 +135,15 @@ struct Uniforms {
     // exactly" pattern every other optional feature here already uses.
     uint envMapWidth;
     uint envMapHeight;
+    // GGX multi-scatter energy-compensation table (section 72/73) - the
+    // grid dimensions its own directional-albedo table (`ggxEnergyTable`
+    // buffer below) was built at, needed to index it correctly. Applies
+    // unconditionally to materialType 4/9's own GGX conductor (there is
+    // no "0 disables this" case the way env-map/adaptive-sampling have -
+    // the table is always built and always physically correct to apply,
+    // unlike those genuinely optional features).
+    uint ggxEnergyRoughRes;
+    uint ggxEnergyMuRes;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -1477,6 +1486,34 @@ inline float3 sampleGGXVNDF(float3 woLocal, float alphaX, float alphaY, thread u
     return normalize(Ne);
 }
 
+// GGX multi-scatter energy compensation (phase 2 - see
+// metal_poc_host_math.h's own buildGGXEnergyTable() comment for the full
+// "why"). Bilinear lookup into the E(roughness, mu) table built once at
+// host startup, mirroring sampleGGXEnergyTable()'s own host-side
+// interpolation exactly (same index math, same clamping) rather than
+// texture2d::sample() - this is plain float data with no image-file/
+// sRGB concerns, and a `device const float*` buffer already matches the
+// layout buildGGXEnergyTable() itself produces with no repacking needed.
+inline float sampleGGXEnergyTableDevice(device const float* E, uint roughRes, uint muRes,
+                                         float roughness, float mu) {
+    float rf = roughness * float(roughRes) - 0.5;
+    float mf = mu * float(muRes) - 0.5;
+    int r0 = int(floor(rf)), m0 = int(floor(mf));
+    float rt = rf - float(r0), mt = mf - float(m0);
+    int r1 = r0 + 1, m1 = m0 + 1;
+    r0 = clamp(r0, 0, int(roughRes) - 1);
+    r1 = clamp(r1, 0, int(roughRes) - 1);
+    m0 = clamp(m0, 0, int(muRes) - 1);
+    m1 = clamp(m1, 0, int(muRes) - 1);
+    float e00 = E[r0 * int(muRes) + m0];
+    float e10 = E[r1 * int(muRes) + m0];
+    float e01 = E[r0 * int(muRes) + m1];
+    float e11 = E[r1 * int(muRes) + m1];
+    float e0 = e00 + (e10 - e00) * rt;
+    float e1 = e01 + (e11 - e01) * rt;
+    return e0 + (e1 - e0) * mt;
+}
+
 // ---------------------------------------------------------------------------
 // Per-material shading functions
 //
@@ -1644,6 +1681,8 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                             device const float* envMarginalCDF,
                             device const float* envConditionalCDF,
                             uint envMapWidth, uint envMapHeight,
+                            device const float* ggxEnergyTable,
+                            uint ggxEnergyRoughRes, uint ggxEnergyMuRes,
                             texture2d<float, access::sample> earthTexture,
                             texture2d<float, access::sample> goniometricTexture,
                             sampler textureSampler,
@@ -1684,6 +1723,27 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
     float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
     woLocal.z = max(woLocal.z, 0.0001);
 
+    // Multi-scatter energy compensation (section 72/73) - `energyScale`
+    // recovers the energy single-scatter GGX discards to inter-
+    // reflection between microfacets, applied as a flat multiplier on
+    // every BRDF value below AND the continuation ray's own throughput
+    // update at this function's own tail, all scaled by the SAME factor
+    // since it depends only on this hit's own (alpha, view angle), not
+    // on which light/direction is being evaluated. The table itself is
+    // isotropic-only (built from a single alpha, section 72's own
+    // buildGGXEnergyTable()); materialType 4's own genuinely anisotropic
+    // alphaX/alphaY collapse to a representative isotropic
+    // sqrt(alphaX*alphaY) for this lookup - an approximation, not exact,
+    // but the SAME kind of "isotropic energy term applied to an
+    // anisotropic lobe" approximation production renderers (including
+    // Cycles itself) commonly make, since a full anisotropic energy
+    // table would need a third table axis this phase doesn't build.
+    float ggxEnergyIsoAlpha = sqrt(alphaX * alphaY);
+    float ggxEnergyRoughness = sqrt(ggxEnergyIsoAlpha);
+    float ggxE = sampleGGXEnergyTableDevice(ggxEnergyTable, ggxEnergyRoughRes, ggxEnergyMuRes,
+                                             ggxEnergyRoughness, woLocal.z);
+    float energyScale = 1.0 / max(ggxE, 0.05);
+
     if (all(mat.emission == float3(0.0))) {
         LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
         float3 toLight = ls.point - hitPoint;
@@ -1700,7 +1760,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
             float Dh = ggxD(h, alphaX, alphaY);
             float G = ggxG(woLocal, wiLocal, alphaX, alphaY);
             float3 F = frComplexRGB(max(dot(woLocal, h), 0.0), mat.conductorEta, mat.conductorK);
-            float3 brdf = Dh * G * F / max(4.0 * NdotO * NdotI, 1e-6);
+            float3 brdf = Dh * G * F * energyScale / max(4.0 * NdotO * NdotI, 1e-6);
 
             ray shadowRay;
             shadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -1734,7 +1794,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 float plDh = ggxD(plH, alphaX, alphaY);
                 float plG = ggxG(woLocal, plWiLocal, alphaX, alphaY);
                 float3 plF = frComplexRGB(max(dot(woLocal, plH), 0.0), mat.conductorEta, mat.conductorK);
-                float3 plBrdf = plDh * plG * plF / max(4.0 * plNdotO * plNdotI, 1e-6);
+                float3 plBrdf = plDh * plG * plF * energyScale / max(4.0 * plNdotO * plNdotI, 1e-6);
 
                 ray plShadowRay;
                 plShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -1763,7 +1823,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 float dlDh = ggxD(dlH, alphaX, alphaY);
                 float dlG = ggxG(woLocal, dlWiLocal, alphaX, alphaY);
                 float3 dlF = frComplexRGB(max(dot(woLocal, dlH), 0.0), mat.conductorEta, mat.conductorK);
-                float3 dlBrdf = dlDh * dlG * dlF / max(4.0 * dlNdotO * dlNdotI, 1e-6);
+                float3 dlBrdf = dlDh * dlG * dlF * energyScale / max(4.0 * dlNdotO * dlNdotI, 1e-6);
 
                 ray dlShadowRay;
                 dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -1799,7 +1859,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     float pjDh = ggxD(pjH, alphaX, alphaY);
                     float pjG = ggxG(woLocal, pjWiLocal, alphaX, alphaY);
                     float3 pjF = frComplexRGB(max(dot(woLocal, pjH), 0.0), mat.conductorEta, mat.conductorK);
-                    float3 pjBrdf = pjDh * pjG * pjF / max(4.0 * pjNdotO * pjNdotI, 1e-6);
+                    float3 pjBrdf = pjDh * pjG * pjF * energyScale / max(4.0 * pjNdotO * pjNdotI, 1e-6);
 
                     ray pjShadowRay;
                     pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -1835,7 +1895,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     float glDh = ggxD(glH, alphaX, alphaY);
                     float glG = ggxG(woLocal, glWiLocal, alphaX, alphaY);
                     float3 glF = frComplexRGB(max(dot(woLocal, glH), 0.0), mat.conductorEta, mat.conductorK);
-                    float3 glBrdf = glDh * glG * glF / max(4.0 * glNdotO * glNdotI, 1e-6);
+                    float3 glBrdf = glDh * glG * glF * energyScale / max(4.0 * glNdotO * glNdotI, 1e-6);
 
                     ray glShadowRay;
                     glShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -1875,7 +1935,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 float envDh = ggxD(envH, alphaX, alphaY);
                 float envG = ggxG(woLocal, envWiLocal, alphaX, alphaY);
                 float3 envF = frComplexRGB(max(dot(woLocal, envH), 0.0), mat.conductorEta, mat.conductorK);
-                float3 envBrdf = envDh * envG * envF / max(4.0 * envNdotO * envNdotI, 1e-6);
+                float3 envBrdf = envDh * envG * envF * energyScale / max(4.0 * envNdotO * envNdotI, 1e-6);
 
                 ray envShadowRay;
                 envShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -1911,7 +1971,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
     float G = ggxG(woLocal, wiLocal, alphaX, alphaY);
     float G1 = ggxG1(woLocal, alphaX, alphaY);
     float3 F = frComplexRGB(max(dot(woLocal, hLocal), 0.0), mat.conductorEta, mat.conductorK);
-    throughput *= F * (G / max(G1, 1e-6));
+    throughput *= F * (G / max(G1, 1e-6)) * energyScale;
 
     rayDir = wiWorld;
     rayOrigin = hitPoint + facingNormal * 0.001f;
@@ -2572,6 +2632,7 @@ kernel void primaryRayKernel(
     device const GoniometricLight* goniometricLights [[buffer(18)]],
     device const float* envMarginalCDF [[buffer(19)]],
     device const float* envConditionalCDF [[buffer(20)]],
+    device const float* ggxEnergyTable [[buffer(21)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -3138,6 +3199,7 @@ kernel void primaryRayKernel(
                 if (!shadeConductor(mat, hitPoint, normal, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
+                                     ggxEnergyTable, uniforms.ggxEnergyRoughRes, uniforms.ggxEnergyMuRes,
                                      earthTexture, goniometricTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
@@ -3363,6 +3425,17 @@ kernel void test_pdfEnvironmentDirection(
     uint tid [[thread_position_in_grid]])
 {
     pdfOutputs[tid] = pdfEnvironmentDirection(marginalCDF, conditionalCDF, dims[0].x, dims[0].y, dirs[tid]);
+}
+
+kernel void test_sampleGGXEnergyTableDevice(
+    device const float* E [[buffer(0)]],
+    device const uint2* dims [[buffer(1)]],
+    device const float2* roughnessMuPairs [[buffer(2)]],
+    device float* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = sampleGGXEnergyTableDevice(E, dims[0].x, dims[0].y,
+                                               roughnessMuPairs[tid].x, roughnessMuPairs[tid].y);
 }
 
 kernel void test_henyeyGreensteinPhase(

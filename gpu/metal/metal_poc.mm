@@ -39,6 +39,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <random>
 #include <simd/simd.h>
 
 // PackedFloat3/PackedFloat2/AreaLightData/buildPowerLightSampler and every
@@ -87,6 +88,10 @@ struct Uniforms {
     // mirrored comment.
     uint32_t envMapWidth = 0;
     uint32_t envMapHeight = 0;
+    // GGX multi-scatter energy-compensation table dimensions - see
+    // metal_poc.metal's own mirrored comment.
+    uint32_t ggxEnergyRoughRes = 0;
+    uint32_t ggxEnergyMuRes = 0;
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -1726,6 +1731,28 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         envConditionalCDFBuffer = [device newBufferWithBytes:&dummy length:sizeof(float) options:MTLResourceStorageModeShared];
     }
 
+    // GGX multi-scatter energy-compensation table (phase 2 - see phase
+    // 1's own header comment in metal_poc_host_math.h for the full
+    // "why," found by spot-checking this POC's GGX conductor material
+    // against Blender Cycles as a second reference). Built ONCE here at
+    // startup (a real-time Monte Carlo precompute, not Cycles' own
+    // offline 8-64-million-sample tool) and uploaded as a single GPU
+    // buffer - only `E` is needed on the device side; `Eavg` only feeds
+    // the "multi-bounce Fresnel darkening" refinement this phase
+    // deliberately doesn't attempt (see that same header comment).
+    // std::mt19937 (not this POC's own device-side randFloat()) is fine
+    // here - this is a host-only precompute of a smooth, low-frequency
+    // table, not a per-pixel render decision that needs to match the
+    // shader's own RNG stream bit-for-bit.
+    std::mt19937 ggxEnergyRng(1337);
+    std::uniform_real_distribution<float> ggxEnergyDist(0.0f, 1.0f);
+    auto ggxEnergyRandFn = [&]() { return ggxEnergyDist(ggxEnergyRng); };
+    GGXEnergyTable ggxEnergyTable;
+    buildGGXEnergyTable(/*roughRes=*/32, /*muRes=*/32, /*samplesPerCell=*/2048,
+                        ggxEnergyTable, ggxEnergyRandFn);
+    id<MTLBuffer> ggxEnergyTableBuffer = [device newBufferWithBytes:ggxEnergyTable.E.data()
+        length:ggxEnergyTable.E.size() * sizeof(float) options:MTLResourceStorageModeShared];
+
     const uint32_t samplesPerPixel = (argc > 4) ? (uint32_t)atoi(argv[4]) : 64;
     const uint32_t maxDepth = (argc > 5) ? (uint32_t)atoi(argv[5]) : 8;
     fprintf(stderr, "Samples/pixel: %u, max depth: %u\n", samplesPerPixel, maxDepth);
@@ -1804,6 +1831,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uniforms.adaptiveSampling = 1u;
     uniforms.envMapWidth = envMapWidth;
     uniforms.envMapHeight = envMapHeight;
+    uniforms.ggxEnergyRoughRes = (uint32_t)ggxEnergyTable.roughRes;
+    uniforms.ggxEnergyMuRes = (uint32_t)ggxEnergyTable.muRes;
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
     // --- Dispatch ----------------------------------------------------
@@ -1834,6 +1863,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setBuffer:goniometricLightBuffer offset:0 atIndex:18];
     [enc setBuffer:envMarginalCDFBuffer offset:0 atIndex:19];
     [enc setBuffer:envConditionalCDFBuffer offset:0 atIndex:20];
+    [enc setBuffer:ggxEnergyTableBuffer offset:0 atIndex:21];
     // Mark the AS + its dependent primitive ASes as used so Metal
     // knows about the indirection - required for instance
     // acceleration structures referencing primitive ones (now three:
