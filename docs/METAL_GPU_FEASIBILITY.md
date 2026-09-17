@@ -2483,3 +2483,53 @@ precedent the giraffe/step 34's own sphere already set).
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 52. Proof-of-concept, step 36: patterned (spatially-varying) area light emission (done)
+
+Every `AreaLight` so far has emitted a single FLAT colour, uniform
+across its own surface - a real fixture (a diffuser panel, a stained-
+glass window, a video screen) rarely does. This step adds spatially-
+varying emission, reusing `checkerColor()` (materialType 6's own
+albedo-checker helper) a THIRD time, now for light output instead of a
+surface's own reflectance.
+
+**Two genuinely separate places need this pattern evaluated, not one**,
+because a light's own radiance reaches the camera two different ways:
+directly (a camera/bounce ray landing ON the light quad, using the
+hit's own barycentric-interpolated UV - `texCoordFor()`, the same
+lookup materialType 3/6 already use) and via NEE (`sampleAreaLight()`
+picking a RANDOM point on the light for a shadow ray, using that
+sample's own `(u.x, u.y)` - a DIFFERENT point on the same quad, needing
+the SAME pattern evaluated at ITS OWN coordinate, not the hit's). Both
+call sites already had separate emission lookups before this step
+(`mat.emission` for a direct hit, `light.emission` inside
+`sampleAreaLight()`), so wiring the pattern into each was two small,
+symmetric changes rather than one shared one. A new materialType (10)
+flags which emissive triangles should evaluate the pattern on a direct
+hit; `AreaLight` itself carries the matching `patternTileB`/
+`patternScale` fields for the NEE side. `roughness` (already reused five
+ways across materialTypes 4/5/7/9) picks up a SIXTH meaning here as the
+pattern's own tile-B fraction. `patternScale <= 0.0` (every light before
+this one) is an exact no-op on both paths - flat `emission`/
+`light.emission`, matching every earlier render bit-for-bit.
+
+Applied to the cool ceiling light only (the warm one stays flat, for
+contrast): a 6×6 diffuser-grid pattern, tile B at 40% of tile A's own
+brightness (a translucent grid, not opaque black bars).
+
+**Result, verified two ways**: a direct render shows the cool light's
+own surface with a visible checkerboard grid pattern, sharply distinct
+from the warm light's own uniform flat rectangle right next to it - the
+direct-hit half of this feature, unambiguous. Numerically, an exact
+byte-for-byte pixel comparison confirms both ends of the "0 is a no-op"
+claim: `patternScale = 0.0` on the SAME light reproduces the pre-step
+render with ZERO differing pixels (a true no-op, not an approximation
+of one), while `patternScale = 6.0` changes roughly 94% of the image's
+own subpixels by a small amount each (the pattern's own influence on
+this light's total NEE-sampled contribution, spread across every surface
+it illuminates via direct and indirect light) - confirming the feature
+has a real, measurable, widespread effect exactly where expected, and
+none where it shouldn't.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
