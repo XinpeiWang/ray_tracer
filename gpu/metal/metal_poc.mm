@@ -79,6 +79,7 @@ struct Uniforms {
     uint32_t lightCount;
     float lensRadius;
     float focusDistance;
+    uint32_t apertureBlades;
     PackedFloat3 cameraVelocity;
     float fogSigmaT;
     PackedFloat3 fogAlbedo;
@@ -1290,6 +1291,12 @@ int main(int argc, const char** argv) {
         // model, not just a uniform blur filter over the whole frame.
         uniforms.lensRadius = 0.05f;
         uniforms.focusDistance = uniforms.cameraPos.z - spheres[1].center.z; // gold sphere's own z
+        // A hexagonal (6-blade) aperture rather than a perfectly circular
+        // one - see Uniforms' own apertureBlades comment. The classic
+        // photographic blade count; out-of-focus highlights (area/point/
+        // spot light reflections on the defocused back-wall geometry)
+        // should now read as hexagons, not perfect circles.
+        uniforms.apertureBlades = 6;
         // Shutter motion blur: a small horizontal dolly over the frame's
         // simulated exposure - chosen (over, say, an object moving) since
         // it needs no acceleration-structure/intersection-function

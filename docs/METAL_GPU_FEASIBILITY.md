@@ -2205,3 +2205,46 @@ a subtle hint.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly, and `ctest` continues to pass.
+
+## 46. Proof-of-concept, step 32: polygonal aperture (bokeh) shape (done)
+
+Step 19's own thin-lens DOF has sampled a perfectly circular aperture
+(`sampleUnitDisk()`) unconditionally ever since - physically the
+idealized "infinite aperture blades" limit, not what a real camera lens
+actually does. A real lens's aperture is a finite-sided polygon (the
+blades themselves), which is exactly why out-of-focus highlights in an
+actual photograph read as hexagons/pentagons/etc. rather than perfect
+circles - a well-known, purely cosmetic-but-recognizable signature of
+real camera optics this POC's own DOF couldn't produce at all before
+this step.
+
+`samplePolygonAperture(sides, rngState)` samples a regular N-gon
+uniformly: pick one of `sides` equal triangular wedges (origin to two
+adjacent polygon vertices) uniformly at random, then a point within that
+wedge via the standard sqrt-for-uniform-triangle-area construction - the
+textbook regular-polygon sampling technique, not an approximation of
+one. A new `apertureBlades` uniform selects it: `0/1/2` (every scene
+before this one) keeps the exact original `sampleUnitDisk()` path -
+purely additive, the same "0 reproduces prior behaviour exactly" shape
+`lensRadius == 0` itself already has, and never touched at all when
+`lensRadius == 0` regardless of this new field's value.
+
+The committed scene now uses a 6-blade (hexagonal) aperture, the classic
+photographic blade count.
+
+**Verified via a dedicated diagnostic, not the committed scene**: the
+committed scene's own existing DOF blur turned out too soft/diffuse to
+show a recognizable aperture shape by itself (broad area-light
+reflections and matte surfaces, not the small bright points against a
+dark background real bokeh photos use to make the shape legible) - a
+throwaway scene modification (five small, bright emissive quads
+scattered on the defocused back wall, mimicking a classic "blurred
+string of lights" bokeh test shot, `lensRadius` also temporarily
+increased for a more pronounced blur) makes the effect unambiguous: a
+crop of one blurred light shows a clean, distinct hexagon with the
+6-blade aperture, and a perfect circle with `apertureBlades = 0` on the
+identical scene - confirming both the new polygon path and the
+fallback's own exactness.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` continues to pass.
