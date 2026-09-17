@@ -1228,13 +1228,30 @@ inline void buildOnb(float3 n, thread float3& tangent, thread float3& bitangent)
 // parallel to the normal and the projection would be degenerate) is the
 // simplest thing that gives a consistent "lines of longitude" brushed-
 // metal pattern instead of an arbitrary one.
+// Branchless orthonormal basis from a unit normal - Duff, Burgess,
+// Christensen, Hery, Kensler, Liani, Villemin, "Building an Orthonormal
+// Basis, Revisited" (JCGT 2017), ported from this POC's own reference
+// copy at src/shared/microfacet.h's BuildArbitraryTangentFrame(). Fixes
+// a real bug this function used to have: the earlier "switch to a
+// different world axis when `normal` gets too close to the reference
+// direction" construction (`if (abs(dot(refDir, normal)) > 0.999)
+// refDir = ...`) has a HARD DISCONTINUITY exactly at that 0.999
+// threshold - as `normal` sweeps across it (e.g. anywhere on a sphere
+// whose surface normal passes near world +/-Y), the chosen tangent/
+// bitangent axes pop to a completely different orientation with no
+// continuous transition. Invisible for an ISOTROPIC GGX lobe
+// (rotationally symmetric in the tangent plane, so the frame's own
+// orientation never affects the result) - a real, visible seam for a
+// genuinely ANISOTROPIC one (materialType 4's own brushed-metal
+// sphere, alphaX != alphaY), which is the only caller of this function.
+// This formulation (using copysign rather than a manual branch) has no
+// singularity anywhere on the unit sphere, unlike the one it replaces.
 inline void buildAnisotropicOnb(float3 normal, thread float3& tangent, thread float3& bitangent) {
-    float3 refDir = float3(0.0, 1.0, 0.0);
-    if (abs(dot(refDir, normal)) > 0.999) {
-        refDir = float3(1.0, 0.0, 0.0);
-    }
-    bitangent = normalize(cross(normal, refDir));
-    tangent = cross(bitangent, normal);
+    float sign = copysign(1.0, normal.z);
+    float a = -1.0 / (sign + normal.z);
+    float b = normal.x * normal.y * a;
+    tangent = float3(1.0 + sign * normal.x * normal.x * a, sign * b, -sign * normal.x);
+    bitangent = float3(b, sign + normal.y * normal.y * a, -normal.y);
 }
 
 // Henyey-Greenstein phase function - the standard analytic model for
@@ -3093,6 +3110,18 @@ kernel void test_frComplexRGB(
     uint tid [[thread_position_in_grid]])
 {
     outputs[tid] = frComplexRGB(cosThetas[tid], etas[tid], ks[tid]);
+}
+
+kernel void test_buildAnisotropicOnb(
+    device const float3* normals [[buffer(0)]],
+    device float3* tangentOutputs [[buffer(1)]],
+    device float3* bitangentOutputs [[buffer(2)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float3 t, b;
+    buildAnisotropicOnb(normals[tid], t, b);
+    tangentOutputs[tid] = t;
+    bitangentOutputs[tid] = b;
 }
 
 kernel void test_henyeyGreensteinPhase(
