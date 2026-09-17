@@ -85,6 +85,7 @@ struct Uniforms {
     uint32_t useEnvironmentMap;
     float fogAsymmetryG;
     uint32_t pointLightCount;
+    uint32_t directionalLightCount;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte.
@@ -108,6 +109,12 @@ struct PointLightData {
     PackedFloat3 direction = PackedFloat3{0.0f, -1.0f, 0.0f};
     float cosOuterAngle = -1.0f;
     float cosInnerAngle = -1.0f;
+};
+
+// Mirrors metal_poc.metal's DirectionalLight byte-for-byte.
+struct DirectionalLightData {
+    PackedFloat3 direction;
+    PackedFloat3 emission;
 };
 
 // materialType: 0 = Lambertian, 1 = mirror, 2 = dielectric (glass) - see
@@ -670,9 +677,25 @@ int main(int argc, const char** argv) {
                            /*cosInnerAngle=*/cosf(15.0f * (float)M_PI / 180.0f)},
         };
 
+        // A directional ("sun") light - genuinely different in KIND from
+        // both point-light entries above: parallel rays with no position
+        // and no distance falloff at all, rather than one more delta
+        // light radiating from a finite point (see metal_poc.metal's own
+        // DirectionalLight comment). Aimed through the room's own open
+        // front (the z=1 face has no wall - see the floor/ceiling/wall
+        // addQuad() calls above): `direction` points mostly along -z with
+        // a slight -y/+x tilt, so tracing back toward the light from
+        // anywhere in the [-1,1]^3 room exits through that open face
+        // before it would cross the ceiling (y=1) or either side wall,
+        // rather than being trivially self-shadowed by this room's own
+        // geometry on every shading point.
+        std::vector<DirectionalLightData> directionalLights = {
+            DirectionalLightData{PackedFloat3{0.1f, -0.15f, -1.0f}, PackedFloat3{2.8f, 2.6f, 2.4f}},
+        };
+
         const uint32_t triangleCount = (uint32_t)materials.size();
-        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights\n",
-                triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size());
+        fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights\n",
+                triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size());
 
         id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:verts.data()
             length:verts.size() * sizeof(PackedFloat3)
@@ -688,6 +711,9 @@ int main(int argc, const char** argv) {
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> pointLightBuffer = [device newBufferWithBytes:pointLights.data()
             length:pointLights.size() * sizeof(PointLightData)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> directionalLightBuffer = [device newBufferWithBytes:directionalLights.data()
+            length:directionalLights.size() * sizeof(DirectionalLightData)
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> materialBuffer = [device newBufferWithBytes:materials.data()
             length:materials.size() * sizeof(TriangleMaterial)
@@ -1146,6 +1172,7 @@ int main(int argc, const char** argv) {
         // rather than a dramatic visible change).
         uniforms.fogAsymmetryG = 0.4f;
         uniforms.pointLightCount = (uint32_t)pointLights.size();
+        uniforms.directionalLightCount = (uint32_t)directionalLights.size();
         id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
         // --- Dispatch ----------------------------------------------------
@@ -1170,6 +1197,7 @@ int main(int argc, const char** argv) {
         [enc setBuffer:diskBuffer offset:0 atIndex:13];
         [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
         [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
+        [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
         // Mark the AS + its dependent primitive ASes as used so Metal
         // knows about the indirection - required for instance
         // acceleration structures referencing primitive ones (now three:
