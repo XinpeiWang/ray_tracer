@@ -3301,3 +3301,75 @@ build and render correctly, and `ctest` (four tests) continues to
 pass - this fix needed no new tests of its own since it doesn't add a
 new function, only corrects an existing branch's own math using
 already-tested `ggxG()`/`ggxG1()` building blocks.
+
+## 66. Real per-channel conductor Fresnel for GGX metals (done)
+
+The GGX conductor material (materialType 4, anisotropic brushed metal;
+materialType 9, patchy-roughness metal - both share the same shading
+branch) used `fresnelSchlickConductor()`: Schlick's own single-F0,
+5th-power interpolation curve, exactly the same KIND of approximation
+section 55 already replaced for this POC's dielectric materials
+(`frDielectric()` over Schlick's dielectric curve). The conductor side
+of that same gap was still open - a flat F0 tint can only ever
+interpolate towards WHITE at grazing angles, never reproducing the
+real per-channel colour shift actual metals show there.
+
+`src/shared/fresnel.h`'s `FrComplex()` (pbrt-v4's own complex-valued
+conductor Fresnel, `src/pbrt/util/scattering.h`) is the exact reference
+that closes this gap, and - unlike section 65's rough-dielectric fix -
+needed no algebraic derivation at all: it's a direct value formula (no
+sampling-pdf machinery involved), so this port is a straight
+transcription, `frComplex()`/`frComplexRGB()` added to `metal_poc.metal`
+right after `fresnelSchlickConductor()`, with all complex arithmetic
+expanded manually (no `complex<>` type on Metal - identical to the
+reference's own GPU-compatible expansion). `TriangleMaterial` gained
+two new fields, `conductorEta`/`conductorK` (a real complex IOR per RGB
+channel), read only by materialType 4/9 - every other material type
+leaves them zeroed and unread, `mat.color` becoming a vestigial (still
+present, no longer Fresnel-relevant) field for these two specific
+materials as a result.
+
+`src/shared/conductor_data.h` already had exactly the real-world data
+this needed: RGB-channel-sampled `(eta, k)` presets for five real
+metals, taken directly from pbrt-v4's own piecewise-linear spectral
+tables at the three sRGB primary wavelengths. The committed scene's
+existing gold-tinted anisotropic sphere (materialType 4) and copper-
+tinted patchy sphere (materialType 9) now use the REAL `kConductorAu`/
+`kConductorCu` presets from that file, rather than an artist-chosen
+flat tint standing in for one.
+
+**Verified against a fresh standalone double-precision C port of
+`FrComplex()`** (`frcomplex_ref.c`, not reused from any earlier
+session) at three sanity points, all correct: (1) gold's own normal-
+incidence reflectance per channel - R=0.932, G=0.769, B=0.388, a real,
+independently-known result (gold's own warm colour comes from exactly
+this R>G>B falloff) that a flat-tint approximation can state but never
+DERIVE; (2) grazing incidence (cos=0.01) approaches 1.0 (0.996) for
+every conductor regardless of channel, the same universal limit
+Schlick's own curve also enforces by construction - a necessary
+agreement point between the two; (3) a `k=0` degenerate case (an
+ordinary dielectric has no imaginary IOR component) reduces EXACTLY to
+the real-valued dielectric Fresnel formula already in this POC
+(`R0 = ((1.5-1)/(1.5+1))^2 = 0.04` at normal incidence, matched to 6
+decimal places) - `FrComplex` and `frDielectric` are mathematically the
+same formula in this limit, a strong cross-check neither function's
+own derivation alone would catch. A device-side test kernel
+(`test_frComplexRGB`) plus a matching `metal_poc_shader_tests.mm` case
+(`testFrComplexRGB`) check the SAME three values from the GPU's own
+compiled shader code, not just the reference program - deliberately
+corrupted one reference value mid-development, confirmed the suite
+failed with a precise message, then reverted, the same discipline
+every device-side test addition this POC has made continues to apply.
+
+**Render-level verification**: a before/after comparison of the sphere
+cluster's own screen region (`(0,250)` to `(400,400)` at this POC's
+default 400x400 preview resolution) shows 40,154 of 180,000 subpixels
+(22.3%) differ by more than 3, mean absolute difference 2.65 - a real,
+substantial effect, concentrated most strongly on the anisotropic gold
+sphere's own bounding box (50.7% of its subpixels differ, mean absolute
+difference 5.20) where its low roughness makes the Fresnel term's own
+grazing-angle behaviour the dominant visual driver.
+
+Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
+build and render correctly, and `ctest` (four tests, `frComplexRGB`
+now covered) passes.
