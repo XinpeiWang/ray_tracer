@@ -936,6 +936,20 @@ extern "C" const char* cpu_scene_category_by_id(const char* scene_id) {
 }
 
 extern "C" const char* cpu_scene_pbrt_path_by_id(const char* scene_id) {
+	// get_scene_registry() must run at least once before pbrt_scene_
+	// registry::paths() has anything in it - that map is populated as a
+	// SIDE EFFECT of the registry's own lazy construction (pbrt_scene_
+	// registry::append(), called from inside get_scene_registry()'s own
+	// static-init lambda), not independently. Every OTHER *_by_id accessor
+	// in this file goes through find_scene(), which calls
+	// get_scene_registry() itself and so triggers that construction
+	// as a matter of course; this is the one accessor that reads
+	// paths() directly without it, and would silently return "" for a
+	// real pbrt-backed scene_id if called before any other accessor ever
+	// has (a real, previously-latent bug - found via gpu/metal/
+	// metal_poc.mm's own metal_render_main(), which calls this function
+	// first, before anything else has ever touched the registry).
+	(void)get_scene_registry();
 	const auto& byId = pbrt_scene_registry::paths();
 	const auto it = byId.find(scene_id);
 	return (it == byId.end()) ? "" : it->second.c_str();
