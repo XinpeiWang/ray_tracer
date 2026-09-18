@@ -1699,6 +1699,13 @@ void MetalPocApp::loadPbrtScene() {
         if (al >= 0) trianglesByLight[al].push_back(i);
     }
     std::vector<bool> triangleHandled(scene.triangles.size(), false);
+    // Populated below only for a light shape too complex to represent as
+    // this loader's single analytic AreaLightData quad (see that branch's
+    // own comment) - keyed by triangle index, read by the "remaining
+    // triangles" loop just after this one to mark those triangles
+    // emissive (but NOT NEE-light-registered) instead of silently
+    // dropping their emission.
+    std::unordered_map<int, float3> unhandledLightEmission;
     for (const auto& entry : trianglesByLight) {
         const int lightIdx = entry.first;
         const std::vector<int>& idxs = entry.second;
@@ -1738,8 +1745,30 @@ void MetalPocApp::loadPbrtScene() {
             triangleHandled[idxs[0]] = true;
             triangleHandled[idxs[1]] = true;
         } else {
+            // Not a simple 2-triangle quad (a single triangle, an N>2
+            // triangle mesh, ...) - this loader has no general per-
+            // triangle NEE-sampled light representation (AreaLightData
+            // is a single analytic QUAD, sampled as one unit; every
+            // triangle of a real mesh light would need its own entry and
+            // its own share of the light-picking pmf, real work this
+            // loader doesn't do yet). Rather than silently dropping the
+            // light's own emission entirely (this function's own PREVIOUS
+            // behaviour - a real correctness bug, not just a missing
+            // optimization: the light became fully invisible, not merely
+            // higher-variance), each of its triangles is now marked
+            // emissive directly (materialEmission below, lightId left at
+            // -1 so the MIS-weight code below correctly treats every hit
+            // on it as unweighted, same as a specular bounce) - reachable
+            // by a camera ray or a BSDF-sampled bounce landing on it
+            // directly, same as any other emissive surface, just with NO
+            // NEE strategy sampling it explicitly. A real, unbiased,
+            // higher-variance estimator - the same "correct but noisier"
+            // tier this loader's own constant/image-based infinite light
+            // miss-path-only cases already use (sections 89/90).
+            for (int idx : idxs) unhandledLightEmission[idx] = emission;
             fprintf(stderr, "loadPbrtScene: area light with %zu triangle(s) is not a simple quad - "
-                            "not yet supported by this POC's scene loader, rendering it non-emissive\n", idxs.size());
+                            "rendering it emissive but without an explicit NEE strategy (higher variance, "
+                            "not invisible)\n", idxs.size());
         }
     }
 
@@ -1769,7 +1798,13 @@ void MetalPocApp::loadPbrtScene() {
         } else {
             uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0});
         }
-        materials.push_back(materialFor(t.material));
+        TriangleMaterial mat = materialFor(t.material);
+        auto unhandledIt = unhandledLightEmission.find(i);
+        if (unhandledIt != unhandledLightEmission.end()) {
+            mat.emission = PackedFloat3{unhandledIt->second.x, unhandledIt->second.y, unhandledIt->second.z};
+            mat.lightId = -1;
+        }
+        materials.push_back(mat);
     }
 
     // --- Spheres ---------------------------------------------------------

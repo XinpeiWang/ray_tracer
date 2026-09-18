@@ -4040,11 +4040,19 @@ kernel void primaryRayKernel(
                     float2 patUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                     hitEmission = checkerColor(patUV, 6.0, hitEmission, hitEmission * mat.roughness);
                 }
-                if (specularBounce) {
+                if (specularBounce || mat.lightId < 0) {
                     // No competing NEE sample could have produced this
                     // exact hit (camera ray, or a mirror/glass bounce -
                     // both skip NEE entirely, see their own branches
                     // below), so there's nothing to weight against.
+                    // `mat.lightId < 0` covers a SEPARATE case with the
+                    // same "nothing to weight against" shape: a pbrt-
+                    // loaded area light shape too complex for this
+                    // loader's own single-quad AreaLightData (loadPbrtScene()'s
+                    // own comment) - emissive, but deliberately not
+                    // registered in `lights[]` for any material function's
+                    // own NEE loop to have sampled it from in the first
+                    // place.
                     radiance += throughput * hitEmission;
                 } else {
                     // Reached via a BSDF-sampled continuation ray (diffuse
