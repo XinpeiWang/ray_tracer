@@ -4,15 +4,10 @@
 // same way it already routes to optix_render_main() on Windows, with no
 // Metal/Objective-C headers of its own ever needing to leak into main.cpp.
 //
-// NOT YET WIRED IN: metal_render_main() is implemented and works
-// standalone (gpu/metal/metal_poc.mm, callable and unit-tested there), but
-// nothing outside that file's own main()/tests calls it yet - ray_tracer's
-// own CMake target doesn't compile or link metal_poc.mm's code at all
-// (see docs/METAL_GPU_FEASIBILITY.md's own section on this phase for
-// what's still needed: enabling OBJCXX on that target, a static-lib-style
-// build analogous to optix_renderer's own, and the actual launcher/
-// main.cpp dispatch branch). This header exists now so that future wiring
-// has an already-settled, OptiX-shaped signature to call against.
+// WIRED IN: launcher/main.cpp's --gpu dispatch calls metal_render_main()
+// directly on a RT_HAVE_METAL build (see docs/METAL_GPU_FEASIBILITY.md's
+// own phase 3a/3b sections for how ray_tracer itself came to link this
+// code, and main.cpp's own #ifdef RT_HAVE_METAL block for the call site).
 
 #pragma once
 
@@ -30,12 +25,15 @@ extern "C" {
 // doesn't resolve that way, same graceful-failure shape scene_builder.cpp's
 // own default: case already established for GPU-unsupported scenes.
 //
-// force_camera_override/cam_x/y/z: NOT YET IMPLEMENTED - honored only
-// insofar as a non-zero force_camera_override prints a warning; the
-// scene's own camera is always used. See metal_render_main()'s own
-// definition (metal_poc.mm) for why (the coordinate rescale/recentre/
-// offset loadPbrtScene() applies isn't yet exposed for a caller-supplied
-// override to go through the same transform).
+// force_camera_override/cam_x/y/z: when force_camera_override is set,
+// overrides ONLY the camera's lookfrom position - lookat/up/vfov always
+// come from the scene's own pbrt Camera block, matching
+// cpu_interface.cpp's own applyCameraConfig() semantics exactly. cam_x/
+// y/z are read in the scene's own pbrt-file-authored coordinate space
+// (the same space cpu_scene_recommended_camera() and any explicit CLI
+// --cam-x/y/z already use for every other backend) - see
+// applyCameraOverride()'s own comment (metal_poc.mm) for the coordinate
+// transform this applies before use.
 //
 // options: only options.tonemap is read ("aces"/"reinhard"/"none",
 // matching cpu_render_main()/optix_render_main()'s own convention) -

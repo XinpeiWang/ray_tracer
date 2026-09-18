@@ -4342,3 +4342,55 @@ gracefully with `metal_render_main()`'s own explanatory stderr message
 and exit code 1 - no crash. `ray_tracer --cpu 64 2 3 K16` still renders
 and converts to PNG exactly as before, confirming the CPU path (and its
 own PPM-to-PNG conversion step) is completely unaffected.
+
+## 83. Camera override support for the Metal backend (done)
+
+Closes a gap phase 3b's own section explicitly left open: `cam_x`/
+`cam_y`/`cam_z`/`force_camera_override` were accepted by
+`metal_render_main()` but only ever produced a warning, never actually
+moved the camera - `launcher/main.cpp` passes `force_camera_override=1`
+unconditionally for every single render (see `cpu_interface.cpp`'s own
+comment on why), so this meant EVERY Metal render used the loaded pbrt
+scene's own hardcoded camera, silently ignoring whatever
+`cpu_scene_recommended_camera()` or an explicit CLI `--cam-x/y/z`
+supplied.
+
+**The fix, `MetalPocApp::applyCameraOverride()` (`metal_poc.mm`):**
+`loadPbrtScene()` now also saves the three pieces of state needed to
+redo its own coordinate transform later - the bbox-rescale/recentre
+`(pbrtBboxCenter, pbrtSceneScale, pbrtSceneOffset)`, the scene's own
+lookat point already in transformed/world space
+(`pbrtCameraLookAtWorld`), and its raw (untransformed - it's a
+direction) up vector (`pbrtCameraUpRaw`). `metal_render_main()` calls
+`applyCameraOverride(cam_x, cam_y, cam_z)` right after `buildScene()`
+whenever `force_camera_override` is set and the pbrt scene actually
+loaded - it runs the caller-supplied lookfrom through that SAME
+transform (so it lands in the same rescaled/recentred/offset space
+every vertex/light/camera position from the file already went
+through), then recomputes forward/right/up from the new lookfrom
+against the ORIGINAL scene's own lookat/up. This mirrors
+`cpu_interface.cpp`'s own `applyCameraConfig()` semantics exactly:
+**only lookfrom moves** - lookat/up/vfov always stay whatever the
+scene's own definition says, the same "override changes where you
+stand, not what you're looking at" contract every other backend
+already has.
+
+Coordinate-space correctness here rests on one assumption, stated
+explicitly rather than left implicit: `cam_x/y/z` arrive in the SAME
+units `cpu_scene_recommended_camera()` already returns for that
+`scene_id` (this project's classic Cornell-box-style scenes are
+consistently authored at a shared real-world-ish scale, e.g.
+`K16`'s own recommended camera and its backing pbrt file's own
+`Camera` block agree on order of magnitude) - not this app's own
+internal `[-2,2]`-ish rescaled space, which only `loadPbrtScene()`
+and now `applyCameraOverride()` ever see.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4 pass,
+no regression - this change only adds a new call path gated behind
+`force_camera_override && havePbrtCamera`, touching nothing the smoke
+tests exercise). `ray_tracer --gpu 200 4 4 K16 278 278 -800` (the
+scene's own recommended camera, unchanged) renders the familiar frontal
+Cornell box view; `ray_tracer --gpu 200 4 4 K16 700 450 -200` (a
+deliberately very different position) renders a visibly different,
+correctly-composed close-up from the new angle, still facing the same
+scene centre - confirmed by eye on both renders, not just "no crash."

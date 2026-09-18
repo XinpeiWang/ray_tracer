@@ -751,6 +751,18 @@ struct MetalPocApp {
     float3 pbrtCameraRight{1, 0, 0};
     float3 pbrtCameraUp{0, 1, 0};
     float pbrtTanHalfFov = 1.0f;
+    // The scene's own lookat point (world/transformed space) and raw
+    // (untransformed - it's a direction) up vector, plus the bbox-rescale
+    // transform loadPbrtScene() derived - all saved so applyCameraOverride()
+    // can recompute pbrtCameraPos/Forward/Right/Up for a caller-supplied
+    // lookfrom in the scene's OWN pbrt-file coordinate space, the same
+    // space cpu_scene_recommended_camera()/cam_x/y/z already use for every
+    // other backend, without needing loadPbrtScene() to run again.
+    float3 pbrtCameraLookAtWorld{0, 0, 0};
+    float3 pbrtCameraUpRaw{0, 1, 0};
+    float3 pbrtBboxCenter{0, 0, 0};
+    float pbrtSceneScale = 1.0f;
+    float3 pbrtSceneOffset{0, 0, 0};
 
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
@@ -804,6 +816,13 @@ struct MetalPocApp {
     // vectors buildScene()'s own hardcoded room uses. Only called from
     // buildScene() itself, when pbrtScenePath is non-empty.
     void loadPbrtScene();
+    // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
+    // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
+    // exactly as loadPbrtScene() read them from the scene - see this
+    // method's own definition (just after loadPbrtScene()) and
+    // metal_render_main()'s own comment for why only lookfrom moves. Only
+    // valid to call after a successful loadPbrtScene() (havePbrtCamera).
+    void applyCameraOverride(double cam_x, double cam_y, double cam_z);
     bool buildGPUResources();
     bool compileShaderAndDispatch(int argc, const char** argv);
     void postProcessAndWrite();
@@ -1637,9 +1656,39 @@ void MetalPocApp::loadPbrtScene() {
     pbrtCameraUp = trueUp;
     pbrtTanHalfFov = tanf(0.5f * (float)cam.vfov * (float)M_PI / 180.0f);
     havePbrtCamera = true;
+    // Saved for applyCameraOverride() - see that method's own comment.
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
 
     fprintf(stderr, "loadPbrtScene: loaded %s (%zu triangles, %zu spheres, %zu area lights)\n",
             pbrtScenePath.c_str(), scene.triangles.size(), scene.spheres.size(), scene.areaLights.size());
+}
+
+// Recomputes the camera basis for a new lookfrom position, in the SAME
+// coordinate space (cam_x, cam_y, cam_z) already arrive in from every
+// other backend - cpu_scene_recommended_camera()'s return values and any
+// explicit CLI --cam-x/y/z the user typed are both in the scene's own
+// pbrt-file-authored space (e.g. a classic ~555-unit Cornell box), not
+// this app's internal rescaled/recentred/offset one, so the new lookfrom
+// goes through the exact same transform loadPbrtScene() applied to every
+// vertex/light/camera position it read. Mirrors cpu_interface.cpp's own
+// applyCameraConfig(): only lookfrom moves - lookat, up, and vfov all
+// stay exactly as the scene's own pbrt Camera block defined, matching
+// every other backend's "override changes WHERE you stand, not WHAT
+// you're looking at" semantics.
+void MetalPocApp::applyCameraOverride(double cam_x, double cam_y, double cam_z) {
+    const float3 rawLookfrom{(float)cam_x, (float)cam_y, (float)cam_z};
+    const float3 lookfrom = (rawLookfrom - pbrtBboxCenter) * pbrtSceneScale + pbrtSceneOffset;
+    const float3 forward = simd::normalize(pbrtCameraLookAtWorld - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, pbrtCameraUpRaw));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
 }
 
 // --- Stage 3: upload GPU buffers + build acceleration structures --------
@@ -2384,13 +2433,13 @@ void MetalPocApp::postProcessAndWrite() {
 // crash or silently render something else" precedent
 // gpu/optix/scene_builder.cpp's own default: case already established.
 //
-// Camera override (cam_x/y/z, force_camera_override) is NOT YET
-// implemented - loadPbrtScene()'s own coordinate rescale/recentre/offset
-// (section 78) happens entirely inside that function, so overriding the
-// camera in the scene's OWN coordinate space (matching what a caller
-// naturally would pass) needs that same transform exposed outside of it
-// first, which this phase doesn't do. force_camera_override is honored
-// only insofar as it's warned about, never silently ignored.
+// Camera override (cam_x/y/z, force_camera_override): applied via
+// applyCameraOverride() below, right after buildScene() - see that
+// method's own comment. Same "override lookfrom only, keep lookat/up/fov
+// from the scene's own definition" semantics as cpu_interface.cpp's own
+// applyCameraConfig(), and cam_x/y/z are read in the same coordinate
+// space that backend's cpu_scene_recommended_camera()/CLI --cam-x/y/z
+// already use for every scene.
 int metal_render_main(int image_width, int image_height, int samples_per_pixel,
                        int max_depth, const char* output_path, const char* scene_id,
                        double cam_x, double cam_y, double cam_z,
@@ -2403,11 +2452,6 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
                         "built-in scenes the way gpu/optix/scene_builder.cpp's own switch-case "
                         "does). Use CPU or GPU (OptiX) for this scene instead.\n", scene_id);
         return 1;
-    }
-    if (force_camera_override) {
-        fprintf(stderr, "metal_render_main: camera override (cam_x=%.3f cam_y=%.3f cam_z=%.3f) "
-                        "requested but not yet supported for a loaded pbrt scene - rendering with "
-                        "the scene's own camera instead.\n", cam_x, cam_y, cam_z);
     }
 
     // Builds the SAME positional-argv shape parseArgsAndCreateDevice()/
@@ -2431,6 +2475,19 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         MetalPocApp app;
         if (!app.parseArgsAndCreateDevice(argCount, args)) return 1;
         app.buildScene();
+        if (force_camera_override) {
+            if (app.havePbrtCamera) {
+                app.applyCameraOverride(cam_x, cam_y, cam_z);
+            } else {
+                // pbrtPath resolved above, but loadPbrtScene() itself failed
+                // (bad/missing file - see its own stderr message) and
+                // buildScene() fell back to the hardcoded room; nothing
+                // meaningful to override.
+                fprintf(stderr, "metal_render_main: camera override requested but the pbrt scene "
+                                "failed to load (see loadPbrtScene's own message above) - ignoring "
+                                "the override.\n");
+            }
+        }
         if (!app.buildGPUResources()) return 1;
         if (!app.compileShaderAndDispatch(argCount, args)) return 1;
         app.postProcessAndWrite();
