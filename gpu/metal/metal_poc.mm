@@ -1625,10 +1625,85 @@ void MetalPocApp::loadPbrtScene() {
         sphereMaterials.push_back(materialFor(s.material));
     }
 
+    // --- ObjectInstance placements -----------------------------------
+    // Real instancing (scene.groups hold OBJECT-space geometry, defined
+    // once; scene.instances place them with a per-placement object->world
+    // transform - see FlatScene's own comment) is baked into plain
+    // world-space triangles here, rather than mirroring gpu/optix/
+    // pbrt_gpu_builder.h's own approach of a true GPU-level instance
+    // acceleration structure - this POC's own shader dispatch already
+    // resolves each geometry "kind" (room triangles, spheres, disks,
+    // Suzanne) via its own fixed buffer/intersection-function-table slot,
+    // so adding a genuinely general N-group instancing mechanism there
+    // would be a much larger change than this pbrt loader warrants for
+    // what's typically a handful of placements (e.g. this repo's own
+    // example-cornell.pbrt: 3). Baking duplicates geometry per placement
+    // instead of sharing one buffer - free for a scene with a few dozen
+    // instances, the case every pbrt scene this loader has seen uses.
+    //
+    // Emissive instanced shapes need no special handling here: flatten()
+    // itself already bakes those directly into scene.triangles (a light
+    // must be enumerable to be sampled - see pbrt_gpu_builder.h's own
+    // comment on the same point), so scene.groups/scene.instances only
+    // ever contain non-emissive geometry.
+    size_t instancedTriangleCount = 0, skippedInstancedSpheres = 0;
+    for (const pbrt_flatten::Instance& inst : scene.instances) {
+        if (inst.group < 0 || (size_t)inst.group >= scene.groups.size()) {
+            fprintf(stderr, "loadPbrtScene: ObjectInstance with an invalid group index skipped\n");
+            continue;
+        }
+        pbrt_scene::Matrix4 xform;
+        for (int i = 0; i < 16; ++i) xform.m[i] = inst.xform[i];
+        const pbrt_flatten::InstanceGroup& grp = scene.groups[inst.group];
+        for (const pbrt_flatten::Triangle& t : grp.triangles) {
+            double worldV[9];
+            for (int c = 0; c < 3; ++c)
+                pbrt_flatten::flatten_detail::transformPoint(xform, t.v[c * 3 + 0], t.v[c * 3 + 1], t.v[c * 3 + 2], &worldV[c * 3]);
+            const float3 v0 = toWorld(float3{(float)worldV[0], (float)worldV[1], (float)worldV[2]});
+            const float3 v1 = toWorld(float3{(float)worldV[3], (float)worldV[4], (float)worldV[5]});
+            const float3 v2 = toWorld(float3{(float)worldV[6], (float)worldV[7], (float)worldV[8]});
+            verts.push_back(PackedFloat3{v0.x, v0.y, v0.z});
+            verts.push_back(PackedFloat3{v1.x, v1.y, v1.z});
+            verts.push_back(PackedFloat3{v2.x, v2.y, v2.z});
+            if (t.hasNormals) {
+                for (int c = 0; c < 3; ++c) {
+                    double worldN[3];
+                    pbrt_flatten::flatten_detail::transformNormal(xform, t.n[c * 3 + 0], t.n[c * 3 + 1], t.n[c * 3 + 2], worldN);
+                    const float3 n = simd::normalize(float3{(float)worldN[0], (float)worldN[1], (float)worldN[2]});
+                    normals.push_back(PackedFloat3{n.x, n.y, n.z});
+                }
+            } else {
+                const float3 faceN = simd::normalize(simd::cross(v1 - v0, v2 - v0));
+                const PackedFloat3 packedN{faceN.x, faceN.y, faceN.z};
+                normals.push_back(packedN); normals.push_back(packedN); normals.push_back(packedN);
+            }
+            if (t.hasUVs) {
+                for (int c = 0; c < 3; ++c)
+                    uvs.push_back(PackedFloat2{(float)t.uv[c * 2 + 0], (float)t.uv[c * 2 + 1]});
+            } else {
+                uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0});
+            }
+            materials.push_back(materialFor(t.material));
+            ++instancedTriangleCount;
+        }
+        // A non-uniformly-scaled sphere is an ellipsoid, which SphereData
+        // (a plain centre+radius analytic primitive) can't represent -
+        // baking it as a sphere anyway would silently render the wrong
+        // shape, so this loader skips instanced spheres entirely rather
+        // than risk that (matching every other "explain why, don't render
+        // something wrong" gap this loader already documents). No pbrt
+        // scene this loader has been run against uses one yet.
+        skippedInstancedSpheres += grp.spheres.size();
+    }
+    if (instancedTriangleCount > 0)
+        fprintf(stderr, "loadPbrtScene: baked %zu ObjectInstance placement(s) into %zu world-space "
+                        "triangle(s)\n", scene.instances.size(), instancedTriangleCount);
+    if (skippedInstancedSpheres > 0)
+        fprintf(stderr, "loadPbrtScene: %zu instanced sphere(s) skipped - a non-uniformly-scaled "
+                        "instanced sphere can't be represented by this loader's analytic sphere "
+                        "primitive\n", skippedInstancedSpheres);
+
     // --- Unsupported features - skipped, warned, not fatal --------------
-    if (!scene.instances.empty())
-        fprintf(stderr, "loadPbrtScene: %zu ObjectInstance placement(s) skipped - real instancing "
-                        "not yet supported by this POC's scene loader\n", scene.instances.size());
     if (scene.infiniteLight.present)
         fprintf(stderr, "loadPbrtScene: LightSource \"infinite\" skipped - not yet supported by this POC's scene loader\n");
     if (!scene.punctualLights.empty())
