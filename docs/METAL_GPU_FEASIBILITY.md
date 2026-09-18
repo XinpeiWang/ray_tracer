@@ -4610,3 +4610,54 @@ share the identical constraint for the same reason (projection already
 reuses `earthTexture` too, by the hardcoded room's own design) - so all
 three image-based light gaps are really one shared piece of future
 work, not three separate ones.
+
+## 88. Infinite light, constant-colour case (done)
+
+Section 87's own investigation stopped at "image-based infinite light
+needs a real texture-binding refactor" - but pulled apart from that,
+the CONSTANT-colour case (`LightSource "infinite" "rgb L" [...]`, no
+image file - pbrt's own common/simple case, and exactly what the
+pre-existing `pbrt_scenes/infinite-light.pbrt` test asset already
+exercises) needs no texture at all, so it didn't have to wait for that
+refactor.
+
+**Deliberately miss-path-only, no NEE/MIS strategy** - unlike
+`earthTexture`'s own image-based environment (section 71), which
+samples the image's own importance distribution as an explicit
+light-sampling strategy in each of 6 different material-shading
+functions, this constant light is only ever seen when a bounce ray
+happens to escape to infinity on its own (BSDF-sampled, not
+light-sampled). This is a real, deliberate scope cut, not an oversight
+- adding NEE would mean giving all 6 shading functions their own new
+sampling+MIS block, real work saved for later if variance ever
+motivates it. It's still a correct, unbiased Monte Carlo estimator in
+the meantime (just higher-variance) - the exact same tradeoff this
+shader's own image-based environment support already had for a long
+time before section 71 added NEE on top of it, and the same one
+`envMapWidth == 0` still falls back to today for a missing/unloadable
+JPEG.
+
+Two new `Uniforms` fields (`pbrtHasConstantEnvLight`, `pbrtEnvColor`,
+both `.mm`/`.metal` mirrors) are all the new GPU state this needed - no
+new texture, no new buffer, no per-material shading-function changes.
+`primaryRayKernel`'s own existing miss-path branch (`if
+(uniforms.useEnvironmentMap != 0u) {...} else {procedural sky
+gradient}`) gained one more arm in between: `else if
+(uniforms.pbrtHasConstantEnvLight != 0u) { radiance += throughput *
+pbrtEnvColor; }`, with `envMissWeight` implicitly 1.0 (no MIS, matching
+the reasoning above).
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4 pass,
+no regression). Rendered `pbrt_scenes/infinite-light.pbrt` (`rgb L`
+[0.6 0.7 0.9]) - a real, plausible pale-blue sky, no crash, no shader
+compile error. That colour happened to be numerically close to the
+existing procedural fallback sky's own blue tones, making a direct
+before/after comparison inconclusive by itself (~2-5/255 mean
+difference over a 50,000-pixel sky region, indistinguishable from
+Monte Carlo noise at this sample count) - so confirmed decisively
+instead with a temporary, not-committed edit to the test scene's own
+`rgb L` (`[3.0 0.05 0.05]`, a colour the blue-toned procedural fallback
+could never produce): the ENTIRE sky rendered solid, unambiguous bright
+red, conclusively proving the new code path is what's actually
+driving the background, not a coincidence. `ray_tracer --gpu` against
+`K16` (no infinite light of its own) renders identically to before.

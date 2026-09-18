@@ -142,6 +142,16 @@ struct Uniforms {
     // metal_poc.metal's own mirrored comment.
     uint32_t ggxEnergyRoughRes = 0;
     uint32_t ggxEnergyMuRes = 0;
+    // A pbrt-loaded scene's own LightSource "infinite" with no image
+    // (constant "rgb L"/"scale" only) - see loadPbrtScene()'s own
+    // comment. Deliberately miss-path-only, no NEE/MIS strategy (unlike
+    // useEnvironmentMap's own earthTexture-based one) - see
+    // metal_poc.metal's own mirrored comment for why that's a real,
+    // accepted scope cut, not an oversight. Mutually exclusive with
+    // useEnvironmentMap in practice (that one is forced to 0 for every
+    // pbrt-loaded scene), but not asserted as such here.
+    uint32_t pbrtHasConstantEnvLight = 0;
+    PackedFloat3 pbrtEnvColor{0, 0, 0};
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -773,6 +783,13 @@ struct MetalPocApp {
     float pbrtFogSigmaT = 0.0f;
     float3 pbrtFogAlbedo{1, 1, 1};
     float pbrtFogAsymmetryG = 0.0f;
+
+    // Set by loadPbrtScene() for a constant-colour (no image)
+    // LightSource "infinite" - see that function's own comment and
+    // metal_poc.metal's own mirrored one on why this is miss-path-only,
+    // no NEE/MIS strategy.
+    bool havePbrtConstantEnvLight = false;
+    float3 pbrtEnvColor{0, 0, 0};
 
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
@@ -1859,18 +1876,32 @@ void MetalPocApp::loadPbrtScene() {
                 meanSigmaT, m.g);
     }
 
-    // --- Unsupported features - skipped, warned, not fatal --------------
-    if (scene.infiniteLight.present)
-        // Not a small add-on: earthTexture is ALSO the hardcoded room's
-        // own materialType-3 back-wall albedo (bound at the same texture
-        // slot, sampled by both that material's shading code and this
-        // miss-path lookup) - repointing it at a pbrt-provided environment
-        // would silently corrupt that unrelated, still-active geometry.
-        // Real support needs its own separate texture binding threaded
-        // through every one of this shader's ~7 duplicated shading-
-        // function copies, not a quick reuse the way punctual lights
-        // above were - deliberately not started this round.
-        fprintf(stderr, "loadPbrtScene: LightSource \"infinite\" skipped - not yet supported by this POC's scene loader\n");
+    // --- Infinite light (constant-colour case only) ---------------------
+    // An IMAGE-based infinite light is a genuinely bigger feature (section
+    // 87 of the docs): earthTexture is ALSO the hardcoded room's own
+    // materialType-3 back-wall albedo (same texture slot, sampled by both
+    // that material's shading code and the miss-path lookup below) -
+    // repointing it at a pbrt-provided image would silently corrupt that
+    // unrelated, still-active geometry, and real support needs its own
+    // separate texture binding threaded through every one of this
+    // shader's material-shading functions. A CONSTANT-colour infinite
+    // light needs none of that - no texture at all, just a plain colour
+    // uniform the miss-path code below reads directly - so it's handled
+    // here despite the image case being deferred.
+    if (scene.infiniteLight.present) {
+        if (scene.infiniteLight.imageWidth > 0) {
+            fprintf(stderr, "loadPbrtScene: image-based LightSource \"infinite\" skipped - only the "
+                            "constant-colour case (no image file) is supported by this POC's scene "
+                            "loader yet\n");
+        } else {
+            havePbrtConstantEnvLight = true;
+            pbrtEnvColor = float3{(float)(scene.infiniteLight.L[0] * scene.infiniteLight.scale),
+                                   (float)(scene.infiniteLight.L[1] * scene.infiniteLight.scale),
+                                   (float)(scene.infiniteLight.L[2] * scene.infiniteLight.scale)};
+            fprintf(stderr, "loadPbrtScene: constant-colour infinite light found (L*scale ~ %.3g %.3g %.3g)\n",
+                    pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z);
+        }
+    }
     if (!scene.disks.empty() || !scene.cylinders.empty() || !scene.cones.empty() ||
         !scene.paraboloids.empty() || !scene.bilinearPatches.empty() || !scene.curves.empty())
         fprintf(stderr, "loadPbrtScene: disk/cylinder/cone/paraboloid/bilinearmesh/curve shapes skipped - "
@@ -2554,7 +2585,11 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         } else {
             uniforms.fogSigmaT = 0.0f;                      // no participating medium in this scene
         }
-        uniforms.useEnvironmentMap = 0u;                    // no LightSource "infinite" support yet
+        uniforms.useEnvironmentMap = 0u;                    // this scene's own sky, if any, replaces the hardcoded room's earthTexture-based one below
+        if (havePbrtConstantEnvLight) {
+            uniforms.pbrtHasConstantEnvLight = 1u;
+            uniforms.pbrtEnvColor = PackedFloat3{pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z};
+        }
     }
 
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
