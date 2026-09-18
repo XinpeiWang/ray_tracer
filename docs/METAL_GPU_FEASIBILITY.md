@@ -4001,3 +4001,54 @@ tests, all passing) confirms nothing else regressed.
 
 Both the ad-hoc `clang++` build and the CMake `RT_BUILD_METAL` target
 build and render correctly.
+
+## 76. Clearcoat's diffuse base: entering-light coat attenuation (done)
+
+A genuine, previously-unaddressed physical gap in `shadeClearcoat`
+(materialType 8): every light contribution reaching the diffuse base
+was evaluated as plain Lambertian (`albedo/pi`), with no attenuation
+for the fact that light must first penetrate the SAME dielectric coat
+(fixed IOR 1.5, F0=0.04) the specular lobe already models, at its own
+per-light incidence angle. This is DISTINCT from (and not already
+covered by) the existing `coatFresnel` probability that stochastically
+picks between the coat and diffuse lobes: that term already correctly
+reproduces the OUTGOING-direction attenuation in expectation, via
+unweighted stochastic lobe selection (a standard unbiased one-sample MC
+estimator - `P(diffuse) = 1 - coatFresnel(wo)`, then evaluate the
+chosen lobe's own BRDF unweighted) - adding an extra factor for that
+direction would double-count it. The ENTERING-light attenuation is a
+separate, real, missing term: every NEE block (area/point/directional/
+projection/goniometric/environment) and the continuation ray now
+multiply the diffuse contribution by `1 - frDielectric(cosX,
+kClearcoatEta)` at that specific light or sampled direction's own
+incidence angle - reusing `frDielectric()` (section 50) directly, no
+new device function needed.
+
+Deliberately DEFERRED, same staging this POC has used for every other
+multi-scatter/energy-conservation refinement (Oren-Nayar's own
+multi-scatter term, GGX's own colored multi-bounce tint): pbrt-v4's
+`NormalizedFresnelBxDF` (`src/shared/bxdfs_layered.h`) also has a `c`
+energy-renormalization constant (`1 - 2*FresnelMoment1(1/eta)`)
+accounting for light trapped and re-emitted by internal reflection
+inside the diffuse layer. Not implemented here - it needs pbrt's fuller
+`LayeredBxDF` stochastic-transport context to get right rather than
+being a simple standalone multiplier, and this specific BxDF struct was
+previously flagged (this POC's own status notes) as "speculative,
+lower priority, not a previously-flagged gap" - closer scrutiny while
+implementing this section found the ENTERING-light term IS a real,
+well-motivated gap worth fixing on its own, while the `c` renormalization
+remains the harder, still-deferred piece.
+
+**Verified**: full `cmake -B build_metal_poc -DRT_BUILD_METAL=ON` build
+and `ctest` (all 4 existing tests pass, unaffected structurally by this
+change). A before/after render (600x600, 128spp) diffed with the coat-
+transmission factor stashed out vs. applied: 0.20% of the full frame's
+subpixels differ by more than 3, mean signed difference -0.025 - small
+but correctly SIGNED NEGATIVE (darker after, exactly as expected: an
+added `(1 - Fr)` factor with `Fr >= 0` can only reduce brightness,
+never increase it) and correctly localized (only the clearcoat sphere's
+own diffuse-lobe hits are affected, a small fraction of a 600x600
+multi-object scene). No new device function was added (pure reuse of
+the already-tested `frDielectric()`), so no new test kernel was needed -
+same reasoning section 51/58/67 already used for materials that only
+add inline shading logic on top of already-verified building blocks.
