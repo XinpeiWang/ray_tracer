@@ -476,6 +476,33 @@ static void testEnvDistribution2DFloatOverloadMatchesByteOverload() {
     }
 }
 
+// punctualLightWorldForward() (added to represent a filename-less
+// Projection light's own aim direction as a plain PointLightData spot -
+// see metal_poc.mm's own loadPbrtScene() comment). The identity case is
+// trivial; the rotated case uses a worldToLight matrix independently
+// hand-derived (not just asserted) from src/shared/pbrt_flatten.h's own
+// worldToLightRotation() cofactor algorithm for `Rotate 90 1 0 0` -
+// exactly the rotation pbrt_scenes/punctual-lights.pbrt's own real
+// projection light uses to aim "down at the floor" (that file's own
+// comment) - so this checks BOTH this function's own correctness AND
+// that the hand-derivation matches what shipped in loadPbrtScene().
+static void testPunctualLightWorldForward() {
+    const double identity[9] = {1, 0, 0,  0, 1, 0,  0, 0, 1};
+    float3 f0 = punctualLightWorldForward(identity);
+    expectNear("punctualLightWorldForward(identity).x", f0.x, 0.0, 1e-6);
+    expectNear("punctualLightWorldForward(identity).y", f0.y, 0.0, 1e-6);
+    expectNear("punctualLightWorldForward(identity).z", f0.z, 1.0, 1e-6);
+
+    // worldToLightRotation()'s own output for CTM = Rotate(90 deg, X) -
+    // hand-computed via that function's own cofactor/adjugate formula
+    // (see metal_poc.mm's own comment for the full derivation).
+    const double rotX90[9] = {1, 0, 0,  0, 0, 1,  0, -1, 0};
+    float3 f1 = punctualLightWorldForward(rotX90);
+    expectNear("punctualLightWorldForward(rotX90).x", f1.x, 0.0, 1e-6);
+    expectNear("punctualLightWorldForward(rotX90).y", f1.y, -1.0, 1e-6);
+    expectNear("punctualLightWorldForward(rotX90).z", f1.z, 0.0, 1e-6);
+}
+
 // GGX multi-scatter energy-compensation table (found via spot-checking
 // this POC's own GGX conductor material against Blender Cycles as a
 // second reference - see buildGGXEnergyTable's own header comment for the
@@ -532,6 +559,7 @@ int main() {
     testEnvDistribution2DPdfMatchesSample();
     testEnvDistribution2DUniformImageIsUniformInU();
     testEnvDistribution2DFloatOverloadMatchesByteOverload();
+    testPunctualLightWorldForward();
     testGGXEnergyTableTrend();
 
     if (g_failures > 0) {

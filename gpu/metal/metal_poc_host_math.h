@@ -739,3 +739,22 @@ inline float sampleGGXEnergyTable(const GGXEnergyTable& table, float roughness, 
     float e1 = e01 + (e11 - e01) * rt;
     return e0 + (e1 - e0) * mt;
 }
+
+// The world-space aim direction of a pbrt-v4 Goniometric/Projection
+// LightSource, recovered from src/shared/pbrt_flatten.h's own
+// PunctualLight::worldToLight (a row-major 3x3 world->light ROTATION,
+// built by that header's worldToLightRotation() by inverting the
+// LightSource directive's own CTM - see that field's own comment: both
+// kinds have no "from"/"to" of their own in pbrt-v4, so a scene aims
+// either one purely by rotating the CTM before the LightSource
+// directive). pbrt-v4's own convention for this kind of light's
+// principal axis is local +Z; a real scene's own light-aiming CTM never
+// includes a Scale (same comment), so worldToLight is a pure rotation
+// and its own inverse is its transpose - the world-space representation
+// of local +Z is therefore transpose(worldToLight) * (0,0,1), which for
+// a row-major matrix is simply worldToLight's own THIRD ROW (indices
+// 6/7/8), not a second matrix inversion.
+inline simd::float3 punctualLightWorldForward(const double worldToLight[9]) {
+    return simd::normalize(simd::float3{(float)worldToLight[6], (float)worldToLight[7],
+                                         (float)worldToLight[8]});
+}
