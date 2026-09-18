@@ -591,7 +591,20 @@ void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exit
 
 		QString errorTitle = ErrorHandler::getErrorTitle(exitCode);
 		QString errorMessage = ErrorHandler::getErrorMessage(exitCode);
-		QString hint = ErrorHandler::getTroubleshootingHint(exitCode);
+		// This is RenderController, not MainWindow - it has no
+		// m_metalGpuAvailable, but it already knows m_useGPU for THIS
+		// specific render, which is the more precise signal anyway ("was
+		// GPU actually used for the failed render" beats "is a GPU
+		// available at all"). Metal is macOS's only GPU backend, so
+		// m_useGPU on Q_OS_MAC means Metal was used; on every other
+		// platform GPU still means OptiX/CUDA, so useMetal is always false
+		// there regardless of m_useGPU.
+#ifdef Q_OS_MAC
+		const bool useMetal = m_useGPU;
+#else
+		const bool useMetal = false;
+#endif
+		QString hint = ErrorHandler::getTroubleshootingHint(exitCode, useMetal);
 		QString category = ErrorHandler::getCategoryName(exitCode);
 
 		emit logMessage(QString("=== ERROR DETAILS ==="));

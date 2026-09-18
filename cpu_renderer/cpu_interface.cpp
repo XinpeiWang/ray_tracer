@@ -1014,6 +1014,7 @@ extern "C" int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSn
 	out->recommended_spp = s->recommended_spp;
 	out->requires_files = s->requires_files ? 1 : 0;
 	out->gpu_compatible = s->gpu_compatible ? 1 : 0;
+	out->metal_compatible = s->is_pbrt_backed ? 1 : 0;
 	out->recommended_exposure = s->recommended_exposure;
 	out->recommended_integrator = s->recommended_integrator.c_str();
 	out->recommended_sampler = s->recommended_sampler.c_str();

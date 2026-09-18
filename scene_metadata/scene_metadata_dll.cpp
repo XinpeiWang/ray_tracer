@@ -57,6 +57,30 @@ SCENE_METADATA_API int scene_metadata_gpu_compatible(const char* scene_id) {
 	}
 }
 
+// The Metal backend (gpu/metal/, macOS only) doesn't reproduce this
+// project's ~130 hand-authored scene_registry.h scenes the way OptiX's
+// own scene_builder.cpp does - it only ever loads a real .pbrt file via
+// gpu/metal/metal_poc.mm's own loadPbrtScene(), resolved through the SAME
+// cpu_scene_pbrt_path_by_id() lookup cpu_scene_is_pbrt_backed_by_id()
+// already wraps for an unrelated purpose (cpu_interface.cpp's own
+// --accelerator/--splitmethod "has no effect on this scene" warning) -
+// exactly this backend's own compatibility criterion, so this reuses it
+// directly rather than introducing a second, separately-maintained flag
+// that would just have to agree with SceneDescriptor::is_pbrt_backed
+// anyway. Deliberately a SEPARATE export from scene_metadata_gpu_compatible
+// above, not a reinterpretation of it - that one means "OptiX-compatible"
+// specifically (scene_builder.cpp's own coverage, a materially DIFFERENT
+// set of scenes than "has a .pbrt file"), and qt_gui's own mainwindow_
+// slots.cpp picks whichever of the two actually matches the GPU backend
+// currently selected (kGpuOptionAvailable vs m_metalGpuAvailable).
+SCENE_METADATA_API int scene_metadata_metal_compatible(const char* scene_id) {
+	try {
+		return cpu_scene_is_pbrt_backed_by_id(scene_id);
+	} catch (...) {
+		return 0;
+	}
+}
+
 SCENE_METADATA_API int scene_metadata_recommended_camera(const char* scene_id,
 	double* lookfrom_x, double* lookfrom_y, double* lookfrom_z,
 	double* lookat_x, double* lookat_y, double* lookat_z) {

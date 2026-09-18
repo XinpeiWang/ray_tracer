@@ -5054,3 +5054,76 @@ has, now real on macOS too. All temporary trace prints were removed
 before committing (confirmed via a full `diff` against a pre-
 instrumentation backup, and a final clean rebuild of the reverted
 code).
+
+## 96. Per-scene Metal compatibility: `gpu_compatible` was the wrong flag on macOS (done)
+
+Section 95 made GPU (Metal) genuinely selectable in the GUI - which
+exposed a real, previously-latent bug: every "does this scene support
+GPU" check in the GUI (`mainwindow_slots.cpp`'s auto-switch-to-CPU on
+scene change, `refreshSceneInfoLabel()`'s own "GPU Support: Yes/CPU
+only" badge, `error_handler.h`'s `gpuSupportedSceneList()` hint for
+`ERR_GPU_UNSUPPORTED_SCENE`) reads `SceneMetadata::gpuCompatible`
+unconditionally. That field means "OptiX's own `scene_builder.cpp`
+reproduces this scene" (`scene_registry.h`'s curated, ~130-scene,
+hand-authored set) - a criterion that has nothing to do with what
+Metal actually supports. Before section 95, this was harmless (GPU was
+never selectable on macOS at all, so the check never fired there);
+now it's live and wrong.
+
+**Metal's own real criterion already existed, unexposed**: `gpu/metal/`
+only renders scenes backed by a loaded `.pbrt` file
+(`cpu_scene_pbrt_path_by_id()`), which is exactly what
+`SceneDescriptor::is_pbrt_backed` (`scene_registry.h`) already tracks,
+already exposed via `cpu_scene_is_pbrt_backed_by_id()`
+(`cpu_interface.cpp`/`.h`). No new `scene_registry.h` field needed -
+just a new path exposing this existing field through to the GUI.
+
+**New export, same pattern as `gpu_compatible`'s own**:
+`scene_metadata_metal_compatible()` (`scene_metadata/
+scene_metadata_dll.cpp`) wraps `cpu_scene_is_pbrt_backed_by_id()`.
+Plumbed through as a genuinely separate field end to end - `int
+metal_compatible;` added to the shared ABI struct
+(`cpu_renderer/scene_metadata_snapshot.h`), populated in
+`cpu_scene_metadata_snapshot()` (`cpu_interface.cpp`), resolved as a
+new required export and mapped into `SceneMetadata::metalCompatible`
+(`qt_gui/scene_metadata_client.h`/`.cpp` - following that file's own
+"every export is required" policy, a stale/mismatched build fails to
+load rather than silently degrading one field).
+
+**Not a reinterpretation of `gpuCompatible`, a second field** - the two
+sets disagree in either direction for the same `scene_id` and both stay
+present on `SceneMetadata`. Every GUI call site now picks whichever one
+actually matches the GPU backend in play:
+- `mainwindow_slots.cpp`'s auto-switch-to-CPU check and
+  `refreshSceneInfoLabel()`'s "GPU Support" badge: `#ifdef Q_OS_MAC`,
+  `m_metalGpuAvailable ? meta.metalCompatible : meta.gpuCompatible`,
+  else unconditionally `meta.gpuCompatible` (unchanged non-mac
+  behavior).
+- `error_handler.h`'s `gpuSupportedSceneList()`/
+  `getTroubleshootingHint()`: gained a `useMetal` parameter (default
+  `false`, preserving old behavior for every other caller/code path);
+  `mainwindow.cpp`'s own call site computes it from `RenderController::
+  m_useGPU` under `Q_OS_MAC` rather than from `MainWindow::
+  m_metalGpuAvailable` - `RenderController` (the class that actually
+  launched the failed render) has no access to `MainWindow`'s member,
+  but its own `m_useGPU` is the more precise signal anyway: "was GPU
+  actually used for *this* render" rather than "is GPU available at
+  all." First attempt at this call site referenced
+  `m_metalGpuAvailable` directly and failed to compile (wrong class -
+  caught immediately by the GUI build, not shipped).
+
+**Verified**: full clean `RT_BUILD_METAL=ON` CMake rebuild + ctest
+(4/4 pass, including the two `scene_metadata`/`cpu_renderer` targets
+this change touches) and a full clean `qmake6` + `make` GUI rebuild
+(zero errors) confirm the shared `SceneMetadataSnapshot` struct still
+matches identically on both sides of the DLL boundary. A standalone
+`dlopen`/`dlsym` probe against the built `scene_metadata.dylib`,
+comparing `scene_metadata_gpu_compatible()` and the new
+`scene_metadata_metal_compatible()` across all 149 registered scenes,
+found 87 scenes where the two disagree (e.g. `A1`, the Cornell Box:
+`gpu_compatible=1`, `metal_compatible=0`, since it's a hand-authored
+scene with no backing `.pbrt` file) - concrete proof the two criteria
+are genuinely different sets, not a rename of the same one, and that
+the old `gpuCompatible`-only logic would have left GPU mode wrongly
+selected (or wrongly recommended CPU) for the majority-sized set of
+scenes where they disagree.

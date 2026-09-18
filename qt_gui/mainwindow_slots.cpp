@@ -1069,10 +1069,21 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 	const SceneMetadataClient::SceneMetadata* meta = resolveSceneMeta(preloaded, scene_id, local);
 	if (meta->description.isEmpty()) return;
 
+	// Which compatibility field actually reflects "GPU Support" here depends
+	// on the backend this platform/build can even offer - same
+	// Q_OS_MAC/m_metalGpuAvailable-aware choice as the auto-switch-to-CPU
+	// check below (see that block's own comment for why gpuCompatible and
+	// metalCompatible aren't interchangeable).
+#ifdef Q_OS_MAC
+	const bool gpuSupported = m_metalGpuAvailable ? meta->metalCompatible : meta->gpuCompatible;
+#else
+	const bool gpuSupported = meta->gpuCompatible;
+#endif
+
 	QString infoText = tr("<b>Description:</b> %1<br>").arg(meta->description);
 	infoText += tr("<b>Performance:</b> %1<br>").arg(meta->performance);
 	infoText += tr("<b>Recommended SPP:</b> %1<br>").arg(meta->recommendedSpp);
-	infoText += tr("<b>GPU Support:</b> %1<br>").arg(meta->gpuCompatible ? tr("Yes") : tr("CPU only"));
+	infoText += tr("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? tr("Yes") : tr("CPU only"));
 	// These two warnings are the only coloured text in the label, so they take
 	// their colours from the theme's log severities rather than fixed hex - a
 	// gold-on-cream warning is unreadable on the light schemes. Rebuilt fresh
@@ -1082,7 +1093,7 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 	if (meta->requiresFiles)
 		infoText += tr("<br><b style='color: %1;'>&#9888; Requires external files</b>")
 			.arg(m_activeTheme.logWarning.name());
-	if (!meta->gpuCompatible)
+	if (!gpuSupported)
 		infoText += tr("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
 			.arg(m_activeTheme.logError.name());
 	m_sceneInfoLabel->setText(infoText);
@@ -1308,8 +1319,22 @@ void MainWindow::onSceneChanged(int index) {
 		if (pathIdx >= 0) m_cameraPathCombo->setCurrentIndex(pathIdx);
 	}
 
-	// Auto-switch to CPU when scene doesn't support GPU
-	if (!meta.gpuCompatible && m_renderModeCombo->currentData().toBool()) {
+	// Auto-switch to CPU when scene doesn't support GPU. Which flag
+	// actually applies depends on which GPU backend is in play -
+	// meta.gpuCompatible means "OptiX's own scene_builder.cpp reproduces
+	// this scene" (Windows), meta.metalCompatible means "this scene has a
+	// real .pbrt file backing it" (gpu/metal/'s own criterion, macOS) -
+	// genuinely different scene sets, not one reinterpreted as the other
+	// (see SceneMetadata::metalCompatible's own comment,
+	// scene_metadata_client.h). kGpuOptionAvailable/m_metalGpuAvailable
+	// are never both true (one is Windows-only, the other Q_OS_MAC-only),
+	// so this always resolves to exactly one of the two checks.
+#ifdef Q_OS_MAC
+	const bool sceneSupportsSelectedGpuBackend = m_metalGpuAvailable ? meta.metalCompatible : meta.gpuCompatible;
+#else
+	const bool sceneSupportsSelectedGpuBackend = meta.gpuCompatible;
+#endif
+	if (!sceneSupportsSelectedGpuBackend && m_renderModeCombo->currentData().toBool()) {
 		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
 	}
 
