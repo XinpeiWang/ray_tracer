@@ -46,5 +46,17 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Run unit_tests
-        working-directory: tests
-        run: .\build\Release\unit_tests.exe --gtest_color=yes
+        # Deliberately NOT working-directory: tests, unlike the two steps
+        # above - several tests (e.g. PbrtCpuBuildTest.NanoVdbTemperature
+        # NameProducesRealEmission) load fixture files under pbrt_scenes/
+        # by a path relative to the test binary's own cwd, which the
+        # tests themselves document as "the repo root" (see that test's
+        # own comment in tests/unit/pbrt_cpu_builder_tests.cpp). Running
+        # from tests/ instead silently pointed that relative path at a
+        # pbrt_scenes/ that doesn't exist there, and the nanovdb loader's
+        # own generic "corrupt file, wrong gridname, or unsupported grid
+        # type" error message doesn't distinguish that from a real
+        # corrupt-data problem - reproduced locally on macOS by running
+        # the exact same binary from tests/ instead of the repo root, so
+        # this was never actually a Windows-specific issue.
+        run: .\tests\build\Release\unit_tests.exe --gtest_color=yes
