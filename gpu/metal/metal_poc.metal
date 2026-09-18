@@ -2047,8 +2047,29 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
     // probability (full NEE + cosine-sampling, duplicated here rather
     // than shared with the Lambertian material below since the
     // stochastic coat-vs-base decision has to happen first).
+    //
+    // Entering-light coat attenuation (below): every diffuse-base
+    // contribution is additionally scaled by `(1 - frDielectric(cosX,
+    // kClearcoatEta))` at ITS OWN incidence angle - light reaching the
+    // diffuse layer from any direction must first penetrate the SAME
+    // dielectric coat, independent of which outgoing/view direction is
+    // being evaluated. This is distinct from (and not already covered
+    // by) the `coatFresnel` probability below: that term already
+    // correctly reproduces the OUTGOING-direction attenuation in
+    // expectation via unweighted stochastic lobe selection (a standard,
+    // unbiased one-sample MC estimator - P(diffuse)=1-coatFresnel(wo),
+    // then evaluate the chosen lobe's own BRDF unweighted), so adding an
+    // extra `(1-coatFresnel)` factor here would double-count it. pbrt-v4's
+    // `NormalizedFresnelBxDF` (src/shared/bxdfs_layered.h) also has a `c`
+    // energy-renormalization constant (`1 - 2*FresnelMoment1(1/eta)`)
+    // accounting for light trapped and re-emitted by internal reflection
+    // inside the diffuse layer - deliberately DEFERRED here, same staging
+    // as Oren-Nayar's/GGX's own multi-scatter compensation splits, since
+    // it needs pbrt's fuller layered-BxDF stochastic-transport context to
+    // get right rather than being a simple standalone factor.
     float cosThetaCoat = max(dot(facingNormal, -rayDir), 0.0001);
     const float kClearcoatF0 = 0.04;
+    const float kClearcoatEta = 1.5;
     float coatFresnel = fresnelSchlickConductor(cosThetaCoat, float3(kClearcoatF0)).x;
     if (randFloat(rngState) < coatFresnel) {
         float3 newDir = reflect(rayDir, facingNormal);
@@ -2078,7 +2099,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     float weight = (pdfSolidAngle * pdfSolidAngle)
                         / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
                     float transmittance = exp(-uniforms.fogSigmaT * dist);
-                    radiance += throughput * albedo * (1.0 / M_PI_F)
+                    float coatTransmitIn = 1.0 - frDielectric(cosSurface, kClearcoatEta);
+                    radiance += throughput * albedo * (1.0 / M_PI_F) * coatTransmitIn
                                 * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
                 }
             }
@@ -2101,7 +2123,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     if (plShadowResult.type == intersection_type::none) {
                         float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
                         float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
-                        radiance += throughput * albedo * (1.0 / M_PI_F)
+                        float plCoatTransmitIn = 1.0 - frDielectric(plCosSurface, kClearcoatEta);
+                        radiance += throughput * albedo * (1.0 / M_PI_F) * plCoatTransmitIn
                                     * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
                     }
                 }
@@ -2122,7 +2145,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     if (dlShadowResult.type == intersection_type::none) {
                         float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
                         float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
-                        radiance += throughput * albedo * (1.0 / M_PI_F)
+                        float dlCoatTransmitIn = 1.0 - frDielectric(dlCosSurface, kClearcoatEta);
+                        radiance += throughput * albedo * (1.0 / M_PI_F) * dlCoatTransmitIn
                                     * float3(dl.emission) * dlCosSurface * dlTransmittance;
                     }
                 }
@@ -2149,7 +2173,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             isect.intersect(pjShadowRay, accelStructure, functionTable);
                         if (pjShadowResult.type == intersection_type::none) {
                             float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
-                            radiance += throughput * albedo * (1.0 / M_PI_F)
+                            float pjCoatTransmitIn = 1.0 - frDielectric(pjCosSurface, kClearcoatEta);
+                            radiance += throughput * albedo * (1.0 / M_PI_F) * pjCoatTransmitIn
                                         * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
                         }
                     }
@@ -2177,7 +2202,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             isect.intersect(glShadowRay, accelStructure, functionTable);
                         if (glShadowResult.type == intersection_type::none) {
                             float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
-                            radiance += throughput * albedo * (1.0 / M_PI_F)
+                            float glCoatTransmitIn = 1.0 - frDielectric(glCosSurface, kClearcoatEta);
+                            radiance += throughput * albedo * (1.0 / M_PI_F) * glCoatTransmitIn
                                         * glRadiance * glCosSurface * glTransmittance / glDistSq;
                         }
                     }
@@ -2206,7 +2232,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                         float envPdfBsdf = envCosSurface / M_PI_F;
                         float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                             / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
-                        radiance += throughput * albedo * (1.0 / M_PI_F)
+                        float envCoatTransmitIn = 1.0 - frDielectric(envCosSurface, kClearcoatEta);
+                        radiance += throughput * albedo * (1.0 / M_PI_F) * envCoatTransmitIn
                                     * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
                     }
                 }
@@ -2215,7 +2242,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
 
         rayDir = cosineSampleHemisphere(facingNormal, rngState);
         rayOrigin = hitPoint + facingNormal * 0.001f;
-        throughput *= albedo;
+        float coatTransmitInNewDir = 1.0 - frDielectric(max(dot(facingNormal, rayDir), 0.0001), kClearcoatEta);
+        throughput *= albedo * coatTransmitInNewDir;
         bsdfPdf = max(dot(facingNormal, rayDir), 0.0001) / M_PI_F;
         specularBounce = false;
     }
