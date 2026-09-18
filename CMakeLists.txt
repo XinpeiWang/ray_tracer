@@ -339,6 +339,12 @@ endif()
 if(RT_BUILD_METAL)
     add_executable(metal_poc
         gpu/metal/metal_poc.mm
+        # tinyexr's own zip/pxr24 codecs need miniz's real mz_compress/
+        # mz_uncompress symbols (see the target_include_directories
+        # comment below on why metal_poc now needs tinyexr's real
+        # implementation at all) - cpu_renderer gets this from the SAME
+        # source file, listed separately above.
+        src/external/miniz.c
     )
     # RT_METAL_SHADER_DIR/RT_MODELS_DIR (not __FILE__-relative lookups) so
     # both the shader source and models/suzanne.obj resolve correctly
@@ -349,6 +355,19 @@ if(RT_BUILD_METAL)
     target_compile_definitions(metal_poc PRIVATE
         RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal"
         RT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/models")
+    # Needed once metal_poc.mm started including src/shared/pbrt_load.h
+    # (real pbrt scene loading, not just the relative-path #includes this
+    # target used before) - several src/shared/src/data headers use BARE
+    # (non-relative) #include "some_header.h", relying on the including
+    # TARGET having that header's own directory on its include path, not
+    # just being reachable via a relative ../../ chain from metal_poc.mm
+    # itself. Same list cpu_renderer's own target_include_directories()
+    # above uses, minus cpu_renderer/ (metal_poc doesn't need that one).
+    target_include_directories(metal_poc PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/TheRestOfYourLife
+        ${CMAKE_SOURCE_DIR}/src/shared
+        ${CMAKE_SOURCE_DIR}/src/external)
     target_link_libraries(metal_poc PRIVATE
         "-framework Metal" "-framework Foundation")
     set_target_properties(metal_poc PROPERTIES

@@ -4052,3 +4052,85 @@ multi-object scene). No new device function was added (pure reuse of
 the already-tested `frDielectric()`), so no new test kernel was needed -
 same reasoning section 51/58/67 already used for materials that only
 add inline shading logic on top of already-verified building blocks.
+
+## 78. Real integration, phase 1: loading an actual pbrt scene (done)
+
+The first concrete step toward wiring this standalone POC into the real
+shipping app (`ray_tracer`/the Qt GUI) as a genuine, selectable "GPU
+(Metal)" rendering option - not the whole thing (that remains a real,
+multi-stage effort: a callable entry point replacing this POC's own
+`main()`, per-scene Metal-vs-OptiX compatibility tracking, GUI/build-
+system wiring - all still TODO), just proof that the riskiest, most
+foundational unproven piece works at all: can this POC load and render
+a REAL pbrt scene through the SAME front-end (`src/shared/pbrt_load.h`)
+`cpu_renderer` and `gpu/optix` already both use, not just its own
+hardcoded demo room?
+
+**New optional 7th CLI arg**: `metal_poc w h out spp depth tonemap
+<scene.pbrt>`. `loadPbrtScene()` (new, `metal_poc.mm`) calls
+`pbrt_load::loadFile()`, then walks the returned `FlatScene` and
+appends its geometry/materials/lights into the SAME vectors
+`buildScene()`'s own hardcoded room already builds - ADDITIVE, not a
+replacement, so `buildGPUResources()` (every acceleration structure/
+buffer it builds) needed zero changes; every one of those vectors was
+already always non-empty before this, and still is.
+
+Deliberately narrow v1 scope (each gap warned at load time, not a crash
+or silently wrong render - matching `gpu/optix/scene_builder.cpp`'s own
+graceful-failure precedent for GPU-unsupported scenes): materials
+limited to Diffuse/Conductor/Dielectric (this POC's own materialType
+0/4/2); area lights limited to a light attached to exactly 2 triangles
+forming a planar quad (`AreaLightData` is a parallelogram sampler, not
+a general triangle-mesh one); shapes limited to triangle meshes and
+spheres (no disk/cylinder/cone/paraboloid/bilinearmesh/curve); no
+`ObjectInstance` (real instancing), infinite light, punctual lights, or
+participating media. Verified against `pbrt_scenes/example-cornell.pbrt`
+- a real, hand-authored Cornell box (conductor + dielectric spheres,
+one quad area light, three `ObjectInstance`-placed pyramids) - which
+renders as a genuinely correct, recognizable Cornell box: red/green
+walls with visible colour bleeding onto the rough conductor sphere,
+correct glass refraction on the dielectric sphere, soft area-light
+shadows under both. The three pyramids correctly don't appear (their
+own `ObjectInstance` placements are warned-and-skipped, as designed).
+
+**Two real bugs found only by actually building AND rendering** (not
+just getting a clean compile - the standing lesson this whole POC keeps
+re-learning): (1) every one of this shader's ~80 shadow/reflection-ray
+self-intersection epsilons (`hitPoint + facingNormal * 0.001f`) was
+tuned for the hardcoded room's own `[-1,1]` scale; a real pbrt scene
+(a classic Cornell box spans ~555 units) makes that epsilon numerically
+negligible, so every shadow ray immediately self-occluded and the
+scene rendered almost entirely black except the light's own direct
+camera-hit. Fixed by normalizing the loaded scene's own coordinates at
+load time (rescale to a ~2-unit bounding box, recentre, then offset
++8 in X so it sits clear of the hardcoded room's own occupied region)
+rather than rescaling ~80 call sites in the shader itself - computed
+from the scene's own bounding box, so this generalizes to any pbrt
+scene's own authored scale, not just this one file's. (2)
+`buildPowerLightSampler()` (the power-proportional light-picking alias
+table, section 52) runs partway through `buildScene()`, BEFORE this
+new code's original insertion point at the very end - a light appended
+after it built its own table is invisible to every NEE draw forever
+(every direct-lighting sample kept re-picking one of the hardcoded
+room's own, spatially unrelated, lights instead). Moving the pbrt-load
+call to right before that build call fixed it - reordering, not a
+lighting/exposure bug. This also uncovered a related, pre-existing
+sharp edge: the hardcoded room's OWN `spheres = {...}`/`sphereMaterials
+= {...}` initialization (which runs after that same point) used a
+plain assignment, silently wiping out anything already pushed onto
+those vectors earlier in the function - changed to `.insert(...begin(),
+{...})` so it only ever prepends, harmless/unchanged for the default
+(no pbrt scene) path, since inserting at the front of an empty vector
+behaves identically to a plain assignment.
+
+**Deliberately NOT done, still TODO for a genuinely usable macOS GPU
+backend** (see this project's own status notes for the fuller list):
+real `ObjectInstance` support (bake or GPU-instance the referenced
+group's own triangles under each instance's own transform); infinite
+light/punctual lights/media; a callable entry point replacing this
+POC's own `main()` so `launcher/main.cpp` could route `--gpu` to it on
+macOS the way it already does to `optix_render_main()` on Windows; a
+per-scene Metal-compatibility flag (mirroring `SceneDescriptor::
+gpu_compatible`) once coverage is closer to OptiX's own; GUI wiring
+(this project's own `kGpuOptionAvailable`, section 79, would need to
+become conditionally true on macOS instead of Windows-only).

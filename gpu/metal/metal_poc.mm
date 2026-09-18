@@ -24,15 +24,33 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../../src/external/stb_image_write.h"
+#undef STB_IMAGE_WRITE_IMPLEMENTATION
 // STB_IMAGE_IMPLEMENTATION here is a separate translation unit from
 // src/external/stb_image_impl.cpp's own definition of it (that one is
 // compiled into cpu_renderer, which metal_poc doesn't link against at
 // all - two different executables, no ODR conflict) - loading
 // images/earthmap.jpg for the textured-material test below.
+//
+// #undef immediately after - stb_image.h's own implementation section has
+// no include-once guard of its own (only its DECLARATIONS do), relying on
+// the convention that STB_IMAGE_IMPLEMENTATION is defined in exactly one
+// .c/.cpp file project-wide. metal_poc.mm now also transitively includes
+// src/shared/gzip_inflate.h (via pbrt_load.h -> ply_mesh.h, for real pbrt
+// scene loading), which does its OWN plain #include "../external/
+// stb_image.h" expecting just declarations - left defined, that second
+// inclusion re-expands the whole implementation a second time in this
+// same translation unit and fails with "redefinition of stbi__malloc" and
+// a dozen more like it. Undefining right after this header's own
+// (intentional, singular) implementation use is the correct scoping,
+// same as any other single-header library's "define, include, undef"
+// idiom - not a workaround, just doing it properly for the first time
+// since nothing needed a second stb_image.h include in this file before.
 #define STB_IMAGE_IMPLEMENTATION
 #include "../../src/external/stb_image.h"
+#undef STB_IMAGE_IMPLEMENTATION
 
 #include <vector>
+#include <unordered_map>
 #include <cstdio>
 #include <cstdlib>
 #include <cfloat>
@@ -51,6 +69,17 @@
 // see that file and metal_poc_host_math.h's own comment for the full
 // "why" (closing a real, previously-undocumented testing gap).
 #include "metal_poc_host_math.h"
+
+// pbrt_load.h -> pbrt_flatten.h's InfiniteLight image decode path needs
+// tinyexr's real implementation linked in somewhere - cpu_renderer gets
+// it from its own separate src/external/tinyexr_impl.cpp translation
+// unit, but metal_poc is a standalone binary that doesn't link against
+// that library at all, so it needs its own copy, same "define, include,
+// undef" scoping as stb_image.h above and for the same reason.
+#define TINYEXR_IMPLEMENTATION
+#include "../../src/external/tinyexr.h"
+#undef TINYEXR_IMPLEMENTATION
+#include "../../src/shared/pbrt_load.h"
 
 // Mirrors metal_poc.metal's Uniforms/TriangleMaterial byte-for-byte -
 // PackedFloat3 (not simd::float3) for every vector field, same reasoning
@@ -685,6 +714,22 @@ struct MetalPocApp {
     uint32_t height = 400;
     const char* outPath = "/tmp/metal_poc_render.png";
     ToneMapMode toneMapMode = ToneMapMode::ACES;
+    // Optional 7th positional CLI arg - a real .pbrt scene file to load
+    // via src/shared/pbrt_load.h INSTEAD of buildScene()'s own hardcoded
+    // room (see loadPbrtScene()'s own comment for exactly what subset of
+    // pbrt this v1 supports). Empty (the default) keeps every existing
+    // CLI invocation's behavior identical to before this existed.
+    std::string pbrtScenePath;
+    // Set by loadPbrtScene() when pbrtScenePath was given and loaded
+    // successfully - buildScene()'s camera-setup call in
+    // compileShaderAndDispatch() reads these instead of its own hardcoded
+    // literals whenever this is true.
+    bool havePbrtCamera = false;
+    float3 pbrtCameraPos{0, 0, 0};
+    float3 pbrtCameraForward{0, 0, -1};
+    float3 pbrtCameraRight{1, 0, 0};
+    float3 pbrtCameraUp{0, 1, 0};
+    float pbrtTanHalfFov = 1.0f;
 
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
@@ -733,6 +778,11 @@ struct MetalPocApp {
 
     bool parseArgsAndCreateDevice(int argc, const char** argv);
     void buildScene();
+    // See its own comment (defined just above buildScene()) - loads a
+    // real .pbrt file's geometry/materials/lights/camera into the SAME
+    // vectors buildScene()'s own hardcoded room uses. Only called from
+    // buildScene() itself, when pbrtScenePath is non-empty.
+    void loadPbrtScene();
     bool buildGPUResources();
     bool compileShaderAndDispatch(int argc, const char** argv);
     void postProcessAndWrite();
@@ -744,6 +794,7 @@ bool MetalPocApp::parseArgsAndCreateDevice(int argc, const char** argv) {
     height = (argc > 2) ? (uint32_t)atoi(argv[2]) : 400;
     outPath = (argc > 3) ? argv[3] : "/tmp/metal_poc_render.png";
     toneMapMode = parseToneMapMode((argc > 6) ? argv[6] : nullptr);
+    if (argc > 7) pbrtScenePath = argv[7];
 
     // MTLCreateSystemDefaultDevice() is explicitly documented as
     // unsupported for command-line/daemon processes (confirmed via
@@ -993,6 +1044,23 @@ void MetalPocApp::buildScene() {
                  float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
                  /*emission=*/coolAreaLightColor,
                  /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
+    // Real pbrt scene loading (see loadPbrtScene()'s own comment):
+    // ADDITIVE, not a replacement for the hardcoded room above - its own
+    // geometry gets recentred/rescaled/offset well clear of this room's
+    // own [-1,1] region (loadPbrtScene()'s own bounding-box normalization
+    // step), so the two coexist without visually interfering, without
+    // needing to conditionally skip building any of buildGPUResources()'s
+    // existing per-geometry-type acceleration structures/buffers (which
+    // assume every one of these vectors is always non-empty - true
+    // before this, and still true now). MUST run before
+    // buildPowerLightSampler() just below (which needs the FULL, final
+    // light list - the same reason every addAreaLight() call above also
+    // precedes it) - a first version called this after that build call
+    // instead, and every light this function adds silently became
+    // unreachable by NEE (see buildPowerLightSampler()'s own call site
+    // history for the full story).
+    if (!pbrtScenePath.empty()) loadPbrtScene();
+
     // Builds each light's own pmf/aliasProb/aliasIndex in place - see
     // buildPowerLightSampler()'s own comment. Must run after every
     // addAreaLight() call above (needs the full, final light list) and
@@ -1048,7 +1116,16 @@ void MetalPocApp::buildScene() {
     // POC's own established near-miss from sphere 3's own placement:
     // sharing an x coordinate with a closer foreground object hid it
     // completely) and the gold sphere.
-    spheres = {
+    // .insert(spheres.begin(), {...}) rather than a plain `spheres = {...}`
+    // assignment - loadPbrtScene() (see its own call site, above
+    // buildPowerLightSampler()) may already have pushed pbrt-loaded
+    // spheres onto this vector by the time this code runs; a plain `=`
+    // would silently wipe those back out. Inserting the hardcoded room's
+    // own spheres at the FRONT keeps their existing index convention
+    // (every hand-picked index/comment below, e.g. "gold sphere's own
+    // z"/spheres[1], is unaffected) while anything loadPbrtScene() added
+    // earlier lands after them, not lost.
+    spheres.insert(spheres.begin(), {
         SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
         SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
         SphereData{PackedFloat3{-0.05f, -0.82f, 0.6f}, 0.18f},
@@ -1071,7 +1148,7 @@ void MetalPocApp::buildScene() {
         // room's own [-1,1] bounding box/resting on the floor this time,
         // not repeating that sphere's own first-attempt mistake.
         SphereData{PackedFloat3{0.15f, -0.85f, 0.75f}, 0.15f},
-    };
+    });
     // Sphere 0 and 2's own `color` is now a Beer-Lambert ABSORPTION
     // coefficient (see metal_poc.metal's own applyBeerLambertAbsorption()
     // comment), not a reflectance/tint the way every other material's
@@ -1083,7 +1160,10 @@ void MetalPocApp::buildScene() {
     // green, getting more richly green toward its own thicker
     // centre), sphere 2 a much milder amber (still reads mostly
     // frosted-white, just warmed slightly).
-    sphereMaterials = {
+    // Same insert-at-front reasoning as `spheres` above - keeps this
+    // parallel array's own indices aligned with it (loadPbrtScene()'s own
+    // sphereMaterials.push_back() calls, if any, already ran earlier).
+    sphereMaterials.insert(sphereMaterials.begin(), {
         TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.35f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
         // Genuinely ANISOTROPIC now (alphaX from `ior`, alphaY from
         // `roughness` - see TriangleMaterial's own comment): a tight
@@ -1141,7 +1221,7 @@ void MetalPocApp::buildScene() {
         // cloth" tint - the real-world material family this BxDF was
         // originally designed to model.
         TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.15f}, /*materialType=*/14, /*ior(sigma)=*/0.3f, PackedFloat3{0, 0, 0}},
-    };
+    });
 
     // A wall-mounted mirror disk (materialType 1) - a second, distinct
     // custom-primitive SHAPE, not just another sphere. Every custom
@@ -1262,10 +1342,283 @@ void MetalPocApp::buildScene() {
         buildGoniometricProfileImage(goniometricImageSize, /*cosCutoff=*/cosf(35.0f * (float)M_PI / 180.0f),
                                       /*ringFrequency=*/25.0f);
 
+    // (Real pbrt scene loading, when pbrtScenePath is set, now happens
+    // EARLIER - see the loadPbrtScene() call right before
+    // buildPowerLightSampler() above, not here. A first version called
+    // it here instead and it seemed to load correctly, but rendered
+    // almost entirely black: buildPowerLightSampler()'s own alias table
+    // is built from `lights` BEFORE this point in the function, so a
+    // light appended here is invisible to every NEE draw - every direct-
+    // lighting sample kept picking one of the two hardcoded room's own
+    // (spatially unrelated) lights instead, never the genuinely nearby
+    // one. Moving the call earlier, before that build call, was the
+    // actual fix - not a lighting/exposure bug at all.)
+
     triangleCount = (uint32_t)materials.size();
     fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights, %zu projection lights, %zu goniometric lights\n",
             triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size(),
             projectionLights.size(), goniometricLights.size());
+}
+
+// --- Stage 2.5: real pbrt scene loading (v1 - see docs/METAL_GPU_
+// FEASIBILITY.md's own section on this) ----------------------------------
+// Loads pbrtScenePath via src/shared/pbrt_load.h - the SAME front-end
+// parser cpu_renderer and gpu/optix both already use (pbrt_cpu_builder.h/
+// pbrt_gpu_builder.h) - and appends its geometry/materials/lights into
+// this POC's own scene vectors, proving the pipeline shape (the FIRST
+// concrete step toward real integration, not the whole thing - see this
+// project's own status notes on what's still deliberately NOT done).
+//
+// Deliberately narrow v1 scope, each gap warned rather than silently
+// wrong or a crash (matching gpu/optix/scene_builder.cpp's own graceful-
+// failure precedent for GPU-unsupported scenes):
+//   - Materials: Diffuse/Conductor/Dielectric only (this POC's own
+//     materialType 0/4/2) - anything else falls back to gray Lambertian.
+//   - Area lights: only a light attached to EXACTLY 2 triangles forming a
+//     planar quad in addQuad()'s own a-b-c-d/a-c-d fan convention -
+//     AreaLightData (metal_poc.metal) is a parallelogram sampler
+//     (center/edgeU/edgeV), not a general triangle-mesh one. Any other
+//     emissive shape renders as a plain non-emissive surface instead.
+//   - Shapes: triangle meshes and spheres only - disk/cylinder/cone/
+//     paraboloid/bilinearmesh/curve shapes are skipped entirely.
+//   - No ObjectInstance/instancing, no infinite light, no punctual
+//     lights (point/spot/distant/goniometric/projection), no
+//     participating media - all skipped with a warning.
+// None of this needed any changes to buildGPUResources() below - see
+// buildScene()'s own call-site comment for why (additive onto the
+// existing hardcoded room, never leaves any vector newly empty).
+void MetalPocApp::loadPbrtScene() {
+    pbrt_load::LoadResult result = pbrt_load::loadFile(pbrtScenePath);
+    if (!result.ok) {
+        fprintf(stderr, "loadPbrtScene: %s\n", result.error.c_str());
+        return;
+    }
+    const pbrt_flatten::FlatScene& scene = result.scene;
+    for (const pbrt_scene::Warning& w : scene.warnings) {
+        fprintf(stderr, "loadPbrtScene: pbrt loader warning: %s\n", w.message.c_str());
+    }
+
+    // Uniform scene-scale normalization: a real pbrt scene is typically
+    // authored at a scale of hundreds of units (a classic Cornell box
+    // spans ~555) - NOT this shader's own [-1,1]-ish hardcoded-room
+    // scale. Every shadow-ray/reflection-ray self-intersection offset in
+    // metal_poc.metal (`hitPoint + facingNormal * 0.001f`, ~80 call
+    // sites) was tuned for that small scale; at ~500 units, 0.001 is a
+    // numerically negligible fraction of the scene (0.0002%) - too small
+    // to reliably escape the source triangle's own surface, so every
+    // shadow ray immediately (re-)self-intersects and every light sample
+    // reads as occluded. Confirmed directly: without this, the loaded
+    // Cornell box rendered almost entirely black (only the light's own
+    // direct camera-hit visible; every diffuse wall got zero NEE light).
+    // Rescaling metal_poc.metal's own ~80 epsilons to be scene-relative
+    // instead would be a much larger, riskier change than rescaling the
+    // INPUT geometry once, here, at load time - computed from the
+    // scene's own bounding box (triangles + spheres) so this generalizes
+    // to any pbrt scene's own authored scale, not just this one file's.
+    float3 bboxMin{FLT_MAX, FLT_MAX, FLT_MAX}, bboxMax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    auto growBounds = [&](float3 p) {
+        bboxMin = simd::min(bboxMin, p);
+        bboxMax = simd::max(bboxMax, p);
+    };
+    for (const pbrt_flatten::Triangle& t : scene.triangles) {
+        for (int c = 0; c < 3; ++c)
+            growBounds(float3{(float)t.v[c * 3 + 0], (float)t.v[c * 3 + 1], (float)t.v[c * 3 + 2]});
+    }
+    for (const pbrt_flatten::Sphere& s : scene.spheres) {
+        const float3 c{(float)s.center[0], (float)s.center[1], (float)s.center[2]};
+        const float r = (float)s.radius;
+        growBounds(c - float3{r, r, r});
+        growBounds(c + float3{r, r, r});
+    }
+    const float3 bboxExtent = bboxMax - bboxMin;
+    const float maxExtent = fmaxf(bboxExtent.x, fmaxf(bboxExtent.y, bboxExtent.z));
+    // Target: the loaded scene's own largest dimension maps to 2.0 units -
+    // matching the hardcoded room's own [-1,1] (2-unit-across) scale, so
+    // every one of those existing epsilons is meaningful again. Falls
+    // back to 1.0 (no rescale) for a degenerate/empty scene rather than
+    // dividing by ~0.
+    const float sceneScale = (maxExtent > 1e-6f) ? (2.0f / maxExtent) : 1.0f;
+    // Recentre on the scene's own bounding-box centre, THEN push it well
+    // clear of the hardcoded room's own occupied [-1,1] region (a fixed
+    // +8 in X - more than enough given the loaded scene's own rescaled
+    // extent is ~2 units) - the pbrt scene's own coordinate origin has no
+    // reason to relate to the hardcoded room's at all (e.g. this classic
+    // Cornell box is authored spanning x/y/z ~[0,555], not centred at its
+    // own origin), so simply rescaling in place (this function's own
+    // first attempt) left the two scenes - and the camera, repositioned
+    // to the loaded scene's own - confusingly overlapping in the SAME
+    // small region of world space, with the render showing a hard-to-
+    // interpret mix of both. Recentre + offset keeps this purely
+    // ADDITIVE (see buildScene()'s own call-site comment on why - no
+    // buildGPUResources() changes needed) while keeping the two scenes
+    // visually and spatially separate, exactly as if they were two
+    // different rooms.
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+    fprintf(stderr, "loadPbrtScene: scene bounding box extent %.1f units, rescaling by %.5f, "
+                    "recentred and offset to +X\n", maxExtent, sceneScale);
+
+    auto mapMaterial = [](const pbrt_flatten::Material& m) -> TriangleMaterial {
+        PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
+        switch (m.kind) {
+            case pbrt_flatten::MaterialKind::Diffuse:
+                return TriangleMaterial{color, /*materialType=*/0u, /*ior=*/1.0f,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+            case pbrt_flatten::MaterialKind::Conductor: {
+                // RoughnessToAlpha (src/shared/microfacet.h) is sqrt(r) -
+                // pbrt-v4's own "remaproughness" default (true) means the
+                // authored value needs this remap; false means it already
+                // IS alpha.
+                const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
+                TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
+                mat.conductorEta = PackedFloat3{(float)m.conductorEta[0], (float)m.conductorEta[1], (float)m.conductorEta[2]};
+                mat.conductorK = PackedFloat3{(float)m.conductorK[0], (float)m.conductorK[1], (float)m.conductorK[2]};
+                return mat;
+            }
+            case pbrt_flatten::MaterialKind::Dielectric:
+                return TriangleMaterial{color, /*materialType=*/2u, /*ior=*/(float)m.ior,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+            default:
+                fprintf(stderr, "loadPbrtScene: material kind '%s' not supported by this POC's "
+                                "scene loader yet, using gray Lambertian instead\n", m.pbrtType.c_str());
+                return TriangleMaterial{PackedFloat3{0.5f, 0.5f, 0.5f}, 0u, 1.0f,
+                                         PackedFloat3{0, 0, 0}, -1, 0.0f};
+        }
+    };
+    auto materialFor = [&](int idx) -> TriangleMaterial {
+        if (idx < 0 || idx >= (int)scene.materials.size())
+            return TriangleMaterial{PackedFloat3{0.5f, 0.5f, 0.5f}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        return mapMaterial(scene.materials[idx]);
+    };
+    auto vertexAt = [toWorld](const double* v, int i) {
+        return toWorld(float3{(float)v[i * 3 + 0], (float)v[i * 3 + 1], (float)v[i * 3 + 2]});
+    };
+
+    // --- Area lights: only the "single quad, 2 triangles" shape - see
+    // this function's own header comment.
+    std::unordered_map<int, std::vector<int>> trianglesByLight;
+    for (int i = 0; i < (int)scene.triangles.size(); ++i) {
+        const int al = scene.triangles[i].areaLight;
+        if (al >= 0) trianglesByLight[al].push_back(i);
+    }
+    std::vector<bool> triangleHandled(scene.triangles.size(), false);
+    for (const auto& entry : trianglesByLight) {
+        const int lightIdx = entry.first;
+        const std::vector<int>& idxs = entry.second;
+        const pbrt_flatten::Emission& em = scene.areaLights[lightIdx];
+        const float3 emission{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+        bool handled = false;
+        if (idxs.size() == 2) {
+            const pbrt_flatten::Triangle& t0 = scene.triangles[idxs[0]];
+            const pbrt_flatten::Triangle& t1 = scene.triangles[idxs[1]];
+            const float3 a = vertexAt(t0.v, 0), b = vertexAt(t0.v, 1), c = vertexAt(t0.v, 2);
+            const float3 t1a = vertexAt(t1.v, 0), t1b = vertexAt(t1.v, 1), d = vertexAt(t1.v, 2);
+            const float eps = 1e-4f;
+            if (simd::length(a - t1a) < eps && simd::length(c - t1b) < eps) {
+                const TriangleMaterial lightMat = materialFor(t0.material);
+                const int32_t lightId = (int32_t)lights.size();
+                addQuad(verts, normals, uvs, materials, a, b, c, d,
+                        float3{lightMat.color.x, lightMat.color.y, lightMat.color.z},
+                        /*materialType=*/0u, emission, lightId);
+                const float3 edgeU = b - a;
+                const float3 edgeV = d - a;
+                const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+                const float area = simd::length(simd::cross(edgeU, edgeV));
+                const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+                lights.push_back(AreaLightData{
+                    PackedFloat3{center.x, center.y, center.z},
+                    PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+                    PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+                    PackedFloat3{normalV.x, normalV.y, normalV.z},
+                    area,
+                    PackedFloat3{emission.x, emission.y, emission.z},
+                    /*patternTileB=*/0.0f,
+                    /*patternScale=*/0.0f});
+                handled = true;
+            }
+        }
+        if (handled) {
+            triangleHandled[idxs[0]] = true;
+            triangleHandled[idxs[1]] = true;
+        } else {
+            fprintf(stderr, "loadPbrtScene: area light with %zu triangle(s) is not a simple quad - "
+                            "not yet supported by this POC's scene loader, rendering it non-emissive\n", idxs.size());
+        }
+    }
+
+    // --- Remaining (non-light, or an unhandled light's own) triangles --
+    for (int i = 0; i < (int)scene.triangles.size(); ++i) {
+        if (triangleHandled[i]) continue;
+        const pbrt_flatten::Triangle& t = scene.triangles[i];
+        const float3 v0 = vertexAt(t.v, 0), v1 = vertexAt(t.v, 1), v2 = vertexAt(t.v, 2);
+        verts.push_back(PackedFloat3{v0.x, v0.y, v0.z});
+        verts.push_back(PackedFloat3{v1.x, v1.y, v1.z});
+        verts.push_back(PackedFloat3{v2.x, v2.y, v2.z});
+        if (t.hasNormals) {
+            // The vertex stream is FLAT (no index buffer - see addQuad()'s
+            // own comment), so push all 3 corner normals, not one shared
+            // flat value - shadingNormalFor() barycentric-interpolates
+            // whatever sits in each of these 3 slots.
+            for (int c = 0; c < 3; ++c)
+                normals.push_back(PackedFloat3{(float)t.n[c * 3 + 0], (float)t.n[c * 3 + 1], (float)t.n[c * 3 + 2]});
+        } else {
+            const float3 faceN = simd::normalize(simd::cross(v1 - v0, v2 - v0));
+            const PackedFloat3 packedN{faceN.x, faceN.y, faceN.z};
+            normals.push_back(packedN); normals.push_back(packedN); normals.push_back(packedN);
+        }
+        if (t.hasUVs) {
+            for (int c = 0; c < 3; ++c)
+                uvs.push_back(PackedFloat2{(float)t.uv[c * 2 + 0], (float)t.uv[c * 2 + 1]});
+        } else {
+            uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0});
+        }
+        materials.push_back(materialFor(t.material));
+    }
+
+    // --- Spheres ---------------------------------------------------------
+    for (const pbrt_flatten::Sphere& s : scene.spheres) {
+        const float3 center = toWorld(float3{(float)s.center[0], (float)s.center[1], (float)s.center[2]});
+        spheres.push_back(SphereData{
+            PackedFloat3{center.x, center.y, center.z}, sceneScale * (float)s.radius});
+        sphereMaterials.push_back(materialFor(s.material));
+    }
+
+    // --- Unsupported features - skipped, warned, not fatal --------------
+    if (!scene.instances.empty())
+        fprintf(stderr, "loadPbrtScene: %zu ObjectInstance placement(s) skipped - real instancing "
+                        "not yet supported by this POC's scene loader\n", scene.instances.size());
+    if (scene.infiniteLight.present)
+        fprintf(stderr, "loadPbrtScene: LightSource \"infinite\" skipped - not yet supported by this POC's scene loader\n");
+    if (!scene.punctualLights.empty())
+        fprintf(stderr, "loadPbrtScene: %zu punctual light(s) skipped - not yet supported by this POC's scene loader\n",
+                scene.punctualLights.size());
+    if (!scene.disks.empty() || !scene.cylinders.empty() || !scene.cones.empty() ||
+        !scene.paraboloids.empty() || !scene.bilinearPatches.empty() || !scene.curves.empty())
+        fprintf(stderr, "loadPbrtScene: disk/cylinder/cone/paraboloid/bilinearmesh/curve shapes skipped - "
+                        "only triangle mesh and sphere shapes are supported by this POC's scene loader yet\n");
+
+    // --- Camera ------------------------------------------------------------
+    const pbrt_flatten::Camera& cam = scene.camera;
+    // lookfrom/lookat are positions, scaled the same as every vertex
+    // above; `up` is a direction (scale-invariant, and normalized below
+    // regardless).
+    const float3 lookfrom = toWorld(float3{(float)cam.lookfrom[0], (float)cam.lookfrom[1], (float)cam.lookfrom[2]});
+    const float3 lookat = toWorld(float3{(float)cam.lookat[0], (float)cam.lookat[1], (float)cam.lookat[2]});
+    const float3 up{(float)cam.up[0], (float)cam.up[1], (float)cam.up[2]};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * (float)cam.vfov * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+
+    fprintf(stderr, "loadPbrtScene: loaded %s (%zu triangles, %zu spheres, %zu area lights)\n",
+            pbrtScenePath.c_str(), scene.triangles.size(), scene.spheres.size(), scene.areaLights.size());
 }
 
 // --- Stage 3: upload GPU buffers + build acceleration structures --------
@@ -1866,6 +2219,31 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uniforms.envMapHeight = envMapHeight;
     uniforms.ggxEnergyRoughRes = (uint32_t)ggxEnergyTable.roughRes;
     uniforms.ggxEnergyMuRes = (uint32_t)ggxEnergyTable.muRes;
+
+    if (havePbrtCamera) {
+        // A real pbrt scene was loaded (loadPbrtScene()) - override every
+        // scale/placement-dependent field the defaults above assumed,
+        // all tuned for the hardcoded room's own [-1,1] scale, not a
+        // real pbrt scene's own (often much larger - e.g. a ~500-unit
+        // classic Cornell box) world scale. fogSigmaT=0.05 alone would
+        // otherwise make an 800-unit sightline read as solid black
+        // (exp(-0.05*800) ~ 0) - not a subtle atmospheric tweak, a
+        // completely broken render.
+        uniforms.cameraPos = PackedFloat3{pbrtCameraPos.x, pbrtCameraPos.y, pbrtCameraPos.z};
+        uniforms.cameraForward = PackedFloat3{pbrtCameraForward.x, pbrtCameraForward.y, pbrtCameraForward.z};
+        uniforms.cameraRight = PackedFloat3{pbrtCameraRight.x, pbrtCameraRight.y, pbrtCameraRight.z};
+        uniforms.cameraUp = PackedFloat3{pbrtCameraUp.x, pbrtCameraUp.y, pbrtCameraUp.z};
+        uniforms.tanHalfFov = pbrtTanHalfFov;
+        // No DOF yet - this v1 doesn't read pbrt's own "float lensradius"/
+        // "float focaldistance" Camera parameters. focusDistance is
+        // unread by the shader whenever lensRadius == 0.
+        uniforms.lensRadius = 0.0f;
+        uniforms.focusDistance = 1.0f;
+        uniforms.cameraVelocity = PackedFloat3{0, 0, 0};   // no motion blur
+        uniforms.fogSigmaT = 0.0f;                          // no participating medium yet
+        uniforms.useEnvironmentMap = 0u;                    // no LightSource "infinite" support yet
+    }
+
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 
     // --- Dispatch ----------------------------------------------------
