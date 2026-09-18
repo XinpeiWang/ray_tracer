@@ -4527,3 +4527,86 @@ crashing," a real, attributable, isolated effect. `ray_tracer --gpu`
 against `K16` (no punctual lights of its own) renders identically to
 before, confirming no regression on the one committed pbrt scene this
 loader is registered against.
+
+## 86. Homogeneous participating medium (fog) for pbrt-loaded scenes (done)
+
+Closes another `loadPbrtScene()`-flagged gap, and reuses this shader's
+own EXISTING fog machinery (`fogSigmaT`/`fogAlbedo`/`fogAsymmetryG` -
+already present for the hardcoded room's own hardcoded haze) rather
+than adding anything new: `scene.cameraMediumIndex` (`src/shared/
+pbrt_flatten.h`) is already fully resolved and validated by that
+header's own post-pass (homogeneous type only, and only set when the
+scene has no conflicting real per-shape medium - see that field's own
+comment) - a single, safe, direct read into `scene.media`, no further
+checking needed on this side.
+
+**A second real, derived-not-assumed physics point, in the OPPOSITE
+direction from the punctual-light one (section 85)**: extinction
+(`sigma_t = sigma_a+sigma_s`) has units of inverse length. The same
+`sceneScale` rescale that shrinks every position/distance also shrinks
+a ray's own travelled distance in lockstep, so leaving `sigma_t`
+unchanged at its pbrt-native value would leave the render systematically
+UNDER-attenuated (optical depth = sigma_t*dist; dist'=dist*sceneScale,
+so `sigma_t'=sigma_t/sceneScale` is what keeps sigma_t'*dist' ==
+sigma_t*dist). Punctual-light intensity needed `*sceneScale^2` (a
+squared-length falloff term); this needs `/sceneScale` (a single
+inverse-length one) - same rigor, opposite direction, worth keeping
+straight for future scale-dependent quantities.
+
+**The per-channel colour survives despite the extinction rate being
+reduced to one achromatic scalar** (matching the hardcoded room's own
+`fogSigmaT` field, which was never per-channel either): `fogAlbedo`
+(`sigma_s/sigma_t` per channel) is dimensionless and scale-invariant,
+so it carries the medium's real RGB colour exactly, independent of the
+achromatic `fogSigmaT` simplification.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4 pass,
+no regression). Rendered the pre-existing `pbrt_scenes/camera-
+medium.pbrt` (a small room with an area light seen through ambient fog
+that "thickens with distance," per that file's own header comment)
+through the standalone `metal_poc` CLI - the render is genuinely hazy,
+desaturating with distance exactly as that comment describes, matching
+the scene author's own intent without any retuning. A before/after A/B
+comparison (temporarily disabling just the new medium-detection code)
+is dramatic and unambiguous: the far area light (pure black,
+zero-reflectance non-emitting side facing the camera) renders as a
+solid black disc with fog off, and as a noisy, glowing volumetric halo
+with fog on - real in-scattering, not a rendering artifact. `ray_tracer
+--gpu` against `K16` (no camera medium of its own) renders identically
+to before.
+
+## 87. Infinite light (environment map) - investigated, deliberately deferred
+
+Attempted next, as the natural continuation of sections 85/86's own
+"reuse this shader's existing machinery for a new pbrt light/medium
+kind" pattern - `InfiniteLight` (`src/shared/pbrt_flatten.h`) already
+carries a FULLY DECODED image (`imagePixels`/`imageWidth`/`imageHeight`,
+resolved by `pbrt_load::loadFile()` itself, no filesystem/decode work
+needed on this side) or a constant colour when no image is named,
+exactly the shape `earthTexture`'s own environment-map importance
+sampling (`envMarginalCDF`/`envConditionalCDF`, section 71) was built
+to consume.
+
+**Found, before writing anything, why this isn't actually a quick
+reuse like sections 85/86 were**: `earthTexture` (bound at a single
+fixed texture slot) is ALSO the hardcoded room's own materialType-3
+back-wall diffuse albedo - `metal_poc.metal`'s own `equirectangularUV()`
++ `earthTexture.sample()` pair is called both from that material's own
+shading code AND, separately, from the miss-path environment lookup,
+duplicated across ~7 near-identical shading-function copies (one per
+max-depth/bounce-count variant this shader already has). Repointing
+that ONE shared texture at a pbrt-provided environment (even a trivial
+1x1 constant-colour one) would silently corrupt the hardcoded room's
+own still-active back wall - an unacceptable regression this whole
+integration effort has consistently avoided at every prior step.
+
+Real support needs a genuinely separate texture binding, threaded
+through every one of those ~7 duplicated call sites - a real, moderately
+-sized shader-plumbing change, not a same-day add-on. Deliberately not
+started this round; `loadPbrtScene()`'s own warning for `LightSource
+"infinite"` now says exactly this, so a future increment doesn't have
+to rediscover it. Goniometric/projection punctual lights (section 85)
+share the identical constraint for the same reason (projection already
+reuses `earthTexture` too, by the hardcoded room's own design) - so all
+three image-based light gaps are really one shared piece of future
+work, not three separate ones.
