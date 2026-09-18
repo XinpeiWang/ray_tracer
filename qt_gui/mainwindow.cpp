@@ -814,6 +814,34 @@ void ThumbnailGenerator::startNext() {
 }
 
 // MainWindow Implementation
+#ifdef Q_OS_MAC
+// See this function's own declaration (mainwindow.h) for why this exists
+// and why it's synchronous. Any failure mode here (binary missing, won't
+// start, hangs past the timeout) resolves to `false` - the SAME "grayed
+// out, GPU not available" state this app already shows when there is
+// genuinely no GPU backend at all, not a crash or a stuck startup.
+bool MainWindow::probeMetalGpuAvailable() {
+	const QString exePath = QCoreApplication::applicationDirPath() + "/ray_tracer";
+	if (!QFile::exists(exePath)) return false;
+
+	QProcess proc;
+	proc.setProcessChannelMode(QProcess::MergedChannels);
+	proc.start(exePath, QStringList() << render_flags::kDiagnose);
+	if (!proc.waitForStarted(2000)) return false;
+	if (!proc.waitForFinished(3000)) {
+		proc.kill();
+		proc.waitForFinished(1000);
+		return false;
+	}
+	// Matches launcher/diagnostics.cpp's own append_gpu() output exactly
+	// (its RT_HAVE_METAL branch) - "Metal: available" only ever appears
+	// on that exact line when metal_get_diagnostics() found a real
+	// device (MTLCopyAllDevices() returned at least one).
+	const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+	return output.contains(QStringLiteral("Metal: available"));
+}
+#endif
+
 MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	: QMainWindow(parent), m_renderController(nullptr), m_isRendering(false),
 	  m_elapsedTimer(nullptr) {
@@ -915,6 +943,14 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// the right font instead of the "cyberpunk" default and needing a second
 	// rebuild moments later to correct itself.
 	m_activeFontId = m_startupFontId;
+#ifdef Q_OS_MAC
+	// Must run BEFORE setupUI() (createRenderOptionsTab() inside it reads
+	// this to decide whether the Renderer combo's own GPU item is
+	// selectable) - see probeMetalGpuAvailable()'s own comment
+	// (mainwindow.h) for why this is a synchronous, one-shot check here
+	// rather than an async one wired up like DiagnosticsRunner.
+	m_metalGpuAvailable = probeMetalGpuAvailable();
+#endif
 	setupUI();
 	applyTheme(m_activeTheme);
 	applyFont(m_startupFontId);

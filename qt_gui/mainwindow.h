@@ -263,6 +263,26 @@ private slots:
 private:
 	void setupUI();
 	void createSettingsTab();
+#ifdef Q_OS_MAC
+	// Runs `ray_tracer --diagnose` synchronously (see DiagnosticsRunner's
+	// own applicationDirPath()-based executable path convention,
+	// mainwindow.cpp - mirrored here rather than reused, since
+	// DiagnosticsRunner is an async, signal-driven QObject built for the
+	// user-facing Diagnostics panel, not for a one-shot check needed
+	// before the FIRST widget is even constructed) and checks its report
+	// for "Metal: available" (see launcher/diagnostics.cpp's own
+	// append_gpu() - the exact line this greps for). A real render is
+	// never this fast to wait on synchronously, but --diagnose is a
+	// lightweight system query with no rendering at all, so a short
+	// blocking wait during startup is an acceptable, simple trade - the
+	// alternative (deferring Renderer-combo setup until an async probe
+	// completes) would be real added complexity for a check that should
+	// finish in well under a second. A short timeout (3s) and any
+	// process-start failure both resolve to `false` (grayed out, same as
+	// today) - see this function's own body for why that's the safe
+	// default, not `true`.
+	static bool probeMetalGpuAvailable();
+#endif
 	void createRenderOptionsTab();
 #ifdef RT_GUI_HAVE_GPU
 	// Split out of createRenderOptionsTab() (a code-health pass - that
@@ -903,6 +923,20 @@ private:
 	// Settings Tab
 	QComboBox *m_renderModeCombo;       // GPU vs CPU selection
 	QComboBox *m_gpuBackendCombo;       // Recursive vs wavefront GPU path tracer (only meaningful under GPU)
+	// True when THIS specific machine's own launched `ray_tracer` binary
+	// reports a working Metal GPU (macOS only - see kGpuOptionAvailable's
+	// own comment for why a compile-time flag can't answer this the way
+	// RT_GUI_HAVE_GPU does for Windows/OptiX: this GUI is built separately
+	// from the CLI it launches via qmake, and a Metal-enabled CLI build is
+	// optional at CMake-configure time, unlike the Windows launcher which
+	// always ships with CUDA/OptiX). Probed once, synchronously, early in
+	// the constructor (probeMetalGpuAvailable()) - BEFORE
+	// createRenderOptionsTab() needs it to decide whether the Renderer
+	// combo's own GPU item should be selectable. Always false on
+	// non-macOS builds (the probe itself is `#ifdef Q_OS_MAC`-only) - on
+	// Windows, kGpuOptionAvailable already answers this at compile time,
+	// and no other platform has any GPU backend at all.
+	bool m_metalGpuAvailable = false;
 	QComboBox *m_qualityPresetCombo;    // Quality preset dropdown
 	QComboBox *m_resolutionCombo;       // Resolution preset dropdown
 	QLineEdit *m_outputPathEdit;        // Output file path (timestamped by default)
