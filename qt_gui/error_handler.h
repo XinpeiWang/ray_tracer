@@ -64,13 +64,23 @@ inline int sceneCount() {
 // alongside this GUI - but erring toward listing a scene as GPU-supported
 // is safer than erring toward steering users away from one that actually
 // works).
-inline QString gpuSupportedSceneList() {
+//
+// useMetal picks which of the two genuinely different compatibility fields
+// to consult (see SceneMetadata::metalCompatible's own comment,
+// scene_metadata_client.h) - the caller knows which GPU backend the failed
+// render actually used, this function doesn't. Defaults to false (OptiX/
+// gpuCompatible) since that was this function's only behavior before Metal
+// existed.
+inline QString gpuSupportedSceneList(bool useMetal = false) {
 	int count = SceneMetadataClient::sceneCount();
 	QStringList parts;
 	for (int i = 0; i < count; ++i) {
 		QString id = SceneMetadataClient::sceneIdAtIndex(i);
 		bool supported = true;
-		SceneMetadataClient::gpuCompatible(id, supported);
+		if (useMetal)
+			SceneMetadataClient::metalCompatible(id, supported);
+		else
+			SceneMetadataClient::gpuCompatible(id, supported);
 		if (supported)
 			parts << QString("%1 (%2)").arg(id).arg(SceneMetadataClient::sceneName(id));
 	}
@@ -194,8 +204,10 @@ inline QString getErrorMessage(int errorCode) {
 	return QString("An error occurred with code %1.").arg(errorCode);
 }
 
-// Get troubleshooting hint
-inline QString getTroubleshootingHint(int errorCode) {
+// Get troubleshooting hint. useMetal: which GPU backend the failed render
+// actually used - see gpuSupportedSceneList()'s own comment; only affects
+// errorCode 211's scene list, every other code's text is backend-agnostic.
+inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 	// Both of these depend on the live scene table (total count / which
 	// scenes are GPU-supported), so they're built here instead of hardcoded
 	// in the static map below.
@@ -207,7 +219,7 @@ inline QString getTroubleshootingHint(int errorCode) {
 		return QString("• GPU supports scenes: %1\n"
 			"• Switch to CPU mode for all other scenes\n"
 			"• CPU mode supports all %2 scenes")
-			.arg(gpuSupportedSceneList()).arg(sceneCount());
+			.arg(gpuSupportedSceneList(useMetal)).arg(sceneCount());
 	}
 
 	static const QMap<int, QString> hints = {

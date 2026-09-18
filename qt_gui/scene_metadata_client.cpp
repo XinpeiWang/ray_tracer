@@ -9,6 +9,7 @@
 namespace {
 
 typedef int (*GpuCompatibleFn)(const char*);
+typedef int (*MetalCompatibleFn)(const char*);
 typedef int (*CountFn)();
 typedef const char* (*IdAtIndexFn)(int);
 typedef const char* (*StringByIdFn)(const char*);
@@ -18,6 +19,7 @@ typedef int (*SnapshotFn)(const char*, SceneMetadataSnapshot*);
 struct DllHandle {
 	void* module = nullptr;
 	GpuCompatibleFn gpuCompatibleFn = nullptr;
+	MetalCompatibleFn metalCompatibleFn = nullptr;
 	CountFn countFn = nullptr;
 	IdAtIndexFn idAtIndexFn = nullptr;
 	StringByIdFn nameFn = nullptr;
@@ -58,6 +60,8 @@ DllHandle& handle() {
 
 		h.gpuCompatibleFn = reinterpret_cast<GpuCompatibleFn>(
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_gpu_compatible"));
+		h.metalCompatibleFn = reinterpret_cast<MetalCompatibleFn>(
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_metal_compatible"));
 		h.countFn = reinterpret_cast<CountFn>(
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_count"));
 		h.idAtIndexFn = reinterpret_cast<IdAtIndexFn>(
@@ -85,7 +89,7 @@ DllHandle& handle() {
 		// fields and their last individual caller was converted to it (see
 		// this file's header for why) - those DLL exports themselves are
 		// untouched, just no longer resolved on this side.
-		if (!h.gpuCompatibleFn || !h.countFn || !h.idAtIndexFn ||
+		if (!h.gpuCompatibleFn || !h.metalCompatibleFn || !h.countFn || !h.idAtIndexFn ||
 			!h.nameFn || !h.categoryFn || !h.descriptionFn ||
 			!h.requiresFilesFn || !h.snapshotFn) {
 			cross_abi_library::closeLibrary(h.module);
@@ -106,6 +110,12 @@ bool ensureLoaded() {
 bool gpuCompatible(const QString& scene_id, bool& out_compatible) {
 	if (!ensureLoaded()) return false;
 	out_compatible = handle().gpuCompatibleFn(scene_id.toUtf8().constData()) != 0;
+	return true;
+}
+
+bool metalCompatible(const QString& scene_id, bool& out_compatible) {
+	if (!ensureLoaded()) return false;
+	out_compatible = handle().metalCompatibleFn(scene_id.toUtf8().constData()) != 0;
 	return true;
 }
 
@@ -151,6 +161,7 @@ bool sceneMetadata(const QString& scene_id, SceneMetadata& out) {
 	out.recommendedSpp = raw.recommended_spp;
 	out.requiresFiles = raw.requires_files != 0;
 	out.gpuCompatible = raw.gpu_compatible != 0;
+	out.metalCompatible = raw.metal_compatible != 0;
 	out.recommendedExposure = raw.recommended_exposure;
 	out.recommendedIntegrator = QString::fromUtf8(raw.recommended_integrator);
 	out.recommendedSampler = QString::fromUtf8(raw.recommended_sampler);

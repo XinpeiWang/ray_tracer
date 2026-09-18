@@ -36,6 +36,12 @@ bool ensureLoaded();
 // cluster.
 bool gpuCompatible(const QString& scene_id, bool& out_compatible);
 
+// Same contract as gpuCompatible above, for the Metal backend's own,
+// genuinely different compatibility criterion - see SceneMetadata::
+// metalCompatible's own comment below for why this isn't just
+// gpuCompatible reinterpreted.
+bool metalCompatible(const QString& scene_id, bool& out_compatible);
+
 // Presentational scene metadata (name/description/performance/recommended
 // SPP/requires_files) - the sole source now for what used to be a separate
 // GUI-local copy in src/shared/scene_descriptor.h (see that header's
@@ -116,6 +122,13 @@ struct SceneMetadata {
 	int recommendedSpp = 100;
 	bool requiresFiles = false;
 	bool gpuCompatible = true;
+	// Separate from gpuCompatible above, not a Metal-specific override of
+	// it - the two mean genuinely different things (OptiX's own
+	// scene_builder.cpp coverage vs. "has a real .pbrt file", gpu/metal/'s
+	// own criterion) and can disagree in either direction for the same
+	// scene. mainwindow_slots.cpp's own "auto-switch to CPU" check picks
+	// whichever one actually matches the GPU backend currently selected.
+	bool metalCompatible = true;
 	double recommendedExposure = 1.0;
 	QString recommendedIntegrator;
 	QString recommendedSampler;
