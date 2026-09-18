@@ -177,11 +177,12 @@ RenderJob MainWindow::captureRenderJob() {
 	job.useGPU = m_renderModeCombo->currentData().toBool();
 	// GPU backend: recursive (false, default) or wavefront (true). Meaningless
 	// under CPU, so only honored when useGPU is also true. m_gpuBackendCombo
-	// is nullptr on a build with no GPU support at all (RT_GUI_HAVE_GPU
-	// undefined), in which case job.useGPU is already always false and the
-	// short-circuit below never reaches it - the explicit null check just
-	// makes that safety non-fragile against future reordering. Also gated on
-	// isEnabled(), same reasoning as denoise/optixValidate/etc below -
+	// is always constructed now (see mainwindow_tabs.cpp's Renderer combo
+	// setup, kGpuOptionAvailable), but on a build with no GPU support at
+	// all job.useGPU is already always false (the GPU Renderer item is
+	// disabled/unreachable) and the short-circuit below never reaches this
+	// combo - the null check just stays as cheap, harmless defensiveness.
+	// Also gated on isEnabled(), same reasoning as denoise/optixValidate/etc below -
 	// updateRenderOptionsEnabled() now disables m_gpuBackendCombo under any
 	// non-Default integrator (e.g. SPPM+GPU, the one alternate integrator
 	// that still allows GPU), and Qt doesn't clear a disabled combo's

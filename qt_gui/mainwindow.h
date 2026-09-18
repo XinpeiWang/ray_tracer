@@ -146,6 +146,21 @@ public:
 	}
 };
 
+// GPU rendering (CUDA/OptiX, via ray_tracer.exe - the GUI itself never
+// links CUDA/OptiX directly, see RayTracerGUI.pro's own comment on
+// RT_GUI_HAVE_GPU) is only ever wired up on Windows builds. This constant
+// is what the "Renderer"/"GPU Backend" combos (mainwindow_tabs.cpp) use to
+// decide whether to gray out their GPU-related entries with an explanatory
+// tooltip, rather than omitting them outright - GPU stays DISCOVERABLE on
+// every platform even where it can't actually be used yet, the same "show
+// it, explain why it's off" convention the Output Mode combo's own Live
+// Preview item already used before this.
+#ifdef RT_GUI_HAVE_GPU
+static constexpr bool kGpuOptionAvailable = true;
+#else
+static constexpr bool kGpuOptionAvailable = false;
+#endif
+
 // ============================================================================
 // MainWindow
 // ============================================================================
@@ -722,6 +737,14 @@ private:
 	static constexpr int kRichTooltipPlainTextRole = Qt::UserRole + 900;
 	void setRichItemTooltip(QComboBox *combo, int index, const QString &plainText);
 	void setRichItemTooltip(QListWidgetItem *item, const QString &plainText);
+	// Grays out one entry (still visible, just unselectable) instead of
+	// omitting it from the combo entirely - used for options that exist in
+	// principle but aren't usable in THIS build (e.g. GPU rendering outside
+	// an RT_GUI_HAVE_GPU/Windows build), so the feature stays discoverable
+	// rather than silently missing. QComboBox has no setItemEnabled() of
+	// its own; this goes through the QStandardItemModel every addItem()
+	// call implicitly creates.
+	void setComboItemEnabled(QComboBox *combo, int index, bool enabled);
 	// Rebuilds every setRichTooltip()-set tooltip still attached to a live
 	// child widget, using the CURRENT qApp->font() - called from
 	// font_switch.cpp's applyFont() so switching fonts at runtime doesn't

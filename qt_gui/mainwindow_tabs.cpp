@@ -688,14 +688,31 @@ void MainWindow::createSettingsTab() {
 		"Live Preview renders continuously with a camera you can freely orbit - GPU only."));
 
 	m_renderModeCombo = new QComboBox(basicTab);
-#ifdef RT_GUI_HAVE_GPU
+	// GPU is always OFFERED (see kGpuOptionAvailable's own comment above
+	// createRenderOptionsTab()/wherever it's declared) - shown and
+	// discoverable on every platform, not just RT_GUI_HAVE_GPU (Windows)
+	// builds, even though it's currently only ever actually usable there.
+	// A build with no GPU backend at all (this build's CLI, from root
+	// CMakeLists.txt, has no CUDA/OptiX support - see launcher/optix_stub.h)
+	// disables the item instead of omitting it, same "fail quiet, explain
+	// why" convention the Output Mode combo's own Live Preview item already
+	// used (mainwindow_tabs.cpp's m_modeCombo setup) - just extended here
+	// from "RT_GUI_HAVE_GPU but no realtime_renderer.dll" to also cover
+	// "not an RT_GUI_HAVE_GPU build at all".
 	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (CUDA) - Fast"), true, m_activeTheme.textBody);
-	setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
-		tr("Uses your NVIDIA graphics card's dedicated ray-tracing hardware "
-		"to render. Usually dramatically faster than using the CPU, but "
-		"requires a compatible NVIDIA graphics card, and can't yet handle "
-		"every type of material the CPU option supports."));
-#endif
+	if (kGpuOptionAvailable) {
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Uses your NVIDIA graphics card's dedicated ray-tracing hardware "
+			"to render. Usually dramatically faster than using the CPU, but "
+			"requires a compatible NVIDIA graphics card, and can't yet handle "
+			"every type of material the CPU option supports."));
+	} else {
+		setComboItemEnabled(m_renderModeCombo, m_renderModeCombo->count() - 1, false);
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Not available in this build - GPU rendering needs Windows plus "
+			"a compatible NVIDIA graphics card. This platform's build has no "
+			"GPU renderer at all (see launcher/optix_stub.h)."));
+	}
 	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", tr("CPU - High Quality"), false, m_activeTheme.textBody);
 	setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
 		tr("The renderer's complete, most capable rendering method. Runs on "
@@ -703,21 +720,24 @@ void MainWindow::createSettingsTab() {
 		"implements, including the handful the GPU option can't handle "
 		"yet - at the cost of being much slower."));
 	styleComboBox(m_renderModeCombo);
+	// CPU stays the default whenever GPU isn't actually usable - the GPU
+	// item above is disabled but still occupies index 0, and Qt would
+	// otherwise leave it "selected" (just unclickable) rather than
+	// skipping to the first enabled item on its own.
+	if (!kGpuOptionAvailable) m_renderModeCombo->setCurrentIndex(1);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
-#ifdef RT_GUI_HAVE_GPU
-	m_renderModeCombo->setToolTip(
-		tr("GPU: uses your graphics card's ray-tracing hardware — typically much faster.\n"
-		"CPU: the full-featured rendering method — supports every scene and material,\n"
-		"including the handful the GPU option does not implement."));
-#else
-	// This build's CLI (ray_tracer, from root CMakeLists.txt) has no
-	// CUDA/OptiX support at all - see launcher/optix_stub.h - so GPU was
-	// never a real option here and isn't offered as one.
-	m_renderModeCombo->setToolTip(
-		tr("The full-featured CPU rendering method — supports every scene and material.\n"
-		"GPU rendering is not available in this build."));
-#endif
+	if (kGpuOptionAvailable) {
+		m_renderModeCombo->setToolTip(
+			tr("GPU: uses your graphics card's ray-tracing hardware — typically much faster.\n"
+			"CPU: the full-featured rendering method — supports every scene and material,\n"
+			"including the handful the GPU option does not implement."));
+	} else {
+		m_renderModeCombo->setToolTip(
+			tr("The full-featured CPU rendering method — supports every scene and material.\n"
+			"GPU rendering is not available in this build (grayed out above) - it needs\n"
+			"Windows plus a compatible NVIDIA graphics card."));
+	}
 	renderLayout->addRow(labelWithInfo(tr("Renderer:"),
 		tr("Both options do the exact same calculations and produce the "
 		"same image - the only difference is speed and which hardware "
@@ -730,7 +750,12 @@ void MainWindow::createSettingsTab() {
 		"option hasn't caught up to yet.")),
 		m_renderModeCombo);
 
-#ifdef RT_GUI_HAVE_GPU
+	// Always constructed too, same reasoning as m_renderModeCombo's own GPU
+	// item above - m_gpuBackendCombo used to be nullptr outside
+	// RT_GUI_HAVE_GPU builds (every call site that touches it elsewhere
+	// null-checks it defensively; those checks are now always-true but
+	// stay, since they're harmless and this stays a smaller, more
+	// conservative change than removing them too).
 	m_gpuBackendCombo = new QComboBox(basicTab);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Recursive (Default)"), false, m_activeTheme.textBody);
 	setRichItemTooltip(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1,
@@ -748,14 +773,25 @@ void MainWindow::createSettingsTab() {
 		"Recursive."));
 	m_gpuBackendCombo->setCurrentIndex(0);
 	styleComboBox(m_gpuBackendCombo);
-	m_gpuBackendCombo->setToolTip(
-		tr("Recursive: the default GPU rendering method — broadly tested, works with the widest range of scenes.\n"
-		"Wavefront: groups similar rays together for better use of the graphics card on complex scenes,\n"
-		"but it's newer and less tested than Recursive.\n"
-		"Only applies when Renderer is set to GPU."));
-	// Starts disabled/enabled in sync with the initial Renderer selection (GPU,
-	// index 0/true above) - the connect() in the constructor keeps it synced
-	// afterwards whenever the user changes Renderer.
+	if (kGpuOptionAvailable) {
+		m_gpuBackendCombo->setToolTip(
+			tr("Recursive: the default GPU rendering method — broadly tested, works with the widest range of scenes.\n"
+			"Wavefront: groups similar rays together for better use of the graphics card on complex scenes,\n"
+			"but it's newer and less tested than Recursive.\n"
+			"Only applies when Renderer is set to GPU."));
+	} else {
+		m_gpuBackendCombo->setToolTip(
+			tr("Not available in this build - GPU rendering needs Windows plus a\n"
+			"compatible NVIDIA graphics card. This platform's build has no GPU\n"
+			"renderer at all, so Renderer above can only ever be CPU."));
+	}
+	// Starts disabled/enabled in sync with the initial Renderer selection
+	// (GPU only when kGpuOptionAvailable - see m_renderModeCombo's own
+	// default-index fixup above) - the connect() in the constructor keeps
+	// it synced afterwards whenever the user changes Renderer. When GPU
+	// isn't available at all, Renderer can never actually become GPU (its
+	// own item is disabled), so this combo stays permanently disabled too
+	// through the exact same dependency, no separate case needed here.
 	m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
 	renderLayout->addRow(labelWithInfo(tr("GPU Backend:"),
 		tr("Two different ways of organizing the SAME rendering work on your "
@@ -769,13 +805,6 @@ void MainWindow::createSettingsTab() {
 		"scenes with lots of different materials, at the cost of being a "
 		"newer, less-tested option.")),
 		m_gpuBackendCombo);
-#else
-	// No GPU support in this build (see above) - the combo simply doesn't
-	// exist, rather than existing permanently disabled. Every other file
-	// that touches m_gpuBackendCombo (mainwindow.cpp's connect(), etc.) is
-	// itself gated the same way - see those sites for the matching #ifdef.
-	m_gpuBackendCombo = nullptr;
-#endif
 
 	// Integrator selector lives on the Render Options tab now (colocated
 	// with its own per-mode Integrator Options group, immediately below
