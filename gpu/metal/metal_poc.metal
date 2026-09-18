@@ -3932,7 +3932,14 @@ kernel void primaryRayKernel(
                 // barycentric-interpolated one).
                 DiskData disk = disks[primId];
                 normal = float3(disk.normal);
-                mat = diskMaterials[0];
+                // NOT diskMaterials[0] - a real pre-existing bug (harmless
+                // until now, since the hardcoded room ever only had ONE
+                // disk, making [0] and [primId] the same value by
+                // coincidence) found while adding real pbrt-loaded disks
+                // (section 101): a second disk's own material was
+                // silently ignored, every disk hit reading the room's own
+                // disk material instead.
+                mat = diskMaterials[primId];
             } else if (isSuzanneInstance) {
                 // Object-space normal (Suzanne's own per-vertex data,
                 // just like the non-instanced case below) transformed

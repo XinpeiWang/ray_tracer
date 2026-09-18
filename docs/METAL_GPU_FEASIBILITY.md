@@ -5404,3 +5404,63 @@ state was for a single-light scene. `reverseorientation.pbrt` (a
 4-triangle light) also renders sensibly. The render is visibly noisier
 than an NEE-equipped light's own would be - expected, not a defect
 (the scene's own header comment predicts exactly this).
+
+## 101. Disk shapes, and a real pre-existing bug found by adding a second one
+
+`loadPbrtScene()` previously skipped `Shape "disk"` entirely alongside
+cylinder/cone/paraboloid/bilinearmesh/curve. This POC's shader already
+has a real disk primitive (`DiskData`, used by the hardcoded room's own
+single mirror disk) - center/normal/radius only, no inner-radius/phi-
+max partial-disk support. `loadPbrtScene()` now maps the common "full
+circle" case: `Disk::xform` (a real 4x4, possibly non-uniform-scale
+transform) is resolved via `pbrt_flatten::flatten_detail::
+transformPoint()`/`transformNormal()` - the SAME already-correct,
+cofactor/adjugate-based utilities `ObjectInstance` baking (section 86)
+already uses, not a hand-re-derived normal transform. Non-uniform
+scale is DETECTED (transformed local X/Y axis vector lengths compared,
+not assumed) and skipped with a warning, same reasoning as
+`skippedInstancedSpheres`' own precedent (an ellipse-shaped disk can't
+be represented by this primitive's own single scalar radius). An
+annular/partial disk (`innerRadius != 0` or `phiMaxDeg != 360`) is
+likewise skipped - rendering a full disk in its place would be
+visibly WRONG, not just simplified, unlike other Approx-tier mappings.
+A disk that's also an `AreaLightSource` reuses section 100's own
+"emissive but not NEE-registered" mechanism directly - `diskMaterials`
+is plain `TriangleMaterial`, so no shader changes were needed for the
+light behavior itself.
+
+**A real, previously-latent bug found by adding a SECOND disk, not
+introduced by this change**: the shading kernel's own disk-hit branch
+read `mat = diskMaterials[0]` - hardcoded, not `diskMaterials[primId]`
+(unlike the adjacent sphere-hit branch's own correct `sphereMaterials[
+primId]`, one line above). Harmless for this POC's entire prior
+history (the hardcoded room only ever had ONE disk, making `[0]` and
+`[primId]` the same value by coincidence) - but once a pbrt-loaded
+scene could add a second disk, EVERY disk hit silently read the room's
+own disk material (a non-emissive mirror) instead of its own. Found by
+rendering `pbrt_scenes/disk-cylinder-light.pbrt` and seeing literally
+zero effect from the new disk light even at 4096 spp - ruled out a
+variance/sampling explanation first (a synthetic large, camera-facing
+isolated test-scene disk should have been unmistakably visible
+regardless of sample count, and wasn't, which is what pointed at a
+hard bug rather than an expected high-variance result) before finding
+the hardcoded index. Fixed to `diskMaterials[primId]`, matching the
+sphere branch's own convention exactly.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4),
+51-scene sweep (no crashes). The isolated synthetic test scene (a
+single large disk light directly facing the camera) went from an
+invisible/flat render to fully glowing white once the `[primId]` fix
+landed - decisive proof of the bug and the fix. `pbrt_scenes/
+disk-cylinder-light.pbrt` (its own header comment: "an emissive disk/
+cylinder still emitted when directly hit but was invisible to NEE" -
+predating this loader's own disk support entirely) now shows a real,
+visibly brighter, correctly-shaped illuminated floor patch below the
+disk light instead of a flat, undifferentiated floor - a before/after
+diff of 46.93% of pixel bytes (mean abs diff 3.39). `pbrt_scenes/
+textured-twosided-lights.pbrt` (also disk-based) now renders sensibly
+too, though its own `"bool twosided"` parameter isn't read yet (a
+disk lit from its non-emitting side still renders dark, matching
+pbrt-v4's own one-sided default rather than a regression - a further,
+smaller, deliberately out-of-scope gap for a future increment).
+Cylinder/cone/paraboloid/bilinearmesh/curve shapes remain unsupported.
