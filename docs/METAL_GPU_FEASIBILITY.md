@@ -5347,3 +5347,60 @@ flat gray. A clean on/off render diff (`#if 0`-disabling the 3 new
 substantial difference: 39.63% of pixel bytes differ (mean abs diff
 2.96, RMS 9.59) between the new mappings and the old gray-fallback
 render of the same scene.
+
+## 100. Non-quad area lights: a real correctness bug, not just a missing optimization
+
+`loadPbrtScene()`'s own area-light handling only recognizes ONE shape:
+a single quad written as exactly 2 triangles (matching
+`AreaLightData`'s own analytic-quad representation, sampled as one
+unit by every material's own NEE loop). Any other shape - a single
+triangle, an N>2-triangle mesh, a sphere-shaped area light - was
+silently dropped: its triangles rendered as whatever ORDINARY material
+they referenced, with the `AreaLightSource` directive's own emission
+discarded entirely. Two bundled test scenes already existed for
+exactly this gap (`pbrt_scenes/triangle-fan-light.pbrt` - a 5-triangle
+irregular fan, its own header comment describing precisely this
+failure mode; `pbrt_scenes/reverseorientation.pbrt` - a 4-triangle
+light) - prepared ahead of time, unused until now (same "check
+`pbrt_scenes/` before assuming a gap has no test coverage yet" lesson
+section 98 already surfaced).
+
+**This was a correctness bug, not a missing optimization**: the light
+didn't just lose its NEE strategy (a real but acceptable, higher-
+variance tradeoff this loader's own infinite-light miss-path-only cases
+already use, sections 89/90) - it lost its emission ENTIRELY, becoming
+completely invisible. `triangle-fan-light.pbrt` is a single-light
+scene by design (its own header comment: "with one hexagonal light and
+nothing else competing"), so this bug rendered it almost entirely
+black.
+
+**The fix**: triangles belonging to a non-quad area light are now
+marked emissive directly (`TriangleMaterial::emission` set from the
+light's own `L*scale`, `lightId` left at `-1`) instead of falling
+through to their ordinary material - reachable by a camera ray or a
+BSDF-sampled bounce landing on them directly, same as any other
+emissive surface, just with no explicit NEE strategy sampling them
+(the same honest "correct but higher-variance" tier, now applied here
+too). The shader's own direct-hit MIS-weight code
+(`primaryRayKernel`'s unconditional `any(mat.emission) > 0` check) used
+to unconditionally index `lights[mat.lightId]` whenever a hit surface
+had nonzero emission - safe before this change (every emissive
+triangle was guaranteed to have a valid `lightId`), but a real latent
+out-of-bounds read waiting to happen the moment a non-NEE-registered
+emissive triangle could exist. Fixed by folding a `mat.lightId < 0`
+check into the same "nothing to weight against" branch the
+`specularBounce` case already used - both mean the same thing
+(no competing NEE sample could exist for this hit).
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4),
+51-scene sweep (no crashes). `triangle-fan-light.pbrt`'s own render
+(the decisive case: its ONLY light) went from an almost solid black
+frame to a correctly lit room with a visibly glowing pentagon-shaped
+light on the ceiling and a real soft shadow under the sphere - a
+before/after render diff of 91.43% of pixel bytes (mean abs diff 37.6),
+easily the largest single-PR difference this whole POC has ever
+measured, exactly proportional to how completely broken the "before"
+state was for a single-light scene. `reverseorientation.pbrt` (a
+4-triangle light) also renders sensibly. The render is visibly noisier
+than an NEE-equipped light's own would be - expected, not a defect
+(the scene's own header comment predicts exactly this).
