@@ -5197,3 +5197,111 @@ confirming the bug was both real and significant before this fix.
 Final rendered image statistics (mean/min/max pixel values) are
 healthy and non-degenerate in both cases - no NaNs, no solid black/
 white frames.
+
+## 98. Real per-light goniometric/projection profile images
+
+Closes the last real gap this POC's own docs had flagged as "scoped,
+but not urgent" - a pbrt-loaded scene's own `LightSource "goniometric"`/
+`"projection"` with a real `"string filename"` image previously always
+fell back to the Approx (uniform isotropic/white-beam) case, even
+though both kinds' Approx-less real-image rendering already works on
+this project's CPU/OptiX backends. Two bundled test scenes already
+existed for exactly this gap (`pbrt_scenes/goniometric-projection.pbrt`,
+`pbrt_scenes/projection-light-nonsquare.pbrt`, plus their own
+`gonio-profile.bmp`/`nonsquare-checker.bmp` assets) - prepared ahead of
+time, unused until now.
+
+**Unlike `InfiniteLight`, `PunctualLight::filename` is NOT pre-resolved
+or pre-decoded by `pbrt_load.h`** (see that struct's own comment - only
+`InfiniteLight` gets that treatment) - `loadPbrtScene()` does its own
+resolution via the ALREADY-PUBLIC `pbrt_load::loadFileNear()` (added
+for a lens file, reused here unchanged) and decode via
+`pbrt_load::detail::decodeInfiniteLightImage()` (same decoder
+`InfiniteLight`'s own image uses - extension-dispatched, EXR via
+tinyexr or stb_image's float loader for everything else, which already
+handles the BMP files these two test scenes use). Only ONE image is
+supported per kind (`havePbrtGoniometricImage`/`havePbrtProjectionImage`),
+mirroring this POC's existing "one shared texture" architecture
+(`goniometricTexture`/`earthTexture`'s reuse-for-projection, sections
+57/91) - a second light of the same kind, or a decode failure, falls
+back to the Approx case exactly as if no filename were named, erring
+toward a safe working render.
+
+**New per-light texture selection, not a second global texture**: both
+`GoniometricLightData`/`ProjectionLightData` (and their exact shader-
+side/test-side mirrors - THREE copies of each struct now, all kept in
+lockstep) gained a trailing `usePbrtTexture` bool, and all 7 call sites
+of `goniometricLightRadiance()`/`projectionLightRadiance()` (6 material
+shading functions + the participating-medium/fog scattering block) now
+pick `pbrtGoniometricTexture`/`pbrtProjectionTexture` (2 new dedicated
+texture slots, 4/5, same "separate slot, never repoint the room's own
+shared texture" reasoning as `pbrtEnvTexture`, section 90) instead of
+the room's own shared texture when a given light's own flag is set.
+
+**A real derivation risk found and addressed BEFORE shipping, not
+after**: the Approx (no-image) case only ever needed
+`punctualLightWorldForward()` (the light's own aim direction, verified
+in PR #92). A REAL image additionally has a fixed roll around that
+axis (the image's own "up") that this POC's existing look-at-style
+right/up derivation (an arbitrary world-up hint fed into
+`cross(forward, hint)`) would get wrong whenever the scene's own aiming
+rotation includes roll. New `punctualLightWorldUp()`
+(`metal_poc_host_math.h`) recovers the scene's own REAL up axis from
+`worldToLight`'s second row (same transpose-of-a-pure-rotation argument
+`punctualLightWorldForward()` already uses, one row over) and feeds
+it into the SAME existing cross-product formula as the "hint" instead
+of a generic axis - preserving the established formula's own exact
+handedness/sign convention while recovering the real roll, rather than
+extracting right/up directly from the matrix's own remaining rows
+(considered and rejected: that would need independently re-deriving
+which handedness convention this POC's shader code already assumes,
+a real and avoidable risk). **Verified with a new committed unit test**
+(`testPunctualLightWorldUp()`, mirroring `testPunctualLightWorldForward()`'s
+own two known matrices - identity and pbrt-v4's `Rotate 90 1 0 0`) that
+also checks `dot(forward, up) == 0` - a property guaranteed by
+construction (both are distinct rows of an orthonormal matrix) that
+eliminates the old formula's own degenerate-input edge case entirely
+(no "is the hint parallel to forward" guard needed at all, unlike a
+generic hint which could coincide with forward for some aim
+directions).
+
+**Projection's real (non-uniform-beam) FOV/aspect handling** also
+needed real care, not just copying `makeProjectionLight()`'s own
+simplified "fov is always vertical" comment (written for the hardcoded
+room's own light, not general enough here): pbrt-v4's actual
+convention (verified against this project's own `src/shared/
+projection_light.h`, already correct on the CPU/OptiX backends) is
+that `"float fov"` always applies to the image's own SHORTER axis -
+screen bounds are `[-aspect,aspect]x[-1,1]` for a wide image
+(`aspect=width/height >= 1`) or `[-1,1]x[-1/aspect,1/aspect]` for a
+tall one - not a fixed vertical-FOV-with-aspect-derived-horizontal
+scheme. Implemented to match that reference exactly rather than the
+simpler (but real-pbrt-scene-incorrect for non-square images)
+alternative.
+
+**Verified end to end**: full clean `RT_BUILD_METAL=ON` rebuild + ctest
+(4/4, including the new `testPunctualLightWorldUp()` case) and a
+51-scene sweep-render (no crashes, no image-decode warnings anywhere,
+confirming the new decode path doesn't regress any OTHER scene). A
+real, non-obvious bug caught and fixed BEFORE verification could even
+proceed: the goniometric case's first draft passed `pl.scale` a SECOND
+time as `GoniometricLightData::scale` when `baseEmission` (passed as
+`emission`) already had `pl.scale` folded in once (matching every other
+punctual-light kind's own convention) - a real double-count, fixed to
+pass `1.0f` there instead (matching the hardcoded room's own
+`makeGoniometricLight()` call, whose `emission` is a raw, un-scaled
+`I` with the real per-call `scale` argument left free for exactly this
+kind of independent multiplier). Caught by rendering
+`goniometric-projection.pbrt`, noticing the projection light's own
+checkerboard footprint rendered correctly but the goniometric light's
+footprint was completely invisible even at full brightness expectation,
+and bisecting with a temporary large `scale` boost (a real signal at
+200x) before finding and fixing the root cause and re-verifying at the
+SCENE'S OWN authored (correct, and genuinely subtle - matching this
+POC's own repeatedly-documented "correct but subtle" pattern) intensity
+via a clean on/off render diff: 5.01% of pixel bytes differ (mean abs
+diff 2.38, RMS 13.10) between the real-image-enabled render and the
+old Approx-only behavior for the SAME scene. `projection-light-
+nonsquare.pbrt`'s own render shows a correctly WIDE (not squished-to-
+square) rectangular footprint with all 4 of its image's own quadrant
+colors visible, confirming the aspect-ratio handling is correct too.
