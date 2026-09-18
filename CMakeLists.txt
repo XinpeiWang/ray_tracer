@@ -400,24 +400,32 @@ if(RT_BUILD_METAL)
 
     # The standalone metal_poc executable itself is now just main() (see
     # metal_poc_main.mm's own header comment) plus metal_renderer above.
-    add_executable(metal_poc gpu/metal/metal_poc_main.mm)
+    # It also compiles its own copy of src/external/image_writer.cpp -
+    # metal_poc.mm calls stbi_write_png() but (unlike ray_tracer) doesn't
+    # otherwise link anything that provides STB_IMAGE_WRITE_IMPLEMENTATION,
+    # so it needs that one translation unit itself. metal_renderer can't
+    # provide it instead: ray_tracer ALSO links metal_renderer below, and
+    # ray_tracer already compiles image_writer.cpp directly (see its own
+    # add_executable further up) - putting image_writer.cpp in
+    # metal_renderer would just move the duplicate-symbol conflict rather
+    # than fix it. One copy per final executable, none shared, keeps each
+    # link with exactly one definition.
+    add_executable(metal_poc gpu/metal/metal_poc_main.mm src/external/image_writer.cpp)
     target_link_libraries(metal_poc PRIVATE metal_renderer)
     set_target_properties(metal_poc PROPERTIES
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
     target_compile_options(metal_poc PRIVATE -fobjc-arc)
 
     # ray_tracer links metal_renderer and gains RT_HAVE_METAL, same shape
-    # as RT_BUILD_GPU's own RT_HAVE_OPTIX block further up - launcher/
-    # main.cpp doesn't branch on RT_HAVE_METAL yet at all (that's a
-    # separate, later phase: a real #ifdef RT_HAVE_METAL / metal_stub.h
-    # split and an actual dispatch branch, mirroring RT_HAVE_OPTIX's own),
-    # so this step alone makes zero difference to ray_tracer's own runtime
-    # behavior - it only proves metal_renderer (an Objective-C++/ARC
-    # static lib) links cleanly into the SAME executable as the plain
-    # CXX/C cpu_renderer code, without needing ray_tracer's own project()
-    # to declare OBJCXX at all (only the LIBRARY that actually contains
-    # Objective-C++ source needs that language enabled - a consumer
-    # linking it PRIVATE/PUBLIC needs no language changes of its own).
+    # as RT_BUILD_GPU's own RT_HAVE_OPTIX block further up. launcher/
+    # main.cpp's --gpu dispatch now branches on RT_HAVE_METAL (phase 3b of
+    # real GPU integration, see docs/METAL_GPU_FEASIBILITY.md) - this link
+    # step is what makes metal_render_main() resolve there. ray_tracer's
+    # own pre-existing src/external/image_writer.cpp (added further up,
+    # long before RT_BUILD_METAL existed) already provides
+    # STB_IMAGE_WRITE_IMPLEMENTATION for the whole executable, including
+    # metal_renderer's own stbi_write_png() call - metal_poc.mm itself only
+    # declares, never defines, that macro (see its own include comment).
     target_compile_definitions(ray_tracer PRIVATE RT_HAVE_METAL)
     target_link_libraries(ray_tracer PRIVATE metal_renderer)
 

@@ -4256,3 +4256,89 @@ since `ray_tracer` now reaches it both directly and transitively through
 own CPU render is completely unaffected - a real, correct Cornell box,
 identical in kind to every prior render this scene has ever produced.
 All four `metal_poc` `ctest` tests still pass.
+
+## 82. Real integration, phase 3b: wiring `launcher/main.cpp`'s `--gpu` dispatch to Metal (done)
+
+The last step: make `ray_tracer --gpu` on a `RT_BUILD_METAL=ON` macOS
+build actually call `metal_render_main()` instead of doing nothing
+differently (phase 3a's own placeholder `RT_HAVE_METAL` define, read
+nowhere until now). Three changes to `launcher/main.cpp`, all gated
+behind `#ifdef RT_HAVE_METAL` so a `RT_BUILD_METAL=OFF` build (or an
+`RT_BUILD_GPU=ON` OptiX build - the two are platform-mutually-exclusive,
+CUDA/OptiX needing Windows and Metal needing macOS, so no build ever
+defines both) is textually and behaviorally unchanged:
+
+1. `#include "gpu/metal/metal_interface.h"` right after the existing
+   `RT_HAVE_OPTIX`/`optix_interface.h`/`optix_stub.h` include-guard
+   block. No `metal_stub.h` was written to mirror `optix_stub.h` -
+   `optix_stub.h` exists so call sites need no `#ifdef` when
+   `RT_HAVE_OPTIX` isn't defined, but since a build with neither
+   `RT_HAVE_OPTIX` nor `RT_HAVE_METAL` defined never calls
+   `metal_render_main()` at all (the `use_gpu` dispatch below is itself
+   inside an `#ifdef RT_HAVE_METAL`), there is no call site that would
+   otherwise need a no-op stand-in.
+2. The early "force `use_gpu` off, GPU wasn't compiled in" guard changed
+   from `#ifndef RT_HAVE_OPTIX` to
+   `#if !defined(RT_HAVE_OPTIX) && !defined(RT_HAVE_METAL)`.
+3. The `} else if (use_gpu) { ... }` branch wraps the entire pre-existing
+   OptiX body in `#ifdef RT_HAVE_METAL` / (new: call `metal_render_main()`
+   with the same parameters `optix_render_main()` takes, print
+   success/failure, `return render_result` on failure so main() doesn't
+   fall through to OptiX-only stats/PNG-conversion code below) / `#else`
+   / (unchanged OptiX body) / `#endif`.
+
+**A real, generalizable build bug found and fixed along the way:**
+linking `metal_renderer` into `ray_tracer` (phase 3a) had left one
+inert-until-now landmine - `metal_poc.mm` still had its own
+`#define STB_IMAGE_WRITE_IMPLEMENTATION` (needed when it was the
+standalone `metal_poc` executable's only source of that symbol) sitting
+right next to `src/external/image_writer.cpp`'s pre-existing, identical
+define - `ray_tracer` already compiles `image_writer.cpp` directly, so
+once `metal_renderer`'s own object file (now part of the same
+executable) carried a SECOND definition of 11 `stb_image_write.h`
+symbols (`stbi_write_png`, `stbiw__crc32`, etc.), the final `ray_tracer`
+link failed outright with duplicate-symbol errors - the first time
+phase 3a's merge was actually exercised by a full rebuild after this
+phase's other changes. Every other vendored single-header library this
+project uses (`stb_image.h`, `tinyexr.h`) already has exactly one
+implementation-owning `.cpp` file precisely to avoid this
+(`src/external/stb_image_impl.cpp`, `src/external/tinyexr_impl.cpp`) -
+`image_writer.cpp` had quietly been serving that role for
+`stb_image_write.h` too, just without a name that said so, and without
+ever having a second definer to collide with until now. Fixed by making
+`metal_poc.mm` declare-only (dropped its own `#define`/`#undef` pair,
+kept the plain `#include`) and giving the standalone `metal_poc`
+executable its own compiled copy of `image_writer.cpp` (it doesn't link
+anything else that would provide the symbol) - `ray_tracer` keeps using
+its own pre-existing copy unchanged. One implementation-owning
+translation unit per final executable that needs one, matching the
+existing convention, not a shared one added to `metal_renderer` itself
+(that would have just moved the duplicate into the one target,
+`ray_tracer`, that already had its own).
+
+**One more real behavioral gap found while verifying, fixed in the same
+commit:** `metal_render_main()` always writes a real PNG directly via
+`stbi_write_png()`, regardless of the requested output path's own
+extension (`cpu_render_main()`/`optix_render_main()` are both
+extension-aware and default to writing a raw PPM instead, which
+`launcher/main.cpp`'s own post-render step then converts to PNG via
+`convert_ppm_to_png()`). Left unhandled, that post-render step would
+try to parse Metal's already-finished PNG bytes as a PPM header and
+fail loudly (`Unsupported PPM format` / `✗ PNG conversion failed`) even
+though the render itself succeeded and a perfectly good PNG was already
+sitting at the output path. Fixed by adding a `#ifdef RT_HAVE_METAL` /
+`if (use_gpu)` branch ahead of the existing `is_exr_output_path()`
+check, mirroring how that check already skips the same conversion step
+for tinyexr's own already-final EXR output.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` reconfigure + build (fails,
+then succeeds once the `stb_image_write` fix above landed) + `ctest`
+(4/4 pass). `ray_tracer --gpu 128 4 4 K16` (a real pbrt-backed scene)
+now actually renders via Metal in-process and exits 0, producing a real
+128x128 PNG (confirmed with `file`) in ~380ms, with no more spurious PNG-
+conversion failure message. `ray_tracer --gpu 128 4 4 A1` (a
+hand-authored, non-pbrt scene Metal's loader can't reproduce) fails
+gracefully with `metal_render_main()`'s own explanatory stderr message
+and exit code 1 - no crash. `ray_tracer --cpu 64 2 3 K16` still renders
+and converts to PNG exactly as before, confirming the CPU path (and its
+own PPM-to-PNG conversion step) is completely unaffected.

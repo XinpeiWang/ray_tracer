@@ -22,9 +22,13 @@
 
 #include <cstring>
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
+// Declare-only: src/external/image_writer.cpp is this project's one owner
+// of STB_IMAGE_WRITE_IMPLEMENTATION (mirrors stb_image_impl.cpp/
+// tinyexr_impl.cpp's own single-owner convention for the read-side
+// libraries). Whichever executable links this file must also link
+// image_writer.cpp - see root CMakeLists.txt's metal_poc/metal_renderer
+// targets.
 #include "../../src/external/stb_image_write.h"
-#undef STB_IMAGE_WRITE_IMPLEMENTATION
 // STB_IMAGE_IMPLEMENTATION here is a separate translation unit from
 // src/external/stb_image_impl.cpp's own definition of it (that one is
 // compiled into cpu_renderer, which metal_poc doesn't link against at
