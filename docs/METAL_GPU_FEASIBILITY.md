@@ -4789,3 +4789,73 @@ much lower-risk isotropic case. `loadPbrtScene()`'s own warning still
 names Projection specifically (no longer bundled with Goniometric,
 since that part of the gap closed) - a real, scoped, well-understood
 next increment, not a mystery, whenever it's picked up.
+
+## 92. Projection lights, the "Approx" (no slide image) case (done)
+
+Section 91's own "not rushed without a dedicated correctness check"
+condition is now met, so this closes the gap it left open. A
+filename-less Projection light's own "Approx" fallback (pbrt-v4's
+`ProjectionLight::make_uniform()`, matching this project's own CPU
+builder - `pbrt_cpu_builder.h`'s `kUniformSlide` comment: a uniform
+white 2x2 slide reproducing a plain cone-shaped beam) is represented as
+a hard-edged `PointLightData` spot - `cosOuterAngle == cosInnerAngle`
+(`spotLightFalloff()`'s own `max(...,1e-6)` denominator guard keeps
+this a clean cutoff rather than a divide-by-zero), cone half-angle
+`fovDeg/2`, intensity `(1,1,1)*scale*sceneScale^2` (falls straight out
+of the SAME `baseEmission = intensity*scale` computation every other
+punctual kind already uses, since `PunctualLight::intensity` simply
+stays at its unused `{1,1,1}` default for this kind - no special-casing
+needed there at all).
+
+**The one genuinely new piece: recovering a world-space aim direction
+from `PunctualLight::worldToLight`** (a row-major 3x3 world->light
+ROTATION - Projection/Goniometric have no `"from"`/`"to"` of their own
+in pbrt-v4, aimed purely by rotating the CTM first). New
+`punctualLightWorldForward()` (`metal_poc_host_math.h`): since a real
+scene's own light-aiming CTM never includes a Scale (that field's own
+comment), `worldToLight` is a pure rotation, so its own inverse is its
+transpose - the light's local +Z axis (pbrt-v4's own principal-axis
+convention) in world space is `transpose(worldToLight) * (0,0,1)`,
+which for a row-major matrix is simply `worldToLight`'s own THIRD ROW
+(indices 6/7/8), not a second matrix inversion. Verified with a real,
+committed unit test (`testPunctualLightWorldForward()`,
+`metal_poc_math_tests.cpp`) against a worldToLight matrix INDEPENDENTLY
+hand-derived (not just asserted) by working through
+`worldToLightRotation()`'s own cofactor/adjugate algorithm for
+`Rotate 90 1 0 0` - exactly the rotation `pbrt_scenes/
+punctual-lights.pbrt`'s own real projection light uses to aim "down at
+the floor" (that file's own comment) - giving `(0,-1,0)`, straight
+down, matching that comment exactly. This is the dedicated correctness
+check section 91 said this needed before being attempted, not a
+retroactive rationalization.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (5/5 pass
+- `metal_poc_math_tests` now includes the new direction test).
+Rendered the pre-existing `pbrt_scenes/punctual-lights.pbrt` (already
+declares this exact filename-less projection light) - point-light
+count went from 5 to 6 (additive), and `loadPbrtScene()` no longer
+reports any light as skipped for this scene at all. The visual
+before/after difference was small (this light's own downward-aimed
+beam lands on a floor region far from this scene's own camera
+framing), so verified numerically: a full-image mean-absolute-
+difference comparison (real code active vs. disabled) shows a real,
+non-zero, spatially LOCALIZED difference (mean 0.33/255 overall, but a
+real max of 28/255 concentrated near the beam's own floor footprint,
+not spread evenly like noise would be) - and sampling that exact pixel
+directly shows a clean, neutral (all three channels move together)
+brightening, exactly the "uniform WHITE beam" semantics this
+approximation is supposed to produce, not some other unrelated effect.
+`ray_tracer --gpu` against `K16` (no punctual lights of its own)
+renders identically to before.
+
+With this, every one of `scene.punctualLights`' five kinds now does
+SOMETHING real for a pbrt-loaded scene (point/spot/distant/goniometric
+fully; projection via its own common "Approx" case) - the only
+remaining punctual-light gap is a real per-light profile/slide IMAGE
+for goniometric or projection specifically, which still needs the kind
+of per-light-texture mechanism sections 87/89's own investigation
+already scoped out (this POC's architecture has room for exactly ONE
+`goniometricTexture` and reuses `earthTexture` for the hardcoded room's
+own single projection light - supporting a pbrt scene's own DIFFERENT
+image on top of those would need genuinely new per-light texture
+plumbing, not just another `PointLightData` push).

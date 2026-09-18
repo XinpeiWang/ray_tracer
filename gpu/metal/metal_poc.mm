@@ -1862,21 +1862,50 @@ void MetalPocApp::loadPbrtScene() {
                     PackedFloat3{emission.x, emission.y, emission.z}});
                 break;
             }
-            case pbrt_flatten::PunctualLightKind::Projection:
+            case pbrt_flatten::PunctualLightKind::Projection: {
+                if (pl.hadImageFilename) {
+                    // A real per-light slide image - out of scope, same
+                    // reason a real goniometric profile still is.
+                    ++skippedImageBasedLights;
+                    break;
+                }
+                // No slide image named - pbrt-v4's own documented
+                // "Approx" fallback: a uniform white cone-shaped beam
+                // (ProjectionLight::make_uniform(), matching this
+                // project's own CPU builder - see pbrt_cpu_builder.h's
+                // own kUniformSlide comment). Represented here as a
+                // hard-edged PointLightData spot (cosOuterAngle ==
+                // cosInnerAngle - spotLightFalloff()'s own
+                // max(...,1e-6) denominator guard keeps this a clean
+                // cutoff, not a divide-by-zero) rather than a genuinely
+                // new light type: a uniform intensity within a cone and
+                // zero outside it is exactly what a spot cone already
+                // is, just without the smoothstep edge softening a real
+                // spot's inner/outer split gives.
+                //
+                // Aim direction: see punctualLightWorldForward()'s own
+                // comment (metal_poc_host_math.h) for the full
+                // derivation - verified there against a known rotation
+                // case, not just by hand here.
+                const float3 pos = toWorld(float3{(float)pl.pos[0], (float)pl.pos[1], (float)pl.pos[2]});
+                const float3 dir = punctualLightWorldForward(pl.worldToLight);
+                const float3 emission = baseEmission * intensityScale;
+                const float cosHalfFov = cosf(0.5f * (float)pl.fovDeg * (float)M_PI / 180.0f);
+                pointLights.push_back(PointLightData{
+                    PackedFloat3{pos.x, pos.y, pos.z},
+                    PackedFloat3{emission.x, emission.y, emission.z},
+                    PackedFloat3{dir.x, dir.y, dir.z},
+                    /*cosOuterAngle=*/cosHalfFov,
+                    /*cosInnerAngle=*/cosHalfFov});
+                break;
+            }
             default:
-                // Projection always needs a real aim direction (even its
-                // own "Approx uniform beam" fallback is a CONE, not
-                // isotropic) - recovering that from PunctualLight::
-                // worldToLight correctly (and verifiably) is real,
-                // careful work not rushed into this pass; see docs/
-                // METAL_GPU_FEASIBILITY.md's own section on this gap.
-                ++skippedImageBasedLights;
                 break;
         }
     }
     if (skippedImageBasedLights > 0)
-        fprintf(stderr, "loadPbrtScene: %zu goniometric-with-image/projection light(s) skipped - "
-                        "not yet supported by this POC's scene loader\n",
+        fprintf(stderr, "loadPbrtScene: %zu goniometric/projection light(s) with a real profile/slide "
+                        "image skipped - not yet supported by this POC's scene loader\n",
                 skippedImageBasedLights);
 
     // --- Homogeneous participating medium (fog) -------------------------
