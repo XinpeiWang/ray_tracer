@@ -5,6 +5,15 @@
 #else
 #include "optix_stub.h"
 #endif
+// RT_HAVE_OPTIX and RT_HAVE_METAL are never both defined for the same
+// build (CUDA/OptiX needs Windows, Metal needs macOS - see root
+// CMakeLists.txt's own RT_BUILD_GPU/RT_BUILD_METAL blocks) - no stub
+// header needed here the way optix_stub.h exists for RT_HAVE_OPTIX,
+// since append_gpu() below only ever calls metal_get_diagnostics() from
+// inside its own #ifdef RT_HAVE_METAL branch, never unconditionally.
+#ifdef RT_HAVE_METAL
+#include "../gpu/metal/metal_interface.h"
+#endif
 #include "../cpu_renderer/cpu_interface.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
 
@@ -76,6 +85,26 @@ void append_os_cpu_ram(std::ostringstream& report) {
 #endif
 }
 
+#ifdef RT_HAVE_METAL
+// Metal branch - see metal_interface.h's own comment on why
+// MetalDiagnostics' fields (and this report's own shape) differ from
+// the CUDA/OptiX branch below: no driver/runtime version pair, no
+// separate VRAM free/total (Apple Silicon's unified memory has no
+// discrete-GPU-style pool to report free/total for).
+void append_gpu(std::ostringstream& report) {
+	MetalDiagnostics diag{};
+	metal_get_diagnostics(&diag);
+	if (diag.available) {
+		report << "GPU: " << diag.device_name << "\n";
+		report << "Metal: available\n";
+		report << "Recommended Max Working Set: "
+			   << format_bytes(diag.recommended_max_working_set_bytes) << "\n";
+	} else {
+		report << "GPU: not detected / not usable\n";
+		report << "Metal: not available (" << diag.failure_reason << ")\n";
+	}
+}
+#else
 void append_gpu(std::ostringstream& report) {
 	OptixDiagnostics diag{};
 	optix_get_diagnostics(&diag);
@@ -95,6 +124,7 @@ void append_gpu(std::ostringstream& report) {
 		report << "OptiX: not available (" << diag.failure_reason << ")\n";
 	}
 }
+#endif
 
 // Checks disk free space and write access for the directory a render would
 // actually write into - args.custom_output_path's parent dir if given,

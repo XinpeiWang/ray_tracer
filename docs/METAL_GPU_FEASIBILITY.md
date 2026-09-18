@@ -4859,3 +4859,57 @@ already scoped out (this POC's architecture has room for exactly ONE
 own single projection light - supporting a pbrt scene's own DIFFERENT
 image on top of those would need genuinely new per-light texture
 plumbing, not just another `PointLightData` push).
+
+## 93. `--diagnose` becomes Metal-aware (done)
+
+A real, independent bug found while scoping the GUI-wiring work this
+section is a first step toward (`kGpuOptionAvailable`, `mainwindow.h` -
+still not started; see that constant's own comment for why it's been
+deliberately left `RT_GUI_HAVE_GPU`/Windows-only so far): `launcher/
+diagnostics.cpp`'s own `append_gpu()` was, and until this section
+remained, entirely CUDA/OptiX-shaped (`optix_get_diagnostics()`, driver/
+runtime version, VRAM free/total) with no `RT_HAVE_METAL` awareness at
+all - so `ray_tracer --diagnose` on THIS repo's own `RT_BUILD_METAL=ON`
+macOS build reported `GPU: not detected / not usable` unconditionally,
+even while `ray_tracer --gpu` against a real scene worked correctly
+(phases 3a/3b, sections 82/85-92) - a real, user-visible, pre-existing
+bug independent of whether the GUI ever gets wired up to read this at
+all, worth fixing on its own.
+
+**New `metal_get_diagnostics()`** (`gpu/metal/metal_interface.h`
+declaration, `metal_poc.mm` implementation) mirrors
+`optix_get_diagnostics()`'s own "available flag + device name + failure
+reason" shape for `diagnostics.cpp`'s own consistent report style, but
+NOT its exact field layout - no CUDA driver/runtime version pair, no
+separate VRAM free/total (Apple Silicon's unified memory has no
+discrete-GPU-style pool to report free/total for) - replaced with
+`recommendedMaxWorkingSetSize`, the closest analogous "how much can
+this GPU comfortably use" figure Metal itself actually exposes.
+`diagnostics.cpp` gained an `#ifdef RT_HAVE_METAL` branch of its own
+`append_gpu()`, mirroring `launcher/main.cpp`'s own established
+`RT_HAVE_OPTIX`/`RT_HAVE_METAL` mutual-exclusion pattern (no stub
+header needed, same reasoning as that file's own comment).
+
+**A real bug caught before shipping, not after**: the first
+implementation used `MTLCreateSystemDefaultDevice()` and reported
+`GPU: not detected` even on this same machine where `ray_tracer --gpu`
+was ALREADY working correctly - `parseArgsAndCreateDevice()`
+(`metal_poc.mm`, written much earlier in this project) has its own
+comment explaining exactly why: that call is documented as unsupported
+for non-interactive CLI/daemon processes (confirmed via `log show`),
+and `MTLCopyAllDevices()` is the correct API for a plain CLI tool like
+this one. A comment already existed in this exact file explaining this
+gotcha, and the new code should have grepped for/reused that established
+pattern from the start rather than introducing a fresh, wrong call to
+the "obvious" API and only catching it by actually running the result -
+exactly what did catch it, this time before merging, not after.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (5/5 pass,
+no regression). `ray_tracer --diagnose` now reports `GPU: Apple M2` /
+`Metal: available` / `Recommended Max Working Set: 10.67 GB` - correct,
+non-nil device info, matching what a real `--gpu` render on the same
+machine already proves works. A SEPARATE `RT_BUILD_METAL=OFF` build
+(the CMake default) still reports the original, unchanged
+`OptiX: not available (Built without RT_HAVE_OPTIX...)` message -
+confirming the new `#ifdef RT_HAVE_METAL` branch doesn't disturb the
+existing non-Metal path at all.
