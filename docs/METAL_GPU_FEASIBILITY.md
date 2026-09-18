@@ -4456,3 +4456,74 @@ visibly shows three correctly-placed, correctly-shaded yellow pyramids
 in the foreground, including the rotated and the non-uniformly-scaled
 one both looking geometrically correct (narrower/taller for the scaled
 one, not distorted or broken).
+
+## 85. Punctual lights (point/spot/distant) for pbrt-loaded scenes (done)
+
+Closes another `loadPbrtScene()`-flagged gap: `scene.punctualLights`
+(`src/shared/pbrt_flatten.h` - point/spot/distant/goniometric/
+projection, parsed from pbrt's own `LightSource` directive) was parsed
+but entirely skipped. Point and spot both reuse `PointLightData` - the
+SAME GPU buffer/shading path the hardcoded room's own point+spot lights
+already use (its `direction`/`cosOuterAngle`/`cosInnerAngle` fields
+default to "omnidirectional" unless a spot cone overrides them, exactly
+matching a plain point light's own needs). Distant reuses
+`DirectionalLightData`. Goniometric/projection are real image-based
+kinds this loader doesn't parse/upload an image asset for yet - still
+skipped, with a warning naming the count.
+
+**A genuine, derived-not-assumed physics subtlety, confirmed
+independently by a pre-existing test asset's own header comment
+(`pbrt_scenes/punctual-lights.pbrt`, written for the CPU/OptiX
+backends, well before this PR): point/spot intensity needs a real scale
+compensation this loader's own arealight/instance handling never
+needed.** This app's point/spot falloff is a genuine `1/distance^2`
+term evaluated in its OWN internal (rescaled) coordinate space
+(`metal_poc.metal`'s own `/ plDistSq` division, on `toWorld()`-
+transformed positions) - leaving a pbrt-authored "I" unchanged while
+every point/spot light's own distance to a hit point shrinks by
+`sceneScale` would inflate apparent brightness by `1/sceneScale^2`
+relative to the same scene at its own native scale. Multiplying "I" by
+`sceneScale * sceneScale` exactly cancels that (irradiance = I/d^2,
+d'=d*sceneScale => I'=I*sceneScale^2 keeps I'/d'^2 == I/d^2). Distant
+needs no such compensation - a directional light's own contribution has
+no distance term at all, the same reason area lights (section 78) and
+instanced geometry (section 84) also needed none - their own area
+scales by `sceneScale^2` in lockstep with `d^2`, cancelling exactly.
+`punctual-lights.pbrt`'s own header comment independently states almost
+the identical rule ("I needs to be roughly distance^2 times an area
+light's own L for comparable brightness") for an entirely different
+reason (matching a hand-tuned "I" to a hand-tuned "L" at pbrt's OWN
+native scale) - two independent derivations landing on the same
+inverse-square relationship is a real, if informal, cross-check.
+
+**A second, unrelated bug found and fixed in the same pass, a repeat of
+a bug class section 78 (phase 1) already fixed once**: `pointLights =
+{...}`/`directionalLights = {...}` in `buildScene()`'s own hardcoded-
+room setup are plain assignments, executed AFTER `loadPbrtScene()` - so
+they silently wiped out any punctual light this new code had just
+pushed, the exact same "wipes pbrt-loaded data" bug phase 1 already hit
+and fixed for `spheres`/`sphereMaterials` (that fix was never applied
+to every OTHER vector with the same shape). Fixed the same way here,
+and proactively applied to `disks`/`diskMaterials`/`projectionLights`/
+`goniometricLights` too even though `loadPbrtScene()` doesn't populate
+those yet - closing the same latent trap before a future increment hits
+it instead of after.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4 pass,
+no regression). Rendered the pre-existing, independently-tuned
+`pbrt_scenes/punctual-lights.pbrt` through the standalone `metal_poc`
+CLI: logs confirm all 5 kinds were seen (`2 goniometric/projection
+light(s) skipped`) and the other three landed additively alongside the
+hardcoded room's own (`4 point lights, 2 directional lights` - 2+1 from
+the room, 2+1 from the file), and the render itself is well-exposed and
+plausible (no manual retuning needed - strong evidence the scale
+compensation above is correct, not off by some large factor either
+way). A before/after A/B comparison (temporarily disabling just the new
+punctual-light loop, holding the scene and every hardcoded light
+fixed) confirms a large, precisely-located brightness increase exactly
+where the new point light sits (ceiling near-white 239,238,235 with the
+code active vs. 109,117,133 without it) - not just "renders without
+crashing," a real, attributable, isolated effect. `ray_tracer --gpu`
+against `K16` (no punctual lights of its own) renders identically to
+before, confirming no regression on the one committed pbrt scene this
+loader is registered against.
