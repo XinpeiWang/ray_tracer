@@ -764,6 +764,16 @@ struct MetalPocApp {
     float pbrtSceneScale = 1.0f;
     float3 pbrtSceneOffset{0, 0, 0};
 
+    // Set by loadPbrtScene() when the scene has a valid homogeneous
+    // camera medium (scene.cameraMediumIndex, already validated by
+    // pbrt_flatten.h's own resolution pass - see that field's own
+    // comment) - read instead of the hardcoded fog defaults in
+    // compileShaderAndDispatch()'s own havePbrtCamera override block.
+    bool havePbrtMedium = false;
+    float pbrtFogSigmaT = 0.0f;
+    float3 pbrtFogAlbedo{1, 1, 1};
+    float pbrtFogAsymmetryG = 0.0f;
+
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> queue = nil;
@@ -1804,8 +1814,62 @@ void MetalPocApp::loadPbrtScene() {
                         "punctual lights are not yet supported by this POC's scene loader\n",
                 skippedImageBasedLights);
 
+    // --- Homogeneous participating medium (fog) -------------------------
+    // scene.cameraMediumIndex is already fully resolved and validated by
+    // pbrt_flatten.h's own post-pass (homogeneous type only, and only set
+    // at all when the scene has no conflicting real per-shape medium -
+    // see that field's own comment) - a direct, safe read, no further
+    // checking needed here.
+    if (scene.cameraMediumIndex >= 0 &&
+        (size_t)scene.cameraMediumIndex < scene.media.size()) {
+        const pbrt_flatten::Medium& m = scene.media[(size_t)scene.cameraMediumIndex];
+        double sigmaT[3];
+        double meanSigmaT = 0.0;
+        for (int c = 0; c < 3; ++c) {
+            sigmaT[c] = m.sigma_a[c] + m.sigma_s[c];
+            meanSigmaT += sigmaT[c];
+        }
+        meanSigmaT /= 3.0;
+        // Extinction has units of inverse length - the SAME rescale that
+        // shrinks every position/distance by sceneScale (see this
+        // function's own toWorld() comment) shrinks a ray's own travelled
+        // distance in lockstep, so leaving sigmaT at its pbrt-native value
+        // would UNDER-attenuate by the same factor (optical depth =
+        // sigmaT*dist; dist'=dist*sceneScale, so sigmaT'=sigmaT/sceneScale
+        // is what keeps sigmaT'*dist' == sigmaT*dist). The OPPOSITE
+        // direction from the punctual-light intensity compensation above
+        // (which multiplies by sceneScale^2) - that one compensates a
+        // squared-length falloff term, this one a single inverse-length
+        // one, so the correction is an inverse first power, not a square.
+        havePbrtMedium = true;
+        pbrtFogSigmaT = (float)(meanSigmaT / pbrtSceneScale);
+        // fogAlbedo is single-scattering albedo (sigma_s/sigma_t) PER
+        // CHANNEL (metal_poc.metal's own field comment) - unlike sigmaT
+        // itself, this ratio is dimensionless and scale-invariant, so the
+        // real per-channel colour survives even though the overall
+        // interaction RATE above is reduced to one achromatic scalar -
+        // the same simplification this shader's own hardcoded-room fog
+        // already makes (a single fogSigmaT, never a per-channel one).
+        for (int c = 0; c < 3; ++c) {
+            const float t = (float)sigmaT[c];
+            pbrtFogAlbedo[c] = (t > 1e-9f) ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
+        }
+        pbrtFogAsymmetryG = (float)m.g;   // dimensionless, no scale compensation needed
+        fprintf(stderr, "loadPbrtScene: homogeneous camera medium found (sigma_t~%.5g/unit, g=%.3f)\n",
+                meanSigmaT, m.g);
+    }
+
     // --- Unsupported features - skipped, warned, not fatal --------------
     if (scene.infiniteLight.present)
+        // Not a small add-on: earthTexture is ALSO the hardcoded room's
+        // own materialType-3 back-wall albedo (bound at the same texture
+        // slot, sampled by both that material's shading code and this
+        // miss-path lookup) - repointing it at a pbrt-provided environment
+        // would silently corrupt that unrelated, still-active geometry.
+        // Real support needs its own separate texture binding threaded
+        // through every one of this shader's ~7 duplicated shading-
+        // function copies, not a quick reuse the way punctual lights
+        // above were - deliberately not started this round.
         fprintf(stderr, "loadPbrtScene: LightSource \"infinite\" skipped - not yet supported by this POC's scene loader\n");
     if (!scene.disks.empty() || !scene.cylinders.empty() || !scene.cones.empty() ||
         !scene.paraboloids.empty() || !scene.bilinearPatches.empty() || !scene.curves.empty())
@@ -2483,7 +2547,13 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         uniforms.lensRadius = 0.0f;
         uniforms.focusDistance = 1.0f;
         uniforms.cameraVelocity = PackedFloat3{0, 0, 0};   // no motion blur
-        uniforms.fogSigmaT = 0.0f;                          // no participating medium yet
+        if (havePbrtMedium) {
+            uniforms.fogSigmaT = pbrtFogSigmaT;
+            uniforms.fogAlbedo = PackedFloat3{pbrtFogAlbedo.x, pbrtFogAlbedo.y, pbrtFogAlbedo.z};
+            uniforms.fogAsymmetryG = pbrtFogAsymmetryG;
+        } else {
+            uniforms.fogSigmaT = 0.0f;                      // no participating medium in this scene
+        }
         uniforms.useEnvironmentMap = 0u;                    // no LightSource "infinite" support yet
     }
 
