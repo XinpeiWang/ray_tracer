@@ -1522,15 +1522,19 @@ void MetalPocApp::buildScene() {
 //   - Materials: Diffuse/Conductor/Dielectric only (this POC's own
 //     materialType 0/4/2) - anything else falls back to gray Lambertian.
 //   - Area lights: only a light attached to EXACTLY 2 triangles forming a
-//     planar quad in addQuad()'s own a-b-c-d/a-c-d fan convention -
-//     AreaLightData (metal_poc.metal) is a parallelogram sampler
-//     (center/edgeU/edgeV), not a general triangle-mesh one. Any other
-//     emissive shape renders as a plain non-emissive surface instead.
-//   - Shapes: triangle meshes and spheres only - disk/cylinder/cone/
-//     paraboloid/bilinearmesh/curve shapes are skipped entirely.
-//   - No ObjectInstance/instancing, no infinite light, no punctual
-//     lights (point/spot/distant/goniometric/projection), no
-//     participating media - all skipped with a warning.
+//     planar quad in addQuad()'s own a-b-c-d/a-c-d fan convention, or a
+//     single full-circle disk, has a real NEE strategy - AreaLightData
+//     (metal_poc.metal) is a parallelogram sampler (center/edgeU/edgeV),
+//     not a general triangle-mesh/disk one. Any other emissive shape
+//     (a non-quad triangle mesh, an annular/partial disk) is still
+//     visible (direct hits, BSDF-sampled bounces) but has no explicit
+//     NEE strategy sampling it - see section 100/101 of the docs.
+//   - Shapes: triangle meshes, spheres, and full-circle disks (no inner
+//     radius/phi-max, uniform scale only) - cylinder/cone/paraboloid/
+//     bilinearmesh/curve shapes are still skipped entirely.
+//   (ObjectInstance/instancing, infinite lights, and every punctual light
+//   kind ARE now supported - this comment block predates those; see the
+//   docs' own numbered sections for what shipped after this was written.)
 // None of this needed any changes to buildGPUResources() below - see
 // buildScene()'s own call-site comment for why (additive onto the
 // existing hardcoded room, never leaves any vector newly empty).
@@ -1814,6 +1818,82 @@ void MetalPocApp::loadPbrtScene() {
             PackedFloat3{center.x, center.y, center.z}, sceneScale * (float)s.radius});
         sphereMaterials.push_back(materialFor(s.material));
     }
+
+    // --- Disks (section 101) - the plain, common "full circle" case only:
+    // this loader's own DiskData primitive (metal_poc.metal, matching the
+    // hardcoded room's own single disk) is center/normal/radius with no
+    // inner-radius/phi-max partial-disk support at all, unlike pbrt-v4's
+    // real Disk (Disk::innerRadius/phiMaxDeg). An annular or wedge-shaped
+    // disk is warned and skipped entirely (Approx tier's own honesty:
+    // rendering a full disk in place of a wedge would be visibly WRONG,
+    // not just simplified, so skipping is the safer choice here, unlike
+    // e.g. CoatedDiffuse's own "close enough" Approx mapping).
+    //
+    // Disk::xform is a real 4x4 (translation + rotation + scale, possibly
+    // non-uniform) - reuses pbrt_flatten::flatten_detail::transformPoint()/
+    // transformNormal() directly (the SAME already-correct, cofactor/
+    // adjugate-based utilities ObjectInstance baking above already uses),
+    // rather than re-deriving the inverse-transpose normal transform by
+    // hand. A disk's own local plane sits at object-space z=`height`
+    // (pbrt-v4's own Disk convention) with its face normal along local
+    // +Z - transformPoint()/transformNormal() applied to (0,0,height)/
+    // (0,0,1) respectively give the real world-space center/normal
+    // directly, correct even under non-uniform scale (unlike radius
+    // below).
+    //
+    // Non-uniform scale is detected (not assumed): the LENGTHS of the
+    // transformed local X/Y axis vectors must agree (within a loose
+    // relative tolerance - transformPoint()'s own floating-point path
+    // through a full 4x4, not a hand-verified-exact computation) for a
+    // single scalar radius to mean anything at all - an ellipse-shaped
+    // disk skips for the same "don't render something visibly wrong"
+    // reason a partial disk does, mirroring skippedInstancedSpheres'
+    // own non-uniform-scale precedent for instanced spheres.
+    size_t skippedDisks = 0;
+    for (const pbrt_flatten::Disk& d : scene.disks) {
+        if (d.innerRadius != 0.0 || d.phiMaxDeg != 360.0) { ++skippedDisks; continue; }
+
+        pbrt_scene::Matrix4 dxform;
+        for (int i = 0; i < 16; ++i) dxform.m[i] = d.xform[i];
+
+        double worldOrigin[3], worldAxisX[3], worldAxisY[3];
+        pbrt_flatten::flatten_detail::transformPoint(dxform, 0.0, 0.0, 0.0, worldOrigin);
+        pbrt_flatten::flatten_detail::transformPoint(dxform, 1.0, 0.0, 0.0, worldAxisX);
+        pbrt_flatten::flatten_detail::transformPoint(dxform, 0.0, 1.0, 0.0, worldAxisY);
+        const float3 wOrigin{(float)worldOrigin[0], (float)worldOrigin[1], (float)worldOrigin[2]};
+        const float scaleX = simd::length(float3{(float)worldAxisX[0], (float)worldAxisX[1], (float)worldAxisX[2]} - wOrigin);
+        const float scaleY = simd::length(float3{(float)worldAxisY[0], (float)worldAxisY[1], (float)worldAxisY[2]} - wOrigin);
+        if (fabsf(scaleX - scaleY) > 1e-3f * std::max(scaleX, scaleY)) { ++skippedDisks; continue; }
+
+        double worldCenter[3], worldNormal[3];
+        pbrt_flatten::flatten_detail::transformPoint(dxform, 0.0, 0.0, d.height, worldCenter);
+        pbrt_flatten::flatten_detail::transformNormal(dxform, 0.0, 0.0, 1.0, worldNormal);
+        const float3 center = toWorld(float3{(float)worldCenter[0], (float)worldCenter[1], (float)worldCenter[2]});
+        const float3 normal = simd::normalize(float3{(float)worldNormal[0], (float)worldNormal[1], (float)worldNormal[2]});
+
+        TriangleMaterial mat = materialFor(d.material);
+        if (d.areaLight >= 0 && d.areaLight < (int)scene.areaLights.size()) {
+            // Same "emissive, but not NEE-registered" tier PR #100 added
+            // for non-quad triangle-mesh lights - this loader has no
+            // disk-shaped analytic light in its own `lights[]` NEE list
+            // either, so a disk area light is visible (direct hit or a
+            // BSDF-sampled bounce landing on it) but not explicitly
+            // sampled. `diskMaterials` is plain TriangleMaterial, so the
+            // SAME unconditional direct-hit emissive/MIS-weight code PR
+            // #100 fixed already handles this correctly with no further
+            // shader changes.
+            const pbrt_flatten::Emission& em = scene.areaLights[d.areaLight];
+            mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+            mat.lightId = -1;
+        }
+        disks.push_back(DiskData{PackedFloat3{center.x, center.y, center.z},
+                                  PackedFloat3{normal.x, normal.y, normal.z},
+                                  sceneScale * scaleX * (float)d.radius});
+        diskMaterials.push_back(mat);
+    }
+    if (skippedDisks > 0)
+        fprintf(stderr, "loadPbrtScene: %zu disk(s) skipped - only a full circle (no inner radius/phi-max) "
+                        "under uniform scale is supported by this POC's own disk primitive\n", skippedDisks);
 
     // --- ObjectInstance placements -----------------------------------
     // Real instancing (scene.groups hold OBJECT-space geometry, defined
@@ -2228,10 +2308,13 @@ void MetalPocApp::loadPbrtScene() {
                     pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z);
         }
     }
-    if (!scene.disks.empty() || !scene.cylinders.empty() || !scene.cones.empty() ||
+    // Disks are now handled above (section 101, common full-circle case);
+    // cylinder/cone/paraboloid/bilinearmesh/curve remain a real gap.
+    if (!scene.cylinders.empty() || !scene.cones.empty() ||
         !scene.paraboloids.empty() || !scene.bilinearPatches.empty() || !scene.curves.empty())
-        fprintf(stderr, "loadPbrtScene: disk/cylinder/cone/paraboloid/bilinearmesh/curve shapes skipped - "
-                        "only triangle mesh and sphere shapes are supported by this POC's scene loader yet\n");
+        fprintf(stderr, "loadPbrtScene: cylinder/cone/paraboloid/bilinearmesh/curve shapes skipped - "
+                        "only triangle mesh, sphere, and (full-circle) disk shapes are supported by "
+                        "this POC's scene loader yet\n");
 
     // --- Camera ------------------------------------------------------------
     const pbrt_flatten::Camera& cam = scene.camera;
