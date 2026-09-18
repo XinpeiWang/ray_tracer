@@ -1637,6 +1637,42 @@ void MetalPocApp::loadPbrtScene() {
             case pbrt_flatten::MaterialKind::Dielectric:
                 return TriangleMaterial{color, /*materialType=*/2u, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+            case pbrt_flatten::MaterialKind::ThinDielectric:
+                // materialType 11 - `color` is unused by this material
+                // (metal_poc.mm's own hardcoded-room construction site
+                // comment), only `ior` matters.
+                return TriangleMaterial{color, /*materialType=*/11u, /*ior=*/(float)m.ior,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+            case pbrt_flatten::MaterialKind::DiffuseTransmission: {
+                // materialType 12 - `color` is this material's own
+                // reflectance tint (same convention as Diffuse above);
+                // `m.transmittance` is the SEPARATE transmitted tint
+                // (Material::transmittance's own comment - a frosted-
+                // panel default of 0.25 each way when the scene names
+                // neither parameter, not a mirror-symmetric 0.5/0.5 split
+                // of `color`).
+                TriangleMaterial mat{color, /*materialType=*/12u, /*ior=*/1.0f,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                mat.transmitColor = PackedFloat3{(float)m.transmittance[0], (float)m.transmittance[1],
+                                                  (float)m.transmittance[2]};
+                return mat;
+            }
+            case pbrt_flatten::MaterialKind::CoatedDiffuse:
+                // Approx tier (docs/PBRT_SUPPORT.md's own convention -
+                // CPU/OptiX render this Full, a real stochastic layered
+                // coat-over-Lambertian): materialType 8 (clearcoat) is
+                // this POC's own simplified SINGLE-bounce smooth-
+                // dielectric-coat-over-Lambertian, with a fixed
+                // kClearcoatEta=1.5 shader-side constant - the scene's
+                // own "ior"/"roughness" (a rough, scene-specified coat)
+                // are silently NOT read here, unlike materialType 8's
+                // hardcoded-room use, which never varies them either.
+                // Still a real, honest improvement over the gray-
+                // Lambertian default fallback below: the correct diffuse
+                // albedo and a generic coat sheen both survive, just not
+                // the exact coat IOR/roughness.
+                return TriangleMaterial{color, /*materialType=*/8u, /*ior=*/1.0f,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
             default:
                 if (warnedUnsupportedMaterialKinds.insert(m.pbrtType).second) {
                     fprintf(stderr, "loadPbrtScene: material kind '%s' not supported by this POC's "

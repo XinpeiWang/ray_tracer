@@ -5305,3 +5305,45 @@ old Approx-only behavior for the SAME scene. `projection-light-
 nonsquare.pbrt`'s own render shows a correctly WIDE (not squished-to-
 square) rectangular footprint with all 4 of its image's own quadrant
 colors visible, confirming the aspect-ratio handling is correct too.
+
+## 99. Three more pbrt material kinds: ThinDielectric, DiffuseTransmission, CoatedDiffuse (Approx)
+
+`loadPbrtScene()`'s own `mapMaterial()` previously recognized only 3 of
+pbrt-v4's 10 `MaterialKind` values (`diffuse`/`conductor`/`dielectric`)
+- every other kind (`thindielectric`, `diffusetransmission`,
+`coateddiffuse`, `coatedconductor`, `subsurface`, `measured`, `mix`,
+...) silently fell back to flat gray Lambertian, discarding the
+scene's own reflectance entirely. `thindielectric` and
+`diffusetransmission` are EXACT matches for material types this POC's
+own shader already implements natively (materialType 11/12, both
+already used by the hardcoded room's own demo objects) - mapping them
+needed no new shading math, just reading the right `Material` fields
+(`m.ior` for ThinDielectric; `color`=reflectance + `m.transmittance`
+for DiffuseTransmission, mirroring `Material::transmittance`'s own
+documented "frosted panel" default). `coateddiffuse` is a genuine
+**Approx** tier addition (matching `docs/PBRT_SUPPORT.md`'s own tier
+system) - CPU/OptiX render it Full (a real stochastic layered coat),
+this POC's own materialType 8 is a simplified single-bounce coat with
+a fixed `kClearcoatEta=1.5` shader constant, so the scene's own real
+coat `ior`/`roughness` are silently not read. Still a real, honestly-
+documented improvement over gray Lambertian: the correct diffuse
+albedo and a generic coat sheen both survive.
+
+`coatedconductor`/`subsurface`/`measured`/`mix` remain unmapped (still
+warn-and-fall-back-to-gray) - each is a genuinely bigger undertaking
+(subsurface scattering, measured BRDF tensor data, per-hit-point
+material blending) out of scope for this increment.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4).
+51-scene sweep-render, no crashes. `pbrt_scenes/layered-materials.pbrt`
+(a pre-existing test scene exercising exactly `thindielectric`/
+`coatedconductor`/`diffusetransmission`/`subsurface` together, "none
+had ever actually been rendered from a loaded .pbrt file before this
+scene" per its own header comment) now warns only for the still-
+unmapped `coatedconductor`/`subsurface`, and its diffusetransmission
+sphere visibly shows its own distinct blue reflectance tint instead of
+flat gray. A clean on/off render diff (`#if 0`-disabling the 3 new
+`switch` cases, rebuilding, re-rendering, reverting) confirms a real,
+substantial difference: 39.63% of pixel bytes differ (mean abs diff
+2.96, RMS 9.59) between the new mappings and the old gray-fallback
+render of the same scene.
