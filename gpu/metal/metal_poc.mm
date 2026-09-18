@@ -2833,6 +2833,42 @@ void MetalPocApp::postProcessAndWrite() {
 // function exists and works standalone, but nothing calls it yet outside
 // this file's own main() below and its own smoke test).
 //
+// See metal_interface.h's own comment for what this reports and why its
+// fields differ from optix_get_diagnostics()'s own OptixDiagnostics
+// shape. MTLCopyAllDevices() (NOT MTLCreateSystemDefaultDevice() -
+// see parseArgsAndCreateDevice()'s own comment on why: that call is
+// documented as unsupported for non-interactive CLI/daemon processes,
+// confirmed via `log show`, and ray_tracer/metal_poc are both plain CLI
+// tools, not app bundles) is the actual availability check - there is
+// no separate "is Metal supported" query to make first, unlike CUDA/
+// OptiX's own driver-then-device-then-SDK-ABI chain of things that can
+// each fail independently.
+bool metal_get_diagnostics(MetalDiagnostics* out) {
+    if (!out) return false;
+    *out = MetalDiagnostics{};
+    @autoreleasepool {
+        NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
+        id<MTLDevice> device = (devices.count > 0) ? devices[0] : nil;
+        if (!device) {
+            out->available = false;
+            std::string reason("MTLCopyAllDevices() returned no devices - "
+                                "no usable Metal device on this machine");
+            size_t n = (std::min)(reason.size(), sizeof(out->failure_reason) - 1);
+            reason.copy(out->failure_reason, n);
+            out->failure_reason[n] = '\0';
+            return false;
+        }
+        out->available = true;
+        NSString* name = device.name ? device.name : @"unknown Metal device";
+        std::string nameStr(name.UTF8String);
+        size_t n = (std::min)(nameStr.size(), sizeof(out->device_name) - 1);
+        nameStr.copy(out->device_name, n);
+        out->device_name[n] = '\0';
+        out->recommended_max_working_set_bytes = device.recommendedMaxWorkingSetSize;
+    }
+    return true;
+}
+
 // scene_id resolution: this POC's own loadPbrtScene() only ever supported
 // pbrt-FILE-backed scenes (see that function's own comment) - never this
 // project's ~130 hand-authored built-in scenes (scene_registry.h), which

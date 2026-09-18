@@ -17,6 +17,39 @@
 extern "C" {
 #endif
 
+// Mirrors gpu/optix/optix_interface.h's own OptixDiagnostics struct in
+// spirit (same "available flag + device name + failure reason" shape,
+// so launcher/diagnostics.cpp's own append_gpu() can report on whichever
+// GPU backend this build actually has with one consistent report style)
+// but NOT in exact field layout - CUDA driver/runtime versions and a
+// separate VRAM free/total split have no Metal equivalent (Apple
+// Silicon's unified memory is shared with the CPU, not a separate pool
+// with its own free/total to query the way a discrete GPU's VRAM is),
+// so those fields are replaced with what's actually meaningful here
+// rather than padded out with unused CUDA-shaped ones.
+struct MetalDiagnostics {
+	bool available;
+	char device_name[256];
+	// Apple's own recommendedMaxWorkingSetSize - not a hard VRAM total
+	// the way optix_get_diagnostics()'s own vram_total_bytes is (there
+	// is no fixed GPU-only memory pool to report), but the closest
+	// analogous "how much can this GPU comfortably use" figure Metal
+	// itself exposes.
+	unsigned long long recommended_max_working_set_bytes;
+	char failure_reason[256];
+};
+
+// Reports whether a Metal device is available on this machine at all -
+// true even on a build with RT_BUILD_METAL=OFF is impossible (this
+// function only exists in that build's own metal_interface.h in the
+// first place; a non-Metal build never links or declares it - see
+// launcher/diagnostics.cpp's own #ifdef RT_HAVE_METAL guard around its
+// one call site). False here means "this Mac itself has no usable
+// Metal GPU" (e.g. running under conditions Metal doesn't support),
+// not "this build lacks Metal support" - that second case is a
+// compile-time, not runtime, fact.
+bool metal_get_diagnostics(MetalDiagnostics* out);
+
 // scene_id must resolve to a pbrt-file-backed scene (cpu_scene_pbrt_path_
 // by_id() returns non-empty) - this backend's own scene loader
 // (loadPbrtScene(), metal_poc.mm) doesn't yet reproduce this project's
