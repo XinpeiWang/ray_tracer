@@ -4661,3 +4661,63 @@ could never produce): the ENTIRE sky rendered solid, unambiguous bright
 red, conclusively proving the new code path is what's actually
 driving the background, not a coincidence. `ray_tracer --gpu` against
 `K16` (no infinite light of its own) renders identically to before.
+
+## 89. Infinite light, image-based case (done)
+
+Closes the rest of the gap section 87 identified: `LightSource
+"infinite" "string filename" [...]` now works too, not just the
+constant-colour case (section 88). The key realization that unblocked
+this: section 87's own "earthTexture is shared, don't repoint it"
+finding was real, but the FIX was always to add a genuinely separate
+texture, not to avoid the feature - and once that's the plan, the
+`earthTexture`-sharing concern simply doesn't apply, because
+`primaryRayKernel`'s own materialType-3 albedo lookup
+(`albedo = earthTexture.sample(...)`) is a COMPLETELY SEPARATE code
+path from the 6 material-shading functions' own env-map NEE lookups -
+confirmed by checking, not assumed, before writing any code.
+
+**New `pbrtEnvTexture` (`[[texture(3)]]`)**, built from `pbrt_load::
+loadFile()`'s already-decoded, already-linear `InfiniteLight::
+imagePixels` (float RGB, no filesystem/image-decode work needed on
+this side) - uploaded as `MTLPixelFormatRGBA32Float` (padding alpha=1,
+no sRGB format/decode at all, unlike `earthTexture`'s own 8-bit-JPEG-
+sourced `_sRGB` format: there's no gamma curve to reverse for data
+that's already linear). `scale` is applied by multiplying it into the
+pixel data at load time (matching how `pbrt_cpu_builder.h`'s own
+`sky_light(...)` constructor takes it as a separate multiplier on the
+raw image samples, confirmed by checking that existing consumer rather
+than guessing the convention) - the same "bake `L*scale` once, at load
+time" shape section 88's constant-colour case already used.
+
+**Same deliberate miss-path-only scope cut as section 88** - a plain
+equirectangular lookup (`equirectangularUV(rayDir)` +
+`pbrtEnvTexture.sample(...)`) on escape, no NEE/MIS importance-sampling
+strategy, unbiased but higher-variance than `earthTexture`'s own fully
+importance-sampled one. Not left completely unaddressed for later,
+though: `metal_poc_host_math.h` gained a float-RGB overload of
+`buildEnvDistribution2D()` (mirroring the existing RGBA8 one, minus the
+sRGB decode step an already-linear image doesn't need) plus its own new
+test (`testEnvDistribution2DFloatOverloadMatchesByteOverload` -
+confirms bit-for-bit-close agreement with the already-tested RGBA8
+overload for an equivalent image, since white/black round-trip through
+`srgbByteToLinear()` exactly) - a real, tested, ready-to-wire-in
+building block for a future NEE upgrade, the SAME "phase 1 before phase
+2" staging `earthTexture`'s own NEE support (sections 69/71) went
+through, not used by this round's miss-path-only implementation itself.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (5/5 pass
+- `metal_poc_math_tests` now includes the new overload's own test).
+Rendered a new test scene (`pbrt_scenes/infinite-light-image.pbrt`,
+reusing the already-bundled `uv-checker.bmp` specifically because its
+own sharp, regular checker pattern makes a correct-vs-broken
+equirectangular mapping immediately obvious by eye) through the
+standalone `metal_poc` CLI: the sky shows solid blue at the zenith,
+and the scene's own reflective conductor sphere clearly shows BOTH
+blue (top) and red (elsewhere) reflected from the actual checker
+image, split cleanly at the horizon - decisive proof the image is
+being sampled correctly by direction, not a solid fallback or a
+broken/glitched read. The pre-existing constant-colour
+`infinite-light.pbrt` (section 88) still renders correctly, confirming
+no regression between the two mutually-exclusive code paths.
+`ray_tracer --gpu` against `K16` (no infinite light of its own)
+renders identically to before.

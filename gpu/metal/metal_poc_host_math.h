@@ -435,6 +435,61 @@ inline void buildEnvDistribution2D(const unsigned char* rgba, int width, int hei
     dist.marginalCDF[height] = 1.0f;
 }
 
+// Same as the RGBA8 overload above, but for an already-linear, already-
+// decoded float RGB image (3 floats/pixel, row-major) - pbrt_load.h's
+// own InfiniteLight::imagePixels is already resolved this way (a real
+// HDR/EXR-style image decodes straight to linear float, no sRGB byte
+// roundtrip to reverse), so this skips srgbByteToLinear() entirely
+// rather than needing a synthetic 8-bit encode/decode roundtrip just to
+// reuse the other overload. Otherwise identical (same luminance
+// weights/sin(theta) solid-angle Jacobian/degenerate-row fallback).
+inline void buildEnvDistribution2D(const float* rgb, int width, int height,
+                                    EnvDistribution2D& dist) {
+    dist.width = width;
+    dist.height = height;
+    dist.marginalCDF.assign((size_t)height + 1, 0.0f);
+    dist.conditionalCDF.assign((size_t)height * (width + 1), 0.0f);
+
+    std::vector<double> rowWeight((size_t)height, 0.0);
+    std::vector<double> f((size_t)width, 0.0);
+    for (int row = 0; row < height; ++row) {
+        double sinTheta = sin(M_PI * (row + 0.5) / (double)height);
+        double rowSum = 0.0;
+        for (int col = 0; col < width; ++col) {
+            const float* px = rgb + ((size_t)row * width + col) * 3;
+            double luminance = 0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2];
+            f[col] = luminance * sinTheta;
+            rowSum += f[col];
+        }
+        rowWeight[row] = rowSum;
+        float* cdfRow = &dist.conditionalCDF[(size_t)row * (width + 1)];
+        cdfRow[0] = 0.0f;
+        if (rowSum > 0.0) {
+            double acc = 0.0;
+            for (int col = 0; col < width; ++col) {
+                acc += f[col];
+                cdfRow[col + 1] = (float)(acc / rowSum);
+            }
+        } else {
+            for (int col = 0; col < width; ++col) cdfRow[col + 1] = (float)(col + 1) / (float)width;
+        }
+        cdfRow[width] = 1.0f;
+    }
+    double totalWeight = 0.0;
+    for (int row = 0; row < height; ++row) totalWeight += rowWeight[row];
+    dist.marginalCDF[0] = 0.0f;
+    if (totalWeight > 0.0) {
+        double acc = 0.0;
+        for (int row = 0; row < height; ++row) {
+            acc += rowWeight[row];
+            dist.marginalCDF[row + 1] = (float)(acc / totalWeight);
+        }
+    } else {
+        for (int row = 0; row < height; ++row) dist.marginalCDF[row + 1] = (float)(row + 1) / (float)height;
+    }
+    dist.marginalCDF[height] = 1.0f;
+}
+
 // Largest `i` such that `cdf[i] <= u`, clamped to `[0, n-1]` - a plain
 // binary search (`cdf` has `n+1` monotonic entries, `cdf[0]==0`,
 // `cdf[n]==1`); the same lookup a GPU-side binary search over the

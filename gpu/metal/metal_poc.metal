@@ -158,6 +158,15 @@ struct Uniforms {
     // it, and the same one envMapWidth==0 still falls back to today.
     uint pbrtHasConstantEnvLight;
     packed_float3 pbrtEnvColor;
+    // A pbrt-loaded scene's own image-based LightSource "infinite" (an
+    // actual named image file, as opposed to pbrtHasConstantEnvLight's
+    // colour-only case just above) - mutually exclusive with that flag
+    // (an infinite light is either constant-colour or image-based, never
+    // both - see metal_poc.mm's own loadPbrtScene()). Reads pbrtEnvTexture
+    // (see the kernel's own texture argument comment) via a plain
+    // equirectangular lookup, same miss-path-only scope cut as the
+    // constant-colour case - no NEE/MIS/importance-sampling strategy yet.
+    uint pbrtHasImageEnvLight;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -3165,6 +3174,14 @@ kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
     texture2d<float, access::sample> earthTexture [[texture(1)]],
     texture2d<float, access::sample> goniometricTexture [[texture(2)]],
+    // A pbrt-loaded scene's own image-based LightSource "infinite" -
+    // deliberately a SEPARATE texture from earthTexture above (never
+    // repointing that one - see metal_poc.mm's own loadPbrtScene()
+    // comment on why doing so would corrupt the hardcoded room's own
+    // materialType-3 wall, which reads earthTexture for a completely
+    // different purpose). Miss-path-only, same scope cut as the
+    // constant-colour case (section 88) - see the miss-path code below.
+    texture2d<float, access::sample> pbrtEnvTexture [[texture(3)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
@@ -3553,6 +3570,15 @@ kernel void primaryRayKernel(
                         envMissWeight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfEnv * pdfEnv);
                     }
                     radiance += throughput * envColor * envMissWeight;
+                } else if (uniforms.pbrtHasImageEnvLight != 0u) {
+                    // A pbrt-loaded scene's own image-based infinite
+                    // light - plain equirectangular lookup, no MIS
+                    // (matching the constant-colour arm just below: no
+                    // NEE strategy exists for this light yet to double-
+                    // count against).
+                    float2 pbrtEnvUV = equirectangularUV(normalize(rayDir));
+                    float3 pbrtEnvColorSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    radiance += throughput * pbrtEnvColorSample;
                 } else if (uniforms.pbrtHasConstantEnvLight != 0u) {
                     // A pbrt-loaded scene's own constant-colour
                     // LightSource "infinite" (metal_poc.mm's own
