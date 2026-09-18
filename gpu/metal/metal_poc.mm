@@ -1274,12 +1274,18 @@ void MetalPocApp::buildScene() {
     // since the very first multi-material step but nothing had
     // actually used it since the mirror test quad was replaced by the
     // dielectric sphere back in step 6.
-    disks = {
+    // .insert(...begin(), {...}) rather than a plain `= {...}` assignment -
+    // loadPbrtScene() doesn't populate disks/diskMaterials today, but it's
+    // the same latent wipe-pbrt-data-out bug class `spheres`'s own
+    // insert-at-front comment documents, so this is fixed proactively
+    // rather than left as a trap for whenever a future increment adds
+    // pbrt disk support.
+    disks.insert(disks.begin(), {
         DiskData{PackedFloat3{0.97f, 0.3f, -0.3f}, PackedFloat3{-1.0f, 0.0f, 0.0f}, 0.22f},
-    };
-    diskMaterials = {
+    });
+    diskMaterials.insert(diskMaterials.begin(), {
         TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/1, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
-    };
+    });
 
     // A true delta point light - genuinely different from every
     // AreaLight above (zero area, hard-edged shadows, no NEE/MIS
@@ -1311,13 +1317,20 @@ void MetalPocApp::buildScene() {
     const float3 spotDir = simd::normalize(spotTarget - spotPos);
     const float3 pointLight1Color = blackbodyColor(9000.0f) * 1.0f;
     const float3 spotLightColor = blackbodyColor(3000.0f) * 11.3f;
-    pointLights = {
+    // .insert(pointLights.begin(), {...}) rather than a plain `pointLights =
+    // {...}` assignment - loadPbrtScene() (called earlier, above
+    // buildPowerLightSampler()) may already have pushed pbrt-parsed
+    // point/spot lights onto this vector by the time this code runs; a
+    // plain `=` would silently wipe those back out, the exact same bug
+    // class `spheres`'s own insert-at-front (see that vector's own
+    // comment) was already fixed for.
+    pointLights.insert(pointLights.begin(), {
         PointLightData{PackedFloat3{0.0f, 0.3f, 0.3f}, PackedFloat3{pointLight1Color.x, pointLight1Color.y, pointLight1Color.z}},
         PointLightData{PackedFloat3{spotPos.x, spotPos.y, spotPos.z}, PackedFloat3{spotLightColor.x, spotLightColor.y, spotLightColor.z},
                        PackedFloat3{spotDir.x, spotDir.y, spotDir.z},
                        /*cosOuterAngle=*/cosf(25.0f * (float)M_PI / 180.0f),
                        /*cosInnerAngle=*/cosf(15.0f * (float)M_PI / 180.0f)},
-    };
+    });
 
     // A directional ("sun") light - genuinely different in KIND from
     // both point-light entries above: parallel rays with no position
@@ -1332,9 +1345,12 @@ void MetalPocApp::buildScene() {
     // rather than being trivially self-shadowed by this room's own
     // geometry on every shading point.
     const float3 sunColor = blackbodyColor(5778.0f) * 2.7f;
-    directionalLights = {
+    // Same insert-at-front reasoning as `pointLights` just above - a plain
+    // `=` here would wipe out any distant light loadPbrtScene() already
+    // pushed.
+    directionalLights.insert(directionalLights.begin(), {
         DirectionalLightData{PackedFloat3{0.1f, -0.15f, -1.0f}, PackedFloat3{sunColor.x, sunColor.y, sunColor.z}},
-    };
+    });
 
     // A "slide projector" light - see metal_poc.metal's own
     // ProjectionLight comment. Mounted near the ceiling on the room's
@@ -1352,12 +1368,16 @@ void MetalPocApp::buildScene() {
     // whole wall; aspect 2.0 roughly matches earthmap.jpg's own
     // 2048x1025 (~2:1) proportions so the projected image isn't
     // visibly stretched.
-    projectionLights = {
+    // insert(...begin(), ...) - same latent-wipe-bug reasoning as
+    // disks/diskMaterials above (loadPbrtScene() doesn't populate this
+    // vector today, but this proactively closes the same trap for
+    // whenever it does).
+    projectionLights.insert(projectionLights.begin(), {
         makeProjectionLight(/*position=*/float3{0.1f, 0.85f, -0.15f},
                              /*target=*/float3{1.0f, -0.05f, -0.15f},
                              /*worldUp=*/float3{0.0f, 1.0f, 0.0f},
                              /*fovDegrees=*/38.0f, /*aspect=*/2.0f, /*scale=*/25.0f),
-    };
+    });
 
     // A goniometric ("IES-profile") light - see metal_poc.metal's own
     // GoniometricLight comment. Mounted near the ceiling on the room's
@@ -1371,12 +1391,13 @@ void MetalPocApp::buildScene() {
     // other post-process/lighting knob in this POC was), not picked from
     // theory alone.
     const float3 goniometricColor = blackbodyColor(4500.0f) * 13.0f;
-    goniometricLights = {
+    // Same insert-at-front reasoning as projectionLights just above.
+    goniometricLights.insert(goniometricLights.begin(), {
         makeGoniometricLight(/*position=*/float3{-0.1f, 0.85f, -0.15f},
                               /*target=*/float3{-1.0f, -0.05f, -0.15f},
                               /*worldUp=*/float3{0.0f, 1.0f, 0.0f},
                               /*emission=*/goniometricColor, /*scale=*/1.0f),
-    };
+    });
     goniometricImageSize = 64;
     goniometricImage =
         buildGoniometricProfileImage(goniometricImageSize, /*cosCutoff=*/cosf(35.0f * (float)M_PI / 180.0f),
@@ -1703,12 +1724,89 @@ void MetalPocApp::loadPbrtScene() {
                         "instanced sphere can't be represented by this loader's analytic sphere "
                         "primitive\n", skippedInstancedSpheres);
 
+    // --- Punctual lights (point/spot/distant) ---------------------------
+    // Point and spot both reuse PointLightData - the SAME GPU buffer/
+    // shading path the hardcoded room's own point+spot lights already use
+    // (see that struct's own comment: direction/cosOuterAngle/
+    // cosInnerAngle default to "omnidirectional" unless a spot cone
+    // overrides them, exactly PointLightData's own existing convention).
+    // Distant reuses DirectionalLightData.
+    //
+    // Intensity/radiance scale compensation: this app's own point/spot
+    // falloff is a real 1/distance^2 term evaluated in ITS OWN internal
+    // (rescaled) coordinate space (metal_poc.metal's own `/ plDistSq`
+    // division, on toWorld()-transformed positions) - leaving a
+    // pbrt-authored "I" unchanged while every point/spot light's own
+    // distance to a hit point shrinks by sceneScale would inflate
+    // apparent brightness by 1/sceneScale^2 relative to the same scene
+    // rendered at its own native scale. Multiplying by sceneScale*
+    // sceneScale exactly cancels that: irradiance = I/d^2, d'=d*
+    // sceneScale => I'=I*sceneScale^2 keeps I'/d'^2 == I/d^2. Distant
+    // lights need no such compensation - a directional light's own
+    // contribution has no distance term at all (metal_poc.metal's own
+    // DirectionalLight comment), the same reason this loader's area
+    // lights above also need none (their own area shrinks by
+    // sceneScale^2 in lockstep with d^2, cancelling exactly).
+    //
+    // Goniometric/Projection are real image-based light kinds this
+    // loader doesn't parse/upload an image asset for yet - skipped with
+    // a warning, a separate, still-open gap from the rest of this block.
+    const float intensityScale = sceneScale * sceneScale;
+    size_t skippedImageBasedLights = 0;
+    for (const pbrt_flatten::PunctualLight& pl : scene.punctualLights) {
+        const float3 baseEmission{(float)(pl.intensity[0] * pl.scale),
+                                   (float)(pl.intensity[1] * pl.scale),
+                                   (float)(pl.intensity[2] * pl.scale)};
+        switch (pl.kind) {
+            case pbrt_flatten::PunctualLightKind::Point: {
+                const float3 pos = toWorld(float3{(float)pl.pos[0], (float)pl.pos[1], (float)pl.pos[2]});
+                const float3 emission = baseEmission * intensityScale;
+                pointLights.push_back(PointLightData{
+                    PackedFloat3{pos.x, pos.y, pos.z},
+                    PackedFloat3{emission.x, emission.y, emission.z}});
+                break;
+            }
+            case pbrt_flatten::PunctualLightKind::Spot: {
+                const float3 pos = toWorld(float3{(float)pl.pos[0], (float)pl.pos[1], (float)pl.pos[2]});
+                const float3 dir = simd::normalize(float3{(float)pl.dir[0], (float)pl.dir[1], (float)pl.dir[2]});
+                const float3 emission = baseEmission * intensityScale;
+                pointLights.push_back(PointLightData{
+                    PackedFloat3{pos.x, pos.y, pos.z},
+                    PackedFloat3{emission.x, emission.y, emission.z},
+                    PackedFloat3{dir.x, dir.y, dir.z},
+                    /*cosOuterAngle=*/cosf((float)pl.coneAngleDeg * (float)M_PI / 180.0f),
+                    /*cosInnerAngle=*/cosf((float)pl.falloffStartAngleDeg * (float)M_PI / 180.0f)});
+                break;
+            }
+            case pbrt_flatten::PunctualLightKind::Distant: {
+                // pl.dir is "wi" (toward the light, see PunctualLight's own
+                // field comment); DirectionalLightData::direction is the
+                // light's own direction of TRAVEL - the sign convention
+                // the hardcoded room's own existing directional light
+                // already establishes (its `direction` points along -z,
+                // "through the room's own open front", i.e. the way the
+                // light travels, not back toward its source).
+                const float3 wi = simd::normalize(float3{(float)pl.dir[0], (float)pl.dir[1], (float)pl.dir[2]});
+                directionalLights.push_back(DirectionalLightData{
+                    PackedFloat3{-wi.x, -wi.y, -wi.z},
+                    PackedFloat3{baseEmission.x, baseEmission.y, baseEmission.z}});
+                break;
+            }
+            case pbrt_flatten::PunctualLightKind::Goniometric:
+            case pbrt_flatten::PunctualLightKind::Projection:
+            default:
+                ++skippedImageBasedLights;
+                break;
+        }
+    }
+    if (skippedImageBasedLights > 0)
+        fprintf(stderr, "loadPbrtScene: %zu goniometric/projection light(s) skipped - image-based "
+                        "punctual lights are not yet supported by this POC's scene loader\n",
+                skippedImageBasedLights);
+
     // --- Unsupported features - skipped, warned, not fatal --------------
     if (scene.infiniteLight.present)
         fprintf(stderr, "loadPbrtScene: LightSource \"infinite\" skipped - not yet supported by this POC's scene loader\n");
-    if (!scene.punctualLights.empty())
-        fprintf(stderr, "loadPbrtScene: %zu punctual light(s) skipped - not yet supported by this POC's scene loader\n",
-                scene.punctualLights.size());
     if (!scene.disks.empty() || !scene.cylinders.empty() || !scene.cones.empty() ||
         !scene.paraboloids.empty() || !scene.bilinearPatches.empty() || !scene.curves.empty())
         fprintf(stderr, "loadPbrtScene: disk/cylinder/cone/paraboloid/bilinearmesh/curve shapes skipped - "
