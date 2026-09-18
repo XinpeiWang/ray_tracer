@@ -155,10 +155,14 @@ struct Uniforms {
     PackedFloat3 pbrtEnvColor{0, 0, 0};
     // A pbrt-loaded scene's own image-based LightSource "infinite" -
     // mutually exclusive with pbrtHasConstantEnvLight above. Reads
-    // pbrtEnvTexture via a plain equirectangular lookup, same
-    // miss-path-only scope cut - see metal_poc.metal's own mirrored
-    // comment.
+    // pbrtEnvTexture via a plain equirectangular lookup - see
+    // metal_poc.metal's own mirrored comment.
     uint32_t pbrtHasImageEnvLight = 0;
+    // pbrtEnvTexture's own SEPARATE EnvDistribution2D dimensions (section
+    // 96) - see metal_poc.metal's own mirrored comment on
+    // Uniforms::pbrtEnvMapWidth.
+    uint32_t pbrtEnvMapWidth = 0;
+    uint32_t pbrtEnvMapHeight = 0;
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -2598,6 +2602,36 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         envConditionalCDFBuffer = [device newBufferWithBytes:&dummy length:sizeof(float) options:MTLResourceStorageModeShared];
     }
 
+    // pbrtEnvMarginalCDF/pbrtEnvConditionalCDF buffers (section 96) - the
+    // NEE-importance-sampling counterpart to pbrtEnvTexture above, same
+    // idea as envMarginalCDF/envConditionalCDF just above but for a
+    // SEPARATE image (a pbrt-loaded scene's own image-based infinite
+    // light, not earthTexture). Uses the float-RGB buildEnvDistribution2D()
+    // overload directly on pbrtEnvImagePixels (already linear, already
+    // decoded - no srgbByteToLinear() round-trip needed the way
+    // earthPixels' own RGBA8 bytes require). Empty/dummy fallback when
+    // there's no image-based infinite light, same "0 disables it" pattern
+    // as envMapWidth's own fallback.
+    EnvDistribution2D pbrtEnvDist;
+    if (havePbrtImageEnvLight) {
+        buildEnvDistribution2D(pbrtEnvImagePixels.data(), pbrtEnvImageWidth, pbrtEnvImageHeight, pbrtEnvDist);
+    }
+    uint32_t pbrtEnvMapWidth = 0, pbrtEnvMapHeight = 0;
+    id<MTLBuffer> pbrtEnvMarginalCDFBuffer;
+    id<MTLBuffer> pbrtEnvConditionalCDFBuffer;
+    if (!pbrtEnvDist.marginalCDF.empty()) {
+        pbrtEnvMarginalCDFBuffer = [device newBufferWithBytes:pbrtEnvDist.marginalCDF.data()
+            length:pbrtEnvDist.marginalCDF.size() * sizeof(float) options:MTLResourceStorageModeShared];
+        pbrtEnvConditionalCDFBuffer = [device newBufferWithBytes:pbrtEnvDist.conditionalCDF.data()
+            length:pbrtEnvDist.conditionalCDF.size() * sizeof(float) options:MTLResourceStorageModeShared];
+        pbrtEnvMapWidth = (uint32_t)pbrtEnvDist.width;
+        pbrtEnvMapHeight = (uint32_t)pbrtEnvDist.height;
+    } else {
+        float pbrtEnvDummy = 0.0f;
+        pbrtEnvMarginalCDFBuffer = [device newBufferWithBytes:&pbrtEnvDummy length:sizeof(float) options:MTLResourceStorageModeShared];
+        pbrtEnvConditionalCDFBuffer = [device newBufferWithBytes:&pbrtEnvDummy length:sizeof(float) options:MTLResourceStorageModeShared];
+    }
+
     // GGX multi-scatter energy-compensation table (phase 2 - see phase
     // 1's own header comment in metal_poc_host_math.h for the full
     // "why," found by spot-checking this POC's GGX conductor material
@@ -2696,6 +2730,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // (ideally) no visible quality cost, verified via a dedicated
     // A/B render, not assumed.
     uniforms.adaptiveSampling = 1u;
+    uniforms.pbrtEnvMapWidth = pbrtEnvMapWidth;
+    uniforms.pbrtEnvMapHeight = pbrtEnvMapHeight;
     uniforms.envMapWidth = envMapWidth;
     uniforms.envMapHeight = envMapHeight;
     uniforms.ggxEnergyRoughRes = (uint32_t)ggxEnergyTable.roughRes;
@@ -2769,6 +2805,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setBuffer:envMarginalCDFBuffer offset:0 atIndex:19];
     [enc setBuffer:envConditionalCDFBuffer offset:0 atIndex:20];
     [enc setBuffer:ggxEnergyTableBuffer offset:0 atIndex:21];
+    [enc setBuffer:pbrtEnvMarginalCDFBuffer offset:0 atIndex:22];
+    [enc setBuffer:pbrtEnvConditionalCDFBuffer offset:0 atIndex:23];
     // Mark the AS + its dependent primitive ASes as used so Metal
     // knows about the indirection - required for instance
     // acceleration structures referencing primitive ones (now three:

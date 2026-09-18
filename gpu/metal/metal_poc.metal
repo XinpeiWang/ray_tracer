@@ -164,9 +164,19 @@ struct Uniforms {
     // (an infinite light is either constant-colour or image-based, never
     // both - see metal_poc.mm's own loadPbrtScene()). Reads pbrtEnvTexture
     // (see the kernel's own texture argument comment) via a plain
-    // equirectangular lookup, same miss-path-only scope cut as the
-    // constant-colour case - no NEE/MIS/importance-sampling strategy yet.
+    // equirectangular lookup.
     uint pbrtHasImageEnvLight;
+    // Importance-sampling dimensions for pbrtEnvTexture's own SEPARATE
+    // EnvDistribution2D (section 96) - same idea as envMapWidth/
+    // envMapHeight above, built from a DIFFERENT image (pbrtEnvTexture,
+    // not earthTexture) via metal_poc_host_math.h's float-RGB
+    // buildEnvDistribution2D() overload (pbrt's own infinite-light image
+    // is already decoded linear float, unlike earthTexture's 8-bit JPEG
+    // source). 0 (every scene without a pbrt-loaded image-based infinite
+    // light) skips this NEE strategy entirely in every material's own
+    // shading function, same "0 disables it" pattern as envMapWidth.
+    uint pbrtEnvMapWidth;
+    uint pbrtEnvMapHeight;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -1743,9 +1753,13 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                             device const float* envMarginalCDF,
                             device const float* envConditionalCDF,
                             uint envMapWidth, uint envMapHeight,
+                            device const float* pbrtEnvMarginalCDF,
+                            device const float* pbrtEnvConditionalCDF,
+                            uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
                             device const float* ggxEnergyTable,
                             uint ggxEnergyRoughRes, uint ggxEnergyMuRes,
                             texture2d<float, access::sample> earthTexture,
+                            texture2d<float, access::sample> pbrtEnvTexture,
                             texture2d<float, access::sample> goniometricTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
@@ -1983,7 +1997,18 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
         // own comment) never applied one either, so this NEE addition
         // stays consistent with that pre-existing limitation rather
         // than introducing a new correctness asymmetry between the two.
-        if (envMapWidth > 0u) {
+        // envMapWidth>0 alone isn't enough to gate this - it's built
+        // from earthPixels UNCONDITIONALLY (metal_poc.mm), independent of
+        // whether the current scene's own miss path actually uses
+        // earthTexture as its sky. A pbrt-loaded scene always sets
+        // useEnvironmentMap=0 (its own sky, if any, replaces earthTexture
+        // - see buildScene()'s own comment there), so without this check
+        // every pbrt scene's materials would incorrectly importance-
+        // sample and add light from earthTexture as if it were the
+        // active environment, even though nothing in the miss path ever
+        // shows it as sky for that render - a real bug found while
+        // adding the pbrt-env NEE block below (section 96).
+        if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
             float envPdfSolidAngle;
             float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
                                                        int(envMapWidth), int(envMapHeight),
@@ -2013,6 +2038,45 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * envBrdf * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
+
+        // Same NEE/MIS strategy, for a pbrt-loaded scene's own SEPARATE
+        // image-based infinite light (section 96) - a genuinely
+        // different texture/CDF pair, gated on its own pbrtEnvMapWidth
+        // rather than envMapWidth so it's a pure no-op for every scene
+        // without one.
+        if (pbrtEnvMapWidth > 0u) {
+            float pbrtEnvPdfSolidAngle;
+            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+                                                           randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
+            float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
+            if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
+                float3 pbrtEnvWiLocal = float3(dot(pbrtEnvWi, tangent), dot(pbrtEnvWi, bitangent), dot(pbrtEnvWi, facingNormal));
+                float3 pbrtEnvH = normalize(woLocal + pbrtEnvWiLocal);
+                float pbrtEnvNdotO = woLocal.z;
+                float pbrtEnvNdotI = max(pbrtEnvWiLocal.z, 0.0001);
+                float pbrtEnvDh = ggxD(pbrtEnvH, alphaX, alphaY);
+                float pbrtEnvG = ggxG(woLocal, pbrtEnvWiLocal, alphaX, alphaY);
+                float3 pbrtEnvF = frComplexRGB(max(dot(woLocal, pbrtEnvH), 0.0), mat.conductorEta, mat.conductorK);
+                float3 pbrtEnvBrdf = pbrtEnvDh * pbrtEnvG * pbrtEnvF * energyScale / max(4.0 * pbrtEnvNdotO * pbrtEnvNdotI, 1e-6);
+
+                ray pbrtEnvShadowRay;
+                pbrtEnvShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                pbrtEnvShadowRay.direction = pbrtEnvWi;
+                pbrtEnvShadowRay.min_distance = 0.001f;
+                pbrtEnvShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
+                    isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                if (pbrtEnvShadowResult.type == intersection_type::none) {
+                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float pbrtEnvPdfBsdf = (pbrtEnvDh * ggxG1(woLocal, alphaX, alphaY)) / max(4.0 * pbrtEnvNdotO, 1e-6);
+                    float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
+                        / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
+                    radiance += throughput * pbrtEnvBrdf * pbrtEnvRadianceSample * pbrtEnvCosSurface / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
                 }
             }
         }
@@ -2052,7 +2116,11 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             device const float* envMarginalCDF,
                             device const float* envConditionalCDF,
                             uint envMapWidth, uint envMapHeight,
+                            device const float* pbrtEnvMarginalCDF,
+                            device const float* pbrtEnvConditionalCDF,
+                            uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
                             texture2d<float, access::sample> earthTexture,
+                            texture2d<float, access::sample> pbrtEnvTexture,
                             texture2d<float, access::sample> goniometricTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
@@ -2234,8 +2302,12 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
             }
 
             // Environment map (importance-sampled NEE, section 71) - see
-            // shadeLambertian's own comment for the full "why."
-            if (envMapWidth > 0u) {
+            // shadeLambertian's own comment for the full "why." Gated on
+            // useEnvironmentMap too, not just envMapWidth - see
+            // shadeConductor's own comment on why (envMapWidth alone
+            // stays nonzero for a pbrt-loaded scene, which always sets
+            // useEnvironmentMap=0).
+            if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
                 float envPdfSolidAngle;
                 float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
                                                            int(envMapWidth), int(envMapHeight),
@@ -2261,6 +2333,36 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     }
                 }
             }
+
+            // Same NEE/MIS strategy, for a pbrt-loaded scene's own
+            // SEPARATE image-based infinite light (section 96) - see
+            // shadeConductor's own comment.
+            if (pbrtEnvMapWidth > 0u) {
+                float pbrtEnvPdfSolidAngle;
+                float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                               int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+                                                               randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
+                float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
+                if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
+                    ray pbrtEnvShadowRay;
+                    pbrtEnvShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    pbrtEnvShadowRay.direction = pbrtEnvWi;
+                    pbrtEnvShadowRay.min_distance = 0.001f;
+                    pbrtEnvShadowRay.max_distance = 1e5f;
+                    intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
+                        isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                    if (pbrtEnvShadowResult.type == intersection_type::none) {
+                        float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                        float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                        float pbrtEnvPdfBsdf = pbrtEnvCosSurface / M_PI_F;
+                        float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
+                            / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
+                        float pbrtEnvCoatTransmitIn = 1.0 - frDielectric(pbrtEnvCosSurface, kClearcoatEta);
+                        radiance += throughput * albedo * (1.0 / M_PI_F) * pbrtEnvCoatTransmitIn
+                                    * pbrtEnvRadianceSample * pbrtEnvCosSurface / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
+                    }
+                }
+            }
         }
 
         rayDir = cosineSampleHemisphere(facingNormal, rngState);
@@ -2283,7 +2385,11 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                                       device const float* envMarginalCDF,
                                       device const float* envConditionalCDF,
                                       uint envMapWidth, uint envMapHeight,
+                                      device const float* pbrtEnvMarginalCDF,
+                                      device const float* pbrtEnvConditionalCDF,
+                                      uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
                                       texture2d<float, access::sample> earthTexture,
+                                      texture2d<float, access::sample> pbrtEnvTexture,
                                       texture2d<float, access::sample> goniometricTexture,
                                       sampler textureSampler,
                                       intersector<instancing, triangle_data> isect,
@@ -2454,7 +2560,9 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
         // (unlike a fixed-position light, whose side is decided once per
         // hit point), so which lobe/tint/pdf-weight/shadow-ray-offset
         // applies is decided by that sign, exactly as above.
-        if (envMapWidth > 0u) {
+        // Gated on useEnvironmentMap too, not just envMapWidth - see
+        // shadeConductor's own comment.
+        if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
             float envPdfSolidAngle;
             float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
                                                        int(envMapWidth), int(envMapHeight),
@@ -2483,6 +2591,39 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                 }
             }
         }
+
+        // Same NEE/MIS strategy, for a pbrt-loaded scene's own SEPARATE
+        // image-based infinite light (section 96) - see shadeConductor's
+        // own comment. Same signed-lobe-pick shape as the block above.
+        if (pbrtEnvMapWidth > 0u) {
+            float pbrtEnvPdfSolidAngle;
+            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+                                                           randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
+            float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
+            if (pbrtEnvCosSurface != 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
+                bool pbrtEnvReflect = pbrtEnvCosSurface > 0.0;
+                float3 pbrtEnvLobeTint = pbrtEnvReflect ? albedo : mat.transmitColor;
+                float pbrtEnvLobeProb = pbrtEnvReflect ? (pr / pSum) : (pt / pSum);
+                float pbrtEnvAbsCos = abs(pbrtEnvCosSurface);
+                ray pbrtEnvShadowRay;
+                pbrtEnvShadowRay.origin = hitPoint + (pbrtEnvReflect ? facingNormal : -facingNormal) * 0.001f;
+                pbrtEnvShadowRay.direction = pbrtEnvWi;
+                pbrtEnvShadowRay.min_distance = 0.001f;
+                pbrtEnvShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
+                    isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                if (pbrtEnvShadowResult.type == intersection_type::none) {
+                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float pbrtEnvPdfBsdf = pbrtEnvLobeProb * pbrtEnvAbsCos / M_PI_F;
+                    float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
+                        / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
+                    radiance += throughput * pbrtEnvLobeTint * (1.0 / M_PI_F)
+                                * pbrtEnvRadianceSample * pbrtEnvAbsCos / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
+                }
+            }
+        }
     }
 
     bool reflect = randFloat(rngState) < (pr / pSum);
@@ -2505,7 +2646,11 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                              device const float* envMarginalCDF,
                              device const float* envConditionalCDF,
                              uint envMapWidth, uint envMapHeight,
+                             device const float* pbrtEnvMarginalCDF,
+                             device const float* pbrtEnvConditionalCDF,
+                             uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
                              texture2d<float, access::sample> earthTexture,
+                             texture2d<float, access::sample> pbrtEnvTexture,
                              texture2d<float, access::sample> goniometricTexture,
                              sampler textureSampler,
                              intersector<instancing, triangle_data> isect,
@@ -2662,7 +2807,9 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
         // light above already uses, just with a direction-dependent (not
         // point) light source and an importance-sampled (not uniform)
         // sampling strategy.
-        if (envMapWidth > 0u) {
+        // Gated on useEnvironmentMap too, not just envMapWidth - see
+        // shadeConductor's own comment.
+        if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
             float envPdfSolidAngle;
             float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
                                                        int(envMapWidth), int(envMapHeight),
@@ -2684,6 +2831,35 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * albedo * (1.0 / M_PI_F)
                                 * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
+
+        // Same NEE/MIS strategy, for a pbrt-loaded scene's own SEPARATE
+        // image-based infinite light (section 96) - see shadeConductor's
+        // own comment.
+        if (pbrtEnvMapWidth > 0u) {
+            float pbrtEnvPdfSolidAngle;
+            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+                                                           randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
+            float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
+            if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
+                ray pbrtEnvShadowRay;
+                pbrtEnvShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                pbrtEnvShadowRay.direction = pbrtEnvWi;
+                pbrtEnvShadowRay.min_distance = 0.001f;
+                pbrtEnvShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
+                    isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                if (pbrtEnvShadowResult.type == intersection_type::none) {
+                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float pbrtEnvPdfBsdf = pbrtEnvCosSurface / M_PI_F;
+                    float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
+                        / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
+                    radiance += throughput * albedo * (1.0 / M_PI_F)
+                                * pbrtEnvRadianceSample * pbrtEnvCosSurface / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
                 }
             }
         }
@@ -2747,7 +2923,11 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             device const float* envMarginalCDF,
                             device const float* envConditionalCDF,
                             uint envMapWidth, uint envMapHeight,
+                            device const float* pbrtEnvMarginalCDF,
+                            device const float* pbrtEnvConditionalCDF,
+                            uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
                             texture2d<float, access::sample> earthTexture,
+                            texture2d<float, access::sample> pbrtEnvTexture,
                             texture2d<float, access::sample> goniometricTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
@@ -2886,7 +3066,9 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
             }
         }
 
-        if (envMapWidth > 0u) {
+        // Gated on useEnvironmentMap too, not just envMapWidth - see
+        // shadeConductor's own comment.
+        if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
             float envPdfSolidAngle;
             float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
                                                        int(envMapWidth), int(envMapHeight),
@@ -2908,6 +3090,35 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * albedo * orenNayarF(woWorld, envWi, facingNormal, mat.roughness)
                                 * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
+
+        // Same NEE/MIS strategy, for a pbrt-loaded scene's own SEPARATE
+        // image-based infinite light (section 96) - see shadeConductor's
+        // own comment.
+        if (pbrtEnvMapWidth > 0u) {
+            float pbrtEnvPdfSolidAngle;
+            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+                                                           randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
+            float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
+            if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
+                ray pbrtEnvShadowRay;
+                pbrtEnvShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                pbrtEnvShadowRay.direction = pbrtEnvWi;
+                pbrtEnvShadowRay.min_distance = 0.001f;
+                pbrtEnvShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
+                    isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                if (pbrtEnvShadowResult.type == intersection_type::none) {
+                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float pbrtEnvPdfBsdf = pbrtEnvCosSurface / M_PI_F;
+                    float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
+                        / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
+                    radiance += throughput * albedo * orenNayarF(woWorld, pbrtEnvWi, facingNormal, mat.roughness)
+                                * pbrtEnvRadianceSample * pbrtEnvCosSurface / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
                 }
             }
         }
@@ -2984,7 +3195,11 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                           device const float* envMarginalCDF,
                           device const float* envConditionalCDF,
                           uint envMapWidth, uint envMapHeight,
+                          device const float* pbrtEnvMarginalCDF,
+                          device const float* pbrtEnvConditionalCDF,
+                          uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
                           texture2d<float, access::sample> earthTexture,
+                          texture2d<float, access::sample> pbrtEnvTexture,
                           texture2d<float, access::sample> goniometricTexture,
                           sampler textureSampler,
                           intersector<instancing, triangle_data> isect,
@@ -3127,7 +3342,9 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
             }
         }
 
-        if (envMapWidth > 0u) {
+        // Gated on useEnvironmentMap too, not just envMapWidth - see
+        // shadeConductor's own comment.
+        if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
             float envPdfSolidAngle;
             float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
                                                        int(envMapWidth), int(envMapHeight),
@@ -3148,6 +3365,34 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                         / (envPdfSolidAngle * envPdfSolidAngle + uniformPdf * uniformPdf);
                     radiance += throughput * albedo * velvetF(woWorld, envWi, facingNormal, mat.ior)
                                 * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
+
+        // Same NEE/MIS strategy, for a pbrt-loaded scene's own SEPARATE
+        // image-based infinite light (section 96) - see shadeConductor's
+        // own comment.
+        if (pbrtEnvMapWidth > 0u) {
+            float pbrtEnvPdfSolidAngle;
+            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+                                                           randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
+            float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
+            if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
+                ray pbrtEnvShadowRay;
+                pbrtEnvShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                pbrtEnvShadowRay.direction = pbrtEnvWi;
+                pbrtEnvShadowRay.min_distance = 0.001f;
+                pbrtEnvShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
+                    isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                if (pbrtEnvShadowResult.type == intersection_type::none) {
+                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
+                        / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + uniformPdf * uniformPdf);
+                    radiance += throughput * albedo * velvetF(woWorld, pbrtEnvWi, facingNormal, mat.ior)
+                                * pbrtEnvRadianceSample * pbrtEnvCosSurface / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
                 }
             }
         }
@@ -3204,6 +3449,10 @@ kernel void primaryRayKernel(
     device const float* envMarginalCDF [[buffer(19)]],
     device const float* envConditionalCDF [[buffer(20)]],
     device const float* ggxEnergyTable [[buffer(21)]],
+    // pbrtEnvTexture's own SEPARATE EnvDistribution2D CDFs (section 96) -
+    // see Uniforms::pbrtEnvMapWidth's own comment.
+    device const float* pbrtEnvMarginalCDF [[buffer(22)]],
+    device const float* pbrtEnvConditionalCDF [[buffer(23)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -3572,13 +3821,23 @@ kernel void primaryRayKernel(
                     radiance += throughput * envColor * envMissWeight;
                 } else if (uniforms.pbrtHasImageEnvLight != 0u) {
                     // A pbrt-loaded scene's own image-based infinite
-                    // light - plain equirectangular lookup, no MIS
-                    // (matching the constant-colour arm just below: no
-                    // NEE strategy exists for this light yet to double-
-                    // count against).
+                    // light. Now MIS-weighted against the NEE strategy
+                    // added in section 96 (mirrors the useEnvironmentMap
+                    // arm above exactly) - every material's own shading
+                    // function that does NEE now also samples
+                    // pbrtEnvTexture directly via pbrtEnvMapWidth, so a
+                    // BSDF-sampled ray escaping toward it needs the same
+                    // double-count protection.
                     float2 pbrtEnvUV = equirectangularUV(normalize(rayDir));
                     float3 pbrtEnvColorSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
-                    radiance += throughput * pbrtEnvColorSample;
+                    float pbrtEnvMissWeight = 1.0;
+                    if (!specularBounce && uniforms.pbrtEnvMapWidth > 0u) {
+                        float pdfPbrtEnv = pdfEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                                    int(uniforms.pbrtEnvMapWidth), int(uniforms.pbrtEnvMapHeight),
+                                                                    normalize(rayDir));
+                        pbrtEnvMissWeight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfPbrtEnv * pdfPbrtEnv);
+                    }
+                    radiance += throughput * pbrtEnvColorSample * pbrtEnvMissWeight;
                 } else if (uniforms.pbrtHasConstantEnvLight != 0u) {
                     // A pbrt-loaded scene's own constant-colour
                     // LightSource "infinite" (metal_poc.mm's own
@@ -3789,8 +4048,9 @@ kernel void primaryRayKernel(
                 if (!shadeConductor(mat, hitPoint, normal, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
+                                     pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
                                      ggxEnergyTable, uniforms.ggxEnergyRoughRes, uniforms.ggxEnergyMuRes,
-                                     earthTexture, goniometricTexture, textureSampler,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 1u) {
@@ -3802,35 +4062,40 @@ kernel void primaryRayKernel(
                 if (!shadeClearcoat(mat, albedo, hitPoint, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
-                                     earthTexture, goniometricTexture, textureSampler,
+                                     pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 12u) {
                 if (!shadeDiffuseTransmission(mat, albedo, hitPoint, facingNormal, uniforms,
                                                lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                                envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
-                                               earthTexture, goniometricTexture, textureSampler,
+                                               pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                               earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
                                                isect, accelStructure, functionTable,
                                                rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 13u) {
                 if (!shadeOrenNayar(mat, albedo, hitPoint, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
-                                     earthTexture, goniometricTexture, textureSampler,
+                                     pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 14u) {
                 if (!shadeVelvet(mat, albedo, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
-                                  earthTexture, goniometricTexture, textureSampler,
+                                  pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                  earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else {
                 if (!shadeLambertian(mat, albedo, hitPoint, facingNormal, uniforms,
                                       lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                       envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
-                                      earthTexture, goniometricTexture, textureSampler,
+                                      pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                      earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
                                       isect, accelStructure, functionTable,
                                       rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             }
