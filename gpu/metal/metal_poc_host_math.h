@@ -758,3 +758,25 @@ inline simd::float3 punctualLightWorldForward(const double worldToLight[9]) {
     return simd::normalize(simd::float3{(float)worldToLight[6], (float)worldToLight[7],
                                          (float)worldToLight[8]});
 }
+
+// Same derivation as punctualLightWorldForward() above, for the light's
+// local +Y ("up") axis instead of +Z - the SECOND row of worldToLight
+// (indices 3/4/5), by the exact same transpose-of-a-pure-rotation
+// argument. Added for section 98's own real per-light goniometric/
+// projection profile IMAGES: unlike the Approx (no-image) case, which
+// only ever needed the aim direction, a real image has a fixed roll
+// around that axis (the image's own "up") that an arbitrary world-up
+// hint (metal_poc.mm's makeProjectionLight()/makeGoniometricLight()'s
+// own default, fine when there's no real image to get a roll wrong)
+// would get wrong whenever the scene's own aiming rotation includes
+// roll. Feeding THIS into those same helpers' existing cross-product
+// formula (right = cross(forward, up), the final up = cross(right,
+// forward)) recovers the real roll while keeping the exact same
+// handedness/sign convention those helpers already establish - safer
+// than deriving right/up directly from worldToLight's own remaining
+// rows, whose handedness relative to this codebase's own right/up/
+// forward convention was not independently confirmed to match.
+inline simd::float3 punctualLightWorldUp(const double worldToLight[9]) {
+    return simd::normalize(simd::float3{(float)worldToLight[3], (float)worldToLight[4],
+                                         (float)worldToLight[5]});
+}

@@ -338,6 +338,10 @@ struct ProjectionLight {
     float tanHalfFovX;
     float tanHalfFovY;
     float scale;
+    // Mirrors metal_poc.mm's own ProjectionLightData::usePbrtTexture
+    // comment (section 98) - selects pbrtProjectionTexture instead of
+    // the room's own shared earthTexture at every call site below.
+    uint usePbrtTexture;
 };
 
 // Evaluates a ProjectionLight's own emitted intensity toward a shading
@@ -448,6 +452,10 @@ struct GoniometricLight {
     packed_float3 up;
     packed_float3 emission;
     float scale;
+    // Mirrors ProjectionLight::usePbrtTexture above - selects
+    // pbrtGoniometricTexture instead of the room's own shared
+    // goniometricTexture.
+    uint usePbrtTexture;
 };
 
 inline float3 goniometricLightRadiance(float3 wiFromLight, packed_float3 lightForward,
@@ -1761,6 +1769,8 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                             texture2d<float, access::sample> earthTexture,
                             texture2d<float, access::sample> pbrtEnvTexture,
                             texture2d<float, access::sample> goniometricTexture,
+                            texture2d<float, access::sample> pbrtGoniometricTexture,
+                            texture2d<float, access::sample> pbrtProjectionTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
                             instance_acceleration_structure accelStructure,
@@ -1926,7 +1936,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
             if (pjCosSurface > 0.0) {
                 float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
                                                              pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
-                                                             earthTexture, textureSampler);
+                                                             (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
                 if (any(pjRadiance > float3(0.0))) {
                     float3 pjWiLocal = float3(dot(pjWi, tangent), dot(pjWi, bitangent), dot(pjWi, facingNormal));
                     float3 pjH = normalize(woLocal + pjWiLocal);
@@ -1962,7 +1972,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
             if (glCosSurface > 0.0) {
                 float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
                                                               gl.emission, gl.scale,
-                                                              goniometricTexture, textureSampler);
+                                                              (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
                 if (any(glRadiance > float3(0.0))) {
                     float3 glWiLocal = float3(dot(glWi, tangent), dot(glWi, bitangent), dot(glWi, facingNormal));
                     float3 glH = normalize(woLocal + glWiLocal);
@@ -2122,6 +2132,8 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             texture2d<float, access::sample> earthTexture,
                             texture2d<float, access::sample> pbrtEnvTexture,
                             texture2d<float, access::sample> goniometricTexture,
+                            texture2d<float, access::sample> pbrtGoniometricTexture,
+                            texture2d<float, access::sample> pbrtProjectionTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
                             instance_acceleration_structure accelStructure,
@@ -2253,7 +2265,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 if (pjCosSurface > 0.0) {
                     float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
                                                                  pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
-                                                                 earthTexture, textureSampler);
+                                                                 (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
                     if (any(pjRadiance > float3(0.0))) {
                         ray pjShadowRay;
                         pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -2282,7 +2294,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 if (glCosSurface > 0.0) {
                     float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
                                                                   gl.emission, gl.scale,
-                                                                  goniometricTexture, textureSampler);
+                                                                  (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
                     if (any(glRadiance > float3(0.0))) {
                         ray glShadowRay;
                         glShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -2391,6 +2403,8 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                                       texture2d<float, access::sample> earthTexture,
                                       texture2d<float, access::sample> pbrtEnvTexture,
                                       texture2d<float, access::sample> goniometricTexture,
+                                      texture2d<float, access::sample> pbrtGoniometricTexture,
+                                      texture2d<float, access::sample> pbrtProjectionTexture,
                                       sampler textureSampler,
                                       intersector<instancing, triangle_data> isect,
                                       instance_acceleration_structure accelStructure,
@@ -2501,7 +2515,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
             if (pjCosSurface != 0.0) {
                 float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
                                                              pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
-                                                             earthTexture, textureSampler);
+                                                             (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
                 if (any(pjRadiance > float3(0.0))) {
                     bool pjReflect = pjCosSurface > 0.0;
                     float3 pjLobeTint = pjReflect ? albedo : mat.transmitColor;
@@ -2532,7 +2546,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
             if (glCosSurface != 0.0) {
                 float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
                                                               gl.emission, gl.scale,
-                                                              goniometricTexture, textureSampler);
+                                                              (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
                 if (any(glRadiance > float3(0.0))) {
                     bool glReflect = glCosSurface > 0.0;
                     float3 glLobeTint = glReflect ? albedo : mat.transmitColor;
@@ -2652,6 +2666,8 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                              texture2d<float, access::sample> earthTexture,
                              texture2d<float, access::sample> pbrtEnvTexture,
                              texture2d<float, access::sample> goniometricTexture,
+                             texture2d<float, access::sample> pbrtGoniometricTexture,
+                             texture2d<float, access::sample> pbrtProjectionTexture,
                              sampler textureSampler,
                              intersector<instancing, triangle_data> isect,
                              instance_acceleration_structure accelStructure,
@@ -2746,7 +2762,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
             if (pjCosSurface > 0.0) {
                 float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
                                                              pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
-                                                             earthTexture, textureSampler);
+                                                             (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
                 if (any(pjRadiance > float3(0.0))) {
                     ray pjShadowRay;
                     pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -2774,7 +2790,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
             if (glCosSurface > 0.0) {
                 float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
                                                               gl.emission, gl.scale,
-                                                              goniometricTexture, textureSampler);
+                                                              (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
                 if (any(glRadiance > float3(0.0))) {
                     ray glShadowRay;
                     glShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -2929,6 +2945,8 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             texture2d<float, access::sample> earthTexture,
                             texture2d<float, access::sample> pbrtEnvTexture,
                             texture2d<float, access::sample> goniometricTexture,
+                            texture2d<float, access::sample> pbrtGoniometricTexture,
+                            texture2d<float, access::sample> pbrtProjectionTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
                             instance_acceleration_structure accelStructure,
@@ -3020,7 +3038,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
             if (pjCosSurface > 0.0) {
                 float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
                                                              pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
-                                                             earthTexture, textureSampler);
+                                                             (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
                 if (any(pjRadiance > float3(0.0))) {
                     ray pjShadowRay;
                     pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -3048,7 +3066,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
             if (glCosSurface > 0.0) {
                 float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
                                                               gl.emission, gl.scale,
-                                                              goniometricTexture, textureSampler);
+                                                              (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
                 if (any(glRadiance > float3(0.0))) {
                     ray glShadowRay;
                     glShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -3201,6 +3219,8 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                           texture2d<float, access::sample> earthTexture,
                           texture2d<float, access::sample> pbrtEnvTexture,
                           texture2d<float, access::sample> goniometricTexture,
+                          texture2d<float, access::sample> pbrtGoniometricTexture,
+                          texture2d<float, access::sample> pbrtProjectionTexture,
                           sampler textureSampler,
                           intersector<instancing, triangle_data> isect,
                           instance_acceleration_structure accelStructure,
@@ -3296,7 +3316,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
             if (pjCosSurface > 0.0) {
                 float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
                                                              pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
-                                                             earthTexture, textureSampler);
+                                                             (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
                 if (any(pjRadiance > float3(0.0))) {
                     ray pjShadowRay;
                     pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -3324,7 +3344,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
             if (glCosSurface > 0.0) {
                 float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
                                                               gl.emission, gl.scale,
-                                                              goniometricTexture, textureSampler);
+                                                              (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
                 if (any(glRadiance > float3(0.0))) {
                     ray glShadowRay;
                     glShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -3427,6 +3447,15 @@ kernel void primaryRayKernel(
     // different purpose). Miss-path-only, same scope cut as the
     // constant-colour case (section 88) - see the miss-path code below.
     texture2d<float, access::sample> pbrtEnvTexture [[texture(3)]],
+    // A pbrt-loaded scene's own real per-light goniometric/projection
+    // profile images (section 98) - same "separate slot, never repoint
+    // the room's own shared texture" reasoning as pbrtEnvTexture above.
+    // Only ONE of each kind is supported (metal_poc.mm's own
+    // havePbrtGoniometricImage/havePbrtProjectionImage comment); which
+    // light in a NEE loop reads which texture is picked per-light via
+    // GoniometricLight::usePbrtTexture/ProjectionLight::usePbrtTexture.
+    texture2d<float, access::sample> pbrtGoniometricTexture [[texture(4)]],
+    texture2d<float, access::sample> pbrtProjectionTexture [[texture(5)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
@@ -3737,7 +3766,7 @@ kernel void primaryRayKernel(
                         float3 pjWi = toProjLight / pjDist;
                         float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
                                                                      pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
-                                                                     earthTexture, textureSampler);
+                                                                     (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
                         if (any(pjRadiance > float3(0.0))) {
                             ray pjShadowRay;
                             pjShadowRay.origin = scatterPoint;
@@ -3765,7 +3794,7 @@ kernel void primaryRayKernel(
                         float3 glWi = toGoniLight / glDist;
                         float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
                                                                       gl.emission, gl.scale,
-                                                                      goniometricTexture, textureSampler);
+                                                                      (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
                         if (any(glRadiance > float3(0.0))) {
                             ray glShadowRay;
                             glShadowRay.origin = scatterPoint;
@@ -4050,7 +4079,7 @@ kernel void primaryRayKernel(
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
                                      ggxEnergyTable, uniforms.ggxEnergyRoughRes, uniforms.ggxEnergyMuRes,
-                                     earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 1u) {
@@ -4063,7 +4092,7 @@ kernel void primaryRayKernel(
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                     earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 12u) {
@@ -4071,7 +4100,7 @@ kernel void primaryRayKernel(
                                                lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                                envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                                pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                               earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
+                                               earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
                                                isect, accelStructure, functionTable,
                                                rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 13u) {
@@ -4079,7 +4108,7 @@ kernel void primaryRayKernel(
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                     earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 14u) {
@@ -4087,7 +4116,7 @@ kernel void primaryRayKernel(
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                   pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                  earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
+                                  earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else {
@@ -4095,7 +4124,7 @@ kernel void primaryRayKernel(
                                       lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                       envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                       pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                      earthTexture, pbrtEnvTexture, goniometricTexture, textureSampler,
+                                      earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
                                       isect, accelStructure, functionTable,
                                       rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             }

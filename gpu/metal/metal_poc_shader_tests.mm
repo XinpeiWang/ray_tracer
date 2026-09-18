@@ -71,6 +71,7 @@ struct ProjectionLightGPU {
     float tanHalfFovX;
     float tanHalfFovY;
     float scale;
+    uint32_t usePbrtTexture = 0;
 };
 
 // Mirrors metal_poc.metal's GoniometricLight byte-for-byte - needed to
@@ -83,6 +84,7 @@ struct GoniometricLightGPU {
     PackedFloat3 up;
     PackedFloat3 emission;
     float scale;
+    uint32_t usePbrtTexture = 0;
 };
 
 // Mirrors metal_poc.metal's AreaLight byte-for-byte - needed to build the

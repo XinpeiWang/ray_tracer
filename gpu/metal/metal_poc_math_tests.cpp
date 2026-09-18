@@ -503,6 +503,31 @@ static void testPunctualLightWorldForward() {
     expectNear("punctualLightWorldForward(rotX90).z", f1.z, 0.0, 1e-6);
 }
 
+// punctualLightWorldUp() - same two known matrices
+// testPunctualLightWorldForward() already uses (identity and
+// Rotate(90deg, X)), extended to the matrix's second row. Also checks
+// up stays exactly orthogonal to forward (a real property of any two
+// distinct rows of an orthonormal rotation matrix) for rotX90 - not
+// just that the row was read correctly in isolation, but that feeding
+// it into makeProjectionLight()/makeGoniometricLight()'s own
+// right=cross(forward,up) formula can never hit that formula's
+// degenerate (parallel-vectors) case.
+static void testPunctualLightWorldUp() {
+    const double identity[9] = {1, 0, 0,  0, 1, 0,  0, 0, 1};
+    float3 u0 = punctualLightWorldUp(identity);
+    expectNear("punctualLightWorldUp(identity).x", u0.x, 0.0, 1e-6);
+    expectNear("punctualLightWorldUp(identity).y", u0.y, 1.0, 1e-6);
+    expectNear("punctualLightWorldUp(identity).z", u0.z, 0.0, 1e-6);
+
+    const double rotX90[9] = {1, 0, 0,  0, 0, 1,  0, -1, 0};
+    float3 u1 = punctualLightWorldUp(rotX90);
+    float3 f1 = punctualLightWorldForward(rotX90);
+    expectNear("punctualLightWorldUp(rotX90).x", u1.x, 0.0, 1e-6);
+    expectNear("punctualLightWorldUp(rotX90).y", u1.y, 0.0, 1e-6);
+    expectNear("punctualLightWorldUp(rotX90).z", u1.z, 1.0, 1e-6);
+    expectNear("dot(forward, up) == 0 for rotX90", simd::dot(f1, u1), 0.0, 1e-6);
+}
+
 // GGX multi-scatter energy-compensation table (found via spot-checking
 // this POC's own GGX conductor material against Blender Cycles as a
 // second reference - see buildGGXEnergyTable's own header comment for the
@@ -560,6 +585,7 @@ int main() {
     testEnvDistribution2DUniformImageIsUniformInU();
     testEnvDistribution2DFloatOverloadMatchesByteOverload();
     testPunctualLightWorldForward();
+    testPunctualLightWorldUp();
     testGGXEnergyTableTrend();
 
     if (g_failures > 0) {

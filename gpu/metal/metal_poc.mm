@@ -205,6 +205,13 @@ struct ProjectionLightData {
     float tanHalfFovX;
     float tanHalfFovY;
     float scale;
+    // True for a pbrt-loaded light with its own real slide image (section
+    // 98) - selects pbrtProjectionTexture instead of the room's own
+    // shared earthTexture at the shading call site. False (every light
+    // before this one, including every hardcoded-room light and every
+    // pbrt-loaded Approx-fallback light) keeps reading earthTexture
+    // exactly as before - purely additive.
+    uint32_t usePbrtTexture = 0;
 };
 
 // Builds a ProjectionLightData aimed from `position` at `target`, with a
@@ -243,6 +250,10 @@ struct GoniometricLightData {
     PackedFloat3 up;
     PackedFloat3 emission;
     float scale;
+    // Same idea as ProjectionLightData::usePbrtTexture above - selects
+    // pbrtGoniometricTexture instead of the room's own shared
+    // goniometricTexture. False by default, purely additive.
+    uint32_t usePbrtTexture = 0;
 };
 
 // Builds a GoniometricLightData the same look-at way makeProjectionLight()
@@ -811,6 +822,33 @@ struct MetalPocApp {
     std::vector<float> pbrtEnvImagePixels;
     int pbrtEnvImageWidth = 0;
     int pbrtEnvImageHeight = 0;
+
+    // Set by loadPbrtScene() for the FIRST pbrt-loaded goniometric/
+    // projection light that names a real profile/slide image and
+    // successfully decodes (section 98) - unlike infinite light's own
+    // imagePixels above, PunctualLight::filename is NOT pre-resolved/
+    // decoded by pbrt_load.h (see that struct's own comment: only
+    // InfiniteLight gets that treatment), so this loader does its own
+    // pbrt_load::loadFileNear() + pbrt_load::detail::
+    // decodeInfiniteLightImage() call - reusing that decoder rather than
+    // writing a second one, since a goniometric/projection image is
+    // decoded exactly the same way (extension-dispatched, EXR via
+    // tinyexr or stb_image's float loader for everything else). Only ONE
+    // slot per kind, mirroring this POC's existing "one shared texture"
+    // architecture (goniometricTexture/earthTexture, section 57/91) -
+    // a SECOND image-based light of the same kind in one scene is warned
+    // and falls back to the Approx case (section 91/92), same as an
+    // unsupported light kind entirely. Row-major linear float RGB, same
+    // layout as pbrtEnvImagePixels above.
+    bool havePbrtGoniometricImage = false;
+    std::vector<float> pbrtGoniometricImagePixels;
+    int pbrtGoniometricImageWidth = 0;
+    int pbrtGoniometricImageHeight = 0;
+
+    bool havePbrtProjectionImage = false;
+    std::vector<float> pbrtProjectionImagePixels;
+    int pbrtProjectionImageWidth = 0;
+    int pbrtProjectionImageHeight = 0;
 
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
@@ -1808,9 +1846,10 @@ void MetalPocApp::loadPbrtScene() {
     // lights above also need none (their own area shrinks by
     // sceneScale^2 in lockstep with d^2, cancelling exactly).
     //
-    // Goniometric/Projection are real image-based light kinds this
-    // loader doesn't parse/upload an image asset for yet - skipped with
-    // a warning, a separate, still-open gap from the rest of this block.
+    // Goniometric/Projection real profile/slide images: the FIRST light
+    // of each kind that names one gets it (section 98, below); a SECOND
+    // one of the same kind, or one whose image fails to load/decode,
+    // falls back to the Approx (no-image) case and is counted here.
     const float intensityScale = sceneScale * sceneScale;
     size_t skippedImageBasedLights = 0;
     for (const pbrt_flatten::PunctualLight& pl : scene.punctualLights) {
@@ -1853,17 +1892,67 @@ void MetalPocApp::loadPbrtScene() {
                 break;
             }
             case pbrt_flatten::PunctualLightKind::Goniometric: {
-                if (pl.hadImageFilename) {
-                    // A real per-light IES profile image - out of scope,
-                    // same reason infinite light's own image case briefly
-                    // was (section 87/89 of the docs): this loader has no
-                    // per-light texture mechanism, and the hardcoded
-                    // room's own single goniometricTexture slot is
-                    // already spoken for.
-                    ++skippedImageBasedLights;
-                    break;
+                // A real per-light IES profile image (section 98) - only
+                // the FIRST such light in the scene gets one (this loader
+                // has one dedicated pbrtGoniometricTexture slot, same
+                // "one shared texture" constraint the hardcoded room's
+                // own single goniometricTexture already has - see
+                // metal_poc.h's own havePbrtGoniometricImage comment). A
+                // second one, or a decode failure, falls back to the
+                // Approx case below exactly as if no filename were named
+                // at all - erring toward a safe, working (if less
+                // accurate) render over dropping the light entirely.
+                if (pl.hadImageFilename && !havePbrtGoniometricImage) {
+                    std::string bytes;
+                    if (pbrt_load::loadFileNear(pbrtScenePath, pl.filename, bytes) &&
+                        pbrt_load::detail::decodeInfiniteLightImage(pl.filename, bytes,
+                            pbrtGoniometricImagePixels, pbrtGoniometricImageWidth, pbrtGoniometricImageHeight)) {
+                        havePbrtGoniometricImage = true;
+                        const float3 pos = toWorld(float3{(float)pl.pos[0], (float)pl.pos[1], (float)pl.pos[2]});
+                        const float3 emission = baseEmission * intensityScale;
+                        // Same equal-area octahedral mapping the hardcoded
+                        // room's own goniometric light already uses
+                        // (equalAreaSphereToSquare(), section 57) - a
+                        // right/up frame is needed to express "local"
+                        // direction the same way. A real IES profile can
+                        // have genuine azimuthal (non-rotationally-
+                        // symmetric) variation, so the roll matters here
+                        // too, not just for Projection below - using the
+                        // scene's own real worldToLight-derived up
+                        // (punctualLightWorldUp(), section 98) as the
+                        // worldUp hint into the SAME cross-product formula
+                        // makeGoniometricLight() already uses recovers
+                        // that real roll instead of guessing at it.
+                        const float3 forward = punctualLightWorldForward(pl.worldToLight);
+                        const float3 worldUpHint = punctualLightWorldUp(pl.worldToLight);
+                        const float3 right = simd::normalize(simd::cross(forward, worldUpHint));
+                        const float3 up = simd::cross(right, forward);
+                        goniometricLights.push_back(GoniometricLightData{
+                            PackedFloat3{pos.x, pos.y, pos.z},
+                            PackedFloat3{forward.x, forward.y, forward.z},
+                            PackedFloat3{right.x, right.y, right.z},
+                            PackedFloat3{up.x, up.y, up.z},
+                            PackedFloat3{emission.x, emission.y, emission.z},
+                            // pl.scale is ALREADY folded into `emission`
+                            // above (baseEmission = intensity*pl.scale,
+                            // see this function's own top-of-loop
+                            // comment) - GoniometricLightData::scale is
+                            // an INDEPENDENT multiplier the shader applies
+                            // on top (the hardcoded room's own light,
+                            // above, passes emission=I with no pl.scale
+                            // baked in and a real scale=1.0f here);
+                            // passing pl.scale a second time here would
+                            // double-count it.
+                            /*scale=*/1.0f,
+                            /*usePbrtTexture=*/1u});
+                        break;
+                    }
+                    fprintf(stderr, "loadPbrtScene: goniometric light's profile image '%s' could not be "
+                                    "read/decoded; falling back to the Approx (uniform) case\n", pl.filename.c_str());
                 }
-                // No profile image named - pbrt-v4's own documented
+                if (pl.hadImageFilename) ++skippedImageBasedLights;
+                // No profile image named (or a second one/a decode
+                // failure, both handled above) - pbrt-v4's own documented
                 // "Approx" fallback (uniform isotropic intensity, see
                 // pbrt_scenes/punctual-lights.pbrt's own header comment
                 // for why this is the common case, not just a
@@ -1880,12 +1969,64 @@ void MetalPocApp::loadPbrtScene() {
                 break;
             }
             case pbrt_flatten::PunctualLightKind::Projection: {
-                if (pl.hadImageFilename) {
-                    // A real per-light slide image - out of scope, same
-                    // reason a real goniometric profile still is.
-                    ++skippedImageBasedLights;
-                    break;
+                // A real per-light slide image (section 98) - same "one
+                // dedicated slot, first light wins, decode failure falls
+                // back to Approx" reasoning as Goniometric above.
+                if (pl.hadImageFilename && !havePbrtProjectionImage) {
+                    std::string bytes;
+                    if (pbrt_load::loadFileNear(pbrtScenePath, pl.filename, bytes) &&
+                        pbrt_load::detail::decodeInfiniteLightImage(pl.filename, bytes,
+                            pbrtProjectionImagePixels, pbrtProjectionImageWidth, pbrtProjectionImageHeight)) {
+                        havePbrtProjectionImage = true;
+                        const float3 pos = toWorld(float3{(float)pl.pos[0], (float)pl.pos[1], (float)pl.pos[2]});
+                        const float3 forward = punctualLightWorldForward(pl.worldToLight);
+                        // Same look-at-style right/up derivation
+                        // makeProjectionLight() already uses for the
+                        // hardcoded room's own light, but with the
+                        // scene's own REAL worldToLight-derived up
+                        // (punctualLightWorldUp(), section 98) as the
+                        // worldUp hint instead of a generic axis - a
+                        // projected slide has a real, meaningful roll
+                        // (the image's own up direction), which only the
+                        // scene's own rotation can supply correctly.
+                        const float3 worldUpHint = punctualLightWorldUp(pl.worldToLight);
+                        const float3 right = simd::normalize(simd::cross(forward, worldUpHint));
+                        const float3 up = simd::cross(right, forward);
+                        // pl.fovDeg is pbrt's own single "fov" parameter,
+                        // which real pbrt-v4 (and this project's own
+                        // src/shared/projection_light.h port, already
+                        // proven on the CPU/OptiX backends - see its own
+                        // "screenBounds"/"aspect" comments) always applies
+                        // to the SHORTER image axis: screen bounds are
+                        // [-aspect,aspect]x[-1,1] when aspect=width/height
+                        // >= 1 (a wide image, so Y/vertical is the fixed,
+                        // fov-sized axis and X/horizontal is the wider
+                        // one), or [-1,1]x[-1/aspect,1/aspect] when
+                        // aspect < 1 (a tall image, X fixed, Y taller).
+                        // tanHalfFovBase below is that fixed axis's own
+                        // half-angle; the other axis scales by aspect (or
+                        // 1/aspect) exactly as projection_light.h derives.
+                        const float tanHalfFovBase = tanf((float)pl.fovDeg * 0.5f * (float)M_PI / 180.0f);
+                        const float imageAspect = (pbrtProjectionImageHeight > 0)
+                            ? (float)pbrtProjectionImageWidth / (float)pbrtProjectionImageHeight : 1.0f;
+                        const bool wide = imageAspect >= 1.0f;
+                        const float tanHalfFovX = wide ? tanHalfFovBase * imageAspect : tanHalfFovBase;
+                        const float tanHalfFovYFinal = wide ? tanHalfFovBase : tanHalfFovBase / imageAspect;
+                        projectionLights.push_back(ProjectionLightData{
+                            PackedFloat3{pos.x, pos.y, pos.z},
+                            PackedFloat3{forward.x, forward.y, forward.z},
+                            PackedFloat3{right.x, right.y, right.z},
+                            PackedFloat3{up.x, up.y, up.z},
+                            tanHalfFovX,
+                            tanHalfFovYFinal,
+                            (float)pl.scale,
+                            /*usePbrtTexture=*/1u});
+                        break;
+                    }
+                    fprintf(stderr, "loadPbrtScene: projection light's slide image '%s' could not be "
+                                    "read/decoded; falling back to the Approx (uniform beam) case\n", pl.filename.c_str());
                 }
+                if (pl.hadImageFilename) ++skippedImageBasedLights;
                 // No slide image named - pbrt-v4's own documented
                 // "Approx" fallback: a uniform white cone-shaped beam
                 // (ProjectionLight::make_uniform(), matching this
@@ -1922,7 +2063,8 @@ void MetalPocApp::loadPbrtScene() {
     }
     if (skippedImageBasedLights > 0)
         fprintf(stderr, "loadPbrtScene: %zu goniometric/projection light(s) with a real profile/slide "
-                        "image skipped - not yet supported by this POC's scene loader\n",
+                        "image fell back to the Approx (uniform) case - only the first light of each "
+                        "kind gets its own image, and a failed decode also falls back here\n",
                 skippedImageBasedLights);
 
     // --- Homogeneous participating medium (fog) -------------------------
@@ -2578,6 +2720,57 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
     }
 
+    // A pbrt-loaded scene's own real per-light goniometric/projection
+    // profile images (section 98) - same upload pattern as pbrtEnvTexture
+    // above (already-decoded linear float RGB -> RGBA32Float, 1x1 black
+    // fallback when there's no such light, harmless since usePbrtTexture
+    // gates whether any light actually reads it).
+    id<MTLTexture> pbrtGoniometricTexture = nil;
+    {
+        const uint32_t pw = havePbrtGoniometricImage ? (uint32_t)pbrtGoniometricImageWidth : 1u;
+        const uint32_t ph = havePbrtGoniometricImage ? (uint32_t)pbrtGoniometricImageHeight : 1u;
+        MTLTextureDescriptor* desc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+            width:pw height:ph mipmapped:NO];
+        desc.usage = MTLTextureUsageShaderRead;
+        desc.storageMode = MTLStorageModeShared;
+        pbrtGoniometricTexture = [device newTextureWithDescriptor:desc];
+        std::vector<float> rgba((size_t)pw * ph * 4, 0.0f);
+        if (havePbrtGoniometricImage) {
+            for (size_t i = 0; i < (size_t)pw * ph; ++i) {
+                rgba[i * 4 + 0] = pbrtGoniometricImagePixels[i * 3 + 0];
+                rgba[i * 4 + 1] = pbrtGoniometricImagePixels[i * 3 + 1];
+                rgba[i * 4 + 2] = pbrtGoniometricImagePixels[i * 3 + 2];
+                rgba[i * 4 + 3] = 1.0f;
+            }
+        }
+        [pbrtGoniometricTexture replaceRegion:MTLRegionMake2D(0, 0, pw, ph) mipmapLevel:0
+            withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
+    }
+
+    id<MTLTexture> pbrtProjectionTexture = nil;
+    {
+        const uint32_t pw = havePbrtProjectionImage ? (uint32_t)pbrtProjectionImageWidth : 1u;
+        const uint32_t ph = havePbrtProjectionImage ? (uint32_t)pbrtProjectionImageHeight : 1u;
+        MTLTextureDescriptor* desc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+            width:pw height:ph mipmapped:NO];
+        desc.usage = MTLTextureUsageShaderRead;
+        desc.storageMode = MTLStorageModeShared;
+        pbrtProjectionTexture = [device newTextureWithDescriptor:desc];
+        std::vector<float> rgba((size_t)pw * ph * 4, 0.0f);
+        if (havePbrtProjectionImage) {
+            for (size_t i = 0; i < (size_t)pw * ph; ++i) {
+                rgba[i * 4 + 0] = pbrtProjectionImagePixels[i * 3 + 0];
+                rgba[i * 4 + 1] = pbrtProjectionImagePixels[i * 3 + 1];
+                rgba[i * 4 + 2] = pbrtProjectionImagePixels[i * 3 + 2];
+                rgba[i * 4 + 3] = 1.0f;
+            }
+        }
+        [pbrtProjectionTexture replaceRegion:MTLRegionMake2D(0, 0, pw, ph) mipmapLevel:0
+            withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
+    }
+
     // envMarginalCDF/envConditionalCDF buffers - a real (non-empty)
     // envDist above uploads its own arrays directly; the fallback case
     // (missing JPEG) still needs SOME buffer bound at these indices
@@ -2783,6 +2976,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setTexture:earthTexture atIndex:1];
     [enc setTexture:goniometricTexture atIndex:2];
     [enc setTexture:pbrtEnvTexture atIndex:3];
+    [enc setTexture:pbrtGoniometricTexture atIndex:4];
+    [enc setTexture:pbrtProjectionTexture atIndex:5];
     [enc setAccelerationStructure:instAS atBufferIndex:0];
     [enc setBuffer:uniformBuffer offset:0 atIndex:1];
     [enc setBuffer:materialBuffer offset:0 atIndex:2];
