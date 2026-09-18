@@ -4394,3 +4394,65 @@ Cornell box view; `ray_tracer --gpu 200 4 4 K16 700 450 -200` (a
 deliberately very different position) renders a visibly different,
 correctly-composed close-up from the new angle, still facing the same
 scene centre - confirmed by eye on both renders, not just "no crash."
+
+## 84. Real `ObjectInstance` support (done)
+
+Closes another gap this loader's own comment explicitly flagged:
+`scene.instances`/`scene.groups` (`src/shared/pbrt_flatten.h` -
+object-space geometry defined once via `ObjectBegin`/`ObjectEnd`,
+placed many times via `ObjectInstance` with a per-placement
+object->world transform) were parsed but entirely skipped, just warned
+about. `example-cornell.pbrt`'s own 3 small pyramids (one plain, one
+rotated, one non-uniformly scaled 0.6/1.4/0.6) were invisible in every
+Metal render before this.
+
+**Baked, not GPU-instanced:** `gpu/optix/pbrt_gpu_builder.h` (this same
+shared struct's other existing consumer) builds a TRUE GPU-level
+instance acceleration structure - object-space geometry uploaded once,
+a real per-placement transform applied at ray-intersection time. This
+loader takes a deliberately simpler path instead: for each `Instance`,
+its group's object-space triangles are transformed by the placement's
+own `xform` (position via `pbrt_flatten::flatten_detail::
+transformPoint()`, already-established cofactor/adjugate-derived
+inverse-transpose-correct normal transform via `...::transformNormal()`
+- both reused directly from `pbrt_flatten.h` rather than re-derived)
+and pushed into the SAME world-space `verts`/`normals`/`uvs`/
+`materials` arrays every ordinary (non-instanced) triangle already
+uses, going through the identical `toWorld()` bbox-rescale every other
+position in this file gets. This POC's own shader dispatch already
+resolves each geometry "kind" (room triangles, spheres, disks, Suzanne)
+via its own fixed buffer/intersection-function-table slot - building a
+genuinely general N-group GPU-instancing mechanism to match OptiX's own
+would be a much larger change than warranted for what's typically a
+handful of placements (this repo's own pbrt scene: 3). Baking
+duplicates geometry per placement instead of sharing one buffer -
+negligible cost at this scale, the only scale any pbrt scene this
+loader has been run against actually uses.
+
+One real limitation surfaced and handled explicitly rather than
+silently mishandled: a non-uniformly-scaled instanced SPHERE is really
+an ellipsoid, which `SphereData` (a plain centre+radius analytic
+primitive) can't represent - baking one anyway would silently render
+the wrong shape. Instanced spheres are skipped with a warning instead
+(matching every other "explain why, don't render something wrong" gap
+this loader already documents elsewhere) - not a real limitation for
+`example-cornell.pbrt` itself, whose one instanced group is triangles
+only, but a real, honest gap for a future scene that instances a
+sphere.
+
+Also confirms (via `flatten_detail`'s own header comment, not assumed)
+that fully-qualifying `pbrt_flatten::flatten_detail::transformPoint`/
+`transformNormal` from an external caller is the intended, sanctioned
+way to reach them - that namespace exists only to dodge an unrelated
+MSVC ambiguous-lookup collision with `compensated_float.h`'s own
+`detail` namespace, not to hide these functions from other callers.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4 pass,
+no regression - purely additive to `loadPbrtScene()`, nothing else
+touched). `ray_tracer --gpu 400 16 5 K16 278 278 -800` now logs `baked
+3 ObjectInstance placement(s) into 18 world-space triangle(s)` -
+exactly 3 placements x the pyramid's own 6 triangles - and the render
+visibly shows three correctly-placed, correctly-shaded yellow pyramids
+in the foreground, including the rotated and the non-uniformly-scaled
+one both looking geometrically correct (narrower/taller for the scaled
+one, not distorted or broken).
