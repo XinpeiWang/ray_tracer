@@ -4913,3 +4913,63 @@ machine already proves works. A SEPARATE `RT_BUILD_METAL=OFF` build
 `OptiX: not available (Built without RT_HAVE_OPTIX...)` message -
 confirming the new `#ifdef RT_HAVE_METAL` branch doesn't disturb the
 existing non-Metal path at all.
+
+## 94. GUI wiring - blocked, and a verification sweep across the pbrt corpus (done)
+
+**GUI wiring itself remains NOT started - confirmed blocked, not just
+risky.** Before touching any GUI code, verified the baseline (completely
+unmodified) `qt_gui/` project actually builds in this environment, per
+this whole POC's own "verify before trusting" discipline. It does not:
+this machine has only Qt 5.15.0 installed (no Qt6 anywhere), but
+`mainwindow_tabs_render.cpp`'s own Live Preview video-playback code
+already uses Qt6-only `QMediaPlayer` API surface (`setSource()`,
+`playbackStateChanged`, `errorOccurred`, `QAudioOutput(QWidget*)`) that
+doesn't exist in Qt5 - 8 real compile errors, entirely pre-existing and
+unrelated to this POC's own work. No GUI change can be compiled or
+verified in this environment at all - a hard, confirmed blocker.
+Separately, the design itself carries real risk worth remembering for
+whenever a Qt6 environment IS available: the GUI (`qt_gui/`, built via
+qmake) and the CLI it launches (`ray_tracer`, built via CMake) are
+SEPARATE builds - a compile-time `RT_GUI_HAVE_METAL`-style flag on the
+GUI side could drift out of sync with whether the ACTUAL launched CLI
+binary was built with `-DRT_BUILD_METAL=ON`, showing a "GPU" option
+that fails at runtime. Section 93's own `--diagnose` fix exists
+specifically so the GUI could make this decision at RUNTIME instead
+(probe the real launched CLI's own capability, don't guess at GUI-build
+time) - the natural next step once Qt6 is available to actually build
+and test the GUI side of this.
+
+**With GUI work blocked, verified robustness instead**: ran EVERY one
+of the 51 `pbrt_scenes/*.pbrt` test assets in this repo through the
+standalone `metal_poc` CLI (not just the handful this session's own new
+features were individually verified against) - a broader sweep than
+any single increment's own targeted test, closer to a real regression
+suite. All 51 rendered without crashing (exit 0), including scenes
+exercising features this loader deliberately doesn't support (curves,
+hair, PLY meshes at real scale - `killeroo-simple.pbrt`'s own 66,532-
+triangle mesh, layered/mix/coated materials, various media types,
+realistic/spherical/orthographic cameras, portal lights) - each one
+falls back gracefully (gray Lambertian, skipped shape, non-emissive
+light) with an already-documented warning, not a crash or silent
+wrong-without-explanation result. Every warning message the sweep
+surfaced was already-known and already-documented; no new correctness
+gap was found.
+
+**One real, concrete bug the sweep DID surface, fixed in the same
+pass**: `killeroo-simple.pbrt`'s own 66,532-triangle `coateddiffuse`
+mesh printed the "material kind not supported" warning 66,532 times -
+once per triangle, since `mapMaterial()` runs (and re-warns) on every
+primitive referencing a material, not once per distinct material. Real
+log spam, not a correctness bug, but a genuine usability problem for
+any large mesh using an unsupported material kind. Fixed with a
+`std::unordered_set<std::string>` of already-warned material kind
+NAMES (not indices - the same kind name can legitimately appear at
+more than one `scene.materials` index) captured by `mapMaterial()`'s
+own lambda, printing each distinct unsupported kind once per scene
+load regardless of how many primitives use it.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (5/5
+pass). Re-ran the full 51-scene sweep after the fix - still 51/51 exit
+0, and `killeroo-simple.pbrt`'s own warning count dropped from 66,532
+lines to exactly 1. `ray_tracer --gpu` against `K16` renders
+identically to before.

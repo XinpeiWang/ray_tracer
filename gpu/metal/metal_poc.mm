@@ -55,6 +55,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <cstdio>
 #include <cstdlib>
 #include <cfloat>
@@ -1563,7 +1564,17 @@ void MetalPocApp::loadPbrtScene() {
     fprintf(stderr, "loadPbrtScene: scene bounding box extent %.1f units, rescaling by %.5f, "
                     "recentred and offset to +X\n", maxExtent, sceneScale);
 
-    auto mapMaterial = [](const pbrt_flatten::Material& m) -> TriangleMaterial {
+    // Tracks which UNSUPPORTED material kind NAMES (not indices - the same
+    // name can legitimately appear at more than one scene.materials index)
+    // have already been warned about, so mapMaterial() below - called once
+    // per TRIANGLE/sphere/instance referencing a material, not once per
+    // distinct material - doesn't flood stderr with the identical message
+    // for every single primitive. A mesh with tens of thousands of
+    // triangles sharing one unsupported material (e.g. killeroo-simple.pbrt's
+    // own 66,532-triangle "coateddiffuse" mesh) used to print that exact
+    // line 66,532 times.
+    std::unordered_set<std::string> warnedUnsupportedMaterialKinds;
+    auto mapMaterial = [&warnedUnsupportedMaterialKinds](const pbrt_flatten::Material& m) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
         switch (m.kind) {
             case pbrt_flatten::MaterialKind::Diffuse:
@@ -1585,8 +1596,10 @@ void MetalPocApp::loadPbrtScene() {
                 return TriangleMaterial{color, /*materialType=*/2u, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
             default:
-                fprintf(stderr, "loadPbrtScene: material kind '%s' not supported by this POC's "
-                                "scene loader yet, using gray Lambertian instead\n", m.pbrtType.c_str());
+                if (warnedUnsupportedMaterialKinds.insert(m.pbrtType).second) {
+                    fprintf(stderr, "loadPbrtScene: material kind '%s' not supported by this POC's "
+                                    "scene loader yet, using gray Lambertian instead\n", m.pbrtType.c_str());
+                }
                 return TriangleMaterial{PackedFloat3{0.5f, 0.5f, 0.5f}, 0u, 1.0f,
                                          PackedFloat3{0, 0, 0}, -1, 0.0f};
         }
