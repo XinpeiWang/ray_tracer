@@ -1835,16 +1835,48 @@ void MetalPocApp::loadPbrtScene() {
                     PackedFloat3{baseEmission.x, baseEmission.y, baseEmission.z}});
                 break;
             }
-            case pbrt_flatten::PunctualLightKind::Goniometric:
+            case pbrt_flatten::PunctualLightKind::Goniometric: {
+                if (pl.hadImageFilename) {
+                    // A real per-light IES profile image - out of scope,
+                    // same reason infinite light's own image case briefly
+                    // was (section 87/89 of the docs): this loader has no
+                    // per-light texture mechanism, and the hardcoded
+                    // room's own single goniometricTexture slot is
+                    // already spoken for.
+                    ++skippedImageBasedLights;
+                    break;
+                }
+                // No profile image named - pbrt-v4's own documented
+                // "Approx" fallback (uniform isotropic intensity, see
+                // pbrt_scenes/punctual-lights.pbrt's own header comment
+                // for why this is the common case, not just a
+                // simplification), which is EXACTLY what a plain
+                // omnidirectional PointLightData already represents -
+                // isotropic has no direction to get right at all, unlike
+                // Projection's own cone/aim (still deferred below), so
+                // this needed no new geometry work.
+                const float3 pos = toWorld(float3{(float)pl.pos[0], (float)pl.pos[1], (float)pl.pos[2]});
+                const float3 emission = baseEmission * intensityScale;
+                pointLights.push_back(PointLightData{
+                    PackedFloat3{pos.x, pos.y, pos.z},
+                    PackedFloat3{emission.x, emission.y, emission.z}});
+                break;
+            }
             case pbrt_flatten::PunctualLightKind::Projection:
             default:
+                // Projection always needs a real aim direction (even its
+                // own "Approx uniform beam" fallback is a CONE, not
+                // isotropic) - recovering that from PunctualLight::
+                // worldToLight correctly (and verifiably) is real,
+                // careful work not rushed into this pass; see docs/
+                // METAL_GPU_FEASIBILITY.md's own section on this gap.
                 ++skippedImageBasedLights;
                 break;
         }
     }
     if (skippedImageBasedLights > 0)
-        fprintf(stderr, "loadPbrtScene: %zu goniometric/projection light(s) skipped - image-based "
-                        "punctual lights are not yet supported by this POC's scene loader\n",
+        fprintf(stderr, "loadPbrtScene: %zu goniometric-with-image/projection light(s) skipped - "
+                        "not yet supported by this POC's scene loader\n",
                 skippedImageBasedLights);
 
     // --- Homogeneous participating medium (fog) -------------------------

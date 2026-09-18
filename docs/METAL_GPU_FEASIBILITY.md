@@ -4721,3 +4721,71 @@ broken/glitched read. The pre-existing constant-colour
 no regression between the two mutually-exclusive code paths.
 `ray_tracer --gpu` against `K16` (no infinite light of its own)
 renders identically to before.
+
+## 90. Goniometric lights, the "Approx" (no profile image) case (done)
+
+`scene.punctualLights`' Goniometric kind was being skipped alongside
+Projection under one shared "image-based, not yet supported" bucket -
+but that framing turned out to be wider than the truth for goniometric
+specifically. pbrt-v4's own documented behaviour when a goniometric
+light names no `"filename"` is the "Approx" fallback: uniform isotropic
+intensity - identical, in substance, to a plain omnidirectional point
+light. `pbrt_scenes/punctual-lights.pbrt`'s own header comment already
+called this out as "the common case a real-world scene actually hits,
+not just the ideal one," and both CPU/OptiX backends already implement
+it this way. Isotropic means no direction to recover at all, unlike
+Projection's own cone/aim (see the next section) - so this needed zero
+new geometry work: `PunctualLight::hadImageFilename == false` now
+pushes a plain `PointLightData` (the exact same GPU buffer/shading
+path point/spot lights already use), with the same `sceneScale^2`
+intensity compensation section 85 already established (still a real
+inverse-square point source). A goniometric light that DOES name a
+real profile image is still skipped, unchanged from before - that part
+of the original gap is real and still open.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4
+pass). Rendered the pre-existing `pbrt_scenes/punctual-lights.pbrt`
+(which already declares a filename-less goniometric light) through the
+standalone `metal_poc` CLI - point-light count went from 4 to 5 (the
+new goniometric-as-point-light, additive alongside the hardcoded
+room's own 2 and the file's own point+spot), and the projection light
+remains correctly the one light still reported skipped. Visually the
+before/after difference was subtle (the goniometric's own contribution
+is modest relative to this scene's already-bright point/spot lights -
+the same "correct but not dramatic in the committed render" pattern
+several earlier increments in this POC's own history have hit), so
+verified numerically instead: a full-image mean-absolute-difference
+comparison between a build with the new code active and one with it
+disabled shows a real, substantial difference (mean 22.6/255 per
+channel across all 750,000 subpixels, max 111/255) - not just "renders
+without crashing," a real, attributable, widespread effect. `ray_tracer
+--gpu` against `K16` (no punctual lights of its own) renders
+identically to before.
+
+## 91. Projection lights - investigated, deliberately deferred
+
+Unlike Goniometric's own "Approx" case (section 90), Projection's own
+fallback (a uniform white beam when no `"filename"` is named) is NOT
+isotropic - it's a real, aimed CONE, so representing it even
+approximately (e.g. as a hard-edged `PointLightData` spot) needs a
+correct world-space aim direction recovered from `PunctualLight::
+worldToLight` (a row-major 3x3 world->light ROTATION, built by
+`flatten_detail::worldToLightRotation()` from the `LightSource`
+directive's own CTM - Projection/Goniometric have no `"from"`/`"to"`
+of their own in pbrt-v4, so a scene aims either kind purely by
+rotating the CTM first).
+
+Recovering that direction correctly (the light's own local +Z axis,
+expressed in world space - pbrt-v4's own convention for this kind of
+light's principal axis) is a real, three-line derivation (the inverse
+of a pure rotation is its transpose, so the world-space axis is one
+row of the matrix, not a full re-derivation) - but ships with real risk
+of a subtle sign/axis mistake if rushed without a dedicated
+correctness check (a device-side or host-side unit test against a
+KNOWN rotation, mirroring how every other non-obvious transform in
+this POC - normal transforms, camera basis, ONB construction - already
+gets one). Deliberately not attempted in the same pass as section 90's
+much lower-risk isotropic case. `loadPbrtScene()`'s own warning still
+names Projection specifically (no longer bundled with Goniometric,
+since that part of the gap closed) - a real, scoped, well-understood
+next increment, not a mystery, whenever it's picked up.
