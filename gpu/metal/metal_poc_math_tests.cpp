@@ -436,6 +436,46 @@ static void testEnvDistribution2DUniformImageIsUniformInU() {
     }
 }
 
+// The float-RGB overload of buildEnvDistribution2D (added for pbrt-
+// loaded scenes' own already-linear-decoded InfiniteLight::imagePixels
+// - metal_poc.mm's own loadPbrtScene() comment) should reproduce the
+// EXACT same distribution as the RGBA8 overload for an equivalent
+// image, since white (255,255,255) decodes to EXACTLY linear 1.0 and
+// black to EXACTLY linear 0.0 (srgbByteToLinear's own piecewise
+// formula at those two endpoints) - no rounding to tolerate, so this
+// checks bit-for-bit-close equality, not just "both look concentrated."
+static void testEnvDistribution2DFloatOverloadMatchesByteOverload() {
+    const int width = 32, height = 16;
+    const int bx0 = 16, by0 = 8, bx1 = 24, by1 = 12;
+    std::vector<unsigned char> rgba;
+    buildQuadrantTestImage(rgba, width, height, bx0, by0, bx1, by1);
+    EnvDistribution2D byteDist;
+    buildEnvDistribution2D(rgba.data(), width, height, byteDist);
+
+    std::vector<float> rgb((size_t)width * height * 3, 0.0f);
+    for (int y = by0; y < by1; ++y) {
+        for (int x = bx0; x < bx1; ++x) {
+            float* px = &rgb[((size_t)y * width + x) * 3];
+            px[0] = px[1] = px[2] = 1.0f;
+        }
+    }
+    EnvDistribution2D floatDist;
+    buildEnvDistribution2D(rgb.data(), width, height, floatDist);
+
+    expectTrue("float-overload distribution has the same dimensions as the byte-overload one",
+               floatDist.width == byteDist.width && floatDist.height == byteDist.height);
+    for (size_t i = 0; i < byteDist.marginalCDF.size(); ++i) {
+        char label[96];
+        snprintf(label, sizeof(label), "marginalCDF[%zu] matches between float and byte overloads", i);
+        expectNear(label, floatDist.marginalCDF[i], byteDist.marginalCDF[i], 1e-5);
+    }
+    for (size_t i = 0; i < byteDist.conditionalCDF.size(); ++i) {
+        char label[96];
+        snprintf(label, sizeof(label), "conditionalCDF[%zu] matches between float and byte overloads", i);
+        expectNear(label, floatDist.conditionalCDF[i], byteDist.conditionalCDF[i], 1e-5);
+    }
+}
+
 // GGX multi-scatter energy-compensation table (found via spot-checking
 // this POC's own GGX conductor material against Blender Cycles as a
 // second reference - see buildGGXEnergyTable's own header comment for the
@@ -491,6 +531,7 @@ int main() {
     testEnvDistribution2DConcentratesOnBrightRegion();
     testEnvDistribution2DPdfMatchesSample();
     testEnvDistribution2DUniformImageIsUniformInU();
+    testEnvDistribution2DFloatOverloadMatchesByteOverload();
     testGGXEnergyTableTrend();
 
     if (g_failures > 0) {

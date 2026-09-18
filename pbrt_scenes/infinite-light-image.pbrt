@@ -1,0 +1,39 @@
+# infinite-light-image.pbrt -- exercises an IMAGE-based "infinite" light
+# (as opposed to infinite-light.pbrt's own constant-colour "rgb L" case) -
+# reuses uv-checker.bmp (already bundled for texture tests elsewhere in
+# this folder) as the environment image specifically because its own
+# sharp, regular checker pattern makes correct vs. incorrect equirectangular
+# mapping/orientation immediately obvious by eye, unlike a photographic
+# image where a subtly wrong mapping could pass unnoticed.
+#
+# Open geometry (no ceiling), so the sky is actually visible - same shape
+# as infinite-light.pbrt.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  278 200 -800    278 150 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "string filename" [ "uv-checker.bmp" ]
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -400 0 -400   800 0 -400   800 0 800   -400 0 800 ]
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.2 0.2 ]
+AttributeBegin
+  Translate 150 90 200
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
+
+Material "conductor" "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 400 100 350
+  Shape "sphere" "float radius" [ 100 ]
+AttributeEnd

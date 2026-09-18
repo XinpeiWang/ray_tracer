@@ -152,6 +152,12 @@ struct Uniforms {
     // pbrt-loaded scene), but not asserted as such here.
     uint32_t pbrtHasConstantEnvLight = 0;
     PackedFloat3 pbrtEnvColor{0, 0, 0};
+    // A pbrt-loaded scene's own image-based LightSource "infinite" -
+    // mutually exclusive with pbrtHasConstantEnvLight above. Reads
+    // pbrtEnvTexture via a plain equirectangular lookup, same
+    // miss-path-only scope cut - see metal_poc.metal's own mirrored
+    // comment.
+    uint32_t pbrtHasImageEnvLight = 0;
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -790,6 +796,16 @@ struct MetalPocApp {
     // no NEE/MIS strategy.
     bool havePbrtConstantEnvLight = false;
     float3 pbrtEnvColor{0, 0, 0};
+
+    // Set by loadPbrtScene() for an image-based LightSource "infinite" -
+    // the decoded pixels are already linear float RGB, row-major
+    // (pbrt_load::loadFile()'s own resolution of InfiniteLight::
+    // imagePixels - no filesystem/decode work needed on this side).
+    // Mutually exclusive with havePbrtConstantEnvLight above.
+    bool havePbrtImageEnvLight = false;
+    std::vector<float> pbrtEnvImagePixels;
+    int pbrtEnvImageWidth = 0;
+    int pbrtEnvImageHeight = 0;
 
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
@@ -1876,23 +1892,42 @@ void MetalPocApp::loadPbrtScene() {
                 meanSigmaT, m.g);
     }
 
-    // --- Infinite light (constant-colour case only) ---------------------
-    // An IMAGE-based infinite light is a genuinely bigger feature (section
-    // 87 of the docs): earthTexture is ALSO the hardcoded room's own
-    // materialType-3 back-wall albedo (same texture slot, sampled by both
-    // that material's shading code and the miss-path lookup below) -
-    // repointing it at a pbrt-provided image would silently corrupt that
-    // unrelated, still-active geometry, and real support needs its own
-    // separate texture binding threaded through every one of this
-    // shader's material-shading functions. A CONSTANT-colour infinite
-    // light needs none of that - no texture at all, just a plain colour
-    // uniform the miss-path code below reads directly - so it's handled
-    // here despite the image case being deferred.
+    // --- Infinite light ---------------------------------------------------
+    // earthTexture is ALSO the hardcoded room's own materialType-3
+    // back-wall albedo, sampled from a totally separate code path in
+    // primaryRayKernel (the `albedo = earthTexture.sample(...)` line, run
+    // BEFORE any of the 6 material-shading functions are even called) -
+    // repointing that one at a pbrt-provided image would silently corrupt
+    // that unrelated, still-active geometry. So this uses its OWN,
+    // genuinely separate texture (pbrtEnvTexture) instead - see
+    // primaryRayKernel's own texture-argument comment.
+    //
+    // Deliberately miss-path-only for BOTH the constant-colour and
+    // image cases (no NEE/MIS light-sampling strategy) - see
+    // metal_poc.metal's own mirrored comments on why that's accepted
+    // scope, not an oversight; a future NEE upgrade already has a
+    // tested building block waiting (metal_poc_host_math.h's own
+    // float-RGB buildEnvDistribution2D() overload, added but not yet
+    // wired to anything - the exact same "phase 1 before phase 2"
+    // staging earthTexture's own NEE support went through, sections
+    // 69/71).
     if (scene.infiniteLight.present) {
-        if (scene.infiniteLight.imageWidth > 0) {
-            fprintf(stderr, "loadPbrtScene: image-based LightSource \"infinite\" skipped - only the "
-                            "constant-colour case (no image file) is supported by this POC's scene "
-                            "loader yet\n");
+        if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0 &&
+            !scene.infiniteLight.imagePixels.empty()) {
+            havePbrtImageEnvLight = true;
+            pbrtEnvImageWidth = scene.infiniteLight.imageWidth;
+            pbrtEnvImageHeight = scene.infiniteLight.imageHeight;
+            // scale applied here (not left for a shader-side multiply) -
+            // matches how the constant-colour case below bakes L*scale
+            // at load time too, and how src/TheRestOfYourLife/
+            // pbrt_cpu_builder.h's own sky_light(...) constructor takes
+            // scale as a SEPARATE multiplier on the raw image samples
+            // (not pre-baked into scene.infiniteLight.imagePixels itself).
+            const float scale = (float)scene.infiniteLight.scale;
+            pbrtEnvImagePixels = scene.infiniteLight.imagePixels;
+            for (float& v : pbrtEnvImagePixels) v *= scale;
+            fprintf(stderr, "loadPbrtScene: image-based infinite light found (%dx%d, scale=%.3g)\n",
+                    pbrtEnvImageWidth, pbrtEnvImageHeight, scale);
         } else {
             havePbrtConstantEnvLight = true;
             pbrtEnvColor = float3{(float)(scene.infiniteLight.L[0] * scene.infiniteLight.scale),
@@ -2431,6 +2466,40 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         [earthTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:white4 bytesPerRow:4];
     }
 
+    // A pbrt-loaded scene's own image-based infinite light - a
+    // genuinely SEPARATE texture from earthTexture above (see
+    // loadPbrtScene()'s own comment on why). pbrtEnvImagePixels is
+    // already decoded, linear float RGB (3 floats/pixel) - stored
+    // straight into an RGBA32Float texture (padding alpha=1, no sRGB
+    // format/decode needed at all: unlike earthTexture's own 8-bit JPEG
+    // source, there's no gamma curve to reverse here). Falls back to a
+    // 1x1 black texture (Metal requires SOME texture bound at every
+    // used slot) when the scene has no image-based infinite light -
+    // harmless, since pbrtHasImageEnvLight gates whether the shader
+    // ever actually samples it.
+    id<MTLTexture> pbrtEnvTexture = nil;
+    {
+        const uint32_t pw = havePbrtImageEnvLight ? (uint32_t)pbrtEnvImageWidth : 1u;
+        const uint32_t ph = havePbrtImageEnvLight ? (uint32_t)pbrtEnvImageHeight : 1u;
+        MTLTextureDescriptor* pbrtEnvDesc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+            width:pw height:ph mipmapped:NO];
+        pbrtEnvDesc.usage = MTLTextureUsageShaderRead;
+        pbrtEnvDesc.storageMode = MTLStorageModeShared;
+        pbrtEnvTexture = [device newTextureWithDescriptor:pbrtEnvDesc];
+        std::vector<float> rgba((size_t)pw * ph * 4, 0.0f);
+        if (havePbrtImageEnvLight) {
+            for (size_t i = 0; i < (size_t)pw * ph; ++i) {
+                rgba[i * 4 + 0] = pbrtEnvImagePixels[i * 3 + 0];
+                rgba[i * 4 + 1] = pbrtEnvImagePixels[i * 3 + 1];
+                rgba[i * 4 + 2] = pbrtEnvImagePixels[i * 3 + 2];
+                rgba[i * 4 + 3] = 1.0f;
+            }
+        }
+        [pbrtEnvTexture replaceRegion:MTLRegionMake2D(0, 0, pw, ph) mipmapLevel:0
+            withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
+    }
+
     // envMarginalCDF/envConditionalCDF buffers - a real (non-empty)
     // envDist above uploads its own arrays directly; the fallback case
     // (missing JPEG) still needs SOME buffer bound at these indices
@@ -2589,6 +2658,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         if (havePbrtConstantEnvLight) {
             uniforms.pbrtHasConstantEnvLight = 1u;
             uniforms.pbrtEnvColor = PackedFloat3{pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z};
+        } else if (havePbrtImageEnvLight) {
+            uniforms.pbrtHasImageEnvLight = 1u;
         }
     }
 
@@ -2601,6 +2672,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setTexture:outTexture atIndex:0];
     [enc setTexture:earthTexture atIndex:1];
     [enc setTexture:goniometricTexture atIndex:2];
+    [enc setTexture:pbrtEnvTexture atIndex:3];
     [enc setAccelerationStructure:instAS atBufferIndex:0];
     [enc setBuffer:uniformBuffer offset:0 atIndex:1];
     [enc setBuffer:materialBuffer offset:0 atIndex:2];
