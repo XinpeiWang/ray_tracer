@@ -687,31 +687,64 @@ void MainWindow::createSettingsTab() {
 		"Generate Video renders a moving camera path frame by frame and assembles an MP4.\n"
 		"Live Preview renders continuously with a camera you can freely orbit - GPU only."));
 
+	// Whether the Renderer combo's own GPU item should be selectable at
+	// all - kGpuOptionAvailable (Windows/OptiX, a compile-time fact about
+	// THIS GUI build) OR m_metalGpuAvailable (macOS/Metal, a runtime fact
+	// about the SPECIFIC `ray_tracer` binary this GUI found and probed -
+	// see that member's own comment, mainwindow.h, for why macOS can't
+	// use a compile-time flag the way Windows does). Never both true at
+	// once in practice (RT_GUI_HAVE_GPU is Windows-only, the Metal probe
+	// is `#ifdef Q_OS_MAC`-only), but written as an OR rather than an
+	// either/or switch so neither path has to know the other exists.
+#ifdef Q_OS_MAC
+	const bool gpuAvailable = kGpuOptionAvailable || m_metalGpuAvailable;
+#else
+	const bool gpuAvailable = kGpuOptionAvailable;
+#endif
+
 	m_renderModeCombo = new QComboBox(basicTab);
 	// GPU is always OFFERED (see kGpuOptionAvailable's own comment above
 	// createRenderOptionsTab()/wherever it's declared) - shown and
-	// discoverable on every platform, not just RT_GUI_HAVE_GPU (Windows)
-	// builds, even though it's currently only ever actually usable there.
-	// A build with no GPU backend at all (this build's CLI, from root
-	// CMakeLists.txt, has no CUDA/OptiX support - see launcher/optix_stub.h)
-	// disables the item instead of omitting it, same "fail quiet, explain
-	// why" convention the Output Mode combo's own Live Preview item already
-	// used (mainwindow_tabs.cpp's m_modeCombo setup) - just extended here
-	// from "RT_GUI_HAVE_GPU but no realtime_renderer.dll" to also cover
-	// "not an RT_GUI_HAVE_GPU build at all".
+	// discoverable on every platform, not just where it's actually usable.
+	// A build/machine with no usable GPU backend at all disables the item
+	// instead of omitting it, same "fail quiet, explain why" convention
+	// the Output Mode combo's own Live Preview item already used
+	// (mainwindow_tabs.cpp's m_modeCombo setup) - just extended here from
+	// "RT_GUI_HAVE_GPU but no realtime_renderer.dll" to also cover "not
+	// an RT_GUI_HAVE_GPU build at all" and, now, "macOS with no working
+	// Metal device found by the probe".
+#ifdef Q_OS_MAC
+	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (Metal) - Fast"), true, m_activeTheme.textBody);
+#else
 	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (CUDA) - Fast"), true, m_activeTheme.textBody);
-	if (kGpuOptionAvailable) {
+#endif
+	if (gpuAvailable) {
+#ifdef Q_OS_MAC
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Uses your Mac's GPU (via Metal) to render. Usually dramatically "
+			"faster than using the CPU, but can't yet handle every type of "
+			"scene or material the CPU option supports (see the Ray Tracer "
+			"Feasibility doc's own list of what's not wired up yet)."));
+#else
 		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
 			tr("Uses your NVIDIA graphics card's dedicated ray-tracing hardware "
 			"to render. Usually dramatically faster than using the CPU, but "
 			"requires a compatible NVIDIA graphics card, and can't yet handle "
 			"every type of material the CPU option supports."));
+#endif
 	} else {
 		setComboItemEnabled(m_renderModeCombo, m_renderModeCombo->count() - 1, false);
+#ifdef Q_OS_MAC
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Not available right now - no usable Metal GPU was found on "
+			"this Mac (or this build's own ray_tracer wasn't built with "
+			"Metal support at all)."));
+#else
 		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
 			tr("Not available in this build - GPU rendering needs Windows plus "
 			"a compatible NVIDIA graphics card. This platform's build has no "
 			"GPU renderer at all (see launcher/optix_stub.h)."));
+#endif
 	}
 	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", tr("CPU - High Quality"), false, m_activeTheme.textBody);
 	setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
@@ -724,19 +757,26 @@ void MainWindow::createSettingsTab() {
 	// item above is disabled but still occupies index 0, and Qt would
 	// otherwise leave it "selected" (just unclickable) rather than
 	// skipping to the first enabled item on its own.
-	if (!kGpuOptionAvailable) m_renderModeCombo->setCurrentIndex(1);
+	if (!gpuAvailable) m_renderModeCombo->setCurrentIndex(1);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
-	if (kGpuOptionAvailable) {
+	if (gpuAvailable) {
 		m_renderModeCombo->setToolTip(
 			tr("GPU: uses your graphics card's ray-tracing hardware — typically much faster.\n"
 			"CPU: the full-featured rendering method — supports every scene and material,\n"
 			"including the handful the GPU option does not implement."));
 	} else {
+#ifdef Q_OS_MAC
+		m_renderModeCombo->setToolTip(
+			tr("The full-featured CPU rendering method — supports every scene and material.\n"
+			"GPU rendering is not available right now (grayed out above) - no usable Metal\n"
+			"GPU was found on this Mac."));
+#else
 		m_renderModeCombo->setToolTip(
 			tr("The full-featured CPU rendering method — supports every scene and material.\n"
 			"GPU rendering is not available in this build (grayed out above) - it needs\n"
 			"Windows plus a compatible NVIDIA graphics card."));
+#endif
 	}
 	renderLayout->addRow(labelWithInfo(tr("Renderer:"),
 		tr("Both options do the exact same calculations and produce the "
@@ -771,19 +811,39 @@ void MainWindow::createSettingsTab() {
 		"graphics card on complex scenes with lots of different materials "
 		"- but it's a newer option that's been tested less than "
 		"Recursive."));
+	// Wavefront is an OptiX-only path (gpu/optix/wavefront_path_tracer.cpp)
+	// - it's genuinely absent from the Metal backend (gpu/metal/), not
+	// just untested there, so this stays disabled even when Renderer's
+	// own GPU item is selectable via m_metalGpuAvailable. Checked
+	// against kGpuOptionAvailable specifically (not the combined
+	// gpuAvailable above) for exactly that reason - this is the one
+	// place in this whole function that cares which GPU backend is
+	// actually available, not just whether one is.
+	if (!kGpuOptionAvailable) {
+		setComboItemEnabled(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1, false);
+		setRichItemTooltip(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1,
+			tr("Not available - the wavefront path tracer is only implemented "
+			"for the CUDA/OptiX GPU backend (Windows), not Metal."));
+	}
 	m_gpuBackendCombo->setCurrentIndex(0);
 	styleComboBox(m_gpuBackendCombo);
-	if (kGpuOptionAvailable) {
+	if (gpuAvailable) {
 		m_gpuBackendCombo->setToolTip(
 			tr("Recursive: the default GPU rendering method — broadly tested, works with the widest range of scenes.\n"
 			"Wavefront: groups similar rays together for better use of the graphics card on complex scenes,\n"
 			"but it's newer and less tested than Recursive.\n"
 			"Only applies when Renderer is set to GPU."));
 	} else {
+#ifdef Q_OS_MAC
+		m_gpuBackendCombo->setToolTip(
+			tr("Not available right now - no usable Metal GPU was found on this Mac,\n"
+			"so Renderer above can only ever be CPU."));
+#else
 		m_gpuBackendCombo->setToolTip(
 			tr("Not available in this build - GPU rendering needs Windows plus a\n"
 			"compatible NVIDIA graphics card. This platform's build has no GPU\n"
 			"renderer at all, so Renderer above can only ever be CPU."));
+#endif
 	}
 	// Starts disabled/enabled in sync with the initial Renderer selection
 	// (GPU only when kGpuOptionAvailable - see m_renderModeCombo's own

@@ -4973,3 +4973,84 @@ pass). Re-ran the full 51-scene sweep after the fix - still 51/51 exit
 0, and `killeroo-simple.pbrt`'s own warning count dropped from 66,532
 lines to exactly 1. `ray_tracer --gpu` against `K16` renders
 identically to before.
+
+## 95. GUI wiring, unblocked: `kGpuOptionAvailable` on macOS via a runtime probe (done)
+
+Section 94's own blocker is resolved - Qt6 (6.11.2, via Homebrew's `qt`
++ `qttools` formulae) is now installed in this environment, and the
+baseline `qt_gui/` project builds completely cleanly with `qmake6`
+(zero errors). This closes the actual GUI-wiring gap that blocker was
+standing in front of.
+
+**The real design question, from section 94's own investigation**:
+`kGpuOptionAvailable` (`mainwindow.h`) is a compile-time constant,
+true only under `RT_GUI_HAVE_GPU` (defined unconditionally in
+`RayTracerGUI.pro`'s own `win32 {}` block, since the Windows launcher
+always ships with CUDA/OptiX). Naively adding an unconditional
+`RT_GUI_HAVE_METAL`-style flag to the `macx {}` block would be WRONG:
+this GUI (built via qmake) and the CLI it launches (`ray_tracer`, built
+via CMake) are separate builds, and a Metal-enabled CLI is optional at
+CMake-configure time - a compile-time GUI flag could drift out of sync
+with whatever the user actually built, showing a "GPU" option that
+fails at runtime.
+
+**The fix: probe the ACTUAL launched CLI's own real capability at
+runtime instead of guessing at GUI-build time** - exactly what section
+93's `--diagnose` fix was built for. New `MainWindow::
+probeMetalGpuAvailable()` (`#ifdef Q_OS_MAC` only) runs `ray_tracer
+--diagnose` synchronously (a lightweight system query, not a render -
+a short blocking wait during startup is an acceptable trade for the
+real complexity of deferring widget setup until an async probe
+completes) and checks its report for the exact `"Metal: available"`
+line `metal_get_diagnostics()` prints. The result (`m_metalGpuAvailable`)
+is computed BEFORE `setupUI()` so `createSettingsTab()`'s own Renderer-
+combo setup can read it immediately.
+
+**Renderer combo**: the GPU item's own enable/tooltip/label logic now
+checks `kGpuOptionAvailable || m_metalGpuAvailable` (`gpuAvailable`)
+instead of `kGpuOptionAvailable` alone - and the label/tooltips are
+now platform-aware (`"GPU (Metal) - Fast"` + Mac-specific wording on
+macOS, the original `"GPU (CUDA) - Fast"` + NVIDIA wording elsewhere),
+rather than silently mislabeling a Metal-backed render as CUDA.
+
+**The one place that does NOT just follow `gpuAvailable`**: the GPU
+Backend combo's own "Wavefront (Experimental)" item is a genuinely
+OptiX-only path (`gpu/optix/wavefront_path_tracer.cpp` - absent from
+`gpu/metal/` entirely, not just untested there), so it stays
+specifically disabled whenever `!kGpuOptionAvailable`, even when GPU
+rendering itself is available via Metal. Checked before committing to
+this design: `--wavefront`/`--optix-validate` (`launcher/main.cpp`)
+already just set environment variables that only `optix_render_main()`
+reads - a Metal build would have silently ignored them (no crash), but
+leaving the item selectable would still have shown a misleading UI
+state ("Wavefront" picked, recursive path actually used), so it's
+disabled properly rather than left to work by accident.
+
+**A real bug caught mid-verification, not a design flaw**: the first
+implementation of `probeMetalGpuAvailable()` used
+`MTLCreateSystemDefaultDevice()` directly and appeared to hang the app
+during a manual test run. Bisected with temporary trace `fprintf`s
+(reverted before committing): the app wasn't actually hanging on the
+probe at all (that returned promptly) - it was blocked later, inside
+`createSettingsTab()`, because the manually-assembled test app bundle
+was missing `scene_metadata.dylib` (a real, pre-existing dependency,
+unrelated to this change) that the Scene combo's own setup needs.
+Copying that dylib alongside the test binary resolved it completely -
+a real lesson in not misattributing a blocker to the most recently
+changed code without confirming where execution actually stopped.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` CMake rebuild + ctest
+(4/4 pass) for the CLI side. For the GUI side: a full clean `qmake6` +
+`make` build (zero errors) with temporary trace prints confirmed, end
+to end, against a real Metal-enabled `ray_tracer` binary placed
+alongside the test GUI: `m_metalGpuAvailable=1`, `gpuAvailable=1`,
+`kGpuOptionAvailable=0` (confirms the addition is purely ADDITIVE - the
+original Windows-only flag is untouched and still correctly false on
+macOS), the Renderer combo's own GPU item genuinely enabled (not just
+labeled as if it were), reading `"GPU (Metal) - Fast"`, and correctly
+becoming the DEFAULT selection (`currentIndex=0`) now that a real GPU
+option exists - exactly the same behavior a Windows/OptiX build already
+has, now real on macOS too. All temporary trace prints were removed
+before committing (confirmed via a full `diff` against a pre-
+instrumentation backup, and a final clean rebuild of the reverted
+code).
