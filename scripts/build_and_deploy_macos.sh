@@ -57,7 +57,19 @@ echo "========================================"
 
 echo
 echo "[1/5] Building cpu_renderer + ray_tracer CLI + scene_metadata (CMake)..."
-cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+# Explicit -DCMAKE_OSX_ARCHITECTURES=$(uname -m), not left to CMake's own
+# default: if the `cmake` binary on PATH is itself an Intel/Rosetta build
+# (common with an older Homebrew install under /usr/local on Apple
+# Silicon - Rosetta-translated processes report x86_64 from uname(), so
+# CMake's default OSX-architecture detection inherits that), it silently
+# targets x86_64 while qmake's own arm64-native Qt build the step below
+# produces an arm64 RayTracerGUI - the two then can't load each other at
+# all (dlopen refuses cross-architecture libraries outright; this is
+# exactly the "cannot load scene_metadata.dylib" error a real install hit).
+# `uname -m` here is the OUTER script's own shell, not cmake's - always
+# reports the real host architecture regardless of which arch cmake
+# itself was built for.
+cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(uname -m)"
 cmake --build "$BUILD_DIR" --config Release -j"$(sysctl -n hw.ncpu)"
 
 CLI_BIN="$BUILD_DIR/ray_tracer"
