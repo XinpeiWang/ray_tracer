@@ -4134,3 +4134,68 @@ per-scene Metal-compatibility flag (mirroring `SceneDescriptor::
 gpu_compatible`) once coverage is closer to OptiX's own; GUI wiring
 (this project's own `kGpuOptionAvailable`, section 79, would need to
 become conditionally true on macOS instead of Windows-only).
+
+## 80. Real integration, phase 2: a callable entry point (done)
+
+Phase 1 (section 79) proved this POC could load a real pbrt scene at
+all. This phase gives it a real, callable C API - `metal_render_main()`
+(new, `gpu/metal/metal_poc.mm`) - matching `gpu/optix/optix_interface.h`'s
+own `optix_render_main()` shape exactly, including reusing the SAME
+`RenderOptions` struct. A new `gpu/metal/metal_interface.h` declares it
+with `extern "C"` linkage, the same pattern `optix_interface.h`/
+`cpu_interface.h` already use, so a future `launcher/main.cpp` caller
+would need no Metal/Objective-C headers of its own.
+
+Still NOT wired into `ray_tracer`'s own CMake target or
+`launcher/main.cpp` - that remains a separate, larger follow-up phase
+(enabling `OBJCXX` on that target, a static-lib-style build analogous
+to `optix_renderer`'s own, the actual dispatch branch). This phase is
+scoped to: does a properly-shaped callable entry point work at all, end
+to end, given a real `scene_id` instead of a raw file path?
+
+`metal_render_main()` resolves `scene_id` -> pbrt path via
+`cpu_scene_pbrt_path_by_id()` (the same shared C-ABI accessor
+`gpu/optix/scene_builder.cpp` already uses), which needed a new
+`cpu_renderer` link dependency for the standalone `metal_poc` target -
+harmless, pure C++, no Objective-C anything. A `scene_id` with no pbrt
+backing (this POC's own `loadPbrtScene()` doesn't reproduce this
+project's hand-authored built-in scenes) returns non-zero with a clear
+message instead of a crash or wrong render, same precedent
+`scene_builder.cpp`'s own `default:` case already established. Camera
+override (`cam_x/y/z`, `force_camera_override`) is accepted but not yet
+implemented - warned, not silently ignored - since honoring it
+correctly needs `loadPbrtScene()`'s own coordinate rescale/recentre/
+offset transform exposed outside that function first, which this phase
+doesn't do. The standalone CLI (`main()`) is completely unchanged - it
+still parses argv the same way it always has and calls the same
+`MetalPocApp` pipeline directly; `metal_render_main()` is a new,
+separate, additive entry point that builds the SAME positional-argv
+shape internally and calls into that identical, already-tested
+pipeline, rather than parsing arguments a second, independent way.
+
+**A real, previously-latent bug found only by making this the first
+`cpu_interface` call of the process** (section 78's own "the standing
+lesson this whole POC keeps re-learning," yet again): `cpu_scene_pbrt_
+path_by_id()` (`cpu_renderer/cpu_interface.cpp`) read `pbrt_scene_
+registry::paths()` directly, but that map is only populated as a side
+effect of `get_scene_registry()`'s own lazy static-init construction.
+Every OTHER `*_by_id` accessor in that file goes through `find_scene()`,
+which calls `get_scene_registry()` itself and so triggers that
+construction as a matter of course - this was the one exception, and
+would silently return `""` for a real pbrt-backed `scene_id` if called
+before any other scene accessor ever has in that process. Never
+manifested before because every existing caller (`gpu/optix/
+scene_builder.cpp`, the GUI's scene picker) always calls some other
+scene accessor first - `metal_render_main()` is the first caller that
+doesn't. Fixed separately (not in this repo section - see `cpu_
+interface.cpp`'s own comment) by calling `get_scene_registry()` first.
+
+**Verified**: full `RT_BUILD_METAL` build (now also linking
+`cpu_renderer`) + `ctest` (4/4 pass, no regression), plus a temporary,
+not-committed manual call to `metal_render_main("K16", ...)` - the
+auto-discovered `scene_id` for `pbrt_scenes/example-cornell.pbrt` -
+confirmed it resolves the scene, renders, and returns 0, producing a
+Cornell box render matching phase 1's own direct-CLI-path render. Also
+ran the full portable `tests/build/unit_tests` suite (3179/3184 pass,
+5 pre-existing unrelated skips) to confirm the shared `cpu_interface.cpp`
+fix didn't regress anything else that depends on it.

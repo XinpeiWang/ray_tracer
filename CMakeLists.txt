@@ -368,7 +368,13 @@ if(RT_BUILD_METAL)
         ${CMAKE_SOURCE_DIR}/src/TheRestOfYourLife
         ${CMAKE_SOURCE_DIR}/src/shared
         ${CMAKE_SOURCE_DIR}/src/external)
-    target_link_libraries(metal_poc PRIVATE
+    # cpu_renderer: metal_render_main() (section 79) resolves a scene_id to
+    # its pbrt file path via cpu_scene_pbrt_path_by_id() - the same shared
+    # C-ABI accessor gpu/optix/scene_builder.cpp already uses for the same
+    # purpose - rather than re-scanning pbrt_scenes/ a second, independent
+    # way. Pure C++, no Objective-C anything, so linking it into this
+    # OBJCXX target is unremarkable.
+    target_link_libraries(metal_poc PRIVATE cpu_renderer
         "-framework Metal" "-framework Foundation")
     set_target_properties(metal_poc PROPERTIES
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)

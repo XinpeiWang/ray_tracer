@@ -80,6 +80,23 @@
 #include "../../src/external/tinyexr.h"
 #undef TINYEXR_IMPLEMENTATION
 #include "../../src/shared/pbrt_load.h"
+// metal_render_main()'s own callable signature (section 79) - matches
+// gpu/optix/optix_interface.h's own optix_render_main() shape exactly,
+// down to reusing this SAME struct, so a future launcher/main.cpp caller
+// (once this target is linked into ray_tracer itself, still TODO) needs
+// no Metal-specific parameter shape of its own.
+#include "../../src/shared/render_options.h"
+// cpu_scene_pbrt_path_by_id() - resolves a scene_id string to its pbrt
+// file path, the SAME shared C-ABI accessor gpu/optix/scene_builder.cpp
+// already uses for pbrt-file-backed scenes, rather than re-scanning
+// pbrt_scenes/ a second, independent way.
+#include "../../cpu_renderer/cpu_interface.h"
+// metal_render_main()'s own extern "C" declaration (with its default
+// arguments - a C++ default argument may only be specified once, so this
+// function's own DEFINITION below deliberately omits them) - included
+// here, before that definition, so the compiler sees them as the same
+// declaration rather than two independent ones.
+#include "metal_interface.h"
 
 // Mirrors metal_poc.metal's Uniforms/TriangleMaterial byte-for-byte -
 // PackedFloat3 (not simd::float3) for every vector field, same reasoning
@@ -2341,6 +2358,80 @@ void MetalPocApp::postProcessAndWrite() {
 
     stbi_write_png(outPath, width, height, 3, denoised.data(), width * 3);
     fprintf(stderr, "Wrote %s (%ux%u)\n", outPath, width, height);
+}
+
+// --- Callable entry point (phase 2 of real GPU integration - see
+// docs/METAL_GPU_FEASIBILITY.md's own section on this) -------------------
+// Signature matches gpu/optix/optix_interface.h's own optix_render_main()
+// exactly, down to reusing the same RenderOptions struct - the shape a
+// future launcher/main.cpp caller would need once this target is actually
+// linked into ray_tracer itself (still TODO, a separate/larger phase: this
+// function exists and works standalone, but nothing calls it yet outside
+// this file's own main() below and its own smoke test).
+//
+// scene_id resolution: this POC's own loadPbrtScene() only ever supported
+// pbrt-FILE-backed scenes (see that function's own comment) - never this
+// project's ~130 hand-authored built-in scenes (scene_registry.h), which
+// gpu/optix/scene_builder.cpp reproduces natively in its own ~900-line
+// switch instead of going through pbrt_load.h at all. So scene_id here
+// resolves via cpu_scene_pbrt_path_by_id() and REQUIRES a real pbrt path
+// back - a hand-authored scene (or an unknown scene_id) is reported as
+// not-yet-implemented and returns non-zero, the same "explain why, don't
+// crash or silently render something else" precedent
+// gpu/optix/scene_builder.cpp's own default: case already established.
+//
+// Camera override (cam_x/y/z, force_camera_override) is NOT YET
+// implemented - loadPbrtScene()'s own coordinate rescale/recentre/offset
+// (section 78) happens entirely inside that function, so overriding the
+// camera in the scene's OWN coordinate space (matching what a caller
+// naturally would pass) needs that same transform exposed outside of it
+// first, which this phase doesn't do. force_camera_override is honored
+// only insofar as it's warned about, never silently ignored.
+int metal_render_main(int image_width, int image_height, int samples_per_pixel,
+                       int max_depth, const char* output_path, const char* scene_id,
+                       double cam_x, double cam_y, double cam_z,
+                       int force_camera_override, const RenderOptions& options) {
+    const char* pbrtPath = cpu_scene_pbrt_path_by_id(scene_id);
+    if (!pbrtPath || !pbrtPath[0]) {
+        fprintf(stderr, "metal_render_main: scene '%s' has no pbrt file backing it - only "
+                        "pbrt-file-backed scenes are implemented for Metal rendering yet (this "
+                        "POC's own loadPbrtScene() doesn't reproduce this project's hand-authored "
+                        "built-in scenes the way gpu/optix/scene_builder.cpp's own switch-case "
+                        "does). Use CPU or GPU (OptiX) for this scene instead.\n", scene_id);
+        return 1;
+    }
+    if (force_camera_override) {
+        fprintf(stderr, "metal_render_main: camera override (cam_x=%.3f cam_y=%.3f cam_z=%.3f) "
+                        "requested but not yet supported for a loaded pbrt scene - rendering with "
+                        "the scene's own camera instead.\n", cam_x, cam_y, cam_z);
+    }
+
+    // Builds the SAME positional-argv shape parseArgsAndCreateDevice()/
+    // compileShaderAndDispatch() already parse for the standalone CLI
+    // below, rather than giving those two functions a second, parallel
+    // explicit-parameter entry point of their own - keeps this new
+    // callable path exercising the EXACT SAME, already-tested parsing
+    // code the CLI does, instead of two argument-handling implementations
+    // that could silently drift apart.
+    char widthStr[32], heightStr[32], sppStr[32], depthStr[32];
+    snprintf(widthStr, sizeof(widthStr), "%d", image_width);
+    snprintf(heightStr, sizeof(heightStr), "%d", image_height);
+    snprintf(sppStr, sizeof(sppStr), "%d", samples_per_pixel);
+    snprintf(depthStr, sizeof(depthStr), "%d", max_depth);
+    const char* tonemapStr = (options.tonemap && options.tonemap[0]) ? options.tonemap : "aces";
+    const char* args[8] = {"metal_render_main", widthStr, heightStr, output_path,
+                            sppStr, depthStr, tonemapStr, pbrtPath};
+    const int argCount = 8;
+
+    @autoreleasepool {
+        MetalPocApp app;
+        if (!app.parseArgsAndCreateDevice(argCount, args)) return 1;
+        app.buildScene();
+        if (!app.buildGPUResources()) return 1;
+        if (!app.compileShaderAndDispatch(argCount, args)) return 1;
+        app.postProcessAndWrite();
+    }
+    return 0;
 }
 
 int main(int argc, const char** argv) {
