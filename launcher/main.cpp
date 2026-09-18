@@ -53,6 +53,16 @@ extern char** environ;
 #else
 #include "launcher/optix_stub.h"
 #endif
+// RT_HAVE_OPTIX and RT_HAVE_METAL are never both defined for the same
+// build (CUDA/OptiX needs Windows, Metal needs macOS - see root
+// CMakeLists.txt's own RT_BUILD_GPU/RT_BUILD_METAL blocks), so this
+// doesn't need a stub header the way optix_interface.h does above - a
+// build with neither defined simply never calls metal_render_main() at
+// all (see the use_gpu dispatch below), so nothing needs to link a no-op
+// stand-in for it.
+#ifdef RT_HAVE_METAL
+#include "gpu/metal/metal_interface.h"
+#endif
 #include "src/external/image_writer.h"
 #include "src/TheRestOfYourLife/error_codes.h"
 #include "src/TheRestOfYourLife/thread_count.h"
@@ -307,23 +317,26 @@ int main(int argc, char** argv) {
 
 	// Unpack for readability in the rest of main
 	bool use_gpu            = args.use_gpu;
-#ifndef RT_HAVE_OPTIX
-	// This build has no CUDA/OptiX SDK - GPU rendering was never compiled in
-	// (see launcher/optix_stub.h). Deliberately applied here, after parsing,
-	// rather than inside parse_launch_args() itself: that function's
-	// LaunchArgs::use_gpu default (true) is covered by its own unit tests
+#if !defined(RT_HAVE_OPTIX) && !defined(RT_HAVE_METAL)
+	// This build has no CUDA/OptiX SDK AND no Metal GPU support compiled in
+	// (see launcher/optix_stub.h and gpu/metal/metal_interface.h's own
+	// RT_HAVE_METAL guard) - GPU rendering was never compiled in at all.
+	// Deliberately applied here, after parsing, rather than inside
+	// parse_launch_args() itself: that function's LaunchArgs::use_gpu
+	// default (true) is covered by its own unit tests
 	// (tests/unit/launcher_args_bdpt_mlt_tests.cpp) independent of platform,
 	// so the platform-capability decision belongs at the call site, next to
 	// where every other use_gpu-affecting concern in main is applied - not
 	// baked into the parser itself. Force CPU rendering unconditionally
-	// rather than letting the true default reach the optix_is_available()
-	// check below and hard-fail every plain invocation; only warn when the
-	// user actually typed --gpu, so a build known ahead of time to be
-	// CPU-only degrades gracefully instead of refusing to render at all.
+	// rather than letting the true default reach the optix_is_available()/
+	// Metal dispatch below and hard-fail every plain invocation; only warn
+	// when the user actually typed --gpu, so a build known ahead of time to
+	// be CPU-only degrades gracefully instead of refusing to render at all.
 	if (use_gpu) {
 		if (args.gpu_flag_explicit) {
 			std::cerr << "Warning: --gpu was requested, but this build has no "
-						 "GPU/OptiX support - rendering on CPU instead.\n";
+						 "GPU support (neither OptiX nor Metal) - rendering on "
+						 "CPU instead.\n";
 		}
 		use_gpu = false;
 	}
@@ -1221,6 +1234,45 @@ int main(int argc, char** argv) {
             return render_result;
         }
     } else if (use_gpu) {
+#ifdef RT_HAVE_METAL
+        // GPU Renderer (Metal, macOS) - see docs/METAL_GPU_FEASIBILITY.md's
+        // own "phase 3b" section for the full story. metal_render_main()
+        // itself (gpu/metal/metal_poc.mm) only supports pbrt-file-backed
+        // scenes (this backend's own loadPbrtScene() doesn't reproduce this
+        // project's hand-authored built-in scenes the way gpu/optix/
+        // scene_builder.cpp's own switch-case does) - a scene_id with no
+        // pbrt backing prints a clear message and returns non-zero, same
+        // "explain why, don't crash or silently render something else"
+        // precedent optix_render_main()'s own error path above already
+        // established for a GPU-unsupported scene.
+        std::cout << "Calling metal_render_main(...) in-process (Metal)..." << std::endl;
+        render_result = metal_render_main(
+            image_width,
+            image_height,
+            samples_per_pixel,
+            max_ray_depth,
+            out_path.c_str(),
+            scene_id.c_str(),
+            cam_x,
+            cam_y,
+            cam_z,
+            1,  // force_camera_override - see the comment above this section
+                // (NOT YET HONORED by metal_render_main() itself - it warns
+                // instead, see that function's own comment)
+            render_opts
+        );
+        std::cout << "metal_render_main returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with Metal renderer, output: " << out_path << std::endl;
+        } else {
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "METAL RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << "See metal_render_main()'s own stderr message above for why.\n";
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+#else
         // GPU Renderer (OptiX)
         if (optix_is_available()) {
             std::cout << "[OptiX] OptiX is available!" << std::endl;
@@ -1255,6 +1307,7 @@ int main(int argc, char** argv) {
             std::cerr << "ERROR: OptiX is not available!" << std::endl;
             return ERR_GPU_NO_DEVICE;
         }
+#endif
     } else {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
@@ -1359,6 +1412,21 @@ int main(int argc, char** argv) {
     if (render_result == 0) {
         std::filesystem::path ppm_path_obj(out_path);
 
+#ifdef RT_HAVE_METAL
+        if (use_gpu) {
+            // metal_render_main() (gpu/metal/metal_interface.h) always
+            // writes a real PNG directly at out_path via stbi_write_png -
+            // unlike cpu_render_main()/optix_render_main(), it doesn't
+            // sniff out_path's own extension and never writes PPM. The
+            // convert_ppm_to_png() call below would misparse those PNG
+            // bytes as a PPM header and fail, so skip it here, the same
+            // way the is_exr_output_path() branch below skips it for
+            // tinyexr's own already-final output format.
+            std::cout << "\nRender complete! You can now open:" << std::endl;
+            std::cout << "  - " << ppm_path_obj.filename()
+                       << " (PNG - written directly by the Metal renderer)" << std::endl;
+        } else
+#endif
         if (is_exr_output_path(out_path)) {
             // Every CLI render entry point (cpu_render_main()/optix_render_main()
             // and the BDPT/MLT/SPPM CPU+GPU entry points) is extension-aware
