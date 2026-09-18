@@ -19,6 +19,7 @@
 #include <QTimer>
 #include <QAbstractItemView>
 #include <QStyledItemDelegate>
+#include <QStandardItemModel>
 
 
 // ============================================================================
@@ -1112,6 +1113,12 @@ void MainWindow::setRichItemTooltip(QComboBox *combo, int index, const QString &
 void MainWindow::setRichItemTooltip(QListWidgetItem *item, const QString &plainText) {
 	item->setData(kRichTooltipPlainTextRole, plainText);
 	item->setToolTip(wrapTooltipHtml(plainText));
+}
+
+void MainWindow::setComboItemEnabled(QComboBox *combo, int index, bool enabled) {
+	if (auto *model = qobject_cast<QStandardItemModel *>(combo->model())) {
+		if (QStandardItem *item = model->item(index)) item->setEnabled(enabled);
+	}
 }
 
 void MainWindow::refreshRichTooltips() {

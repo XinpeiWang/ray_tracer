@@ -1032,10 +1032,11 @@ void MainWindow::setupUI() {
 				updateRenderOptionsEnabled();
 			});
 	// A second, narrower live update on top of the m_renderModeCombo one
-	// above, which only knows about GPU-vs-CPU, not which GPU backend -
-	// m_gpuBackendCombo is nullptr on a build with no GPU support at all
-	// (RT_GUI_HAVE_GPU undefined - see mainwindow_tabs.cpp's Renderer combo
-	// setup, which never creates it there).
+	// above, which only knows about GPU-vs-CPU, not which GPU backend.
+	// m_gpuBackendCombo is always constructed now (kGpuOptionAvailable
+	// only affects whether it's ever actually enabled/reachable, not
+	// whether it exists - see mainwindow_tabs.cpp's Renderer combo setup);
+	// this null check is kept anyway as cheap, harmless defensiveness.
 	if (m_gpuBackendCombo) {
 		connect(m_gpuBackendCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 				this, [this](int) { updateRenderOptionsEnabled(); });
