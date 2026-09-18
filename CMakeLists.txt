@@ -337,11 +337,23 @@ endif()
 # but nothing here assumes RT_BUILD_GPU is OFF, they just don't interact.
 # =============================================================================
 if(RT_BUILD_METAL)
-    add_executable(metal_poc
+    # metal_renderer: a static lib holding metal_poc.mm's own code
+    # (MetalPocApp, metal_render_main(), metal_poc_cli_main() - everything
+    # except main() itself, which lives in metal_poc_main.mm instead - see
+    # that file's own header comment for why) - split out of the metal_poc
+    # EXECUTABLE (phase 3 of real GPU integration, docs/METAL_GPU_
+    # FEASIBILITY.md's own section on this) so this same, single-compiled
+    # object can ALSO be linked into ray_tracer below, mirroring
+    # optix_renderer's own static-lib-linked-into-ray_tracer shape exactly
+    # (see RT_BUILD_GPU's own block further up) - not yet dispatched to
+    # from launcher/main.cpp (that's a separate, later phase), just linked
+    # in and proven to build correctly alongside the CPU-only code it
+    # already contains.
+    add_library(metal_renderer STATIC
         gpu/metal/metal_poc.mm
         # tinyexr's own zip/pxr24 codecs need miniz's real mz_compress/
         # mz_uncompress symbols (see the target_include_directories
-        # comment below on why metal_poc now needs tinyexr's real
+        # comment below on why metal_renderer now needs tinyexr's real
         # implementation at all) - cpu_renderer gets this from the SAME
         # source file, listed separately above.
         src/external/miniz.c
@@ -352,7 +364,7 @@ if(RT_BUILD_METAL)
     # tree - out-of-tree builds are the CMake norm, and __FILE__ isn't
     # guaranteed to stay a path anyone can navigate back to gpu/metal/ or
     # models/ from an arbitrary build dir.
-    target_compile_definitions(metal_poc PRIVATE
+    target_compile_definitions(metal_renderer PUBLIC
         RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal"
         RT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/models")
     # Needed once metal_poc.mm started including src/shared/pbrt_load.h
@@ -362,23 +374,52 @@ if(RT_BUILD_METAL)
     # TARGET having that header's own directory on its include path, not
     # just being reachable via a relative ../../ chain from metal_poc.mm
     # itself. Same list cpu_renderer's own target_include_directories()
-    # above uses, minus cpu_renderer/ (metal_poc doesn't need that one).
-    target_include_directories(metal_poc PRIVATE
+    # above uses, minus cpu_renderer/ (this target doesn't need that one).
+    target_include_directories(metal_renderer PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/src/TheRestOfYourLife
         ${CMAKE_SOURCE_DIR}/src/shared
         ${CMAKE_SOURCE_DIR}/src/external)
-    # cpu_renderer: metal_render_main() (section 79) resolves a scene_id to
+    # cpu_renderer: metal_render_main() (section 80) resolves a scene_id to
     # its pbrt file path via cpu_scene_pbrt_path_by_id() - the same shared
     # C-ABI accessor gpu/optix/scene_builder.cpp already uses for the same
     # purpose - rather than re-scanning pbrt_scenes/ a second, independent
     # way. Pure C++, no Objective-C anything, so linking it into this
-    # OBJCXX target is unremarkable.
-    target_link_libraries(metal_poc PRIVATE cpu_renderer
+    # OBJCXX target is unremarkable. PUBLIC (not PRIVATE): both frameworks
+    # and cpu_renderer's own symbols are needed again at FINAL link time by
+    # whichever executable links this static lib (metal_poc below, and
+    # ray_tracer further down) - a static lib's own PRIVATE link
+    # dependencies don't propagate to its consumers the way a shared lib's
+    # would, so this has to be PUBLIC for ray_tracer's own final link step
+    # to resolve metal_renderer's symbols correctly.
+    target_link_libraries(metal_renderer PUBLIC cpu_renderer
         "-framework Metal" "-framework Foundation")
+    set_target_properties(metal_renderer PROPERTIES
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
+    target_compile_options(metal_renderer PRIVATE -fobjc-arc)
+
+    # The standalone metal_poc executable itself is now just main() (see
+    # metal_poc_main.mm's own header comment) plus metal_renderer above.
+    add_executable(metal_poc gpu/metal/metal_poc_main.mm)
+    target_link_libraries(metal_poc PRIVATE metal_renderer)
     set_target_properties(metal_poc PROPERTIES
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
     target_compile_options(metal_poc PRIVATE -fobjc-arc)
+
+    # ray_tracer links metal_renderer and gains RT_HAVE_METAL, same shape
+    # as RT_BUILD_GPU's own RT_HAVE_OPTIX block further up - launcher/
+    # main.cpp doesn't branch on RT_HAVE_METAL yet at all (that's a
+    # separate, later phase: a real #ifdef RT_HAVE_METAL / metal_stub.h
+    # split and an actual dispatch branch, mirroring RT_HAVE_OPTIX's own),
+    # so this step alone makes zero difference to ray_tracer's own runtime
+    # behavior - it only proves metal_renderer (an Objective-C++/ARC
+    # static lib) links cleanly into the SAME executable as the plain
+    # CXX/C cpu_renderer code, without needing ray_tracer's own project()
+    # to declare OBJCXX at all (only the LIBRARY that actually contains
+    # Objective-C++ source needs that language enabled - a consumer
+    # linking it PRIVATE/PUBLIC needs no language changes of its own).
+    target_compile_definitions(ray_tracer PRIVATE RT_HAVE_METAL)
+    target_link_libraries(ray_tracer PRIVATE metal_renderer)
 
     # --- Smoke test: does metal_poc still run and produce a real image? -
     # Seventeen incremental features (docs/METAL_GPU_FEASIBILITY.md

@@ -2434,7 +2434,17 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
     return 0;
 }
 
-int main(int argc, const char** argv) {
+// Renamed from main() (phase 3 of real GPU integration - see docs/
+// METAL_GPU_FEASIBILITY.md's own section on this): a real main() now
+// needs to live OUTSIDE this file, since metal_poc.mm's own code (this
+// function, MetalPocApp, metal_render_main()) is also linked into
+// ray_tracer itself, which already has its own main() (launcher/
+// main.cpp) - two definitions of main() in the same executable won't
+// link. gpu/metal/metal_poc_main.mm - the standalone metal_poc
+// executable's only other source file now - is just a one-line main()
+// that calls straight through to this, so the standalone CLI's own
+// behavior is completely unchanged.
+int metal_poc_cli_main(int argc, const char** argv) {
     @autoreleasepool {
         MetalPocApp app;
         if (!app.parseArgsAndCreateDevice(argc, argv)) return 1;

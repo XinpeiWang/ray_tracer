@@ -4199,3 +4199,60 @@ Cornell box render matching phase 1's own direct-CLI-path render. Also
 ran the full portable `tests/build/unit_tests` suite (3179/3184 pass,
 5 pre-existing unrelated skips) to confirm the shared `cpu_interface.cpp`
 fix didn't regress anything else that depends on it.
+
+## 81. Real integration, phase 3a: linking Metal into `ray_tracer` itself (done)
+
+Phases 1-2 grew the standalone `metal_poc` executable's own capability
+(real scene loading, then a real callable API). This phase is the first
+one that touches the actual shipping `ray_tracer` CLI target at all -
+scoped narrowly to just the BUILD-SYSTEM merge, not yet any runtime
+dispatch, mirroring this whole POC's own "prove the foundational piece
+first, in isolation" discipline once more (env-map importance sampling
+and GGX energy compensation both split the same way, `data` before
+`wiring`).
+
+**The merge, mirroring `RT_BUILD_GPU`'s own `optix_renderer`-into-
+`ray_tracer` shape exactly:** `metal_poc.mm`'s own code (`MetalPocApp`,
+`metal_render_main()`, and a renamed `metal_poc_cli_main()`) moved into
+a new `metal_renderer` STATIC LIB target, so the same compiled object
+can be linked into BOTH the standalone `metal_poc` executable (now just
+a one-line `main()` in a new `metal_poc_main.mm` - `metal_poc.mm` itself
+can no longer define its own `main()`, since `ray_tracer` already has
+one in `launcher/main.cpp`, and two `main()` definitions in the same
+executable won't link) AND `ray_tracer` itself, which gains a new
+`RT_HAVE_METAL` compile definition (unread anywhere yet - a deliberate
+no-op placeholder for phase 3b's own future `#ifdef RT_HAVE_METAL`
+dispatch branch, mirroring `RT_HAVE_OPTIX`'s existing one in
+`launcher/main.cpp`) plus the actual link dependency.
+
+Two real, non-obvious CMake details worth remembering for a similar
+future merge: (1) `ray_tracer`'s own `project()` call never declares the
+`OBJCXX` language, and doesn't need to - only the LIBRARY that actually
+contains Objective-C++ source (`metal_renderer`) needs
+`enable_language(OBJCXX)` (already true, inside this same
+`if(RT_BUILD_METAL)` block); a consumer merely linking that library
+needs no language changes of its own. (2) `metal_renderer`'s own
+`target_link_libraries()` calls (`cpu_renderer`, `-framework Metal`,
+`-framework Foundation`) had to become `PUBLIC`, not the `PRIVATE` the
+standalone `metal_poc` executable used before this split - a static
+library's `PRIVATE` link dependencies don't propagate to whatever links
+that static library, so `ray_tracer`'s own final link step would
+otherwise fail to resolve `metal_renderer`'s own unresolved symbols.
+
+**Deliberately, explicitly NOT done in this phase** (phase 3b, still
+TODO): any actual `#ifdef RT_HAVE_METAL` branch in `launcher/main.cpp` -
+`--gpu` on this build still does exactly what it always did (nothing
+different at all; `RT_HAVE_METAL` is defined but read nowhere). This
+phase is a pure build-graph change with zero runtime-behavior
+difference, verified precisely to confirm that.
+
+**Verified**: full clean reconfigure + build of the WHOLE project
+(`cpu_renderer`, `metal_renderer`, `metal_poc`, `ray_tracer`,
+`scene_metadata`, all four `metal_poc` `ctest` targets) - one benign
+linker warning (`ignoring duplicate libraries: 'libcpu_renderer.a'`,
+since `ray_tracer` now reaches it both directly and transitively through
+`metal_renderer`'s own `PUBLIC` link - harmless, not an error). Ran
+`ray_tracer --cpu` against a real scene (A1) and visually confirmed its
+own CPU render is completely unaffected - a real, correct Cornell box,
+identical in kind to every prior render this scene has ever produced.
+All four `metal_poc` `ctest` tests still pass.
