@@ -144,6 +144,20 @@ struct Uniforms {
     // unlike those genuinely optional features).
     uint ggxEnergyRoughRes;
     uint ggxEnergyMuRes;
+    // A pbrt-loaded scene's own LightSource "infinite" with no image
+    // (constant colour only) - see the miss-path code below and
+    // metal_poc.mm's own loadPbrtScene() comment. Deliberately NO NEE/
+    // MIS strategy the way useEnvironmentMap's earthTexture-based one
+    // has (section 71) - every material's own shading function would
+    // need its own new sampling+MIS block to add that, real work this
+    // POC's own docs (METAL_GPU_FEASIBILITY.md) explicitly scope out for
+    // now. A pure miss-path contribution is still a correct, unbiased
+    // Monte Carlo estimator (just higher-variance than an NEE-augmented
+    // one) - the exact same tradeoff this file's own env-map support
+    // already had for a long time before section 71 added NEE on top of
+    // it, and the same one envMapWidth==0 still falls back to today.
+    uint pbrtHasConstantEnvLight;
+    packed_float3 pbrtEnvColor;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -3539,6 +3553,16 @@ kernel void primaryRayKernel(
                         envMissWeight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfEnv * pdfEnv);
                     }
                     radiance += throughput * envColor * envMissWeight;
+                } else if (uniforms.pbrtHasConstantEnvLight != 0u) {
+                    // A pbrt-loaded scene's own constant-colour
+                    // LightSource "infinite" (metal_poc.mm's own
+                    // loadPbrtScene() comment) - deliberately no MIS
+                    // weight (weight 1.0, same as the specularBounce/
+                    // envMapWidth==0 escape hatches just above): there is
+                    // no NEE strategy for this light to double-count
+                    // against, since none of this shader's material-
+                    // shading functions sample it explicitly yet.
+                    radiance += throughput * float3(uniforms.pbrtEnvColor);
                 } else {
                     float skyT = 0.5 * (rayDir.y + 1.0);
                     radiance += throughput * mix(skyBottom, skyTop, skyT);
