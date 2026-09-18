@@ -5127,3 +5127,73 @@ are genuinely different sets, not a rename of the same one, and that
 the old `gpuCompatible`-only logic would have left GPU mode wrongly
 selected (or wrongly recommended CPU) for the majority-sized set of
 scenes where they disagree.
+
+## 97. Image-based infinite light gets real NEE, and a real latent bug found investigating it
+
+Closes the remaining gap section 90 (image-based infinite light,
+miss-path-only) deliberately left open: every material's own shading
+function that already does NEE against `earthTexture`'s own
+environment map (`shadeConductor`/`shadeClearcoat`/
+`shadeDiffuseTransmission`/`shadeLambertian`/`shadeOrenNayar`/
+`shadeVelvet`) now ALSO importance-samples a pbrt-loaded scene's own
+image-based infinite light directly, instead of only ever reaching it
+via a lucky BSDF-sampled escaping ray. `metal_poc_host_math.h`'s
+float-RGB `buildEnvDistribution2D()` overload (added in section 90,
+never wired to anything until now) builds a SEPARATE
+`EnvDistribution2D` from `pbrtEnvImagePixels` - genuinely separate CDF
+buffers/dimensions (`pbrtEnvMarginalCDF`/`pbrtEnvConditionalCDF`/
+`pbrtEnvMapWidth`/`pbrtEnvMapHeight`, buffers 22/23) from
+`earthTexture`'s own (`envMarginalCDF`/`envConditionalCDF`/
+`envMapWidth`/`envMapHeight`), for exactly the same reason
+`pbrtEnvTexture` itself is a separate texture from `earthTexture`
+(section 90's own comment - repointing the shared one would corrupt
+the hardcoded room's own materialType-3 wall). The device-side
+distribution math needed NO new functions at all - `sampleEnvironmentDirection()`/
+`pdfEnvironmentDirection()` already take their CDF buffers/dimensions
+as plain parameters, so calling them with the pbrt-env buffers instead
+of the earthTexture ones is the entire "new" sampling code. Each of
+the 6 material functions gained a second NEE block mirroring its
+existing earthTexture one exactly (same per-material BRDF/pdf
+formula - GGX conductor's own `envBrdf`/`envPdfBsdf`, clearcoat's coat-
+transmission factor, diffuse transmission's signed lobe pick, Oren-
+Nayar's `orenNayarF()`, velvet's fixed `uniformPdf`), gated on
+`pbrtEnvMapWidth > 0u` so every scene without an image-based infinite
+light sees zero behavior change. The miss-path's own previously-
+unconditional `pbrtHasImageEnvLight` contribution is now MIS-weighted
+against this new strategy too, mirroring the `useEnvironmentMap` arm's
+own weight computation exactly.
+
+**A real, previously-undiscovered bug found while touching this exact
+code, fixed in the same PR**: every one of those 6 functions' existing
+`earthTexture` NEE blocks was gated ONLY on `envMapWidth > 0u` - which
+is nonzero for EVERY render where `earthmap.jpg` loads successfully,
+REGARDLESS of whether the current scene's own miss path actually
+treats `earthTexture` as its sky. `buildScene()` (`metal_poc.mm`) sets
+`uniforms.useEnvironmentMap = 0` unconditionally for every pbrt-loaded
+scene (`havePbrtCamera`), even ones with no infinite light concept at
+all - so every pbrt scene ever rendered by this POC (Cornell box,
+punctual-lights, camera-medium, killeroo, all 51 committed
+`pbrt_scenes/*.pbrt` files) has been incorrectly performing NEE against
+the DEMO ROOM'S OWN decorative earth-map JPEG as if it were an active
+environment light, adding light from a texture the miss path never
+actually shows as sky for that render. Fixed by gating all 6 blocks on
+`envMapWidth > 0u && uniforms.useEnvironmentMap != 0u` instead - the
+same condition the miss-path's own MIS-weight branch was already
+scoped inside, just never propagated to the material-side NEE gate.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4
+pass) and a sweep-render of all 51 `pbrt_scenes/*.pbrt` files (no
+crashes, matching the section-94 sweep's own methodology). Two
+targeted A/B renders of `pbrt_scenes/infinite-light-image.pbrt`
+(500x500, 64spp), each isolating one change via a single temporarily-
+zeroed uniform then reverted (confirmed via `diff` against a pre-edit
+backup): (1) new pbrt-env NEE strategy on vs. off - 10.84% of pixel
+bytes differ (mean abs diff 0.57, RMS 2.24), consistent with a
+real but comparatively modest change (this scene's own infinite-light
+image is a tiny 4x4 checker texture) rather than a no-op; (2) the
+`useEnvironmentMap` bug fix, before vs. after - a much larger 45.12%
+of pixel bytes differ (mean abs diff 5.54, RMS 9.85), decisively
+confirming the bug was both real and significant before this fix.
+Final rendered image statistics (mean/min/max pixel values) are
+healthy and non-degenerate in both cases - no NaNs, no solid black/
+white frames.
