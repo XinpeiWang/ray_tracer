@@ -493,6 +493,15 @@ const char* cpu_scene_description_by_id(const char* scene_id);
 /// directory from the GPU side - would be a second implementation of the
 /// search order and free to disagree about which file is scene 65.
 const char* cpu_scene_pbrt_path_by_id(const char* scene_id);
+/// True if gpu/metal/'s own MetalPocApp::buildHandAuthoredScene() has a real
+/// hand-authored builder for this scene_id (a non-pbrt-backed scene Metal
+/// can still render natively, mirroring one of gpu/optix/scene_builder.cpp's
+/// own switch cases). The ONE canonical list both metal_render_main()'s own
+/// dispatch (whether to attempt building it at all) and cpu_scene_metadata_
+/// snapshot()'s own metal_compatible field (whether the GUI/CLI advertise
+/// GPU support for it) consult - kept in cpu_interface.cpp specifically so
+/// neither side can drift from a second, hand-copied list of the same ids.
+int cpu_scene_metal_hand_authored_supported(const char* scene_id);
 /// The OLD flat 0..N int id (SceneDescriptor::legacy_id - see its comment
 /// in scene_registry.h) for a scene, or -1 if scene_id isn't found. This
 /// exists ONLY so gpu/optix/scene_builder.cpp's build_scene() can translate

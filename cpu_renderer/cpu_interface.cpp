@@ -20,6 +20,7 @@
 // ============================================================================
 
 #include "cpu_interface.h"
+#include <unordered_set>
 #include "../src/TheRestOfYourLife/rtweekend.h"
 #include "../src/TheRestOfYourLife/camera.h"
 #include "../src/TheRestOfYourLife/scene_registry.h"
@@ -935,6 +936,19 @@ extern "C" const char* cpu_scene_category_by_id(const char* scene_id) {
 	return s ? s->category : "";
 }
 
+extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
+	// See cpu_interface.h's own comment for why this is the one canonical
+	// list. Starts with just "A1" (the classic Cornell box, gpu/metal/'s
+	// own metal_poc.mm::buildCornellBoxA1() - see docs/METAL_GPU_
+	// FEASIBILITY.md section 116) - grows one scene (or small batch) at a
+	// time as MetalPocApp::buildHandAuthoredScene() gains more real cases,
+	// each addition here and a real builder there landing in the SAME PR
+	// so this list never claims support the Metal side doesn't actually
+	// have yet.
+	static const std::unordered_set<std::string> kSupported = {"A1"};
+	return scene_id && kSupported.count(scene_id) ? 1 : 0;
+}
+
 extern "C" const char* cpu_scene_pbrt_path_by_id(const char* scene_id) {
 	// get_scene_registry() must run at least once before pbrt_scene_
 	// registry::paths() has anything in it - that map is populated as a
@@ -1014,7 +1028,7 @@ extern "C" int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSn
 	out->recommended_spp = s->recommended_spp;
 	out->requires_files = s->requires_files ? 1 : 0;
 	out->gpu_compatible = s->gpu_compatible ? 1 : 0;
-	out->metal_compatible = s->is_pbrt_backed ? 1 : 0;
+	out->metal_compatible = (s->is_pbrt_backed || cpu_scene_metal_hand_authored_supported(scene_id)) ? 1 : 0;
 	out->recommended_exposure = s->recommended_exposure;
 	out->recommended_integrator = s->recommended_integrator.c_str();
 	out->recommended_sampler = s->recommended_sampler.c_str();

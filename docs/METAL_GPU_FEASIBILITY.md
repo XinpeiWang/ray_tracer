@@ -6165,3 +6165,93 @@ underlying compatibility FIELDS themselves (`scene_metadata_dll.cpp`'s
 `metal_compatible = is_pbrt_backed`) were independently confirmed
 correct for scene A1 before writing this fix - the bug was purely
 about which USER ACTIONS actually consulted them, not the data itself.
+
+## 116. Hand-authored (non-pbrt) scene support begins: scene A1, Classic Cornell Box
+
+The user explicitly asked for Metal GPU support for ALL 93 of this
+project's hand-authored built-in scenes (scene_registry.h - real
+scenes with NO `.pbrt` file backing them at all, reproduced natively
+by `gpu/optix/scene_builder.cpp`'s own ~900-line switch and CPU's own
+independent hand-written builders, neither of which Metal's
+`loadPbrtScene()` has ever touched - it only ever supported pbrt-
+FILE-backed scenes). A research pass first confirmed the real shape of
+this: 200 total registered scenes, 107 pbrt-backed (already working on
+Metal), 93 hand-authored across 9 categories (A:9 Basics, B:16
+Materials, C:7 Lights, D:9 Cameras, E:4 Volumes, F:3 Geometry, G:23
+Models, H:12 Large Scenes, I:10 Education, J:0 Textures) - a genuinely
+large, multi-session undertaking, explicitly scoped as an ONGOING
+series rather than one PR. This is increment 1: scene A1, the classic
+Cornell box (5 walls, 1 ceiling light, a rotated white box, a glass
+sphere) - the specific scene already used throughout this whole
+session's own testing.
+
+**Architecture, established here for every future increment in this
+series**: a NEW `MetalPocApp::buildHandAuthoredScene(scene_id)`
+dispatcher (string-keyed `if`-chain, mirroring `build_scene()`'s own
+switch in `scene_builder.cpp` but keyed on `scene_id` directly rather
+than a legacy int, since this loader's whole existing scene-loading
+path already is), called from `buildScene()` right after
+`loadPbrtScene()`'s own call - same ADDITIVE reasoning (coexists with
+the hardcoded POC room, recentred/rescaled/offset clear of it, exactly
+like a pbrt scene already does), mutually exclusive with it in
+practice. `metal_render_main()`'s own gate now tries
+`cpu_scene_pbrt_path_by_id()` FIRST (unchanged), then falls back to a
+NEW `cpu_scene_metal_hand_authored_supported()` check
+(`cpu_interface.cpp`) before giving up - the ONE canonical "which
+scene_ids are covered" list, consulted by BOTH that gate AND
+`cpu_scene_metadata_snapshot()`'s own `metal_compatible` field (now
+`is_pbrt_backed || cpu_scene_metal_hand_authored_supported(scene_id)`
+instead of just `is_pbrt_backed`), so the GUI's own scene-compatibility
+gating (PR #115's own auto-switch fix) and the actual dispatch can
+never silently drift apart the way this whole session has repeatedly
+found happens with duplicated lists.
+
+**`buildCornellBoxA1()` reads `src/shared/cornell_box_data.h`
+directly** - the SAME already-shared, backend-agnostic `constexpr`
+data both CPU's `build_cornell_box()` (`scenes_book.h`) and OptiX's
+`build_cornell_box()` (`scene_builder.cpp`) already read (that
+header's own comment: two independent hand-copies of this exact data
+already drifted apart once before it existed) - rather than re-typing
+wall/box/sphere coordinates a third time. The one genuinely new piece
+is the rotated white box: 6 quads built with the exact same `Q,u,v`-
+per-face construction `src/TheRestOfYourLife/quad.h`'s own `box()`
+helper uses, each corner rotated about Y (matching
+`src/TheRestOfYourLife/hittable.h`'s own `rotate_y` forward-transform
+formula exactly: `newx=cos*x+sin*z, newz=-sin*x+cos*z` - not re-
+derived independently) then translated, all in LOCAL space, before the
+same `toWorld()` rescale/recentre/offset every pbrt scene already
+gets. Camera uses `kCornellBoxCamera`'s own literal values
+(`scene_registry.h`) as a fallback - in every real invocation
+immediately overridden anyway by `launcher/main.cpp`'s own
+unconditional `force_camera_override`, matching every pbrt scene's
+identical situation.
+
+**Verified thoroughly**: a real `--gpu` render of A1 (`metal_render_main
+returned: 0`) produces a genuinely correct, recognizable Cornell box -
+green/red walls, ceiling light, rotated box, glass sphere with visible
+refraction - confirmed by directly viewing the output image, not just
+checking exit codes. Directly compared side-by-side against a `--cpu`
+render of the SAME scene: matching composition, box rotation/position,
+sphere position/size, wall placement, and light shape (tonemap/exposure
+differ cosmetically between backends, geometry does not). Confirmed
+`cpu_scene_metal_hand_authored_supported("A1")` returns 1, `"A2"`
+(not yet covered) returns 0, and `cpu_scene_metadata_snapshot("A1",
+...).metal_compatible` now correctly reports 1. Full clean rebuild +
+ctest (4/4) + the 51-scene `pbrt_scenes/` sweep (no regressions -
+this change is purely additive) all pass.
+
+**This is increment 1 of ~93 (or fewer, in practice - several D/I-
+category scene_ids reuse `build_cornell_box` verbatim and become
+Metal-compatible "for free" once their own ids are added to
+`cpu_scene_metal_hand_authored_supported()`'s list, no new geometry
+code needed).** Next planned targets, in rough ROI order per the
+research pass above: category G (Models, 23 scenes) - each is a ~15-
+line OptiX function reusing a generic OBJ-loading helper, and Metal
+already has a working `loadObjMesh()`; the rest of category A and most
+of B (Materials) - Cornell-shell variants using materials
+`metal_poc.metal` already implements. Categories C/D need a handful of
+genuinely new shader features (goniometric/projection lights, alt
+camera models) for a few of their scenes. H (Large Scenes) and E
+(Volumes, beyond its own already-homogeneous-medium-capable E1) are
+the hardest - real performance work and new heterogeneous-medium
+shader infrastructure respectively - deliberately saved for last.
