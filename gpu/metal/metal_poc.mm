@@ -1235,6 +1235,16 @@ struct MetalPocApp {
     // both materialType 4 (GGX conductor), matching CPU's own
     // build_cornell_rough_metal() exactly.
     void buildCornellRoughMetal();
+    // B4: Cornell Conductor - polished gold sphere + polished aluminium
+    // box, both materialType 4 with REAL measured eta/k spectra (src/
+    // shared/conductor_data.h's kConductorAu/kConductorAl - already used
+    // elsewhere in this file, e.g. the hardcoded room's own gold accent
+    // sphere) instead of B2's own flat-albedo reflectanceToConductorK()
+    // approximation - matches CPU's own build_cornell_conductor(), which
+    // uses the SAME real presets via its own `conductor` material class
+    // (as opposed to B2's simpler `rough_metal`). Section 127, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildCornellConductor();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2924,6 +2934,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "A5") { buildPerlinSpheres(); return true; }
     if (scene_id == "A7") { buildSimpleLight(); return true; }
     if (scene_id == "B2") { buildCornellRoughMetal(); return true; }
+    if (scene_id == "B4") { buildCornellConductor(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4169,6 +4180,27 @@ void MetalPocApp::buildCornellRoughMetal() {
     buildCornellFamilyScene(
         /*box=*/4u, alum, boxAlpha, float3{1, 1, 1}, reflectanceToConductorK(alum), 1.0f,
         /*sphere=*/4u, gold, sphereAlpha, float3{1, 1, 1}, reflectanceToConductorK(gold), 1.0f);
+}
+
+// B4: Cornell Conductor - matches CPU's own build_cornell_conductor()
+// exactly: a polished gold sphere (roughness 0.1) and a polished
+// aluminium box (roughness 0.05), both materialType 4 with REAL
+// measured eta/k (src/shared/conductor_data.h's kConductorAu/
+// kConductorAl - same literal values the hardcoded room's own gold
+// accent sphere already uses, section 61) instead of B2's own flat-
+// albedo reflectanceToConductorK() approximation. Same `roughness^0.25`
+// conversion B2's own comment already derived - CPU's `conductor`
+// material class uses the SAME pbrt-v4 RoughnessToAlpha()/sqrt(roughness)
+// convention `rough_metal` does (both call the same helper,
+// material_pbrt.h), so the identical reconciliation applies.
+void MetalPocApp::buildCornellConductor() {
+    const float3 goldEta{0.184f, 0.457f, 1.354f}, goldK{3.070f, 2.408f, 1.818f};
+    const float3 alumEta{1.357f, 0.884f, 0.669f}, alumK{7.588f, 6.470f, 5.690f};
+    const float boxAlpha = powf(0.05f, 0.25f);    // ~0.473
+    const float sphereAlpha = powf(0.1f, 0.25f);  // ~0.562
+    buildCornellFamilyScene(
+        /*box=*/4u, float3{1, 1, 1}, boxAlpha, alumEta, alumK, 1.0f,
+        /*sphere=*/4u, float3{1, 1, 1}, sphereAlpha, goldEta, goldK, 1.0f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

@@ -958,6 +958,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"A5",                    // Perlin Spheres (section 124)
 		"A7",                    // Simple Light (section 125)
 		"B2",                    // Cornell Rough Metal - first category-B scene (section 126)
+		"B4",                    // Cornell Conductor (section 127)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }

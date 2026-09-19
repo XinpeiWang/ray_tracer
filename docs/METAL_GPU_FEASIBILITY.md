@@ -6890,3 +6890,39 @@ same PR. **`buildCornellFamilyScene()` is now a real, reusable shared
 helper for future category-B increments** (B3 rough glass, B4
 conductor, and others sharing this exact Cornell-shell-swap shape) -
 reuse it, don't re-derive the wall/light/camera code again.
+
+## 127. Category B increment 2: B4 Cornell Conductor - real measured conductor spectra, reusing buildCornellFamilyScene()
+
+The second category-B scene, and the first real payoff of section
+126's own new `buildCornellFamilyScene()` shared helper: a one-function
+call, no new geometry/material machinery at all. `buildCornellConductor()`
+matches CPU's own `build_cornell_conductor()` exactly - a polished gold
+sphere and polished aluminium box, both materialType 4, using the REAL
+measured eta/k spectra from `src/shared/conductor_data.h`'s
+`kConductorAu`/`kConductorAl` (the same literal values the hardcoded
+POC room's own gold accent sphere already uses, section 61) instead of
+B2's own flat-albedo `reflectanceToConductorK()` approximation - a
+faithful match to CPU's own real `conductor` material class (as opposed
+to B2's simpler `rough_metal`).
+
+The SAME `roughness^0.25` reconciliation section 126 derived applies
+again unchanged: CPU's own `conductor` class calls the identical
+`RoughnessToAlpha()` helper `rough_metal` does (both defined in
+`material_pbrt.h`), so this scene's own literal roughness values (0.1
+sphere, 0.05 box) go through the same conversion before being passed to
+`buildCornellFamilyScene()`.
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - both show a recognizably
+"polished conductor" look (a sharper, more mirror-like environment
+reflection than B2's own deliberately ROUGH metal, correctly - B4's own
+scene is "polished," not "rough"), gold sphere and aluminium box both
+showing visible tinted reflections of the red/green walls. Full clean
+`RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene `pbrt_scenes/`
+sweep (0 failures); A1/A3/A5/A7/B2/G1/G7/G12/G18 (earlier increments)
+re-verified unaffected. `B4` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Don't re-derive the roughness^0.25 reconciliation again for
+a future materialType-4 Cornell-family scene** (B7 CoatedConductor's
+own base layer, if/when tackled) - it's now an established, reusable
+conversion for this exact CPU-material-class family.
