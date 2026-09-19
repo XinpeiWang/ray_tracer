@@ -6400,3 +6400,48 @@ G25 is separately pbrt-backed, already covered by the OTHER half of
 51-scene sweep (no regressions) all pass. **Category G is now 19 of
 23 done; 4 deferred scenes (G7/G10/G12/G13) plus every other category
 (A/B/C/D/E/H/I) remain** for future increments in this same series.
+
+## 119. Hand-authored scenes, increment 4: category G complete except Trophy Room - G7/G10/G13
+
+Closes out 3 of the 4 scenes section 118 deferred. `loadObjMesh()`
+gained two more optional, trailing-defaulted parameters (existing
+callers untouched): `meshIor` (materialType==2/dielectric only - `ior`
+already meant something different, GGX alphaX, for materialType==4 -
+see section 117's own comment on that field's dual use) and `flipXZ`
+(mirrors OptiX's own `load_obj_triangles_gpu()` parameter of the same
+name - negates x AND z together, a genuine 180-degree rotation about
+Y, not a reflection, so winding/handedness both stay consistent with
+no further correction needed - confirmed algebraically before writing
+the code, not just tried).
+
+**G7 (Spot the Cow) and G10 (Horse)** both needed `flipXZ=true` -
+OptiX's own comment for both: "the raw mesh faces away from the
+camera" without it. **G13 (Glass Dragon)** reuses G5's exact mesh
+(`xyzrgb_dragon.obj`) with `materialType=2u`/`meshIor=1.5f` instead of
+G5's conductor material - `meshColor`/roughness/eta/k are all silently
+ignored for materialType 2 (harmless placeholders at the call site,
+matching `loadObjMesh()`'s own TriangleMaterial-construction branch
+structure).
+
+**Verified with real renders, each directly viewed**: G7 shows Spot's
+own spotted face and eyes correctly FACING the camera (confirming the
+flip actually took effect - the unflipped mesh would show its back
+instead); G10 shows a recognizable thin vertical horse-head-and-neck
+silhouette (visually subtle per section 118's own already-documented
+silver-material finding, same as several other thin meshes); G13 shows
+a genuinely correct dragon silhouette with visible internal noise/
+refraction artifacts - matching OptiX's own `build_glass_dragon_gpu()`
+comment EXACTLY ("neither the regular path tracer NOR --sppm render
+this scene's dragon surface itself cleanly... a genuinely hard case,
+not a bug"), so this noisy-but-present appearance is the CORRECTLY
+expected result, not a new bug to chase. Full clean rebuild + ctest
+(4/4) + 51-scene sweep (no regressions) all pass; G1 and G18 (earlier
+batches) re-verified unaffected by the `loadObjMesh()` signature
+extension.
+
+**Category G is now 22 of 23 done - only G12 (Trophy Room) remains**,
+deliberately still deferred: four meshes (bunny/teapot/Suzanne/Spot)
+in one composition, a genuinely different, bespoke shape this shared
+single-mesh helper doesn't cover, not a quick addition to the existing
+pattern. A real future candidate, but budgeted as its own increment
+rather than forced into this batch's own scope.
