@@ -531,7 +531,18 @@ static bool loadObjMesh(const std::string& path,
                          std::vector<PackedFloat2>& uvs,
                          std::vector<TriangleMaterial>& materials,
                          float3 color, float3 center, float targetSize,
-                         uint32_t materialType = 0) {
+                         uint32_t materialType = 0,
+                         // materialType==4 only - see this function's own
+                         // TriangleMaterial-construction comment below for
+                         // why these three exist. meshConductorEta defaults
+                         // to (1,1,1) (not 0) since eta==0 is unphysical and
+                         // every REAL conductor preset this codebase already
+                         // uses (conductor_data.h) keeps eta near 1 anyway -
+                         // a caller that forgets to override k too still
+                         // gets a real (if flat/grey) metal, not black.
+                         float meshRoughness = 0.0f,
+                         float3 meshConductorEta = simd::make_float3(1.0f, 1.0f, 1.0f),
+                         float3 meshConductorK = simd::make_float3(0.0f, 0.0f, 0.0f)) {
     std::ifstream in(path);
     if (!in) {
         fprintf(stderr, "Could not open OBJ file: %s\n", path.c_str());
@@ -690,6 +701,29 @@ static bool loadObjMesh(const std::string& path,
 
     PackedFloat3 packedColor{color.x, color.y, color.z};
     TriangleMaterial mat{packedColor, materialType, 1.0f, PackedFloat3{0, 0, 0}};
+    // materialType==4 (real complex-Fresnel GGX conductor) needs
+    // conductorEta/conductorK too, which this function's own signature had
+    // no way to pass until section 117's own G-category (Models) increment
+    // needed a metal-finish mesh for the first time (Suzanne/Spot, this
+    // function's only callers before that, are both materialType 0/3). Left
+    // at their struct default (eta/k = {0,0,0}, roughness = 0) for every
+    // OTHER materialType - identical to this function's own behaviour
+    // before these parameters existed.
+    //
+    // BOTH mat.ior (alphaX) and mat.roughness (alphaY) must be set to the
+    // SAME value for isotropic roughness - mapMaterial()'s own Conductor
+    // case (loadPbrtScene()) does this identically. Leaving `mat.ior` at
+    // the `1.0f` this constructor already gives every material (a
+    // DIELECTRIC default, meaningless for a conductor) while only setting
+    // `mat.roughness` would silently make alphaX=1.0 (maximally rough) and
+    // alphaY=meshRoughness - a real, easy-to-miss anisotropy bug caught
+    // here before it ever rendered, not after.
+    if (materialType == 4u) {
+        mat.ior = meshRoughness;
+        mat.roughness = meshRoughness;
+        mat.conductorEta = PackedFloat3{meshConductorEta.x, meshConductorEta.y, meshConductorEta.z};
+        mat.conductorK = PackedFloat3{meshConductorK.x, meshConductorK.y, meshConductorK.z};
+    }
     for (uint32_t i = 0; i < triangleCount; ++i) materials.push_back(mat);
 
     fprintf(stderr, "Loaded %s: %zu positions, %zu normals, %zu uvs, %u triangles "
@@ -1015,6 +1049,27 @@ struct MetalPocApp {
     // first), so this is a safety net, not the primary guard.
     bool buildHandAuthoredScene(const std::string& scene_id);
     void buildCornellBoxA1();
+    // Shared "mesh gallery" pattern (category G/Models - section 117, docs/
+    // METAL_GPU_FEASIBILITY.md) - a flat ground quad, one imported OBJ mesh
+    // in a caller-chosen material, and one small quad area light above,
+    // mirroring gpu/optix/scene_builder_mesh_gallery.h's own repeated
+    // "ground + mesh + light" shape (its own comment: ~50 near-identical
+    // scenes) with two deliberate simplifications: a flat quad ground, not
+    // a huge checker SPHERE (metal_poc.metal's sphere-intersection path has
+    // no UV computation checkerColor() could read at all); a small quad
+    // light, not a sphere light (this loader's only NEE-sampled light
+    // representation, AreaLightData, is an analytic QUAD - a sphere light
+    // would need genuinely new NEE-sampling code, out of scope for this
+    // increment). objFilename is resolved the SAME executableDir()-first,
+    // RT_MODELS_DIR-fallback way loadObjMesh()'s own existing Suzanne/Spot
+    // callers already do (section 110's own fix covers this automatically -
+    // no new path-resolution code needed here).
+    void buildMeshGalleryScene(const std::string& objFilename, float3 meshColor,
+        uint32_t meshMaterialType, float meshRoughness, float3 meshConductorEta,
+        float3 meshConductorK, float meshTargetSize);
+    void buildStanfordBunny();
+    void buildStanfordArmadillo();
+    void buildStanfordHappyBuddha();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2675,6 +2730,9 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
         buildCornellBoxA1();
         return true;
     }
+    if (scene_id == "G1") { buildStanfordBunny(); return true; }
+    if (scene_id == "G2") { buildStanfordArmadillo(); return true; }
+    if (scene_id == "G3") { buildStanfordHappyBuddha(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -2827,6 +2885,169 @@ void MetalPocApp::buildCornellBoxA1() {
 
     fprintf(stderr, "buildHandAuthoredScene: built 'A1' (classic Cornell box, hand-authored, "
                     "no pbrt file - %d quads, 1 sphere, 1 light)\n", kNumQuads - 1 + 6);
+}
+
+// See buildMeshGalleryScene()'s own declaration comment (this struct's own
+// definition) for the shape/simplifications this shares across every
+// category-G (Models) scene - section 117, docs/METAL_GPU_FEASIBILITY.md.
+// meshConductorEta/meshConductorK: pass {1,1,1}/a per-channel k computed
+// from OptiX's own flat "albedo" via the SAME reflectance-to-k formula
+// PR #103's own CoatedConductor "nothing given" fallback already
+// established (k = 2*sqrt(r)/sqrt(max(1e-4,1-r)), eta=1) - not a NEW
+// approximation invented here, reusing an already-shipped precedent for
+// exactly this "a flat colour, not a real measured conductor spectrum"
+// situation. meshMaterialType == 0 skips all of that (a plain diffuse
+// mesh needs none of it) - meshConductorEta/K are simply ignored then.
+void MetalPocApp::buildMeshGalleryScene(const std::string& objFilename, float3 meshColor,
+        uint32_t meshMaterialType, float meshRoughness, float3 meshConductorEta,
+        float3 meshConductorK, float meshTargetSize) {
+    // Same "push well clear of the hardcoded POC room's own [-1,1] region"
+    // convention loadPbrtScene()/buildCornellBoxA1() both already use (see
+    // either one's own comment) - a real, previously-shipped bug found
+    // here first (before it ever reached review): this scene's own
+    // geometry is authored directly at the app's own working scale (no
+    // rescale needed, unlike A1's 555-unit Cornell box), but was left
+    // OVERLAPPING the hardcoded room's own already-occupied space, not
+    // offset clear of it - the first render looked like garbled noise, not
+    // a recognizable mesh, because it genuinely WAS two unrelated scenes'
+    // geometry interleaved in the same few world-space units.
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground: a large flat quad (not OptiX's own huge checker SPHERE - see
+    // buildMeshGalleryScene()'s own declaration comment for why), light
+    // grey diffuse, centred under the mesh.
+    const float3 groundColor{0.5f, 0.5f, 0.5f};
+    addQuad(verts, normals, uvs, materials,
+            float3{-2.0f, 0.0f, -2.0f} + sceneOffset, float3{2.0f, 0.0f, -2.0f} + sceneOffset,
+            float3{2.0f, 0.0f, 2.0f} + sceneOffset, float3{-2.0f, 0.0f, 2.0f} + sceneOffset, groundColor);
+
+    // The mesh itself, auto-fit to meshTargetSize and recentred at
+    // sceneOffset (loadObjMesh()'s own `center` parameter IS the mesh's
+    // real world-space placement, not a separate local-then-place step -
+    // see its own Suzanne/Spot call sites) - loadObjMesh()'s own existing
+    // Suzanne/Spot convention otherwise (section 110's executableDir()-
+    // first path resolution applies automatically, no new lookup code
+    // needed here).
+    NSString* modelsDir = nil;
+    {
+        NSString* exeDir = executableDir();
+        NSString* candidate = [exeDir stringByAppendingPathComponent:@"models"];
+        if (exeDir && [[NSFileManager defaultManager] fileExistsAtPath:
+                [candidate stringByAppendingPathComponent:@(objFilename.c_str())]]) {
+            modelsDir = candidate;
+        }
+    }
+    if (!modelsDir) {
+#ifdef RT_MODELS_DIR
+        modelsDir = @(RT_MODELS_DIR);
+#else
+        modelsDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"../../models"];
+#endif
+    }
+    NSString* meshPath = [modelsDir stringByAppendingPathComponent:@(objFilename.c_str())];
+    if (!loadObjMesh(meshPath.UTF8String, verts, normals, uvs, materials, meshColor,
+                      /*center=*/float3{0.0f, 0.45f, 0.0f} + sceneOffset, meshTargetSize, meshMaterialType,
+                      meshRoughness, meshConductorEta, meshConductorK)) {
+        fprintf(stderr, "buildMeshGalleryScene: continuing without '%s' - check RT_MODELS_DIR / "
+                        "models/%s.\n", objFilename.c_str(), objFilename.c_str());
+    }
+
+    // A small quad area light above the mesh (this loader's only NEE-
+    // sampled light shape - see buildMeshGalleryScene()'s own declaration
+    // comment for why not a sphere light like OptiX's own).
+    {
+        const float3 a = float3{-0.4f, 1.6f, -0.4f} + sceneOffset, b = float3{0.4f, 1.6f, -0.4f} + sceneOffset,
+                     c = float3{0.4f, 1.6f, 0.4f} + sceneOffset, d = float3{-0.4f, 1.6f, 0.4f} + sceneOffset;
+        const float3 lightColor{6.0f, 6.0f, 6.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, lightColor,
+                /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/1.0f, /*useTexture=*/0.0f});
+    }
+
+    // Camera: a simple 3/4 elevated view of the mesh, close to OptiX's own
+    // apply_mesh_camera() framing in spirit (not the exact literal, which
+    // barely matters - see buildCornellBoxA1()'s own comment on why the
+    // fallback camera here is immediately overridden in every real
+    // invocation anyway). Same sceneOffset as every other element above -
+    // lookfrom/lookat both need it too, or the camera would end up
+    // pointed at the hardcoded room's own empty space instead of this
+    // scene's own geometry.
+    const float3 lookfrom = float3{0.0f, 0.9f, 2.2f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.45f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 35.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    // No rescale (unlike buildCornellBoxA1()'s own 555-unit Cornell box -
+    // this scene is already authored directly at the app's own working
+    // scale) - applyCameraOverride()'s own transform (bboxCenter=0,
+    // sceneScale=1, then + sceneOffset) reduces to exactly this same
+    // fixed translation for any later --cam-x/y/z override too.
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// Converts a flat OptiX-style metal "albedo" into an approximate complex
+// conductor (eta,k) via PR #103's own already-shipped reflectance-to-k
+// formula - see buildMeshGalleryScene()'s own declaration comment.
+static float3 reflectanceToConductorK(float3 albedo) {
+    auto k = [](float r) {
+        r = r < 0.0f ? 0.0f : (r > 0.9999f ? 0.9999f : r);
+        return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
+    };
+    return float3{k(albedo.x), k(albedo.y), k(albedo.z)};
+}
+
+// Scene G1: Stanford Bunny (69,451 triangles), polished bronze - matches
+// gpu/optix/scene_builder_mesh_gallery.h's own build_stanford_bunny_gpu()
+// material (bronze albedo (0.71,0.43,0.20), roughness 0.15) exactly.
+void MetalPocApp::buildStanfordBunny() {
+    const float3 bronze{0.71f, 0.43f, 0.20f};
+    buildMeshGalleryScene("stanford-bunny.obj", bronze, /*materialType=*/4u,
+        /*roughness=*/0.15f, /*eta=*/float3{1, 1, 1}, reflectanceToConductorK(bronze),
+        /*targetSize=*/1.1f);
+}
+
+// Scene G2: Stanford Armadillo (99,976 triangles), gunmetal - matches
+// build_stanford_armadillo_gpu()'s own material (albedo (0.55,0.56,0.58),
+// roughness 0.08) exactly.
+void MetalPocApp::buildStanfordArmadillo() {
+    const float3 gunmetal{0.55f, 0.56f, 0.58f};
+    buildMeshGalleryScene("armadillo.obj", gunmetal, /*materialType=*/4u,
+        /*roughness=*/0.08f, /*eta=*/float3{1, 1, 1}, reflectanceToConductorK(gunmetal),
+        /*targetSize=*/1.1f);
+}
+
+// Scene G3: Stanford Happy Buddha (98,601 triangles), polished gold -
+// matches build_stanford_happy_buddha_gpu()'s own material (albedo
+// (0.83,0.69,0.22), roughness 0.05) exactly.
+void MetalPocApp::buildStanfordHappyBuddha() {
+    const float3 gold{0.83f, 0.69f, 0.22f};
+    buildMeshGalleryScene("happy-buddha.obj", gold, /*materialType=*/4u,
+        /*roughness=*/0.05f, /*eta=*/float3{1, 1, 1}, reflectanceToConductorK(gold),
+        /*targetSize=*/1.1f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

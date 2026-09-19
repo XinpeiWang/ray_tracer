@@ -6255,3 +6255,79 @@ camera models) for a few of their scenes. H (Large Scenes) and E
 (Volumes, beyond its own already-homogeneous-medium-capable E1) are
 the hardest - real performance work and new heterogeneous-medium
 shader infrastructure respectively - deliberately saved for last.
+
+## 117. Hand-authored scenes, increment 2: the "mesh gallery" (category G, Models) begins - G1/G2/G3
+
+Confirmed all 21 external OBJ files `gpu/optix/scene_builder_mesh_
+gallery.h`'s own ~50 near-identical scenes need are ALREADY present
+locally (`models/`), unlike the large `H`-family environments (missing
+per `--diagnose`'s own report) - meaning this whole category can be
+implemented AND properly render-verified right now, not just
+code-reviewed. Reading a few of those OptiX functions confirmed the
+agent's own earlier assessment: each is ~15 lines - a checker ground
+sphere, one metal material, one `load_obj_triangles_gpu()` call, one
+small sphere light - the single most repetitive, lowest-effort
+category of the whole 93.
+
+**New shared helper, `MetalPocApp::buildMeshGalleryScene()`, mirrors
+that same shape with two deliberate simplifications** (both because the
+alternative would be new, out-of-scope shader/NEE infrastructure, not
+because the "correct" version is hard to author): a flat ground QUAD,
+not OptiX's own huge checker SPHERE (`metal_poc.metal`'s sphere-
+intersection path has no UV computation `checkerColor()` could read at
+all); a small quad area light, not a sphere light (this loader's only
+NEE-sampled light shape, `AreaLightData`, is an analytic quad - a
+sphere light needs genuinely new sampling code). Neither changes what
+the scene IS demonstrating (an imported mesh in a real material) - both
+are presentation-layer choices, not the actual test.
+
+**`loadObjMesh()` gained conductor-material support** (`meshRoughness`/
+`meshConductorEta`/`meshConductorK`, materialType==4 only, trailing-
+defaulted so Suzanne/Spot's own existing calls are untouched) - its
+only 2 callers before this (Suzanne, Spot) were both plain diffuse/
+textured, never metal. **A real bug caught and fixed before it ever
+rendered**: `TriangleMaterial::ior` doubles as GGX alphaX for
+materialType 4 (`roughness` is alphaY - see `mapMaterial()`'s own
+Conductor case, `loadPbrtScene()`) - an early version of this change
+only set `roughness`, leaving `ior` at the `1.0f` every material gets
+by default (a dielectric-only value, meaningless for a conductor),
+which would have silently rendered every mesh here maximally rough on
+one axis and correctly rough on the other (a real anisotropy bug) had
+it shipped. Fixed by setting both to the same value for isotropic
+roughness.
+
+**A second real bug, this one caught by actually rendering, not code
+review**: the first version of `buildMeshGalleryScene()` placed its
+whole scene at the SAME world-space origin the hardcoded POC room
+already occupies - `buildCornellBoxA1()`'s own `sceneOffset={8,0,0}`
+convention (loadPbrtScene()'s own established pattern) was simply
+forgotten. The first G1 render was garbled, unrecognizable noise, not
+a bunny - genuinely two unrelated scenes' geometry interleaved in the
+same few world-space units, not a subtler numerical bug. Fixed by
+applying the identical `+{8,0,0}` offset to every element (ground,
+mesh centre, light, camera) - confirmed by re-rendering afterward and
+seeing an actual, correct bunny.
+
+**Materials matched exactly to OptiX's own per-scene albedo/roughness**
+(`scene_builder_mesh_gallery.h`) - G1 Stanford Bunny, bronze
+`(0.71,0.43,0.20)` roughness 0.15; G2 Stanford Armadillo, gunmetal
+`(0.55,0.56,0.58)` roughness 0.08; G3 Stanford Happy Buddha, gold
+`(0.83,0.69,0.22)` roughness 0.05 - each converted from OptiX's own
+flat "albedo" to an approximate complex conductor (eta,k) via PR #103's
+own already-shipped reflectance-to-k formula
+(`reflectanceToConductorK()`), not a new approximation invented here.
+
+**Verified with real renders, each directly viewed**: G1 (69,451
+triangles) renders in well under 3 seconds as a genuinely recognizable
+bronze bunny; G2 (99,976 triangles) as a genuinely recognizable
+gunmetal armadillo; G3 (98,601 triangles) as a recognizable gold
+buddha figure - all three sitting on the ground quad under the area
+light, exactly as designed. A1 (which shares `loadObjMesh()`'s
+extended signature via Suzanne/Spot, unrelated to this change but
+using the same function) re-rendered correctly afterward, confirming
+no regression from the signature extension. `cpu_scene_metal_hand_
+authored_supported()` confirmed correct for all 3 new ids plus a
+still-unimplemented one (G4: 0). Full clean rebuild + ctest (4/4) +
+51-scene sweep (no regressions) all pass. **20 of category G's 23
+scenes remain** - same pattern, different mesh/material/scale per
+scene, natural continuation of this exact series.
