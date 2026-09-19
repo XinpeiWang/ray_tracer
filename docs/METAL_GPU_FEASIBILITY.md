@@ -5727,3 +5727,63 @@ RNG) pixel diff shows 18.78% of pixels differing (mean abs diff
 0.30), a decisive, non-noise-level signal isolated to this one line.
 Full clean rebuild + ctest (4/4) and the 51-scene sweep (no crashes)
 pass on the combined fix for all 3 bugs above.
+
+## 107. Diagnostic-logging review: unchecked GPU resource allocations could fail silently
+
+Prompted by an explicit request to review whether this backend has good
+logging for debugging, rather than another correctness pass. Most of
+the code already logs well: `parseArgsAndCreateDevice()` prints the
+chosen device name unconditionally and gives a clear message for a
+missing/non-raytracing-capable device; every shader compile/pipeline-
+creation/`NSError`-producing call already checks and logs
+`error.localizedDescription`; all 5 acceleration-structure builds
+already check `buildCmd.status == MTLCommandBufferStatusError` and log
+`buildCmd.error.localizedDescription`; `loadPbrtScene()`'s own
+unsupported-feature warnings are extensive; 12 of this file's 14
+`return false;` sites already have an adjacent diagnostic (the other 2
+are a trivial null-arg guard and a structured-diagnostics API that
+returns its failure reason to the caller instead of printing it -
+neither is a gap).
+
+**One real gap found: none of this file's 42 GPU resource allocations
+(34 `newBufferWith...`, 8 `newTextureWithDescriptor`) checked their
+own return value for `nil`.** `newBufferWith...`/`newTextureWithDescriptor`
+return `nil` (don't throw) on failure - out of memory, or a requested
+length exceeding `device.maxBufferLength`, a real, finite, GPU-
+dependent ceiling a sufficiently large baked pbrt scene could
+plausibly hit (e.g. many `ObjectInstance` placements each duplicating
+full geometry rather than sharing one buffer - section 86). Unlike the
+acceleration-structure-build failures above (already loud via their
+own command-buffer status check), a nil buffer/texture handed to
+`[enc setBuffer:...]`/`[enc setTexture:...]` on the COMPUTE encoder
+just silently UNBINDS that slot - no error, no exception, no crash.
+The shader then reads back zeroed/garbage data at that one binding and
+renders a WRONG image with the render command buffer reporting
+completely normal success - the worst kind of bug to diagnose, and
+squarely what "good logging for debugging" is supposed to catch.
+
+**Fix scoped to the resources actually at risk of this silent-
+corruption failure mode, not all 42 allocation sites individually**:
+the acceleration-structure-only scratch/geometry buffers
+(`primScratch`/`sphereScratch`/`suzanneScratch`/`instScratch`,
+`boundingBoxBuffer`/`diskBoundingBoxBuffer`/`instanceBuffer`) are
+never bound to the compute encoder at all - only consumed by their own
+`buildAccelerationStructure:` call, which already fails loud via the
+existing status check, so re-checking them again would be redundant.
+The 22 buffers + 7 textures that DO get bound to the compute encoder
+(everything from `uniformBuffer` through `pbrtAreaLightTexture`) are
+now all checked in one place, right before the encoder binds them -
+not at each of their scattered allocation call sites - via a new
+`checkGpuResource()` helper, printing which resource failed and the
+device's own `maxBufferLength` for context, then returning `false`
+before the encoder ever touches a nil resource.
+
+**Verified the check can actually fire, not just compiles clean**:
+temporarily force-nil'd `uniformBuffer` right after its own allocation
+in a scratch copy, rebuilt, and confirmed the exact expected message
+prints (naming `uniformBuffer`, the real `maxBufferLength` figure) and
+the process exits 1 immediately rather than proceeding into a
+corrupted render - reverted before committing. Full clean rebuild +
+ctest (4/4, including the real `ray_tracer` target itself, not just
+the standalone `metal_poc` executable) + the 51-scene sweep (no
+crashes/regressions) all pass on the actual fix.

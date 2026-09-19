@@ -2837,6 +2837,35 @@ bool MetalPocApp::buildGPUResources() {
     return true;
 }
 
+// Every buffer/texture the compute encoder below binds can be nil if its
+// own newBufferWith.../newTextureWithDescriptor call failed - OOM, or a
+// requested length exceeding device.maxBufferLength (a real, finite,
+// GPU-dependent ceiling a sufficiently large baked pbrt scene could
+// plausibly hit, e.g. many ObjectInstance placements each duplicating
+// full geometry rather than sharing one buffer - see section 86).
+// Metal's own setBuffer:/setTexture: silently UNBIND that slot on a nil
+// argument instead of erroring, so an unchecked failure here would let
+// the shader read back zeroed/garbage data at that one binding and
+// render a WRONG image with NO error anywhere - the hardest kind of bug
+// to diagnose (found via a logging/debugging-focused review, not a
+// symptom - see section 107). Deliberately does NOT re-check the
+// acceleration-structure-only scratch/geometry buffers built earlier in
+// this same stage (primScratch/sphereScratch/suzanneScratch/instScratch,
+// boundingBoxBuffer/diskBoundingBoxBuffer/instanceBuffer) - those are
+// never bound to THIS encoder, and a nil one there already fails loud
+// via that build's own existing `buildCmd.status ==
+// MTLCommandBufferStatusError` check just above it.
+static void checkGpuResource(id resource, const char* name, id<MTLDevice> device, bool* anyFailed) {
+    if (!resource) {
+        fprintf(stderr, "GPU resource allocation FAILED: '%s' is nil (likely out of memory, "
+                        "or this scene is too large for this GPU's max buffer length of %llu "
+                        "bytes) - aborting before the render would silently produce a wrong "
+                        "image instead of a visible error.\n",
+                name, (unsigned long long)device.maxBufferLength);
+        *anyFailed = true;
+    }
+}
+
 // --- Stage 4: compile the shader, dispatch the render, read back -------
 bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // --- Compile the shader library from source at runtime ---------
@@ -3302,6 +3331,42 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     }
 
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
+
+    // Checked once, here, right before they're all bound below - see
+    // checkGpuResource()'s own comment for why this one spot (not each
+    // allocation call site above) and why the AS-only scratch/geometry
+    // buffers aren't included.
+    bool anyResourceFailed = false;
+    checkGpuResource(uniformBuffer, "uniformBuffer", device, &anyResourceFailed);
+    checkGpuResource(materialBuffer, "materialBuffer", device, &anyResourceFailed);
+    checkGpuResource(vertexBuffer, "vertexBuffer", device, &anyResourceFailed);
+    checkGpuResource(sphereMaterialBuffer, "sphereMaterialBuffer", device, &anyResourceFailed);
+    checkGpuResource(sphereBuffer, "sphereBuffer", device, &anyResourceFailed);
+    checkGpuResource(normalBuffer, "normalBuffer", device, &anyResourceFailed);
+    checkGpuResource(uvBuffer, "uvBuffer", device, &anyResourceFailed);
+    checkGpuResource(lightBuffer, "lightBuffer", device, &anyResourceFailed);
+    checkGpuResource(suzanneNormalBuffer, "suzanneNormalBuffer", device, &anyResourceFailed);
+    checkGpuResource(suzanneMaterialBuffer, "suzanneMaterialBuffer", device, &anyResourceFailed);
+    checkGpuResource(instanceTransformBuffer, "instanceTransformBuffer", device, &anyResourceFailed);
+    checkGpuResource(diskBuffer, "diskBuffer", device, &anyResourceFailed);
+    checkGpuResource(diskMaterialBuffer, "diskMaterialBuffer", device, &anyResourceFailed);
+    checkGpuResource(pointLightBuffer, "pointLightBuffer", device, &anyResourceFailed);
+    checkGpuResource(directionalLightBuffer, "directionalLightBuffer", device, &anyResourceFailed);
+    checkGpuResource(projectionLightBuffer, "projectionLightBuffer", device, &anyResourceFailed);
+    checkGpuResource(goniometricLightBuffer, "goniometricLightBuffer", device, &anyResourceFailed);
+    checkGpuResource(envMarginalCDFBuffer, "envMarginalCDFBuffer", device, &anyResourceFailed);
+    checkGpuResource(envConditionalCDFBuffer, "envConditionalCDFBuffer", device, &anyResourceFailed);
+    checkGpuResource(ggxEnergyTableBuffer, "ggxEnergyTableBuffer", device, &anyResourceFailed);
+    checkGpuResource(pbrtEnvMarginalCDFBuffer, "pbrtEnvMarginalCDFBuffer", device, &anyResourceFailed);
+    checkGpuResource(pbrtEnvConditionalCDFBuffer, "pbrtEnvConditionalCDFBuffer", device, &anyResourceFailed);
+    checkGpuResource(outTexture, "outTexture", device, &anyResourceFailed);
+    checkGpuResource(earthTexture, "earthTexture", device, &anyResourceFailed);
+    checkGpuResource(goniometricTexture, "goniometricTexture", device, &anyResourceFailed);
+    checkGpuResource(pbrtEnvTexture, "pbrtEnvTexture", device, &anyResourceFailed);
+    checkGpuResource(pbrtGoniometricTexture, "pbrtGoniometricTexture", device, &anyResourceFailed);
+    checkGpuResource(pbrtProjectionTexture, "pbrtProjectionTexture", device, &anyResourceFailed);
+    checkGpuResource(pbrtAreaLightTexture, "pbrtAreaLightTexture", device, &anyResourceFailed);
+    if (anyResourceFailed) return false;
 
     // --- Dispatch ----------------------------------------------------
     id<MTLCommandBuffer> renderCmd = [queue commandBuffer];
