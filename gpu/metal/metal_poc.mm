@@ -2401,7 +2401,22 @@ void MetalPocApp::loadPbrtScene() {
         // squared-length falloff term, this one a single inverse-length
         // one, so the correction is an inverse first power, not a square.
         havePbrtMedium = true;
-        pbrtFogSigmaT = (float)(meanSigmaT / pbrtSceneScale);
+        // The LOCAL `sceneScale` (computed above, already applied to
+        // every vertex/light/camera position via toWorld()) - not the
+        // MEMBER `pbrtSceneScale`, which this same function only
+        // assigns much later, in its own Camera section below (for
+        // applyCameraOverride()'s later use). Reading the member here
+        // was a real, previously-latent bug: since loadPbrtScene() runs
+        // exactly once, that member is still its 1.0f default-
+        // initializer value at this point in EVERY call, so every real
+        // pbrt scene's own fog silently used 1/sceneScale too little
+        // attenuation (e.g. ~10x for camera-medium.pbrt's own ~20-unit
+        // scale, worse for a larger scene) - found via code review
+        // while mapping this function for section 108's own refactor,
+        // not a symptom (the fog was still visibly present just too
+        // faint, and PR #88's own on/off verification wasn't sensitive
+        // to the WRONG-MAGNITUDE case, only presence/absence).
+        pbrtFogSigmaT = (float)(meanSigmaT / sceneScale);
         // fogAlbedo is single-scattering albedo (sigma_s/sigma_t) PER
         // CHANNEL (metal_poc.metal's own field comment) - unlike sigmaT
         // itself, this ratio is dimensionless and scale-invariant, so the

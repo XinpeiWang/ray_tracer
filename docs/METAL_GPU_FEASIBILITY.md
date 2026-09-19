@@ -5787,3 +5787,39 @@ corrupted render - reverted before committing. Full clean rebuild +
 ctest (4/4, including the real `ray_tracer` target itself, not just
 the standalone `metal_poc` executable) + the 51-scene sweep (no
 crashes/regressions) all pass on the actual fix.
+
+## 108. Real bug found while scoping a refactor: pbrt fog density read a not-yet-assigned member
+
+Found incidentally while mapping `loadPbrtScene()`'s own ~950-line
+body for a large-file/large-function refactor (a separate ask from
+correctness/logging review, prompted this time by "is there any large
+file to refactor" - see the refactor itself, still to follow). Not a
+refactor issue itself - a genuine, previously-latent numeric bug this
+close a read turned up.
+
+`loadPbrtScene()`'s own Homogeneous participating medium (fog) section
+computed `pbrtFogSigmaT = meanSigmaT / pbrtSceneScale` - reading the
+MEMBER `pbrtSceneScale` (`MetalPocApp`'s own field, default-
+initialized `1.0f`). That member is only ever ASSIGNED later in the
+SAME function, in its own Camera section, well after the fog section
+runs. Since `loadPbrtScene()` executes exactly once per process, the
+fog section always read the stale `1.0f` default, never the real,
+just-computed LOCAL `sceneScale` (declared near the top of the
+function, already used everywhere else via `toWorld()` for every
+vertex/light/camera position) - meaning every real pbrt scene's own
+homogeneous medium was under-attenuated by a factor of `1/sceneScale`
+(e.g. ~10x too faint for `camera-medium.pbrt`'s own ~20-unit scale,
+worse for a larger scene like a classic ~555-unit Cornell box). PR
+#88's own original verification (solid disc becomes a noisy glowing
+halo, fog on vs off) wasn't sensitive to this - a 10x-too-weak fog is
+still visibly hazy, just not as attenuating as the scene's own
+`sigma_a`/`sigma_s` actually specify, so the bug read as "fog works"
+rather than "fog is the wrong density."
+
+Fixed by reading the LOCAL `sceneScale` instead of the member -
+already in scope at that point, and exactly the value the member gets
+assigned to later anyway. Verified with an isolated A/B numeric diff
+(fixed build vs. a temporarily-reverted copy) on `camera-medium.pbrt`:
+35.70% of pixels differ (mean abs diff 6.37), a large, decisive signal
+matching the expected "significantly denser fog" direction. Full clean
+rebuild + ctest (4/4) + 51-scene sweep (no regressions) pass.
