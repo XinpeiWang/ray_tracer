@@ -44,10 +44,42 @@ namespace cross_abi_library {
 // HMODULE (Windows) and dlopen()'s return type are both opaque handles that
 // fit in a void* - returned as void* so callers need no platform-conditional
 // field for it, only these three functions do.
+// Set by loadLibrary() only on FAILURE (captured immediately, before any
+// other call could reset the underlying dlerror()/GetLastError() state) -
+// see lastLoadError()'s own comment below for why this exists at all.
+inline QString& loadErrorStorage() {
+	static QString err;
+	return err;
+}
+
+// The real reason the MOST RECENT loadLibrary() call in THIS process
+// failed (across every caller - scene_metadata_client.cpp and
+// realtime_preview_session.cpp share this one slot, so a caller must read
+// it immediately after its own failed loadLibrary() call, before any other
+// loadLibrary() call from anywhere else could overwrite it). Added because
+// every caller used to just check "is the handle null" and print a
+// GUESSED reason ("make sure the file is present") with no actual
+// diagnosis - a real gap found when a user's own dylib failed to load for
+// an entirely different reason (a macOS Gatekeeper/quarantine block on an
+// ad-hoc-signed, downloaded dylib) that message actively misled them
+// about. Empty string if the last loadLibrary() call succeeded or none has
+// been made yet.
+inline QString lastLoadError() { return loadErrorStorage(); }
+
 #ifdef Q_OS_WIN
 inline void* loadLibrary(const QString& dir, const QString& filename) {
 	const QString path = QDir(dir).filePath(filename);
-	return static_cast<void*>(LoadLibraryW(reinterpret_cast<const wchar_t*>(path.utf16())));
+	void* handle = static_cast<void*>(LoadLibraryW(reinterpret_cast<const wchar_t*>(path.utf16())));
+	if (!handle) {
+		const DWORD code = GetLastError();
+		LPWSTR msgBuf = nullptr;
+		FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+			nullptr, code, 0, reinterpret_cast<LPWSTR>(&msgBuf), 0, nullptr);
+		loadErrorStorage() = msgBuf ? QString::fromWCharArray(msgBuf).trimmed()
+		                            : QStringLiteral("Windows error code %1").arg(code);
+		if (msgBuf) LocalFree(msgBuf);
+	}
+	return handle;
 }
 inline void* lookupSymbol(void* module, const char* name) {
 	return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(module), name));
@@ -58,7 +90,13 @@ inline void closeLibrary(void* module) {
 #else
 inline void* loadLibrary(const QString& dir, const QString& filename) {
 	const QString path = QDir(dir).filePath(filename);
-	return dlopen(path.toUtf8().constData(), RTLD_NOW | RTLD_LOCAL);
+	void* handle = dlopen(path.toUtf8().constData(), RTLD_NOW | RTLD_LOCAL);
+	if (!handle) {
+		const char* err = dlerror();
+		loadErrorStorage() = err ? QString::fromUtf8(err)
+		                         : QStringLiteral("dlopen() failed with no dlerror() message");
+	}
+	return handle;
 }
 inline void* lookupSymbol(void* module, const char* name) {
 	return dlsym(module, name);

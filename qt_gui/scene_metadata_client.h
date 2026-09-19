@@ -27,6 +27,20 @@ namespace SceneMetadataClient {
 // doesn't export the expected functions.
 bool ensureLoaded();
 
+// The real reason the DLL/dylib/so failed to load, if ensureLoaded()/
+// sceneCount() etc. returned false/0 - either cross_abi_library's own
+// lastLoadError() (a genuine dlopen()/LoadLibrary failure: wrong
+// architecture, a macOS Gatekeeper/quarantine block on an unsigned
+// library, ...) or a fixed "loaded but missing an expected export" message
+// (a stale build sitting next to a newer exe). Empty if the library
+// loaded successfully or hasn't been attempted yet. Exists so a caller
+// that shows the user an error (mainwindow_tabs.cpp's "Scene Metadata
+// Unavailable" dialog) can show the ACTUAL cause instead of only ever
+// guessing "make sure the file is present" - a real, previously-
+// misleading gap once a real user's own dylib failed to load for an
+// entirely different reason.
+QString lastLoadError();
+
 // Returns true and sets out_compatible if scene_id's GPU-compatibility
 // could be queried; false (out_compatible left untouched) otherwise. Kept
 // as its own accessor (unlike recommendedCamera/scenePerformance/etc.,
