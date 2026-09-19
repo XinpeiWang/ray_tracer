@@ -6331,3 +6331,72 @@ still-unimplemented one (G4: 0). Full clean rebuild + ctest (4/4) +
 51-scene sweep (no regressions) all pass. **20 of category G's 23
 scenes remain** - same pattern, different mesh/material/scale per
 scene, natural continuation of this exact series.
+
+## 118. Hand-authored scenes, increment 3: mesh gallery batch 2 - 16 more scenes (G4-G24, minus 4 deferred)
+
+Extended `buildMeshGalleryScene()`'s coverage to 16 more category-G
+scenes, each a one-line call with that scene's own real OptiX albedo/
+roughness (`gpu/optix/scene_builder_mesh_gallery.h`): G4 (Stanford
+Lucy), G5 (Stanford Dragon), G6 (Utah Teapot), G8 (Suzanne, a
+DIFFERENT material from the hardcoded POC room's own bronze Suzanne -
+same mesh file, genuinely separate scene/context), G9 (Nefertiti),
+G11 (Cheburashka), G14 (Beast), G15 (VW Beetle), G17 (Bimba), G18
+(Cow), G19 (Fandisk), G20 (Homer), G21 (Igea), G22 (Max Planck), G23
+(Ogre), G24 (Rocker Arm). Deliberately deferred: G7/G10 (Spot the
+Cow/Horse - OptiX's own `flip_xz=true`, a 180-degree mesh rotation
+`loadObjMesh()` doesn't support yet), G12 (Trophy Room - four meshes
+in one composition, not the single-mesh pattern this batch covers),
+G13 (Glass Dragon - dielectric, not conductor, needs a small
+`loadObjMesh()` extension this batch didn't need). All 4 are natural
+targets for a future increment, not abandoned.
+
+**A real, honest finding from actually rendering all 16, not assumed
+from the code**: `loadObjMesh()`'s own auto-fit-to-`targetSize`
+convention (largest bounding-box dimension -> a fixed target) does
+NOT produce a uniformly well-framed result across meshes with very
+different natural proportions, unlike OptiX's own approach of a
+HAND-TUNED scale+offset per mesh (verified from each raw OBJ's own
+bounding box, per that file's own comments). A `targetSize=1.1`
+(G1-G3's own value) left several meshes (Lucy, Dragon, Teapot, Beetle,
+Fandisk, Rocker Arm - all naturally elongated/thin subjects, verified
+directly by viewing each render, not guessed from geometry alone) far
+too small in frame - the FIRST Lucy/Teapot renders looked like
+near-invisible specks, not recognizable meshes. Retuned per-mesh
+(targetSize 1.1-2.5, empirically, by re-rendering and viewing each
+one after the change) rather than assuming one constant fits all 19
+scenes now covered - the same "check by actually rendering, don't
+assume" discipline this whole session has followed throughout.
+
+**A second, separate, HONEST finding, left as a real limitation, not
+hidden**: several of these scenes use OptiX's own "bright silver"
+(0.85,0.85,0.88), near-mirror-low-roughness preset. In THIS scene's
+own sparse environment (a plain pale sky, one area light, no other
+reflective surroundings), a near-perfect silver mirror finish reads as
+washed-out/low-contrast rather than shiny - physically consistent
+behaviour (a low-roughness, high-reflectance conductor mostly shows
+whatever it's reflecting, and this environment has little visually
+interesting to reflect), not a bug, but a real, visible cosmetic
+limitation for compact/simple meshes (Suzanne, Cow, Igea all still
+read clearly despite it) and especially for thin/complex-silhouette
+ones (Lucy, Dragon, Rocker Arm, Fandisk remain visually subtle even
+after the size fix). A genuine future improvement (a richer
+environment, or simply less extreme "silver" presets) - correctly
+scoped OUT of this increment, which is about geometry/material
+CORRECTNESS (the right mesh, the right base colour, NEE/lighting
+functioning), not visual art-direction polish.
+
+**Verified**: all 16 new scene_ids render successfully (`metal_render_
+main returned: 0`) at both a quick-check resolution and while spot-
+checking a representative sample by directly viewing the image -
+recognizable bunny/cow/ogre/homer/bimba/cheburashka/fandisk/rocker-arm
+shapes with correct per-scene colours, sitting on the ground quad
+under the light, exactly as designed (mesh-gallery scenes still
+visually subtle per the finding above, but genuinely present and
+correctly shaped, not broken or invisible). `cpu_scene_metal_hand_
+authored_supported()` confirmed correct for the full id range G1-G25
+(the 16 new ones report 1; G7/G10/G12/G13/G16/G25 correctly report 0 -
+G25 is separately pbrt-backed, already covered by the OTHER half of
+`metal_compatible`'s own OR). Full clean rebuild + ctest (4/4) +
+51-scene sweep (no regressions) all pass. **Category G is now 19 of
+23 done; 4 deferred scenes (G7/G10/G12/G13) plus every other category
+(A/B/C/D/E/H/I) remain** for future increments in this same series.

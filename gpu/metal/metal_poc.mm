@@ -1070,6 +1070,29 @@ struct MetalPocApp {
     void buildStanfordBunny();
     void buildStanfordArmadillo();
     void buildStanfordHappyBuddha();
+    // G4-G24 (minus G7/G10 - need a 180-degree mesh flip buildMeshGallery
+    // Scene() doesn't support yet; G12 - four meshes, not one; G13 -
+    // dielectric, not conductor - all deferred to a later increment,
+    // section 118, docs/METAL_GPU_FEASIBILITY.md). Each is a one-line
+    // buildMeshGalleryScene() call with that scene's own real OptiX
+    // albedo/roughness (gpu/optix/scene_builder_mesh_gallery.h) converted
+    // the same reflectanceToConductorK() way G1-G3 already are.
+    void buildStanfordLucy();
+    void buildStanfordDragon();
+    void buildUtahTeapot();
+    void buildSuzanneGallery();
+    void buildNefertiti();
+    void buildCheburashka();
+    void buildBeast();
+    void buildVWBeetle();
+    void buildBimba();
+    void buildCowGallery();
+    void buildFandisk();
+    void buildHomer();
+    void buildIgea();
+    void buildMaxPlanck();
+    void buildOgre();
+    void buildRockerArm();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2733,6 +2756,22 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G1") { buildStanfordBunny(); return true; }
     if (scene_id == "G2") { buildStanfordArmadillo(); return true; }
     if (scene_id == "G3") { buildStanfordHappyBuddha(); return true; }
+    if (scene_id == "G4") { buildStanfordLucy(); return true; }
+    if (scene_id == "G5") { buildStanfordDragon(); return true; }
+    if (scene_id == "G6") { buildUtahTeapot(); return true; }
+    if (scene_id == "G8") { buildSuzanneGallery(); return true; }
+    if (scene_id == "G9") { buildNefertiti(); return true; }
+    if (scene_id == "G11") { buildCheburashka(); return true; }
+    if (scene_id == "G14") { buildBeast(); return true; }
+    if (scene_id == "G15") { buildVWBeetle(); return true; }
+    if (scene_id == "G17") { buildBimba(); return true; }
+    if (scene_id == "G18") { buildCowGallery(); return true; }
+    if (scene_id == "G19") { buildFandisk(); return true; }
+    if (scene_id == "G20") { buildHomer(); return true; }
+    if (scene_id == "G21") { buildIgea(); return true; }
+    if (scene_id == "G22") { buildMaxPlanck(); return true; }
+    if (scene_id == "G23") { buildOgre(); return true; }
+    if (scene_id == "G24") { buildRockerArm(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3048,6 +3087,127 @@ void MetalPocApp::buildStanfordHappyBuddha() {
     buildMeshGalleryScene("happy-buddha.obj", gold, /*materialType=*/4u,
         /*roughness=*/0.05f, /*eta=*/float3{1, 1, 1}, reflectanceToConductorK(gold),
         /*targetSize=*/1.1f);
+}
+
+// Scenes G4-G24 below (minus G7/G10/G12/G13 - see this struct's own
+// declaration comment for why those are deferred) - each matches
+// gpu/optix/scene_builder_mesh_gallery.h's own real per-scene albedo/
+// roughness exactly, same reflectanceToConductorK() conversion G1-G3
+// already use.
+
+// G4: Stanford Lucy (99,970 triangles), bright silver.
+void MetalPocApp::buildStanfordLucy() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("lucy.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 2.5f);
+}
+
+// G5: Stanford XYZRGB Dragon (249,882 triangles), bright silver.
+void MetalPocApp::buildStanfordDragon() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("xyzrgb_dragon.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 2.5f);
+}
+
+// G6: Utah Teapot (6,320 triangles), bright silver.
+void MetalPocApp::buildUtahTeapot() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("teapot.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 2.5f);
+}
+
+// G8: Suzanne (968 triangles, fan-triangulated from 500 mostly-quad
+// faces), bright silver - a DIFFERENT material from the hardcoded POC
+// room's own bronze Suzanne (buildScene()'s own materialType 0), same
+// mesh file, genuinely separate scene/context.
+void MetalPocApp::buildSuzanneGallery() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("suzanne.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 1.1f);
+}
+
+// G9: Nefertiti Bust (99,938 triangles), bright silver.
+void MetalPocApp::buildNefertiti() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("nefertiti.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 2.5f);
+}
+
+// G11: Cheburashka bust (13,334 triangles), bright silver.
+void MetalPocApp::buildCheburashka() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("cheburashka.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 2.2f);
+}
+
+// G14: Beast, bronze (same tone as G1's bunny).
+void MetalPocApp::buildBeast() {
+    const float3 bronze{0.71f, 0.43f, 0.20f};
+    buildMeshGalleryScene("beast.obj", bronze, 4u, 0.15f, float3{1, 1, 1},
+        reflectanceToConductorK(bronze), 1.1f);
+}
+
+// G15: VW Beetle, bright silver.
+void MetalPocApp::buildVWBeetle() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("beetle.obj", silver, 4u, 0.08f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 2.5f);
+}
+
+// G17: Bimba, gold (same tone as G3's buddha).
+void MetalPocApp::buildBimba() {
+    const float3 gold{0.83f, 0.69f, 0.22f};
+    buildMeshGalleryScene("bimba.obj", gold, 4u, 0.05f, float3{1, 1, 1},
+        reflectanceToConductorK(gold), 1.1f);
+}
+
+// G18: Cow, warm brass tone.
+void MetalPocApp::buildCowGallery() {
+    const float3 brass{0.80f, 0.65f, 0.28f};
+    buildMeshGalleryScene("cow.obj", brass, 4u, 0.15f, float3{1, 1, 1},
+        reflectanceToConductorK(brass), 1.1f);
+}
+
+// G19: Fandisk, gunmetal.
+void MetalPocApp::buildFandisk() {
+    const float3 gunmetal{0.55f, 0.56f, 0.58f};
+    buildMeshGalleryScene("fandisk.obj", gunmetal, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(gunmetal), 2.5f);
+}
+
+// G20: Homer, warm gold tone.
+void MetalPocApp::buildHomer() {
+    const float3 gold{0.85f, 0.70f, 0.25f};
+    buildMeshGalleryScene("homer.obj", gold, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(gold), 1.1f);
+}
+
+// G21: Igea, bright silver.
+void MetalPocApp::buildIgea() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("igea.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 1.1f);
+}
+
+// G22: Max Planck bust, warm copper tone.
+void MetalPocApp::buildMaxPlanck() {
+    const float3 copper{0.65f, 0.45f, 0.30f};
+    buildMeshGalleryScene("max-planck.obj", copper, 4u, 0.2f, float3{1, 1, 1},
+        reflectanceToConductorK(copper), 1.1f);
+}
+
+// G23: Ogre, muted green-tinted metal.
+void MetalPocApp::buildOgre() {
+    const float3 tint{0.45f, 0.50f, 0.35f};
+    buildMeshGalleryScene("ogre.obj", tint, 4u, 0.2f, float3{1, 1, 1},
+        reflectanceToConductorK(tint), 1.1f);
+}
+
+// G24: Rocker Arm, gunmetal.
+void MetalPocApp::buildRockerArm() {
+    const float3 gunmetal{0.55f, 0.56f, 0.58f};
+    buildMeshGalleryScene("rocker-arm.obj", gunmetal, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(gunmetal), 2.5f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
