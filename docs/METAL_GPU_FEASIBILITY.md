@@ -5543,3 +5543,45 @@ pixel bytes (mean abs diff 2.48). `pbrt_scenes/conductor-rgb-eta-k.pbrt`
 genuinely bigger undertaking (real volumetric scattering, tensor BRDF
 data, and geometry/architecture this POC doesn't have, respectively),
 correctly out of scope here.
+
+## 104. Two-sided area lights (`"bool twosided"`)
+
+`pbrt_flatten.h` already parses `AreaLightSource`'s own `"twosided"`
+parameter into `Emission::twoSided` - but nothing in this loader ever
+read it, meaning EVERY area light (quad-based `AreaLightData` NEE
+lights, and the non-quad/disk "emissive but not NEE-registered" shapes
+from sections 100/101) was always effectively one-sided regardless of
+what the scene actually specified.
+
+**Two independent code paths needed the same fix, not one**: NEE
+sampling (`sampleAreaLight()`'s own picked light, checked per-material
+via `cosLight > 0.0` in all 6 material shading functions plus the
+participating-medium scattering block - 7 call sites, the same shape
+PR #97's own `useEnvironmentMap` gate touched) and the direct-hit
+emissive check (`primaryRayKernel`'s own unconditional `any(mat.
+emission) > 0 && frontFace`). Both relaxed to accept EITHER facing
+when the light is two-sided: `cosLight > 0.0 || (ls.twoSided != 0.0 &&
+cosLight < 0.0)` for NEE (with `ls.area * cosLight` changed to `ls.area
+* abs(cosLight)` in the resulting pdf, since a negative cosLight would
+otherwise flip the sign), and `frontFace || mat.twoSided != 0u` for the
+direct-hit case. A new `twoSided` field was added to THREE structs in
+lockstep (`AreaLight`/`LightSample` for the NEE side, `TriangleMaterial`
+for the direct-hit side) - `TriangleMaterial` carries its OWN copy
+rather than looking up `lights[mat.lightId].twoSided`, since a non-
+quad/disk emissive shape has no `AreaLightData` entry to look up
+(`lightId < 0`) in the first place.
+
+**Verified with 3 isolated synthetic test scenes** (the one bundled
+scene that mentions "twosided" - `pbrt_scenes/textured-twosided-lights.
+pbrt` - turned out to test a DIFFERENT, still-unsupported gap instead:
+image-based/textured area-light emission via `"string filename"`, not
+exercised by any of its own 3 lights' `twosided` values, which are
+either unset or explicitly `false`): (1) a one-sided disk viewed
+exclusively from its back renders dark, matching pbrt's real default;
+(2) the SAME disk with `"bool twosided" [true]` renders fully glowing
+from that same back-only viewing angle - a clean before/after diff of
+24.32% of pixel bytes (mean abs diff 15.22); (3) a two-sided disk
+standing on a floor spanning both its front and back shows a
+symmetric, equally-bright illumination pool on both sides via NEE, not
+just a direct-hit glow. Full clean `RT_BUILD_METAL=ON` rebuild + ctest
+(4/4) and a 51-scene sweep (no crashes) both pass.

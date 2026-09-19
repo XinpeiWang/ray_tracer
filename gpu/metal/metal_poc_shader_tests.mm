@@ -98,6 +98,7 @@ struct AreaLightGPU {
     PackedFloat3 emission;
     float patternTileB;
     float patternScale;
+    float twoSided = 0.0f;
     float pmf;
     float aliasProb;
     uint32_t aliasIndex;
