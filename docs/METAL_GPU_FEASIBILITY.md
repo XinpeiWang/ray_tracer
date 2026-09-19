@@ -5507,3 +5507,39 @@ reflections, instead of a flat gray ball - a before/after diff of
 47.41% of pixel bytes (mean abs diff 4.01). A true per-point stochastic
 speckle (matching CPU/OptiX exactly) remains a real, deliberately
 deferred future refinement, not attempted here.
+
+## 103. CoatedConductor, Approx tier: reusing plain Conductor's own machinery
+
+`coatedconductor` (a rough dielectric coat over a metal base) previously
+fell through to gray Lambertian too. Both CPU (`pbrt_cpu_builder.h`)
+and GPU-OptiX (`gpu/optix/pbrt_gpu_builder_materials.h`) already
+accept the SAME Approx tier for this kind - the coat itself isn't
+modelled, only the base conductor - so this mirrors that existing,
+already-documented precedent (`docs/PBRT_SUPPORT.md`'s own entry) onto
+materialType 4 (this POC's real complex-Fresnel GGX conductor)
+instead of inventing a new approximation. `pbrt_flatten.h` already
+resolves `m.conductorEta`/`m.conductorK` for `CoatedConductor`
+IDENTICALLY to plain `Conductor` whenever a named metal spectrum or an
+explicit `"eta"`/`"k"` is given (a real, recent-enough fix of its own -
+CoatedConductor used to be excluded from that resolution entirely,
+per that code's own comment); the remaining "nothing given" case
+(`!m.hasConductorPreset`) converts the scene's own `"reflectance"`
+colour to eta=1/k-solved-from-r via the EXACT SAME formula CPU's own
+`reflectanceToConductorK()` uses (`k = 2*sqrt(r) / sqrt(max(1e-4,
+1-r))`, per channel) - copied from that already-shipped, already-
+verified precedent rather than re-derived independently.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4),
+51-scene sweep (no crashes, no new warnings). `pbrt_scenes/
+layered-materials.pbrt`'s own gold/copper `coatedconductor` sphere
+(`"rgb reflectance" [0.9 0.75 0.3] "float roughness" [0.08]`, the
+"nothing given eta/k" path) now shows a real, correctly metallic,
+gold-toned sphere with visible specular highlights and environment
+reflections instead of flat gray - a before/after diff of 23.85% of
+pixel bytes (mean abs diff 2.48). `pbrt_scenes/conductor-rgb-eta-k.pbrt`
+(the explicit-`"eta"`/`"k"` path, already exercised by plain
+`conductor` scenes) renders with no warnings either. Only `subsurface`,
+`measured`, and `hair` remain unmapped material kinds - each still a
+genuinely bigger undertaking (real volumetric scattering, tensor BRDF
+data, and geometry/architecture this POC doesn't have, respectively),
+correctly out of scope here.
