@@ -955,6 +955,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"A3",                    // Checkered Spheres - first category-A scene beyond A1 (section 121)
 		"A6",                    // Colored Quads (section 122)
 		"A4",                    // Earth (section 123)
+		"A5",                    // Perlin Spheres (section 124)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
