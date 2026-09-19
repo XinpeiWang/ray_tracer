@@ -298,14 +298,26 @@ void MainWindow::createSettingsTab() {
 	// drifted before and got scene_descriptor.h's mirror table deleted.
 	const int sceneCount = SceneMetadataClient::sceneCount();
 	if (sceneCount <= 0) {
+		// lastLoadError() reports the ACTUAL cause (a real dlopen()/
+		// LoadLibrary failure reason, or "loaded but missing an export") -
+		// see its own comment (scene_metadata_client.h) for why this
+		// replaced a guessed, sometimes actively misleading "make sure the
+		// file is present" message: a real user's own dylib failed to load
+		// for an entirely different reason (a macOS Gatekeeper/quarantine
+		// block on an ad-hoc-signed, downloaded library) that the old
+		// message never could have suggested.
+		const QString reason = SceneMetadataClient::lastLoadError();
+		const QString reasonSuffix = reason.isEmpty() ? QString() : tr("\n\nReason: %1").arg(reason);
 #ifdef Q_OS_WIN
 		QMessageBox::critical(basicTab, tr("Scene Metadata Unavailable"),
 			tr("Could not load scene_metadata.dll, so the scene list is empty. "
-			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe."));
+			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.") + reasonSuffix);
 #else
 		QMessageBox::critical(basicTab, tr("Scene Metadata Unavailable"),
 			tr("Could not load scene_metadata.dylib/.so, so the scene list is empty. "
-			"Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI."));
+			"Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI. If it IS present, "
+			"this is often macOS blocking an unsigned library downloaded from the internet - try running "
+			"xattr -cr on the .app in Terminal.") + reasonSuffix);
 #endif
 	}
 

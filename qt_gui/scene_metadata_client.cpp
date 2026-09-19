@@ -29,6 +29,15 @@ struct DllHandle {
 	SnapshotFn snapshotFn = nullptr;
 };
 
+// See SceneMetadataClient::lastLoadError()'s own comment (scene_metadata_
+// client.h) for why this exists. Set once, inside the same std::call_once
+// block as the load attempt itself below - never cleared, since this
+// client only ever attempts one load per process lifetime.
+QString& loadErrorStorage() {
+	static QString err;
+	return err;
+}
+
 // scene_metadata.dll on Windows, .dylib on macOS, .so on Linux - matches
 // CMakeLists.txt's `set_target_properties(scene_metadata PROPERTIES
 // PREFIX "")`, which drops CMake's default "lib" prefix so this exact
@@ -56,7 +65,10 @@ DllHandle& handle() {
 	// file was first compiled with MSVC.
 	std::call_once(loadOnce, []() {
 		h.module = cross_abi_library::loadLibrary(QCoreApplication::applicationDirPath(), kLibraryFileName);
-		if (!h.module) return;
+		if (!h.module) {
+			loadErrorStorage() = cross_abi_library::lastLoadError();
+			return;
+		}
 
 		h.gpuCompatibleFn = reinterpret_cast<GpuCompatibleFn>(
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_gpu_compatible"));
@@ -92,6 +104,9 @@ DllHandle& handle() {
 		if (!h.gpuCompatibleFn || !h.metalCompatibleFn || !h.countFn || !h.idAtIndexFn ||
 			!h.nameFn || !h.categoryFn || !h.descriptionFn ||
 			!h.requiresFilesFn || !h.snapshotFn) {
+			loadErrorStorage() = QStringLiteral(
+				"Library loaded but is missing an expected exported function - "
+				"likely a stale build sitting next to a newer executable.");
 			cross_abi_library::closeLibrary(h.module);
 			h = DllHandle{};
 		}
@@ -105,6 +120,10 @@ namespace SceneMetadataClient {
 
 bool ensureLoaded() {
 	return handle().module != nullptr;
+}
+
+QString lastLoadError() {
+	return loadErrorStorage();
 }
 
 bool gpuCompatible(const QString& scene_id, bool& out_compatible) {

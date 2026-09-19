@@ -5988,3 +5988,53 @@ verification: check the ACTUAL distributable artifact the script
 produces (mount the real `.dmg`), not a loose intermediate folder
 that happens to sit next to it in the build tree - they can silently
 diverge exactly like this.**
+
+## 112. `scene_metadata` load-failure dialog guessed its own cause instead of reporting it
+
+Found immediately after sections 110/111 above, when the same user hit
+a THIRD failure on their own machine: the GUI's own "Scene Metadata
+Unavailable" dialog ("Could not load scene_metadata.dylib/.so... Make
+sure it's present alongside RayTracerGUI"), even though the dylib was
+confirmed present in both packages this session mounted and inspected
+directly. That message was never actually diagnostic - `scene_metadata
+_client.cpp`'s own `if (!h.module) return;` (a failed `dlopen()`) and
+`mainwindow_tabs.cpp`'s own dialog both just checked "is the count
+zero" and printed a GUESSED, singular cause ("missing file"), never
+the real one `dlerror()`/`GetLastError()` already had sitting right
+there the moment the load failed. `cross_abi_library.h`'s own header
+comment had literally anticipated this exact gap ("a future fix... a
+load-failure diagnostic... lands once instead of needing to be
+hand-copied a third time") without anyone having filled it in yet.
+
+The MOST LIKELY real cause on the user's own machine: macOS Gatekeeper
+blocking `dlopen()` of an ad-hoc-signed (not Developer-ID-signed - see
+the release README's own "unsigned app" section), quarantined dylib
+that arrived via a real download - a failure mode this session's own
+local build-and-mount testing can never reproduce, since a dylib built
+and mounted locally never gets the `com.apple.quarantine` xattr a real
+"downloaded from the internet" file gets; `right-click -> Open` on the
+main app bundle does not necessarily clear that flag from files
+loaded via `dlopen()` at runtime rather than launched directly, unlike
+`xattr -cr` on the whole bundle, which does.
+
+Fixed the DIAGNOSTIC gap (the part actually within this session's own
+ability to fix and verify - the signing/notarization gap itself is
+already a known, documented limitation, real Apple Developer signing
+being out of scope): `cross_abi_library::loadLibrary()` now captures
+`dlerror()`/`FormatMessageW(GetLastError())` immediately on failure
+(before any other call could reset that state) into a new
+`lastLoadError()` accessor; `scene_metadata_client.cpp` captures it
+(or its own fixed "loaded but missing an expected export" message, a
+genuinely different, previously-indistinguishable failure) into its
+own `SceneMetadataClient::lastLoadError()`; the dialog now appends the
+real reason, plus (macOS only) a direct pointer at the `xattr -cr`
+fix for exactly this failure class. **Verified the core mechanism
+directly** (an isolated, Qt-free `dlopen()`/`dlerror()` test - a
+missing file produces a full, specific reason string; a real load
+produces none) since the actual GUI dialog itself can't be visually
+inspected without a live display session; separately confirmed a full
+rebuild compiles clean and the GUI still launches and stays running
+with NO dialog in the normal (dylib present, loads fine) case, and
+does not crash when the dylib is deliberately hidden (fails quiet,
+same contract as before - just with a real reason attached now instead
+of a guess).
