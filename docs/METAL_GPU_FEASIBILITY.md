@@ -5956,3 +5956,35 @@ package built by this script's own documented process has ever
 actually exercised Metal GPU rendering end to end. Full clean rebuild
 + ctest (4/4) + 51-scene sweep (no regressions) also pass on the dev
 build.
+
+**Correction (section 111) - that verification above tested the wrong
+artifact.** It checked the loose `RayTracer_Package_macOS/RayTracerGUI
+.app` folder (step 5's own copy of `$APP_BUNDLE`, taken AFTER the
+asset-copy steps above) - not the actual `.dmg` file the script also
+produces and that a real user downloads. They had silently diverged:
+`macdeployqt "$APP_BUNDLE" -dmg` builds the `.dmg` from
+`Contents/MacOS/`'s contents at THE MOMENT IT RUNS, which is BEFORE
+this same script's own `metal_poc.metal`/models/images copy steps run
+right after it - so the `.dmg` this fix originally shipped had NONE
+of them, the exact same failure mode section 110 itself just fixed,
+reintroduced by the fix's own script restructuring. Found only when
+the USER downloaded and ran that real `.dmg` and reported it still
+failing - mounting the actual `.dmg` (`hdiutil attach`), not just
+inspecting the loose folder, is what caught it.
+
+Fixed by never passing `-dmg` to `macdeployqt` at all - it now only
+processes Qt frameworks - and building the `.dmg` explicitly via
+`hdiutil create -srcfolder "$APP_BUNDLE" ...` as the LAST step, after
+every asset (Qt frameworks, Metal shader, demo assets) is already in
+place. Verified by mounting the newly-built `.dmg` directly
+(`hdiutil attach`) and confirming `metal_poc.metal`/`models/`
+/`images/` are all present inside it this time, then running
+`ray_tracer --diagnose` (`GPU: Apple M2` / `Metal: available`) AND
+launching the actual `RayTracerGUI` binary itself (not just the CLI,
+unlike section 110's own verification) directly from the mounted,
+READ-ONLY volume - it started and stayed running with no dylib-load
+or other startup error. **Lesson for any future packaging-script
+verification: check the ACTUAL distributable artifact the script
+produces (mount the real `.dmg`), not a loose intermediate folder
+that happens to sit next to it in the build tree - they can silently
+diverge exactly like this.**
