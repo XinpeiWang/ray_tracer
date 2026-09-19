@@ -6097,3 +6097,33 @@ Apple M2` / `Metal: available` even running translated (Metal itself
 is unaffected by the CPU process's own architecture - only the CPU-
 side code runs translated, not the GPU work). Full clean rebuild +
 ctest (4/4) pass under the new architecture.
+
+## 114. `.dmg` had no "drag to Applications" nudge - a real user ran it straight off the read-only mount
+
+Found when a real render attempt failed with `filesystem error: in
+create_directories... Read-only file system
+["/Volumes/RayTracerGUI/RayTracerGUI.app/Contents/MacOS/output"]` -
+not a code bug at all, but a genuine consequence of running the app
+directly from its own MOUNTED disk image rather than an installed
+copy: a mounted `.dmg` volume is read-only, so the moment the CLI
+tries to create its own `output/` directory next to itself, it fails
+outright. Every prior fix in this section (108-113) was real and
+necessary, but none of them could have prevented this - the `.dmg`
+this script produced was just a bare `RayTracerGUI.app` sitting alone
+in the mounted window, with nothing in it suggesting the icon needed
+to move anywhere before being run - unlike virtually every other macOS
+`.dmg` installer, which shows the app icon NEXT TO an `Applications`
+folder shortcut specifically to make "drag this over" the obvious
+first move.
+
+Fixed by building the `.dmg` from a staging folder containing the
+`.app` PLUS a `ln -s /Applications` symlink alongside it, instead of
+pointing `hdiutil create -srcfolder` straight at the bare app bundle.
+This doesn't force anyone to actually drag it - a user can still run
+it straight off the mount if they insist - but it's the same visual
+cue every other macOS app already relies on, and this one had none at
+all. Verified by mounting the rebuilt `.dmg` directly and confirming
+the `Applications -> /Applications` symlink now sits right next to
+`RayTracerGUI.app` in the mounted volume; `lipo -archs` re-confirmed
+on the same rebuild that section 113's own architecture fix still
+holds (`x86_64` throughout).

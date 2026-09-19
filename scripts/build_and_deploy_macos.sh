@@ -192,7 +192,26 @@ if [[ "$SKIP_DMG" -eq 0 ]]; then
 	# macdeployqt call for the real bug this caused).
 	DMG_PATH="$(dirname "$APP_BUNDLE")/$APP_NAME.dmg"
 	rm -f "$DMG_PATH"
-	hdiutil create -volname "$APP_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH" >/dev/null
+	# A staging folder with an "Applications" SYMLINK alongside the .app,
+	# not the bare .app folder alone - matches the drag-to-Applications
+	# convention virtually every macOS .dmg installer uses, and for a real
+	# reason found the hard way (section 114): a mounted disk image is
+	# READ-ONLY, so running the app straight from the mount (rather than
+	# copying it out first) fails outright the moment it tries to write
+	# anything - a real user hit exactly this ("filesystem error: in
+	# create_directories... Read-only file system") trying to render from
+	# `/Volumes/RayTracerGUI/...` directly. The symlink alone can't force
+	# anyone to actually drag the icon over, but it's the same one visual
+	# nudge every other macOS app relies on, and this one had nothing at
+	# all - just a bare app sitting alone in the mounted window, nothing
+	# suggesting it needed to move anywhere first.
+	DMG_STAGING="$(dirname "$APP_BUNDLE")/dmg_staging"
+	rm -rf "$DMG_STAGING"
+	mkdir -p "$DMG_STAGING"
+	cp -R "$APP_BUNDLE" "$DMG_STAGING/"
+	ln -s /Applications "$DMG_STAGING/Applications"
+	hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH" >/dev/null
+	rm -rf "$DMG_STAGING"
 	if [[ -f "$DMG_PATH" ]]; then
 		cp "$DMG_PATH" "$DEPLOY_DIR/"
 		echo "DMG:  $DEPLOY_DIR/$APP_NAME.dmg"
