@@ -115,11 +115,17 @@ QT_BIN_DIR="$(dirname "$QMAKE_PATH")"
 MACDEPLOYQT="$QT_BIN_DIR/macdeployqt"
 [[ -x "$MACDEPLOYQT" ]] || { echo "ERROR: macdeployqt not found next to qmake at $MACDEPLOYQT" >&2; exit 1; }
 
-if [[ "$SKIP_DMG" -eq 1 ]]; then
-	"$MACDEPLOYQT" "$APP_BUNDLE"
-else
-	"$MACDEPLOYQT" "$APP_BUNDLE" -dmg
-fi
+# Deliberately NEVER passed -dmg here, even when SKIP_DMG=0 - macdeployqt's
+# own -dmg flag builds the .dmg from Contents/MacOS/'s CURRENT contents
+# at the moment it runs, which is BEFORE the metal_poc.metal/models/images
+# copy below. A real, previously-shipped bug found by mounting the actual
+# .dmg this script produced (not just checking the loose .app folder,
+# which - copied from $APP_BUNDLE in step 5, AFTER the asset copy below -
+# looked correct while the real .dmg silently did not): the first "fixed"
+# release .dmg (section 110) still had no Metal shader/demo assets in it
+# at all. The dmg is now built explicitly via hdiutil, further below,
+# once every asset this app needs is actually in place.
+"$MACDEPLOYQT" "$APP_BUNDLE"
 
 # metal_poc.mm compiles its own Metal shader from SOURCE at runtime (it has
 # no offline .metallib step) - only when RT_BUILD_METAL=ON above actually
@@ -160,15 +166,20 @@ rm -rf "$DEPLOY_DIR"
 mkdir -p "$DEPLOY_DIR"
 cp -R "$APP_BUNDLE" "$DEPLOY_DIR/"
 if [[ "$SKIP_DMG" -eq 0 ]]; then
-	# macdeployqt writes the .dmg next to the .app bundle it was given,
-	# i.e. next to $APP_BUNDLE - NOT in $GUI_BUILD_DIR (see the DESTDIR
-	# note above APP_BUNDLE's own assignment).
+	# Built explicitly via hdiutil now, from the FULLY-ASSEMBLED $APP_BUNDLE
+	# (Qt frameworks + Metal shader + demo assets all already copied in
+	# above) - not macdeployqt's own -dmg flag, which packages whatever is
+	# in Contents/MacOS/ at the moment IT runs, too early for this script's
+	# own later asset-copy steps (see the comment above the plain
+	# macdeployqt call for the real bug this caused).
 	DMG_PATH="$(dirname "$APP_BUNDLE")/$APP_NAME.dmg"
+	rm -f "$DMG_PATH"
+	hdiutil create -volname "$APP_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH" >/dev/null
 	if [[ -f "$DMG_PATH" ]]; then
 		cp "$DMG_PATH" "$DEPLOY_DIR/"
 		echo "DMG:  $DEPLOY_DIR/$APP_NAME.dmg"
 	else
-		echo "WARNING: macdeployqt -dmg did not produce $DMG_PATH - check its output above." >&2
+		echo "WARNING: hdiutil did not produce $DMG_PATH - check its output above." >&2
 	fi
 fi
 
