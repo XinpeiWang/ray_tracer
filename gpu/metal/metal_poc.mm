@@ -925,6 +925,51 @@ struct MetalPocApp {
     // vectors buildScene()'s own hardcoded room uses. Only called from
     // buildScene() itself, when pbrtScenePath is non-empty.
     void loadPbrtScene();
+    // The 9 phases loadPbrtScene() itself is now just a thin dispatcher
+    // over (section 109 - split from one ~950-line function, mirroring
+    // the SAME "monolithic function -> named phase methods" refactor
+    // main()/PR #56 and primaryRayKernel/PR #65 already went through
+    // once each, at a comparable size). Every phase takes the shared
+    // read-only state it needs as EXPLICIT parameters (never a NEW
+    // class member) - toWorld/materialFor as std::function, matching
+    // this file's own already-established idiom for mapMaterial -
+    // specifically to avoid PR #56's own documented bug class (a
+    // local's type annotation left in place after converting it to a
+    // member, silently redeclaring a same-named shadowing local): there
+    // is nothing here to accidentally redeclare, since none of this
+    // shared state becomes a member at all. Every phase writes its own
+    // results straight into the ALREADY-existing MetalPocApp members
+    // (spheres/disks/lights/pointLights/...) exactly as the single
+    // monolithic function used to - only the CALLING convention changed,
+    // not where any result actually lives.
+    using PbrtToWorldFn = std::function<float3(float3)>;
+    using PbrtMaterialForFn = std::function<TriangleMaterial(int)>;
+    // Area lights ("single quad, 2 triangles" shape only) - populates
+    // `lights`, and the two out-params the very next phase
+    // (loadPbrtRemainingTriangles) needs: which triangles this phase
+    // already consumed, and any light emission a too-complex (non-quad)
+    // light still needs applied directly to its own triangles' material.
+    void loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+        const PbrtMaterialForFn& materialFor, std::vector<bool>& triangleHandled,
+        std::unordered_map<int, std::pair<float3, bool>>& unhandledLightEmission);
+    // Every triangle loadPbrtAreaLights() didn't already consume as a
+    // light's own quad - ordinary geometry, or an unhandled (non-quad)
+    // light's own triangles (emissive via `unhandledLightEmission`, not
+    // NEE-registered).
+    void loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+        const PbrtMaterialForFn& materialFor, const std::vector<bool>& triangleHandled,
+        const std::unordered_map<int, std::pair<float3, bool>>& unhandledLightEmission);
+    void loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+        const PbrtMaterialForFn& materialFor, float sceneScale);
+    void loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+        const PbrtMaterialForFn& materialFor, float sceneScale);
+    void loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+        const PbrtMaterialForFn& materialFor);
+    void loadPbrtPunctualLights(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld, float sceneScale);
+    void loadPbrtMedium(const pbrt_flatten::FlatScene& scene, float sceneScale);
+    void loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene);
+    void loadPbrtCamera(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+        float3 bboxCenter, float sceneScale, float3 sceneOffset);
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -1810,21 +1855,41 @@ void MetalPocApp::loadPbrtScene() {
         return toWorld(float3{(float)v[i * 3 + 0], (float)v[i * 3 + 1], (float)v[i * 3 + 2]});
     };
 
-    // --- Area lights: only the "single quad, 2 triangles" shape - see
-    // this function's own header comment.
+    std::vector<bool> triangleHandled(scene.triangles.size(), false);
+    // Populated by loadPbrtAreaLights() below only for a light shape too
+    // complex to represent as this loader's single analytic AreaLightData
+    // quad (see that method's own comment) - read by
+    // loadPbrtRemainingTriangles() right after to mark those triangles
+    // emissive (but NOT NEE-light-registered) instead of silently
+    // dropping their emission.
+    std::unordered_map<int, std::pair<float3, bool>> unhandledLightEmission;
+    loadPbrtAreaLights(scene, toWorld, materialFor, triangleHandled, unhandledLightEmission);
+    loadPbrtRemainingTriangles(scene, toWorld, materialFor, triangleHandled, unhandledLightEmission);
+    loadPbrtSpheres(scene, toWorld, materialFor, sceneScale);
+    loadPbrtDisks(scene, toWorld, materialFor, sceneScale);
+    loadPbrtObjectInstances(scene, toWorld, materialFor);
+    loadPbrtPunctualLights(scene, toWorld, sceneScale);
+    loadPbrtMedium(scene, sceneScale);
+    loadPbrtInfiniteLight(scene);
+    loadPbrtCamera(scene, toWorld, bboxCenter, sceneScale, sceneOffset);
+
+    fprintf(stderr, "loadPbrtScene: loaded %s (%zu triangles, %zu spheres, %zu area lights)\n",
+            pbrtScenePath.c_str(), scene.triangles.size(), scene.spheres.size(), scene.areaLights.size());
+}
+
+// --- Area lights: only the "single quad, 2 triangles" shape - see
+// this function's own header comment.
+void MetalPocApp::loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+    const PbrtMaterialForFn& materialFor, std::vector<bool>& triangleHandled,
+    std::unordered_map<int, std::pair<float3, bool>>& unhandledLightEmission) {
+    auto vertexAt = [toWorld](const double* v, int i) {
+        return toWorld(float3{(float)v[i * 3 + 0], (float)v[i * 3 + 1], (float)v[i * 3 + 2]});
+    };
     std::unordered_map<int, std::vector<int>> trianglesByLight;
     for (int i = 0; i < (int)scene.triangles.size(); ++i) {
         const int al = scene.triangles[i].areaLight;
         if (al >= 0) trianglesByLight[al].push_back(i);
     }
-    std::vector<bool> triangleHandled(scene.triangles.size(), false);
-    // Populated below only for a light shape too complex to represent as
-    // this loader's single analytic AreaLightData quad (see that branch's
-    // own comment) - keyed by triangle index, read by the "remaining
-    // triangles" loop just after this one to mark those triangles
-    // emissive (but NOT NEE-light-registered) instead of silently
-    // dropping their emission.
-    std::unordered_map<int, std::pair<float3, bool>> unhandledLightEmission;
     for (const auto& entry : trianglesByLight) {
         const int lightIdx = entry.first;
         const std::vector<int>& idxs = entry.second;
@@ -1927,8 +1992,18 @@ void MetalPocApp::loadPbrtScene() {
                             "not invisible)\n", idxs.size());
         }
     }
+}
 
-    // --- Remaining (non-light, or an unhandled light's own) triangles --
+// Every triangle loadPbrtAreaLights() didn't already consume as a
+// light's own quad - ordinary geometry, or an unhandled (non-quad)
+// light's own triangles (emissive via `unhandledLightEmission`, not
+// NEE-registered).
+void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+    const PbrtMaterialForFn& materialFor, const std::vector<bool>& triangleHandled,
+    const std::unordered_map<int, std::pair<float3, bool>>& unhandledLightEmission) {
+    auto vertexAt = [toWorld](const double* v, int i) {
+        return toWorld(float3{(float)v[i * 3 + 0], (float)v[i * 3 + 1], (float)v[i * 3 + 2]});
+    };
     for (int i = 0; i < (int)scene.triangles.size(); ++i) {
         if (triangleHandled[i]) continue;
         const pbrt_flatten::Triangle& t = scene.triangles[i];
@@ -1964,16 +2039,20 @@ void MetalPocApp::loadPbrtScene() {
         }
         materials.push_back(mat);
     }
+}
 
-    // --- Spheres ---------------------------------------------------------
+// --- Spheres ---------------------------------------------------------
+void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+    const PbrtMaterialForFn& materialFor, float sceneScale) {
     for (const pbrt_flatten::Sphere& s : scene.spheres) {
         const float3 center = toWorld(float3{(float)s.center[0], (float)s.center[1], (float)s.center[2]});
         spheres.push_back(SphereData{
             PackedFloat3{center.x, center.y, center.z}, sceneScale * (float)s.radius});
         sphereMaterials.push_back(materialFor(s.material));
     }
+}
 
-    // --- Disks (section 101) - the plain, common "full circle" case only:
+// --- Disks (section 101) - the plain, common "full circle" case only:
     // this loader's own DiskData primitive (metal_poc.metal, matching the
     // hardcoded room's own single disk) is center/normal/radius with no
     // inner-radius/phi-max partial-disk support at all, unlike pbrt-v4's
@@ -2003,6 +2082,8 @@ void MetalPocApp::loadPbrtScene() {
     // disk skips for the same "don't render something visibly wrong"
     // reason a partial disk does, mirroring skippedInstancedSpheres'
     // own non-uniform-scale precedent for instanced spheres.
+void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+    const PbrtMaterialForFn& materialFor, float sceneScale) {
     size_t skippedDisks = 0;
     for (const pbrt_flatten::Disk& d : scene.disks) {
         if (d.innerRadius != 0.0 || d.phiMaxDeg != 360.0) { ++skippedDisks; continue; }
@@ -2049,28 +2130,31 @@ void MetalPocApp::loadPbrtScene() {
     if (skippedDisks > 0)
         fprintf(stderr, "loadPbrtScene: %zu disk(s) skipped - only a full circle (no inner radius/phi-max) "
                         "under uniform scale is supported by this POC's own disk primitive\n", skippedDisks);
+}
 
-    // --- ObjectInstance placements -----------------------------------
-    // Real instancing (scene.groups hold OBJECT-space geometry, defined
-    // once; scene.instances place them with a per-placement object->world
-    // transform - see FlatScene's own comment) is baked into plain
-    // world-space triangles here, rather than mirroring gpu/optix/
-    // pbrt_gpu_builder.h's own approach of a true GPU-level instance
-    // acceleration structure - this POC's own shader dispatch already
-    // resolves each geometry "kind" (room triangles, spheres, disks,
-    // Suzanne) via its own fixed buffer/intersection-function-table slot,
-    // so adding a genuinely general N-group instancing mechanism there
-    // would be a much larger change than this pbrt loader warrants for
-    // what's typically a handful of placements (e.g. this repo's own
-    // example-cornell.pbrt: 3). Baking duplicates geometry per placement
-    // instead of sharing one buffer - free for a scene with a few dozen
-    // instances, the case every pbrt scene this loader has seen uses.
-    //
-    // Emissive instanced shapes need no special handling here: flatten()
-    // itself already bakes those directly into scene.triangles (a light
-    // must be enumerable to be sampled - see pbrt_gpu_builder.h's own
-    // comment on the same point), so scene.groups/scene.instances only
-    // ever contain non-emissive geometry.
+// --- ObjectInstance placements -----------------------------------
+// Real instancing (scene.groups hold OBJECT-space geometry, defined
+// once; scene.instances place them with a per-placement object->world
+// transform - see FlatScene's own comment) is baked into plain
+// world-space triangles here, rather than mirroring gpu/optix/
+// pbrt_gpu_builder.h's own approach of a true GPU-level instance
+// acceleration structure - this POC's own shader dispatch already
+// resolves each geometry "kind" (room triangles, spheres, disks,
+// Suzanne) via its own fixed buffer/intersection-function-table slot,
+// so adding a genuinely general N-group instancing mechanism there
+// would be a much larger change than this pbrt loader warrants for
+// what's typically a handful of placements (e.g. this repo's own
+// example-cornell.pbrt: 3). Baking duplicates geometry per placement
+// instead of sharing one buffer - free for a scene with a few dozen
+// instances, the case every pbrt scene this loader has seen uses.
+//
+// Emissive instanced shapes need no special handling here: flatten()
+// itself already bakes those directly into scene.triangles (a light
+// must be enumerable to be sampled - see pbrt_gpu_builder.h's own
+// comment on the same point), so scene.groups/scene.instances only
+// ever contain non-emissive geometry.
+void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+    const PbrtMaterialForFn& materialFor) {
     size_t instancedTriangleCount = 0, skippedInstancedSpheres = 0;
     for (const pbrt_flatten::Instance& inst : scene.instances) {
         if (inst.group < 0 || (size_t)inst.group >= scene.groups.size()) {
@@ -2127,8 +2211,10 @@ void MetalPocApp::loadPbrtScene() {
         fprintf(stderr, "loadPbrtScene: %zu instanced sphere(s) skipped - a non-uniformly-scaled "
                         "instanced sphere can't be represented by this loader's analytic sphere "
                         "primitive\n", skippedInstancedSpheres);
+}
 
-    // --- Punctual lights (point/spot/distant) ---------------------------
+// --- Punctual lights (point/spot/distant) ---------------------------
+void MetalPocApp::loadPbrtPunctualLights(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld, float sceneScale) {
     // Point and spot both reuse PointLightData - the SAME GPU buffer/
     // shading path the hardcoded room's own point+spot lights already use
     // (see that struct's own comment: direction/cosOuterAngle/
@@ -2372,13 +2458,15 @@ void MetalPocApp::loadPbrtScene() {
                         "image fell back to the Approx (uniform) case - only the first light of each "
                         "kind gets its own image, and a failed decode also falls back here\n",
                 skippedImageBasedLights);
+}
 
-    // --- Homogeneous participating medium (fog) -------------------------
-    // scene.cameraMediumIndex is already fully resolved and validated by
-    // pbrt_flatten.h's own post-pass (homogeneous type only, and only set
-    // at all when the scene has no conflicting real per-shape medium -
-    // see that field's own comment) - a direct, safe read, no further
-    // checking needed here.
+// --- Homogeneous participating medium (fog) -------------------------
+// scene.cameraMediumIndex is already fully resolved and validated by
+// pbrt_flatten.h's own post-pass (homogeneous type only, and only set
+// at all when the scene has no conflicting real per-shape medium -
+// see that field's own comment) - a direct, safe read, no further
+// checking needed here.
+void MetalPocApp::loadPbrtMedium(const pbrt_flatten::FlatScene& scene, float sceneScale) {
     if (scene.cameraMediumIndex >= 0 &&
         (size_t)scene.cameraMediumIndex < scene.media.size()) {
         const pbrt_flatten::Medium& m = scene.media[(size_t)scene.cameraMediumIndex];
@@ -2432,26 +2520,28 @@ void MetalPocApp::loadPbrtScene() {
         fprintf(stderr, "loadPbrtScene: homogeneous camera medium found (sigma_t~%.5g/unit, g=%.3f)\n",
                 meanSigmaT, m.g);
     }
+}
 
-    // --- Infinite light ---------------------------------------------------
-    // earthTexture is ALSO the hardcoded room's own materialType-3
-    // back-wall albedo, sampled from a totally separate code path in
-    // primaryRayKernel (the `albedo = earthTexture.sample(...)` line, run
-    // BEFORE any of the 6 material-shading functions are even called) -
-    // repointing that one at a pbrt-provided image would silently corrupt
-    // that unrelated, still-active geometry. So this uses its OWN,
-    // genuinely separate texture (pbrtEnvTexture) instead - see
-    // primaryRayKernel's own texture-argument comment.
-    //
-    // Deliberately miss-path-only for BOTH the constant-colour and
-    // image cases (no NEE/MIS light-sampling strategy) - see
-    // metal_poc.metal's own mirrored comments on why that's accepted
-    // scope, not an oversight; a future NEE upgrade already has a
-    // tested building block waiting (metal_poc_host_math.h's own
-    // float-RGB buildEnvDistribution2D() overload, added but not yet
-    // wired to anything - the exact same "phase 1 before phase 2"
-    // staging earthTexture's own NEE support went through, sections
-    // 69/71).
+// --- Infinite light ---------------------------------------------------
+// earthTexture is ALSO the hardcoded room's own materialType-3
+// back-wall albedo, sampled from a totally separate code path in
+// primaryRayKernel (the `albedo = earthTexture.sample(...)` line, run
+// BEFORE any of the 6 material-shading functions are even called) -
+// repointing that one at a pbrt-provided image would silently corrupt
+// that unrelated, still-active geometry. So this uses its OWN,
+// genuinely separate texture (pbrtEnvTexture) instead - see
+// primaryRayKernel's own texture-argument comment.
+//
+// Deliberately miss-path-only for BOTH the constant-colour and
+// image cases (no NEE/MIS light-sampling strategy) - see
+// metal_poc.metal's own mirrored comments on why that's accepted
+// scope, not an oversight; a future NEE upgrade already has a
+// tested building block waiting (metal_poc_host_math.h's own
+// float-RGB buildEnvDistribution2D() overload, added but not yet
+// wired to anything - the exact same "phase 1 before phase 2"
+// staging earthTexture's own NEE support went through, sections
+// 69/71).
+void MetalPocApp::loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene) {
     if (scene.infiniteLight.present) {
         if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0 &&
             !scene.infiniteLight.imagePixels.empty()) {
@@ -2485,8 +2575,11 @@ void MetalPocApp::loadPbrtScene() {
         fprintf(stderr, "loadPbrtScene: cylinder/cone/paraboloid/bilinearmesh/curve shapes skipped - "
                         "only triangle mesh, sphere, and (full-circle) disk shapes are supported by "
                         "this POC's scene loader yet\n");
+}
 
-    // --- Camera ------------------------------------------------------------
+// --- Camera ------------------------------------------------------------
+void MetalPocApp::loadPbrtCamera(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+    float3 bboxCenter, float sceneScale, float3 sceneOffset) {
     const pbrt_flatten::Camera& cam = scene.camera;
     // lookfrom/lookat are positions, scaled the same as every vertex
     // above; `up` is a direction (scale-invariant, and normalized below
@@ -2509,9 +2602,6 @@ void MetalPocApp::loadPbrtScene() {
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
     pbrtSceneOffset = sceneOffset;
-
-    fprintf(stderr, "loadPbrtScene: loaded %s (%zu triangles, %zu spheres, %zu area lights)\n",
-            pbrtScenePath.c_str(), scene.triangles.size(), scene.spheres.size(), scene.areaLights.size());
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

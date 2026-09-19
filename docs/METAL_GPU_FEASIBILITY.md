@@ -5823,3 +5823,58 @@ assigned to later anyway. Verified with an isolated A/B numeric diff
 35.70% of pixels differ (mean abs diff 6.37), a large, decisive signal
 matching the expected "significantly denser fog" direction. Full clean
 rebuild + ctest (4/4) + 51-scene sweep (no regressions) pass.
+
+## 109. Refactor: `loadPbrtScene()` split from one ~950-line function into 9 phase methods
+
+Prompted by an explicit request to review whether any file in this
+backend has grown large enough to warrant a refactor. `loadPbrtScene()`
+(`metal_poc.mm`) had grown to ~950 lines - by far the largest single
+function across the whole backend, and the largest either `.mm` or
+`.metal` file has had since their own prior refactors (`main()`, PR
+#56, split at ~1020 lines; `primaryRayKernel`, PR #65, split at ~1625
+lines) - grown continuously since PR #80 first introduced it, never
+split. Already cleanly divided into ~10 distinct phases by its own
+existing section comments (materials, area lights, remaining
+triangles, spheres, disks, ObjectInstance baking, punctual lights,
+medium, infinite light, camera) - a natural, low-risk extraction
+target, not a redesign.
+
+Split into 9 new private methods (`loadPbrtAreaLights`,
+`loadPbrtRemainingTriangles`, `loadPbrtSpheres`, `loadPbrtDisks`,
+`loadPbrtObjectInstances`, `loadPbrtPunctualLights`,
+`loadPbrtMedium`, `loadPbrtInfiniteLight`, `loadPbrtCamera`),
+`loadPbrtScene()` itself now a ~270-line orchestrator (bounding-box
+rescale computation + the `mapMaterial`/`materialFor` recursive-
+material-mapping lambda, both left in place - tightly self-contained,
+not worth a further split - then 9 phase calls). Every phase takes
+the shared read-only state it needs as EXPLICIT parameters
+(`toWorld`/`materialFor` as `std::function`, matching this file's own
+already-established idiom) rather than a NEW class member -
+deliberately, to avoid PR #56's own documented bug class (a local's
+type annotation left in place after converting it to a member,
+silently redeclaring a same-named shadowing local): nothing here
+becomes a member, so there is nothing to accidentally redeclare.
+Every phase still writes its own results straight into the SAME
+already-existing `MetalPocApp` members (`spheres`/`disks`/`lights`/
+`pointLights`/...) exactly as the one monolithic function used to -
+only the calling convention changed, never where a result lives.
+`triangleHandled`/`unhandledLightEmission` (populated by
+`loadPbrtAreaLights`, read by `loadPbrtRemainingTriangles`) are the
+one piece of state threaded between two adjacent phases via explicit
+by-reference out-parameters, declared in the orchestrator.
+
+**Found a real, previously-latent bug (section 108) while mapping
+this function for the split** - see that section; fixed and merged
+separately, before this refactor, since it's a correctness fix, not a
+structural one.
+
+**Verified as a genuinely pure refactor, the same "pixel-identical"
+bar PR #65's own shader split was held to, not just "no crash"**: a
+before/after build (this repo's own pre-refactor `metal_poc.mm`
+checked out via `git show` into a separate scratch copy, avoiding
+this environment's own missing `git-lfs` binary) rendered all 51
+`pbrt_scenes/` scenes with BOTH binaries and byte-for-byte diffed
+every pair - 0 of 51 scenes differ by even a single pixel byte,
+confirming zero behavioural change. Full clean rebuild (metal_poc AND
+the real `ray_tracer` target) + ctest (4/4), clean compile with no
+new warnings.
