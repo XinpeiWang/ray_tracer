@@ -60,6 +60,11 @@ struct AreaLightData {
     // pattern) - see metal_poc.metal's own AreaLight comment.
     float patternTileB = 0.0f;
     float patternScale = 0.0f;
+    // pbrt-v4's own "bool twosided" AreaLightSource parameter (section
+    // 104) - 0.0 (every light before this one) keeps the original
+    // one-sided-only behaviour exactly. See metal_poc.metal's own
+    // AreaLight::twoSided comment.
+    float twoSided = 0.0f;
     // Power-proportional light-picking data (Vose alias table, built
     // host-side by buildPowerLightSampler() below, mirroring
     // src/shared/power_light_sampler_scaffold.h's own PowerLightSampler)

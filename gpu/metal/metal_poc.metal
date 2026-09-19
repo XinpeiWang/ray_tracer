@@ -209,6 +209,15 @@ struct AreaLight {
     // exact quad) as the pattern's own UV, needing no new per-light UV
     // data at all. <= 0.0 means "no pattern," see above.
     float patternScale;
+    // pbrt-v4's own "bool twosided" AreaLightSource parameter (section
+    // 104) - 0.0 (every light before this one) means this light only
+    // emits from the side its own `normal` points toward, matching this
+    // POC's original one-sided-only behaviour exactly; nonzero accepts
+    // BOTH signs of cosLight in every NEE call site's own visibility
+    // check, and the direct-hit code's own facing check (mirrored onto
+    // TriangleMaterial::twoSided there, not read from here, so it also
+    // covers a non-quad/disk emissive shape with no AreaLight entry).
+    float twoSided;
     // Power-proportional light-picking data, host-computed once by
     // metal_poc.mm's buildPowerLightSampler() (a direct port of
     // src/shared/power_light_sampler_scaffold.h's own PowerLightSampler -
@@ -691,6 +700,13 @@ struct TriangleMaterial {
     // leaf, a thin frosted panel), pbrt-v4's own DiffuseTransmissionBxDF
     // (src/shared/bxdfs_layered.h). 0 for every other material type.
     packed_float3 transmitColor;
+    // pbrt-v4's own "bool twosided" AreaLightSource parameter (section
+    // 104), mirrored from AreaLight::twoSided above so the direct-hit
+    // emissive check can read it without a lights[] lookup - needed
+    // for a non-quad/disk emissive shape (sections 100/101), which has
+    // no AreaLight entry (lightId < 0) to look up in the first place.
+    // 0 for every non-emissive material.
+    uint twoSided;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
@@ -1499,6 +1515,10 @@ struct LightSample {
     float3 emission;
     float area;
     float pmf;
+    // Mirrors AreaLight::twoSided below (section 104) - copied out of
+    // the picked light here so every NEE call site's own cosLight check
+    // can read it without a second lights[] lookup.
+    float twoSided;
 };
 
 inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState) {
@@ -1537,6 +1557,7 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
         : float3(light.emission);
     result.area = light.area;
     result.pmf = light.pmf;
+    result.twoSided = light.twoSided;
     return result;
 }
 
@@ -1838,7 +1859,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
         float3 wi = toLight / dist;
         float cosSurface = dot(facingNormal, wi);
         float cosLight = dot(ls.normal, -wi);
-        if (cosSurface > 0.0 && cosLight > 0.0) {
+        if (cosSurface > 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
             float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
             float3 h = normalize(woLocal + wiLocal);
             float NdotO = woLocal.z;
@@ -1856,7 +1877,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
             intersection_result<instancing, triangle_data> shadowResult =
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
-                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float pdfBsdf = (Dh * ggxG1(woLocal, alphaX, alphaY)) / max(4.0 * NdotO, 1e-6);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
@@ -2188,7 +2209,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
             float3 wi = toLight / dist;
             float cosSurface = dot(facingNormal, wi);
             float cosLight = dot(ls.normal, -wi);
-            if (cosSurface > 0.0 && cosLight > 0.0) {
+            if (cosSurface > 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
                 ray shadowRay;
                 shadowRay.origin = hitPoint + facingNormal * 0.001f;
                 shadowRay.direction = wi;
@@ -2197,7 +2218,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 intersection_result<instancing, triangle_data> shadowResult =
                     isect.intersect(shadowRay, accelStructure, functionTable);
                 if (shadowResult.type == intersection_type::none) {
-                    float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                    float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                     float pdfBsdfForThisDir = cosSurface / M_PI_F;
                     float weight = (pdfSolidAngle * pdfSolidAngle)
                         / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
@@ -2431,7 +2452,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
         float3 wi = toLight / dist;
         float cosSurface = dot(facingNormal, wi);
         float cosLight = dot(ls.normal, -wi);
-        if (cosSurface != 0.0 && cosLight > 0.0) {
+        if (cosSurface != 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
             bool reflect = cosSurface > 0.0;
             float3 lobeTint = reflect ? albedo : mat.transmitColor;
             float lobeProb = reflect ? (pr / pSum) : (pt / pSum);
@@ -2444,7 +2465,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
             intersection_result<instancing, triangle_data> shadowResult =
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
-                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float pdfBsdfForThisDir = lobeProb * absCos / M_PI_F;
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
@@ -2688,7 +2709,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
         float3 wi = toLight / dist;
         float cosSurface = dot(facingNormal, wi);
         float cosLight = dot(ls.normal, -wi);
-        if (cosSurface > 0.0 && cosLight > 0.0) {
+        if (cosSurface > 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
             ray shadowRay;
             shadowRay.origin = hitPoint + facingNormal * 0.001f;
             shadowRay.direction = wi;
@@ -2697,7 +2718,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
             intersection_result<instancing, triangle_data> shadowResult =
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
-                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float pdfBsdfForThisDir = cosSurface / M_PI_F;
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
@@ -2964,7 +2985,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
         float3 wi = toLight / dist;
         float cosSurface = dot(facingNormal, wi);
         float cosLight = dot(ls.normal, -wi);
-        if (cosSurface > 0.0 && cosLight > 0.0) {
+        if (cosSurface > 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
             ray shadowRay;
             shadowRay.origin = hitPoint + facingNormal * 0.001f;
             shadowRay.direction = wi;
@@ -2973,7 +2994,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
             intersection_result<instancing, triangle_data> shadowResult =
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
-                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float pdfBsdfForThisDir = cosSurface / M_PI_F;
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
@@ -3243,7 +3264,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
         float3 wi = toLight / dist;
         float cosSurface = dot(facingNormal, wi);
         float cosLight = dot(ls.normal, -wi);
-        if (cosSurface > 0.0 && cosLight > 0.0) {
+        if (cosSurface > 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
             ray shadowRay;
             shadowRay.origin = hitPoint + facingNormal * 0.001f;
             shadowRay.direction = wi;
@@ -3252,7 +3273,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
             intersection_result<instancing, triangle_data> shadowResult =
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
-                float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + uniformPdf * uniformPdf);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -3680,7 +3701,7 @@ kernel void primaryRayKernel(
                     float dist = sqrt(distSq);
                     float3 wi = toLight / dist;
                     float cosLight = dot(ls.normal, -wi);
-                    if (cosLight > 0.0) {
+                    if ((cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
                         ray shadowRay;
                         shadowRay.origin = scatterPoint;
                         shadowRay.direction = wi;
@@ -3689,7 +3710,7 @@ kernel void primaryRayKernel(
                         intersection_result<instancing, triangle_data> shadowResult =
                             isect.intersect(shadowRay, accelStructure, functionTable);
                         if (shadowResult.type == intersection_type::none) {
-                            float pdfSolidAngle = (distSq / (ls.area * cosLight)) * ls.pmf;
+                            float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                             // HG's own sampling pdf for direction wi EQUALS
                             // its own phase function value at the same
                             // cosTheta - a defining property (the phase
@@ -4015,22 +4036,31 @@ kernel void primaryRayKernel(
             // emission == 0, so `any(...)` below is false and this whole
             // block is a no-op for them.
             //
-            // `&& frontFace`: an AreaLight only emits from the side its own
-            // `normal` points toward - the same one-sidedness the NEE
-            // branches below already enforce via their own `cosLight > 0.0`
-            // check (see e.g. this scene's own ceiling lights, which only
-            // shine down into the room). Without this, a camera ray or
-            // BSDF-sampled bounce landing on the BACK of a light quad would
-            // still read its emission unconditionally - invisible in this
-            // committed scene (every light is mounted flush against the
-            // ceiling, its own back face physically inaccessible from
-            // inside the room) but a genuine correctness gap: this is the
-            // one place in the shader a light's own emission was reachable
-            // without a facing check at all, inconsistent with every NEE
+            // `&& (frontFace || mat.twoSided != 0u)`: an AreaLight only
+            // emits from the side its own `normal` points toward, UNLESS
+            // the scene named `"bool twosided" [true]` (section 104) -
+            // the same one-sidedness (or lack of it) the NEE branches
+            // below already enforce via their own `(cosLight > 0.0 ||
+            // (ls.twoSided != 0.0 && cosLight < 0.0))` check (see e.g.
+            // this scene's own ceiling lights, which only shine down
+            // into the room, one-sided). Without the frontFace half of
+            // this, a camera ray or BSDF-sampled bounce landing on the
+            // BACK of a one-sided light quad would still read its
+            // emission unconditionally - invisible in this committed
+            // scene (every light is mounted flush against the ceiling,
+            // its own back face physically inaccessible from inside the
+            // room) but a genuine correctness gap: this is the one place
+            // in the shader a light's own emission was reachable without
+            // a facing check at all, inconsistent with every NEE
             // branch's own already-correct behaviour. `frontFace` is
             // already computed above for the dielectric branch's own eta
-            // selection - reused here, not recomputed.
-            if (any(float3(mat.emission) > float3(0.0)) && frontFace) {
+            // selection - reused here, not recomputed. `mat.twoSided`
+            // (not `lights[mat.lightId].twoSided`) so this same check
+            // also covers a non-quad/disk emissive shape with NO
+            // AreaLightData entry at all (`mat.lightId < 0`, sections
+            // 100/101) - every emissive TriangleMaterial carries its own
+            // copy of the flag directly, needing no lights[] lookup.
+            if (any(float3(mat.emission) > float3(0.0)) && (frontFace || mat.twoSided != 0u)) {
                 // Patterned emission (materialType 10 - see AreaLight's
                 // own comment): a DIRECT hit needs the checker pattern
                 // evaluated at THIS hit's own interpolated UV

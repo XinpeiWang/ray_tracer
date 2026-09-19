@@ -373,6 +373,10 @@ struct TriangleMaterial {
     // this material's own diffuse REFLECTANCE tint, same convention as
     // materialType 0) - see metal_poc.metal's own mirrored comment.
     PackedFloat3 transmitColor{0, 0, 0};
+    // pbrt-v4's own "bool twosided" AreaLightSource parameter (section
+    // 104) - see metal_poc.metal's own mirrored comment. 0 for every
+    // non-emissive material.
+    uint32_t twoSided = 0;
 };
 
 // Mirrors metal_poc.metal's SphereData byte-for-byte.
@@ -430,7 +434,14 @@ static void addQuad(std::vector<PackedFloat3>& verts,
                      // Diffuse TRANSMITTANCE tint, materialType == 12
                      // only - defaults to black (every quad before that
                      // material existed had no transmission at all).
-                     float3 transmitColor = simd::make_float3(0, 0, 0)) {
+                     float3 transmitColor = simd::make_float3(0, 0, 0),
+                     // pbrt-v4's own "bool twosided" AreaLightSource
+                     // parameter (section 104) - defaults to false, every
+                     // quad before this one stays one-sided exactly as
+                     // before. Meaningless (ignored) for a non-emissive
+                     // quad, same as every other emission-only field
+                     // above.
+                     bool twoSided = false) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
@@ -448,6 +459,7 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
     TriangleMaterial mat{packedColor, materialType, ior, packedEmission, lightId, roughness};
     mat.transmitColor = PackedFloat3{transmitColor.x, transmitColor.y, transmitColor.z};
+    mat.twoSided = twoSided ? 1u : 0u;
     materials.push_back(mat);
     materials.push_back(mat);
 }
@@ -1782,7 +1794,7 @@ void MetalPocApp::loadPbrtScene() {
     // triangles" loop just after this one to mark those triangles
     // emissive (but NOT NEE-light-registered) instead of silently
     // dropping their emission.
-    std::unordered_map<int, float3> unhandledLightEmission;
+    std::unordered_map<int, std::pair<float3, bool>> unhandledLightEmission;
     for (const auto& entry : trianglesByLight) {
         const int lightIdx = entry.first;
         const std::vector<int>& idxs = entry.second;
@@ -1800,7 +1812,9 @@ void MetalPocApp::loadPbrtScene() {
                 const int32_t lightId = (int32_t)lights.size();
                 addQuad(verts, normals, uvs, materials, a, b, c, d,
                         float3{lightMat.color.x, lightMat.color.y, lightMat.color.z},
-                        /*materialType=*/0u, emission, lightId);
+                        /*materialType=*/0u, emission, lightId, /*roughness=*/0.0f,
+                        /*ior=*/1.0f, /*transmitColor=*/simd::make_float3(0, 0, 0),
+                        /*twoSided=*/em.twoSided);
                 const float3 edgeU = b - a;
                 const float3 edgeV = d - a;
                 const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
@@ -1814,7 +1828,8 @@ void MetalPocApp::loadPbrtScene() {
                     area,
                     PackedFloat3{emission.x, emission.y, emission.z},
                     /*patternTileB=*/0.0f,
-                    /*patternScale=*/0.0f});
+                    /*patternScale=*/0.0f,
+                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f});
                 handled = true;
             }
         }
@@ -1842,7 +1857,7 @@ void MetalPocApp::loadPbrtScene() {
             // higher-variance estimator - the same "correct but noisier"
             // tier this loader's own constant/image-based infinite light
             // miss-path-only cases already use (sections 89/90).
-            for (int idx : idxs) unhandledLightEmission[idx] = emission;
+            for (int idx : idxs) unhandledLightEmission[idx] = {emission, em.twoSided};
             fprintf(stderr, "loadPbrtScene: area light with %zu triangle(s) is not a simple quad - "
                             "rendering it emissive but without an explicit NEE strategy (higher variance, "
                             "not invisible)\n", idxs.size());
@@ -1878,8 +1893,10 @@ void MetalPocApp::loadPbrtScene() {
         TriangleMaterial mat = materialFor(t.material);
         auto unhandledIt = unhandledLightEmission.find(i);
         if (unhandledIt != unhandledLightEmission.end()) {
-            mat.emission = PackedFloat3{unhandledIt->second.x, unhandledIt->second.y, unhandledIt->second.z};
+            const float3& unhandledEmission = unhandledIt->second.first;
+            mat.emission = PackedFloat3{unhandledEmission.x, unhandledEmission.y, unhandledEmission.z};
             mat.lightId = -1;
+            mat.twoSided = unhandledIt->second.second ? 1u : 0u;
         }
         materials.push_back(mat);
     }
@@ -1958,6 +1975,7 @@ void MetalPocApp::loadPbrtScene() {
             const pbrt_flatten::Emission& em = scene.areaLights[d.areaLight];
             mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
             mat.lightId = -1;
+            mat.twoSided = em.twoSided ? 1u : 0u;
         }
         disks.push_back(DiskData{PackedFloat3{center.x, center.y, center.z},
                                   PackedFloat3{normal.x, normal.y, normal.z},
