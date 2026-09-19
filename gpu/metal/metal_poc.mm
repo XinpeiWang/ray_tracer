@@ -443,7 +443,17 @@ static void addQuad(std::vector<PackedFloat3>& verts,
                      // before. Meaningless (ignored) for a non-emissive
                      // quad, same as every other emission-only field
                      // above.
-                     bool twoSided = false) {
+                     bool twoSided = false,
+                     // Complex IOR (eta+i*k) per RGB channel, materialType
+                     // == 4/9 only - see loadObjMesh()'s own identical
+                     // pair for the full explanation (dual `ior`/
+                     // `roughness` reuse as alphaX/alphaY for a GGX
+                     // conductor). Defaults match loadObjMesh()'s own
+                     // (eta=(1,1,1), not 0 - unphysical; k=0) so every
+                     // pre-existing call site (never a conductor quad
+                     // before section 126) is unaffected.
+                     float3 conductorEta = simd::make_float3(1.0f, 1.0f, 1.0f),
+                     float3 conductorK = simd::make_float3(0.0f, 0.0f, 0.0f)) {
     // a-b-c-d wound so (a,b,c) and (a,c,d) both face outward consistently.
     auto push = [&](float3 v) { verts.push_back(PackedFloat3{v.x, v.y, v.z}); };
     push(a); push(b); push(c);
@@ -459,7 +469,16 @@ static void addQuad(std::vector<PackedFloat3>& verts,
     uvs.push_back(PackedFloat2{0, 1});
     PackedFloat3 packedColor{color.x, color.y, color.z};
     PackedFloat3 packedEmission{emission.x, emission.y, emission.z};
-    TriangleMaterial mat{packedColor, materialType, ior, packedEmission, lightId, roughness};
+    // materialType == 4 (GGX conductor): `ior` doubles as alphaX, so it
+    // must equal `roughness` (alphaY) for isotropic roughness - the
+    // SAME bug-prevention convention loadObjMesh() already established
+    // (that function's own comment). This makes the invariant
+    // impossible to violate by omission at any FUTURE conductor-quad
+    // call site, rather than relying on every caller to remember it.
+    const float effectiveIor = (materialType == 4u) ? roughness : ior;
+    TriangleMaterial mat{packedColor, materialType, effectiveIor, packedEmission, lightId, roughness};
+    mat.conductorEta = PackedFloat3{conductorEta.x, conductorEta.y, conductorEta.z};
+    mat.conductorK = PackedFloat3{conductorK.x, conductorK.y, conductorK.z};
     mat.transmitColor = PackedFloat3{transmitColor.x, transmitColor.y, transmitColor.z};
     mat.twoSided = twoSided ? 1u : 0u;
     materials.push_back(mat);
@@ -1192,6 +1211,30 @@ struct MetalPocApp {
     // for why that's a deliberate fidelity choice, not a missing
     // feature. Section 125, docs/METAL_GPU_FEASIBILITY.md.
     void buildSimpleLight();
+    // Shared "Cornell family" pattern (category B/Materials) - the SAME
+    // 5 walls + ceiling light + rotated box + sphere shell
+    // buildCornellBoxA1() already builds for A1, but with the box's and
+    // sphere's own MATERIAL as caller-chosen parameters instead of
+    // always white-Lambertian/glass - mirrors CPU's own
+    // add_cornell_walls_and_main_light() + per-scene box/sphere swap
+    // shape (src/TheRestOfYourLife/scenes_materials.h's own comment: "10
+    // more Cornell-family scenes... swap in different sphere/box
+    // materials"). Only materialType 0 (Lambertian)/2 (dielectric)/4
+    // (GGX conductor) are supported by this helper so far - the
+    // materials this Metal backend already fully implements; a scene
+    // needing a not-yet-supported one (coated diffuse/conductor,
+    // subsurface, hair, measured, thin dielectric on a BOX) stays out of
+    // scope until this helper (or a dedicated builder) grows to cover
+    // it. Section 126, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCornellFamilyScene(
+        uint32_t boxMaterialType, float3 boxColor, float boxRoughness,
+        float3 boxConductorEta, float3 boxConductorK, float boxIor,
+        uint32_t sphereMaterialType, float3 sphereColor, float sphereRoughness,
+        float3 sphereConductorEta, float3 sphereConductorK, float sphereIor);
+    // B2: Cornell Rough Metal - rough aluminium box + rough gold sphere,
+    // both materialType 4 (GGX conductor), matching CPU's own
+    // build_cornell_rough_metal() exactly.
+    void buildCornellRoughMetal();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2880,6 +2923,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "A4") { buildEarth(); return true; }
     if (scene_id == "A5") { buildPerlinSpheres(); return true; }
     if (scene_id == "A7") { buildSimpleLight(); return true; }
+    if (scene_id == "B2") { buildCornellRoughMetal(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3947,6 +3991,184 @@ void MetalPocApp::buildSimpleLight() {
     pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
     pbrtSceneScale = 1.0f;
     pbrtSceneOffset = sceneOffset;
+}
+
+// See this method's own declaration comment (this struct's own
+// definition) for the shape - reuses buildCornellBoxA1()'s own real
+// wall/light/rescale code verbatim, only the box's and sphere's own
+// material differ, matching CPU's own `add_cornell_walls_and_main_light()`
+// + per-scene box/sphere swap. Section 126, docs/METAL_GPU_FEASIBILITY.md.
+void MetalPocApp::buildCornellFamilyScene(
+        uint32_t boxMaterialType, float3 boxColor, float boxRoughness,
+        float3 boxConductorEta, float3 boxConductorK, float boxIor,
+        uint32_t sphereMaterialType, float3 sphereColor, float sphereRoughness,
+        float3 sphereConductorEta, float3 sphereConductorK, float sphereIor) {
+    using namespace cornell_box_data;
+    // Same rescale/recentre/offset convention buildCornellBoxA1() uses -
+    // see that function's own comment.
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float maxExtent = 555.0f;
+    const float sceneScale = 2.0f / maxExtent;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // The 5 walls + the main ceiling light - identical to
+    // buildCornellBoxA1()'s own loop.
+    for (const QuadSpec& q : kQuads) {
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 a = toWorld(Q);
+        const float3 b = toWorld(Q + u);
+        const float3 c = toWorld(Q + u + v);
+        const float3 d = toWorld(Q + v);
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        if (q.is_light) {
+            const int32_t lightId = (int32_t)lights.size();
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color,
+                    /*materialType=*/0u, /*emission=*/color, lightId);
+            const float3 edgeU = b - a;
+            const float3 edgeV = d - a;
+            const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+            const float area = simd::length(simd::cross(edgeU, edgeV));
+            const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+            lights.push_back(AreaLightData{
+                PackedFloat3{center.x, center.y, center.z},
+                PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+                PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+                PackedFloat3{normalV.x, normalV.y, normalV.z},
+                area,
+                PackedFloat3{color.x, color.y, color.z},
+                /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+        } else {
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color);
+        }
+    }
+
+    // The rotated box - same 6-face construction as buildCornellBoxA1(),
+    // but using the CALLER's own box material instead of always white
+    // Lambertian.
+    {
+        const float3 minC{(float)kBox.corner_min.x, (float)kBox.corner_min.y, (float)kBox.corner_min.z};
+        const float3 maxC{(float)kBox.corner_max.x, (float)kBox.corner_max.y, (float)kBox.corner_max.z};
+        const float3 dx{maxC.x - minC.x, 0.0f, 0.0f};
+        const float3 dy{0.0f, maxC.y - minC.y, 0.0f};
+        const float3 dz{0.0f, 0.0f, maxC.z - minC.z};
+        const float theta = (float)(kBox.rotate_y_degrees * M_PI / 180.0);
+        const float sinT = sinf(theta), cosT = cosf(theta);
+        const float3 boxTranslate{(float)kBox.translate.x, (float)kBox.translate.y, (float)kBox.translate.z};
+        auto rotateTranslate = [=](float3 p) -> float3 {
+            const float newX = cosT * p.x + sinT * p.z;
+            const float newZ = -sinT * p.x + cosT * p.z;
+            return float3{newX, p.y, newZ} + boxTranslate;
+        };
+        struct Face { float3 Q, u, v; };
+        const Face faces[6] = {
+            {float3{minC.x, minC.y, maxC.z},  dx,  dy},  // front
+            {float3{maxC.x, minC.y, maxC.z}, -dz,  dy},  // right
+            {float3{maxC.x, minC.y, minC.z}, -dx,  dy},  // back
+            {float3{minC.x, minC.y, minC.z},  dz,  dy},  // left
+            {float3{minC.x, maxC.y, maxC.z},  dx, -dz},  // top
+            {float3{minC.x, minC.y, minC.z},  dx,  dz},  // bottom
+        };
+        // materialType == 2 (dielectric)/5 (rough dielectric): boxIor is
+        // a real refraction index, `boxRoughness` is meaningless for 2,
+        // meaningful for 5. materialType == 4: boxIor is UNUSED here
+        // (addQuad() itself derives alphaX==alphaY==boxRoughness
+        // automatically, see that function's own comment) - passed
+        // through anyway for a uniform call shape.
+        for (const Face& f : faces) {
+            const float3 a = toWorld(rotateTranslate(f.Q));
+            const float3 b = toWorld(rotateTranslate(f.Q + f.u));
+            const float3 c = toWorld(rotateTranslate(f.Q + f.u + f.v));
+            const float3 d = toWorld(rotateTranslate(f.Q + f.v));
+            addQuad(verts, normals, uvs, materials, a, b, c, d, boxColor,
+                    boxMaterialType, /*emission=*/simd::make_float3(0, 0, 0),
+                    /*lightId=*/-1, boxRoughness, boxIor,
+                    /*transmitColor=*/simd::make_float3(0, 0, 0), /*twoSided=*/false,
+                    boxConductorEta, boxConductorK);
+        }
+    }
+
+    // The sphere, same position/radius as A1's own glass sphere
+    // (kGlassSphere - only its material varies per caller; the geometry
+    // itself is the one constant every Cornell-family scene shares).
+    {
+        const float3 center = toWorld(float3{(float)kGlassSphere.center.x,
+            (float)kGlassSphere.center.y, (float)kGlassSphere.center.z});
+        const float radius = sceneScale * (float)kGlassSphere.radius;
+        TriangleMaterial mat{PackedFloat3{sphereColor.x, sphereColor.y, sphereColor.z},
+            sphereMaterialType, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, sphereRoughness};
+        if (sphereMaterialType == 4u) {
+            mat.ior = sphereRoughness;  // alphaX == alphaY (isotropic) - see addQuad()'s own comment
+            mat.conductorEta = PackedFloat3{sphereConductorEta.x, sphereConductorEta.y, sphereConductorEta.z};
+            mat.conductorK = PackedFloat3{sphereConductorK.x, sphereConductorK.y, sphereConductorK.z};
+        } else if (sphereMaterialType == 2u) {
+            mat.ior = sphereIor;
+        }
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Camera - identical to buildCornellBoxA1()'s own (every Cornell-
+    // family scene shares kCornellBoxCamera, scene_registry.h).
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// B2: Cornell Rough Metal - matches CPU's own build_cornell_rough_metal()
+// exactly: a rough-aluminium box (roughness 0.15) and a rough-gold
+// sphere (roughness 0.3), both materialType 4 (GGX conductor).
+// conductorEta/K derived from the flat albedo via reflectanceToConductorK()
+// (section 103's own already-shipped formula) - CPU's own `rough_metal`
+// material is itself a flat-albedo Schlick-style approximation, not a
+// real measured-spectrum conductor, so this is a faithful MATERIAL
+// match, not a downgrade.
+//
+// The literal 0.15/0.3 "roughness" NUMBERS are NOT ported as-is,
+// though - a real convention mismatch, found by comparing a first
+// literal-port render directly against a real --cpu render of the same
+// scene_id (much shinier/more mirror-like than CPU's own visibly
+// matte-ish box/sphere). CPU's own `rough_metal` maps roughness->alpha
+// via pbrt-v4's real `RoughnessToAlpha()` (src/shared/microfacet.h) -
+// alpha = sqrt(roughness). This POC's own materialType 4 (shadeConductor(),
+// metal_poc.metal) instead SQUARES the stored value - alpha = roughness^2
+// - an already-established, already-shipped convention (used by every
+// prior conductor material this whole series has ever added, not
+// something to special-case away just for this one scene). To make
+// this scene's own APPARENT roughness match CPU's real alpha despite
+// the two backends using genuinely different roughness->alpha curves,
+// the value passed here is `bookRoughness^0.25` (so that, after this
+// POC's own squaring, the net alpha equals `sqrt(bookRoughness)` -
+// exactly CPU's own real alpha) - not an arbitrary fudge, the exact
+// algebraic value needed to reconcile the two curves. Section 126,
+// docs/METAL_GPU_FEASIBILITY.md.
+void MetalPocApp::buildCornellRoughMetal() {
+    const float3 alum{0.8f, 0.85f, 0.88f};
+    const float3 gold{0.95f, 0.78f, 0.28f};
+    const float boxAlpha = powf(0.15f, 0.25f);    // ~0.622 - see this function's own comment
+    const float sphereAlpha = powf(0.3f, 0.25f);  // ~0.740
+    buildCornellFamilyScene(
+        /*box=*/4u, alum, boxAlpha, float3{1, 1, 1}, reflectanceToConductorK(alum), 1.0f,
+        /*sphere=*/4u, gold, sphereAlpha, float3{1, 1, 1}, reflectanceToConductorK(gold), 1.0f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

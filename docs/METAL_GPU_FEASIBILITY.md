@@ -6812,3 +6812,81 @@ A1/A3/A4/A5/A6/G1/G7/G12/G18 (earlier increments) re-verified
 unaffected. `A7` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR.
+
+## 126. Hand-authored scenes, category B begins: B2 Cornell Rough Metal - the "Cornell family" shared helper, and a real roughness-convention mismatch found and fixed
+
+The first category-B (Materials) scene, and a new shared helper for
+the whole category: `MetalPocApp::buildCornellFamilyScene()` reuses
+`buildCornellBoxA1()`'s own real wall/light/rescale/camera code
+verbatim (same `cornell_box_data::kQuads` walls, same rotated-box
+geometry, same `kCornellBoxCamera`), parameterized on the box's and
+sphere's own material instead of always white-Lambertian/glass -
+mirroring CPU's own `add_cornell_walls_and_main_light()` + per-scene
+box/sphere swap shape (`scenes_materials.h`'s own comment: "10 more
+Cornell-family scenes... swap in different sphere/box materials"). Only
+materialType 0/2/4 are supported by the helper so far - every material
+this backend already fully implements; a scene needing something else
+(coated diffuse/conductor, subsurface, hair, thin dielectric on a box)
+stays out of scope until a later increment.
+
+`addQuad()` gained two new trailing-defaulted parameters,
+`conductorEta`/`conductorK` (materialType 4/9 only, defaults matching
+`loadObjMesh()`'s own identical pair) - the first conductor-material
+QUAD this POC has ever built (every earlier GGX-conductor use was a
+sphere or a mesh triangle). `addQuad()` also now derives `ior` (alphaX)
+automatically from `roughness` (alphaY) whenever `materialType==4`,
+the same "both must match for isotropic roughness" invariant
+`loadObjMesh()` already enforces - making it structurally impossible
+for a FUTURE conductor-quad caller to omit, not just documented.
+
+B2 (`buildCornellRoughMetal()`) matches CPU's own
+`build_cornell_rough_metal()` in MATERIAL CHOICE exactly: a rough-
+aluminium box and a rough-gold sphere, both materialType 4 (GGX
+conductor, complex Fresnel via `reflectanceToConductorK()` - section
+103's own already-shipped formula), reusing CPU's own real material
+CLASS choice (`rough_metal`, itself a flat-albedo approximation, not a
+real measured-spectrum conductor - so this substitution is faithful,
+not a downgrade).
+
+**A real roughness-convention mismatch found and fixed via direct CPU
+comparison, not assumed away**: a first version ported CPU's literal
+"roughness 0.15"/"0.3" numbers directly into `roughness`/`ior` - it
+compiled, ran, and produced a recognizable Cornell box with a metal
+sphere... but visibly SHINIER/more mirror-like (sharp red/green wall
+reflections on the sphere) than a real `--cpu` render of the same
+scene_id, which shows a noticeably more matte gold sphere and a
+visibly grey (not white) box. Root-caused by reading BOTH sides'
+actual roughness->alpha formulas, not guessing: CPU's own `rough_metal`
+(`material_pbrt.h`) maps roughness through pbrt-v4's real
+`RoughnessToAlpha()` (`src/shared/microfacet.h`) - `alpha = sqrt(roughness)`
+- while this POC's own materialType 4 (`shadeConductor()`,
+metal_poc.metal, an already-established convention used by EVERY prior
+conductor material in this whole series, not something to special-case
+away) instead SQUARES the stored value - `alpha = roughness^2`. Two
+genuinely different curves for the same nominal "roughness" input.
+Fixed by passing `bookRoughness^0.25` instead of the literal book value
+- the exact algebraic value that, after this POC's own squaring,
+reproduces CPU's real `sqrt(bookRoughness)` alpha - not an arbitrary
+visual fudge, a derived reconciliation between two already-correct but
+different conventions. **Worth remembering for any FUTURE scene
+porting a literal CPU "roughness" NUMBER into materialType 4/5/9**:
+check which roughness->alpha convention the CPU material actually uses
+(`RoughnessToAlpha`/sqrt, raw/no remap, or this POC's own square) before
+assuming the number itself is safe to copy verbatim - a real,
+easy-to-miss convention mismatch, exactly the kind of thing that
+"compiles and renders something plausible" hides (the same lesson
+section 123's own longitude-mirror bug already taught, different
+domain).
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id, before AND after the roughness
+fix (the fix visibly closed the gap - a much more uniformly gold
+sphere, a greyer box, matching CPU's own character far more closely).
+Full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene
+`pbrt_scenes/` sweep (0 failures); A1/A3/A4/A5/A6/A7/G1/G7/G12/G18
+(earlier increments) re-verified unaffected. `B2` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **`buildCornellFamilyScene()` is now a real, reusable shared
+helper for future category-B increments** (B3 rough glass, B4
+conductor, and others sharing this exact Cornell-shell-swap shape) -
+reuse it, don't re-derive the wall/light/camera code again.
