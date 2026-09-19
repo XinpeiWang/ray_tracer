@@ -5585,3 +5585,58 @@ standing on a floor spanning both its front and back shows a
 symmetric, equally-bright illumination pool on both sides via NEE, not
 just a direct-hit glow. Full clean `RT_BUILD_METAL=ON` rebuild + ctest
 (4/4) and a 51-scene sweep (no crashes) both pass.
+
+## 105. Image-based area-light emission (`AreaLightSource "string filename"`), quad lights only
+
+Found while verifying section 104: `Emission::filename` (pbrt-v4's own
+spatially-varying area-light image, matching `DiffuseAreaLight`'s real
+semantics of ignoring `L` entirely once an image is given) was already
+parsed by `pbrt_flatten.h` but never read anywhere in this loader -
+every textured area light silently used a flat, meaningless default
+`L`. Scoped to **quad-shaped lights only** for this increment - this
+loader's disk primitive has no UV parameterization to sample a real
+image against at all (unlike a quad's own `addQuad()`-assigned UVs),
+so a disk-shaped textured light (the bundled `pbrt_scenes/
+textured-twosided-lights.pbrt`'s own group 1/2, both disk/cylinder) is
+a real, separate, still-open gap, not attempted here.
+
+**Reused the existing "patterned emission" scaffolding (materialType
+10, section from the earlier checkerboard-pattern PR), not built from
+scratch**: a new materialType 15 mirrors materialType 10's own two
+lookup sites exactly - a direct hit needs the hit's own interpolated
+UV (`texCoordFor()`), an NEE sample needs the light's own sampled
+`(u.x, u.y)` point (`sampleAreaLight()`) - just sampling a real
+uploaded texture (`pbrtAreaLightTexture`, a new dedicated slot, same
+"separate slot" pattern as every other image-based feature in this
+loader) instead of `checkerColor()`'s own procedural pattern.
+`sampleAreaLight()` itself gained 2 new parameters (the texture +
+sampler) - threaded through all 7 call sites (6 material functions +
+the fog-scattering block), the same shape sections 97/104's own
+signature changes took. A new `AreaLight::useTexture` field selects
+between real-texture/checker-pattern/flat-emission per light; when
+active, `AreaLight::emission`/`TriangleMaterial::emission` instead
+hold a pure `(scale,scale,scale)` MULTIPLIER (pbrt-v4's own semantics
+for the image case), applied after the texture sample. Image decode
+reuses `pbrt_load::loadFileNear()` + `decodeInfiniteLightImage()` -
+the same already-established utilities sections 98/101 already reuse,
+no new decode logic. Only the FIRST such light in the scene is
+supported (one shared texture slot); a second one, or a decode
+failure, falls back to flat `L` exactly as if no filename were named.
+
+**Verified with 2 isolated synthetic test scenes** (no bundled scene
+has a quad-shaped textured area light - every real "twosided"/
+"filename" example scene in this repo uses disk/cylinder shapes
+instead): (1) a quad light directly facing the camera shows the real
+checker-texture pattern (4 distinct quadrant colours) on a direct hit,
+not a flat colour - before/after diff of 73.53% of pixel bytes (mean
+abs diff 30.43) against the same scene with texture decoding disabled;
+(2) a floor lit from above by the same textured quad light (an NEE-
+only view - the light itself faces away from the camera) shows a
+real, measurable difference too (63.89% of pixel bytes, mean abs diff
+4.47) even though the effect reads as a subtle overall tint rather
+than sharp coloured patches - expected, not a defect: a floor point
+receives light integrated across the WHOLE light's own solid angle,
+blending all four quadrant colours together, unlike a projection
+light's own sharp single-direction image. Full clean `RT_BUILD_METAL=
+ON` rebuild + ctest (4/4, including `test_sampleAreaLight_pmf`'s own
+signature update) and a 51-scene sweep (no crashes) both pass.

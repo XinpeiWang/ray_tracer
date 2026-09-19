@@ -65,6 +65,11 @@ struct AreaLightData {
     // one-sided-only behaviour exactly. See metal_poc.metal's own
     // AreaLight::twoSided comment.
     float twoSided = 0.0f;
+    // A pbrt-loaded scene's own image-based AreaLightSource (section
+    // 105) - 0.0 (every light before this one) keeps `emission` a flat
+    // direct radiance value. See metal_poc.metal's own
+    // AreaLight::useTexture comment.
+    float useTexture = 0.0f;
     // Power-proportional light-picking data (Vose alias table, built
     // host-side by buildPowerLightSampler() below, mirroring
     // src/shared/power_light_sampler_scaffold.h's own PowerLightSampler)

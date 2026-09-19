@@ -863,6 +863,16 @@ struct MetalPocApp {
     int pbrtProjectionImageWidth = 0;
     int pbrtProjectionImageHeight = 0;
 
+    // A pbrt-loaded scene's own image-based AreaLightSource
+    // ("string filename", section 105) - same "one shared slot, first
+    // light wins" constraint as the goniometric/projection images
+    // above, and QUAD-shaped lights only (see AreaLight::useTexture's
+    // own comment for why a disk-shaped one still falls back to flat L).
+    bool havePbrtAreaLightImage = false;
+    std::vector<float> pbrtAreaLightImagePixels;
+    int pbrtAreaLightImageWidth = 0;
+    int pbrtAreaLightImageHeight = 0;
+
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> queue = nil;
@@ -1799,7 +1809,33 @@ void MetalPocApp::loadPbrtScene() {
         const int lightIdx = entry.first;
         const std::vector<int>& idxs = entry.second;
         const pbrt_flatten::Emission& em = scene.areaLights[lightIdx];
-        const float3 emission{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+        float3 emission{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+        // Image-based emission (section 105) - only for a QUAD-shaped
+        // light (idxs.size()==2, checked again just below - a genuine
+        // pbrt quad can be attached to a non-quad triangle count too,
+        // e.g. a fan, so this alone doesn't guarantee the shape check
+        // below will pass), and only the FIRST such light in the scene
+        // (one shared texture slot, matching the goniometric/projection
+        // image precedent). A decode failure - or a SECOND textured
+        // light - falls back to flat L exactly as if no filename were
+        // named, same "safe fallback over dropping the light" reasoning
+        // as every other image-based feature in this loader.
+        uint32_t quadMaterialType = 0u;
+        float useTextureFlag = 0.0f;
+        if (!em.filename.empty() && idxs.size() == 2 && !havePbrtAreaLightImage) {
+            std::string bytes;
+            if (pbrt_load::loadFileNear(pbrtScenePath, em.filename, bytes) &&
+                pbrt_load::detail::decodeInfiniteLightImage(em.filename, bytes,
+                    pbrtAreaLightImagePixels, pbrtAreaLightImageWidth, pbrtAreaLightImageHeight)) {
+                havePbrtAreaLightImage = true;
+                quadMaterialType = 15u;
+                useTextureFlag = 1.0f;
+                emission = float3{(float)em.scale, (float)em.scale, (float)em.scale};
+            } else {
+                fprintf(stderr, "loadPbrtScene: area light's own image '%s' could not be read/decoded; "
+                                "falling back to its flat colour\n", em.filename.c_str());
+            }
+        }
         bool handled = false;
         if (idxs.size() == 2) {
             const pbrt_flatten::Triangle& t0 = scene.triangles[idxs[0]];
@@ -1812,7 +1848,7 @@ void MetalPocApp::loadPbrtScene() {
                 const int32_t lightId = (int32_t)lights.size();
                 addQuad(verts, normals, uvs, materials, a, b, c, d,
                         float3{lightMat.color.x, lightMat.color.y, lightMat.color.z},
-                        /*materialType=*/0u, emission, lightId, /*roughness=*/0.0f,
+                        quadMaterialType, emission, lightId, /*roughness=*/0.0f,
                         /*ior=*/1.0f, /*transmitColor=*/simd::make_float3(0, 0, 0),
                         /*twoSided=*/em.twoSided);
                 const float3 edgeU = b - a;
@@ -1829,7 +1865,8 @@ void MetalPocApp::loadPbrtScene() {
                     PackedFloat3{emission.x, emission.y, emission.z},
                     /*patternTileB=*/0.0f,
                     /*patternScale=*/0.0f,
-                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f});
+                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f,
+                    /*useTexture=*/useTextureFlag});
                 handled = true;
             }
         }
@@ -3016,6 +3053,32 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
     }
 
+    // A pbrt-loaded scene's own image-based AreaLightSource (section
+    // 105) - same upload pattern as pbrtGoniometricTexture/
+    // pbrtProjectionTexture above.
+    id<MTLTexture> pbrtAreaLightTexture = nil;
+    {
+        const uint32_t pw = havePbrtAreaLightImage ? (uint32_t)pbrtAreaLightImageWidth : 1u;
+        const uint32_t ph = havePbrtAreaLightImage ? (uint32_t)pbrtAreaLightImageHeight : 1u;
+        MTLTextureDescriptor* desc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+            width:pw height:ph mipmapped:NO];
+        desc.usage = MTLTextureUsageShaderRead;
+        desc.storageMode = MTLStorageModeShared;
+        pbrtAreaLightTexture = [device newTextureWithDescriptor:desc];
+        std::vector<float> rgba((size_t)pw * ph * 4, 0.0f);
+        if (havePbrtAreaLightImage) {
+            for (size_t i = 0; i < (size_t)pw * ph; ++i) {
+                rgba[i * 4 + 0] = pbrtAreaLightImagePixels[i * 3 + 0];
+                rgba[i * 4 + 1] = pbrtAreaLightImagePixels[i * 3 + 1];
+                rgba[i * 4 + 2] = pbrtAreaLightImagePixels[i * 3 + 2];
+                rgba[i * 4 + 3] = 1.0f;
+            }
+        }
+        [pbrtAreaLightTexture replaceRegion:MTLRegionMake2D(0, 0, pw, ph) mipmapLevel:0
+            withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
+    }
+
     // envMarginalCDF/envConditionalCDF buffers - a real (non-empty)
     // envDist above uploads its own arrays directly; the fallback case
     // (missing JPEG) still needs SOME buffer bound at these indices
@@ -3223,6 +3286,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setTexture:pbrtEnvTexture atIndex:3];
     [enc setTexture:pbrtGoniometricTexture atIndex:4];
     [enc setTexture:pbrtProjectionTexture atIndex:5];
+    [enc setTexture:pbrtAreaLightTexture atIndex:6];
     [enc setAccelerationStructure:instAS atBufferIndex:0];
     [enc setBuffer:uniformBuffer offset:0 atIndex:1];
     [enc setBuffer:materialBuffer offset:0 atIndex:2];
