@@ -87,6 +87,7 @@
 #include "../../src/external/tinyexr.h"
 #undef TINYEXR_IMPLEMENTATION
 #include "../../src/shared/pbrt_load.h"
+#include "../../src/shared/cornell_box_data.h"
 // metal_render_main()'s own callable signature (section 79) - matches
 // gpu/optix/optix_interface.h's own optix_render_main() shape exactly,
 // down to reusing this SAME struct, so a future launcher/main.cpp caller
@@ -806,6 +807,15 @@ struct MetalPocApp {
     // pbrt this v1 supports). Empty (the default) keeps every existing
     // CLI invocation's behavior identical to before this existed.
     std::string pbrtScenePath;
+    // Optional 9th positional CLI arg (see parseArgsAndCreateDevice()'s own
+    // argv[8] handling) - a scene_id one of buildHandAuthoredScene()'s own
+    // real cases covers (section 116, docs/METAL_GPU_FEASIBILITY.md), for a
+    // scene with NO pbrt file backing it at all. Mutually exclusive with
+    // pbrtScenePath in practice - metal_render_main() only ever sets one of
+    // the two, matching cpu_scene_pbrt_path_by_id() either resolving a real
+    // path (pbrtScenePath) or not (this one, only if cpu_scene_metal_hand_
+    // authored_supported() says so).
+    std::string handAuthoredSceneId;
     // Set by loadPbrtScene() when pbrtScenePath was given and loaded
     // successfully - buildScene()'s camera-setup call in
     // compileShaderAndDispatch() reads these instead of its own hardcoded
@@ -990,6 +1000,21 @@ struct MetalPocApp {
     void loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene);
     void loadPbrtCamera(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
         float3 bboxCenter, float sceneScale, float3 sceneOffset);
+    // A HAND-AUTHORED (no pbrt file at all) scene, dispatched by scene_id -
+    // see cpu_scene_metal_hand_authored_supported()'s own comment
+    // (cpu_interface.h) for the one canonical "which ids does this cover"
+    // list. Populates the exact same members loadPbrtScene() does
+    // (verts/materials/spheres/lights/camera/...), via the SAME shared,
+    // backend-agnostic data headers (e.g. src/shared/cornell_box_data.h)
+    // CPU's/OptiX's own hand-authored builders already read, rather than
+    // re-deriving geometry numbers by hand - see section 116, docs/
+    // METAL_GPU_FEASIBILITY.md. Returns false (and prints why) for a
+    // scene_id this function doesn't have a real case for yet - callers
+    // should not have reached here for one at all (metal_render_main()'s
+    // own gate already checked cpu_scene_metal_hand_authored_supported()
+    // first), so this is a safety net, not the primary guard.
+    bool buildHandAuthoredScene(const std::string& scene_id);
+    void buildCornellBoxA1();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -1009,6 +1034,7 @@ bool MetalPocApp::parseArgsAndCreateDevice(int argc, const char** argv) {
     outPath = (argc > 3) ? argv[3] : "/tmp/metal_poc_render.png";
     toneMapMode = parseToneMapMode((argc > 6) ? argv[6] : nullptr);
     if (argc > 7) pbrtScenePath = argv[7];
+    if (argc > 8) handAuthoredSceneId = argv[8];
 
     // MTLCreateSystemDefaultDevice() is explicitly documented as
     // unsupported for command-line/daemon processes (confirmed via
@@ -1285,6 +1311,12 @@ void MetalPocApp::buildScene() {
     // unreachable by NEE (see buildPowerLightSampler()'s own call site
     // history for the full story).
     if (!pbrtScenePath.empty()) loadPbrtScene();
+    // Same ADDITIVE reasoning as loadPbrtScene() just above (its own
+    // comment) - mutually exclusive with it in practice (metal_render_main()
+    // only ever sets one of pbrtScenePath/handAuthoredSceneId), but if both
+    // were somehow set, both would just coexist harmlessly the same way a
+    // pbrt scene and this hardcoded room already do.
+    if (!handAuthoredSceneId.empty()) buildHandAuthoredScene(handAuthoredSceneId);
 
     // Builds each light's own pmf/aliasProb/aliasIndex in place - see
     // buildPowerLightSampler()'s own comment. Must run after every
@@ -2635,6 +2667,168 @@ void MetalPocApp::loadPbrtCamera(const pbrt_flatten::FlatScene& scene, const Pbr
     pbrtSceneOffset = sceneOffset;
 }
 
+// See buildHandAuthoredScene()'s own declaration comment for the "which
+// scene_ids" contract (cpu_scene_metal_hand_authored_supported(),
+// cpu_interface.h) and section 116 (docs/METAL_GPU_FEASIBILITY.md).
+bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
+    if (scene_id == "A1") {
+        buildCornellBoxA1();
+        return true;
+    }
+    fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
+                    "this should not normally be reachable (metal_render_main()'s own gate "
+                    "already checks cpu_scene_metal_hand_authored_supported() first).\n",
+            scene_id.c_str());
+    return false;
+}
+
+// The classic Cornell box (glass sphere + rotated white box) - scene A1,
+// and (once cpu_scene_metal_hand_authored_supported()'s own list grows to
+// include them - not yet, section 116) every other scene_id that reuses
+// CPU's own build_cornell_box()/OptiX's own build_cornell_box() verbatim
+// (several Cameras/Education-category scenes per scene_registry_data.h -
+// same geometry, only id/category/description/camera differ).
+//
+// Reads src/shared/cornell_box_data.h directly - the SAME already-shared,
+// backend-agnostic data both CPU's build_cornell_box() (scenes_book.h) and
+// OptiX's build_cornell_box() (gpu/optix/scene_builder.cpp) already read,
+// rather than re-deriving/re-typing the wall/box/sphere numbers a third
+// time (that header's own comment explains why it exists at all - two
+// independent hand-copies of this exact data already drifted apart once).
+void MetalPocApp::buildCornellBoxA1() {
+    using namespace cornell_box_data;
+    // Same rescale/recentre/offset convention loadPbrtScene() uses for
+    // every real pbrt scene (see that function's own comment) - this data
+    // is ALREADY authored at the identical ~555-unit Cornell-box scale a
+    // real pbrt Cornell box uses, so the exact same fixed transform
+    // applies unchanged: largest dimension -> 2.0 units, recentred on the
+    // room's own bounding-box centre, offset +8 in X clear of the
+    // hardcoded POC room's own [-1,1] region.
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float maxExtent = 555.0f;
+    const float sceneScale = 2.0f / maxExtent;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // The 5 walls + the main ceiling light.
+    for (const QuadSpec& q : kQuads) {
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 a = toWorld(Q);
+        const float3 b = toWorld(Q + u);
+        const float3 c = toWorld(Q + u + v);
+        const float3 d = toWorld(Q + v);
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        if (q.is_light) {
+            // Same AreaLightData construction loadPbrtAreaLights() already
+            // uses for a quad light - a flat, one-sided (pbrt's own
+            // default) emitter, no pattern/texture.
+            const int32_t lightId = (int32_t)lights.size();
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color,
+                    /*materialType=*/0u, /*emission=*/color, lightId);
+            const float3 edgeU = b - a;
+            const float3 edgeV = d - a;
+            const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+            const float area = simd::length(simd::cross(edgeU, edgeV));
+            const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+            lights.push_back(AreaLightData{
+                PackedFloat3{center.x, center.y, center.z},
+                PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+                PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+                PackedFloat3{normalV.x, normalV.y, normalV.z},
+                area,
+                PackedFloat3{color.x, color.y, color.z},
+                /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+        } else {
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color);
+        }
+    }
+
+    // The rotated white box - the same 6-quad (Q,u,v per face) construction
+    // src/TheRestOfYourLife/quad.h's own box() helper uses (front/right/
+    // back/left/top/bottom), rotated about Y then translated in LOCAL
+    // space before toWorld() - matches src/TheRestOfYourLife/hittable.h's
+    // own rotate_y forward-transform formula exactly (newx=cos*x+sin*z,
+    // newz=-sin*x+cos*z), not re-derived independently.
+    {
+        const float3 minC{(float)kBox.corner_min.x, (float)kBox.corner_min.y, (float)kBox.corner_min.z};
+        const float3 maxC{(float)kBox.corner_max.x, (float)kBox.corner_max.y, (float)kBox.corner_max.z};
+        const float3 dx{maxC.x - minC.x, 0.0f, 0.0f};
+        const float3 dy{0.0f, maxC.y - minC.y, 0.0f};
+        const float3 dz{0.0f, 0.0f, maxC.z - minC.z};
+        const float theta = (float)(kBox.rotate_y_degrees * M_PI / 180.0);
+        const float sinT = sinf(theta), cosT = cosf(theta);
+        const float3 boxTranslate{(float)kBox.translate.x, (float)kBox.translate.y, (float)kBox.translate.z};
+        auto rotateTranslate = [=](float3 p) -> float3 {
+            const float newX = cosT * p.x + sinT * p.z;
+            const float newZ = -sinT * p.x + cosT * p.z;
+            return float3{newX, p.y, newZ} + boxTranslate;
+        };
+        const float3 boxColor{(float)kBox.color.r, (float)kBox.color.g, (float)kBox.color.b};
+        struct Face { float3 Q, u, v; };
+        const Face faces[6] = {
+            {float3{minC.x, minC.y, maxC.z},  dx,  dy},  // front
+            {float3{maxC.x, minC.y, maxC.z}, -dz,  dy},  // right
+            {float3{maxC.x, minC.y, minC.z}, -dx,  dy},  // back
+            {float3{minC.x, minC.y, minC.z},  dz,  dy},  // left
+            {float3{minC.x, maxC.y, maxC.z},  dx, -dz},  // top
+            {float3{minC.x, minC.y, minC.z},  dx,  dz},  // bottom
+        };
+        for (const Face& f : faces) {
+            const float3 a = toWorld(rotateTranslate(f.Q));
+            const float3 b = toWorld(rotateTranslate(f.Q + f.u));
+            const float3 c = toWorld(rotateTranslate(f.Q + f.u + f.v));
+            const float3 d = toWorld(rotateTranslate(f.Q + f.v));
+            addQuad(verts, normals, uvs, materials, a, b, c, d, boxColor);
+        }
+    }
+
+    // Glass sphere (materialType 2, dielectric).
+    {
+        const float3 center = toWorld(float3{(float)kGlassSphere.center.x,
+            (float)kGlassSphere.center.y, (float)kGlassSphere.center.z});
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z},
+            sceneScale * (float)kGlassSphere.radius});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/2u,
+            /*ior=*/(float)kGlassSphere.glass_ior, PackedFloat3{0, 0, 0}, /*lightId=*/-1,
+            /*roughness=*/0.0f});
+    }
+
+    // Camera - kCornellBoxCamera's own literal values (scene_registry.h):
+    // vfov=40, lookfrom=(278,278,-800), lookat=(278,278,278), world-up
+    // (0,1,0) - the SAME numbers cpu_scene_recommended_camera()/CLI
+    // --cam-x/y/z already send through applyCameraOverride()
+    // unconditionally (launcher/main.cpp's own force_camera_override=1),
+    // so this is really just the fallback/initial value, immediately
+    // replaced by that override in every real invocation - matching
+    // loadPbrtCamera()'s own comment on why the exact literal here barely
+    // matters in practice.
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+
+    fprintf(stderr, "buildHandAuthoredScene: built 'A1' (classic Cornell box, hand-authored, "
+                    "no pbrt file - %d quads, 1 sphere, 1 light)\n", kNumQuads - 1 + 6);
+}
+
 // Recomputes the camera basis for a new lookfrom position, in the SAME
 // coordinate space (cam_x, cam_y, cam_z) already arrive in from every
 // other backend - cpu_scene_recommended_camera()'s return values and any
@@ -3694,12 +3888,18 @@ bool metal_get_diagnostics(MetalDiagnostics* out) {
 }
 
 // scene_id resolution: this POC's own loadPbrtScene() only ever supported
-// pbrt-FILE-backed scenes (see that function's own comment) - never this
-// project's ~130 hand-authored built-in scenes (scene_registry.h), which
-// gpu/optix/scene_builder.cpp reproduces natively in its own ~900-line
-// switch instead of going through pbrt_load.h at all. So scene_id here
-// resolves via cpu_scene_pbrt_path_by_id() and REQUIRES a real pbrt path
-// back - a hand-authored scene (or an unknown scene_id) is reported as
+// pbrt-FILE-backed scenes (see that function's own comment). Of this
+// project's ~200 registered scenes, the ~93 hand-authored built-in ones
+// (scene_registry.h, no pbrt file at all) are reproduced natively by
+// gpu/optix/scene_builder.cpp's own ~900-line switch instead of going
+// through pbrt_load.h - Metal's own equivalent is buildHandAuthoredScene()
+// (section 116, docs/METAL_GPU_FEASIBILITY.md), which starts with real
+// coverage for just "A1" and grows one scene (or small batch) at a time.
+// scene_id here first tries cpu_scene_pbrt_path_by_id(); if that's empty,
+// falls back to cpu_scene_metal_hand_authored_supported() - the ONE
+// canonical list (cpu_interface.h's own comment) both this check and
+// cpu_scene_metadata_snapshot()'s own metal_compatible field consult, so
+// they can't drift apart. A scene covered by NEITHER is reported as
 // not-yet-implemented and returns non-zero, the same "explain why, don't
 // crash or silently render something else" precedent
 // gpu/optix/scene_builder.cpp's own default: case already established.
@@ -3716,12 +3916,12 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
                        double cam_x, double cam_y, double cam_z,
                        int force_camera_override, const RenderOptions& options) {
     const char* pbrtPath = cpu_scene_pbrt_path_by_id(scene_id);
-    if (!pbrtPath || !pbrtPath[0]) {
-        fprintf(stderr, "metal_render_main: scene '%s' has no pbrt file backing it - only "
-                        "pbrt-file-backed scenes are implemented for Metal rendering yet (this "
-                        "POC's own loadPbrtScene() doesn't reproduce this project's hand-authored "
-                        "built-in scenes the way gpu/optix/scene_builder.cpp's own switch-case "
-                        "does). Use CPU or GPU (OptiX) for this scene instead.\n", scene_id);
+    const bool handAuthored = (!pbrtPath || !pbrtPath[0]) && cpu_scene_metal_hand_authored_supported(scene_id);
+    if ((!pbrtPath || !pbrtPath[0]) && !handAuthored) {
+        fprintf(stderr, "metal_render_main: scene '%s' has no pbrt file backing it and no "
+                        "hand-authored Metal builder yet (see cpu_scene_metal_hand_authored_"
+                        "supported()'s own comment, cpu_interface.h, for the current coverage "
+                        "list). Use CPU or GPU (OptiX) for this scene instead.\n", scene_id);
         return 1;
     }
 
@@ -3731,16 +3931,20 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
     // explicit-parameter entry point of their own - keeps this new
     // callable path exercising the EXACT SAME, already-tested parsing
     // code the CLI does, instead of two argument-handling implementations
-    // that could silently drift apart.
+    // that could silently drift apart. argv[8] (handAuthoredSceneId) is
+    // only ever non-empty when argv[7] (pbrtScenePath) is empty - see
+    // that member's own comment, MetalPocApp's own struct declaration.
     char widthStr[32], heightStr[32], sppStr[32], depthStr[32];
     snprintf(widthStr, sizeof(widthStr), "%d", image_width);
     snprintf(heightStr, sizeof(heightStr), "%d", image_height);
     snprintf(sppStr, sizeof(sppStr), "%d", samples_per_pixel);
     snprintf(depthStr, sizeof(depthStr), "%d", max_depth);
     const char* tonemapStr = (options.tonemap && options.tonemap[0]) ? options.tonemap : "aces";
-    const char* args[8] = {"metal_render_main", widthStr, heightStr, output_path,
-                            sppStr, depthStr, tonemapStr, pbrtPath};
-    const int argCount = 8;
+    const char* args[9] = {"metal_render_main", widthStr, heightStr, output_path,
+                            sppStr, depthStr, tonemapStr,
+                            handAuthored ? "" : pbrtPath,
+                            handAuthored ? scene_id : ""};
+    const int argCount = 9;
 
     @autoreleasepool {
         MetalPocApp app;
