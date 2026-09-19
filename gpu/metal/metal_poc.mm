@@ -1644,6 +1644,41 @@ void MetalPocApp::loadPbrtScene() {
                 mat.conductorK = PackedFloat3{(float)m.conductorK[0], (float)m.conductorK[1], (float)m.conductorK[2]};
                 return mat;
             }
+            case pbrt_flatten::MaterialKind::CoatedConductor: {
+                // Approx tier (docs/PBRT_SUPPORT.md's own note, matching
+                // both CPU's pbrt_cpu_builder.h and GPU-OptiX's own
+                // pbrt_gpu_builder_materials.h): materialType 4 (GGX
+                // conductor) - the "coat" itself (a separate rough
+                // dielectric layer over the metal base) isn't modelled at
+                // all, only the base conductor's own eta/k/roughness -
+                // the same simplification both other backends already
+                // accept for this kind, not a NEW approximation invented
+                // here. A named metal spectrum or explicit "eta"/"k" (m.
+                // hasConductorPreset) is used directly, already resolved
+                // by pbrt_flatten.h identically to plain Conductor above;
+                // otherwise `color` (the scene's own "reflectance", a
+                // normal-incidence Schlick value) is converted via the
+                // SAME eta=1/k-solved-from-r formula CPU's own
+                // reflectanceToConductorK() uses (k = 2*sqrt(r) /
+                // sqrt(max(1e-4, 1-r)), per channel) - not re-derived
+                // independently, matching a real precedent already
+                // established for exactly this "nothing given" case.
+                const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
+                TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
+                if (m.hasConductorPreset) {
+                    mat.conductorEta = PackedFloat3{(float)m.conductorEta[0], (float)m.conductorEta[1], (float)m.conductorEta[2]};
+                    mat.conductorK = PackedFloat3{(float)m.conductorK[0], (float)m.conductorK[1], (float)m.conductorK[2]};
+                } else {
+                    auto reflectanceToK = [](float r) {
+                        r = r < 0.0f ? 0.0f : (r > 0.9999f ? 0.9999f : r);
+                        return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
+                    };
+                    mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+                    mat.conductorK = PackedFloat3{reflectanceToK(color.x), reflectanceToK(color.y), reflectanceToK(color.z)};
+                }
+                return mat;
+            }
             case pbrt_flatten::MaterialKind::Dielectric:
                 return TriangleMaterial{color, /*materialType=*/2u, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
