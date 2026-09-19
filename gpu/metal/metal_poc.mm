@@ -1647,8 +1647,8 @@ void MetalPocApp::loadPbrtScene() {
     // Mix case below can recurse into mapMaterial() for its own two
     // named sub-materials - an ordinary auto lambda can't reference its
     // own name inside its own body (not yet in scope at that point).
-    std::function<TriangleMaterial(const pbrt_flatten::Material&)> mapMaterial =
-        [&warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m) -> TriangleMaterial {
+    std::function<TriangleMaterial(const pbrt_flatten::Material&, int)> mapMaterial =
+        [&warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
         switch (m.kind) {
             case pbrt_flatten::MaterialKind::Diffuse:
@@ -1761,15 +1761,35 @@ void MetalPocApp::loadPbrtScene() {
                 // honest improvement over gray Lambertian (the correct
                 // material FAMILY and colour survive, just not the
                 // per-point blend).
+                // Depth-guarded (mirrors pbrt_cpu_builder.h's own
+                // kMaxMixDepth=8 exactly - see that file's own comment:
+                // "a cyclic/self-referential 'materials' list a
+                // malformed scene could produce" is a real, anticipated
+                // risk, not hypothetical - namedMaterialIndex is built
+                // by scanning the WHOLE material list up front
+                // (pbrt_flatten.h), before per-material resolution runs,
+                // specifically so a "materials" list can name something
+                // declared LATER in the file - which also means a Mix
+                // material's own name can legally appear in its own
+                // "materials" list, or two Mix materials can name each
+                // other, with no cycle check anywhere in flatten() to
+                // catch it. Without this guard, mapMaterial()'s own
+                // recursion into such a scene would stack-overflow this
+                // loader before any render starts - a real bug found by
+                // code review, not exercised by any bundled scene.
                 const int chosenIdx = (m.mixWeight >= 0.5) ? m.mixMaterialB : m.mixMaterialA;
-                if (chosenIdx >= 0 && chosenIdx < (int)scene.materials.size())
-                    return mapMaterial(scene.materials[chosenIdx]);
+                constexpr int kMaxMixDepth = 8;
+                if (depth < kMaxMixDepth && chosenIdx >= 0 && chosenIdx < (int)scene.materials.size())
+                    return mapMaterial(scene.materials[chosenIdx], depth + 1);
                 // Both indices invalid (shouldn't happen - flatten()'s
                 // own comment guarantees them valid whenever kind==Mix -
                 // but this loader errs toward a safe fallback rather
-                // than an out-of-bounds read) - falls through to the
-                // same gray-Lambertian default every other unsupported
-                // kind gets.
+                // than an out-of-bounds read), OR the depth guard above
+                // fired (a cyclic/self-referential "materials" list) -
+                // falls through to the same gray-Lambertian default
+                // every other unsupported kind gets, same "safe fallback
+                // over crashing" reasoning as every other malformed-
+                // scene case in this file.
                 [[fallthrough]];
             }
             default:
@@ -1784,7 +1804,7 @@ void MetalPocApp::loadPbrtScene() {
     auto materialFor = [&](int idx) -> TriangleMaterial {
         if (idx < 0 || idx >= (int)scene.materials.size())
             return TriangleMaterial{PackedFloat3{0.5f, 0.5f, 0.5f}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
-        return mapMaterial(scene.materials[idx]);
+        return mapMaterial(scene.materials[idx], /*depth=*/0);
     };
     auto vertexAt = [toWorld](const double* v, int i) {
         return toWorld(float3{(float)v[i * 3 + 0], (float)v[i * 3 + 1], (float)v[i * 3 + 2]});
@@ -1810,32 +1830,8 @@ void MetalPocApp::loadPbrtScene() {
         const std::vector<int>& idxs = entry.second;
         const pbrt_flatten::Emission& em = scene.areaLights[lightIdx];
         float3 emission{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
-        // Image-based emission (section 105) - only for a QUAD-shaped
-        // light (idxs.size()==2, checked again just below - a genuine
-        // pbrt quad can be attached to a non-quad triangle count too,
-        // e.g. a fan, so this alone doesn't guarantee the shape check
-        // below will pass), and only the FIRST such light in the scene
-        // (one shared texture slot, matching the goniometric/projection
-        // image precedent). A decode failure - or a SECOND textured
-        // light - falls back to flat L exactly as if no filename were
-        // named, same "safe fallback over dropping the light" reasoning
-        // as every other image-based feature in this loader.
         uint32_t quadMaterialType = 0u;
         float useTextureFlag = 0.0f;
-        if (!em.filename.empty() && idxs.size() == 2 && !havePbrtAreaLightImage) {
-            std::string bytes;
-            if (pbrt_load::loadFileNear(pbrtScenePath, em.filename, bytes) &&
-                pbrt_load::detail::decodeInfiniteLightImage(em.filename, bytes,
-                    pbrtAreaLightImagePixels, pbrtAreaLightImageWidth, pbrtAreaLightImageHeight)) {
-                havePbrtAreaLightImage = true;
-                quadMaterialType = 15u;
-                useTextureFlag = 1.0f;
-                emission = float3{(float)em.scale, (float)em.scale, (float)em.scale};
-            } else {
-                fprintf(stderr, "loadPbrtScene: area light's own image '%s' could not be read/decoded; "
-                                "falling back to its flat colour\n", em.filename.c_str());
-            }
-        }
         bool handled = false;
         if (idxs.size() == 2) {
             const pbrt_flatten::Triangle& t0 = scene.triangles[idxs[0]];
@@ -1844,6 +1840,37 @@ void MetalPocApp::loadPbrtScene() {
             const float3 t1a = vertexAt(t1.v, 0), t1b = vertexAt(t1.v, 1), d = vertexAt(t1.v, 2);
             const float eps = 1e-4f;
             if (simd::length(a - t1a) < eps && simd::length(c - t1b) < eps) {
+                // Image-based emission (section 105) - only for a
+                // confirmed QUAD-shaped light (this branch - the vertex-
+                // matching check just above already ruled out a 2-
+                // triangle shape that ISN'T actually a quad, e.g. a
+                // differently-diagonalized or non-planar pair; doing
+                // this decode attempt BEFORE that check, as an earlier
+                // version of this code did, would waste the one shared
+                // texture slot - and leave `emission` wrongly set to a
+                // bare `scale` instead of `L*scale` - on a light that
+                // never actually becomes materialType 15 at all), and
+                // only the FIRST such light in the scene (one shared
+                // texture slot, matching the goniometric/projection
+                // image precedent). A decode failure - or a SECOND
+                // textured light - falls back to flat L exactly as if no
+                // filename were named, same "safe fallback over dropping
+                // the light" reasoning as every other image-based
+                // feature in this loader.
+                if (!em.filename.empty() && !havePbrtAreaLightImage) {
+                    std::string bytes;
+                    if (pbrt_load::loadFileNear(pbrtScenePath, em.filename, bytes) &&
+                        pbrt_load::detail::decodeInfiniteLightImage(em.filename, bytes,
+                            pbrtAreaLightImagePixels, pbrtAreaLightImageWidth, pbrtAreaLightImageHeight)) {
+                        havePbrtAreaLightImage = true;
+                        quadMaterialType = 15u;
+                        useTextureFlag = 1.0f;
+                        emission = float3{(float)em.scale, (float)em.scale, (float)em.scale};
+                    } else {
+                        fprintf(stderr, "loadPbrtScene: area light's own image '%s' could not be read/decoded; "
+                                        "falling back to its flat colour\n", em.filename.c_str());
+                    }
+                }
                 const TriangleMaterial lightMat = materialFor(t0.material);
                 const int32_t lightId = (int32_t)lights.size();
                 addQuad(verts, normals, uvs, materials, a, b, c, d,

@@ -4145,7 +4145,23 @@ kernel void primaryRayKernel(
                     // branches below use.
                     AreaLight light = lights[mat.lightId];
                     float distSq = result.distance * result.distance;
-                    float cosLight = max(dot(float3(light.normal), -rayDir), 0.0001);
+                    // abs(), not the old max(dot(...), 0.0001) alone - a
+                    // real, previously-latent bug found by code review
+                    // (section 106), exposed once section 104's own
+                    // frontFace||twoSided gate made a BACK-face hit on a
+                    // two-sided light reachable here at all. On that
+                    // face, dot(normal,-rayDir) is NEGATIVE; the old
+                    // max(...,0.0001) clamped it up to the epsilon
+                    // itself rather than reflecting it, making pdfLight
+                    // spuriously huge and crushing this MIS weight
+                    // toward 0 - silently dropping the BSDF-sampled
+                    // strategy's own contribution to a two-sided light's
+                    // back face, an energy-loss bias. abs() first, THEN
+                    // the same 0.0001 floor purely to avoid a division
+                    // by exact zero at a grazing angle - matches the
+                    // same abs(cosLight) fix the NEE branches below
+                    // already got in section 104, just missed here.
+                    float cosLight = max(abs(dot(float3(light.normal), -rayDir)), 0.0001);
                     float pdfLight = (distSq / (light.area * cosLight)) * light.pmf;
                     float weight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfLight * pdfLight);
                     radiance += throughput * hitEmission * weight;
