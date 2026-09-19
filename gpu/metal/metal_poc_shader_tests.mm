@@ -99,6 +99,7 @@ struct AreaLightGPU {
     float patternTileB;
     float patternScale;
     float twoSided = 0.0f;
+    float useTexture = 0.0f;
     float pmf;
     float aliasProb;
     uint32_t aliasIndex;
@@ -696,8 +697,18 @@ static void testSampleAreaLightAliasTable(id<MTLDevice> device, id<MTLLibrary> l
     id<MTLBuffer> countBuf = makeBuffer(device, &lightCount, sizeof(lightCount));
     id<MTLBuffer> seedBuf = makeBuffer(device, &seed, sizeof(seed));
     id<MTLBuffer> outBuf = makeOutputBuffer(device, kNumSamples * sizeof(float));
+    // sampleAreaLight() now takes a texture (section 105's own
+    // AreaLight::useTexture) - every light above has useTexture=0.0f
+    // (AreaLightGPU's own default), so this dummy 1x1 texture is never
+    // actually sampled, just needs to be SOME real bound resource.
+    MTLTextureDescriptor* dummyTexDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                                              width:1 height:1 mipmapped:NO];
+    dummyTexDesc.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> dummyTexture = [device newTextureWithDescriptor:dummyTexDesc];
+    uint8_t dummyPixel[4] = {0, 0, 0, 255};
+    [dummyTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:dummyPixel bytesPerRow:4];
     if (!runKernel(device, library, queue, @"test_sampleAreaLight_pmf",
-                   @[lightsBuf, countBuf, seedBuf, outBuf], nil, kNumSamples)) return;
+                   @[lightsBuf, countBuf, seedBuf, outBuf], dummyTexture, kNumSamples)) return;
     float* out = (float*)outBuf.contents;
 
     long counts[3] = {0, 0, 0};

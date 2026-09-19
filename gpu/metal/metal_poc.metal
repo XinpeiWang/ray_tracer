@@ -218,6 +218,22 @@ struct AreaLight {
     // TriangleMaterial::twoSided there, not read from here, so it also
     // covers a non-quad/disk emissive shape with no AreaLight entry).
     float twoSided;
+    // A pbrt-loaded scene's own image-based AreaLightSource
+    // ("string filename", section 105) - 0.0 (every light before this
+    // one) keeps `emission` a flat, direct radiance value; nonzero
+    // means `emission` instead holds a pure (scale,scale,scale)
+    // MULTIPLIER (pbrt-v4 semantics: image pixel value * scale, no
+    // meaningful "L" once an image is given - DiffuseAreaLight ignores
+    // L entirely once "filename" is set), and sampleAreaLight() samples
+    // pbrtAreaLightTexture at its own NEE sample point's (u.x, u.y)
+    // instead of using `emission`/the checker pattern directly. Only
+    // ONE textured light is supported (same "one shared slot" tier as
+    // sections 90/98's own single-image texture slots) and only for a
+    // QUAD-shaped light (this loader's own disk primitive has no UV
+    // parameterization to sample a real image against at all, unlike a
+    // quad's own addQuad()-assigned UVs) - a disk-shaped textured light
+    // still falls back to flat L, a real, separate, still-open gap.
+    float useTexture;
     // Power-proportional light-picking data, host-computed once by
     // metal_poc.mm's buildPowerLightSampler() (a direct port of
     // src/shared/power_light_sampler_scaffold.h's own PowerLightSampler -
@@ -1521,7 +1537,8 @@ struct LightSample {
     float twoSided;
 };
 
-inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState) {
+inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState,
+                                    texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler) {
     // max(lightCount, 1u) guards the `- 1` below from underflowing (uint
     // wraps to 0xFFFFFFFF, not -1) if this were ever called on a 0-light
     // scene - not reachable with this POC's own hardcoded 2-light scene,
@@ -1552,9 +1569,11 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
     // pattern's own UV coordinate, no separate UV needed. `patternScale
     // <= 0.0` (every light before this one) skips this entirely,
     // reproducing flat `light.emission` exactly.
-    result.emission = (light.patternScale > 0.0)
-        ? checkerColor(u, light.patternScale, float3(light.emission), float3(light.emission) * light.patternTileB)
-        : float3(light.emission);
+    result.emission = (light.useTexture > 0.0)
+        ? pbrtAreaLightTexture.sample(textureSampler, u).rgb * float3(light.emission)
+        : (light.patternScale > 0.0)
+            ? checkerColor(u, light.patternScale, float3(light.emission), float3(light.emission) * light.patternTileB)
+            : float3(light.emission);
     result.area = light.area;
     result.pmf = light.pmf;
     result.twoSided = light.twoSided;
@@ -1792,6 +1811,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                             texture2d<float, access::sample> goniometricTexture,
                             texture2d<float, access::sample> pbrtGoniometricTexture,
                             texture2d<float, access::sample> pbrtProjectionTexture,
+                            texture2d<float, access::sample> pbrtAreaLightTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
                             instance_acceleration_structure accelStructure,
@@ -1852,7 +1872,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
     float energyScale = 1.0 / max(ggxE, 0.05);
 
     if (all(mat.emission == float3(0.0))) {
-        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - hitPoint;
         float distSq = dot(toLight, toLight);
         float dist = sqrt(distSq);
@@ -2155,6 +2175,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             texture2d<float, access::sample> goniometricTexture,
                             texture2d<float, access::sample> pbrtGoniometricTexture,
                             texture2d<float, access::sample> pbrtProjectionTexture,
+                            texture2d<float, access::sample> pbrtAreaLightTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
                             instance_acceleration_structure accelStructure,
@@ -2202,7 +2223,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
         specularBounce = true;
     } else {
         if (all(mat.emission == float3(0.0))) {
-            LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+            LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
             float3 toLight = ls.point - hitPoint;
             float distSq = dot(toLight, toLight);
             float dist = sqrt(distSq);
@@ -2426,6 +2447,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                                       texture2d<float, access::sample> goniometricTexture,
                                       texture2d<float, access::sample> pbrtGoniometricTexture,
                                       texture2d<float, access::sample> pbrtProjectionTexture,
+                                      texture2d<float, access::sample> pbrtAreaLightTexture,
                                       sampler textureSampler,
                                       intersector<instancing, triangle_data> isect,
                                       instance_acceleration_structure accelStructure,
@@ -2445,7 +2467,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
     float pSum = max(pr + pt, 1e-6);
 
     if (all(mat.emission == float3(0.0))) {
-        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - hitPoint;
         float distSq = dot(toLight, toLight);
         float dist = sqrt(distSq);
@@ -2689,6 +2711,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                              texture2d<float, access::sample> goniometricTexture,
                              texture2d<float, access::sample> pbrtGoniometricTexture,
                              texture2d<float, access::sample> pbrtProjectionTexture,
+                             texture2d<float, access::sample> pbrtAreaLightTexture,
                              sampler textureSampler,
                              intersector<instancing, triangle_data> isect,
                              instance_acceleration_structure accelStructure,
@@ -2702,7 +2725,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
     // randomly picked light, then continue the path via cosine-weighted
     // hemisphere sampling for indirect light.
     if (all(mat.emission == float3(0.0))) {
-        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - hitPoint;
         float distSq = dot(toLight, toLight);
         float dist = sqrt(distSq);
@@ -2968,6 +2991,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                             texture2d<float, access::sample> goniometricTexture,
                             texture2d<float, access::sample> pbrtGoniometricTexture,
                             texture2d<float, access::sample> pbrtProjectionTexture,
+                            texture2d<float, access::sample> pbrtAreaLightTexture,
                             sampler textureSampler,
                             intersector<instancing, triangle_data> isect,
                             instance_acceleration_structure accelStructure,
@@ -2978,7 +3002,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
     float3 woWorld = -rayDir;
 
     if (all(mat.emission == float3(0.0))) {
-        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - hitPoint;
         float distSq = dot(toLight, toLight);
         float dist = sqrt(distSq);
@@ -3242,6 +3266,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                           texture2d<float, access::sample> goniometricTexture,
                           texture2d<float, access::sample> pbrtGoniometricTexture,
                           texture2d<float, access::sample> pbrtProjectionTexture,
+                          texture2d<float, access::sample> pbrtAreaLightTexture,
                           sampler textureSampler,
                           intersector<instancing, triangle_data> isect,
                           instance_acceleration_structure accelStructure,
@@ -3257,7 +3282,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
     float uniformPdf = 1.0 / (2.0 * M_PI_F);
 
     if (all(mat.emission == float3(0.0))) {
-        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - hitPoint;
         float distSq = dot(toLight, toLight);
         float dist = sqrt(distSq);
@@ -3477,6 +3502,9 @@ kernel void primaryRayKernel(
     // GoniometricLight::usePbrtTexture/ProjectionLight::usePbrtTexture.
     texture2d<float, access::sample> pbrtGoniometricTexture [[texture(4)]],
     texture2d<float, access::sample> pbrtProjectionTexture [[texture(5)]],
+    // A pbrt-loaded scene's own image-based AreaLightSource
+    // ("string filename", section 105) - same separate-slot reasoning.
+    texture2d<float, access::sample> pbrtAreaLightTexture [[texture(6)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
@@ -3695,7 +3723,7 @@ kernel void primaryRayKernel(
                     // applied explicitly or it would silently ignore the
                     // fog lying between the scatter point and the light.
                     float3 wo = -rayDir;
-                    LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState);
+                    LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
                     float3 toLight = ls.point - scatterPoint;
                     float distSq = dot(toLight, toLight);
                     float dist = sqrt(distSq);
@@ -4076,6 +4104,18 @@ kernel void primaryRayKernel(
                 if (mat.materialType == 10u) {
                     float2 patUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                     hitEmission = checkerColor(patUV, 6.0, hitEmission, hitEmission * mat.roughness);
+                } else if (mat.materialType == 15u) {
+                    // Real image-based AreaLightSource (section 105) -
+                    // same UV lookup as materialType 10's own checker
+                    // pattern (a direct hit needs THIS hit's own
+                    // interpolated UV, not the NEE sample point's), but
+                    // sampling a real texture instead of a procedural
+                    // pattern. `mat.emission` here holds the pure
+                    // (scale,scale,scale) multiplier (see AreaLight::
+                    // useTexture's own comment), not a direct radiance -
+                    // pbrt-v4 ignores L entirely once an image is given.
+                    float2 texUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                    hitEmission = pbrtAreaLightTexture.sample(textureSampler, texUV).rgb * hitEmission;
                 }
                 if (specularBounce || mat.lightId < 0) {
                     // No competing NEE sample could have produced this
@@ -4124,7 +4164,7 @@ kernel void primaryRayKernel(
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
                                      ggxEnergyTable, uniforms.ggxEnergyRoughRes, uniforms.ggxEnergyMuRes,
-                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 1u) {
@@ -4137,7 +4177,7 @@ kernel void primaryRayKernel(
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 12u) {
@@ -4145,7 +4185,7 @@ kernel void primaryRayKernel(
                                                lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                                envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                                pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                               earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
+                                               earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                                isect, accelStructure, functionTable,
                                                rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 13u) {
@@ -4153,7 +4193,7 @@ kernel void primaryRayKernel(
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                      pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
+                                     earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 14u) {
@@ -4161,7 +4201,7 @@ kernel void primaryRayKernel(
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                   pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                  earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
+                                  earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else {
@@ -4169,7 +4209,7 @@ kernel void primaryRayKernel(
                                       lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                       envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                       pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
-                                      earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, textureSampler,
+                                      earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                       isect, accelStructure, functionTable,
                                       rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             }
@@ -4447,10 +4487,12 @@ kernel void test_sampleAreaLight_pmf(
     constant uint& lightCount [[buffer(1)]],
     constant uint& seed [[buffer(2)]],
     device float* outPmfs [[buffer(3)]],
+    texture2d<float, access::sample> dummyTexture [[texture(0)]],
     uint tid [[thread_position_in_grid]])
 {
+    constexpr sampler nearestSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
     uint rngState = tid * 9781u + seed * 26699u + 1u;
-    LightSample ls = sampleAreaLight(lights, lightCount, rngState);
+    LightSample ls = sampleAreaLight(lights, lightCount, rngState, dummyTexture, nearestSampler);
     outPmfs[tid] = ls.pmf;
 }
 
