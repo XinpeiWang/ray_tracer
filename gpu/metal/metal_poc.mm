@@ -1176,6 +1176,14 @@ struct MetalPocApp {
     // build_earth_lights() exactly. Section 123, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildEarth();
+    // A5: Perlin Spheres - 4 spheres (a giant ground sphere + main sphere,
+    // both `noise_texture(4)`; 2 smaller companion spheres, both
+    // `noise_texture(8)`) sharing materialType 17 (real Perlin marble -
+    // see turbulenceSimple()'s own declaration comment, metal_poc.metal)
+    // plus a warm key-light quad, matching CPU's
+    // build_perlin_spheres()/build_perlin_spheres_lights() exactly.
+    // Section 124, docs/METAL_GPU_FEASIBILITY.md.
+    void buildPerlinSpheres();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2862,6 +2870,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "A3") { buildCheckeredSpheres(); return true; }
     if (scene_id == "A6") { buildColoredQuads(); return true; }
     if (scene_id == "A4") { buildEarth(); return true; }
+    if (scene_id == "A5") { buildPerlinSpheres(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3737,6 +3746,103 @@ void MetalPocApp::buildEarth() {
     pbrtCameraRight = right;
     pbrtCameraUp = trueUp;
     pbrtTanHalfFov = tanf(0.5f * 25.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// A5: Perlin Spheres - matches CPU's build_perlin_spheres()/
+// build_perlin_spheres_lights() exactly: 4 spheres sharing materialType
+// 17 (real Perlin marble - see turbulenceSimple()'s own declaration
+// comment, metal_poc.metal) at two different noise scales, plus a warm
+// key-light quad.
+void MetalPocApp::buildPerlinSpheres() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // `roughness` reused as the marble texture's own `scale` parameter
+    // (matches materialType 16's own established reuse of the same
+    // field for a different procedural texture's own scale).
+    auto pushMarble = [&](float3 center, float radius, float noiseScale) {
+        TriangleMaterial mat{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/17u,
+                              1.0f, PackedFloat3{0, 0, 0}, -1, /*roughness=*/noiseScale};
+        const float3 c = center + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, radius});
+        sphereMaterials.push_back(mat);
+    };
+    // CPU's own "ground" is a radius-1000 sphere centred (0,-1000,0) - a
+    // classic book trick for a near-flat plane at this scale, but its
+    // surface stays within +-1 of y=0 out to roughly +-45 units in x/z
+    // (checked algebraically: solving the sphere equation at y=+-1 gives
+    // |x-centre.x| <= sqrt(2000-1) ~ 44.7) - the usual +8 sceneOffset
+    // is NOWHERE near enough clearance, so the sphere's own surface
+    // would genuinely intersect the hardcoded POC room's own already-
+    // occupied [-1,1] region (unlike A3's own radius-10 checker spheres,
+    // section 121's own comment, which really don't reach that far).
+    // Using an offset large enough to clear a RADIUS-1000 sphere would
+    // need ~50+ units, an awkward, easy-to-get-wrong magic number - so
+    // this reuses the SAME "flat quad instead of a huge sphere"
+    // simplification category-G's own mesh gallery already established
+    // (section 117) for exactly this "near-flat surface, no real
+    // curvature visible at this camera distance" situation. materialType
+    // 17 needs no UV either way (world-space `hitPoint, same as
+    // materialType 16), so a quad works identically to a sphere here.
+    {
+        const float3 groundColor{1.0f, 1.0f, 1.0f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-15.0f, 0.0f, -15.0f} + sceneOffset, float3{15.0f, 0.0f, -15.0f} + sceneOffset,
+                float3{15.0f, 0.0f, 15.0f} + sceneOffset, float3{-15.0f, 0.0f, 15.0f} + sceneOffset,
+                groundColor, /*materialType=*/17u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness=*/4.0f);
+    }
+    pushMarble(float3{0.0f, 2.0f, 0.0f}, 2.0f, 4.0f);         // main sphere
+    pushMarble(float3{2.2f, 0.8f, 1.0f}, 0.8f, 8.0f);         // companion 1
+    pushMarble(float3{-1.8f, 0.6f, -1.2f}, 0.6f, 8.0f);       // companion 2
+
+    // Warm key-light quad, upper-left.
+    {
+        const float3 Q{-4.0f, 6.0f, -3.0f}, u{4.0f, 0.0f, 0.0f}, v{0.0f, 0.0f, 4.0f};
+        const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
+                     c = Q + u + v + sceneOffset, d = Q + v + sceneOffset;
+        const float3 keyColor{8.0f, 6.0f, 3.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, keyColor,
+                /*materialType=*/0u, /*emission=*/keyColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{keyColor.x, keyColor.y, keyColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // Real per-scene flat background (sky blue) - same reuse of the
+    // pbrt-constant-infinite-light mechanism A3/A6/A4 already
+    // established.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.70f, 0.80f, 1.00f};
+
+    // Camera: CPU's own real registry row for A5, ported directly
+    // (vfov 20, lookfrom (13,2,3), lookat (0,0,0)).
+    const float3 lookfrom = float3{13.0f, 2.0f, 3.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 20.0f * (float)M_PI / 180.0f);
     havePbrtCamera = true;
     pbrtCameraLookAtWorld = lookat;
     pbrtCameraUpRaw = up;

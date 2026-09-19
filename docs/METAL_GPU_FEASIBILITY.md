@@ -6702,3 +6702,68 @@ own already-established `equirectangularUV()` call site (untouched by
 this fix, confirmed via the same regression renders). `A4` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR.
+
+## 124. Hand-authored scenes, increment 9: A5 Perlin Spheres - a real ported Perlin-noise marble texture (materialType 17), plus a real ground-plane overlap bug caught before it ever rendered wrong
+
+The fourth category-A (Basics) scene, and this series' first genuinely
+NEW procedural texture requiring real new math, not just a different
+albedo lookup: Perlin gradient noise. This project's own
+`src/shared/noise.h` (CPU_GPU-tagged, a direct port of pbrt-v4's
+`Noise()`/`Turbulence()`) is ALREADY compilable as plain C++ on any
+non-NVCC compiler (Objective-C++ included) - but Metal Shading Language
+itself can't `#include` a C++ header full of `std::` calls and
+templates, so this is a genuine re-transcription of the exact same
+fixed 512-entry permutation table, `Grad()`, quintic `NoiseWeight()`
+(`6t^5-15t^4+10t^3`, pbrt-v4's own C2-continuous upgrade over Book-3's
+older C1-only cubic), trilinear `perlinNoise3D()`, and
+`turbulenceSimple()` (sum of `|noise|` across octaves, no
+antialiasing-footprint clamping - matching `noise.h`'s own
+`turbulence_simple<T>()`, the exact overload `perlin::turb()` already
+delegates to) into `metal_poc.metal` as new device functions, right
+after `checker3DColor()`. New materialType 17 wires it in, matching
+CPU's own `noise_texture::value()` exactly: grey `(0.5,0.5,0.5) *
+(1 + sin(scale*p.z + 10*turb(p,7)))`, `roughness` reused as `scale`
+(the same reuse pattern materialType 16 already established for an
+unrelated procedural texture's own scale parameter). World-space
+`hitPoint`, no UV needed - same reason materialType 16 already works on
+a sphere with no real UV parameterization.
+
+**A real geometric bug found and fixed BEFORE ever rendering, by doing
+the algebra first** (not by trial-and-error like A3/A4's own bugs) -
+worth remembering as the FASTEST of this series' investigation
+patterns so far: CPU's own `build_perlin_spheres()` uses a radius-1000
+sphere centred `(0,-1000,0)` as its "ground plane" (the same book trick
+A2/A3 also use). Checking algebraically BEFORE writing the scene
+builder: solving the sphere equation for where its surface satisfies
+`|y| <= 1` (the hardcoded POC room's own occupied region) gives
+`|x - centre.x| <= sqrt(2000 - 1) ~ 44.7` - meaning the usual `+8`
+`sceneOffset` (comfortably enough clearance for A3's own radius-10
+checker spheres, confirmed in section 121) is NOWHERE NEAR enough to
+clear a radius-1000 "ground plane" sphere's own surface away from the
+room's own already-occupied `[-1,1]` space; at `x=0` specifically, the
+ground sphere's own surface sits at `y ~ -0.032` - genuinely inside the
+room. Rather than reaching for an awkward, easy-to-get-wrong
+`offset > ~46` magic number, this reuses the SAME "flat quad instead of
+a huge sphere" simplification category-G's own mesh gallery already
+established for exactly this "no real curvature visible at this camera
+distance" situation (section 117) - materialType 17 needs no UV either
+way, so a large flat quad (30x30 units) works identically to CPU's own
+near-flat giant sphere at this scale.
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - both show the same recognizable
+marble-vein pattern style/density/scale on the ground and all 3
+spheres, same composition (main sphere, one companion sphere, marble
+ground) - the noise field's own exact vein PHASE differs slightly (a
+flat quad vs. CPU's own giant sphere aren't pixel-identical geometry,
+and Perlin noise carries no "correct visible pattern" to match the way
+A4's earth texture did - see that section's own lesson), which is
+expected and cosmetically irrelevant, not a bug to chase. Full clean
+`RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene `pbrt_scenes/`
+sweep (0 failures); A1/A3/A4/A6/G1/G7/G12/G18 (earlier increments)
+re-verified unaffected. `A5` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **A real, reusable capability for future scenes**: materialType
+17 (Perlin marble) is now available for ANY future hand-authored scene
+that needs it (A7 Simple Light reuses `noise_texture` directly per its
+own CPU source - a likely candidate for its own next increment).
