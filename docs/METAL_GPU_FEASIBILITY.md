@@ -6445,3 +6445,63 @@ in one composition, a genuinely different, bespoke shape this shared
 single-mesh helper doesn't cover, not a quick addition to the existing
 pattern. A real future candidate, but budgeted as its own increment
 rather than forced into this batch's own scope.
+
+## 120. Hand-authored scenes, increment 5: G12 Trophy Room - category G is now 23/23 done
+
+The last category-G (Models) scene, and the first hand-authored Metal
+scene to combine multiple external OBJ meshes in one composition.
+`MetalPocApp::buildTrophyRoom()` (`gpu/metal/metal_poc.mm`) is a
+bespoke builder, not a call into `buildMeshGalleryScene()` (sections
+117-119) - that helper only places ONE mesh, and this scene needs
+four (bunny/teapot/Suzanne/Spot the Cow), matching CPU's
+`build_trophy_room()`/OptiX's own `build_trophy_room_gpu()`
+(`gpu/optix/scene_builder_mesh_gallery.h`) in mesh choice and the same
+four material tones (bronze/chrome/gold/gunmetal) - but deliberately
+NOT their exact numeric scale/offset. OptiX's own loader takes a raw
+uniform scale plus a world-space offset applied directly to the scaled
+mesh; this loader's `loadObjMesh()` instead auto-fits each mesh's own
+bounding box to a caller-chosen `targetSize` and recentres it at a
+caller-chosen world-space centre (see section 117's own declaration
+comment) - a different enough convention that porting OptiX's literal
+numbers would not reproduce the same layout. Four meshes were instead
+placed by hand: one shared ground quad, `loadObjMesh()` called four
+times directly (bunny/teapot/Suzanne at `targetSize` 1.1/1.4/1.1,
+spot at 1.3 with `flipXZ=true` - the same "raw mesh faces away from
+the camera" fix G7's own solo scene needed, section 119), spaced 2.4
+units apart along a shared shelf, one wide quad area light spanning
+the whole shelf, and a simple 3/4-elevated fallback camera (vfov 55,
+wide enough to frame the whole ~7.2-unit spread) rather than a literal
+port of the CPU registry's own G12 camera row (vfov 34, lookfrom
+(0,2.3,14)) - that row is tuned for OptiX's own raw-scale placement,
+not this targetSize-based one.
+
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set
+(`cpu_renderer/cpu_interface.cpp`) gained `"G12"` in this same PR (per
+its own established rule - never ahead of the real builder).
+
+**Verified**: a real `--gpu` render of G12 at both 400x400 and 800x800,
+directly viewed (cropped to the shelf region at high resolution for a
+closer look) - all four meshes are clearly present, correctly ordered
+left-to-right (bunny/teapot/Suzanne/Spot), and visually distinct by
+shape and material tone; Suzanne's face is clearly recognizable, and
+Spot shows a recognizable quadruped silhouette (not the mesh's raw
+"faces away from camera" orientation the unflipped version would show).
+A side-by-side `--cpu` render of the same scene_id confirms the same
+mesh choice, left-to-right ordering, and material tones (CPU's own
+teapot/chrome material renders as a sharper mirror than Metal's own
+rough-GGX approximation, an already-documented, expected backend
+difference, not a new bug). Teapot and Spot both read somewhat
+washed-out at Metal's own rendered exposure - the same already-
+documented "bright silver in a sparse environment" limitation sections
+118/119 already flagged for other meshes, not a new finding. Full
+clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene
+`pbrt_scenes/` sweep (0 failures) all pass; A1/G1/G7/G18 (earlier
+increments) re-verified unaffected by this PR's own changes.
+
+**Category G (Models) is now 23 of 23 done - the entire category is
+complete.** Don't re-propose any category-G scene as future work.
+Next natural targets per section 116's own ROI-ordered rollout plan:
+the rest of category A (A2-A9, "Basics" - book-scene procedural
+content), then category B (Materials, 16 scenes, mostly Cornell-box-
+shell variants swapping one material), then C/D/H/I/E in that same
+established order.
