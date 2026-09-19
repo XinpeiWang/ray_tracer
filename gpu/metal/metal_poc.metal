@@ -4047,15 +4047,38 @@ kernel void primaryRayKernel(
                 facingNormal = proceduralBumpNormal(facingNormal, tangent, bumpUV, mat.roughness);
             }
 
-            // materialType == 3 (textured Lambertian) only ever occurs on
-            // a triangle (the back wall - see metal_poc.mm's scene setup),
-            // never the sphere, so texCoordFor()'s triangle-only inputs
-            // (primId, barycentric_coord) are always valid when this
-            // fires - no isSphere guard needed here the way the normal/
-            // material lookup above needed one.
+            // materialType == 3 (textured Lambertian): the hardcoded POC
+            // room's own back wall (a triangle - texCoordFor()'s own
+            // triangle-only inputs, primId/barycentric_coord, are valid
+            // there) OR, since section 122, a hand-authored scene's own
+            // textured SPHERE (A4 Earth) - texCoordFor() cannot run on a
+            // sphere hit at all (no primId-indexed UV to look up), so
+            // this reuses the exact technique materialType 9 already
+            // established for exactly this situation (see that
+            // material's own comment, just above its alphaX/alphaY
+            // branch): equirectangularUV() on the hit's own (sphere-
+            // centre-relative) normal gives a texture-space coordinate
+            // for free, no real UV parameterization needed.
             float3 albedo;
             if (mat.materialType == 3u) {
-                float2 uv = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                // isSphere: NOT a plain equirectangularUV(normal) call -
+                // this project's own CPU get_sphere_uv() (sphere.h) uses
+                // phi=atan2(-p.z,p.x)+pi, whereas equirectangularUV() uses
+                // atan2(dir.z,dir.x) - algebraically or (since atan2 is
+                // odd in its first argument), CPU's own u is exactly
+                // equirectangularUV(x,y,-z).x, a longitude MIRROR of
+                // equirectangularUV(normal).x, not merely a phase shift.
+                // Latitude (v) already matches exactly with no
+                // correction needed (both give v=0 at y=-1, v=1 at
+                // y=+1) - checked algebraically, not assumed, after a
+                // first version of this code rendered the correct
+                // CONTINENTS-SHAPED but WRONG-LONGITUDE side of the
+                // globe compared to a real --cpu render of the same
+                // scene_id (caught by that comparison, not by eye alone -
+                // an equirectangular texture looks equally "plausible"
+                // from any longitude).
+                float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
+                                      : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 albedo = earthTexture.sample(textureSampler, uv).rgb;
             } else if (mat.materialType == 6u) {
                 // Procedural checker (Lambertian, same BSDF/NEE code path

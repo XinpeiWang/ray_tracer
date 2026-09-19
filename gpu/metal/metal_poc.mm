@@ -1166,6 +1166,16 @@ struct MetalPocApp {
     // already uses for its own walls). Section 122, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildColoredQuads();
+    // A4: Earth - a globe sphere textured with the SAME earthTexture the
+    // hardcoded room's own back wall/sky already sample, reusing
+    // materialType 9's own already-established equirectangularUV(normal)
+    // technique (metal_poc.metal's own materialType==3 comment) to get a
+    // sphere a UV coordinate with no real per-primitive UV
+    // parameterization at all. Plus a small grey "moon" accent sphere
+    // and a rim-light quad, matching CPU's build_earth()/
+    // build_earth_lights() exactly. Section 123, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildEarth();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2851,6 +2861,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G12") { buildTrophyRoom(); return true; }
     if (scene_id == "A3") { buildCheckeredSpheres(); return true; }
     if (scene_id == "A6") { buildColoredQuads(); return true; }
+    if (scene_id == "A4") { buildEarth(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3648,6 +3659,84 @@ void MetalPocApp::buildColoredQuads() {
     pbrtCameraRight = right;
     pbrtCameraUp = trueUp;
     pbrtTanHalfFov = tanf(0.5f * 80.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// A4: Earth - matches CPU's build_earth()/build_earth_lights() exactly:
+// a globe sphere (radius 2, origin-centred before offset) textured with
+// earthTexture (materialType 3 - see this file's own shader-side
+// materialType==3 comment for how a SPHERE hit gets a UV at all), a
+// small flat-grey "moon" accent sphere, and a rim-light quad behind the
+// globe, registered as a real NEE-sampled AreaLight the same way every
+// earlier hand-authored scene's own light quad already is.
+void MetalPocApp::buildEarth() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Earth globe - materialType 3, `color` unused (the real albedo
+    // comes from earthTexture, sampled via equirectangularUV(normal) -
+    // see this material's own shader-side comment).
+    {
+        TriangleMaterial mat{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/3u,
+                              1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{0.0f, 0.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 2.0f});
+        sphereMaterials.push_back(mat);
+    }
+    // Moon accent sphere - flat grey Lambertian, matches CPU exactly.
+    {
+        TriangleMaterial mat{PackedFloat3{0.6f, 0.6f, 0.62f}, /*materialType=*/0u,
+                              1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{2.0f, 1.3f, 0.5f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.35f});
+        sphereMaterials.push_back(mat);
+    }
+    // Rim light quad, behind the globe.
+    {
+        const float3 Q{-4.0f, -2.5f, -6.0f}, u{3.0f, 0.0f, 0.0f}, v{0.0f, 5.0f, 0.0f};
+        const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
+                     c = Q + u + v + sceneOffset, d = Q + v + sceneOffset;
+        const float3 rimColor{0.9f, 1.0f, 1.3f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, rimColor,
+                /*materialType=*/0u, /*emission=*/rimColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{rimColor.x, rimColor.y, rimColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // Real per-scene flat background (sky blue, (0.70,0.80,1.00)) - same
+    // reuse of the pbrt-constant-infinite-light mechanism A3/A6 already
+    // established.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.70f, 0.80f, 1.00f};
+
+    // Camera: CPU's own real registry row for A4, ported directly
+    // (vfov 25, lookfrom (0,0,12), lookat (0,0,0)).
+    const float3 lookfrom = float3{0.0f, 0.0f, 12.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 25.0f * (float)M_PI / 180.0f);
     havePbrtCamera = true;
     pbrtCameraLookAtWorld = lookat;
     pbrtCameraUpRaw = up;

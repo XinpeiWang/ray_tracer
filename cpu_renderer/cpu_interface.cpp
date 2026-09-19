@@ -954,6 +954,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"G12",                   // Trophy Room - category G now fully complete, 23/23 (section 120)
 		"A3",                    // Checkered Spheres - first category-A scene beyond A1 (section 121)
 		"A6",                    // Colored Quads (section 122)
+		"A4",                    // Earth (section 123)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
