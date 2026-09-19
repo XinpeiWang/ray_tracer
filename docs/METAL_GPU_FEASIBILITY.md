@@ -6127,3 +6127,41 @@ the `Applications -> /Applications` symlink now sits right next to
 `RayTracerGUI.app` in the mounted volume; `lipo -archs` re-confirmed
 on the same rebuild that section 113's own architecture fix still
 holds (`x86_64` throughout).
+
+## 115. GPU-compat auto-switch only worked in one direction (scene→mode, never mode→scene)
+
+Found from a real user's own render attempt after section 114's fix
+resolved their actual blocker: they picked scene A1 (Cornell Box, not
+pbrt-backed) while in CPU mode, THEN switched the render-mode combo to
+GPU afterward - and got a real render failure (`metal_render_main:
+scene 'A1' has no pbrt file backing it...`) instead of the silent
+auto-switch-to-CPU every other invalid (scene, mode) combination
+already gets.
+
+`onSceneChanged()` (`mainwindow_slots.cpp`) already had exactly this
+guard - "Auto-switch to CPU when scene doesn't support GPU" - but
+ONLY fires when the SCENE changes while GPU mode is already selected;
+nothing symmetric fired when the MODE changes while an already-
+incompatible scene is already selected. `onIntegratorChanged()`
+already establishes this exact "no failure, just a stale/misleading
+control" class of auto-switch for the integrator<->mode relationship
+in BOTH directions (its own comment names it explicitly) - the
+scene<->mode relationship only ever got one of its own two directions
+wired up.
+
+Fixed by adding the same `sceneSupportsSelectedGpuBackend` check
+(mirroring `onSceneChanged()`'s own field selection: `metalCompatible`
+on macOS when Metal itself is available, `gpuCompatible` everywhere
+else) to `m_renderModeCombo`'s own `currentIndexChanged` handler
+(`mainwindow.cpp`) - switching to GPU for a scene that doesn't support
+the active GPU backend now silently reverts to CPU, exactly matching
+what switching TO that same incompatible scene while already in GPU
+mode has always done. The forced `setCurrentIndex(1)` re-enters this
+same lambda once more (the identical re-entrant shape
+`onSceneChanged()`'s own call to the same setter already relies on) -
+harmless, since the second pass sees GPU mode already false and skips
+straight past the check. Full clean rebuild, no new warnings; the
+underlying compatibility FIELDS themselves (`scene_metadata_dll.cpp`'s
+`metal_compatible = is_pbrt_backed`) were independently confirmed
+correct for scene A1 before writing this fix - the bug was purely
+about which USER ACTIONS actually consulted them, not the data itself.

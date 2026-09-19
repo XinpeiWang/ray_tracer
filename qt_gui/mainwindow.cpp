@@ -1077,6 +1077,39 @@ void MainWindow::setupUI() {
 	// early-return), so firing before createStatusBar() below is harmless.
 	connect(m_renderModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, [this](int) {
+				// Mirrors onSceneChanged()'s own GPU-compat auto-switch
+				// (mainwindow_slots.cpp), run in the OPPOSITE direction: that
+				// one catches "the scene just changed under an already-GPU-
+				// selected mode", this one catches "GPU was just selected
+				// for an already-current, incompatible scene" - the same
+				// invalid (scene, mode) pair was reachable from either
+				// direction, but only one of the two was ever actually
+				// guarded. A real gap: a real user selected scene A1
+				// (Cornell Box, not pbrt-backed) then switched to GPU mode
+				// afterward and got a real render failure instead of the
+				// silent auto-switch every other invalid combination
+				// already gets - see docs/METAL_GPU_FEASIBILITY.md's
+				// section 115. setCurrentIndex(1) below re-enters this same
+				// lambda once more, harmlessly - the second pass sees GPU
+				// mode already false and skips straight past this check,
+				// the same re-entrant shape onSceneChanged()'s own
+				// identical call already relies on.
+				if (m_renderModeCombo->currentData().toBool() && m_sceneCombo) {
+					const QString scene_id = m_sceneCombo->currentData().toString();
+					SceneMetadataClient::SceneMetadata meta;
+					if (SceneMetadataClient::sceneMetadata(scene_id, meta)) {
+#ifdef Q_OS_MAC
+						const bool sceneSupportsSelectedGpuBackend =
+							m_metalGpuAvailable ? meta.metalCompatible : meta.gpuCompatible;
+#else
+						const bool sceneSupportsSelectedGpuBackend = meta.gpuCompatible;
+#endif
+						if (!sceneSupportsSelectedGpuBackend) {
+							m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
+							return;
+						}
+					}
+				}
 				refreshStatusBarInfo();
 				updateRenderOptionsEnabled();
 			});
