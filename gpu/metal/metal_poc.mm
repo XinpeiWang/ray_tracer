@@ -542,7 +542,24 @@ static bool loadObjMesh(const std::string& path,
                          // gets a real (if flat/grey) metal, not black.
                          float meshRoughness = 0.0f,
                          float3 meshConductorEta = simd::make_float3(1.0f, 1.0f, 1.0f),
-                         float3 meshConductorK = simd::make_float3(0.0f, 0.0f, 0.0f)) {
+                         float3 meshConductorK = simd::make_float3(0.0f, 0.0f, 0.0f),
+                         // materialType==2 (dielectric) only - see this
+                         // function's own TriangleMaterial-construction
+                         // comment below. Default 1.0 (no refraction) keeps
+                         // every OTHER materialType's behaviour identical to
+                         // before this parameter existed.
+                         float meshIor = 1.0f,
+                         // Mirrors gpu/optix/scene_builder.cpp's own
+                         // load_obj_triangles_gpu()'s flip_xz parameter
+                         // exactly: negates x and z (a 180-degree rotation
+                         // about Y) - some raw meshes (Spot the Cow, Horse)
+                         // face away from this app's own camera convention
+                         // without it (that file's own comment: "the raw
+                         // mesh faces away from the camera"). Applied to
+                         // every position AND normal, before centring/
+                         // scaling - section 119, docs/METAL_GPU_
+                         // FEASIBILITY.md.
+                         bool flipXZ = false) {
     std::ifstream in(path);
     if (!in) {
         fprintf(stderr, "Could not open OBJ file: %s\n", path.c_str());
@@ -631,14 +648,26 @@ static bool loadObjMesh(const std::string& path,
     float scale = (largestDim > 0.0f) ? (targetSize / largestDim) : 1.0f;
     float3 bboxCenter = (bboxMin + bboxMax) * 0.5f;
 
+    // flipXZ applied to the CENTRED delta, not the raw position - the
+    // bounding box above is computed from raw positions either way (a
+    // pure x/z negation is a reflection, which preserves the extent used
+    // for `scale`, so no separate flipped-bbox pass is needed).
     auto transform = [&](const float3& p) -> float3 {
-        return (p - bboxCenter) * scale + center;
+        float3 delta = p - bboxCenter;
+        if (flipXZ) { delta.x = -delta.x; delta.z = -delta.z; }
+        return delta * scale + center;
     };
     // Normals only need the scale's sign/shear behaviour, not translation -
     // a uniform positive scale (this loader's only kind) leaves direction
     // unchanged, so this is really just "no-op, pass through," kept as its
     // own step for clarity and in case a future non-uniform scale needs it.
-    auto transformNormal = [&](const float3& n) -> float3 { return simd::normalize(n); };
+    // flipXZ needs the SAME x/z negation as transform() above (a normal
+    // rotates with its surface).
+    auto transformNormal = [&](const float3& n) -> float3 {
+        float3 nn = n;
+        if (flipXZ) { nn.x = -nn.x; nn.z = -nn.z; }
+        return simd::normalize(nn);
+    };
 
     uint32_t triangleCount = 0;
     uint32_t normalFallbackCount = 0;
@@ -723,6 +752,11 @@ static bool loadObjMesh(const std::string& path,
         mat.roughness = meshRoughness;
         mat.conductorEta = PackedFloat3{meshConductorEta.x, meshConductorEta.y, meshConductorEta.z};
         mat.conductorK = PackedFloat3{meshConductorK.x, meshConductorK.y, meshConductorK.z};
+    } else if (materialType == 2u) {
+        // Smooth dielectric (materialType 2, e.g. Glass Dragon - section
+        // 119) - `ior` here is a real refraction index (glass~1.5), not
+        // the alphaX reuse materialType 4 gives it above.
+        mat.ior = meshIor;
     }
     for (uint32_t i = 0; i < triangleCount; ++i) materials.push_back(mat);
 
@@ -1066,7 +1100,14 @@ struct MetalPocApp {
     // no new path-resolution code needed here).
     void buildMeshGalleryScene(const std::string& objFilename, float3 meshColor,
         uint32_t meshMaterialType, float meshRoughness, float3 meshConductorEta,
-        float3 meshConductorK, float meshTargetSize);
+        float3 meshConductorK, float meshTargetSize,
+        // meshIor: materialType==2 (dielectric) only, e.g. Glass Dragon
+        // (G13). flipXZ: loadObjMesh()'s own 180-degree-about-Y flip, for
+        // a mesh authored facing away from this app's own camera
+        // convention (G7 Spot Cow, G10 Horse) - section 119, docs/
+        // METAL_GPU_FEASIBILITY.md. Both trailing-defaulted so G1-G24's
+        // own existing calls are untouched.
+        float meshIor = 1.0f, bool flipXZ = false);
     void buildStanfordBunny();
     void buildStanfordArmadillo();
     void buildStanfordHappyBuddha();
@@ -1093,6 +1134,13 @@ struct MetalPocApp {
     void buildMaxPlanck();
     void buildOgre();
     void buildRockerArm();
+    // G7/G10/G13 (section 119) - the last 3 single-mesh gallery scenes
+    // buildMeshGalleryScene()'s now-extended signature (flipXZ/meshIor)
+    // can cover. G12 (Trophy Room, four meshes) stays deferred - a
+    // genuinely different, bespoke shape, not this pattern.
+    void buildSpotCow();
+    void buildHorse();
+    void buildGlassDragon();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2772,6 +2820,9 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G22") { buildMaxPlanck(); return true; }
     if (scene_id == "G23") { buildOgre(); return true; }
     if (scene_id == "G24") { buildRockerArm(); return true; }
+    if (scene_id == "G7") { buildSpotCow(); return true; }
+    if (scene_id == "G10") { buildHorse(); return true; }
+    if (scene_id == "G13") { buildGlassDragon(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -2939,7 +2990,7 @@ void MetalPocApp::buildCornellBoxA1() {
 // mesh needs none of it) - meshConductorEta/K are simply ignored then.
 void MetalPocApp::buildMeshGalleryScene(const std::string& objFilename, float3 meshColor,
         uint32_t meshMaterialType, float meshRoughness, float3 meshConductorEta,
-        float3 meshConductorK, float meshTargetSize) {
+        float3 meshConductorK, float meshTargetSize, float meshIor, bool flipXZ) {
     // Same "push well clear of the hardcoded POC room's own [-1,1] region"
     // convention loadPbrtScene()/buildCornellBoxA1() both already use (see
     // either one's own comment) - a real, previously-shipped bug found
@@ -2987,7 +3038,7 @@ void MetalPocApp::buildMeshGalleryScene(const std::string& objFilename, float3 m
     NSString* meshPath = [modelsDir stringByAppendingPathComponent:@(objFilename.c_str())];
     if (!loadObjMesh(meshPath.UTF8String, verts, normals, uvs, materials, meshColor,
                       /*center=*/float3{0.0f, 0.45f, 0.0f} + sceneOffset, meshTargetSize, meshMaterialType,
-                      meshRoughness, meshConductorEta, meshConductorK)) {
+                      meshRoughness, meshConductorEta, meshConductorK, meshIor, flipXZ)) {
         fprintf(stderr, "buildMeshGalleryScene: continuing without '%s' - check RT_MODELS_DIR / "
                         "models/%s.\n", objFilename.c_str(), objFilename.c_str());
     }
@@ -3208,6 +3259,34 @@ void MetalPocApp::buildRockerArm() {
     const float3 gunmetal{0.55f, 0.56f, 0.58f};
     buildMeshGalleryScene("rocker-arm.obj", gunmetal, 4u, 0.1f, float3{1, 1, 1},
         reflectanceToConductorK(gunmetal), 2.5f);
+}
+
+// G7: Spot the Cow (Keenan Crane), bright silver - flipXZ=true, matching
+// OptiX's own build_spot_cow_gpu() comment ("the raw mesh faces away
+// from the camera").
+void MetalPocApp::buildSpotCow() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("spot.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 1.3f, /*ior=*/1.0f, /*flipXZ=*/true);
+}
+
+// G10: Horse (classic geometry-processing test model), bright silver -
+// flipXZ=true, matching OptiX's own build_horse_gpu() comment.
+void MetalPocApp::buildHorse() {
+    const float3 silver{0.85f, 0.85f, 0.88f};
+    buildMeshGalleryScene("horse.obj", silver, 4u, 0.1f, float3{1, 1, 1},
+        reflectanceToConductorK(silver), 2.2f, /*ior=*/1.0f, /*flipXZ=*/true);
+}
+
+// G13: Glass Dragon - same mesh/scale as G5's metal dragon, clear glass
+// (materialType 2, ior 1.5) instead of a conductor - matches OptiX's own
+// build_glass_dragon_gpu(). meshColor/roughness/eta/k are all ignored for
+// materialType 2 (see loadObjMesh()'s own TriangleMaterial-construction
+// comment) - passed as harmless placeholders.
+void MetalPocApp::buildGlassDragon() {
+    buildMeshGalleryScene("xyzrgb_dragon.obj", float3{1, 1, 1}, /*materialType=*/2u,
+        /*roughness=*/0.0f, float3{1, 1, 1}, float3{0, 0, 0}, /*targetSize=*/2.5f,
+        /*ior=*/1.5f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

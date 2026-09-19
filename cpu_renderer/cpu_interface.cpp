@@ -950,6 +950,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"G1", "G2", "G3",        // Stanford Bunny/Armadillo/Happy Buddha (section 117)
 		"G4", "G5", "G6", "G8", "G9", "G11", "G14", "G15", "G17", "G18",
 		"G19", "G20", "G21", "G22", "G23", "G24",  // mesh gallery, batch 2 (section 118)
+		"G7", "G10", "G13",      // mesh gallery, batch 3 - category G now complete except G12 (section 119)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
