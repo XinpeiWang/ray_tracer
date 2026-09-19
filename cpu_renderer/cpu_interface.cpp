@@ -952,6 +952,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"G19", "G20", "G21", "G22", "G23", "G24",  // mesh gallery, batch 2 (section 118)
 		"G7", "G10", "G13",      // mesh gallery, batch 3 (section 119)
 		"G12",                   // Trophy Room - category G now fully complete, 23/23 (section 120)
+		"A3",                    // Checkered Spheres - first category-A scene beyond A1 (section 121)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
