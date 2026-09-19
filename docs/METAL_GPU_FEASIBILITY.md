@@ -6038,3 +6038,62 @@ with NO dialog in the normal (dylib present, loads fine) case, and
 does not crash when the dylib is deliberately hidden (fails quiet,
 same contract as before - just with a real reason attached now instead
 of a guess).
+
+## 113. The real cause of all three: RayTracerGUI and ray_tracer/scene_metadata.dylib were built for DIFFERENT architectures
+
+Section 112's own improved diagnostic did exactly its job: the user's
+NEXT report showed the real reason at last - `dlopen(...): tried:
+'.../scene_metadata.dylib' (mach-o file, but is an incompatible
+architecture (have 'arm64', need 'x86_64'))`. Not a Gatekeeper/
+quarantine issue at all (section 112's own best guess, reasonable
+given the evidence at the time, but wrong) - a hard, unconditional
+architecture mismatch between the Qt GUI and the CLI/dylib it tries
+to `dlopen()`.
+
+Root cause: this script's own PRE-EXISTING architecture-safety comment
+(predating this session) already anticipated an arch-mismatch failure
+class and "fixed" it by forcing CMake's own build to
+`-DCMAKE_OSX_ARCHITECTURES="$(uname -m)"` (the HOST Mac's native
+architecture) - reasoning that `cmake` itself might be the
+Rosetta-translated, wrong-architecture tool. True on SOME machines,
+but backwards on the one that actually built every `.dmg` this session
+sent: `cmake` is fine, but `qmake` - and this machine's entire Qt
+6.11.2 install at `/usr/local` - is `x86_64`-only (confirmed directly:
+`lipo -archs` on both `qmake` itself and `QtCore.framework/QtCore`),
+with no native arm64 Qt installed anywhere to point at instead. So
+`cmake`'s own forced-to-`uname -m` build produced `arm64` `ray_tracer`/
+`scene_metadata.dylib`, while `qmake`'s build (no equivalent
+architecture override at all) produced an `x86_64` `RayTracerGUI` -
+`dlopen()` correctly, unconditionally refuses to load a library whose
+architecture doesn't match the loading process's own, so the GUI's own
+scene list was ALWAYS going to be empty on this specific build
+machine, regardless of anything sections 110-112 fixed. **This
+explains why my own verification for sections 110/111 never caught
+it**: I checked the CLI's own `--diagnose` output and confirmed the
+GUI process didn't crash, but never actually inspected whether its own
+modal dialog appeared (no display access) - a silently-empty scene
+list produces no console output at all, unlike a crash.
+
+Fixed by querying `qmake`'s own actual architecture directly (`lipo
+-archs "$(command -v qmake)"` - correctly reports the FILE's real
+architecture regardless of whether the process running `lipo` itself
+is translated) and using THAT for `-DCMAKE_OSX_ARCHITECTURES` instead
+of blindly assuming the host's native architecture is always right -
+whichever tool is actually the mismatched one, on whichever future
+build machine, this now builds everything to match `qmake`'s own
+Qt install rather than guessing which side is "correct". Installing a
+native-architecture Qt (the more fundamentally "right" fix, avoiding
+Rosetta-translated overhead entirely) is a real, separate, slower
+undertaking deliberately left alone here - this fix keeps the package
+correct and functional REGARDLESS of which Qt happens to be installed
+on the machine building it.
+
+**Verified directly, not just "no crash"**: `lipo -archs` on all three
+of `RayTracerGUI`/`ray_tracer`/`scene_metadata.dylib` now report the
+identical architecture (`x86_64`, matching this build machine's own Qt
+install) - the exact condition the user's own error message named as
+the failure. `ray_tracer --diagnose` still correctly reports `GPU:
+Apple M2` / `Metal: available` even running translated (Metal itself
+is unaffected by the CPU process's own architecture - only the CPU-
+side code runs translated, not the GPU work). Full clean rebuild +
+ctest (4/4) pass under the new architecture.

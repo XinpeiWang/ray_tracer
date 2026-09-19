@@ -63,21 +63,39 @@ echo "========================================"
 echo "Ray Tracer - macOS build + package"
 echo "========================================"
 
+# The single most important line in this whole script, found the hard way
+# (section 113 in docs/METAL_GPU_FEASIBILITY.md): cpu_renderer/ray_tracer/
+# scene_metadata (built via CMake below) and RayTracerGUI (built via qmake
+# a few steps down) must come out the SAME architecture, or the GUI's own
+# dlopen() of scene_metadata.dylib fails outright with "incompatible
+# architecture" - a real failure a real user hit, invisible to every
+# check this script ran before (it never launched the actual GUI binary
+# and inspected its own dialog, only the CLI). An EARLIER version of this
+# script forced CMake to `$(uname -m)` (the HOST's own native
+# architecture) on the theory that only cmake itself could be the
+# Rosetta-translated, wrong-architecture one - true on SOME machines, but
+# backwards on this one: `qmake`/its whole Qt installation are the
+# x86_64-only (non-universal) side here, and there is no native arm64 Qt
+# install anywhere on this machine to point at instead (installing one is
+# a real, separate, slower undertaking - not something this script does
+# for you). Querying qmake's OWN binary architecture directly and using
+# THAT for both builds - whichever direction the mismatch actually runs -
+# is the only fix that works regardless of which build machine this runs
+# on. `lipo -archs` on a Rosetta-translated x86_64 tool still reports
+# "x86_64" correctly (lipo inspects the FILE's own architecture, not the
+# architecture of the process executing lipo itself).
+QT_TARGET_ARCH="$(lipo -archs "$(command -v qmake)" 2>/dev/null | awk '{print $1}')"
+[[ -n "$QT_TARGET_ARCH" ]] || { echo "ERROR: could not determine qmake's own architecture via 'lipo -archs'" >&2; exit 1; }
+if [[ "$QT_TARGET_ARCH" != "$(uname -m)" ]]; then
+	echo "NOTE: this Qt install is $QT_TARGET_ARCH, not this Mac's native $(uname -m) - building"
+	echo "      everything as $QT_TARGET_ARCH to match (runs translated/emulated, slower, but the"
+	echo "      only way to keep the GUI and CLI/dylib loadable together without installing a"
+	echo "      native-architecture Qt)."
+fi
+
 echo
 echo "[1/5] Building cpu_renderer + ray_tracer CLI + scene_metadata (CMake)..."
-# Explicit -DCMAKE_OSX_ARCHITECTURES=$(uname -m), not left to CMake's own
-# default: if the `cmake` binary on PATH is itself an Intel/Rosetta build
-# (common with an older Homebrew install under /usr/local on Apple
-# Silicon - Rosetta-translated processes report x86_64 from uname(), so
-# CMake's default OSX-architecture detection inherits that), it silently
-# targets x86_64 while qmake's own arm64-native Qt build the step below
-# produces an arm64 RayTracerGUI - the two then can't load each other at
-# all (dlopen refuses cross-architecture libraries outright; this is
-# exactly the "cannot load scene_metadata.dylib" error a real install hit).
-# `uname -m` here is the OUTER script's own shell, not cmake's - always
-# reports the real host architecture regardless of which arch cmake
-# itself was built for.
-cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" -DRT_BUILD_METAL=ON
+cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$QT_TARGET_ARCH" -DRT_BUILD_METAL=ON
 cmake --build "$BUILD_DIR" --config Release -j"$(sysctl -n hw.ncpu)"
 
 CLI_BIN="$BUILD_DIR/ray_tracer"
