@@ -6767,3 +6767,48 @@ same PR. **A real, reusable capability for future scenes**: materialType
 17 (Perlin marble) is now available for ANY future hand-authored scene
 that needs it (A7 Simple Light reuses `noise_texture` directly per its
 own CPU source - a likely candidate for its own next increment).
+
+## 125. Hand-authored scenes, increment 10: A7 Simple Light - the first scene to deliberately match CPU's own "no NEE" choice
+
+The fifth category-A (Basics) scene, and the fastest of this whole
+series so far in real implementation effort: reuses A5's own
+materialType 17 (Perlin marble, section 124) directly for its ground +
+main sphere with no new device-side code at all. Adds one warm emissive
+SPHERE light and one cool emissive quad light, matching CPU's own
+`build_simple_light()` exactly.
+
+**A real, deliberate fidelity choice, not a missing feature**: CPU's
+own registry row for A7 (`scene_registry_data.h`) uses `no_lights` -
+unlike every other Basics-category scene with a real light (A6, A4,
+A5), CPU itself does NOT NEE-sample either light here, relying purely
+on direct camera/BSDF-sampled hits. This Metal port matches that
+choice exactly rather than "improving" on it: both lights are added as
+plain emissive geometry (`emission` set, `lightId` left at -1, no
+`AreaLightData` entry), the SAME "emissive but not NEE-registered"
+mechanism sections 100/101 already established for non-quad shapes -
+here used for a genuinely different reason (matching CPU's own real
+choice for this exact scene) rather than a shape limitation. The warm
+light is a SPHERE, not a quad - this loader has no sphere-light NEE
+strategy at all regardless (OptiX's own `GpuLightKind::Sphere`
+importance sampling has no Metal equivalent), so it would have needed
+this same direct-hit-only treatment even if CPU DID NEE it; the cool
+quad light could have been NEE-registered like every earlier scene's
+own light quad, but deliberately wasn't, to match CPU's real behaviour
+for THIS scene exactly.
+
+A7's own pure BLACK background (`bg (0,0,0)`, no ambient sky at all -
+genuinely different from every earlier hand-authored scene's own flat
+sky colour) uses the same `havePbrtConstantEnvLight`/`pbrtEnvColor`
+mechanism sections 121/122/123/124 already established, just set to
+black.
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - matching composition (black
+background, warm sphere light top, cool quad light edge visible,
+marble sphere lit warm-on-one-side/cool-on-the-other, a similarly
+noisy/un-NEE'd ground floor on both). Full clean `RT_BUILD_METAL=ON`
+rebuild + ctest (4/4) + 51-scene `pbrt_scenes/` sweep (0 failures);
+A1/A3/A4/A5/A6/G1/G7/G12/G18 (earlier increments) re-verified
+unaffected. `A7` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR.

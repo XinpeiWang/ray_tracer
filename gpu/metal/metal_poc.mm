@@ -1184,6 +1184,14 @@ struct MetalPocApp {
     // build_perlin_spheres()/build_perlin_spheres_lights() exactly.
     // Section 124, docs/METAL_GPU_FEASIBILITY.md.
     void buildPerlinSpheres();
+    // A7: Simple Light - reuses A5's own materialType 17 (Perlin marble)
+    // for its ground+main sphere, plus a warm emissive SPHERE light and
+    // a cool emissive quad light - matching CPU's own build_simple_light()
+    // EXACTLY, including its real choice of `no_lights` (neither light
+    // is NEE-registered even on CPU) - see this method's own definition
+    // for why that's a deliberate fidelity choice, not a missing
+    // feature. Section 125, docs/METAL_GPU_FEASIBILITY.md.
+    void buildSimpleLight();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2871,6 +2879,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "A6") { buildColoredQuads(); return true; }
     if (scene_id == "A4") { buildEarth(); return true; }
     if (scene_id == "A5") { buildPerlinSpheres(); return true; }
+    if (scene_id == "A7") { buildSimpleLight(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3834,6 +3843,95 @@ void MetalPocApp::buildPerlinSpheres() {
     // (vfov 20, lookfrom (13,2,3), lookat (0,0,0)).
     const float3 lookfrom = float3{13.0f, 2.0f, 3.0f} + sceneOffset;
     const float3 lookat = float3{0.0f, 0.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 20.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// A7: Simple Light - matches CPU's own build_simple_light() exactly:
+// the SAME ground+main-sphere Perlin marble pair A5 already uses
+// (materialType 17, noise scale 4), a warm emissive SPHERE light, and
+// a cool emissive quad light. CPU's own registry row for this scene
+// uses `no_lights` (see scene_registry_data.h) - deliberately NEITHER
+// light is NEE-registered, even on CPU, so this is matched exactly
+// here too: both lights are added as plain emissive geometry
+// (`emission` set, `lightId` left at -1), relying purely on direct
+// hits/BSDF-sampled bounces landing on them, the SAME "emissive but not
+// NEE-registered" mechanism sections 100/101 already established for
+// non-quad emissive shapes - not a missing feature, a real, deliberate
+// match of CPU's own choice for this specific scene. bg (0,0,0) - a
+// genuinely BLACK background (no ambient sky at all, unlike every
+// earlier hand-authored scene's own flat sky colour) - still the same
+// havePbrtConstantEnvLight/pbrtEnvColor mechanism, just set to black.
+void MetalPocApp::buildSimpleLight() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground + main sphere - same materialType 17/noise-scale-4 pair
+    // A5's own buildPerlinSpheres() already established (see that
+    // function's own comment on why the ground is a flat quad, not a
+    // huge sphere - the exact same radius-1000-sphere clearance issue
+    // applies here too, CPU's own build_simple_light() uses an
+    // identical ground sphere).
+    {
+        const float3 groundColor{1.0f, 1.0f, 1.0f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-15.0f, 0.0f, -15.0f} + sceneOffset, float3{15.0f, 0.0f, -15.0f} + sceneOffset,
+                float3{15.0f, 0.0f, 15.0f} + sceneOffset, float3{-15.0f, 0.0f, 15.0f} + sceneOffset,
+                groundColor, /*materialType=*/17u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness=*/4.0f);
+    }
+    {
+        TriangleMaterial mat{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/17u,
+                              1.0f, PackedFloat3{0, 0, 0}, -1, /*roughness=*/4.0f};
+        const float3 c = float3{0.0f, 2.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 2.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Warm sphere light - emissive, NOT NEE-registered (lightId=-1),
+    // matching CPU's own `no_lights` choice for this scene exactly (see
+    // this function's own declaration comment).
+    {
+        const float3 warmColor{6.0f, 3.0f, 1.0f};
+        TriangleMaterial mat{PackedFloat3{warmColor.x, warmColor.y, warmColor.z},
+                             /*materialType=*/0u, 1.0f, PackedFloat3{warmColor.x, warmColor.y, warmColor.z},
+                             /*lightId=*/-1, 0.0f};
+        const float3 c = float3{0.0f, 7.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 2.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Cool quad light - same "emissive, not NEE-registered" choice.
+    {
+        const float3 Q{3.5f, 1.0f, -3.0f}, u{2.0f, 0.0f, 0.0f}, v{0.0f, 2.0f, 0.0f};
+        const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
+                     c = Q + u + v + sceneOffset, d = Q + v + sceneOffset;
+        const float3 coolColor{2.0f, 3.0f, 6.0f};
+        addQuad(verts, normals, uvs, materials, a, b, c, d, coolColor,
+                /*materialType=*/0u, /*emission=*/coolColor, /*lightId=*/-1);
+    }
+
+    // Real per-scene flat background - pure BLACK (0,0,0), matching
+    // CPU's own registry row for A7 exactly (no ambient sky at all).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.0f, 0.0f, 0.0f};
+
+    // Camera: CPU's own real registry row for A7, ported directly
+    // (vfov 20, lookfrom (26,3,6), lookat (0,2,0)).
+    const float3 lookfrom = float3{26.0f, 3.0f, 6.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 2.0f, 0.0f} + sceneOffset;
     const float3 up{0.0f, 1.0f, 0.0f};
     const float3 forward = simd::normalize(lookat - lookfrom);
     const float3 right = simd::normalize(simd::cross(forward, up));
