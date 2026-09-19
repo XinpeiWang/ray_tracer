@@ -6635,3 +6635,70 @@ Full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene
 increments) re-verified unaffected. `A6` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR.
+
+## 123. Hand-authored scenes, increment 8: A4 Earth - image-textured spheres via equirectangularUV(normal), and a real longitude-mirror bug found and fixed
+
+The third category-A (Basics) scene, and a real gap-closer for a
+different reason than A3's (section 121): materialType 3's own
+`texCoordFor()` needs a triangle's own per-vertex UV, so it (like
+materialType 6) can never run on a sphere - the SAME limitation, but
+`earthTexture` (unlike A3's checker) genuinely IS a UV-space image, not
+a world-space-position function, so there's no `checker3DColor()`-style
+"just use world position instead" escape available here. The fix reuses
+a DIFFERENT already-established precedent instead: materialType 9
+(procedurally roughness-mapped conductor, section ~55) already gets a
+sphere a UV "for free" via `equirectangularUV()` on the hit's own
+normal - the exact same technique the environment map/sky already uses
+for direction-based sampling. `buildEarth()` matches CPU's own
+`build_earth()`/`build_earth_lights()` exactly: a radius-2 globe sphere
+(materialType 3, reusing this same `equirectangularUV(normal)`
+technique), a small flat-grey "moon" accent sphere, and a rim-light
+quad behind the globe.
+
+**A real bug found and fixed, not assumed away**: a first version of
+this code called `equirectangularUV(normal)` directly (the same literal
+call materialType 9 already makes) - it compiled, ran, and produced a
+recognizable, correctly-shaped, correctly-oriented (poles right side
+up) EARTH TEXTURE on the sphere... showing the wrong hemisphere/
+longitude compared to a real `--cpu` render of the same scene_id (Asia/
+Australia facing the camera instead of the Americas CPU's own render
+shows) - invisible without that direct comparison, since an
+equirectangular earth texture looks equally "plausible" viewed from any
+longitude. Traced algebraically, not by guessing: this project's own
+CPU `get_sphere_uv()` (`src/TheRestOfYourLife/sphere.h`) computes
+`phi = atan2(-p.z, p.x) + pi`, while `equirectangularUV()` computes
+`atan2(dir.z, dir.x)` - using `atan2`'s own oddness in its first
+argument, CPU's `u` reduces exactly to
+`equirectangularUV(float3(p.x, p.y, -p.z)).x`, a longitude MIRROR of
+`equirectangularUV(p).x`, not merely a phase shift (latitude/`v`
+already matched exactly with no correction, confirmed at both poles
+algebraically before assuming it was fine). Fixed by negating the
+normal's own z component before the `equirectangularUV()` call, ONLY
+for materialType 3's own sphere case - `equirectangularUV()` itself is
+untouched, so the sky/environment-map miss path and materialType 9's
+own existing calls are both unaffected (verified, not just assumed: the
+51-scene sweep and every earlier hand-authored scene's own regression
+render are unchanged). **Re-verified algebraically at 4 independent
+cardinal-direction test points** (+x/-x/+z/-z, matching
+`get_sphere_uv()`'s own doc-comment table exactly: `<1,0,0>`->u=0.50,
+`<0,0,1>`->u=0.25, `<-1,0,0>`->u=0.00, `<0,0,-1>`->u=0.75) before
+trusting the fix, not by eye alone a second time - a rotated 3D globe's
+own silhouette is genuinely easy to misjudge visually, the same reason
+the ORIGINAL bug was invisible without a real CPU-side comparison in
+the first place.
+
+**Worth remembering for any future image-textured-sphere work**: before
+reusing `equirectangularUV()` (or porting any direction<->UV convention
+between two independently-written pieces of code) on a NEW primitive
+type, check the two conventions' own exact formulas algebraically
+first, or at minimum verify with a real cross-backend comparison
+immediately - "renders a plausible-looking result" is not evidence of a
+correct convention match for a wraparound/orientable mapping like this.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) +
+51-scene `pbrt_scenes/` sweep (0 failures); A1/A3/A6/G1/G7/G12/G18
+(earlier increments) re-verified unaffected, including materialType 9's
+own already-established `equirectangularUV()` call site (untouched by
+this fix, confirmed via the same regression renders). `A4` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR.
