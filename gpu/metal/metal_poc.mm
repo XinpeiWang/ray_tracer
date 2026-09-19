@@ -1141,6 +1141,14 @@ struct MetalPocApp {
     void buildSpotCow();
     void buildHorse();
     void buildGlassDragon();
+    // G12: Trophy Room - the last category-G scene. A bespoke builder, not
+    // buildMeshGalleryScene(), since that helper only places ONE mesh -
+    // this is four (bunny/teapot/Suzanne/Spot the Cow, matching CPU's
+    // build_trophy_room() and OptiX's build_trophy_room_gpu() exactly in
+    // mesh choice/material tones), the first hand-authored Metal scene to
+    // combine multiple external OBJ meshes in one composition. Section
+    // 120, docs/METAL_GPU_FEASIBILITY.md.
+    void buildTrophyRoom();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2823,6 +2831,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G7") { buildSpotCow(); return true; }
     if (scene_id == "G10") { buildHorse(); return true; }
     if (scene_id == "G13") { buildGlassDragon(); return true; }
+    if (scene_id == "G12") { buildTrophyRoom(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3287,6 +3296,141 @@ void MetalPocApp::buildGlassDragon() {
     buildMeshGalleryScene("xyzrgb_dragon.obj", float3{1, 1, 1}, /*materialType=*/2u,
         /*roughness=*/0.0f, float3{1, 1, 1}, float3{0, 0, 0}, /*targetSize=*/2.5f,
         /*ior=*/1.5f);
+}
+
+// G12: Trophy Room - the last category-G scene, four already-verified
+// meshes (bunny/teapot/Suzanne/Spot the Cow) lined up on one shared shelf
+// in bronze/chrome/gold/gunmetal, matching CPU's build_trophy_room()/
+// OptiX's own build_trophy_room_gpu() in mesh choice and material tones -
+// NOT their exact numeric scale/offset, which are tuned for OptiX's own
+// raw-multiply-then-translate placement convention. This loader's
+// loadObjMesh() instead auto-fits each mesh to a caller-chosen targetSize
+// around a caller-chosen world-space centre (see buildMeshGalleryScene()'s
+// own declaration comment) - a different enough convention that porting
+// OptiX's literal numbers would not reproduce the same layout. The first
+// hand-authored Metal scene to place multiple external OBJ meshes in one
+// composition - genuinely a different shape from buildMeshGalleryScene()
+// (single mesh only), so this is a bespoke builder, not a call to it.
+// Section 120, docs/METAL_GPU_FEASIBILITY.md.
+void MetalPocApp::buildTrophyRoom() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground: one large flat quad wide enough for all four meshes (same
+    // "flat quad, not a checker sphere" simplification as
+    // buildMeshGalleryScene() - see its own declaration comment for why).
+    const float3 groundColor{0.5f, 0.5f, 0.5f};
+    addQuad(verts, normals, uvs, materials,
+            float3{-5.0f, 0.0f, -2.5f} + sceneOffset, float3{5.0f, 0.0f, -2.5f} + sceneOffset,
+            float3{5.0f, 0.0f, 2.5f} + sceneOffset, float3{-5.0f, 0.0f, 2.5f} + sceneOffset, groundColor);
+
+    NSString* modelsDir = nil;
+    {
+        NSString* exeDir = executableDir();
+        NSString* candidate = [exeDir stringByAppendingPathComponent:@"models"];
+        if (exeDir && [[NSFileManager defaultManager] fileExistsAtPath:
+                [candidate stringByAppendingPathComponent:@"stanford-bunny.obj"]]) {
+            modelsDir = candidate;
+        }
+    }
+    if (!modelsDir) {
+#ifdef RT_MODELS_DIR
+        modelsDir = @(RT_MODELS_DIR);
+#else
+        modelsDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"../../models"];
+#endif
+    }
+
+    // Same bronze/chrome/gold/gunmetal tones as CPU's/OptiX's own trophy
+    // room, spaced 2.4 units apart along the shelf's own x-axis, each
+    // auto-fit to a size that keeps it clear of its neighbours.
+    const float3 bronze{0.71f, 0.43f, 0.20f};
+    const float3 chrome{0.85f, 0.85f, 0.88f};
+    const float3 gold{0.83f, 0.69f, 0.22f};
+    const float3 gunmetal{0.55f, 0.56f, 0.58f};
+    const float3 meshCenterY{0.0f, 0.45f, 0.0f};
+
+    NSString* bunnyPath = [modelsDir stringByAppendingPathComponent:@"stanford-bunny.obj"];
+    if (!loadObjMesh(bunnyPath.UTF8String, verts, normals, uvs, materials, bronze,
+                      meshCenterY + float3{-3.6f, 0.0f, 0.0f} + sceneOffset, /*targetSize=*/1.1f,
+                      /*materialType=*/4u, /*roughness=*/0.15f, float3{1, 1, 1},
+                      reflectanceToConductorK(bronze))) {
+        fprintf(stderr, "buildTrophyRoom: continuing without stanford-bunny.obj.\n");
+    }
+
+    NSString* teapotPath = [modelsDir stringByAppendingPathComponent:@"teapot.obj"];
+    if (!loadObjMesh(teapotPath.UTF8String, verts, normals, uvs, materials, chrome,
+                      meshCenterY + float3{-1.2f, 0.0f, 0.0f} + sceneOffset, /*targetSize=*/1.4f,
+                      /*materialType=*/4u, /*roughness=*/0.10f, float3{1, 1, 1},
+                      reflectanceToConductorK(chrome))) {
+        fprintf(stderr, "buildTrophyRoom: continuing without teapot.obj.\n");
+    }
+
+    NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
+    if (!loadObjMesh(suzannePath.UTF8String, verts, normals, uvs, materials, gold,
+                      meshCenterY + float3{1.2f, 0.0f, 0.0f} + sceneOffset, /*targetSize=*/1.1f,
+                      /*materialType=*/4u, /*roughness=*/0.05f, float3{1, 1, 1},
+                      reflectanceToConductorK(gold))) {
+        fprintf(stderr, "buildTrophyRoom: continuing without suzanne.obj.\n");
+    }
+
+    // Spot the Cow: flipXZ=true, the same "raw mesh faces away from this
+    // app's own camera" fix G7's own solo scene needed (section 119).
+    NSString* spotPath = [modelsDir stringByAppendingPathComponent:@"spot.obj"];
+    if (!loadObjMesh(spotPath.UTF8String, verts, normals, uvs, materials, gunmetal,
+                      meshCenterY + float3{3.6f, 0.0f, 0.0f} + sceneOffset, /*targetSize=*/1.3f,
+                      /*materialType=*/4u, /*roughness=*/0.08f, float3{1, 1, 1},
+                      reflectanceToConductorK(gunmetal), /*ior=*/1.0f, /*flipXZ=*/true)) {
+        fprintf(stderr, "buildTrophyRoom: continuing without spot.obj.\n");
+    }
+
+    // A wide quad area light spanning the whole shelf (this loader's only
+    // NEE-sampled light shape, not OptiX's own sphere light - see
+    // buildMeshGalleryScene()'s own declaration comment for why).
+    {
+        const float3 a = float3{-4.0f, 3.0f, -1.0f} + sceneOffset, b = float3{4.0f, 3.0f, -1.0f} + sceneOffset,
+                     c = float3{4.0f, 3.0f, 1.0f} + sceneOffset, d = float3{-4.0f, 3.0f, 1.0f} + sceneOffset;
+        const float3 lightColor{6.0f, 6.0f, 6.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, lightColor,
+                /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/1.0f, /*useTexture=*/0.0f});
+    }
+
+    // Camera: wide enough to frame all four meshes across the shelf's own
+    // ~7.2-unit spread, the same simple 3/4-elevated-view convention as
+    // buildMeshGalleryScene()'s own fallback camera - not a literal port of
+    // the CPU registry's own G12 camera row (vfov 34, lookfrom (0,2.3,14)),
+    // which is tuned for OptiX's own raw-scale placement, not this
+    // targetSize-based one (see this function's own declaration comment).
+    const float3 lookfrom = float3{0.0f, 1.8f, 8.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.6f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 55.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
