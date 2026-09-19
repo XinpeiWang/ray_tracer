@@ -1159,6 +1159,13 @@ struct MetalPocApp {
     // 3D world-space checker) - see checker3DColor()'s own declaration
     // comment, metal_poc.metal. Section 121, docs/METAL_GPU_FEASIBILITY.md.
     void buildCheckeredSpheres();
+    // A6: Colored Quads - 5 flat-colour wall quads plus one emissive lamp
+    // quad, matching CPU's build_quads()/build_quads_lights() exactly.
+    // Pure addQuad() calls (no new material/geometry machinery at all -
+    // every quad here is materialType 0, the same shape buildCornellBoxA1()
+    // already uses for its own walls). Section 122, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildColoredQuads();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2843,6 +2850,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G13") { buildGlassDragon(); return true; }
     if (scene_id == "G12") { buildTrophyRoom(); return true; }
     if (scene_id == "A3") { buildCheckeredSpheres(); return true; }
+    if (scene_id == "A6") { buildColoredQuads(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3559,6 +3567,87 @@ void MetalPocApp::buildCheckeredSpheres() {
     pbrtCameraRight = right;
     pbrtCameraUp = trueUp;
     pbrtTanHalfFov = tanf(0.5f * 20.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// A6: Colored Quads - matches CPU's build_quads()/build_quads_lights()
+// (src/TheRestOfYourLife/scenes_book.h) exactly: 5 flat-colour wall
+// quads (Q, u, v parallelograms, each converted to addQuad()'s own
+// a/b/c/d corners as a=Q, b=Q+u, c=Q+u+v, d=Q+v - the SAME winding
+// CPU's own quad class uses internally, normalize(cross(u,v)), so this
+// is a direct, not reconstructed, port) plus one emissive lamp quad,
+// registered as a real NEE-sampled AreaLight the same way
+// buildCornellBoxA1()'s own light quad already is. Pure addQuad() calls -
+// no new material/geometry machinery at all, every quad here is
+// materialType 0 (plain Lambertian).
+void MetalPocApp::buildColoredQuads() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    auto pushWall = [&](float3 Q, float3 u, float3 v, float3 color) {
+        const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
+                     c = Q + u + v + sceneOffset, d = Q + v + sceneOffset;
+        addQuad(verts, normals, uvs, materials, a, b, c, d, color);
+    };
+    pushWall(float3{-3, -2, 5}, float3{0, 0, -4}, float3{0, 4, 0}, float3{1.0f, 0.2f, 0.2f});  // left_red
+    pushWall(float3{-2, -2, 0}, float3{4, 0, 0}, float3{0, 4, 0}, float3{0.2f, 1.0f, 0.2f});   // back_green
+    pushWall(float3{3, -2, 1}, float3{0, 0, 4}, float3{0, 4, 0}, float3{0.2f, 0.2f, 1.0f});    // right_blue
+    pushWall(float3{-2, 3, 1}, float3{4, 0, 0}, float3{0, 0, 4}, float3{1.0f, 0.5f, 0.0f});    // upper_orange
+    pushWall(float3{-2, -3, 5}, float3{4, 0, 0}, float3{0, 0, -4}, float3{0.2f, 0.8f, 0.8f});  // lower_teal
+
+    // The lamp quad - a real NEE-sampled AreaLight, same pattern
+    // buildCornellBoxA1()'s own ceiling light and buildMeshGalleryScene()'s
+    // own quad light already use.
+    {
+        const float3 Q{-1.0f, 0.5f, 3.0f}, u{2.0f, 0.0f, 0.0f}, v{0.0f, 1.0f, 0.0f};
+        const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
+                     c = Q + u + v + sceneOffset, d = Q + v + sceneOffset;
+        const float3 lampColor{7.0f, 7.0f, 6.5f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, lampColor,
+                /*materialType=*/0u, /*emission=*/lampColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{lampColor.x, lampColor.y, lampColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // Real per-scene flat background colour (sky blue, (0.70,0.80,1.00)) -
+    // same reuse of the pbrt-constant-infinite-light mechanism A3's own
+    // buildCheckeredSpheres() already established (see that function's
+    // own comment) rather than a new uniform. Close to, but not exactly,
+    // metal_poc.metal's own hardcoded skyBottom/skyTop gradient default -
+    // set explicitly anyway for a real, not coincidental, match.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.70f, 0.80f, 1.00f};
+
+    // Camera: CPU's own real registry row for A6, ported directly
+    // (vfov 80, lookfrom (0,0,9), lookat (0,0,0)) - same direct-port
+    // convention A3's own camera already established (no mesh/targetSize
+    // involved here either).
+    const float3 lookfrom = float3{0.0f, 0.0f, 9.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 80.0f * (float)M_PI / 180.0f);
     havePbrtCamera = true;
     pbrtCameraLookAtWorld = lookat;
     pbrtCameraUpRaw = up;

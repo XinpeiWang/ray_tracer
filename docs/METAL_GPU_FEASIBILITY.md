@@ -6601,3 +6601,37 @@ refractive glass sphere showing distorted checker reflections; the
 diffuse red sphere's own already-established code path). `A3` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR.
+
+## 122. Hand-authored scenes, increment 7: A6 Colored Quads
+
+The second category-A (Basics) scene beyond A1's own Cornell box, and
+the easiest one so far: matches CPU's `build_quads()`/
+`build_quads_lights()` (`src/TheRestOfYourLife/scenes_book.h`) exactly
+with pure `addQuad()` calls - 5 flat-colour wall quads (materialType 0,
+no new material/geometry machinery of any kind) plus one emissive lamp
+quad, registered as a real NEE-sampled `AreaLight` the same way
+`buildCornellBoxA1()`'s own ceiling light already is. Each of CPU's own
+`quad(Q, u, v, mat)` constructions converts to `addQuad()`'s own
+a/b/c/d corners as `a=Q, b=Q+u, c=Q+u+v, d=Q+v` - a direct port, not a
+reconstruction: `addQuad()`'s own face normal
+(`normalize(cross(b-a, c-a))`) reduces algebraically to
+`normalize(cross(u, u+v)) = normalize(cross(u,v))`, the exact same
+formula this project's own CPU `quad` class already uses internally, so
+winding/orientation match CPU by construction, not by trial and error.
+
+A6's own custom flat sky-blue background (bg (0.70,0.80,1.00)) is
+honoured the same way A3's own warm-sunset background was (section
+121) - reusing `havePbrtConstantEnvLight`/`pbrtEnvColor` rather than a
+new uniform.
+
+**Verified**: a real `--gpu` render directly compared side-by-side
+against a real `--cpu` render of the same scene_id - both show the
+identical composition (red/green/blue/orange/teal walls in the same
+positions, the white lamp quad in the same place) with no aliasing-
+sensitivity caveat this time (unlike A3, section 121 - this scene's own
+flat-colour quads have no fine procedural pattern to alias against).
+Full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene
+`pbrt_scenes/` sweep (0 failures); A1/A3/G1/G7/G12/G18 (earlier
+increments) re-verified unaffected. `A6` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR.
