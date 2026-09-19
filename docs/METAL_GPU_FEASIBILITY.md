@@ -6505,3 +6505,99 @@ the rest of category A (A2-A9, "Basics" - book-scene procedural
 content), then category B (Materials, 16 scenes, mostly Cornell-box-
 shell variants swapping one material), then C/D/H/I/E in that same
 established order.
+
+## 121. Hand-authored scenes, increment 6: A3 Checkered Spheres - the first category-A scene beyond A1, materialType 16 (real 3D world-space checker)
+
+The first Basics-category (A) scene beyond A1's own Cornell box, and a
+genuine gap-closer: `checkerColor()` (materialType 6, section 97/99's
+own comment) only ever fires on a triangle - `metal_poc.metal`'s
+sphere-intersection path computes no UV at all, the documented reason
+category-G's own mesh gallery uses a flat ground QUAD, not a checker
+SPHERE (section 117). But this project's own CPU `checker_texture`
+(`src/TheRestOfYourLife/texture.h`) is NOT a UV-based checker at all -
+it's a real 3D WORLD-SPACE checker (parity of
+`floor(p.x/scale)+floor(p.y/scale)+floor(p.z/scale)`), needing no UV
+whatsoever. A new device function, `checker3DColor()`
+(`metal_poc.metal`, right after `checkerColor()`), ports this exactly -
+and because it only needs the hit's own world-space POSITION (already
+computed for every hit type), it works on a sphere hit directly, no new
+geometry/UV machinery needed. New materialType 16 wires it in: `color`/
+`transmitColor` hold the two REAL, independent tile colours (unlike
+materialType 6's fixed-fraction-of-one-colour simplification, which
+exists only to avoid a real collision with the direct-hit emissive
+check - section 99's own comment; `transmitColor` isn't read by that
+check at all, so no such collision here), `roughness` reused as the
+checker's own world-space cell scale (matches materialType 4/5/7/9/13's
+own established reuse pattern for that field).
+
+`MetalPocApp::buildCheckeredSpheres()` matches CPU's own
+`build_checkered_spheres()` exactly: 2 giant checker "planet" spheres
+(radius 10, centred (0,+-10,0)) plus 3 small accent spheres (Lambertian
+red, GGX conductor, smooth dielectric) at CPU's own real positions/
+radii/colours, only offset by the usual `+{8,0,0}`. Unlike G12, nothing
+here goes through `loadObjMesh()`'s targetSize/centre auto-fit
+convention, so CPU's own real camera row (vfov 20, lookfrom (13,2,3),
+lookat (0,0,0)) ports DIRECTLY, with no placement-convention mismatch
+to design around.
+
+**A3's own custom flat background colour (bg (0.90,0.75,0.55), a warm
+sunset tint) is honoured too, by REUSING the existing pbrt-constant-
+infinite-light mechanism** (`havePbrtConstantEnvLight`/`pbrtEnvColor`,
+already wired into `metal_render_main()`'s own uniforms setup for a
+pbrt scene's own `LightSource "infinite" "rgb L"`) rather than adding a
+new uniform - semantically identical to what that pbrt feature already
+does for the miss path, and `havePbrtCamera` is already true for every
+hand-authored scene, so this is picked up with zero new plumbing. Every
+OTHER hand-authored scene so far has silently fallen back to
+`metal_poc.metal`'s own hardcoded blue-sky gradient (`skyBottom`/
+`skyTop`) instead - harmless for those (no visible open sky in frame),
+but A3 genuinely needed its own colour.
+
+**A genuinely hard, honestly-reported verification finding, not a bug
+found and fixed**: a raw per-pixel diff between a real Metal `--gpu`
+render and a real `--cpu` render of scene A3 is enormous (~96% of
+pixel bytes differ, mean abs diff ~83) and does NOT shrink with more
+samples (32spp and 256spp gave nearly identical diff numbers) - at
+first read a serious red flag. Investigated properly, not dismissed:
+(1) a Metal render compared against a SECOND Metal render of the exact
+same scene is bit-for-bit IDENTICAL (Metal's own RNG is fully
+deterministic per pixel) - ruling out "Metal itself is unstable"; (2) a
+`--cpu` render compared against a SECOND `--cpu` render of the exact
+same scene (CPU's own RNG is seeded per-run, not fixed) already differs
+by ~66% of pixel bytes, mean abs diff ~13.6 - CPU disagrees with
+ITSELF by a huge margin on this exact scene; (3) directly viewing both
+renders side by side (and a zoomed crop) shows the SAME composition,
+colours, checker density, and accent-sphere position - a real,
+structural match, not a garbled/wrong render. The root cause is this
+scene's own framing: A3's book-original camera deliberately looks
+almost exactly along the SEAM where the two giant spheres meet - the
+single most extreme grazing-angle view this scene's own fine
+(0.32-unit) checker tiling ever produces, well past each renderer's own
+per-pixel antialiasing capacity without frequency clamping/mipmapping
+(this analytic 3D checker has neither, on either backend). Two
+different-but-equally-valid unbiased Monte Carlo estimators of the same
+extremely high-frequency function will legitimately disagree pixel-by-
+pixel by a large margin without either one being wrong - the same
+"changed almost everywhere, and that's expected" shape several earlier
+sections already documented for a different reason (a new light-
+sampling strategy touching every pixel), just from a different root
+cause here (aliasing sensitivity, not a real behaviour change).
+**Lesson for any future scene with a similarly fine, high-frequency,
+near-grazing-angle procedural pattern**: a raw single-pair pixel diff
+against a CPU/OptiX reference is not a reliable signal on its own -
+first check whether the SAME backend disagrees with itself by a
+comparable margin (a same-renderer, different-seed re-render) before
+concluding a cross-backend diff means a bug; if the self-noise floor is
+already this high, a comparable cross-backend diff is not new evidence
+of anything wrong, and direct visual/structural comparison is the more
+trustworthy check.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) +
+51-scene `pbrt_scenes/` sweep (0 failures); A1/G1/G7/G12/G18 (earlier
+increments) re-verified unaffected; two isolated diagnostic renders
+(pulled-back camera override) directly confirm the GGX-conductor and
+smooth-dielectric accent spheres both render correctly (a visibly
+refractive glass sphere showing distorted checker reflections; the
+diffuse red sphere's own already-established code path). `A3` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR.

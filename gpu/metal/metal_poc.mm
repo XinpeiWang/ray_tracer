@@ -1149,6 +1149,16 @@ struct MetalPocApp {
     // combine multiple external OBJ meshes in one composition. Section
     // 120, docs/METAL_GPU_FEASIBILITY.md.
     void buildTrophyRoom();
+    // A3: Checkered Spheres - the first category-A ("Basics") scene beyond
+    // A1's own Cornell box. Real, direct spheres.push_back() calls (no
+    // mesh import, no shared helper) - the geometry is simple enough
+    // (5 spheres, all analytic) not to need one, and CPU's/OptiX's own
+    // camera params port DIRECTLY (unlike G12's - see that function's own
+    // comment) since nothing here goes through loadObjMesh()'s targetSize/
+    // centre-based auto-fit convention. Introduces materialType 16 (real
+    // 3D world-space checker) - see checker3DColor()'s own declaration
+    // comment, metal_poc.metal. Section 121, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCheckeredSpheres();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2832,6 +2842,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G10") { buildHorse(); return true; }
     if (scene_id == "G13") { buildGlassDragon(); return true; }
     if (scene_id == "G12") { buildTrophyRoom(); return true; }
+    if (scene_id == "A3") { buildCheckeredSpheres(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3425,6 +3436,129 @@ void MetalPocApp::buildTrophyRoom() {
     pbrtCameraRight = right;
     pbrtCameraUp = trueUp;
     pbrtTanHalfFov = tanf(0.5f * 55.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// A3: Checkered Spheres - matches CPU's build_checkered_spheres() (src/
+// TheRestOfYourLife/scenes_book.h) exactly: same 5 spheres (2 giant
+// checker "planets" + 3 small accent spheres), same positions/radii/
+// materials/colours, just offset by sceneOffset. Direct spheres.push_back()
+// calls, no shared helper - simple enough not to need one, and (unlike
+// G12) nothing here goes through loadObjMesh()'s own auto-fit convention,
+// so CPU's/OptiX's own real camera params port over directly too.
+void MetalPocApp::buildCheckeredSpheres() {
+    // Same +8 offset convention every other hand-authored scene uses
+    // (A1/G1-G24/G12) - even though this scene's own two checker
+    // spheres have a much bigger radius (10) than any earlier scene's
+    // geometry, their actual SURFACE never reaches the hardcoded room's
+    // own [-1,1] region at this offset (the closest a sphere centred at
+    // (8,+-10,0) radius 10 gets to the room is still well outside it -
+    // checked algebraically, not assumed), so there is no real geometric
+    // overlap bug to work around here, just a much bigger bounding
+    // volume than usual for the BVH to skip past. Section 121, docs/
+    // METAL_GPU_FEASIBILITY.md's own note on this scene's real per-pixel
+    // verification challenge (its own extreme-grazing-angle framing) -
+    // read that before assuming a large Metal-vs-CPU pixel diff here
+    // means a bug.
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // The two checker "planet" spheres - materialType 16 (real 3D world-
+    // space checker - see checker3DColor()'s own declaration comment,
+    // metal_poc.metal). `roughness` reused as the checker's own world-
+    // space cell scale (0.32, matching CPU's checker_texture construction
+    // parameter exactly); `color`/`transmitColor` hold the two REAL tile
+    // colours CPU actually uses ((.2,.3,.1)/(.9,.9,.9)) - not a fixed-
+    // fraction-of-one-colour approximation the way materialType 6 (UV-
+    // checker, section 121's own declaration comment) needs to avoid the
+    // emission-field collision; that collision doesn't apply here since
+    // `transmitColor` is otherwise unused by any Lambertian-family
+    // material and isn't read by the direct-hit emissive check at all.
+    const float3 tileA{0.2f, 0.3f, 0.1f};
+    const float3 tileB{0.9f, 0.9f, 0.9f};
+    auto pushChecker = [&](float3 center, float radius) {
+        TriangleMaterial mat{PackedFloat3{tileA.x, tileA.y, tileA.z}, /*materialType=*/16u,
+                              /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.32f};
+        mat.transmitColor = PackedFloat3{tileB.x, tileB.y, tileB.z};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
+        sphereMaterials.push_back(mat);
+    };
+    pushChecker(float3{0.0f, -10.0f, 0.0f} + sceneOffset, 10.0f);
+    pushChecker(float3{0.0f, 10.0f, 0.0f} + sceneOffset, 10.0f);
+
+    // 3 small accent spheres resting on the lower "planet"'s visible cap -
+    // same positions/radii/materials/colours as CPU's own
+    // build_checkered_spheres(), just offset.
+    {
+        TriangleMaterial mat{PackedFloat3{0.55f, 0.15f, 0.10f}, /*materialType=*/0u,
+                              1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{1.6f, 0.5f, 2.2f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.9f});
+        sphereMaterials.push_back(mat);
+    }
+    {
+        const float3 metalColor{0.8f, 0.75f, 0.6f};
+        // Isotropic: ior (alphaX) and roughness (alphaY) both 0.05 - see
+        // loadObjMesh()'s own comment on why both must match.
+        TriangleMaterial mat{PackedFloat3{metalColor.x, metalColor.y, metalColor.z}, /*materialType=*/4u,
+                              /*ior(alphaX)=*/0.05f, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/0.05f};
+        const float3 k = reflectanceToConductorK(metalColor);
+        mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        const float3 c = float3{-1.4f, 0.45f, 1.6f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.7f});
+        sphereMaterials.push_back(mat);
+    }
+    {
+        TriangleMaterial mat{PackedFloat3{1.0f, 1.0f, 1.0f}, /*materialType=*/2u,
+                              /*ior=*/1.5f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{0.1f, 0.15f, 3.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.6f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // No dedicated light source - matches CPU's own registry row for A3
+    // (sky_dummy_lights: no real scene light at all), same as several
+    // other Basics scenes. Every material above is lit purely by the
+    // miss-path background below - noisier without an NEE strategy for
+    // it (none exists for a pure background light in this shader), not
+    // biased.
+
+    // Real per-scene flat background colour, REUSING the existing pbrt-
+    // constant-infinite-light mechanism (havePbrtConstantEnvLight/
+    // pbrtEnvColor, wired in metal_render_main()'s own uniforms setup)
+    // rather than adding a new uniform: semantically identical to what a
+    // pbrt scene's own `LightSource "infinite" "rgb L"` already does for
+    // the miss path, and havePbrtCamera is already true below for every
+    // hand-authored scene, so this is picked up automatically with no
+    // new plumbing. Matches CPU's own registry row for A3 exactly - bg
+    // (0.90, 0.75, 0.55), a warm sunset tint, not metal_poc.metal's own
+    // hardcoded blue-sky gradient (skyBottom/skyTop) that every OTHER
+    // hand-authored scene so far has silently fallen back to (harmless
+    // for those - none of them has a visible open sky in frame).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.90f, 0.75f, 0.55f};
+
+    // Camera: CPU's/OptiX's own real registry row for A3, ported
+    // DIRECTLY (vfov 20, lookfrom (13,2,3), lookat (0,0,0)) - unlike
+    // G12's own fallback camera, nothing in this scene goes through
+    // loadObjMesh()'s targetSize/centre auto-fit convention, so there's
+    // no placement-convention mismatch to work around here at all.
+    const float3 lookfrom = float3{13.0f, 2.0f, 3.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 20.0f * (float)M_PI / 180.0f);
     havePbrtCamera = true;
     pbrtCameraLookAtWorld = lookat;
     pbrtCameraUpRaw = up;

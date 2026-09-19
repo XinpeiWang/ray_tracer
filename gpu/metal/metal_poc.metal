@@ -1217,6 +1217,26 @@ inline float3 checkerColor(float2 uv, float scale, float3 colorA, float3 colorB)
     return (abs(parity) < 0.5) ? colorA : colorB;
 }
 
+// materialType 16's own albedo function - the REAL 3D world-space
+// checkerboard this project's own CPU renderer's checker_texture (src/
+// TheRestOfYourLife/texture.h) actually implements: parity of
+// floor(p.x/scale)+floor(p.y/scale)+floor(p.z/scale), keyed purely on the
+// hit's own world-space POSITION, not a UV coordinate at all - unlike
+// checkerColor() above (materialType 6), which needs a triangle's own
+// interpolated UV and so only ever fires on a triangle (see that
+// function's own comment). Needing no UV is exactly why this one CAN run
+// on a sphere hit (checkerColor() above cannot - metal_poc.metal's
+// sphere-intersection path computes no UV at all, the documented reason
+// category-G's own mesh gallery ground uses a flat quad instead of a
+// checker sphere, section 117) - this closes that gap for scenes that
+// only ever needed the REAL 3D book-checker in the first place, section
+// 121, docs/METAL_GPU_FEASIBILITY.md.
+inline float3 checker3DColor(float3 p, float scale, float3 colorA, float3 colorB) {
+    float3 cell = floor(p / scale);
+    float parity = fmod(abs(cell.x) + abs(cell.y) + abs(cell.z), 2.0);
+    return (parity < 0.5) ? colorA : colorB;
+}
+
 // The REAL (unpolarized, real-valued-IOR) Fresnel dielectric
 // reflectance - ported directly from this project's own CPU renderer
 // (src/shared/fresnel.h's own FrDielectric(), mirroring pbrt-v4's
@@ -4051,6 +4071,21 @@ kernel void primaryRayKernel(
                 // near-miss caught before it shipped, not a hypothetical.
                 float2 uv = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 albedo = checkerColor(uv, 8.0, float3(mat.color), float3(mat.color) * 0.15);
+            } else if (mat.materialType == 16u) {
+                // Real 3D world-space checker (see checker3DColor()'s own
+                // declaration comment) - `color`/`transmitColor` hold the
+                // two REAL, independent tile colours (unlike materialType
+                // 6's own fixed-fraction-of-one-colour simplification,
+                // this one has no UV-collision reason to avoid a second
+                // stored colour - `transmitColor` is otherwise unused by
+                // any Lambertian-family material, materialType 12's own
+                // diffuse-transmission tint is a different context
+                // entirely). `roughness` reused as the checker's own
+                // world-space cell size (`scale` in checker3DColor()'s
+                // own signature - matches this project's own CPU
+                // checker_texture's `inv_scale` construction parameter,
+                // section 121).
+                albedo = checker3DColor(hitPoint, mat.roughness, float3(mat.color), float3(mat.transmitColor));
             } else {
                 albedo = float3(mat.color);
             }
