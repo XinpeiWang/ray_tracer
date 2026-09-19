@@ -5878,3 +5878,81 @@ every pair - 0 of 51 scenes differ by even a single pixel byte,
 confirming zero behavioural change. Full clean rebuild (metal_poc AND
 the real `ray_tracer` target) + ctest (4/4), clean compile with no
 new warnings.
+
+## 110. The macOS release package never actually shipped Metal GPU support - found by testing a real install, not the code
+
+Prompted by the user actually running a locally-built `.dmg` (built by
+a prior, separate session, named "gpu-ui-preview") and pasting its own
+`--diagnose` output: `GPU: not detected / not usable`, with the
+OptiX (not Metal) branch of the diagnostics report printing - on a
+real Apple Silicon Mac that every dev build in this whole session had
+already rendered on successfully. That one line was the tell: the
+diagnostics code's `#ifdef RT_HAVE_METAL` branch never ran at all, so
+`RT_HAVE_METAL` was never defined for this build.
+
+**Bug 1 - `scripts/build_and_deploy_macos.sh` never passed
+`-DRT_BUILD_METAL=ON`.** `RT_BUILD_METAL` defaults to `OFF`
+(`CMakeLists.txt`'s own `option(...)`) - an explicit opt-in flag every
+dev build in this whole session's own verification loop always passed
+by hand, but the ONE script whose entire job is producing the
+distributable macOS package never did. Its own header comment even
+said "there is no GPU renderer to build here at all" - true when
+written, stale ever since Metal support was fully integrated into
+`ray_tracer` itself (PRs #83/84), and exactly the stale claim that
+would lead someone building a release straight from this script's own
+documented instructions to never notice Metal was missing. Every
+macOS release ever built via this official script was silently
+CPU-only, regardless of the GUI's own "Renderer: GPU" option (grayed
+out correctly, since `m_metalGpuAvailable` probes the SAME broken
+diagnostics text). Fixed: added the flag, rewrote the stale comment.
+
+**Bug 2 - even with Metal correctly enabled, a real GPU render would
+still fail on any machine other than the one that built it.**
+`metal_poc.mm` compiles its own shader from SOURCE at runtime (no
+offline `.metallib`); its only fallback beyond `RT_METAL_SHADER_DIR`
+is that same macro - a CMake-baked ABSOLUTE path into the BUILD
+MACHINE's own source tree (`${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal`).
+`metal_get_diagnostics()` never touches this path at all (it only
+checks device availability), so a distributed `.dmg`'s bundled
+`ray_tracer` would report `Metal: available` correctly yet fail every
+single actual render the moment it tried to read its own shader
+source - a total, silent failure invisible to diagnostics, and
+exactly the trap the "gpu-ui-preview" build fell into. The SAME
+compile-time-absolute-path problem also affects `RT_MODELS_DIR`
+(`models/suzanne.obj`, `models/spot.obj`, `images/earthmap.jpg` - the
+hardcoded room's own small, always-loaded demo assets), just with
+graceful fallbacks (a missing Suzanne/Spot/earth-texture degrades
+silently rather than failing the whole render) rather than a hard
+failure.
+
+Fixed with a new `executableDir()` helper (`_NSGetExecutablePath()`,
+not `NSBundle` - resolves correctly for a plain, non-app-bundle CLI
+binary too, exactly how the packaged app's own `Contents/MacOS/
+ray_tracer` runs when the Qt GUI spawns it as a subprocess), checked
+FIRST at all 3 affected lookup sites, before their existing compile-
+time-absolute-path fallbacks. `build_and_deploy_macos.sh` now also
+copies `metal_poc.metal` + the 3 small demo assets (~1.3MB combined,
+nothing like the multi-hundred-MB external scene meshes this script
+already deliberately excludes) next to the bundled `ray_tracer`.
+**A real, second bug found by actually running the updated script,
+not assumed safe**: copying `metal_poc.metal` into `Contents/MacOS/`
+BEFORE `macdeployqt` runs made `macdeployqt` itself print a real
+"Could not parse otool output" error - it otool-scans every file
+under that directory looking for Mach-O binaries to rewrite/codesign,
+and chokes on a plain-text file placed there. Fixed by moving the
+copy to run AFTER `macdeployqt` instead.
+
+**Verified end-to-end, not just "the flag is set now"**: ran the full
+`build_and_deploy_macos.sh` script for real, copied the resulting
+`RayTracerGUI.app` to a clean `/tmp` directory with no relationship to
+this repo (`xattr -cr` to clear quarantine, matching the release
+README's own "test from a clean location" protocol), and ran a REAL
+`--gpu` render there - `GPU: Apple M2` / `Metal: available` in
+diagnostics, `metal_render_main returned: 0`, a real image written,
+with Suzanne/Spot/earthmap.jpg all logging their OWN bundle-relative
+paths (e.g. `/private/tmp/.../RayTracerGUI.app/Contents/MacOS/models/
+suzanne.obj`), not the original source tree. This is the first time a
+package built by this script's own documented process has ever
+actually exercised Metal GPU rendering end to end. Full clean rebuild
++ ctest (4/4) + 51-scene sweep (no regressions) also pass on the dev
+build.

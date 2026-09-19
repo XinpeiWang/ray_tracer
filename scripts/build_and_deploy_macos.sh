@@ -3,12 +3,20 @@
 # bundled into a signed-or-not RayTracerGUI.app and a distributable
 # RayTracerGUI.dmg. Run this ON macOS - it is not usable from Windows.
 #
-# Mirrors scripts/build_and_deploy.ps1's job on Windows, but there is no GPU
-# renderer to build here at all: gpu/optix/ and optix_renderer/ are
-# CUDA/OptiX-only with no macOS equivalent (see README.md's "macOS
-# (CPU-only)" section). This script only ever touches the root
-# CMakeLists.txt (cpu_renderer, ray_tracer, scene_metadata) and
-# qt_gui/RayTracerGUI.pro.
+# Mirrors scripts/build_and_deploy.ps1's job on Windows. There is no
+# CUDA/OptiX GPU renderer to build here - gpu/optix/ and optix_renderer/
+# are CUDA/OptiX-only with no macOS equivalent - but this DOES build the
+# real Metal GPU backend (gpu/metal/, docs/METAL_GPU_FEASIBILITY.md),
+# fully integrated into ray_tracer's own --gpu dispatch since PR #84 -
+# passing -DRT_BUILD_METAL=ON below is what makes that actually happen;
+# without it, RT_HAVE_METAL is never defined and the packaged app is
+# silently CPU-only regardless of what the GUI's own "Renderer: GPU"
+# option looks like (a real, previously-shipped bug this comment used to
+# describe as "no GPU at all on macOS" - stale ever since Metal support
+# landed, and exactly the mistake that produced a "gpu-ui-preview"-named
+# .dmg with no actual Metal support inside it). This script only ever
+# touches the root CMakeLists.txt (cpu_renderer, ray_tracer,
+# scene_metadata, metal_renderer) and qt_gui/RayTracerGUI.pro.
 #
 # IMPORTANT - external mesh assets ("Large Scenes" / most "Models" category
 # scenes - anything with requires_files=true in scene_registry.h) are NOT
@@ -69,7 +77,7 @@ echo "[1/5] Building cpu_renderer + ray_tracer CLI + scene_metadata (CMake)..."
 # `uname -m` here is the OUTER script's own shell, not cmake's - always
 # reports the real host architecture regardless of which arch cmake
 # itself was built for.
-cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(uname -m)"
+cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(uname -m)" -DRT_BUILD_METAL=ON
 cmake --build "$BUILD_DIR" --config Release -j"$(sysctl -n hw.ncpu)"
 
 CLI_BIN="$BUILD_DIR/ray_tracer"
@@ -112,6 +120,39 @@ if [[ "$SKIP_DMG" -eq 1 ]]; then
 else
 	"$MACDEPLOYQT" "$APP_BUNDLE" -dmg
 fi
+
+# metal_poc.mm compiles its own Metal shader from SOURCE at runtime (it has
+# no offline .metallib step) - only when RT_BUILD_METAL=ON above actually
+# defined RT_HAVE_METAL. Its own RT_METAL_SHADER_DIR fallback is a compile-
+# time absolute path into THIS machine's own source tree, meaningless once
+# ray_tracer is copied anywhere else - copying the real shader source next
+# to the bundled CLI here is what makes metal_poc.mm's own "next to the
+# running executable" lookup (section 110) find it on an install machine
+# that never had this repo checked out at all. Deliberately done AFTER
+# macdeployqt above, not alongside the ray_tracer/scene_metadata.dylib
+# copy: macdeployqt otool-scans every file under Contents/MacOS/ looking
+# for Mach-O binaries to rewrite/codesign, and a plain-text .metal source
+# file there makes it print a real (if ultimately harmless) "Could not
+# parse otool output" error - found by actually running this script after
+# adding the copy, not assumed safe.
+if [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && grep -q "RT_BUILD_METAL:BOOL=ON" "$BUILD_DIR/CMakeCache.txt"; then
+	cp "$REPO_ROOT/gpu/metal/metal_poc.metal" "$APP_BUNDLE/Contents/MacOS/metal_poc.metal"
+fi
+
+# The hardcoded-room demo scene's own small, ALWAYS-needed assets (unlike
+# the large external scene meshes the reminder below deliberately skips) -
+# models/suzanne.obj + models/spot.obj (~370KB combined) and
+# images/earthmap.jpg (~940KB). Same RT_MODELS_DIR-points-at-the-build-
+# machine problem as the Metal shader above (section 110): without these
+# bundled here too, a genuinely different install machine would silently
+# render every scene missing Suzanne/Spot/the back-wall texture, degraded
+# but not crashing (loadObjMesh()/earthPixels both have a graceful
+# fallback) - found the same way, by testing a relocated package rather
+# than trusting the code alone.
+mkdir -p "$APP_BUNDLE/Contents/MacOS/models" "$APP_BUNDLE/Contents/MacOS/images"
+cp "$REPO_ROOT/models/suzanne.obj" "$APP_BUNDLE/Contents/MacOS/models/suzanne.obj"
+cp "$REPO_ROOT/models/spot.obj" "$APP_BUNDLE/Contents/MacOS/models/spot.obj"
+cp "$REPO_ROOT/images/earthmap.jpg" "$APP_BUNDLE/Contents/MacOS/images/earthmap.jpg"
 
 echo
 echo "[5/5] Collecting output..."

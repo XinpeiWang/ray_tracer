@@ -22,6 +22,7 @@
 
 #include <cstring>
 #include <functional>
+#include <mach-o/dyld.h>
 
 // Declare-only: src/external/image_writer.cpp is this project's one owner
 // of STB_IMAGE_WRITE_IMPLEMENTATION (mirrors stb_image_impl.cpp/
@@ -504,6 +505,25 @@ static void addQuad(std::vector<PackedFloat3>& verts,
 // room is a fixed [-1,1] box, so SOME normalization is unavoidable rather
 // than a hardcoded scale constant that would only happen to work for this
 // one file.
+// The directory containing the CURRENTLY RUNNING executable, or nil if
+// unavailable (_NSGetExecutablePath, not NSBundle - resolves correctly
+// for a plain non-app-bundle CLI binary too). Checked FIRST, before any
+// RT_..._DIR compile-time fallback (RT_MODELS_DIR/RT_METAL_SHADER_DIR),
+// at every asset-lookup site that has one - those are absolute paths
+// into the machine that BUILT this binary, meaningless once it's been
+// copied/installed anywhere else (section 110's own real bug: a
+// distributed .dmg's bundled `ray_tracer`, run on a genuinely different
+// machine, would otherwise fail to find its own shader source AND
+// models/suzanne.obj, models/spot.obj, images/earthmap.jpg - found by
+// actually testing a packaged build from a clean, relocated install,
+// not assumed correct from the code alone).
+static NSString* executableDir() {
+    char exePathBuf[4096];
+    uint32_t exePathSize = sizeof(exePathBuf);
+    if (_NSGetExecutablePath(exePathBuf, &exePathSize) != 0) return nil;
+    return [@(exePathBuf) stringByDeletingLastPathComponent];
+}
+
 static bool loadObjMesh(const std::string& path,
                          std::vector<PackedFloat3>& verts,
                          std::vector<PackedFloat3>& normals,
@@ -1130,12 +1150,23 @@ void MetalPocApp::buildScene() {
     // positions at load time); testing instancing needs the SAME
     // object-space geometry referenced from more than one instance
     // descriptor, which needs its own acceleration structure.
+    NSString* modelsDir = nil;
+    {
+        NSString* exeDir = executableDir();
+        NSString* candidate = [exeDir stringByAppendingPathComponent:@"models"];
+        if (exeDir && [[NSFileManager defaultManager] fileExistsAtPath:
+                [candidate stringByAppendingPathComponent:@"suzanne.obj"]]) {
+            modelsDir = candidate;
+        }
+    }
+    if (!modelsDir) {
 #ifdef RT_MODELS_DIR
-    NSString* modelsDir = @(RT_MODELS_DIR);
+        modelsDir = @(RT_MODELS_DIR);
 #else
-    NSString* modelsDir = [[@(__FILE__) stringByDeletingLastPathComponent]
-        stringByAppendingPathComponent:@"../../models"];
+        modelsDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"../../models"];
 #endif
+    }
     NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
     const float3 bronze{0.55f, 0.35f, 0.15f};
     if (!loadObjMesh(suzannePath.UTF8String, suzanneVerts, suzanneNormals, suzanneUVs, suzanneMaterials, bronze,
@@ -2975,19 +3006,49 @@ static void checkGpuResource(id resource, const char* name, id<MTLDevice> device
 bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // --- Compile the shader library from source at runtime ---------
     NSError* error = nil;
-    // RT_METAL_SHADER_DIR is set by CMakeLists.txt's metal_poc target
-    // (RT_BUILD_METAL=ON path) to gpu/metal/'s absolute source
-    // directory. Falls back to a __FILE__-relative lookup for the
-    // ad-hoc `clang++ metal_poc.mm ...` invocation this POC started
-    // as (docs/METAL_GPU_FEASIBILITY.md section 7/8/9) and still
-    // works fine for a quick manual rebuild without going through
-    // CMake at all.
+    // Three candidates, tried in priority order:
+    // 1. Right next to the CURRENTLY RUNNING executable
+    //    (_NSGetExecutablePath(), not NSBundle - resolves correctly for
+    //    a plain (non-app-bundle) CLI binary too, which is exactly how
+    //    a shipped .app's own Contents/MacOS/ray_tracer runs when the
+    //    Qt GUI spawns it as a subprocess). This is the only candidate
+    //    that works once the binary has been copied/installed anywhere
+    //    other than the machine that built it - a real, previously-
+    //    undiscovered bug found by actually testing a packaged release
+    //    (section 110): RT_METAL_SHADER_DIR below is a compile-time
+    //    absolute path into the BUILD MACHINE's own source tree, so a
+    //    distributed .dmg's own bundled ray_tracer would report Metal
+    //    available (metal_get_diagnostics() never touches this shader
+    //    path at all) yet fail every actual GPU render once it got
+    //    here, silently, on every machine except the one that built it.
+    //    build_and_deploy_macos.sh now also copies metal_poc.metal next
+    //    to the bundled ray_tracer specifically so this candidate finds
+    //    it.
+    // 2. RT_METAL_SHADER_DIR (set by CMakeLists.txt's metal_poc target,
+    //    RT_BUILD_METAL=ON path) - gpu/metal/'s absolute SOURCE
+    //    directory, correct only on the machine that built this binary
+    //    (a plain `cmake --build` dev loop, never distributed).
+    // 3. A __FILE__-relative lookup, for the ad-hoc `clang++
+    //    metal_poc.mm ...` invocation this POC started as
+    //    (docs/METAL_GPU_FEASIBILITY.md section 7/8/9).
+    NSString* shaderPath = nil;
+    {
+        char exePathBuf[4096];
+        uint32_t exePathSize = sizeof(exePathBuf);
+        if (_NSGetExecutablePath(exePathBuf, &exePathSize) == 0) {
+            NSString* exeDir = [@(exePathBuf) stringByDeletingLastPathComponent];
+            NSString* candidate = [exeDir stringByAppendingPathComponent:@"metal_poc.metal"];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) shaderPath = candidate;
+        }
+    }
+    if (!shaderPath) {
 #ifdef RT_METAL_SHADER_DIR
-    NSString* shaderDir = @(RT_METAL_SHADER_DIR);
+        NSString* shaderDir = @(RT_METAL_SHADER_DIR);
 #else
-    NSString* shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
+        NSString* shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
 #endif
-    NSString* shaderPath = [shaderDir stringByAppendingPathComponent:@"metal_poc.metal"];
+        shaderPath = [shaderDir stringByAppendingPathComponent:@"metal_poc.metal"];
+    }
     NSString* shaderSource = [NSString stringWithContentsOfFile:shaderPath encoding:NSUTF8StringEncoding error:&error];
     if (!shaderSource) {
         fprintf(stderr, "Failed to read shader source at %s: %s\n",
@@ -3076,13 +3137,24 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // ever sees a value - the standard, hardware-accelerated way to
     // do this, rather than a manual `pow(c, 2.2)` after sampling in
     // the shader.
+    NSString* imagesDir = nil;
+    {
+        NSString* exeDir = executableDir();
+        NSString* candidate = [exeDir stringByAppendingPathComponent:@"images"];
+        if (exeDir && [[NSFileManager defaultManager] fileExistsAtPath:
+                [candidate stringByAppendingPathComponent:@"earthmap.jpg"]]) {
+            imagesDir = candidate;
+        }
+    }
+    if (!imagesDir) {
 #ifdef RT_MODELS_DIR
-    NSString* imagesDir = [[@(RT_MODELS_DIR) stringByDeletingLastPathComponent]
-        stringByAppendingPathComponent:@"images"];
+        imagesDir = [[@(RT_MODELS_DIR) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"images"];
 #else
-    NSString* imagesDir = [[@(__FILE__) stringByDeletingLastPathComponent]
-        stringByAppendingPathComponent:@"../../images"];
+        imagesDir = [[@(__FILE__) stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"../../images"];
 #endif
+    }
     NSString* earthPath = [imagesDir stringByAppendingPathComponent:@"earthmap.jpg"];
     int earthW = 0, earthH = 0, earthChannels = 0;
     unsigned char* earthPixels = stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
