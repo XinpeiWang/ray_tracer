@@ -5640,3 +5640,90 @@ blending all four quadrant colours together, unlike a projection
 light's own sharp single-direction image. Full clean `RT_BUILD_METAL=
 ON` rebuild + ctest (4/4, including `test_sampleAreaLight_pmf`'s own
 signature update) and a 51-scene sweep (no crashes) both pass.
+
+## 106. Review pass over sections 96-105: 3 real bugs found and fixed
+
+Prompted by an explicit request to audit the cumulative Metal backend
+work rather than add a new feature. One direct read-through plus a
+background-agent structured audit (buffer/texture index alignment,
+struct field-order sync across the 3 independently-redeclared copies
+of `TriangleMaterial`/`AreaLight`/`LightSample`/goniometric/projection
+structs, disk indexing, the materialType number table, the
+CoatedConductor formula, section 100's OOB-read fix, texture buffer
+lifetimes, aggregate-initializer field ordering) turned up nothing -
+those areas are confirmed clean. Three real, narrow bugs were found
+and fixed:
+
+**(1) Section 105's own textured-area-light decode ran before its
+quad-shape check, not after.** `idxs.size() == 2` alone doesn't mean a
+genuine `addQuad()`-matching quad - a 2-triangle light diagonalized
+the OTHER way (e.g. indices `0 1 3  1 2 3` instead of `0 1 2  0 2 3`)
+fails the `simd::length(a-t1a)<eps && simd::length(c-t1b)<eps` vertex
+check just below and falls through to the "too complex, mark emissive
+without NEE registration" path - but the old code attempted the image
+decode BEFORE that check ran, so a non-quad light with a `filename`
+would needlessly consume the one shared texture slot (starving a real
+quad-shaped textured light elsewhere in the same scene of it) AND
+leave `emission` wrongly set to a bare `(scale,scale,scale)` instead
+of `L*scale`, even though this light never becomes materialType 15 at
+all. Fixed by moving the whole decode block inside the `if
+(simd::length(...)...)` quad-confirmed branch. Verified with 3
+isolated synthetic scenes: a non-quad 2-triangle light with a filename
+renders its flat `L=[5,0,0]` colour with no decode attempt at all
+(confirmed via stderr - no "could not be read/decoded" line and no
+texture-slot consumption); a scene combining that fake light with a
+real quad-shaped textured light alongside it shows the fake one stays
+flat while the real one still gets its checker texture (proving the
+slot wasn't wrongly consumed); the original section 105 quad/floor
+test scenes re-verified unaffected. Full clean rebuild + ctest (4/4)
+and the 51-scene sweep (no crashes) pass.
+
+**(2) `mapMaterial()`'s Mix-material recursion (section 102) had no
+depth or cycle guard.** `namedMaterialIndex` (`pbrt_flatten.h`) is
+built by scanning the WHOLE `scene.materials` list up front, before
+per-material Mix resolution runs, specifically so a `"materials"` list
+can legally name a material declared LATER in the file - which also
+means a Mix material's own name can legally appear in its own
+`"materials"` list, or two Mix materials can name each other, with no
+cycle check anywhere in `flatten()` to catch it. `pbrt_cpu_builder.h`
+already anticipates exactly this ("a cyclic/self-referential
+`materials` list a malformed scene could produce") and guards with its
+own `kMaxMixDepth=8`; the Metal loader's `mapMaterial()` had no
+equivalent, so a genuinely cyclic scene would stack-overflow the
+loader before any render started. Fixed by threading an `int depth`
+parameter through `mapMaterial()`'s signature (now `std::function
+<TriangleMaterial(const pbrt_flatten::Material&, int)>`) and adding
+the identical `depth < kMaxMixDepth` cutoff, falling through to the
+same gray-Lambertian default every other unsupported/malformed case
+already uses. Verified with a synthetic scene containing two Mix
+materials (`mix-a`, `mix-b`) that name each other in a genuine 2-cycle
+(legal precisely because of the forward-reference scan described
+above), assigned to a sphere: renders successfully in well under a
+second with no crash or hang, the depth guard visibly firing (the
+loader's own "material kind not supported... using gray Lambertian"
+diagnostic - shared with every other fallthrough-to-default case -
+prints once, deduplicated by `warnedUnsupportedMaterialKinds`). Full
+clean rebuild + ctest (4/4) and the 51-scene sweep (no crashes) pass.
+
+**(3) Two-sided area lights' direct-hit MIS weight (section 104) used
+a non-`abs()`'d `cosLight`, unlike the 7 NEE call sites section 104
+itself already fixed.** Once section 104's own `frontFace ||
+mat.twoSided != 0u` emission gate made a BACK-face BSDF-sampled hit on
+a two-sided light reachable at all, the direct-hit MIS-weight
+computation a few lines below still computed `cosLight =
+max(dot(light.normal, -rayDir), 0.0001)` with no `abs()` - on that
+back face `dot(...)` is NEGATIVE, so the old `max(...,0.0001)` clamped
+it UP to the epsilon itself rather than reflecting its magnitude,
+making `pdfLight` spuriously huge and crushing the BSDF-sampled
+strategy's own MIS weight toward 0: an energy-loss bias silently
+discounting indirect light reflected onto a two-sided light's back
+face. Fixed with the same `abs()` the 7 NEE sites already got:
+`max(abs(dot(...)), 0.0001)`. Verified with an isolated A/B test: a
+two-sided quad light with a mirror-conductor floor angled so indirect
+rays specifically reflect onto the light's back face, rendered once
+with the fix and once with a temporarily-reverted copy of the same
+build - a deterministic (Halton sampler, identical scene, identical
+RNG) pixel diff shows 18.78% of pixels differing (mean abs diff
+0.30), a decisive, non-noise-level signal isolated to this one line.
+Full clean rebuild + ctest (4/4) and the 51-scene sweep (no crashes)
+pass on the combined fix for all 3 bugs above.
