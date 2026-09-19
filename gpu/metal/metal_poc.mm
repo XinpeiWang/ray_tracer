@@ -21,6 +21,7 @@
 #import <Foundation/Foundation.h>
 
 #include <cstring>
+#include <functional>
 
 // Declare-only: src/external/image_writer.cpp is this project's one owner
 // of STB_IMAGE_WRITE_IMPLEMENTATION (mirrors stb_image_impl.cpp/
@@ -1620,7 +1621,12 @@ void MetalPocApp::loadPbrtScene() {
     // own 66,532-triangle "coateddiffuse" mesh) used to print that exact
     // line 66,532 times.
     std::unordered_set<std::string> warnedUnsupportedMaterialKinds;
-    auto mapMaterial = [&warnedUnsupportedMaterialKinds](const pbrt_flatten::Material& m) -> TriangleMaterial {
+    // std::function (not auto), capturing itself by reference, so the
+    // Mix case below can recurse into mapMaterial() for its own two
+    // named sub-materials - an ordinary auto lambda can't reference its
+    // own name inside its own body (not yet in scope at that point).
+    std::function<TriangleMaterial(const pbrt_flatten::Material&)> mapMaterial =
+        [&warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
         switch (m.kind) {
             case pbrt_flatten::MaterialKind::Diffuse:
@@ -1677,6 +1683,38 @@ void MetalPocApp::loadPbrtScene() {
                 // the exact coat IOR/roughness.
                 return TriangleMaterial{color, /*materialType=*/8u, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+            case pbrt_flatten::MaterialKind::Mix: {
+                // Approx tier: CPU/OptiX both do a REAL per-shading-point
+                // stochastic pick between the two named sub-materials
+                // (pbrt-v4 MixMaterial - a hash of the hit point decides,
+                // giving a fine-grained speckle of both materials' own
+                // character, not a blended average - see
+                // material_pbrt.h's own mix_material::scatter()). This
+                // loader assigns materials once per triangle at LOAD
+                // TIME, not per-ray-hit, so a real per-point stochastic
+                // mix isn't representable without new per-pixel shader
+                // logic - instead, deterministically resolves to
+                // whichever of the two sub-materials mixWeight (pbrt's
+                // own "amount", the probability weight toward B - see
+                // mix_material::scatter()'s own `hash >= w ? A : B`)
+                // favours, recursing into mapMaterial() for that ONE
+                // sub-material's own real (possibly ALSO Approx-tier)
+                // mapping. A uniform single-material triangle instead of
+                // a fine speckle - not the real thing, but still a real,
+                // honest improvement over gray Lambertian (the correct
+                // material FAMILY and colour survive, just not the
+                // per-point blend).
+                const int chosenIdx = (m.mixWeight >= 0.5) ? m.mixMaterialB : m.mixMaterialA;
+                if (chosenIdx >= 0 && chosenIdx < (int)scene.materials.size())
+                    return mapMaterial(scene.materials[chosenIdx]);
+                // Both indices invalid (shouldn't happen - flatten()'s
+                // own comment guarantees them valid whenever kind==Mix -
+                // but this loader errs toward a safe fallback rather
+                // than an out-of-bounds read) - falls through to the
+                // same gray-Lambertian default every other unsupported
+                // kind gets.
+                [[fallthrough]];
+            }
             default:
                 if (warnedUnsupportedMaterialKinds.insert(m.pbrtType).second) {
                     fprintf(stderr, "loadPbrtScene: material kind '%s' not supported by this POC's "

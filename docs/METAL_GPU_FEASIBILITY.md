@@ -5464,3 +5464,46 @@ disk lit from its non-emitting side still renders dark, matching
 pbrt-v4's own one-sided default rather than a regression - a further,
 smaller, deliberately out-of-scope gap for a future increment).
 Cylinder/cone/paraboloid/bilinearmesh/curve shapes remain unsupported.
+
+## 102. Mix material, Approx tier: a deterministic pick instead of gray Lambertian
+
+`Material "mix"` (pbrt-v4's `MixMaterial`, blending two named sub-
+materials by a weight/"amount") previously fell all the way through
+`mapMaterial()`'s `default:` case to flat gray Lambertian, discarding
+BOTH sub-materials entirely. CPU and OptiX both do the REAL thing: a
+per-shading-point stochastic pick (a deterministic hash of the hit
+point, not `random_double()`, so `scatter()`/`scattering_pdf()` stay
+self-consistent within one call - `material_pbrt.h`'s own
+`mix_material::scatter()`), giving a fine-grained speckle of both
+materials' own character across a surface, not a blended average.
+
+This loader assigns each triangle's material ONCE at load time, not
+per-ray-hit - a real per-point stochastic mix isn't representable
+without new per-pixel shader logic (a hash function, branching between
+two different materials' own shading code per sample). Scoped down to
+an **Approx** tier instead: deterministically resolves to whichever of
+the two named sub-materials `mixWeight` (pbrt's own "amount" - the
+probability weight toward material B, matching `mix_material::
+scatter()`'s own `hash >= w ? A : B` convention exactly) favours,
+recursing into `mapMaterial()` for that ONE sub-material's own real
+(possibly Approx-tier itself) mapping. A uniform single-material
+triangle instead of a fine speckle - not the real thing, but still a
+real, honest improvement: the correct material FAMILY and colour
+survive, just not the per-point blend.
+
+**A real mechanical obstacle, not just a design choice**: recursing
+into `mapMaterial()` from inside its own body needed converting it
+from a plain `auto` lambda (which cannot reference its own name inside
+its own body - not yet in scope at that point) to a `std::function`
+capturing itself by reference - the standard C++ idiom for a
+self-recursive lambda.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4),
+51-scene sweep (no crashes). `pbrt_scenes/mix-material.pbrt` (a
+50/50 mix of a red diffuse and a rough copper conductor, `mixWeight=
+0.5` so this deterministic rule picks the conductor) now shows a real
+shiny metallic sphere with visible specular highlights and environment
+reflections, instead of a flat gray ball - a before/after diff of
+47.41% of pixel bytes (mean abs diff 4.01). A true per-point stochastic
+speckle (matching CPU/OptiX exactly) remains a real, deliberately
+deferred future refinement, not attempted here.
