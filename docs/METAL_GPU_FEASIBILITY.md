@@ -7785,3 +7785,99 @@ regression spot-checks of 25 earlier hand-authored scenes (all render
 without error, unaffected). `B12` added to `cpu_scene_metal_hand_
 authored_supported()`'s `kSupported` set in this same PR. **Category B
 is now 10 of 16 done.**
+
+## 143. Category B increment: B23 Glass Prism Dispersion (materialType 22) - and a real, previously-latent NaN bug found and fixed in shared, already-shipped directional-light code
+
+New materialType 22: the recursive-backend's simplified 3-representative-
+wavelength RGB-channel dispersion scheme, ported from OptiX's own
+`MaterialType::Dielectric` dispersive branch (`gpu/optix/
+optix_device_helpers.h`) + its own channel-masking step (`optix_raygen.h`)
+- matches this scene's own registry description exactly ("GPU-recursive
+(--gpu, no --wavefront): a simplified 3-representative-wavelength RGB-
+channel approximation"), NOT CPU's/wavefront's real continuous spectral
+integration, since this loader has no per-wavelength camera-ray
+infrastructure at all. A per-SAMPLE `rgbChannel` variable (declared once
+before the bounce loop, `kRgbChannelUnset` sentinel) is set ONCE, lazily,
+at the path's first dispersive hit and REUSED for every later one along
+the same path (matches CPU/OptiX's own "one hero wavelength per path"
+convention) - `throughput` is masked to that one channel with a
+compensating 3x weight at the moment it's chosen (a standard unbiased
+stochastic-channel-selection estimator), everything downstream inherits
+it automatically through the existing multiply chain. Unlike OptiX
+(where this masking is split across two programs by its own payload-
+register architecture), this loader's single self-contained kernel does
+it all in one function. `mat.conductorEta.x/y` (otherwise entirely
+unused by this material) carries the precomputed Cauchy `(A, B)`
+coefficient pair, computed HOST-side via a direct port of
+`CauchyCoefficientsFromAbbe()` (construction-time math, not per-ray,
+matching CPU's own `dielectric::make_dispersive()` constructor exactly).
+Bespoke geometry (a hand-derived triangular prism - 3 quads + 2 raw-
+pushed end-cap triangles, matching `build_prism_dispersion_geometry()`'s
+own winding exactly) and its own camera/bounding box, since this is NOT
+a Cornell-family scene at all (`kPrismCamera`, not `kCornellBoxCamera`).
+
+**A real, previously-latent bug in SHARED, already-shipped code, found
+(not assumed) via B23 rendering completely black**: every earlier
+directional-light NEE branch in this file (9 call sites across
+`shadeLambertian`/`shadeOrenNayar`/`shadeConductor`/etc.) unconditionally
+calls `rayBoxExitDistance(shadowRayOrigin, dlWi, kRoomBoundsMin,
+kRoomBoundsMax)` to compute a fog-attenuation path length, ASSUMING its
+own origin sits inside `[kRoomBoundsMin, kRoomBoundsMax]` (the hardcoded
+POC room's own `[-1,1]` cube - true for every Cornell-family/hardcoded-
+room-scaled scene so far). B23 is the first scene whose geometry sits
+FAR outside that box (around x=8, not [-1,1]) - combined with a light
+direction that has an EXACTLY-zero component on one axis (`(0,-0.06,1)`,
+a common shape for an axis-ish-aligned directional light), `1.0/dir`
+divides by zero into +-Infinity, and since the origin is entirely
+outside the box, BOTH slab planes on that axis agree in sign, so the
+"nearest far-plane" `min()` returns +-Infinity rather than a finite
+number. The very next line multiplies this by `uniforms.fogSigmaT`
+(exactly `0.0` for a scene with no fog) expecting `0 * anything = 0` -
+but IEEE 754 defines `0 * Infinity` as NaN, not 0, and that NaN then
+poisons `radiance` for the rest of the shading call via ordinary `+=`
+(NaN + finite = NaN). The scene's own firefly/NaN guard elsewhere then
+clamped the poisoned pixel to black - completely masking a real,
+correctly-signed, correctly-unoccluded directional light contribution
+(independently verified with a throwaway debug kernel: forcing
+`radiance` to directly report each directional light's own cosine-test
+result and shadow-ray outcome showed a real, positive, unoccluded light
+across nearly the whole screen - the geometry/light setup was right all
+along; only the fog-attenuation side-computation was broken).
+**Fixed at all 9 call sites** (`replace_all` for the 8 sharing identical
+surrounding code, one more by hand) by skipping the `rayBoxExitDistance`
+call entirely whenever `uniforms.fogSigmaT <= 0.0` (the common case for
+most scenes), defaulting `dlTransmittance = 1.0` instead - both the fix
+and a free perf win for every non-fog scene. A 10th, structurally
+identical call site inside the homogeneous-medium SCATTER branch (only
+reachable when a real scatter event already occurred inside actual fog,
+i.e. `fogSigmaT > 0` is already guaranteed by that point) was correctly
+left untouched. **Worth remembering for ANY future scene that sits
+outside the hardcoded room's own `[-1,1]` bounds AND uses a directional
+light**: this exact class of bug (an unconditionally-called helper whose
+own doc comment states a precondition - "origin assumed inside the box"
+- silently violated by a new scene's own larger scale) is invisible in
+every previous Cornell-family scene precisely because they all happen to
+satisfy that precondition already; a genuinely new failure mode isn't
+always a NEW-code bug, and is worth checking existing shared code
+against its own documented assumptions before assuming so.
+
+**Verified**: `--gpu` compared directly against BOTH `--cpu` (the plain,
+non-dispersive default - correctly shows NO chromatic fan, matching the
+scene's own registry note "under the default flat-RGB path this is just
+an ordinary glass wedge") and `--cpu --spectral` (the real continuous
+spectral reference) - the spectral render shows the SAME yellow-to-red
+dispersion band, at the same position along the same curved refraction
+edge, as this Metal port's own simplified 3-channel approximation - a
+close qualitative match, exactly the "same qualitative fan" the scene's
+own registry description promises. Full clean `RT_BUILD_METAL=ON`
+rebuild, ctest (4/4), the 55-scene pbrt-backed regression sweep (0
+failures), and regression spot-checks of 26 earlier hand-authored
+scenes INCLUDING C3 (the one other scene using a directional light,
+specifically re-checked given this PR's own shared-code fog-attenuation
+fix touched its code path too - unaffected). `B23` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category B is now 11 of 16 done.** B24 (the frosted-glass
+sibling, same geometry/light, `rough_dielectric::make_dispersive()`
+instead) is a near-free next increment - the same dispersion mechanism
+applied to the already-existing rough-dielectric (materialType 5) path,
+mirroring this session's own B5-then-B7 pattern.

@@ -567,6 +567,26 @@ constant float3 kRoomBoundsMax = float3(1.0, 1.0, 1.0);
 // shadow ray, which therefore can only have exited through this room's
 // one actual gap, not through a solid wall this box-only test doesn't
 // know about.
+//
+// Every call site guards this behind `uniforms.fogSigmaT > 0.0` (a
+// real, previously-latent bug found by section 143/B23): `origin`
+// genuinely IS always inside `[kRoomBoundsMin, kRoomBoundsMax]` for
+// every Cornell-family/hardcoded-room-scaled scene, but a much larger,
+// far-offset bespoke scene (B23's own prism, sitting around x=8, not
+// [-1,1]) violates that precondition outright. Combined with a light
+// direction that has an EXACTLY-zero component on some axis (common
+// for an axis-ish-aligned directional light), `1.0/dir` divides by
+// zero into +-Infinity, and `boxMin/Max - origin` being the SAME sign
+// on that axis (since origin sits entirely outside the box) makes both
+// slab planes agree on that sign too - the overall min() then returns
+// +-Infinity, not a finite number. Multiplying an unconditionally-
+// computed `fogSigmaT * exitDist` by a `fogSigmaT` of EXACTLY 0.0 does
+// NOT save this (`0 * Infinity` is NaN, not 0 - the finite-times-zero
+// intuition doesn't apply), silently poisoning `radiance` for the rest
+// of that shading call. Skipping the call entirely whenever there's no
+// fog to attenuate (the common case for most scenes) is both the fix
+// and a free perf win, cheaper than trying to make this function safe
+// to call outside its own documented precondition.
 inline float rayBoxExitDistance(float3 origin, float3 dir, float3 boxMin, float3 boxMax) {
     float3 invDir = 1.0 / dir;
     float3 tPlane1 = (boxMin - origin) * invDir;
@@ -1846,6 +1866,91 @@ inline bool shadeDielectric(TriangleMaterial mat, float3 hitPoint, float3 normal
     return true;
 }
 
+// Recursive-backend dispersion (B23/B24, materialType 22) - the SAME
+// simplified 3-representative-wavelength RGB-channel scheme OptiX's own
+// recursive (non-wavefront) backend uses, per this scene's own registry
+// comment (scene_registry_data.h) - NOT the real continuous spectral
+// integration CPU's own `--spectral` path or GPU's own `--wavefront`
+// path use, since this loader (like OptiX-recursive) has no per-
+// wavelength camera ray/hero-wavelength infrastructure at all, only
+// plain RGB throughput. Ported from `gpu/optix/optix_device_helpers.h`'s
+// own `MaterialType::Dielectric` dispersive branch + `optix_raygen.h`'s
+// own channel-masking step (there split across two programs by OptiX's
+// own payload-register architecture; here, in ONE function, since this
+// loader's shading kernel is already a single self-contained loop).
+//
+// Mechanism: `rgbChannel` is per-SAMPLE state (declared once before the
+// bounce loop, `kRgbChannelUnset` = "no dispersive hit yet"). The FIRST
+// time a path hits this material, a channel (0=R/1=G/2=B) is picked
+// uniformly at random and PERSISTS for the rest of that sample (every
+// later dispersive hit along the same path - e.g. exiting the same
+// prism, or a second dispersive object - reuses it, never re-rolls) -
+// matches CPU/wavefront's own "one hero wavelength for the whole path"
+// convention. `throughput` is masked to that ONE channel with a
+// compensating 3x weight AT THE MOMENT the channel is first chosen (a
+// standard unbiased stochastic-channel-selection estimator: each of the
+// 3 equally-likely channels, averaged over many samples, reconstructs
+// the full-RGB expectation) - every later `radiance +=` naturally
+// inherits this through throughput's own ongoing multiply chain, and a
+// SAMPLE that never reaches a dispersive hit at all pays nothing extra.
+// `kRgbChannelWavelengthNm` are the sRGB primaries' own commonly-cited
+// dominant wavelengths - the SAME fixed values this project's own
+// `measured` material (materialType 15, `src/TheRestOfYourLife/
+// material_pbrt.h`'s `kLambdaR/G/B`) already uses for the identical
+// "3 fixed representative wavelengths" purpose, not a fresh/independent
+// choice.
+//
+// `mat.ior` = eta_d (unused directly - kept for parity/debugging only);
+// `mat.conductorEta.x/y` reused as the precomputed Cauchy `(A, B)`
+// coefficients (`CauchyCoefficientsFromAbbe()`, computed HOST-side once
+// at scene-build time - construction-time math, not per-ray, matching
+// CPU's own dielectric::make_dispersive() constructor exactly) - an
+// otherwise-entirely-unused field for this materialType, the same
+// "reuse a field with no other meaning here" convention every earlier
+// materialType's own dual-use fields already follow.
+constant uint kRgbChannelUnset = 3u;
+constant float kRgbChannelWavelengthNm[3] = { 612.0f, 549.0f, 465.0f };
+
+inline float cauchyEta(float lambdaNm, float A, float B) {
+    float lambdaUm = lambdaNm * 0.001f;
+    return A + B / (lambdaUm * lambdaUm);
+}
+
+inline bool shadeDispersiveDielectric(TriangleMaterial mat, float3 hitPoint, float3 normal, float3 facingNormal,
+                             bool frontFace, float hitDistance,
+                             thread float3& rayDir, thread float3& rayOrigin,
+                             thread float3& throughput, thread bool& specularBounce,
+                             thread uint& rngState, thread uint& rgbChannel) {
+    if (rgbChannel == kRgbChannelUnset) {
+        uint newChannel = min(uint(randFloat(rngState) * 3.0), 2u);
+        float3 channelMask = float3(newChannel == 0u ? 3.0 : 0.0,
+                                     newChannel == 1u ? 3.0 : 0.0,
+                                     newChannel == 2u ? 3.0 : 0.0);
+        throughput *= channelMask;
+        rgbChannel = newChannel;
+    }
+    float dielectricIor = cauchyEta(kRgbChannelWavelengthNm[rgbChannel],
+                                     mat.conductorEta.x, mat.conductorEta.y);
+
+    float refractionRatio = frontFace ? (1.0 / dielectricIor) : dielectricIor;
+    float3 unitDir = normalize(rayDir);
+    float cosTheta = min(dot(-unitDir, facingNormal), 1.0);
+    float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+    bool cannotRefract = refractionRatio * sinTheta > 1.0;
+
+    float3 newDir;
+    if (cannotRefract || frDielectric(cosTheta, 1.0 / refractionRatio) > randFloat(rngState)) {
+        newDir = reflect(unitDir, facingNormal);
+    } else {
+        newDir = refract(unitDir, facingNormal, refractionRatio);
+    }
+    rayDir = newDir;
+    rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
+    applyBeerLambertAbsorption(throughput, mat.color, frontFace, hitDistance);
+    specularBounce = true;
+    return true;
+}
+
 inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 normal, float3 facingNormal,
                                   bool frontFace, float hitDistance,
                                   thread float3& rayDir, thread float3& rayOrigin,
@@ -2084,8 +2189,13 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 intersection_result<instancing, triangle_data> dlShadowResult =
                     isect.intersect(dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * dlBrdf * float3(dl.emission) * dlCosSurface * dlTransmittance;
                 }
             }
@@ -2412,8 +2522,13 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     intersection_result<instancing, triangle_data> dlShadowResult =
                         isect.intersect(dlShadowRay, accelStructure, functionTable);
                     if (dlShadowResult.type == intersection_type::none) {
-                        float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                        float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                        // Skip when there is no fog - rayBoxExitDistance()
+                        // is only valid for an origin INSIDE the hardcoded
+                        // room bounds (see that function's own comment for
+                        // why calling it unconditionally is unsafe).
+                        float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                            ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                            : 1.0;
                         float dlCoatTransmitIn = 1.0 - frDielectric(dlCosSurface, kClearcoatEta);
                         radiance += throughput * albedo * (1.0 / M_PI_F) * dlCoatTransmitIn
                                     * float3(dl.emission) * dlCosSurface * dlTransmittance;
@@ -2664,8 +2779,13 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                 intersection_result<instancing, triangle_data> dlShadowResult =
                     isect.intersect(dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * dlLobeTint * (1.0 / M_PI_F)
                                 * float3(dl.emission) * dlAbsCos * dlTransmittance;
                 }
@@ -2912,8 +3032,13 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                 intersection_result<instancing, triangle_data> dlShadowResult =
                     isect.intersect(dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * albedo * (1.0 / M_PI_F)
                                 * float3(dl.emission) * dlCosSurface * dlTransmittance;
                 }
@@ -3189,8 +3314,13 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 intersection_result<instancing, triangle_data> dlShadowResult =
                     isect.intersect(dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * albedo * orenNayarF(woWorld, dlWi, facingNormal, mat.roughness)
                                 * float3(dl.emission) * dlCosSurface * dlTransmittance;
                 }
@@ -3450,8 +3580,13 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
                 intersection_result<instancing, triangle_data> dlShadowResult =
                     isect.intersect(dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * float3(normalizedFresnelF(dlWi, facingNormal, mat.ior, mat.roughness))
                                 * float3(dl.emission) * dlCosSurface * dlTransmittance;
                 }
@@ -3854,8 +3989,13 @@ inline bool shadeCoatedDiffuse(TriangleMaterial mat, float3 hitPoint, float3 fac
                 if (dlShadowResult.type == intersection_type::none) {
                     float3 dlWiLocal = float3(dot(dlWi, tangent), dot(dlWi, bitangent), dot(dlWi, facingNormal));
                     float3 dlF = layeredCoatedDiffuseF(dlWiLocal, woLocal, mat.ior, alpha, float3(mat.color), rngState);
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * dlF * float3(dl.emission) * dlCosSurface * dlTransmittance;
                 }
             }
@@ -4199,8 +4339,13 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                 if (dlShadowResult.type == intersection_type::none) {
                     float3 dlWiLocal = float3(dot(dlWi, tangent), dot(dlWi, bitangent), dot(dlWi, facingNormal));
                     float3 dlF = layeredCoatedConductorF(dlWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * dlF * float3(dl.emission) * dlCosSurface * dlTransmittance;
                 }
             }
@@ -4467,8 +4612,13 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                 intersection_result<instancing, triangle_data> dlShadowResult =
                     isect.intersect(dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
-                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    // Skip when there is no fog - rayBoxExitDistance()
+                    // is only valid for an origin INSIDE the hardcoded
+                    // room bounds (see that function.s own comment for
+                    // why calling it unconditionally is unsafe).
+                    float dlTransmittance = (uniforms.fogSigmaT > 0.0)
+                        ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax))
+                        : 1.0;
                     radiance += throughput * albedo * velvetF(woWorld, dlWi, facingNormal, mat.ior)
                                 * float3(dl.emission) * dlCosSurface * dlTransmittance;
                 }
@@ -4767,6 +4917,14 @@ kernel void primaryRayKernel(
         // bounce's next hit); bsdfPdf is only meaningful when false.
         bool specularBounce = true;
         float bsdfPdf = 0.0;
+        // Recursive-backend dispersion state (materialType 22, B23/B24) -
+        // kRgbChannelUnset means "no dispersive hit yet, this sample
+        // stays full RGB". See shadeDispersiveDielectric()'s own
+        // declaration comment for the full "stochastic channel
+        // selection" rationale, ported from OptiX's own identical
+        // per-path convention (gpu/optix/optix_raygen.h/
+        // optix_device_helpers.h).
+        uint rgbChannel = kRgbChannelUnset;
 
         for (uint depth = 0; depth < uniforms.maxDepth; ++depth) {
             ray r;
@@ -5378,6 +5536,9 @@ kernel void primaryRayKernel(
             if (mat.materialType == 2u) {
                 if (!shadeDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                       rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
+            } else if (mat.materialType == 22u) {
+                if (!shadeDispersiveDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
+                                      rayDir, rayOrigin, throughput, specularBounce, rngState, rgbChannel)) break;
             } else if (mat.materialType == 5u) {
                 if (!shadeRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                            rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
