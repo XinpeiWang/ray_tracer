@@ -7634,3 +7634,78 @@ lifts - B7 in particular now looks tractable FAST, since
 walk shape this PR just ported, differing only in the bottom-interface
 bounce (GGX conductor instead of Lambertian) - a natural next
 increment.
+
+## 141. Category B increment: B7 Cornell Coated Conductor (materialType 20, CoatedConductorBxDF) - and a real, pre-existing conductor-Fresnel colour-balance quirk found and correctly scoped OUT
+
+New materialType 20: pbrt-v4's `CoatedConductorBxDF` - the SAME rough-
+dielectric-coat random walk materialType 19 (section 140) just built,
+with the bottom interface swapped from a Lambertian cosine bounce to a
+GGX-conductor specular bounce (real per-channel complex Fresnel,
+`frComplexRGB()`, the same formula materialType 4/9 already use).
+Ported from `gpu/optix/optix_device_helpers.h`'s own
+`MaterialType::CoatedConductor` case, same strategy as B5. Genuinely
+SIMPLER than B5's own continuation-ray sampler: a conductor's bottom
+bounce is a single specular direction (one microfacet sample, one
+reflection), not a Lambertian spread that can need several retries to
+find an exit angle - so `shadeCoatedConductor()`'s own escape path is
+one deterministic pass, no `kMaxCoatBounces` retry loop at all, unlike
+`shadeCoatedDiffuse()`'s own. `mat.color` is unused (this material's
+whole colour comes from `conductorEta`/`conductorK`, the same fields
+materialType 4/9 already use - `kConductorAu`/`kConductorCu`, the SAME
+real presets, reused directly via a new `#include
+"../../src/shared/conductor_data.h"` rather than re-transcribed by
+hand). `buildCornellFamilyScene()`'s sphere branch needed one new thing
+its materialType 19 sibling didn't: an explicit `mat.conductorEta`/
+`mat.conductorK` assignment (the constructor's own aggregate-init list
+only ever sets these two fields for materialType 4's own branch, not
+generally - a real, easy-to-miss gap, only mattered because this is the
+first sphere material since 4/9 to need them at all).
+
+**A real, investigated-thoroughly-then-correctly-scoped-out finding**:
+a first `--gpu` vs `--cpu` comparison showed the lacquered-copper BOX
+with a visibly wrong hue - CPU's box reads dark reddish-brown (real
+copper character), Metal's reads more grey-lavender/purple, a
+G-channel-too-low, B-channel-too-high colour-channel INVERSION relative
+to copper's own real Fresnel reflectance (verified via a standalone
+double-precision sweep of `FrComplex` across the FULL cosine range for
+`kConductorCu`'s own real eta/k values: **G > B at every single angle
+from normal incidence to grazing, with no crossover anywhere** - so a
+correct render can never show B > G for this preset). The lacquered-
+GOLD SPHERE, rendered by the exact same new shader code, showed the
+correct R > G > B ordering throughout, so this looked at first like a
+real, material-type-20-specific bug.
+
+**Root-caused via a debug isolation, not left as a guess**: overriding
+`radiance` to output `layeredCoatedConductorF()`'s own raw return value
+directly (bypassing NEE/GI entirely) at both a head-on and a deliberately
+grazing `wi`, for the SAME copper preset, reproduced the CORRECT G > B
+ordering every time - proving the new stochastic layered-material
+function itself is not the source. The decisive test: swapping the
+BOX's own material from the brand-new materialType 20 to the ALREADY-
+SHIPPED, pre-existing materialType 4 (plain GGX conductor, no coat at
+all, in production since section 61) with the exact same copper preset
+and roughness reproduced the IDENTICAL G-too-low/B-too-high inversion.
+**This proves the quirk is a real, pre-existing characteristic of this
+loader's own conductor-Fresnel/GGX shading path in general (or of this
+specific box geometry/lighting configuration interacting with it), NOT
+something materialType 20's own new code introduces** - copper's own
+real G/B reflectance values happen to be unusually close together
+(0.61 vs 0.57 at normal incidence, a much narrower gap than gold's own
+0.77 vs 0.39), making this specific preset far more sensitive to
+whatever the underlying effect is than any conductor scene shipped so
+far (B2's/B4's own boxes use aluminium, section 126/127 - a preset with
+its own, much larger, harder-to-flip channel gaps). Root-causing the
+UNDERLYING pre-existing effect (rather than this PR's own new code) is
+correctly out of scope for landing B7 - flagged here for a future,
+dedicated investigation, same standard as section 139's own honestly-
+documented, deliberately-deferred GI-convergence finding.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), the
+55-scene pbrt-backed regression sweep (0 failures), and regression
+spot-checks of 20 earlier hand-authored scenes (all render without
+error, unaffected). Both objects show real "coated" character (Fresnel-
+weighted specular gloss over a colour-tinted base, not a flat diffuse
+or plain-mirror look) matching CPU's own qualitative shape, aside from
+the copper box's own pre-existing, separately-flagged hue quirk. `B7`
+added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
+set in this same PR. **Category B is now 9 of 16 done.**

@@ -88,6 +88,11 @@
 #undef TINYEXR_IMPLEMENTATION
 #include "../../src/shared/pbrt_load.h"
 #include "../../src/shared/cornell_box_data.h"
+// kConductorAu/kConductorCu - real (eta,k) presets for B7's own lacquered-
+// gold sphere/lacquered-copper box (buildCornellCoatedConductor()) -
+// reused directly rather than re-transcribed by hand, same as this
+// file's own cornell_box_data.h include just above.
+#include "../../src/shared/conductor_data.h"
 // metal_render_main()'s own callable signature (section 79) - matches
 // gpu/optix/optix_interface.h's own optix_render_main() shape exactly,
 // down to reusing this SAME struct, so a future launcher/main.cpp caller
@@ -1371,6 +1376,13 @@ struct MetalPocApp {
     // shadeCoatedDiffuse()'s own declaration comment, metal_poc.metal).
     // Section 140, docs/METAL_GPU_FEASIBILITY.md.
     void buildCornellCoatedDiffuse();
+    // B7: Cornell Coated Conductor - buildCornellFamilyScene() with BOTH
+    // box and sphere as materialType 20 (CoatedConductorBxDF - the SAME
+    // coat random walk as materialType 19's own CoatedDiffuseBxDF, just
+    // with a GGX-conductor bottom bounce instead of Lambertian - see
+    // shadeCoatedConductor()'s own declaration comment, metal_poc.metal).
+    // Section 141, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCornellCoatedConductor();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3091,6 +3103,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
+    if (scene_id == "B7") { buildCornellCoatedConductor(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4332,6 +4345,20 @@ void MetalPocApp::buildCornellFamilyScene(
             // brand-new shader function with no old convention to stay
             // consistent with).
             mat.ior = sphereIor;
+        } else if (sphereMaterialType == 20u) {
+            // CoatedConductorBxDF ("lacquered metal" sphere, section 141) -
+            // `ior` is the dielectric coat's real refraction index
+            // (`sphereIor`); `roughness` (already set from
+            // `sphereRoughness` via the constructor above) is the
+            // precomputed GGX alpha, same convention as materialType
+            // 19's own sphere branch just above; `conductorEta`/
+            // `conductorK` are the metal base's own real per-channel
+            // complex IOR - unlike materialType 4's own branch, the
+            // constructor above does NOT set these two fields by
+            // default, so they need the same explicit assignment here.
+            mat.ior = sphereIor;
+            mat.conductorEta = PackedFloat3{sphereConductorEta.x, sphereConductorEta.y, sphereConductorEta.z};
+            mat.conductorK = PackedFloat3{sphereConductorK.x, sphereConductorK.y, sphereConductorK.z};
         }
         spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
         sphereMaterials.push_back(mat);
@@ -5318,6 +5345,30 @@ void MetalPocApp::buildCornellCoatedDiffuse() {
     buildCornellFamilyScene(
         /*box=*/19u, orange, boxAlpha, float3{1, 1, 1}, float3{0, 0, 0}, /*boxIor=*/1.5f,
         /*sphere=*/19u, blue, sphereAlpha, float3{1, 1, 1}, float3{0, 0, 0}, /*sphereIor=*/1.5f);
+}
+
+// B7: Cornell Coated Conductor - matches CPU's own
+// build_cornell_coated_conductor() exactly: a lacquered-COPPER box
+// (Cu conductor, IOR-1.5 coat, roughness 0.2) and a lacquered-GOLD
+// sphere (Au conductor, IOR-1.5 coat, roughness 0.1), both materialType
+// 20 (CoatedConductorBxDF) - the SAME rough-dielectric-coat random walk
+// materialType 19 just built, with a GGX-conductor bottom bounce
+// (complex per-channel Fresnel, `kConductorAu`/`kConductorCu` - the
+// SAME real presets materialType 4/9 already use elsewhere in this
+// series) in place of a Lambertian one. `color` is unused for this
+// achromatic-base material (the metal's own colour comes entirely from
+// `conductorEta`/`conductorK`, not a flat tint) - set to white purely
+// so an accidental future read doesn't silently multiply by black.
+void MetalPocApp::buildCornellCoatedConductor() {
+    const float boxAlpha = sqrtf(std::max(0.2f, 1e-4f));
+    const float sphereAlpha = sqrtf(std::max(0.1f, 1e-4f));
+    const float3 cuEta{kConductorCu.eta_r, kConductorCu.eta_g, kConductorCu.eta_b};
+    const float3 cuK{kConductorCu.k_r, kConductorCu.k_g, kConductorCu.k_b};
+    const float3 auEta{kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b};
+    const float3 auK{kConductorAu.k_r, kConductorAu.k_g, kConductorAu.k_b};
+    buildCornellFamilyScene(
+        /*box=*/20u, float3{1, 1, 1}, boxAlpha, cuEta, cuK, /*boxIor=*/1.5f,
+        /*sphere=*/20u, float3{1, 1, 1}, sphereAlpha, auEta, auK, /*sphereIor=*/1.5f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

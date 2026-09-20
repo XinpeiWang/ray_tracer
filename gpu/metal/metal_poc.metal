@@ -3978,6 +3978,356 @@ inline bool shadeCoatedDiffuse(TriangleMaterial mat, float3 hitPoint, float3 fac
     return true;
 }
 
+// CoatedConductorBxDF (pbrt-v4) - the SAME rough-dielectric-coat random
+// walk `shadeCoatedDiffuse()` just above already implements (see that
+// function's own header comment for the full derivation/rationale -
+// same OptiX-reference-not-CPU-reference porting strategy, same "two
+// deliberately different Fresnel conventions" note), with the bottom
+// interface swapped from a Lambertian cosine bounce to a GGX-conductor
+// specular bounce (real per-channel complex Fresnel, `frComplexRGB()`).
+// Ported from `gpu/optix/optix_device_helpers.h`'s own
+// `MaterialType::CoatedConductor` case, which is genuinely SIMPLER than
+// CoatedDiffuse's own sample step for one real physical reason: a
+// conductor's bottom bounce is a single specular GGX reflection (one
+// direction in, one direction out), not a Lambertian bounce that can
+// need several retries before finding an exit angle that clears the
+// coat - so the continuation sampler below needs no retry loop at all,
+// unlike `shadeCoatedDiffuse()`'s own `kMaxCoatBounces` loop.
+//
+// `mat.conductorEta`/`mat.conductorK` = the metal base's own real
+// per-channel complex IOR (same fields materialType 4/9 already use);
+// `mat.color` is UNUSED (this material has no separate diffuse albedo
+// at all - the metal's own colour comes entirely from its complex
+// Fresnel). `mat.ior`/`mat.roughness` are the coat's own (real IOR,
+// precomputed GGX alpha), same convention as materialType 19.
+
+// Stochastic BSDF value (see `layeredCoatedDiffuseF()`'s own header
+// comment for the full derivation) with a GGX-conductor bottom bounce
+// in place of the Lambertian one - direct port of
+// `layered_detail::ConductorBottomBounce::bounce()` (src/shared/
+// bxdfs_layered.h) folded into the SAME shared random-walk shape
+// `layeredCoatedDiffuseF()` already implements.
+inline float3 layeredCoatedConductorF(float3 wiLocal, float3 woLocal, float eta, float alpha,
+                                       float3 conductorEta, float3 conductorK, thread uint& rngState) {
+    if (wiLocal.z <= 0.0 || woLocal.z <= 0.0) return float3(0.0);
+    float3 result = float3(0.0);
+
+    {
+        float3 h = wiLocal + woLocal;
+        float hlen = length(h);
+        if (hlen > 1e-8) {
+            h /= hlen;
+            float D = ggxD(h, alpha, alpha);
+            float G = ggxG(woLocal, wiLocal, alpha, alpha);
+            float cosWiH = dot(wiLocal, h);
+            float F0 = frDielectric(cosWiH, eta);
+            float val = D * G * F0 / max(4.0 * wiLocal.z * woLocal.z, 1e-8);
+            result = float3(val);
+        }
+    }
+
+    const int kMaxDepth = 10;
+    const float kThickness = 0.01;
+
+    float3 wm = sampleGGXVNDF(wiLocal, alpha, alpha, rngState);
+    float cosI = dot(wiLocal, wm);
+    float Fin = frDielectric(cosI, eta);
+    float3 w = 2.0 * cosI * wm - wiLocal;
+    w.z = -abs(w.z);
+    if (w.z == 0.0) return result;
+
+    float3 beta = float3(1.0 - Fin);
+    float3 accum = float3(0.0);
+
+    for (int depth = 0; depth < kMaxDepth; ++depth) {
+        if (depth > 3) {
+            float rrBeta = max(beta.x, max(beta.y, beta.z));
+            if (rrBeta < 0.25) {
+                float q = max(0.0, 1.0 - rrBeta);
+                if (randFloat(rngState) < q) break;
+                beta /= max(1.0 - q, 1e-6);
+            }
+        }
+
+        beta *= exp(-kThickness / max(abs(w.z), 1e-6));
+        bool atBottom = (w.z < 0.0);
+
+        if (atBottom) {
+            // GGX-conductor bottom bounce (ConductorBottomBounce::bounce()) -
+            // flip to the conductor's own "incoming from above" frame,
+            // sample a VNDF half-vector, reflect, weight by real complex
+            // Fresnel times the height-correlated G/G1 ratio, and always
+            // leave `w` pointing back upward.
+            float3 fw = -w;
+            float3 bwm = sampleGGXVNDF(fw, alpha, alpha, rngState);
+            float cosC = dot(fw, bwm);
+            float3 rwo = 2.0 * cosC * bwm - fw;
+            float G1c = ggxG1(fw, alpha, alpha);
+            float Gc = ggxG(rwo, fw, alpha, alpha);
+            float wtC = (G1c > 1e-8) ? Gc / G1c : 0.0;
+            beta *= frComplexRGB(cosC, conductorEta, conductorK) * wtC;
+            w = float3(rwo.x, rwo.y, abs(rwo.z));
+        } else {
+            float3 h2 = w + woLocal;
+            float hlen2 = length(h2);
+            if (hlen2 > 1e-8) {
+                h2 /= hlen2;
+                float D2 = ggxD(h2, alpha, alpha);
+                float G2 = ggxG(woLocal, w, alpha, alpha);
+                float cosWH = dot(w, h2);
+                float Fexit = frDielectric(cosWH, eta);
+                float shape = D2 * G2 / max(4.0 * w.z * woLocal.z, 1e-8);
+                accum += beta * (shape * (1.0 - Fexit)) * woLocal.z;
+            }
+
+            float3 wm2 = sampleGGXVNDF(w, alpha, alpha, rngState);
+            float cos2 = dot(w, wm2);
+            float Fout = frDielectric(cos2, eta);
+            float3 r2 = 2.0 * cos2 * wm2 - w;
+            r2.z = -abs(r2.z);
+            w = r2;
+            beta *= Fout;
+        }
+    }
+
+    result += accum;
+    return result;
+}
+
+inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 facingNormal,
+                            constant Uniforms& uniforms,
+                            device const AreaLight* lights,
+                            device const PointLight* pointLights,
+                            device const DirectionalLight* directionalLights,
+                            device const ProjectionLight* projectionLights,
+                            device const GoniometricLight* goniometricLights,
+                            device const float* envMarginalCDF,
+                            device const float* envConditionalCDF,
+                            uint envMapWidth, uint envMapHeight,
+                            device const float* pbrtEnvMarginalCDF,
+                            device const float* pbrtEnvConditionalCDF,
+                            uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
+                            texture2d<float, access::sample> earthTexture,
+                            texture2d<float, access::sample> pbrtEnvTexture,
+                            texture2d<float, access::sample> goniometricTexture,
+                            texture2d<float, access::sample> pbrtGoniometricTexture,
+                            texture2d<float, access::sample> pbrtProjectionTexture,
+                            texture2d<float, access::sample> pbrtAreaLightTexture,
+                            sampler textureSampler,
+                            intersector<instancing, triangle_data> isect,
+                            instance_acceleration_structure accelStructure,
+                            intersection_function_table<instancing, triangle_data> functionTable,
+                            thread float3& rayDir, thread float3& rayOrigin,
+                            thread float3& throughput, thread float3& radiance,
+                            thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState) {
+    float alpha = max(mat.roughness, 0.0001);
+    bool effectivelySmooth = alpha < 0.001;
+
+    float3 tangent, bitangent;
+    buildAnisotropicOnb(facingNormal, tangent, bitangent);
+    float3 woWorld = -rayDir;
+    float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
+    woLocal.z = max(woLocal.z, 0.0001);
+    float3 conductorEta = float3(mat.conductorEta);
+    float3 conductorK = float3(mat.conductorK);
+
+    if (!effectivelySmooth && all(mat.emission == float3(0.0))) {
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
+        float3 toLight = ls.point - hitPoint;
+        float distSq = dot(toLight, toLight);
+        float dist = sqrt(distSq);
+        float3 wi = toLight / dist;
+        float cosSurface = dot(facingNormal, wi);
+        float cosLight = dot(ls.normal, -wi);
+        if (cosSurface > 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
+            ray shadowRay;
+            shadowRay.origin = hitPoint + facingNormal * 0.001f;
+            shadowRay.direction = wi;
+            shadowRay.min_distance = 0.001f;
+            shadowRay.max_distance = dist - 0.002f;
+            intersection_result<instancing, triangle_data> shadowResult =
+                isect.intersect(shadowRay, accelStructure, functionTable);
+            if (shadowResult.type == intersection_type::none) {
+                float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
+                float3 f = layeredCoatedConductorF(wiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
+                float pdfBsdf = coatedDiffuseProxyPdf(woLocal, wiLocal, alpha);
+                float weight = (pdfSolidAngle * pdfSolidAngle)
+                    / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
+                float transmittance = exp(-uniforms.fogSigmaT * dist);
+                radiance += throughput * f * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
+            }
+        }
+
+        for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+            PointLight pl = pointLights[pli];
+            float3 toPointLight = float3(pl.position) - hitPoint;
+            float plDistSq = dot(toPointLight, toPointLight);
+            float plDist = sqrt(plDistSq);
+            float3 plWi = toPointLight / plDist;
+            float plCosSurface = dot(facingNormal, plWi);
+            if (plCosSurface > 0.0) {
+                ray plShadowRay;
+                plShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                plShadowRay.direction = plWi;
+                plShadowRay.min_distance = 0.001f;
+                plShadowRay.max_distance = plDist - 0.002f;
+                intersection_result<instancing, triangle_data> plShadowResult =
+                    isect.intersect(plShadowRay, accelStructure, functionTable);
+                if (plShadowResult.type == intersection_type::none) {
+                    float3 plWiLocal = float3(dot(plWi, tangent), dot(plWi, bitangent), dot(plWi, facingNormal));
+                    float3 plF = layeredCoatedConductorF(plWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                    float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                    float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                    radiance += throughput * plF * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
+                }
+            }
+        }
+
+        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+            DirectionalLight dl = directionalLights[dli];
+            float3 dlWi = normalize(-float3(dl.direction));
+            float dlCosSurface = dot(facingNormal, dlWi);
+            if (dlCosSurface > 0.0) {
+                ray dlShadowRay;
+                dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                dlShadowRay.direction = dlWi;
+                dlShadowRay.min_distance = 0.001f;
+                dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+                intersection_result<instancing, triangle_data> dlShadowResult =
+                    isect.intersect(dlShadowRay, accelStructure, functionTable);
+                if (dlShadowResult.type == intersection_type::none) {
+                    float3 dlWiLocal = float3(dot(dlWi, tangent), dot(dlWi, bitangent), dot(dlWi, facingNormal));
+                    float3 dlF = layeredCoatedConductorF(dlWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                    float dlExitDist = rayBoxExitDistance(dlShadowRay.origin, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                    float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
+                    radiance += throughput * dlF * float3(dl.emission) * dlCosSurface * dlTransmittance;
+                }
+            }
+        }
+
+        for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+            ProjectionLight pj = projectionLights[pji];
+            float3 toProjLight = float3(pj.position) - hitPoint;
+            float pjDistSq = dot(toProjLight, toProjLight);
+            float pjDist = sqrt(pjDistSq);
+            float3 pjWi = toProjLight / pjDist;
+            float pjCosSurface = dot(facingNormal, pjWi);
+            if (pjCosSurface > 0.0) {
+                float3 pjRadiance = projectionLightRadiance(-pjWi, pj.forward, pj.right, pj.up,
+                                                             pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                             (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
+                if (any(pjRadiance > float3(0.0))) {
+                    ray pjShadowRay;
+                    pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    pjShadowRay.direction = pjWi;
+                    pjShadowRay.min_distance = 0.001f;
+                    pjShadowRay.max_distance = pjDist - 0.002f;
+                    intersection_result<instancing, triangle_data> pjShadowResult =
+                        isect.intersect(pjShadowRay, accelStructure, functionTable);
+                    if (pjShadowResult.type == intersection_type::none) {
+                        float3 pjWiLocal = float3(dot(pjWi, tangent), dot(pjWi, bitangent), dot(pjWi, facingNormal));
+                        float3 pjF = layeredCoatedConductorF(pjWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                        float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
+                        radiance += throughput * pjF * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
+                    }
+                }
+            }
+        }
+
+        for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+            GoniometricLight gl = goniometricLights[gli];
+            float3 toGoniLight = float3(gl.position) - hitPoint;
+            float glDistSq = dot(toGoniLight, toGoniLight);
+            float glDist = sqrt(glDistSq);
+            float3 glWi = toGoniLight / glDist;
+            float glCosSurface = dot(facingNormal, glWi);
+            if (glCosSurface > 0.0) {
+                float3 glRadiance = goniometricLightRadiance(-glWi, gl.forward, gl.right, gl.up,
+                                                              gl.emission, gl.scale,
+                                                              (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
+                if (any(glRadiance > float3(0.0))) {
+                    ray glShadowRay;
+                    glShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                    glShadowRay.direction = glWi;
+                    glShadowRay.min_distance = 0.001f;
+                    glShadowRay.max_distance = glDist - 0.002f;
+                    intersection_result<instancing, triangle_data> glShadowResult =
+                        isect.intersect(glShadowRay, accelStructure, functionTable);
+                    if (glShadowResult.type == intersection_type::none) {
+                        float3 glWiLocal = float3(dot(glWi, tangent), dot(glWi, bitangent), dot(glWi, facingNormal));
+                        float3 glF = layeredCoatedConductorF(glWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                        float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
+                        radiance += throughput * glF * glRadiance * glCosSurface * glTransmittance;
+                    }
+                }
+            }
+        }
+    }
+
+    // Continuation ray: entrance test at the coat's own top surface,
+    // then either a specular GGX reflection (probability F_in) or a
+    // transmit -> single-bounce GGX-conductor reflection -> deterministic
+    // exit test (probability 1-F_in) - NO retry loop needed (unlike
+    // materialType 19's own diffuse-escape loop), since a conductor's
+    // own bottom bounce is a single specular direction, not a spread
+    // that can miss the coat's own exit cone and need another try.
+    float3 wm = sampleGGXVNDF(woLocal, alpha, alpha, rngState);
+    float cosI = dot(woLocal, wm);
+    float Fin = frDielectric(cosI, mat.ior);
+    float3 newDirLocal;
+    float3 beta;
+    if (randFloat(rngState) < Fin) {
+        float3 reflLocal = 2.0 * cosI * wm - woLocal;
+        if (reflLocal.z <= 0.0) return false;
+        float G1 = ggxG1(woLocal, alpha, alpha);
+        float G = ggxG(reflLocal, woLocal, alpha, alpha);
+        float w = (G1 > 1e-8) ? G / G1 : 0.0;
+        float fw = Fin * w;
+        beta = float3(fw, fw, fw);
+        newDirLocal = reflLocal;
+    } else {
+        float3 wDown = 2.0 * cosI * wm - woLocal;
+        if (wDown.z > 0.0) wDown.z = -wDown.z;
+        if (wDown.z == 0.0) return false;
+
+        float3 fw = -wDown;
+        float3 bwm = sampleGGXVNDF(fw, alpha, alpha, rngState);
+        float cosC = dot(fw, bwm);
+        if (cosC <= 0.0) return false;
+        float3 rwo = 2.0 * cosC * bwm - fw;
+        if (rwo.z <= 0.0) return false;
+
+        float G1c = ggxG1(fw, alpha, alpha);
+        float Gc = ggxG(rwo, fw, alpha, alpha);
+        float wtC = (G1c > 1e-8) ? Gc / G1c : 0.0;
+        float3 Fc = frComplexRGB(cosC, conductorEta, conductorK) * wtC;
+
+        // Coat-to-air exit test - inverted eta, matching OptiX's own
+        // sample loop exactly (same convention shadeCoatedDiffuse()'s
+        // own diffuse-escape loop uses, but a single deterministic test
+        // here, not a retry loop - see this function's own header
+        // comment).
+        float Fout = frDielectric(rwo.z, 1.0 / mat.ior);
+        float Tout = 1.0 - Fout;
+        float Tin = 1.0 - Fin;
+        beta = Fc * (Tin * Tout);
+        newDirLocal = rwo;
+    }
+
+    float3 newDirWorld = normalize(newDirLocal.x * tangent + newDirLocal.y * bitangent + newDirLocal.z * facingNormal);
+    rayDir = newDirWorld;
+    rayOrigin = hitPoint + facingNormal * 0.001f;
+    throughput *= beta;
+    if (!effectivelySmooth) {
+        bsdfPdf = coatedDiffuseProxyPdf(woLocal, newDirLocal, alpha);
+        specularBounce = false;
+    } else {
+        specularBounce = true;
+    }
+    return true;
+}
+
 // Ashikhmin & Shirley's own velvet BRDF (2000; this exact port, though,
 // mirrors Blender Cycles' own kernel/closure/bsdf_ashikhmin_velvet.h,
 // itself adapted from Open Shading Language) - the classic fabric/
@@ -5056,6 +5406,14 @@ kernel void primaryRayKernel(
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 19u) {
                 if (!shadeCoatedDiffuse(mat, hitPoint, facingNormal, uniforms,
+                                  lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                  envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
+                                  pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                  earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
+                                  isect, accelStructure, functionTable,
+                                  rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
+            } else if (mat.materialType == 20u) {
+                if (!shadeCoatedConductor(mat, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
                                   pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
