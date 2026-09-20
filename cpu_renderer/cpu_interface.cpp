@@ -985,6 +985,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"C1",                          // HDRI Sky, no new materialType/shader code needed (section 146)
 		"C7",                          // Portal Infinite Light, no new materialType/shader code needed (section 147)
 		"I3",                          // ExposureToneMapping, reuses C1's own world + a new --exposure implementation (section 148)
+		"D1",                          // Depth of Field - open row-of-spheres scene, reuses D5's own lens mechanism (section 149)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
