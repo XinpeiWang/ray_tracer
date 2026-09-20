@@ -7881,3 +7881,64 @@ sibling, same geometry/light, `rough_dielectric::make_dispersive()`
 instead) is a near-free next increment - the same dispersion mechanism
 applied to the already-existing rough-dielectric (materialType 5) path,
 mirroring this session's own B5-then-B7 pattern.
+
+## 144. Category B increment: B24 Frosted Prism Dispersion (materialType 23) - the near-free sibling B23 predicted, plus a pre-existing rough-dielectric characteristic found and correctly scoped out again
+
+New materialType 23: the frosted counterpart to materialType 22
+(section 143) - `shadeDispersiveRoughDielectric()` is structurally
+`shadeRoughDielectric()` (materialType 5) with the exact same
+`rgbChannel` stochastic-channel-selection preamble materialType 22
+already established, substituted for the flat `mat.ior`. Ported from
+OptiX's own `MaterialType::RoughDielectric` dispersive branch, a few
+lines below its own smooth `Dielectric` counterpart in the SAME
+function - deliberately copy-pasted there rather than factored into a
+shared helper (that code's own comment: "exactly 2 occurrences... a 3rd
+would tip this into worth extracting"), so this port keeps the same
+shape rather than introducing a shared abstraction the reference itself
+doesn't have. `buildPrismDispersion()` (B23) and the new
+`buildPrismDispersionRough()` (B24) now share one geometry builder
+(`buildPrismDispersionGeometry(glassMaterialType, roughness)`, a small
+refactor of section 143's own function) - identical prism/screen/camera/
+light, differing only in which two arguments get passed in, mirroring
+CPU's own `build_prism_dispersion_geometry(glass_material)` shared-
+geometry-parameterized-on-material shape exactly.
+
+**A second real, pre-existing characteristic found and correctly scoped
+out, not chased** (matching section 141/B7's own precedent): a direct
+`--gpu` vs `--cpu --spectral` comparison showed a real difference in
+overall CHARACTER, not just noise - CPU's own frosted prism reads as a
+broadly bright, fairly uniform hazy/grey silhouette (rough scattering
+spreads the directional light's own narrow beam across a wide screen
+area), while this port's own render shows a much darker prism body with
+just a blurred bright band near the top edge (closer to B23's own
+sharp-fan shape, merely blurred, not broadly diffuse). **Isolated with a
+targeted control test before concluding anything about the new
+dispersive code**: temporarily building B24's own exact geometry with
+the ALREADY-SHIPPED, non-dispersive materialType 5 (rough dielectric,
+in production since section 60) instead of the new materialType 23
+reproduced the IDENTICAL darker/banded character. This proves the
+difference is a real, pre-existing characteristic of this loader's own
+`shadeRoughDielectric()` under a genuinely NEW geometric configuration -
+a directional light refracting through TWO rough interfaces in a row
+(the prism's own entry AND exit faces) onto a distant screen - that no
+earlier scene has ever exercised (B3's own Cornell Rough Glass tests a
+single rough sphere lit by a nearby area light, a very different
+light-transport shape), NOT something materialType 23's own new
+dispersion code introduces. Root-causing the underlying difference
+(likely a real gap in how far this loader's single-scatter GGX model
+spreads energy through a double-rough-interface path, versus CPU's own
+possibly-different sampling strategy there) is correctly out of scope
+for landing B24 - flagged here for a future dedicated investigation,
+same standard as section 141's own copper-hue finding.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), the
+55-scene pbrt-backed regression sweep (0 failures), and regression
+spot-checks of 27 earlier hand-authored scenes (including B23, re-
+checked given this PR's own shared-geometry-builder refactor touched
+its code path too - unaffected, pixel-identical dispersion fan). `B24`
+added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set
+in this same PR. **Category B is now 12 of 16 done.** The remaining
+B-scenes (B10 Principled Showcase, B11 Hair Fibers, B13 Subsurface Slab,
+B14 Measured BRDF) are all bigger lifts per the earlier scoping pass -
+B10 is the next most tractable (OptiX has a working
+`MaterialType::Principled` reference).
