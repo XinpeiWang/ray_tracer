@@ -7263,3 +7263,37 @@ same PR. **Category C is now 5 of 7 done** - only C1 (HDRI Sky, needs a
 genuinely new "open scene with a real image-based sky" capability) and
 C7 (Portal Infinite Light, needs portal-light importance sampling)
 remain, both correctly bigger-scope, deferred.
+
+## 136. Category F (Geometry) opens: F2 Triangle Mesh, category F's only tractable scene right now
+
+The first and, for now, only category-F increment: F1 (bilinear
+patch shape) and F4 (real ray-curve intersection) both need genuinely
+NEW custom-primitive intersection functions this loader doesn't have
+at all - correctly deferred as bigger lifts. F2 needs none of that:
+CPU's own `build_triangle_mesh_scene()` is a procedurally-generated
+regular icosahedron (12 vertices at golden-ratio coordinates, 20
+triangular faces, no per-vertex normals - flat per-face geometric
+normals, matching `addQuad()`'s own established one-normal-per-face
+convention) - REAL triangle geometry this loader's own Moller-Trumbore
+intersection already handles for every mesh/quad scene in this whole
+series. Only the vertex DATA is new; no shader or primitive-type work
+at all. Ground is a flat quad (materialType 16, real 3D checker),
+avoiding CPU's own radius-1000 sphere's clearance issue (sections 124/
+130's own established fix); the icosahedron's material approximates
+CPU's own simple `metal(albedo, fuzz=0.15)` the same honest,
+non-algebraic way section 134's own accent sphere did; the overhead
+light sphere is direct-hit-only (this loader's own established
+sphere-light-has-no-NEE limitation, section 125), even though CPU's own
+registry row does register it for NEE.
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - a clearly recognizable,
+correctly-oriented icosahedron with the same golden metal tint sitting
+on a matching checkerboard floor, same background colour. Full clean
+`RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene `pbrt_scenes/`
+sweep (0 failures); A1/A5/B1/C2/C5/I1/I8/G1/G12 (earlier increments)
+re-verified unaffected. `F2` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category F is now 1 of 3 done** - F1/F4 both correctly
+deferred until a real custom-primitive intersection function (bilinear
+patch, curve) exists.

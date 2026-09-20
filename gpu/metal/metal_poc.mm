@@ -1317,6 +1317,15 @@ struct MetalPocApp {
     // docs/METAL_GPU_FEASIBILITY.md.
     void buildGoniometricLightCornell();
     void buildProjectionLightCornell();
+    // F2: Triangle Mesh - a procedurally-generated icosahedron (12
+    // vertices, 20 triangular faces, flat per-face normals), matching
+    // CPU's own build_triangle_mesh_scene() exactly. Real triangle
+    // geometry this loader already fully supports (no new primitive
+    // TYPE needed at all, unlike F1's bilinear patch or F4's real
+    // curve geometry - both genuinely bigger lifts, correctly
+    // deferred) - only the vertex DATA is new. Section 136, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildTriangleMeshScene();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3032,6 +3041,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "C4") { buildPointLightCornell(); return true; }
     if (scene_id == "C5") { buildGoniometricLightCornell(); return true; }
     if (scene_id == "C6") { buildProjectionLightCornell(); return true; }
+    if (scene_id == "F2") { buildTriangleMeshScene(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4933,6 +4943,115 @@ void MetalPocApp::buildProjectionLightCornell() {
         /*fovDegrees=*/40.0f, /*aspect=*/1.0f, /*scale=*/1000000.0f * sceneScale * sceneScale);
     light.usePbrtTexture = 1u;
     projectionLights.push_back(light);
+}
+
+// F2: Triangle Mesh - matches CPU's own build_triangle_mesh_scene()
+// exactly: a procedurally-generated regular icosahedron (12 vertices at
+// golden-ratio coordinates, 20 triangular faces, no per-vertex normals -
+// CPU's own triangle::hit() falls back to flat per-face geometric
+// normals for exactly this reason, matching this loader's own addQuad()
+// convention of one flat normal per face already). Ground is a flat
+// quad (materialType 16, real 3D checker), not CPU's own radius-1000
+// sphere - the SAME clearance fix sections 124/130 already established.
+// The metal material approximates CPU's own simple `metal(albedo,
+// fuzz=0.15)` the same honest way section 134's own accent sphere did
+// (no algebraic reconciliation exists between "fuzz" and GGX alpha).
+// The overhead light sphere is direct-hit-only (materialType 0,
+// `emission` set, no NEE registration) - this loader has no sphere-
+// light NEE strategy at all (A7's own established limitation, section
+// 125), even though CPU's own registry row DOES register it for NEE.
+void MetalPocApp::buildTriangleMeshScene() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground.
+    {
+        const float3 tileA{0.15f, 0.15f, 0.15f}, tileB{0.85f, 0.85f, 0.85f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-15.0f, 0.0f, -15.0f} + sceneOffset, float3{15.0f, 0.0f, -15.0f} + sceneOffset,
+                float3{15.0f, 0.0f, 15.0f} + sceneOffset, float3{-15.0f, 0.0f, 15.0f} + sceneOffset,
+                tileA, /*materialType=*/16u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness=*/0.8f, /*ior=*/1.0f, tileB);
+    }
+
+    // Icosahedron - 12 vertices at golden-ratio coordinates, scaled to
+    // radius 1.5 and centred at (0,2.5,0).
+    {
+        const float phi = (1.0f + sqrtf(5.0f)) / 2.0f;
+        const float radius = 1.5f;
+        const float3 rawVerts[12] = {
+            {-1, phi, 0}, {1, phi, 0}, {-1, -phi, 0}, {1, -phi, 0},
+            {0, -1, phi}, {0, 1, phi}, {0, -1, -phi}, {0, 1, -phi},
+            {phi, 0, -1}, {phi, 0, 1}, {-phi, 0, -1}, {-phi, 0, 1},
+        };
+        const float vertLen = simd::length(rawVerts[0]);
+        const float3 center = float3{0.0f, 2.5f, 0.0f} + sceneOffset;
+        float3 scaledVerts[12];
+        for (int i = 0; i < 12; ++i) scaledVerts[i] = center + (radius / vertLen) * rawVerts[i];
+
+        const int faces[20][3] = {
+            {0,11,5}, {0,5,1}, {0,1,7}, {0,7,10}, {0,10,11},
+            {1,5,9}, {5,11,4}, {11,10,2}, {10,7,6}, {7,1,8},
+            {3,9,4}, {3,4,2}, {3,2,6}, {3,6,8}, {3,8,9},
+            {4,9,5}, {2,4,11}, {6,2,10}, {8,6,7}, {9,8,1},
+        };
+        const float3 albedo{0.8f, 0.6f, 0.2f};
+        const float alpha = 0.15f;
+        const float3 k = reflectanceToConductorK(albedo);
+        TriangleMaterial mat{PackedFloat3{albedo.x, albedo.y, albedo.z}, /*materialType=*/4u,
+            /*ior=*/alpha, PackedFloat3{0, 0, 0}, -1, /*roughness=*/alpha};
+        mat.conductorEta = PackedFloat3{1, 1, 1};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        for (const auto& f : faces) {
+            const float3 a = scaledVerts[f[0]], b = scaledVerts[f[1]], c = scaledVerts[f[2]];
+            const float3 faceNormal = simd::normalize(simd::cross(b - a, c - a));
+            const PackedFloat3 packedNormal{faceNormal.x, faceNormal.y, faceNormal.z};
+            verts.push_back(PackedFloat3{a.x, a.y, a.z});
+            verts.push_back(PackedFloat3{b.x, b.y, b.z});
+            verts.push_back(PackedFloat3{c.x, c.y, c.z});
+            normals.push_back(packedNormal);
+            normals.push_back(packedNormal);
+            normals.push_back(packedNormal);
+            uvs.push_back(PackedFloat2{0, 0});
+            uvs.push_back(PackedFloat2{1, 0});
+            uvs.push_back(PackedFloat2{0, 1});
+            materials.push_back(mat);
+        }
+    }
+
+    // Overhead area light - direct-hit only (see this function's own
+    // declaration comment).
+    {
+        const float3 lightColor{6.0f, 6.0f, 6.0f};
+        const float3 c = float3{0.0f, 8.0f, 0.0f} + sceneOffset;
+        TriangleMaterial mat{PackedFloat3{lightColor.x, lightColor.y, lightColor.z}, /*materialType=*/0u,
+            1.0f, PackedFloat3{lightColor.x, lightColor.y, lightColor.z}, /*lightId=*/-1, 0.0f};
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 2.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Real per-scene flat background.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.05f, 0.05f, 0.08f};
+
+    // Camera: CPU's own real registry row for F2, ported directly
+    // (vfov 35, lookfrom (0,4,8), lookat (0,2.5,0)).
+    const float3 lookfrom = float3{0.0f, 4.0f, 8.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 2.5f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 35.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
