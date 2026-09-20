@@ -8264,3 +8264,77 @@ own average colour). Full clean `RT_BUILD_METAL=ON` rebuild, ctest
 regression spot-checks of the accumulated hand-authored scenes. `D1`
 added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
 set in this same PR. **Category D is now 2 of 9 done.**
+
+## 150. Category D increment: D6 Orthographic Camera Cornell Box - this loader's first NEW camera projection mode, plus a real CPU-side camera-handedness inconsistency found via a mirrored first render
+
+Earlier scoping (this session and an earlier one) flagged D2/D3/D4/D6/
+D7/D8 as needing "a genuinely new camera projection mode" this loader
+doesn't have (it only ever generates a fanned-direction pinhole/
+thin-lens PERSPECTIVE ray). Re-examined this increment and found
+orthographic specifically is a small, well-isolated addition: pbrt-v4's
+`OrthographicCamera::GenerateRay()` (ported in this project's own
+`src/shared/cameras.h`) gives every pixel the SAME ray DIRECTION
+(camera forward) and instead offsets the ray's ORIGIN across a screen
+window - a straightforward branch at the ONE place this loader
+generates primary camera rays (`primaryRayKernel`'s own per-sample
+loop; there is only one real render kernel, confirmed by grep, so no
+second call site to keep in sync). New `Uniforms::cameraOrthographic`
+flag (0, every earlier scene, keeps the exact existing perspective fan)
++ `MetalPocApp::havePbrtOrthographic`, mirroring `pbrtLensRadius`'s own
+established shape; `pbrtTanHalfFov` is REUSED (not tangent-related at
+all in this mode) as the orthographic screen window's own world-space
+half-extent, since the aspect-ratio scaling already applied to
+`screen` is algebraically identical to pbrt's own `compute_screen_window()`
+shape at the app's usual square resolutions.
+
+`buildOrthoCornellBox()` (D6) is a genuinely free geometry reuse of
+`buildCornellBoxA1()` (same dead-on lookfrom/lookat as A1/D5 - CPU's
+own `build_ortho_camera_cornell_box` reuses the SAME `build_cornell_box`
+scene), with only the projection mode switched afterward -
+`havePbrtOrthographic = true; pbrtTanHalfFov = 320.0f * sceneScale;`,
+matching `compute_screen_window()`'s own `±1`/`±aspect` window times
+CPU's own literal `320` screen-window scale exactly.
+
+**A real CPU-SIDE bug found and worked around, not a Metal-side one**:
+the first render was a clean, correctly-lit, correctly-orthographic
+(parallel, non-converging edges) Cornell box - but horizontally
+MIRRORED versus `--cpu` (green wall/box on the wrong side). Root-caused
+by comparing the two camera-construction formulas CPU itself uses:
+the PRIMARY perspective camera (`src/TheRestOfYourLife/camera.h`, used
+by A1/D5/every earlier scene) computes `u (right) = cross(vup, -forward)`,
+which algebraically reduces to `cross(forward, vup)` - the SAME formula
+this loader's own `cameraRight` has always used, everywhere, which is
+why every perspective scene has matched CPU correctly all session. But
+the ALT camera path (`src/shared/cameras.h`'s `make_look_at()`, used
+ONLY by D2/D3/D4/D6/D7/D8's own non-perspective cameras, never the
+primary one) computes `right = cross(up, forward)` instead - the
+OPPOSITE sign from its own primary camera, a genuine, previously-latent
+internal inconsistency between CPU's own two separate camera-
+construction code paths. This was invisible for every scene so far
+because this loader's ray DIRECTION fan (`forward + screen.x*right +
+screen.y*up`) only ever needed to match the PRIMARY camera's own sign
+convention; D6 is the first scene to reuse `cameraRight` for an
+ORTHOGRAPHIC ray ORIGIN offset, where it needed to match CPU's
+DIFFERENTLY-signed alt-camera formula instead. Fixed with a single sign
+flip, isolated to the new orthographic branch only (`-screen.x *
+cameraRight`, `+screen.y * cameraUp` unchanged - the up/vertical sign
+was independently verified to already agree between both CPU camera
+paths via the same cross-product algebra). **Worth remembering for
+D3/D4/D7/D8 (the remaining alt-camera scenes)**: they'll likely need
+the SAME right-vector sign correction, since they share the identical
+`cameras.h::make_look_at()` construction - check for it explicitly via
+a real render comparison, don't assume the origin-offset formula's
+sign "obviously" matches the direction-fan one just because both reuse
+`cameraRight`.
+
+**Verified** with a direct `--gpu` vs `--cpu` comparison after the fix
+(matching box orientation, wall colours on the correct sides, matching
+glass-sphere position/highlight, correctly parallel - not converging -
+box edges in both). Full clean `RT_BUILD_METAL=ON` rebuild, ctest
+(4/4), the 55-scene pbrt-backed regression sweep (0 failures, confirming
+the new `cameraOrthographic` branch is a true no-op for every existing
+perspective scene), and regression spot-checks of the accumulated
+hand-authored scenes (including a direct visual re-check of A1 itself,
+since this PR touched the SHARED primary-ray-generation code block -
+unaffected). `D6` added to `cpu_scene_metal_hand_authored_supported()`'s
+`kSupported` set in this same PR. **Category D is now 3 of 9 done.**

@@ -171,6 +171,9 @@ struct Uniforms {
     // Uniforms::pbrtEnvMapWidth.
     uint32_t pbrtEnvMapWidth = 0;
     uint32_t pbrtEnvMapHeight = 0;
+    // Orthographic camera toggle - see metal_poc.metal's own mirrored
+    // Uniforms::cameraOrthographic comment for the full mechanism.
+    uint32_t cameraOrthographic = 0;
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -953,6 +956,18 @@ struct MetalPocApp {
     // scene has no pbrt file to parse from at all.
     float pbrtLensRadius = 0.0f;
     float pbrtFocusDistance = 1.0f;
+    // Orthographic (parallel-projection) camera for a hand-authored
+    // scene (D2/D6, section 150) - mirrors pbrtLensRadius/
+    // pbrtFocusDistance's own shape immediately above: a scene builder
+    // sets this true and reuses pbrtTanHalfFov as the orthographic
+    // screen window's own world-space half-extent (already in this
+    // scene's own rescaled unit system, same sceneScale-multiplied
+    // convention every other world-space distance here uses) - see
+    // Uniforms::cameraOrthographic's own comment (metal_poc.metal) for
+    // the full ray-generation mechanism. Default false preserves every
+    // earlier hand-authored scene's own perspective-camera behaviour
+    // exactly.
+    bool havePbrtOrthographic = false;
     float3 pbrtBboxCenter{0, 0, 0};
     float pbrtSceneScale = 1.0f;
     float3 pbrtSceneOffset{0, 0, 0};
@@ -1374,6 +1389,15 @@ struct MetalPocApp {
     // 1 more out-of-focus lambertian) plus a checker ground and a row
     // of small accent spheres. Section 149, docs/METAL_GPU_FEASIBILITY.md.
     void buildDepthOfField();
+    // D6: Orthographic Camera Cornell Box - the EXACT SAME A1 Cornell
+    // box geometry (build_cornell_box on CPU, same as D5), just with a
+    // real orthographic (parallel-projection) camera instead of the
+    // usual perspective one - a genuinely free geometry reuse of
+    // buildCornellBoxA1(), same shape as D5's own reuse, plus a NEW
+    // camera projection mode (havePbrtOrthographic/
+    // Uniforms::cameraOrthographic - this loader's first ever
+    // non-perspective camera). Section 150, docs/METAL_GPU_FEASIBILITY.md.
+    void buildOrthoCornellBox();
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -3191,6 +3215,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "F2") { buildTriangleMeshScene(); return true; }
     if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
     if (scene_id == "D1") { buildDepthOfField(); return true; }
+    if (scene_id == "D6") { buildOrthoCornellBox(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -5432,6 +5457,25 @@ void MetalPocApp::buildDepthOfField() {
     pbrtFocusDistance = focusDistRaw;
 }
 
+// D6: Orthographic Camera Cornell Box - the EXACT SAME geometry/camera
+// POSITION buildCornellBoxA1() already builds (same dead-on lookfrom/
+// lookat as A1/D5 - CPU's own build_cornell_box() scene, reused
+// unchanged), just switching the projection mode to orthographic
+// afterward. `pbrtTanHalfFov` is repurposed as the orthographic screen
+// window's own half-extent (compute_screen_window()'s own unscaled
+// +-1/+-aspect window times CPU's own 320 literal, matching
+// build_ortho_camera_cornell_box's own screen-window scale exactly -
+// see cameras.h's own compute_screen_window() and
+// Uniforms::cameraOrthographic's own comment, metal_poc.metal) - the
+// SAME sceneScale-multiplied world-space-distance convention
+// pbrtLensRadius already uses.
+void MetalPocApp::buildOrthoCornellBox() {
+    buildCornellBoxA1();
+    const float sceneScale = 2.0f / 555.0f;
+    havePbrtOrthographic = true;
+    pbrtTanHalfFov = 320.0f * sceneScale;
+}
+
 // E1: Homogeneous Medium - matches CPU's own build_homogeneous_medium_scene()
 // in GEOMETRY exactly: the standard 6 Cornell walls (kQuads[0..5],
 // including the SAME light quad - CPU's own scene reuses these exact
@@ -7023,6 +7067,10 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         // focusDistance is unread by the shader whenever lensRadius == 0.
         uniforms.lensRadius = pbrtLensRadius;
         uniforms.focusDistance = pbrtFocusDistance;
+        // See MetalPocApp::havePbrtOrthographic's own comment - reuses
+        // pbrtTanHalfFov (already copied to uniforms.tanHalfFov above)
+        // as the orthographic screen window's own half-extent.
+        uniforms.cameraOrthographic = havePbrtOrthographic ? 1u : 0u;
         uniforms.cameraVelocity = PackedFloat3{0, 0, 0};   // no motion blur
         if (havePbrtMedium) {
             uniforms.fogSigmaT = pbrtFogSigmaT;
