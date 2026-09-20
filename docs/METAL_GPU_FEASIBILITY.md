@@ -7030,3 +7030,32 @@ A1/A5/B2/B3/B4/B6/G1/G7/G12/G18 (earlier increments) re-verified
 unaffected. `B1` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR.
+
+## 131. Category B increment 6: B8 Cornell Wax Slab - materialType 12 (diffuse transmission) added to buildCornellFamilyScene()
+
+The sixth category-B scene, back to `buildCornellFamilyScene()`'s own
+shape (walls+light+box+sphere, box unchanged white Lambertian) - the
+sphere is materialType 12 (diffuse transmission), a material this
+backend has fully implemented since well before this Phase-B epic
+began, just not yet wired into this helper. `buildCornellFamilyScene()`
+gained a new trailing-defaulted `sphereTransmitColor` parameter
+(defaults to black, every earlier caller unaffected) and a new
+materialType-12 branch in the sphere-material construction, matching
+CPU's own `diffuse_transmission(R, T)` constructor exactly - `color`
+(already set from `sphereColor`) is the reflected diffuse tint,
+`sphereTransmitColor` the transmitted one, two independently-authored
+colours, not a derived pair (unlike materialType 4's `ior`/`roughness`
+dual-use, or the `roughness^0.25` reconciliation materialType 4/5 both
+needed). `buildCornellWaxSlab()` matches CPU's own
+`build_cornell_wax_slab()` exactly: warm ivory reflectance
+`(0.6,0.5,0.3)`, warm amber transmittance `(0.8,0.6,0.3)` - more
+transmittance than reflectance, a genuine wax-like translucency.
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - matching composition, the same
+warm amber/gold sphere tone in both. Full clean `RT_BUILD_METAL=ON`
+rebuild + ctest (4/4) + 51-scene `pbrt_scenes/` sweep (0 failures);
+A1/A5/B1/B2/B3/B4/B6/G1/G7/G12/G18 (earlier increments) re-verified
+unaffected. `B8` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR.
