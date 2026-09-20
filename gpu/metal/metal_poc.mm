@@ -1365,6 +1365,12 @@ struct MetalPocApp {
     // shadeNormalizedFresnel()'s own declaration comment, metal_poc.metal).
     // Section 139, docs/METAL_GPU_FEASIBILITY.md.
     void buildCornellCrystal();
+    // B5: Cornell Coated Diffuse - buildCornellFamilyScene() with BOTH box
+    // and sphere as materialType 19 (CoatedDiffuseBxDF, a genuinely NEW
+    // stochastic layered-material shader function - see
+    // shadeCoatedDiffuse()'s own declaration comment, metal_poc.metal).
+    // Section 140, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCornellCoatedDiffuse();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3084,6 +3090,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
+    if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4312,6 +4319,19 @@ void MetalPocApp::buildCornellFamilyScene(
             // see fresnelMoment1()'s own declaration comment.
             mat.ior = sphereIor;
             mat.roughness = 1.0f - 2.0f * fresnelMoment1(1.0f / sphereIor);
+        } else if (sphereMaterialType == 19u) {
+            // CoatedDiffuseBxDF ("coated diffuse" sphere, section 140) -
+            // `ior` is the dielectric coat's real refraction index
+            // (`sphereIor`); `roughness` (already set from
+            // `sphereRoughness` via the constructor above) is the
+            // PRECOMPUTED GGX alpha (`RoughnessToAlpha(userRoughness) =
+            // sqrt(userRoughness)`, computed HOST-side by the caller -
+            // matches CPU's own `coated_diffuse` constructor exactly,
+            // NOT this file's own materialType 4/9 "store roughness,
+            // square it in the shader" convention, since this is a
+            // brand-new shader function with no old convention to stay
+            // consistent with).
+            mat.ior = sphereIor;
         }
         spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
         sphereMaterials.push_back(mat);
@@ -5264,6 +5284,40 @@ void MetalPocApp::buildCornellCrystal() {
     buildCornellFamilyScene(
         /*box=*/0u, white, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f,
         /*sphere=*/18u, float3{1, 1, 1}, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, /*ior=*/1.5f);
+}
+
+// B5: Cornell Coated Diffuse - matches CPU's own
+// build_cornell_coated_diffuse() exactly: an orange/terracotta coated-
+// diffuse BOX (IOR 1.5, roughness 0.2) and a blue coated-diffuse SPHERE
+// (IOR 1.5, roughness 0.1), both materialType 19 (CoatedDiffuseBxDF - a
+// rough dielectric coat over a Lambertian base, pbrt-v4's own real
+// stochastic layered-material random walk, ported from the ALREADY-
+// SHIPPED, ALREADY-VERIFIED OptiX GPU reference - gpu/optix/
+// optix_device_helpers.h's own MaterialType::CoatedDiffuse case - rather
+// than re-derived from CPU's own src/shared/bxdfs_layered.h from
+// scratch. See shadeCoatedDiffuse()'s own declaration comment,
+// metal_poc.metal, for the full derivation and the one deliberate place
+// this port's own Fresnel convention differs between its sample step and
+// its NEE/MIS f() step, matching OptiX's own real (not unified) two-path
+// behavior exactly rather than "fixing" an inconsistency that isn't a
+// bug.
+//
+// `RoughnessToAlpha(r) = sqrt(max(r, 1e-4))` (pbrt-v4's own real
+// roughness->alpha remap, `TrowbridgeReitz::RoughnessToAlpha` -
+// src/shared/microfacet.h) is computed HOST-side here, matching BOTH
+// CPU's own `coated_diffuse` constructor AND OptiX's own
+// `mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz` line exactly - this
+// is a genuinely NEW shader function with no old "square it in the
+// shader" convention (materialType 4/9's own) to reconcile with, unlike
+// every earlier GGX-conductor scene in this series.
+void MetalPocApp::buildCornellCoatedDiffuse() {
+    const float3 blue{0.2f, 0.3f, 0.9f};
+    const float3 orange{0.75f, 0.35f, 0.1f};
+    const float boxAlpha = sqrtf(std::max(0.2f, 1e-4f));
+    const float sphereAlpha = sqrtf(std::max(0.1f, 1e-4f));
+    buildCornellFamilyScene(
+        /*box=*/19u, orange, boxAlpha, float3{1, 1, 1}, float3{0, 0, 0}, /*boxIor=*/1.5f,
+        /*sphere=*/19u, blue, sphereAlpha, float3{1, 1, 1}, float3{0, 0, 0}, /*sphereIor=*/1.5f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
