@@ -7216,3 +7216,50 @@ established for pbrt-loaded lights); C1 (HDRI Sky) needs a genuinely
 new "open scene with a real image-based sky" capability, and C7
 (Portal Infinite Light) needs portal-light sampling - both bigger
 lifts, correctly deferred.
+
+## 135. Category C increment 2: C5/C6 Goniometric/Projection Light Cornell - category C now 5/7 done, and a compensation bug caught before it ever rendered
+
+C5 (Goniometric) and C6 (Projection) share the exact same
+`buildCornellNoLightWalls()` geometry as C2-C4, differing only in
+their own light. Both light TYPES were already fully implemented
+(sections 57/91), including a per-light real-profile-IMAGE upload path
+(sections 98/105) originally built for a pbrt-loaded light's own real
+slide/IES file - reused here directly for a hand-GENERATED synthetic
+image instead (a 16x8 greyscale goniometric profile, an 8x8 RGB
+checkerboard slide, matching CPU's own `build_goniometric_punct()`/
+`build_projection_punct()` pixel-for-pixel), deliberately uploaded via
+the DEDICATED `pbrtGoniometricTexture`/`pbrtProjectionTexture` slots
+rather than the hardcoded room's own separate shared
+`goniometricTexture`/`projectionTexture` - the room's own demo lights
+(section 91) are ALWAYS present regardless of scene_id (the additive-
+composition convention every hand-authored scene shares), so a second,
+independent slot avoids the two competing for one texture.
+
+**A real compensation bug caught BEFORE it ever rendered, by checking
+the actual math first** (not by trial-and-error like sections 87/134's
+own bugs) - worth remembering as this series' fastest-caught light bug
+yet: after writing a first version of `buildProjectionLightCornell()`
+with NO `sceneScale^2` compensation (reasoning, incorrectly, that a
+projection light's own frustum-based falloff might have no 1/r^2 term
+the way a distant light doesn't), a direct check of
+`src/shared/projection_light.h`'s own `eval_Li()` (`Lr = r * inv_r2`)
+AND `metal_poc.metal`'s own shading loop (`radiance += ... /
+pjDistSq` at every one of its own NEE call sites) confirmed a
+projection light DOES have a real inverse-square term on both
+backends - the SAME `sceneScale^2` compensation sections 87/134
+already established applies here too, unchanged. Fixed before the
+first render, not after.
+
+**Verified**: real `--gpu` renders directly compared against real
+`--cpu` renders of both scene_ids - C5 shows a closely matching overall
+illumination character; C6 shows a clearly recognizable checkerboard
+footprint on the back wall at a closely matching position/size, both
+spheres correctly dark (outside the beam's own footprint). Full clean
+`RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene `pbrt_scenes/`
+sweep (0 failures); A1/B1/B3/C2/C3/C4/I1/I8/G1/G12 (earlier increments)
+re-verified unaffected. `C5`/`C6` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category C is now 5 of 7 done** - only C1 (HDRI Sky, needs a
+genuinely new "open scene with a real image-based sky" capability) and
+C7 (Portal Infinite Light, needs portal-light importance sampling)
+remain, both correctly bigger-scope, deferred.
