@@ -1436,6 +1436,21 @@ struct MetalPocApp {
     // in place of a real loaded HDRI file. Section 146,
     // docs/METAL_GPU_FEASIBILITY.md.
     void buildHdriSky();
+    // C7: Portal Infinite Light - a Cornell-family room (right/left/
+    // ceiling/floor, NO ceiling light) whose back wall has an actual
+    // rectangular window cut into it (4 border quads instead of one
+    // solid quad), with a CONSTANT-colour sky visible through the
+    // opening as the room's only light source (havePbrtConstantEnvLight/
+    // pbrtEnvColor - the same miss-path-only mechanism buildCornellFamilyScene()'s
+    // own background use and buildPrincipledShowcase() already exercise,
+    // just as the scene's ONLY light instead of a supplement to an area
+    // light). One metal sphere (materialType 4 via
+    // reflectanceToConductorK(), approximating CPU's own simple
+    // metal(...) - same B2/C1 substitution). Needs no new materialType/
+    // shader code at all - the only genuinely new PART is the window
+    // aperture itself, which is just 4 quads with a gap between them,
+    // not a new geometry primitive. Section 147, docs/METAL_GPU_FEASIBILITY.md.
+    void buildPortalLightScene();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3162,6 +3177,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B24") { buildPrismDispersionRough(); return true; }
     if (scene_id == "B10") { buildPrincipledShowcase(); return true; }
     if (scene_id == "C1") { buildHdriSky(); return true; }
+    if (scene_id == "C7") { buildPortalLightScene(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -5894,6 +5910,105 @@ void MetalPocApp::buildHdriSky() {
     pbrtCameraUpRaw = up;
     pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
     pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// C7: Portal Infinite Light - matches build_portal_light_scene()/
+// build_portal_sky() exactly. Same ~555-unit Cornell-box rescale/
+// recentre/offset convention buildCornellBoxA1() already uses (this
+// scene is authored at the identical scale) - deliberately NOT built
+// through buildCornellFamilyScene(), since this room differs from
+// every Cornell-family scene structurally (no ceiling light, no white
+// box, a solid back wall replaced by 4 border quads around a window),
+// not just by a swapped sphere material.
+void MetalPocApp::buildPortalLightScene() {
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float maxExtent = 555.0f;
+    const float sceneScale = 2.0f / maxExtent;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // Right/left/ceiling/floor - same 4 walls buildCornellBoxA1()'s own
+    // kQuads carries, just without their shared ceiling light (this
+    // room's only light is the sky through the window below) and
+    // without a front wall (the same "open front" convention every
+    // Cornell-family scene here already uses).
+    struct QuadDef { float3 Q, u, v; float3 color; };
+    const QuadDef kWalls[4] = {
+        {{555, 0, 0},   {0, 0, 555},  {0, 555, 0}, {0.12f, 0.45f, 0.15f}},  // right (green)
+        {{0, 0, 555},   {0, 0, -555}, {0, 555, 0}, {0.65f, 0.05f, 0.05f}},  // left (red)
+        {{0, 555, 0},   {555, 0, 0},  {0, 0, 555}, {0.73f, 0.73f, 0.73f}},  // ceiling (white)
+        {{0, 0, 555},   {555, 0, 0},  {0, 0, -555}, {0.73f, 0.73f, 0.73f}}, // floor (white)
+    };
+    for (const QuadDef& q : kWalls) {
+        const float3 a = toWorld(q.Q), b = toWorld(q.Q + q.u);
+        const float3 c = toWorld(q.Q + q.u + q.v), d = toWorld(q.Q + q.v);
+        addQuad(verts, normals, uvs, materials, a, b, c, d, q.color);
+    }
+
+    // Back wall with a 245x245 window cut into it (centred in the
+    // 555x555 wall), built from 4 border quads around the opening -
+    // matches build_portal_light_scene()'s own comment exactly.
+    const QuadDef kWindowBorder[4] = {
+        {{555, 400, 555}, {-555, 0, 0}, {0, 155, 0}, {0.73f, 0.73f, 0.73f}},  // top strip
+        {{555, 0, 555},   {-555, 0, 0}, {0, 155, 0}, {0.73f, 0.73f, 0.73f}},  // bottom strip
+        {{555, 155, 555}, {-155, 0, 0}, {0, 245, 0}, {0.73f, 0.73f, 0.73f}},  // right-of-window strip
+        {{155, 155, 555}, {-155, 0, 0}, {0, 245, 0}, {0.73f, 0.73f, 0.73f}},  // left-of-window strip
+    };
+    for (const QuadDef& q : kWindowBorder) {
+        const float3 a = toWorld(q.Q), b = toWorld(q.Q + q.u);
+        const float3 c = toWorld(q.Q + q.u + q.v), d = toWorld(q.Q + q.v);
+        addQuad(verts, normals, uvs, materials, a, b, c, d, q.color);
+    }
+
+    // Sphere: point3(190,100,190), radius 100, CPU's own simple
+    // metal(color(0.8,0.8,0.9), fuzz=0.05) - approximated as a real GGX
+    // conductor (materialType 4) via reflectanceToConductorK(), the
+    // same B2/C1 substitution, isotropic ior(alphaX)/roughness(alphaY)
+    // both set directly to CPU's own fuzz value.
+    {
+        const float3 color{0.8f, 0.8f, 0.9f};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/4u,
+                              /*ior(alphaX)=*/0.05f, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/0.05f};
+        const float3 k = reflectanceToConductorK(color);
+        mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        const float3 center = toWorld(float3{190.0f, 100.0f, 190.0f});
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, sceneScale * 100.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Sky visible through the window: a CONSTANT-colour light
+    // (build_portal_sky()'s own sky_light(color(0.55,0.65,0.85))) - not
+    // an image, so this is even simpler than C1's own HDRI case; no
+    // image buffer to generate, just the same havePbrtConstantEnvLight/
+    // pbrtEnvColor fields buildPrincipledShowcase()'s own dark-ambient
+    // background already uses, here as the scene's ONLY light rather
+    // than a background supplementing an area light.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.55f, 0.65f, 0.85f};
+
+    // Camera: vfov=40, lookfrom=(278,278,-800), lookat=(278,278,278) -
+    // kPortalLightCamera's own literal values (scene_registry_data.h),
+    // same as A1's own Cornell camera.
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
     pbrtSceneOffset = sceneOffset;
 }
 
