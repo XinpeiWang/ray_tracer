@@ -1443,6 +1443,14 @@ struct MetalPocApp {
     // degenerate input) - not a new construction to verify, the
     // identical one. Section 153, docs/METAL_GPU_FEASIBILITY.md.
     void buildSphericalCameraScene();
+    // F1: Bilinear Patch - a Cornell box (the SAME 5 walls + ceiling
+    // light literal as A1/E1, no box/sphere) containing TWO curved,
+    // non-planar bilinear-patch surfaces (a saddle + a ramp), each a
+    // GGX conductor. Ported as a fine tessellated triangle grid
+    // (`addBilinearPatch()`) rather than a real new custom-primitive
+    // type - see that helper's own declaration comment for the full
+    // rationale. Section 154, docs/METAL_GPU_FEASIBILITY.md.
+    void buildBilinearPatchScene();
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -3264,6 +3272,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D2") { buildOrthoCameraScene(); return true; }
     if (scene_id == "D7") { buildSphericalCornellBox(); return true; }
     if (scene_id == "D3") { buildSphericalCameraScene(); return true; }
+    if (scene_id == "F1") { buildBilinearPatchScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -3567,6 +3576,85 @@ static float3 reflectanceToConductorK(float3 albedo) {
         return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
     };
     return float3{k(albedo.x), k(albedo.y), k(albedo.z)};
+}
+
+// Tessellates a bilinear patch (4 corners, possibly NON-PLANAR - F1's
+// own genuinely new geometry primitive, pbrt-v4's own BilinearPatch
+// shape) into a fine NxN triangle grid, instead of adding a real
+// bounding-box custom-intersection-function primitive (this loader's
+// existing sphere/disk precedent - see sphereIntersectionFunction/
+// diskIntersectionFunction, metal_poc.metal's own comment on the disk
+// one: "a second, genuinely DIFFERENT custom-primitive shape"). A
+// deliberate, documented simplification: a fine enough tessellation of
+// a bilinear (degree-1-per-axis, genuinely smooth) surface is visually
+// indistinguishable from the true analytic surface at any reasonable
+// render resolution, and reuses 100% already-proven triangle
+// infrastructure instead of a real architecture change (a THIRD
+// bounding-box geometry descriptor, a new intersection function, and
+// updating every `!isSphere && !isDisk && !isSuzanneInstance`-style
+// exclusion check already scattered through the main shading kernel) -
+// section 154, docs/METAL_GPU_FEASIBILITY.md. Per-VERTEX normals are
+// the REAL analytic bilinear-surface normal at that exact (u,v)
+// (`cross(dPdu, dPdv)`, not a flat per-face fallback), smoothly
+// interpolated across each triangle by the SAME barycentric
+// `shadingNormalFor()` every other smooth mesh here already uses, so
+// the tessellation seams stay invisible under shading even though the
+// underlying triangles are flat. Normal SIGN is never resolved to a
+// canonical "outward" direction (unlike a convex sphere/CPU's own
+// analytic shape) - deliberately unnecessary: this helper is only ever
+// used for a GGX conductor material (materialType 4), whose own
+// shading always uses the ray-`facingNormal` (auto-flipped to the
+// visible side, `shadeConductor`'s own `frontFace` check), never the
+// raw geometric one, so an inconsistent or "inward" normal sign is
+// self-correcting and invisible in the final render.
+static void addBilinearPatch(std::vector<PackedFloat3>& verts,
+                              std::vector<PackedFloat3>& normals,
+                              std::vector<PackedFloat2>& uvs,
+                              std::vector<TriangleMaterial>& materials,
+                              float3 p00, float3 p10, float3 p01, float3 p11,
+                              float3 color, float roughness,
+                              int subdivisions = 24) {
+    auto evalP = [&](float u, float v) -> float3 {
+        return (1.0f - u) * (1.0f - v) * p00 + u * (1.0f - v) * p10
+             + (1.0f - u) * v * p01 + u * v * p11;
+    };
+    auto evalNormal = [&](float u, float v) -> float3 {
+        const float3 dPdu = (1.0f - v) * (p10 - p00) + v * (p11 - p01);
+        const float3 dPdv = (1.0f - u) * (p01 - p00) + u * (p11 - p10);
+        return simd::normalize(simd::cross(dPdu, dPdv));
+    };
+    const float3 k = reflectanceToConductorK(color);
+    TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/4u,
+        /*ior(alphaX)=*/roughness, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/roughness};
+    mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+    mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+
+    auto pushV = [&](float3 p) { verts.push_back(PackedFloat3{p.x, p.y, p.z}); };
+    auto pushN = [&](float3 n) { normals.push_back(PackedFloat3{n.x, n.y, n.z}); };
+    for (int i = 0; i < subdivisions; ++i) {
+        for (int j = 0; j < subdivisions; ++j) {
+            const float u0 = (float)i / subdivisions, u1 = (float)(i + 1) / subdivisions;
+            const float v0 = (float)j / subdivisions, v1 = (float)(j + 1) / subdivisions;
+            const float3 g00 = evalP(u0, v0), g10 = evalP(u1, v0);
+            const float3 g01 = evalP(u0, v1), g11 = evalP(u1, v1);
+            const float3 n00 = evalNormal(u0, v0), n10 = evalNormal(u1, v0);
+            const float3 n01 = evalNormal(u0, v1), n11 = evalNormal(u1, v1);
+
+            pushV(g00); pushV(g10); pushV(g11);
+            pushN(n00); pushN(n10); pushN(n11);
+            uvs.push_back(PackedFloat2{u0, v0});
+            uvs.push_back(PackedFloat2{u1, v0});
+            uvs.push_back(PackedFloat2{u1, v1});
+            materials.push_back(mat);
+
+            pushV(g00); pushV(g11); pushV(g01);
+            pushN(n00); pushN(n11); pushN(n01);
+            uvs.push_back(PackedFloat2{u0, v0});
+            uvs.push_back(PackedFloat2{u1, v1});
+            uvs.push_back(PackedFloat2{u0, v1});
+            materials.push_back(mat);
+        }
+    }
 }
 
 // pbrt-v4's own FresnelMoment1() polynomial fit (src/shared/fresnel.h,
@@ -5712,6 +5800,83 @@ void MetalPocApp::buildSphericalCameraScene() {
     pbrtCameraUpRaw = up;
     pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
     pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// F1: Bilinear Patch - matches build_bilinear_patch_scene() exactly:
+// the SAME 5-Cornell-wall + ceiling-light literal E1/A1 already use (no
+// box, no sphere) containing two curved, non-planar bilinear-patch
+// surfaces (a saddle + a ramp) - see addBilinearPatch()'s own
+// declaration comment for the tessellation approach.
+void MetalPocApp::buildBilinearPatchScene() {
+    using namespace cornell_box_data;
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // All 6 walls, including the light - same pattern buildHomogeneousMediumScene()'s
+    // own loop already uses.
+    for (const QuadSpec& q : kQuads) {
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 a = toWorld(Q), b = toWorld(Q + u), c = toWorld(Q + u + v), d = toWorld(Q + v);
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        if (q.is_light) {
+            const int32_t lightId = (int32_t)lights.size();
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color,
+                    /*materialType=*/0u, /*emission=*/color, lightId);
+            const float3 edgeU = b - a, edgeV = d - a;
+            const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+            const float area = simd::length(simd::cross(edgeU, edgeV));
+            const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+            lights.push_back(AreaLightData{
+                PackedFloat3{center.x, center.y, center.z},
+                PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+                PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+                PackedFloat3{normalV.x, normalV.y, normalV.z},
+                area, PackedFloat3{color.x, color.y, color.z},
+                /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+        } else {
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color);
+        }
+    }
+
+    // Saddle patch: p00/p11 high, p10/p01 low (classic hyperbolic
+    // paraboloid) - CPU's own metal(color(0.8,0.7,0.3), 0.15).
+    addBilinearPatch(verts, normals, uvs, materials,
+        toWorld(float3{150, 80, 200}), toWorld(float3{400, 50, 200}),
+        toWorld(float3{150, 50, 400}), toWorld(float3{400, 80, 400}),
+        float3{0.8f, 0.7f, 0.3f}, 0.15f);
+
+    // Ramp patch: linear in u, curved in v - CPU's own
+    // metal(color(0.2,0.4,0.8), 0.25).
+    addBilinearPatch(verts, normals, uvs, materials,
+        toWorld(float3{200, 200, 220}), toWorld(float3{370, 200, 220}),
+        toWorld(float3{150, 380, 420}), toWorld(float3{420, 320, 420}),
+        float3{0.2f, 0.4f, 0.8f}, 0.25f);
+
+    // Camera - same dead-on A1/D5/D6 Cornell camera.
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
     pbrtSceneOffset = sceneOffset;
 }
 
