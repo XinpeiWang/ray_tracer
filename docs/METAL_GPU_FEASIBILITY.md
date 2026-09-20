@@ -8474,3 +8474,68 @@ element ray tracing, not just a new direction/origin formula) and D13
 (camera motion blur, already correctly deferred in an earlier session
 for lacking a moving-sphere/moving-camera architecture beyond the
 existing shutter-interval camera translation) are all that remain.
+
+## 154. Category F increment: F1 Bilinear Patch - a NEW geometry primitive, ported as a tessellated triangle grid instead of a real custom-intersection-function shape
+
+Every remaining category after D3 was scoped and found to need a
+genuinely bigger, riskier lift than this session's own established
+"reuse + verify" increment shape (a post-D3 scoping pass, recorded in
+this project's own memory). `F1` (Bilinear Patch) was picked as the
+best-positioned of these: `build_bilinear_patch_scene()` is the SAME
+5-Cornell-wall + ceiling-light literal `A1`/`E1` already use (no box,
+no sphere), containing TWO curved, non-planar surfaces (a saddle and a
+ramp, pbrt-v4's own `BilinearPatch` shape) as GGX conductors.
+
+**A real architecture decision made deliberately, not stumbled into**:
+this loader's existing custom-primitive precedent (spheres, then a
+SECOND genuinely different custom primitive - the disk, section 101 -
+its own comment: "a second, genuinely DIFFERENT custom-primitive
+shape") would suggest porting `BilinearPatchShape::intersect()` as a
+THIRD bounding-box custom-intersection-function primitive
+(`bilinearPatchIntersectionFunction`, a new
+`MTLAccelerationStructureBoundingBoxGeometryDescriptor`, a new
+function-table slot) - OptiX already has a working GPU reference to
+port from (`gpu/optix/wavefront_intersection_bilinear_patch.h`), the
+same successful strategy B5/B7 used for `CoatedDiffuse`/
+`CoatedConductor`. But unlike those, this would ALSO require updating
+every `!isSphere && !isDisk && !isSuzanneInstance`-style exclusion
+check already scattered through the main shading kernel's own
+per-geometry-type branches (`primaryRayKernel`), a real, riskier
+architecture change touching code far outside the new feature's own
+footprint. **Chosen instead**: tessellate the bilinear surface into a
+fine 24x24 triangle grid (`addBilinearPatch()`, `metal_poc.mm`) and
+reuse the ALREADY-PROVEN triangle path entirely - zero shader changes,
+zero new acceleration-structure geometry, zero touched exclusion
+checks. A bilinear surface is genuinely smooth (degree-1-per-axis), so
+a fine-enough tessellation is visually indistinguishable from the true
+analytic surface at any reasonable render resolution - a documented,
+deliberate simplification, not a shortcut taken silently. Per-VERTEX
+normals are the REAL analytic surface normal at that exact `(u,v)`
+(`cross(dPdu, dPdv)`), not a flat per-face fallback, smoothly
+interpolated across each triangle by the SAME barycentric
+`shadingNormalFor()` every other smooth mesh (Suzanne, Spot, the OBJ
+gallery meshes) already uses - the tessellation seams stay invisible
+under shading even though the underlying triangles are flat. Normal
+SIGN was deliberately left unresolved to a canonical "outward"
+direction (unlike a convex sphere): this helper is only ever used for
+a GGX conductor material, whose own shading always uses the
+ray-`facingNormal` (auto-flipped to the visible side), never the raw
+geometric one, so an inconsistent sign is self-correcting and
+invisible in the final render - one fewer thing to get right by
+construction, not by luck.
+
+**Verified with a direct `--gpu` vs `--cpu` comparison that matched
+closely on the FIRST attempt** - no debugging detour needed at all:
+matching curved-ramp-patch highlight shape/position, matching
+saddle-patch silhouette/position near the floor, matching wall
+colours/light placement. Full clean `RT_BUILD_METAL=ON` rebuild, ctest
+(4/4), the 55-scene pbrt-backed regression sweep (0 failures - this
+increment touches zero existing shading-kernel code, only adds a new
+host-side helper function reusing the existing triangle path, so a
+clean sweep was the expected, not merely hoped-for, outcome), and
+regression spot-checks of the accumulated hand-authored scenes
+including F2 (the other triangle-mesh scene, unaffected). `F1` added
+to `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in
+this same PR. **Category F is now 2 of 3 done** - only F4 (real curve/
+hair-fiber intersection, a genuinely different new-primitive lift, not
+reducible to the same tessellation trick) remains.

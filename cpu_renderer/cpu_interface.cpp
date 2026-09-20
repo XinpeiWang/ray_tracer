@@ -990,6 +990,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"D2",                          // Orthographic Camera - open column-of-spheres scene (section 151)
 		"D7",                          // Spherical Camera Cornell Box - first equirectangular-panorama port (section 152)
 		"D3",                          // Spherical Camera - open ring-of-spheres scene (section 153)
+		"F1",                          // Bilinear Patch - tessellated triangle-grid approximation (section 154)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
