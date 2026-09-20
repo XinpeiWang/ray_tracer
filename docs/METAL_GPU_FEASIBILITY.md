@@ -8213,3 +8213,54 @@ scenes including `I1`/`I4` (the other two education scenes already
 GPU-supported, unaffected by the `launcher/main.cpp` comment-only
 change). `I3` added to `cpu_scene_metal_hand_authored_supported()`'s
 `kSupported` set in this same PR.
+
+## 149. Category D increment: D1 Depth of Field - an open scene reusing D5's own lens mechanism, plus a scoping pass ruling out A2/A8 as genuine bigger lifts
+
+With category C complete and category B's remaining 3 all confirmed
+bigger lifts, a fresh scoping pass across categories A/D/E/F found D1
+(Depth of Field) as the next quick win: `build_depth_of_field()` is an
+open (non-Cornell) row-of-spheres scene using the exact SAME real
+thin-lens defocus-blur mechanism (`pbrtLensRadius`/`pbrtFocusDistance`)
+D5 already wired up (section 137) - just at natural scale (no 555-unit
+rescale, the F2/B10/C1/C7 convention) instead of a Cornell box, so the
+raw `defocus_angle`/`focus_dist` formula applies directly with no
+scale conversion. `buildDepthOfField()` builds a checker ground
+(materialType 16, matching D5's own reused checker convention), 4
+"hero" spheres at varying depth (2 out-of-focus lambertian, 1 in-focus
+glass - `color={0,0,0}`, the C1-established true-clear-glass value,
+not `{1,1,1}` - 1 in-focus metal via `reflectanceToConductorK()`), and
+a row of 7 small accent spheres. **One honest scope note**: CPU's own
+small-sphere colour loop uses an UNSEEDED `random_double(0.3,0.9)` per
+channel with no fixed seed anywhere in `build_depth_of_field()` - CPU's
+own reference render already differs between its own runs here, so an
+exact colour match isn't a meaningful bar for those 7 spheres; a fixed,
+varied palette is used instead.
+
+**A scoping pass that correctly ruled OUT two other candidates BEFORE
+attempting them, avoiding wasted work**: (1) `A2` (BouncingSpheres)
+needs genuine per-sphere MOTION BLUR (`sphere(center, center2, radius,
+...)`, moving diffuse spheres) - an architecture this loader has never
+built (the same gap `D13`'s own camera-motion-blur scoping already
+found and deferred in an earlier session), so `A2` stays deferred. (2)
+`A8` (CornellSmoke) needs TWO simultaneous, independently-coloured,
+spatially-localized `constant_medium` boxes inside one Cornell room -
+but this loader's own fog mechanism (`E1`'s own section 138 finding)
+has no notion of a medium BOUNDARY at all, only one GLOBAL
+room-filling `fogSigmaT` scalar; two independent local media is
+EXACTLY the same architectural gap that already correctly ruled out
+`E3` ("needs 3 simultaneous independent local media, no architecture
+for that") - so `A8` is deferred for the identical reason, not a new
+finding.
+
+**Verified with a direct `--gpu` vs `--cpu` comparison that matched
+closely on the very first attempt** - the SAME overall heavy defocus
+wash (this scene's own large `defocus_angle=10` intentionally blurs
+almost everything except the two spheres sitting exactly at
+`focus_dist=9`), same sphere colours/positions, same near-white sky
+falloff at the top of frame in BOTH renders (not a divergence - this
+scene's own huge aperture genuinely blurs the sky gradient toward its
+own average colour). Full clean `RT_BUILD_METAL=ON` rebuild, ctest
+(4/4), the 55-scene pbrt-backed regression sweep (0 failures), and
+regression spot-checks of the accumulated hand-authored scenes. `D1`
+added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
+set in this same PR. **Category D is now 2 of 9 done.**

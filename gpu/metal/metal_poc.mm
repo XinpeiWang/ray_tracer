@@ -1365,6 +1365,15 @@ struct MetalPocApp {
     // fields, see their own declaration comment). Section 137, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildDepthOfFieldCornellBox();
+    // D1: Depth of Field - an open (non-Cornell) row-of-spheres scene
+    // demonstrating the SAME real thin-lens defocus blur D5 already
+    // wired up (pbrtLensRadius/pbrtFocusDistance), just at natural
+    // scale (no 555-unit rescale, sceneScale=1.0 - the F2/B10/C1
+    // convention) instead of a Cornell box. 6 fixed-material spheres
+    // (2 out-of-focus lambertian, 1 in-focus glass, 1 in-focus metal,
+    // 1 more out-of-focus lambertian) plus a checker ground and a row
+    // of small accent spheres. Section 149, docs/METAL_GPU_FEASIBILITY.md.
+    void buildDepthOfField();
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -3181,6 +3190,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "C6") { buildProjectionLightCornell(); return true; }
     if (scene_id == "F2") { buildTriangleMeshScene(); return true; }
     if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
+    if (scene_id == "D1") { buildDepthOfField(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -5299,6 +5309,127 @@ void MetalPocApp::buildDepthOfFieldCornellBox() {
     const float lensRadiusRaw = focusDistRaw * tanf(defocusAngleDeg * 0.5f * (float)M_PI / 180.0f);
     pbrtLensRadius = lensRadiusRaw * sceneScale;
     pbrtFocusDistance = focusDistRaw * sceneScale;
+}
+
+// D1: Depth of Field - matches build_depth_of_field() exactly: an open
+// (non-Cornell) scene, checker ground, 4 "hero" spheres at varying
+// depth from the lens (2 out-of-focus lambertian, 1 in-focus glass, 1
+// in-focus metal), plus a row of 7 small accent spheres. Natural scale
+// (sceneScale=1.0, the F2/B10/C1 convention), so pbrtLensRadius/
+// pbrtFocusDistance need no scale conversion at all - unlike D5's own
+// 555-unit Cornell-box case, the raw defocus_angle/focus_dist formula
+// applies directly.
+void MetalPocApp::buildDepthOfField() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Checker ground (materialType 16, real 3D checker) - matches
+    // CPU's own checker_texture(0.5, (0.2,0.3,0.1), (0.9,0.9,0.9)).
+    {
+        const float3 darkA{0.2f, 0.3f, 0.1f}, lightB{0.9f, 0.9f, 0.9f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-30, 0, -30} + sceneOffset, float3{30, 0, -30} + sceneOffset,
+                float3{30, 0, 30} + sceneOffset, float3{-30, 0, 30} + sceneOffset,
+                darkA, /*materialType=*/16u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness(cell size)=*/0.5f, /*ior=*/1.0f, lightB);
+    }
+
+    // Background sphere (out of focus far), lambertian.
+    {
+        TriangleMaterial mat{PackedFloat3{0.4f, 0.2f, 0.1f}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{-4.0f, 1.0f, -3.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    // Near sphere (out of focus near), lambertian.
+    {
+        TriangleMaterial mat{PackedFloat3{0.7f, 0.3f, 0.3f}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{-1.5f, 0.5f, 1.5f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.5f});
+        sphereMaterials.push_back(mat);
+    }
+    // In-focus centre sphere, smooth dielectric (glass). `color`={0,0,0}
+    // - the Beer-Lambert absorption coefficient this materialType
+    // actually reads (section 146's own C1 finding), not a reflectance
+    // tint - {0,0,0} is true clear glass.
+    {
+        TriangleMaterial mat{PackedFloat3{0.0f, 0.0f, 0.0f}, 2u, 1.5f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    // In-focus metal sphere - CPU's own metal(color(0.7,0.6,0.5),
+    // fuzz=0.05), approximated via reflectanceToConductorK() (materialType
+    // 4), the same B2/C1/C7 substitution.
+    {
+        const float3 color{0.7f, 0.6f, 0.5f};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/4u,
+                              /*ior(alphaX)=*/0.05f, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/0.05f};
+        const float3 k = reflectanceToConductorK(color);
+        mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        const float3 c = float3{2.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    // Far sphere (out of focus), lambertian.
+    {
+        TriangleMaterial mat{PackedFloat3{0.1f, 0.2f, 0.6f}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{4.0f, 1.0f, -2.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    // 7 small accent spheres, i=-3..3 - CPU's own version colours each
+    // with an UNSEEDED random_double(0.3,0.9) per channel (no fixed
+    // seed anywhere in build_depth_of_field()), so CPU's own reference
+    // render already differs between runs here - an exact colour match
+    // isn't a meaningful bar for this loop. A fixed, varied palette
+    // instead (deterministic, reproducible across runs on this side).
+    {
+        const float3 kAccentColors[7] = {
+            {0.85f, 0.4f, 0.5f}, {0.4f, 0.8f, 0.5f}, {0.5f, 0.5f, 0.85f}, {0.8f, 0.75f, 0.35f},
+            {0.4f, 0.7f, 0.8f}, {0.75f, 0.45f, 0.8f}, {0.6f, 0.85f, 0.4f},
+        };
+        for (int i = -3; i <= 3; ++i) {
+            const float3 color = kAccentColors[i + 3];
+            TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+            const float3 c = float3{i * 1.2f, 0.2f, 2.5f + i * 0.3f} + sceneOffset;
+            spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.2f});
+            sphereMaterials.push_back(mat);
+        }
+    }
+
+    // Background - kDepthOfFieldCamera's own (0.70,0.80,1.00), the same
+    // literal buildStanfordBunny()-family scenes already use for this
+    // exact colour (havePbrtConstantEnvLight/pbrtEnvColor).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.70f, 0.80f, 1.00f};
+
+    // Camera: fov=62, lookfrom=(0,2,9), lookat=(0,1,0), defocus_angle=10,
+    // focus_dist=9 - kDepthOfFieldCamera's own literal values. Natural
+    // scale (no rescale), so the lens-radius formula applies directly,
+    // no sceneScale multiply (unlike D5's own 555-unit case).
+    const float3 lookfrom = float3{0.0f, 2.0f, 9.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 62.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+
+    const float defocusAngleDeg = 10.0f;
+    const float focusDistRaw = 9.0f;
+    pbrtLensRadius = focusDistRaw * tanf(defocusAngleDeg * 0.5f * (float)M_PI / 180.0f);
+    pbrtFocusDistance = focusDistRaw;
 }
 
 // E1: Homogeneous Medium - matches CPU's own build_homogeneous_medium_scene()
