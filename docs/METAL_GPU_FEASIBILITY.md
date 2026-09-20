@@ -8438,3 +8438,39 @@ the new `cameraSpherical` branch is a true no-op for every existing
 scene), and regression spot-checks of the accumulated hand-authored
 scenes. `D7` added to `cpu_scene_metal_hand_authored_supported()`'s
 `kSupported` set in this same PR. **Category D is now 5 of 9 done.**
+
+## 153. Category D increment: D3 Spherical Camera (open scene) - the SAME panorama mode reused, a clean first-attempt confirmation
+
+`D3` is the open (non-Cornell) counterpart to D7: a ground plane + an
+8-sphere colour-ring + a central direct-hit-only emissive sphere
+(materialType 0, `emission` set, no `lightId` - the established F2/A7
+"no sphere-light NEE strategy" limitation, section 125/130), matching
+`build_spherical_camera_scene()`/`build_spherical_sky()` exactly,
+viewed through the SAME equirectangular panorama camera D7 already
+added (`havePbrtSpherical`). **Confirmed, not assumed**: D3's own
+registry camera has `lookfrom` directly above `lookat`
+(`(0,1,0)`/`(0,0,0)`) - the SAME degenerate `cross(up,forward)` input
+D7's own construction already works around with a fixed `+Z`
+world-forward reference, not a genuinely different orientation to
+newly verify (an earlier scoping note had assumed D3 might test a
+"genuinely angled" camera - checking the actual registry lambda before
+writing any code found this was wrong; D3 uses the IDENTICAL
+fixed-forward construction D7 does). Ground uses the established
+flat-quad substitution for CPU's own radius-1000 ground sphere.
+
+**Verified with a direct `--gpu` vs `--cpu` comparison that matched
+closely on the FIRST attempt** - no debugging detour needed at all,
+the cleanest of this whole camera-projection thread so far (D6 needed
+a real sign-fix, D7 needed a real black-background fix, D2 and now D3
+both landed clean): matching sphere order/colours/ellipse-distortion
+shape around the ring, matching ground texture, matching sky-to-ground
+horizon line position. Full clean `RT_BUILD_METAL=ON` rebuild, ctest
+(4/4), the 55-scene pbrt-backed regression sweep (0 failures), and
+regression spot-checks of the accumulated hand-authored scenes. `D3`
+added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
+set in this same PR. **Category D is now 6 of 9 done** - D4/D8
+(RealisticCamera, a genuinely bigger lift needing real multi-lens-
+element ray tracing, not just a new direction/origin formula) and D13
+(camera motion blur, already correctly deferred in an earlier session
+for lacking a moving-sphere/moving-camera architecture beyond the
+existing shutter-interval camera translation) are all that remain.

@@ -1434,6 +1434,15 @@ struct MetalPocApp {
     // than D6's own simple origin-offset one. Section 152, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildSphericalCornellBox();
+    // D3: Spherical Camera (open scene) - an open (non-Cornell) ring-
+    // of-spheres scene demonstrating the SAME equirectangular panorama
+    // mode D7 already wired up (havePbrtSpherical), at natural scale.
+    // Uses the SAME fixed-+Z-world-forward degenerate-cross-product
+    // workaround D7's own build already established (D3's own registry
+    // camera also has lookfrom directly above lookat, the same
+    // degenerate input) - not a new construction to verify, the
+    // identical one. Section 153, docs/METAL_GPU_FEASIBILITY.md.
+    void buildSphericalCameraScene();
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -3254,6 +3263,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D6") { buildOrthoCornellBox(); return true; }
     if (scene_id == "D2") { buildOrthoCameraScene(); return true; }
     if (scene_id == "D7") { buildSphericalCornellBox(); return true; }
+    if (scene_id == "D3") { buildSphericalCameraScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -5629,6 +5639,79 @@ void MetalPocApp::buildSphericalCornellBox() {
     pbrtCameraUpRaw = up;
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// D3: Spherical Camera - matches build_spherical_camera_scene()/
+// build_spherical_sky() exactly: ground + an 8-sphere ring + a central
+// emissive sphere, viewed as a real 360-degree equirectangular
+// panorama. Natural scale (sceneScale=1.0, no rescale needed).
+void MetalPocApp::buildSphericalCameraScene() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground: a large flat quad (materialType 0), not CPU's own
+    // radius-1000 ground SPHERE - the established overlap-avoidance
+    // substitution (A5/B1/F2/B10/C1/D1/D2).
+    {
+        const float3 groundColor{0.4f, 0.5f, 0.3f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-30, 0, -30} + sceneOffset, float3{30, 0, -30} + sceneOffset,
+                float3{30, 0, 30} + sceneOffset, float3{-30, 0, 30} + sceneOffset,
+                groundColor);
+    }
+
+    // Ring of 8 coloured spheres, radius 4, y=1 - CPU's own angle-based
+    // colour formula applied exactly.
+    for (int i = 0; i < 8; ++i) {
+        const float angle = (float)i * (2.0f * (float)M_PI / 8.0f);
+        const float cx = 4.0f * cosf(angle), cz = 4.0f * sinf(angle);
+        const float3 color{0.2f + 0.5f * fabsf(cosf(angle)),
+                            0.2f + 0.5f * fabsf(sinf(angle)),
+                            0.5f + 0.3f * cosf(2.0f * angle)};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{cx, 1.0f, cz} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Central emissive sphere (0,3,0), radius 0.5, diffuse_light(10,10,10) -
+    // direct-hit-only (materialType 0, `emission` set, no `lightId`
+    // registration) - this loader has no sphere-light NEE strategy at
+    // all, the same established F2/A7 limitation (section 125/130).
+    {
+        const float3 lightColor{10.0f, 10.0f, 10.0f};
+        TriangleMaterial mat{PackedFloat3{lightColor.x, lightColor.y, lightColor.z}, 0u,
+                              1.0f, PackedFloat3{lightColor.x, lightColor.y, lightColor.z}, -1, 0.0f};
+        const float3 c = float3{0.0f, 3.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.5f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Sky - build_spherical_sky()'s own sky_light(color(0.3,0.5,0.9)),
+    // constant colour.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.3f, 0.5f, 0.9f};
+
+    // Camera: lookfrom=(0,1,0) - kSphericalCameraCamera's own literal
+    // value. Fixed +Z world-forward reference (D3's own registry
+    // lookat sits directly below lookfrom, the SAME degenerate
+    // cross(up,forward) input D7's own construction already works
+    // around) - not a new construction, the identical one.
+    const float3 lookfrom = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 forward{0.0f, 0.0f, 1.0f};
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    havePbrtCamera = true;
+    havePbrtSpherical = true;
+    pbrtCameraLookAtWorld = lookfrom + forward;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
     pbrtSceneOffset = sceneOffset;
 }
 
