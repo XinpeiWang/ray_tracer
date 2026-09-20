@@ -1412,6 +1412,16 @@ struct MetalPocApp {
     // metal_poc.metal) instead of smooth. Section 144,
     // docs/METAL_GPU_FEASIBILITY.md.
     void buildPrismDispersionRough();
+    // B10: Principled Showcase - a row of 7 spheres demonstrating pbrt-
+    // v4's PrincipledBxDF (materialType 24 - see shadePrincipled()'s own
+    // declaration comment, metal_poc.metal), matte diffuse through to
+    // fully metallic/clearcoated, over a checkered ground plane, under
+    // one overhead area light. NOT a Cornell-family scene - its own
+    // standalone geometry/camera, matching build_principled_showcase()
+    // exactly (F2's own "natural scale, no Cornell-style rescale"
+    // convention, since this scene's own extent is already compact).
+    // Section 145, docs/METAL_GPU_FEASIBILITY.md.
+    void buildPrincipledShowcase();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3136,6 +3146,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B12") { buildNormalMappedCornell(); return true; }
     if (scene_id == "B23") { buildPrismDispersion(); return true; }
     if (scene_id == "B24") { buildPrismDispersionRough(); return true; }
+    if (scene_id == "B10") { buildPrincipledShowcase(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -5635,6 +5646,120 @@ void MetalPocApp::buildPrismDispersion() {
 // differing only in which glass material/roughness gets passed in.
 void MetalPocApp::buildPrismDispersionRough() {
     buildPrismDispersionGeometry(/*glassMaterialType=*/23u, /*roughness=*/0.08f);
+}
+
+// B10: Principled Showcase - matches CPU's own build_principled_showcase()
+// exactly: 7 spheres (radius 1.0, spaced 2.0 apart along X) demonstrating
+// materialType 24's own 3-lobe PrincipledBxDF, from pure matte diffuse
+// through semi-metallic to fully metallic/clearcoated, over a checkered
+// ground plane, under one overhead area light. Not a Cornell-family
+// scene - own standalone geometry/camera, F2's own "natural scale, plain
+// +8-in-X offset, no rescale" convention (this scene's own extent, a
+// ~14x20-unit span, is already compact enough).
+//
+// CPU's own ground is a checker-textured radius-1000 SPHERE
+// (`point3(0,-1000,0)`) - replaced here with a large flat quad using the
+// SAME materialType 16 (real 3D world-space checker) instead, matching
+// this whole series' own established "huge sphere as ground plane"
+// simplification (A5/B1/F2's own precedent): a radius-1000 sphere at
+// this scene's own scale, offset +8 in X, algebraically overlaps the
+// hardcoded POC room's own [-1,1] cube by about 1 unit (checked via
+// |x-offset| <= sqrt(2*radius-1) before ever rendering, not discovered
+// by a garbled render) - the same failure mode already fixed twice
+// before, avoided here from the start.
+void MetalPocApp::buildPrincipledShowcase() {
+    // +10, not the usual +8 every other scene in this series uses - the
+    // leftmost sphere (x=-6, radius 1) sits close enough to the
+    // hardcoded POC room's own [-1,1] cube that +8 left it exactly
+    // tangent to the room's own right face (world x=1), letting a sliver
+    // of the room's own always-present geometry peek through right next
+    // to it in a real render - caught by inspecting the rendered image
+    // directly, not assumed. +10 gives a full extra unit of clearance.
+    const float3 sceneOffset{10.0f, 0.0f, 0.0f};
+
+    // Ground: large flat checker quad (materialType 16, real 3D
+    // world-space checker) - `roughness` reused as the checker's own
+    // cell size, matching CPU's own `checker_texture(0.5, ...)` scale
+    // exactly (see materialType 16's own established convention,
+    // section 121).
+    {
+        const float3 darkA{0.1f, 0.1f, 0.12f}, darkB{0.2f, 0.2f, 0.22f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-30, 0, -30} + sceneOffset, float3{30, 0, -30} + sceneOffset,
+                float3{30, 0, 30} + sceneOffset, float3{-30, 0, 30} + sceneOffset,
+                darkA, /*materialType=*/16u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness(cell size)=*/0.5f, /*ior=*/1.0f,
+                darkB);
+    }
+
+    // 7 principled spheres - color/metallic/roughness/ior/clearcoat/
+    // clearcoatRoughness, matching build_principled_showcase()'s own
+    // 7 `principled(...)` constructor calls exactly.
+    struct SphereSpec { float3 pos; float3 color; float metallic; float roughness; float clearcoat; float clearcoatRough; };
+    const SphereSpec kSpheres[7] = {
+        {{-6, 1, 0}, {0.8f, 0.1f, 0.1f}, 0.0f, 0.9f, 0.0f, 0.1f},
+        {{-4, 1, 0}, {0.1f, 0.2f, 0.8f}, 0.0f, 0.2f, 0.0f, 0.1f},
+        {{-2, 1, 0}, {0.1f, 0.7f, 0.2f}, 0.0f, 0.3f, 1.0f, 0.05f},
+        {{ 0, 1, 0}, {0.9f, 0.7f, 0.2f}, 0.5f, 0.3f, 0.0f, 0.1f},
+        {{ 2, 1, 0}, {0.8f, 0.45f, 0.2f}, 0.8f, 0.4f, 0.0f, 0.1f},
+        {{ 4, 1, 0}, {0.9f, 0.9f, 0.9f}, 1.0f, 0.05f, 0.0f, 0.1f},
+        {{ 6, 1, 0}, {0.9f, 0.7f, 0.1f}, 1.0f, 0.1f, 1.0f, 0.08f},
+    };
+    for (const SphereSpec& s : kSpheres) {
+        const float3 center = s.pos + sceneOffset;
+        TriangleMaterial mat{PackedFloat3{s.color.x, s.color.y, s.color.z},
+            /*materialType=*/24u, /*ior=*/1.5f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/s.roughness};
+        mat.conductorEta = PackedFloat3{s.metallic, s.clearcoat, s.clearcoatRough};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Overhead area light - point3(-7,7,-5), 14x10, diffuse_light(6,6,6).
+    {
+        const float3 a = float3{-7, 7, -5} + sceneOffset;
+        const float3 edgeU{14, 0, 0};
+        const float3 edgeV{0, 0, 10};
+        const float3 lightColor{6.0f, 6.0f, 6.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, a + edgeU, a + edgeU + edgeV, a + edgeV,
+                lightColor, /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area,
+            PackedFloat3{lightColor.x, lightColor.y, lightColor.z}});
+    }
+
+    // Background - kPrincipledShowcaseCamera's own (0.10,0.10,0.12),
+    // matching CPU's own CameraConfig background_r/g/b exactly (a dark
+    // bluish ambient, NOT black - unlike B23/B24's own pure-black
+    // standalone scenes).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.10f, 0.10f, 0.12f};
+
+    // Camera: fov=45, lookfrom=(0,2.7,17), lookat=(0,1,0).
+    const float3 lookfrom = float3{0.0f, 2.7f, 17.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 45.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

@@ -7942,3 +7942,93 @@ B-scenes (B10 Principled Showcase, B11 Hair Fibers, B13 Subsurface Slab,
 B14 Measured BRDF) are all bigger lifts per the earlier scoping pass -
 B10 is the next most tractable (OptiX has a working
 `MaterialType::Principled` reference).
+
+## 145. Category B increment: B10 Principled Showcase (materialType 24) - a clean first-attempt match, plus a real sphere/room-boundary overlap bug caught by inspection
+
+New materialType 24: pbrt-v4/Disney's own artist-friendly 3-lobe BSDF
+(diffuse + specular dielectric-or-metal + clearcoat), a direct port of
+`PrincipledBxDF<T>::sample()` (`src/shared/bxdfs_principled.h`) - the
+SAME shared, `CPU_GPU`-tagged header both CPU (`principled_material.h`)
+and OptiX (`sample_principled_material()`, called from `optix_
+intersection_sphere.h`, a sphere-only code path matching this scene's
+own 7-spheres-only geometry) already build from directly. Deliberately
+has **no NEE/MIS at all** - matches CPU's own `principled::scatter()`
+(`srec.skip_pdf = true`) and OptiX's own identical `is_specular = true`
+choice for this material exactly (that code's own comment: "no NEE/MIS,
+res.r/g/b already divides by the sample pdf") - the BSDF's own
+`sample()` returns a complete `f*cos/pdf` weight in one call, the same
+"combined sample+eval" shape this loader's own `shadeDielectric()`/
+`shadeMirror()` already use for other delta-like materials, just with 3
+stochastically-selected lobes (diffuse / GGX specular / GGX clearcoat)
+instead of 1 - genuinely simpler to port than a real NEE-supporting
+material would have been, once this "no light sampling at all" scope
+was confirmed against BOTH references, not assumed. Field reuse matches
+OptiX's own exact convention (`sample_principled_material()`'s own
+comment): `mat.color`=base color, `mat.ior`=ior, `mat.roughness`=
+perceptual roughness, `mat.conductorEta.x/y/z`=metallic/clearcoat/
+clearcoat-roughness (an otherwise entirely unused field for this
+material, same "no other meaning here" convention every earlier
+materialType's own dual-use fields already follow).
+
+Bespoke geometry (not Cornell-family): 7 spheres (matte diffuse through
+fully-metallic-clearcoated) over a checkered ground plane, under one
+overhead area light - matches `build_principled_showcase()` exactly,
+using F2's own "natural scale, plain offset-in-X, no Cornell-style
+rescale" convention (this scene's own ~14x20-unit extent is already
+compact). CPU's own ground is a checker-textured radius-1000 SPHERE;
+replaced here with a large flat quad (materialType 16, the SAME real
+3D-checker mechanism already used elsewhere) - this whole series' own
+established "huge sphere as ground plane" simplification (A5/B1/F2's
+own precedent), needed again here for the same reason: a literal
+radius-1000 sphere at this offset would algebraically overlap the
+hardcoded POC room's own `[-1,1]` cube.
+
+**A real, second sphere/room-boundary overlap bug, caught by
+inspecting the rendered image directly, not by algebra alone this
+time**: even after avoiding the "huge ground sphere" trap, the row's
+own LEFTMOST sphere (raw x=-6, radius 1) sits close enough to the room
+boundary that the series' own default `+8`-in-X offset left it
+EXACTLY TANGENT to the hardcoded room's own right face (world x=1) -
+not overlapping outright, but close enough that a sliver of the room's
+own always-present geometry visibly peeked through right next to the
+red sphere in a real render. Fixed by widening this scene's own offset
+to `+10` (a full extra unit of clearance) rather than computing the
+exact minimum safe value - simpler and more robust to any future tweak
+of this scene's own sphere positions. **Worth remembering**: the
+established `+8` default is a good STARTING guess, not a proof - always
+still eyeball the rendered edges of a new scene for an unexpected
+sliver of the hardcoded room's own content, the same discipline that
+already caught A5's and B1's own ground-sphere overlaps, now generalized
+to "any large object near the scene's own edge," not just ground
+spheres specifically.
+
+**Verified**: a direct `--gpu` vs `--cpu` comparison matched CLOSELY on
+the first real attempt - same 7-sphere gradient (matte -> plastic ->
+semi-metal -> full metal, with and without clearcoat), same colours,
+same relative gloss/highlight character sphere-by-sphere, no debugging
+detour needed for the MATERIAL itself (only the room-boundary sliver
+above needed a fix). One honest, minor, correctly-investigated-not-
+just-accepted difference: the checkered ground's own two tile colours
+(`(0.1,0.1,0.12)`/`(0.2,0.2,0.22)`, matching CPU's literal
+`checker_texture` constructor exactly) read with real but VISIBLY
+LOWER contrast in this port than CPU's own crisp checkerboard - checked
+methodically before accepting it, not assumed: a plain (non-checker)
+solid-red control quad rendered vividly red (ruling out "albedo is
+being ignored/washed out entirely" as an explanation), and an extreme
+black-vs-white checker control on the SAME quad geometry showed the
+checker MECHANISM itself alternates cells correctly at the intended
+0.5-unit scale (ruling out a cell-size or aliasing bug) - the
+[0.1,0.2] tile pair is simply a genuinely SUBTLE albedo difference that
+this loader's own tonemap/exposure curve compresses more than CPU's
+own does, the same kind of backend-specific tonal-response difference
+already accepted throughout this series (B8/B9's own brightness-gap
+precedent), not a new defect.
+
+Full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), the 55-scene
+pbrt-backed regression sweep (0 failures), and regression spot-checks
+of 28 earlier hand-authored scenes (all render without error,
+unaffected). `B10` added to `cpu_scene_metal_hand_authored_supported()`'s
+`kSupported` set in this same PR. **Category B is now 13 of 16 done.**
+The remaining 3 (B11 Hair Fibers, B13 Subsurface Slab, B14 Measured
+BRDF) are all genuinely bigger lifts per the earlier scoping pass - no
+further "quick win" remains in this category.

@@ -981,6 +981,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B12",                         // Normal Mapped Cornell, new materialType 21 checker normal map (section 142)
 		"B23",                         // Glass Prism Dispersion, new materialType 22 dispersive dielectric (section 143)
 		"B24",                         // Frosted Prism Dispersion, new materialType 23 dispersive rough dielectric (section 144)
+		"B10",                         // Principled Showcase, new materialType 24 PrincipledBxDF (section 145)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
