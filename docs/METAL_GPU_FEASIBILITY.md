@@ -8373,3 +8373,68 @@ spherical panorama) is the natural next candidate, reusing
 `buildCornellBoxA1()`'s own geometry again the same way D6 did, though
 it will need a genuinely different (non-linear, direction-only)
 ray-generation formula than orthographic's simple origin-offset one.
+
+## 152. Category D increment: D7 Spherical Camera Cornell Box - this loader's second new camera projection mode (a real equirectangular panorama), plus a real black-background gap found via direct comparison
+
+`D7` reuses `buildCornellBoxA1()`'s own EXACT geometry again (same as
+D5/D6), viewed from the box's own CENTER (`(278,278,278)` in raw
+pbrt-file units) as a real 360-degree equirectangular panorama instead
+of a windowed view - `src/shared/cameras.h`'s `SphericalCamera::
+GenerateRay()` (`EquiRectangular` mapping), a genuinely different,
+non-linear, DIRECTION-only formula (every pixel shares one ORIGIN,
+unlike D6's own origin-offset orthographic case): `theta = pi*v, phi =
+2*pi*u` (`u`/`v` the SAME `pixelNDC.x/y` every mode derives `screen`
+from, used RAW here - no screen window, no FOV, this mode captures the
+full sphere around one point), `rayDir = -sin(theta)*cos(phi)*
+cameraRight + cos(theta)*cameraUp + sin(theta)*sin(phi)*cameraForward`
+- derived algebraically from pbrt-v4's own `wx=sin(theta)cos(phi),
+wy=sin(theta)sin(phi), wz=cos(theta)` PLUS its own `swap(wy,wz)` step,
+re-expressed in terms of this loader's own camera-basis vectors rather
+than raw world axes so it generalizes to any camera orientation (D7's
+own camera happens to look along a FIXED world `+Z`, so this couldn't
+be verified against a non-trivial orientation yet - worth re-checking
+once D3, an open-scene spherical camera with a genuinely angled
+lookfrom/lookat, lands). New `Uniforms::cameraSpherical` flag (0, every
+earlier scene, true no-op) + `MetalPocApp::havePbrtSpherical`, mirroring
+`cameraOrthographic`'s own shape exactly, including the SAME leading
+MINUS on the `cameraRight` term D6's own section 150 finding
+established (CPU's alt-camera path's `right` is this loader's
+`cameraRight` negated) - applied here PROACTIVELY (not rediscovered via
+a mirrored render this time), since D7 shares the identical
+`cameras.h::make_look_at()` construction D6 already diagnosed.
+
+`buildSphericalCornellBox()` ports CPU's own alt-camera lambda's
+degenerate-cross-product workaround faithfully: rather than feeding the
+scene's own registry `lookat` through `make_look_at()` directly (which
+would give a degenerate `cross(up,forward)` when `lookfrom==lookat`),
+CPU uses a FIXED `+Z` world-forward reference (`lookat = lookfrom +
+(0,0,1)`) - ported the same way, and confirmed algebraically that this
+constant direction is unaffected by `toWorld()`'s own recentre/offset
+(a direction between two points survives a uniform-scale-plus-translate
+transform exactly, unlike a position).
+
+**A real gap found via direct comparison, not assumed correct**: the
+first render matched CPU's own overall panorama shape/colours/layout
+closely, but the open FRONT of the box (visible directly in this
+panoramic view, unlike every earlier Cornell-family scene where the
+camera stays OUTSIDE and never sees past it) rendered as this loader's
+own default pale sky-gradient fallback here, solid BLACK in `--cpu`
+(this scene sets no infinite light at all, so a miss ray genuinely
+contributes zero radiance). `buildCornellBoxA1()` itself never needed
+an explicit background before now, since its own outside-looking-in
+camera never exposed this gap. Fixed by explicitly forcing
+`havePbrtConstantEnvLight=true`/`pbrtEnvColor={0,0,0}` in
+`buildSphericalCornellBox()` - the same "force true black" pattern
+several earlier standalone scenes already use, overriding the
+otherwise-invisible default sky-gradient fallback.
+
+**Verified** with a direct `--gpu` vs `--cpu` comparison after the fix
+- matching wall order/colours (white/red/black-void/green) as the
+panorama sweeps around, matching curved-quad panorama distortion shape,
+matching glass-sphere silhouette near the bottom of frame (directly
+below the camera). Full clean `RT_BUILD_METAL=ON` rebuild, ctest
+(4/4), the 55-scene pbrt-backed regression sweep (0 failures, confirms
+the new `cameraSpherical` branch is a true no-op for every existing
+scene), and regression spot-checks of the accumulated hand-authored
+scenes. `D7` added to `cpu_scene_metal_hand_authored_supported()`'s
+`kSupported` set in this same PR. **Category D is now 5 of 9 done.**
