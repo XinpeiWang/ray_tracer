@@ -922,6 +922,19 @@ struct MetalPocApp {
     // other backend, without needing loadPbrtScene() to run again.
     float3 pbrtCameraLookAtWorld{0, 0, 0};
     float3 pbrtCameraUpRaw{0, 1, 0};
+    // Thin-lens DOF for a hand-authored scene (D5, section 137) - both
+    // already in this SCENE's own rescaled/offset unit system (a caller
+    // computes them from the scene's own real defocus_angle/focus_dist
+    // the same way camera.h's own `defocus_radius = focus_dist *
+    // tan(defocus_angle/2)` does, then multiplies both by sceneScale).
+    // Defaults (0/1) preserve every earlier hand-authored scene's own
+    // "no DOF" behaviour exactly - this is a genuinely SEPARATE gap from
+    // this struct's own pre-existing "pbrt v1 doesn't parse the pbrt
+    // file's own lensradius/focaldistance Camera parameters" limitation
+    // (metal_render_main()'s own comment) - unrelated, a hand-authored
+    // scene has no pbrt file to parse from at all.
+    float pbrtLensRadius = 0.0f;
+    float pbrtFocusDistance = 1.0f;
     float3 pbrtBboxCenter{0, 0, 0};
     float pbrtSceneScale = 1.0f;
     float3 pbrtSceneOffset{0, 0, 0};
@@ -1326,6 +1339,14 @@ struct MetalPocApp {
     // deferred) - only the vertex DATA is new. Section 136, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildTriangleMeshScene();
+    // D5: Depth of Field Cornell Box - the SAME A1 Cornell box geometry
+    // (build_cornell_box on CPU), just with real thin-lens defocus blur
+    // (defocus_angle=2.0, focus_dist=800.0 in the scene's own pbrt-file-
+    // scale units) - a genuinely free reuse of buildCornellBoxA1() plus
+    // pbrtLensRadius/pbrtFocusDistance (this struct's own newly added
+    // fields, see their own declaration comment). Section 137, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildDepthOfFieldCornellBox();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3042,6 +3063,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "C5") { buildGoniometricLightCornell(); return true; }
     if (scene_id == "C6") { buildProjectionLightCornell(); return true; }
     if (scene_id == "F2") { buildTriangleMeshScene(); return true; }
+    if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -5054,6 +5076,29 @@ void MetalPocApp::buildTriangleMeshScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
+// D5: Depth of Field Cornell Box - matches CPU's own registry row for
+// D5 exactly: the identical A1 Cornell box geometry (build_cornell_box
+// on CPU), with real thin-lens defocus blur added on top via a real
+// defocus_angle=2.0/focus_dist=800.0 (both in the scene's own pbrt-
+// file-scale units, matching CameraConfig's own field meaning -
+// scene_registry.h). `defocus_radius = focus_dist *
+// tan(defocus_angle/2)` is camera.h's own real formula (ported
+// directly, not re-derived) - both the resulting lens radius AND the
+// focus distance itself need the SAME `sceneScale` this scene's own
+// geometry/camera position already go through (they are WORLD-SPACE
+// distances in the pre-rescale coordinate system, just like a
+// lookfrom/lookat position), or the defocus cone would be sized for
+// the wrong (much larger) scale entirely.
+void MetalPocApp::buildDepthOfFieldCornellBox() {
+    buildCornellBoxA1();
+    const float sceneScale = 2.0f / 555.0f;
+    const float defocusAngleDeg = 2.0f;
+    const float focusDistRaw = 800.0f;
+    const float lensRadiusRaw = focusDistRaw * tanf(defocusAngleDeg * 0.5f * (float)M_PI / 180.0f);
+    pbrtLensRadius = lensRadiusRaw * sceneScale;
+    pbrtFocusDistance = focusDistRaw * sceneScale;
+}
+
 // Recomputes the camera basis for a new lookfrom position, in the SAME
 // coordinate space (cam_x, cam_y, cam_z) already arrive in from every
 // other backend - cpu_scene_recommended_camera()'s return values and any
@@ -5904,11 +5949,15 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         uniforms.cameraRight = PackedFloat3{pbrtCameraRight.x, pbrtCameraRight.y, pbrtCameraRight.z};
         uniforms.cameraUp = PackedFloat3{pbrtCameraUp.x, pbrtCameraUp.y, pbrtCameraUp.z};
         uniforms.tanHalfFov = pbrtTanHalfFov;
-        // No DOF yet - this v1 doesn't read pbrt's own "float lensradius"/
-        // "float focaldistance" Camera parameters. focusDistance is
-        // unread by the shader whenever lensRadius == 0.
-        uniforms.lensRadius = 0.0f;
-        uniforms.focusDistance = 1.0f;
+        // pbrt v1 still doesn't read a pbrt FILE's own "float lensradius"/
+        // "float focaldistance" Camera parameters (a genuinely separate,
+        // still-open gap) - but a hand-authored scene (D5, section 137)
+        // has no pbrt file to parse from at all, so its own
+        // pbrtLensRadius/pbrtFocusDistance (defaulting to 0/1, "no DOF" -
+        // every scene before D5) are read directly here instead.
+        // focusDistance is unread by the shader whenever lensRadius == 0.
+        uniforms.lensRadius = pbrtLensRadius;
+        uniforms.focusDistance = pbrtFocusDistance;
         uniforms.cameraVelocity = PackedFloat3{0, 0, 0};   // no motion blur
         if (havePbrtMedium) {
             uniforms.fogSigmaT = pbrtFogSigmaT;

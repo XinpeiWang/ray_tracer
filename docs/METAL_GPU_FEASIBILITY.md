@@ -7297,3 +7297,64 @@ re-verified unaffected. `F2` added to
 same PR. **Category F is now 1 of 3 done** - F1/F4 both correctly
 deferred until a real custom-primitive intersection function (bilinear
 patch, curve) exists.
+
+## 137. Category D (Cameras) opens: D5 Depth of Field Cornell Box, real thin-lens DOF wired into a hand-authored scene for the first time
+
+The first category-D increment: D5 matches CPU's own registry row
+exactly - the IDENTICAL A1 Cornell box geometry (`build_cornell_box`),
+just with real thin-lens defocus blur added via `defocus_angle=2.0`/
+`focus_dist=800.0`. This POC's own thin-lens DOF (`lensRadius`/
+`focusDistance` uniforms) has existed since long before this Phase-B
+epic, but was NEVER wired into any hand-authored scene - every one so
+far left `uniforms.lensRadius`/`focusDistance` at the `havePbrtCamera`
+override block's own hardcoded `0.0f`/`1.0f` ("no DOF," a real,
+previously-unaddressed gap the block's own comment used to attribute
+entirely to "pbrt v1 doesn't parse a pbrt FILE's own lensradius/
+focaldistance" - true for an ACTUAL pbrt file, but irrelevant for a
+hand-authored scene, which has no file to parse from at all and was
+being silently held to the same limitation anyway). Fixed generally,
+not just for D5: two new `MetalPocApp` members,
+`pbrtLensRadius`/`pbrtFocusDistance` (defaulting to the SAME `0.0f`/
+`1.0f` every earlier hand-authored scene already got, so this is
+purely additive), now feed that uniforms block directly - any FUTURE
+hand-authored scene needing DOF can just set these two fields after
+building its own geometry, the same one-line pattern D5 itself uses.
+`defocus_radius = focus_dist * tan(defocus_angle/2)` is `camera.h`'s
+own real formula (ported directly); both the resulting lens radius AND
+the focus distance itself need the SAME `sceneScale` this scene's own
+Cornell-box geometry/camera already go through (real world-space
+distances in the pre-rescale ~555-unit coordinate system, exactly like
+a lookfrom/lookat position), not just the raw pbrt-scene-scale numbers
+- checked and applied consistently with every earlier position-based
+rescale in this series, not overlooked.
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - closely matching overall
+sharpness/blur character (the calibration is modest - `defocus_angle`
+2 degrees, focus distance close to the box's own depth - so the effect
+is real but subtle on both backends, not a dramatic bokeh shot); a
+second, more decisive check crops the SAME box-corner region from D5
+and from a plain A1 render (identical geometry, zero DOF) side by side
+- D5's own edge reads visibly softer, confirming the defocus blur is
+genuinely being applied, not silently zero. Full clean
+`RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene `pbrt_scenes/`
+sweep (0 failures); A1's own render came back BYTE-FOR-BYTE identical
+to its pre-this-PR size, confirming the new default-valued fields
+changed nothing for every scene that doesn't set them. `D5` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category D is now 1 of 9 done.** D2/D3/D4/D6/D7/D8 all need
+a genuinely NEW camera projection mode (orthographic, spherical/
+equirectangular, or a real multi-element lens simulation) this loader's
+own camera is architecturally fixed to a single perspective/thin-lens
+model - correctly bigger lifts, deferred. D13 (Camera Motion Blur) was
+investigated and found to be a genuine architectural mismatch, not
+just unimplemented: this loader's own camera motion blur
+(`cameraVelocity`) only linearly translates the ray ORIGIN over the
+exposure with a FIXED camera basis, but D13's own motion keeps
+`lookat` fixed while `lookfrom` moves sideways - a real combined
+translate+rotation of the camera's own orientation over the exposure
+that a simple origin-translate-only model cannot reproduce correctly;
+approximating it would misrepresent the actual effect rather than
+merely simplify it, so it's deferred pending a real fix to the
+underlying camera-ray-generation architecture, not scene-authoring
+work.
