@@ -6926,3 +6926,52 @@ same PR. **Don't re-derive the roughness^0.25 reconciliation again for
 a future materialType-4 Cornell-family scene** (B7 CoatedConductor's
 own base layer, if/when tackled) - it's now an established, reusable
 conversion for this exact CPU-material-class family.
+
+## 128. Category B increment 3: B3 Cornell Rough Glass - materialType 5 added to buildCornellFamilyScene(), and a "looks wrong but isn't" finding worth remembering
+
+The third category-B scene. `buildCornellFamilyScene()` gained
+materialType 5 (rough/frosted dielectric) support for the sphere slot -
+CPU's own `rough_dielectric` class calls the SAME `RoughnessToAlpha()`
+helper `rough_metal`/`conductor` do (checked directly in
+`material_pbrt.h`, not assumed from the class's name alone), so
+sections 126/127's own `roughness^0.25` conversion applies unchanged.
+Unlike materialType 4, materialType 5's `ior`/`roughness` are NOT a
+dual-use pair - `ior` is always a real refraction index, `roughness`
+always drives alpha independently - so the sphere-material branch in
+`buildCornellFamilyScene()` needed its own small addition (materialType
+2 and 5 now share one branch, both just setting `mat.ior`).
+`buildCornellRoughGlass()` matches CPU's own
+`build_cornell_rough_glass()` exactly: the box stays plain white
+Lambertian (unchanged from A1's own), only the sphere changes.
+
+**A real "looks alarming, isn't actually a bug" finding, investigated
+properly rather than assumed**: a first render showed a visibly DARK,
+grainy, near-opaque-looking sphere - a plausible red flag for "the
+rough dielectric isn't working, something's absorbing/blocking light
+instead of transmitting it." Before concluding that, a decisive check:
+crop the sphere region from a real `--cpu` render of the SAME scene_id
+at the SAME zoom and compare directly, rather than judging from memory
+of what a "normal" glass sphere in this codebase usually looks like.
+CPU's own reference shows the EXACT SAME character - a dark, grainy,
+frosted-looking sphere, not a bright/clear one. This is genuinely
+correct, physically-expected behaviour for a rough/frosted dielectric
+under this scene's own dim, single-ceiling-light illumination (most
+refracted paths scatter into complex, high-variance directions rather
+than transmitting a clean, bright image the way smooth glass does) -
+not a rendering bug on either backend. **Worth remembering**: "the
+render looks visually alarming/darker than I expected" is not the same
+as "it's wrong" - a rough/frosted dielectric in a dim, single-light
+scene is SUPPOSED to look muted and grainy; always check a real
+same-zoom crop from the CPU reference before concluding a material
+implementation is broken, the same discipline section 121's own
+extreme-grazing-checker finding already established for a different
+symptom (huge pixel diff, not "looks dark").
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) +
+51-scene `pbrt_scenes/` sweep (0 failures); A1/A3/A5/A7/B2/B4/G1/G7/
+G12/G18 (earlier increments) re-verified unaffected; a direct cropped
+sphere-region comparison against a real `--cpu` render at both 32spp
+and 128spp confirms matching character at both noise levels, not just
+a lucky single sample. `B3` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR.
