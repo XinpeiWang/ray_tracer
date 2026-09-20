@@ -1422,6 +1422,20 @@ struct MetalPocApp {
     // convention, since this scene's own extent is already compact).
     // Section 145, docs/METAL_GPU_FEASIBILITY.md.
     void buildPrincipledShowcase();
+    // C1: HDRI Sky - an open scene (ground + 3 spheres: diffuse, rough
+    // metal, glass) lit ENTIRELY by a procedural gradient sky, no other
+    // light at all. Needs NO new materialType or shader code at all -
+    // reuses the SAME real image-based infinite-light mechanism
+    // loadPbrtScene() already populates for a real pbrt scene's own
+    // ImageInfiniteLight (havePbrtImageEnvLight/pbrtEnvImageWidth/
+    // Height/Pixels - the texture upload AND importance-sampling CDF
+    // construction, metal_render_main()'s own GPU-resource setup, both
+    // already trigger generically off these fields regardless of who
+    // populated them), just with a HOST-side-generated 64x32 gradient
+    // image (matching CPU's own build_hdri_sky() pixel formula exactly)
+    // in place of a real loaded HDRI file. Section 146,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildHdriSky();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3147,6 +3161,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B23") { buildPrismDispersion(); return true; }
     if (scene_id == "B24") { buildPrismDispersionRough(); return true; }
     if (scene_id == "B10") { buildPrincipledShowcase(); return true; }
+    if (scene_id == "C1") { buildHdriSky(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -5754,6 +5769,126 @@ void MetalPocApp::buildPrincipledShowcase() {
     pbrtCameraRight = right;
     pbrtCameraUp = trueUp;
     pbrtTanHalfFov = tanf(0.5f * 45.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// C1: HDRI Sky - matches src/TheRestOfYourLife/scenes_advanced.h's own
+// build_hdri_sky_world()/build_hdri_sky() exactly: a ground plane + 3
+// spheres (diffuse, fuzzy-metal, glass), lit ENTIRELY by a procedural
+// gradient sky image - no area/point/directional light of any kind.
+// Needs zero new materialType or shader code (see this method's own
+// forward-declaration comment) - just populates the same
+// havePbrtImageEnvLight/pbrtEnvImageWidth/Height/Pixels fields
+// loadPbrtScene() already populates for a REAL pbrt ImageInfiniteLight,
+// with a host-generated buffer standing in for a loaded HDRI file.
+void MetalPocApp::buildHdriSky() {
+    // Spheres sit at raw x=-3/0/3 (radius 1) - comfortably clear of the
+    // hardcoded POC room's own [-1,1] cube even at the series' usual +8
+    // offset (unlike B10's own x=-6 sphere, which needed +10 - see that
+    // scene's own comment), so no extra clearance is needed here.
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground: a large flat quad (materialType 0, matching CPU's own
+    // lambertian(0.4,0.4,0.4)) - not CPU's own radius-1000 ground
+    // SPHERE, which would algebraically overlap the hardcoded room's
+    // own [-1,1] cube (the same substitution A5/B1/F2/B10 already
+    // established).
+    {
+        const float3 groundColor{0.4f, 0.4f, 0.4f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-50, 0, -50} + sceneOffset, float3{50, 0, -50} + sceneOffset,
+                float3{50, 0, 50} + sceneOffset, float3{-50, 0, 50} + sceneOffset,
+                groundColor);
+    }
+
+    // Sphere 1 (x=-3): diffuse, lambertian(0.7,0.3,0.2).
+    {
+        const float3 color{0.7f, 0.3f, 0.2f};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/0u,
+                              1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{-3.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    // Sphere 2 (x=0): CPU's own simple metal(color(0.8,0.8,0.9),
+    // fuzz=0.05) - approximated as a real GGX conductor (materialType
+    // 4) via reflectanceToConductorK(), the same faithful substitution
+    // B2/G1-G3 already established. Isotropic: ior(alphaX) and
+    // roughness(alphaY) both set directly to CPU's own fuzz value (the
+    // same direct sqrt(alpha)-scale mapping the metal accent sphere in
+    // buildMeshGalleryScene() already uses for its own small fuzz
+    // value).
+    {
+        const float3 color{0.8f, 0.8f, 0.9f};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/4u,
+                              /*ior(alphaX)=*/0.05f, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/0.05f};
+        const float3 k = reflectanceToConductorK(color);
+        mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        const float3 c = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    // Sphere 3 (x=3): smooth dielectric, dielectric(1.5). `color` is
+    // reinterpreted as a Beer-Lambert absorption COEFFICIENT for this
+    // materialType, not a reflectance tint - {0,0,0} means zero
+    // absorption, true clear glass (see applyBeerLambertAbsorption()'s
+    // own comment) - a {1,1,1} "white" value here would make the glass
+    // strongly absorptive/dark instead, matching nothing CPU's own
+    // dielectric(1.5) (no absorption at all) does.
+    {
+        TriangleMaterial mat{PackedFloat3{0.0f, 0.0f, 0.0f}, /*materialType=*/2u,
+                              /*ior=*/1.5f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{3.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // The sky: a 64x32 procedural HDR gradient, matching CPU's own
+    // build_hdri_sky()'s per-pixel formula exactly (t = y/(H-1), 0 at
+    // the top row down to 1 at the bottom row - r/g/b below are each
+    // uniform across a row, varying only with t). Wraps the SAME
+    // image-based infinite-light path loadPbrtScene() already wires up
+    // generically (texture upload + importance-sampling CDF) - no
+    // separate scale multiplier needed here (CPU's own sky_light(...)
+    // call uses scale=1.0).
+    {
+        const int W = 64, H = 32;
+        std::vector<float> pixels(W * H * 3);
+        for (int y = 0; y < H; ++y) {
+            const float t = (float)y / (float)(H - 1);
+            const float r = 0.1f + 0.9f * t * t;
+            const float g = 0.3f + 0.4f * (1.0f - fabsf(t - 0.5f) * 2.0f);
+            const float b = 0.8f * (1.0f - t * t);
+            for (int x = 0; x < W; ++x) {
+                float* p = &pixels[(y * W + x) * 3];
+                p[0] = r; p[1] = g; p[2] = b;
+            }
+        }
+        havePbrtImageEnvLight = true;
+        pbrtEnvImageWidth = W;
+        pbrtEnvImageHeight = H;
+        pbrtEnvImagePixels = std::move(pixels);
+    }
+
+    // Camera: fov=42, lookfrom=(0,2.3,15), lookat=(0,1,0) - matches
+    // build_hdri_sky_world()'s own CameraConfig exactly.
+    const float3 lookfrom = float3{0.0f, 2.3f, 15.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 42.0f * (float)M_PI / 180.0f);
     havePbrtCamera = true;
     pbrtCameraLookAtWorld = lookat;
     pbrtCameraUpRaw = up;
