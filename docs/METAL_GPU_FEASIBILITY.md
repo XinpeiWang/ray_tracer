@@ -7106,3 +7106,29 @@ Education scene with genuinely NEW geometry, 5 ceiling lights of
 deliberately lopsided power, not yet built anywhere) - a real, tractable
 future increment (pure quad-light placement, no new material/geometry
 machinery).
+
+## 133. Category I increment 2: I8 Light Sampler Comparison - the last "new geometry" Education scene, category I now 8/10 done
+
+The one category-I scene with genuinely new geometry: the same A1
+Cornell shell (walls/box/glass sphere, unchanged) but the single
+ceiling light is replaced by 5 quad lights of deliberately lopsided
+power (~1:2:6:15:80), matching CPU's own
+`build_light_sampler_comparison()` exactly. A bespoke builder (like
+`buildCornellThinGlass()`, section 129) rather than
+`buildCornellFamilyScene()`, which assumes exactly one light. All 5
+lights are real NEE-sampled `AreaLight`s - this loader's own light
+picking has been power-proportional since section 52, a real (if
+incidental) architectural echo of the exact contrast CPU's own scene
+exists to demonstrate (uniform vs. power/BVH light-sampler strategies).
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - matching light positions/sizes,
+and critically the SAME visibly asymmetric brightness pattern (one
+clearly dominant corner light, three dim ones, the original centre
+light in between) in both. Full clean `RT_BUILD_METAL=ON` rebuild +
+ctest (4/4) + 51-scene `pbrt_scenes/` sweep (0 failures); A1/B1/B3/B8/
+G1/G12 (earlier increments) re-verified unaffected. `I8` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category I is now 8 of 10 done** - only `I2`/`I3` remain,
+both deferred until their own underlying not-yet-built scenes (B23's
+prism, C1's HDRI sky) exist.
