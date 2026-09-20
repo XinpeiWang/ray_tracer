@@ -1290,6 +1290,18 @@ struct MetalPocApp {
     // buildCornellThinGlass()) - buildCornellFamilyScene() assumes
     // exactly one light. Section 133, docs/METAL_GPU_FEASIBILITY.md.
     void buildLightSamplerComparison();
+    // Shared geometry for category C's own "Cornell box, no ceiling
+    // light, lit by ONE punctual light instead" family (C2-C6) - matches
+    // CPU's own cornell_walls_no_light() exactly: the 5 standard walls
+    // (kQuads[0..4], no light quad) plus a white diffuse sphere and a
+    // metal accent sphere. Returns the SAME toWorld() lambda every
+    // caller needs to place its own punctual light in this scene's own
+    // rescaled coordinate space. Section 134, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    std::function<float3(float3)> buildCornellNoLightWalls();
+    void buildSpotlightCornell();
+    void buildDistantLightCornell();
+    void buildPointLightCornell();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3000,6 +3012,9 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
         scene_id == "I7" || scene_id == "I9") { buildCornellBoxA1(); return true; }
     if (scene_id == "I5" || scene_id == "I10") { buildCornellRoughGlass(); return true; }
     if (scene_id == "I8") { buildLightSamplerComparison(); return true; }
+    if (scene_id == "C2") { buildSpotlightCornell(); return true; }
+    if (scene_id == "C3") { buildDistantLightCornell(); return true; }
+    if (scene_id == "C4") { buildPointLightCornell(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4657,6 +4672,167 @@ void MetalPocApp::buildLightSamplerComparison() {
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
     pbrtSceneOffset = sceneOffset;
+}
+
+// See this method's own declaration comment. Also sets up the SAME
+// camera every C2-C6 scene shares (kCornellBoxCamera) - a caller only
+// needs to add its own punctual light after calling this.
+std::function<float3(float3)> MetalPocApp::buildCornellNoLightWalls() {
+    using namespace cornell_box_data;
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // The 5 walls only - no ceiling light quad (this family is lit by
+    // one punctual light instead).
+    for (int i = 0; i < 5; ++i) {
+        const QuadSpec& q = kQuads[i];
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        addQuad(verts, normals, uvs, materials, toWorld(Q), toWorld(Q + u),
+                toWorld(Q + u + v), toWorld(Q + v), color);
+    }
+
+    // White diffuse sphere.
+    {
+        const float3 center = toWorld(float3{190.0f, 90.0f, 190.0f});
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, sceneScale * 90.0f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{0.73f, 0.73f, 0.73f}, /*materialType=*/0u,
+            1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+    // Metal accent sphere. CPU's own `metal(albedo, fuzz)` is the
+    // classic Book-1 fuzzy-mirror model (reflect + fuzz*random_unit_vector),
+    // a genuinely DIFFERENT, simpler model than materialType 4's real GGX
+    // (no RoughnessToAlpha-style formula connects "fuzz" to a GGX alpha -
+    // they're different physical parameterizations, unlike section 126's
+    // own rough_metal/conductor case where an exact reconciliation
+    // existed). Approximated directly as a low-roughness materialType 4
+    // conductor instead (fuzz=0.1 is a near-mirror, low-roughness look),
+    // verified by eye against a real --cpu render rather than derived
+    // algebraically - an honest Approx-tier substitution, not an exact
+    // port.
+    {
+        const float3 metalColor{0.8f, 0.8f, 0.9f};
+        const float3 center = toWorld(float3{370.0f, 120.0f, 380.0f});
+        const float alpha = 0.1f;
+        const float3 k = reflectanceToConductorK(metalColor);
+        TriangleMaterial mat{PackedFloat3{metalColor.x, metalColor.y, metalColor.z}, /*materialType=*/4u,
+            /*ior=*/alpha, PackedFloat3{0, 0, 0}, -1, /*roughness=*/alpha};
+        mat.conductorEta = PackedFloat3{1, 1, 1};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, sceneScale * 120.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Camera - kCornellBoxCamera, same as every Cornell-family scene.
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+
+    // Real per-scene flat background - pure BLACK (0,0,0), matching
+    // every C2-C6 registry row exactly. A real bug found here BEFORE
+    // ever comparing renders would have hidden it: this room's own
+    // walls (like every Cornell-family scene's) have no front wall -
+    // the camera looks in through an open front, so a genuinely
+    // ESCAPING ray (an indirect bounce, or a grazing camera ray past
+    // the spheres) reaches the miss path and would otherwise read
+    // metal_poc.metal's own hardcoded blue-sky gradient instead of
+    // black. A1/B2/etc never needed this because their own dominant
+    // ceiling-light illumination masks a small sky leak; this family's
+    // OWN single, far more concentrated punctual light does not - the
+    // leak reads as "the whole room is uniformly, implausibly brighter
+    // than a real --cpu render of the same scene_id," not a subtle
+    // colour cast, caught by exactly that direct comparison (section
+    // 134's own verification note).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.0f, 0.0f, 0.0f};
+
+    return toWorld;
+}
+
+// C2: Spotlight Cornell - matches CPU's own build_spotlight_cornell()/
+// build_spotlight_punct() exactly: a spotlight aimed straight down from
+// the ceiling centre, 30-degree total cone, 15-degree falloff start.
+// Intensity needs the SAME `sceneScale^2` compensation section 87's own
+// pbrt punctual-light finding established (this scene's own intensity,
+// 600000.0, is calibrated for the ORIGINAL 555-unit scale's 1/r^2
+// falloff, not this app's rescaled ~2-unit one).
+void MetalPocApp::buildSpotlightCornell() {
+    auto toWorld = buildCornellNoLightWalls();
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 pos = toWorld(float3{278.0f, 548.0f, 278.0f});
+    const float3 dir{0.0f, -1.0f, 0.0f};
+    const float3 emission = float3{1.0f, 0.95f, 0.85f} * 600000.0f * sceneScale * sceneScale;
+    pointLights.push_back(PointLightData{
+        PackedFloat3{pos.x, pos.y, pos.z},
+        PackedFloat3{emission.x, emission.y, emission.z},
+        PackedFloat3{dir.x, dir.y, dir.z},
+        /*cosOuterAngle=*/cosf(30.0f * (float)M_PI / 180.0f),
+        /*cosInnerAngle=*/cosf(15.0f * (float)M_PI / 180.0f)});
+}
+
+// C3: Distant Light Cornell - matches CPU's own
+// build_distant_light_cornell()/build_distant_light_punct() exactly: a
+// parallel sun-like light. A REAL sign-convention bug found and fixed
+// via direct CPU comparison (not assumed from a doc comment alone,
+// which turned out to be self-contradictory - see below): a first
+// version passed `add_distant()`'s own `dir` argument straight through
+// to `DirectionalLightData::direction` unchanged, reasoning (from
+// `punctual_light_objects.h`'s own wrapper comment, "unit direction
+// *toward* the scene") that it was already this loader's own "light's
+// direction of TRAVEL" convention - this rendered an almost completely
+// BLACK room (every surface facing away from the light). The ACTUAL
+// authoritative source, `src/shared/punctual_lights.h`'s own
+// `DistantLightData<T>` (the struct the CPU wrapper actually
+// constructs), says the opposite one line later: `dir_x/y/z` is
+// "unit world-space direction TOWARD THE SCENE (wi)" as a field
+// comment, but `sample_wi()` right below it says "Direction toward
+// LIGHT = dir" - `dir` is genuinely `wi` (pointing FROM the scene
+// TOWARD the light), the SAME convention pbrt's own punctual lights
+// use (section 87) - needing the SAME negation before this loader's
+// own `DirectionalLightData::direction` (light's direction of TRAVEL).
+// No sceneScale compensation needed either way -
+// `DistantLightData::eval_Li` has no 1/r^2 term to correct for.
+void MetalPocApp::buildDistantLightCornell() {
+    buildCornellNoLightWalls();
+    const float3 wiTowardLight = simd::normalize(float3{-0.4f, -1.0f, -0.2f});
+    const float3 dirOfTravel = -wiTowardLight;
+    const float3 emission = float3{1.0f, 0.98f, 0.92f} * 14.0f;
+    directionalLights.push_back(DirectionalLightData{
+        PackedFloat3{dirOfTravel.x, dirOfTravel.y, dirOfTravel.z},
+        PackedFloat3{emission.x, emission.y, emission.z}});
+}
+
+// C4: Point Light Cornell - matches CPU's own build_point_light_cornell()/
+// build_point_light_punct() exactly: a single overhead point light, the
+// SAME sceneScale^2 compensation as C2's own spotlight.
+void MetalPocApp::buildPointLightCornell() {
+    auto toWorld = buildCornellNoLightWalls();
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 pos = toWorld(float3{278.0f, 540.0f, 278.0f});
+    const float3 emission = float3{1.0f, 0.98f, 0.90f} * 600000.0f * sceneScale * sceneScale;
+    pointLights.push_back(PointLightData{
+        PackedFloat3{pos.x, pos.y, pos.z},
+        PackedFloat3{emission.x, emission.y, emission.z}});
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
