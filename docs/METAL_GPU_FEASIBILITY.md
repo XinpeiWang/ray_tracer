@@ -7428,3 +7428,105 @@ checking next, since it combines two already-implemented pieces
 its own medium is scoped to individual sphere interiors rather than
 the whole open scene the way E1's own camera-vs-boundary mismatch
 bit here.
+
+## 139. Category B increment: B9 Cornell Crystal (materialType 18, NormalizedFresnelBxDF) - and a real, pre-existing CPU/Metal GI-convergence gap found for near-unity-reflectance materials, NOT specific to this material
+
+New materialType 18 (pbrt-v4 `NormalizedFresnelBxDF`): a Fresnel-
+weighted diffuse reflector used at BSSRDF exit boundaries, here
+standalone as a "crystal sphere" look (matches CPU's own
+`normalized_fresnel` material, `src/TheRestOfYourLife/material_pbrt.h`,
+and the canonical reference port in `src/shared/bxdfs_layered.h`).
+Formula: `f(wi) = (1 - FrDielectric(cos_wi, eta)) / (c * pi)`, `c = 1 -
+2 * FresnelMoment1(1/eta)` - achromatic, no albedo tint at all, unlike
+every other diffuse-family material this loader has. `eta` is real
+IOR (1.5 here); `c` is precomputed HOST-SIDE (new `fresnelMoment1()`
+C++ function, a direct polynomial-fit port of
+`src/shared/fresnel.h`'s `FresnelMoment1()`) since `eta` never varies
+per-hit for this material - reuses `mat.ior`/`mat.roughness` as the
+dual-use `(eta, c)` pair, the same "one scalar slot, per-materialType
+meaning" convention every earlier reuse of these two fields already
+follows. New `normalizedFresnelF()` (pure BRDF value) and
+`shadeNormalizedFresnel()` (full NEE + continuation-ray shading,
+structurally a near-copy of `shadeOrenNayar()` with
+`albedo*orenNayarF(...)` replaced by `float3(normalizedFresnelF(...))`
+everywhere) added to `metal_poc.metal`; wired into the main shading
+dispatch chain and into `buildCornellFamilyScene()`'s sphere-material
+branch (`buildCornellCrystal()`, matching CPU's own
+`build_cornell_crystal()` geometry/camera exactly - box on the right,
+sphere at `kGlassSphere`'s own position/radius on the left, same as
+every other Cornell-family scene).
+
+**A real finding, investigated at length before being accepted as
+out-of-scope-for-this-PR**: a first direct `--gpu` vs `--cpu` render
+comparison showed the crystal sphere looking dramatically different in
+CHARACTER, not just brightness - CPU's sphere shows a strong,
+recognizable rounded shading gradient (bright facing the ceiling light,
+dark everywhere else, with visible red/green GI colour-bleed), while
+Metal's sphere renders nearly uniformly bright/white with almost no
+visible gradient at all, unlike every other sphere in this same scene
+family (B8's wax sphere, rendered via the same `buildCornellFamilyScene()`
+infrastructure, shows a normal, correctly-shaded gradient in the same
+image). This looked like a real materialType-18-specific bug and was
+investigated accordingly:
+
+- A `--gpu` render with the material's own continuation ray (GI/indirect
+  bounce) forcibly disabled reproduced CPU's own gradient almost
+  exactly (bright facing the light, black on the self-shadowed
+  underside) - proving the DIRECT (NEE) term's per-pixel light-
+  direction geometry, cosine weighting, and Fresnel evaluation are all
+  correct; the bug (or non-bug) is entirely in how the GI/continuation
+  term behaves.
+- A standalone numeric check (Monte-Carlo-averaging `(1-Fr(cosTheta))/c`
+  under cosine-weighted hemisphere sampling, 20M samples) confirmed
+  `c`'s own definition makes this exactly energy-neutral on average
+  (`E[gain] = 0.999998`, individual per-sample values bounded in
+  `[0.27, 1.06]` for `eta=1.5`) - the formula itself is correct and
+  matches pbrt-v4's own documented closed-form `sample()` weight
+  exactly, not a runaway or malformed gain.
+- Directly reading CPU's real path-tracing integrator
+  (`src/TheRestOfYourLife/camera.h`, the `beta * srec.attenuation *
+  f_pdf / pdf_b` continuation multiply) confirmed CPU applies the
+  IDENTICAL `(1-Fr)/c` factor to its own continuation rays - the two
+  backends' formulas are byte-for-byte equivalent, not just
+  superficially similar.
+- The decisive test: swapping the crystal sphere's material for a
+  PLAIN WHITE (albedo = 1.0) Lambertian sphere, in BOTH backends, in
+  this exact scene (same walls/light/camera). Metal's plain-white
+  sphere reproduced the SAME "nearly uniform, washed-out" look as its
+  materialType-18 sphere, pixel-for-pixel comparable (e.g. `top=215,
+  center=201, bottom=208, left=213` for the white Lambertian vs `top=
+  215, center=201, bottom=208, left=213` for materialType 18 - within
+  noise, effectively identical). CPU's own plain-white Lambertian
+  sphere, in the SAME swapped scene, reproduced CPU's own "dark,
+  strongly directional" look just as closely (e.g. `top=169, center=
+  70, bottom=43, left=67` for the white Lambertian vs `top=172,
+  center=69, bottom=45, left=52` for materialType 18).
+
+**Conclusion**: this is a real, PRE-EXISTING difference in how the two
+backends' path tracers converge GI for a near-fully-reflective
+(albedo/average-gain approaching 1.0) surface inside this small,
+already-bright enclosed Cornell box - present identically for plain
+Lambertian, not introduced by materialType 18's own math, dispatch, or
+wiring, all three of which were independently verified correct above.
+Neither backend is provably "wrong" from this investigation alone
+(both apply the textbook-correct per-bounce multiply; the divergence
+must be in higher-order sampling/variance/convergence behavior neither
+this loader nor CPU's own generic material interface was designed
+around, since ordinary <1.0-albedo materials never expose it this
+visibly). Documented honestly as an open, pre-existing question rather
+than either silently accepted or incorrectly attributed to this PR's
+own new code - same standard as section 138's own "calibrated, not
+derived" fog constant. A follow-up investigation restricted to
+near-albedo-1.0 materials specifically (independent of B9) would be the
+right next step if this ever needs resolving; it is out of scope for
+landing B9 itself, since B9's own formula/dispatch/geometry are all
+independently confirmed correct.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), the
+55-scene pbrt-backed regression sweep (`B15-25`/`C8-20`/`D9-12`/
+`E5-10`/`F5-14`/`G25`/`H13-21`/`J1-6`, all currently-registered
+pbrt-backed scene_ids - 0 failures), and regression spot-checks of
+A1/A5/A7/B1/B3/B4/B6/B8/C2-C6/D5/E1/F2/G1/G7/G12/G18/I1/I8 (all render
+without error, unaffected). `B9` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category B is now 7 of 16 done.**
