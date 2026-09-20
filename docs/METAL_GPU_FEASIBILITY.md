@@ -8032,3 +8032,82 @@ unaffected). `B10` added to `cpu_scene_metal_hand_authored_supported()`'s
 The remaining 3 (B11 Hair Fibers, B13 Subsurface Slab, B14 Measured
 BRDF) are all genuinely bigger lifts per the earlier scoping pass - no
 further "quick win" remains in this category.
+
+## 146. Category C increment: C1 HDRI Sky - needs ZERO new materialType or shader code, plus a real Beer-Lambert absorption-tint bug caught before shipping
+
+`C1` (HDRI Sky) matches `src/TheRestOfYourLife/scenes_advanced.h`'s own
+`build_hdri_sky_world()`/`build_hdri_sky()` exactly: a ground plane and
+3 spheres (diffuse, fuzzy metal, glass), lit ENTIRELY by a procedural
+gradient sky image, no area/point/directional light at all.
+
+**The headline finding**: this scene needs no new materialType or
+shader code whatsoever - a significant simplification, parallel in
+spirit to B10's own "no NEE needed" discovery. Reading
+`loadPbrtScene()`'s own infinite-light handling
+(`MetalPocApp::loadPbrtInfiniteLight()`) showed that Metal's real
+pbrt-file-image-environment-light path is entirely generic: it triggers
+off four plain member fields - `havePbrtImageEnvLight`,
+`pbrtEnvImageWidth`, `pbrtEnvImageHeight`, `pbrtEnvImagePixels` - and
+BOTH the `pbrtEnvTexture` GPU-texture upload AND the
+`buildEnvDistribution2D()` importance-sampling CDF construction read
+those same four fields regardless of who populated them. So
+`buildHdriSky()` just generates a 64x32 gradient pixel buffer
+HOST-side, matching CPU's own per-pixel formula exactly (`t = y /
+(H-1)`, `r = 0.1 + 0.9*t*t`, `g = 0.3 + 0.4*(1 - |t-0.5|*2)`, `b = 0.8
+* (1 - t*t)`, uniform across each row), and sets those same four
+fields directly - the identical mechanism a REAL loaded HDRI file would
+use, just without a file.
+
+The 3 spheres (`(-3,1,0)`/`(0,1,0)`/`(3,1,0)`, radius 1) use
+materialType 0 (diffuse, `lambertian(0.7,0.3,0.2)`), materialType 2
+(smooth dielectric, `ior=1.5`), and - for CPU's own simple
+`metal(color(0.8,0.8,0.9), fuzz=0.05)` - materialType 4 (a real GGX
+conductor), approximated via `reflectanceToConductorK()` with both
+`ior`(alphaX)/`roughness`(alphaY) set directly to CPU's own `fuzz`
+value, the same faithful "real conductor standing in for CPU's simpler
+fuzzy-mirror model" substitution B2/G1-G3 already established. Ground
+is a large flat quad (materialType 0, matching CPU's own
+`lambertian(0.4,0.4,0.4)`) rather than CPU's own radius-1000 ground
+SPHERE, the same A5/B1/F2/B10 substitution to avoid overlapping the
+hardcoded POC room's own `[-1,1]` cube - unneeded here in practice
+(this scene's spheres sit at raw x=-3/0/3, comfortably clear of the
+room even at the series' usual `+8` offset, unlike B10's own x=-6
+sphere), but kept for consistency and because the ground quad itself
+would still overlap at ground-sphere scale.
+
+**A real bug, caught before shipping, not after**: the first render
+showed the diffuse sphere and metal sphere matching CPU closely, but
+the glass sphere rendered as a dark, fuzzy, near-opaque blob - nothing
+like glass. Isolated with a temporary close-up debug camera (not
+committed) rather than guessing. The cause: `TriangleMaterial::color`
+is reinterpreted for materialType 2 as a Beer-Lambert absorption
+COEFFICIENT (see `applyBeerLambertAbsorption()`'s own comment,
+`metal_poc.metal`), not a reflectance tint - `{0,0,0}` means zero
+absorption (true clear glass), the OPPOSITE of what `{0,0,0}` means as
+a colour everywhere else in this struct. The sphere had been
+constructed with `color = {1,1,1}` (an instinctive "white/clear glass"
+choice, correct for every OTHER material type in this codebase), which
+this material instead reads as an absorption coefficient of 1.0/unit -
+over a ~1-2 unit sphere diameter, `exp(-1 * distance)` attenuates each
+exit ray by roughly 60-90%, compounding over the multiple
+internal-reflection bounces glass typically takes, producing exactly
+the dark, murky look observed. Fixed by using `color = {0,0,0}`
+instead - matching CPU's own `dielectric(1.5)`, which has no absorption
+at all. This is the first hand-authored scene in this series to
+construct a materialType-2 sphere's `TriangleMaterial` directly (every
+earlier one either used a different material or came through
+`buildCornellFamilyScene()`'s own already-correct `{0,0,0}` default),
+so this particular footgun had never been exercised by hand before.
+
+**Verified**: after the fix, a direct `--gpu` vs `--cpu` comparison
+showed a close match - correct gradient sky (pale blue top through the
+horizon), matching ground tone, matching diffuse-sphere colour, a
+recognisably glossy/reflective metal sphere, and a genuinely clear
+glass sphere showing the expected top specular highlight and refracted
+band beneath. Full clean `RT_BUILD_METAL=ON` rebuild (twice - once
+before, once again immediately before shipping), ctest (4/4), the
+55-scene pbrt-backed regression sweep (0 failures), and regression
+spot-checks of the accumulated hand-authored scenes (all unaffected).
+`C1` added to `cpu_scene_metal_hand_authored_supported()`'s
+`kSupported` set in this same PR. **Category C is now 6 of 7 done** -
+only C7 (Portal Light) remains, not yet re-scoped this session.
