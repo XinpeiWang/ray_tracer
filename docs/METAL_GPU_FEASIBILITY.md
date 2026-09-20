@@ -6975,3 +6975,32 @@ and 128spp confirms matching character at both noise levels, not just
 a lucky single sample. `B3` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR.
+
+## 129. Category B increment 4: B6 Cornell Thin Glass - the first category-B scene NOT built via buildCornellFamilyScene()
+
+The fourth category-B scene, and a genuinely different shape from
+B2/B3/B4: CPU's own `build_cornell_thin_glass()` does NOT call
+`add_cornell_walls_and_main_light()` - it hand-lists its own walls (the
+SAME literal numbers as `cornell_box_data::kQuads[0..4]`, confirmed by
+direct comparison, not assumed), keeps the same rotated white box, but
+uses its OWN smaller, off-centre, brighter ceiling light and adds an
+extra vertical thin-glass PANEL (materialType 11, already implemented -
+section 59) splitting the box - no sphere at all. `buildCornellFamilyScene()`
+doesn't fit this shape (different light, an extra object, no sphere), so
+`buildCornellThinGlass()` is a bespoke builder instead, reusing
+`kQuads[0..4]`/`kBox` directly and building the panel with the SAME
+`rotate_y`-then-translate formula `buildCornellBoxA1()`'s own box
+already uses (`newX=cosT*x+sinT*z, newZ=-sinT*x+cosT*z`), just at a
+different angle (62 degrees, matching CPU's own comment on why: Fresnel
+reflectance at IOR 1.5 only rises meaningfully near grazing incidence,
+so a shallower tilt would have made the panel invisible).
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - matching wall colours, matching
+smaller/off-centre light, matching box position, and a similarly
+subtle (by design, per CPU's own comment) panel visible at the same
+position/angle in both. Full clean `RT_BUILD_METAL=ON` rebuild + ctest
+(4/4) + 51-scene `pbrt_scenes/` sweep (0 failures); A1/A3/A5/A7/B2/B3/
+B4/G1/G7/G12/G18 (earlier increments) re-verified unaffected. `B6`
+added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
+set in this same PR.
