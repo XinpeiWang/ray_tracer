@@ -963,7 +963,6 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B6",                    // Cornell Thin Glass (section 129)
 		"B1",                    // Rough Metal Spheres (section 130)
 		"B8",                    // Cornell Wax Slab (section 131)
-		"B9",                    // Cornell Crystal, materialType 18 NormalizedFresnelBxDF (section 139)
 		// Category I (Education) - scenes that reuse ANOTHER scene's own
 		// geometry verbatim (see buildHandAuthoredScene()'s own comment,
 		// metal_poc.mm, and each scene's own registry row comment,
@@ -977,6 +976,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"D5",                          // Depth of Field Cornell Box - first category-D scene (section 137)
 		"E1",                          // Homogeneous Medium - first category-E scene (section 138)
 		"B9",                          // Cornell Crystal, new materialType 18 NormalizedFresnelBxDF (section 139)
+		"B5",                          // Cornell Coated Diffuse, new materialType 19 CoatedDiffuseBxDF (section 140)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }

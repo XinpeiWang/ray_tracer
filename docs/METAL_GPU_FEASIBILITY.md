@@ -7530,3 +7530,107 @@ A1/A5/A7/B1/B3/B4/B6/B8/C2-C6/D5/E1/F2/G1/G7/G12/G18/I1/I8 (all render
 without error, unaffected). `B9` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR. **Category B is now 7 of 16 done.**
+
+## 140. Category B increment: B5 Cornell Coated Diffuse (materialType 19, CoatedDiffuseBxDF) - ported from the ALREADY-SHIPPED OptiX GPU reference, not re-derived from CPU
+
+New materialType 19: pbrt-v4's `CoatedDiffuseBxDF` (a rough dielectric
+GGX coat over a Lambertian base - the real physical model behind
+lacquered wood/coated plastic). Genuinely different in KIND from every
+earlier material in this series: it's a real, unbounded-depth
+stochastic random walk (pbrt-v4's own `LayeredBxDF`) with NO closed-form
+BSDF value at all, not a formula that can be evaluated directly.
+
+**Scoping decision, worth remembering for any future "genuinely new
+material" increment**: before attempting this from CPU's own
+`src/shared/bxdfs_layered.h` random walk (a real, ~300-line, medium-
+aware state machine), a research pass checked whether OptiX's own GPU
+backend had ALREADY solved this exact problem - it had.
+`gpu/optix/optix_device_helpers.h`'s own `MaterialType::CoatedDiffuse`
+case is a complete, already-shipped, already-verified GPU
+reimplementation, deliberately SIMPLER than CPU's own
+`layered_sample_local()` (no explicit z/thickness bookkeeping - each
+loop iteration represents one full Lambertian-bounce-then-exit-attempt
+round trip, up to `kMaxCoatBounces=8`, with the author's own comment
+explaining a real prior bug this shape fixes: "a single Lambertian
+bounce followed by one exit attempt... stayed far too dark... a failed
+exit attempt scatters back into the diffuse base for another bounce and
+another try"). This PR transliterates THAT reference directly (new
+`shadeCoatedDiffuse()`'s own continuation-ray sampler mirrors it
+line-for-line) rather than re-deriving the fuller CPU state machine from
+scratch - lower risk, since every hard design question (bounce budget,
+which Fresnel convention, how to avoid the darkness bug) was already
+worked out and explained in the reference's own comments.
+
+**A real, deliberately-preserved inconsistency, not "fixed"**: OptiX's
+own reference uses TWO DIFFERENT Fresnel conventions for what looks like
+the same physical quantity (the coat's own exit test), and this port
+keeps both, exactly as found, rather than unifying them into one
+"more consistent-looking" formula:
+- The custom continuation-ray sampler (OptiX's own bounce loop, not
+  calling CPU's `layered_sample_local`) uses `FrDielectric(cos, 1/eta)`
+  (coat-to-air, INVERTED) for its exit test.
+- The real NEE/MIS `f()` value (`layeredCoatedDiffuseF()` here) is a
+  direct port of `src/shared/bxdfs_layered.h`'s own `layered_f()` -
+  which OptiX's own shading code calls VERBATIM, unmodified, since it's
+  `CPU_GPU`-tagged and compiles for CUDA too - and THAT function uses
+  `FrDielectric(cos, eta)` (uninverted) throughout.
+Both are real, independently-authored, independently-verified code
+paths in the reference being ported; picking one convention and
+applying it everywhere would be "fixing" something that was never
+broken in the original, and would diverge from what OptiX's own shipped
+kernel actually computes.
+
+**No medium scattering** - `CoatedDiffuseBxDF` never sets one
+(`medium_albedo` is always 0 in both CPU's and OptiX's own
+construction), so that whole branch of the shared CPU random walk
+(heterogeneous phase-function scattering partway through the coat's own
+thickness) is omitted entirely here, matching OptiX's own identical
+omission, not a new simplification introduced by this port.
+
+**Host-side plumbing reuses the existing dual-use-field convention with
+no new struct fields at all**: `mat.color` = Lambertian base albedo
+(already the natural meaning), `mat.ior` = the coat's real dielectric
+IOR, `mat.roughness` = the PRECOMPUTED GGX alpha
+(`RoughnessToAlpha(r) = sqrt(max(r,1e-4))`, computed HOST-side in
+`buildCornellCoatedDiffuse()`, matching CPU's own `coated_diffuse`
+constructor AND OptiX's own `sqrtf(mat.fuzz)` line exactly) - since this
+is a brand-new shader function with no old "square it in the shader"
+convention (materialType 4/9's own) to stay consistent with, there was
+no need for B2's own `bookRoughness^0.25` reconciliation trick this
+time. `buildCornellFamilyScene()` needed only ONE new branch (the
+sphere's own `mat.ior` override - the box's own `addQuad()` call
+already passed roughness/ior through unmodified for any materialType,
+no changes needed there at all).
+
+**MIS/NEE uses a proxy pdf, not a real one** - matching CPU's own
+`coated_diffuse::scatter()` (`ggx_reflection_pdf`) and OptiX's own
+`ggx_vndf_reflection_pdf` exactly: since an unbounded-depth random walk
+has no closed-form pdf, both the sampled continuation ray's own MIS
+weight (if it later hits a light directly) and every NEE light sample's
+own MIS weight reuse the coat's own top-surface GGX-VNDF reflection pdf
+(`coatedDiffuseProxyPdf()`, the same `D*G1/(4*NdotO)` shape materialType
+4/9 already use) as a cheap, shape-matched stand-in - any valid pdf
+keeps MIS/NEE unbiased, this only affects variance, not correctness.
+
+**Verified**: a direct `--gpu` vs `--cpu` comparison of B5 came back
+visibly, closely matching on the FIRST attempt (no debugging detour
+needed, unlike section 139's own B9 investigation) - same orange/brown
+box and blue sphere, both showing the correct "coated" character (a
+visible glossy specular highlight riding on top of the diffuse base
+color, not a flat Lambertian look), matching highlight placement and
+overall exposure between backends. Full clean `RT_BUILD_METAL=ON`
+rebuild, ctest (4/4), the 55-scene pbrt-backed regression sweep (0
+failures), and regression spot-checks of
+A1/A5/A7/B1/B3/B4/B6/B8/B9/C2-C6/D5/E1/F2/G1/G7/G12/G18/I1/I8 (all
+render without error, unaffected). `B5` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR (a stray pre-existing DUPLICATE `"B9"` entry in that same set,
+left over from an earlier edit, was also cleaned up here). **Category B
+is now 8 of 16 done.** The remaining B-scenes (B7 CoatedConductor, B10
+Principled Showcase, B11-B14, B23-24) are naturally-similar or bigger
+lifts - B7 in particular now looks tractable FAST, since
+`layered_detail::ConductorBottomBounce`/OptiX's own
+`MaterialType::CoatedConductor` case share the exact same coat-random-
+walk shape this PR just ported, differing only in the bottom-interface
+bounce (GGX conductor instead of Lambertian) - a natural next
+increment.
