@@ -4818,6 +4818,162 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
     return true;
 }
 
+// Schlick's Fresnel approximation, F0 + (1-F0)*(1-cosTheta)^5 - the SAME
+// approximate formula src/shared/bxdfs_principled.h's own
+// `schlick_fresnel()` uses (a deliberate simplification for this
+// artist-friendly BSDF, unlike materialType 2/4/5's own EXACT
+// frDielectric()/frComplex() - matching the reference exactly here
+// means using its own approximation, not "upgrading" it).
+inline float schlickFresnelPrincipled(float cosTheta, float F0) {
+    float c = 1.0 - clamp(cosTheta, 0.0, 1.0);
+    float c2 = c * c;
+    float c5 = c2 * c2 * c;
+    return F0 + (1.0 - F0) * c5;
+}
+
+// GGX specular BRDF value, local frame (z=normal) - same D*G/(4*cosO*cosI)
+// shape ggxD()/ggxG() already compute for materialType 4/9's own
+// shadeConductor(), just without a Fresnel term folded in (Principled's
+// own 3-lobe blend applies Fresnel separately per lobe/channel).
+inline float principledGgxBrdf(float3 wo, float3 wi, float alpha) {
+    if (wo.z <= 0.0 || wi.z <= 0.0) return 0.0;
+    float3 h = wo + wi;
+    float hlen = length(h);
+    if (hlen < 1e-8) return 0.0;
+    h /= hlen;
+    float D = ggxD(h, alpha, alpha);
+    float G = ggxG(wo, wi, alpha, alpha);
+    return D * G / max(4.0 * wo.z * wi.z, 1e-8);
+}
+
+// GGX VNDF sampling pdf, local frame - pbrt-v4's own
+// `D(wm)*G1(wo)*AbsDot(wo,wm)/AbsCosTheta(wo) / (4*dot(wo,wm))`, matching
+// `PrincipledBxDF::ggx_pdf()` (src/shared/bxdfs_principled.h) exactly.
+inline float principledGgxPdf(float3 wo, float3 wi, float alpha) {
+    if (wo.z <= 0.0 || wi.z <= 0.0) return 0.0;
+    float3 h = wo + wi;
+    float hlen = length(h);
+    if (hlen < 1e-8) return 0.0;
+    h /= hlen;
+    float dotWoH = dot(wo, h);
+    if (dotWoH <= 0.0) return 0.0;
+    float D = ggxD(h, alpha, alpha);
+    float G1 = ggxG1(wo, alpha, alpha);
+    float pdfWm = D * G1 * dotWoH / max(wo.z, 1e-6);
+    return pdfWm / max(4.0 * dotWoH, 1e-8);
+}
+
+// materialType 24 (B10, Principled Showcase) - pbrt-v4/Disney's own
+// artist-friendly 3-lobe BSDF (diffuse + specular-dielectric-or-metal +
+// clearcoat), a direct port of `PrincipledBxDF<T>::sample()`
+// (src/shared/bxdfs_principled.h), the SAME shared header both CPU
+// (`principled_material.h`) and OptiX (`sample_principled_material()`,
+// `optix_device_helpers.h`) already build from directly. Deliberately
+// has NO NEE/MIS at all - matches CPU's own `principled::scatter()`
+// (`srec.skip_pdf = true`, no separate `scattering_pdf()`-driven light
+// sampling loop) and OptiX's own identical `is_specular = true` choice
+// for this exact material (`optix_intersection_sphere.h`'s own comment:
+// "no NEE/MIS, res.r/g/b already divides by the sample pdf") - the
+// BSDF's own `sample()` returns a complete `f*cos/pdf` weight in one
+// call, the same "combined sample+eval, no separate NEE path" shape
+// this loader's own `shadeDielectric()`/`shadeMirror()` already use for
+// other delta-like materials, just with 3 stochastically-chosen lobes
+// instead of 1. Field reuse (matching OptiX's own exact convention,
+// `optix_device_helpers.h`'s `sample_principled_material()` comment):
+// `mat.color`=base color, `mat.ior`=ior, `mat.roughness`=perceptual
+// roughness, `mat.conductorEta.x`=metallic, `mat.conductorEta.y`=
+// clearcoat, `mat.conductorEta.z`=clearcoat_roughness.
+inline bool shadePrincipled(TriangleMaterial mat, float3 hitPoint, float3 facingNormal,
+                            thread float3& rayDir, thread float3& rayOrigin,
+                            thread float3& throughput, thread bool& specularBounce, thread uint& rngState) {
+    float metallic = mat.conductorEta.x;
+    float clearcoat = mat.conductorEta.y;
+    float clearcoatRoughness = mat.conductorEta.z;
+    // TrowbridgeReitz::RoughnessToAlpha(r) = sqrt(r) - the REAL pbrt-v4
+    // formula, not materialType 4/9's own "square it in the shader"
+    // convention (this is a brand-new shading function with no old
+    // convention to reconcile with, same reasoning as materialType 19's
+    // own comment, metal_poc.mm).
+    float alpha = max(sqrt(max(mat.roughness, 0.0)), 0.0009);
+    float alphaCC = max(sqrt(max(clearcoatRoughness, 0.0)), 0.0009);
+
+    float3 tangent, bitangent;
+    buildOnb(facingNormal, tangent, bitangent);
+    // wi = the ray's OWN direction of travel (INTO the surface) - matches
+    // CPU's own `in_dir = unit_vector(r_in.direction())` passed straight
+    // into `bxdf.sample()` with NO negation; `wo = -wi` is derived
+    // internally, exactly mirrored here.
+    float3 wiWorld = normalize(rayDir);
+    float3 wiLocal = float3(dot(wiWorld, tangent), dot(wiWorld, bitangent), dot(wiWorld, facingNormal));
+    float3 woLocal = -wiLocal;
+    if (woLocal.z <= 0.0) return false;
+
+    float F0d = pow((mat.ior - 1.0) / (mat.ior + 1.0), 2.0);
+    float Fspec = schlickFresnelPrincipled(woLocal.z, F0d);
+    float wDiff = (1.0 - metallic) * (1.0 - Fspec);
+    float wSpec = 1.0;
+    float wCoat = clearcoat * 0.25;
+    float wTotal = wDiff + wSpec + wCoat;
+    if (wTotal < 1e-8) return false;
+    float invW = 1.0 / wTotal;
+    float pDiff = wDiff * invW;
+    float pSpec = wSpec * invW;
+    float pCoat = wCoat * invW;
+
+    float u1 = randFloat(rngState);
+    float3 woOutLocal;
+    if (u1 < pDiff) {
+        woOutLocal = cosineSampleHemisphere(float3(0.0, 0.0, 1.0), rngState);
+    } else if (u1 < pDiff + pSpec) {
+        float3 wm = sampleGGXVNDF(woLocal, alpha, alpha, rngState);
+        float d = dot(woLocal, wm);
+        woOutLocal = 2.0 * d * wm - woLocal;
+    } else {
+        float3 wm = sampleGGXVNDF(woLocal, alphaCC, alphaCC, rngState);
+        float d = dot(woLocal, wm);
+        woOutLocal = 2.0 * d * wm - woLocal;
+    }
+    if (woOutLocal.z <= 0.0) return false;
+
+    float cosWiL = woOutLocal.z;
+    float3 h = woLocal + woOutLocal;
+    float hlen = length(h);
+    float cosWm = (hlen > 1e-8) ? dot(woLocal, h / hlen) : woLocal.z;
+
+    float FwiDiff = schlickFresnelPrincipled(cosWiL, F0d);
+    float3 diffCol = float3(mat.color) * (1.0 / M_PI_F) * (1.0 - metallic) * (1.0 - FwiDiff);
+
+    float specVal = principledGgxBrdf(woLocal, woOutLocal, alpha);
+    float FspecWm = schlickFresnelPrincipled(cosWm, F0d);
+    float3 FmetWm = float3(schlickFresnelPrincipled(cosWm, mat.color.x),
+                            schlickFresnelPrincipled(cosWm, mat.color.y),
+                            schlickFresnelPrincipled(cosWm, mat.color.z));
+    float3 Fmix = (1.0 - metallic) * FspecWm + metallic * FmetWm;
+    float3 specCol = Fmix * specVal;
+
+    float ccF0 = 0.04;
+    float Fcc = schlickFresnelPrincipled(cosWm, ccF0);
+    float ccVal = principledGgxBrdf(woLocal, woOutLocal, alphaCC);
+    float ccCol = clearcoat * 0.25 * Fcc * ccVal;
+
+    float3 totalCol = diffCol + specCol + float3(ccCol);
+
+    float pdfDiff = pDiff * cosWiL / M_PI_F;
+    float pdfSpec = pSpec * principledGgxPdf(woLocal, woOutLocal, alpha);
+    float pdfCoat = pCoat * principledGgxPdf(woLocal, woOutLocal, alphaCC);
+    float pdf = pdfDiff + pdfSpec + pdfCoat;
+    if (pdf < 1e-12) return false;
+
+    float3 weight = totalCol * cosWiL / pdf;
+
+    float3 newDirWorld = normalize(woOutLocal.x * tangent + woOutLocal.y * bitangent + woOutLocal.z * facingNormal);
+    rayDir = newDirWorld;
+    rayOrigin = hitPoint + facingNormal * 0.001f;
+    throughput *= weight;
+    specularBounce = true;
+    return true;
+}
+
 kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
     texture2d<float, access::sample> earthTexture [[texture(1)]],
@@ -5655,6 +5811,9 @@ kernel void primaryRayKernel(
                                   earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
+            } else if (mat.materialType == 24u) {
+                if (!shadePrincipled(mat, hitPoint, facingNormal,
+                                  rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
             } else if (mat.materialType == 18u) {
                 if (!shadeNormalizedFresnel(mat, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
