@@ -8111,3 +8111,55 @@ spot-checks of the accumulated hand-authored scenes (all unaffected).
 `C1` added to `cpu_scene_metal_hand_authored_supported()`'s
 `kSupported` set in this same PR. **Category C is now 6 of 7 done** -
 only C7 (Portal Light) remains, not yet re-scoped this session.
+
+## 147. Category C increment: C7 Portal Infinite Light - a clean first-attempt match, closing out category C
+
+`C7` (Portal Infinite Light) matches
+`src/TheRestOfYourLife/scenes_advanced.h`'s own
+`build_portal_light_scene()`/`build_portal_sky()` exactly: a
+Cornell-family room (right/left/ceiling/floor, no front wall - the
+same "open front" convention every Cornell-family scene here already
+uses) with NO ceiling light, whose back wall has an actual 245x245
+rectangular window cut into it (built from 4 border quads around the
+opening rather than one solid quad), with a constant-colour sky
+`(0.55, 0.65, 0.85)` visible through the window as the room's only
+light source. One metal sphere (`point3(190,100,190)`, radius 100,
+CPU's own simple `metal(color(0.8,0.8,0.9), fuzz=0.05)`) sits in the
+room.
+
+**Deliberately NOT built through `buildCornellFamilyScene()`** - unlike
+every earlier Cornell-variant scene in this series (B5/B7/B9/B12/B24
+etc.), this room differs structurally, not just by a swapped sphere
+material: no ceiling light, no rotated white box, and a back wall
+replaced by 4 border quads instead of one solid quad. `buildPortalLightScene()`
+is a fresh, bespoke builder instead, reusing `buildCornellBoxA1()`'s
+own already-established ~555-unit rescale/recentre/`+8`-offset
+convention (this scene is authored at the identical Cornell-box scale)
+and its own camera-setup shape, but with its own quad list.
+
+**Needs zero new materialType or shader code, and even less new
+infrastructure than C1** - the "sky through a window" light is a plain
+CONSTANT colour (`build_portal_sky()`'s own `sky_light(color(...))`,
+not an image), so this is just `havePbrtConstantEnvLight`/`pbrtEnvColor`,
+the SAME two fields `buildPrincipledShowcase()`'s own dark-ambient
+background already sets (section 145) - no pixel buffer to generate at
+all, unlike C1's own 64x32 gradient. The "portal" itself needed no new
+geometry primitive either: a window is just 4 ordinary quads with a
+gap between them, the same `addQuad()` every other wall in this series
+already uses. The metal sphere reuses the B2/C1 `reflectanceToConductorK()`
+substitution for CPU's simple fuzzy-mirror model.
+
+**Verified with a direct `--gpu` vs `--cpu` comparison that matched
+closely on the very first attempt** - no debugging detour needed at
+all (unlike B9/B23's own investigations, or C1's own Beer-Lambert
+absorption bug the PR before this): same wall colours, same window
+size/position, same sphere gradient, and - notably - the window itself
+reads as a near-white rectangle in BOTH renders, not a saturated blue
+sky patch; the constant colour `(0.55,0.65,0.85)` is a pale pastel that
+both backends' own tonemap pushes toward white at this brightness, a
+consistent (not divergent) characteristic across both. Full clean
+`RT_BUILD_METAL=ON` rebuild, ctest (4/4), the 55-scene pbrt-backed
+regression sweep (0 failures), and regression spot-checks of the
+accumulated hand-authored scenes (all unaffected). `C7` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category C is now complete: 7 of 7 done.**
