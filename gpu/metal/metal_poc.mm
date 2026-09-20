@@ -1262,6 +1262,14 @@ struct MetalPocApp {
     // 11) splitting the box - no sphere at all. Section 129, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildCornellThinGlass();
+    // B1: Rough Metal Spheres - NOT a Cornell-shell scene at all (a
+    // different category-B shape: a row of 5 GGX conductor spheres over
+    // a ground plane, lit by one real NEE-sampled quad light), matching
+    // CPU's own build_rough_metal_spheres() exactly. Ground is a flat
+    // quad, not CPU's own radius-1000 sphere - the SAME clearance issue
+    // A5's own ground already had (section 124's own comment), same fix.
+    // Section 130, docs/METAL_GPU_FEASIBILITY.md.
+    void buildRoughMetalSpheres();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2954,6 +2962,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B4") { buildCornellConductor(); return true; }
     if (scene_id == "B3") { buildCornellRoughGlass(); return true; }
     if (scene_id == "B6") { buildCornellThinGlass(); return true; }
+    if (scene_id == "B1") { buildRoughMetalSpheres(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4374,6 +4383,95 @@ void MetalPocApp::buildCornellThinGlass() {
     pbrtCameraUpRaw = up;
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// B1: Rough Metal Spheres - matches CPU's own build_rough_metal_spheres()
+// exactly: 5 GGX conductor spheres (roughness 0.05/0.2/0.4/0.6/0.8, warm
+// gold-ish albedo) in a row over a ground plane, lit by one real NEE-
+// sampled quad light. Ground is a flat quad, not CPU's own radius-1000
+// sphere - the SAME clearance issue A5's own ground had (section 124),
+// same fix. Roughness values go through the same `^0.25` conversion
+// sections 126-128 already established (CPU's own `rough_metal` class,
+// same as B2's).
+void MetalPocApp::buildRoughMetalSpheres() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground - flat quad, dark grey Lambertian.
+    {
+        const float3 groundColor{0.2f, 0.2f, 0.2f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-15.0f, 0.0f, -15.0f} + sceneOffset, float3{15.0f, 0.0f, -15.0f} + sceneOffset,
+                float3{15.0f, 0.0f, 15.0f} + sceneOffset, float3{-15.0f, 0.0f, 15.0f} + sceneOffset,
+                groundColor);
+    }
+
+    // 5 rough-metal spheres, roughness increasing left to right.
+    {
+        const float3 albedo{0.95f, 0.85f, 0.55f};
+        const float3 eta{1, 1, 1};
+        const float3 k = reflectanceToConductorK(albedo);
+        const float roughnesses[5] = {0.05f, 0.2f, 0.4f, 0.6f, 0.8f};
+        for (int i = 0; i < 5; ++i) {
+            const float x = (float)(i - 2) * 2.5f;
+            const float alpha = powf(roughnesses[i], 0.25f);  // see this function's own comment
+            TriangleMaterial mat{PackedFloat3{albedo.x, albedo.y, albedo.z}, /*materialType=*/4u,
+                                  /*ior=*/alpha, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/alpha};
+            mat.conductorEta = PackedFloat3{eta.x, eta.y, eta.z};
+            mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+            const float3 c = float3{x, 1.0f, 0.0f} + sceneOffset;
+            spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+            sphereMaterials.push_back(mat);
+        }
+    }
+
+    // Real NEE-sampled area light.
+    {
+        const float3 Q{-6.0f, 6.0f, -4.0f}, u{12.0f, 0.0f, 0.0f}, v{0.0f, 0.0f, 8.0f};
+        const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
+                     c = Q + u + v + sceneOffset, d = Q + v + sceneOffset;
+        const float3 lightColor{6.0f, 6.0f, 6.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, lightColor,
+                /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // Real per-scene flat background (dark grey) - same reuse of the
+    // pbrt-constant-infinite-light mechanism every earlier open (non-
+    // Cornell-box) hand-authored scene already established.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.10f, 0.10f, 0.12f};
+
+    // Camera: CPU's own real registry row for B1, ported directly
+    // (vfov 42, lookfrom (0,2.7,17), lookat (0,1,0)).
+    const float3 lookfrom = float3{0.0f, 2.7f, 17.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 42.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
     pbrtSceneOffset = sceneOffset;
 }
 

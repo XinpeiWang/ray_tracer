@@ -7004,3 +7004,29 @@ position/angle in both. Full clean `RT_BUILD_METAL=ON` rebuild + ctest
 B4/G1/G7/G12/G18 (earlier increments) re-verified unaffected. `B6`
 added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
 set in this same PR.
+
+## 130. Category B increment 5: B1 Rough Metal Spheres - category B's first non-Cornell-shell scene
+
+The fifth category-B scene, and the first that ISN'T a Cornell-box
+variant at all: matches CPU's own `build_rough_metal_spheres()` exactly
+- 5 GGX conductor spheres (roughness 0.05/0.2/0.4/0.6/0.8, warm gold-ish
+flat albedo) in a row over a ground plane, lit by one real NEE-sampled
+quad light. Direct `spheres.push_back()`/`addQuad()` calls, no shared
+helper needed (simple enough not to). Ground is a flat quad, not CPU's
+own radius-1000 sphere - the SAME clearance issue A5's own ground had
+(section 124's own algebraic check), same fix. Roughness values go
+through the SAME `^0.25` conversion sections 126-128 already
+established (CPU's own `rough_metal` class, identical to B2's).
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id - matching composition (5 spheres,
+same light shape, same ground), and critically the SAME visible
+roughness progression left-to-right (near-mirror on the left, near-
+diffuse on the right) in both, confirming the roughness conversion
+generalizes correctly across the full 0.05-0.8 range, not just the two
+specific values B2 already tested. Full clean `RT_BUILD_METAL=ON`
+rebuild + ctest (4/4) + 51-scene `pbrt_scenes/` sweep (0 failures);
+A1/A5/B2/B3/B4/B6/G1/G7/G12/G18 (earlier increments) re-verified
+unaffected. `B1` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR.
