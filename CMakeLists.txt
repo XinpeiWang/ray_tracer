@@ -351,6 +351,21 @@ if(RT_BUILD_METAL)
     # already contains.
     add_library(metal_renderer STATIC
         gpu/metal/metal_poc.mm
+        # One .mm per hand-authored scene CATEGORY (MetalPocApp::buildXxx()
+        # out-of-class definitions only - the shared class declaration
+        # itself lives in gpu/metal/metal_poc_app.h, #included by all of
+        # these plus metal_poc.mm) - split out of metal_poc.mm once its
+        # own scene-builder count made that one file unwieldy (a pure
+        # code-motion refactor, no behaviour change - see
+        # docs/METAL_GPU_FEASIBILITY.md).
+        gpu/metal/metal_poc_scenes_a.mm
+        gpu/metal/metal_poc_scenes_b.mm
+        gpu/metal/metal_poc_scenes_c.mm
+        gpu/metal/metal_poc_scenes_d.mm
+        gpu/metal/metal_poc_scenes_e.mm
+        gpu/metal/metal_poc_scenes_f.mm
+        gpu/metal/metal_poc_scenes_g.mm
+        gpu/metal/metal_poc_scenes_i.mm
         # tinyexr's own zip/pxr24 codecs need miniz's real mz_compress/
         # mz_uncompress symbols (see the target_include_directories
         # comment below on why metal_renderer now needs tinyexr's real

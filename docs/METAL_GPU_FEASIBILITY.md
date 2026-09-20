@@ -8606,3 +8606,69 @@ the ground's own separate characteristic.
 checks of the accumulated hand-authored scenes including F1/F2. `F4`
 added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
 set in this same PR. **Category F is now COMPLETE: 3 of 3 done.**
+
+## 156. Structural refactor: `metal_poc.mm`'s scene builders split into one `.mm` file per category - a pure code-motion change, verified byte-for-byte identical
+
+By the end of section 155, `gpu/metal/metal_poc.mm` had grown to 8,001
+lines (up from 6,930 at the start of this session's own 10-PR run) -
+one giant translation unit mixing core app/GPU-resource plumbing with
+~80 `MetalPocApp::buildXxx()` scene-builder methods. Not a "god
+function" problem (each builder was already its own small,
+independent method, matching this project's own long-established
+convention) but a real FILE-size problem: slow incremental compiles
+(one huge `.mm` recompiles in full for a one-line change anywhere in
+it) and real navigation/merge friction.
+
+**Split into 10 files, precisely mapped by exact original line
+ranges before touching anything**: `gpu/metal/metal_poc_app.h` (new -
+every shared type: `Uniforms`, `TriangleMaterial`, `SphereData`,
+`DiskData`, `InstanceTransform`, the light-data structs, PLUS every
+free helper function scene builders call - `addQuad`,
+`addBilinearPatch`, `addTaperedTube`, `reflectanceToConductorK`,
+`fresnelMoment1`, `cauchyCoefficientsFromAbbe`, `loadObjMesh`,
+`executableDir`, `bilateralDenoise`, the goniometric-light helpers -
+PLUS the full `MetalPocApp` class declaration itself, all ~80 method
+signatures and every member variable, since every out-of-class
+definition in every new file needs it visible); one
+`metal_poc_scenes_<letter>.mm` per hand-authored category (`_a`
+Basics, `_b` Materials, `_c` Lights, `_d` Cameras, `_e` Volumes, `_f`
+Geometry, `_g` Models, `_i` Education - no `_h`, category H has no
+Metal builders yet); `metal_poc.mm` itself keeps ONLY core
+infrastructure (`parseArgsAndCreateDevice`, `buildScene` - the
+hardcoded POC room, every `loadPbrtXxx()` pbrt-file-loading method,
+the `buildHandAuthoredScene()` scene_id dispatcher, `applyCameraOverride`,
+`buildGPUResources`, `compileShaderAndDispatch`, `postProcessAndWrite`,
+`metal_render_main`/`metal_poc_cli_main`) - now 3,037 lines, down from
+8,001. Every free function moved into the header changed `static` to
+`inline` (identical body - ODR permits an `inline` function's
+identical definition in every translation unit that includes it,
+unlike `static`'s single-TU-only linkage) - the ONLY per-line edit
+this refactor made anywhere; every other line moved verbatim.
+
+**A real bug caught by the build, not shipped**: the first extraction
+pass mis-bounded `cauchyCoefficientsFromAbbe`'s own line range by one,
+dropping its closing `}` - the compiler caught it immediately as a
+cascade of "function definition is not allowed here" errors starting
+at the very first line of every OTHER new file (each subsequent
+`#include "metal_poc_app.h"` inherited the still-open brace). Fixed by
+re-deriving the exact boundary from the original file's own real
+content (not by guessing) and re-extracting the two affected files.
+
+**Verified as a TRUE zero-behaviour-change refactor, not just
+"builds and looks right"**: before touching anything, rendered 43
+scenes spanning every category (A/B/C/D/E/F/G/I) and SHA-256-hashed
+the output PNGs; after the split (and after fixing the brace bug
+above), re-rendered the identical 43 scenes at the identical settings
+and re-hashed - **every single hash matched exactly**, byte-for-byte
+identical output, the strongest verification this whole session has
+used for any change. On top of that: full clean `RT_BUILD_METAL=ON`
+rebuild, ctest (4/4), the 55-scene pbrt-backed regression sweep (0
+failures), and a render of ALL 68 currently-supported hand-authored
+scene IDs (not just a sample) with zero failures. `CMakeLists.txt`'s
+own `metal_renderer` static-lib target (shared by both the standalone
+`metal_poc` executable and `ray_tracer` itself) gained the 8 new
+`.mm` files as additional sources - the only other file touched.
+No other target needed a change (`metal_poc_math_tests`/
+`metal_poc_shader_tests`/`metal_poc_validate` only ever depended on
+the separate, pre-existing `metal_poc_host_math.h`, never on
+`metal_poc.mm`/`metal_poc_app.h` directly).
