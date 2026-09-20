@@ -972,6 +972,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"I8",                          // Light Sampler Comparison, real new geometry (section 133)
 		"C2", "C3", "C4",              // Spotlight/Distant/Point Light Cornell (section 134)
 		"C5", "C6",                    // Goniometric/Projection Light Cornell (section 135)
+		"F2",                          // Triangle Mesh - first category-F scene (section 136)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
