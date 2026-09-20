@@ -1302,6 +1302,21 @@ struct MetalPocApp {
     void buildSpotlightCornell();
     void buildDistantLightCornell();
     void buildPointLightCornell();
+    // C5/C6: Goniometric/Projection Light Cornell - same
+    // buildCornellNoLightWalls() shell as C2-C4, but lit by a real
+    // synthetic profile IMAGE instead of a plain scalar cone - reuses
+    // the SAME dedicated pbrtGoniometricTexture/pbrtProjectionTexture
+    // upload path sections 98/105 already established for a pbrt-
+    // loaded light's own real image (havePbrtGoniometricImage/
+    // pbrtGoniometricImagePixels etc. - the upload code itself reads
+    // these members regardless of WHERE they were populated from, pbrt
+    // file or, here, a hand-generated image), rather than the room's
+    // own separate shared goniometricTexture/projectionTexture slot
+    // (which stays reserved for the hardcoded demo room's own lights,
+    // avoiding any texture-slot conflict between the two). Section 135,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildGoniometricLightCornell();
+    void buildProjectionLightCornell();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3015,6 +3030,8 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "C2") { buildSpotlightCornell(); return true; }
     if (scene_id == "C3") { buildDistantLightCornell(); return true; }
     if (scene_id == "C4") { buildPointLightCornell(); return true; }
+    if (scene_id == "C5") { buildGoniometricLightCornell(); return true; }
+    if (scene_id == "C6") { buildProjectionLightCornell(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4833,6 +4850,89 @@ void MetalPocApp::buildPointLightCornell() {
     pointLights.push_back(PointLightData{
         PackedFloat3{pos.x, pos.y, pos.z},
         PackedFloat3{emission.x, emission.y, emission.z}});
+}
+
+// C5: Goniometric Light Cornell - matches CPU's own
+// build_goniometric_light_scene()/build_goniometric_punct() exactly: a
+// synthetic 16x8 greyscale profile (brighter toward the "bottom
+// hemisphere," `0.2 + 0.8*t` where `t = row/rows`), same sceneScale^2
+// intensity compensation as C2/C4's own point/spot lights. Uploaded via
+// the pbrtGoniometricTexture path (see this struct's own
+// buildGoniometricLightCornell()/buildProjectionLightCornell()
+// declaration comment for why that slot, not the room's own separate
+// one).
+void MetalPocApp::buildGoniometricLightCornell() {
+    auto toWorld = buildCornellNoLightWalls();
+    const float sceneScale = 2.0f / 555.0f;
+
+    const int NU = 16, NV = 8;
+    pbrtGoniometricImageWidth = NU;
+    pbrtGoniometricImageHeight = NV;
+    pbrtGoniometricImagePixels.assign((size_t)NU * NV * 3, 0.0f);
+    for (int v = 0; v < NV; ++v) {
+        const float t = (float)v / (float)NV;
+        const float value = 0.2f + 0.8f * t;
+        for (int u = 0; u < NU; ++u) {
+            const size_t idx = ((size_t)v * NU + u) * 3;
+            pbrtGoniometricImagePixels[idx + 0] = value;
+            pbrtGoniometricImagePixels[idx + 1] = value;
+            pbrtGoniometricImagePixels[idx + 2] = value;
+        }
+    }
+    havePbrtGoniometricImage = true;
+
+    const float3 pos = toWorld(float3{278.0f, 520.0f, 278.0f});
+    const float3 target = toWorld(float3{278.0f, 0.0f, 278.0f});  // identity rotation - looks straight down
+    const float3 worldUp{0.0f, 0.0f, 1.0f};  // any axis not parallel to (target-pos) works for a look-down light
+    const float3 emission = float3{1.0f, 0.9f, 0.7f} * 600000.0f * sceneScale * sceneScale;
+    GoniometricLightData light = makeGoniometricLight(pos, target, worldUp, emission, /*scale=*/1.0f);
+    light.usePbrtTexture = 1u;
+    goniometricLights.push_back(light);
+}
+
+// C6: Projection Light Cornell - matches CPU's own
+// build_projection_light_scene()/build_projection_punct() exactly: a
+// synthetic 8x8 RGB checkerboard slide (1.0/0.05 alternating), 40-degree
+// FOV, aimed from just outside the box's own open front straight down
+// +Z (CPU's own `wtl` is the identity rotation, i.e. "projector looks
+// +Z in world" - reproduced here by aiming at a point directly along
+// +Z from the light's own position, same effect without needing a
+// separate rotation-matrix path this loader doesn't have for a hand-
+// authored light anyway). Needs the SAME `sceneScale^2` compensation as
+// C2/C4/C5's own point/spot/goniometric lights - checked directly, not
+// assumed, against `src/shared/projection_light.h`'s own `eval_Li()`
+// (`Lr = r * inv_r2`) before writing this: unlike distant light, a
+// projection light DOES have a real 1/r^2 falloff term, and Metal's own
+// `metal_poc.metal` shading loop divides by `pjDistSq` at every one of
+// its own NEE call sites too - the two backends agree on this, so the
+// same compensation formula sections 87/134 already established
+// applies unchanged.
+void MetalPocApp::buildProjectionLightCornell() {
+    auto toWorld = buildCornellNoLightWalls();
+
+    const int NX = 8, NY = 8;
+    pbrtProjectionImageWidth = NX;
+    pbrtProjectionImageHeight = NY;
+    pbrtProjectionImagePixels.assign((size_t)NX * NY * 3, 0.0f);
+    for (int y = 0; y < NY; ++y) {
+        for (int x = 0; x < NX; ++x) {
+            const float value = ((x + y) % 2 == 0) ? 1.0f : 0.05f;
+            const size_t idx = ((size_t)y * NX + x) * 3;
+            pbrtProjectionImagePixels[idx + 0] = value;
+            pbrtProjectionImagePixels[idx + 1] = value;
+            pbrtProjectionImagePixels[idx + 2] = value;
+        }
+    }
+    havePbrtProjectionImage = true;
+
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 pos = toWorld(float3{278.0f, 278.0f, -50.0f});
+    const float3 target = toWorld(float3{278.0f, 278.0f, 278.0f});  // +Z, matching CPU's own identity wtl
+    const float3 worldUp{0.0f, 1.0f, 0.0f};
+    ProjectionLightData light = makeProjectionLight(pos, target, worldUp,
+        /*fovDegrees=*/40.0f, /*aspect=*/1.0f, /*scale=*/1000000.0f * sceneScale * sceneScale);
+    light.usePbrtTexture = 1u;
+    projectionLights.push_back(light);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
