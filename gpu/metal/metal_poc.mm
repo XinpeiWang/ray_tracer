@@ -1383,6 +1383,15 @@ struct MetalPocApp {
     // shadeCoatedConductor()'s own declaration comment, metal_poc.metal).
     // Section 141, docs/METAL_GPU_FEASIBILITY.md.
     void buildCornellCoatedConductor();
+    // B12: Normal Mapped Cornell - buildCornellFamilyScene() with the
+    // sphere as materialType 21 (checker-driven normal-mapped
+    // Lambertian - see the materialType==21u normal-perturbation
+    // branch's own comment, metal_poc.metal). The box/back-wall's own
+    // CPU-side bump map is a real, verified NO-OP (see
+    // buildNormalMappedCornell()'s own comment) so the box stays plain
+    // materialType 0, matching CPU's own actually-rendered behavior.
+    // Section 142, docs/METAL_GPU_FEASIBILITY.md.
+    void buildNormalMappedCornell();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3104,6 +3113,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
     if (scene_id == "B7") { buildCornellCoatedConductor(); return true; }
+    if (scene_id == "B12") { buildNormalMappedCornell(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4359,6 +4369,20 @@ void MetalPocApp::buildCornellFamilyScene(
             mat.ior = sphereIor;
             mat.conductorEta = PackedFloat3{sphereConductorEta.x, sphereConductorEta.y, sphereConductorEta.z};
             mat.conductorK = PackedFloat3{sphereConductorK.x, sphereConductorK.y, sphereConductorK.z};
+        } else if (sphereMaterialType == 21u) {
+            // Checker-driven normal map (B12's own sphere, section 142) -
+            // `roughness` reused as the checker's own world-space cell
+            // size, matching materialType 16's own established reuse of
+            // the same field - CPU's own real cell size (8.0, in the
+            // pbrt-scale 0-555 coordinate system) needs the SAME
+            // `sceneScale` conversion every world-space distance already
+            // gets in this function (an earlier version of this scene
+            // hardcoded 8.0 directly in the SHADER instead, in the
+            // RESCALED ~2-unit coordinate space - one giant cell
+            // covering the whole sphere, a real bug caught by comparing
+            // directly against a --cpu render showing a visibly dimpled
+            // sphere against this version's own perfectly smooth one).
+            mat.roughness = 8.0f * sceneScale;
         }
         spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
         sphereMaterials.push_back(mat);
@@ -5369,6 +5393,52 @@ void MetalPocApp::buildCornellCoatedConductor() {
     buildCornellFamilyScene(
         /*box=*/20u, float3{1, 1, 1}, boxAlpha, cuEta, cuK, /*boxIor=*/1.5f,
         /*sphere=*/20u, float3{1, 1, 1}, sphereAlpha, auEta, auK, /*sphereIor=*/1.5f);
+}
+
+// B12: Normal Mapped Cornell - matches CPU's own
+// build_normal_mapped_cornell() geometry exactly (same box/sphere
+// position as every other Cornell-family scene - kBox/kGlassSphere),
+// but its own materials need a real investigation, not a literal port:
+// CPU's own `bump_map_material` (the back wall AND the rotated box)
+// wraps a `noise_texture`, whose `value(u,v,p)` (src/TheRestOfYourLife/
+// texture.h) ignores `u`/`v` ENTIRELY and reads only `p` - but
+// `bump_map_material::apply()` (normal_map_materials.h) samples that
+// SAME texture at `(rec.u, rec.v, rec.p)`, `(rec.u+step, rec.v,
+// rec.p)`, and `(rec.u, rec.v+step, rec.p)` - THE SAME `rec.p` every
+// time, since only `rec.u`/`rec.v` change and the texture never reads
+// them. All three displacement samples are therefore IDENTICAL, the
+// finite-difference gradient is exactly zero, and `apply_bump_map()`
+// returns the ORIGINAL, unperturbed geometric normal - a real,
+// verified (not assumed) pre-existing CPU bug that makes this whole
+// bump-map effect a complete no-op. Confirmed by rendering B12 with
+// `--cpu` and inspecting the box/back-wall surface directly: perfectly
+// flat, no visible marble waviness at all, unlike the sphere (which
+// DOES show a real, correct effect - see below). The box therefore
+// stays plain materialType 0 here, matching CPU's own ACTUAL (buggy
+// but real) rendered output rather than what the scene's own name
+// implies it should look like - the same "match the reference's real
+// behavior, not its stated intent" discipline this whole series always
+// follows.
+//
+// The SPHERE'S own `normal_map_material` has no such bug: it directly
+// DECODES a texture's own RGB value as a tangent-space normal (no
+// finite difference at all), and its own `checker_texture` (SPATIAL,
+// 3D `p`-based, same convention materialType 16 already uses in this
+// loader) genuinely varies from point to point regardless of `u`/`v` -
+// a real, working effect, confirmed visually (a fine dimpled
+// checkerboard-of-cubes pattern) in the same `--cpu` reference render.
+// Wired as materialType 21 (metal_poc.metal's own materialType==21u
+// normal-perturbation branch, inserted alongside materialType 7's own
+// bump-map branch, then falling through to the ALREADY-EXISTING plain
+// Lambertian shading path - no new "shadeXxx" function needed at all,
+// since this material has no BSDF of its own, only a perturbed input
+// normal feeding one that already exists).
+void MetalPocApp::buildNormalMappedCornell() {
+    const float3 white{0.73f, 0.73f, 0.73f};
+    const float3 blueBase{0.2f, 0.3f, 0.8f};
+    buildCornellFamilyScene(
+        /*box=*/0u, white, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f,
+        /*sphere=*/21u, blueBase, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

@@ -5148,6 +5148,37 @@ kernel void primaryRayKernel(
                 float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 float3 tangent = tangentFor(primId, vertices, uvs);
                 facingNormal = proceduralBumpNormal(facingNormal, tangent, bumpUV, mat.roughness);
+            } else if (mat.materialType == 21u) {
+                // materialType 21 (checker-driven normal-mapped
+                // Lambertian, B12's own sphere) - matches CPU's own
+                // `normal_map_material` (a DIRECT tangent-space-normal
+                // read, decoded from an RGB texture, not a finite-
+                // difference displacement gradient the way materialType
+                // 7's own bump map is). Only perturbs the SHADING
+                // normal, same "shading vs geometric" split materialType
+                // 7 already established. Reuses `checker3DColor()`'s own
+                // 3D-spatial cell test directly on `hitPoint` (CPU's own
+                // `checker_texture` is spatial, not UV-based, so this
+                // needs no geometry-specific UV lookup at all - works
+                // for this scene's sphere or any future triangle/disk
+                // hit identically). The two decoded tangent-space
+                // normals below are CPU's own two checker colours
+                // (`build_normal_mapped_cornell()`'s own `norm_tex`)
+                // pre-decoded by hand: `color(0.5,0.5,1.0)` -> `2*c-1` =
+                // `(0,0,1)` (flat, no perturbation) and
+                // `color(0.8,0.8,1.0)` -> `(0.6,0.6,1.0)` normalized (a
+                // real diagonal tilt) - hardcoded rather than stored as
+                // new material fields, since this checker's own two
+                // colours are a fixed property of this one scene, not a
+                // reusable general-purpose texture parameter.
+                float3 tangent, bitangent;
+                buildAnisotropicOnb(facingNormal, tangent, bitangent);
+                float3 cell = floor(hitPoint / mat.roughness);
+                float parity = fmod(abs(cell.x) + abs(cell.y) + abs(cell.z), 2.0);
+                float3 nsLocal = (parity < 0.5) ? float3(0.0, 0.0, 1.0) : normalize(float3(0.6, 0.6, 1.0));
+                float3 perturbed = normalize(nsLocal.x * tangent + nsLocal.y * bitangent + nsLocal.z * facingNormal);
+                if (dot(perturbed, facingNormal) < 0.0) perturbed = -perturbed;
+                facingNormal = perturbed;
             }
 
             // materialType == 3 (textured Lambertian): the hardcoded POC

@@ -7709,3 +7709,79 @@ or plain-mirror look) matching CPU's own qualitative shape, aside from
 the copper box's own pre-existing, separately-flagged hue quirk. `B7`
 added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
 set in this same PR. **Category B is now 9 of 16 done.**
+
+## 142. Category B increment: B12 Normal Mapped Cornell (materialType 21) - a real, verified pre-existing CPU no-op bug found BEFORE writing any Metal code, sharply narrowing this increment's actual scope
+
+New materialType 21: a checker-driven, tangent-space normal-map
+perturbation (pbrt-v4 `NormalMap`) feeding the ALREADY-EXISTING plain
+Lambertian shading path - no new BSDF at all, only a perturbed input
+normal. A scoping research pass had flagged B12 as the smallest
+remaining category-B lift (no new BxDF, no new geometry, and this
+loader's own Perlin-noise/3D-checker machinery, materialType 16/17,
+already exists) - investigating CPU's own scene confirmed that, and
+narrowed the real scope even further.
+
+**A real, verified-not-assumed pre-existing CPU bug found by reading
+the reference BEFORE writing any Metal code**: `build_normal_mapped_
+cornell()`'s own back wall and rotated box both use `bump_map_material`
+wrapping a `noise_texture` (the classic Perlin "marble" formula,
+`0.5*(1+sin(scale*p.z+10*turb(p,7)))` - already ported to this loader
+as materialType 17's own marble formula, section 124). But `noise_
+texture::value(u,v,p)` (`src/TheRestOfYourLife/texture.h`) ignores `u`/
+`v` entirely, reading only the world point `p` - and `bump_map_
+material::apply()` (`normal_map_materials.h`) samples that texture at
+`(rec.u,rec.v,rec.p)`, `(rec.u+step,rec.v,rec.p)`, and `(rec.u,rec.v+
+step,rec.p)` - the SAME `rec.p` every time, varying only `u`/`v`, which
+the texture never reads. All three displacement samples come back
+IDENTICAL, the finite-difference gradient (`apply_bump_map()`,
+`src/shared/normal_map.h`) is exactly zero, and the "bumped" normal is
+just the original geometric one - a real no-op, not a subtle-but-real
+effect. **Confirmed empirically, not just algebraically**: rendering
+B12 with `--cpu` and inspecting the box surface directly shows it
+perfectly flat, no visible marble waviness anywhere, while the SAME
+scene's sphere (see below) clearly does show its own effect - ruling
+out "just too subtle to see" as an alternative explanation. This
+collapses the box/back-wall's own "new material" work to ZERO: they
+render as plain materialType 0 (matching CPU's own real, buggy-but-
+real output), not the marble-bumped look the scene's own name and
+comments imply.
+
+The SPHERE's own `normal_map_material` has no such bug - it directly
+DECODES an RGB texture value as a tangent-space normal offset (no
+finite difference at all), and its own `checker_texture` genuinely
+varies with the 3D point regardless of `u`/`v` (the SAME spatial-
+checker convention materialType 16 already uses). Wired as a normal-
+perturbation branch alongside materialType 7's own bump-map branch
+(inserted at the same call site, `metal_poc.metal`'s main kernel,
+right after the hit's `facingNormal` is computed) rather than a new
+`shadeXxx()` function - this material has no BSDF of its own, so once
+`facingNormal` is perturbed it falls through to the ALREADY-EXISTING
+Lambertian path unmodified. The two checker colours
+(`build_normal_mapped_cornell()`'s own `norm_tex`, `(0.5,0.5,1.0)` ->
+flat and `(0.8,0.8,1.0)` -> a real diagonal tilt) are hardcoded, pre-
+decoded, in the shader itself - a fixed property of this one scene, not
+a reusable texture parameter worth a new material field. The checker's
+own CELL SIZE, however, DOES need a material field
+(`mat.roughness`, the same reuse materialType 16 already established):
+a first version hardcoded CPU's own literal `8.0` (in the *original*
+0-555 pbrt-scale coordinate system) directly in the shader, which -
+evaluated against this loader's own RESCALED (~2-unit) coordinate
+space - made the entire sphere fall inside a single giant checker cell,
+rendering perfectly smooth. Caught immediately by comparing against a
+real `--cpu` render showing a visibly dimpled sphere; fixed by
+computing `8.0 * sceneScale` HOST-side (`buildCornellFamilyScene()`'s
+own new `sphereMaterialType == 21u` branch) and storing the already-
+converted value in `mat.roughness`, the same "any world-space distance
+needs this conversion" discipline every earlier scene in this series
+already follows (D5's own `pbrtLensRadius`/`pbrtFocusDistance`, PR #137,
+is the closest precedent).
+
+**Verified**: a direct `--gpu` vs `--cpu` comparison, after the
+`sceneScale` fix, showed a close match - same dimpled-checkerboard-of-
+cubes pattern and cell density on the sphere, same flat/unbumped box
+and back wall in both. Full clean `RT_BUILD_METAL=ON` rebuild, ctest
+(4/4), the 55-scene pbrt-backed regression sweep (0 failures), and
+regression spot-checks of 25 earlier hand-authored scenes (all render
+without error, unaffected). `B12` added to `cpu_scene_metal_hand_
+authored_supported()`'s `kSupported` set in this same PR. **Category B
+is now 10 of 16 done.**
