@@ -68,14 +68,16 @@ bool metal_get_diagnostics(MetalDiagnostics* out);
 // applyCameraOverride()'s own comment (metal_poc.mm) for the coordinate
 // transform this applies before use.
 //
-// options: only options.tonemap is read ("aces"/"reinhard"/"none",
-// matching cpu_render_main()/optix_render_main()'s own convention) -
-// every other RenderOptions field is a documented no-op for this backend
-// (this POC doesn't implement exposure/sampler/adaptive_sampling/
-// lightsampler/regularize/max_component_value/crop/aperture-or-focus-
-// override/spectral/denoise/seed yet), same "flag has no effect under X"
-// convention render_options.h's own header comment already documents for
-// other backend/field combinations.
+// options: options.tonemap ("aces"/"reinhard"/"none", matching
+// cpu_render_main()/optix_render_main()'s own convention) and
+// options.exposure (a flat pre-tonemap multiplier, section 148,
+// docs/METAL_GPU_FEASIBILITY.md) are both read - every other
+// RenderOptions field is a documented no-op for this backend (this POC
+// doesn't implement sampler/adaptive_sampling/lightsampler/regularize/
+// max_component_value/crop/aperture-or-focus-override/spectral/
+// denoise/seed yet), same "flag has no effect under X" convention
+// render_options.h's own header comment already documents for other
+// backend/field combinations.
 int metal_render_main(
 	int image_width,
 	int image_height,
