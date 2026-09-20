@@ -963,6 +963,12 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B6",                    // Cornell Thin Glass (section 129)
 		"B1",                    // Rough Metal Spheres (section 130)
 		"B8",                    // Cornell Wax Slab (section 131)
+		// Category I (Education) - scenes that reuse ANOTHER scene's own
+		// geometry verbatim (see buildHandAuthoredScene()'s own comment,
+		// metal_poc.mm, and each scene's own registry row comment,
+		// scene_registry_data.h) - section 132.
+		"I1", "I4", "I6", "I7", "I9",  // = build_cornell_box, same as A1
+		"I5", "I10",                   // = build_cornell_rough_glass, same as B3
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
