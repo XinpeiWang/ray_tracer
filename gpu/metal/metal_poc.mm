@@ -1220,11 +1220,12 @@ struct MetalPocApp {
     // shape (src/TheRestOfYourLife/scenes_materials.h's own comment: "10
     // more Cornell-family scenes... swap in different sphere/box
     // materials"). Only materialType 0 (Lambertian)/2 (dielectric)/4
-    // (GGX conductor) are supported by this helper so far - the
-    // materials this Metal backend already fully implements; a scene
-    // needing a not-yet-supported one (coated diffuse/conductor,
-    // subsurface, hair, measured, thin dielectric on a BOX) stays out of
-    // scope until this helper (or a dedicated builder) grows to cover
+    // (GGX conductor)/5 (rough dielectric, sphere-only so far - section
+    // 128) are supported by this helper so far - the materials this
+    // Metal backend already fully implements; a scene needing a
+    // not-yet-supported one (coated diffuse/conductor, subsurface, hair,
+    // measured) stays out of scope until this helper (or a dedicated
+    // builder) grows to cover
     // it. Section 126, docs/METAL_GPU_FEASIBILITY.md.
     void buildCornellFamilyScene(
         uint32_t boxMaterialType, float3 boxColor, float boxRoughness,
@@ -1245,6 +1246,13 @@ struct MetalPocApp {
     // (as opposed to B2's simpler `rough_metal`). Section 127, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildCornellConductor();
+    // B3: Cornell Rough Glass - white diffuse box (unchanged from A1's
+    // own) + a rough/frosted-dielectric sphere (materialType 5,
+    // roughness 0.2, ior 1.5), matching CPU's own
+    // build_cornell_rough_glass() exactly. First sphere-only use of
+    // buildCornellFamilyScene()'s materialType 5 support. Section 128,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildCornellRoughGlass();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2935,6 +2943,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "A7") { buildSimpleLight(); return true; }
     if (scene_id == "B2") { buildCornellRoughMetal(); return true; }
     if (scene_id == "B4") { buildCornellConductor(); return true; }
+    if (scene_id == "B3") { buildCornellRoughGlass(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4117,7 +4126,15 @@ void MetalPocApp::buildCornellFamilyScene(
             mat.ior = sphereRoughness;  // alphaX == alphaY (isotropic) - see addQuad()'s own comment
             mat.conductorEta = PackedFloat3{sphereConductorEta.x, sphereConductorEta.y, sphereConductorEta.z};
             mat.conductorK = PackedFloat3{sphereConductorK.x, sphereConductorK.y, sphereConductorK.z};
-        } else if (sphereMaterialType == 2u) {
+        } else if (sphereMaterialType == 2u || sphereMaterialType == 5u) {
+            // materialType 2 (smooth dielectric): `roughness` unread,
+            // `ior` is the real refraction index. materialType 5 (rough/
+            // frosted dielectric, section 128): BOTH matter - `roughness`
+            // (already set via the constructor above) drives alpha
+            // (shadeRoughDielectric()'s own `mat.roughness^2`), `ior` is
+            // still the real refraction index, read independently - the
+            // two fields aren't a dual-use pair here the way materialType
+            // 4's ior/roughness are.
             mat.ior = sphereIor;
         }
         spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
@@ -4201,6 +4218,22 @@ void MetalPocApp::buildCornellConductor() {
     buildCornellFamilyScene(
         /*box=*/4u, float3{1, 1, 1}, boxAlpha, alumEta, alumK, 1.0f,
         /*sphere=*/4u, float3{1, 1, 1}, sphereAlpha, goldEta, goldK, 1.0f);
+}
+
+// B3: Cornell Rough Glass - matches CPU's own build_cornell_rough_glass()
+// exactly: the box stays plain white Lambertian (unchanged from A1's
+// own), only the sphere changes - materialType 5 (rough/frosted
+// dielectric), ior 1.5, roughness converted the SAME `^0.25` way
+// sections 126/127 already established (CPU's own `rough_dielectric`
+// class calls the identical `RoughnessToAlpha()` helper `rough_metal`/
+// `conductor` do - checked directly, not assumed, before reusing the
+// conversion here).
+void MetalPocApp::buildCornellRoughGlass() {
+    const float3 white{0.73f, 0.73f, 0.73f};
+    const float sphereAlpha = powf(0.2f, 0.25f);  // ~0.669
+    buildCornellFamilyScene(
+        /*box=*/0u, white, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f,
+        /*sphere=*/5u, float3{1, 1, 1}, sphereAlpha, float3{1, 1, 1}, float3{0, 0, 0}, /*ior=*/1.5f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
