@@ -1402,6 +1402,16 @@ struct MetalPocApp {
     // build_prism_dispersion_geometry() exactly.
     // Section 143, docs/METAL_GPU_FEASIBILITY.md.
     void buildPrismDispersion();
+    // Shared by buildPrismDispersion() (B23) and
+    // buildPrismDispersionRough() (B24) - identical geometry/camera/
+    // light, differing only in the glass material/roughness passed in.
+    void buildPrismDispersionGeometry(uint32_t glassMaterialType, float roughness);
+    // B24: Frosted Prism Dispersion - same prism/light/screen as B23,
+    // materialType 23 (dispersive rough dielectric - see
+    // shadeDispersiveRoughDielectric()'s own declaration comment,
+    // metal_poc.metal) instead of smooth. Section 144,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildPrismDispersionRough();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3125,6 +3135,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B7") { buildCornellCoatedConductor(); return true; }
     if (scene_id == "B12") { buildNormalMappedCornell(); return true; }
     if (scene_id == "B23") { buildPrismDispersion(); return true; }
+    if (scene_id == "B24") { buildPrismDispersionRough(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -5482,11 +5493,16 @@ static void cauchyCoefficientsFromAbbe(double etaD, double abbeNumber, double& A
 // approximation, NOT CPU's/wavefront's real continuous spectral
 // integration - matches this scene's own registry description exactly:
 // "GPU-recursive (--gpu, no --wavefront): a simplified 3-representative-
-// wavelength RGB-channel approximation"). `conductorEta.x/y` carries the
-// precomputed Cauchy (A, B) pair - `CauchyCoefficientsFromAbbe(1.52,
-// 59.0)`, crown glass, matching CPU's own `dielectric::make_dispersive(
-// 1.52, 59.0)` exactly.
-void MetalPocApp::buildPrismDispersion() {
+// wavelength RGB-channel approximation") or 23 (its frosted sibling,
+// shadeDispersiveRoughDielectric() - B24, section 144). `conductorEta.x/y`
+// carries the precomputed Cauchy (A, B) pair - `CauchyCoefficientsFromAbbe(
+// 1.52, 59.0)`, crown glass, matching CPU's own `dielectric::
+// make_dispersive(1.52, 59.0)`/`rough_dielectric::make_dispersive(1.52,
+// 59.0, roughness)` exactly. Shared by both build_prism_dispersion()
+// (B23) and build_prism_dispersion_rough() (B24) on the CPU side - same
+// geometry/camera/light, only the glass material differs - so this one
+// function builds both, parameterized on `glassMaterialType`/`roughness`.
+void MetalPocApp::buildPrismDispersionGeometry(uint32_t glassMaterialType, float roughness) {
     // Bounding box covers the prism (X:[0,150], Y:[0,121], Z:[0,140]) and
     // the catcher screen (X:[-300,300], Y:[-300,400], Z:600) - NOT the
     // camera position, same "geometry only" convention
@@ -5505,7 +5521,7 @@ void MetalPocApp::buildPrismDispersion() {
     cauchyCoefficientsFromAbbe(1.52, 59.0, cauchyA, cauchyB);
     const float3 glassColor{1.0f, 1.0f, 1.0f};  // untinted - no transmission_filter in the CPU reference
     TriangleMaterial glassMat{PackedFloat3{glassColor.x, glassColor.y, glassColor.z},
-        /*materialType=*/22u, /*ior=*/1.52f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+        glassMaterialType, /*ior=*/1.52f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, roughness};
     glassMat.conductorEta = PackedFloat3{(float)cauchyA, (float)cauchyB, 0.0f};
     glassMat.conductorK = PackedFloat3{0, 0, 0};
 
@@ -5519,8 +5535,8 @@ void MetalPocApp::buildPrismDispersion() {
         auto addPrismQuad = [&](float3 q, float3 u, float3 v) {
             addQuad(verts, normals, uvs, materials,
                     toWorld(q), toWorld(q + u), toWorld(q + u + v), toWorld(q + v),
-                    glassColor, /*materialType=*/22u, /*emission=*/simd::make_float3(0, 0, 0),
-                    /*lightId=*/-1, /*roughness=*/0.0f, /*ior=*/1.52f,
+                    glassColor, glassMaterialType, /*emission=*/simd::make_float3(0, 0, 0),
+                    /*lightId=*/-1, roughness, /*ior=*/1.52f,
                     /*transmitColor=*/simd::make_float3(0, 0, 0), /*twoSided=*/false,
                     float3{(float)cauchyA, (float)cauchyB, 0.0f}, float3{0, 0, 0});
         };
@@ -5605,6 +5621,20 @@ void MetalPocApp::buildPrismDispersion() {
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
     pbrtSceneOffset = sceneOffset;
+}
+
+void MetalPocApp::buildPrismDispersion() {
+    buildPrismDispersionGeometry(/*glassMaterialType=*/22u, /*roughness=*/0.0f);
+}
+
+// B24: Frosted Prism Dispersion - the SAME prism/light/screen as B23,
+// frosted glass (materialType 23, GGX roughness 0.08 - matches CPU's
+// own `rough_dielectric::make_dispersive(1.52, 59.0, 0.08)` exactly)
+// instead of smooth. See buildPrismDispersionGeometry()'s own
+// declaration comment - the two scenes share one geometry builder,
+// differing only in which glass material/roughness gets passed in.
+void MetalPocApp::buildPrismDispersionRough() {
+    buildPrismDispersionGeometry(/*glassMaterialType=*/23u, /*roughness=*/0.08f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

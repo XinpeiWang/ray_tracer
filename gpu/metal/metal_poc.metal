@@ -1994,6 +1994,70 @@ inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 n
     return true;
 }
 
+// B24: the frosted (rough) sibling of materialType 22's own smooth
+// dispersive dielectric - same OptiX reference, same
+// `MaterialType::RoughDielectric` dispersive branch (a few lines below
+// its own smooth `MaterialType::Dielectric` counterpart in
+// `optix_device_helpers.h`, deliberately NOT factored into a shared
+// helper there either - see that code's own comment on why "exactly 2
+// occurrences" isn't worth it). Structurally just
+// `shadeRoughDielectric()` (materialType 5) with the SAME `rgbChannel`
+// resolution `shadeDispersiveDielectric()` (materialType 22) already
+// uses, substituted in place of the flat `mat.ior` - the two dispersive
+// materials share the exact same channel-selection mechanism, only the
+// underlying (smooth vs. GGX-rough) BSDF differs, matching how
+// OptiX's own two dispersive branches are independently-but-identically
+// structured. `mat.conductorEta.x/y` is the SAME dual-use Cauchy
+// `(A, B)` pair materialType 22 already established (both materials
+// otherwise leave that field unused).
+inline bool shadeDispersiveRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 normal, float3 facingNormal,
+                                  bool frontFace, float hitDistance,
+                                  thread float3& rayDir, thread float3& rayOrigin,
+                                  thread float3& throughput, thread bool& specularBounce,
+                                  thread uint& rngState, thread uint& rgbChannel) {
+    if (rgbChannel == kRgbChannelUnset) {
+        uint newChannel = min(uint(randFloat(rngState) * 3.0), 2u);
+        float3 channelMask = float3(newChannel == 0u ? 3.0 : 0.0,
+                                     newChannel == 1u ? 3.0 : 0.0,
+                                     newChannel == 2u ? 3.0 : 0.0);
+        throughput *= channelMask;
+        rgbChannel = newChannel;
+    }
+    float dispersiveIor = cauchyEta(kRgbChannelWavelengthNm[rgbChannel],
+                                     mat.conductorEta.x, mat.conductorEta.y);
+
+    float alpha = max(mat.roughness * mat.roughness, 0.0009);
+    float3 tangent, bitangent;
+    buildOnb(facingNormal, tangent, bitangent);
+    float3 woWorld = -rayDir;
+    float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
+    woLocal.z = max(woLocal.z, 0.0001);
+    float3 hLocal = sampleGGXVNDF(woLocal, alpha, alpha, rngState);
+    float3 hWorld = normalize(hLocal.x * tangent + hLocal.y * bitangent + hLocal.z * facingNormal);
+
+    float refractionRatio = frontFace ? (1.0 / dispersiveIor) : dispersiveIor;
+    float3 unitDir = normalize(rayDir);
+    float cosTheta = clamp(dot(-unitDir, hWorld), 0.0, 1.0);
+    float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+    bool cannotRefract = refractionRatio * sinTheta > 1.0;
+
+    float3 newDir;
+    if (cannotRefract || frDielectric(cosTheta, 1.0 / refractionRatio) > randFloat(rngState)) {
+        newDir = reflect(unitDir, hWorld);
+    } else {
+        newDir = refract(unitDir, hWorld, refractionRatio);
+    }
+    float3 newDirLocal = float3(dot(newDir, tangent), dot(newDir, bitangent), dot(newDir, facingNormal));
+    float roughDielectricG = ggxG(woLocal, newDirLocal, alpha, alpha);
+    float roughDielectricG1 = ggxG1(woLocal, alpha, alpha);
+    throughput *= roughDielectricG / max(roughDielectricG1, 1e-6);
+    rayDir = newDir;
+    rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
+    applyBeerLambertAbsorption(throughput, mat.color, frontFace, hitDistance);
+    specularBounce = true;
+    return true;
+}
+
 inline bool shadeThinDielectric(TriangleMaterial mat, float3 hitPoint, float3 normal, float3 facingNormal,
                                  thread float3& rayDir, thread float3& rayOrigin,
                                  thread float3& throughput, thread bool& specularBounce, thread uint& rngState) {
@@ -5542,6 +5606,9 @@ kernel void primaryRayKernel(
             } else if (mat.materialType == 5u) {
                 if (!shadeRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                            rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
+            } else if (mat.materialType == 23u) {
+                if (!shadeDispersiveRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
+                                           rayDir, rayOrigin, throughput, specularBounce, rngState, rgbChannel)) break;
             } else if (mat.materialType == 4u || mat.materialType == 9u) {
                 if (!shadeConductor(mat, hitPoint, normal, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
