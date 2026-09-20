@@ -1398,6 +1398,17 @@ struct MetalPocApp {
     // Uniforms::cameraOrthographic - this loader's first ever
     // non-perspective camera). Section 150, docs/METAL_GPU_FEASIBILITY.md.
     void buildOrthoCornellBox();
+    // D2: Orthographic Camera (open scene) - an open (non-Cornell)
+    // column-of-spheres scene demonstrating the SAME orthographic mode
+    // D6 already wired up (havePbrtOrthographic), just at natural scale
+    // (sceneScale=1.0, the D1/F2/B10/C1 convention) with a screen-window
+    // half-extent of 5 (matching build_ortho_camera_scene()'s own alt-
+    // camera lambda) instead of D6's own 320-for-a-555-unit-Cornell-box
+    // value. Needs the SAME right-vector sign correction D6's own
+    // section 150 finding established (CPU's alt-camera path is
+    // internally inconsistent with its own primary one). Section 151,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildOrthoCameraScene();
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -3216,6 +3227,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
     if (scene_id == "D1") { buildDepthOfField(); return true; }
     if (scene_id == "D6") { buildOrthoCornellBox(); return true; }
+    if (scene_id == "D2") { buildOrthoCameraScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -5474,6 +5486,70 @@ void MetalPocApp::buildOrthoCornellBox() {
     const float sceneScale = 2.0f / 555.0f;
     havePbrtOrthographic = true;
     pbrtTanHalfFov = 320.0f * sceneScale;
+}
+
+// D2: Orthographic Camera - matches build_ortho_camera_scene() exactly:
+// checker ground + 5 spheres in a row at varying x, lit by a constant
+// sky, viewed through a real orthographic camera. Natural scale
+// (sceneScale=1.0, no rescale needed) - the screen-window half-extent
+// (5, matching the scene's own alt-camera lambda) needs no sceneScale
+// multiply either, unlike D6's own 555-unit Cornell-box case.
+void MetalPocApp::buildOrthoCameraScene() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground: a large flat checker quad (materialType 16), not CPU's
+    // own radius-100 ground SPHERE - the established A5/B1/F2/B10/C1
+    // substitution to avoid overlapping the hardcoded room's own
+    // [-1,1] cube. Matches checker_texture(1.0, (0.2,0.2,0.2),
+    // (0.9,0.9,0.9)) exactly.
+    {
+        const float3 darkA{0.2f, 0.2f, 0.2f}, lightB{0.9f, 0.9f, 0.9f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-30, 0, -30} + sceneOffset, float3{30, 0, -30} + sceneOffset,
+                float3{30, 0, 30} + sceneOffset, float3{-30, 0, 30} + sceneOffset,
+                darkA, /*materialType=*/16u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness(cell size)=*/1.0f, /*ior=*/1.0f, lightB);
+    }
+
+    // 5 spheres in a row, x = (i-2)*2.5, radius 1 - CPU's own
+    // gradient colour formula (0.2+0.15*i, 0.3, 0.8-0.1*i) applied
+    // exactly.
+    for (int i = 0; i < 5; ++i) {
+        const float3 color{0.2f + 0.15f * i, 0.3f, 0.8f - 0.1f * i};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{(i - 2) * 2.5f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Sky - build_ortho_sky()'s own sky_light(color(0.5,0.7,1.0)),
+    // constant colour.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.5f, 0.7f, 1.0f};
+
+    // Camera: lookfrom=(0,10,20), lookat=(0,1,0) - kOrthoCameraCamera's
+    // own literal values. Orthographic screen-window half-extent 5,
+    // matching build_ortho_camera_scene()'s own alt-camera lambda
+    // (xmin*5/xmax*5/ymin*5/ymax*5) - no sceneScale multiply, this
+    // scene is natural-scale.
+    const float3 lookfrom = float3{0.0f, 10.0f, 20.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    havePbrtCamera = true;
+    havePbrtOrthographic = true;
+    pbrtTanHalfFov = 5.0f;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
 }
 
 // E1: Homogeneous Medium - matches CPU's own build_homogeneous_medium_scene()

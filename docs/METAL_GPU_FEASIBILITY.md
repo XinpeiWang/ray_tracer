@@ -8338,3 +8338,38 @@ hand-authored scenes (including a direct visual re-check of A1 itself,
 since this PR touched the SHARED primary-ray-generation code block -
 unaffected). `D6` added to `cpu_scene_metal_hand_authored_supported()`'s
 `kSupported` set in this same PR. **Category D is now 3 of 9 done.**
+
+## 151. Category D increment: D2 Orthographic Camera - the SAME projection mode reused for an open scene, confirming D6's own sign fix generalizes
+
+`D2` is the open (non-Cornell) counterpart to D6: a checker ground +
+5-sphere gradient row, matching `build_ortho_camera_scene()`/
+`build_ortho_sky()` exactly, viewed through the SAME real orthographic
+camera D6 just added (`havePbrtOrthographic`), at natural scale
+(`sceneScale=1.0`, the D1/F2/B10/C1 convention) with a screen-window
+half-extent of `5` (matching this scene's own alt-camera lambda)
+instead of D6's own `320`-for-a-555-unit-Cornell-box value - no
+sceneScale multiply needed either, since this scene is natural-scale.
+Ground uses the established flat-checker-quad substitution (materialType
+16) for CPU's own radius-100 ground sphere, the same A5/B1/F2/B10/C1/D1
+overlap-avoidance pattern.
+
+**Verified with a direct `--gpu` vs `--cpu` comparison that matched
+closely on the FIRST attempt** - critically, WITHOUT needing D6's own
+right-vector sign fix to be rediscovered: since that fix lives in the
+SHARED orthographic ray-generation branch (`primaryRayKernel`), not
+per-scene code, it applied here automatically. Same sphere gradient
+colours/positions, same checker density/alignment, same left/right
+sphere clipping at the frame edges in both renders (this scene's own
+`5`-unit screen-window half-extent is deliberately just wide enough
+for the 5-sphere row, clipping the outermost two slightly - matches
+CPU's own identical framing choice, not a bug). Full clean
+`RT_BUILD_METAL=ON` rebuild, ctest (4/4), the 55-scene pbrt-backed
+regression sweep (0 failures), and regression spot-checks of the
+accumulated hand-authored scenes. `D2` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category D is now 4 of 9 done** - D3/D4/D7/D8 (spherical
+and realistic-camera projection modes) remain; D7 (Cornell-box
+spherical panorama) is the natural next candidate, reusing
+`buildCornellBoxA1()`'s own geometry again the same way D6 did, though
+it will need a genuinely different (non-linear, direction-only)
+ray-generation formula than orthographic's simple origin-offset one.
