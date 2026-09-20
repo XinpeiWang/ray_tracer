@@ -1392,6 +1392,16 @@ struct MetalPocApp {
     // materialType 0, matching CPU's own actually-rendered behavior.
     // Section 142, docs/METAL_GPU_FEASIBILITY.md.
     void buildNormalMappedCornell();
+    // B23: Glass Prism Dispersion - a real triangular prism (3 quads + 2
+    // triangle end caps) under a single directional light, splitting
+    // into a visible chromatic fan on a catcher screen. materialType 22
+    // (recursive-backend dispersive dielectric - see
+    // shadeDispersiveDielectric()'s own declaration comment,
+    // metal_poc.metal). Not a Cornell-family scene at all - its own
+    // bespoke geometry/camera/light, matching CPU's own
+    // build_prism_dispersion_geometry() exactly.
+    // Section 143, docs/METAL_GPU_FEASIBILITY.md.
+    void buildPrismDispersion();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3114,6 +3124,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
     if (scene_id == "B7") { buildCornellCoatedConductor(); return true; }
     if (scene_id == "B12") { buildNormalMappedCornell(); return true; }
+    if (scene_id == "B23") { buildPrismDispersion(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -5439,6 +5450,161 @@ void MetalPocApp::buildNormalMappedCornell() {
     buildCornellFamilyScene(
         /*box=*/0u, white, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f,
         /*sphere=*/21u, blueBase, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f);
+}
+
+// CauchyCoefficientsFromAbbe (src/shared/fresnel.h) - construction-time
+// only (not per-ray), ported here rather than #included directly since
+// it's the one piece of that header genuinely CPU-only (no CPU_GPU tag
+// needed at all - the per-ray CauchyEta() counterpart IS ported, as
+// `cauchyEta()`, into metal_poc.metal itself, next to
+// shadeDispersiveDielectric()'s own declaration).
+static void cauchyCoefficientsFromAbbe(double etaD, double abbeNumber, double& A, double& B) {
+    constexpr double lambdaF = 0.4861, lambdaC = 0.6563, lambdaD = 0.5893;
+    B = (etaD - 1.0) / (abbeNumber * (1.0 / (lambdaF * lambdaF) - 1.0 / (lambdaC * lambdaC)));
+    A = etaD - B / (lambdaD * lambdaD);
+}
+
+// B23: Glass Prism Dispersion - matches CPU's own
+// build_prism_dispersion_geometry() exactly: a real triangular prism
+// (cross-section A(0,0,0)/B(0,0,140)/C(0,121,70) in the Y-Z plane,
+// extruded +150 along X - same hand-derived outward-normal winding as
+// the CPU reference's own comment documents) under a single directional
+// light (`build_prism_dispersion_punct()`), splitting into a chromatic
+// fan on a large catcher screen. NOT a Cornell-family scene - its own
+// bespoke bounding box/camera/light, since kCornellBoxCamera's own
+// 555-unit framing doesn't apply here at all (see kPrismCamera,
+// scene_registry.h).
+//
+// materialType 22 (recursive-backend dispersive dielectric - see
+// shadeDispersiveDielectric()'s own declaration comment,
+// metal_poc.metal, for the full "stochastic RGB-channel selection"
+// mechanism, ported from OptiX's own identical recursive-backend
+// approximation, NOT CPU's/wavefront's real continuous spectral
+// integration - matches this scene's own registry description exactly:
+// "GPU-recursive (--gpu, no --wavefront): a simplified 3-representative-
+// wavelength RGB-channel approximation"). `conductorEta.x/y` carries the
+// precomputed Cauchy (A, B) pair - `CauchyCoefficientsFromAbbe(1.52,
+// 59.0)`, crown glass, matching CPU's own `dielectric::make_dispersive(
+// 1.52, 59.0)` exactly.
+void MetalPocApp::buildPrismDispersion() {
+    // Bounding box covers the prism (X:[0,150], Y:[0,121], Z:[0,140]) and
+    // the catcher screen (X:[-300,300], Y:[-300,400], Z:600) - NOT the
+    // camera position, same "geometry only" convention
+    // buildCornellFamilyScene() already uses (the camera goes through
+    // the SAME toWorld() transform separately, even though it sits
+    // outside this box).
+    const float3 bboxMin{-300.0f, -300.0f, 0.0f};
+    const float3 bboxMax{300.0f, 400.0f, 600.0f};
+    const float maxExtent = 700.0f;  // 600(x) vs 700(y) vs 600(z) - see bbox above
+    const float sceneScale = 2.0f / maxExtent;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    double cauchyA, cauchyB;
+    cauchyCoefficientsFromAbbe(1.52, 59.0, cauchyA, cauchyB);
+    const float3 glassColor{1.0f, 1.0f, 1.0f};  // untinted - no transmission_filter in the CPU reference
+    TriangleMaterial glassMat{PackedFloat3{glassColor.x, glassColor.y, glassColor.z},
+        /*materialType=*/22u, /*ior=*/1.52f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+    glassMat.conductorEta = PackedFloat3{(float)cauchyA, (float)cauchyB, 0.0f};
+    glassMat.conductorK = PackedFloat3{0, 0, 0};
+
+    // 3 rectangular sides, same outward-normal winding as CPU's own
+    // build_prism_dispersion_geometry() comment documents (u/v order is
+    // (depth, edge), not (edge, depth) - this cross-section's apex-up
+    // orientation is in Y-Z, not X-Y).
+    {
+        const float3 A{0, 0, 0}, B{0, 0, 140}, C{0, 121, 70};
+        const float3 depth{150, 0, 0};
+        auto addPrismQuad = [&](float3 q, float3 u, float3 v) {
+            addQuad(verts, normals, uvs, materials,
+                    toWorld(q), toWorld(q + u), toWorld(q + u + v), toWorld(q + v),
+                    glassColor, /*materialType=*/22u, /*emission=*/simd::make_float3(0, 0, 0),
+                    /*lightId=*/-1, /*roughness=*/0.0f, /*ior=*/1.52f,
+                    /*transmitColor=*/simd::make_float3(0, 0, 0), /*twoSided=*/false,
+                    float3{(float)cauchyA, (float)cauchyB, 0.0f}, float3{0, 0, 0});
+        };
+        addPrismQuad(A, depth, B - A);  // base (z=0..140 side, y=0)
+        addPrismQuad(B, depth, C - B);  // exit slant (toward +z)
+        addPrismQuad(C, depth, A - C);  // entry slant (toward -z)
+
+        // 2 triangular end caps (raw push, same pattern
+        // buildTriangleMeshScene()'s own icosahedron uses).
+        const float3 Aw = toWorld(A), Bw = toWorld(B), Cw = toWorld(C);
+        const float3 Adw = toWorld(A + depth), Bdw = toWorld(B + depth), Cdw = toWorld(C + depth);
+        auto pushTri = [&](float3 a, float3 b, float3 c) {
+            const float3 faceNormal = simd::normalize(simd::cross(b - a, c - a));
+            const PackedFloat3 packedNormal{faceNormal.x, faceNormal.y, faceNormal.z};
+            verts.push_back(PackedFloat3{a.x, a.y, a.z});
+            verts.push_back(PackedFloat3{b.x, b.y, b.z});
+            verts.push_back(PackedFloat3{c.x, c.y, c.z});
+            normals.push_back(packedNormal);
+            normals.push_back(packedNormal);
+            normals.push_back(packedNormal);
+            uvs.push_back(PackedFloat2{0, 0});
+            uvs.push_back(PackedFloat2{1, 0});
+            uvs.push_back(PackedFloat2{0, 1});
+            materials.push_back(glassMat);
+        };
+        // x=0 cap: forward winding (A,B,C) -> outward -X. x=150 cap:
+        // reversed winding (A',C',B') -> outward +X - matches CPU's own
+        // mesh_data->indices = {0,1,2, 3,5,4} exactly.
+        pushTri(Aw, Bw, Cw);
+        pushTri(Adw, Cdw, Bdw);
+    }
+
+    // Catcher screen: large white diffuse wall.
+    {
+        const float3 screenColor{0.9f, 0.9f, 0.9f};
+        addQuad(verts, normals, uvs, materials,
+                toWorld(float3{-300, -300, 600}), toWorld(float3{300, -300, 600}),
+                toWorld(float3{300, 400, 600}), toWorld(float3{-300, 400, 600}),
+                screenColor);
+    }
+
+    // Single directional light - add_distant()'s own `dir` argument is
+    // the direction TOWARD the light source (verified empirically for
+    // C3, section 134 - the field's own doc comment in
+    // punctual_light_objects.h is misleading), so `direction` here
+    // (this loader's own "direction of travel" convention) is the
+    // NEGATION of CPU's own `vec3(0.0, 0.06, -1.0)`.
+    {
+        const float3 dirToLight = simd::normalize(float3{0.0f, 0.06f, -1.0f});
+        const float3 dirOfTravel = -dirToLight;
+        const float3 emission{3.0f, 3.0f, 3.0f};  // radiance(1,1,1) * scale(3.0)
+        directionalLights.push_back(DirectionalLightData{
+            PackedFloat3{dirOfTravel.x, dirOfTravel.y, dirOfTravel.z},
+            PackedFloat3{emission.x, emission.y, emission.z}});
+    }
+
+    // Black background (no_lights registry row - a minimal standalone
+    // scene, not a Cornell box) - same fix as C2's own background-leak
+    // bug (section 134): without this, a ray that escapes past the
+    // catcher screen or through the prism's own end caps would read
+    // this loader's hardcoded blue-sky gradient instead of black.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.0f, 0.0f, 0.0f};
+
+    // Camera (kPrismCamera, scene_registry.h): fov=30,
+    // lookfrom=(75,60,-400), lookat=(75,75,250) - through the SAME
+    // toWorld() transform as the geometry above.
+    const float3 lookfrom = toWorld(float3{75.0f, 60.0f, -400.0f});
+    const float3 lookat = toWorld(float3{75.0f, 75.0f, 250.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 30.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
