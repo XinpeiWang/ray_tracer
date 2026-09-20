@@ -177,6 +177,26 @@ struct Uniforms {
     // shading function, same "0 disables it" pattern as envMapWidth.
     uint pbrtEnvMapWidth;
     uint pbrtEnvMapHeight;
+    // Orthographic (parallel-projection) camera - pbrt-v4's own
+    // OrthographicCamera, D2/D6's own real port (section 150). 0 (every
+    // earlier scene) keeps the existing pinhole/thin-lens PERSPECTIVE
+    // fan exactly as before - purely additive, same "0 reproduces prior
+    // behaviour" shape every other camera-feature flag above already
+    // has. != 0 switches the primary ray generation from a fanned
+    // direction (`cameraForward + screen.x*cameraRight + screen.y*
+    // cameraUp`) to a CONSTANT direction (`cameraForward`) with the
+    // SAME `screen.x/screen.y` instead offsetting the ray's ORIGIN -
+    // `tanHalfFov` is reused unchanged as the orthographic screen
+    // window's own half-extent (not a tangent at all here, just a
+    // world-space distance) since the aspect-ratio scaling already
+    // applied to `screen` above is IDENTICAL to pbrt-v4's own
+    // `compute_screen_window()` shape (`xmax`, `ymax` in [-1,1] or
+    // aspect-scaled), just missing that formula's own final `*320`
+    // (or whatever literal) multiplier - which is exactly what setting
+    // `tanHalfFov` to that literal (pre-scaled by `sceneScale`, the
+    // same world-space-distance convention `pbrtLensRadius` already
+    // uses) supplies.
+    uint cameraOrthographic;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -5097,10 +5117,44 @@ kernel void primaryRayKernel(
         // genuinely see a moving camera rather than one shared static
         // offset re-jittered.
         float shutterT = randFloat(rngState);
-        float3 rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
-        float3 rayDir = normalize(float3(uniforms.cameraForward)
-                                   + screen.x * float3(uniforms.cameraRight)
-                                   + screen.y * float3(uniforms.cameraUp));
+        float3 rayOrigin, rayDir;
+        if (uniforms.cameraOrthographic != 0u) {
+            // Orthographic (parallel-projection): every pixel's ray
+            // shares the SAME direction (cameraForward) - `screen.x/y`
+            // instead offsets the ray's ORIGIN across the screen
+            // window, mirroring pbrt-v4 OrthographicCamera::GenerateRay()
+            // exactly (Uniforms::cameraOrthographic's own comment).
+            // `-screen.x` (NEGATED, unlike every perspective ray below) -
+            // a real sign mismatch found via a mirrored first render,
+            // not assumed: this loader's own `cameraRight` (shared by
+            // every scene, including this one's own buildCornellBoxA1()
+            // call) is built as `cross(forward, up)`, matching CPU's
+            // OWN primary book-style camera (src/TheRestOfYourLife/
+            // camera.h's `u = cross(vup, w)` where `w = -forward`,
+            // algebraically the SAME `cross(forward, up)` sign). But
+            // CPU's own D2/D6-D8 alt-camera path (src/shared/cameras.h's
+            // `make_look_at()`, used ONLY for the orthographic/
+            // spherical/realistic cameras, never the primary one) computes
+            // `right = cross(up, forward)` instead - the OPPOSITE sign
+            // from its own primary camera, a genuine internal
+            // inconsistency between CPU's two separate camera-construction
+            // code paths. Invisible for every perspective scene so far
+            // (this loader's ray DIRECTION fan uses `cameraRight`, always
+            // built the primary/book-style way, matching CPU's own
+            // primary camera exactly), but D6 is the FIRST scene to
+            // reuse `cameraRight` for an ORTHOGRAPHIC ray ORIGIN offset -
+            // where it must instead match CPU's differently-signed ALT
+            // camera, not the primary one.
+            rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity)
+                        - screen.x * float3(uniforms.cameraRight)
+                        + screen.y * float3(uniforms.cameraUp);
+            rayDir = normalize(float3(uniforms.cameraForward));
+        } else {
+            rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
+            rayDir = normalize(float3(uniforms.cameraForward)
+                                + screen.x * float3(uniforms.cameraRight)
+                                + screen.y * float3(uniforms.cameraUp));
+        }
 
         // Thin-lens depth of field: jitter the ray's ORIGIN across a disk
         // (the camera's simulated aperture) and re-aim it through the same
