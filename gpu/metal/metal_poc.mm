@@ -1231,7 +1231,11 @@ struct MetalPocApp {
         uint32_t boxMaterialType, float3 boxColor, float boxRoughness,
         float3 boxConductorEta, float3 boxConductorK, float boxIor,
         uint32_t sphereMaterialType, float3 sphereColor, float sphereRoughness,
-        float3 sphereConductorEta, float3 sphereConductorK, float sphereIor);
+        float3 sphereConductorEta, float3 sphereConductorK, float sphereIor,
+        // Diffuse TRANSMITTANCE tint, materialType == 12 (diffuse
+        // transmission, section 131) only - defaults to black (every
+        // caller before B8 never used materialType 12 on the sphere).
+        float3 sphereTransmitColor = simd::make_float3(0, 0, 0));
     // B2: Cornell Rough Metal - rough aluminium box + rough gold sphere,
     // both materialType 4 (GGX conductor), matching CPU's own
     // build_cornell_rough_metal() exactly.
@@ -1270,6 +1274,12 @@ struct MetalPocApp {
     // A5's own ground already had (section 124's own comment), same fix.
     // Section 130, docs/METAL_GPU_FEASIBILITY.md.
     void buildRoughMetalSpheres();
+    // B8: Cornell Wax Slab - back to the buildCornellFamilyScene() shape
+    // (walls+light+box+sphere), box unchanged white Lambertian, sphere
+    // now materialType 12 (diffuse transmission - already implemented,
+    // just newly wired into this helper). Section 131, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildCornellWaxSlab();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2963,6 +2973,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B3") { buildCornellRoughGlass(); return true; }
     if (scene_id == "B6") { buildCornellThinGlass(); return true; }
     if (scene_id == "B1") { buildRoughMetalSpheres(); return true; }
+    if (scene_id == "B8") { buildCornellWaxSlab(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4041,7 +4052,8 @@ void MetalPocApp::buildCornellFamilyScene(
         uint32_t boxMaterialType, float3 boxColor, float boxRoughness,
         float3 boxConductorEta, float3 boxConductorK, float boxIor,
         uint32_t sphereMaterialType, float3 sphereColor, float sphereRoughness,
-        float3 sphereConductorEta, float3 sphereConductorK, float sphereIor) {
+        float3 sphereConductorEta, float3 sphereConductorK, float sphereIor,
+        float3 sphereTransmitColor) {
     using namespace cornell_box_data;
     // Same rescale/recentre/offset convention buildCornellBoxA1() uses -
     // see that function's own comment.
@@ -4155,6 +4167,15 @@ void MetalPocApp::buildCornellFamilyScene(
             // two fields aren't a dual-use pair here the way materialType
             // 4's ior/roughness are.
             mat.ior = sphereIor;
+        } else if (sphereMaterialType == 12u) {
+            // Diffuse transmission (materialType 12, already implemented
+            // long before this Phase-B epic - see this file's own
+            // materialType==12 shader comment) - `color` (already set
+            // from sphereColor above) is the REFLECTED diffuse tint,
+            // `transmitColor` the TRANSMITTED one - matches CPU's own
+            // `diffuse_transmission(R, T)` constructor exactly, two
+            // independently-authored colours, not a derived pair.
+            mat.transmitColor = PackedFloat3{sphereTransmitColor.x, sphereTransmitColor.y, sphereTransmitColor.z};
         }
         spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
         sphereMaterials.push_back(mat);
@@ -4473,6 +4494,21 @@ void MetalPocApp::buildRoughMetalSpheres() {
     pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
     pbrtSceneScale = 1.0f;
     pbrtSceneOffset = sceneOffset;
+}
+
+// B8: Cornell Wax Slab - matches CPU's own build_cornell_wax_slab()
+// exactly: box unchanged (white Lambertian), sphere is materialType 12
+// (diffuse transmission) - warm ivory reflectance, warm amber
+// transmittance, more transmittance than reflectance (a real wax-like
+// translucency).
+void MetalPocApp::buildCornellWaxSlab() {
+    const float3 white{0.73f, 0.73f, 0.73f};
+    const float3 reflectR{0.6f, 0.5f, 0.3f};
+    const float3 transmitT{0.8f, 0.6f, 0.3f};
+    buildCornellFamilyScene(
+        /*box=*/0u, white, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f,
+        /*sphere=*/12u, reflectR, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, /*ior=*/1.0f,
+        /*sphereTransmitColor=*/transmitT);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME

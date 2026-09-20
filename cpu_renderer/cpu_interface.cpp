@@ -962,6 +962,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B3",                    // Cornell Rough Glass (section 128)
 		"B6",                    // Cornell Thin Glass (section 129)
 		"B1",                    // Rough Metal Spheres (section 130)
+		"B8",                    // Cornell Wax Slab (section 131)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
