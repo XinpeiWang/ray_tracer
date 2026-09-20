@@ -1359,6 +1359,12 @@ struct MetalPocApp {
     // homogeneous medium" uniform, so reusing it needed no shader
     // changes. Section 138, docs/METAL_GPU_FEASIBILITY.md.
     void buildHomogeneousMediumScene();
+    // B9: Cornell Crystal - buildCornellFamilyScene() with the sphere as
+    // materialType 18 (NormalizedFresnelBxDF - a genuinely NEW material,
+    // not previously implemented before this PR - see
+    // shadeNormalizedFresnel()'s own declaration comment, metal_poc.metal).
+    // Section 139, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCornellCrystal();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3077,6 +3083,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "F2") { buildTriangleMeshScene(); return true; }
     if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
+    if (scene_id == "B9") { buildCornellCrystal(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -3362,6 +3369,22 @@ static float3 reflectanceToConductorK(float3 albedo) {
         return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
     };
     return float3{k(albedo.x), k(albedo.y), k(albedo.z)};
+}
+
+// pbrt-v4's own FresnelMoment1() polynomial fit (src/shared/fresnel.h,
+// ported directly - HOST-side only, since `eta` never varies per-hit
+// for a NormalizedFresnelBxDF material, so `c = 1 - 2*FresnelMoment1(1/eta)`
+// can be precomputed once here rather than needing a device-side port
+// at all - see shadeNormalizedFresnel()'s own declaration comment,
+// metal_poc.metal).
+static float fresnelMoment1(float eta) {
+    const float eta2 = eta * eta, eta3 = eta2 * eta, eta4 = eta3 * eta, eta5 = eta4 * eta;
+    if (eta < 1.0f) {
+        return 0.45966f - 1.73965f * eta + 3.37668f * eta2
+             - 3.904945f * eta3 + 2.49277f * eta4 - 0.68441f * eta5;
+    }
+    return -4.61686f + 11.1136f * eta - 10.4646f * eta2
+         + 5.11455f * eta3 - 1.27198f * eta4 + 0.12746f * eta5;
 }
 
 // Scene G1: Stanford Bunny (69,451 triangles), polished bronze - matches
@@ -4279,6 +4302,16 @@ void MetalPocApp::buildCornellFamilyScene(
             // `diffuse_transmission(R, T)` constructor exactly, two
             // independently-authored colours, not a derived pair.
             mat.transmitColor = PackedFloat3{sphereTransmitColor.x, sphereTransmitColor.y, sphereTransmitColor.z};
+        } else if (sphereMaterialType == 18u) {
+            // NormalizedFresnelBxDF ("crystal" sphere, section 139) -
+            // `ior` is the real surface eta (sphereRoughness/sphereIor
+            // params are unused for this material; `sphereIor` doubles
+            // as eta here since `ior` is this field's own natural
+            // meaning already). `roughness` holds the precomputed
+            // energy-renormalization constant `c`, computed HOST-side -
+            // see fresnelMoment1()'s own declaration comment.
+            mat.ior = sphereIor;
+            mat.roughness = 1.0f - 2.0f * fresnelMoment1(1.0f / sphereIor);
         }
         spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
         sphereMaterials.push_back(mat);
@@ -5218,6 +5251,19 @@ void MetalPocApp::buildHomogeneousMediumScene() {
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
     pbrtSceneOffset = sceneOffset;
+}
+
+// B9: Cornell Crystal - matches CPU's own build_cornell_crystal()
+// exactly: the box stays plain white Lambertian (unchanged from A1's
+// own), the sphere is materialType 18 (NormalizedFresnelBxDF, IOR
+// 1.5) - a genuinely NEW material for this whole series, not an
+// existing one reused (see shadeNormalizedFresnel()'s own declaration
+// comment, metal_poc.metal, for the full derivation).
+void MetalPocApp::buildCornellCrystal() {
+    const float3 white{0.73f, 0.73f, 0.73f};
+    buildCornellFamilyScene(
+        /*box=*/0u, white, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f,
+        /*sphere=*/18u, float3{1, 1, 1}, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, /*ior=*/1.5f);
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
