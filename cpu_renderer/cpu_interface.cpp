@@ -977,6 +977,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"E1",                          // Homogeneous Medium - first category-E scene (section 138)
 		"B9",                          // Cornell Crystal, new materialType 18 NormalizedFresnelBxDF (section 139)
 		"B5",                          // Cornell Coated Diffuse, new materialType 19 CoatedDiffuseBxDF (section 140)
+		"B7",                          // Cornell Coated Conductor, new materialType 20 CoatedConductorBxDF (section 141)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
