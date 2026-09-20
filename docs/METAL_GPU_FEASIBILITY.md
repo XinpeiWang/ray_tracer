@@ -7132,3 +7132,87 @@ G1/G12 (earlier increments) re-verified unaffected. `I8` added to
 same PR. **Category I is now 8 of 10 done** - only `I2`/`I3` remain,
 both deferred until their own underlying not-yet-built scenes (B23's
 prism, C1's HDRI sky) exist.
+
+## 134. Category C (Lights) opens: C2/C3/C4, plus two real bugs found and fixed via direct CPU comparison
+
+The first category-C increment: C2 (Spotlight Cornell), C3 (Distant
+Light Cornell), C4 (Point Light Cornell) - all three share the exact
+same geometry, CPU's own `cornell_walls_no_light()` (the 5 standard
+walls, NO ceiling light quad, a white diffuse sphere and a metal accent
+sphere), differing only in which single punctual light illuminates the
+room. New shared helper `buildCornellNoLightWalls()` builds this once
+and returns the scene's own `toWorld()` lambda so each caller can place
+its own light. All 3 punctual light TYPES (point, spot via the SAME
+`PointLightData`'s cone-angle fields, distant) were already fully
+implemented - this increment is pure scene-authoring, no new shader
+code. The metal accent sphere approximates CPU's own simple `metal(albedo,
+fuzz=0.1)` (Book-1's mirror+fuzz model, genuinely different from
+`rough_metal`'s real GGX - no algebraic reconciliation exists between
+"fuzz radius" and "GGX alpha" the way section 126's own `roughness^0.25`
+conversion exists for `rough_metal`/`conductor`) as a low-roughness
+materialType 4 conductor instead, verified by eye rather than derived.
+
+**Two real bugs found and fixed via direct CPU comparison, not assumed
+correct from a compiling render**, both worse than a subtle Approx-tier
+difference - both scenes were visibly, obviously wrong before the fix:
+
+1. **A background-leak bug, C2's own first render exposed**: this
+   family's own room (like every Cornell-shell scene) has no front
+   wall - the camera looks in through a genuinely open front. A1/B2/
+   etc. never needed an explicit background colour because their own
+   dominant ceiling-light illumination masks a small sky leak from
+   escaping rays; this family's own single, far more CONCENTRATED
+   punctual light does not - a first C2 render showed the WHOLE room
+   evenly, implausibly bright (structurally indistinguishable from an
+   omnidirectional point light) instead of a tight spotlight pool with
+   the rest of the room genuinely dark, because escaping rays were
+   reading `metal_poc.metal`'s own hardcoded blue-sky gradient instead
+   of black. Fixed by setting `havePbrtConstantEnvLight`/`pbrtEnvColor`
+   to real black inside `buildCornellNoLightWalls()` itself (every C2-C6
+   caller gets this for free).
+
+2. **A light-direction sign-convention bug, C3's own next render
+   exposed** (found immediately after fixing bug 1, not before -
+   fixing the background leak was necessary to even SEE this second
+   bug clearly): a first `buildDistantLightCornell()` passed CPU's own
+   `add_distant()` direction argument straight through to
+   `DirectionalLightData::direction` unchanged, reasoning from
+   `punctual_light_objects.h`'s own wrapper comment ("unit direction
+   *toward* the scene") that no sign flip was needed - this rendered an
+   almost completely BLACK room, every surface facing away from the
+   light. The wrapper's own comment turned out to be misleading/self-
+   contradictory: the ACTUAL struct it constructs,
+   `src/shared/punctual_lights.h`'s `DistantLightData<T>`, says `dir_x/
+   y/z` is "TOWARD THE SCENE" in one comment, then "Direction toward
+   LIGHT = dir" one line later in `sample_wi()`'s own comment - `dir` is
+   genuinely `wi` (toward the light), needing the SAME negation pbrt's
+   own punctual lights already needed (section 87), not the "already
+   this loader's own convention" a first read of the wrapper's comment
+   alone suggested. Fixed by negating it (`dirOfTravel = -wiTowardLight`).
+
+**Worth remembering for ANY future light-direction port**: don't trust
+a single doc comment at face value, especially a WRAPPER function's own
+comment describing a value it merely forwards - trace to the field's
+REAL consumer (`sample_wi()`/`eval_Li()`, or the equivalent), and when
+two comments in the same file disagree (as they did here), that is
+itself a signal to verify empirically rather than pick one arbitrarily.
+
+**Verified**: real `--gpu` renders directly compared against real
+`--cpu` renders of all 3 scene_ids, both BEFORE and AFTER each fix (the
+fixes visibly, dramatically closed the gap each time - C2 went from
+"whole room evenly lit" to "tight spotlight pool, rest of room dark,"
+matching CPU's own character; C3 went from "almost black" to a close
+visual match, including the same near-white ceiling highlight and the
+same bright specular highlight on the metal sphere). Full clean
+`RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene `pbrt_scenes/`
+sweep (0 failures); A1/B1/B3/B8/I1/I8/G1/G12 (earlier increments)
+re-verified unaffected. `C2`/`C3`/`C4` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category C is now 3/7 done.** C5 (Goniometric)/C6
+(Projection) share this exact same geometry too and are a natural next
+increment (both light types already implemented, just need a synthetic
+profile image uploaded the same way sections 98/105 already
+established for pbrt-loaded lights); C1 (HDRI Sky) needs a genuinely
+new "open scene with a real image-based sky" capability, and C7
+(Portal Infinite Light) needs portal-light sampling - both bigger
+lifts, correctly deferred.

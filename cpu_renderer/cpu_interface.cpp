@@ -970,6 +970,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"I1", "I4", "I6", "I7", "I9",  // = build_cornell_box, same as A1
 		"I5", "I10",                   // = build_cornell_rough_glass, same as B3
 		"I8",                          // Light Sampler Comparison, real new geometry (section 133)
+		"C2", "C3", "C4",              // Spotlight/Distant/Point Light Cornell (section 134)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
