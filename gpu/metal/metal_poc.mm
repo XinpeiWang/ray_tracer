@@ -893,6 +893,19 @@ struct MetalPocApp {
     uint32_t height = 400;
     const char* outPath = "/tmp/metal_poc_render.png";
     ToneMapMode toneMapMode = ToneMapMode::ACES;
+    // Flat multiplier on linear colour, applied right before tone-
+    // mapping (postProcessAndWrite()'s own comment) - RenderOptions::
+    // exposure's own doc comment, matching cpu_render_main()/
+    // optix_render_main()'s identical semantics. NOT parsed from the
+    // positional argv[] array parseArgsAndCreateDevice() reads (that
+    // 9-slot shape is shared with the standalone `metal_poc` CLI binary,
+    // metal_poc_main.mm - adding a new slot there would shift every
+    // later index for that separate entry point too) - metal_render_main()
+    // pokes this field directly instead, the same "set a field metal_render_main()
+    // itself needs, argv doesn't carry" shape force_camera_override's own
+    // applyCameraOverride() call already uses. 1.0 (default) is a no-op,
+    // unaffected for every scene/caller that never touches this field.
+    float exposureValue = 1.0f;
     // Optional 7th positional CLI arg - a real .pbrt scene file to load
     // via src/shared/pbrt_load.h INSTEAD of buildScene()'s own hardcoded
     // room (see loadPbrtScene()'s own comment for exactly what subset of
@@ -3178,6 +3191,14 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B10") { buildPrincipledShowcase(); return true; }
     if (scene_id == "C1") { buildHdriSky(); return true; }
     if (scene_id == "C7") { buildPortalLightScene(); return true; }
+    // I3 (ExposureToneMapping): the SAME world/lights/sky as C1
+    // (scene_registry_data.h's own comment: "Same world/lights/sky as
+    // C1... GPU-compatible: see gpu/optix/scene_builder.cpp's case 134,
+    // a near-verbatim copy of case 24, C1's own GPU case") - this
+    // education scene is purely a Render-Options exercise (raise/lower
+    // --exposure, compare --tonemap modes) against C1's own bright-sky/
+    // shadowed-sphere geometry, not a different scene. Section 148.
+    if (scene_id == "I3") { buildHdriSky(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -7007,7 +7028,7 @@ void MetalPocApp::postProcessAndWrite() {
         chromaticAberration(pixels, width, height, px, py, chromaticAberrationStrength,
                              &rgb[0], &rgb[1], &rgb[2]);
         for (int c = 0; c < 3; ++c) {
-            float v = fmaxf(rgb[c], 0.0f) * vignette;
+            float v = fmaxf(rgb[c], 0.0f) * vignette * exposureValue;
             v = applyToneMap(v, toneMapMode);
             v = linearToSRGB(v);
             ldr[i * 3 + c] = (uint8_t)(v * 255.0f + 0.5f);
@@ -7136,6 +7157,9 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
     @autoreleasepool {
         MetalPocApp app;
         if (!app.parseArgsAndCreateDevice(argCount, args)) return 1;
+        // See MetalPocApp::exposureValue's own comment for why this is a
+        // direct field poke rather than a new argv[] slot.
+        app.exposureValue = (float)options.exposure;
         app.buildScene();
         if (force_camera_override) {
             if (app.havePbrtCamera) {

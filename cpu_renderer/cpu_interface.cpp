@@ -984,6 +984,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B10",                         // Principled Showcase, new materialType 24 PrincipledBxDF (section 145)
 		"C1",                          // HDRI Sky, no new materialType/shader code needed (section 146)
 		"C7",                          // Portal Infinite Light, no new materialType/shader code needed (section 147)
+		"I3",                          // ExposureToneMapping, reuses C1's own world + a new --exposure implementation (section 148)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }

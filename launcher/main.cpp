@@ -1013,13 +1013,15 @@ int main(int argc, char** argv) {
 
     int render_result = -1; // 0 = success, non-zero = error
 
-    // --exposure only reaches cpu_render_main()/optix_render_main() (the
-    // plain path-tracer entry points) - BDPT/MLT/SPPM (CPU and GPU) have no
-    // exposure parameter at all, so the flag would otherwise be silently
-    // swallowed with zero indication why. Same warn-instead-of-silently-
-    // drop pattern this codebase uses elsewhere for a flag/mode combination
-    // that doesn't apply (--denoise --wavefront used to warn here too,
-    // before WavefrontPathTracer gained its own real denoiser support).
+    // --exposure only reaches cpu_render_main()/optix_render_main()/
+    // metal_render_main() (the plain path-tracer entry points, now all
+    // three backends per section 148, docs/METAL_GPU_FEASIBILITY.md) -
+    // BDPT/MLT/SPPM (CPU and GPU) have no exposure parameter at all, so
+    // the flag would otherwise be silently swallowed with zero indication
+    // why. Same warn-instead-of-silently-drop pattern this codebase uses
+    // elsewhere for a flag/mode combination that doesn't apply (--denoise
+    // --wavefront used to warn here too, before WavefrontPathTracer
+    // gained its own real denoiser support).
     if (args.exposure != 1.0 && (use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
         std::cerr << "Warning: --exposure has no effect under --bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "

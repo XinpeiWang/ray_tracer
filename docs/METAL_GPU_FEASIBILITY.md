@@ -8163,3 +8163,53 @@ regression sweep (0 failures), and regression spot-checks of the
 accumulated hand-authored scenes (all unaffected). `C7` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR. **Category C is now complete: 7 of 7 done.**
+
+## 148. Category I increment: I3 ExposureToneMapping - reuses C1's own world unchanged, plus a real new `--exposure` implementation for the Metal backend
+
+`I3` (ExposureToneMapping) is, per its own registry comment
+(`scene_registry_data.h`), literally the SAME world/lights/sky as `C1`
+(`build_hdri_sky_world`/`build_hdri_sky`, reused verbatim, not
+recreated) - a pure Render-Options exercise (raise/lower `--exposure`,
+compare `--tonemap` modes against a bright sky vs. a shadowed sphere's
+wide dynamic range), not a different scene. So `buildHandAuthoredScene()`
+just dispatches `"I3"` to the SAME `buildHdriSky()` C1 already added -
+zero new scene-construction code at all.
+
+**The real work this increment needed**: `--tonemap` already worked on
+this backend (`metal_interface.h`'s own comment on `options.tonemap`),
+but `--exposure` was a documented no-op - `metal_render_main()`'s own
+`RenderOptions& options` parameter never read `options.exposure`. Fixed
+with a new `MetalPocApp::exposureValue` field (default `1.0f`, a
+no-op, matching every scene/caller that never touches it), applied as
+a flat multiplier in `postProcessAndWrite()` right before the tonemap
+operator (`v = fmaxf(rgb[c], 0.0f) * vignette * exposureValue;`) -
+matching `RenderOptions::exposure`'s own documented semantics ("Flat
+multiplier on linear color, applied right before tone-mapping")
+exactly. **Deliberately set via a direct field poke in
+`metal_render_main()` (`app.exposureValue = (float)options.exposure;`),
+NOT a new slot in the positional `argv[]` array
+`parseArgsAndCreateDevice()` parses** - that 9-slot shape is shared
+with the standalone `metal_poc` CLI binary (`metal_poc_main.mm`),
+and inserting a new slot would shift every later index (`pbrtScenePath`
+at 7, `handAuthoredSceneId` at 8) for that separate entry point too;
+the same "poke a field `metal_render_main()` itself needs, argv
+doesn't carry" shape `force_camera_override`'s own
+`applyCameraOverride()` call already uses. `launcher/main.cpp`'s own
+stale comment ("--exposure only reaches cpu_render_main()/
+optix_render_main()") and `metal_interface.h`'s own "this POC doesn't
+implement exposure... yet" no-op list were both updated to match.
+
+**Verified** with 4 real render comparisons at 400x400/64spp: default
+settings matched `C1`'s own render exactly (unaffected baseline, as
+expected); `--exposure 0.3` rendered visibly darker; `--exposure 3.0`
+rendered visibly brighter/washed-out; `--tonemap reinhard` and
+`--tonemap none` both rendered with a visibly different highlight
+rolloff than the default `aces`. Re-rendering `C1` itself at default
+settings after the change confirmed it's pixel-for-pixel unaffected
+(exposure defaults to a true no-op). Full clean `RT_BUILD_METAL=ON`
+rebuild, ctest (4/4), the 55-scene pbrt-backed regression sweep (0
+failures), and regression spot-checks of the accumulated hand-authored
+scenes including `I1`/`I4` (the other two education scenes already
+GPU-supported, unaffected by the `launcher/main.cpp` comment-only
+change). `I3` added to `cpu_scene_metal_hand_authored_supported()`'s
+`kSupported` set in this same PR.
