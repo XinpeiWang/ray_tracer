@@ -1253,6 +1253,15 @@ struct MetalPocApp {
     // buildCornellFamilyScene()'s materialType 5 support. Section 128,
     // docs/METAL_GPU_FEASIBILITY.md.
     void buildCornellRoughGlass();
+    // B6: Cornell Thin Glass - NOT built via buildCornellFamilyScene():
+    // this scene has its own real shape (CPU's build_cornell_thin_glass(),
+    // scenes_materials.h) - the standard 5 walls (still
+    // cornell_box_data::kQuads[0..4], reused directly) and the same
+    // rotated white box, but a DIFFERENT ceiling light (smaller, off-
+    // centre) and an extra rotated vertical thin-glass PANEL (materialType
+    // 11) splitting the box - no sphere at all. Section 129, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildCornellThinGlass();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -2944,6 +2953,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B2") { buildCornellRoughMetal(); return true; }
     if (scene_id == "B4") { buildCornellConductor(); return true; }
     if (scene_id == "B3") { buildCornellRoughGlass(); return true; }
+    if (scene_id == "B6") { buildCornellThinGlass(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -4234,6 +4244,137 @@ void MetalPocApp::buildCornellRoughGlass() {
     buildCornellFamilyScene(
         /*box=*/0u, white, 0.0f, float3{1, 1, 1}, float3{0, 0, 0}, 1.0f,
         /*sphere=*/5u, float3{1, 1, 1}, sphereAlpha, float3{1, 1, 1}, float3{0, 0, 0}, /*ior=*/1.5f);
+}
+
+// B6: Cornell Thin Glass - matches CPU's own build_cornell_thin_glass()
+// exactly. NOT buildCornellFamilyScene() (see this method's own
+// declaration comment for why): the 5 walls are still
+// cornell_box_data::kQuads[0..4] (identical numbers to CPU's own hand-
+// listed ones here, confirmed directly, not assumed) and the box is
+// still kBox, but the ceiling light and the extra thin-glass panel are
+// this scene's own.
+void MetalPocApp::buildCornellThinGlass() {
+    using namespace cornell_box_data;
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // The 5 walls only (kQuads[5], the standard ceiling light, is
+    // skipped - this scene's own light is a different size/position).
+    for (int i = 0; i < 5; ++i) {
+        const QuadSpec& q = kQuads[i];
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        addQuad(verts, normals, uvs, materials, toWorld(Q), toWorld(Q + u),
+                toWorld(Q + u + v), toWorld(Q + v), color);
+    }
+
+    // This scene's own ceiling light - smaller, off-centre, brighter
+    // (15,15,15) than the standard kQuads[5] (7,7,7).
+    {
+        const float3 Q{213.0f, 554.0f, 227.0f}, u{130.0f, 0.0f, 0.0f}, v{0.0f, 0.0f, 105.0f};
+        const float3 a = toWorld(Q), b = toWorld(Q + u), c = toWorld(Q + u + v), d = toWorld(Q + v);
+        const float3 lightColor{15.0f, 15.0f, 15.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, lightColor,
+                /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // The rotated white box - identical to buildCornellBoxA1()'s own.
+    {
+        const float3 minC{(float)kBox.corner_min.x, (float)kBox.corner_min.y, (float)kBox.corner_min.z};
+        const float3 maxC{(float)kBox.corner_max.x, (float)kBox.corner_max.y, (float)kBox.corner_max.z};
+        const float3 dx{maxC.x - minC.x, 0.0f, 0.0f};
+        const float3 dy{0.0f, maxC.y - minC.y, 0.0f};
+        const float3 dz{0.0f, 0.0f, maxC.z - minC.z};
+        const float theta = (float)(kBox.rotate_y_degrees * M_PI / 180.0);
+        const float sinT = sinf(theta), cosT = cosf(theta);
+        const float3 boxTranslate{(float)kBox.translate.x, (float)kBox.translate.y, (float)kBox.translate.z};
+        auto rotateTranslate = [=](float3 p) -> float3 {
+            const float newX = cosT * p.x + sinT * p.z;
+            const float newZ = -sinT * p.x + cosT * p.z;
+            return float3{newX, p.y, newZ} + boxTranslate;
+        };
+        const float3 boxColor{(float)kBox.color.r, (float)kBox.color.g, (float)kBox.color.b};
+        struct Face { float3 Q, u, v; };
+        const Face faces[6] = {
+            {float3{minC.x, minC.y, maxC.z},  dx,  dy},
+            {float3{maxC.x, minC.y, maxC.z}, -dz,  dy},
+            {float3{maxC.x, minC.y, minC.z}, -dx,  dy},
+            {float3{minC.x, minC.y, minC.z},  dz,  dy},
+            {float3{minC.x, maxC.y, maxC.z},  dx, -dz},
+            {float3{minC.x, minC.y, minC.z},  dx,  dz},
+        };
+        for (const Face& f : faces) {
+            addQuad(verts, normals, uvs, materials,
+                    toWorld(rotateTranslate(f.Q)), toWorld(rotateTranslate(f.Q + f.u)),
+                    toWorld(rotateTranslate(f.Q + f.u + f.v)), toWorld(rotateTranslate(f.Q + f.v)),
+                    boxColor);
+        }
+    }
+
+    // The thin-glass panel (materialType 11, ior 1.5) - built centred at
+    // the local origin, rotated 62 degrees about Y (the SAME rotate_y
+    // forward-transform formula as the box above - hittable.h's own
+    // convention), then translated into place. Matches CPU's own
+    // panel_quad construction exactly, including the 62-degree tilt
+    // CPU's own comment explains is needed for the thin-film sheen to
+    // actually read at IOR 1.5 (near-zero Fresnel reflectance at normal
+    // incidence).
+    {
+        const float3 localQ{-177.5f, -277.5f, 0.0f}, localU{0.0f, 555.0f, 0.0f}, localV{355.0f, 0.0f, 0.0f};
+        const float theta = 62.0f * (float)M_PI / 180.0f;
+        const float sinT = sinf(theta), cosT = cosf(theta);
+        const float3 panelTranslate{277.5f, 277.5f, 200.0f};
+        auto rotateTranslate = [=](float3 p) -> float3 {
+            const float newX = cosT * p.x + sinT * p.z;
+            const float newZ = -sinT * p.x + cosT * p.z;
+            return float3{newX, p.y, newZ} + panelTranslate;
+        };
+        const float3 a = toWorld(rotateTranslate(localQ));
+        const float3 b = toWorld(rotateTranslate(localQ + localU));
+        const float3 c = toWorld(rotateTranslate(localQ + localU + localV));
+        const float3 d = toWorld(rotateTranslate(localQ + localV));
+        addQuad(verts, normals, uvs, materials, a, b, c, d, float3{1, 1, 1},
+                /*materialType=*/11u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness=*/0.0f, /*ior=*/1.5f);
+    }
+
+    // Camera - kCornellBoxCamera, same as every Cornell-family scene.
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
