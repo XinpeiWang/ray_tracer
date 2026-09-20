@@ -197,6 +197,28 @@ struct Uniforms {
     // same world-space-distance convention `pbrtLensRadius` already
     // uses) supplies.
     uint cameraOrthographic;
+    // Spherical (360-degree equirectangular panorama) camera - pbrt-v4's
+    // own SphericalCamera, D7/D8's own real port (section 152). 0
+    // (every earlier scene) keeps the existing ray generation exactly
+    // as before - purely additive, same shape as `cameraOrthographic`
+    // immediately above (mutually exclusive with it in practice, never
+    // both nonzero for the same scene). != 0 replaces the ENTIRE
+    // perspective/orthographic direction computation with pbrt-v4's own
+    // SphericalCamera::GenerateRay() formula (EquiRectangular mapping):
+    // `theta = pi*v, phi = 2*pi*u` (`u`/`v` the SAME `pixelNDC.x/y`
+    // already computed for every other mode, BEFORE the `screen.y =
+    // -screen.y` flip that only the perspective/orthographic modes
+    // need), `rayDir = -sin(theta)*cos(phi)*cameraRight +
+    // cos(theta)*cameraUp + sin(theta)*sin(phi)*cameraForward` - the
+    // leading MINUS on the `cameraRight` term is the SAME right-vector
+    // sign correction `cameraOrthographic`'s own comment explains (CPU's
+    // `cameras.h::make_look_at()` alt-camera path's `right` is the
+    // negation of this loader's own `cameraRight`, which always matches
+    // CPU's PRIMARY perspective camera instead). `cameraPos` is used
+    // directly as the ray origin (no lens/DOF, no screen-window offset -
+    // every pixel shares one origin, only the DIRECTION varies, the
+    // defining trait of a panoramic camera).
+    uint cameraSpherical;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -5149,6 +5171,26 @@ kernel void primaryRayKernel(
                         - screen.x * float3(uniforms.cameraRight)
                         + screen.y * float3(uniforms.cameraUp);
             rayDir = normalize(float3(uniforms.cameraForward));
+        } else if (uniforms.cameraSpherical != 0u) {
+            // Spherical (360-degree equirectangular panorama): mirrors
+            // pbrt-v4 SphericalCamera::GenerateRay()'s own EquiRectangular
+            // mapping exactly (Uniforms::cameraSpherical's own comment) -
+            // `u`/`v` are the SAME `pixelNDC.x/y` every other mode
+            // derives `screen` from, used directly here (raw [0,1],
+            // BEFORE the `*2-1`/y-flip/aspect/tanHalfFov transform those
+            // other modes need - this mode has no screen window or FOV
+            // at all, it captures the full sphere around one point).
+            float theta = M_PI_F * pixelNDC.y;
+            float phi = 2.0 * M_PI_F * pixelNDC.x;
+            float sinTheta = sin(theta), cosTheta = cos(theta);
+            rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
+            // Leading MINUS on the `cameraRight` term - the SAME sign
+            // correction `cameraOrthographic`'s own branch above needs,
+            // for the identical reason (CPU's alt-camera path's own
+            // `right` is this loader's `cameraRight` negated).
+            rayDir = normalize(-sinTheta * cos(phi) * float3(uniforms.cameraRight)
+                                + cosTheta * float3(uniforms.cameraUp)
+                                + sinTheta * sin(phi) * float3(uniforms.cameraForward));
         } else {
             rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
             rayDir = normalize(float3(uniforms.cameraForward)

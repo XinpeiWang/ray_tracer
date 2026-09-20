@@ -174,6 +174,10 @@ struct Uniforms {
     // Orthographic camera toggle - see metal_poc.metal's own mirrored
     // Uniforms::cameraOrthographic comment for the full mechanism.
     uint32_t cameraOrthographic = 0;
+    // Spherical (equirectangular panorama) camera toggle - see
+    // metal_poc.metal's own mirrored Uniforms::cameraSpherical comment
+    // for the full mechanism.
+    uint32_t cameraSpherical = 0;
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -968,6 +972,17 @@ struct MetalPocApp {
     // earlier hand-authored scene's own perspective-camera behaviour
     // exactly.
     bool havePbrtOrthographic = false;
+    // Spherical (360-degree equirectangular panorama) camera for a
+    // hand-authored scene (D7, section 152) - mirrors
+    // havePbrtOrthographic's own shape immediately above. No extra
+    // world-space parameter needed (unlike orthographic's own
+    // pbrtTanHalfFov reuse) - a panoramic camera has no screen window
+    // or FOV at all, only a position and orientation, both already
+    // carried by pbrtCameraPos/Forward/Right/Up. See
+    // Uniforms::cameraSpherical's own comment (metal_poc.metal) for the
+    // full ray-generation mechanism. Default false preserves every
+    // earlier hand-authored scene's own behaviour exactly.
+    bool havePbrtSpherical = false;
     float3 pbrtBboxCenter{0, 0, 0};
     float pbrtSceneScale = 1.0f;
     float3 pbrtSceneOffset{0, 0, 0};
@@ -1409,6 +1424,16 @@ struct MetalPocApp {
     // internally inconsistent with its own primary one). Section 151,
     // docs/METAL_GPU_FEASIBILITY.md.
     void buildOrthoCameraScene();
+    // D7: Spherical Camera Cornell Box - the EXACT SAME A1 Cornell box
+    // geometry (same as D5/D6/D8), viewed from the box's OWN CENTER as
+    // a real 360-degree equirectangular panorama (pbrt-v4
+    // SphericalCamera) instead of a windowed perspective/orthographic
+    // view - this loader's SECOND new camera projection mode
+    // (havePbrtSpherical/Uniforms::cameraSpherical), a genuinely
+    // different (non-linear, direction-only) ray-generation formula
+    // than D6's own simple origin-offset one. Section 152, docs/
+    // METAL_GPU_FEASIBILITY.md.
+    void buildSphericalCornellBox();
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -3228,6 +3253,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D1") { buildDepthOfField(); return true; }
     if (scene_id == "D6") { buildOrthoCornellBox(); return true; }
     if (scene_id == "D2") { buildOrthoCameraScene(); return true; }
+    if (scene_id == "D7") { buildSphericalCornellBox(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -5552,6 +5578,60 @@ void MetalPocApp::buildOrthoCameraScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
+// D7: Spherical Camera Cornell Box - the EXACT SAME A1 Cornell box
+// geometry, viewed from the box's own CENTER (278,278,278 in raw
+// pbrt-file units) as a real 360-degree equirectangular panorama.
+// CPU's own alt-camera lambda avoids a degenerate cross(up,forward) by
+// using a FIXED +Z world-forward reference (lookat = lookfrom + (0,0,1))
+// instead of feeding the scene's own registry lookat through
+// make_look_at() directly - ported the same way: forward is the
+// constant (0,0,1), unaffected by toWorld()'s own recentre/offset
+// (only a DIRECTION between two points, and toWorld() is a uniform
+// scale + translate, so direction is preserved exactly).
+void MetalPocApp::buildSphericalCornellBox() {
+    buildCornellBoxA1();
+    // A1's own outside-looking-in camera never sees past the box's own
+    // open front, so buildCornellBoxA1() never needed to set an
+    // explicit background - this loader's own default two-colour sky
+    // gradient fallback was invisible. This panorama camera, viewed
+    // from the box's own CENTER, DOES look straight out through that
+    // open front - CPU's own reference (no infinite light set for this
+    // scene at all) renders that direction as true BLACK (a miss ray
+    // with no light source contributes zero radiance), not this
+    // loader's own default sky gradient. A real difference found via
+    // direct comparison (the open-front direction rendered as a pale
+    // gradient here, solid black in --cpu) - fixed by forcing a true
+    // black constant "environment" explicitly, the same
+    // havePbrtConstantEnvLight/pbrtEnvColor={0,0,0} pattern several
+    // earlier standalone (non-Cornell-family-background) scenes already
+    // use for an intentionally black backdrop.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.0f, 0.0f, 0.0f};
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 forward{0.0f, 0.0f, 1.0f};
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    havePbrtCamera = true;
+    havePbrtSpherical = true;
+    pbrtCameraLookAtWorld = lookfrom + forward;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+}
+
 // E1: Homogeneous Medium - matches CPU's own build_homogeneous_medium_scene()
 // in GEOMETRY exactly: the standard 6 Cornell walls (kQuads[0..5],
 // including the SAME light quad - CPU's own scene reuses these exact
@@ -7147,6 +7227,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         // pbrtTanHalfFov (already copied to uniforms.tanHalfFov above)
         // as the orthographic screen window's own half-extent.
         uniforms.cameraOrthographic = havePbrtOrthographic ? 1u : 0u;
+        // See MetalPocApp::havePbrtSpherical's own comment.
+        uniforms.cameraSpherical = havePbrtSpherical ? 1u : 0u;
         uniforms.cameraVelocity = PackedFloat3{0, 0, 0};   // no motion blur
         if (havePbrtMedium) {
             uniforms.fogSigmaT = pbrtFogSigmaT;

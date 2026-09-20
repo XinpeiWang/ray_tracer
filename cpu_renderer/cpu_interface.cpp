@@ -988,6 +988,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"D1",                          // Depth of Field - open row-of-spheres scene, reuses D5's own lens mechanism (section 149)
 		"D6",                          // Orthographic Camera Cornell Box - first orthographic-camera port (section 150)
 		"D2",                          // Orthographic Camera - open column-of-spheres scene (section 151)
+		"D7",                          // Spherical Camera Cornell Box - first equirectangular-panorama port (section 152)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
