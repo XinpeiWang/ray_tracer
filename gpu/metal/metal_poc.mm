@@ -1451,6 +1451,15 @@ struct MetalPocApp {
     // type - see that helper's own declaration comment for the full
     // rationale. Section 154, docs/METAL_GPU_FEASIBILITY.md.
     void buildBilinearPatchScene();
+    // F4: Curve Fibers - 70 windswept, tapered Bezier hair strands in a
+    // Fibonacci-disk root arrangement, matching build_curve_fibers_scene()'s
+    // own deterministic (non-RNG) placement exactly. Ported as
+    // tessellated tapered tubes (`addTaperedTube()`) - matches this
+    // scene's OWN registry description exactly ("GPU renders... tubes
+    // of bilinear patches... rather than an exact curve intersection"),
+    // the same documented simplification F1 already used. Section 155,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildCurveFibersScene();
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -3273,6 +3282,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D7") { buildSphericalCornellBox(); return true; }
     if (scene_id == "D3") { buildSphericalCameraScene(); return true; }
     if (scene_id == "F1") { buildBilinearPatchScene(); return true; }
+    if (scene_id == "F4") { buildCurveFibersScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -3654,6 +3664,101 @@ static void addBilinearPatch(std::vector<PackedFloat3>& verts,
             uvs.push_back(PackedFloat2{u0, v1});
             materials.push_back(mat);
         }
+    }
+}
+
+// Tessellates a single tapered cubic-Bezier tube (F4's own genuinely
+// new geometry primitive, pbrt-v4's own CurveShape<Cylinder>, a real
+// ray-curve intersection on CPU) into a triangulated "tube of quad
+// rings" - matches this scene's OWN registry description exactly
+// ("GPU renders the same 70 strands tessellated into tapered tubes of
+// bilinear patches (matches pbrt-v4's own GPU curve strategy) rather
+// than an exact curve intersection"), the SAME documented simplification
+// F1's own addBilinearPatch() already established for a different
+// smooth-but-not-exactly-triangle shape (section 154) - reusing the
+// already-proven triangle path instead of a new custom-intersection-
+// function primitive. `lengthSegments` rings of `radialSegments`
+// points each are swept along the curve; each ring's own local frame
+// is built by GRAM-SCHMIDT re-orthogonalizing the PREVIOUS ring's own
+// right/up vectors against the new tangent (not an independent
+// per-ring basis, which would twist/flip randomly ring to ring for a
+// thin tube) - a simple, adequate rotation-minimizing-frame
+// approximation for a gently-curving strand (not a tightly coiled
+// spring, where a more careful RMF would matter). Per-vertex normals
+// are the tube's own outward RADIAL direction in each ring's local
+// frame (correct for a swept-circle tube, ignoring the curve's own
+// typically-negligible curvature-induced normal skew) - smoothly
+// interpolated the same way F1's own bilinear-patch normals already
+// are. End caps are skipped entirely (the root sits at/below the
+// ground plane, invisible; the tip tapers to a near-zero radius,
+// visually negligible) - matches this loader's own established
+// "skip what a control render shows is imperceptible" discipline.
+static void addTaperedTube(std::vector<PackedFloat3>& verts,
+                            std::vector<PackedFloat3>& normals,
+                            std::vector<PackedFloat2>& uvs,
+                            std::vector<TriangleMaterial>& materials,
+                            const float3 cp[4], float width0, float width1,
+                            float3 color, int lengthSegments = 14, int radialSegments = 8) {
+    auto evalBezier = [&](float t) -> float3 {
+        const float mt = 1.0f - t;
+        return mt * mt * mt * cp[0] + 3.0f * mt * mt * t * cp[1]
+             + 3.0f * mt * t * t * cp[2] + t * t * t * cp[3];
+    };
+    auto evalTangent = [&](float t) -> float3 {
+        const float mt = 1.0f - t;
+        const float3 d = 3.0f * mt * mt * (cp[1] - cp[0]) + 6.0f * mt * t * (cp[2] - cp[1])
+                        + 3.0f * t * t * (cp[3] - cp[2]);
+        return simd::normalize(d);
+    };
+
+    TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/0u,
+        1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, 0.0f};
+
+    // Ring 0's own initial frame: an arbitrary reference vector not
+    // parallel to the tangent (world up, unless the strand starts out
+    // near-vertical, in which case +X instead).
+    const float3 tangent0 = evalTangent(0.0f);
+    const float3 ref0 = (fabsf(tangent0.y) < 0.99f) ? float3{0, 1, 0} : float3{1, 0, 0};
+    float3 right = simd::normalize(simd::cross(tangent0, ref0));
+    float3 up = simd::cross(right, tangent0);
+
+    std::vector<float3> prevRing(radialSegments), prevNormals(radialSegments);
+    std::vector<float3> curRing(radialSegments), curNormals(radialSegments);
+    for (int seg = 0; seg <= lengthSegments; ++seg) {
+        const float t = (float)seg / (float)lengthSegments;
+        const float3 center = evalBezier(t);
+        const float3 tangent = evalTangent(t);
+        if (seg > 0) {
+            // Gram-Schmidt re-orthogonalize the running frame against
+            // the new tangent - keeps the ring from twisting.
+            right = simd::normalize(right - tangent * simd::dot(right, tangent));
+            up = simd::cross(tangent, right);
+        }
+        const float radius = 0.5f * ((1.0f - t) * width0 + t * width1);
+        for (int k = 0; k < radialSegments; ++k) {
+            const float theta = 2.0f * (float)M_PI * (float)k / (float)radialSegments;
+            const float3 radial = cosf(theta) * right + sinf(theta) * up;
+            curRing[k] = center + radius * radial;
+            curNormals[k] = radial;
+        }
+        if (seg > 0) {
+            for (int k = 0; k < radialSegments; ++k) {
+                const int k1 = (k + 1) % radialSegments;
+                auto pushV = [&](float3 p) { verts.push_back(PackedFloat3{p.x, p.y, p.z}); };
+                auto pushN = [&](float3 n) { normals.push_back(PackedFloat3{n.x, n.y, n.z}); };
+                pushV(prevRing[k]); pushV(curRing[k]); pushV(curRing[k1]);
+                pushN(prevNormals[k]); pushN(curNormals[k]); pushN(curNormals[k1]);
+                uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{1, 1});
+                materials.push_back(mat);
+
+                pushV(prevRing[k]); pushV(curRing[k1]); pushV(prevRing[k1]);
+                pushN(prevNormals[k]); pushN(curNormals[k1]); pushN(prevNormals[k1]);
+                uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 1}); uvs.push_back(PackedFloat2{0, 1});
+                materials.push_back(mat);
+            }
+        }
+        prevRing = curRing;
+        prevNormals = curNormals;
     }
 }
 
@@ -5877,6 +5982,113 @@ void MetalPocApp::buildBilinearPatchScene() {
     pbrtCameraUpRaw = up;
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+}
+
+// F4: Curve Fibers - matches build_curve_fibers_scene() exactly: a
+// checker ground + 70 windswept, tapered Bezier hair strands rooted in
+// a Fibonacci-disk arrangement, lit by an overhead area light. CPU's
+// own root placement is fully DETERMINISTIC (a seeded hash, not the
+// engine's own RNG) - `hash01()` below is a direct, bit-for-bit port
+// of that same formula, so this loader's own strand roots land in
+// EXACTLY the same positions as CPU's, not just a visually-similar
+// random field (unlike D1's own small accent spheres, which really are
+// unseeded on the CPU side and don't need this).
+void MetalPocApp::buildCurveFibersScene() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground: flat checker quad (materialType 16), not CPU's own
+    // radius-1000 ground SPHERE - the established overlap-avoidance
+    // substitution.
+    {
+        const float3 darkA{0.15f, 0.15f, 0.15f}, lightB{0.85f, 0.85f, 0.85f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-30, 0, -30} + sceneOffset, float3{30, 0, -30} + sceneOffset,
+                float3{30, 0, 30} + sceneOffset, float3{-30, 0, 30} + sceneOffset,
+                darkA, /*materialType=*/16u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness(cell size)=*/0.8f, /*ior=*/1.0f, lightB);
+    }
+
+    // Deterministic per-strand pseudo-random in [0,1) - CPU's own
+    // hash01() lambda, ported bit-for-bit (same unsigned-int constants
+    // and operation order) so strand height/lean lands identically.
+    auto hash01 = [](int i, int salt) -> float {
+        uint32_t h = (uint32_t)i * 374761393u + (uint32_t)salt * 668265263u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        h ^= (h >> 16);
+        return (float)(h & 0xFFFFFFu) / (float)0xFFFFFFu;
+    };
+
+    const float3 palette[5] = {
+        {0.25f, 0.14f, 0.06f}, {0.80f, 0.65f, 0.35f}, {0.45f, 0.13f, 0.05f},
+        {0.75f, 0.75f, 0.78f}, {0.03f, 0.03f, 0.03f},
+    };
+
+    const int strandCount = 70;
+    const float diskRadius = 1.4f;
+    const float goldenAngle = 2.399963229728653f;
+
+    for (int i = 0; i < strandCount; ++i) {
+        const float frac = ((float)i + 0.5f) / (float)strandCount;
+        const float r = diskRadius * sqrtf(frac);
+        const float angle = (float)i * goldenAngle;
+        const float bx = r * cosf(angle), bz = r * sinf(angle);
+
+        const float height = 0.9f + 0.5f * hash01(i, 1);
+        const float lean = height * (0.35f + 0.35f * hash01(i, 2));
+
+        float3 cp[4] = {
+            float3{bx, 0.0f, bz} + sceneOffset,
+            float3{bx + 0.15f * lean, height * 0.33f, bz} + sceneOffset,
+            float3{bx + 0.55f * lean, height * 0.70f, bz} + sceneOffset,
+            float3{bx + lean, height, bz} + sceneOffset,
+        };
+        addTaperedTube(verts, normals, uvs, materials, cp, 0.045f, 0.006f, palette[i % 5]);
+    }
+
+    // Overhead area light - quad(-2.5,4.0,-2.5), 5x5, diffuse_light(6,6,6).
+    {
+        const float3 a = float3{-2.5f, 4.0f, -2.5f} + sceneOffset;
+        const float3 edgeU{5.0f, 0.0f, 0.0f};
+        const float3 edgeV{0.0f, 0.0f, 5.0f};
+        const float3 lightColor{6.0f, 6.0f, 6.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, a + edgeU, a + edgeU + edgeV, a + edgeV,
+                lightColor, /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area,
+            PackedFloat3{lightColor.x, lightColor.y, lightColor.z}});
+    }
+
+    // Background - kCurveFibersCamera's own (0.04,0.045,0.06), a near-
+    // black dark ambient.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.04f, 0.045f, 0.06f};
+
+    // Camera: fov=38, lookfrom=(0,2.0,6.5), lookat=(0,0.7,0).
+    const float3 lookfrom = float3{0.0f, 2.0f, 6.5f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.7f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 38.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
     pbrtSceneOffset = sceneOffset;
 }
 

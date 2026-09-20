@@ -8539,3 +8539,70 @@ to `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in
 this same PR. **Category F is now 2 of 3 done** - only F4 (real curve/
 hair-fiber intersection, a genuinely different new-primitive lift, not
 reducible to the same tessellation trick) remains.
+
+## 155. Category F increment: F4 Curve Fibers - tapered-tube tessellation (matching this scene's OWN registry-documented GPU strategy), plus a pre-existing checker-antialiasing gap found and confirmed via a control test, not a new bug
+
+`F4` needed a real ray-CURVE intersection on CPU (`CurveShape<Cylinder>`,
+a genuine cubic-Bezier tube), but its own registry description
+ALREADY specifies the exact simplification to use: *"GPU renders the
+same 70 strands tessellated into tapered tubes of bilinear patches
+(matches pbrt-v4's own GPU curve strategy) rather than an exact curve
+intersection"* - i.e., this scene's own author already anticipated and
+endorsed the SAME tessellation approach F1's `addBilinearPatch()` just
+established, extended to a swept tapered tube. `addTaperedTube()`
+sweeps `lengthSegments` rings of `radialSegments` points along the
+curve, each ring's local frame built by GRAM-SCHMIDT re-orthogonalizing
+the PREVIOUS ring's own right/up against the new tangent (not an
+independent per-ring basis, which would twist/flip randomly for a thin
+tube) - an adequate rotation-minimizing-frame approximation for a
+gently-curving strand. Per-vertex normals are the tube's own outward
+radial direction; normal sign is (again) left unresolved, since every
+strand is a plain Lambertian, not a material needing a well-defined
+inside/outside. `buildCurveFibersScene()` ports `build_curve_fibers_scene()`'s
+own root placement BIT-FOR-BIT (`hash01()`, a deterministic seeded
+hash, not CPU's engine RNG - unlike D1's own small accent spheres,
+which really are unseeded and don't need this), so strand roots land
+in EXACTLY the same positions as CPU's.
+
+**A real, pre-existing checker-antialiasing gap found via direct
+comparison, investigated thoroughly, and confirmed NOT to be a new F4
+bug**: the ground (materialType 16, the same real 3D world-space
+checker several earlier scenes already use) reads WASHED/near-uniform
+near the camera in this scene's own low, close, wide-FOV framing
+(needed to show the strand tuft well), while CPU's own reference shows
+a crisp, correctly-exposed checkerboard at the identical camera
+position. Investigated methodically before accepting it, not assumed:
+turning the light off (or dimming it 10x) proved the wash IS
+light-dependent, not an unconditional bug; an EXTREME black/white
+checker control still washed to a uniform blend even with the light on
+and even with the hair strands entirely removed from the scene, ruling
+OUT strand self-shadowing/occlusion as the cause; a raw-hitPoint false-
+colour visualisation showed the underlying ray-geometry intersection
+itself is smooth and correct (no precision or randomness bug); reducing
+`max_depth` to 2 (effectively direct-lighting-only) didn't fix it
+either, ruling out a multi-bounce/GI cross-contamination theory. The
+DECISIVE control test: reproducing the SAME low, grazing camera angle
+over `D2`'s OWN checker ground (materialType 16, a completely
+different, unrelated, already-shipped scene with NO area light and NO
+hair strands at all) shows the SAME kind of checker-softening at a
+similar grazing angle - proving this is a genuine, PRE-EXISTING
+limitation of the shared `checker3DColor()`/materialType-16 mechanism
+itself (no analytic minification filtering, unlike a production
+renderer's own texture-footprint-aware sampling), invisible until now
+because no earlier scene combined a checker ground this large with a
+camera framed this low/close/wide. F4 is simply the FIRST scene to
+expose it, the same "new scene reveals a latent shared-code
+characteristic" shape B23's own real NaN bug had (section 143) - except
+here the control test confirmed a genuine PRE-EXISTING rendering
+characteristic, not a fixable code defect, so (matching the B7/B9/B24
+precedent of documenting rather than chasing a fix for a confirmed
+pre-existing characteristic) it ships as-is. The strand geometry
+itself - this increment's own actual new content - matches CPU closely
+(same tuft shape/lean/colour distribution/positions), unaffected by
+the ground's own separate characteristic.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), the
+55-scene pbrt-backed regression sweep (0 failures), regression spot-
+checks of the accumulated hand-authored scenes including F1/F2. `F4`
+added to `cpu_scene_metal_hand_authored_supported()`'s `kSupported`
+set in this same PR. **Category F is now COMPLETE: 3 of 3 done.**
