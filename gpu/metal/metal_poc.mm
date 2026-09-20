@@ -2974,6 +2974,21 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B6") { buildCornellThinGlass(); return true; }
     if (scene_id == "B1") { buildRoughMetalSpheres(); return true; }
     if (scene_id == "B8") { buildCornellWaxSlab(); return true; }
+    // Category I (Education) - several entries deliberately reuse ANOTHER
+    // scene's own geometry verbatim under a different id/description,
+    // pointing at a render-OPTION (sampler/integrator/exposure/light-
+    // sampler/firefly-suppression) rather than new geometry at all (see
+    // each one's own registry comment, scene_registry_data.h) - the
+    // render-option toggle itself is a GUI/CPU-integrator concern, out of
+    // scope here (Metal only ever runs its own fixed path tracer
+    // regardless of scene_id), but the underlying SCENE is one this
+    // backend already builds, so there's no reason not to claim it too.
+    // I1/I4/I6/I7/I9 all use build_cornell_box (identical to A1); I5/I10
+    // both use build_cornell_rough_glass (identical to B3). Section 132,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    if (scene_id == "I1" || scene_id == "I4" || scene_id == "I6" ||
+        scene_id == "I7" || scene_id == "I9") { buildCornellBoxA1(); return true; }
+    if (scene_id == "I5" || scene_id == "I10") { buildCornellRoughGlass(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",

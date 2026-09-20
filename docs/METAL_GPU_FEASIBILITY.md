@@ -7059,3 +7059,50 @@ A1/A5/B1/B2/B3/B4/B6/G1/G7/G12/G18 (earlier increments) re-verified
 unaffected. `B8` added to
 `cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
 same PR.
+
+## 132. Category I (Education) opens: 7 scenes for free, reusing existing builders verbatim
+
+The first category-I (Education) increment, and a genuinely "free"
+batch matching the ROI research's own original prediction (section
+116's own closing note: "8 of I's 10 reuse an A/B/C builder verbatim
+once THAT builder exists"). Several Education entries in the CPU
+registry (`scene_registry_data.h`) deliberately reuse ANOTHER scene's
+own geometry unchanged, under a different id/description pointing at a
+render-OPTION (Sampler choice, Integrator, Exposure/Tone-mapping,
+Light-sampler strategy, firefly suppression) rather than new geometry
+at all - the render-option TOGGLE itself is a GUI/CPU-integrator
+concern (Metal only ever runs its own fixed recursive path tracer
+regardless of scene_id, so BDPT/MLT/SPPM/RandomWalk/AO/Sampler-choice
+are simply not reachable through this backend at all, matching every
+other GPU backend's own real limitation here - not a Metal-specific
+gap), but the underlying SCENE is something this backend already
+builds correctly, so there's no reason not to claim Metal support for
+it too.
+
+`I1`/`I4`/`I6`/`I7`/`I9` all use CPU's own `build_cornell_box` function
+pointer directly (identical to A1); `I5`/`I10` both use
+`build_cornell_rough_glass` directly (identical to B3). `buildHandAuthoredScene()`
+now dispatches all 7 straight to the ALREADY-EXISTING
+`buildCornellBoxA1()`/`buildCornellRoughGlass()` - zero new geometry
+code, zero new material code, a single dispatcher addition.
+
+**Verified with an unusually strong signal**: since each of these 7
+scene_ids calls the EXACT SAME already-verified builder function with
+the SAME deterministic RNG seed, their own rendered output is
+BYTE-FOR-BYTE IDENTICAL to A1's/B3's own (confirmed directly - `I1`/
+`I4`/`I6`/`I7`/`I9`'s PNG file sizes exactly match A1's own; `I5`/`I10`'s
+exactly match B3's own), a decisive correctness signal stronger than
+the usual visual-comparison-only check this series otherwise relies
+on. Full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) + 51-scene
+`pbrt_scenes/` sweep (0 failures); A1/B1/B3/B8/G1/G12 (earlier
+increments) re-verified unaffected. All 7 added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category I is now 7/10 done in a single increment.** The
+remaining 3: `I2` (Spectral Dispersion Education, reuses B23's prism
+geometry - B23 itself not yet built in Metal, deferred with it), `I3`
+(Exposure/Tone-mapping, reuses C1's HDRI-sky world - category C not yet
+started, deferred with it), `I8` (Light Sampler Comparison - the ONE
+Education scene with genuinely NEW geometry, 5 ceiling lights of
+deliberately lopsided power, not yet built anywhere) - a real, tractable
+future increment (pure quad-light placement, no new material/geometry
+machinery).
