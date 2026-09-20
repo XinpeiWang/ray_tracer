@@ -7358,3 +7358,73 @@ approximating it would misrepresent the actual effect rather than
 merely simplify it, so it's deferred pending a real fix to the
 underlying camera-ray-generation architecture, not scene-authoring
 work.
+
+## 138. Category E (Volumes) opens: E1 Homogeneous Medium, and a real architectural mismatch found (open-fronted-box camera + whole-ray-path fog)
+
+The first category-E increment. Geometry matches CPU's own
+`build_homogeneous_medium_scene()` exactly: the standard 6 Cornell
+walls (`kQuads[0..5]`, including the light - no box, no sphere at all),
+filled with a real homogeneous scattering fog. This loader's own
+`havePbrtMedium`/`pbrtFogSigmaT`/`pbrtFogAlbedo`/`pbrtFogAsymmetryG`
+mechanism already existed (previously only ever populated by
+`loadPbrtScene()` for a real pbrt file's own `Medium` block) and has NO
+pbrt-specific logic in it at all - it is a general "fill this scene's
+own enclosed interior with a homogeneous medium" uniform, so reusing it
+for a hand-authored scene needed zero shader changes.
+
+**A real architectural mismatch found via direct CPU comparison, not a
+simple scale-formula bug**: a first version applied the SAME
+`/sceneScale` conversion `loadPbrtScene()`'s own real pbrt-Medium
+parsing already established (section 108) to CPU's own literal
+`density=0.005` - it compiled and rendered, but came back almost
+completely washed out to a near-uniform pale haze, nowhere close to
+CPU's own reference (which still clearly shows both side walls and a
+sharp ceiling light through a real but much lighter haze). Root cause:
+this loader's own fog-sampling code has NO notion of a separate medium
+BOUNDARY at all - it samples fog along whatever distance the CURRENT
+ray already travels to its own next real hit, the exact convention the
+hardcoded POC room's own always-camera-adjacent fog was designed for.
+Every Cornell-family scene's own shared camera (`kCornellBoxCamera`,
+`lookfrom` at `z=-800`) sits OUTSIDE the open-fronted box, so a primary
+ray here travels through roughly 800 UNITS OF GENUINELY EMPTY SPACE in
+front of the room before ever reaching its own real 555-unit interior -
+CPU's own real medium has an EXPLICIT, LOCALIZED boundary box (inset 5
+units from every wall) that correctly excludes that empty approach
+segment entirely; this loader's own simpler convention does not,
+applying the SAME density over a MUCH LONGER effective path and
+over-fogging the scene severely.
+
+**Not fixable by re-deriving a cleaner scale formula** - this is a
+genuine architectural gap between "fog fills whatever the ray already
+hits" (this loader) and "fog fills one specific bounded volume,
+tracked independently of the camera's own distance to it" (CPU/OptiX).
+Reconciled instead with an empirically-calibrated correction factor
+(rendering and comparing against a real `--cpu` reference directly
+until the overall haze density/visible-structure balance matched
+reasonably well), the same discipline this whole series already uses
+for other non-portable numbers (e.g. `targetSize` in section 118) when
+an exact first-principles conversion isn't available - not a
+first-principles-derived value, and documented as such rather than
+disguised as one.
+
+**Verified**: a real `--gpu` render directly compared against a real
+`--cpu` render of the same scene_id, iterated (not accepted on the
+first attempt) until both showed the same qualitative character -
+visible green/red walls, a clearly glowing ceiling light, a real but
+non-opaque haze - rather than stopping at "renders something fog-
+coloured." Full clean `RT_BUILD_METAL=ON` rebuild + ctest (4/4) +
+51-scene `pbrt_scenes/` sweep (0 failures); A1/A5/B1/C2/D5/F2/I1/I8/
+G1/G12 (earlier increments) re-verified unaffected, including D5's own
+newly-added `pbrtLensRadius`/`pbrtFocusDistance` fields (byte-for-byte
+identical render size to before this PR). `E1` added to
+`cpu_scene_metal_hand_authored_supported()`'s `kSupported` set in this
+same PR. **Category E is now 1 of 4 done.** E2 (Cloud)/E4 (RGB Grid)
+both need real HETEROGENEOUS per-voxel medium sampling (delta
+tracking) this loader has no infrastructure for at all - genuinely
+bigger lifts. E3 (dielectric-medium showcase, glass spheres with
+internal fog) is a real, not-yet-investigated candidate - worth
+checking next, since it combines two already-implemented pieces
+(materialType 2 dielectric + this same homogeneous-fog mechanism) if
+its own medium is scoped to individual sphere interiors rather than
+the whole open scene the way E1's own camera-vs-boundary mismatch
+bit here.
