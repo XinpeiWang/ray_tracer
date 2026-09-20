@@ -1347,6 +1347,18 @@ struct MetalPocApp {
     // fields, see their own declaration comment). Section 137, docs/
     // METAL_GPU_FEASIBILITY.md.
     void buildDepthOfFieldCornellBox();
+    // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
+    // of kQuads[0..5] including the light - CPU's own scene reuses the
+    // exact same light quad, no box/sphere at all) filled with a real
+    // homogeneous scattering fog, reusing the ALREADY-EXISTING
+    // pbrtFogSigmaT/pbrtFogAlbedo/pbrtFogAsymmetryG + havePbrtMedium
+    // mechanism (previously only ever set by loadPbrtScene() for a real
+    // pbrt file's own Medium block) directly from hand-authored C++
+    // instead - that mechanism itself has no pbrt-specific logic at all,
+    // it is a general "fill this scene's own enclosed interior with a
+    // homogeneous medium" uniform, so reusing it needed no shader
+    // changes. Section 138, docs/METAL_GPU_FEASIBILITY.md.
+    void buildHomogeneousMediumScene();
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this
@@ -3064,6 +3076,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "C6") { buildProjectionLightCornell(); return true; }
     if (scene_id == "F2") { buildTriangleMeshScene(); return true; }
     if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
+    if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
@@ -5097,6 +5110,114 @@ void MetalPocApp::buildDepthOfFieldCornellBox() {
     const float lensRadiusRaw = focusDistRaw * tanf(defocusAngleDeg * 0.5f * (float)M_PI / 180.0f);
     pbrtLensRadius = lensRadiusRaw * sceneScale;
     pbrtFocusDistance = focusDistRaw * sceneScale;
+}
+
+// E1: Homogeneous Medium - matches CPU's own build_homogeneous_medium_scene()
+// in GEOMETRY exactly: the standard 6 Cornell walls (kQuads[0..5],
+// including the SAME light quad - CPU's own scene reuses these exact
+// literal numbers), no box, no sphere, filled with a real homogeneous
+// scattering fog. The fog DENSITY itself needed real empirical
+// recalibration, not just CPU's own literal sigma_t - see
+// pbrtFogSigmaT's own assignment below for the full explanation (a
+// genuine architectural mismatch between this loader's own "fog fills
+// whatever the ray already hits" convention and CPU's own explicit,
+// localized medium-boundary volume, not a simple scale-formula bug).
+void MetalPocApp::buildHomogeneousMediumScene() {
+    using namespace cornell_box_data;
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // All 6 walls, including the light this time (unlike
+    // buildCornellNoLightWalls()'s own 5-only loop).
+    for (const QuadSpec& q : kQuads) {
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 a = toWorld(Q), b = toWorld(Q + u), c = toWorld(Q + u + v), d = toWorld(Q + v);
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        if (q.is_light) {
+            const int32_t lightId = (int32_t)lights.size();
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color,
+                    /*materialType=*/0u, /*emission=*/color, lightId);
+            const float3 edgeU = b - a, edgeV = d - a;
+            const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+            const float area = simd::length(simd::cross(edgeU, edgeV));
+            const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+            lights.push_back(AreaLightData{
+                PackedFloat3{center.x, center.y, center.z},
+                PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+                PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+                PackedFloat3{normalV.x, normalV.y, normalV.z},
+                area, PackedFloat3{color.x, color.y, color.z},
+                /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+        } else {
+            addQuad(verts, normals, uvs, materials, a, b, c, d, color);
+        }
+    }
+
+    // Real homogeneous fog - CPU's own constant_medium(boundary,
+    // density=0.005, albedo=(0.8,0.9,1.0), g=0.3): `density` IS sigma_t
+    // directly (constant_medium.h's own comment: "density is sigma_t...
+    // we treat density as sigma_s only... albedo = albedo param" - the
+    // passed colour is already a flat scattering albedo, not a per-
+    // channel sigma_s needing back-division the way loadPbrtScene()'s
+    // own real pbrt Medium parsing needs). sigma_t needs the SAME
+    // `/sceneScale` compensation loadPbrtScene() already established
+    // (section 108's own fix) - a real-world extinction coefficient
+    // over a shorter simulated distance needs scaling UP to keep the
+    // same physical optical depth.
+    havePbrtMedium = true;
+    // A real architectural mismatch found and worked around, not a
+    // simple scale bug: this loader's own fog-sampling code has no
+    // notion of a separate medium BOUNDARY at all - it samples along
+    // whatever distance the CURRENT ray already travels to its next
+    // real hit, unconditionally, the same convention the hardcoded POC
+    // room's own always-camera-adjacent fog was designed for. CPU's own
+    // Cornell-family camera (kCornellBoxCamera, lookfrom z=-800) sits
+    // OUTSIDE the open-fronted box, so a primary ray here travels
+    // through ~800 units of genuinely empty space in front of the room
+    // before ever reaching its own real 555-unit interior - CPU's own
+    // real medium has an EXPLICIT, LOCALIZED boundary box (inset 5
+    // units from each wall) that correctly excludes that empty
+    // approach segment; this loader's own "fog fills whatever the ray
+    // hits" convention does not, so the straightforward `/sceneScale`
+    // conversion (correct for the pbrt-loaded-scene case this formula
+    // was originally derived for, section 108) applies the SAME
+    // density over a MUCH LONGER effective path here, over-fogging the
+    // room to near-total whiteout with a first, literal port. A
+    // genuine architectural gap, not fixable by re-deriving a cleaner
+    // formula - reconciled instead by an empirically-calibrated
+    // correction factor (found by rendering and comparing against a
+    // real --cpu reference directly, the same discipline this whole
+    // series already uses for other non-portable numbers, e.g.
+    // targetSize in section 118) rather than a first-principles value.
+    pbrtFogSigmaT = 0.005f / sceneScale / 8.0f;
+    pbrtFogAlbedo = float3{0.8f, 0.9f, 1.0f};
+    pbrtFogAsymmetryG = 0.3f;
+
+    // Camera - kCornellBoxCamera, same as every Cornell-family scene.
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
 }
 
 // Recomputes the camera basis for a new lookfrom position, in the SAME
