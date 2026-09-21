@@ -119,6 +119,7 @@
 // worth designing out rather than debugging into.
 
 #include "metal_poc_app.h"
+#include "metal_poc_shader_files.h"
 
 
 // --- Stage 1: CLI args + Metal device -----------------------------------
@@ -2267,7 +2268,10 @@ static void checkGpuResource(id resource, const char* name, id<MTLDevice> device
 bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // --- Compile the shader library from source at runtime ---------
     NSError* error = nil;
-    // Three candidates, tried in priority order:
+    // Three DIRECTORY candidates, tried in priority order (unchanged from
+    // before the shader source was split into several files - see
+    // metal_poc_shader_files.h's own comment for why every file below is
+    // read from this SAME directory rather than resolved independently):
     // 1. Right next to the CURRENTLY RUNNING executable
     //    (_NSGetExecutablePath(), not NSBundle - resolves correctly for
     //    a plain (non-app-bundle) CLI binary too, which is exactly how
@@ -2282,9 +2286,9 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     //    available (metal_get_diagnostics() never touches this shader
     //    path at all) yet fail every actual GPU render once it got
     //    here, silently, on every machine except the one that built it.
-    //    build_and_deploy_macos.sh now also copies metal_poc.metal next
-    //    to the bundled ray_tracer specifically so this candidate finds
-    //    it.
+    //    build_and_deploy_macos.sh now also copies every metal_poc_*.metal
+    //    file next to the bundled ray_tracer specifically so this
+    //    candidate finds them.
     // 2. RT_METAL_SHADER_DIR (set by CMakeLists.txt's metal_poc target,
     //    RT_BUILD_METAL=ON path) - gpu/metal/'s absolute SOURCE
     //    directory, correct only on the machine that built this binary
@@ -2292,29 +2296,45 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // 3. A __FILE__-relative lookup, for the ad-hoc `clang++
     //    metal_poc.mm ...` invocation this POC started as
     //    (docs/METAL_GPU_FEASIBILITY.md section 7/8/9).
-    NSString* shaderPath = nil;
+    NSString* shaderDir = nil;
     {
         char exePathBuf[4096];
         uint32_t exePathSize = sizeof(exePathBuf);
         if (_NSGetExecutablePath(exePathBuf, &exePathSize) == 0) {
             NSString* exeDir = [@(exePathBuf) stringByDeletingLastPathComponent];
-            NSString* candidate = [exeDir stringByAppendingPathComponent:@"metal_poc.metal"];
-            if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) shaderPath = candidate;
+            int firstCount = 0;
+            NSString* candidate = [exeDir stringByAppendingPathComponent:
+                @(metalShaderFileNames(&firstCount)[0])];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) shaderDir = exeDir;
         }
     }
-    if (!shaderPath) {
+    if (!shaderDir) {
 #ifdef RT_METAL_SHADER_DIR
-        NSString* shaderDir = @(RT_METAL_SHADER_DIR);
+        shaderDir = @(RT_METAL_SHADER_DIR);
 #else
-        NSString* shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
+        shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
 #endif
-        shaderPath = [shaderDir stringByAppendingPathComponent:@"metal_poc.metal"];
     }
-    NSString* shaderSource = [NSString stringWithContentsOfFile:shaderPath encoding:NSUTF8StringEncoding error:&error];
-    if (!shaderSource) {
-        fprintf(stderr, "Failed to read shader source at %s: %s\n",
-            shaderPath.UTF8String, error.localizedDescription.UTF8String);
-        return false;
+    // Concatenate every shader fragment, in metal_poc_shader_files.h's own
+    // declared order, into ONE source string - Metal compiles from a
+    // single in-memory string (newLibraryWithSource: below), so the split
+    // into several files on disk is a source-organization change only,
+    // not a real separate-translation-unit split the way the `.mm`
+    // side's own per-category files are; every later file's own function
+    // still needs every earlier file's own struct/function already
+    // defined in the SAME string it's handed.
+    NSMutableString* shaderSource = [NSMutableString string];
+    int shaderFileCount = 0;
+    const char* const* shaderFileNames = metalShaderFileNames(&shaderFileCount);
+    for (int i = 0; i < shaderFileCount; ++i) {
+        NSString* fragPath = [shaderDir stringByAppendingPathComponent:@(shaderFileNames[i])];
+        NSString* fragSource = [NSString stringWithContentsOfFile:fragPath encoding:NSUTF8StringEncoding error:&error];
+        if (!fragSource) {
+            fprintf(stderr, "Failed to read shader source at %s: %s\n",
+                fragPath.UTF8String, error.localizedDescription.UTF8String);
+            return false;
+        }
+        [shaderSource appendString:fragSource];
     }
     MTLCompileOptions* compileOpts = [MTLCompileOptions new];
     id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:compileOpts error:&error];
