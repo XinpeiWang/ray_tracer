@@ -2088,6 +2088,12 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     // --exposure, compare --tonemap modes) against C1's own bright-sky/
     // shadowed-sphere geometry, not a different scene. Section 148.
     if (scene_id == "I3") { buildHdriSky(); return true; }
+    // I2 (SpectralDispersionEducation): "Same glass prism as B23" verbatim
+    // (scene_registry_data.h's own comment) - the missed entry from this
+    // same Education-category batch, caught by a fresh scoping pass
+    // (section 168). No new shader/materialType code needed - B23's own
+    // materialType 22 dispersive dielectric already handles it.
+    if (scene_id == "I2") { buildPrismDispersion(); return true; }
     fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
                     "this should not normally be reachable (metal_render_main()'s own gate "
                     "already checks cpu_scene_metal_hand_authored_supported() first).\n",
