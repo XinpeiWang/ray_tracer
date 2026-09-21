@@ -1,10 +1,11 @@
 // metal_poc_app.h
 // Shared types, host-side helper functions, and the full MetalPocApp
-// class declaration used by both metal_poc.mm (core app/GPU-resource
-// plumbing) and every metal_poc_scenes_*.mm file (one per hand-authored
-// scene category). Split out of metal_poc.mm as a pure code-motion
-// refactor (no behaviour change) once that file's own scene-builder
-// count made it unwieldy - see docs/METAL_GPU_FEASIBILITY.md.
+// class declaration used by metal_poc.mm (core app/GPU-resource
+// plumbing), every metal_poc_scenes_*.mm file (one per hand-authored
+// scene category), and metal_poc_pbrt_loader.mm (real pbrt scene
+// loading). Split out of metal_poc.mm as a pure code-motion refactor
+// (no behaviour change) once that file's own scene-builder count made
+// it unwieldy - see docs/METAL_GPU_FEASIBILITY.md.
 //
 // Free functions below were `static` in their original single-TU home;
 // each is `inline` here instead (identical body, just ODR-safe to
