@@ -777,6 +777,34 @@ kernel void primaryRayKernel(
                 // sphere with no real UV parameterization.
                 float marble = 1.0 + sin(mat.roughness * hitPoint.z + 10.0 * turbulenceSimple(hitPoint, 0.5, 7));
                 albedo = float3(0.5, 0.5, 0.5) * marble;
+            } else if (mat.materialType == 25u) {
+                // A pbrt-v4 "checkerboard" Texture bound to a Diffuse
+                // material's own "reflectance" (B22, section 162) -
+                // pbrt-v4's real UV-space 2D checkerboard (NOT this
+                // file's own materialType 6, whose tile B is a fixed
+                // fraction of tile A rather than a second independent
+                // colour, and NOT materialType 16's own WORLD-SPACE 3D
+                // checker, which has no notion of "uscale"/"vscale" at
+                // all). `color`/`transmitColor` hold the two independent
+                // tile colours - same reuse materialType 16 already
+                // established for the identical purpose (that function's
+                // own comment). `conductorEta.x`/`.y` reused as
+                // uscale/vscale (spare for every material type but 4/9,
+                // same "one scalar slot, per-materialType meaning"
+                // pattern every other TriangleMaterial field reuse here
+                // already follows) - pbrt-v4's own two INDEPENDENT scale
+                // factors, unlike materialType 6/16's own single shared
+                // `scale`. Same isSphere/texCoordFor() UV split
+                // materialType 3 above already established (equirect-
+                // angular UV on a sphere hit, real triangle UV
+                // otherwise) - this is the first OTHER material type to
+                // need UV on a sphere at all, reusing that exact
+                // mechanism rather than re-deriving it.
+                float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
+                                      : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                float2 tile = floor(uv * float2(mat.conductorEta.x, mat.conductorEta.y));
+                float parity = fmod(tile.x + tile.y, 2.0);
+                albedo = (abs(parity) < 0.5) ? float3(mat.color) : float3(mat.transmitColor);
             } else {
                 albedo = float3(mat.color);
             }
