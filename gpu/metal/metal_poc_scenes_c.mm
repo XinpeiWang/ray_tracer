@@ -13,7 +13,7 @@ std::function<float3(float3)> MetalPocApp::buildCornellNoLightWalls() {
     const float3 bboxMax{555.0f, 555.0f, 555.0f};
     const float sceneScale = 2.0f / 555.0f;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     // The 5 walls only - no ceiling light quad (this family is lit by
@@ -269,7 +269,7 @@ void MetalPocApp::buildHdriSky() {
     // hardcoded POC room's own [-1,1] cube even at the series' usual +8
     // offset (unlike B10's own x=-6 sphere, which needed +10 - see that
     // scene's own comment), so no extra clearance is needed here.
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: a large flat quad (materialType 0, matching CPU's own
     // lambertian(0.4,0.4,0.4)) - not CPU's own radius-1000 ground
@@ -389,7 +389,7 @@ void MetalPocApp::buildPortalLightScene() {
     const float maxExtent = 555.0f;
     const float sceneScale = 2.0f / maxExtent;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     // Right/left/ceiling/floor - same 4 walls buildCornellBoxA1()'s own

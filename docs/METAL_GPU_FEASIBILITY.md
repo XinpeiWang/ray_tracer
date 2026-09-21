@@ -9649,3 +9649,82 @@ D9, F11, G1, I1, I3, I5, J6) all matching byte-for-byte - unlike
 section 167's own broader finding, this change never touches a
 shared code path (it's gated entirely behind `scene_id == "I2"`), so
 a true, exact no-op was the expected and confirmed result here.
+
+## 169. Raising every scene's own "clear of the hardcoded POC room" margin from +8 to +60, after finding a real leftover-room leak in G19
+
+A fresh scoping pass over every scene not individually verified
+against CPU by name yet (the ~25-scene G/Models gallery has only had
+a handful called out specifically) found a real, confirmed bug in
+**G19 (Fandisk)**: a solid green triangle in the corner of the frame,
+exactly matching the hardcoded POC room's own green wall
+(`buildScene()`'s own `green{0.12,0.45,0.15}` quad at world x=1).
+
+Every hand-authored scene builder (every `metal_poc_scenes_*.mm`
+file, `buildMeshGalleryScene()`/`buildCornellBoxA1()`/etc. - 26 call
+sites) and `loadPbrtScene()` itself share the SAME convention:
+`buildScene()` unconditionally builds a small hardcoded Cornell-box
+room (floor/ceiling/4 walls + assorted lights/props, occupying world
+`[-1,1]`) FIRST, then whichever real scene the `scene_id` actually
+asked for gets rescaled, recentred on its own bounding box, and
+pushed `+8` in X - "well clear," per that code's own comment - so
+the two coexist ADDITIVELY in the same acceleration structure without
+overlapping (see `loadPbrtScene()`'s own comment for the full "why" -
+this is deliberate, foundational architecture from early in the
+project, not something a quick fix should try to undo). This is
+already a KNOWN failure mode with one prior instance: B10
+(Principled Showcase)'s own `buildPrincipledShowcase()` needed a
+one-off `+10` instead of the usual `+8` (its own code comment,
+predating this section) because its leftmost sphere (`x=-6`) left the
+room's own right face exactly tangent at `+8`. G19 is the SAME class
+of bug recurring, just never caught before now - Fandisk's own
+gunmetal-conductor mesh combined with its own elevated three-quarter
+camera angle (chosen specifically because a face-on shot showed no
+detail, per that scene's own registry comment) apparently brings
+just enough of the room's own green wall into frame at `+8`.
+
+Rather than patch G19 with its own one-off special case (a second
+instance of the same ad hoc fix B10 already needed once), raised the
+shared baseline itself from `+8` to `+60` in ALL 27 call sites at
+once (a single repeated literal, `sceneOffset{8.0f, 0.0f, 0.0f}`,
+confirmed via grep to have no other meaning anywhere in the codebase)
+- a `+60` offset gives roughly 7.5x more clearance than `+8` ever did,
+comfortably covering every existing scene's own extent (B10's own
+`-6` minimum is now folded back into the shared value instead of
+keeping its own special-cased `+10`, which the new baseline makes
+unnecessary - see that scene's own updated comment). Confirmed via
+direct before/after `--gpu` render of G19 at the exact same camera/
+settings: the green wall sliver is present at `+8` and gone at `+60`.
+
+**A genuine correction to this same scoping pass's own initial
+hypothesis, caught by testing rather than assumed**: G25 (Killeroo)
+was ALSO flagged (prior scoping pass, same session) as showing an
+unexplained small dark rectangle floating on its own floor, with a
+distinctive blue-top/red-bottom edge tint, hypothesized to be the
+SAME leftover-room leak (that scene's own killeroo-simple.pbrt has no
+enclosing walls, so a shadow ray reaching all the way back to the
+room's own always-present lights seemed plausible). Directly testing
+this hypothesis - rendering G25 at `+8` and `+60` at identical camera/
+settings and cropping the exact same screen region - disproves it:
+the dark rectangle is pixel-for-pixel IDENTICAL in position and size
+at both offsets. Since the room sits fixed at the origin while the
+active scene (and its own camera) moves 7.5x farther away between
+these two renders, a genuine leftover-room object would have
+visibly shrunk/shifted; it didn't, so this artifact must belong to
+G25's OWN scene content or rendering path, not the hardcoded room.
+`killeroo-simple.pbrt` itself (read directly) has no shape that could
+produce it - one small area-light sphere, two large floor/wall
+trianglemeshes, two killeroo meshes, nothing resembling a small
+rectangular occluder. **Left undiagnosed, an honest partial finding
+like section 165's own C9 investigation** - worth a dedicated future
+session, not chased further here now that its supposed explanation is
+ruled out.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+148 registered scene IDs smoke-rendered (same 22 pre-existing
+failures, unchanged), direct `--gpu` vs `--cpu` before/after
+comparison for G19 (sliver present at +8, gone at +60) and G25 (dark
+rectangle unchanged at both offsets, confirming it's unrelated to
+this fix), and a visual spot-check across A1 (the hardcoded room
+itself, untouched by this change entirely), B10 (its own special-case
+offset removed), F5, F11, I2, and G9 - all matching their own
+already-established-correct appearance with nothing newly broken.

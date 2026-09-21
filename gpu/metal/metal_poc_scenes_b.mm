@@ -21,7 +21,7 @@ void MetalPocApp::buildCornellFamilyScene(
     const float maxExtent = 555.0f;
     const float sceneScale = 2.0f / maxExtent;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     // The 5 walls + the main ceiling light - identical to
@@ -299,7 +299,7 @@ void MetalPocApp::buildCornellThinGlass() {
     const float3 bboxMax{555.0f, 555.0f, 555.0f};
     const float sceneScale = 2.0f / 555.0f;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     // The 5 walls only (kQuads[5], the standard ceiling light, is
@@ -426,7 +426,7 @@ void MetalPocApp::buildCornellThinGlass() {
 // sections 126-128 already established (CPU's own `rough_metal` class,
 // same as B2's).
 void MetalPocApp::buildRoughMetalSpheres() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground - flat quad, dark grey Lambertian.
     {
@@ -680,7 +680,7 @@ void MetalPocApp::buildPrismDispersionGeometry(uint32_t glassMaterialType, float
     const float maxExtent = 700.0f;  // 600(x) vs 700(y) vs 600(z) - see bbox above
     const float sceneScale = 2.0f / maxExtent;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     double cauchyA, cauchyB;
@@ -809,28 +809,34 @@ void MetalPocApp::buildPrismDispersionRough() {
 // through semi-metallic to fully metallic/clearcoated, over a checkered
 // ground plane, under one overhead area light. Not a Cornell-family
 // scene - own standalone geometry/camera, F2's own "natural scale, plain
-// +8-in-X offset, no rescale" convention (this scene's own extent, a
-// ~14x20-unit span, is already compact enough).
+// +8-in-X offset (now +60, section 169), no rescale" convention (this
+// scene's own extent, a ~14x20-unit span, is already compact enough).
 //
 // CPU's own ground is a checker-textured radius-1000 SPHERE
 // (`point3(0,-1000,0)`) - replaced here with a large flat quad using the
 // SAME materialType 16 (real 3D world-space checker) instead, matching
 // this whole series' own established "huge sphere as ground plane"
 // simplification (A5/B1/F2's own precedent): a radius-1000 sphere at
-// this scene's own scale, offset +8 in X, algebraically overlaps the
-// hardcoded POC room's own [-1,1] cube by about 1 unit (checked via
-// |x-offset| <= sqrt(2*radius-1) before ever rendering, not discovered
-// by a garbled render) - the same failure mode already fixed twice
-// before, avoided here from the start.
+// this scene's own scale, offset the (then) usual +8 in X, algebraically
+// overlaps the hardcoded POC room's own [-1,1] cube by about 1 unit
+// (checked via |x-offset| <= sqrt(2*radius-1) before ever rendering, not
+// discovered by a garbled render) - the same failure mode already fixed
+// twice before, avoided here from the start.
 void MetalPocApp::buildPrincipledShowcase() {
-    // +10, not the usual +8 every other scene in this series uses - the
-    // leftmost sphere (x=-6, radius 1) sits close enough to the
-    // hardcoded POC room's own [-1,1] cube that +8 left it exactly
-    // tangent to the room's own right face (world x=1), letting a sliver
-    // of the room's own always-present geometry peek through right next
-    // to it in a real render - caught by inspecting the rendered image
-    // directly, not assumed. +10 gives a full extra unit of clearance.
-    const float3 sceneOffset{10.0f, 0.0f, 0.0f};
+    // Used to be its own special-cased +10 (not the +8 every other scene
+    // in this series used) - the leftmost sphere (x=-6, radius 1) sat
+    // close enough to the hardcoded POC room's own [-1,1] cube that +8
+    // left it exactly tangent to the room's own right face (world x=1),
+    // letting a sliver of the room's own always-present geometry peek
+    // through right next to it in a real render - caught by inspecting
+    // the rendered image directly, not assumed. Section 169 raised the
+    // shared baseline every scene in this series uses from +8 to +60
+    // (a real, unrelated leftover-room leak found in G19/G25 - see that
+    // section's own comment), which independently gives this scene's own
+    // -6 extent 54 units of clearance, far more than the 1 extra unit
+    // this special case ever needed - so it's folded back into the same
+    // shared value as everything else, no longer a special case.
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: large flat checker quad (materialType 16, real 3D
     // world-space checker) - `roughness` reused as the checker's own

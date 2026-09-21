@@ -14,14 +14,14 @@ void MetalPocApp::buildCornellBoxA1() {
     // is ALREADY authored at the identical ~555-unit Cornell-box scale a
     // real pbrt Cornell box uses, so the exact same fixed transform
     // applies unchanged: largest dimension -> 2.0 units, recentred on the
-    // room's own bounding-box centre, offset +8 in X clear of the
-    // hardcoded POC room's own [-1,1] region.
+    // room's own bounding-box centre, offset +60 in X (section 169) clear
+    // of the hardcoded POC room's own [-1,1] region.
     const float3 bboxMin{0.0f, 0.0f, 0.0f};
     const float3 bboxMax{555.0f, 555.0f, 555.0f};
     const float maxExtent = 555.0f;
     const float sceneScale = 2.0f / maxExtent;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     // The 5 walls + the main ceiling light.
@@ -167,7 +167,7 @@ void MetalPocApp::buildCheckeredSpheres() {
     // verification challenge (its own extreme-grazing-angle framing) -
     // read that before assuming a large Metal-vs-CPU pixel diff here
     // means a bug.
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // The two checker "planet" spheres - materialType 16 (real 3D world-
     // space checker - see checker3DColor()'s own declaration comment,
@@ -280,7 +280,7 @@ void MetalPocApp::buildCheckeredSpheres() {
 // no new material/geometry machinery at all, every quad here is
 // materialType 0 (plain Lambertian).
 void MetalPocApp::buildColoredQuads() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     auto pushWall = [&](float3 Q, float3 u, float3 v, float3 color) {
         const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
@@ -358,7 +358,7 @@ void MetalPocApp::buildColoredQuads() {
 // globe, registered as a real NEE-sampled AreaLight the same way every
 // earlier hand-authored scene's own light quad already is.
 void MetalPocApp::buildEarth() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Earth globe - materialType 3, `color` unused (the real albedo
     // comes from earthTexture, sampled via equirectangularUV(normal) -
@@ -434,7 +434,7 @@ void MetalPocApp::buildEarth() {
 // comment, metal_poc.metal) at two different noise scales, plus a warm
 // key-light quad.
 void MetalPocApp::buildPerlinSpheres() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // `roughness` reused as the marble texture's own `scale` parameter
     // (matches materialType 16's own established reuse of the same
@@ -541,7 +541,7 @@ void MetalPocApp::buildPerlinSpheres() {
 // earlier hand-authored scene's own flat sky colour) - still the same
 // havePbrtConstantEnvLight/pbrtEnvColor mechanism, just set to black.
 void MetalPocApp::buildSimpleLight() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground + main sphere - same materialType 17/noise-scale-4 pair
     // A5's own buildPerlinSpheres() already established (see that
