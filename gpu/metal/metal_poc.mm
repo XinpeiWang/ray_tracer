@@ -1273,8 +1273,26 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
     const PbrtMaterialForFn& materialFor, float sceneScale) {
     for (const pbrt_flatten::Sphere& s : scene.spheres) {
         const float3 center = toWorld(float3{(float)s.center[0], (float)s.center[1], (float)s.center[2]});
-        spheres.push_back(SphereData{
-            PackedFloat3{center.x, center.y, center.z}, sceneScale * (float)s.radius});
+        SphereData sd{PackedFloat3{center.x, center.y, center.z}, sceneScale * (float)s.radius};
+        // Object motion blur (F11, section 167): Sphere::center1 differs
+        // from Sphere::center only when an ActiveTransform "StartTime"/
+        // "EndTime" pair bracketed this shape's own placement (that
+        // field's own comment in pbrt_flatten.h) - the shared front-end
+        // parser already resolved this, Metal's own loader just never
+        // read it before now, the same "already-done-upstream" pattern as
+        // B18/B25/D9-D12/F5/F9. Stored as a world-space DELTA
+        // (toWorld(center1) - toWorld(center)), not an absolute point, so
+        // `toWorld`'s translation term cancels out and only its
+        // rotation/scale acts on the raw displacement - correct even
+        // though `toWorld` isn't a pure-linear function. Left at its
+        // default {0,0,0} (a provable no-op, see SphereData's own
+        // comment) for every non-moving sphere, i.e. every sphere in
+        // every OTHER scene.
+        if (s.center1[0] != s.center[0] || s.center1[1] != s.center[1] || s.center1[2] != s.center[2]) {
+            const float3 center1 = toWorld(float3{(float)s.center1[0], (float)s.center1[1], (float)s.center1[2]});
+            sd.centerDelta1 = PackedFloat3{center1.x - center.x, center1.y - center.y, center1.z - center.z};
+        }
+        spheres.push_back(sd);
         TriangleMaterial mat = materialFor(s.material);
         if (s.areaLight >= 0 && s.areaLight < (int)scene.areaLights.size()) {
             // Same "emissive, but not NEE-registered" tier loadPbrtDisks()

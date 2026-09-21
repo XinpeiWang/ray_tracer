@@ -890,6 +890,32 @@ struct TriangleMaterial {
 struct SphereData {
     packed_float3 center;
     float radius;
+    // Object motion blur (F11, section 167): pbrt's ActiveTransform
+    // "StartTime"/"EndTime" bakes a SECOND centre into pbrt_flatten.h's
+    // own Sphere::center1 - this is that second centre, stored as a
+    // DELTA (center1 - center) rather than an absolute point specifically
+    // so every non-moving sphere across every OTHER scene (every
+    // `SphereData{center, radius}` 2-field brace-init already in this
+    // file/metal_poc.mm) keeps working with zero code changes: C++
+    // aggregate-init value-initializes an omitted trailing member to
+    // (0,0,0), and centerDelta1==0 makes the interpolation below a
+    // provable no-op for any shutterT, the same "safe by construction"
+    // property gpu/optix/optix_intersection_sphere.h's own
+    // center/center1 pair relies on (that file's own comment).
+    packed_float3 centerDelta1;
+};
+
+// Per-ray side-channel for sphereIntersectionFunction below - Metal's
+// analogue of OptiX's optixGetRayTime(), which has no built-in
+// equivalent for a bounding-box/custom-primitive intersection function.
+// Only `shutterT` (metal_poc_kernel.metal's own per-SAMPLE shutter-time
+// draw, already used unconditionally for camera motion blur, section 22)
+// needs to reach the sphere intersection function so a moving sphere's
+// centre can be interpolated at the SAME simulated instant the camera
+// itself was sampled at, both a primary ray and any shadow ray cast
+// within that same sample.
+struct SpherePayload {
+    float shutterT;
 };
 
 // Bounding-box intersection functions report their result through
@@ -959,13 +985,21 @@ SphereIntersectionResult sphereIntersectionFunction(
     float minDistance [[min_distance]],
     float maxDistance [[max_distance]],
     uint primitiveIndex [[primitive_id]],
-    device const SphereData* spheres [[buffer(0)]])
+    device const SphereData* spheres [[buffer(0)]],
+    ray_data SpherePayload& payload [[payload]])
 {
     SphereIntersectionResult result;
     result.accept = false;
 
     SphereData sphere = spheres[primitiveIndex];
-    float3 center = float3(sphere.center);
+    // lerp(center, center+0, anything) == center exactly, so this is a
+    // provable no-op for every sphere whose centerDelta1 is (0,0,0) - see
+    // SphereData::centerDelta1's own comment. Matches this project's own
+    // CPU src/TheRestOfYourLife/sphere.h's `current_center =
+    // center.at(r.time())` linear interpolation, and
+    // gpu/optix/optix_intersection_sphere.h's identical
+    // center/ray_time-based interpolation, in spirit.
+    float3 center = float3(sphere.center) + payload.shutterT * float3(sphere.centerDelta1);
     float3 oc = origin - center;
     float a = dot(direction, direction);
     float bHalf = dot(oc, direction);

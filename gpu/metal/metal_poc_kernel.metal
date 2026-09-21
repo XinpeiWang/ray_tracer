@@ -306,8 +306,16 @@ kernel void primaryRayKernel(
             r.min_distance = 0.001f;
             r.max_distance = 1e6f;
 
+            // F11/section 167: this sample's own shutterT (drawn once per
+            // sample above, already used for camera motion blur) doubles
+            // as the payload every intersect() call below passes to
+            // sphereIntersectionFunction, so a moving sphere is tested at
+            // the SAME simulated instant this ray's own camera position
+            // was sampled at - a shadow ray cast later in this same
+            // sample reuses the identical payload for the same reason.
+            SpherePayload spherePayload{shutterT};
             intersection_result<instancing, triangle_data> result =
-                isect.intersect(r, accelStructure, functionTable);
+                isect.intersect(r, accelStructure, functionTable, spherePayload);
 
             // Homogeneous-medium free-flight distance sampling: draws a
             // random scattering distance from the medium's own
@@ -390,7 +398,7 @@ kernel void primaryRayKernel(
                         shadowRay.min_distance = 0.001f;
                         shadowRay.max_distance = dist - 0.002f;
                         intersection_result<instancing, triangle_data> shadowResult =
-                            isect.intersect(shadowRay, accelStructure, functionTable);
+                            isect.intersect(shadowRay, accelStructure, functionTable, spherePayload);
                         if (shadowResult.type == intersection_type::none) {
                             float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                             // HG's own sampling pdf for direction wi EQUALS
@@ -425,7 +433,7 @@ kernel void primaryRayKernel(
                         plShadowRay.min_distance = 0.001f;
                         plShadowRay.max_distance = plDist - 0.002f;
                         intersection_result<instancing, triangle_data> plShadowResult =
-                            isect.intersect(plShadowRay, accelStructure, functionTable);
+                            isect.intersect(plShadowRay, accelStructure, functionTable, spherePayload);
                         if (plShadowResult.type == intersection_type::none) {
                             float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), uniforms.fogAsymmetryG);
                             float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
@@ -448,7 +456,7 @@ kernel void primaryRayKernel(
                         dlShadowRay.min_distance = 0.001f;
                         dlShadowRay.max_distance = kDirectionalLightMaxDistance;
                         intersection_result<instancing, triangle_data> dlShadowResult =
-                            isect.intersect(dlShadowRay, accelStructure, functionTable);
+                            isect.intersect(dlShadowRay, accelStructure, functionTable, spherePayload);
                         if (dlShadowResult.type == intersection_type::none) {
                             float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), uniforms.fogAsymmetryG);
                             float dlExitDist = rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
@@ -477,7 +485,7 @@ kernel void primaryRayKernel(
                             pjShadowRay.min_distance = 0.001f;
                             pjShadowRay.max_distance = pjDist - 0.002f;
                             intersection_result<instancing, triangle_data> pjShadowResult =
-                                isect.intersect(pjShadowRay, accelStructure, functionTable);
+                                isect.intersect(pjShadowRay, accelStructure, functionTable, spherePayload);
                             if (pjShadowResult.type == intersection_type::none) {
                                 float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), uniforms.fogAsymmetryG);
                                 float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
@@ -505,7 +513,7 @@ kernel void primaryRayKernel(
                             glShadowRay.min_distance = 0.001f;
                             glShadowRay.max_distance = glDist - 0.002f;
                             intersection_result<instancing, triangle_data> glShadowResult =
-                                isect.intersect(glShadowRay, accelStructure, functionTable);
+                                isect.intersect(glShadowRay, accelStructure, functionTable, spherePayload);
                             if (glShadowResult.type == intersection_type::none) {
                                 float glPhaseValue = henyeyGreensteinPhase(dot(wo, glWi), uniforms.fogAsymmetryG);
                                 float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
@@ -630,7 +638,15 @@ kernel void primaryRayKernel(
             TriangleMaterial mat;
             if (isSphere) {
                 SphereData sphere = spheres[primId];
-                normal = normalize(hitPoint - float3(sphere.center));
+                // Same interpolated centre sphereIntersectionFunction
+                // itself tested the ray against (F11, section 167) - using
+                // the STATIC sphere.center here instead would put the
+                // shading normal off-centre from the surface point this
+                // ray actually landed on for any moving sphere, a subtle
+                // but real correctness bug distinct from the intersection
+                // test itself.
+                float3 center = float3(sphere.center) + shutterT * float3(sphere.centerDelta1);
+                normal = normalize(hitPoint - center);
                 mat = sphereMaterials[primId];
             } else if (isDisk) {
                 // Flat and planar - the disk's own stored normal IS the
