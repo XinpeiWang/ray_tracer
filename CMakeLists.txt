@@ -366,6 +366,11 @@ if(RT_BUILD_METAL)
         gpu/metal/metal_poc_scenes_f.mm
         gpu/metal/metal_poc_scenes_g.mm
         gpu/metal/metal_poc_scenes_i.mm
+        # loadPbrtScene() and its 9 phase methods (real pbrt scene
+        # loading) - split out of metal_poc.mm once that one file's own
+        # "Stage 2.5" block grew past a third of it, same pure-code-motion
+        # precedent as the metal_poc_scenes_*.mm split just above.
+        gpu/metal/metal_poc_pbrt_loader.mm
         # tinyexr's own zip/pxr24 codecs need miniz's real mz_compress/
         # mz_uncompress symbols (see the target_include_directories
         # comment below on why metal_renderer now needs tinyexr's real

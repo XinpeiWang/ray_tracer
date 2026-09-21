@@ -10013,3 +10013,54 @@ J1 (the intended fix), J3/J4/J6 (unplanned, confirmed real partial
 improvements from the same UV fix, not regressions), and D8/D12/F4
 (pre-existing, already-documented GPU/lens-camera non-determinism,
 section 160). The other 119 are byte-identical.
+
+## 173. Structural refactor, part 2: the real pbrt loader split out of `metal_poc.mm` into its own file - a pure code-motion change, verified byte-for-byte identical
+
+Section 156's own scene-builder split deliberately left "every
+`loadPbrtXxx()` pbrt-file-loading method" in `metal_poc.mm` itself -
+at the time, that block was a comparatively small slice of the file.
+Six PRs of feature work since (166-172, F5/F9 through J1/the UV-
+default fix) landed almost entirely inside that same block (new
+`loadPbrtCylinders()`, new material-type/texture branches inside
+`loadPbrtScene()`'s own dispatcher, etc.), and `metal_poc.mm` had
+grown back to 3,622 lines - with `loadPbrtScene()` and its 9 phase
+methods (`loadPbrtAreaLights`/`loadPbrtRemainingTriangles`/
+`loadPbrtSpheres`/`loadPbrtDisks`/`loadPbrtCylinders`/
+`loadPbrtObjectInstances`/`loadPbrtPunctualLights`/`loadPbrtMedium`/
+`loadPbrtInfiniteLight`/`loadPbrtCamera`) alone accounting for 1,379
+of those lines, more than a third of the file - the same "one file
+doing several distinct jobs" shape section 156's own refactor already
+fixed once, recurring in the one piece it had deliberately deferred.
+
+**Split into a new `gpu/metal/metal_poc_pbrt_loader.mm`** (exact
+original line range extracted via `sed`, not retyped by hand - same
+"precisely mapped before touching anything" discipline section 156's
+own refactor used, this time with no brace-boundary mistake to catch):
+the whole `loadPbrtScene()` block, mirroring `metal_poc_scenes_*.mm`'s
+own minimal 3-line header (`#import <Metal/Metal.h>`, `#import
+<Foundation/Foundation.h>`, `#include "metal_poc_app.h"`) - no other
+includes needed at all, since `metal_poc_app.h` already pulls in
+`pbrt_load.h`/`realistic_camera.h`/every standard-library header this
+block uses (confirmed by grep before extracting, not assumed).
+`metal_poc.mm` itself drops to 2,216 lines, keeping only
+`buildScene()` (the hardcoded POC room), `buildHandAuthoredScene()`
+(the scene_id dispatcher), `applyCameraOverride`,
+`buildGPUResources`, `compileShaderAndDispatch`,
+`postProcessAndWrite`, and the `metal_render_main`/
+`metal_poc_cli_main` entry points - comparable in size to the largest
+already-split files, not the outlier anymore. Added to
+`CMakeLists.txt`'s existing `metal_renderer` static-lib source list,
+right alongside the `metal_poc_scenes_*.mm` files it now sits next to
+(both `metal_poc`/`ray_tracer`, which link that one library, pick it
+up automatically - no other build-file changes needed).
+
+**Verified as a TRUE zero-behaviour-change refactor, matching section
+156's own verification bar**: full clean `RT_BUILD_METAL=ON` rebuild,
+ctest (4/4), all 148 registered scene IDs smoke-rendered (same 22
+pre-existing failures, unchanged), and a before/after SHA-256 hash
+comparison across all 126 currently-passing scenes (fresh builds both
+times, non-interleaved per section 163's own methodology) - only
+D8/D12/F4 differ, the same pre-existing, already-documented GPU/lens-
+camera non-determinism every other PR's own hash sweep already shows
+for these exact three scenes (section 160), confirmed visually
+identical besides. The other 123 scenes are byte-for-byte identical.
