@@ -769,6 +769,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G13") { buildGlassDragon(); return true; }
     if (scene_id == "G12") { buildTrophyRoom(); return true; }
     if (scene_id == "A3") { buildCheckeredSpheres(); return true; }
+    if (scene_id == "A2") { buildBouncingSpheres(); return true; }
     if (scene_id == "A6") { buildColoredQuads(); return true; }
     if (scene_id == "A4") { buildEarth(); return true; }
     if (scene_id == "A5") { buildPerlinSpheres(); return true; }

@@ -10171,3 +10171,63 @@ in here)**:
   sphere (same gap as B13), an image-textured sphere, real object
   instancing - a genuine combination of several of the above gaps in
   one scene, not reducible to any single one of them.
+
+## 175. Closing A2: Bouncing Spheres, the classic In One Weekend final scene - zero new features needed
+
+The second (and, per section 174's own closing accounting, the last)
+genuinely tractable pre-existing failure: CPU's own
+`build_bouncing_spheres()` (`scenes_book.h`) - a giant checker ground
+sphere, a 22x22 grid of small randomly-placed/randomly-materialed
+spheres (80% diffuse and MOVING, 15% static metal, 5% static glass),
+and 3 "hero" spheres (glass/diffuse/metal, radius 1) - needed no new
+Metal-side feature at all to port: real per-sphere object motion blur
+(F11, section 167) for the grid's own moving spheres, materialType
+16's real 3D checker (already used for A3's own ground sphere,
+`buildCheckeredSpheres()`, same exact CPU parameters -
+`checker_texture(0.32, (.2,.3,.1), (.9,.9,.9))` - reused verbatim) for
+the ground, and thin-lens DOF (`pbrtLensRadius`/`pbrtFocusDistance`,
+D1/D5) for the camera's own defocus blur were all already real,
+working infrastructure. "Just" a new scene builder
+(`buildBouncingSpheres()`, `metal_poc_scenes_a.mm`) combining them -
+the same shape D13 (section 174) itself turned out to be.
+
+CPU's own grid placement is genuinely unseeded (`random_double()`, no
+fixed seed anywhere in `build_bouncing_spheres()`), so even CPU's own
+reference render differs between runs - an exact layout match was
+never a meaningful bar here (the same "no fixed seed, no exact-match
+expectation" precedent `buildDepthOfField()`'s own 7 accent spheres
+already established, section 149's own comment). This loader's own
+grid uses a FIXED seed (`std::mt19937(1337u)`) instead of an unseeded
+one - deterministic/reproducible across runs on this side, still not
+attempting to reproduce CPU's own specific colours/positions.
+
+**One real, deliberate approximation, not a new one invented for this
+scene**: CPU's own simple `metal` material class (a fuzzy-reflection
+model, NOT microfacet GGX) has no exact equivalent in this loader's
+own materialType 4 (a real GGX conductor) - CPU's own `fuzz` parameter
+is reused directly as materialType 4's own GGX alpha, the identical
+substitution `buildRoughMetalSpheres()`'s own comment already
+documents making for the SAME CPU-`metal`-class case, not a new
+approximation invented here.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+148 registered scene IDs smoke-rendered (20 failures now, down from
+21 after section 174's own D13 fix - A2 succeeds, every other
+pre-existing failure unchanged), direct `--gpu` vs `--cpu` comparison
+for A2 (the same "brown diffuse / checker-reflecting glass / bright
+metal" 3-hero-sphere silhouette, the same scattered-small-sphere-over-
+checkerboard composition, the same foreground/background thin-lens
+blur falloff - different specific random colours on each side, as
+expected, not a discrepancy), and a before/after hash comparison
+across the other 127 currently-passing scenes (A2 itself excluded -
+it didn't render at all before this PR): only D8/D12 differ this time
+(F4 happened not to shift on this particular rebuild - the same
+pre-existing GPU-driver-level lens-camera non-determinism, section
+160, is inherently probabilistic about exactly which of the three
+scenes it perturbs on any given recompile, not a sign this one is any
+different). The other 126 are byte-for-byte identical.
+
+With A2 and D13 both closed, the remaining pre-existing failures are
+the 20 genuinely bigger items section 174's own closing list already
+grouped by real difficulty - no further "quick, zero-new-feature"
+candidates identified in this pass.

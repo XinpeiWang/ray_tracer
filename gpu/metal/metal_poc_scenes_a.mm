@@ -141,17 +141,160 @@ void MetalPocApp::buildCornellBoxA1() {
                     "no pbrt file - %d quads, 1 sphere, 1 light)\n", kNumQuads - 1 + 6);
 }
 
-// See buildMeshGalleryScene()'s own declaration comment (this struct's own
-// definition) for the shape/simplifications this shares across every
-// category-G (Models) scene - section 117, docs/METAL_GPU_FEASIBILITY.md.
-// meshConductorEta/meshConductorK: pass {1,1,1}/a per-channel k computed
-// from OptiX's own flat "albedo" via the SAME reflectance-to-k formula
-// PR #103's own CoatedConductor "nothing given" fallback already
-// established (k = 2*sqrt(r)/sqrt(max(1e-4,1-r)), eta=1) - not a NEW
-// approximation invented here, reusing an already-shipped precedent for
-// exactly this "a flat colour, not a real measured conductor spectrum"
-// situation. meshMaterialType == 0 skips all of that (a plain diffuse
-// mesh needs none of it) - meshConductorEta/K are simply ignored then.
+// A2: Bouncing Spheres (In One Weekend's own final scene, section 175) -
+// matches CPU's build_bouncing_spheres() (scenes_book.h) in STRUCTURE
+// exactly: a giant checker "ground" sphere, an 22x22 grid of small
+// (radius 0.2) spheres with randomized material/placement (80% diffuse
+// - MOVING via real object motion blur, 15% static metal, 5% static
+// glass, one grid cell near (4,0.2,0) skipped so it doesn't collide
+// with the glass hero sphere below), and 3 "hero" spheres (glass/
+// diffuse/metal, radius 1). Needed ZERO new Metal-side features to
+// port at all - real per-sphere object motion blur (F11, section 167),
+// materialType 16's own real 3D checker (A3's own buildCheckeredSpheres()
+// just below, same ground-sphere pattern reused verbatim), and thin-lens
+// DOF (pbrtLensRadius/pbrtFocusDistance, D1/D5) were all already real,
+// working infrastructure - "just" a new scene builder combining them,
+// the exact same shape D13 (section 174) turned out to be.
+//
+// CPU's own randomness (`random_double()`, no seed anywhere in
+// build_bouncing_spheres()) means even CPU's OWN reference render
+// differs between runs - an exact match isn't a meaningful bar here,
+// same "no fixed seed, no exact-match expectation" precedent
+// buildDepthOfField()'s own 7 accent spheres already established
+// (that function's own comment). A FIXED seed here instead (not
+// unseeded) - deterministic/reproducible across runs on THIS side,
+// still not attempting to match CPU's own specific layout.
+void MetalPocApp::buildBouncingSpheres() {
+    // Natural scale (CPU's own book-scale coordinates, no rescale) -
+    // same convention as buildCheckeredSpheres()/buildDepthOfField()
+    // (F2/B10/C1/D1's own established "natural scale" tier).
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+
+    // Ground: the SAME real 3D checker (materialType 16) buildCheckeredSpheres()
+    // just below already uses, CPU's own identical checker_texture(0.32,
+    // (.2,.3,.1), (.9,.9,.9)) parameters, radius 1000 (CPU's own literal)
+    // instead of that scene's own radius 10 - a huge sphere as ground
+    // plane, the same A5/B1/F2 precedent.
+    {
+        const float3 tileA{0.2f, 0.3f, 0.1f}, tileB{0.9f, 0.9f, 0.9f};
+        TriangleMaterial mat{PackedFloat3{tileA.x, tileA.y, tileA.z}, /*materialType=*/16u,
+                              /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.32f};
+        mat.transmitColor = PackedFloat3{tileB.x, tileB.y, tileB.z};
+        const float3 c = float3{0.0f, -1000.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1000.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // The 22x22 grid - fixed-seed PRNG (reproducible on this side, not
+    // an attempt to match CPU's own unseeded layout - this function's
+    // own declaration comment).
+    std::mt19937 rng(1337u);
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+    const float3 heroCenter{4.0f, 0.2f, 0.0f};
+    for (int a = -11; a < 11; ++a) {
+        for (int b = -11; b < 11; ++b) {
+            const float chooseMat = unit(rng);
+            const float3 center{(float)a + 0.9f * unit(rng), 0.2f, (float)b + 0.9f * unit(rng)};
+            if (simd::length(center - heroCenter) <= 0.9f) continue;  // reserved for the glass hero sphere below
+
+            SphereData sd{PackedFloat3{(center + sceneOffset).x, (center + sceneOffset).y, (center + sceneOffset).z}, 0.2f};
+            TriangleMaterial mat;
+            if (chooseMat < 0.8f) {
+                // Diffuse, MOVING (CPU's own `center2 = center +
+                // vec3(0, random_double(0,.5), 0)`) - real object
+                // motion blur, F11/section 167's own centerDelta1.
+                const float3 albedo{unit(rng) * unit(rng), unit(rng) * unit(rng), unit(rng) * unit(rng)};
+                mat = TriangleMaterial{PackedFloat3{albedo.x, albedo.y, albedo.z}, /*materialType=*/0u,
+                                        1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+                sd.centerDelta1 = PackedFloat3{0.0f, unit(rng) * 0.5f, 0.0f};
+            } else if (chooseMat < 0.95f) {
+                // Static metal. CPU's own `metal` class has its own
+                // simpler (non-GGX) fuzzy-reflection model - `fuzz`
+                // reused directly as this materialType's own GGX alpha,
+                // the same "close enough substitution" every other
+                // CPU-metal-to-materialType-4 port here already makes
+                // (buildRoughMetalSpheres()'s own comment on an
+                // identical substitution), not a new approximation.
+                const float3 albedo{0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng)};
+                const float fuzz = unit(rng) * 0.5f;
+                mat = TriangleMaterial{PackedFloat3{albedo.x, albedo.y, albedo.z}, /*materialType=*/4u,
+                                        /*ior(alphaX)=*/fuzz, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/fuzz};
+                const float3 k = reflectanceToConductorK(albedo);
+                mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+                mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+            } else {
+                // Static glass (materialType 2, ior 1.5) - `color`={0,0,0}
+                // is true clear glass (the Beer-Lambert absorption
+                // coefficient this materialType actually reads, section
+                // 146's own finding), not a reflectance tint.
+                mat = TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/2u,
+                                        /*ior=*/1.5f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+            }
+            spheres.push_back(sd);
+            sphereMaterials.push_back(mat);
+        }
+    }
+
+    // 3 hero spheres - CPU's own exact positions/radii/materials/colours.
+    {
+        TriangleMaterial mat{PackedFloat3{0, 0, 0}, /*materialType=*/2u, /*ior=*/1.5f,
+                              PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    {
+        const float3 color{0.4f, 0.2f, 0.1f};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/0u, 1.0f,
+                              PackedFloat3{0, 0, 0}, -1, 0.0f};
+        const float3 c = float3{-4.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+    {
+        const float3 color{0.7f, 0.6f, 0.5f};
+        TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/4u,
+                              /*ior(alphaX)=*/0.0f, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/0.0f};
+        const float3 k = reflectanceToConductorK(color);
+        mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        const float3 c = float3{4.0f, 1.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Background - CPU's own registry row for A2, bg (0.70,0.80,1.00).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.70f, 0.80f, 1.00f};
+
+    // Camera: CPU's own registry row for A2 (vfov 20, lookfrom (13,2,3),
+    // lookat (0,0,0) - the SAME position buildCheckeredSpheres() just
+    // below uses too, different scene, same "classic RTIOW final-shot"
+    // framing), plus real thin-lens DOF (defocus_angle=0.6, focus_dist=10.0,
+    // the book's own final-render "beauty shot" values, D1/D5's own
+    // pbrtLensRadius/pbrtFocusDistance mechanism).
+    const float3 lookfrom = float3{13.0f, 2.0f, 3.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 0.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 20.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+    const float defocusAngleDeg = 0.6f;
+    const float focusDistRaw = 10.0f;
+    pbrtLensRadius = focusDistRaw * tanf(defocusAngleDeg * 0.5f * (float)M_PI / 180.0f);
+    pbrtFocusDistance = focusDistRaw;
+}
 
 void MetalPocApp::buildCheckeredSpheres() {
     // Same +8 offset convention every other hand-authored scene uses
