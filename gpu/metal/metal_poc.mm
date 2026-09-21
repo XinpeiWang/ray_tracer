@@ -1100,6 +1100,7 @@ void MetalPocApp::loadPbrtScene() {
     loadPbrtRemainingTriangles(scene, toWorld, materialFor, triangleHandled, unhandledLightEmission);
     loadPbrtSpheres(scene, toWorld, materialFor, sceneScale);
     loadPbrtDisks(scene, toWorld, materialFor, sceneScale);
+    loadPbrtCylinders(scene, toWorld, materialFor, sceneScale);
     loadPbrtObjectInstances(scene, toWorld, materialFor);
     loadPbrtPunctualLights(scene, toWorld, sceneScale);
     loadPbrtMedium(scene, sceneScale);
@@ -1408,6 +1409,74 @@ void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const Pbrt
     if (skippedDisks > 0)
         fprintf(stderr, "loadPbrtScene: %zu disk(s) skipped - only a full circle (no inner radius/phi-max) "
                         "under uniform scale is supported by this POC's own disk primitive\n", skippedDisks);
+}
+
+// --- Cylinders (section 171) - the plain, common "full tube, no ------
+// motion blur" case only, the same scope cut loadPbrtDisks() just above
+// already established for its own shape: a partial azimuthal sweep (a
+// real, non-degenerate case a reference direction would need to be
+// carried through, unlike a full disk/cylinder's own rotational
+// symmetry) or a non-uniform scale (would make the tube's own cross-
+// section an ellipse, not a circle) is warned and skipped entirely -
+// the same "rendering the wrong shape would be visibly WRONG, not just
+// simplified" reasoning loadPbrtDisks()'s own comment already gives.
+// Motion blur (pbrt's own ActiveTransform "StartTime"/"EndTime" around
+// a Shape "cylinder", pbrt_flatten::Cylinder::xformEnd) is silently NOT
+// read here at all - the same already-accepted, already-documented
+// "frozen at its start pose" tier disk-cylinder-motion-blur.pbrt's own
+// registry description already gives every GPU backend for this shape,
+// not a new gap this loader introduces.
+void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+    const PbrtMaterialForFn& materialFor, float sceneScale) {
+    size_t skippedCylinders = 0;
+    for (const pbrt_flatten::Cylinder& cy : scene.cylinders) {
+        if (cy.phiMaxDeg != 360.0) { ++skippedCylinders; continue; }
+
+        pbrt_scene::Matrix4 cxform;
+        for (int i = 0; i < 16; ++i) cxform.m[i] = cy.xform[i];
+
+        double worldOrigin[3], worldAxisX[3], worldAxisY[3];
+        pbrt_flatten::flatten_detail::transformPoint(cxform, 0.0, 0.0, 0.0, worldOrigin);
+        pbrt_flatten::flatten_detail::transformPoint(cxform, 1.0, 0.0, 0.0, worldAxisX);
+        pbrt_flatten::flatten_detail::transformPoint(cxform, 0.0, 1.0, 0.0, worldAxisY);
+        const float3 wOrigin{(float)worldOrigin[0], (float)worldOrigin[1], (float)worldOrigin[2]};
+        const float scaleX = simd::length(float3{(float)worldAxisX[0], (float)worldAxisX[1], (float)worldAxisX[2]} - wOrigin);
+        const float scaleY = simd::length(float3{(float)worldAxisY[0], (float)worldAxisY[1], (float)worldAxisY[2]} - wOrigin);
+        if (fabsf(scaleX - scaleY) > 1e-3f * std::max(scaleX, scaleY)) { ++skippedCylinders; continue; }
+
+        double worldBase[3], worldTop[3];
+        pbrt_flatten::flatten_detail::transformPoint(cxform, 0.0, 0.0, cy.zMin, worldBase);
+        pbrt_flatten::flatten_detail::transformPoint(cxform, 0.0, 0.0, cy.zMax, worldTop);
+        const float3 base = toWorld(float3{(float)worldBase[0], (float)worldBase[1], (float)worldBase[2]});
+        const float3 top = toWorld(float3{(float)worldTop[0], (float)worldTop[1], (float)worldTop[2]});
+        const float3 delta = top - base;
+        const float height = simd::length(delta);
+        if (height < 1e-6f) { ++skippedCylinders; continue; }
+        const float3 axis = delta / height;
+
+        TriangleMaterial mat = materialFor(cy.material);
+        if (cy.areaLight >= 0 && cy.areaLight < (int)scene.areaLights.size()) {
+            // Same "emissive, but not NEE-registered" tier loadPbrtDisks()
+            // just above already established - visible (direct hit or a
+            // BSDF-sampled bounce) but not explicitly sampled.
+            const pbrt_flatten::Emission& em = scene.areaLights[cy.areaLight];
+            mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+            mat.lightId = -1;
+            mat.twoSided = em.twoSided ? 1u : 0u;
+        }
+        // `height` above comes from base/top AFTER toWorld() (which
+        // already applies sceneScale itself) - only `radius`, a bare
+        // scalar that never goes through toWorld(), needs its own
+        // explicit `sceneScale *` here (same reasoning as loadPbrtDisks()'s
+        // own `sceneScale * scaleX * d.radius` just above).
+        cylinders.push_back(CylinderData{
+            PackedFloat3{base.x, base.y, base.z}, PackedFloat3{axis.x, axis.y, axis.z},
+            sceneScale * scaleX * (float)cy.radius, height});
+        cylinderMaterials.push_back(mat);
+    }
+    if (skippedCylinders > 0)
+        fprintf(stderr, "loadPbrtScene: %zu cylinder(s) skipped - only a full tube (no phi-max sweep) "
+                        "under uniform scale is supported by this POC's own cylinder primitive\n", skippedCylinders);
 }
 
 // --- ObjectInstance placements -----------------------------------
@@ -1846,13 +1915,15 @@ void MetalPocApp::loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene) {
                     pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z);
         }
     }
-    // Disks are now handled above (section 101, common full-circle case);
-    // cylinder/cone/paraboloid/bilinearmesh/curve remain a real gap.
-    if (!scene.cylinders.empty() || !scene.cones.empty() ||
-        !scene.paraboloids.empty() || !scene.bilinearPatches.empty() || !scene.curves.empty())
-        fprintf(stderr, "loadPbrtScene: cylinder/cone/paraboloid/bilinearmesh/curve shapes skipped - "
-                        "only triangle mesh, sphere, and (full-circle) disk shapes are supported by "
-                        "this POC's scene loader yet\n");
+    // Disks are handled above (section 101, common full-circle case);
+    // cylinders are handled above too now (section 171, common full-tube
+    // case, via loadPbrtCylinders()); cone/paraboloid/bilinearmesh/curve
+    // remain a real gap.
+    if (!scene.cones.empty() || !scene.paraboloids.empty() ||
+        !scene.bilinearPatches.empty() || !scene.curves.empty())
+        fprintf(stderr, "loadPbrtScene: cone/paraboloid/bilinearmesh/curve shapes skipped - "
+                        "only triangle mesh, sphere, (full-circle) disk, and (full-tube) cylinder "
+                        "shapes are supported by this POC's scene loader yet\n");
 }
 
 // --- Camera ------------------------------------------------------------
@@ -2221,6 +2292,24 @@ bool MetalPocApp::buildGPUResources() {
         length:disks.size() * sizeof(DiskData) options:MTLResourceStorageModeShared];
     diskMaterialBuffer = [device newBufferWithBytes:diskMaterials.data()
         length:diskMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+    // Genuinely empty for every scene but the handful with a real pbrt
+    // Shape "cylinder" - the SAME "empty std::vector::data() can return
+    // null, newBufferWithBytes:length:0 then returns nil" pitfall
+    // lensElementBuffer/exitPupilBoundsBuffer's own comment just above
+    // already documents (found there first) - allocating a real
+    // 1-element buffer via newBufferWithLength: instead whenever empty,
+    // same fix, never read by the shader either (cylinderCount==0 means
+    // no bounding-box geometry ever calls cylinderIntersectionFunction
+    // at all, and the shading loop's own isCylinder branch is
+    // unreachable with no cylinder primitives in the accel structure).
+    cylinderBuffer = cylinders.empty()
+        ? [device newBufferWithLength:sizeof(CylinderData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:cylinders.data()
+              length:cylinders.size() * sizeof(CylinderData) options:MTLResourceStorageModeShared];
+    cylinderMaterialBuffer = cylinderMaterials.empty()
+        ? [device newBufferWithLength:sizeof(TriangleMaterial) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:cylinderMaterials.data()
+              length:cylinderMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
 
     const uint32_t suzanneTriangleCount = (uint32_t)suzanneMaterials.size();
     suzanneVertexBuffer = [device newBufferWithBytes:suzanneVerts.data()
@@ -2334,9 +2423,45 @@ bool MetalPocApp::buildGPUResources() {
     diskGeomDesc.intersectionFunctionTableOffset = 1; // diskIntersectionFunction's own slot
     diskGeomDesc.opaque = YES;
 
+    // The cylinder's own bounding-box geometry (section 171) - a THIRD
+    // geometryDescriptor in this SAME primitive AS, slot 2. A world-
+    // space-axis-aligned box around the tube's own finite extent: the
+    // base/top endpoints each widened by `radius` in every axis (a
+    // simple, always-correct-but-not-maximally-tight bound for an
+    // arbitrarily-oriented tube, same "simplest correct box, not the
+    // tightest one" choice diskGeomDesc's own epsilon-padding comment
+    // already made for a disk).
+    std::vector<MTLAxisAlignedBoundingBox> cylinderBoundsList;
+    for (const CylinderData& cy : cylinders) {
+        float3 base{cy.base.x, cy.base.y, cy.base.z};
+        float3 top = base + float3{cy.axis.x, cy.axis.y, cy.axis.z} * cy.height;
+        float3 lo = simd::min(base, top) - cy.radius;
+        float3 hi = simd::max(base, top) + cy.radius;
+        MTLAxisAlignedBoundingBox bounds;
+        bounds.min = MTLPackedFloat3Make(lo.x, lo.y, lo.z);
+        bounds.max = MTLPackedFloat3Make(hi.x, hi.y, hi.z);
+        cylinderBoundsList.push_back(bounds);
+    }
+    // Same empty-vector nil-buffer pitfall as cylinderBuffer/
+    // cylinderMaterialBuffer's own comment above (buildGPUResources()) -
+    // guarded here too, since boundingBoxCount==0 below means this
+    // buffer is never actually read regardless.
+    id<MTLBuffer> cylinderBoundingBoxBuffer = cylinderBoundsList.empty()
+        ? [device newBufferWithLength:sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:cylinderBoundsList.data()
+              length:cylinderBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
+
+    MTLAccelerationStructureBoundingBoxGeometryDescriptor* cylinderGeomDesc =
+        [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
+    cylinderGeomDesc.boundingBoxBuffer = cylinderBoundingBoxBuffer;
+    cylinderGeomDesc.boundingBoxStride = sizeof(MTLAxisAlignedBoundingBox);
+    cylinderGeomDesc.boundingBoxCount = (uint32_t)cylinderBoundsList.size();
+    cylinderGeomDesc.intersectionFunctionTableOffset = 2; // cylinderIntersectionFunction's own slot
+    cylinderGeomDesc.opaque = YES;
+
     MTLPrimitiveAccelerationStructureDescriptor* sphereAccelDesc =
         [MTLPrimitiveAccelerationStructureDescriptor descriptor];
-    sphereAccelDesc.geometryDescriptors = @[bboxGeomDesc, diskGeomDesc];
+    sphereAccelDesc.geometryDescriptors = @[bboxGeomDesc, diskGeomDesc, cylinderGeomDesc];
 
     MTLAccelerationStructureSizes sphereSizes = [device accelerationStructureSizesWithDescriptor:sphereAccelDesc];
     sphereAS = [device newAccelerationStructureWithSize:sphereSizes.accelerationStructureSize];
@@ -2591,6 +2716,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     id<MTLFunction> kernelFn = [library newFunctionWithName:@"primaryRayKernel"];
     id<MTLFunction> sphereIntersectFn = [library newFunctionWithName:@"sphereIntersectionFunction"];
     id<MTLFunction> diskIntersectFn = [library newFunctionWithName:@"diskIntersectionFunction"];
+    id<MTLFunction> cylinderIntersectFn = [library newFunctionWithName:@"cylinderIntersectionFunction"];
 
     // The intersection function has to be LINKED into the compute
     // pipeline (MTLLinkedFunctions) before an MTLIntersectionFunction
@@ -2601,7 +2727,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     MTLComputePipelineDescriptor* pipelineDesc = [MTLComputePipelineDescriptor new];
     pipelineDesc.computeFunction = kernelFn;
     MTLLinkedFunctions* linkedFns = [MTLLinkedFunctions new];
-    linkedFns.functions = @[sphereIntersectFn, diskIntersectFn];
+    linkedFns.functions = @[sphereIntersectFn, diskIntersectFn, cylinderIntersectFn];
     pipelineDesc.linkedFunctions = linkedFns;
 
     id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithDescriptor:pipelineDesc
@@ -2625,19 +2751,23 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // atIndex:1 here reaches the right function's own data, not a
     // shared/overwritten slot.
     MTLIntersectionFunctionTableDescriptor* fnTableDesc = [MTLIntersectionFunctionTableDescriptor new];
-    fnTableDesc.functionCount = 2;
+    fnTableDesc.functionCount = 3;
     id<MTLIntersectionFunctionTable> functionTable = [pipeline newIntersectionFunctionTableWithDescriptor:fnTableDesc];
     id<MTLFunctionHandle> sphereHandle = [pipeline functionHandleWithFunction:sphereIntersectFn];
     id<MTLFunctionHandle> diskHandle = [pipeline functionHandleWithFunction:diskIntersectFn];
+    id<MTLFunctionHandle> cylinderHandle = [pipeline functionHandleWithFunction:cylinderIntersectFn];
     [functionTable setFunction:sphereHandle atIndex:0];
     [functionTable setFunction:diskHandle atIndex:1];
-    // sphereIntersectionFunction/diskIntersectionFunction each read
-    // their own geometry buffer (metal_poc.metal buffer(0)/buffer(1)
-    // respectively - a SEPARATE argument table from the calling
-    // kernel's own buffer(0..14), see that file's own comment) -
-    // bound here, on the function table, not on the compute encoder.
+    [functionTable setFunction:cylinderHandle atIndex:2];
+    // sphereIntersectionFunction/diskIntersectionFunction/
+    // cylinderIntersectionFunction each read their own geometry buffer
+    // (metal_poc.metal buffer(0)/buffer(1)/buffer(2) respectively - a
+    // SEPARATE argument table from the calling kernel's own
+    // buffer(0..27), see that file's own comment) - bound here, on the
+    // function table, not on the compute encoder.
     [functionTable setBuffer:sphereBuffer offset:0 atIndex:0];
     [functionTable setBuffer:diskBuffer offset:0 atIndex:1];
+    [functionTable setBuffer:cylinderBuffer offset:0 atIndex:2];
 
     // --- Output texture + uniforms ----------------------------------
     MTLTextureDescriptor* texDesc = [MTLTextureDescriptor
@@ -3141,6 +3271,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     checkGpuResource(instanceTransformBuffer, "instanceTransformBuffer", device, &anyResourceFailed);
     checkGpuResource(diskBuffer, "diskBuffer", device, &anyResourceFailed);
     checkGpuResource(diskMaterialBuffer, "diskMaterialBuffer", device, &anyResourceFailed);
+    checkGpuResource(cylinderBuffer, "cylinderBuffer", device, &anyResourceFailed);
+    checkGpuResource(cylinderMaterialBuffer, "cylinderMaterialBuffer", device, &anyResourceFailed);
     checkGpuResource(pointLightBuffer, "pointLightBuffer", device, &anyResourceFailed);
     checkGpuResource(directionalLightBuffer, "directionalLightBuffer", device, &anyResourceFailed);
     checkGpuResource(projectionLightBuffer, "projectionLightBuffer", device, &anyResourceFailed);
@@ -3199,6 +3331,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setBuffer:pbrtEnvConditionalCDFBuffer offset:0 atIndex:23];
     [enc setBuffer:lensElementBuffer offset:0 atIndex:24];
     [enc setBuffer:exitPupilBoundsBuffer offset:0 atIndex:25];
+    [enc setBuffer:cylinderBuffer offset:0 atIndex:26];
+    [enc setBuffer:cylinderMaterialBuffer offset:0 atIndex:27];
     // Mark the AS + its dependent primitive ASes as used so Metal
     // knows about the indirection - required for instance
     // acceleration structures referencing primitive ones (now three:
