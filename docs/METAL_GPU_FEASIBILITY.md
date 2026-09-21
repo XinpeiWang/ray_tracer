@@ -9236,3 +9236,104 @@ own difference was independently confirmed to be section 160's own
 already-documented, pre-existing realistic-camera non-determinism
 (reproduces on the UNCHANGED pre-this-PR binary run twice in a row),
 not a regression from this change.
+
+## 163. Fix: a real pbrt scene with NO infinite light incorrectly showed the hardcoded room's own sky-gradient background instead of black - a single root cause behind many category-C scenes' own apparent gaps
+
+Scoping category C (Lights) - the 13 pbrt-example scenes C8-C20 - by
+rendering all of them and comparing against `--cpu` found the SAME
+symptom on more than half: a bright, washed-out light-blue/white
+background where CPU showed proper black, often making a scene's own
+actual feature (a dim emissive texture, a blackbody-coloured panel, a
+small light) hard or impossible to see by contrast. Tracing this down
+found ONE shared root cause, not many separate bugs: `primaryRayKernel`'s
+own miss-path dispatch (`useEnvironmentMap` -> `pbrtHasImageEnvLight` ->
+`pbrtHasConstantEnvLight` -> else) had no "else" case at all for "this
+is a loaded pbrt scene with no infinite light of any kind" - it always
+fell through to the hardcoded POC room's own procedural sky gradient,
+appropriate for THAT room (every one of its own scenes was authored
+expecting some background) but wrong for a real pbrt file that
+legitimately has none, which real pbrt-v4 (and this project's own CPU/
+OptiX backends) render as plain black.
+
+**Fixed with one new `Uniforms::isPbrtScene` flag** gating that final
+else branch (0 keeps the sky gradient exactly as before; nonzero skips
+it, true black). **A real bug caught by this PR's own verification, not
+shipped**: the first version set this flag from `havePbrtCamera`, the
+condition the whole surrounding block is already gated on - but
+`havePbrtCamera` is ALSO true for every HAND-AUTHORED scene's own camera
+setup (`buildCornellBoxA1()` and nearly every other builder set it
+directly, pbrt file or not), not just a genuinely loaded pbrt FILE. That
+version's own before/after hash sweep caught this immediately: A1/G1/
+G12/F1/B2/B4/E1 and every other hand-authored scene's own background
+ALSO went incorrectly black. Fixed by keying off `!pbrtScenePath.empty()`
+instead - genuinely narrower, true only when `metal_render_main()` chose
+the pbrt-file path over the hand-authored one for this exact scene_id
+(`cpu_scene_pbrt_path_by_id()` returned something).
+
+**A real methodology pitfall hit and fixed during this PR's own
+verification, worth remembering for any future shader-vs-host-code
+change**: an EARLIER before/after hash comparison pass produced
+confusing, wrong-looking diffs on D4/D9/D10/D11 (scenes with no logical
+reason to be affected) - traced to `git stash`/`git stash pop` being
+interleaved with the two binaries' own render calls. Metal's shader
+source is read fresh from the WORKING TREE's `.metal` files at RUNTIME
+(section 158's own comment), not baked into the compiled `.mm`-derived
+binary - so once `git stash pop` restored the new `.metal` files
+BEFORE the "before" binary's own render calls ran, that binary's own
+(OLD, smaller) host-side `Uniforms` C++ struct was writing a uniform
+buffer the (NEW, one-field-larger) shader-side struct then misread
+every field after the insertion point of - comparing an apples-to-
+oranges combination neither this PR nor any prior state ever actually
+produces, not a real regression. Fixed by doing ALL "before" renders
+first while still stashed, THEN popping, THEN all "after" renders - never
+interleaving a stash/pop with the OTHER binary's own render calls.
+
+**A second, narrower pitfall, specific to lens-based cameras**: even
+with the methodology above fixed, D4 (realistic camera) still showed a
+changed hash across TWO DIFFERENT BUILDS (each internally perfectly
+reproducible on its own, matching section 160's own established "same
+binary, run twice" determinism test) - despite `isPbrtScene` provably
+being 0 and unread for D4 either way (confirmed by checking
+`pbrtScenePath` directly). Given section 160's own finding that this
+camera model's own rendering is right at a real GPU/driver-level
+floating-point precision boundary, the most likely explanation is that
+ANY change to the shader source text (even one this camera's own code
+never reads) can shift the runtime JIT-compiled machine code enough to
+move that boundary - confirmed consistent with, not contradicting,
+that section's own conclusion. D9 (real thin-lens DOF, a milder version
+of the same "per-sample varying ray origin" mechanism) showed the same
+shape: different hash, visually indistinguishable image. Lesson: a
+hash-based before/after regression check is not fully reliable for any
+lens-based-camera scene (D4/D8/D9-D12/F4) even for a functionally
+unrelated change - fall back to visual comparison for those specifically,
+which is what this PR's own final verification pass did.
+
+**Not every category-C scene's own remaining gap is this bug** - worth
+recording so a future increment doesn't need to re-diagnose: C13 (disk/
+cylinder area lights) and C14 (sphere area lights) still don't match
+CPU even with black backgrounds restored - Metal's own pbrt light-
+building code appears to have no support for a non-triangle-mesh
+AreaLightSource shape at all (no NEE, and possibly no direct-hit
+emission either - C14 went fully black once the sky-gradient stopped
+masking it). C9 (goniometric/projection image decoding) and C11
+(filename-textured two-sided area lights) still show visibly less/
+dimmer emissive detail than CPU even after this fix. C10/C16
+(`"blackbody L"` colour temperature) show a background that's now
+correctly dark, but still don't differentiate the two panels' own
+2500K/9000K colours the way CPU's clearly-orange-vs-blue reference
+does - real blackbody-to-RGB conversion may not be wired up for pbrt-
+loaded area lights at all. C20 needs `--spectral` rendering, a CPU-only
+architecture this GPU backend was never meant to match. None of these
+four/five gaps were chased further in this PR - each is its own
+real, separately-scoped feature.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), a
+render of all 88 currently-known scene IDs (68 previous + D9-D12 +
+B18/B22/B25 + C8-C20) with zero failures, and (after fixing both
+methodology pitfalls above) a clean before/after hash comparison
+confirming every hand-authored scene and every already-correct pbrt
+scene is a true no-op, while C8/C9/C10/C11/C13/C14/C15/C16/C18/C19/C20
+(every category-C scene without its own infinite light) changed in
+exactly the intended way - visually confirmed against `--cpu` for
+several (C10/C18 in particular now show a properly dark background
+matching CPU's own framing closely).

@@ -568,10 +568,14 @@ kernel void primaryRayKernel(
                     // against, since none of this shader's material-
                     // shading functions sample it explicitly yet.
                     radiance += throughput * float3(uniforms.pbrtEnvColor);
-                } else {
+                } else if (uniforms.isPbrtScene == 0u) {
                     float skyT = 0.5 * (rayDir.y + 1.0);
                     radiance += throughput * mix(skyBottom, skyTop, skyT);
                 }
+                // else: a real pbrt scene with no infinite light of any
+                // kind - true black (no radiance added at all), matching
+                // real pbrt-v4's own behaviour (Uniforms::isPbrtScene's
+                // own comment).
                 break;
             }
 
