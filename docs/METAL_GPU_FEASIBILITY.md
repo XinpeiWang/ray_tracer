@@ -9611,3 +9611,41 @@ byte-identical wording - not a new regression), direct `--gpu` vs
 `--cpu` comparison for F11 (GPU's moving sphere now streaks the same
 direction CPU's does, the static sphere stays equally crisp on both),
 and the broader hash/visual sweep described above.
+
+## 168. Category I increment: I2 - a scene simply missed from an earlier batch, not a new gap at all
+
+A fresh scoping pass over every scene NOT yet confirmed working on
+Metal (F7/F8 real curve/hair geometry, F12 disk/cylinder motion blur,
+F14 cone/paraboloid, H1's own Crytek Sponza OBJ environment, H2-H12's
+own external pbrt-v4-scenes downloads - all genuinely bigger, already
+out-of-scope efforts, none chased further here) turned up one true
+one-line-class fix: **I2, SpectralDispersionEducation**. Its own
+`scene_registry_data.h` row says exactly what it needs: `"Same glass
+prism as B23"` - and B23 (Glass Prism Dispersion, materialType 22
+dispersive dielectric) was already ported to Metal back in section
+143. I2 simply never got added to either of the two places this
+project's own "Education scene reusing another scene's own geometry"
+pattern requires (the same pattern I1/I3/I4/I5/I6/I7/I8/I9/I10 all
+already went through, section 132/148) -
+`cpu_scene_metal_hand_authored_supported()`'s own `kSupported` set
+(cpu_renderer/cpu_interface.cpp) and `buildHandAuthoredScene()`'s own
+dispatch chain (metal_poc.mm) both lacked an `"I2"` entry, so it fell
+straight through to the generic "no hand-authored Metal builder yet"
+failure instead of ever reaching `buildPrismDispersion()`. Fixed by
+adding I2 to both places, pointing at the exact same
+`buildPrismDispersion()` B23 already uses - zero new shader/
+materialType/geometry code, this was purely a registration gap left
+over from the original batch.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), a
+render of all 148 registered scene IDs (126 now succeed - the same
+22 remaining failures as before this PR, minus I2, all still the
+identical pre-existing "no hand-authored Metal builder yet" message),
+direct `--gpu` vs `--cpu` comparison for I2 (same prism silhouette,
+same overall composition - GPU's own dispersive-dielectric shading,
+already proven correct for B23, carries over unchanged), and a
+before/after hash comparison across 10 diverse scenes (A1, B18, C12,
+D9, F11, G1, I1, I3, I5, J6) all matching byte-for-byte - unlike
+section 167's own broader finding, this change never touches a
+shared code path (it's gated entirely behind `scene_id == "I2"`), so
+a true, exact no-op was the expected and confirmed result here.
