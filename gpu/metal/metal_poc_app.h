@@ -1062,6 +1062,22 @@ struct MetalPocApp {
     int pbrtAreaLightImageWidth = 0;
     int pbrtAreaLightImageHeight = 0;
 
+    // A pbrt-loaded scene's own Diffuse/CoatedDiffuse material with a
+    // "texture reflectance" bound to a bare "imagemap" Texture (F5/F9,
+    // section 166) - same "one shared slot, first material wins"
+    // constraint as every other pbrt-loaded image above.
+    bool havePbrtDiffuseImage = false;
+    std::vector<float> pbrtDiffuseImagePixels;
+    int pbrtDiffuseImageWidth = 0;
+    int pbrtDiffuseImageHeight = 0;
+    // The filename actually loaded into the fields above - lets a
+    // SECOND triangle sharing the SAME already-loaded textured material
+    // (e.g. a 2-triangle quad) correctly get materialType 26 too,
+    // distinguishing "the same material's own second triangle" from "a
+    // genuinely different second texture" (metal_poc.mm's own
+    // MaterialKind::Diffuse case comment has the full story).
+    std::string pbrtDiffuseImageFilename;
+
     // --- Metal device/queue, set by parseArgsAndCreateDevice() ---------
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> queue = nil;

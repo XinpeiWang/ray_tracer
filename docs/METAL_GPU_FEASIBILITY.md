@@ -9430,3 +9430,66 @@ quad-light one), a cylinder-shaped light (the same missing geometry
 support C13 already needs), and `twosided` under NEE for a non-quad
 light kind that has no NEE strategy to begin with - not attempted this
 round either.
+
+## 166. Category F increment: F5/F9 - a real imagemap `Texture` bound to a Diffuse material's own `"reflectance"`, plus two real bugs found and fixed along the way
+
+F5 (`plymesh-uv.pbrt`) and F9 (`trianglemesh-uv.pbrt`) both bind
+`Material "diffuse" "texture reflectance" "<name>"` to a plain
+`Texture "<name>" "spectrum" "imagemap" "string filename" [...]` - a
+REAL image FILE (`uv-checker.bmp`), not a procedural pattern like B22's
+own `"checkerboard"` Texture (section 162). Both rendered as flat grey
+on Metal (matching the CPU/GPU-recursive "solid black"/wrong-texel
+history these two scene files' own header comments describe for the
+SAME underlying gap on other backends) despite the mesh's own real
+per-vertex UV data already loading correctly into the `uvs` buffer
+(confirmed by reading the code first: `t.hasUVs`/`t.uv[]` was already
+threaded through, unrelated to this gap) - `Material::textureFilename`
+(`pbrt_flatten.h`, already resolved by the shared parser) was simply
+never read by this loader's own material-mapping code at all.
+
+**Fixed with a new materialType 26**, reusing the exact "one dedicated
+texture slot, first (filename) wins, decode failure falls back to flat
+colour" pattern every other pbrt-loaded image here already has
+(goniometric/projection/area-light images, sections 98/105) - a
+per-hit lookup via a new `pbrtDiffuseTexture` slot, same isSphere/
+`texCoordFor()` UV split materialType 3/25 already established.
+
+**Two real bugs found by rendering and comparing against `--cpu`, not
+shipped on the first attempt:**
+
+1. **A hard diagonal split down the middle of what should be one
+   seamlessly textured quad**, found on the FIRST render of both
+   scenes (both are a single 2-triangle quad). Root cause: this
+   loader's own `mapMaterial()` runs once per TRIANGLE, not once per
+   distinct `Material` - a first version's own "first call wins, every
+   later call falls back to flat colour" guard (copied from the
+   punctual-light image pattern, where each light IS its own unique
+   call) gave the quad's SECOND triangle a flat grey fallback instead
+   of the SAME texture its first triangle correctly got, since by the
+   second call `havePbrtDiffuseImage` was already true. Fixed by
+   tracking the actually-loaded filename (`pbrtDiffuseImageFilename`)
+   and re-checking it against each new call's own `m.textureFilename` -
+   the same filename reuses the already-decoded texture instead of
+   falling back, only a genuinely DIFFERENT second filename does.
+2. **A vertical mirror** (each quadrant's own colour landed in the
+   vertically opposite corner) - found once the diagonal-split bug
+   above was fixed and the texture was finally being read as ONE
+   continuous image. Root cause: `pbrt_load::detail::
+   decodeInfiniteLightImage()` (stb_image) always returns row 0 as the
+   image's own TOP row, matching Metal's own `replaceRegion:` upload
+   convention (row 0 -> texture row 0) - but pbrt-v4's own UV
+   convention has v=0 at the BOTTOM (this scene's own authored
+   `"point2 uv"` values use that convention). Sampling with `uv.y`
+   unflipped reads v=0 from the texture's TOP instead of its BOTTOM.
+   Fixed with a `1.0 - uv.y` flip at the one new sample call site
+   (materialType 25's own procedural checkerboard needed no such fix -
+   it computes tile parity directly from `uv`, with no image row order
+   to get backwards in the first place).
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), a
+render of all 96 currently-known scene IDs with zero failures, direct
+`--gpu` vs `--cpu` comparison for both F5 and F9 (both now match
+CPU's own 4-quadrant checkerboard exactly - same colours, same
+corners, no diagonal artifact), and a before/after hash comparison
+across 28 other scenes confirming this change is a true no-op for
+every one of them except F5/F9 themselves.

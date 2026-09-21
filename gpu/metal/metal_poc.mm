@@ -851,7 +851,7 @@ void MetalPocApp::loadPbrtScene() {
     // named sub-materials - an ordinary auto lambda can't reference its
     // own name inside its own body (not yet in scope at that point).
     std::function<TriangleMaterial(const pbrt_flatten::Material&, int)> mapMaterial =
-        [&warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
+        [this, &warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
         switch (m.kind) {
             case pbrt_flatten::MaterialKind::Diffuse: {
@@ -879,6 +879,49 @@ void MetalPocApp::loadPbrtScene() {
                     mat.transmitColor = PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]};
                     mat.conductorEta = PackedFloat3{(float)m.checkerUScale, (float)m.checkerVScale, 0.0f};
                     return mat;
+                }
+                // A "reflectance" bound to a bare "imagemap" Texture
+                // (F5/F9, section 166) - materialType 26, a real per-hit
+                // image lookup via pbrtDiffuseTexture (see that
+                // materialType's own shading comment,
+                // metal_poc_kernel.metal). Only the FIRST DISTINCT such
+                // texture FILENAME in the scene gets the one dedicated
+                // texture slot (same "one shared texture" constraint
+                // every other pbrt-loaded image here already has) - a
+                // second, DIFFERENT filename, or a decode failure, falls
+                // through to the flat-colour default below exactly as if
+                // no texture were bound at all. Deliberately checked
+                // against the ALREADY-LOADED filename, not just "already
+                // loaded something" - `mapMaterial()` is called once per
+                // TRIANGLE, not once per distinct Material, so a single
+                // 2-triangle quad sharing ONE textured material calls
+                // this twice for the SAME filename; a naive "first call
+                // wins, every later call falls back" check (this
+                // function's own first version) gave the quad's second
+                // triangle a flat grey fallback instead of the same
+                // texture its first triangle correctly got - a real,
+                // visible bug (a hard diagonal split down the middle of
+                // what should be one seamlessly textured quad), caught
+                // by rendering and comparing against `--cpu`, not
+                // assumed safe from the code alone.
+                if (!m.textureFilename.empty() &&
+                    (!havePbrtDiffuseImage || m.textureFilename == pbrtDiffuseImageFilename)) {
+                    if (!havePbrtDiffuseImage) {
+                        std::string bytes;
+                        if (pbrt_load::loadFileNear(pbrtScenePath, m.textureFilename, bytes) &&
+                            pbrt_load::detail::decodeInfiniteLightImage(m.textureFilename, bytes,
+                                pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                            havePbrtDiffuseImage = true;
+                            pbrtDiffuseImageFilename = m.textureFilename;
+                        } else {
+                            fprintf(stderr, "loadPbrtScene: Diffuse material's own texture '%s' could not be "
+                                            "read/decoded; falling back to its flat colour\n", m.textureFilename.c_str());
+                        }
+                    }
+                    if (havePbrtDiffuseImage) {
+                        return TriangleMaterial{color, /*materialType=*/26u, /*ior=*/1.0f,
+                                                 PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    }
                 }
                 return TriangleMaterial{color, /*materialType=*/0u, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
@@ -2766,6 +2809,32 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
     }
 
+    // A pbrt-loaded Diffuse/CoatedDiffuse material's own real imagemap-
+    // bound "texture reflectance" (F5/F9, section 166) - same upload
+    // pattern as pbrtAreaLightTexture/pbrtGoniometricTexture above.
+    id<MTLTexture> pbrtDiffuseTexture = nil;
+    {
+        const uint32_t pw = havePbrtDiffuseImage ? (uint32_t)pbrtDiffuseImageWidth : 1u;
+        const uint32_t ph = havePbrtDiffuseImage ? (uint32_t)pbrtDiffuseImageHeight : 1u;
+        MTLTextureDescriptor* desc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+            width:pw height:ph mipmapped:NO];
+        desc.usage = MTLTextureUsageShaderRead;
+        desc.storageMode = MTLStorageModeShared;
+        pbrtDiffuseTexture = [device newTextureWithDescriptor:desc];
+        std::vector<float> rgba((size_t)pw * ph * 4, 0.0f);
+        if (havePbrtDiffuseImage) {
+            for (size_t i = 0; i < (size_t)pw * ph; ++i) {
+                rgba[i * 4 + 0] = pbrtDiffuseImagePixels[i * 3 + 0];
+                rgba[i * 4 + 1] = pbrtDiffuseImagePixels[i * 3 + 1];
+                rgba[i * 4 + 2] = pbrtDiffuseImagePixels[i * 3 + 2];
+                rgba[i * 4 + 3] = 1.0f;
+            }
+        }
+        [pbrtDiffuseTexture replaceRegion:MTLRegionMake2D(0, 0, pw, ph) mipmapLevel:0
+            withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
+    }
+
     // envMarginalCDF/envConditionalCDF buffers - a real (non-empty)
     // envDist above uploads its own arrays directly; the fallback case
     // (missing JPEG) still needs SOME buffer bound at these indices
@@ -3073,6 +3142,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setTexture:pbrtGoniometricTexture atIndex:4];
     [enc setTexture:pbrtProjectionTexture atIndex:5];
     [enc setTexture:pbrtAreaLightTexture atIndex:6];
+    [enc setTexture:pbrtDiffuseTexture atIndex:7];
     [enc setAccelerationStructure:instAS atBufferIndex:0];
     [enc setBuffer:uniformBuffer offset:0 atIndex:1];
     [enc setBuffer:materialBuffer offset:0 atIndex:2];
