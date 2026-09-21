@@ -34,6 +34,7 @@
 #include <simd/simd.h>
 
 #include "metal_poc_host_math.h"
+#include "metal_poc_shader_files.h"
 
 using simd::float3;
 
@@ -866,12 +867,22 @@ int main() {
 #else
         NSString* shaderDir = [@(__FILE__) stringByDeletingLastPathComponent];
 #endif
-        NSString* shaderPath = [shaderDir stringByAppendingPathComponent:@"metal_poc.metal"];
-        NSString* shaderSource = [NSString stringWithContentsOfFile:shaderPath encoding:NSUTF8StringEncoding error:&error];
-        if (!shaderSource) {
-            fprintf(stderr, "FAIL: could not read shader source at %s: %s\n",
-                    shaderPath.UTF8String, error.localizedDescription.UTF8String);
-            return 1;
+        // See metal_poc_shader_files.h's own comment - the shader source
+        // is split across several files on disk but still compiled as
+        // ONE concatenated string (metal_poc.mm's own loader does the
+        // same thing, from the same ordered file list).
+        NSMutableString* shaderSource = [NSMutableString string];
+        int shaderFileCount = 0;
+        const char* const* shaderFileNames = metalShaderFileNames(&shaderFileCount);
+        for (int i = 0; i < shaderFileCount; ++i) {
+            NSString* fragPath = [shaderDir stringByAppendingPathComponent:@(shaderFileNames[i])];
+            NSString* fragSource = [NSString stringWithContentsOfFile:fragPath encoding:NSUTF8StringEncoding error:&error];
+            if (!fragSource) {
+                fprintf(stderr, "FAIL: could not read shader source at %s: %s\n",
+                        fragPath.UTF8String, error.localizedDescription.UTF8String);
+                return 1;
+            }
+            [shaderSource appendString:fragSource];
         }
         MTLCompileOptions* compileOpts = [MTLCompileOptions new];
         id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:compileOpts error:&error];

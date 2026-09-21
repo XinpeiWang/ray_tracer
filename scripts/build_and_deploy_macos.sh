@@ -159,8 +159,16 @@ MACDEPLOYQT="$QT_BIN_DIR/macdeployqt"
 # file there makes it print a real (if ultimately harmless) "Could not
 # parse otool output" error - found by actually running this script after
 # adding the copy, not assumed safe.
+#
+# The shader source is now split across several metal_poc_*.metal files
+# (gpu/metal/metal_poc_shader_files.h's own comment - the former single
+# metal_poc.metal no longer exists) - every one of them has to be copied,
+# not just one, since metal_poc.mm's own runtime loader concatenates them
+# all from this SAME directory. Globbed rather than hardcoded file-by-file
+# so a future file added to that list doesn't also need a matching edit
+# here to actually ship.
 if [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && grep -q "RT_BUILD_METAL:BOOL=ON" "$BUILD_DIR/CMakeCache.txt"; then
-	cp "$REPO_ROOT/gpu/metal/metal_poc.metal" "$APP_BUNDLE/Contents/MacOS/metal_poc.metal"
+	cp "$REPO_ROOT"/gpu/metal/metal_poc_*.metal "$APP_BUNDLE/Contents/MacOS/"
 fi
 
 # The hardcoded-room demo scene's own small, ALWAYS-needed assets (unlike

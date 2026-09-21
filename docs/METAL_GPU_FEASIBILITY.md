@@ -8831,3 +8831,84 @@ noise floor that never moves. GPU still reads visibly brighter than
 CPU's own reference at equal sample counts (a known, pre-existing
 exposure/tonemap difference between the two renderers, not something
 this PR introduced or attempts to reconcile - out of scope here).
+
+## 158. Structural refactor: `metal_poc.metal` split into 8 files - the shader-side analogue of PR #156's own `.mm` split, verified byte-for-byte identical the same way
+
+By section 157, `gpu/metal/metal_poc.metal` had grown to 6,495 lines -
+by far the largest single file in the repo (5x the next-largest),
+mixing shared types/light functions, sampling/BSDF math utilities, 18
+per-material `shadeXxx()` functions (over half the file on its own -
+3,195 lines), the main `primaryRayKernel`, and the device-side test
+kernels. PR #156's own doc section had already named this "the shader-
+side analogue" of the `.mm` file-size problem it fixed, left
+unaddressed at the time; this PR closes it.
+
+**Split into 8 files, precisely mapped by exact original line ranges
+before touching anything** (same discipline as PR #156's own `.mm`
+split): `metal_poc_types.metal` (`Uniforms`, every light/geometry
+struct, RNG, `LensElement`/`ExitPupilBounds`/`sampleRealisticCameraRay()` -
+1,041 lines), `metal_poc_sampling.metal` (hemisphere/disk sampling,
+shading-normal/tangent/bump helpers, env-map importance sampling,
+checker/Perlin noise, Fresnel, GGX microfacet math, ONB construction,
+the Henyey-Greenstein phase function, area-light alias-table sampling,
+the GGX energy-table lookup - 970 lines), then the 3,195-line material
+block split further by family into `metal_poc_materials_specular.metal`
+(mirror/dielectric/dispersive/rough-dielectric/thin-dielectric/
+conductor/clearcoat - 954 lines), `metal_poc_materials_diffuse.metal`
+(diffuse transmission, Lambertian - 539 lines),
+`metal_poc_materials_layered.metal` (Oren-Nayar, normalized-Fresnel,
+coated-diffuse - 940 lines), `metal_poc_materials_extra.metal`
+(coated-conductor, velvet, the principled BxDF - 763 lines), then
+`metal_poc_kernel.metal` (`primaryRayKernel` itself - 1,044 lines) and
+`metal_poc_test_kernels.metal` (the device-side unit-test kernels -
+244 lines). Every line moved verbatim, no per-line edits anywhere -
+unlike PR #156's own ONE necessary `static`->`inline` change, nothing
+here needed even that, since MSL functions in the same eventually-
+concatenated source string don't have a linkage-visibility distinction
+to preserve.
+
+**A real, unavoidable difference from the `.mm` split**: Metal shader
+source is compiled at RUNTIME from a single in-memory string
+(`newLibraryWithSource:`, both `metal_poc.mm`'s own loader and
+`metal_poc_shader_tests.mm`'s separate one), not linked from several
+real translation units the way the `.mm` side's own per-category files
+are - so this split does not give each piece its own independent
+compilation unit, only a source-organization split. Every caller
+still has to read all 8 files and concatenate them into ONE string, in
+the exact order later files depend on earlier ones (MSL, like C++,
+needs a prior declaration in the same translation unit) - the new
+`metal_poc_shader_files.h` (plain C++, no Objective-C dependency)
+holds that ordered file list ONCE, so it can't drift between
+`metal_poc.mm`'s own loader and `metal_poc_shader_tests.mm`'s
+separate, simpler one, which duplicated the single-file load logic
+before this PR. `scripts/build_and_deploy_macos.sh`'s own asset-copy
+step (which used to `cp` the one `metal_poc.metal` file next to a
+packaged app's bundled CLI) now globs `metal_poc_*.metal` instead, so
+a future 9th file doesn't also need a matching edit there to actually
+ship.
+
+**Verified as a TRUE zero-behaviour-change refactor**: concatenating
+the 8 new files back together in their declared order reproduces the
+original 6,495-line file byte-for-byte (`diff`, not eyeballed).
+Rendered 20 scenes spanning every category (A/B/C/D/E/F/G/I) on both
+the pre-refactor and post-refactor binaries at matched settings and
+SHA-256-hashed the output PNGs: **18 of 20 matched exactly**; the
+other two (D8, F4) were investigated rather than assumed to be a
+refactor bug, and turned out to be a genuine, PRE-EXISTING run-to-run
+non-determinism in those two scenes specifically (confirmed by running
+the SAME unchanged post-refactor binary on D8/F4 twice in a row and
+getting two more different hashes, with every other scene still
+perfectly reproducible) - almost certainly an unseeded Monte Carlo
+precompute (D8's own `RealisticCamera`'s `bound_exit_pupil()`, or
+similar for F4's curve tessellation), unrelated to this PR and flagged
+as a separate follow-up task rather than silently ignored or
+incorrectly "fixed" by masking it here. On top of the hash comparison:
+full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4, including both
+Metal-device-requiring tests, which exercise this exact concatenate-
+and-compile path), a render of all 68 currently-supported hand-
+authored scene IDs with zero failures, and a direct standalone
+`metal_poc` executable smoke run. `CMakeLists.txt` needed NO changes
+at all (the shader was never a CMake-tracked source file - it's read
+and compiled from disk at runtime, not built by the Metal compiler at
+CMake-build time), the only target in this whole refactor that needed
+zero edits.
