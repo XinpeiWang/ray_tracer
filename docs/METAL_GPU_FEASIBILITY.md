@@ -9008,3 +9008,118 @@ No `cpu_scene_metal_hand_authored_supported()` entry needed (unlike
 every hand-authored D1-D8 scene) - a scene with a real backing
 `.pbrt` file already routes through the generic `loadPbrtScene()`
 path unconditionally, regardless of that allowlist.
+
+## 160. Investigation: D8/F4's own run-to-run non-determinism - a genuine, honest negative result, not a fixed bug
+
+Section 158's own verification work found that D8 (Realistic Camera
+Cornell Box) and F4 (Curve Fibers) render DIFFERENT output pixels
+across repeated runs of the exact same unchanged `ray_tracer --gpu`
+binary at identical settings - every other tested scene (including D4,
+the OTHER realistic-camera scene) is exactly byte-for-byte reproducible
+run to run. This section documents an extensive, methodical
+investigation into the root cause - **the conclusion is an honest
+negative result, not a fix**: after ruling out every plausible
+application-level cause via direct empirical testing (not just code
+review), the remaining evidence points at genuine, low-level Apple
+GPU/driver ray-tracing non-determinism this codebase cannot control -
+matching this project's own established practice (sections 48/52) of
+recording a real negative finding rather than either chasing it
+indefinitely or silently claiming a fix that wasn't actually verified.
+
+**Ruled out, each via a direct empirical test, not just reasoning**:
+- **CPU-side scene construction being the source of the difference**:
+  read every line of `buildCornellBoxA1()`/`buildRealisticCornellBox()`/
+  `buildCurveFibersScene()` - all pure, deterministic floating-point
+  math (`buildCurveFibersScene()`'s own `hash01()` lambda is a fixed
+  deterministic hash, not real randomness). No `std::random_device`,
+  no time/thread/pointer-dependent values anywhere in either scene's
+  own construction.
+- **A time-seeded or otherwise non-deterministic RNG seed**:
+  `uniforms.frameSeed` is the literal constant `1u`
+  (`metal_poc.mm`); `rngState` is seeded from `tid.x`/`tid.y`/
+  `frameSeed` only - fully deterministic given the same dispatch.
+- **`RealisticCamera::bound_exit_pupil()`'s own Monte Carlo precompute**
+  (the ORIGINAL hypothesis this investigation started from): reads
+  `RI2()`/`RI3()` (Van der Corput/Halton-style deterministic radical-
+  inverse sequences, index-based, NOT a random-number generator) for
+  its own `u0`/`u1` - fully deterministic given the same lens
+  parameters. Confirmed directly: **D4, the OTHER realistic-camera
+  scene, using the exact same `RealisticCamera` construction and the
+  exact same per-ray `sampleRealisticCameraRay()` shader code, renders
+  byte-for-byte identically across repeated runs** - if the exit-pupil
+  precompute or the per-ray lens trace itself were non-deterministic,
+  D4 would show it too.
+- **Dielectric material/bounce recursion** (D8's own glass sphere):
+  the non-determinism reproduces at `max_depth=1` (a single bounce,
+  ruling out any multi-bounce/recursion-dependent effect).
+- **NEE/shadow-ray testing**: reproduces with `uniforms.lightCount`
+  forced to 0 (no shadow ray cast at all).
+- **The glass sphere itself**: reproduces with the sphere removed
+  from the scene entirely (not just moved/resized).
+- **The rotated box**: reproduces with the box removed too, leaving
+  only the 6 plain wall/light quads.
+- **Exact or near-exact shared geometric edges between adjacent
+  walls** (the leading hypothesis once geometry, not materials, was
+  isolated as relevant - matching this project's own established
+  "flush-mounted geometry needs an off-surface margin to avoid
+  z-fighting" pattern elsewhere): reproduces even with every wall
+  shrunk 10% toward its own centroid (a large, unambiguous gap at
+  every seam, not a subtle nudge - a 0.05% shrink was tried first and
+  also didn't help, then deliberately widened to rule out "not
+  shrunk enough" as an explanation for the first attempt's own
+  failure).
+- **A shared/writable GPU buffer causing a data race**: every
+  `device` buffer `primaryRayKernel` reads is `device const`; the
+  only writable resource is `outTexture`, written once per thread at
+  that thread's own unique pixel coordinate, never aliased.
+
+**What actually correlates, confirmed empirically**:
+- **Requires the realistic camera specifically.** D6 (Orthographic
+  Camera Cornell Box), built from the exact same
+  `buildCornellBoxA1()` geometry `buildRealisticCornellBox()` also
+  starts from, renders byte-for-byte identically across repeated
+  runs. D4 (realistic camera, a different, open/non-enclosed scene)
+  also does. Neither ingredient alone (the geometry, or the camera
+  model) reproduces it - only the combination.
+- **Requires more than one sample per pixel.** `--spp 1` is always
+  reproducible, at every resolution tried, including the full
+  128x128 test resolution. `--spp 2` can already show it.
+- **Requires enough concurrent GPU threads.** A tiny 32x32 dispatch
+  stayed reproducible even at `--spp 2`; the same scene at 128x128
+  was not - the SAME per-pixel work, just more of it dispatched at
+  once.
+
+**Working theory** (not proven, since this project has no access to
+Metal System Trace/GPU frame capture in this environment to inspect
+Apple's own driver/hardware behavior directly): a real, low-level
+non-determinism in Apple's Metal ray-tracing hardware or driver -
+possibly in how concurrently-scheduled ray queries interact with
+shared GPU ray-tracing hardware state, or in JIT-compiled shader code
+generation for this particular code path - specifically exposed by
+the realistic camera's own genuinely per-sample-varying ray origin/
+direction (every other camera model in this codebase produces, at
+most, a narrow antialiasing-jitter cone of very similar rays per
+pixel; the realistic camera's real lens simulation produces rays that
+differ meaningfully in both origin and direction from one sample to
+the next) at sufficient thread parallelism. This class of issue -
+GPU hardware ray-triangle intersection at precision boundaries being
+sensitive to scheduling/dispatch parallelism - is a recognized hard
+problem in real-time ray tracing generally, not something unique to
+this codebase; no public Apple documentation was found claiming
+bit-exact `MTLAccelerationStructure`/ray-query reproducibility across
+dispatches in the first place.
+
+**Why this is being recorded as a negative result instead of chased
+further**: every plausible application-level fix candidate (RNG,
+buffers, races, geometry, materials, NEE) has now been directly,
+empirically ruled out, not merely reasoned about - continuing to
+guess at further geometric nudges or code restructuring without a way
+to inspect the actual GPU-level behavior (this environment has no
+Metal System Trace/GPU frame capture access) would be exactly the
+"claim a fix without verifying it actually addresses the root cause"
+mistake this project's own discipline exists to avoid. D8/F4 both
+still render CORRECTLY (matching CPU's own reference in composition
+and, once converged, overall appearance - sections 157/159's own
+verification) - this is a run-to-run PIXEL-NOISE reproducibility gap
+at the byte-hash level, not a correctness bug, and does not block
+either scene's own continued use.
