@@ -1760,6 +1760,126 @@ void MetalPocApp::loadPbrtCamera(const pbrt_flatten::FlatScene& scene, const Pbr
     pbrtBboxCenter = bboxCenter;
     pbrtSceneScale = sceneScale;
     pbrtSceneOffset = sceneOffset;
+
+    // Perspective/orthographic thin-lens DOF ("float lensradius"/"float
+    // focaldistance", pbrt_flatten.h's own c.aperture/c.focusDistance -
+    // c.aperture is already lensradius*2, a world-space DIAMETER, see
+    // that field's own comment) - D9's own real gap (section 159): every
+    // hand-authored D1/D5/D6 scene already sets pbrtLensRadius/
+    // pbrtFocusDistance directly (defaulting to 0/1, "no DOF"), but a
+    // REAL loaded pbrt file's own lensradius/focaldistance parameters
+    // were never actually read here at all until now - depth-of-
+    // field.pbrt rendered pinhole-sharp regardless of its own "float
+    // lensradius" [20] before this fix. Same sceneScale-multiplied
+    // world-space-distance convention pbrtLensRadius/pbrtFocusDistance
+    // already use everywhere else (D5's own comment). Spherical/
+    // Realistic cameras never read lensRadius/focusDistance at all
+    // (Uniforms::cameraRealistic's own DOF-skip guard, metal_poc_kernel.
+    // metal) - deliberately NOT set for those two below, matching real
+    // pbrt (RealisticCamera has its own, wholly different depth-of-
+    // field mechanism built into the lens trace itself; SphericalCamera
+    // has none).
+    if (cam.type == "perspective" || cam.type == "orthographic") {
+        pbrtLensRadius = (float)(cam.aperture * 0.5) * sceneScale;
+        pbrtFocusDistance = (float)pbrt_flatten::focusDistanceFor(cam) * sceneScale;
+    }
+
+    // Non-perspective camera types loaded from a REAL pbrt file (D10/
+    // D11/D12, section 159) - the generic, data-driven counterpart to
+    // D2/D6 (orthographic)/D3/D7 (spherical)/D4/D8 (realistic)'s own
+    // hand-authored scenes, which set these same havePbrt*/pbrt* fields
+    // directly instead of reading them from a Camera directive's own
+    // parameters. Mirrors gpu/optix/scene_builder.cpp's own generic
+    // Camera-type dispatch (the already-shipped CUDA reference this
+    // block is ported from) - same fields, same formulas, just this
+    // loader's own Objective-C++ types/RealisticCamera<float> instead
+    // of OptiX's CUDA structs.
+    if (cam.type == "orthographic") {
+        // Mirrors D6's own buildOrthoCornellBox() - pbrtTanHalfFov
+        // repurposed as the orthographic screen window's own
+        // (necessarily symmetric - Uniforms::cameraOrthographic's own
+        // comment, metal_poc_types.metal) world-space half-extent, in
+        // THIS loader's own rescaled units. `screenwindow`'s own
+        // xmax (== -xmin for every screenwindow this loader's own
+        // scenes actually use, including orthographic-camera.pbrt's
+        // own symmetric [-320,320,-320,320]) supplies it directly when
+        // given; pbrt's own "roughly 1-unit-across" default otherwise
+        // (pbrt_flatten::Camera::screenWindow's own comment).
+        havePbrtOrthographic = true;
+        pbrtTanHalfFov = (cam.hasScreenWindow ? (float)cam.screenWindow[1] : 1.0f) * sceneScale;
+    } else if (cam.type == "spherical" || cam.type == "environment") {
+        // Mirrors D7's own buildSphericalCornellBox() - a panoramic
+        // camera has no screen window/FOV/DOF at all, only the
+        // position/orientation already set above. `sphericalMapping`
+        // additionally selects EquiRectangular (pbrt-v4's own default,
+        // matching every hand-authored D3/D7 scene already) vs.
+        // EqualArea (spherical-camera.pbrt's own "string mapping"
+        // ["equalarea"] - the first scene, hand-authored or loaded,
+        // to actually request it - Uniforms::sphericalMappingEqualArea's
+        // own comment).
+        havePbrtSpherical = true;
+        havePbrtSphericalEqualArea = (cam.sphericalMapping == "equalarea");
+    } else if (cam.type == "realistic") {
+        // Mirrors D4/D8's own buildRealisticCameraScene()/
+        // buildRealisticCornellBox() construction exactly, just with the
+        // lens TABLE itself read from a real file (pbrt_load::
+        // loadFileNear()/parseLensFile(), both already shared with CPU/
+        // OptiX - the "half the lensfile-loading path a compiled-in
+        // scene never exercised" gap D12's own registry description
+        // names) instead of a literal std::vector in this function's own
+        // source. Film half-extents are DERIVED from filmDiagonalMM +
+        // this render's own aspect ratio (pbrt-v4's real convention,
+        // and gpu/optix/scene_builder.cpp's own identical formula) -
+        // D4/D8's own scenes instead gave film_x_mm/film_y_mm directly,
+        // since a hand-authored scene has no separate "diagonal"
+        // parameter to derive them from.
+        std::string lensText;
+        if (cam.lensFile.empty()) {
+            fprintf(stderr, "loadPbrtCamera: a realistic camera has no \"lensfile\"; "
+                            "rendering as perspective instead (should not normally be "
+                            "reachable - pbrt_flatten.h already falls back to "
+                            "\"perspective\" at flatten time when lensfile is missing).\n");
+        } else if (!pbrt_load::loadFileNear(pbrtScenePath, cam.lensFile, lensText)) {
+            fprintf(stderr, "loadPbrtCamera: realistic camera lensfile '%s' not found "
+                            "near '%s'; rendering as perspective instead.\n",
+                    cam.lensFile.c_str(), pbrtScenePath.c_str());
+        } else {
+            const std::vector<double> lensD = pbrt_load::parseLensFile(lensText);
+            if (lensD.empty()) {
+                fprintf(stderr, "loadPbrtCamera: realistic camera lensfile '%s' has no "
+                                "usable rows; rendering as perspective instead.\n",
+                        cam.lensFile.c_str());
+            } else {
+                std::vector<float> lensParams;
+                lensParams.reserve(lensD.size());
+                for (double v : lensD) lensParams.push_back((float)v);
+                const float aspectF = (height > 0) ? (float)width / (float)height : 1.0f;
+                const float halfY = (float)cam.filmDiagonalMM / (2.0f * sqrtf(aspectF * aspectF + 1.0f));
+                const float halfX = aspectF * halfY;
+                const float focusDist = (float)pbrt_flatten::focusDistanceFor(cam);
+                const float apertureDiameter = (float)cam.apertureDiameterMM;
+                RealisticCamera<float> realCam(Mat4<float>{}, halfX, halfY, focusDist,
+                                                apertureDiameter, lensParams);
+                realisticLensElements.clear();
+                for (int i = 0; i < realCam.num_elements(); ++i) {
+                    realisticLensElements.push_back(GpuLensElementData{
+                        realCam.lens_curvature_radius(i), realCam.lens_thickness(i),
+                        realCam.lens_eta(i), realCam.lens_aperture_radius(i)});
+                }
+                realisticExitPupilBounds.clear();
+                for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
+                    realisticExitPupilBounds.push_back(GpuExitPupilBoundsData{
+                        realCam.exit_pupil_xmin(i), realCam.exit_pupil_xmax(i),
+                        realCam.exit_pupil_ymin(i), realCam.exit_pupil_ymax(i),
+                        realCam.exit_pupil_degenerate(i) ? 1u : 0u});
+                }
+                realisticFilmHalfX = realCam.film_half_x();
+                realisticFilmHalfY = realCam.film_half_y();
+                realisticLensRearZ = realCam.lens_rear_z();
+                havePbrtRealisticCamera = true;
+            }
+        }
+    }
 }
 
 // See buildHandAuthoredScene()'s own declaration comment for the "which
@@ -2781,6 +2901,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         uniforms.cameraOrthographic = havePbrtOrthographic ? 1u : 0u;
         // See MetalPocApp::havePbrtSpherical's own comment.
         uniforms.cameraSpherical = havePbrtSpherical ? 1u : 0u;
+        // See MetalPocApp::havePbrtSphericalEqualArea's own comment.
+        uniforms.sphericalMappingEqualArea = havePbrtSphericalEqualArea ? 1u : 0u;
         // See MetalPocApp::havePbrtRealisticCamera's own comment.
         uniforms.cameraRealistic = havePbrtRealisticCamera ? 1u : 0u;
         uniforms.numLensElements = (uint32_t)realisticLensElements.size();

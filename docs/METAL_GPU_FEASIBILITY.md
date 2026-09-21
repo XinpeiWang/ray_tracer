@@ -8912,3 +8912,99 @@ at all (the shader was never a CMake-tracked source file - it's read
 and compiled from disk at runtime, not built by the Metal compiler at
 CMake-build time), the only target in this whole refactor that needed
 zero edits.
+
+## 159. Category D increment: D9-D12, the four pbrt-FILE-loaded camera scenes (DOF/orthographic/spherical/realistic) - closing the generic camera-directive-parsing gap D4-D8's own hand-authored scenes never needed
+
+D1-D8 (sections 137/149-153/157) all set their own camera-mode fields
+(`havePbrtOrthographic`/`havePbrtSpherical`/`havePbrtRealisticCamera`/
+`pbrtLensRadius`/`pbrtFocusDistance`) directly, by hand, inside their
+own `MetalPocApp::buildXxx()` scene builder - there was no real pbrt
+FILE to read a `Camera` directive's own parameters from. D9-D12 are
+the opposite case: four small pbrt scene files
+(`depth-of-field.pbrt`/`orthographic-camera.pbrt`/
+`spherical-camera.pbrt`/`realistic-camera.pbrt`) each exercising one
+non-default `Camera` directive, loaded through this loader's own
+GENERIC `loadPbrtScene()`/`loadPbrtCamera()` path - which, until this
+PR, only ever read `lookfrom`/`lookat`/`up`/`vfov` (implicitly
+assuming `Camera "perspective"` with no DOF) and silently ignored
+everything else `pbrt_flatten::Camera` already parses (`type`,
+`aperture`/`focusDistance`, `screenWindow`, `sphericalMapping`,
+`lensFile`/`filmDiagonalMM`/`apertureDiameterMM`) - a real, previously
+undiscovered gap: `depth-of-field.pbrt`'s own `"float lensradius" [20]`
+was read by the shared front-end parser and then thrown away, so this
+loader rendered it pinhole-sharp regardless.
+
+**Reused the already-shipped CUDA reference a third time** (after D4/D8's
+own `sample_realistic_camera_ray()`/`RealisticCamera<T>` reuse, section
+157): `gpu/optix/scene_builder.cpp`'s own generic `Camera`-type dispatch
+(the block handling a LOADED pbrt file's own orthographic/spherical/
+realistic directives, as opposed to this same file's OWN separate
+hand-authored-scene camera code) already does exactly this - same
+`c.type` dispatch, same `pbrt_flatten::focusDistanceFor()` sentinel
+handling, same film-half-extent-from-diagonal-and-aspect formula for a
+realistic camera loaded from a file. Ported near-verbatim into
+`loadPbrtCamera()` (`metal_poc.mm`), reusing `pbrt_load::loadFileNear()`/
+`parseLensFile()` (already shared with CPU/OptiX) for the realistic
+camera's own lens file, and D4/D8's own `GpuLensElementData`/
+`GpuExitPupilBoundsData`/`realisticLensElements` etc. members to hold
+the result - the SAME accessor-reading loop as those two, just fed a
+lens table read from disk instead of a literal `std::vector` in this
+function's own source.
+
+**One genuinely new sub-feature, not just wiring**: D7/D8's own
+spherical camera only ever implements pbrt-v4's EquiRectangular
+mapping - `spherical-camera.pbrt` specifically requests
+`"string mapping" ["equalarea"]`, which had NO Metal implementation at
+all (`equalAreaSphereToSquare()`, from the goniometric-light work,
+section 57, only ever ported the SPHERE-TO-SQUARE direction - a
+lookup, not a direction SAMPLE - so an inverse was never needed until
+now). Added `equalAreaSquareToSphere()`/`wrapEqualAreaSquare()`
+(`metal_poc_types.metal`), ported from `gpu/optix/
+optix_device_helpers_lighting.h`'s own already-shipped
+`dev_equal_area_square_to_sphere`/`dev_wrap_equal_area_square` (CUDA's
+own spherical camera already supports both mappings). A new
+`Uniforms::sphericalMappingEqualArea` field (0 for every scene before
+D11, including D3/D7/D8's own hand-authored EquiRectangular-only
+scenes - a true no-op there) selects it. The mapping's own natural
+pole axis is Z; this camera's own up axis is `cameraUp` (a
+`su`/`sv`/`sw`-style Y-analogue) - swapping the mapping's own y/z
+outputs on the way out re-homes the pole onto the right axis, the
+exact same swap CUDA's own `generate_primary_ray()` already makes for
+the identical reason, applied here alongside the same leading-minus-
+on-`cameraRight` sign correction every other non-perspective mode in
+this loader already needs (D6's own finding, section 150). **Verified
+by direct render comparison against CPU, not assumed correct**: D11's
+own first render already matched CPU's reference almost exactly (same
+symmetric hexagonal red/green wall panels, same central white ceiling-
+light disk, same warm floor ring at the bottom) - the riskiest new
+math in this whole PR, and it worked on the first attempt.
+
+**D12 (realistic camera loaded from a real lens file,
+`geometry/simple-biconvex.dat`) reproduced D4/D8's own noise
+signature at low sample counts** - expected, not a new bug: the SAME
+bimodal (mostly-vignetted-zero, occasionally-bright) per-sample
+distribution those two scenes have, and the SAME fix already covers
+it (`havePbrtRealisticCamera` disabling adaptive sampling, section
+157 - D12 sets that exact flag too, no separate fix needed). Confirmed
+empirically rather than assumed: a 2000spp render took proportionally
+longer than a 60spp one (unlike section 157's own false-convergence
+symptom, where 3000spp finished in barely more time than 100spp) and
+converged to a clean image whose overall tonal gradient closely
+matches a matched-settings CPU render at the same 2000spp.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+68 previously-supported hand-authored scene IDs PLUS D9-D12 (72 total)
+rendered on GPU with zero failures, and direct `--gpu` vs `--cpu`
+comparison for all four new scenes (D9's own `pbrtLensRadius`/
+`pbrtFocusDistance` confirmed non-default via direct value inspection,
+not just visual inspection, since this particular scene's own DOF
+blur amount is subtle enough that "still pinhole-sharp" and "correct
+but modest blur" look similar by eye alone). Grepped every `.pbrt`
+file in the repo for `lensradius`/`focaldistance`/non-perspective
+`Camera` directives first, confirming D9-D12's own four files are the
+ONLY ones affected by this change - a pure addition with zero
+regression risk for every other already-working pbrt-loaded scene.
+No `cpu_scene_metal_hand_authored_supported()` entry needed (unlike
+every hand-authored D1-D8 scene) - a scene with a real backing
+`.pbrt` file already routes through the generic `loadPbrtScene()`
+path unconditionally, regardless of that allowlist.

@@ -163,25 +163,55 @@ kernel void primaryRayKernel(
                         + screen.y * float3(uniforms.cameraUp);
             rayDir = normalize(float3(uniforms.cameraForward));
         } else if (uniforms.cameraSpherical != 0u) {
-            // Spherical (360-degree equirectangular panorama): mirrors
-            // pbrt-v4 SphericalCamera::GenerateRay()'s own EquiRectangular
-            // mapping exactly (Uniforms::cameraSpherical's own comment) -
-            // `u`/`v` are the SAME `pixelNDC.x/y` every other mode
-            // derives `screen` from, used directly here (raw [0,1],
-            // BEFORE the `*2-1`/y-flip/aspect/tanHalfFov transform those
-            // other modes need - this mode has no screen window or FOV
-            // at all, it captures the full sphere around one point).
-            float theta = M_PI_F * pixelNDC.y;
-            float phi = 2.0 * M_PI_F * pixelNDC.x;
-            float sinTheta = sin(theta), cosTheta = cos(theta);
+            // Spherical (360-degree panorama), two mappings
+            // (Uniforms::cameraSpherical's own comment) - `u`/`v` are the
+            // SAME `pixelNDC.x/y` every other mode derives `screen` from,
+            // used directly here (raw [0,1], BEFORE the `*2-1`/y-flip/
+            // aspect/tanHalfFov transform those other modes need - this
+            // mode has no screen window or FOV at all, it captures the
+            // full sphere around one point).
             rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
-            // Leading MINUS on the `cameraRight` term - the SAME sign
-            // correction `cameraOrthographic`'s own branch above needs,
-            // for the identical reason (CPU's alt-camera path's own
-            // `right` is this loader's `cameraRight` negated).
-            rayDir = normalize(-sinTheta * cos(phi) * float3(uniforms.cameraRight)
-                                + cosTheta * float3(uniforms.cameraUp)
-                                + sinTheta * sin(phi) * float3(uniforms.cameraForward));
+            if (uniforms.sphericalMappingEqualArea != 0u) {
+                // EqualArea (D11, Uniforms::sphericalMappingEqualArea's
+                // own comment): pbrt-v4 SphericalCamera::GenerateRay's
+                // EqualArea branch - map (u,v) straight through
+                // equalAreaSquareToSphere() (wrapped first, since a
+                // per-sample jittered pixel coordinate can legitimately
+                // land fractionally outside [0,1]^2, unlike a plain
+                // image-index lookup). That function's own (wx,wy,wz)
+                // treats Z as the mapping's pole axis; THIS camera's own
+                // up axis is `cameraUp` (Y-like), not `cameraForward` -
+                // swapping wy/wz on the way out (`w.z` feeds `cameraUp`,
+                // `w.y` feeds `cameraForward`) re-homes the mapping's own
+                // pole onto this camera's actual up axis, the same swap
+                // gpu/optix/optix_device_helpers.h's own
+                // generate_primary_ray() (CUDA's already-shipped mirror
+                // of this exact camera model) makes for the identical
+                // reason. Leading MINUS on the `cameraRight` term (`w.x`)
+                // - the SAME sign correction the EquiRectangular branch
+                // below and `cameraOrthographic`'s own branch above both
+                // need (CPU's alt-camera path's own `right` is this
+                // loader's `cameraRight` negated).
+                float su = pixelNDC.x, sv = pixelNDC.y;
+                wrapEqualAreaSquare(su, sv);
+                float3 w = equalAreaSquareToSphere(su, sv);
+                rayDir = normalize(-w.x * float3(uniforms.cameraRight)
+                                    + w.z * float3(uniforms.cameraUp)
+                                    + w.y * float3(uniforms.cameraForward));
+            } else {
+                // EquiRectangular (every scene before D11, including
+                // D7/D8's own hand-authored ports): mirrors pbrt-v4
+                // SphericalCamera::GenerateRay()'s own EquiRectangular
+                // mapping exactly - `theta = pi*v, phi = 2*pi*u`.
+                float theta = M_PI_F * pixelNDC.y;
+                float phi = 2.0 * M_PI_F * pixelNDC.x;
+                float sinTheta = sin(theta), cosTheta = cos(theta);
+                // Same leading-MINUS sign correction the EqualArea branch
+                // above needs, for the identical reason.
+                rayDir = normalize(-sinTheta * cos(phi) * float3(uniforms.cameraRight)
+                                    + cosTheta * float3(uniforms.cameraUp)
+                                    + sinTheta * sin(phi) * float3(uniforms.cameraForward));
+            }
         } else if (uniforms.cameraRealistic != 0u) {
             // Real multi-element-lens camera - see
             // sampleRealisticCameraRay()'s own comment for the full
