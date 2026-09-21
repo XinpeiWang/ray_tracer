@@ -9376,3 +9376,57 @@ of them except C14 itself. C13 (disk AND cylinder lights in the same
 scene) is unaffected by this fix and still needs real `Shape
 "cylinder"` geometry support - Metal has none at all currently (a
 genuinely bigger, separately-scoped feature, not touched here).
+
+## 165. Investigation: C9's own goniometric-light image barely shows its directional pattern - a real, partly-diagnosed gap, not chased to a fix
+
+C9 (`goniometric-projection.pbrt`) still doesn't match `--cpu` even
+after sections 163/164's own fixes: CPU shows the equal-area octahedral
+mapping's own characteristic diamond/X crease pattern on the floor
+under the goniometric light (the scene's own stated reason for
+existing - "a direct, recognizable signature that a real 2D image is
+driving the per-direction lookup"); Metal's own render shows an almost
+perfectly flat, featureless gray footprint, only faintly showing any
+variation at all at a heavily boosted `--exposure`.
+
+**Ruled out, via direct empirical checks, not just reading code**: the
+image DOES decode correctly (a debug dump of `pbrtGoniometricImagePixels`
+showed a real 4x4 gradient - 1.0 at one corner, ~0.09 near the centre,
+0.0 at the opposite corner, not a uniform/blank image); the shading
+code (`goniometricLightRadiance()`) structurally matches the same
+already-working `equalAreaSphereToSquare()`-based approach the
+hardcoded room's own procedurally-generated goniometric light already
+uses correctly; `usePbrtTexture`/the real per-light basis
+(`punctualLightWorldForward()`/`punctualLightWorldUp()`, section 98)
+are all wired through as designed.
+
+**Suspected, not confirmed**: this specific scene's own geometry - a
+light aimed straight DOWN at a floor only ~3 units below it, so every
+visible floor point subtends a narrow range of near-vertical
+directions - lands entirely within a small region very close to the
+equal-area mapping's own CENTRE, where that mapping's own well-known
+demagnification (directions near the pole map to a disproportionately
+SMALL area of the unit square) means only a tiny, blurry slice of a
+4x4 image is ever actually sampled, further softened by this shader's
+own bilinear (not nearest-neighbour) texture filtering - a real
+resolution/sampling-precision gap, not obviously a wrong-value bug,
+though NOT independently confirmed against a from-scratch numeric
+reference the way section 157's own camera-basis findings were.
+
+**Not chased to a fix this round**: separating "sampling precision
+inherent to this mapping+resolution+filtering combination" from "a
+real remaining bug in the basis/UV math" would need either a from-
+scratch numeric UV reference for a few specific floor points (the
+discipline sections 150/152/157 all used successfully for a camera-
+basis question of similar shape) or a coarser diagnostic visualisation
+this session didn't build. Recorded as a genuine, partially-diagnosed
+gap rather than either guessed at further or silently left
+undocumented - matching this project's own "honest negative/partial
+result" precedent (sections 48/52/160). C11 (`textured-twosided-
+lights.pbrt`) was scoped alongside this and found to need MORE than
+this one gap to close - a disk-shaped light with a real per-hit
+TEXTURED emission (not just a flat colour - `loadPbrtDisks()` has no
+image-decode path at all today, unlike `loadPbrtAreaLights()`'s own
+quad-light one), a cylinder-shaped light (the same missing geometry
+support C13 already needs), and `twosided` under NEE for a non-quad
+light kind that has no NEE strategy to begin with - not attempted this
+round either.
