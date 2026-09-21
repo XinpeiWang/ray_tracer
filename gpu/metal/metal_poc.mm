@@ -1831,6 +1831,8 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D2") { buildOrthoCameraScene(); return true; }
     if (scene_id == "D7") { buildSphericalCornellBox(); return true; }
     if (scene_id == "D3") { buildSphericalCameraScene(); return true; }
+    if (scene_id == "D4") { buildRealisticCameraScene(); return true; }
+    if (scene_id == "D8") { buildRealisticCornellBox(); return true; }
     if (scene_id == "F1") { buildBilinearPatchScene(); return true; }
     if (scene_id == "F4") { buildCurveFibersScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
@@ -1910,6 +1912,40 @@ bool MetalPocApp::buildGPUResources() {
     goniometricLightBuffer = [device newBufferWithBytes:goniometricLights.data()
         length:goniometricLights.size() * sizeof(GoniometricLightData)
         options:MTLResourceStorageModeShared];
+    // Realistic (multi-element-lens) camera's own lens/exit-pupil-bounds
+    // tables (D4/D8, section 157) - empty for every earlier/other scene.
+    // NOT the same "zero-length buffer" shape the other optional per-
+    // scene buffers below already tolerate, despite this code's own
+    // original comment claiming otherwise: every OTHER optional buffer
+    // here (point/directional/projection/goniometric lights, etc.) is
+    // actually always non-empty in practice, because buildScene()'s own
+    // hardcoded base room (buildScene()'s own comment) unconditionally
+    // adds at least one of each - so the "tolerates zero-length" claim
+    // was never really exercised until these two, the first buffers
+    // that ARE genuinely empty for every scene but D4/D8. Confirmed by
+    // actually running a non-D4/D8 scene on GPU: newBufferWithBytes:
+    // length:0 (std::vector::data() on an empty vector may legally
+    // return null - cppreference) returned nil, which
+    // checkGpuResource() below correctly treats as fatal, aborting
+    // EVERY other hand-authored scene's own GPU render. Fixed by
+    // allocating a real (uninitialized, but real) 1-element buffer via
+    // newBufferWithLength: instead whenever empty - never read by the
+    // shader for these scenes anyway (sampleRealisticCameraRay's own
+    // numLensElements==0u/numExitPupilBounds==0u guard, driven by
+    // uniforms.numLensElements/numExitPupilBounds below, which still
+    // correctly read 0 from these vectors' own real (unpadded) size -
+    // this padding is buffer-allocation-only, not a change to that
+    // count).
+    lensElementBuffer = realisticLensElements.empty()
+        ? [device newBufferWithLength:sizeof(GpuLensElementData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:realisticLensElements.data()
+              length:realisticLensElements.size() * sizeof(GpuLensElementData)
+              options:MTLResourceStorageModeShared];
+    exitPupilBoundsBuffer = realisticExitPupilBounds.empty()
+        ? [device newBufferWithLength:sizeof(GpuExitPupilBoundsData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:realisticExitPupilBounds.data()
+              length:realisticExitPupilBounds.size() * sizeof(GpuExitPupilBoundsData)
+              options:MTLResourceStorageModeShared];
     // The goniometric light's own procedural intensity image (built by
     // buildScene()) - a plain single-channel (R8Unorm) texture, sampled
     // device-side via goniometricLightRadiance()'s own bilinear
@@ -2725,6 +2761,40 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         uniforms.cameraOrthographic = havePbrtOrthographic ? 1u : 0u;
         // See MetalPocApp::havePbrtSpherical's own comment.
         uniforms.cameraSpherical = havePbrtSpherical ? 1u : 0u;
+        // See MetalPocApp::havePbrtRealisticCamera's own comment.
+        uniforms.cameraRealistic = havePbrtRealisticCamera ? 1u : 0u;
+        uniforms.numLensElements = (uint32_t)realisticLensElements.size();
+        uniforms.numExitPupilBounds = (uint32_t)realisticExitPupilBounds.size();
+        uniforms.filmHalfX = realisticFilmHalfX;
+        uniforms.filmHalfY = realisticFilmHalfY;
+        uniforms.lensRearZ = realisticLensRearZ;
+        // Adaptive sampling (enabled by default just above,
+        // uniforms.adaptiveSampling=1) OFF for a real multi-element-lens
+        // camera - a real, found-by-rendering bug, not a style choice.
+        // Its convergence test (metal_poc.metal's own shading-loop
+        // comment) checks standardError/mean against a fixed threshold,
+        // which assumes a roughly UNIMODAL per-sample radiance
+        // distribution (true for every earlier camera mode's own noise,
+        // which is why the heuristic was tuned/validated against those).
+        // A real lens's own per-sample radiance is instead strongly
+        // BIMODAL: most exit-pupil samples land outside the true
+        // (non-rectangular) aperture and get vignetted to EXACTLY 0
+        // (sampleRealisticCameraRay's own comment), while the rest carry
+        // the entire `cameraWeight`-scaled contribution. Many exact
+        // zeros pull the running mean/variance down together, so the
+        // ratio can cross the threshold after just a handful of samples
+        // even though the NONZERO tail is still wildly undersampled -
+        // confirmed empirically: with adaptive sampling on, a 3000spp
+        // D4 render finished in ~4s (barely slower than 100spp) and was
+        // JUST as speckled; forcing every sample through to the full
+        // requested budget (this override) made that same 3000spp
+        // render converge to a clean, smooth image. The visible
+        // "speckle" itself is this per-pixel undersampling residual,
+        // amplified into colour fringing by postProcessAndWrite()'s own
+        // always-on chromatic aberration (a small, fixed per-channel
+        // pixel-space shift - invisible on an already-smooth image, but
+        // it visibly decorrelates R/G/B on a noisy one).
+        if (havePbrtRealisticCamera) uniforms.adaptiveSampling = 0u;
         uniforms.cameraVelocity = PackedFloat3{0, 0, 0};   // no motion blur
         if (havePbrtMedium) {
             uniforms.fogSigmaT = pbrtFogSigmaT;
@@ -2766,6 +2836,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     checkGpuResource(directionalLightBuffer, "directionalLightBuffer", device, &anyResourceFailed);
     checkGpuResource(projectionLightBuffer, "projectionLightBuffer", device, &anyResourceFailed);
     checkGpuResource(goniometricLightBuffer, "goniometricLightBuffer", device, &anyResourceFailed);
+    checkGpuResource(lensElementBuffer, "lensElementBuffer", device, &anyResourceFailed);
+    checkGpuResource(exitPupilBoundsBuffer, "exitPupilBoundsBuffer", device, &anyResourceFailed);
     checkGpuResource(envMarginalCDFBuffer, "envMarginalCDFBuffer", device, &anyResourceFailed);
     checkGpuResource(envConditionalCDFBuffer, "envConditionalCDFBuffer", device, &anyResourceFailed);
     checkGpuResource(ggxEnergyTableBuffer, "ggxEnergyTableBuffer", device, &anyResourceFailed);
@@ -2815,6 +2887,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setBuffer:ggxEnergyTableBuffer offset:0 atIndex:21];
     [enc setBuffer:pbrtEnvMarginalCDFBuffer offset:0 atIndex:22];
     [enc setBuffer:pbrtEnvConditionalCDFBuffer offset:0 atIndex:23];
+    [enc setBuffer:lensElementBuffer offset:0 atIndex:24];
+    [enc setBuffer:exitPupilBoundsBuffer offset:0 atIndex:25];
     // Mark the AS + its dependent primitive ASes as used so Metal
     // knows about the indirection - required for instance
     // acceleration structures referencing primitive ones (now three:

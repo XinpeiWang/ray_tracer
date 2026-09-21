@@ -219,6 +219,21 @@ struct Uniforms {
     // every pixel shares one origin, only the DIRECTION varies, the
     // defining trait of a panoramic camera).
     uint cameraSpherical;
+    // Realistic (multi-element-lens) camera - pbrt-v4's own
+    // RealisticCamera, D4/D8's own real port (section 157). 0 (every
+    // earlier scene) keeps the existing ray generation exactly as
+    // before - mutually exclusive with cameraOrthographic/cameraSpherical
+    // in practice. != 0 replaces the ENTIRE primary ray generation with
+    // sampleRealisticCameraRay()'s own real per-element Snell's-law
+    // lens trace, reading the `lensElements`/`exitPupilBounds` buffers
+    // below - see metal_poc.mm's own Uniforms::cameraRealistic mirrored
+    // comment for the full host-side precompute mechanism.
+    uint cameraRealistic;
+    uint numLensElements;
+    uint numExitPupilBounds;
+    float filmHalfX;
+    float filmHalfY;
+    float lensRearZ;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -980,6 +995,180 @@ inline uint pcgHash(thread uint& state) {
 inline float randFloat(thread uint& state) {
     return float(pcgHash(state)) / float(0xFFFFFFFFu);
 }
+
+// Mirrors metal_poc.mm's own GpuLensElementData byte-for-byte.
+struct LensElement {
+    float curvatureRadius;
+    float thickness;
+    float eta;
+    float apertureRadius;
+};
+
+// Mirrors metal_poc.mm's own GpuExitPupilBoundsData byte-for-byte.
+struct ExitPupilBounds {
+    float xMin, xMax, yMin, yMax;
+    uint degenerate;
+};
+
+// Real multi-element-lens camera ray generation (pbrt-v4 RealisticCamera,
+// src/shared/realistic_camera.h) - a direct MSL port of
+// gpu/optix/optix_device_helpers.h's own already-shipped CUDA
+// `sample_realistic_camera_ray()`, itself mirroring
+// RealisticCamera<T>::generate_ray()/trace_lenses_from_film()/
+// sample_exit_pupil() exactly (same variable names, same algorithm
+// structure - a direct translation, not a re-derivation). `u`/`v` are
+// the SAME raw `pixelNDC.x/y` (in [0,1]^2, row-major raster order,
+// v=0 at the TOP row) every other camera mode derives `screen` from,
+// used BEFORE any of their own `*2-1`/y-flip/aspect/tanHalfFov
+// transforms - this mode has no screen window or FOV at all, only a
+// real film-plane size (`uniforms.filmHalfX/Y`). `su`/`sv`/`sw`/
+// `originWorld` are this loader's own usual `cameraRight`/`cameraUp`/
+// `cameraForward`/`cameraPos` (computed the SAME `cross(forward,up)`
+// way every other scene's camera already is) - NOT
+// RealisticCamera<T>::world_right()/etc's own basis (which would
+// inherit CPU's ALT-camera path's own differently-signed `right`,
+// section 150's own D6 finding) - the host side deliberately builds
+// its RealisticCamera<float> with an IDENTITY camera-to-world (see
+// metal_poc_scenes_d.mm) and reads ONLY the lens/exit-pupil/film
+// accessors from it, exactly mirroring gpu/optix/scene_builder.cpp's
+// own "ctw doesn't matter for these fields" comment.
+// Returns false (weight left at 0) if the ray is fully vignetted - a
+// real, unbiased Monte Carlo outcome (this exact film position/exit-
+// pupil sample genuinely can't reach the scene through this lens
+// system), not an error; the caller folds the returned weight straight
+// into that sample's own initial `throughput`, so a vignetted sample's
+// own zero throughput naturally contributes nothing without any
+// separate early-exit needed.
+inline bool sampleRealisticCameraRay(constant Uniforms& uniforms,
+                                      device const LensElement* lensElements,
+                                      device const ExitPupilBounds* exitPupilBounds,
+                                      float u, float v, thread uint& rngState,
+                                      float3 su, float3 sv, float3 sw, float3 originWorld,
+                                      thread float3& outOrigin, thread float3& outDirection,
+                                      thread float& outWeight) {
+    outWeight = 0.0;
+    if (uniforms.numLensElements == 0u || uniforms.numExitPupilBounds == 0u) return false;
+
+    // NO leading negation on pfx (unlike pbrt-v4/CUDA's own
+    // `pfx = -sample.pFilm_x`) - a real sign fix found via a mirrored
+    // first render, not assumed: the CUDA reference's own `su` is
+    // `RealisticCamera<T>::world_right()`, built from CPU's ALT-camera
+    // path (`cameras.h::make_look_at()`'s own `cross(up,forward)`,
+    // section 150's own D6 finding), but THIS function is deliberately
+    // passed this loader's own `cameraRight` (`cross(forward,up)`,
+    // matching CPU's PRIMARY camera instead - see this function's own
+    // declaration comment for why). Dropping the negation here is
+    // algebraically identical to negating `su`'s own final contribution
+    // below (pfx enters the whole downstream trace linearly, only ever
+    // multiplied by `su` at the very end) - the same "negate the right-
+    // vector term" shape D6/D7's own fixes already used, just applied
+    // at the INPUT instead of the output since this trace has many
+    // intermediate steps between the two.
+    float pfx = (2.0 * u - 1.0) * uniforms.filmHalfX;
+    float pfy = (2.0 * v - 1.0) * uniforms.filmHalfY;
+
+    // sample_exit_pupil
+    float rFilm = sqrt(pfx * pfx + pfy * pfy);
+    float filmDiag = 2.0 * sqrt(uniforms.filmHalfX * uniforms.filmHalfX + uniforms.filmHalfY * uniforms.filmHalfY);
+    int sz = int(uniforms.numExitPupilBounds);
+    int rIndex = int(rFilm / (filmDiag * 0.5) * float(sz));
+    if (rIndex >= sz) rIndex = sz - 1;
+    if (rIndex < 0) rIndex = 0;
+    ExitPupilBounds b = exitPupilBounds[rIndex];
+    if (b.degenerate != 0u) return false;
+
+    float area = (b.xMax - b.xMin) * (b.yMax - b.yMin);
+    if (area <= 0.0) return false;
+    float ppdf = 1.0 / area;
+
+    float u0 = randFloat(rngState), u1 = randFloat(rngState);
+    float lx = b.xMin + u0 * (b.xMax - b.xMin);
+    float ly = b.yMin + u1 * (b.yMax - b.yMin);
+
+    float sinTheta = (rFilm > 0.0) ? pfy / rFilm : 0.0;
+    float cosTheta0 = (rFilm > 0.0) ? pfx / rFilm : 1.0;
+    float ppx = cosTheta0 * lx - sinTheta * ly;
+    float ppy = sinTheta * lx + cosTheta0 * ly;
+    float ppz = uniforms.lensRearZ;
+
+    float rdx = ppx - pfx, rdy = ppy - pfy, rdz = ppz;
+    float rLen = sqrt(rdx * rdx + rdy * rdy + rdz * rdz);
+
+    // trace_lenses_from_film: camera space (film z=0, +z toward scene) ->
+    // lens space (z flipped): loz=-oz, ldz=-dz.
+    float lox = pfx, loy = pfy, loz = 0.0;
+    float ldx = rdx, ldy = rdy, ldz = -rdz;
+    float elementZ = 0.0;
+
+    for (int i = int(uniforms.numLensElements) - 1; i >= 0; --i) {
+        LensElement el = lensElements[i];
+        elementZ -= el.thickness;
+        bool isStop = (el.curvatureRadius == 0.0);
+        float t, nx = 0.0, ny = 0.0, nz = 0.0;
+
+        if (isStop) {
+            if (ldz == 0.0) return false;
+            t = (elementZ - loz) / ldz;
+            if (t < 0.0) return false;
+        } else {
+            float zCenter = elementZ + el.curvatureRadius;
+            float cox = lox, coy = loy, coz = loz - zCenter;
+            float A = ldx * ldx + ldy * ldy + ldz * ldz;
+            float B = 2.0 * (ldx * cox + ldy * coy + ldz * coz);
+            float C = cox * cox + coy * coy + coz * coz - el.curvatureRadius * el.curvatureRadius;
+            float disc = B * B - 4.0 * A * C;
+            if (disc < 0.0) return false;
+            float sq = sqrt(disc);
+            float q = (B < 0.0) ? -0.5 * (B - sq) : -0.5 * (B + sq);
+            float t0 = q / A;
+            float t1 = C / q;
+            if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+            bool useCloserT = (ldz > 0.0) != (el.curvatureRadius < 0.0);
+            t = useCloserT ? min(t0, t1) : max(t0, t1);
+            if (t < 0.0) return false;
+            float hx0 = lox + t * ldx, hy0 = loy + t * ldy, hz0 = loz + t * ldz;
+            nx = hx0; ny = hy0; nz = hz0 - zCenter;
+            float nlen = sqrt(nx * nx + ny * ny + nz * nz);
+            if (nlen == 0.0) return false;
+            nx /= nlen; ny /= nlen; nz /= nlen;
+            if (ldx * nx + ldy * ny + ldz * nz > 0.0) { nx = -nx; ny = -ny; nz = -nz; }
+        }
+
+        float hx = lox + t * ldx, hy = loy + t * ldy, hz = loz + t * ldz;
+        if (hx * hx + hy * hy > el.apertureRadius * el.apertureRadius) return false;
+        lox = hx; loy = hy; loz = hz;
+
+        if (!isStop) {
+            float etaI = (el.eta == 0.0) ? 1.0 : el.eta;
+            float etaT = (i > 0 && lensElements[i - 1].eta != 0.0) ? lensElements[i - 1].eta : 1.0;
+            float len = sqrt(ldx * ldx + ldy * ldy + ldz * ldz);
+            float dxn = ldx / len, dyn = ldy / len, dzn = ldz / len;
+            float eta = etaI / etaT;
+            float cosI = -(dxn * nx + dyn * ny + dzn * nz);
+            float sin2T = eta * eta * max(0.0, 1.0 - cosI * cosI);
+            if (sin2T >= 1.0) return false;
+            float cosT = sqrt(1.0 - sin2T);
+            ldx = eta * dxn + (eta * cosI - cosT) * nx;
+            ldy = eta * dyn + (eta * cosI - cosT) * ny;
+            ldz = eta * dzn + (eta * cosI - cosT) * nz;
+        }
+    }
+
+    float lensOutOx = lox, lensOutOy = loy, lensOutOz = -loz;
+    float lensOutDx = ldx, lensOutDy = ldy, lensOutDz = -ldz;
+
+    float cosThetaW = (rLen > 0.0) ? abs(rdz / rLen) : 0.0;
+    float lrz = uniforms.lensRearZ;
+    if (lrz <= 0.0) return false;
+    float w = (cosThetaW * cosThetaW * cosThetaW * cosThetaW) / (ppdf * lrz * lrz);
+
+    outOrigin = originWorld + lensOutOx * su + lensOutOy * sv + lensOutOz * sw;
+    outDirection = normalize(lensOutDx * su + lensOutDy * sv + lensOutDz * sw);
+    outWeight = w;
+    return true;
+}
+
+
 
 // Uniform sample on a unit disk (r = sqrt(u1) for area-uniform density,
 // not r = u1 - the same sqrt used for the hemisphere sample's own radius
@@ -5066,6 +5255,10 @@ kernel void primaryRayKernel(
     // see Uniforms::pbrtEnvMapWidth's own comment.
     device const float* pbrtEnvMarginalCDF [[buffer(22)]],
     device const float* pbrtEnvConditionalCDF [[buffer(23)]],
+    // Realistic camera's own lens/exit-pupil-bounds tables (D4/D8,
+    // section 157) - see sampleRealisticCameraRay()'s own comment.
+    device const LensElement* lensElements [[buffer(24)]],
+    device const ExitPupilBounds* exitPupilBounds [[buffer(25)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -5140,6 +5333,11 @@ kernel void primaryRayKernel(
         // offset re-jittered.
         float shutterT = randFloat(rngState);
         float3 rayOrigin, rayDir;
+        // Real multi-element-lens camera's own per-sample weight (see
+        // Uniforms::cameraRealistic's own comment) - 1.0 (a true no-op)
+        // for every other camera mode, folded into `throughput`'s own
+        // initial value below.
+        float cameraWeight = 1.0;
         if (uniforms.cameraOrthographic != 0u) {
             // Orthographic (parallel-projection): every pixel's ray
             // shares the SAME direction (cameraForward) - `screen.x/y`
@@ -5191,6 +5389,24 @@ kernel void primaryRayKernel(
             rayDir = normalize(-sinTheta * cos(phi) * float3(uniforms.cameraRight)
                                 + cosTheta * float3(uniforms.cameraUp)
                                 + sinTheta * sin(phi) * float3(uniforms.cameraForward));
+        } else if (uniforms.cameraRealistic != 0u) {
+            // Real multi-element-lens camera - see
+            // sampleRealisticCameraRay()'s own comment for the full
+            // mechanism. `cameraWeight` (default 1.0, every earlier
+            // mode) folds the returned cos^4(theta)/(pdf*lensRearZ^2)
+            // weight straight into this sample's own `throughput` below -
+            // a fully-vignetted sample (function returns false) leaves
+            // `cameraWeight` at 0, so its own throughput starts at
+            // (0,0,0) and every subsequent `radiance +=` naturally
+            // contributes nothing, no separate early-exit needed.
+            float3 lensOrigin, lensDir;
+            bool valid = sampleRealisticCameraRay(uniforms, lensElements, exitPupilBounds,
+                                                   pixelNDC.x, pixelNDC.y, rngState,
+                                                   float3(uniforms.cameraRight), float3(uniforms.cameraUp),
+                                                   float3(uniforms.cameraForward), float3(uniforms.cameraPos),
+                                                   lensOrigin, lensDir, cameraWeight);
+            rayOrigin = lensOrigin + shutterT * float3(uniforms.cameraVelocity);
+            rayDir = valid ? lensDir : float3(uniforms.cameraForward);
         } else {
             rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
             rayDir = normalize(float3(uniforms.cameraForward)
@@ -5208,7 +5424,13 @@ kernel void primaryRayKernel(
         // pinhole ray more the further the actual hit surface is from the
         // focus plane. lensRadius == 0 (every earlier PR's own scenes)
         // skips this block entirely - see Uniforms' own comment.
-        if (uniforms.lensRadius > 0.0) {
+        // ALSO skipped whenever cameraRealistic != 0u - that mode already
+        // did its own, far more accurate per-element lens sampling above;
+        // this simple thin-lens jitter would be a redundant (and wrong)
+        // SECOND defocus applied on top. Never actually reachable today
+        // (no scene sets both lensRadius>0 and cameraRealistic!=0), but
+        // guarded explicitly rather than relying on that.
+        if (uniforms.lensRadius > 0.0 && uniforms.cameraRealistic == 0u) {
             float2 apertureSample = (uniforms.apertureBlades >= 3u)
                 ? samplePolygonAperture(uniforms.apertureBlades, rngState)
                 : sampleUnitDisk(rngState);
@@ -5218,7 +5440,7 @@ kernel void primaryRayKernel(
             rayDir = normalize(focusPoint - rayOrigin);
         }
 
-        float3 throughput = float3(1.0);
+        float3 throughput = float3(cameraWeight);
         float3 radiance = float3(0.0);
         // MIS bookkeeping across bounces: the light quad can be reached
         // two ways - explicit light sampling below (NEE), or landing on
@@ -5949,9 +6171,31 @@ kernel void primaryRayKernel(
             // terminate early, keep expensive ones unbiased" shape as
             // this project's CPU integrator - throughput's max channel is
             // the survival probability, divided back in on survival so
-            // the estimator stays unbiased.
+            // the estimator stays unbiased. Clamped to 1.0 - a real,
+            // previously-latent bug found via the realistic camera's own
+            // noisy, non-converging first render: every earlier scene's
+            // own `throughput` starts at EXACTLY (1,1,1) and only ever
+            // SHRINKS via material albedo (<=1) multiplications, so
+            // `max(throughput channels)` was always already <=1 there,
+            // making this clamp an invisible no-op - but
+            // `cameraRealistic`'s own `cameraWeight` (section 157) can
+            // legitimately exceed 1.0 (a real pbrt-v4 importance-sampling
+            // weight, unbounded by design), so `throughput` can too.
+            // WITHOUT the clamp, a >1 `p` still guarantees survival
+            // (`randFloat() > p` is never true for p>=1) but ALSO
+            // divides `throughput` by that same large `p` anyway - an
+            // unnecessary, UNCOMPENSATED shrink standard RR never
+            // applies once survival is already certain (the division
+            // exists ONLY to compensate for paths that DO die, keeping
+            // the estimator unbiased when survival is a coin flip; once
+            // survival is guaranteed, no compensation is needed at all).
+            // Left uncorrected, every sample's own bright, unbounded
+            // `cameraWeight` got silently and inconsistently divided
+            // back down partway through its own path - exactly the
+            // per-sample-inconsistent, non-converging speckle the first
+            // render showed.
             if (depth > 3) {
-                float p = max(throughput.x, max(throughput.y, throughput.z));
+                float p = min(max(throughput.x, max(throughput.y, throughput.z)), 1.0);
                 if (randFloat(rngState) > p) break;
                 throughput /= max(p, 0.0001);
             }
