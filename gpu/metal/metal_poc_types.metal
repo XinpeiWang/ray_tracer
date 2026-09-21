@@ -1086,6 +1086,105 @@ DiskIntersectionResult diskIntersectionFunction(
     return result;
 }
 
+// A third custom-primitive shape (section 171) - a FULL (no partial
+// azimuthal sweep, no motion blur) finite cylinder, the same scope cut
+// DiskData's own "full circle only" comment already established for
+// disks. Stored fully baked in WORLD SPACE (base point + unit axis +
+// radius + height), not as an object-space shape plus a per-primitive
+// affine transform the way gpu/optix/optix_types.h's own CylinderData
+// does - Metal's intersection-function mechanism has no per-primitive
+// instance-transform plumbing the way OptiX's optixGetWorldToObject
+// TransformMatrix() does (InstanceTransform, elsewhere in this file, is
+// a POC-wide side-channel for the couple of actually-INSTANCED objects,
+// not a general per-primitive facility), so baking directly into world
+// space at LOAD time (metal_poc.mm's own loadPbrtCylinders(), mirroring
+// loadPbrtDisks()'s identical "transform once at load, not per-ray"
+// choice) avoids needing that machinery at all - a world-space axis-
+// aligned-to-nothing-in-particular tube test is no harder to write than
+// an object-space one, and this shape has rotational symmetry around
+// its own axis (no reference "phi=0" direction to preserve, unlike a
+// partial sweep would need), so there's no orientation info lost by
+// working in world space directly.
+struct CylinderData {
+    packed_float3 base;   // world-space point at the axis's zMin end
+    packed_float3 axis;   // world-space UNIT direction, base -> top
+    float radius;         // world-space radius
+    float height;         // world-space axis length (top = base + axis*height)
+};
+
+struct CylinderIntersectionResult {
+    bool accept [[accept_intersection]];
+    float distance [[distance]];
+};
+
+// Ray-vs-finite-cylinder in world space: solve the infinite-tube
+// quadratic using only the components of the ray PERPENDICULAR to the
+// cylinder's own axis (the standard "project out the axis" reduction -
+// a ray parallel to the axis has a zero perpendicular direction, `a`
+// below underflows to ~0, and is rejected explicitly rather than
+// dividing by it, matching gpu/optix/optix_disk_cylinder_helpers.h's
+// own dc_solve_tube_quadratic() to the same edge case for the same
+// reason: a ray running parallel to the tube's own surface has no
+// discrete crossing to report). Declares its own `[[buffer(2)]]` -
+// buffer(0)/buffer(1) are sphereIntersectionFunction's/
+// diskIntersectionFunction's own, this table's shared argument
+// namespace (see diskIntersectionFunction's own comment on why each
+// function needs a distinct index here).
+[[intersection(bounding_box, triangle_data, instancing)]]
+CylinderIntersectionResult cylinderIntersectionFunction(
+    float3 origin [[origin]],
+    float3 direction [[direction]],
+    float minDistance [[min_distance]],
+    float maxDistance [[max_distance]],
+    uint primitiveIndex [[primitive_id]],
+    device const CylinderData* cylinders [[buffer(2)]])
+{
+    CylinderIntersectionResult result;
+    result.accept = false;
+
+    CylinderData cyl = cylinders[primitiveIndex];
+    float3 axis = float3(cyl.axis);
+    float3 base = float3(cyl.base);
+    float3 oc = origin - base;
+    float3 dPerp = direction - dot(direction, axis) * axis;
+    float3 ocPerp = oc - dot(oc, axis) * axis;
+
+    float a = dot(dPerp, dPerp);
+    if (a < 1e-12) return result; // ray parallel to the axis - no discrete crossing
+
+    float b = 2.0 * dot(ocPerp, dPerp);
+    float c = dot(ocPerp, ocPerp) - cyl.radius * cyl.radius;
+    float discriminant = b * b - 4.0 * a * c;
+    if (discriminant < 0.0) return result;
+
+    float sqrtDisc = sqrt(discriminant);
+    float t0 = (-b - sqrtDisc) / (2.0 * a);
+    float t1 = (-b + sqrtDisc) / (2.0 * a);
+
+    // t0 <= t1 always (sqrtDisc >= 0) - try the nearer root first, fall
+    // back to the farther one exactly like sphereIntersectionFunction's
+    // own two-root try-nearest-then-farthest shape just above.
+    float t = t0;
+    bool valid = (t >= minDistance && t <= maxDistance);
+    if (valid) {
+        float h = dot(origin + t * direction - base, axis);
+        valid = (h >= 0.0 && h <= cyl.height);
+    }
+    if (!valid) {
+        t = t1;
+        valid = (t >= minDistance && t <= maxDistance);
+        if (valid) {
+            float h = dot(origin + t * direction - base, axis);
+            valid = (h >= 0.0 && h <= cyl.height);
+        }
+    }
+    if (!valid) return result;
+
+    result.accept = true;
+    result.distance = t;
+    return result;
+}
+
 // ---------------------------------------------------------------------------
 // PCG32-ish hash-based PRNG, stateless per call (no persistent generator
 // object needed across bounces - each call is reseeded from a running

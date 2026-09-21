@@ -64,6 +64,15 @@ kernel void primaryRayKernel(
     // section 157) - see sampleRealisticCameraRay()'s own comment.
     device const LensElement* lensElements [[buffer(24)]],
     device const ExitPupilBounds* exitPupilBounds [[buffer(25)]],
+    // A full (no phi-max sweep, no motion blur) cylinder primitive
+    // (section 171) - see CylinderData's own comment (metal_poc_types.metal)
+    // for why this is baked world-space rather than object-space-plus-
+    // transform. Separate from cylinderIntersectionFunction's own
+    // buffer(2) (the function table's own argument namespace) exactly
+    // like spheres/disks above - see SphereData/DiskData's own comment
+    // on that split.
+    device const CylinderData* cylinders [[buffer(26)]],
+    device const TriangleMaterial* cylinderMaterials [[buffer(27)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -608,20 +617,20 @@ kernel void primaryRayKernel(
             // a face normal from, but (hitPoint - centre) is exact for a
             // perfect sphere, no approximation.
             //
-            // Both spheres AND the disk report intersection_type::
-            // bounding_box (neither is a hardware-native triangle) - they
-            // only stop being ambiguous once `geometry_id` is checked too:
-            // sphereAS's own geometryDescriptors array has the spheres'
-            // bounding-box geometry at index 0 and the disk's at index 1
-            // (metal_poc.mm's own sphereAccelDesc.geometryDescriptors),
-            // and geometry_id reports exactly that array index for a
-            // bounding-box hit - the first time this POC's shading loop
-            // has needed geometry_id at all (every earlier custom
-            // primitive was the ONLY bounding-box geometry in its AS, so
-            // "bounding_box == sphere" was unambiguous until now).
+            // Spheres, the disk, AND the cylinder all report
+            // intersection_type::bounding_box (none is a hardware-native
+            // triangle) - they only stop being ambiguous once
+            // `geometry_id` is checked too: sphereAS's own
+            // geometryDescriptors array has the spheres' bounding-box
+            // geometry at index 0, the disk's at index 1, and the
+            // cylinder's at index 2 (metal_poc.mm's own
+            // sphereAccelDesc.geometryDescriptors, section 171), and
+            // geometry_id reports exactly that array index for a
+            // bounding-box hit.
             bool isBoundingBox = (result.type == intersection_type::bounding_box);
             bool isDisk = isBoundingBox && (result.geometry_id == 1u);
-            bool isSphere = isBoundingBox && !isDisk;
+            bool isCylinder = isBoundingBox && (result.geometry_id == 2u);
+            bool isSphere = isBoundingBox && !isDisk && !isCylinder;
             // Suzanne is instanced TWICE (instance_id 2 and 3, matching
             // metal_poc.mm's own instanceDescs[] ordering - see that
             // file's addTransformedSuzanneInstance()) from the SAME
@@ -633,7 +642,7 @@ kernel void primaryRayKernel(
             // instance_id threshold here (rather than deriving it) is
             // the same "explicitly documented, scene-specific constant"
             // approach this POC already uses for its light geometry.
-            bool isSuzanneInstance = !isSphere && !isDisk && (result.instance_id >= 2u);
+            bool isSuzanneInstance = !isSphere && !isDisk && !isCylinder && (result.instance_id >= 2u);
             float3 normal;
             TriangleMaterial mat;
             if (isSphere) {
@@ -663,6 +672,18 @@ kernel void primaryRayKernel(
                 // silently ignored, every disk hit reading the room's own
                 // disk material instead.
                 mat = diskMaterials[primId];
+            } else if (isCylinder) {
+                // Radial direction perpendicular to the axis at the hit
+                // point - project the hit onto the axis line to find the
+                // nearest axis point, then point away from it. Exact for
+                // a true cylinder, same "no approximation needed" note
+                // as the sphere's own hitPoint-relative normal above.
+                CylinderData cyl = cylinders[primId];
+                float3 axis = float3(cyl.axis);
+                float3 base = float3(cyl.base);
+                float3 axisPoint = base + dot(hitPoint - base, axis) * axis;
+                normal = normalize(hitPoint - axisPoint);
+                mat = cylinderMaterials[primId];
             } else if (isSuzanneInstance) {
                 // Object-space normal (Suzanne's own per-vertex data,
                 // just like the non-instanced case below) transformed

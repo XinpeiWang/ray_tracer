@@ -9812,3 +9812,105 @@ bug needing its own fix - the real fix for both is the same one
 section 169 already scoped out as bigger/riskier than a quick pass:
 excluding the room's own lights from NEE for any scene that defines
 its own complete lighting setup.
+
+## 171. A third custom-primitive shape: pbrt's Shape "cylinder" (full tube, no motion blur), unlocking C11/C13/E6/F12 partially or fully
+
+The first genuinely NEW geometry primitive since the disk (section
+101) - previously `pbrt_flatten::FlatScene::cylinders` was read by
+NOTHING on this backend, warned and silently dropped
+(`loadPbrtInfiniteLight()`'s own trailing warning), the same
+"parseable but unsupported" tier cone/paraboloid/bilinear-patch/curve
+still get. Four scenes reference `Shape "cylinder"` -
+`textured-twosided-lights.pbrt` (C11), `disk-cylinder-light.pbrt`
+(C13), `cylinder-medium.pbrt` (E6), and `disk-cylinder-motion-
+blur.pbrt` (F12) - all previously missing their own cylinder
+entirely.
+
+**Scope cut, mirroring the disk's own precedent exactly**: only a
+FULL tube (`phiMaxDeg == 360`, no partial azimuthal wedge) under
+uniform scale is supported - a partial sweep or non-uniform scale is
+warned and skipped, the same "rendering the wrong shape would be
+visibly WRONG, not just simplified" reasoning `loadPbrtDisks()`'s own
+comment already gives for the identical cut on its own shape. Motion
+blur (`ActiveTransform "StartTime"/"EndTime"` around a `Shape
+"cylinder"`, unlike F11's own real sphere motion blur, section 167)
+is NOT implemented - this shape renders frozen at its start pose, the
+same already-accepted, already-documented tier this project's own
+`disk-cylinder-motion-blur.pbrt` registry description already gives
+every GPU backend for this exact shape (not a new gap this change
+introduces).
+
+**A genuinely different representation from OptiX's own
+`gpu/optix/optix_types.h::CylinderData`** (object-space radius/zMin/
+zMax/phiMax plus a full per-primitive o2w/w2o affine, ported almost
+line-for-line from `gpu/optix/optix_disk_cylinder_helpers.h` for the
+maths but NOT for the data layout): Metal's intersection-function
+mechanism has no per-primitive instance-transform facility the way
+OptiX's `optixGetWorldToObjectTransformMatrix()` does (this file's own
+`InstanceTransform` is a POC-wide side-channel serving the couple of
+actually-instanced objects, not a general one), so `CylinderData` is
+instead baked FULLY into world space at load time - a base point, a
+unit axis direction, a radius, and a height - mirroring `DiskData`'s
+own identical "bake once at load, not per-ray" choice for the exact
+same reason. A full tube has rotational symmetry around its own axis
+(no "phi=0" reference direction to preserve, unlike a partial sweep
+would need), so nothing is lost by dropping the object-space
+transform entirely once the full-sweep-only scope cut above is
+already in place.
+
+**New machinery, following the sphere/disk precedent throughout**:
+`cylinderIntersectionFunction` (metal_poc_types.metal) solves the
+ray-vs-infinite-tube quadratic using only the ray components
+perpendicular to the axis (rejecting a ray parallel to the axis
+explicitly, same edge case `gpu/optix/optix_disk_cylinder_helpers.h`'s
+own `dc_solve_tube_quadratic()` already documents), then clips the
+nearer/farther root against the finite `[0, height]` axial range - a
+THIRD `geometryDescriptor` in the same primitive acceleration
+structure spheres/the disk already share (`geometry_id == 2`, buffer
+slot 2 in both the intersection-function table and the calling
+kernel's own argument list, `buffer(26)`/`buffer(27)`). The kernel's
+own shading-normal computation for a cylinder hit projects the hit
+point onto the axis line and points away from it - exact for a true
+cylinder, no approximation. `loadPbrtCylinders()` (metal_poc.mm)
+mirrors `loadPbrtDisks()`'s own structure exactly, including its
+"emissive but not NEE-registered" tier for a cylinder-shaped
+`AreaLightSource` (C13's own cylinder light).
+
+**A real bug found and fixed during verification, not guessed at**:
+`cylinderBuffer`/`cylinderMaterialBuffer` (and the acceleration
+structure's own `cylinderBoundingBoxBuffer`) are genuinely EMPTY for
+every scene but the four above - unlike every earlier custom-
+primitive buffer, which `buildScene()`'s own hardcoded room seeds
+with at least one entry unconditionally, so this was the first time
+that assumption actually broke. `newBufferWithBytes:length:0` (an
+empty `std::vector::data()` may legally return null) returned `nil`,
+which `checkGpuResource()` correctly treated as fatal - aborting
+EVERY scene's GPU render, caught immediately by `ctest`'s own smoke
+test rather than shipped. This is the SAME pitfall
+`lensElementBuffer`/`exitPupilBoundsBuffer` already hit and fixed
+once before (that fix's own comment, metal_poc.mm) - fixed here with
+the identical `empty() ? newBufferWithLength: : newBufferWithBytes:`
+pattern, not rediscovered from scratch.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+148 registered scene IDs smoke-rendered (same 22 pre-existing
+failures, unchanged - none of C11/C13/E6/F12 were ever in that list,
+since a skipped shape degraded silently rather than crashing), direct
+`--gpu` vs `--cpu` comparison for F12 (a real teal cylinder now
+renders in the correct position/size/colour, frozen rather than
+motion-blurred - matching the disk's own already-accepted tier) and
+C13 (a real glowing cylinder-shaped light now visible, noisier than
+CPU's own solid-angle-sampled version - matching the already-accepted
+"visible but not NEE-sampled" tier sphere/disk lights already have),
+and a before/after hash comparison across all 126 currently-passing
+scenes: only 7 differ - C11/C13/E6/F12 (the four scenes this change
+was meant to affect, each visually confirmed a real improvement, not
+a regression) plus D8/D12/F4 (pre-existing, already-documented GPU/
+lens-camera-or-tessellated-geometry non-determinism, section 160 -
+D12 hadn't been individually tested against this specific finding
+before, but is the same realistic-camera-from-a-file class of scene).
+The other 119 scenes are BYTE-IDENTICAL, a stronger result than
+section 167's own "visually identical, hash differs" finding for that
+PR's own broader, intersect()-call-touching change - this one only
+perturbs scenes that actually exercise the custom-primitive
+acceleration structure's own geometry.

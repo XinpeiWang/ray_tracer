@@ -422,6 +422,17 @@ struct DiskData {
     float radius;
 };
 
+// Mirrors metal_poc.metal's CylinderData byte-for-byte (section 171) -
+// see that struct's own comment for why this is baked world-space
+// base/axis/radius/height rather than an object-space shape plus a
+// per-primitive transform.
+struct CylinderData {
+    PackedFloat3 base;
+    PackedFloat3 axis;
+    float radius;
+    float height;
+};
+
 // A quad (4 verts, wound as 2 triangles) sharing one flat colour and
 // material type - the smallest scene-authoring shape that can build a
 // real Cornell box without hand-listing 30 individual vertices. `normals`
@@ -1098,6 +1109,8 @@ struct MetalPocApp {
     std::vector<TriangleMaterial> sphereMaterials;
     std::vector<DiskData> disks;
     std::vector<TriangleMaterial> diskMaterials;
+    std::vector<CylinderData> cylinders;
+    std::vector<TriangleMaterial> cylinderMaterials;
     std::vector<PointLightData> pointLights;
     std::vector<DirectionalLightData> directionalLights;
     std::vector<ProjectionLightData> projectionLights;
@@ -1127,6 +1140,7 @@ struct MetalPocApp {
     id<MTLBuffer> goniometricLightBuffer;
     id<MTLBuffer> materialBuffer, sphereBuffer, sphereMaterialBuffer;
     id<MTLBuffer> diskBuffer, diskMaterialBuffer;
+    id<MTLBuffer> cylinderBuffer, cylinderMaterialBuffer;
     id<MTLBuffer> suzanneVertexBuffer, suzanneNormalBuffer, suzanneMaterialBuffer;
     id<MTLBuffer> instanceTransformBuffer;
     id<MTLBuffer> lensElementBuffer, exitPupilBoundsBuffer;
@@ -1181,6 +1195,8 @@ struct MetalPocApp {
     void loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
         const PbrtMaterialForFn& materialFor, float sceneScale);
     void loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+        const PbrtMaterialForFn& materialFor, float sceneScale);
+    void loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
         const PbrtMaterialForFn& materialFor, float sceneScale);
     void loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
         const PbrtMaterialForFn& materialFor);
