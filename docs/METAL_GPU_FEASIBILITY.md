@@ -9337,3 +9337,42 @@ scene is a true no-op, while C8/C9/C10/C11/C13/C14/C15/C16/C18/C19/C20
 exactly the intended way - visually confirmed against `--cpu` for
 several (C10/C18 in particular now show a properly dark background
 matching CPU's own framing closely).
+
+## 164. Fix: sphere-shaped AreaLightSource contributed NO light at all - `loadPbrtSpheres()` never read `Sphere::areaLight`
+
+Section 163's own leftover findings named C14 (two sphere lights) as a
+real gap - the sky-gradient fix alone left it fully BLACK, not just
+noisier. Tracing it down: `loadPbrtDisks()` already has a real,
+working "emissive but not NEE-registered" tier for a disk-shaped
+AreaLightSource (added earlier, its own comment references "PR #100" -
+direct-hit/BSDF-bounce visible, just no explicit light-sampling
+strategy, matching the SAME tier non-quad triangle-mesh lights already
+use) - but `loadPbrtSpheres()`, right next to it, never checked
+`Sphere::areaLight` at all. A sphere-shaped light rendered as a plain
+non-emissive grey sphere, contributing literally nothing - not merely
+higher-variance, genuinely invisible as a light, which is exactly why
+C14 (a scene with ONLY two sphere lights and no other light source at
+all) went fully black once section 163's own fix stopped the
+sky-gradient from masking it.
+
+**Fixed by porting the exact same tier `loadPbrtDisks()` already
+established**, not inventing a new one: when `Sphere::areaLight` names
+a valid `scene.areaLights[]` entry, `SphereData`'s own paired
+`TriangleMaterial` gets `emission = em.L * em.scale`, `lightId = -1`,
+`twoSided` copied through - the identical three-line pattern, since
+`sphereMaterials` is the same plain `TriangleMaterial` disk materials
+already are, so the existing unconditional direct-hit-emissive/MIS-
+weight shading code needs no changes at all to pick this up correctly.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+88 scene IDs rendered with zero failures, direct `--gpu` vs `--cpu`
+comparison for C14 (both now show the same two-bright-spheres-lighting-
+a-room composition - GPU noisier, matching the documented "no NEE"
+tier exactly, not silently wrong), and a before/after hash comparison
+(all "before" renders done first while stashed, then popped, then all
+"after" renders - section 163's own methodology fix applied here too)
+across 33 scenes confirming this change is a true no-op for every one
+of them except C14 itself. C13 (disk AND cylinder lights in the same
+scene) is unaffected by this fix and still needs real `Shape
+"cylinder"` geometry support - Metal has none at all currently (a
+genuinely bigger, separately-scoped feature, not touched here).

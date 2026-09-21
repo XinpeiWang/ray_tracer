@@ -1232,7 +1232,34 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
         const float3 center = toWorld(float3{(float)s.center[0], (float)s.center[1], (float)s.center[2]});
         spheres.push_back(SphereData{
             PackedFloat3{center.x, center.y, center.z}, sceneScale * (float)s.radius});
-        sphereMaterials.push_back(materialFor(s.material));
+        TriangleMaterial mat = materialFor(s.material);
+        if (s.areaLight >= 0 && s.areaLight < (int)scene.areaLights.size()) {
+            // Same "emissive, but not NEE-registered" tier loadPbrtDisks()
+            // just above already established for a disk-shaped
+            // AreaLightSource (that function's own comment) - this loader
+            // has no sphere-shaped analytic light in its own `lights[]`
+            // NEE list either, so a sphere area light is visible (direct
+            // hit or a BSDF-sampled bounce landing on it) but not
+            // explicitly sampled. `sphereMaterials` is plain
+            // TriangleMaterial, so the SAME unconditional direct-hit
+            // emissive/MIS-weight code every other emissive material
+            // already goes through handles this correctly with no
+            // further shader changes needed. A real, previously
+            // undiscovered gap (section 164): unlike loadPbrtDisks() just
+            // above, this function never read `s.areaLight` at all - a
+            // sphere-shaped light rendered as a plain non-emissive grey
+            // sphere, contributing NO light to the scene whatsoever (not
+            // merely noisier/unsampled - fully absent), closer to the
+            // ORIGINAL bug loadPbrtAreaLights()'s own comment describes
+            // fixing for non-quad triangle-mesh lights than to the
+            // disk-shaped case's own already-correct "noisier but
+            // present" tier.
+            const pbrt_flatten::Emission& em = scene.areaLights[s.areaLight];
+            mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+            mat.lightId = -1;
+            mat.twoSided = em.twoSided ? 1u : 0u;
+        }
+        sphereMaterials.push_back(mat);
     }
 }
 
