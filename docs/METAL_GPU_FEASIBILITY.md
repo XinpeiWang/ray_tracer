@@ -9914,3 +9914,102 @@ section 167's own "visually identical, hash differs" finding for that
 PR's own broader, intersect()-call-touching change - this one only
 perturbs scenes that actually exercise the custom-primitive
 acceleration structure's own geometry.
+
+## 172. Category J increment: J1 - real texture-bound reflectance for `Material "coateddiffuse"`, plus a real pre-existing default-UV bug found and fixed along the way
+
+A scoping pass over category J (Textures) - the whole category had
+never been individually verified against CPU by scene ID, only named
+in a passing list - found every one of J1-J5 rendering as a flat
+placeholder colour on Metal where CPU shows a real bound texture.
+
+**J1 (CoatedDiffuseTexturePbrtExample) itself**: `MaterialKind::
+CoatedDiffuse`'s own `mapMaterial()` case never checked
+`Material::textureFilename` at all, unlike `MaterialKind::Diffuse`'s
+own materialType-26 branch (F5/F9, section 166) - `textureFilename` is
+already the IDENTICAL, generic field for both material kinds' own
+"reflectance" (pbrt_flatten.h's own comment: "Diffuse/CoatedDiffuse/
+DiffuseTransmission all apply this... now"), CoatedDiffuse's own
+loader just never read it. Fixed with a new materialType 27:
+CoatedDiffuse's own case now mirrors Diffuse's identical texture-
+loading logic (same shared `pbrtDiffuseTexture` slot/
+`havePbrtDiffuseImage` cache - a CoatedDiffuse and a Diffuse material
+binding the SAME image filename in one scene now correctly share one
+decode, though no bundled scene happens to do that) but sets
+materialType 27 instead of 26. `shadeClearcoat()` itself needed ZERO
+changes - it already takes `albedo` as an explicit parameter rather
+than reading `mat.color` directly (a design choice from whenever
+clearcoat shading was first written, not anticipated for this fix but
+exactly the right shape for it), so the kernel's own albedo-selection
+chain just gained `mat.materialType == 27u` alongside 26's existing
+texture-sampling branch, and the shading-dispatch chain gained
+`mat.materialType == 27u` alongside 8's existing `shadeClearcoat()`
+call - the SAME textured-albedo, unmodified-BSDF pattern, reapplied to
+a second material kind. Also threaded through `Material::textureScale`
+(a "scale"-class Texture wrapping the bare imagemap, barcelona-
+pavilion's own dominant real-world binding shape per this scene's own
+header comment) for the first time - materialType 26 never needed it
+before (F5/F9's own texture was always a bare imagemap), reused via
+`TriangleMaterial::roughness` (confirmed unused by both materialType
+26's and `shadeClearcoat()`'s own shading, same "one spare scalar,
+per-materialType meaning" pattern this struct's fields always follow).
+
+**A real, broader, pre-existing bug found while debugging why J1's
+own texture rendered as a single FLAT colour instead of a real
+pattern even after the materialType-27 wiring above was in place and
+confirmed decoding the image file correctly (a temporary debug
+`fprintf` traced this, not assumed)**: J1's own quads have no
+authored `"point2 uv"` at all (unlike F5/F9's own scenes, which do) -
+pbrt-v4's real default UV for an un-authored trianglemesh vertex is
+the BARYCENTRIC-IDENTITY assignment (vertex 0/1/2 -> (0,0)/(1,0)/
+(0,1), so a hit's own UV reduces to its two barycentric weights
+directly - `pbrt_flatten.h`'s own `Triangle::hasUVs` comment already
+named this convention, and `src/TheRestOfYourLife/triangle.h`'s
+`rec.u = b1; rec.v = b2;` already implements it CPU-side), but
+Metal's own triangle-loading code (`loadPbrtRemainingTriangles()` AND
+`loadPbrtObjectInstances()`, two separate but identical sites) instead
+pushed a literal `(0,0)` for ALL THREE vertices whenever `t.hasUVs`
+was false - a genuinely DEGENERATE, non-varying UV, not merely a
+different default. `texCoordFor()`'s own barycentric interpolation
+was always correct; every UV it was ever asked to interpolate before
+this fix just happened to be real, authored per-vertex data. Every
+previously-shipped scene that used a UV-dependent materialType (3/6/
+7/16/17/25/26 - earthTexture, procedural checkers, bump mapping, the
+real imagemap cases) happened to do so on either a hand-authored
+`addQuad()` quad (which sets a real 0-1 UV directly, unaffected -
+`addQuad()` is a completely separate code path from this bug) or a
+pbrt-loaded mesh that DID author explicit UV - J1 is simply the first
+scene to combine a texture-sampling materialType with an un-authored-
+UV trianglemesh, which is what exposed this. Fixed by pushing
+`(0,0)/(1,0)/(0,1)` instead of three `(0,0)`s at both sites - no
+shader-side change needed at all, `texCoordFor()`'s own math already
+produces the right answer once fed the right default vertex values.
+
+**This fix has a real, additional, unplanned-for blast radius**: the
+before/after hash sweep found J3/J4/J6 ALSO changed, despite none of
+them being this PR's own intended target - all three also bind a real
+texture to an un-authored-UV trianglemesh, and all three now show
+SOME real texture variation where they previously rendered flat (J3's
+own materialType-25 checkerboard branch, already fully implemented,
+simply never had a real UV to work with before; J4/J6 show partial,
+correctly-varying pattern content but are still honestly incomplete -
+J4 still needs real per-quad encoding/wrap/invert texture-option
+support, J6 needs whole new procedural texture generators (windy/
+wrinkled/dots/bilerp) neither implemented here nor claimed to be).
+J2 (DiffuseTransmissionTexturePbrtExample) is UNCHANGED by this fix
+and remains fully unfixed - its own gap is a second, entirely separate
+missing texture SLOT (`Material::transmittanceTextureFilename`,
+DiffuseTransmission-only, no shared infrastructure with
+`pbrtDiffuseTexture` to reuse the way CoatedDiffuse's reflectance
+did), a real follow-up, not attempted here.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+148 registered scene IDs smoke-rendered (same 22 pre-existing
+failures, unchanged), direct `--gpu` vs `--cpu` comparison for J1
+(both quads now show the scene's own real diagonal red/white/blue
+imagemap pattern, right quad correctly half as bright from its own
+"scale" wrapper - matches CPU closely), and a before/after hash
+comparison across all 126 currently-passing scenes: only 7 differ -
+J1 (the intended fix), J3/J4/J6 (unplanned, confirmed real partial
+improvements from the same UV fix, not regressions), and D8/D12/F4
+(pre-existing, already-documented GPU/lens-camera non-determinism,
+section 160). The other 119 are byte-identical.

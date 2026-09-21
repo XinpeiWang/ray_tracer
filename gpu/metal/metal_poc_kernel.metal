@@ -858,21 +858,21 @@ kernel void primaryRayKernel(
                 float2 tile = floor(uv * float2(mat.conductorEta.x, mat.conductorEta.y));
                 float parity = fmod(tile.x + tile.y, 2.0);
                 albedo = (abs(parity) < 0.5) ? float3(mat.color) : float3(mat.transmitColor);
-            } else if (mat.materialType == 26u) {
-                // A pbrt-v4 Diffuse/CoatedDiffuse material's own
-                // "texture reflectance" bound to a bare "imagemap"
-                // Texture (F5/F9, section 166) - a REAL image FILE
-                // (`Material::textureFilename`, pbrt_flatten.h), not a
-                // procedural pattern like materialType 25's own
-                // checkerboard - reads `pbrtDiffuseTexture` (this
-                // scene's own decoded file) instead of the hardcoded
-                // room's own earthTexture, the same "separate slot"
-                // reasoning materialType 3 already established for
-                // pbrt-loaded infinite-light images. Same isSphere/
-                // texCoordFor() UV split materialType 3/25 above already
-                // established. `1.0 - uv.y`: pbrt-v4's own UV convention
-                // has v=0 at the BOTTOM of the image (this scene's own
-                // "point2 uv" authors v=0/v=1 that way), but
+            } else if (mat.materialType == 26u || mat.materialType == 27u) {
+                // A pbrt-v4 Diffuse (26) or CoatedDiffuse (27, J1,
+                // section 172) material's own "texture reflectance"
+                // bound to a bare "imagemap" Texture (F5/F9, section
+                // 166) - a REAL image FILE (`Material::textureFilename`,
+                // pbrt_flatten.h), not a procedural pattern like
+                // materialType 25's own checkerboard - reads
+                // `pbrtDiffuseTexture` (this scene's own decoded file)
+                // instead of the hardcoded room's own earthTexture, the
+                // same "separate slot" reasoning materialType 3 already
+                // established for pbrt-loaded infinite-light images.
+                // Same isSphere/texCoordFor() UV split materialType 3/25
+                // above already established. `1.0 - uv.y`: pbrt-v4's own
+                // UV convention has v=0 at the BOTTOM of the image (this
+                // scene's own "point2 uv" authors v=0/v=1 that way), but
                 // pbrt_load::detail::decodeInfiniteLightImage() (stb_image
                 // under the hood) always returns row 0 as the TOP row,
                 // the same row Metal's own `replaceRegion:` (this
@@ -883,10 +883,17 @@ kernel void primaryRayKernel(
                 // this scene's own 4-quadrant checker against `--cpu`
                 // (each quadrant's colour landed in the vertically
                 // opposite corner) rather than assumed correct from a
-                // symmetric test image.
+                // symmetric test image. `* mat.roughness`: this hit's own
+                // texture SCALE multiplier (a "scale"-class Texture
+                // wrapping the bare imagemap, Material::textureScale's
+                // own comment, mapMaterial()'s own comment on reusing
+                // this field) - both materialType 26 and 27's own
+                // TriangleMaterial construction now sets `roughness` to
+                // this value (1.0, a provable no-op, when the scene's
+                // own texture had no wrapping "scale").
                 float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
                                       : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
-                albedo = pbrtDiffuseTexture.sample(textureSampler, float2(uv.x, 1.0 - uv.y)).rgb;
+                albedo = pbrtDiffuseTexture.sample(textureSampler, float2(uv.x, 1.0 - uv.y)).rgb * mat.roughness;
             } else {
                 albedo = float3(mat.color);
             }
@@ -1030,7 +1037,14 @@ kernel void primaryRayKernel(
             } else if (mat.materialType == 11u) {
                 if (!shadeThinDielectric(mat, hitPoint, normal, facingNormal,
                                           rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
-            } else if (mat.materialType == 8u) {
+            } else if (mat.materialType == 8u || mat.materialType == 27u) {
+                // materialType 27 (J1, section 172): the SAME clearcoat
+                // shading materialType 8 already uses, just with `albedo`
+                // (computed above) sourced from a real per-hit texture
+                // sample instead of `mat.color` - shadeClearcoat() itself
+                // needs no changes at all, it already takes `albedo` as
+                // an explicit parameter rather than reading `mat.color`
+                // directly.
                 if (!shadeClearcoat(mat, albedo, hitPoint, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
