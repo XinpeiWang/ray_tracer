@@ -551,3 +551,49 @@ void MetalPocApp::buildRealisticCornellBox() {
     }
 }
 
+// D13 (CameraMotionBlur, section 174) - the SAME geometry as A1
+// (build_cornell_box on CPU, buildCornellBoxA1() here), a camera
+// trucking sideways across the exposure via a real AnimatedTransform
+// on CPU/OptiX (scene_registry_data.h's own D13 row: lookfrom moves
+// from (278,278,-800) to (378,278,-800) over shutter [0,1], lookat
+// fixed at (278,278,278)) - previously this loader had NO mechanism
+// for a hand-authored scene to request camera shutter motion blur at
+// all (`uniforms.cameraVelocity` was unconditionally zeroed for every
+// scene going through the `havePbrtCamera` branch, metal_poc.mm's own
+// comment there), unlike the hardcoded POC room's own bare-CLI default
+// scene, which already had a hardcoded, scene-specific velocity.
+// `sceneCameraVelocity` (new MetalPocApp member, defaults to {0,0,0} -
+// a provable no-op for every OTHER scene) is this loader's own general
+// version of that same mechanism, now readable by any scene builder.
+//
+// A first version of this fix used the plain origin-only
+// `cameraVelocity` path (every OTHER camera-motion-blur scene's own
+// mechanism, since none of them keeps a fixed lookAt point while
+// moving) - directly comparing its own render against `--cpu` showed
+// a real, visible difference: uniform blur smeared across the WHOLE
+// frame, vs CPU's real AnimatedTransform result, which - because the
+// camera keeps pointing at the same fixed subject throughout ("lookat
+// stays fixed" per this scene's own registry comment) - blurs far
+// less near that subject and more toward the periphery, a
+// qualitatively different look, not just a smaller version of the
+// same one. Fixed properly rather than shipped as a known-visible
+// approximation: `hasCameraOrbitBlur` (Uniforms::hasCameraOrbitBlur's
+// own comment, metal_poc_types.metal) recomputes the camera's whole
+// forward/right/up basis fresh each SAMPLE from the interpolated
+// origin toward a FIXED lookAt point, exactly matching "translate the
+// origin, keep pointing at the same target" - the same camera model a
+// translate-plus-implied-rotation AnimatedTransform keyframe pair
+// actually describes, without needing a separate quaternion slerp for
+// the rotation (it's already fully determined by "keep facing the
+// fixed point").
+void MetalPocApp::buildCameraMotionBlurCornellBox() {
+    buildCornellBoxA1();
+    // Matches buildCornellBoxA1()'s own sceneScale exactly (555-unit
+    // Cornell box -> 2.0 units) - a VELOCITY is a delta, not a point,
+    // so only the scale factor applies, no recentre/offset (same
+    // reasoning loadPbrtCylinders()'s own height computation already
+    // used for an axis delta, section 171).
+    const float sceneScale = 2.0f / 555.0f;
+    sceneCameraVelocity = PackedFloat3{100.0f * sceneScale, 0.0f, 0.0f};
+}
+

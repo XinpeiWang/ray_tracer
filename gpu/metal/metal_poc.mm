@@ -809,6 +809,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "D3") { buildSphericalCameraScene(); return true; }
     if (scene_id == "D4") { buildRealisticCameraScene(); return true; }
     if (scene_id == "D8") { buildRealisticCornellBox(); return true; }
+    if (scene_id == "D13") { buildCameraMotionBlurCornellBox(); return true; }
     if (scene_id == "F1") { buildBilinearPatchScene(); return true; }
     if (scene_id == "F4") { buildCurveFibersScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
@@ -1832,6 +1833,18 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         uniforms.cameraRight = PackedFloat3{pbrtCameraRight.x, pbrtCameraRight.y, pbrtCameraRight.z};
         uniforms.cameraUp = PackedFloat3{pbrtCameraUp.x, pbrtCameraUp.y, pbrtCameraUp.z};
         uniforms.tanHalfFov = pbrtTanHalfFov;
+        // D13 (section 174): real orbit-style camera motion blur, gated
+        // on the scene's own sceneCameraVelocity actually being nonzero
+        // (every other scene leaves it at its own {0,0,0} default, so
+        // this is 0/false for all of them - a provable no-op). Always
+        // copies pbrtCameraLookAtWorld/pbrtCameraUpRaw regardless -
+        // both already exist for applyCameraOverride()'s own sake, and
+        // are simply unread by the shader whenever hasCameraOrbitBlur
+        // is 0.
+        uniforms.cameraLookAtBlur = PackedFloat3{pbrtCameraLookAtWorld.x, pbrtCameraLookAtWorld.y, pbrtCameraLookAtWorld.z};
+        uniforms.cameraUpRawBlur = PackedFloat3{pbrtCameraUpRaw.x, pbrtCameraUpRaw.y, pbrtCameraUpRaw.z};
+        uniforms.hasCameraOrbitBlur = (sceneCameraVelocity.x != 0.0f || sceneCameraVelocity.y != 0.0f ||
+                                        sceneCameraVelocity.z != 0.0f) ? 1u : 0u;
         // pbrt v1 still doesn't read a pbrt FILE's own "float lensradius"/
         // "float focaldistance" Camera parameters (a genuinely separate,
         // still-open gap) - but a hand-authored scene (D5, section 137)
@@ -1883,7 +1896,11 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         // pixel-space shift - invisible on an already-smooth image, but
         // it visibly decorrelates R/G/B on a noisy one).
         if (havePbrtRealisticCamera) uniforms.adaptiveSampling = 0u;
-        uniforms.cameraVelocity = PackedFloat3{0, 0, 0};   // no motion blur
+        // D13 (section 174): reads the scene's own sceneCameraVelocity
+        // instead of unconditionally zeroing this out - see that
+        // member's own comment. {0,0,0} (every scene but D13) is an
+        // exact no-op, identical to this line's own previous literal.
+        uniforms.cameraVelocity = sceneCameraVelocity;
         if (havePbrtMedium) {
             uniforms.fogSigmaT = pbrtFogSigmaT;
             uniforms.fogAlbedo = PackedFloat3{pbrtFogAlbedo.x, pbrtFogAlbedo.y, pbrtFogAlbedo.z};

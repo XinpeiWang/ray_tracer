@@ -10064,3 +10064,110 @@ D8/D12/F4 differ, the same pre-existing, already-documented GPU/lens-
 camera non-determinism every other PR's own hash sweep already shows
 for these exact three scenes (section 160), confirmed visually
 identical besides. The other 123 scenes are byte-for-byte identical.
+
+## 174. Closing D13: real camera shutter motion blur for a hand-authored scene, plus a caught-before-shipping wrong-first-attempt
+
+User asked to work through the 22 pre-existing "no hand-authored Metal
+builder yet" scene failures. Most need a genuinely new feature
+(HairBxDF, subsurface scattering, measured BRDF, bounded per-object
+volumetric media, Sponza's own whole-environment OBJ pipeline) or
+external assets not present in this repo (H2-H12's own pbrt-v4-scenes
+downloads) - out of scope for a quick pass, and not attempted here (a
+proper accounting of all 22, grouped by real difficulty, follows this
+section). **D13 (CameraMotionBlur) stood out as genuinely tractable**:
+the SAME geometry as A1 (CPU's `build_cornell_box`, already
+`buildCornellBoxA1()` here), just with the camera trucking sideways
+across the exposure via a real `AnimatedTransform` on CPU/OptiX
+(`scene_registry_data.h`'s own D13 row: lookfrom moves from
+`(278,278,-800)` to `(378,278,-800)` over shutter `[0,1]`, lookat
+fixed at `(278,278,278)`) - no new BSDF or geometry primitive needed
+at all, "just" camera motion blur, a feature this loader already had
+in SOME form since section 22.
+
+**Real gap found**: `uniforms.cameraVelocity` (section 22's own
+mechanism) was unconditionally zeroed for every scene going through
+the `havePbrtCamera` branch (every hand-authored AND pbrt-loaded scene
+alike) - there was no way for ANY scene builder to request camera
+motion blur at all, only the hardcoded POC room's own bare-CLI default
+scene had one (a hardcoded literal, unconditional, scene-independent).
+Added `MetalPocApp::sceneCameraVelocity` (defaults `{0,0,0}`, a
+provable no-op for every scene but D13) as the general version of that
+same mechanism, read into `uniforms.cameraVelocity` instead of the old
+hardcoded zero.
+
+**A wrong first attempt, caught by comparing against `--cpu` before
+shipping, not assumed correct from the code**: the obvious
+implementation - reusing `cameraVelocity`'s own EXISTING origin-only
+translate mechanism, computing the delta between the two keyframe
+`lookfrom`s - compiled, ran, and looked plausible, but a direct
+render-and-compare against CPU showed a real, visible difference: this
+loader's own version blurred the WHOLE frame uniformly, while CPU's
+real `AnimatedTransform` interpolation - because the camera keeps
+pointing at the SAME fixed `lookat` point throughout ("lookat stays
+fixed" per D13's own registry comment) - blurs far less near that
+point and more toward the periphery, a qualitatively different look,
+not just a smaller version of the same one. Diagnosed correctly (the
+origin-only mechanism translates the origin but leaves `cameraForward`/
+`cameraRight`/`cameraUp` FIXED for the whole exposure, wrong whenever
+the real camera keeps pointing at a fixed subject rather than moving
+in a straight, unaimed line) and fixed properly rather than shipped as
+a documented approximation: three new `Uniforms` fields
+(`cameraLookAtBlur`, `cameraUpRawBlur`, `hasCameraOrbitBlur`) gate a
+new kernel branch that recomputes the WHOLE forward/right/up basis
+fresh each SAMPLE from `mix(cameraPos, cameraPos+cameraVelocity,
+shutterT)` toward the fixed lookAt point - exactly "translate the
+origin, keep pointing at the same target," the same camera model this
+keyframe pair actually describes, with the rotation fully determined
+by that (no separate quaternion slerp needed, unlike a general
+`AnimatedTransform` with an independent rotational component). Re-
+rendered against `--cpu` after the fix: side walls read crisp again
+(not uniformly smeared), the box and glass sphere are both visible in
+matching positions with a comparable, localized amount of edge
+ghosting - a close match, not just "closer."
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+148 registered scene IDs smoke-rendered (21 failures now, down from
+22 - D13 succeeds, every other pre-existing failure unchanged), direct
+`--gpu` vs `--cpu` comparison for D13 (described above), and a
+before/after hash comparison across the other 126 currently-passing
+scenes (D13 itself excluded - it didn't render at all before this
+PR): only D8/D12/F4 differ, the same pre-existing lens-camera non-
+determinism (section 160) that shows up in every other PR's own
+sweep for these exact three scenes. The other 123 are byte-for-byte
+identical, confirming the new orbit-blur kernel branch is genuinely
+dead code for every scene but D13.
+
+**The other 20 pre-existing failures, grouped by real difficulty (not
+attempted in THIS PR - A2 is a second genuinely tractable one, real
+enough to warrant its own separate follow-up PR rather than folding it
+in here)**:
+- **Also genuinely tractable, likely a quick follow-up**: A2
+  (BouncingSpheres) - random spheres over a checker ground, materials
+  and features this loader already has in full (diffuse/conductor/
+  dielectric, a real 3D checker, and now - since F11, section 167 -
+  real per-sphere object motion blur for the "bouncing" part). No new
+  feature needed, "just" a new hand-authored scene builder combining
+  entirely existing building blocks, the same shape D13 itself turned
+  out to be.
+- **Needs a whole new BSDF/material system**: B11 (HairFibers -
+  pbrt-v4 HairBxDF), B13 (SubsurfaceSlab - real subsurface transport),
+  B14 (MeasuredBrdf - tabulated RGL data).
+- **Needs bounded, per-object volumetric media** (Metal's own fog is
+  a single WHOLE-SCENE homogeneous medium, architecturally not built
+  for a medium attached to one object's own boundary - the same gap
+  already named for A8/E2-E10 in earlier sessions): A8 (CornellSmoke),
+  E2 (CloudMedium - procedural Perlin volume), E3
+  (DielectricMediumShowcase - dielectric surface + medium combined),
+  E4 (RgbGridMedium - heterogeneous per-voxel grid).
+- **Needs a whole new "load a native OBJ scene, per-face materials
+  and image textures" pipeline** (a comparably-sized undertaking to
+  the real pbrt loader itself, section 173): H1 (CrytekSponza).
+- **Needs external assets this repo doesn't have at all** (not a code
+  gap - no amount of Metal work fixes a missing file): H2-H12, each
+  requiring its own pbrt-v4-scenes download.
+- **A9 (FinalScene)**: Book 2's own combined finale - moving spheres
+  (now actually available, F11/section 167), a volumetric fog BOX
+  (same bounded-medium gap as A8/E2-E4 above), a subsurface marble
+  sphere (same gap as B13), an image-textured sphere, real object
+  instancing - a genuine combination of several of the above gaps in
+  one scene, not reducible to any single one of them.

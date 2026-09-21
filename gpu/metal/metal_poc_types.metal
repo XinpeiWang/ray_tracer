@@ -269,6 +269,33 @@ struct Uniforms {
     float filmHalfX;
     float filmHalfY;
     float lensRearZ;
+    // Real (not translate-only-approximated) camera shutter motion blur
+    // for a scene whose camera keeps a FIXED lookAt point while its own
+    // origin moves (D13, section 174) - `cameraVelocity` above only
+    // offsets the ORIGIN, leaving `cameraForward`/`cameraRight`/
+    // `cameraUp` fixed for the whole exposure, which is wrong whenever
+    // the real camera path is actually an orbit/truck around a fixed
+    // subject rather than a pure translation: pointing at the SAME
+    // world point from a shifted origin needs a slightly different
+    // forward direction too, and a uniform-across-the-frame blur (what
+    // the origin-only version produces) looks visibly different from a
+    // real pivot's own "least blur near the lookAt point, more at the
+    // periphery" character - confirmed by directly comparing an
+    // origin-only render against CPU's own real AnimatedTransform
+    // result, not assumed close enough. `hasCameraOrbitBlur != 0`
+    // recomputes the WHOLE forward/right/up basis fresh, once per
+    // SAMPLE, from `mix(cameraPos, cameraPos+cameraVelocity, shutterT)`
+    // toward `cameraLookAtBlur` (fixed) using `cameraUpRawBlur` (fixed) -
+    // exactly reproducing "translate the origin, keep pointing at the
+    // same target," the same conceptual camera model pbrt-v4's own
+    // AnimatedTransform decomposition targets for this exact keyframe
+    // shape (a translate with the rotation fully determined by it, not
+    // an independent rotation needing its own interpolation/slerp).
+    // 0 (every scene but D13) leaves the existing cameraVelocity-only
+    // path completely unchanged - a provable no-op.
+    packed_float3 cameraLookAtBlur;
+    packed_float3 cameraUpRawBlur;
+    uint hasCameraOrbitBlur;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/

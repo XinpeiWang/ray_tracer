@@ -251,6 +251,24 @@ kernel void primaryRayKernel(
                                                    lensOrigin, lensDir, cameraWeight);
             rayOrigin = lensOrigin + shutterT * float3(uniforms.cameraVelocity);
             rayDir = valid ? lensDir : float3(uniforms.cameraForward);
+        } else if (uniforms.hasCameraOrbitBlur != 0u) {
+            // Real (not translate-only) camera shutter motion blur
+            // (D13, section 174, Uniforms::hasCameraOrbitBlur's own
+            // comment) - recomputes the WHOLE forward/right/up basis
+            // fresh from this sample's own interpolated origin toward
+            // the fixed cameraLookAtBlur point, rather than translating
+            // a FIXED basis (what the plain cameraVelocity path just
+            // below does) - correct for a camera that keeps pointing at
+            // the same subject while it moves, which the plain path
+            // isn't.
+            float3 origin0 = float3(uniforms.cameraPos);
+            float3 origin1 = origin0 + float3(uniforms.cameraVelocity);
+            float3 interpOrigin = mix(origin0, origin1, shutterT);
+            float3 fwd = normalize(float3(uniforms.cameraLookAtBlur) - interpOrigin);
+            float3 right = normalize(cross(fwd, float3(uniforms.cameraUpRawBlur)));
+            float3 up = cross(right, fwd);
+            rayOrigin = interpOrigin;
+            rayDir = normalize(fwd + screen.x * right + screen.y * up);
         } else {
             rayOrigin = float3(uniforms.cameraPos) + shutterT * float3(uniforms.cameraVelocity);
             rayDir = normalize(float3(uniforms.cameraForward)
