@@ -1316,6 +1316,11 @@ struct MetalPocApp {
     // 3D world-space checker) - see checker3DColor()'s own declaration
     // comment, metal_poc.metal. Section 121, docs/METAL_GPU_FEASIBILITY.md.
     void buildCheckeredSpheres();
+    // A2: Bouncing Spheres (In One Weekend's own final scene) - see this
+    // method's own definition comment (metal_poc_scenes_a.mm) for the
+    // full "why," including the fixed-seed pseudo-random grid layout.
+    // Section 175, docs/METAL_GPU_FEASIBILITY.md.
+    void buildBouncingSpheres();
     // A6: Colored Quads - 5 flat-colour wall quads plus one emissive lamp
     // quad, matching CPU's build_quads()/build_quads_lights() exactly.
     // Pure addQuad() calls (no new material/geometry machinery at all -
