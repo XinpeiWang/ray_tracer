@@ -925,8 +925,21 @@ void MetalPocApp::loadPbrtScene() {
                         }
                     }
                     if (havePbrtDiffuseImage) {
+                        // `roughness` reused as this hit's own texture
+                        // SCALE multiplier (J1/section 172 - a "scale"-
+                        // class Texture wrapping the bare imagemap,
+                        // Material::textureScale's own comment) - unused
+                        // by materialType 26's own shading otherwise,
+                        // same "one scalar slot, per-materialType
+                        // meaning" pattern every other TriangleMaterial
+                        // field reuse here already follows. 1.0 (a
+                        // provable no-op) when the scene's own texture
+                        // was a bare imagemap with no wrapping "scale" -
+                        // true for F5/F9, the scenes this materialType
+                        // was originally built for, so this change is a
+                        // no-op for them.
                         return TriangleMaterial{color, /*materialType=*/26u, /*ior=*/1.0f,
-                                                 PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                                                 PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.textureScale};
                     }
                 }
                 return TriangleMaterial{color, /*materialType=*/0u, /*ior=*/1.0f,
@@ -1002,7 +1015,7 @@ void MetalPocApp::loadPbrtScene() {
                                                   (float)m.transmittance[2]};
                 return mat;
             }
-            case pbrt_flatten::MaterialKind::CoatedDiffuse:
+            case pbrt_flatten::MaterialKind::CoatedDiffuse: {
                 // Approx tier (docs/PBRT_SUPPORT.md's own convention -
                 // CPU/OptiX render this Full, a real stochastic layered
                 // coat-over-Lambertian): materialType 8 (clearcoat) is
@@ -1016,8 +1029,44 @@ void MetalPocApp::loadPbrtScene() {
                 // Lambertian default fallback below: the correct diffuse
                 // albedo and a generic coat sheen both survive, just not
                 // the exact coat IOR/roughness.
+                //
+                // A "reflectance" bound to a bare "imagemap" Texture (J1,
+                // section 172) - materialType 27, the SAME per-hit image
+                // lookup materialType 26 already gives plain Diffuse
+                // (reusing the SAME shared `pbrtDiffuseTexture` slot/
+                // `havePbrtDiffuseImage` cache - `Material::textureFilename`
+                // is already the identical GENERIC field for both material
+                // kinds' own reflectance, pbrt_flatten.h's own comment),
+                // just routed through shadeClearcoat's own explicit
+                // `albedo` parameter afterward instead of the plain
+                // Lambertian path - see metal_poc_kernel.metal's own
+                // materialType 26/27 albedo-selection branch (now shared)
+                // and its materialType 8/27 shading-dispatch branch (also
+                // shared). Ganesha's own statue (this scene's own header
+                // comment) is the motivating real-world case: a
+                // CoatedDiffuse whose reflectance is a bare imagemap.
+                if (!m.textureFilename.empty() &&
+                    (!havePbrtDiffuseImage || m.textureFilename == pbrtDiffuseImageFilename)) {
+                    if (!havePbrtDiffuseImage) {
+                        std::string bytes;
+                        if (pbrt_load::loadFileNear(pbrtScenePath, m.textureFilename, bytes) &&
+                            pbrt_load::detail::decodeInfiniteLightImage(m.textureFilename, bytes,
+                                pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                            havePbrtDiffuseImage = true;
+                            pbrtDiffuseImageFilename = m.textureFilename;
+                        } else {
+                            fprintf(stderr, "loadPbrtScene: CoatedDiffuse material's own texture '%s' could not be "
+                                            "read/decoded; falling back to its flat colour\n", m.textureFilename.c_str());
+                        }
+                    }
+                    if (havePbrtDiffuseImage) {
+                        return TriangleMaterial{color, /*materialType=*/27u, /*ior=*/1.0f,
+                                                 PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.textureScale};
+                    }
+                }
                 return TriangleMaterial{color, /*materialType=*/8u, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+            }
             case pbrt_flatten::MaterialKind::Mix: {
                 // Approx tier: CPU/OptiX both do a REAL per-shading-point
                 // stochastic pick between the two named sub-materials
@@ -1261,7 +1310,22 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             for (int c = 0; c < 3; ++c)
                 uvs.push_back(PackedFloat2{(float)t.uv[c * 2 + 0], (float)t.uv[c * 2 + 1]});
         } else {
-            uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0});
+            // pbrt-v4's own real default UV for a trianglemesh with no
+            // authored "point2 uv" (J1, section 172; Triangle::hasUVs's
+            // own comment, pbrt_flatten.h, already named this exact
+            // convention: "CPU triangle.h's own barycentric fallback") -
+            // vertex 0/1/2 map to (0,0)/(1,0)/(0,1), so texCoordFor()'s
+            // EXISTING barycentric interpolation (unchanged) reduces to
+            // the hit's own two barycentric weights directly, matching
+            // src/TheRestOfYourLife/triangle.h's `rec.u = b1; rec.v = b2;`
+            // exactly - not a flat (0,0) for every point on the triangle,
+            // which is what this bare `{0,0}` for all three vertices
+            // actually produced before (never a real varying UV at all,
+            // however deep any subsequent texture sampling scaffolding
+            // went - found via J1's own real-imagemap CoatedDiffuse
+            // texture rendering as one FLAT, unvarying colour instead of
+            // the checker image's own real pattern, not assumed).
+            uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
         }
         TriangleMaterial mat = materialFor(t.material);
         auto unhandledIt = unhandledLightEmission.find(i);
@@ -1537,7 +1601,10 @@ void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, 
                 for (int c = 0; c < 3; ++c)
                     uvs.push_back(PackedFloat2{(float)t.uv[c * 2 + 0], (float)t.uv[c * 2 + 1]});
             } else {
-                uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{0, 0});
+                // Same real default-UV fix as loadPbrtRemainingTriangles()'s
+                // own identical branch just above (J1, section 172) - see
+                // that site's own comment for the full "why."
+                uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
             }
             materials.push_back(materialFor(t.material));
             ++instancedTriangleCount;
