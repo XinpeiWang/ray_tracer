@@ -103,6 +103,10 @@ struct Uniforms {
     // metal_poc.metal's own mirrored Uniforms::cameraSpherical comment
     // for the full mechanism.
     uint32_t cameraSpherical = 0;
+    // Which mapping cameraSpherical's own camera uses - see
+    // metal_poc_types.metal's own mirrored
+    // Uniforms::sphericalMappingEqualArea comment.
+    uint32_t sphericalMappingEqualArea = 0;
     // Realistic (multi-element-lens) camera toggle - pbrt-v4's own
     // RealisticCamera, D4/D8's own real port (section 157). 0 (every
     // earlier scene) keeps the existing ray generation exactly as
@@ -979,6 +983,14 @@ struct MetalPocApp {
     // full ray-generation mechanism. Default false preserves every
     // earlier hand-authored scene's own behaviour exactly.
     bool havePbrtSpherical = false;
+    // Which mapping havePbrtSpherical's own camera uses - see
+    // Uniforms::sphericalMappingEqualArea's own comment
+    // (metal_poc_types.metal). Only ever set true by loadPbrtScene()
+    // itself (a real pbrt file's own Camera "spherical" "string
+    // mapping" ["equalarea"], D11/section 159) - no hand-authored
+    // scene (D3/D7) requests it, so this stays false for those,
+    // matching their own already-shipped EquiRectangular look exactly.
+    bool havePbrtSphericalEqualArea = false;
     float3 pbrtBboxCenter{0, 0, 0};
     float pbrtSceneScale = 1.0f;
     float3 pbrtSceneOffset{0, 0, 0};

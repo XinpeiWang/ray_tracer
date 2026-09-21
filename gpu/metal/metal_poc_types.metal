@@ -219,6 +219,16 @@ struct Uniforms {
     // every pixel shares one origin, only the DIRECTION varies, the
     // defining trait of a panoramic camera).
     uint cameraSpherical;
+    // Which mapping `cameraSpherical`'s own ray generation uses - 0
+    // (every scene before D11, and D7/D8's own hand-authored ports)
+    // means EquiRectangular (this field's own default, matching
+    // cameraSpherical's own comment above exactly, unread when
+    // cameraSpherical==0). Nonzero means EqualArea instead - pbrt-v4
+    // Camera "spherical" "string mapping" ["equalarea"], real pbrt
+    // FILE scenes only (D11, section 159) - no hand-authored scene
+    // requests it. See equalAreaSquareToSphere()'s own comment
+    // (metal_poc_types.metal) for the mapping itself.
+    uint sphericalMappingEqualArea;
     // Realistic (multi-element-lens) camera - pbrt-v4's own
     // RealisticCamera, D4/D8's own real port (section 157). 0 (every
     // earlier scene) keeps the existing ray generation exactly as
@@ -507,6 +517,48 @@ inline float2 equalAreaSphereToSquare(float3 w) {
     uu = copysign(uu, w.x);
     vv = copysign(vv, w.y);
     return float2(0.5 * (uu + 1.0), 0.5 * (vv + 1.0));
+}
+
+// The inverse of equalAreaSphereToSquare() just above: (u,v) in [0,1]^2
+// -> unit sphere direction, equal-area - needed once a caller SAMPLES a
+// direction from (u,v) rather than only looking one up (the reason this
+// inverse wasn't ported alongside the forward mapping originally - see
+// that function's own comment). The spherical camera's own EqualArea
+// mapping option (D11, pbrt-v4 Camera "spherical" "string mapping"
+// ["equalarea"], section 159) is the first caller. Direct port of
+// src/shared/sampling_sphere.h's EqualAreaSquareToSphere / gpu/optix/
+// optix_device_helpers_lighting.h's own already-shipped CUDA mirror
+// (dev_equal_area_square_to_sphere) - same algorithm, this file's own
+// established `float` (not CUDA's `double`) precision, matching
+// equalAreaSphereToSquare() immediately above.
+inline float3 equalAreaSquareToSphere(float u, float v) {
+    float uu = 2.0 * u - 1.0, vv = 2.0 * v - 1.0;
+    float up = abs(uu), vp = abs(vv);
+    float signedDist = 1.0 - (up + vp);
+    float d = abs(signedDist);
+    float r = 1.0 - d;
+    float phi = (r == 0.0 ? 1.0 : (vp - up) / r + 1.0) * (M_PI_F / 4.0);
+    float wz = copysign(1.0 - r * r, signedDist);
+    float cosPhi = cos(phi);
+    float sinPhi = sin(phi);
+    float xyR = r * sqrt(max(0.0, 2.0 - r * r));
+    float wx = copysign(cosPhi * xyR, uu);
+    float wy = copysign(sinPhi * xyR, vv);
+    return float3(wx, wy, wz);
+}
+
+// Mirrors an (u,v) outside [0,1]^2 back onto the equal-area square -
+// needed wherever the caller's own (u,v) can legitimately land slightly
+// outside that range (equalAreaSquareToSphere()'s own caller draws a
+// per-sample jittered pixel coordinate, not an image index a plain
+// clamp would already handle correctly). Direct port of
+// src/shared/sampling_sphere.h's WrapEqualAreaSquare / gpu/optix/
+// optix_device_helpers_lighting.h's own dev_wrap_equal_area_square.
+inline void wrapEqualAreaSquare(thread float& u, thread float& v) {
+    if (u < 0.0) { u = -u; v = 1.0 - v; }
+    else if (u > 1.0) { u = 2.0 - u; v = 1.0 - v; }
+    if (v < 0.0) { u = 1.0 - u; v = -v; }
+    else if (v > 1.0) { u = 1.0 - u; v = 2.0 - v; }
 }
 
 // A "goniometric" light (pbrt-v4's own GoniometricLight, src/shared/
