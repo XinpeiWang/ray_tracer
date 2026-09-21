@@ -9493,3 +9493,121 @@ CPU's own 4-quadrant checkerboard exactly - same colours, same
 corners, no diagonal artifact), and a before/after hash comparison
 across 28 other scenes confirming this change is a true no-op for
 every one of them except F5/F9 themselves.
+
+## 167. Category F increment: F11 - real object motion blur for `Shape "sphere"`, plus a broader instance of the GPU floating-point non-determinism first noted in section 160
+
+Scoping a quick pass over the remaining un-verified F-category scenes
+(F10/F11/F13, matching the "compare against CPU, see if it's already
+right" precedent B18/B25/C8/C12/F6 all followed) found two already
+correct with zero changes needed - F10 (`PixelFilter "box"` - GPU's
+own box-filter reconstruction already matches CPU's harder-edged
+antialiasing) and F13 (the bare `ReverseOrientation` directive - both
+quads' dark/lit sides already match CPU exactly) - and one real gap:
+**F11, `Shape "sphere"` object motion blur via `ActiveTransform
+"StartTime"`/`"EndTime"`**. CPU renders the scene's one moving sphere
+as a soft directional streak; GPU rendered it as a second crisp,
+FROZEN sphere at its start pose, no blur at all - functionally the
+same class of gap as F5/F9 (section 166): `pbrt_flatten.h`'s own
+shared front-end parser already resolves this correctly into
+`Sphere::center1` (a second, end-of-shutter centre, "baked" the
+moment an `ActiveTransform "EndTime"` bracket closes over a `Shape
+"sphere"`'s own placement transform - that field's own comment),
+Metal's `loadPbrtSpheres()` just never read it.
+
+Unlike every earlier "read one more already-resolved pbrt field"
+fix, this one needed new device-side machinery, not just a new
+`materialType` branch, because Metal's `SphereData` is a custom
+bounding-box-primitive intersection function, not a triangle - it
+has no analogue of `optixGetRayTime()` (gpu/optix/
+optix_intersection_sphere.h's own mechanism for this exact feature,
+already real on both OptiX backends per this scene's own file
+comment) built in. Three pieces, all new:
+
+1. **`SphereData::centerDelta1`** (metal_poc_types.metal /
+   metal_poc_app.h, mirrored byte-for-byte as always) - the moving
+   sphere's end-of-shutter centre, stored as a DELTA from `center`
+   (`toWorld(center1) - toWorld(center)`) rather than a second
+   absolute point, specifically so every one of the ~40 existing
+   `SphereData{center, radius}` 2-field brace-inits already in
+   metal_poc.mm/metal_poc_scenes_*.mm (every sphere in every OTHER
+   scene) keeps compiling and behaving identically with ZERO edits:
+   C++17 aggregate-init value-initializes an omitted trailing member
+   to `{0,0,0}`, and `centerDelta1 == 0` makes the interpolation below
+   `center + shutterT*0 == center` for ANY `shutterT`, an exactly
+   provable no-op - the same "safe by construction regardless of what
+   the time value is" property `gpu/optix/optix_intersection_sphere.h`'s
+   own `center`/`center1` pair already relies on (that file's own
+   comment: "`lerp(center, center1, 0) == center exactly`").
+   `toWorld(center1) - toWorld(center)` (not a raw pbrt-space delta)
+   is deliberate too - `toWorld` is only AFFINE, not linear, but its
+   translation term cancels out in the subtraction, leaving exactly
+   its rotation/scale acting on the true displacement, correct even
+   though `toWorld` itself isn't.
+2. **`SpherePayload`** (metal_poc_types.metal) - a one-`float`
+   `ray_data` payload, Metal's real analogue of `optixGetRayTime()`
+   for a bounding-box intersection function (which has no built-in
+   per-ray time query the way a triangle/procedural hit does):
+   `sphereIntersectionFunction` gained a `ray_data SpherePayload&
+   payload [[payload]]` parameter and now tests the ray against
+   `sphere.center + payload.shutterT * sphere.centerDelta1`, not the
+   static `sphere.center` - `shutterT` being `metal_poc_kernel.metal`'s
+   OWN existing per-SAMPLE shutter-time draw (already used
+   unconditionally for camera motion blur since section 22), so a
+   moving sphere is tested at the exact same simulated instant this
+   ray's own camera position was already sampled at. All SIX
+   `isect.intersect(...)` call sites in the kernel (the primary ray,
+   plus all five light types' own shadow rays: area/point/directional/
+   projection/goniometric) now construct and pass this same
+   `spherePayload{shutterT}` - a shadow ray needs the SAME time as its
+   own sample's primary ray, not a fresh draw, or the moving sphere
+   would self-occlude against a DIFFERENT pose than the one it was
+   actually hit at.
+3. **The shading-normal recompute** (metal_poc_kernel.metal's own
+   `isSphere` branch, well after the intersection function itself
+   returns) had its own, SEPARATE `hitPoint - sphere.center` - a real
+   second instance of the same static-centre bug, easy to miss since
+   it's a completely different call site from
+   `sphereIntersectionFunction`. Fixed identically, interpolating by
+   the same in-scope `shutterT`.
+
+**A genuinely new, broader-blast-radius instance of section 160's own
+finding.** Section 160 (D8/F4) narrowly scoped "an unrelated Metal
+shader source change can still shift GPU-compiled floating-point
+rounding enough to move a precision boundary" to lens-based cameras
+specifically, whose own numerics were already known to sit close to
+an unstable boundary. This PR's own before/after hash sweep (125
+currently Metal-supported scene IDs, correct non-interleaved stash/
+pop methodology per section 163's own fix - a FRESH clean rebuild for
+each of "before" and "after," never one binary against the other's
+own shader source) found EVERY SINGLE scene's hash changed, not just
+the lens-camera ones - including A1, the very first hardcoded room
+scene, which has no moving sphere, no lens camera, and (by
+`centerDelta1`'s own provable-no-op argument above) an UNCHANGED
+sphere-intersection RESULT bit-for-bit. Direct visual comparison
+(pixel-identical to the eye) across five diverse scenes spanning
+categories (A1, B18, C12, D9, and F11 itself) confirms these are NOT
+real content regressions - the likely mechanism is that THIS
+change's own call-site edit (`isect.intersect(...)`'s signature)
+touches the ONE code path every single ray of every single scene
+runs through, unlike every earlier PR's own narrowly-scoped material/
+light/texture branch, so the compiled GPU code for the ENTIRE kernel
+shifts enough to move sub-ULP rounding broadly rather than in one
+isolated branch. Documented here as an honest methodology finding,
+not chased further: a hash sweep remains the right FIRST check for
+"did this change touch anything it shouldn't," but a change to
+`intersector<>::intersect()`'s own call convention (as opposed to
+what a specific material/light branch does with its result)
+should expect universal hash churn and needs the visual fallback
+from the start, not just for lens-camera scenes.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild (fresh build
+directories for both "before" and "after," never reusing one
+binary's own host code against the other's shader source - the
+interleaving pitfall section 163 already documents), ctest (4/4), a
+render of all 148 currently-registered scene IDs (125 succeed on
+Metal, 23 fail with the same pre-existing "no hand-authored Metal
+builder yet" message on both sides of this change, confirmed
+byte-identical wording - not a new regression), direct `--gpu` vs
+`--cpu` comparison for F11 (GPU's moving sphere now streaks the same
+direction CPU's does, the static sphere stays equally crisp on both),
+and the broader hash/visual sweep described above.

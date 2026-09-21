@@ -395,10 +395,14 @@ struct TriangleMaterial {
     uint32_t twoSided = 0;
 };
 
-// Mirrors metal_poc.metal's SphereData byte-for-byte.
+// Mirrors metal_poc.metal's SphereData byte-for-byte. centerDelta1
+// (F11, section 167) defaults to {0,0,0} - see that struct's own
+// comment for why every existing 2-field `SphereData{center, radius}`
+// construction site (every scene but F11) stays correct unmodified.
 struct SphereData {
     PackedFloat3 center;
     float radius;
+    PackedFloat3 centerDelta1{0, 0, 0};
 };
 
 // Mirrors metal_poc.metal's InstanceTransform byte-for-byte (4 packed
