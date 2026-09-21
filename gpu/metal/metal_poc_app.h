@@ -154,6 +154,13 @@ struct Uniforms {
     float filmHalfX = 0.0f;
     float filmHalfY = 0.0f;
     float lensRearZ = 0.0f;
+    // Real (not translate-only-approximated) camera shutter motion blur
+    // (D13, section 174) - see metal_poc_types.metal's own mirrored
+    // comment for the full mechanism. Defaults preserve every other
+    // scene's own cameraVelocity-only path exactly.
+    PackedFloat3 cameraLookAtBlur{0, 0, 0};
+    PackedFloat3 cameraUpRawBlur{0, 1, 0};
+    uint32_t hasCameraOrbitBlur = 0;
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single
@@ -979,6 +986,18 @@ struct MetalPocApp {
     // scene has no pbrt file to parse from at all.
     float pbrtLensRadius = 0.0f;
     float pbrtFocusDistance = 1.0f;
+    // Camera shutter motion blur for a hand-authored scene (D13, section
+    // 174) - same shape as pbrtLensRadius/pbrtFocusDistance immediately
+    // above: a scene builder sets this (already in this scene's own
+    // rescaled unit system, sceneScale-multiplied like every other
+    // world-space delta here), and compileShaderAndDispatch() reads it
+    // into uniforms.cameraVelocity instead of its own previous
+    // unconditional zero for every `havePbrtCamera` scene. Default
+    // {0,0,0} preserves every OTHER scene's own "no camera motion blur"
+    // behaviour exactly - a provable no-op, same as SphereData::
+    // centerDelta1's own identical default-preserving shape (F11,
+    // section 167).
+    PackedFloat3 sceneCameraVelocity{0, 0, 0};
     // Orthographic (parallel-projection) camera for a hand-authored
     // scene (D2/D6, section 150) - mirrors pbrtLensRadius/
     // pbrtFocusDistance's own shape immediately above: a scene builder
@@ -1519,6 +1538,12 @@ struct MetalPocApp {
     // an already non-physical simplified lens" scaling CPU's own
     // comment documents, not a new choice.
     void buildRealisticCornellBox();
+    // D13: Camera Motion Blur - the SAME A1 Cornell box geometry, plus
+    // a real (approximated) camera shutter dolly - see this method's
+    // own definition comment (metal_poc_scenes_d.mm) for the full
+    // "why," including the honest translate-only approximation scope.
+    // Section 174, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCameraMotionBlurCornellBox();
     // F1: Bilinear Patch - a Cornell box (the SAME 5 walls + ceiling
     // light literal as A1/E1, no box/sphere) containing TWO curved,
     // non-planar bilinear-patch surfaces (a saddle + a ramp), each a

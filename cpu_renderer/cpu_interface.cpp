@@ -995,6 +995,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"D4",                          // Realistic Camera - real 9-element lens (section 157)
 		"D8",                          // Realistic Camera Cornell Box - real 9-element lens (section 157)
 		"I2",                          // Spectral Dispersion Education, reuses B23's own glass-prism geometry verbatim (section 168) - same "Education scene, real geometry already built for another id" pattern as I1/I3/I5/etc. above, just missed in that original batch
+		"D13",                         // Camera Motion Blur - A1's own geometry plus an (approximated, translate-only) camera shutter dolly (section 174)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
