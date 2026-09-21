@@ -22,6 +22,18 @@ kernel void primaryRayKernel(
     // A pbrt-loaded scene's own image-based AreaLightSource
     // ("string filename", section 105) - same separate-slot reasoning.
     texture2d<float, access::sample> pbrtAreaLightTexture [[texture(6)]],
+    // A pbrt-loaded scene's own Diffuse/CoatedDiffuse material with a
+    // "texture reflectance" bound to a bare "imagemap" Texture (section
+    // 166) - same separate-slot reasoning as every other pbrt-loaded
+    // image above (never repointing earthTexture, which materialType 3
+    // still reads for the hardcoded room's own completely unrelated
+    // wall/A4-Earth-sphere purpose). Only the FIRST such material in the
+    // scene gets a real per-hit texture lookup (materialType 26) - a
+    // second one, or a decode failure, falls back to `color` exactly as
+    // if no texture were bound at all, the same "safe, working fallback
+    // over dropping the material" tier every other pbrt-loaded image
+    // here already uses.
+    texture2d<float, access::sample> pbrtDiffuseTexture [[texture(7)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
@@ -809,6 +821,35 @@ kernel void primaryRayKernel(
                 float2 tile = floor(uv * float2(mat.conductorEta.x, mat.conductorEta.y));
                 float parity = fmod(tile.x + tile.y, 2.0);
                 albedo = (abs(parity) < 0.5) ? float3(mat.color) : float3(mat.transmitColor);
+            } else if (mat.materialType == 26u) {
+                // A pbrt-v4 Diffuse/CoatedDiffuse material's own
+                // "texture reflectance" bound to a bare "imagemap"
+                // Texture (F5/F9, section 166) - a REAL image FILE
+                // (`Material::textureFilename`, pbrt_flatten.h), not a
+                // procedural pattern like materialType 25's own
+                // checkerboard - reads `pbrtDiffuseTexture` (this
+                // scene's own decoded file) instead of the hardcoded
+                // room's own earthTexture, the same "separate slot"
+                // reasoning materialType 3 already established for
+                // pbrt-loaded infinite-light images. Same isSphere/
+                // texCoordFor() UV split materialType 3/25 above already
+                // established. `1.0 - uv.y`: pbrt-v4's own UV convention
+                // has v=0 at the BOTTOM of the image (this scene's own
+                // "point2 uv" authors v=0/v=1 that way), but
+                // pbrt_load::detail::decodeInfiniteLightImage() (stb_image
+                // under the hood) always returns row 0 as the TOP row,
+                // the same row Metal's own `replaceRegion:` (this
+                // texture's own upload call, metal_poc.mm) then places at
+                // texture row 0 too - sampled with `uv.y` UNFLIPPED, that
+                // combination reads v=0 from the TOP instead of the
+                // BOTTOM, a real top/bottom mirror caught by comparing
+                // this scene's own 4-quadrant checker against `--cpu`
+                // (each quadrant's colour landed in the vertically
+                // opposite corner) rather than assumed correct from a
+                // symmetric test image.
+                float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
+                                      : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                albedo = pbrtDiffuseTexture.sample(textureSampler, float2(uv.x, 1.0 - uv.y)).rgb;
             } else {
                 albedo = float3(mat.color);
             }
