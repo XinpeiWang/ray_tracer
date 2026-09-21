@@ -854,9 +854,35 @@ void MetalPocApp::loadPbrtScene() {
         [&warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
         switch (m.kind) {
-            case pbrt_flatten::MaterialKind::Diffuse:
+            case pbrt_flatten::MaterialKind::Diffuse: {
+                // A "reflectance" bound to a "checkerboard" Texture (B22,
+                // section 162) - materialType 25, pbrt-v4's real UV-space
+                // 2-colour checker (see that materialType's own shading
+                // comment, metal_poc_kernel.metal). Only the SIMPLE case
+                // this loader can represent: tex1/tex2 each either a flat
+                // literal or already flattened to one by
+                // pbrt_flatten.h's own nestedProceduralAverageColor()
+                // (m.checkerColor1/2 are ALWAYS valid flat colours by
+                // this point, regardless of nesting depth - that
+                // function's own comment) - a bare "imagemap" bound to
+                // tex1/tex2 (m.checkerTex1Filename/checkerTex2Filename)
+                // is the one sub-case this loader doesn't carry through
+                // at all, unlike CPU's own full nested-texture support;
+                // no bundled scene needs it (matches roughnessTextureFilename's
+                // own identical "bare imagemap only" scope-narrowing,
+                // pbrt_flatten.h) - falls through to the flat-colour
+                // default below instead of misrendering it.
+                if (m.hasCheckerReflectance && m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
+                    TriangleMaterial mat{
+                        PackedFloat3{(float)m.checkerColor1[0], (float)m.checkerColor1[1], (float)m.checkerColor1[2]},
+                        /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    mat.transmitColor = PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]};
+                    mat.conductorEta = PackedFloat3{(float)m.checkerUScale, (float)m.checkerVScale, 0.0f};
+                    return mat;
+                }
                 return TriangleMaterial{color, /*materialType=*/0u, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+            }
             case pbrt_flatten::MaterialKind::Conductor: {
                 // RoughnessToAlpha (src/shared/microfacet.h) is sqrt(r) -
                 // pbrt-v4's own "remaproughness" default (true) means the

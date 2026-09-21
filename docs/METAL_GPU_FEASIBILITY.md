@@ -9172,3 +9172,67 @@ No `docs/METAL_GPU_FEASIBILITY.md`-external registry needed updating
 either (confirmed via section 159's own finding: a pbrt-file-backed
 scene ID has no Metal-specific allowlist to update at all, unlike a
 hand-authored one).
+
+## 162. Category B increment: B22 - a real UV-space 2-colour checkerboard `Texture` bound to a Diffuse material's own `"reflectance"`, plus closing a pre-existing "no UV on a sphere" gap for a SECOND material type
+
+`named-material-and-texture.pbrt` (B22) binds `Texture "floor-check"
+"spectrum" "checkerboard" "float uscale" [8] "float vscale" [8]` to a
+sphere's own `Material "diffuse" "texture reflectance"`. This is a
+genuinely different thing from every checker material already in this
+loader: materialType 6 (UV-space, but tile B is a fixed fraction of
+tile A, not an independent second colour) and materialType 16 (two
+real independent colours, but a WORLD-SPACE 3D checker with one shared
+cell-size `scale`, not `uscale`/`vscale`). Neither one is pbrt-v4's own
+real `Checkerboard2DTexture` - added a new materialType 25 instead of
+overloading either existing one, matching this project's own
+established "one materialType per genuinely distinct behaviour"
+convention.
+
+**Reused two already-parsed data paths rather than deriving anything
+new**: `pbrt_flatten.h` already resolves a checkerboard Texture's own
+`tex1`/`tex2` down to `Material::checkerColor1/2` (flat literals by
+construction for the un-nested case this loader targets - B22's own
+`"floor-check"` gives no `tex1`/`tex2` override at all, so both are
+pbrt-v4's own defaults, white/black - and, per
+`nestedProceduralAverageColor()`'s own comment, ALREADY flattened to a
+representative flat colour even for a nested checker-of-checkers, the
+same GPU-tier approximation `gpu/optix/pbrt_gpu_builder.h` already
+uses, not a new one invented here) - `loadPbrtScene()`'s own
+`MaterialKind::Diffuse` case now checks `m.hasCheckerReflectance`
+and, for the one sub-case this loader doesn't carry through at all
+(`checkerTex1Filename`/`checkerTex2Filename` set - a bare `imagemap`
+nested inside the checker, not `checkerColor1/2`'s own always-valid
+flat-literal case), falls through to the pre-existing flat-colour
+default rather than misrendering it - no bundled scene needs that
+sub-case.
+
+**A second real gap closed along the way, not separately scoped**:
+B22's own checkerboard is bound to a SPHERE, and this loader's sphere-
+intersection path computes no UV at all for most material types -
+materialType 3 (textured Lambertian, `earthTexture`, section 123)
+already solved exactly this problem for ITSELF via
+`equirectangularUV()` on the hit's own sphere-centre-relative normal
+(with a `(x,y,-z)` longitude-mirror correction found empirically
+against `--cpu`, that section's own comment), but no OTHER material
+type had ever reused that mechanism. materialType 25 is the first to
+- same `isSphere ? equirectangularUV(...) : texCoordFor(...)` split,
+verbatim, rather than re-deriving sphere UV a second time.
+
+**Field reuse, matching every earlier materialType's own convention**:
+`color`/`transmitColor` hold the two independent tile colours (same
+reuse materialType 16 already established for the identical purpose);
+`conductorEta.x`/`.y` (spare for every material type but 4/9) hold
+`uscale`/`vscale` - pbrt-v4's own two INDEPENDENT scale factors,
+unlike materialType 6/16's own single shared `scale`, the reason
+neither of those two fields could be reused here instead.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), a
+render of all 68 previously-supported scene IDs plus D9-D12/B18/B22/B25
+(75 total) with zero failures, direct `--gpu` vs `--cpu` comparison
+(matching checkerboard tile count/orientation on the sphere), and a
+before/after SHA-256 hash comparison across 24 other scenes confirming
+this change is a true no-op for every one of them except D12 - whose
+own difference was independently confirmed to be section 160's own
+already-documented, pre-existing realistic-camera non-determinism
+(reproduces on the UNCHANGED pre-this-PR binary run twice in a row),
+not a regression from this change.
