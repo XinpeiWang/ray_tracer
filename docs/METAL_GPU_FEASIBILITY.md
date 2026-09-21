@@ -9728,3 +9728,87 @@ this fix), and a visual spot-check across A1 (the hardcoded room
 itself, untouched by this change entirely), B10 (its own special-case
 offset removed), F5, F11, I2, and G9 - all matching their own
 already-established-correct appearance with nothing newly broken.
+
+## 170. Investigation: G25's own dark-rectangle floor artifact, narrowed via isolation testing (not chased to a fix)
+
+Section 169 disproved its own initial guess that G25 (Killeroo)'s
+unexplained dark-rectangle floor artifact was the leftover hardcoded-
+room leak G19 turned out to be. This is a follow-up investigation,
+same "honest, partial diagnosis, not chased to a full fix" tier as
+sections 160 (D8/F4) and 165 (C9) - real findings, narrowed as far as
+practical without a larger, riskier architectural change.
+
+**Method**: the standalone `metal_poc` CLI accepts a raw pbrt file
+path directly as `argv[7]` (`parseArgsAndCreateDevice()`'s own
+parsing), bypassing the scene registry entirely - this let a handful
+of trimmed COPIES of `killeroo-simple.pbrt` (never the tracked file
+itself) get rendered directly, isolating which of its own `WorldBegin`
+blocks the artifact actually needs. `killeroo-simple.pbrt` has exactly
+four: one small (`radius=3`) sphere-shaped `AreaLightSource` up high,
+two huge floor/wall `trianglemesh` planes, and two `Include
+"geometry/killeroo.pbrt"` statue meshes.
+
+**Findings, each independently confirmed by rendering the isolated
+combination**:
+- Removing BOTH `Include "geometry/killeroo.pbrt"` statue meshes: the
+  artifact is UNCHANGED - not related to the statue geometry at all.
+- Removing the wall trianglemesh too (floor + the sphere light only):
+  UNCHANGED - not the wall either.
+- Removing the floor (sphere light only, rendered against pure black):
+  the artifact is GONE. A real receiving surface is required.
+- Removing the sphere-shaped `AreaLightSource` instead (floor only,
+  lit purely by the hardcoded room's own leftover lights per section
+  169's own "additive" architecture): the artifact is ALSO GONE.
+- Recolouring the floor's own material to solid red confirms the
+  artifact ISN'T a wrongly-coloured floor pixel - the whole floor
+  turns red except this one patch, which stays pure BLACK, meaning
+  that region receives literally ZERO light contribution from every
+  source, not merely a dim or mis-tinted one.
+- Rendering at `--max-depth 1` (camera ray + direct/NEE shading only,
+  no bounce continuation ray at all) still shows the artifact
+  unchanged - ruling out a GI/bounce-only mechanism (e.g. a rare
+  BSDF-sampled ray landing directly on the small emissive sphere,
+  which section 164's own comment already notes has no NEE strategy
+  and would need an actual GI bounce to matter at all).
+- Rendering at 400/800/1600px width shows the artifact's own PIXEL
+  size scaling up proportionally with resolution (consistent with
+  real, perspective-projected world geometry, not a fixed-radius
+  screen-space postprocess/denoise artifact).
+
+**Best-supported explanation, not fully proven**: the small (`radius
+3`, rescaled to roughly 0.003 world units in this scene's own final
+coordinate frame) sphere-shaped `AreaLightSource` is real, solid
+occluder geometry once section 164's own fix made it participate in
+intersection tests at all - `killeroo-simple.pbrt` has no infinite/
+environment light of its own, so its floor is lit ONLY by (a) that
+local sphere via a rare, unweighted BSDF-sampled bounce (ruled out
+above, GI-only) and (b) the hardcoded room's own leftover delta
+lights, still reachable via real NEE shadow rays under the same
+"additive, shared world" architecture section 169 already
+established (and deliberately chose NOT to fully re-architect there,
+given the risk of touching every scene's own light list). The small
+sphere sitting between the floor and whichever of those room lights
+actually dominates this scene's illumination would produce a genuine,
+small, correctly-shaped occlusion shadow - fully explaining a ZERO-
+light patch requiring the floor, requiring the sphere, present at
+`--max-depth 1`, and independent of the room's own +8-vs-+60 offset
+distance (a directional light's own shadow size is receiver-distance-
+invariant; a checked back-of-envelope trace of the room's own
+directional light's direction specifically, `(0.1,-0.15,-1.0)`, ruled
+THAT one specific light out as the caster by the numbers - it would
+have to travel roughly 600 units to reach the room's own occupied
+region, ending up ~90 units off in Y by then - but does not rule out
+the room's OTHER delta lights, not individually traced).
+
+**Not chased further**: pinning down exactly which room light and
+confirming this shadow-of-a-real-occluder mechanism with certainty
+(vs. some other explanation not yet considered) would need either a
+per-light NEE contribution toggle or reading intersection debug
+output directly - real further work, not attempted here. Practically,
+this is ANOTHER symptom of the same already-flagged, deliberately-
+deferred architectural gap section 169 named (the hardcoded room's own
+lights leak into every additive scene) rather than a new, separate
+bug needing its own fix - the real fix for both is the same one
+section 169 already scoped out as bigger/riskier than a quick pass:
+excluding the room's own lights from NEE for any scene that defines
+its own complete lighting setup.
