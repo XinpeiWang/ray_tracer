@@ -26,7 +26,7 @@ void MetalPocApp::buildDepthOfFieldCornellBox() {
 // 555-unit Cornell-box case, the raw defocus_angle/focus_dist formula
 // applies directly.
 void MetalPocApp::buildDepthOfField() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Checker ground (materialType 16, real 3D checker) - matches
     // CPU's own checker_texture(0.5, (0.2,0.3,0.1), (0.9,0.9,0.9)).
@@ -164,7 +164,7 @@ void MetalPocApp::buildOrthoCornellBox() {
 // (5, matching the scene's own alt-camera lambda) needs no sceneScale
 // multiply either, unlike D6's own 555-unit Cornell-box case.
 void MetalPocApp::buildOrthoCameraScene() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: a large flat checker quad (materialType 16), not CPU's
     // own radius-100 ground SPHERE - the established A5/B1/F2/B10/C1
@@ -254,7 +254,7 @@ void MetalPocApp::buildSphericalCornellBox() {
     const float3 bboxMax{555.0f, 555.0f, 555.0f};
     const float sceneScale = 2.0f / 555.0f;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     const float3 lookfrom = toWorld(float3{278.0f, 278.0f, 278.0f});
@@ -280,7 +280,7 @@ void MetalPocApp::buildSphericalCornellBox() {
 // emissive sphere, viewed as a real 360-degree equirectangular
 // panorama. Natural scale (sceneScale=1.0, no rescale needed).
 void MetalPocApp::buildSphericalCameraScene() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: a large flat quad (materialType 0), not CPU's own
     // radius-1000 ground SPHERE - the established overlap-avoidance
@@ -360,7 +360,7 @@ void MetalPocApp::buildSphericalCameraScene() {
 // Uniforms::cameraRealistic's own comment for why D8's own Cornell-box
 // case (BELOW) needs one and this one doesn't.
 void MetalPocApp::buildRealisticCameraScene() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: flat checker quad (materialType 16), not CPU's own
     // radius-1000 ground SPHERE - the established overlap-avoidance
@@ -494,7 +494,7 @@ void MetalPocApp::buildRealisticCornellBox() {
     const float3 bboxMin{0.0f, 0.0f, 0.0f};
     const float3 bboxMax{555.0f, 555.0f, 555.0f};
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
     const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -420.0f});
     const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});

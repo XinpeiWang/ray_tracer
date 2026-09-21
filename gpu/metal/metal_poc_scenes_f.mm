@@ -8,7 +8,7 @@
 #include "metal_poc_app.h"
 
 void MetalPocApp::buildTriangleMeshScene() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground.
     {
@@ -121,7 +121,7 @@ void MetalPocApp::buildBilinearPatchScene() {
     const float3 bboxMax{555.0f, 555.0f, 555.0f};
     const float sceneScale = 2.0f / 555.0f;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     // All 6 walls, including the light - same pattern buildHomogeneousMediumScene()'s
@@ -197,7 +197,7 @@ void MetalPocApp::buildBilinearPatchScene() {
 // random field (unlike D1's own small accent spheres, which really are
 // unseeded on the CPU side and don't need this).
 void MetalPocApp::buildCurveFibersScene() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: flat checker quad (materialType 16), not CPU's own
     // radius-1000 ground SPHERE - the established overlap-avoidance

@@ -20,7 +20,7 @@ void MetalPocApp::buildMeshGalleryScene(const std::string& objFilename, float3 m
     // offset clear of it - the first render looked like garbled noise, not
     // a recognizable mesh, because it genuinely WAS two unrelated scenes'
     // geometry interleaved in the same few world-space units.
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: a large flat quad (not OptiX's own huge checker SPHERE - see
     // buildMeshGalleryScene()'s own declaration comment for why), light
@@ -313,7 +313,7 @@ void MetalPocApp::buildGlassDragon() {
 // (single mesh only), so this is a bespoke builder, not a call to it.
 // Section 120, docs/METAL_GPU_FEASIBILITY.md.
 void MetalPocApp::buildTrophyRoom() {
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
     // Ground: one large flat quad wide enough for all four meshes (same
     // "flat quad, not a checker sphere" simplification as

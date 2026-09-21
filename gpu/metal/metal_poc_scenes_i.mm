@@ -13,7 +13,7 @@ void MetalPocApp::buildLightSamplerComparison() {
     const float3 bboxMax{555.0f, 555.0f, 555.0f};
     const float sceneScale = 2.0f / 555.0f;
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
 
     // The 5 walls only (kQuads[5], the usual single ceiling light, is

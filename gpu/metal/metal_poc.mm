@@ -816,9 +816,15 @@ void MetalPocApp::loadPbrtScene() {
     // dividing by ~0.
     const float sceneScale = (maxExtent > 1e-6f) ? (2.0f / maxExtent) : 1.0f;
     // Recentre on the scene's own bounding-box centre, THEN push it well
-    // clear of the hardcoded room's own occupied [-1,1] region (a fixed
-    // +8 in X - more than enough given the loaded scene's own rescaled
-    // extent is ~2 units) - the pbrt scene's own coordinate origin has no
+    // clear of the hardcoded room's own occupied [-1,1] region (+60 in X
+    // as of section 169 - was +8, "more than enough given the loaded
+    // scene's own rescaled extent is ~2 units" turned out to be true only
+    // for camera-frustum overlap, not for an OPEN scene's own shadow rays
+    // reaching the room's own always-present, zero-falloff directional
+    // light unoccluded, or a specular/mirror material reflecting the
+    // room's own geometry from 8 units away - both real, found via G25/
+    // G19 respectively, not assumed) - the pbrt scene's own coordinate
+    // origin has no
     // reason to relate to the hardcoded room's at all (e.g. this classic
     // Cornell box is authored spanning x/y/z ~[0,555], not centred at its
     // own origin), so simply rescaling in place (this function's own
@@ -831,7 +837,7 @@ void MetalPocApp::loadPbrtScene() {
     // visually and spatially separate, exactly as if they were two
     // different rooms.
     const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
     fprintf(stderr, "loadPbrtScene: scene bounding box extent %.1f units, rescaling by %.5f, "
                     "recentred and offset to +X\n", maxExtent, sceneScale);
