@@ -177,6 +177,31 @@ struct Uniforms {
     // shading function, same "0 disables it" pattern as envMapWidth.
     uint pbrtEnvMapWidth;
     uint pbrtEnvMapHeight;
+    // Whether a REAL pbrt FILE was loaded (metal_poc.mm's own
+    // `!pbrtScenePath.empty()`, section 163 - deliberately narrower than
+    // `havePbrtCamera`, which every HAND-AUTHORED scene's own camera
+    // setup also sets, pbrt file or not) - decides what the FINAL
+    // miss-path fallback below does once useEnvironmentMap/
+    // pbrtHasImageEnvLight/pbrtHasConstantEnvLight have ALL already been
+    // checked and found false (i.e. this scene has no environment/sky
+    // light of any kind). 0 (every hand-authored scene, which was always
+    // authored expecting SOME background - either the earthTexture env
+    // map or an explicit sky colour) keeps the existing procedural
+    // sky-gradient fallback exactly as before. != 0 means a REAL pbrt
+    // file was loaded and genuinely has no `LightSource "infinite"`
+    // directive at all - real pbrt-v4's own behaviour there is a plain
+    // BLACK background (no ambient sky exists unless a scene explicitly
+    // asks for one), which is what CPU/OptiX already render; this
+    // loader's own sky-gradient fallback was firing unconditionally
+    // regardless, a real, previously undiscovered bug found by directly
+    // comparing several category-C pbrt-example scenes against `--cpu`
+    // (most of pbrt_scenes/*.pbrt's own "Lights" examples deliberately
+    // have NO infinite light, so their own dark/moody framing - and
+    // often a scene-specific feature's own visibility, e.g. C9/C11/C13/
+    // C14's own otherwise-dim emissive geometry - was getting washed out
+    // by this loader's own unrelated bright sky-blue gradient bleeding
+    // through every miss ray, section 163).
+    uint isPbrtScene;
     // Orthographic (parallel-projection) camera - pbrt-v4's own
     // OrthographicCamera, D2/D6's own real port (section 150). 0 (every
     // earlier scene) keeps the existing pinhole/thin-lens PERSPECTIVE

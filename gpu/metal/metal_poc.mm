@@ -2972,6 +2972,21 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             uniforms.fogSigmaT = 0.0f;                      // no participating medium in this scene
         }
         uniforms.useEnvironmentMap = 0u;                    // this scene's own sky, if any, replaces the hardcoded room's earthTexture-based one below
+        // See Uniforms::isPbrtScene's own comment (metal_poc_types.metal)
+        // - a real pbrt scene with no infinite light gets a BLACK
+        // miss-path background, not the hardcoded room's own sky
+        // gradient. Deliberately `!pbrtScenePath.empty()`, NOT the
+        // broader `havePbrtCamera` this whole block is already gated
+        // on - havePbrtCamera is true for every HAND-AUTHORED scene's
+        // own camera setup too (buildCornellBoxA1() and nearly every
+        // other builder set it), not just a genuinely loaded pbrt FILE.
+        // A first version of this fix used havePbrtCamera directly and
+        // made A1/G1/every other hand-authored scene's own background
+        // incorrectly black too (caught by this PR's own before/after
+        // hash sweep across EVERY scene, not just the pbrt-file ones
+        // this fix was meant for - exactly the discipline that check
+        // exists to catch).
+        uniforms.isPbrtScene = pbrtScenePath.empty() ? 0u : 1u;
         if (havePbrtConstantEnvLight) {
             uniforms.pbrtHasConstantEnvLight = 1u;
             uniforms.pbrtEnvColor = PackedFloat3{pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z};

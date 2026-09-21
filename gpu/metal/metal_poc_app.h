@@ -96,6 +96,9 @@ struct Uniforms {
     // Uniforms::pbrtEnvMapWidth.
     uint32_t pbrtEnvMapWidth = 0;
     uint32_t pbrtEnvMapHeight = 0;
+    // Whether a real pbrt scene was loaded - see metal_poc_types.metal's
+    // own mirrored Uniforms::isPbrtScene comment for the full "why".
+    uint32_t isPbrtScene = 0;
     // Orthographic camera toggle - see metal_poc.metal's own mirrored
     // Uniforms::cameraOrthographic comment for the full mechanism.
     uint32_t cameraOrthographic = 0;
