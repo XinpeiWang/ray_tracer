@@ -8672,3 +8672,162 @@ No other target needed a change (`metal_poc_math_tests`/
 `metal_poc_shader_tests`/`metal_poc_validate` only ever depended on
 the separate, pre-existing `metal_poc_host_math.h`, never on
 `metal_poc.mm`/`metal_poc_app.h` directly).
+
+## 157. Category D increment: D4 Realistic Camera / D8 Realistic Camera Cornell Box - a real multi-element-lens camera, ported by reusing the already-shipped CUDA implementation, plus three real bugs found only by rendering and comparing, not by code review alone
+
+D4/D8 are this loader's third and fourth new camera projection mode
+(after D6/D7's orthographic/spherical port, sections 150-153) and by
+far the most involved: pbrt-v4's `RealisticCamera`, a genuine
+multi-element-lens simulation (a 9-surface simplified Double-Gauss
+prescription, each surface refracting per real Snell's law, with a
+precomputed per-radius exit-pupil-bounds table driving importance
+sampling and a `cos^4(theta)/(pdf*lensRearZ^2)` exposure weight) -
+not a closed-form pinhole/orthographic/equirectangular formula like
+every earlier camera mode here.
+
+**Reused, not reinvented, twice over**: `src/shared/realistic_camera.h`
+already exists as a portable, host-only `RealisticCamera<T>` class
+(built for `gpu/optix/scene_builder.cpp`'s own CUDA port), with
+GPU-port accessors (`lens_curvature_radius/thickness/eta/aperture_radius(i)`,
+`exit_pupil_xmin/xmax/ymin/ymax/degenerate(i)`, `film_half_x/y()`,
+`lens_rear_z()`) that already do the one-time host-side precompute
+(focus adjustment + `bound_exit_pupil()`) and expose flat tables ready
+to upload as GPU buffers - exactly `scene_builder.cpp`'s own strategy,
+reused verbatim here (`buildRealisticCameraScene()`/
+`buildRealisticCornellBox()`, `metal_poc_scenes_d.mm`, construct a
+`RealisticCamera<float>` with CPU's own literal lens/film/focus/
+aperture inputs and read the accessors straight into
+`GpuLensElementData`/`GpuExitPupilBoundsData` buffers, buffer indices
+24/25). And the PER-RAY sampling algorithm itself
+(`sampleRealisticCameraRay()`, `metal_poc.metal`) is a near-verbatim
+MSL port of `gpu/optix/optix_device_helpers.h`'s own already-shipped,
+already-validated CUDA `sample_realistic_camera_ray()` - same film-
+to-exit-pupil mapping, same per-element Snell's-law refraction loop,
+same `cos^4(theta)/(pdf*lensRearZ^2)` weight - rather than re-deriving
+pbrt-v4's own `RealisticCamera::GenerateRay` from scratch a third time.
+
+**One deliberate, well-understood sign difference**: the CUDA
+reference's own `su`/`sv`/`sw` basis is `RealisticCamera::world_right()`
+etc., built from CPU's ALT-camera convention (`cross(up,forward)`,
+section 150's own D6 finding); this loader always passes its OWN
+`cameraRight`/`cameraUp`/`cameraForward` instead (`cross(forward,up)`,
+matching CPU's PRIMARY camera). Substituting one convention for the
+other needs a compensating sign somewhere - found empirically, not
+assumed: a first render showed the sphere cluster mirrored
+left-to-right versus CPU. Since `pfx` (the film-space x-coordinate)
+flows linearly through the entire lens trace before only ever
+combining with `su` at the very end, dropping CUDA's own leading
+negation on `pfx` (`pfx = (2u-1)*filmHalfX`, not `-(...)`) is
+algebraically identical to negating `su`'s own contribution - the
+same "negate the right-vector term" shape D6/D7's own fixes already
+used, just applied at the input instead of the output. Re-rendered
+and confirmed: sphere back on the correct side.
+
+**D8's own `sceneScale` handling**: D8 reuses A1's exact Cornell-box
+geometry (`buildCornellBoxA1()`) at this loader's own rescaled ~2-unit
+size, with the SAME lens prescription as D4 but an aperture widened
+to 350mm (CPU's own "keep a comparable defocus-cone ANGLE at this much
+larger scale" choice). `RealisticCamera<float>` is still constructed
+with CPU's literal, UNSCALED mm/metre inputs (reproducing CPU's
+identical internal lens system bit-for-bit), but every LENGTH the
+accessors read back afterward (lens geometry, film half-extents, rear
+Z, exit-pupil bounds - everything except the dimensionless `eta` and
+boolean `degenerate` fields) is multiplied by `sceneScale` before
+upload. Uniformly rescaling an entire optical system by one constant
+preserves every angle/ratio that actually determines its rendered
+look (F-number, field of view, defocus-blur amount) - the same
+"measure the same lens in different units" reasoning that makes this
+safe, applied nowhere for D4 (`sceneScale=1`, natural scale) and
+applied to every length field consistently for D8 (applying it to
+only some fields would produce a self-contradictory lens system,
+almost certainly vignetting every ray).
+
+**Three real bugs found by rendering and comparing - not visible
+from reading the algorithm alone:**
+
+1. **Russian-roulette clamp gap.** The existing bounce-loop RR code
+   (`if (depth>3) { p = max(throughput channels); if (rand()>p) break;
+   throughput /= max(p,0.0001); }`) implicitly assumed `throughput`'s
+   max channel never exceeds 1.0 - true for every earlier scene, since
+   `throughput` always starts at exactly `(1,1,1)` and only ever
+   SHRINKS via material-albedo multiplication. `cameraWeight` (this
+   scene's own `cos^4/pdf/lensRearZ^2` exposure factor, folded into
+   `throughput`'s own initial value) is the first value ever to
+   legitimately exceed 1.0, and for `p>1` the old code still divided
+   `throughput /= p` even though survival was already certain -
+   dividing down a path that didn't need to be compensated for at all.
+   Fixed with a one-line clamp (`p = min(max(...), 1.0)`), a true
+   no-op for every scene before this one.
+
+2. **Adaptive sampling's own convergence test false-triggers on this
+   camera's bimodal per-sample distribution - the DOMINANT cause of
+   the visible noise, not the RR gap above.** `uniforms.adaptiveSampling`
+   defaults on for every scene (section "single-pass adaptive
+   sampling", tuned/validated against ordinary unimodal per-sample
+   noise - mostly-converged flat walls, a smoothly noisier specular/
+   caustic region). A real lens's own per-sample radiance is instead
+   strongly BIMODAL: most exit-pupil samples land outside the lens's
+   true (non-rectangular) aperture and get vignetted to EXACTLY 0
+   (`sampleRealisticCameraRay()`'s own per-element aperture-radius
+   check), while the rest carry the camera's ENTIRE weighted
+   contribution. Many exact zeros pull the running Welford mean/
+   variance down together, so `standardError/mean` can cross the
+   convergence threshold after only a handful of samples even though
+   the nonzero tail is still wildly undersampled. Symptom: a first
+   400spp D4 render came back covered in dense magenta/green speckle,
+   unchanged even at `max_depth=1`/`spp=1` (ruling out bounce-related
+   causes) and unchanged again at 3000spp - which is what exposed the
+   bug: a 3000spp render finished in ~4 seconds, barely slower than
+   100spp, meaning almost none of those samples were actually being
+   taken. (The speckle's own colour came from `postProcessAndWrite()`'s
+   always-on, normally-invisible chromatic-aberration post-process - a
+   small, fixed per-channel pixel-space shift that decorrelates R/G/B
+   only once the underlying luminance is this undersampled/noisy in
+   the first place.) Fixed by forcing `uniforms.adaptiveSampling = 0u`
+   whenever `havePbrtRealisticCamera` is set, so every sample of the
+   requested budget actually runs; confirmed by re-rendering the same
+   3000spp request, which now visibly took proportionally longer and
+   converged to a clean, smooth image.
+
+3. **A genuine regression that would have broken every OTHER
+   hand-authored scene's own GPU render, caught only by actually
+   rendering one.** `buildGPUResources()` unconditionally creates
+   `lensElementBuffer`/`exitPupilBoundsBuffer` from
+   `realisticLensElements`/`realisticExitPupilBounds`, empty for every
+   scene except D4/D8. The original comment justified this as "the
+   same zero-length-buffer shape every other optional per-scene buffer
+   here already tolerates" - an assumption that was never actually
+   true: every OTHER optional buffer (point/directional/projection/
+   goniometric lights, etc.) is always non-empty in practice, because
+   `buildScene()`'s own hardcoded base room unconditionally adds at
+   least one of each. These two were the first buffers that are
+   genuinely empty for every scene but D4/D8, and `newBufferWithBytes:
+   length:0` (backed by `std::vector::data()`, which may legally
+   return null when empty) returned `nil`, which `checkGpuResource()`
+   correctly treats as fatal - aborting the GPU render of literally
+   every hand-authored scene other than D4/D8. Caught by running a
+   plain, unrelated scene (D1) on GPU as part of this PR's own
+   verification pass, not by inspecting the realistic-camera code
+   itself. Fixed by allocating a real 1-element `newBufferWithLength:`
+   buffer whenever the vector is empty, instead of trying to back a
+   zero-length buffer with a (possibly null) empty-vector pointer;
+   `uniforms.numLensElements`/`numExitPupilBounds` still correctly
+   read 0 for every non-realistic-camera scene (read from the
+   vectors' own real, unpadded `size()`, before this allocation-only
+   padding), so `sampleRealisticCameraRay()`'s own
+   `numLensElements==0u` guard still keeps this dummy buffer
+   unread wherever it's not meaningful.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4,
+including the two smoke tests that exercise the NON-realistic-camera
+default scene and would have caught bug 3 above on their own), a
+render of all 68 currently-supported hand-authored scene IDs with
+zero failures (specifically re-confirming bug 3's own fix holds for
+every category, not just D), and direct `--gpu` vs `--cpu` renders of
+both D4 and D8 at matched settings - correct sphere/box position
+(the `pfx` sign fix), and, after the adaptive-sampling fix, a clean,
+smoothly-converging image at increasing sample counts rather than a
+noise floor that never moves. GPU still reads visibly brighter than
+CPU's own reference at equal sample counts (a known, pre-existing
+exposure/tonemap difference between the two renderers, not something
+this PR introduced or attempts to reconcile - out of scope here).

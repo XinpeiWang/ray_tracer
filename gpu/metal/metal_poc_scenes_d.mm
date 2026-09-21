@@ -348,9 +348,206 @@ void MetalPocApp::buildSphericalCameraScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
-// F1: Bilinear Patch - matches build_bilinear_patch_scene() exactly:
-// the SAME 5-Cornell-wall + ceiling-light literal E1/A1 already use (no
-// box, no sphere) containing two curved, non-planar bilinear-patch
-// surfaces (a saddle + a ramp) - see addBilinearPatch()'s own
-// declaration comment for the tessellation approach.
+// D4: Realistic Camera - matches build_realistic_camera_scene() exactly:
+// checker ground (materialType 16, established flat-quad substitution)
+// + a row of 5 coloured spheres at varying depth (to show bokeh) + a
+// direct-hit-only overhead light sphere (the established F2/A7/D3 "no
+// sphere-light NEE strategy" limitation). Natural scale (no rescale) -
+// the RealisticCamera<float> constructor takes CPU's own LITERAL mm/
+// world-unit inputs UNMODIFIED (this is what makes its own internal
+// exit-pupil-bounds precompute reproduce CPU's identical lens system),
+// with NO sceneScale multiply needed anywhere - see
+// Uniforms::cameraRealistic's own comment for why D8's own Cornell-box
+// case (BELOW) needs one and this one doesn't.
+void MetalPocApp::buildRealisticCameraScene() {
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+
+    // Ground: flat checker quad (materialType 16), not CPU's own
+    // radius-1000 ground SPHERE - the established overlap-avoidance
+    // substitution.
+    {
+        const float3 darkA{0.15f, 0.15f, 0.15f}, lightB{0.85f, 0.85f, 0.85f};
+        addQuad(verts, normals, uvs, materials,
+                float3{-30, 0, -30} + sceneOffset, float3{30, 0, -30} + sceneOffset,
+                float3{30, 0, 30} + sceneOffset, float3{-30, 0, 30} + sceneOffset,
+                darkA, /*materialType=*/16u, /*emission=*/simd::make_float3(0, 0, 0),
+                /*lightId=*/-1, /*roughness(cell size)=*/0.8f, /*ior=*/1.0f, lightB);
+    }
+
+    // 5 spheres at varying depth (z=2,3.5,5,6.5,8), radius 0.8 - CPU's
+    // own literal colours applied exactly.
+    {
+        const float3 sphereColors[5] = {
+            {0.9f, 0.2f, 0.2f}, {0.2f, 0.8f, 0.2f}, {0.2f, 0.2f, 0.9f},
+            {0.8f, 0.8f, 0.2f}, {0.8f, 0.2f, 0.8f},
+        };
+        for (int i = 0; i < 5; ++i) {
+            const float z = 2.0f + (float)i * 1.5f;
+            const float3 color = sphereColors[i];
+            TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+            const float3 c = float3{0.0f, 1.0f, z} + sceneOffset;
+            spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.8f});
+            sphereMaterials.push_back(mat);
+        }
+    }
+
+    // Overhead light sphere (0,8,5), radius 2, diffuse_light(6,6,6) -
+    // direct-hit-only, no NEE (this loader has no sphere-light NEE
+    // strategy at all).
+    {
+        const float3 lightColor{6.0f, 6.0f, 6.0f};
+        TriangleMaterial mat{PackedFloat3{lightColor.x, lightColor.y, lightColor.z}, 0u,
+                              1.0f, PackedFloat3{lightColor.x, lightColor.y, lightColor.z}, -1, 0.0f};
+        const float3 c = float3{0.0f, 8.0f, 5.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 2.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Camera: lookfrom=(1.65,1.07,-6.85), lookat=(1.4,1,5.5) -
+    // kRealisticCameraCamera's own literal values.
+    const float3 lookfrom = float3{1.65f, 1.07f, -6.85f} + sceneOffset;
+    const float3 lookat = float3{1.4f, 1.0f, 5.5f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+
+    // Real 9-element simplified Double-Gauss lens (pbrt-v4's own
+    // dgauss.22deg.dat sample, hand-trimmed) - CPU's own EXACT literal
+    // lens/film/aperture/focus-distance values, unmodified: constructing
+    // RealisticCamera<float> with these SAME inputs reproduces the
+    // identical internal (metres-space) lens system and exit-pupil-
+    // bounds table CPU's own reference computes - see
+    // Uniforms::cameraRealistic's own comment for the full mechanism.
+    havePbrtRealisticCamera = true;
+    {
+        const std::vector<float> lensParams = {
+             35.98738f,  1.21638f, 1.54f,  23.716f,
+             11.69718f,  9.9957f,  1.0f,   17.996f,
+             13.08714f, 15.9948f,  1.77f,  12.364f,
+            -22.63294f,  2.7757f,  1.617f,  9.812f,
+              0.0f,      2.75f,    0.0f,    7.4f,     // aperture stop
+             36.3581f,   8.9722f,  1.617f, 12.7f,
+            -17.8595f,   1.2f,     1.0f,   12.7f,
+            100.0f,      2.9804f,  1.567f, 14.478f,
+            -24.5656f,   0.0f,     1.0f,   15.0f,
+        };
+        RealisticCamera<float> realCam(Mat4<float>{}, /*film_x_mm=*/3.0f, /*film_y_mm=*/2.0f,
+                                        /*focus_distance=*/12.4f, /*aperture_diameter_mm=*/8.0f,
+                                        lensParams, /*nSamples_pupil=*/512);
+        realisticLensElements.clear();
+        for (int i = 0; i < realCam.num_elements(); ++i) {
+            realisticLensElements.push_back(GpuLensElementData{
+                realCam.lens_curvature_radius(i), realCam.lens_thickness(i),
+                realCam.lens_eta(i), realCam.lens_aperture_radius(i)});
+        }
+        realisticExitPupilBounds.clear();
+        for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
+            realisticExitPupilBounds.push_back(GpuExitPupilBoundsData{
+                realCam.exit_pupil_xmin(i), realCam.exit_pupil_xmax(i),
+                realCam.exit_pupil_ymin(i), realCam.exit_pupil_ymax(i),
+                realCam.exit_pupil_degenerate(i) ? 1u : 0u});
+        }
+        realisticFilmHalfX = realCam.film_half_x();
+        realisticFilmHalfY = realCam.film_half_y();
+        realisticLensRearZ = realCam.lens_rear_z();
+    }
+}
+
+// D8: Realistic Camera Cornell Box - the EXACT SAME A1 Cornell box
+// geometry, viewed through the SAME 9-element lens D4 uses, aperture
+// scaled up to 350mm (CPU's own "display convenience for an already-
+// non-physical simplified lens" choice, its own comment - keeps a
+// comparable defocus-cone ANGLE at this scene's much larger scale).
+// UNLIKE D4, every length RealisticCamera<float> reads back (lens
+// element geometry, film half-extents, rear-element Z, exit-pupil
+// bounds - everything except the dimensionless `eta` fields and the
+// `degenerate` flags) is scaled by `sceneScale` AFTER construction
+// (construction itself still uses CPU's own literal, UNSCALED mm/
+// world-unit inputs, to reproduce CPU's identical internal lens
+// system) - uniformly rescaling an entire optical system by one
+// constant preserves every angle/ratio that actually determines its
+// rendered look (F-number, field of view, depth-of-field blur amount),
+// exactly like measuring the same lens in different units - so this
+// keeps the lens system's own geometric footprint correctly matched to
+// THIS loader's own rescaled (~2-unit) Cornell box instead of `sceneScale`
+// being applied nowhere (an internally-consistent but WRONG-size lens
+// relative to the scene) or applied inconsistently to only some fields
+// (a self-contradictory lens system, likely vignetting every ray).
+void MetalPocApp::buildRealisticCornellBox() {
+    buildCornellBoxA1();
+    const float sceneScale = 2.0f / 555.0f;
+
+    // Camera - full override (position AND orientation both differ
+    // from A1's own dead-on view): lookfrom=(278,278,-420),
+    // lookat=(278,278,278).
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{8.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -420.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+
+    // Same lens prescription as D4, CPU's own literal (unscaled) inputs
+    // for construction; aperture diameter scaled up to 350mm per CPU's
+    // own comment (a display choice, not a physical one).
+    havePbrtRealisticCamera = true;
+    {
+        const std::vector<float> lensParams = {
+             35.98738f,  1.21638f, 1.54f,  23.716f,
+             11.69718f,  9.9957f,  1.0f,   17.996f,
+             13.08714f, 15.9948f,  1.77f,  12.364f,
+            -22.63294f,  2.7757f,  1.617f,  9.812f,
+              0.0f,      2.75f,    0.0f,    7.4f,     // aperture stop
+             36.3581f,   8.9722f,  1.617f, 12.7f,
+            -17.8595f,   1.2f,     1.0f,   12.7f,
+            100.0f,      2.9804f,  1.567f, 14.478f,
+            -24.5656f,   0.0f,     1.0f,   15.0f,
+        };
+        RealisticCamera<float> realCam(Mat4<float>{}, /*film_x_mm=*/3.0f, /*film_y_mm=*/2.0f,
+                                        /*focus_distance=*/420.0f, /*aperture_diameter_mm=*/350.0f,
+                                        lensParams, /*nSamples_pupil=*/512);
+        realisticLensElements.clear();
+        for (int i = 0; i < realCam.num_elements(); ++i) {
+            realisticLensElements.push_back(GpuLensElementData{
+                realCam.lens_curvature_radius(i) * sceneScale, realCam.lens_thickness(i) * sceneScale,
+                realCam.lens_eta(i), realCam.lens_aperture_radius(i) * sceneScale});
+        }
+        realisticExitPupilBounds.clear();
+        for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
+            realisticExitPupilBounds.push_back(GpuExitPupilBoundsData{
+                realCam.exit_pupil_xmin(i) * sceneScale, realCam.exit_pupil_xmax(i) * sceneScale,
+                realCam.exit_pupil_ymin(i) * sceneScale, realCam.exit_pupil_ymax(i) * sceneScale,
+                realCam.exit_pupil_degenerate(i) ? 1u : 0u});
+        }
+        realisticFilmHalfX = realCam.film_half_x() * sceneScale;
+        realisticFilmHalfY = realCam.film_half_y() * sceneScale;
+        realisticLensRearZ = realCam.lens_rear_z() * sceneScale;
+    }
+}
 

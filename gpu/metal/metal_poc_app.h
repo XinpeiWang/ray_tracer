@@ -34,6 +34,13 @@
 #include "../../src/shared/pbrt_load.h"
 #include "../../src/shared/cornell_box_data.h"
 #include "../../src/shared/conductor_data.h"
+// RealisticCamera<T> (D4/D8, section 157) - a portable, host-only
+// precompute class (CPU_GPU-tagged but its own constructor/exit-pupil-
+// bounding never runs device-side anywhere in this project), the EXACT
+// same class gpu/optix/scene_builder.cpp already instantiates directly
+// on its own host side to precompute a GPU-portable lens/exit-pupil
+// table - see Uniforms::cameraRealistic's own comment.
+#include "../../src/shared/realistic_camera.h"
 
 struct Uniforms {
     PackedFloat3 cameraPos;
@@ -96,6 +103,76 @@ struct Uniforms {
     // metal_poc.metal's own mirrored Uniforms::cameraSpherical comment
     // for the full mechanism.
     uint32_t cameraSpherical = 0;
+    // Realistic (multi-element-lens) camera toggle - pbrt-v4's own
+    // RealisticCamera, D4/D8's own real port (section 157). 0 (every
+    // earlier scene) keeps the existing ray generation exactly as
+    // before - mutually exclusive with cameraOrthographic/cameraSpherical
+    // in practice. != 0 replaces the ENTIRE primary ray generation with
+    // a real per-element Snell's-law lens trace (`sampleRealisticCameraRay()`,
+    // metal_poc.metal - a direct MSL port of `gpu/optix/
+    // optix_device_helpers.h`'s own already-shipped CUDA
+    // `sample_realistic_camera_ray()`, itself mirroring `src/shared/
+    // realistic_camera.h`'s `RealisticCamera<T>::generate_ray()`/
+    // `trace_lenses_from_film()`/`sample_exit_pupil()` exactly) reading
+    // the `lensElements`/`exitPupilBounds` buffers below - the FOCUS-
+    // ADJUSTED lens table and precomputed exit-pupil-bounds table are
+    // both host-only, one-time precomputes (the same cost class as
+    // building a BVH), done by directly instantiating a REAL, portable
+    // `RealisticCamera<float>` host-side (`metal_poc_scenes_d.mm`) and
+    // reading its own GPU-port accessors - the EXACT same strategy
+    // `gpu/optix/scene_builder.cpp` already uses, not a re-derivation.
+    // A sample can be fully VIGNETTED (genuinely blocked by the lens
+    // system for that film position/exit-pupil sample - not an error);
+    // `cameraRealisticWeight`'s own per-sample multiplicative weight
+    // (cos^4(theta)/(pdf*lensRearZ^2), computed device-side, folded into
+    // that sample's own initial `throughput`) naturally zeroes such a
+    // sample's contribution without any special-cased early-exit.
+    uint32_t cameraRealistic = 0;
+    uint32_t numLensElements = 0;
+    uint32_t numExitPupilBounds = 0;
+    // Film half-extents/rear-element-Z, all in the SAME world-space
+    // units `RealisticCamera<float>`'s own metres-based accessors
+    // already convert to (its constructor divides every mm input by
+    // 1000) - NOT further sceneScale-multiplied the way a hand-authored
+    // scene's other world-space distances (e.g. `pbrtLensRadius`) are,
+    // since D4/D8 are BOTH natural/Cornell scale already (D4 has no
+    // rescale at all; D8 reuses A1's own 555-unit-to-2-unit rescale,
+    // and RealisticCamera's own `camera_to_world` matrix - built from
+    // the SAME already-rescaled `cameraPos`/`cameraForward`/
+    // `cameraRight`/`cameraUp` this loader's every other camera mode
+    // uses - already carries that scale into `su`/`sv`/`sw`, so the
+    // lens system's own INTERNAL metres stay in the camera's own local
+    // space, never needing a separate conversion here).
+    float filmHalfX = 0.0f;
+    float filmHalfY = 0.0f;
+    float lensRearZ = 0.0f;
+};
+
+// Mirrors metal_poc.metal's own LensElement byte-for-byte - a single
+// pbrt-v4 RealisticCamera lens surface, already in the FOCUS-ADJUSTED,
+// metres-converted form `RealisticCamera<float>::lens_curvature_radius(i)`/
+// etc. return (see Uniforms::cameraRealistic's own comment). A
+// `curvatureRadius == 0` entry is the aperture STOP, not a refractive
+// surface (matches `RealisticCamera<T>::LensElement`'s own `eta == 0`-
+// means-stop convention exactly, just keyed on the OTHER field - see
+// that struct's own comment, src/shared/realistic_camera.h, for why
+// both conventions coexist there).
+struct GpuLensElementData {
+    float curvatureRadius;
+    float thickness;
+    float eta;
+    float apertureRadius;
+};
+
+// Mirrors metal_poc.metal's own ExitPupilBounds byte-for-byte - one
+// annulus slab's own precomputed 2D bounding box on the rear exit
+// pupil (`RealisticCamera<float>::bound_exit_pupil()`'s own output,
+// read back via its `exit_pupil_xmin/xmax/ymin/ymax/degenerate(i)`
+// accessors) - `degenerate` true means NO valid ray leaves the lens
+// system from this film radius at all (fully vignetted).
+struct GpuExitPupilBoundsData {
+    float xMin, xMax, yMin, yMax;
+    uint32_t degenerate;
 };
 
 // AreaLightData/buildPowerLightSampler now live in metal_poc_host_math.h
@@ -998,6 +1075,15 @@ struct MetalPocApp {
     std::vector<uint8_t> goniometricImage;
     int goniometricImageSize = 0;
     uint32_t triangleCount = 0;
+    // Realistic (multi-element-lens) camera (D4/D8, section 157) - built
+    // by a hand-authored scene's own builder (metal_poc_scenes_d.mm),
+    // directly reading a REAL, host-instantiated `RealisticCamera<float>`'s
+    // own GPU-port accessors - see Uniforms::cameraRealistic's own
+    // comment for the full mechanism.
+    bool havePbrtRealisticCamera = false;
+    std::vector<GpuLensElementData> realisticLensElements;
+    std::vector<GpuExitPupilBoundsData> realisticExitPupilBounds;
+    float realisticFilmHalfX = 0.0f, realisticFilmHalfY = 0.0f, realisticLensRearZ = 0.0f;
 
     // --- GPU-resident buffers + acceleration structures, built by
     // buildGPUResources() ------------------------------------------------
@@ -1008,6 +1094,7 @@ struct MetalPocApp {
     id<MTLBuffer> diskBuffer, diskMaterialBuffer;
     id<MTLBuffer> suzanneVertexBuffer, suzanneNormalBuffer, suzanneMaterialBuffer;
     id<MTLBuffer> instanceTransformBuffer;
+    id<MTLBuffer> lensElementBuffer, exitPupilBoundsBuffer;
     id<MTLAccelerationStructure> primAS, sphereAS, suzanneAS, instAS;
     id<MTLTexture> goniometricTexture = nil;
 
@@ -1362,6 +1449,24 @@ struct MetalPocApp {
     // degenerate input) - not a new construction to verify, the
     // identical one. Section 153, docs/METAL_GPU_FEASIBILITY.md.
     void buildSphericalCameraScene();
+    // D4: Realistic Camera (open scene) - 5 spheres viewed through a
+    // real 9-element simplified Double-Gauss lens (pbrt-v4
+    // RealisticCamera), demonstrating genuine per-element-refraction
+    // bokeh instead of the thin-lens DOF approximation D1/D5 use.
+    // Builds a real, portable `RealisticCamera<float>` host-side and
+    // reads its own GPU-port accessors directly - see
+    // Uniforms::cameraRealistic's own comment for the full mechanism.
+    // Section 157, docs/METAL_GPU_FEASIBILITY.md.
+    void buildRealisticCameraScene();
+    // D8: Realistic Camera Cornell Box - the EXACT SAME A1 Cornell box
+    // geometry (same as D5/D6/D7), viewed through the SAME 9-element
+    // lens D4 uses, just with the aperture diameter scaled up (350mm
+    // vs D4's own 8mm) to keep a comparable defocus-cone ANGLE at this
+    // scene's own much larger (555-unit) scale - matches CPU's own
+    // setup_camera lambda exactly, the same "display convenience for
+    // an already non-physical simplified lens" scaling CPU's own
+    // comment documents, not a new choice.
+    void buildRealisticCornellBox();
     // F1: Bilinear Patch - a Cornell box (the SAME 5 walls + ceiling
     // light literal as A1/E1, no box/sphere) containing TWO curved,
     // non-planar bilinear-patch surfaces (a saddle + a ramp), each a
