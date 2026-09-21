@@ -9123,3 +9123,52 @@ and, once converged, overall appearance - sections 157/159's own
 verification) - this is a run-to-run PIXEL-NOISE reproducibility gap
 at the byte-hash level, not a correctness bug, and does not block
 either scene's own continued use.
+
+## 161. B18/B25 confirmed already working via the generic pbrt loader - zero code change, verification only
+
+Scoping the next category-B increment surfaced two pbrt-FILE-loaded
+scenes (`conductor-rgb-eta-k.pbrt`/B18, `glass-presets.pbrt`/B25) that
+turned out to already render correctly on Metal with NO code changes
+at all - the same "the shared front-end parser already did the work,
+this loader's own generic pbrt-loading path just needed to exist"
+shape sections 159/D9-D12 already established, just with literally
+nothing left to wire up this time:
+
+- **B25** (`Material "dielectric" "spectrum eta" "glass-<NAME>"`, all
+  7 of pbrt-v4's named glass IOR presets): `pbrt_flatten.h` already
+  resolves `FindGlassPreset()` (`src/shared/glass_data.h`) to a flat
+  IOR at flatten() time, before any backend-specific code runs -
+  Metal's own dielectric material (materialType 2) already reads
+  whatever IOR value it's handed, with no idea whether it came from a
+  literal `"float eta"` or a resolved named preset. Rendered and
+  compared directly against `--cpu`: matching composition, matching
+  per-preset IOR/refraction differences across all 7 spheres.
+- **B18** (`Material "conductor" "spectrum eta"/"spectrum k"` as
+  explicit RGB triples, plus a `coatedconductor` using a NAMED metal
+  spectrum): same story - `pbrt_flatten.h` already resolves both forms
+  to flat per-channel `(eta,k)` values, and Metal's own conductor
+  material (materialType 4/9, `frComplexRGB()`, section 61) already
+  reads whatever `(eta,k)` it's handed. Rendered and compared directly
+  against `--cpu`: matching copper/gold/silver-looking spheres.
+
+**Not every "Fast"-tier pbrt-file scene scoped alongside these turned
+out to be free** - worth recording so a future increment doesn't
+re-scope the same ground: B15 (`mix-material.pbrt`) renders but does
+NOT match CPU (CPU's own reference reads as almost purely diffuse
+red; Metal's own version is visibly more reflective/highlighted,
+suggesting Metal's `mix` material resolution - or lack of a real
+per-shading-point stochastic one - doesn't match CPU's own real
+implementation here). B16 (`layered-materials.pbrt`) needs a named
+subsurface-scattering preset Metal has no BSSRDF support for at all.
+B20 (`hair-material.pbrt`) needs a real `HairBxDF` Metal doesn't have.
+B22 (`named-material-and-texture.pbrt`) needs a real UV-space 2-colour
+checkerboard `Texture` bound to a Diffuse material's own `"reflectance"`
+- see section 162, the next increment this scoping pass fed directly
+into.
+
+**Verified**: full clean rebuild, ctest 4/4 (unaffected - no code
+changed), direct `--gpu` vs `--cpu` render comparison for both scenes.
+No `docs/METAL_GPU_FEASIBILITY.md`-external registry needed updating
+either (confirmed via section 159's own finding: a pbrt-file-backed
+scene ID has no Metal-specific allowlist to update at all, unlike a
+hand-authored one).
