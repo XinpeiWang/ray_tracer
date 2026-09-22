@@ -1716,6 +1716,12 @@ struct MetalPocApp {
     // buildMeasuredBrdfScene()'s own comment and section 184,
     // docs/METAL_GPU_FEASIBILITY.md.
     void buildMeasuredBrdfScene();
+    // B13: Subsurface Slab - a Cornell box with a dielectric wax slab
+    // (box) and jade sphere, each approximated as tinted glass
+    // (materialType 2, E3's own precedent) rather than a real internal
+    // scattering medium. See buildSubsurfaceSlab()'s own comment and
+    // section 185, docs/METAL_GPU_FEASIBILITY.md.
+    void buildSubsurfaceSlab();
     // C1: HDRI Sky - an open scene (ground + 3 spheres: diffuse, rough
     // metal, glass) lit ENTIRELY by a procedural gradient sky, no other
     // light at all. Needs NO new materialType or shader code at all -
