@@ -1016,6 +1016,108 @@ void MetalPocApp::buildHairFibersScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
+// B14: Measured BRDF - matches src/TheRestOfYourLife/scenes_advanced.h's
+// own build_measured_brdf_scene() exactly, but see that function's own
+// `measured_material` class first: it stores a `MeasuredBRDFData brdf_`
+// member and never reads it - `scatter()`/`scattering_pdf()` are a plain
+// cosine-weighted Lambertian using `tint_` as albedo, and the "measured"
+// data built for the scene is a synthetic all-1.0 4x4 table, not real
+// tabulated RGL data (no such data files exist anywhere in this repo).
+// gpu/optix/scene_builder.cpp's own comment already documents this and
+// ports the scene as plain Lambertian - mirrored here for the same
+// reason, not a Metal-specific simplification. The scene's own REAL gap
+// was a sphere-shaped area light (`(0,8,0)`, r=1.5, `diffuse_light(8,8,8)`)
+// this loader had no NEE support for at all (AreaLight::kind==0 quad-only
+// until now) - see AreaLight::kind's own comment (metal_poc_types.metal)
+// for the new sphere-light NEE this scene exercises for the first time.
+void MetalPocApp::buildMeasuredBrdfScene() {
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+
+    // Ground - point3(0,-1000,0), radius 1000, lambertian(0.3,0.3,0.3).
+    {
+        const float3 center = float3{0.0f, -1000.0f, 0.0f} + sceneOffset;
+        TriangleMaterial mat{PackedFloat3{0.3f, 0.3f, 0.3f},
+            /*materialType=*/0u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, 1000.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // 5 "measured BRDF" spheres - byte-for-byte Lambertian(0.7,0.5,0.3),
+    // matching `measured_material`'s own actual (not advertised) behaviour.
+    for (int i = -2; i <= 2; ++i) {
+        const float3 center = float3{i * 2.5f, 1.0f, 0.0f} + sceneOffset;
+        TriangleMaterial mat{PackedFloat3{0.7f, 0.5f, 0.3f},
+            /*materialType=*/0u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Sphere light - point3(0,8,0), radius 1.5, diffuse_light(8,8,8). The
+    // first emissive SPHERE primitive (every earlier scene's own area
+    // light is a quad) - AreaLightData::kind=1.0/edgeU.x=radius carries
+    // the shape through to sampleAreaLight()'s own new sphere branch;
+    // `area` is the sphere's true surface area (4*pi*r^2), matching every
+    // OTHER light's own "total light-source area" convention exactly, so
+    // buildPowerLightSampler()'s `luminance*area` power estimate and every
+    // NEE call site's own generic area-to-solid-angle Jacobian both work
+    // completely unchanged.
+    {
+        const float3 center = float3{0.0f, 8.0f, 0.0f} + sceneOffset;
+        const float radius = 1.5f;
+        const float3 lightColor{8.0f, 8.0f, 8.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        // This sphere's own future index into spheres[]/sphereMaterials[]
+        // - NOT assumed to be any particular fixed number (this scene's
+        // own baseline+ground+diffuse-row spheres already pushed earlier
+        // are the always-present hand-authored POC room's own spheres
+        // PLUS this scene's own ground/diffuse row, an unrelated count
+        // that could change) - captured here, right before pushing, so
+        // AreaLightData::spherePrimId is always correct regardless of how
+        // many spheres came before it.
+        const int32_t spherePrimId = (int32_t)spheres.size();
+        TriangleMaterial mat{PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            /*materialType=*/0u, /*ior=*/1.0f, PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            lightId, /*roughness=*/0.0f};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
+        sphereMaterials.push_back(mat);
+
+        AreaLightData lightData{};
+        lightData.center = PackedFloat3{center.x, center.y, center.z};
+        lightData.edgeU = PackedFloat3{radius, 0.0f, 0.0f};
+        lightData.edgeV = PackedFloat3{0.0f, 0.0f, 0.0f};
+        lightData.normal = PackedFloat3{0.0f, 1.0f, 0.0f};
+        lightData.area = 4.0f * (float)M_PI * radius * radius;
+        lightData.emission = PackedFloat3{lightColor.x, lightColor.y, lightColor.z};
+        lightData.kind = 1.0f;
+        lightData.spherePrimId = spherePrimId;
+        lights.push_back(lightData);
+    }
+
+    // Background - pure black, matching B14's own CameraConfig
+    // background_r/g/b (0,0,0) exactly.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.0f, 0.0f, 0.0f};
+
+    // Camera: fov=42, lookfrom=(0,3.2,17), lookat=(0,1,0).
+    const float3 lookfrom = float3{0.0f, 3.2f, 17.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 42.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
 // C1: HDRI Sky - matches src/TheRestOfYourLife/scenes_advanced.h's own
 // build_hdri_sky_world()/build_hdri_sky() exactly: a ground plane + 3
 // spheres (diffuse, fuzzy-metal, glass), lit ENTIRELY by a procedural

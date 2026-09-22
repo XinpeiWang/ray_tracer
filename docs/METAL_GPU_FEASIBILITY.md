@@ -10989,3 +10989,112 @@ distinguishable, no blown-out or solid-black regions, composition and
 relative brightness matching the CPU reference; the regularized
 sphere's own softer highlight is the one acknowledged, documented
 departure from exact CPU parity described above.
+
+## 184. B14 (Measured BRDF) - the material is a decoy, the real gap was sphere-light NEE
+
+B14's own name promises pbrt-v4's `MeasuredBxDF` (tabulated RGL data),
+but CPU's own `measured_material` class (`scenes_advanced.h`) stores a
+`MeasuredBRDFData brdf_` member and never reads it anywhere -
+`scatter()`/`scattering_pdf()` are byte-for-byte plain cosine-weighted
+Lambertian using `tint_` as albedo, and the "measured" table the scene
+builds is synthetic all-1.0 4x4 data, not real tabulated BRDF
+measurements (no such data files exist anywhere in this repo).
+`gpu/optix/scene_builder.cpp` already documents this and ports the
+scene as plain Lambertian - mirrored here for the same reason. The
+REAL, substantive gap: this loader had NO sphere-shaped area light NEE
+at all (`AreaLight` was quad-only), and B14's own light (`(0,8,0)`,
+r=1.5, `diffuse_light(8,8,8)`) is a sphere - the first emissive sphere
+PRIMITIVE this loader has ever needed to importance-sample.
+
+**Design**: `AreaLight`/`AreaLightData` gained a `kind` field (0=quad,
+every light before this one; 1=sphere) and a `spherePrimId` field
+(-1 for a quad), reusing `edgeU.x` as the sphere's own radius (its
+other quad-only fields - edgeV/normal - are meaningless for a curved
+surface). `sampleAreaLight()` branches on `kind`: a sphere samples a
+UNIFORM point over its own full surface area (not pbrt-v4's own lower-
+variance cone-sampling, which would need the shading point's own
+origin threaded through this function and every one of its ~29 NEE
+call sites just to build the cone's axis) - `area` holds the sphere's
+true surface area (`4*pi*r^2`), so `buildPowerLightSampler()`'s own
+`luminance*area` power estimate and every NEE call site's own generic
+area-to-solid-angle Jacobian (`distSq/(area*cosLight)`) both work
+completely UNCHANGED, no call-site changes needed at all beyond
+`sampleAreaLight()` itself.
+
+**Bug found and fixed: a sphere light's own shadow ray re-hit ITSELF
+as an occluder.** Unlike a quad (a flat triangle a `max_distance`
+epsilon-short-stop reliably clears), a curved sphere's own surface is
+close enough to a shadow ray's intended target point that even a very
+generous margin (verified up to 0.5 world units - the light's own
+radius is 1.5) still let the shadow ray re-hit the light sphere as its
+own occluder for a large fraction of samples, making every diffuse
+sphere render almost solid black (confirmed via a `primitive_id`-
+color-coded debug kernel, not assumed). Fixed with
+`SpherePayload::shadowIgnorePrimId` (-1 for every existing call site,
+via the same "3-arg intersect() implicitly default-constructs this"
+mechanism `isShadowRay`'s own comment documents), generalizing the
+"invisible to shadow rays" mechanism materialType 28/29/30 medium
+spheres already use - `AreaLight::spherePrimId` carries the light's
+own index into `spheres[]` through `LightSample` so a shadow ray can
+exclude it outright, correct regardless of epsilon tuning rather than
+dependent on guessing a large-enough margin for every future sphere
+light's own size/distance combination.
+
+**Bug found and fixed: `light.normal` is meaningless for a curved
+surface.** The direct-hit MIS-weight code (a BSDF-sampled bounce
+landing directly on a light) read a FIXED per-light `AreaLight::normal`
+for its own area-to-solid-angle Jacobian - correct for a quad's one
+flat plane, wrong for a sphere, whose true outward normal varies per
+point. Fixed by using the hit's own already-computed geometric normal
+(`normalize(hitPoint - sphereCenter)`, the same `normal` the kernel's
+own sphere-hit branch already computes) instead of `light.normal`
+whenever `AreaLight::kind==1`.
+
+**A small, acknowledged, UNRESOLVED remaining artifact**: a handful of
+sub-pixel-scale bright dots near the point on each diffuse sphere most
+directly facing the light survive both fixes above - confirmed NOT
+ordinary Monte Carlo noise (unchanged in both position and brightness
+from 1 sample/pixel through 4096) and confirmed to originate from the
+BSDF-continuation/direct-hit path, not `sampleAreaLight()`'s own NEE
+contribution (disabling NEE entirely removes them; clamping the NEE
+contribution's own magnitude, down to a near-zero ceiling, does not).
+Extensive further bisection (isnan()/isinf() checks on the pdf/weight/
+contribution chain, a direct ceiling clamp at several thresholds) did
+not isolate an exact cause within a reasonable further effort - the
+isnan()/isinf() checks themselves are suspected unreliable under this
+project's own `MTLCompileOptions.fastMathEnabled=YES` default (the
+same class of fast-math-specific unreliability section 183's own
+atan2(0,0) finding already established for HairBxDF), which would
+explain why a mathematically-sound defensive clamp based on those
+checks had no visible effect. Left open rather than papered over with
+an unverified guess - the same "genuine open investigation, no clear
+next step yet" category this document's own G25 floor-artifact entry
+(section 174's own accounting) already established as an accepted
+outcome, not a blocker, when a real root cause isn't found within
+reasonable effort. The artifact is minor (a few dozen sub-pixel-bright
+samples, not a compositional or brightness-level error) and does not
+change this scene's own overall verified correctness below.
+
+**Verified**: full clean rebuild, ctest (4/4), all 79 currently-
+supported scenes smoke-rendered with zero crashes, and a before/after
+SHA-256 hash sweep across the other 78 scenes: 33 differ (see below;
+NOT the usual 1-3 - explained, not just accepted), the other 45 are
+byte-for-byte identical. The 33 differ because this PR grows THREE
+shared, heavily-exercised structs (`AreaLight`/`LightSample`/
+`SpherePayload`) and touches `sampleAreaLight()`/the kernel's own
+direct-hit MIS-weight code directly - every quad-light scene's own
+shader now compiles differently at the byte level even though the
+KIND==0 (quad) logic path is unchanged, the same "shared code path
+touched can shift sub-ULP GPU rounding" class section 160/167 already
+established, just with a much larger blast radius than earlier PRs in
+that class (which typically touched one function, not three widely-
+shared structs at once). NOT assumed benign: directly re-rendered and
+visually compared three structurally-different differing scenes at
+higher quality (A1 - a plain Cornell box, A8 - a bounded-medium scene,
+G8 - a mesh-gallery scene with no medium/hair/measured-BRDF content at
+all) against their own pre-PR renders - identical composition/
+geometry/brightness in all three, only the expected per-pixel noise
+pattern differs, confirming this is the same benign class and not a
+newly-introduced correctness bug. B14 itself verified via direct
+`--gpu` vs `--cpu` comparison (matching tan-sphere-row composition and
+brightness, aside from the acknowledged small artifact above).

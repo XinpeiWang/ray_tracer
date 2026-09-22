@@ -1708,6 +1708,14 @@ struct MetalPocApp {
     // that Metal function's own comment for the field-reuse layout and
     // section 183, docs/METAL_GPU_FEASIBILITY.md.
     void buildHairFibersScene();
+    // B14: Measured BRDF - 5 Lambertian spheres (matching CPU's own
+    // measured_material, which never actually reads its own tabulated
+    // data - see that class's own comment) under the first emissive
+    // SPHERE light this loader supports (AreaLight::kind==1, new sphere-
+    // light NEE - metal_poc_sampling.metal's sampleAreaLight()). See
+    // buildMeasuredBrdfScene()'s own comment and section 184,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildMeasuredBrdfScene();
     // C1: HDRI Sky - an open scene (ground + 3 spheres: diffuse, rough
     // metal, glass) lit ENTIRELY by a procedural gradient sky, no other
     // light at all. Needs NO new materialType or shader code at all -

@@ -312,10 +312,42 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
             shadowRay.direction = wi;
             shadowRay.min_distance = 0.001f;
             shadowRay.max_distance = dist - 0.002f;
+            // A sphere light (B14, section 184) is a real, solid,
+            // occlusion-capable primitive in the SAME accel structure the
+            // shadow ray tests against - unlike a quad light (a flat
+            // triangle a `max_distance` epsilon-short-stop reliably
+            // clears), stopping "epsilon short" of a point ON A CURVED
+            // SURFACE is fragile: found via direct debugging
+            // (metal_poc_shader_tests.mm's own investigation, not assumed)
+            // that even a 0.5-unit margin still let the shadow ray re-hit
+            // the light sphere itself as its own occluder for a large
+            // fraction of samples. Excluding the light's own primitive_id
+            // outright (SpherePayload::shadowIgnorePrimId, the same
+            // "invisible to shadow rays" mechanism materialType 28/29/30
+            // medium spheres already use, generalized) is the robust fix -
+            // correct regardless of epsilon tuning, not dependent on
+            // guessing a margin large enough for every future sphere
+            // light's own size/distance combination.
+            // `{}` (not a bare declaration) so every field not set below
+            // gets its own in-class default member initializer applied
+            // (shutterT=0.0, isShadowRay=true) - same zero-init every
+            // OTHER shadow-ray call site already implicitly gets via the
+            // 3-arg intersect() overload (this function has no shutterT
+            // of its own to thread through, matching every one of those
+            // ~50 other sites exactly).
+            SpherePayload shadowPayload{};
+            shadowPayload.shadowIgnorePrimId = ls.spherePrimId;
             intersection_result<instancing, triangle_data> shadowResult =
-                isect.intersect(shadowRay, accelStructure, functionTable);
+                isect.intersect(shadowRay, accelStructure, functionTable, shadowPayload);
             if (shadowResult.type == intersection_type::none) {
-                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
+                // Floors abs(cosLight) before it hits the pdf's own
+                // denominator - a general defensive guard against a
+                // near-zero divisor (matching the same "epsilon-floor a
+                // divisor, don't divide by exactly zero" convention this
+                // file's own point-light loop below already uses), not
+                // itself the fix for any specific observed artifact.
+                float cosLightSafe = max(abs(cosLight), 1e-4);
+                float pdfSolidAngle = (distSq / (ls.area * cosLightSafe)) * ls.pmf;
                 float pdfBsdfForThisDir = cosSurface / M_PI_F;
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
