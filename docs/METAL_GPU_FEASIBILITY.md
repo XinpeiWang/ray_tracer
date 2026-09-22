@@ -11808,3 +11808,91 @@ function at all - an 81-scene hash sweep anyway, for full rigor and
 consistency with every other part of this series: 68/81 byte-identical,
 the same already-documented 13-scene noise set, zero new scenes (fully
 expected, given zero render-path code changed).
+
+## 195. Test-coverage series, part 6 (final): participating-medium sphere numeric cross-checks and a property test, plus a closing summary
+
+Sixth and final material family in this series (parts 1-5: sections
+190-194). Originally scoped as `shadeHomogeneousMediumSphere`/
+`shadeCloudMediumSphere`/`shadeRgbGridMediumSphere`
+(`metal_poc_materials_medium.metal`) - the three participating-medium
+shaders, expected going in (per the standing memory note from part 5)
+to need section 193's own property-test treatment rather than a numeric
+cross-check, given the same "stochastic estimator on a structurally
+different RNG than the CPU reference" problem that ruled out an exact
+comparison for the layered coated materials. That expectation turned
+out to be only half right.
+
+**What's genuinely deterministic and got a real numeric cross-check**
+(three new gaps, none previously tested on either side):
+- `perlinNoise3D()` (`metal_poc_sampling.metal`) vs `perlin_noise<double>()`
+  (`src/shared/noise.h`) - confirmed (by reading both, not trusting the
+  header comment alone) to be the exact same fixed pbrt-v4 permutation
+  table and gradient-noise formula.
+- `gpuCloudDensity()` vs `CloudMedium<double>::compute_density()` called
+  with `wispiness=0` - a deliberate, honest choice, not a shortcut:
+  `gpuCloudDensity()` is a GPU-only port that NEVER implements the CPU
+  reference's own wispiness perturbation at all (a real, already-
+  documented GPU compiler stall bug when the real `compute_density()`
+  was called directly from the recursive mega-kernel, `cloud_medium.h`'s
+  own comment) - comparing at `wispiness=0` validates the real, shared,
+  previously-untested code (the noise primitive + 5-octave FBm +
+  altitude falloff) without pretending the wispiness gap doesn't exist.
+- `gpuRgbGridTrilinear()` vs `SampledGrid<double>::lookup(px,py,pz)`
+  (`src/shared/sampled_grid.h`) - restricted to genuinely INTERIOR grid
+  points only, after finding a real, previously-undocumented-in-this-
+  doc divergence at the grid boundary: Metal clamps an out-of-range
+  voxel read to the nearest edge, pbrt-v4's own `SampledGrid` returns a
+  hard zero. Deliberately not exercised by this test (an honest scope
+  boundary, not a bug this PR fixes) rather than either a false failure
+  or silently tolerating the wrong thing.
+
+**What's genuinely stochastic and got a property test instead**:
+`sampleHenyeyGreenstein()` (the phase-function DIRECTION sampler) -
+consumes `rngState` directly, same shape as section 193's own layered
+walk functions. Checked: returns a genuine unit vector, is finite, and
+varies across independently-seeded pairs. `henyeyGreensteinPhase()`
+itself (the deterministic phase VALUE this sampler importance-samples)
+already had its own dedicated test (`testHenyeyGreensteinPhase`,
+predating this series) - confirmed already-covered, not re-tested.
+
+**Verified**: full clean rebuild, ctest 4/4, four separate negative
+controls (a `noiseGrad()` sign-swap bug: caught by both the
+`perlinNoise3D` test directly AND, propagating through, the
+`gpuCloudDensity` test - confirming that dependency chain is real, not
+just structural; a `gpuRgbGridTrilinear()` axis-swap bug: 26/30 cases
+caught, the other 4 legitimate coincidental non-detections where that
+specific random interior point happened to have nearly equal x/y
+interpolation weights; a `sampleHenyeyGreenstein()` magnitude-scaling
+bug: 30/30 caught by the unit-vector check), and an 81-scene hash sweep
+(68/81 byte-identical, the same 13-scene noise set, zero new - expected,
+since this PR - like section 194's - touches only test-support files).
+
+**Closing summary for the whole series** (sections 190-195, 6 PRs): two
+durable, reusable testing patterns emerged, not one. **Numeric cross-
+check** (sections 190-192, 194, and half of this one) when a
+deterministic CPU/OptiX reference exists in `src/shared/` and its
+algorithm genuinely matches the Metal port - extract the formula into a
+small named function ONLY where none already exists (hair's own
+`hairScatteringPdfLocal()`, section 183, was the original precedent;
+several later parts, Principled's GGX helpers and NormalizedFresnel's
+`normalizedFresnelF()`, turned out to already BE standalone, needing no
+extraction at all). **Property test** (section 193, and half of this
+one) when the function is a genuine stochastic Monte Carlo estimator
+whose CPU counterpart is ALSO stochastic but on a structurally
+different RNG, ruling out both exact and paired-seed comparison -
+non-negativity, finiteness, and genuinely-varies-across-seeds instead
+of a value comparison. Across the series, three honest "no CPU
+reference, or the two sides deliberately diverge" boundaries were found
+and documented rather than papered over: `shadeRoughDielectric`'s own
+never-exposed continuous pdf (section 191), the layered coated
+materials' structurally different RNG (section 193), and this part's
+own cloud-wispiness/grid-boundary divergences. And three real, honest
+"already covered by an existing test, nothing new needed" findings
+(`shadeMirror`/`shadeClearcoat`, section 194;
+`henyeyGreensteinPhase()`, this part) - confirmed via research each
+time, never assumed. Every part in the series used the same discipline
+throughout: research/scope first, extract the absolute minimum (never
+re-derive a formula that already exists), verify byte-for-byte via the
+established 81-scene hash sweep methodology (section 187), and run a
+deliberate negative control before trusting any new test isn't
+accidentally a no-op.

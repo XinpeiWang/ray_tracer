@@ -251,6 +251,77 @@ kernel void test_cauchyEta(
     outputs[tid] = cauchyEta(inputs[tid].x, inputs[tid].y, inputs[tid].z);
 }
 
+// perlinNoise3D() (metal_poc_sampling.metal) direct dispatch - already
+// a standalone, pure function (a re-transcription of the SAME fixed
+// pbrt-v4 permutation table/formula src/shared/noise.h's own
+// perlin_noise<T>() uses, per that function's own header comment) -
+// cross-checked against perlin_noise<double>() directly in
+// metal_poc_shader_tests.mm.
+kernel void test_perlinNoise3D(
+    device const float3* points [[buffer(0)]],
+    device float* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = perlinNoise3D(points[tid]);
+}
+
+// gpuCloudDensity() (metal_poc_sampling.metal) direct dispatch -
+// cross-checked against CloudMedium<double>::compute_density() called
+// with wispiness=0 (see this file's own kernel/metal_poc_shader_tests.mm
+// comment for why: gpuCloudDensity() is a deliberate GPU-only port that
+// never implements the CPU reference's own wispiness perturbation at
+// all - see GpuCloudMedium's own field comment, metal_poc_gpu_types.h).
+kernel void test_gpuCloudDensity(
+    device const GpuCloudMedium* clouds [[buffer(0)]],
+    device const float3* points [[buffer(1)]],
+    device float* outputs [[buffer(2)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float3 p = points[tid];
+    outputs[tid] = gpuCloudDensity(clouds[tid], p.x, p.y, p.z);
+}
+
+// gpuRgbGridTrilinear() (metal_poc_sampling.metal) direct dispatch -
+// cross-checked against SampledGrid<double>::lookup(px,py,pz)
+// (src/shared/sampled_grid.h) at genuinely INTERIOR grid points only
+// (see this file's own kernel/metal_poc_shader_tests.mm comment: the
+// two sides handle an out-of-range voxel differently - Metal clamps to
+// the nearest edge voxel, pbrt-v4's own SampledGrid returns a hard
+// zero - a real, documented divergence at the outermost half-voxel
+// shell, deliberately not exercised by this test rather than silently
+// papered over).
+kernel void test_gpuRgbGridTrilinear(
+    device const float* gridData [[buffer(0)]],
+    constant int3& dims [[buffer(1)]],
+    device const float3* points [[buffer(2)]],
+    device float* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float3 p = points[tid];
+    outputs[tid] = gpuRgbGridTrilinear(gridData, dims.x, dims.y, dims.z, p.x, p.y, p.z);
+}
+
+// sampleHenyeyGreenstein() (metal_poc_sampling.metal) - property test,
+// not a numeric cross-check: a genuine stochastic direction sample (same
+// "consumes rngState directly" shape as the layered coated materials'
+// own walk functions, section 193), on the SAME structurally-different-
+// RNG-than-CPU basis that ruled out an exact/paired comparison there.
+// henyeyGreensteinPhase() itself (the deterministic phase VALUE this
+// sampler is built to importance-sample) already has its own dedicated
+// test (testHenyeyGreensteinPhase) - this closes the one piece of the
+// HG machinery that didn't: the direction sampler itself never had any
+// test at all before this.
+kernel void test_sampleHenyeyGreenstein(
+    device const float3* wos [[buffer(0)]],
+    device const float* gs [[buffer(1)]],
+    device const uint* seeds [[buffer(2)]],
+    device float3* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    thread uint rngState = seeds[tid];
+    outputs[tid] = sampleHenyeyGreenstein(wos[tid], gs[tid], rngState);
+}
+
 kernel void test_frDielectric(
     device const float2* inputs [[buffer(0)]],   // (cosThetaI, eta)
     device float* outputs [[buffer(1)]],
