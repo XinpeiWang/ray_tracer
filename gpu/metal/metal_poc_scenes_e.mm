@@ -192,3 +192,146 @@ void MetalPocApp::buildDielectricMediumShowcase() {
     pbrtSceneOffset = sceneOffset;
 }
 
+// E2: Cloud Medium (section 178) - matches CPU's own
+// build_cloud_medium_scene() (scenes_advanced.h) and
+// gpu/optix/scene_builder.cpp's own build_cloud_medium_scene_gpu()
+// exactly: a real heterogeneous, procedural Perlin-FBm-density medium
+// (pbrt-v4 CloudMedium), not the flat-density constant_medium sphere
+// this scene used to render as on CPU either (see that CPU function's
+// own comment).
+//
+// Rendered here with the SAME "invisible trigger sphere, real geometry
+// computed analytically/mathematically inside the kernel" convention
+// A8's own materialType 28 (bounded homogeneous medium, section 176)
+// established - see this file's own buildCornellSmoke() comment. The
+// cloud's real bounding volume is an axis-aligned world-space box
+// (cloud_min/cloud_max below); a NEW box/AABB custom-primitive geometry
+// is NOT needed to render it, because the ray/box overlap needed for
+// delta tracking is computed as pure math (cloudAabbSlabIntersect(),
+// metal_poc_sampling.metal) against the SAME ray parameter t the
+// trigger sphere's own hit already established - see that function's
+// own comment for why an affine world-to-medium transform preserves t
+// exactly. The trigger sphere here is sized to comfortably CONTAIN the
+// box (its own half-diagonal, from the box's center) and exists only to
+// get a ray into materialType 29's own kernel branch at all.
+void MetalPocApp::buildCloudMediumScene() {
+    // Every hand-authored scene builder is ADDITIVE on top of the
+    // hardcoded default room (buildScene()'s own comment,
+    // metal_poc.mm) - the SAME `sceneOffset{60,0,0}` A8/E3 (and every
+    // other non-Cornell-family hand-authored scene) already apply to
+    // move clear of that room's own [-1,1] region, applied here to
+    // every point AND the camera. Missing on a first version of this
+    // scene (E2's own cloud/ground/background spheres sat directly on
+    // top of the default room's own small Cornell box and Suzanne/Spot
+    // meshes) - caught immediately by comparing against `--cpu`, which
+    // showed a clean cloud with no extra geometry at all.
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+
+    // Ground - same literal as A2/A3/A8/E3's own huge-sphere convention.
+    {
+        const float3 c = float3{0.0f, -1000.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1000.0f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{0.4f, 0.5f, 0.3f}, /*materialType=*/0u,
+            1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+
+    // World AABB - matches CPU's cloud_min/cloud_max exactly (offset by
+    // `sceneOffset`). CloudMedium's own altitude-falloff term treats
+    // medium-y=0 as the cloud's dense base and medium-y=1 as thinned to
+    // nothing (pbrt-v4 convention), so the box's bottom face (world y=1)
+    // reads as the cloud's base and its top (world y=4) tapers off
+    // naturally.
+    const float3 cloudMin = float3{-4.0f, 1.0f, -3.0f} + sceneOffset;
+    const float3 cloudMax = float3{4.0f, 4.0f, 3.0f} + sceneOffset;
+    const float sx = 1.0f / (cloudMax.x - cloudMin.x);
+    const float sy = 1.0f / (cloudMax.y - cloudMin.y);
+    const float sz = 1.0f / (cloudMax.z - cloudMin.z);
+
+    GpuCloudMedium cloud{};
+    cloud.boundsMin[0] = 0.0f; cloud.boundsMin[1] = 0.0f; cloud.boundsMin[2] = 0.0f;
+    cloud.boundsMax[0] = 1.0f; cloud.boundsMax[1] = 1.0f; cloud.boundsMax[2] = 1.0f;
+    cloud.worldToMediumMat[0] = sx;   cloud.worldToMediumMat[1] = 0.0f; cloud.worldToMediumMat[2] = 0.0f;
+    cloud.worldToMediumMat[3] = 0.0f; cloud.worldToMediumMat[4] = sy;   cloud.worldToMediumMat[5] = 0.0f;
+    cloud.worldToMediumMat[6] = 0.0f; cloud.worldToMediumMat[7] = 0.0f; cloud.worldToMediumMat[8] = sz;
+    cloud.worldToMediumTranslate[0] = -cloudMin.x * sx;
+    cloud.worldToMediumTranslate[1] = -cloudMin.y * sy;
+    cloud.worldToMediumTranslate[2] = -cloudMin.z * sz;
+    cloud.sigmaA = 0.0f;      // pure scattering, no absorption
+    cloud.sigmaS = 10.0f;     // matches CPU/OptiX's own literal - see that
+                               // function's own comment on why 10.0 (not
+                               // the physically-motivated-but-much-slower
+                               // 40.0) was chosen.
+    cloud.density = 1.0f;
+    cloud.wispiness = 1.0f;   // unread by gpuCloudDensity() - kept only
+                               // for struct-layout parity, see
+                               // GpuCloudMedium's own comment.
+    cloud.frequency = 4.0f;
+    const int cloudIdx = (int)cloudMediums.size();
+    cloudMediums.push_back(cloud);
+
+    TriangleMaterial cloudMat{};
+    cloudMat.color = PackedFloat3{1.0f, 1.0f, 1.0f};  // albedo
+    cloudMat.materialType = 29u;
+    cloudMat.emission = PackedFloat3{0, 0, 0};
+    cloudMat.lightId = -1;
+    cloudMat.roughness = 0.3f;  // phase_g
+    cloudMat.conductorEta = PackedFloat3{(float)cloudIdx, 0.0f, 0.0f};
+    sphereMaterials.push_back(cloudMat);
+
+    const float3 cloudCenter = 0.5f * (cloudMin + cloudMax);
+    const float3 half = 0.5f * (cloudMax - cloudMin);
+    const float triggerRadius = simd::length(half);
+    spheres.push_back(SphereData{PackedFloat3{cloudCenter.x, cloudCenter.y, cloudCenter.z}, triggerRadius});
+
+    // Background spheres for context - CPU's own exact x=+-6, z=4
+    // literals.
+    {
+        const float3 c = float3{-6.0f, 0.5f, 4.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.5f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{0.9f, 0.3f, 0.2f}, /*materialType=*/0u,
+            1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+    {
+        // CPU's own `metal(color(0.8,0.8,0.9), 0.05)` (a fuzzy Book-3
+        // conductor) - approximated the SAME way A2's own static-metal
+        // hero sphere already establishes (metal_poc_scenes_a.mm):
+        // materialType 4 (anisotropic GGX conductor), fuzz standing in
+        // for alphaX/alphaY, eta=1/k derived from the reflectance colour.
+        const float3 metalColor{0.8f, 0.8f, 0.9f};
+        TriangleMaterial m{PackedFloat3{metalColor.x, metalColor.y, metalColor.z}, /*materialType=*/4u,
+                           /*ior(alphaX)=*/0.05f, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/0.05f};
+        const float3 k = reflectanceToConductorK(metalColor);
+        m.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+        m.conductorK = PackedFloat3{k.x, k.y, k.z};
+        const float3 c = float3{6.0f, 0.5f, 4.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 0.5f});
+        sphereMaterials.push_back(m);
+    }
+
+    // Background - CPU's own registry row for E2, bg (0.5,0.7,1.0).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.5f, 0.7f, 1.0f};
+
+    // Camera - CPU's own registry row for E2 (vfov 40, lookfrom
+    // (0,4,26), lookat (0,2,0) - widened/pulled back from an earlier
+    // (20deg, (0,5,20)) framing that overflowed the cloud's own AABB,
+    // see scene_registry_data.h's own comment).
+    const float3 lookfrom = float3{0.0f, 4.0f, 26.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 2.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+

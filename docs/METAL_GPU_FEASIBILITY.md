@@ -10437,3 +10437,178 @@ per-point density function evaluated during free-flight sampling
 rather than this section's own flat sigmaT) and E4 (a heterogeneous
 per-voxel RGB grid, needing real 3D grid data) remain the two
 genuinely bigger volumetric scenes left.
+
+## 178. Closing E2: Cloud Medium - a real heterogeneous, procedural Perlin-noise density medium via delta tracking, no new geometry primitive needed
+
+CPU's `build_cloud_medium_scene()` (`scenes_advanced.h`) wraps a real
+pbrt-v4 `CloudMedium<double>` (`src/shared/cloud_medium.h`) - a
+heterogeneous medium whose density at any point is 5-octave Perlin
+FBm noise plus an altitude-falloff term, evaluated in "medium space"
+(a unit cube) via an affine world-to-medium transform, sampled by
+delta tracking (null-collision free-path sampling) against a
+MAJORANT sigma_t rather than this series' own materialType 28's flat
+homogeneous sigma_t. Unlike E3, this was NOT scoped down to a
+simpler approximation - it's a faithful, direct port.
+
+**A real, working GPU precedent already existed to port from**:
+`gpu/optix/optix_intersection_sphere.h`'s own `MaterialType::CloudMedium`
+closest-hit code (and its own `gpu_cloud_density()`, a hand-duplicated,
+no-wispiness variant of `CloudMedium<T>::compute_density()` - see
+that function's own comment on why the CPU/OptiX-shared member
+function itself can't be called device-side directly on OptiX, for
+reasons unrelated to Metal's very different architecture but matched
+anyway for GPU-backend parity). Reading that code end to end up
+front - rather than guessing at the algorithm from CPU's own
+class alone - settled the single biggest open question from section
+177's own closing note: **no new box/AABB custom-primitive geometry
+is needed at all**. OptiX's own version triggers via a plain SPHERE
+(the same "invisible trigger sphere, real geometry handled
+analytically" convention materialType 28/A8 (section 176) already
+established for Metal), sized to comfortably contain the medium's
+real axis-aligned world-space box, with the actual ray/box overlap
+for delta tracking computed as pure math against that box's own
+affine transform - not a second intersectable primitive. This
+insight is what kept E2's actual scope in line with A8/E3 rather than
+the "new primitive + new algorithm" scale initially feared when this
+series first looked at it (this doc's own closing note two sections
+ago).
+
+**What got added**: `GpuCloudMedium` (`metal_poc_types.metal`/
+mirrored in `metal_poc_app.h`) - the medium's own bounds/affine-
+transform/sigma_a/sigma_s/density/wispiness/frequency, a separate
+buffer (`cloudMediums`, bound at buffer(28)) rather than folded into
+`TriangleMaterial`'s spare fields the way materialType 28 reuses
+color/ior/roughness directly, since this needs a full 3x3 matrix +
+translation on top of the scalars. `materialType 29`'s own
+`TriangleMaterial` entry stores only an index into that buffer
+(`conductorEta.x`, cast to uint - the same spare-field-reuse
+convention every other materialType already follows) plus its own
+albedo (`color`) and phase_g (`roughness`), mirroring how OptiX's own
+`MaterialData` redundantly caches both alongside `cloudMediumIdx`.
+`gpuCloudDensity()`/`cloudAabbSlabIntersect()`/`worldToMediumPoint()`
+(`metal_poc_sampling.metal`) are direct ports of OptiX's own density
+function and CloudMedium's own `sample_ray()`/`world_to_medium_pt()`.
+The Perlin noise primitive itself needed NO new code at all - a
+complete, working port (`kNoisePerm`/`noiseGrad`/`noiseWeight`/
+`perlinNoise3D`) already existed in `metal_poc_sampling.metal` for
+materialType 17's own marble texture (section 124); a first version
+of this change duplicated it under different names before the shader
+compiler's own "redefinition of 'kNoisePerm'" error caught the
+oversight, at which point `gpuCloudDensity()` was rewritten to call
+the existing `perlinNoise3D()` directly instead.
+
+**The delta-tracking kernel code** (`metal_poc_kernel.metal`,
+alongside materialType 28's own block) mirrors OptiX's algorithm
+closely: transform the ray into medium space, slab-test against the
+box (returning a `[segMin, segMax]` valid directly as WORLD-space ray
+parameters, since an affine map preserves the ray parameter `t`
+exactly - `medium_point(t) = mat*(ray_o + t*d) + translate = mo +
+t*(mat*d)`, the same `t` either way), then march with exponentially-
+sampled free-flight steps (128-iteration cap, matching OptiX's own)
+evaluating `gpuCloudDensity()` at each candidate point and accepting
+it as a real scatter with probability `density*sigma_s/sigma_maj`.
+On scatter: real NEE (see below) plus a Henyey-Greenstein phase-
+sampled continuation, mirroring materialType 28's own NEE/scatter
+shape. On survival to `segMax` (or missing the box's AABB entirely,
+despite hitting the trigger sphere - a real, expected "the trigger
+sphere is a loose bound" case, not an error): pass straight through
+unchanged from that world-space point, same "free pass-through"
+contract as materialType 28's own else-branch.
+
+**Two real bugs found before this looked right, both caught by
+comparing against `--cpu` directly, not assumed correct from the
+algorithm alone**:
+
+1. **Missing the established `sceneOffset{60,0,0}` convention.**
+   Every hand-authored scene builder is ADDITIVE on top of a
+   hardcoded default room (`buildScene()`'s own comment,
+   `metal_poc.mm`) - A8/E3 already apply a `sceneOffset` to move
+   clear of that room's own small `[-1,1]` region. A first version of
+   `buildCloudMediumScene()` omitted it entirely, so the cloud's own
+   ground/background spheres and the camera all sat directly on top
+   of the default room and its Suzanne/Spot meshes - the first render
+   showed the cloud's silhouette correctly, but with a small colourful
+   blob (the leftover default room) floating in the middle of it.
+   Fixed by applying the same offset to every point and the camera,
+   matching A8/E3 exactly.
+
+2. **No NEE technique exists for this scene's own light source at
+   all**, and unweighted-then-weighted attempts to add one in turn
+   under- and over-shot badly enough to be worth walking through in
+   full:
+   - E2 has no AreaLight (unlike A8/E1) - its only illumination is
+     the constant background/environment colour
+     (`havePbrtConstantEnvLight`). This POC's constant-env-light miss
+     path has always had "no NEE strategy... since none of this
+     shader's material-shading functions sample it explicitly yet"
+     (that arm's own pre-existing comment) - true of every material
+     before this one, because reaching an infinite light via pure
+     BSDF-sampled escape is fine for an ordinary surface bounce. It is
+     NOT fine for a dense, `sigma_s==10` scattering medium: the mean
+     free path (~0.1 world units) across an ~8-unit box means a
+     photon needs on the order of tens to hundreds of real scatter
+     events to random-walk out unassisted - astronomically unlikely
+     within any practical `max_depth`. The first real render (with
+     the offset fix already applied) came back an almost-solid-black
+     box with sparse noise - confirmed via a depth sweep (8 vs 300)
+     that changed nothing at all, ruling out "just needs more bounces"
+     before looking for a structural cause.
+   - Fixed by adding a genuine NEE technique toward the constant
+     background from each scatter point: sample a phase-importance-
+     sampled direction, cast ONE shadow ray toward it. This works
+     with NO extra transmittance-through-the-rest-of-the-cloud
+     handling needed for the shadow ray itself, because
+     `SpherePayload::isShadowRay`'s own established convention
+     (section 176) already makes every medium/cloud trigger sphere
+     (materialType 28 AND 29) fully transparent to a pure occlusion
+     test - so this ray only ever reports a REAL blocker (ground/
+     background spheres/room walls), never the cloud's own density
+     along the way. A first version of this fix used exactly that -
+     no self-attenuation at all - and the render flipped from black
+     to a blown-out solid white box: every one of a path's many
+     scatter events was adding a FULL, un-decayed background
+     contribution regardless of how deep inside the cloud it was,
+     summing far past the correct value. Fixed again by approximating
+     this ray's own remaining self-attenuation through the rest of
+     the cloud via `exp(-sigma_maj * remainingDist)` - the
+     conservative majorant sigma_t over the SAME analytic box-exit
+     distance the delta-tracking loop already computes for other
+     rays, no extra ray cast needed. This is a real, honest
+     simplification versus CPU's own continuous ratio-tracking
+     transmittance estimator (`RatioTrackingTrHeterogeneous`,
+     `src/shared/ratio_tracking.h`) - a coarse majorant-based bound,
+     not an unbiased match, and no MIS weighting against the
+     phase-sampled continuation ray's own (vanishingly rare) chance
+     of independently reaching the background for the same path - the
+     same "no NEE strategy to double-count against" weight==1.0
+     convention the pre-existing constant-env-light miss-path arm
+     already uses, extended here on the reasoning that the two ever
+     co-occurring for one path is negligible given how rare an
+     unassisted escape already is.
+
+**The honest limitation**: this is a real, not simplified, delta-
+tracking implementation of CloudMedium's own density function - the
+gap versus CPU is entirely in the NEE/self-attenuation approximation
+above (a majorant-bound single-scatter estimate instead of CPU's own
+continuous ratio-tracked transmittance), which reads as a slightly
+more mottled/patchy cloud texture with somewhat harder silhouette
+edges than CPU's softer one, not a wrong shape, density gradient
+(denser toward the box's own base, thinning toward its top - both
+backends), or overall brightness.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), a
+51-scene GPU smoke sweep (every currently-supported hand-authored
+scene ID) with zero crashes, direct `--gpu` vs `--cpu` comparison at
+matching sample/depth settings (both showing a denser-at-the-base,
+thinning-toward-the-top wispy cloud silhouette of the same size/
+position), and a before/after hash comparison (stash/rebuild-clean/
+re-render, non-interleaved) across 15 representative scenes spanning
+every category with sphere geometry (since `sphereIntersectionFunction`'s
+own shadow-ray occlusion-exemption check was extended to materialType
+29) plus every existing medium scene (A8/E1/E3, since
+`metal_poc_sampling.metal`/`metal_poc_kernel.metal` changed) - all 15
+byte-for-byte identical, no regression from this change.
+
+That leaves 17 pre-existing failures. E4 (a heterogeneous per-voxel
+RGB grid, needing real 3D grid data and its own generator) is now the
+only remaining volumetric scene.

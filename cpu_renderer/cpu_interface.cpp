@@ -999,6 +999,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"A2",                          // Bouncing Spheres - the classic In One Weekend final scene, real per-sphere object motion blur (section 175)
 		"A8",                          // Cornell Smoke - A1's own walls plus two bounded medium spheres approximating CPU's own rotated smoke boxes (section 176)
 		"E3",                          // Dielectric Medium Showcase - 3 tinted-glass spheres approximating CPU's own dielectric-plus-real-medium combination (section 177)
+		"E2",                          // Cloud Medium - a real heterogeneous, procedural Perlin-noise cloud, delta-tracked through its own world AABB via a trigger sphere (section 178)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
