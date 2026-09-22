@@ -416,6 +416,126 @@ static void testGgxConductorFAndPdf(id<MTLDevice> device, id<MTLLibrary> library
     }
 }
 
+// Principled BSDF (materialType 24, B10) numeric cross-check - three
+// pieces, mirroring section 191's own conductor test shape: the two
+// already-standalone GGX helpers direct, then the combined 3-lobe pdf
+// end to end. Reference: PrincipledBxDF<double> (src/shared/
+// bxdfs_principled.h), the same shared header CPU/OptiX already build
+// from.
+static void testPrincipledPdf(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    std::mt19937 rng(31415);
+    std::uniform_real_distribution<double> zeroOne(0.0, 1.0);
+    std::uniform_real_distribution<double> alphaDist(0.01, 0.9);
+    std::uniform_real_distribution<double> iorDist(1.05, 2.5);
+
+    auto randomUpperHemisphereDir = [&]() -> simd::double3 {
+        double z = 0.05 + zeroOne(rng) * 0.9;
+        double phi = zeroOne(rng) * 2.0 * M_PI;
+        double r = std::sqrt(std::max(0.0, 1.0 - z * z));
+        return simd::double3{r * std::cos(phi), r * std::sin(phi), z};
+    };
+
+    const int n = 50;
+
+    // --- principledGgxBrdf()/principledGgxPdf(): direct dispatch -----
+    {
+        std::vector<simd::float3> wos(n), wis(n);
+        std::vector<float> alphas(n);
+        std::vector<double> expectedBrdf(n), expectedPdf(n);
+        for (int i = 0; i < n; ++i) {
+            simd::double3 wo = randomUpperHemisphereDir();
+            simd::double3 wi = randomUpperHemisphereDir();
+            double alpha = alphaDist(rng);
+            wos[i] = simd::float3{(float)wo.x, (float)wo.y, (float)wo.z};
+            wis[i] = simd::float3{(float)wi.x, (float)wi.y, (float)wi.z};
+            alphas[i] = (float)alpha;
+            PrincipledBxDF<double> ref{};
+            expectedBrdf[i] = ref.ggx_brdf(wo.x, wo.y, wo.z, wi.x, wi.y, wi.z, alpha);
+            expectedPdf[i] = ref.ggx_pdf(wo.x, wo.y, wo.z, wi.x, wi.y, wi.z, alpha);
+        }
+        id<MTLBuffer> woBuf = makeBuffer(device, wos.data(), n * sizeof(simd::float3));
+        id<MTLBuffer> wiBuf = makeBuffer(device, wis.data(), n * sizeof(simd::float3));
+        id<MTLBuffer> alphaBuf = makeBuffer(device, alphas.data(), n * sizeof(float));
+        id<MTLBuffer> brdfOutBuf = makeOutputBuffer(device, n * sizeof(float));
+        id<MTLBuffer> pdfOutBuf = makeOutputBuffer(device, n * sizeof(float));
+        if (runKernel(device, library, queue, @"test_principledGgxBrdf", @[woBuf, wiBuf, alphaBuf, brdfOutBuf], nil, n)) {
+            float* out = (float*)brdfOutBuf.contents;
+            for (int i = 0; i < n; ++i) {
+                char label[128];
+                snprintf(label, sizeof(label), "principledGgxBrdf matches PrincipledBxDF::ggx_brdf (case %d)", i);
+                expectNear(label, out[i], expectedBrdf[i], std::max(1e-5, std::fabs(expectedBrdf[i]) * 1e-3));
+            }
+        }
+        if (runKernel(device, library, queue, @"test_principledGgxPdf", @[woBuf, wiBuf, alphaBuf, pdfOutBuf], nil, n)) {
+            float* out = (float*)pdfOutBuf.contents;
+            for (int i = 0; i < n; ++i) {
+                char label[128];
+                snprintf(label, sizeof(label), "principledGgxPdf matches PrincipledBxDF::ggx_pdf (case %d)", i);
+                expectNear(label, out[i], expectedPdf[i], std::max(1e-5, std::fabs(expectedPdf[i]) * 1e-3));
+            }
+        }
+    }
+
+    // --- principledCombinedPdf(): full pipeline vs scattering_pdf() --
+    // Direction-naming note: PrincipledBxDF::scattering_pdf(n, wi, wo)
+    // takes `wi` as the RAY'S OWN incident direction (toward the
+    // surface) and `wo` as the newly scattered direction (away from
+    // it), then negates `wi` internally to get its own local "view"
+    // direction - i.e. `-wi` plays the role shadePrincipled()'s own
+    // `woLocal` (the view/conditioning direction) does, and `wo` plays
+    // the role `woOutLocal` (the queried/sampled direction) does. Using
+    // an identity local frame (n=(0,0,1)) here since both GGX lobes are
+    // isotropic (alpha_x==alpha_y always in this material), so the
+    // world/local distinction doesn't affect the result and no real
+    // tangent frame needs constructing.
+    {
+        std::vector<float> metallics(n), iors(n), clearcoats(n), roughnesses(n), clearcoatRoughnesses(n);
+        std::vector<simd::float3> wos(n), wis(n);
+        std::vector<double> expectedPdf(n);
+        for (int i = 0; i < n; ++i) {
+            simd::double3 woView = randomUpperHemisphereDir();      // shadePrincipled()'s own woLocal
+            simd::double3 wiQuery = randomUpperHemisphereDir();     // shadePrincipled()'s own woOutLocal
+            double metallic = zeroOne(rng);
+            double ior = iorDist(rng);
+            double clearcoat = zeroOne(rng);
+            double roughness = zeroOne(rng);
+            double clearcoatRoughness = zeroOne(rng);
+            metallics[i] = (float)metallic;
+            iors[i] = (float)ior;
+            clearcoats[i] = (float)clearcoat;
+            roughnesses[i] = (float)roughness;
+            clearcoatRoughnesses[i] = (float)clearcoatRoughness;
+            wos[i] = simd::float3{(float)woView.x, (float)woView.y, (float)woView.z};
+            wis[i] = simd::float3{(float)wiQuery.x, (float)wiQuery.y, (float)wiQuery.z};
+
+            PrincipledBxDF<double> ref{0.5, 0.5, 0.5, metallic, roughness, ior, clearcoat, clearcoatRoughness};
+            simd::double3 cpuWi = -woView;  // ray's own incident direction (toward surface)
+            expectedPdf[i] = ref.scattering_pdf(0.0, 0.0, 1.0,
+                                                 cpuWi.x, cpuWi.y, cpuWi.z,
+                                                 wiQuery.x, wiQuery.y, wiQuery.z);
+        }
+        id<MTLBuffer> metallicBuf = makeBuffer(device, metallics.data(), n * sizeof(float));
+        id<MTLBuffer> iorBuf = makeBuffer(device, iors.data(), n * sizeof(float));
+        id<MTLBuffer> clearcoatBuf = makeBuffer(device, clearcoats.data(), n * sizeof(float));
+        id<MTLBuffer> roughBuf = makeBuffer(device, roughnesses.data(), n * sizeof(float));
+        id<MTLBuffer> ccRoughBuf = makeBuffer(device, clearcoatRoughnesses.data(), n * sizeof(float));
+        id<MTLBuffer> woBuf = makeBuffer(device, wos.data(), n * sizeof(simd::float3));
+        id<MTLBuffer> wiBuf = makeBuffer(device, wis.data(), n * sizeof(simd::float3));
+        id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+        if (runKernel(device, library, queue, @"test_principledCombinedPdf",
+                      @[metallicBuf, iorBuf, clearcoatBuf, roughBuf, ccRoughBuf, woBuf, wiBuf, outBuf], nil, n)) {
+            float* out = (float*)outBuf.contents;
+            for (int i = 0; i < n; ++i) {
+                char label[160];
+                snprintf(label, sizeof(label), "principledCombinedPdf matches PrincipledBxDF::scattering_pdf (case %d)", i);
+                expectNear(label, out[i], expectedPdf[i], std::max(1e-4, std::fabs(expectedPdf[i]) * 1e-2));
+                snprintf(label, sizeof(label), "principledCombinedPdf is non-negative (case %d)", i);
+                expectTrue(label, out[i] >= 0.0f);
+            }
+        }
+    }
+}
+
 static void testGgxD(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // At normal incidence (hLocal == the shading normal), ggxD() has an
     // exact closed form regardless of alpha: D = 1/(pi*alpha^2) - see
@@ -1576,6 +1696,7 @@ int main() {
         testFrDielectric(device, library, queue);
         testLambertianAndDiffuseTransmissionPdf(device, library, queue);
         testGgxConductorFAndPdf(device, library, queue);
+        testPrincipledPdf(device, library, queue);
         testGgxD(device, library, queue);
         testGgxG1SmoothLimit(device, library, queue);
         testCheckerColor(device, library, queue);
