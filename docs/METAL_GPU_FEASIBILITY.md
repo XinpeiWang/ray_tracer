@@ -11325,3 +11325,69 @@ causes:
   identical output everywhere it CAN be verified exactly; the 10 where
   it can't are a pre-existing property of the renderer, not of this
   change.
+
+## 188. Closing the "zero CI coverage" gap: a macOS GitHub Actions job for gpu/metal/
+
+A full-codebase gap audit (user-requested, not part of the scene-porting
+backlog) found that every one of this whole series' "verified: full
+clean rebuild, ctest, hash sweep" claims - hundreds of them, across 187
+prior sections - had been checked by hand, locally, and never once
+automatically. `.github/workflows/unit-tests.yml`'s only job builds the
+portable CPU-only `tests/unit_tests` target on `windows-latest`; nothing
+in CI ever configures `-DRT_BUILD_METAL=ON` or runs any of the four
+Metal CTest targets. A silent future regression - even a straight-up
+compile break - would ship unnoticed until the next person happened to
+build it locally.
+
+Added a second job, `metal-poc`, to the same workflow, pinned to
+`macos-14` (Apple silicon, matching this whole feasibility study's own
+target platform) rather than `macos-latest` - the `unit-tests` job
+above already has a documented scar from exactly this class of mistake
+(`windows-latest` silently moving to a VS version with a different
+CMake generator string, breaking every run until someone noticed it
+wasn't "expected noise"). Configures and builds the WHOLE
+`-DRT_BUILD_METAL=ON` surface (`metal_renderer`, `metal_poc`,
+`metal_poc_validate`, `metal_poc_math_tests`, `metal_poc_shader_tests`,
+and `ray_tracer` itself with `RT_HAVE_METAL` - the real launcher `--gpu`
+path) - a compile break anywhere in this ~22,000-line backend now fails
+CI unconditionally, independent of anything device-related below.
+
+**The one genuinely open question, researched rather than assumed**:
+does a GitHub-hosted macOS runner's own (paravirtualized, on Apple
+Silicon) GPU actually pass this project's own `supportsRaytracing`
+check in `parseArgsAndCreateDevice()`? Historically
+`MTLCreateSystemDefaultDevice()` returned nil entirely on these
+runners (a known, long-standing `actions/runner-images` issue); more
+recently `MTLCopyAllDevices()` (which this codebase already uses
+instead, specifically because `MTLCreateSystemDefaultDevice()` is
+documented as unsupported for non-interactive processes - see that
+function's own comment) reportedly returns a real paravirtual device on
+newer images, but whether ITS feature-family support extends to
+raytracing is explicitly unconfirmed anywhere researched. Rather than
+gate this entire job's value on an answer nobody could verify without
+just merging it and watching, the job is split into two test steps:
+`metal_poc_math_tests` runs unconditionally (pure host-side C++, no
+device needed at all - see that file's own comment); the
+device-dependent trio (`metal_poc_shader_tests`,
+`metal_poc_smoke_render`, `metal_poc_smoke_validate`) runs too, but a
+failure is inspected before deciding whether to fail the job - if
+CTest's own log contains either of `parseArgsAndCreateDevice()`'s two
+exact "no usable/no-raytracing-capable device" stderr strings, it's
+reported as a clearly labelled `::warning::` skip instead of a red
+build; any OTHER failure (a real crash, a real regression) still fails
+the step for real. Verified the whole sequence actually works as
+written, not just that the YAML parses: ran the exact same
+configure/build/ctest-filter/grep-fallback commands locally on this
+machine's own real M2 hardware (which DOES pass the raytracing check,
+confirming the main path), then separately confirmed the grep pattern
+correctly classifies each of the three possible stderr shapes (both
+"graceful skip" strings match; an unrelated string like a segfault does
+not) against hand-written fake log files, without needing to actually
+break a real build to prove the fallback path is reachable and correct.
+
+This means the job self-upgrades with zero further changes needed: if
+GitHub's runners already do (or later start to) expose full raytracing
+support, these tests start providing real, automatic regression
+coverage the next run; until/unless that's true, CI stays green with an
+honest annotation instead of either a permanently-red check nobody can
+fix or silently disabling the check and losing all its value.
