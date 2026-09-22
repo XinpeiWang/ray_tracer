@@ -20,12 +20,15 @@
 # workflow. See the RT_BUILD_GPU block below for what it does and does not
 # replicate.
 #
-# On macOS, pass -DRT_BUILD_METAL=ON to also build metal_poc - a standalone
-# Metal ray tracing proof of concept (gpu/metal/), NOT part of the ray_tracer
-# CLI/Qt GUI and nowhere near feature parity with either the CPU or
-# CUDA/OptiX GPU backends. See docs/METAL_GPU_FEASIBILITY.md for what this
-# is, why it's separate, and what porting the real GPU renderer to Metal
-# would actually take.
+# On macOS, pass -DRT_BUILD_METAL=ON to also build metal_poc - a Metal ray
+# tracing backend (gpu/metal/), nowhere near feature parity with either the
+# CPU or CUDA/OptiX GPU backends. Also links into ray_tracer itself (gaining
+# RT_HAVE_METAL, a real launcher/main.cpp --gpu dispatch branch, see the
+# RT_BUILD_METAL block below) and is runtime-probed by the Qt GUI
+# (m_metalGpuAvailable, qt_gui/mainwindow.h) - it stopped being a standalone-
+# only proof of concept partway through its own development; see
+# docs/METAL_GPU_FEASIBILITY.md for the full history and what feature-parity
+# gaps remain.
 #
 # tests/CMakeLists.txt is separate and unaffected by this file - it already
 # proved this project's CPU/shared header-only code (src/TheRestOfYourLife/*.h,
@@ -345,10 +348,10 @@ if(RT_BUILD_METAL)
     # FEASIBILITY.md's own section on this) so this same, single-compiled
     # object can ALSO be linked into ray_tracer below, mirroring
     # optix_renderer's own static-lib-linked-into-ray_tracer shape exactly
-    # (see RT_BUILD_GPU's own block further up) - not yet dispatched to
-    # from launcher/main.cpp (that's a separate, later phase), just linked
-    # in and proven to build correctly alongside the CPU-only code it
-    # already contains.
+    # (see RT_BUILD_GPU's own block further up) - and IS dispatched to from
+    # launcher/main.cpp's own --gpu path (see the target_link_libraries
+    # (ray_tracer ...) block further down in this same if() for exactly
+    # where that wiring happens).
     add_library(metal_renderer STATIC
         gpu/metal/metal_poc.mm
         # One .mm per hand-authored scene CATEGORY (MetalPocApp::buildXxx()

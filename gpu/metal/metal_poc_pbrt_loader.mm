@@ -1227,15 +1227,21 @@ void MetalPocApp::loadPbrtMedium(const pbrt_flatten::FlatScene& scene, float sce
 // genuinely separate texture (pbrtEnvTexture) instead - see
 // primaryRayKernel's own texture-argument comment.
 //
-// Deliberately miss-path-only for BOTH the constant-colour and
-// image cases (no NEE/MIS light-sampling strategy) - see
-// metal_poc.metal's own mirrored comments on why that's accepted
-// scope, not an oversight; a future NEE upgrade already has a
-// tested building block waiting (metal_poc_host_math.h's own
-// float-RGB buildEnvDistribution2D() overload, added but not yet
-// wired to anything - the exact same "phase 1 before phase 2"
-// staging earthTexture's own NEE support went through, sections
-// 69/71).
+// The image case gets a real NEE/MIS light-sampling strategy (section 97):
+// every material's own shading function that already does NEE against
+// earthTexture's own environment map also importance-samples pbrtEnvTexture
+// directly, via a SEPARATE EnvDistribution2D built from pbrtEnvImagePixels
+// (metal_poc_host_math.h's own float-RGB buildEnvDistribution2D() overload,
+// added in section 90, wired up in section 97 - the same "phase 1 before
+// phase 2" staging earthTexture's own NEE support went through in sections
+// 69/71) - see pbrtEnvMarginalCDF/pbrtEnvConditionalCDF/pbrtEnvMapWidth/
+// pbrtEnvMapHeight (buffers 22/23, metal_poc_dispatch.mm) and each shadeXxx()
+// function's own "pbrtEnv" NEE block. The constant-colour case stays
+// miss-path-only deliberately, not as an open gap - a spatially uniform
+// environment light needs no separate importance-sampling strategy at all;
+// cosine-weighted (or the material's own specular/GGX) BSDF sampling is
+// already optimal for a constant-radiance background, which is exactly why
+// no material function has a "pbrtEnvColor NEE" block anywhere.
 void MetalPocApp::loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene) {
     if (scene.infiniteLight.present) {
         if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0 &&
