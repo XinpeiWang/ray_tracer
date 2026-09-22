@@ -708,6 +708,63 @@ static void testLayeredCoatedProperties(id<MTLDevice> device, id<MTLLibrary> lib
     }
 }
 
+// cauchyEta() numeric cross-check - the one genuinely new, previously-
+// untested formula in the Mirror/Clearcoat/Dispersive material group
+// (see this PR's own scoping note: shadeMirror()/shadeClearcoat() fully
+// decompose into already-tested primitives - fresnelSchlickConductor(),
+// frDielectric(), lambertianPdf()'s own cosine-pdf shape - and
+// shadeRoughDielectric()'s own continuous pdf was already deferred in
+// section 191, so shadeDispersiveRoughDielectric() inherits that same
+// deferral rather than needing its own). Matches src/shared/fresnel.h's
+// own CauchyEta<double>() template exactly.
+static void testCauchyEta(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    std::mt19937 rng(161803);
+    std::uniform_real_distribution<double> lambdaDist(380.0, 750.0);  // visible spectrum, nm
+    std::uniform_real_distribution<double> aDist(1.3, 1.8);
+    std::uniform_real_distribution<double> bDist(0.001, 0.05);
+
+    struct { double lambda, A, B; } fixedCases[] = {
+        {589.3, 1.52, 0.00420},   // crown glass at the sodium D line
+        {486.1, 1.52, 0.00420},   // same glass, F line (shorter wavelength -> higher eta)
+        {656.3, 1.52, 0.00420},   // same glass, C line (longer wavelength -> lower eta)
+        {550.0, 1.0, 0.0},        // B=0 degenerates to a flat, wavelength-independent eta
+    };
+    std::vector<simd::float3> inputs;
+    std::vector<double> expected;
+    for (auto& c : fixedCases) {
+        inputs.push_back(simd::float3{(float)c.lambda, (float)c.A, (float)c.B});
+        expected.push_back(CauchyEta<double>(c.lambda, c.A, c.B));
+    }
+    for (int i = 0; i < 30; ++i) {
+        double lambda = lambdaDist(rng), A = aDist(rng), B = bDist(rng);
+        inputs.push_back(simd::float3{(float)lambda, (float)A, (float)B});
+        expected.push_back(CauchyEta<double>(lambda, A, B));
+    }
+
+    int n = (int)inputs.size();
+    id<MTLBuffer> inBuf = makeBuffer(device, inputs.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (runKernel(device, library, queue, @"test_cauchyEta", @[inBuf, outBuf], nil, n)) {
+        float* out = (float*)outBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "cauchyEta(lambda=%.1f, A=%.4f, B=%.5f) matches CauchyEta reference",
+                     inputs[i].x, inputs[i].y, inputs[i].z);
+            expectNear(label, out[i], expected[i], std::max(1e-5, std::fabs(expected[i]) * 1e-4));
+        }
+        // Physically-real dispersion check: shorter wavelengths refract
+        // MORE for any real glass (B>0) - the fixed cases above are
+        // ordered F(486.1nm) > D(589.3nm) > C(656.3nm) for exactly this
+        // reason. A sign error in the B/lambda^2 term wouldn't show up
+        // in the raw magnitude check above if it happened to cancel at
+        // one specific wavelength, but would invert this ordering.
+        expectTrue("cauchyEta: shorter wavelength (F line) has higher eta than D line",
+                   out[1] > out[0]);
+        expectTrue("cauchyEta: D line has higher eta than longer wavelength (C line)",
+                   out[0] > out[2]);
+    }
+}
+
 static void testGgxD(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // At normal incidence (hLocal == the shading normal), ggxD() has an
     // exact closed form regardless of alpha: D = 1/(pi*alpha^2) - see
@@ -1871,6 +1928,7 @@ int main() {
         testPrincipledPdf(device, library, queue);
         testNormalizedFresnelF(device, library, queue);
         testLayeredCoatedProperties(device, library, queue);
+        testCauchyEta(device, library, queue);
         testGgxD(device, library, queue);
         testGgxG1SmoothLimit(device, library, queue);
         testCheckerColor(device, library, queue);

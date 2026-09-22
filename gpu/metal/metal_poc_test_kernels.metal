@@ -238,6 +238,19 @@ kernel void test_coatedDiffuseProxyPdf(
     outputs[tid] = coatedDiffuseProxyPdf(wos[tid], wis[tid], alphas[tid]);
 }
 
+// cauchyEta() (metal_poc_materials_specular.metal) - already a
+// standalone, pure function, cross-checked against src/shared/
+// fresnel.h's own CauchyEta<double>() template (the shared dispersion
+// formula both shadeDispersiveDielectric() and
+// shadeDispersiveRoughDielectric() already call).
+kernel void test_cauchyEta(
+    device const float3* inputs [[buffer(0)]],   // (lambdaNm, A, B)
+    device float* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = cauchyEta(inputs[tid].x, inputs[tid].y, inputs[tid].z);
+}
+
 kernel void test_frDielectric(
     device const float2* inputs [[buffer(0)]],   // (cosThetaI, eta)
     device float* outputs [[buffer(1)]],

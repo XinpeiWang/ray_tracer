@@ -11741,3 +11741,70 @@ two separate negative controls (corrupted `normalizedFresnelF()`'s own
 formula: 40/40 cases failed; corrupted `layeredCoatedConductorF()`'s
 own zero-bounce term to force a guaranteed-negative value: 30/30 cases
 correctly caught by the non-negativity property check).
+
+## 194. Test-coverage series, part 5: cauchyEta() dispersion cross-check, and an honest "already covered" finding for Mirror/Clearcoat
+
+Fifth material family (parts 1-4: sections 190-193) - the smallest PR
+in the series so far, and the first where the research pass concluded
+most of the originally-flagged functions need NO new test at all.
+
+Originally scoped as `shadeMirror`/`shadeClearcoat`/
+`shadeDispersiveDielectric`/`shadeDispersiveRoughDielectric` -
+`metal_poc_materials_specular.metal`'s four functions with no direct
+CPU reference class (hand-rolled MSL, not ported from a `bxdfs*.h`
+struct, per the original gap audit). Confirmed via research
+(`grep -rni "mirror|clearcoat|dispersive" src/shared/bxdfs*.h` finds
+only prose, no `MirrorBxDF`/`ClearcoatBxDF`/`DispersiveBxDF` struct
+anywhere) rather than re-assuming the earlier audit's own framing was
+still accurate:
+
+- **`shadeMirror`**: purely delta, its only formula
+  (`fresnelSchlickConductor()`) is already cross-checked elsewhere.
+  Nothing new.
+- **`shadeClearcoat`**: NOT structurally identical to Principled's own
+  clearcoat lobe (section 192) - this material's coat is a fixed
+  smooth/delta reflection, not a rough GGX-VNDF lobe, so sections
+  191/192's `ggxConductorF`/`principledGgxBrdf` don't cover it directly
+  - but its own math fully decomposes into primitives ALREADY tested
+  independently (`fresnelSchlickConductor`, `frDielectric`, and the
+  same `cosSurface/M_PI_F` cosine-pdf shape `lambertianPdf()` already
+  covers). Nothing new.
+- **`shadeDispersiveRoughDielectric`**: identical GGX-VNDF machinery to
+  `shadeRoughDielectric`, which section 191 already explicitly
+  deferred (no continuous pdf exposed to cross-check) - inherits that
+  same deferral, not a new one.
+- **`shadeDispersiveDielectric`**: same delta reflect/refract shape as
+  `shadeDielectric` (also nothing new per section 191), EXCEPT one
+  genuinely new piece both dispersive functions share: `cauchyEta()`
+  (`metal_poc_materials_specular.metal`), the wavelength-to-IOR
+  dispersion formula, previously untested on either side.
+
+**The one real test**: `cauchyEta()` (already standalone, no extraction
+needed) cross-checked against `CauchyEta<double>()`
+(`src/shared/fresnel.h`) - 4 hand-picked cases (crown glass at the
+sodium D/F/C spectral lines, plus a `B=0` degenerate/achromatic case)
+plus a 30-case random sweep. Added a second, qualitatively different
+check beyond the raw magnitude comparison: a real-glass ordering
+assertion (shorter wavelengths refract MORE - F line > D line > C
+line) - specifically because a sign error in the `B/lambda^2` term
+could theoretically cancel out at one specific wavelength and slip
+past a magnitude-only check, but can't fool an ordering check across
+three different wavelengths of the same glass.
+
+**Net scope**: one small numeric cross-check, zero property tests
+needed (unlike section 193's layered materials, none of these 4
+functions is a stochastic Monte Carlo estimator - each is a single
+deterministic-direction delta bounce per hit), and three of the four
+originally-flagged functions confirmed to need no new coverage at all -
+an honest "already covered by existing tests" finding, not a failure to
+find something to test.
+
+**Verified**: full clean rebuild, ctest 4/4, negative control
+(corrupted `cauchyEta()`'s own sign, 34/34 numeric cases plus both
+ordering assertions failed correctly, reverted), and - since this PR
+touches ONLY test-support files (`metal_poc_test_kernels.metal`/
+`metal_poc_shader_tests.mm`), no production `shadeXxx()` shading
+function at all - an 81-scene hash sweep anyway, for full rigor and
+consistency with every other part of this series: 68/81 byte-identical,
+the same already-documented 13-scene noise set, zero new scenes (fully
+expected, given zero render-path code changed).
