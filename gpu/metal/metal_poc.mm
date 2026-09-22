@@ -815,6 +815,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "F1") { buildBilinearPatchScene(); return true; }
     if (scene_id == "F4") { buildCurveFibersScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
+    if (scene_id == "E3") { buildDielectricMediumShowcase(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
     if (scene_id == "B7") { buildCornellCoatedConductor(); return true; }

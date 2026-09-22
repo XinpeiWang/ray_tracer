@@ -1584,6 +1584,12 @@ struct MetalPocApp {
     // homogeneous medium" uniform, so reusing it needed no shader
     // changes. Section 138, docs/METAL_GPU_FEASIBILITY.md.
     void buildHomogeneousMediumScene();
+    // E3: Dielectric Medium Showcase - 3 tinted-glass spheres
+    // approximating CPU's own dielectric-plus-real-medium combination.
+    // See this method's own definition comment (metal_poc_scenes_e.mm)
+    // for the full "why," including the honest scope cut. Section 177,
+    // docs/METAL_GPU_FEASIBILITY.md.
+    void buildDielectricMediumShowcase();
     // B9: Cornell Crystal - buildCornellFamilyScene() with the sphere as
     // materialType 18 (NormalizedFresnelBxDF - a genuinely NEW material,
     // not previously implemented before this PR - see
