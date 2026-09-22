@@ -1118,6 +1118,172 @@ void MetalPocApp::buildMeasuredBrdfScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
+// B13: Subsurface Slab - matches src/TheRestOfYourLife/scenes_advanced.h's
+// own build_subsurface_slab() in STRUCTURE, but see that function's own
+// two objects first: a "wax slab" (dielectric box) and a "jade sphere"
+// (dielectric sphere), each with CPU's own `constant_medium` wrapping the
+// SAME shape for milky/scattering interior fill - NOT a real internal
+// scattering medium here (that would need combining materialType 28's own
+// medium machinery with real dielectric refraction at BOTH surfaces - a
+// substantially bigger combined feature E3's own comment already
+// identified and deliberately didn't attempt). Approximated the same way
+// E3 (buildDielectricMediumShowcase(), section 177) already established:
+// TINTED GLASS (materialType 2, already-working shadeDielectric() +
+// applyBeerLambertAbsorption(), zero new shader code), `color` derived
+// from the medium's own `sigma_t*(1-albedo)` (the ABSORBED, not
+// scattered, fraction per channel) - EXCEPT this scene's own Cornell-
+// family scale (`sceneScale = 2/555`, unlike E3's own `sceneScale = 1`)
+// means that coefficient must ALSO be divided by sceneScale before
+// reaching `mat.color`, or `applyBeerLambertAbsorption()`'s own
+// `exp(-color*hitDistance)` (hitDistance in WORLD units) silently
+// integrates the wrong physical optical depth - the same unit-rescale
+// correction A8's own materialType 28 sigmaT already needed (section
+// 176).
+//
+// The wax slab's own literal absorption (sigma_t=0.04, near-white
+// albedo (.98,.96,.90)) survives this port as-is: computed transmittance
+// through its own 160-400-unit path lengths stays in a visually
+// reasonable 0.2-0.9 range (a warm cream/amber tinted glass, not
+// black) - verified by direct render comparison below, not assumed.
+//
+// The jade sphere's own literal absorption does NOT survive as-is: its
+// own sigma_t=0.06 over a 180-unit diameter gives a green-channel
+// transmittance of well under 1% (and R/B far lower still) - a literal
+// port renders essentially a BLACK glass ball with a hairline green
+// rim, not a translucent jade look, confirmed by hand computation
+// before ever rendering. A deliberate, documented departure from the
+// literal `sigma_t*(1-albedo)` derivation: `kJadeAbsorptionScale`
+// below scales the jade sphere's OWN absorption down (not the slab's)
+// to put its own full-diameter green transmittance around 15-20%
+// (visually recognizable translucent jade) while keeping every
+// channel's own RELATIVE weighting (green absorbs least, so green
+// stays the brightest/most-transmissive channel, still reading as
+// green-tinted) - an honestly-tuned approximation, not a literal
+// physical port, same spirit as E3's own "tinted glass, not glowing-
+// from-within" scoping, just tuned further for THIS specific object's
+// own much higher optical density.
+void MetalPocApp::buildSubsurfaceSlab() {
+    using namespace cornell_box_data;
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float sceneScale = 2.0f / 555.0f;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // The 5 walls - cornell_box_data::kQuads[0..4], identical numbers to
+    // CPU's own hand-written wall list here (confirmed directly).
+    for (int i = 0; i < 5; ++i) {
+        const QuadSpec& q = kQuads[i];
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        addQuad(verts, normals, uvs, materials, toWorld(Q), toWorld(Q + u),
+                toWorld(Q + u + v), toWorld(Q + v), color);
+    }
+
+    // This scene's own ceiling light - (213,554,227)/130x105, emission
+    // (12,12,12) (B6's own thin-glass scene reuses this exact position/
+    // size with a DIFFERENT emission (15,15,15) - this one is B13's own
+    // literal instead).
+    {
+        const float3 Q{213.0f, 554.0f, 227.0f}, u{130.0f, 0.0f, 0.0f}, v{0.0f, 0.0f, 105.0f};
+        const float3 a = toWorld(Q), b = toWorld(Q + u), c = toWorld(Q + u + v), d = toWorld(Q + v);
+        const float3 lightColor{12.0f, 12.0f, 12.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, lightColor,
+                /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // Wax slab - dielectric box (0,0,0)-(200,300,160) translated
+    // (270,0,230), no rotation (unlike the standard Cornell family's own
+    // kBox, which IS rotated 15 degrees) - CPU's own box()+translate()
+    // call has no rotate_y wrapper at all.
+    {
+        const float3 minC{0.0f, 0.0f, 0.0f}, maxC{200.0f, 300.0f, 160.0f};
+        const float3 translate{270.0f, 0.0f, 230.0f};
+        const float3 dx{maxC.x - minC.x, 0.0f, 0.0f};
+        const float3 dy{0.0f, maxC.y - minC.y, 0.0f};
+        const float3 dz{0.0f, 0.0f, maxC.z - minC.z};
+        struct Face { float3 Q, u, v; };
+        const Face faces[6] = {
+            {float3{minC.x, minC.y, maxC.z},  dx,  dy},
+            {float3{maxC.x, minC.y, maxC.z}, -dz,  dy},
+            {float3{maxC.x, minC.y, minC.z}, -dx,  dy},
+            {float3{minC.x, minC.y, minC.z},  dz,  dy},
+            {float3{minC.x, maxC.y, maxC.z},  dx, -dz},
+            {float3{minC.x, minC.y, minC.z},  dx,  dz},
+        };
+        // sigma_t=0.04, albedo=(0.98,0.96,0.90) -> absorption =
+        // sigma_t*(1-albedo) = (0.0008, 0.0016, 0.0040) per pbrt-unit,
+        // divided by sceneScale to stay correct in world units (this
+        // scene's own comment above).
+        const float3 slabAbsorptionPbrt{0.04f * (1.0f - 0.98f), 0.04f * (1.0f - 0.96f), 0.04f * (1.0f - 0.90f)};
+        const float3 slabAbsorption = slabAbsorptionPbrt / sceneScale;
+        for (const Face& f : faces) {
+            addQuad(verts, normals, uvs, materials,
+                    toWorld(f.Q + translate), toWorld(f.Q + f.u + translate),
+                    toWorld(f.Q + f.u + f.v + translate), toWorld(f.Q + f.v + translate),
+                    slabAbsorption, /*materialType=*/2u, /*emission=*/simd::make_float3(0, 0, 0),
+                    /*lightId=*/-1, /*roughness=*/0.0f, /*ior=*/1.4f);
+        }
+    }
+
+    // Jade sphere - dielectric sphere (160,90,160) r=90, own absorption
+    // scaled down from the literal sigma_t*(1-albedo) derivation - see
+    // this function's own header comment for why and by how much.
+    {
+        const float kJadeAbsorptionScale = 0.3f;
+        const float3 jadeAbsorptionPbrt{0.06f * (1.0f - 0.1f), 0.06f * (1.0f - 0.5f), 0.06f * (1.0f - 0.2f)};
+        const float3 jadeAbsorption = (jadeAbsorptionPbrt * kJadeAbsorptionScale) / sceneScale;
+        const float3 center = toWorld(float3{160.0f, 90.0f, 160.0f});
+        const float radius = 90.0f * sceneScale;
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, radius});
+        sphereMaterials.push_back(TriangleMaterial{
+            PackedFloat3{jadeAbsorption.x, jadeAbsorption.y, jadeAbsorption.z},
+            /*materialType=*/2u, /*ior=*/1.5f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f});
+    }
+
+    // Background - (0.05,0.055,0.07), matching B13's own CameraConfig
+    // background_r/g/b exactly (scene_registry_data.h) - unlike every
+    // OTHER Cornell-family scene here, which stays pure black (no env
+    // light at all).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.05f, 0.055f, 0.07f};
+
+    // Camera - same lookfrom/lookat/fov every Cornell-family scene uses.
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+}
+
 // C1: HDRI Sky - matches src/TheRestOfYourLife/scenes_advanced.h's own
 // build_hdri_sky_world()/build_hdri_sky() exactly: a ground plane + 3
 // spheres (diffuse, fuzzy-metal, glass), lit ENTIRELY by a procedural

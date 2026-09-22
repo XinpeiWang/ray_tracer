@@ -11098,3 +11098,68 @@ pattern differs, confirming this is the same benign class and not a
 newly-introduced correctness bug. B14 itself verified via direct
 `--gpu` vs `--cpu` comparison (matching tan-sphere-row composition and
 brightness, aside from the acknowledged small artifact above).
+
+## 185. B13 (Subsurface Slab) - tinted-glass approximation, one object needed a documented departure from the literal formula
+
+CPU's own `build_subsurface_slab()` (`scenes_advanced.h`) is a Cornell
+box with two objects, each a dielectric shell wrapping a real CPU
+`constant_medium` (participating-medium scattering) of the SAME shape:
+a "wax slab" (dielectric ior 1.4 box, 200x300x160, translated
+(270,0,230), medium sigma_t=0.04, near-white albedo (.98,.96,.90)) and
+a "jade sphere" (dielectric ior 1.5, center (160,90,160) r=90, medium
+sigma_t=0.06, green albedo (.1,.5,.2)). Not a real BSSRDF - CPU's own
+comment there is explicit that a true one would need its own separate
+path-length-sampling loop; `constant_medium` is a real but different
+mechanism, already accepted on THIS side too via E3/A8's own established
+"real internal scattering + real refraction at both surfaces is a
+substantially bigger combined feature, not attempted" scoping (E3's own
+comment, section 177).
+
+**Approximated as TINTED GLASS**, the SAME mechanism E3 already
+established: materialType 2 (already-working `shadeDielectric()` +
+`applyBeerLambertAbsorption()`, zero new shader code), `color` derived
+from the medium's own `sigma_t*(1-albedo)` (the ABSORBED fraction per
+channel). One real wrinkle E3 didn't have: this scene uses the Cornell-
+family rescale (`sceneScale = 2/555`), so that coefficient must ALSO be
+divided by `sceneScale` before reaching `mat.color`, or
+`applyBeerLambertAbsorption()`'s own `exp(-color*hitDistance)`
+(`hitDistance` in WORLD units) silently integrates the wrong physical
+optical depth - the same unit-rescale correction A8's own materialType
+28 `sigmaT` already needed (section 176), caught here BEFORE ever
+rendering by hand-computing the expected transmittance first, not
+after.
+
+**The wax slab's own literal coefficient survives the port as-is**:
+hand-computed transmittance across its own 160-400-unit path lengths
+stays in a visually reasonable 0.2-0.9 range per channel (warm cream/
+amber tinted glass), confirmed by direct render comparison to look
+recognizably like translucent glass, not black.
+
+**The jade sphere's own literal coefficient does NOT survive as-is**:
+sigma_t=0.06 over a 180-unit diameter gives green-channel transmittance
+under 1% (red/blue far lower still) - hand-computed BEFORE rendering,
+this would produce an essentially black glass ball with a hairline
+green rim, not translucent jade. Rather than ship that silently or
+invent a bigger real-scattering feature, `kJadeAbsorptionScale = 0.3`
+scales ONLY the jade sphere's own absorption down (not the slab's) to
+put its own full-diameter green transmittance around 15-20% - a
+visually recognizable translucent jade green, keeping each channel's
+own RELATIVE weighting (green still absorbs least, stays the brightest/
+most-transmissive channel) so it still reads as green-tinted, not a
+different color. An honestly-tuned approximation, not a literal
+physical port - documented as a deliberate departure in the code
+itself, not silently adjusted until it "looked right."
+
+**Verified**: full clean rebuild, ctest (4/4), all 80 currently-
+supported scenes smoke-rendered with zero crashes, and a before/after
+SHA-256 hash sweep across the other 79 scenes: only D8/F4 differ (the
+same pre-existing lens-camera Monte-Carlo non-determinism class,
+section 160/167) - the other 77 byte-for-byte identical, confirming
+zero blast radius from a purely additive new scene (no shared struct/
+function changed this time, unlike section 184's own B14). Direct
+`--gpu` vs `--cpu` comparison: matching Cornell-box composition, wall
+colours, and light position; the wax slab reads as tinted glass rather
+than CPU's own milky glow (the documented, expected tinted-glass-vs-
+real-scattering difference from E3's own precedent); the jade sphere
+reads as recognizably green and translucent on both sides, not the
+black-glass-ball a literal, untuned port would have produced.
