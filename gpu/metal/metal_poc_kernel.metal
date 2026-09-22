@@ -1208,6 +1208,9 @@ kernel void primaryRayKernel(
             } else if (mat.materialType == 24u) {
                 if (!shadePrincipled(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
+            } else if (mat.materialType == 31u) {
+                if (!shadeHair(mat, hitPoint, facingNormal,
+                                  rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
             } else if (mat.materialType == 18u) {
                 if (!shadeNormalizedFresnel(mat, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,

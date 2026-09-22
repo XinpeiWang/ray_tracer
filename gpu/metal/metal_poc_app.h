@@ -1702,6 +1702,12 @@ struct MetalPocApp {
     // convention, since this scene's own extent is already compact).
     // Section 145, docs/METAL_GPU_FEASIBILITY.md.
     void buildPrincipledShowcase();
+    // B11: Hair Fibers - 5 spheres (materialType 31, shadeHair() -
+    // metal_poc_materials_hair.metal) with pbrt-v4's own HairBxDF applied
+    // as a fur/fiber material, matching build_hair_fibers() exactly. See
+    // that Metal function's own comment for the field-reuse layout and
+    // section 183, docs/METAL_GPU_FEASIBILITY.md.
+    void buildHairFibersScene();
     // C1: HDRI Sky - an open scene (ground + 3 spheres: diffuse, rough
     // metal, glass) lit ENTIRELY by a procedural gradient sky, no other
     // light at all. Needs NO new materialType or shader code at all -

@@ -231,6 +231,107 @@ kernel void test_equalAreaSphereToSquare(
     outputs[tid] = equalAreaSphereToSquare(directions[tid]);
 }
 
+// HairBxDF numeric cross-check kernels (B11 re-attempt, section 183 -
+// see docs/METAL_GPU_FEASIBILITY.md) - each dispatches exactly one
+// function from metal_poc_materials_hair.metal against a fixed input
+// buffer, so metal_poc_shader_tests.mm can diff the result against the
+// SAME src/shared/bxdfs_hair.h/bxdfs_principled.h template (T=double)
+// this file is a hand transcription of, term-by-term rather than only
+// via a full-scene render - the methodology the first B11 attempt didn't
+// use and got stuck without.
+kernel void test_atan2Zero(
+    device const float2* inputs [[buffer(0)]],
+    device float* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = atan2(inputs[tid].y, inputs[tid].x);
+}
+
+kernel void test_hairMp(
+    device const float* cosThetaIs [[buffer(0)]],
+    device const float* cosThetaOs [[buffer(1)]],
+    device const float* sinThetaIs [[buffer(2)]],
+    device const float* sinThetaOs [[buffer(3)]],
+    device const float* vs [[buffer(4)]],
+    device float* outputs [[buffer(5)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = hairMp(cosThetaIs[tid], cosThetaOs[tid], sinThetaIs[tid], sinThetaOs[tid], vs[tid]);
+}
+
+kernel void test_hairNp(
+    device const float* phis [[buffer(0)]],
+    device const int* ps [[buffer(1)]],
+    device const float* ss [[buffer(2)]],
+    device const float* gammaOs [[buffer(3)]],
+    device const float* gammaTs [[buffer(4)]],
+    device float* outputs [[buffer(5)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = hairNp(phis[tid], ps[tid], ss[tid], gammaOs[tid], gammaTs[tid]);
+}
+
+kernel void test_hairComputeAp(
+    constant HairBxDFParams* params [[buffer(0)]],
+    device const float* cosThetaOs [[buffer(1)]],
+    device float3* outputsR [[buffer(2)]],  // ap_r[0..3] packed as two float3 rows below
+    device float3* outputsG [[buffer(3)]],
+    device float3* outputsB [[buffer(4)]],
+    device float* outputsRem [[buffer(5)]],  // ap[3] (r,g,b) since float3 only holds 3
+    uint tid [[thread_position_in_grid]])
+{
+    float ap_r[4], ap_g[4], ap_b[4];
+    hairComputeAp(params[tid], cosThetaOs[tid], ap_r, ap_g, ap_b);
+    outputsR[tid] = float3(ap_r[0], ap_r[1], ap_r[2]);
+    outputsG[tid] = float3(ap_g[0], ap_g[1], ap_g[2]);
+    outputsB[tid] = float3(ap_b[0], ap_b[1], ap_b[2]);
+    outputsRem[tid * 3 + 0] = ap_r[3];
+    outputsRem[tid * 3 + 1] = ap_g[3];
+    outputsRem[tid * 3 + 2] = ap_b[3];
+}
+
+kernel void test_hairEvalLocal(
+    constant HairBxDFParams* params [[buffer(0)]],
+    device const float3* wos [[buffer(1)]],
+    device const float3* wis [[buffer(2)]],
+    device float3* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float fr, fg, fb;
+    hairEvalLocal(params[tid], wos[tid].x, wos[tid].y, wos[tid].z,
+                   wis[tid].x, wis[tid].y, wis[tid].z, fr, fg, fb);
+    outputs[tid] = float3(fr, fg, fb);
+}
+
+kernel void test_hairScatteringPdfLocal(
+    constant HairBxDFParams* params [[buffer(0)]],
+    device const float3* wos [[buffer(1)]],
+    device const float3* wis [[buffer(2)]],
+    device float* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = hairScatteringPdfLocal(params[tid], wos[tid].x, wos[tid].y, wos[tid].z,
+                                           wis[tid].x, wis[tid].y, wis[tid].z);
+}
+
+kernel void test_hairSample(
+    constant HairBxDFParams* params [[buffer(0)]],
+    device const float3* tangents [[buffer(1)]],
+    device const float3* wis [[buffer(2)]],
+    device const float4* us [[buffer(3)]],  // (u1,u2,u3,u4)
+    device float3* outWo [[buffer(4)]],
+    device float3* outRgb [[buffer(5)]],
+    device int* outValid [[buffer(6)]],
+    uint tid [[thread_position_in_grid]])
+{
+    BxDFSampleResultGPU res = hairSample(params[tid], tangents[tid].x, tangents[tid].y, tangents[tid].z,
+                                          wis[tid].x, wis[tid].y, wis[tid].z,
+                                          us[tid].x, us[tid].y, us[tid].z, us[tid].w);
+    outWo[tid] = float3(res.wo_x, res.wo_y, res.wo_z);
+    outRgb[tid] = float3(res.r, res.g, res.b);
+    outValid[tid] = res.valid ? 1 : 0;
+}
+
 kernel void test_goniometricLightRadiance(
     device const float3* wiFromLights [[buffer(0)]],
     constant GoniometricLight& light [[buffer(1)]],

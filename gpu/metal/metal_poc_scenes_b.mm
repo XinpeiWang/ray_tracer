@@ -923,6 +923,99 @@ void MetalPocApp::buildPrincipledShowcase() {
     pbrtSceneOffset = sceneOffset;
 }
 
+// B11: Hair Fibers - matches src/TheRestOfYourLife/scenes_advanced.h's own
+// build_hair_fibers() exactly: a giant-sphere ground plus 5 spheres (radius
+// 1.0) using materialType 31 (shadeHair(), metal_poc_materials_hair.metal)
+// in place of CPU's own hair_material, each with its own sigma_a/beta_m/
+// beta_n/alpha_deg (see the HairSpec table below, transcribed directly
+// from build_hair_fibers()'s own 5 hair_material(...) constructor calls -
+// eta uses hair_material's own default of 1.55 for all 5, matching CPU
+// exactly since none of the 5 calls there override it). The overhead
+// light's own deliberately dim intensity (0.22,0.22,0.19, not this
+// series' usual 6,6,6) is NOT a Metal-specific tuning choice - it mirrors
+// a pre-existing CPU calibration already established in
+// build_hair_fibers()'s own comment (hair's BSDF response is naturally far
+// brighter than diffuse/glossy surfaces', so the "normal" intensity blows
+// out the whole frame under ACES).
+void MetalPocApp::buildHairFibersScene() {
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+
+    // Dark floor - point3(0,-1000,0), radius 1000, lambertian(0.05,0.05,0.06).
+    {
+        const float3 center = float3{0.0f, -1000.0f, 0.0f} + sceneOffset;
+        TriangleMaterial mat{PackedFloat3{0.05f, 0.05f, 0.06f},
+            /*materialType=*/0u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, 1000.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // 5 hair spheres - field reuse matches shadeHair()'s own comment:
+    // color=sigma_a(rgb), ior=eta, roughness=beta_m, conductorEta.x=beta_n,
+    // conductorEta.y=alpha_deg.
+    struct HairSpec { float3 pos; float3 sigmaA; float betaM; float betaN; float alphaDeg; };
+    const HairSpec kHairSpheres[5] = {
+        {{-3.5f, 1.0f, 0.0f},  {0.06f, 0.10f, 0.20f},   0.25f, 0.25f, 2.0f},  // dark brown
+        {{-1.2f, 1.0f, 0.4f},  {0.01f, 0.015f, 0.03f},  0.30f, 0.30f, 2.0f}, // blonde
+        {{ 1.2f, 1.0f, -0.4f}, {0.02f, 0.08f, 0.18f},   0.20f, 0.20f, 3.0f}, // auburn
+        {{ 3.5f, 1.0f, 0.0f},  {0.001f, 0.001f, 0.002f}, 0.45f, 0.45f, 1.0f}, // white/silver
+        {{ 0.0f, 1.0f, 2.3f},  {0.50f, 0.55f, 0.60f},   0.15f, 0.15f, 2.0f},  // fine black
+    };
+    const float eta = 1.55f;
+    for (const HairSpec& s : kHairSpheres) {
+        const float3 center = s.pos + sceneOffset;
+        TriangleMaterial mat{PackedFloat3{s.sigmaA.x, s.sigmaA.y, s.sigmaA.z},
+            /*materialType=*/31u, /*ior=*/eta, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/s.betaM};
+        mat.conductorEta = PackedFloat3{s.betaN, s.alphaDeg, 0.0f};
+        spheres.push_back(SphereData{PackedFloat3{center.x, center.y, center.z}, 1.0f});
+        sphereMaterials.push_back(mat);
+    }
+
+    // Overhead area light - point3(-5,6,-5), 10x7, diffuse_light(0.22,0.22,0.19).
+    {
+        const float3 a = float3{-5.0f, 6.0f, -5.0f} + sceneOffset;
+        const float3 edgeU{10.0f, 0.0f, 0.0f};
+        const float3 edgeV{0.0f, 0.0f, 7.0f};
+        const float3 lightColor{0.22f, 0.22f, 0.19f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, a + edgeU, a + edgeU + edgeV, a + edgeV,
+                lightColor, /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area,
+            PackedFloat3{lightColor.x, lightColor.y, lightColor.z}});
+    }
+
+    // Background - (0.05,0.05,0.07), matching B11's own CameraConfig
+    // background_r/g/b exactly (scene_registry_data.h).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.05f, 0.05f, 0.07f};
+
+    // Camera: fov=45, lookfrom=(0,2.5,14), lookat=(0,1,0).
+    const float3 lookfrom = float3{0.0f, 2.5f, 14.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 45.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
 // C1: HDRI Sky - matches src/TheRestOfYourLife/scenes_advanced.h's own
 // build_hdri_sky_world()/build_hdri_sky() exactly: a ground plane + 3
 // spheres (diffuse, fuzzy-metal, glass), lit ENTIRELY by a procedural
