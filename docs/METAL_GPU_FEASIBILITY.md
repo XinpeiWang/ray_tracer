@@ -10850,3 +10850,142 @@ non-determinism, section 160). The other 49 - every scene this code
 path is gated off for (`uniforms.fogSigmaT > 0.0`) - are byte-for-byte
 identical, confirming the fix is correctly scoped with zero blast
 radius beyond the one scene that actually exercises it today.
+
+## 183. B11 (Hair Fibers) - a real HairBxDF port, a first attempt reverted, then a second attempt that found two genuine Metal-specific numeric bugs
+
+A first attempt at B11 (see this PR's own commit history) ported
+`src/shared/bxdfs_hair.h`'s `HairBxDF<T>` (Marschner 2003 + Chiang
+2016, already used directly as real GPU device code by both OptiX
+backends - `optix_device_helpers.h`/`wavefront_device_helpers.h`, no
+hand-duplicated GPU variant needed there) into a new
+`metal_poc_materials_hair.metal` (materialType 31, field-reuse into
+`TriangleMaterial` matching materialType 28's own convention - no new
+buffer needed). The scene (`buildHairFibersScene()`, matching
+`build_hair_fibers()`'s 5 spheres + dim overhead light exactly) and
+integration shape (no NEE, `specularBounce=true`, the same
+"specular-tier" pattern `shadeMirror()`/`shadePrincipled()` already
+use, since CPU's own `hair_material.h` sets `srec.skip_pdf=true`) were
+both correctly identified. That first attempt found the render badly
+blown out, spent 12+ bisection tests without pinning the cause to a
+specific line, and was reverted rather than shipped - see this PR's
+own earlier commits for that investigation.
+
+**This attempt used a fundamentally different methodology**: instead
+of bisecting a full-scene render, it built a NUMERIC CROSS-CHECK
+harness in `metal_poc_shader_tests.mm` that dispatches the actual
+device functions (`hairMp`/`hairNp`/`hairComputeAp`/`hairEvalLocal`/
+`hairScatteringPdfLocal`/`hairSample`) against fixed and randomized
+inputs and diffs the results against `HairBxDF<double>` - the SAME
+production reference CPU/OptiX already render with, instantiated
+directly (`#include "../../src/shared/bxdfs.h"`) rather than
+hand-re-derived, since the question that matters is Metal-vs-existing-
+reference parity, not academic pbrt-correctness. This isolates a wrong
+device function immediately instead of guessing from rendered pixels,
+and the harness stays in the tree as permanent regression coverage
+(`testHairMp`/`testHairNp`/`testHairEvalAndPdf`/`testHairRandomSweep`/
+`testHairSample`, `metal_poc_shader_tests` ctest target).
+
+**Why the earlier hypothesis (int64_t Bessel-series overflow) was
+avoided proactively, not found as a bug**: `hairI0()`'s own
+`i4 * ifact * ifact` denominator term reaches ~3.4e16 by the loop's
+last iteration - large enough to silently overflow a 32-bit int if
+hand-ported naively (the C++ reference uses `int64_t`, which MSL
+doesn't portably support). This port accumulates in plain `float`
+instead, sidestepping the risk entirely - by the time the denominator
+is that large, the corresponding series term is already negligible
+relative to the running sum, so float32's reduced denominator
+precision doesn't move `I0(x)`'s own working-precision result. The
+numeric cross-check (200+ randomized cases spanning both of
+`hairMp()`'s branches, including `a` values deliberately swept up
+toward the `x>12` asymptotic-formula cutoff) found zero divergence
+here - this was preventive design, not a bug this PR fixed.
+
+**Bug #1, found and fixed: `atan2(0,0)` returns NaN in MSL, not 0.**
+IEEE754/C++'s `std::atan2(0,0) == 0` (a well-defined convention the
+`HairBxDF<double>` reference and pbrt-v4 itself rely on), but this
+project's Metal shaders compile with
+`MTLCompileOptions.fastMathEnabled` defaulting to `YES` (never
+explicitly set - `metal_poc_dispatch.mm`/`metal_poc_shader_tests.mm`
+both just do `[MTLCompileOptions new]`), and Apple's own MSL spec
+documents that fast math "assumes operands are neither NaN nor
+infinity" - confirmed empirically via a dedicated `test_atan2Zero`
+kernel (`atan2(0,0)` → `nan` on a real M2 GPU; every other input,
+including values as small as 1e-8, behaves correctly). `phi_o =
+atan2(wo_z, wo_y)` hits this exact input whenever a direction's local
+y/z components are BOTH exactly zero - not a rare edge case for
+HairBxDF here specifically: it's the geometry at the visible CENTER of
+a sphere whenever that sphere's own surface normal stands in for the
+fiber tangent (B11's own convention, `hair_material.h`'s documented
+`tangent_is_dpdu=false` default), since many camera rays land at or
+very near that exact alignment there. Once NaN, it propagates through
+`hairNp()` into `fr`, and Metal's own `min()` intrinsic prefers the
+non-NaN operand (OpenCL `fmin` semantics) - so the corrupted ratio
+silently resolved to exactly `kMaxAttenuation` (50) rather than
+crashing or producing an obviously-wrong value. Fixed with a
+`hairAtan2Safe(y,x)` wrapper (returns 0 for exact (0,0), otherwise
+calls `atan2`) at all 5 `phi_o`/`phi_i` call sites. Verified via a
+dedicated `testHairGrazingCenterBias` case (`wi` set exactly
+anti-parallel to `tangent`, the exact degenerate geometry, averaged
+over 500 random `u1..u4` draws): before the fix, GPU's mean ratio was
+`50.0000` (every sample saturating the clamp) against a reference mean
+of `17.2362`; after, `17.2363` - matching to 4 decimal places.
+
+**Bug #2, found and mitigated: float32 can't stably evaluate
+`hairMp()`'s own near-cancellation for the single most extreme
+material in this scene.** Even after fixing the atan2 bug, B11's own
+"fine black fur" sphere (`sigma_a=(0.50,0.55,0.60)`, `beta_m=beta_n=
+0.15` - by a wide margin both the highest absorption AND narrowest
+lobes of the scene's 5 hair materials) still rendered as a near-solid-
+black sphere with only sparse, unstable fireflies, essentially
+unchanged between 256 and 2048 samples/pixel (mean pixel luminance
+27.7 vs 28.1 in a fixed screen region - a flat, wrong expected value,
+not slow convergence toward CPU's own 188.7 there). A dedicated
+`test_hairSample` NaN/Inf marker never fired for real render pixels
+(ruling out silent NaN propagation as the cause here), and neither
+regularizing `beta_m`/`beta_n` alone (floored at 0.3, CPU's own
+`hair_material.h::do_regularize` value) nor reducing `sigma_a` alone
+fixed it - only changing BOTH together did. The mechanism: with
+absorption this high, `hairComputeApPdf()`'s importance sampling
+correctly concentrates nearly all weight onto the p=0 (R, pure surface
+reflection - the only lobe NOT attenuated by `sigma_a` at all) lobe,
+since TT/TRT are absorbed away almost entirely - but that means this
+ONE dominant lobe's own `hairMp()` evaluation (`exp(LogI0(a) - b -
+1/v + ...)`, a near-cancellation between two large terms that must
+land within a narrow window of each other to produce a sane result)
+is no longer "averaged out" by three more forgiving lobes the way it
+is for every other material here. float32 (Metal compute has no
+native double) isn't stable enough for that cancellation at
+`beta_m=0.15`'s correspondingly tiny `v`; CPU/OptiX's double precision
+is. **Mitigated, not root-caused to a single line**: `shadeHair()` now
+applies pbrt-v4's own documented path-regularization mechanism (see
+`hair_material.h`'s own `do_regularize` parameter, there an
+integrator-level opt-in CPU rarely needs) UNCONDITIONALLY, but only
+when triggered - `max(sigma_a channel) > 0.3` floors `beta_m`/`beta_n`
+at 0.6 (empirically verified sufficient on real hardware; CPU's own
+0.3 was verified INSUFFICIENT for this float32 failure mode). In this
+scene only the black-fur sphere crosses that threshold (its nearest
+neighbour is auburn at 0.18) - every other material's `beta_m`/
+`beta_n` passes through untouched, preserving `build_hair_fibers()`'s
+own documented intent ("Each sphere uses slightly different hair
+parameters... to show variety"). The regularized sphere is visibly
+smoother/less sparkly than an unregularized double-precision render of
+the identical parameters would be - a real, acknowledged departure
+from bit-parity for this one material, traded for a stable, non-broken
+render instead of a silently-wrong near-black one.
+
+**Verified**: full clean rebuild, ctest (4/4, including the new
+`testHairMp`/`testHairNp`/`testHairEvalAndPdf`/`testHairRandomSweep`/
+`testHairSample`/`testHairGrazingCenterBias`/`testAtan2Zero` cases),
+all 78 currently-supported scenes smoke-rendered with zero crashes,
+and a before/after SHA-256 hash sweep across the 77 OTHER
+already-supported scenes (i.e. excluding brand-new B11 itself, which
+has no "before" to diff): exactly 2 differ (D8, F4 - both the
+already-documented lens-camera Monte-Carlo non-determinism class,
+section 160/167), the other 75 byte-for-byte identical, confirming
+zero blast radius from the new materialType/shader-file addition. B11
+itself verified via direct `--gpu` vs `--cpu` render comparison at
+multiple sample counts (256, 512) - all 5 spheres visible and
+distinguishable, no blown-out or solid-black regions, composition and
+relative brightness matching the CPU reference; the regularized
+sphere's own softer highlight is the one acknowledged, documented
+departure from exact CPU parity described above.

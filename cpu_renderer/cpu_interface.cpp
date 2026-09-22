@@ -982,6 +982,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B23",                         // Glass Prism Dispersion, new materialType 22 dispersive dielectric (section 143)
 		"B24",                         // Frosted Prism Dispersion, new materialType 23 dispersive rough dielectric (section 144)
 		"B10",                         // Principled Showcase, new materialType 24 PrincipledBxDF (section 145)
+		"B11",                         // Hair Fibers, new materialType 31 HairBxDF (section 183)
 		"C1",                          // HDRI Sky, no new materialType/shader code needed (section 146)
 		"C7",                          // Portal Infinite Light, no new materialType/shader code needed (section 147)
 		"I3",                          // ExposureToneMapping, reuses C1's own world + a new --exposure implementation (section 148)
