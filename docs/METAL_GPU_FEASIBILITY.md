@@ -11239,3 +11239,89 @@ ground, earth/Perlin-marble/metal/glass spheres, and 1000-sphere
 cluster all reading the same on both sides; the smoke sphere's own
 tinted-glass-vs-real-scattering difference is the one documented,
 expected departure (same category as B13's own wax slab).
+
+## 187. Structural refactor, part 5: metal_poc_app.h's own type declarations and free-standing scene helpers split into metal_poc_gpu_types.h/metal_poc_scene_helpers.h
+
+Same periodic file-size review as sections 156/173/180/181, continued
+autonomously after H1 (CrytekSponza) was investigated and declined
+(confirmed via research, not assumed, that its required
+`sponza.obj`/`.mtl`/textures don't exist anywhere in the repo or its
+git history - same "asset gap, not code gap" bucket as H2-H12; skipped
+per direct instruction rather than attempting a doomed implementation).
+`metal_poc_app.h` had grown to 1,987 lines and, unlike the
+`struct MetalPocApp` declaration it's named for, mixed three genuinely
+separate concerns that happened to accumulate in the same file: GPU-
+buffer-facing type declarations (`Uniforms` through `CylinderData`),
+free-standing scene-construction helpers (`addQuad`, `loadObjMesh`,
+`bilateralDenoise`, `addBilinearPatch`, `addTaperedTube`,
+`reflectanceToConductorK`, `fresnelMoment1`,
+`cauchyCoefficientsFromAbbe`, `executableDir`), and the actual
+`MetalPocApp` class declaration (76 `void buildXxx()` scene-builder
+method declarations plus the Stage 1-5 pipeline methods) - the same
+"one file, several unrelated concerns" shape sections 156/173/180/181
+already split elsewhere in this codebase.
+
+Pure code motion, same precedent: the two non-class concerns were
+`sed`-extracted into two new headers, `gpu/metal/metal_poc_gpu_types.h`
+(types) and `gpu/metal/metal_poc_scene_helpers.h` (free functions,
+`#include`-ing the types header since several of these functions
+construct `TriangleMaterial`/`PackedFloat3` values), each verbatim
+except the same `static`→`inline` header-multi-inclusion fix this
+project's every prior header split already needed (none of these
+functions were `static` here to begin with - they were already
+`inline` in the original `metal_poc_app.h`, so no change was needed at
+all beyond moving the text). `metal_poc_app.h` itself now holds only
+its own includes plus `#include "metal_poc_gpu_types.h"` /
+`#include "metal_poc_scene_helpers.h"`, and the `struct MetalPocApp`
+declaration - dropping to 898 lines. No CMakeLists.txt change needed
+(both new files are headers, transitively included via
+`metal_poc_app.h`, which every `.mm` translation unit already
+`#include`s).
+
+**Verified**: full clean rebuild, ctest (4/4), and a before/after
+SHA-256 hash sweep across all 81 currently-supported scenes (a
+worktree checkout of `main` built as the baseline, rather than
+`git stash`, so the refactor branch's own working tree stayed
+untouched throughout). First pass: 70 scenes matched byte-for-byte, 11
+differed. Investigating each of the 11 individually (rather than
+reflexively waving them through as "the usual noise class," per
+section 160/167's own established discipline) found two distinct
+causes:
+
+- **A9** was a one-off sweep-run fluke, not a real difference - three
+  repeat renders each of baseline and new (128x128, 16spp, matching
+  `metal_poc_smoke_render`'s own CTest settings) all six hashed
+  identical to each other. Not investigated further since it stopped
+  reproducing at all.
+- **The other 10 (B2, B4, B5, B7, B8, B9, B10, D1, D3, D8)** are
+  genuinely non-deterministic in the UNMODIFIED baseline binary alone
+  (confirmed by rendering each one twice, back-to-back, with zero
+  refactor-branch code involved at all - every one of the 10 produced
+  a different hash from itself). This means the "known-accepted
+  non-determinism: D8, F4, occasionally D12" note this project's own
+  hash-sweep discipline previously carried (sections 160/167/175/180/
+  181/186) undersold how broad this class actually is - it's not 2-3
+  specific scenes, it's evidently any scene whose GPU shadow-ray/BVH-
+  traversal pattern is sensitive to the same sub-ULP rounding-order
+  effect, which turns out to be a much larger fraction of the roster
+  than previously observed (likely because earlier sweeps' baselines
+  happened not to trigger it for these particular 10, not because
+  they're special). Confirmed the refactor adds no NEW discrepancy on
+  top of this pre-existing noise, not just asserted it: a pixel-level
+  comparison tool (`stb_image`-based, ad hoc, not committed - diff
+  pixel count / max channel delta / RMSE) run on matched settings
+  showed baseline-vs-baseline self-noise and baseline-vs-refactor noise
+  landing in the SAME order of magnitude for every one of the 10 (e.g.
+  B7: 561 differing pixels/10000, RMSE 3.7 baseline-vs-baseline, vs 832
+  differing pixels/10000, RMSE 6.1 baseline-vs-refactor - the same
+  sparse, localized-edge character, not a systemic content shift).
+  D8's own magnitude (RMSE ~11-25, ~4,000+/16,384 differing pixels) is
+  visibly the largest of the 10 in both comparisons, consistent with
+  its own prior single-scene flagging - it was just never previously
+  established that 9 OTHER scenes share the same underlying
+  sensitivity at a smaller magnitude. The remaining 70 (71 counting
+  A9) matched byte-for-byte, confirming zero behavioural change from
+  this refactor - a pure file-boundary move should and does produce
+  identical output everywhere it CAN be verified exactly; the 10 where
+  it can't are a pre-existing property of the renderer, not of this
+  change.
