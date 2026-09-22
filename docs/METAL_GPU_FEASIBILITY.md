@@ -11445,3 +11445,88 @@ found this - won't be misdirected into re-implementing NEE for the
 pbrt image-based env light a second time, or reporting the launcher/CI
 integration as a "remaining large architectural phase" when it already
 shipped.
+
+## 190. Closing a real test-coverage gap, part 1: Lambertian/DiffuseTransmission numeric cross-check (first of a series)
+
+The same gap audit (sections 188/189) also found that no `shadeXxx()`
+material function had a dedicated numeric cross-check test - only their
+underlying math primitives (Fresnel, GGX D/G1) and, for hair, the
+LOCAL-frame BxDF eval/pdf (section 183's own `hairEvalLocal`/
+`hairScatteringPdfLocal`) did. Every one of the ~9 remaining material
+families identified needs its own scoped PR (a large enough undertaking
+that a single PR attempting all of them would be unreviewable) - this
+is the first, chosen for being the cheapest/highest-confidence: both
+Lambertian and Diffuse Transmission have a direct, already-proven CPU
+reference class in `src/shared/` (`DiffuseBxDF<T>`/
+`DiffuseTransmissionBxDF<T>`, `bxdfs_simple.h`/`bxdfs_layered.h`) that
+the CPU/OptiX renderers already trust.
+
+**The real obstacle, and how it was solved**: unlike hair, this
+codebase's own `shadeLambertian()`/`shadeDiffuseTransmission()`
+(`metal_poc_materials_diffuse.metal`) had their PDF formula inlined
+directly, 3-4 times each, mixed into ~500 combined lines of NEE/shadow-
+ray/light-loop code with no pure, testable function a kernel could call
+in isolation - the same "no existing pattern tests a full shadeXxx()"
+gap a research pass confirmed before writing anything. Rather than
+either skip testing this (leaving the gap open) or duplicate the
+formula into a new test-only function (which could pass even if the
+REAL formula were wrong - not a real test), extracted the PDF math into
+two small, named, reusable functions in `metal_poc_sampling.metal` -
+`lambertianPdf(cosWi)` and `diffuseTransmissionPdf(cosWi, pr, pt)` -
+and repointed every one of the 4 NEE/tail call sites in each function at
+them. This is the SAME factoring precedent hair's own
+`hairScatteringPdfLocal()` already established (section 183), just
+applied to a material family that hadn't needed it yet.
+
+**Byte-identical, not just equivalent, verified two ways**: three of
+the four call sites per function were a direct drop-in (the NEE blocks
+already gate on the relevant cosine's sign before computing a PDF, so
+`lambertianPdf`'s own `cosWi > 0` branch and `diffuseTransmissionPdf`'s
+own sign-based lobe pick are provably redundant with, not a behavior
+change from, the surrounding `if` they're now inside). The 4th call
+site per function (each `bsdfPdf` tail assignment) needed care: the
+ORIGINAL code floors the lobe-side cosine at `0.0001` before dividing
+(`max(dot(...), 0.0001)`), a defensive divide-by-near-zero guard, not a
+different formula - preserved exactly by flooring first and passing the
+ALREADY-floored value in (`lambertianPdf(max(dot(...), 0.0001f))` for
+Lambertian; `diffuseTransmissionPdf(reflect ? flooredLobeCos :
+-flooredLobeCos, pr, pt)` for diffuse transmission, since that
+function's own sign convention is relative to `facingNormal`, not
+`lobeNormal`). Verified by (1) a full 81-scene before/after SHA-256
+hash sweep (worktree baseline at `main`, matching section 187's own
+established methodology): 68/81 byte-identical, the other 13 all
+independently confirmed self-non-deterministic in the UNMODIFIED
+baseline alone (the same pre-existing GPU shadow-ray/BVH sub-ULP
+rounding class sections 187/160/167 already documented - two of the 13,
+A3 and B14, hadn't been individually flagged before, extending that
+class's own known membership rather than contradicting it; pixel-level
+diff magnitude for both landed in the same order for baseline-self-
+noise as for baseline-vs-new, e.g. B14: RMSE 0.29 self-noise vs 0.26
+vs-new); and (2) a deliberate NEGATIVE-CONTROL test: temporarily
+corrupted `diffuseTransmissionPdf()`'s own formula (`/M_PI_F` ->
+`/(2*M_PI_F)`), re-ran the new test WITHOUT rebuilding the C++ binary
+(the shader source is read and compiled at runtime, so this alone was
+enough), confirmed it failed loudly with the exact expected-vs-got
+numbers, then reverted - proof the new test can actually catch a real
+regression, not just a test that trivially always passes.
+
+**The new test itself** (`testLambertianAndDiffuseTransmissionPdf()`,
+`metal_poc_shader_tests.mm`, dispatching two new kernels,
+`test_lambertianPdf`/`test_diffuseTransmissionPdf`,
+`metal_poc_test_kernels.metal`): fixed edge cases (normal incidence,
+grazing, below-surface, a pure-reflector/pure-transmitter/balanced-lobe
+sweep for the transmission case) plus a 40-case random sweep per
+function, each compared against `DiffuseBxDF<double>::scattering_pdf()`/
+`DiffuseTransmissionBxDF<double>::scattering_pdf()` directly (not a
+hand-derived expected value) to `1e-5` tolerance, plus a non-negativity
+check on every case.
+
+**Scope note for whoever picks up the next material family**: this PR
+does NOT test the `f`/eval side of these two materials (the
+`albedo/pi`/`transmitColor/pi` radiance-contribution multiply) -
+neither reference class exposes a separate `eval()` method to cross-
+check against (pbrt-v4's own `DiffuseBxDF`/`DiffuseTransmissionBxDF`
+fold that into `sample()`'s own return value instead), and the formula
+itself is a single untested-but-trivial constant division, not the kind
+of place a subtle bug tends to hide. The PDF math - which drives every
+NEE MIS weight in both functions - was the part worth a real test.

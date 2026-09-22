@@ -188,6 +188,37 @@ inline float3 cosineSampleHemisphere(float3 normal, thread uint& rngState) {
     return normalize(x * tangent + y * bitangent + z * normal);
 }
 
+// pbrt-v4's own DiffuseBxDF::PDF() (src/shared/bxdfs_simple.h's own
+// DiffuseBxDF<T>::scattering_pdf(), the exact CPU reference this function
+// is numerically cross-checked against in metal_poc_shader_tests.mm) -
+// cos(theta_wi)/pi for a same-side direction, 0 otherwise. `cosWi` is
+// already `dot(normal, wi)` - this function doesn't take the vectors
+// themselves since every call site already has that dot product on hand.
+// Factored out of shadeLambertian() (metal_poc_materials_diffuse.metal)
+// so it's independently testable, mirroring the same "pull the pure local-
+// frame math out of the big shadeXxx() function so a test kernel can call
+// the EXACT production formula" precedent hairScatteringPdfLocal() already
+// established (metal_poc_materials_hair.metal, section 183) - not a hand-
+// copied duplicate a test could pass even if the real formula were wrong.
+inline float lambertianPdf(float cosWi) {
+    return cosWi > 0.0 ? cosWi / M_PI_F : 0.0;
+}
+
+// pbrt-v4's own DiffuseTransmissionBxDF::PDF() (src/shared/bxdfs_layered.h's
+// own DiffuseTransmissionBxDF<T>::scattering_pdf(), same reference role as
+// lambertianPdf()'s own comment above) - `cosWi`'s sign picks which lobe
+// (reflection when positive, transmission when negative), `pr`/`pt` are the
+// max-channel reflectance/transmittance pbrt-v4 uses as each lobe's own
+// selection probability (shadeDiffuseTransmission()'s own `pr`/`pt` locals -
+// this function takes them as plain parameters rather than re-deriving them
+// from a TriangleMaterial, so it stays exactly as reusable/testable as
+// lambertianPdf() above). Same factoring rationale.
+inline float diffuseTransmissionPdf(float cosWi, float pr, float pt) {
+    float pSum = max(pr + pt, 1e-6);
+    float lobeProb = (cosWi > 0.0) ? (pr / pSum) : (pt / pSum);
+    return lobeProb * abs(cosWi) / M_PI_F;
+}
+
 // UNIFORM (not cosine-weighted) hemisphere sampling - materialType 14's
 // own velvet material needs this: Ashikhmin & Shirley's own velvet BRDF
 // (see shadeVelvet's own comment) is sampled uniformly in the reference

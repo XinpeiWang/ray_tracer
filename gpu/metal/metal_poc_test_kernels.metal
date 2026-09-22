@@ -23,6 +23,29 @@
 // sphereIntersectionFunction's own comment already established.
 // ---------------------------------------------------------------------------
 
+// lambertianPdf()/diffuseTransmissionPdf() (metal_poc_sampling.metal) -
+// shadeLambertian()'s/shadeDiffuseTransmission()'s own real PDF formulas,
+// factored out specifically so these two kernels can call them directly
+// (same "test the actual production function, don't reimplement it"
+// principle this file's own header comment states, and the same factoring
+// hairScatteringPdfLocal() already went through for shadeHair() - see
+// metal_poc_sampling.metal's own comment on both functions).
+kernel void test_lambertianPdf(
+    device const float* cosWis [[buffer(0)]],
+    device float* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = lambertianPdf(cosWis[tid]);
+}
+
+kernel void test_diffuseTransmissionPdf(
+    device const float3* inputs [[buffer(0)]],   // (cosWi, pr, pt)
+    device float* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = diffuseTransmissionPdf(inputs[tid].x, inputs[tid].y, inputs[tid].z);
+}
+
 kernel void test_frDielectric(
     device const float2* inputs [[buffer(0)]],   // (cosThetaI, eta)
     device float* outputs [[buffer(1)]],

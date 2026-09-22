@@ -46,7 +46,6 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
         if (cosSurface != 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
             bool reflect = cosSurface > 0.0;
             float3 lobeTint = reflect ? albedo : mat.transmitColor;
-            float lobeProb = reflect ? (pr / pSum) : (pt / pSum);
             float absCos = abs(cosSurface);
             ray shadowRay;
             shadowRay.origin = hitPoint + (reflect ? facingNormal : -facingNormal) * 0.001f;
@@ -57,7 +56,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
-                float pdfBsdfForThisDir = lobeProb * absCos / M_PI_F;
+                float pdfBsdfForThisDir = diffuseTransmissionPdf(cosSurface, pr, pt);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -202,7 +201,6 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
             if (envCosSurface != 0.0 && envPdfSolidAngle > 1e-9) {
                 bool envReflect = envCosSurface > 0.0;
                 float3 envLobeTint = envReflect ? albedo : mat.transmitColor;
-                float envLobeProb = envReflect ? (pr / pSum) : (pt / pSum);
                 float envAbsCos = abs(envCosSurface);
                 ray envShadowRay;
                 envShadowRay.origin = hitPoint + (envReflect ? facingNormal : -facingNormal) * 0.001f;
@@ -214,7 +212,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                 if (envShadowResult.type == intersection_type::none) {
                     float2 envUV = equirectangularUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
-                    float envPdfBsdf = envLobeProb * envAbsCos / M_PI_F;
+                    float envPdfBsdf = diffuseTransmissionPdf(envCosSurface, pr, pt);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * envLobeTint * (1.0 / M_PI_F)
@@ -235,7 +233,6 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
             if (pbrtEnvCosSurface != 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
                 bool pbrtEnvReflect = pbrtEnvCosSurface > 0.0;
                 float3 pbrtEnvLobeTint = pbrtEnvReflect ? albedo : mat.transmitColor;
-                float pbrtEnvLobeProb = pbrtEnvReflect ? (pr / pSum) : (pt / pSum);
                 float pbrtEnvAbsCos = abs(pbrtEnvCosSurface);
                 ray pbrtEnvShadowRay;
                 pbrtEnvShadowRay.origin = hitPoint + (pbrtEnvReflect ? facingNormal : -facingNormal) * 0.001f;
@@ -247,7 +244,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
                     float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
-                    float pbrtEnvPdfBsdf = pbrtEnvLobeProb * pbrtEnvAbsCos / M_PI_F;
+                    float pbrtEnvPdfBsdf = diffuseTransmissionPdf(pbrtEnvCosSurface, pr, pt);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
                     radiance += throughput * pbrtEnvLobeTint * (1.0 / M_PI_F)
@@ -262,7 +259,13 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
     rayDir = cosineSampleHemisphere(lobeNormal, rngState);
     rayOrigin = hitPoint + lobeNormal * 0.001f;
     throughput *= reflect ? albedo : mat.transmitColor;
-    bsdfPdf = (reflect ? (pr / pSum) : (pt / pSum)) * max(dot(lobeNormal, rayDir), 0.0001) / M_PI_F;
+    // dot(lobeNormal, rayDir) is the LOBE-side cosine (always >= 0, since
+    // rayDir was cosine-sampled around lobeNormal) - flooring it before
+    // flipping its sign to be relative to `facingNormal` instead
+    // (diffuseTransmissionPdf()'s own convention) keeps this byte-
+    // identical to the pre-extraction formula, not just equivalent.
+    float flooredLobeCos = max(dot(lobeNormal, rayDir), 0.0001f);
+    bsdfPdf = diffuseTransmissionPdf(reflect ? flooredLobeCos : -flooredLobeCos, pr, pt);
     specularBounce = false;
     return true;
 }
@@ -348,7 +351,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                 // itself the fix for any specific observed artifact.
                 float cosLightSafe = max(abs(cosLight), 1e-4);
                 float pdfSolidAngle = (distSq / (ls.area * cosLightSafe)) * ls.pmf;
-                float pdfBsdfForThisDir = cosSurface / M_PI_F;
+                float pdfBsdfForThisDir = lambertianPdf(cosSurface);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -497,7 +500,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                 if (envShadowResult.type == intersection_type::none) {
                     float2 envUV = equirectangularUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
-                    float envPdfBsdf = envCosSurface / M_PI_F;
+                    float envPdfBsdf = lambertianPdf(envCosSurface);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * albedo * (1.0 / M_PI_F)
@@ -526,7 +529,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
                     float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
-                    float pbrtEnvPdfBsdf = pbrtEnvCosSurface / M_PI_F;
+                    float pbrtEnvPdfBsdf = lambertianPdf(pbrtEnvCosSurface);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
                     radiance += throughput * albedo * (1.0 / M_PI_F)
@@ -539,7 +542,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
     rayDir = cosineSampleHemisphere(facingNormal, rngState);
     rayOrigin = hitPoint + facingNormal * 0.001f;
     throughput *= albedo;
-    bsdfPdf = max(dot(facingNormal, rayDir), 0.0001) / M_PI_F;
+    bsdfPdf = lambertianPdf(max(dot(facingNormal, rayDir), 0.0001f));
     specularBounce = false;
     return true;
 }
