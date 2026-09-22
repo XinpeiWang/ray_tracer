@@ -10800,3 +10800,53 @@ change, and A8's own materialType-28 spheres are precisely the kind of
 Monte-Carlo-heavy scene that class already predicts as most likely to
 show it. Not a new finding, not a regression - the other 49 scenes are
 byte-for-byte identical.
+
+## 182. Closing a real, deliberately-deferred bug: the global fog's own NEE code never multiplied by fog albedo
+
+User asked for a review of remaining gaps/issues (not just file sizes
+this time). Most of what came up was either already-documented,
+deliberately-scoped-out feature gaps (B11/B13/B14/H1/H2-H12/A9, section
+174's own accounting) or genuine open investigations with no clear next
+step yet (C9's goniometric-light gap, section 165; G25's undiagnosed
+floor artifact, section 170) - neither worth attempting blind. One item
+WAS a clear, well-scoped, already-diagnosed fix: the real bug flagged
+(but deliberately left unfixed) while diagnosing A8 back in section
+176 - the global whole-scene fog's own NEE code never multiplied its
+radiance contribution by the fog's own albedo, so every fog-lit NEE
+sample reached the camera tinted only by the LIGHT's own colour, not
+the fog's. Re-checking the code confirmed it was still there, and
+confirmed it's SYSTEMIC, not the single spot section 176's own comment
+implied: all FIVE of the global fog's own per-light-kind NEE branches
+(area, point, directional, projection, goniometric -
+`metal_poc_kernel.metal`'s own fog-scatter block) had the identical
+gap, each independently missing `* float3(uniforms.fogAlbedo)` from
+its own `radiance +=` line.
+
+Fixed by adding the missing multiply to all 5 sites - mechanical,
+low-risk, and directly mirrors the fix materialType 28's own NEE
+block already got in section 176 for the exact same class of bug.
+
+**Why this was safe to defer for 6 sections and safe to fix now
+without much drama**: the default/most-common fog albedo in this
+project (`(0.85,0.88,0.95)`, close to white) makes the omission a
+sub-5% colour error in practice - real, but easy to miss, which is
+exactly why it survived this long unnoticed. Only ONE currently-
+supported hand-authored scene (E1, `buildHomogeneousMediumScene()`)
+sets a distinct fog albedo at all (`(0.8,0.9,1.0)`, a pale cool tint) -
+every real pbrt-loaded scene with its own `Medium` block also computes
+a real per-channel albedo from `sigma_s/sigma_t` (`metal_poc_pbrt_
+loader.mm`), so a future scene with a more saturated custom fog tint
+would have shown this far more visibly than E1 does.
+
+**Verified**: full clean rebuild, ctest (4/4), 51-scene GPU smoke
+sweep (zero crashes), a direct `--gpu` before/after comparison for E1
+(hashes differ, confirming the fix isn't a no-op; visually the same
+overall composition, a subtle shift matching the "sub-5%" estimate,
+no broken/NaN artifacts), and a before/after hash comparison across
+all 51 currently-supported scenes: exactly 2 differ - E1 (the fix
+correctly taking effect, the only scene with `fogSigmaT>0` in the
+current supported set) and D8 (the already-documented lens-camera
+non-determinism, section 160). The other 49 - every scene this code
+path is gated off for (`uniforms.fogSigmaT > 0.0`) - are byte-for-byte
+identical, confirming the fix is correctly scoped with zero blast
+radius beyond the one scene that actually exercises it today.

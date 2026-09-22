@@ -539,7 +539,20 @@ kernel void primaryRayKernel(
                             float weight = (pdfSolidAngle * pdfSolidAngle)
                                 / (pdfSolidAngle * pdfSolidAngle + phaseValue * phaseValue);
                             float transmittance = exp(-uniforms.fogSigmaT * dist);
-                            radiance += throughput * phaseValue * ls.emission * transmittance
+                            // `* float3(uniforms.fogAlbedo)`: this scattering
+                            // event's own albedo weight - the SAME real bug
+                            // materialType 28's own NEE block once had
+                            // (section 176's own comment on that fix, found
+                            // while diagnosing A8), left unfixed here at the
+                            // time since the default fogAlbedo
+                            // (0.85,0.88,0.95) makes the omission a sub-5%
+                            // colour error, invisible in practice - fixed
+                            // properly now that it's been flagged. Without
+                            // this, every fog NEE contribution below (this
+                            // one and all 4 delta-light ones) rendered as
+                            // the LIGHT's own colour with no tint from the
+                            // fog's own albedo at all.
+                            radiance += throughput * float3(uniforms.fogAlbedo) * phaseValue * ls.emission * transmittance
                                         / pdfSolidAngle * weight;
                         }
                     }
@@ -563,7 +576,7 @@ kernel void primaryRayKernel(
                             float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), uniforms.fogAsymmetryG);
                             float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
                             float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
-                            radiance += throughput * plPhaseValue * float3(pl.emission) * plSpot * plTransmittance / plDistSq;
+                            radiance += throughput * float3(uniforms.fogAlbedo) * plPhaseValue * float3(pl.emission) * plSpot * plTransmittance / plDistSq;
                         }
                     }
 
@@ -586,7 +599,7 @@ kernel void primaryRayKernel(
                             float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), uniforms.fogAsymmetryG);
                             float dlExitDist = rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
                             float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
-                            radiance += throughput * dlPhaseValue * float3(dl.emission) * dlTransmittance;
+                            radiance += throughput * float3(uniforms.fogAlbedo) * dlPhaseValue * float3(dl.emission) * dlTransmittance;
                         }
                     }
 
@@ -614,7 +627,7 @@ kernel void primaryRayKernel(
                             if (pjShadowResult.type == intersection_type::none) {
                                 float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), uniforms.fogAsymmetryG);
                                 float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
-                                radiance += throughput * pjPhaseValue * pjRadiance * pjTransmittance / pjDistSq;
+                                radiance += throughput * float3(uniforms.fogAlbedo) * pjPhaseValue * pjRadiance * pjTransmittance / pjDistSq;
                             }
                         }
                     }
@@ -642,7 +655,7 @@ kernel void primaryRayKernel(
                             if (glShadowResult.type == intersection_type::none) {
                                 float glPhaseValue = henyeyGreensteinPhase(dot(wo, glWi), uniforms.fogAsymmetryG);
                                 float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
-                                radiance += throughput * glPhaseValue * glRadiance * glTransmittance / glDistSq;
+                                radiance += throughput * float3(uniforms.fogAlbedo) * glPhaseValue * glRadiance * glTransmittance / glDistSq;
                             }
                         }
                     }
