@@ -827,6 +827,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "B11") { buildHairFibersScene(); return true; }
     if (scene_id == "B14") { buildMeasuredBrdfScene(); return true; }
     if (scene_id == "B13") { buildSubsurfaceSlab(); return true; }
+    if (scene_id == "A9") { buildFinalScene(); return true; }
     if (scene_id == "C1") { buildHdriSky(); return true; }
     if (scene_id == "C7") { buildPortalLightScene(); return true; }
     // I3 (ExposureToneMapping): the SAME world/lights/sky as C1

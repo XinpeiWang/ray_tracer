@@ -11163,3 +11163,79 @@ than CPU's own milky glow (the documented, expected tinted-glass-vs-
 real-scattering difference from E3's own precedent); the jade sphere
 reads as recognizably green and translucent on both sides, not the
 black-glass-ball a literal, untuned port would have produced.
+
+## 186. A9 (Final Scene) - Book 2's own combined finale, closed by reusing six already-shipped mechanisms rather than building anything new
+
+CPU's own `build_final_scene()` (`scenes_book.h`) is the biggest single
+scene ported in this whole series: a 20x20 grid of random-height boxes
+("ground", 400 boxes), a ceiling light, a moving Lambertian sphere, a
+dielectric sphere, a fuzzy-metal sphere, a dielectric-shelled "smoke"
+sphere (real `constant_medium` interior), an enormous (r=5000) near-
+invisible whole-scene fog sphere, an earth-textured sphere, a Perlin-
+marble sphere, and a 1000-sphere cluster (rotated, translated). Section
+174's own earlier accounting flagged this as "a genuine combination of
+several gaps, not reducible to any one of them" - true, but by this
+point in the series every one of those gaps had ALREADY been closed
+individually: object motion blur (F11, section 167), earth/Perlin-
+marble materialTypes (already used by other A-series scenes), and the
+tinted-glass "dielectric shell + real medium" approximation (E3/B13,
+sections 177/185) for the smoke sphere. Nothing genuinely NEW was
+needed for six of this scene's own eight distinct pieces.
+
+**Two pieces needed real (if small) new work**:
+- The 400-box grid and 1000-sphere cluster are both bulk-generated
+  geometry CPU's own `build_final_scene()` builds with UNSEEDED
+  `random_double()` (no fixed seed anywhere) - an exact match was never
+  a meaningful bar here, the same "no fixed seed, no exact-match
+  expectation" precedent `buildBouncingSpheres()`'s own comment already
+  established (section 175). This loader uses a fixed seed instead for
+  reproducibility on its own side.
+- CPU's own whole-scene fog is architecturally just an extremely faint
+  (`sigma_t=0.0001`) homogeneous medium filling the entire visible
+  scene at any normal viewing distance, wrapped in an r=5000 sphere
+  purely as an implementation detail of CPU's own medium-shape model.
+  Rather than building that sphere, this reuses the SAME generic whole-
+  scene fog mechanism `loadPbrtScene()` already wires up for a real
+  pbrt scene's own exterior medium (`havePbrtMedium`/`pbrtFogSigmaT`/
+  `pbrtFogAlbedo`) - metal_poc_dispatch.mm's own existing read of these
+  three fields needed zero changes, just setting them from a hand-
+  authored scene too, the same "an existing generic field, hand-
+  authored scenes can set it too" shape D13's own `sceneCameraVelocity`
+  already established (section 174).
+
+**One real bug found and fixed before ever considering this scene
+"done"**: the smoke sphere's own literal `sigma_t*(1-albedo)` Beer-
+Lambert coefficient does NOT survive this port (the SAME category of
+issue section 185's own jade sphere already taught this series to
+check for BEFORE rendering, not after) - hand-computed transmittance
+across its own 140-unit diameter comes out under 1% for red/green
+(blue alone survives at ~6%), which would render as essentially solid
+black rather than CPU's own bright cyan-blue scattering look. A
+documented `kSmokeAbsorptionScale=0.15` (the same shape as B13's own
+`kJadeAbsorptionScale`) scales this sphere's own absorption down to
+land full-diameter transmittance around 66% blue / 8% green / 3.5% red
+- recognizably cyan-blue, keeping blue the clearly dominant channel.
+Confirmed by direct render comparison that the fix is real (a visible
+blue crescent where none was visible before) even though this specific
+sphere turned out to be MOSTLY occluded by the earth sphere from this
+scene's own camera framing (confirmed via a temporary magenta-marker
+debug render, not assumed) - a real, working fix, just for an object
+that happens to read small in the final composition, the same honest
+"verify what you actually built, not what you expected to see"
+discipline this whole series has followed throughout.
+
+**Verified**: full clean rebuild, ctest (4/4), all 81 currently-
+supported scenes smoke-rendered with zero crashes, and a before/after
+SHA-256 hash sweep across the other 80 scenes: only F4 differs (the
+same pre-existing lens-camera Monte-Carlo non-determinism class,
+section 160/167 - D8 happened not to shift on this particular
+recompile, the same "inherently probabilistic about exactly which of
+the three scenes it perturbs" note section 175's own A2 entry already
+made) - the other 79 byte-for-byte identical, confirming zero blast
+radius from a purely additive new scene. Direct `--gpu` vs `--cpu`
+comparison: matching overall composition (all 8 distinct object types
+present, correctly positioned, correctly coloured), the box-grid
+ground, earth/Perlin-marble/metal/glass spheres, and 1000-sphere
+cluster all reading the same on both sides; the smoke sphere's own
+tinted-glass-vs-real-scattering difference is the one documented,
+expected departure (same category as B13's own wax slab).
