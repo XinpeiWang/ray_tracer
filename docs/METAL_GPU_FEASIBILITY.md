@@ -11530,3 +11530,71 @@ fold that into `sample()`'s own return value instead), and the formula
 itself is a single untested-but-trivial constant division, not the kind
 of place a subtle bug tends to hide. The PDF math - which drives every
 NEE MIS weight in both functions - was the part worth a real test.
+
+## 191. Test-coverage series, part 2: rough conductor (GGX metal) BRDF/PDF numeric cross-check
+
+Second material family in the series (part 1: Lambertian/Diffuse
+Transmission, section 190). Scoped via a research pass BEFORE writing
+anything (same discipline section 190's own research pass established):
+of the 4 originally-flagged specular-family functions
+(`shadeDielectric`/`shadeRoughDielectric`/`shadeThinDielectric`/
+`shadeConductor`), only `shadeConductor` was worth a PR here.
+`shadeDielectric`/`shadeThinDielectric` are pure delta/specular with no
+continuous PDF and no new math beyond `frDielectric()` (already tested).
+`shadeRoughDielectric` genuinely has no continuous PDF EXPOSED at all
+currently (its own `bsdfPdf` is never assigned - it's treated as a
+self-normalizing specular bounce, matching `RoughDielectricBxDF::
+sample_local()`'s own "weight=1" convention rather than its separate
+`f()`/`pdf()` pair) - deferred to its own future decision, since testing
+it meaningfully first needs deciding what "ground truth" means given
+that same CPU reference's own documented inconsistency between its
+sampling shortcut and its closed-form pair, not a mechanical extraction
+like this PR.
+
+`shadeConductor` (`metal_poc_materials_specular.metal`, always GGX-
+based in this codebase - alpha floored at 0.0009, never truly smooth,
+materialType 4/9 both route through here) had its BRDF formula
+(`D*G*F/(4*NdotO*NdotI)`) inlined 7 times and its PDF formula
+(`D*G1/(4*NdotO)`) inlined 4 times across its own NEE/tail sites - the
+same "duplicated formula, no pure testable function" shape section
+190's own Lambertian finding already established. Extracted
+`ggxConductorF(Dh, G, F, NdotO, NdotI)`/`ggxConductorPdf(Dh, G1,
+NdotO)` (`metal_poc_sampling.metal`, next to `ggxD`/`ggxG`/`ggxG1`) and
+repointed all 11 call sites - each a pure drop-in (`energyScale`, this
+POC's own multi-scatter energy-compensation term, sections 72/73,
+deliberately stays OUTSIDE the extracted function, applied at each call
+site same as before - the CPU reference has no such term, so baking it
+in would make the function untestable against that reference).
+
+**The test itself goes one step further than part 1's**: rather than
+feeding pre-computed `(Dh, G, F, NdotO, NdotI)` values into the
+extracted functions directly, the new test kernels
+(`test_ggxConductorF`/`test_ggxConductorPdf`) take raw local-frame
+`(wo, wi, alpha, eta, k)` and run the FULL production pipeline -
+`ggxD()`/`ggxG()`/`ggxG1()`/`frComplexRGB()` then the extracted
+combine - mirroring `testHairEvalAndPdf()`'s own "exercise the real
+end-to-end path" rigor rather than testing the combine step in
+isolation. Cross-checked against `ConductorBxDF<double>::f()`/`pdf()`
+(`src/shared/bxdfs_conductor.h`) for 60 random `(wo, wi, alphaX, alphaY,
+eta, k)` cases. One real subtlety worked out and documented rather than
+guessed: `ConductorBxDF::sample_local(wi, ...)` conditions its VNDF
+sample ON `wi` and produces `wo` - i.e. its own "wi" is the GIVEN/
+starting direction and "wo" the sampled/queried one, the OPPOSITE of
+what the parameter names alone might suggest - confirmed by reading
+`pdf()`'s own formula (its G1 term is evaluated at "wi" only, matching
+`shadeConductor()`'s own `woLocal`-conditioned sampling), so the correct
+mapping is `ref.f(wi=woLocal, wo=wiLocal)`, not the naively-matched
+`ref.f(wi=wiLocal, wo=woLocal)`.
+
+**Verified**: full clean rebuild, ctest 4/4, a full 81-scene before/
+after hash sweep (69/81 byte-identical; the other 12 all exactly the
+same already-documented pre-existing GPU noise set sections 187/190
+established - zero NEW scenes this time, and B10, the conductor-heaviest
+scene in the diffing set, spot-checked via baseline-self-consistency:
+its own base-vs-base RMSE (0.0078) and base-vs-new RMSE (0.0202) are
+both negligible and the same order of magnitude, confirming this
+extraction adds no new discrepancy), and the same negative-control
+discipline section 190 established: deliberately corrupted
+`ggxConductorF()`'s own denominator, re-ran the test (no rebuild needed
+- shader source recompiles at runtime), confirmed 59/60 cases failed
+loudly with the right numbers, reverted.

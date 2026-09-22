@@ -400,7 +400,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
             float Dh = ggxD(h, alphaX, alphaY);
             float G = ggxG(woLocal, wiLocal, alphaX, alphaY);
             float3 F = frComplexRGB(max(dot(woLocal, h), 0.0), mat.conductorEta, mat.conductorK);
-            float3 brdf = Dh * G * F * energyScale / max(4.0 * NdotO * NdotI, 1e-6);
+            float3 brdf = ggxConductorF(Dh, G, F, NdotO, NdotI) * energyScale;
 
             ray shadowRay;
             shadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -411,7 +411,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
-                float pdfBsdf = (Dh * ggxG1(woLocal, alphaX, alphaY)) / max(4.0 * NdotO, 1e-6);
+                float pdfBsdf = ggxConductorPdf(Dh, ggxG1(woLocal, alphaX, alphaY), NdotO);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -434,7 +434,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 float plDh = ggxD(plH, alphaX, alphaY);
                 float plG = ggxG(woLocal, plWiLocal, alphaX, alphaY);
                 float3 plF = frComplexRGB(max(dot(woLocal, plH), 0.0), mat.conductorEta, mat.conductorK);
-                float3 plBrdf = plDh * plG * plF * energyScale / max(4.0 * plNdotO * plNdotI, 1e-6);
+                float3 plBrdf = ggxConductorF(plDh, plG, plF, plNdotO, plNdotI) * energyScale;
 
                 ray plShadowRay;
                 plShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -463,7 +463,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 float dlDh = ggxD(dlH, alphaX, alphaY);
                 float dlG = ggxG(woLocal, dlWiLocal, alphaX, alphaY);
                 float3 dlF = frComplexRGB(max(dot(woLocal, dlH), 0.0), mat.conductorEta, mat.conductorK);
-                float3 dlBrdf = dlDh * dlG * dlF * energyScale / max(4.0 * dlNdotO * dlNdotI, 1e-6);
+                float3 dlBrdf = ggxConductorF(dlDh, dlG, dlF, dlNdotO, dlNdotI) * energyScale;
 
                 ray dlShadowRay;
                 dlShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -504,7 +504,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     float pjDh = ggxD(pjH, alphaX, alphaY);
                     float pjG = ggxG(woLocal, pjWiLocal, alphaX, alphaY);
                     float3 pjF = frComplexRGB(max(dot(woLocal, pjH), 0.0), mat.conductorEta, mat.conductorK);
-                    float3 pjBrdf = pjDh * pjG * pjF * energyScale / max(4.0 * pjNdotO * pjNdotI, 1e-6);
+                    float3 pjBrdf = ggxConductorF(pjDh, pjG, pjF, pjNdotO, pjNdotI) * energyScale;
 
                     ray pjShadowRay;
                     pjShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -540,7 +540,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     float glDh = ggxD(glH, alphaX, alphaY);
                     float glG = ggxG(woLocal, glWiLocal, alphaX, alphaY);
                     float3 glF = frComplexRGB(max(dot(woLocal, glH), 0.0), mat.conductorEta, mat.conductorK);
-                    float3 glBrdf = glDh * glG * glF * energyScale / max(4.0 * glNdotO * glNdotI, 1e-6);
+                    float3 glBrdf = ggxConductorF(glDh, glG, glF, glNdotO, glNdotI) * energyScale;
 
                     ray glShadowRay;
                     glShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -591,7 +591,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 float envDh = ggxD(envH, alphaX, alphaY);
                 float envG = ggxG(woLocal, envWiLocal, alphaX, alphaY);
                 float3 envF = frComplexRGB(max(dot(woLocal, envH), 0.0), mat.conductorEta, mat.conductorK);
-                float3 envBrdf = envDh * envG * envF * energyScale / max(4.0 * envNdotO * envNdotI, 1e-6);
+                float3 envBrdf = ggxConductorF(envDh, envG, envF, envNdotO, envNdotI) * energyScale;
 
                 ray envShadowRay;
                 envShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -603,7 +603,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 if (envShadowResult.type == intersection_type::none) {
                     float2 envUV = equirectangularUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
-                    float envPdfBsdf = (envDh * ggxG1(woLocal, alphaX, alphaY)) / max(4.0 * envNdotO, 1e-6);
+                    float envPdfBsdf = ggxConductorPdf(envDh, ggxG1(woLocal, alphaX, alphaY), envNdotO);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * envBrdf * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
@@ -630,7 +630,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 float pbrtEnvDh = ggxD(pbrtEnvH, alphaX, alphaY);
                 float pbrtEnvG = ggxG(woLocal, pbrtEnvWiLocal, alphaX, alphaY);
                 float3 pbrtEnvF = frComplexRGB(max(dot(woLocal, pbrtEnvH), 0.0), mat.conductorEta, mat.conductorK);
-                float3 pbrtEnvBrdf = pbrtEnvDh * pbrtEnvG * pbrtEnvF * energyScale / max(4.0 * pbrtEnvNdotO * pbrtEnvNdotI, 1e-6);
+                float3 pbrtEnvBrdf = ggxConductorF(pbrtEnvDh, pbrtEnvG, pbrtEnvF, pbrtEnvNdotO, pbrtEnvNdotI) * energyScale;
 
                 ray pbrtEnvShadowRay;
                 pbrtEnvShadowRay.origin = hitPoint + facingNormal * 0.001f;
@@ -642,7 +642,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
                     float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
-                    float pbrtEnvPdfBsdf = (pbrtEnvDh * ggxG1(woLocal, alphaX, alphaY)) / max(4.0 * pbrtEnvNdotO, 1e-6);
+                    float pbrtEnvPdfBsdf = ggxConductorPdf(pbrtEnvDh, ggxG1(woLocal, alphaX, alphaY), pbrtEnvNdotO);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
                     radiance += throughput * pbrtEnvBrdf * pbrtEnvRadianceSample * pbrtEnvCosSurface / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
@@ -670,7 +670,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
 
     rayDir = wiWorld;
     rayOrigin = hitPoint + facingNormal * 0.001f;
-    bsdfPdf = (ggxD(hLocal, alphaX, alphaY) * G1) / max(4.0 * NdotO, 1e-6);
+    bsdfPdf = ggxConductorPdf(ggxD(hLocal, alphaX, alphaY), G1, NdotO);
     specularBounce = false;
     return true;
 }

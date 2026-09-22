@@ -323,6 +323,99 @@ static void testLambertianAndDiffuseTransmissionPdf(id<MTLDevice> device, id<MTL
     }
 }
 
+// ggxConductorF()/ggxConductorPdf() (metal_poc_sampling.metal), full
+// pipeline (raw local-frame directions -> ggxD/ggxG/ggxG1/frComplexRGB
+// -> the final combine) - numeric cross-check against pbrt-v4's own
+// ConductorBxDF<double>::f()/pdf() (src/shared/bxdfs_conductor.h), the
+// SAME trusted CPU/OptiX reference those renderers already use for
+// rough conductors. Same "call the real production formula, don't
+// duplicate it" principle as testLambertianAndDiffuseTransmissionPdf()
+// (PR #190) and testHairRandomSweep() before it.
+//
+// Direction-naming note: ConductorBxDF's own `sample_local(wi, ...)`
+// conditions its VNDF sample ON `wi` and produces `wo` - i.e. its "wi"
+// is the GIVEN/starting direction and "wo" the sampled/queried one,
+// confirmed by cross-reading `f()`'s/`pdf()`'s own formulas (symmetric
+// in the D*G term, but `pdf()`'s own G1 is evaluated at "wi" only).
+// shadeConductor()'s own `woLocal` (the view direction every NEE/BSDF-
+// sample call in that function conditions on) is that same "given"
+// role, and `wiLocal` (the queried light/sampled direction) is the
+// "produced" one - so `ref.f(wi=woLocal, wo=wiLocal)` is the CORRECT
+// mapping, not a naming coincidence to get backwards.
+static void testGgxConductorFAndPdf(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    std::mt19937 rng(9001);
+    std::uniform_real_distribution<double> zeroOne(0.0, 1.0);
+    std::uniform_real_distribution<double> alphaDist(0.01, 0.9);
+    std::uniform_real_distribution<double> etaDist(0.2, 3.0);
+    std::uniform_real_distribution<double> kDist(0.0, 4.0);
+
+    auto randomUpperHemisphereDir = [&]() -> simd::double3 {
+        // Uniform-ish (not physically meaningful, just needs z>0 and to
+        // cover a range of grazing/near-normal angles) - cosine-weighted
+        // would bias away from the grazing cases this test also wants
+        // to exercise.
+        double z = 0.05 + zeroOne(rng) * 0.9;  // keep away from the pole to avoid a degenerate h
+        double phi = zeroOne(rng) * 2.0 * M_PI;
+        double r = std::sqrt(std::max(0.0, 1.0 - z * z));
+        return simd::double3{r * std::cos(phi), r * std::sin(phi), z};
+    };
+
+    const int n = 60;
+    std::vector<simd::float3> wos(n), wis(n);
+    std::vector<simd::float2> alphas(n);
+    std::vector<simd::float3> etas(n), ks(n);
+    std::vector<double> expectedF(n), expectedPdf(n);
+    for (int i = 0; i < n; ++i) {
+        simd::double3 wo = randomUpperHemisphereDir();
+        simd::double3 wi = randomUpperHemisphereDir();
+        double alphaX = alphaDist(rng);
+        double alphaY = alphaDist(rng);
+        double eta = etaDist(rng), k = kDist(rng);
+        wos[i] = simd::float3{(float)wo.x, (float)wo.y, (float)wo.z};
+        wis[i] = simd::float3{(float)wi.x, (float)wi.y, (float)wi.z};
+        alphas[i] = simd::float2{(float)alphaX, (float)alphaY};
+        etas[i] = simd::float3{(float)eta, (float)eta, (float)eta};
+        ks[i] = simd::float3{(float)k, (float)k, (float)k};
+
+        ConductorBxDF<double> ref{eta, eta, eta, k, k, k, alphaX, alphaY};
+        double fr, fg, fb;
+        ref.f(wo.x, wo.y, wo.z, wi.x, wi.y, wi.z, fr, fg, fb);
+        expectedF[i] = fr;  // eta/k are the same across channels above, so r==g==b
+        expectedPdf[i] = ref.pdf(wo.x, wo.y, wo.z, wi.x, wi.y, wi.z);
+    }
+
+    id<MTLBuffer> woBuf = makeBuffer(device, wos.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> wiBuf = makeBuffer(device, wis.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> alphaBuf = makeBuffer(device, alphas.data(), n * sizeof(simd::float2));
+    id<MTLBuffer> etaBuf = makeBuffer(device, etas.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> kBuf = makeBuffer(device, ks.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> fOutBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    id<MTLBuffer> pdfOutBuf = makeOutputBuffer(device, n * sizeof(float));
+
+    if (runKernel(device, library, queue, @"test_ggxConductorF",
+                  @[woBuf, wiBuf, alphaBuf, etaBuf, kBuf, fOutBuf], nil, n)) {
+        simd::float3* fOut = (simd::float3*)fOutBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[160];
+            snprintf(label, sizeof(label), "ggxConductorF matches ConductorBxDF::f (case %d)", i);
+            expectNear(label, fOut[i].x, expectedF[i], std::max(1e-5, std::fabs(expectedF[i]) * 1e-3));
+            snprintf(label, sizeof(label), "ggxConductorF is non-negative (case %d)", i);
+            expectTrue(label, fOut[i].x >= 0.0f);
+        }
+    }
+    if (runKernel(device, library, queue, @"test_ggxConductorPdf",
+                  @[woBuf, wiBuf, alphaBuf, pdfOutBuf], nil, n)) {
+        float* pdfOut = (float*)pdfOutBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[160];
+            snprintf(label, sizeof(label), "ggxConductorPdf matches ConductorBxDF::pdf (case %d)", i);
+            expectNear(label, pdfOut[i], expectedPdf[i], std::max(1e-5, std::fabs(expectedPdf[i]) * 1e-3));
+            snprintf(label, sizeof(label), "ggxConductorPdf is non-negative (case %d)", i);
+            expectTrue(label, pdfOut[i] >= 0.0f);
+        }
+    }
+}
+
 static void testGgxD(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // At normal incidence (hLocal == the shading normal), ggxD() has an
     // exact closed form regardless of alpha: D = 1/(pi*alpha^2) - see
@@ -1482,6 +1575,7 @@ int main() {
 
         testFrDielectric(device, library, queue);
         testLambertianAndDiffuseTransmissionPdf(device, library, queue);
+        testGgxConductorFAndPdf(device, library, queue);
         testGgxD(device, library, queue);
         testGgxG1SmoothLimit(device, library, queue);
         testCheckerColor(device, library, queue);
