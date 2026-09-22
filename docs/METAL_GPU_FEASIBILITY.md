@@ -10711,3 +10711,42 @@ done. That leaves 16 pre-existing failures, all in the categories
 section 174 already named as needing new BSDF systems (B11/B13/B14),
 a whole OBJ-scene pipeline (H1), or external assets not present in
 this repo (H2-H12, A9's own combination of several of these).
+
+## 180. Structural refactor, part 3: metal_poc.mm's own Stage 3/Stage 4 split into metal_poc_gpu_resources.mm/metal_poc_dispatch.mm
+
+User asked (the same trigger phrase as sections 156/173's own reviews)
+to review file sizes again; `metal_poc.mm` had regrown to 2,271 lines
+across PRs #166-179, its own Stage 3 (`buildGPUResources()`, GPU
+buffer/acceleration-structure upload) and Stage 4
+(`compileShaderAndDispatch()`, shader compile + dispatch + readback)
+together accounting for over half of it (~435 and ~756 lines
+respectively) - exactly the two methods section 173's own closing note
+flagged as "likely to regrow again," now confirmed.
+
+Pure code motion, same precedent as sections 156/173's own splits: `sed`-
+extracted exact line ranges (not retyped) into two new files,
+`gpu/metal/metal_poc_gpu_resources.mm` (Stage 3) and `gpu/metal/
+metal_poc_dispatch.mm` (Stage 4, plus its own `checkGpuResource()` static
+helper, which only Stage 4 calls), each with the same minimal 3-line
+header (`#import Metal/Foundation` + `#include "metal_poc_app.h"`) the
+scene-builder/pbrt-loader splits already use - `metal_poc_dispatch.mm`
+additionally needs `#include "metal_poc_shader_files.h"` for its own
+runtime shader-source loading, which `metal_poc.mm` itself no longer
+needs post-split (that now-unused include was removed from it).
+`metal_poc.mm` drops to 1,079 lines - buildScene() (the hardcoded room),
+buildHandAuthoredScene() (the scene_id dispatcher), applyCameraOverride(),
+and Stage 5 (postProcessAndWrite()) all stay, since none of those are
+GPU-resource/dispatch code. Added to CMakeLists.txt's `metal_renderer`
+static-lib source list alongside the existing splits.
+
+Verified: full clean rebuild, ctest (4/4), 51-scene GPU smoke sweep
+(zero crashes), and a before/after hash comparison (stash/rebuild-clean/
+re-render, non-interleaved) across ALL 51 currently-supported scene
+IDs - a stronger bar than the usual representative-subset sweep, since
+a *pure* host-side code-motion change with zero `.metal`/shader source
+touched should be byte-for-byte identical everywhere, not just visually
+close. 50/51 matched exactly; the one exception, D8, is the same
+already-documented pre-existing lens-camera non-determinism (section
+160) that unpredictably shifts across unrelated rebuilds in EVERY prior
+PR's own hash sweep in this series - not a new finding, not caused by
+this change.

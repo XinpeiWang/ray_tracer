@@ -371,6 +371,12 @@ if(RT_BUILD_METAL)
         # "Stage 2.5" block grew past a third of it, same pure-code-motion
         # precedent as the metal_poc_scenes_*.mm split just above.
         gpu/metal/metal_poc_pbrt_loader.mm
+        # Stage 3 (GPU buffer/acceleration-structure upload) and Stage 4
+        # (shader compile + dispatch + readback) - split out of
+        # metal_poc.mm once that pair grew past ~1200 combined lines,
+        # same pure-code-motion precedent as the two splits just above.
+        gpu/metal/metal_poc_gpu_resources.mm
+        gpu/metal/metal_poc_dispatch.mm
         # tinyexr's own zip/pxr24 codecs need miniz's real mz_compress/
         # mz_uncompress symbols (see the target_include_directories
         # comment below on why metal_renderer now needs tinyexr's real
