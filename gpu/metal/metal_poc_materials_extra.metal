@@ -650,6 +650,26 @@ inline float principledGgxPdf(float3 wo, float3 wi, float alpha) {
     return pdfWm / max(4.0 * dotWoH, 1e-8);
 }
 
+// The combined 3-lobe (diffuse + specular + clearcoat) Principled PDF,
+// given each lobe's already-computed selection probability - the exact
+// same combine `shadePrincipled()`'s own tail performs, factored out so
+// it's independently testable against `PrincipledBxDF<T>::
+// scattering_pdf()`'s own identical combine (src/shared/
+// bxdfs_principled.h) - same "extract the pure formula, don't duplicate
+// it" rationale as `lambertianPdf()`/`ggxConductorPdf()` before this
+// (sections 190/191). Does NOT re-derive `pDiff`/`pSpec`/`pCoat` itself
+// (those stay computed once, at `shadePrincipled()`'s own top, for BOTH
+// lobe selection AND this combine, matching the original code's own
+// control flow exactly - no new computation, just a name for the
+// existing tail expression).
+inline float principledCombinedPdf(float pDiff, float pSpec, float pCoat, float alpha, float alphaCC,
+                                    float3 woLocal, float3 wiLocal) {
+    float pdfDiff = pDiff * wiLocal.z / M_PI_F;
+    float pdfSpec = pSpec * principledGgxPdf(woLocal, wiLocal, alpha);
+    float pdfCoat = pCoat * principledGgxPdf(woLocal, wiLocal, alphaCC);
+    return pdfDiff + pdfSpec + pdfCoat;
+}
+
 // materialType 24 (B10, Principled Showcase) - pbrt-v4/Disney's own
 // artist-friendly 3-lobe BSDF (diffuse + specular-dielectric-or-metal +
 // clearcoat), a direct port of `PrincipledBxDF<T>::sample()`
@@ -745,10 +765,7 @@ inline bool shadePrincipled(TriangleMaterial mat, float3 hitPoint, float3 facing
 
     float3 totalCol = diffCol + specCol + float3(ccCol);
 
-    float pdfDiff = pDiff * cosWiL / M_PI_F;
-    float pdfSpec = pSpec * principledGgxPdf(woLocal, woOutLocal, alpha);
-    float pdfCoat = pCoat * principledGgxPdf(woLocal, woOutLocal, alphaCC);
-    float pdf = pdfDiff + pdfSpec + pdfCoat;
+    float pdf = principledCombinedPdf(pDiff, pSpec, pCoat, alpha, alphaCC, woLocal, woOutLocal);
     if (pdf < 1e-12) return false;
 
     float3 weight = totalCol * cosWiL / pdf;

@@ -95,6 +95,64 @@ kernel void test_ggxConductorPdf(
     outputs[tid] = ggxConductorPdf(Dh, G1, wo.z);
 }
 
+// principledGgxBrdf()/principledGgxPdf() (metal_poc_materials_extra.metal)
+// direct dispatch - both are already standalone, pure, local-frame
+// functions (no extraction needed, unlike Lambertian/Conductor) - cross-
+// checked against PrincipledBxDF<double>::ggx_brdf()/ggx_pdf() in
+// metal_poc_shader_tests.mm.
+kernel void test_principledGgxBrdf(
+    device const float3* wos [[buffer(0)]],
+    device const float3* wis [[buffer(1)]],
+    device const float* alphas [[buffer(2)]],
+    device float* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = principledGgxBrdf(wos[tid], wis[tid], alphas[tid]);
+}
+
+kernel void test_principledGgxPdf(
+    device const float3* wos [[buffer(0)]],
+    device const float3* wis [[buffer(1)]],
+    device const float* alphas [[buffer(2)]],
+    device float* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = principledGgxPdf(wos[tid], wis[tid], alphas[tid]);
+}
+
+// Full-pipeline cross-check for shadePrincipled()'s own combined 3-lobe
+// PDF: replicates the same small lobe-weight derivation
+// shadePrincipled()'s own top performs (calling the real
+// schlickFresnelPrincipled(), not a duplicate of it), then calls the
+// real, extracted principledCombinedPdf() - cross-checked against
+// PrincipledBxDF<double>::scattering_pdf()'s own identical combine.
+kernel void test_principledCombinedPdf(
+    device const float* metallics [[buffer(0)]],
+    device const float* iors [[buffer(1)]],
+    device const float* clearcoats [[buffer(2)]],
+    device const float* roughnesses [[buffer(3)]],
+    device const float* clearcoatRoughnesses [[buffer(4)]],
+    device const float3* wos [[buffer(5)]],
+    device const float3* wis [[buffer(6)]],
+    device float* outputs [[buffer(7)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float3 wo = wos[tid];
+    float3 wi = wis[tid];
+    if (wo.z <= 0.0 || wi.z <= 0.0) { outputs[tid] = 0.0; return; }
+    float alpha = max(sqrt(max(roughnesses[tid], 0.0)), 0.0009);
+    float alphaCC = max(sqrt(max(clearcoatRoughnesses[tid], 0.0)), 0.0009);
+    float F0d = pow((iors[tid] - 1.0) / (iors[tid] + 1.0), 2.0);
+    float Fspec = schlickFresnelPrincipled(wo.z, F0d);
+    float wDiff = (1.0 - metallics[tid]) * (1.0 - Fspec);
+    float wSpec = 1.0;
+    float wCoat = clearcoats[tid] * 0.25;
+    float wTotal = wDiff + wSpec + wCoat;
+    if (wTotal < 1e-8) { outputs[tid] = 0.0; return; }
+    float invW = 1.0 / wTotal;
+    outputs[tid] = principledCombinedPdf(wDiff * invW, wSpec * invW, wCoat * invW, alpha, alphaCC, wo, wi);
+}
+
 kernel void test_frDielectric(
     device const float2* inputs [[buffer(0)]],   // (cosThetaI, eta)
     device float* outputs [[buffer(1)]],

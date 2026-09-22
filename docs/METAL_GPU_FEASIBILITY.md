@@ -11598,3 +11598,65 @@ discipline section 190 established: deliberately corrupted
 `ggxConductorF()`'s own denominator, re-ran the test (no rebuild needed
 - shader source recompiles at runtime), confirmed 59/60 cases failed
 loudly with the right numbers, reverted.
+
+## 192. Test-coverage series, part 3: Principled BSDF combined-lobe PDF numeric cross-check
+
+Third material family (part 1: Lambertian/DiffuseTransmission, section
+190; part 2: rough conductor, section 191). `shadePrincipled()`
+(`metal_poc_materials_extra.metal`, materialType 24, B10's own Principled
+Showcase) turned out to need LESS extraction work than either prior
+part - a scoping research pass found its two GGX helpers
+(`principledGgxBrdf`/`principledGgxPdf`) were ALREADY standalone, pure,
+already-named functions when this material was first written (no
+duplicated-formula gap to close there, unlike Lambertian/Conductor).
+The one real gap: the combined 3-lobe (diffuse + specular + clearcoat)
+PDF combine (`pdfDiff + pdfSpec + pdfCoat`) was computed inline, once,
+at `shadePrincipled()`'s own tail - not duplicated (this material has no
+NEE, so there's only one call site to begin with), but still untestable
+in isolation. Extracted `principledCombinedPdf(pDiff, pSpec, pCoat,
+alpha, alphaCC, woLocal, wiLocal)` (next to the two GGX helpers,
+`metal_poc_materials_extra.metal`) - a pure, minimal rename of the
+existing tail expression, not a re-derivation (the lobe-selection
+probabilities `pDiff`/`pSpec`/`pCoat` stay computed once at the
+function's own top, for BOTH lobe selection AND this combine, exactly
+as before).
+
+**Three-tier test** (`testPrincipledPdf()`,
+`metal_poc_shader_tests.mm`): (1) `principledGgxBrdf`/`principledGgxPdf`
+dispatched directly, cross-checked against `PrincipledBxDF<double>::
+ggx_brdf()`/`ggx_pdf()` (`src/shared/bxdfs_principled.h`) - free, since
+both sides already had standalone functions with a MATCHING (wo,wi)
+naming convention this time (no inversion subtlety to work out, unlike
+section 191's own conductor finding). (2) The combined pdf, full
+pipeline: a new test kernel replicates `shadePrincipled()`'s own small
+lobe-weight derivation (calling the real `schlickFresnelPrincipled()`,
+not duplicating it) then calls the real `principledCombinedPdf()`,
+cross-checked against `PrincipledBxDF<double>::scattering_pdf()`'s own
+identical combine for 50 random `(metallic, ior, clearcoat, roughness,
+clearcoat_rough, wo, wi)` cases. A real subtlety worked out (and
+verified correct on the first try, unlike section 191's own conductor
+convention which needed the test itself to confirm a guess):
+`scattering_pdf(n, wi, wo)` takes `wi` as the ray's own INCIDENT
+direction (toward the surface, i.e. the negation of
+`shadePrincipled()`'s own `woLocal`/view-direction convention) and `wo`
+as the newly SCATTERED direction (matching `shadePrincipled()`'s own
+`woOutLocal`/queried-direction directly) - confirmed by reading the
+reference's own internal frame-transform code, not guessed from the
+parameter names alone. **Deliberately deferred**: the full 3-lobe
+combined COLOR (`f`, not just `pdf`) - `PrincipledBxDF` exposes no
+standalone `f()` method at all (the combine lives only inline inside
+`sample()`), so cross-checking it would need either duplicating that
+inline combine (not a real test, per section 190's own reasoning) or
+adding a new CPU-side method first - flagged as an open scoping
+decision for whoever picks this up next, not silently skipped.
+
+**Verified**: full clean rebuild, ctest 4/4, an 81-scene hash sweep
+(68/81 byte-identical; the other 13 all the already-documented pre-
+existing GPU noise set, zero new scenes - B10, the one scene that
+actually exercises `shadePrincipled()`, spot-checked specifically:
+turned out to be self-noisy across repeat baseline-only renders too
+despite one lucky stable pair on the first check, RMSE ~0.014-0.020
+self-noise vs 0.021 vs-new, same order of magnitude, confirming this
+extraction adds no new discrepancy), and the same negative-control
+discipline (corrupted `principledCombinedPdf()`'s own clearcoat term,
+confirmed 43/50 cases failed with the right numbers, reverted).
