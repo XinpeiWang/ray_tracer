@@ -536,6 +536,178 @@ static void testPrincipledPdf(id<MTLDevice> device, id<MTLLibrary> library, id<M
     }
 }
 
+// normalizedFresnelF() numeric cross-check - already a standalone
+// function (no extraction needed), matching (1-FrDielectric(cos,eta))/
+// (c*pi), pbrt-v4's own NormalizedFresnelBxDF formula (src/shared/
+// bxdfs_layered.h's own top comment). Uses the free FrDielectric<double>()
+// template directly - see this file's own test_kernels.metal comment
+// on why the class's own scattering_pdf() isn't the right reference
+// here (it returns f*cos for this codebase's own NEE convention, not
+// bare f). Also fixes a real (if harmless) code-duplication gap found
+// while scoping this: shadeOrenNayar()/shadeNormalizedFresnel() both
+// used to inline the exact same `cosSurface/M_PI_F` cosine-hemisphere
+// pdf shadeLambertian() already has a tested, named function for
+// (lambertianPdf(), section 190) - repointed both (8 call sites total)
+// at it, a pure DRY fix with zero formula change, already covered by
+// that existing test.
+static void testNormalizedFresnelF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    std::mt19937 rng(2718);
+    std::uniform_real_distribution<double> zeroOne(0.0, 1.0);
+    std::uniform_real_distribution<double> etaDist(1.05, 2.5);
+    std::uniform_real_distribution<double> cDist(0.05, 1.0);
+
+    auto randomUpperHemisphereDir = [&]() -> simd::double3 {
+        double z = 0.05 + zeroOne(rng) * 0.9;
+        double phi = zeroOne(rng) * 2.0 * M_PI;
+        double r = std::sqrt(std::max(0.0, 1.0 - z * z));
+        return simd::double3{r * std::cos(phi), r * std::sin(phi), z};
+    };
+
+    const int n = 40;
+    std::vector<simd::float3> wis(n), ns(n);
+    std::vector<float> etas(n), cs(n);
+    std::vector<double> expected(n);
+    for (int i = 0; i < n; ++i) {
+        simd::double3 wi = randomUpperHemisphereDir();
+        double eta = etaDist(rng);
+        double c = cDist(rng);
+        wis[i] = simd::float3{(float)wi.x, (float)wi.y, (float)wi.z};
+        ns[i] = simd::float3{0.0f, 0.0f, 1.0f};
+        etas[i] = (float)eta;
+        cs[i] = (float)c;
+        double cosWi = wi.z;
+        double fr = FrDielectric<double>(cosWi, eta);
+        double cv = std::max(c, 1e-6);
+        expected[i] = (1.0 - fr) / (cv * M_PI);
+    }
+    id<MTLBuffer> wiBuf = makeBuffer(device, wis.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> nBuf = makeBuffer(device, ns.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> etaBuf = makeBuffer(device, etas.data(), n * sizeof(float));
+    id<MTLBuffer> cBuf = makeBuffer(device, cs.data(), n * sizeof(float));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (runKernel(device, library, queue, @"test_normalizedFresnelF", @[wiBuf, nBuf, etaBuf, cBuf, outBuf], nil, n)) {
+        float* out = (float*)outBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "normalizedFresnelF matches (1-Fr)/(c*pi) (case %d)", i);
+            expectNear(label, out[i], expected[i], std::max(1e-5, std::fabs(expected[i]) * 1e-3));
+        }
+    }
+}
+
+// layeredCoatedConductorF()/layeredCoatedDiffuseF()/coatedDiffuseProxyPdf()
+// - property tests, not a numeric cross-check (see test_kernels.metal's
+// own comment on why an exact/statistical comparison against the CPU
+// reference isn't attempted for the two stochastic walk functions).
+// coatedDiffuseProxyPdf() has no reference at all (this codebase's own
+// heuristic MIS proxy, not a value with independent ground truth - same
+// category, so tested the same way).
+static void testLayeredCoatedProperties(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    std::mt19937 rng(777);
+    std::uniform_real_distribution<double> zeroOne(0.0, 1.0);
+    std::uniform_real_distribution<double> alphaDist(0.01, 0.9);
+    std::uniform_real_distribution<double> etaDist(1.05, 2.5);
+    std::uniform_real_distribution<double> kDist(0.0, 4.0);
+
+    auto randomUpperHemisphereDir = [&]() -> simd::double3 {
+        double z = 0.05 + zeroOne(rng) * 0.9;
+        double phi = zeroOne(rng) * 2.0 * M_PI;
+        double r = std::sqrt(std::max(0.0, 1.0 - z * z));
+        return simd::double3{r * std::cos(phi), r * std::sin(phi), z};
+    };
+    auto isFiniteFloat3 = [](simd::float3 v) {
+        return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+    };
+
+    const int n = 30;
+    std::vector<simd::float3> wiLocals(n), woLocals(n);
+    std::vector<float> etas(n), alphas(n);
+    std::vector<simd::float3> conductorEtas(n), conductorKs(n), albedos(n);
+    std::vector<uint32_t> seedsA(n), seedsB(n);
+    for (int i = 0; i < n; ++i) {
+        simd::double3 wi = randomUpperHemisphereDir();
+        simd::double3 wo = randomUpperHemisphereDir();
+        wiLocals[i] = simd::float3{(float)wi.x, (float)wi.y, (float)wi.z};
+        woLocals[i] = simd::float3{(float)wo.x, (float)wo.y, (float)wo.z};
+        etas[i] = (float)etaDist(rng);
+        alphas[i] = (float)alphaDist(rng);
+        double k = kDist(rng);
+        conductorEtas[i] = simd::float3{(float)etaDist(rng), (float)etaDist(rng), (float)etaDist(rng)};
+        conductorKs[i] = simd::float3{(float)k, (float)k, (float)k};
+        albedos[i] = simd::float3{(float)zeroOne(rng), (float)zeroOne(rng), (float)zeroOne(rng)};
+        seedsA[i] = (uint32_t)rng();
+        seedsB[i] = (uint32_t)rng();
+    }
+
+    id<MTLBuffer> wiBuf = makeBuffer(device, wiLocals.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> woBuf = makeBuffer(device, woLocals.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> etaBuf = makeBuffer(device, etas.data(), n * sizeof(float));
+    id<MTLBuffer> alphaBuf = makeBuffer(device, alphas.data(), n * sizeof(float));
+    id<MTLBuffer> condEtaBuf = makeBuffer(device, conductorEtas.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> condKBuf = makeBuffer(device, conductorKs.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> albedoBuf = makeBuffer(device, albedos.data(), n * sizeof(simd::float3));
+    id<MTLBuffer> seedABuf = makeBuffer(device, seedsA.data(), n * sizeof(uint32_t));
+    id<MTLBuffer> seedBBuf = makeBuffer(device, seedsB.data(), n * sizeof(uint32_t));
+    id<MTLBuffer> ccOutABuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    id<MTLBuffer> ccOutBBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    id<MTLBuffer> cdOutABuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    id<MTLBuffer> cdOutBBuf = makeOutputBuffer(device, n * sizeof(simd::float3));
+    id<MTLBuffer> proxyOutBuf = makeOutputBuffer(device, n * sizeof(float));
+
+    bool ranCCA = runKernel(device, library, queue, @"test_layeredCoatedConductorFProperties",
+                             @[wiBuf, woBuf, etaBuf, alphaBuf, condEtaBuf, condKBuf, seedABuf, ccOutABuf], nil, n);
+    bool ranCCB = runKernel(device, library, queue, @"test_layeredCoatedConductorFProperties",
+                             @[wiBuf, woBuf, etaBuf, alphaBuf, condEtaBuf, condKBuf, seedBBuf, ccOutBBuf], nil, n);
+    bool ranCDA = runKernel(device, library, queue, @"test_layeredCoatedDiffuseFProperties",
+                             @[wiBuf, woBuf, etaBuf, alphaBuf, albedoBuf, seedABuf, cdOutABuf], nil, n);
+    bool ranCDB = runKernel(device, library, queue, @"test_layeredCoatedDiffuseFProperties",
+                             @[wiBuf, woBuf, etaBuf, alphaBuf, albedoBuf, seedBBuf, cdOutBBuf], nil, n);
+    bool ranProxy = runKernel(device, library, queue, @"test_coatedDiffuseProxyPdf",
+                               @[woBuf, wiBuf, alphaBuf, proxyOutBuf], nil, n);
+
+    int ccDifferingCount = 0, cdDifferingCount = 0;
+    if (ranCCA && ranCCB) {
+        simd::float3* outA = (simd::float3*)ccOutABuf.contents;
+        simd::float3* outB = (simd::float3*)ccOutBBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "layeredCoatedConductorF is finite (case %d, seed A)", i);
+            expectTrue(label, isFiniteFloat3(outA[i]));
+            snprintf(label, sizeof(label), "layeredCoatedConductorF is non-negative (case %d, seed A)", i);
+            expectTrue(label, outA[i].x >= -1e-6f && outA[i].y >= -1e-6f && outA[i].z >= -1e-6f);
+            if (simd::any(outA[i] != outB[i])) ++ccDifferingCount;
+        }
+        // Not every case needs to differ (some walks legitimately hit
+        // the same deterministic early-out, e.g. a grazing wi/wo pair),
+        // but MOST should, across 30 independently-seeded cases - this
+        // is the "genuinely sampling, not silently constant" check.
+        expectTrue("layeredCoatedConductorF varies across at least half of seeded pairs",
+                   ccDifferingCount >= n / 2);
+    }
+    if (ranCDA && ranCDB) {
+        simd::float3* outA = (simd::float3*)cdOutABuf.contents;
+        simd::float3* outB = (simd::float3*)cdOutBBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "layeredCoatedDiffuseF is finite (case %d, seed A)", i);
+            expectTrue(label, isFiniteFloat3(outA[i]));
+            snprintf(label, sizeof(label), "layeredCoatedDiffuseF is non-negative (case %d, seed A)", i);
+            expectTrue(label, outA[i].x >= -1e-6f && outA[i].y >= -1e-6f && outA[i].z >= -1e-6f);
+            if (simd::any(outA[i] != outB[i])) ++cdDifferingCount;
+        }
+        expectTrue("layeredCoatedDiffuseF varies across at least half of seeded pairs",
+                   cdDifferingCount >= n / 2);
+    }
+    if (ranProxy) {
+        float* out = (float*)proxyOutBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "coatedDiffuseProxyPdf is finite and non-negative (case %d)", i);
+            expectTrue(label, std::isfinite(out[i]) && out[i] >= -1e-6f);
+        }
+    }
+}
+
 static void testGgxD(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // At normal incidence (hLocal == the shading normal), ggxD() has an
     // exact closed form regardless of alpha: D = 1/(pi*alpha^2) - see
@@ -1697,6 +1869,8 @@ int main() {
         testLambertianAndDiffuseTransmissionPdf(device, library, queue);
         testGgxConductorFAndPdf(device, library, queue);
         testPrincipledPdf(device, library, queue);
+        testNormalizedFresnelF(device, library, queue);
+        testLayeredCoatedProperties(device, library, queue);
         testGgxD(device, library, queue);
         testGgxG1SmoothLimit(device, library, queue);
         testCheckerColor(device, library, queue);

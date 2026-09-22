@@ -11660,3 +11660,84 @@ self-noise vs 0.021 vs-new, same order of magnitude, confirming this
 extraction adds no new discrepancy), and the same negative-control
 discipline (corrupted `principledCombinedPdf()`'s own clearcoat term,
 confirmed 43/50 cases failed with the right numbers, reverted).
+
+## 193. Test-coverage series, part 4: NormalizedFresnel numeric cross-check, a DRY bonus fix, and why the layered coated materials get property tests instead of a numeric one
+
+Fourth material family (parts 1-3: sections 190-192). Originally scoped
+as "CoatedConductor/CoatedDiffuse layered materials" - a dedicated
+research pass first (same discipline every prior part used) found the
+honest answer is that a numeric cross-check isn't the right tool for
+those two, and reshaped this PR's real scope along the way.
+
+**Why the layered coated materials don't get a numeric cross-check**:
+`layeredCoatedConductorF()`/`layeredCoatedDiffuseF()`
+(`metal_poc_materials_extra.metal`/`metal_poc_materials_layered.metal`)
+are genuine stochastic Monte Carlo estimators - they consume `rngState`
+directly inside a `kMaxDepth=10` random walk, so the SAME inputs called
+twice give DIFFERENT outputs, by design. The CPU reference
+(`CoatedConductorBxDF`/`CoatedDiffuseBxDF`'s shared `layered_f()`,
+`src/shared/bxdfs_layered.h`) is ALSO a genuine stochastic estimator -
+but built on a structurally different RNG (a 64-bit PCG32 port vs this
+codebase's own 32-bit hash-based `randFloat()`, confirmed by reading
+both - `pcgHash()`'s own comment already says it "mirrors [the CPU RNG]
+in spirit... without sharing implementation"). That rules out BOTH an
+exact numeric cross-check (obviously) AND a paired-same-seed comparison
+(the two RNGs would make different draws from the first sample, so
+"same seed" doesn't mean "same path"). A Monte-Carlo-convergence
+statistical test (average many samples on each side, compare means
+within a tolerance band) was considered and deliberately NOT attempted:
+real risk of CI flakiness from an unknown/untuned sample count, an
+unbounded-variance connection term, and Russian roulette kicking in past
+depth 3 - the SAME "don't force a test whose reliability you can't
+vouch for" discipline sections 191/192 already used to defer
+`shadeRoughDielectric` and Principled's own `f()`.
+
+**What DOES get tested instead - property tests, not value tests**:
+every real BRDF/pdf value must be non-negative and finite regardless of
+which specific stochastic estimate came back, and a genuinely-sampling
+function must actually vary across different seeds (not silently return
+a constant due to a broken RNG wire-up) - three invariants checkable
+without any reference at all. New test
+(`testLayeredCoatedProperties()`, dispatching
+`test_layeredCoatedConductorFProperties`/`test_layeredCoatedDiffuseFProperties`/
+`test_coatedDiffuseProxyPdf`) checks exactly these across 30 random
+cases, each dispatched twice with independent seeds. `coatedDiffuseProxyPdf()`
+(a pure, deterministic MIS-heuristic pdf, no rngState) gets the same
+non-negative/finite check for the same reason - it's this codebase's
+own heuristic, not a value with independent ground truth (matching
+`ggx_vndf_reflection_pdf`'s own precedent for a smooth conductor, but
+this material has no equivalent closed-form pbrt pdf to compare
+against).
+
+**What DID get a real numeric cross-check**: `normalizedFresnelF()`
+(`metal_poc_materials_layered.metal`) - already a standalone, pure
+function requiring no extraction (same as Principled's own GGX helpers,
+section 192) - matching `(1 - FrDielectric(cos,eta)) / (c*pi)`, pbrt-v4's
+own `NormalizedFresnelBxDF` formula (`src/shared/bxdfs_layered.h`'s own
+top comment). One real subtlety: that class's own `scattering_pdf()`
+method does NOT return bare `f()` - it returns `f*cos` (this codebase's
+own NEE convention for that specific class) - so the test calls the
+free `FrDielectric<double>()` template directly instead, the same
+already-proven-correct function `testFrDielectric` cross-checks
+elsewhere, rather than the misleadingly-named class method.
+
+**A real bonus DRY fix found while scoping this, not originally
+planned**: `shadeOrenNayar()` AND `shadeNormalizedFresnel()` (both
+cosine-hemisphere-sampled materials) each independently inlined the
+EXACT SAME `cosSurface/M_PI_F` pdf formula `lambertianPdf()` (section
+190) already has a tested, named function for - 8 call sites total (4
+per function) repointed at it, a pure rename with zero formula change,
+now covered "for free" by that existing test rather than needing new
+coverage of its own.
+
+**Verified**: full clean rebuild, ctest 4/4, an 81-scene hash sweep
+(68/81 byte-identical, the other 13 the same already-documented pre-
+existing noise set, zero new scenes - B9, "Cornell Crystal," the one
+scene that actually exercises `shadeNormalizedFresnel()`, spot-checked
+specifically via 3 repeat baseline-only renders: its own base-vs-new
+diff, RMSE 0.047, is actually SMALLER than its own baseline self-noise,
+RMSE 0.102 - confirming this change adds no new discrepancy at all), and
+two separate negative controls (corrupted `normalizedFresnelF()`'s own
+formula: 40/40 cases failed; corrupted `layeredCoatedConductorF()`'s
+own zero-bounce term to force a guaranteed-negative value: 30/30 cases
+correctly caught by the non-negativity property check).

@@ -59,7 +59,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
-                float pdfBsdfForThisDir = cosSurface / M_PI_F;
+                float pdfBsdfForThisDir = lambertianPdf(cosSurface);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -193,7 +193,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 if (envShadowResult.type == intersection_type::none) {
                     float2 envUV = equirectangularUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
-                    float envPdfBsdf = envCosSurface / M_PI_F;
+                    float envPdfBsdf = lambertianPdf(envCosSurface);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * albedo * orenNayarF(woWorld, envWi, facingNormal, mat.roughness)
@@ -222,7 +222,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
                     float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
-                    float pbrtEnvPdfBsdf = pbrtEnvCosSurface / M_PI_F;
+                    float pbrtEnvPdfBsdf = lambertianPdf(pbrtEnvCosSurface);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
                     radiance += throughput * albedo * orenNayarF(woWorld, pbrtEnvWi, facingNormal, mat.roughness)
@@ -245,7 +245,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
     rayDir = newDir;
     rayOrigin = hitPoint + facingNormal * 0.001f;
     throughput *= albedo * orenNayarF(woWorld, newDir, facingNormal, mat.roughness) * M_PI_F;
-    bsdfPdf = max(dot(facingNormal, newDir), 0.0001) / M_PI_F;
+    bsdfPdf = lambertianPdf(max(dot(facingNormal, newDir), 0.0001f));
     specularBounce = false;
     return true;
 }
@@ -325,7 +325,7 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
                 isect.intersect(shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
-                float pdfBsdfForThisDir = cosSurface / M_PI_F;
+                float pdfBsdfForThisDir = lambertianPdf(cosSurface);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdfForThisDir * pdfBsdfForThisDir);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -457,7 +457,7 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
                 if (envShadowResult.type == intersection_type::none) {
                     float2 envUV = equirectangularUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
-                    float envPdfBsdf = envCosSurface / M_PI_F;
+                    float envPdfBsdf = lambertianPdf(envCosSurface);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                         / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
                     radiance += throughput * float3(normalizedFresnelF(envWi, facingNormal, mat.ior, mat.roughness))
@@ -483,7 +483,7 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
                     float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
-                    float pbrtEnvPdfBsdf = pbrtEnvCosSurface / M_PI_F;
+                    float pbrtEnvPdfBsdf = lambertianPdf(pbrtEnvCosSurface);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
                     radiance += throughput * float3(normalizedFresnelF(pbrtEnvWi, facingNormal, mat.ior, mat.roughness))
@@ -504,7 +504,7 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
     rayDir = newDir;
     rayOrigin = hitPoint + facingNormal * 0.001f;
     throughput *= float3(normalizedFresnelF(newDir, facingNormal, mat.ior, mat.roughness)) * M_PI_F;
-    bsdfPdf = max(dot(facingNormal, newDir), 0.0001) / M_PI_F;
+    bsdfPdf = lambertianPdf(max(dot(facingNormal, newDir), 0.0001f));
     specularBounce = false;
     return true;
 }
