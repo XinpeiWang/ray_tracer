@@ -81,6 +81,13 @@ struct AreaLightData {
     float pmf = 0.0f;
     float aliasProb = 1.0f;
     uint32_t aliasIndex = 0;
+    // 0.0 = planar quad (every light before this one). 1.0 = a sphere
+    // light (B14, section 184) - see metal_poc.metal's own AreaLight::kind
+    // comment for the full field-reuse layout (edgeU.x = radius).
+    float kind = 0.0f;
+    // A sphere light's own index into `spheres[]` (-1 for a quad light) -
+    // see metal_poc.metal's own AreaLight::spherePrimId comment.
+    int32_t spherePrimId = -1;
 };
 
 // Power-proportional light picking - a direct port of the Vose alias-

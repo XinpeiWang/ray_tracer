@@ -1133,7 +1133,18 @@ kernel void primaryRayKernel(
                     // by exact zero at a grazing angle - matches the
                     // same abs(cosLight) fix the NEE branches below
                     // already got in section 104, just missed here.
-                    float cosLight = max(abs(dot(float3(light.normal), -rayDir)), 0.0001);
+                    //
+                    // A sphere light (AreaLight::kind==1, B14, section
+                    // 184) has no single fixed plane normal the way a
+                    // quad does - `light.normal` is unused/meaningless for
+                    // one (see that field's own comment) - so this uses
+                    // THIS hit's own already-computed geometric `normal`
+                    // (line ~787, `normalize(hitPoint - sphereCenter)`)
+                    // instead, the correct per-point outward normal a
+                    // curved surface needs for its own area-to-solid-angle
+                    // Jacobian.
+                    float3 lightNormalAtHit = (light.kind > 0.5) ? normal : float3(light.normal);
+                    float cosLight = max(abs(dot(lightNormalAtHit, -rayDir)), 0.0001);
                     float pdfLight = (distSq / (light.area * cosLight)) * light.pmf;
                     float weight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfLight * pdfLight);
                     radiance += throughput * hitEmission * weight;

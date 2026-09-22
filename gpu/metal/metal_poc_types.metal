@@ -367,6 +367,26 @@ struct AreaLight {
     float pmf;
     float aliasProb;
     uint aliasIndex;
+    // 0.0 (every light before this one) = planar quad, using edgeU/edgeV/
+    // normal/area as they always have. 1.0 = a sphere light (B14, section
+    // 184) - `edgeU.x` reused as the sphere's own radius (edgeV/normal
+    // unused: a sphere has no single fixed plane/normal the way a quad
+    // does; `area` still means "total light-source area", here
+    // `4*pi*radius^2`, so buildPowerLightSampler()'s own `luminance*area`
+    // power estimate and every NEE call site's own generic area-to-solid-
+    // angle Jacobian (`distSq/(area*cosLight)`) both work UNCHANGED - only
+    // sampleAreaLight()'s own POINT/NORMAL sampling and the direct-hit MIS
+    // branch's own per-hit normal (metal_poc_kernel.metal - a sphere's
+    // normal varies per-point, unlike a quad's fixed one) need to branch
+    // on this at all.
+    float kind;
+    // A sphere light's own index into `spheres[]`/`sphereMaterials[]` (-1
+    // for a quad light, which isn't in that array at all) - lets a shadow
+    // ray toward this light exclude its OWN primitive outright
+    // (SpherePayload::shadowIgnorePrimId's own comment) instead of
+    // relying purely on a distance epsilon, which a curved surface makes
+    // unreliable.
+    int spherePrimId;
 };
 
 // A true DELTA light - zero-area, zero-solid-angle, unlike every AreaLight
@@ -1038,6 +1058,21 @@ struct SpherePayload {
     // explicitly already (F11, section 167), so it overrides this
     // default deliberately, not by omission.
     bool isShadowRay = true;
+    // B14/section 184: which sphere primitive (if any) a shadow ray must
+    // treat as invisible/non-occluding, REGARDLESS of isShadowRay/
+    // materialType - -1 (every call site before this one, via the same
+    // "3-arg intersect() implicitly default-constructs this" mechanism
+    // isShadowRay's own comment documents) means "ignore nothing,
+    // unchanged behaviour". Exists specifically for a sphere-shaped area
+    // light's own NEE shadow ray: unlike a quad light (a flat triangle a
+    // `max_distance` epsilon-short-stop reliably clears), a curved
+    // sphere's own surface is close enough to a shadow ray's intended
+    // target point that even a generous distance epsilon isn't reliably
+    // enough margin (found via direct debugging, not assumed - see
+    // shadeLambertian()'s own comment) - excluding the light's own
+    // primitive_id outright is the robust fix, independent of epsilon
+    // tuning.
+    int shadowIgnorePrimId = -1;
 };
 
 // Bounding-box intersection functions report their result through
@@ -1135,6 +1170,11 @@ SphereIntersectionResult sphereIntersectionFunction(
         uint mt = sphereMaterials[primitiveIndex].materialType;
         if (payload.isShadowRay && (mt == 28u || mt == 29u || mt == 30u)) return result;
     }
+    // A sphere light's own NEE shadow ray excludes ITS OWN primitive
+    // outright (SpherePayload::shadowIgnorePrimId's own comment) rather
+    // than relying purely on a distance-epsilon margin, which a curved
+    // surface makes unreliable.
+    if (payload.isShadowRay && int(primitiveIndex) == payload.shadowIgnorePrimId) return result;
 
     SphereData sphere = spheres[primitiveIndex];
     // lerp(center, center+0, anything) == center exactly, so this is a

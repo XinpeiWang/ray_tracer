@@ -1011,6 +1011,9 @@ struct LightSample {
     // the picked light here so every NEE call site's own cosLight check
     // can read it without a second lights[] lookup.
     float twoSided;
+    // Mirrors AreaLight::spherePrimId (-1 for a quad light) - see that
+    // field's own comment.
+    int spherePrimId;
 };
 
 inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState,
@@ -1034,25 +1037,55 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
     uint idx = (frac < lights[slot].aliasProb) ? slot : lights[slot].aliasIndex;
     idx = min(idx, lastIdx);
     AreaLight light = lights[idx];
-    float3 edgeU = float3(light.edgeU);
-    float3 edgeV = float3(light.edgeV);
     float2 u = float2(randFloat(rngState), randFloat(rngState));
     LightSample result;
-    result.point = float3(light.center) - 0.5 * edgeU - 0.5 * edgeV + u.x * edgeU + u.y * edgeV;
-    result.normal = float3(light.normal);
-    // Patterned emission (see AreaLight's own comment): the SAME (u.x,
-    // u.y) this NEE sample point was just built from doubles as the
-    // pattern's own UV coordinate, no separate UV needed. `patternScale
-    // <= 0.0` (every light before this one) skips this entirely,
-    // reproducing flat `light.emission` exactly.
-    result.emission = (light.useTexture > 0.0)
-        ? pbrtAreaLightTexture.sample(textureSampler, u).rgb * float3(light.emission)
-        : (light.patternScale > 0.0)
-            ? checkerColor(u, light.patternScale, float3(light.emission), float3(light.emission) * light.patternTileB)
-            : float3(light.emission);
+    if (light.kind > 0.5) {
+        // Sphere light (B14, section 184) - uniform-AREA sampling (not
+        // pbrt-v4's own lower-variance cone-sampling, which would need
+        // the shading point's own origin threaded through here and into
+        // every one of this function's ~29 NEE call sites just to build
+        // the cone's axis - see AreaLight::kind's own comment for why
+        // this is the deliberately simpler, still fully unbiased choice:
+        // every call site already reads back a generic (point, normal,
+        // area, pmf) tuple and applies its OWN area-to-solid-angle
+        // Jacobian, `light.area` already holds this sphere's true surface
+        // area (4*pi*r^2, set by the scene builder), so that Jacobian
+        // works correctly here unchanged - just higher variance than a
+        // cone-sampled point would give, same "correct but not maximally
+        // efficient" tradeoff pbrt's own generic Shape::Sample() fallback
+        // makes for any shape lacking a specialized Sample(refPoint)).
+        // Standard uniform-sphere-direction sampling (z uniform in
+        // [-1,1], phi uniform in [0,2pi)) - the sampled direction IS the
+        // point's own outward normal, scaled by radius and offset from
+        // center gives the point itself.
+        float z = 1.0 - 2.0 * u.x;
+        float r = sqrt(max(0.0, 1.0 - z * z));
+        float phi = 2.0 * M_PI_F * u.y;
+        float3 dir = float3(r * cos(phi), r * sin(phi), z);
+        float radius = light.edgeU.x;
+        result.point = float3(light.center) + radius * dir;
+        result.normal = dir;
+        result.emission = float3(light.emission);
+    } else {
+        float3 edgeU = float3(light.edgeU);
+        float3 edgeV = float3(light.edgeV);
+        result.point = float3(light.center) - 0.5 * edgeU - 0.5 * edgeV + u.x * edgeU + u.y * edgeV;
+        result.normal = float3(light.normal);
+        // Patterned emission (see AreaLight's own comment): the SAME (u.x,
+        // u.y) this NEE sample point was just built from doubles as the
+        // pattern's own UV coordinate, no separate UV needed. `patternScale
+        // <= 0.0` (every light before this one) skips this entirely,
+        // reproducing flat `light.emission` exactly.
+        result.emission = (light.useTexture > 0.0)
+            ? pbrtAreaLightTexture.sample(textureSampler, u).rgb * float3(light.emission)
+            : (light.patternScale > 0.0)
+                ? checkerColor(u, light.patternScale, float3(light.emission), float3(light.emission) * light.patternTileB)
+                : float3(light.emission);
+    }
     result.area = light.area;
     result.pmf = light.pmf;
     result.twoSided = light.twoSided;
+    result.spherePrimId = light.spherePrimId;
     return result;
 }
 

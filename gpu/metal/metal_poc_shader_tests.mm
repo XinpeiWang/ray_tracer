@@ -117,6 +117,8 @@ struct AreaLightGPU {
     float pmf;
     float aliasProb;
     uint32_t aliasIndex;
+    float kind = 0.0f;  // 0=quad, 1=sphere - see AreaLight::kind's own comment
+    int32_t spherePrimId = -1;
 };
 
 // A direct, deliberately-independent re-implementation of
