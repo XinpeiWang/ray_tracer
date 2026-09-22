@@ -770,6 +770,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "G12") { buildTrophyRoom(); return true; }
     if (scene_id == "A3") { buildCheckeredSpheres(); return true; }
     if (scene_id == "A2") { buildBouncingSpheres(); return true; }
+    if (scene_id == "A8") { buildCornellSmoke(); return true; }
     if (scene_id == "A6") { buildColoredQuads(); return true; }
     if (scene_id == "A4") { buildEarth(); return true; }
     if (scene_id == "A5") { buildPerlinSpheres(); return true; }
@@ -1434,6 +1435,13 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [functionTable setBuffer:sphereBuffer offset:0 atIndex:0];
     [functionTable setBuffer:diskBuffer offset:0 atIndex:1];
     [functionTable setBuffer:cylinderBuffer offset:0 atIndex:2];
+    // A8/section 176: sphereIntersectionFunction's own SpherePayload::
+    // isShadowRay check needs sphereMaterials too, to tell a real
+    // medium sphere (materialType 28) apart from an ordinary one - the
+    // SAME sphereMaterialBuffer the calling kernel already binds at its
+    // own buffer(4), bound a SECOND time here since this table has its
+    // own independent argument namespace (diskGeomDesc's own comment).
+    [functionTable setBuffer:sphereMaterialBuffer offset:0 atIndex:3];
 
     // --- Output texture + uniforms ----------------------------------
     MTLTextureDescriptor* texDesc = [MTLTextureDescriptor

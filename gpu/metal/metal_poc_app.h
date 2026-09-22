@@ -1240,6 +1240,12 @@ struct MetalPocApp {
     // first), so this is a safety net, not the primary guard.
     bool buildHandAuthoredScene(const std::string& scene_id);
     void buildCornellBoxA1();
+    // A8: Cornell Smoke - A1's own 5 walls plus two bounded medium
+    // spheres approximating CPU's own two rotated smoke boxes. See this
+    // method's own definition comment (metal_poc_scenes_a.mm) for the
+    // full "why," including materialType 28's own new mechanism.
+    // Section 176, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCornellSmoke();
     // Shared "mesh gallery" pattern (category G/Models - section 117, docs/
     // METAL_GPU_FEASIBILITY.md) - a flat ground quad, one imported OBJ mesh
     // in a caller-chosen material, and one small quad area light above,

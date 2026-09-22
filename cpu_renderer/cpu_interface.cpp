@@ -997,6 +997,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"I2",                          // Spectral Dispersion Education, reuses B23's own glass-prism geometry verbatim (section 168) - same "Education scene, real geometry already built for another id" pattern as I1/I3/I5/etc. above, just missed in that original batch
 		"D13",                         // Camera Motion Blur - A1's own geometry plus a real orbit-style camera shutter dolly (section 174)
 		"A2",                          // Bouncing Spheres - the classic In One Weekend final scene, real per-sphere object motion blur (section 175)
+		"A8",                          // Cornell Smoke - A1's own walls plus two bounded medium spheres approximating CPU's own rotated smoke boxes (section 176)
 	};
 	return scene_id && kSupported.count(scene_id) ? 1 : 0;
 }
