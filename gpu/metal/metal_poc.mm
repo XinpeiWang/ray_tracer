@@ -930,11 +930,11 @@ void MetalPocApp::postProcessAndWrite() {
 // --- Callable entry point (phase 2 of real GPU integration - see
 // docs/METAL_GPU_FEASIBILITY.md's own section on this) -------------------
 // Signature matches gpu/optix/optix_interface.h's own optix_render_main()
-// exactly, down to reusing the same RenderOptions struct - the shape a
-// future launcher/main.cpp caller would need once this target is actually
-// linked into ray_tracer itself (still TODO, a separate/larger phase: this
-// function exists and works standalone, but nothing calls it yet outside
-// this file's own main() below and its own smoke test).
+// exactly, down to reusing the same RenderOptions struct. launcher/
+// main.cpp's own --gpu dispatch (its RT_HAVE_METAL branch) calls straight
+// into this now - see CMakeLists.txt's own RT_BUILD_METAL block for the
+// link step that makes that resolve, and metal_interface.h's own top
+// comment ("WIRED IN").
 //
 // See metal_interface.h's own comment for what this reports and why its
 // fields differ from optix_get_diagnostics()'s own OptixDiagnostics

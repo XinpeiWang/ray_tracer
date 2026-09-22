@@ -11391,3 +11391,57 @@ support, these tests start providing real, automatic regression
 coverage the next run; until/unless that's true, CI stays green with an
 honest annotation instead of either a permanently-red check nobody can
 fix or silently disabling the check and losing all its value.
+
+## 189. Correcting five stale "not wired up yet" comments found by the same gap audit
+
+The same audit that found section 188's CI gap also flagged several
+comments describing this backend as less integrated than it actually
+is - each one written accurately at the time, then never updated once
+the work it was waiting on actually landed. Investigating each before
+touching anything found they split into two real categories:
+
+- **Genuinely stale, now corrected** (pure comment edits, zero
+  behaviour change - verified via a full clean `-DRT_BUILD_METAL=ON`
+  rebuild + ctest 4/4 after editing, since even a comment-only change
+  touching four `.mm`/`.cpp` files deserves the same rebuild-and-test
+  discipline as any other PR in this series, not an assumption that
+  text-only edits can't break a build): `CMakeLists.txt`'s own
+  top-of-file macOS section (said "NOT part of the ray_tracer CLI/Qt
+  GUI" - false, it's linked into `ray_tracer` itself and runtime-probed
+  by the Qt GUI's own `m_metalGpuAvailable`); the `RT_BUILD_METAL`
+  block's own `metal_renderer` intro comment (said "not yet dispatched
+  to from launcher/main.cpp" - false, right there a hundred lines later
+  in the SAME file); `gpu/metal/metal_poc.mm`'s own `metal_render_main()`
+  header comment (said "nothing calls it yet outside this file's own
+  main()" - false); `launcher/main.cpp`'s own `force_camera_override`
+  comment (said "NOT YET HONORED by metal_render_main()" - false, it
+  calls `applyCameraOverride()` for real whenever `havePbrtCamera` is
+  true, warning-not-silently-ignoring only for the genuinely
+  unsupported cases: a failed pbrt load, or a hand-authored scene with
+  no pbrt camera to override at all).
+- **NOT actually a gap - a stale comment describing a REAL feature as
+  missing**, the more interesting find: `gpu/metal/metal_poc_pbrt_
+  loader.mm`'s own `loadPbrtInfiniteLight()` comment claimed pbrt image-
+  based infinite lights are "deliberately miss-path-only... no NEE/MIS
+  light-sampling strategy," citing `buildEnvDistribution2D()` as "added
+  but not yet wired to anything." Section 97 (already in this same
+  document, just never reflected back into this comment) shows this was
+  wired up long ago: every material's own `shadeXxx()` function already
+  has a real "pbrtEnv" NEE/MIS block, gated on `pbrtEnvMapWidth > 0u`,
+  reading genuinely separate CDF buffers (`pbrtEnvMarginalCDF`/
+  `pbrtEnvConditionalCDF`, buffers 22/23) from `earthTexture`'s own. The
+  constant-colour case is correctly miss-path-only on PURPOSE, not as an
+  open gap either - a spatially uniform environment light needs no
+  separate importance-sampling strategy since cosine-weighted (or the
+  material's own specular/GGX) BSDF sampling is already optimal for a
+  constant background, which is exactly why no `shadeXxx()` function has
+  a "pbrtEnvColor NEE" block anywhere. Rewrote the comment to describe
+  both cases accurately instead of just deleting the false claim.
+
+Net effect: no code path changed at all (confirmed by the same full
+rebuild + ctest 4/4 covering every file this PR touches), but a future
+reader - human or an agent doing exactly the kind of gap-audit that
+found this - won't be misdirected into re-implementing NEE for the
+pbrt image-based env light a second time, or reporting the launcher/CI
+integration as a "remaining large architectural phase" when it already
+shipped.

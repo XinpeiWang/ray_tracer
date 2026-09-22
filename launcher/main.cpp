@@ -1258,9 +1258,13 @@ int main(int argc, char** argv) {
             cam_x,
             cam_y,
             cam_z,
-            1,  // force_camera_override - see the comment above this section
-                // (NOT YET HONORED by metal_render_main() itself - it warns
-                // instead, see that function's own comment)
+            1,  // force_camera_override - honored by metal_render_main()
+                // itself via MetalPocApp::applyCameraOverride() when the
+                // scene has a real pbrt camera (havePbrtCamera); warns and
+                // ignores the override instead only if the pbrt scene
+                // failed to load (see that function's own comment,
+                // gpu/metal/metal_poc.mm) or for a hand-authored (non-pbrt)
+                // scene_id, which has no pbrt camera to override at all.
             render_opts
         );
         std::cout << "metal_render_main returned: " << render_result << std::endl;
