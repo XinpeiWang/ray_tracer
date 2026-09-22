@@ -943,6 +943,33 @@ struct SphereData {
 // within that same sample.
 struct SpherePayload {
     float shutterT;
+    // A8/section 176: a real bounded medium sphere (materialType 28)
+    // must stay INVISIBLE to a pure occlusion (shadow-ray) test - it's
+    // a semi-transparent volume, not an opaque surface, and this POC
+    // has no per-shadow-ray fog-transmittance integration to do the
+    // physically-correct partial-attenuation version (the same
+    // "ignore it entirely for shadow-ray purposes, slightly OVER-light
+    // what's behind it" approximation gpu/optix/scene_builder.cpp's
+    // own build_cornell_smoke_gpu() precedent this whole feature
+    // already follows would make too, if OptiX's own shadow rays had
+    // the identical gap - not a new approximation invented here).
+    // Defaults to TRUE deliberately: the ~50 existing shadow-ray call
+    // sites across every metal_poc_materials_*.metal shading function
+    // never construct a SpherePayload at all (Metal's own 3-argument
+    // `intersect(ray, accel, table)` overload implicitly supplies a
+    // default-initialized one to any function in the table that
+    // declares a `[[payload]]` parameter - confirmed by this exact
+    // mechanism already being relied on before this field existed,
+    // since sphereIntersectionFunction's own payload parameter was
+    // already mandatory and every one of those call sites already
+    // omitted it) - true-by-default means every one of them
+    // automatically gets the correct "shadow ray" treatment with NO
+    // changes needed at any of those ~50 sites. The one place this
+    // must be FALSE - the primary/continuation ray that needs to
+    // actually ENTER a medium sphere - constructs its own payload
+    // explicitly already (F11, section 167), so it overrides this
+    // default deliberately, not by omission.
+    bool isShadowRay = true;
 };
 
 // Bounding-box intersection functions report their result through
@@ -1013,10 +1040,28 @@ SphereIntersectionResult sphereIntersectionFunction(
     float maxDistance [[max_distance]],
     uint primitiveIndex [[primitive_id]],
     device const SphereData* spheres [[buffer(0)]],
-    ray_data SpherePayload& payload [[payload]])
+    ray_data SpherePayload& payload [[payload]],
+    // A8/section 176: only read for SpherePayload::isShadowRay's own
+    // "make a medium sphere invisible to a pure occlusion test" check
+    // just below - a SEPARATE buffer(3) binding of the SAME
+    // sphereMaterialBuffer the calling kernel already binds at its own
+    // buffer(4), matching every other custom-primitive geometry's own
+    // "intersection functions have their own independent argument
+    // table" convention (this struct's own comment above).
+    device const TriangleMaterial* sphereMaterials [[buffer(3)]])
 {
     SphereIntersectionResult result;
     result.accept = false;
+
+    // Medium spheres (materialType 28) are semi-transparent volumes,
+    // not opaque surfaces - a pure occlusion test (SpherePayload::
+    // isShadowRay's own comment) must not treat one as a blocker at
+    // all, so it's rejected here before any real geometric test runs.
+    // The PRIMARY/continuation ray that actually needs to detect
+    // ENTERING this same sphere sets isShadowRay=false explicitly
+    // (metal_poc_kernel.metal's own primary-ray payload construction),
+    // so it's unaffected by this check.
+    if (payload.isShadowRay && sphereMaterials[primitiveIndex].materialType == 28u) return result;
 
     SphereData sphere = spheres[primitiveIndex];
     // lerp(center, center+0, anything) == center exactly, so this is a

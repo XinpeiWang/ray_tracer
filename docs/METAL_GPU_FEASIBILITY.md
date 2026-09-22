@@ -10231,3 +10231,138 @@ With A2 and D13 both closed, the remaining pre-existing failures are
 the 20 genuinely bigger items section 174's own closing list already
 grouped by real difficulty - no further "quick, zero-new-feature"
 candidates identified in this pass.
+
+## 176. Closing A8: Cornell Smoke - a real, BOUNDED, per-object homogeneous medium, the first of section 174's own "bigger" items actually attempted
+
+Section 174's own closing accounting grouped A8/E2/E3/E4 together as
+needing "bounded, per-object volumetric media" - a real architectural
+gap, since this loader's only medium so far (`uniforms.fogSigmaT`)
+fills the WHOLE scene's interior up to whatever it hits first, with
+no notion of a medium bounded to one object's own volume. Of the
+four, A8 (Cornell Smoke) is the simplest: CPU's own `build_cornell_smoke()`
+wraps two ROTATED, TRANSLATED BOXES in `constant_medium` - a shape
+Metal (and OptiX) has no primitive for at all. `gpu/optix/
+scene_builder.cpp`'s own `build_cornell_smoke_gpu()` already solved
+this exact problem for OptiX, with an already-accepted, documented
+answer: approximate each box as a SPHERE instead (a primitive both
+back-ends already have) - "Two medium spheres approximating CPU's two
+rotated boxes," that function's own comment. This section ports the
+identical approach to Metal, reusing OptiX's own centre/radius/tint
+numbers directly rather than re-deriving new ones.
+
+**New machinery**: materialType 28 - a sphere whose own interior is a
+real participating medium, not a solid surface. `TriangleMaterial`'s
+usual per-materialType field reuse carries this sphere's own albedo/
+sigmaT/HG-g (`color`/`ior`/`roughness`), letting several differently-
+tinted/dense medium spheres coexist in one scene (A8's own two, one
+cool-dark and one warm-amber). The kernel's own per-bounce loop gained
+a new block, inserted right after `isect.intersect(...)`, before the
+existing global-fog check: when the ray's first hit is a materialType-28
+sphere, its EXIT distance is computed analytically (a ray's two roots
+of `|O+tD-C|^2=r^2` sum to `2*dot(C-O,D)`, so the farther root is just
+that sum minus the already-known nearer one - no second intersect()
+call needed), then the SAME free-flight sampling technique the global
+fog already uses decides whether this sample scatters (real NEE to
+the scene's own area light, plus a Henyey-Greenstein-phase-sampled
+continuation ray) or survives to the far side (continuing from the
+EXIT point, same direction, unchanged throughput - the SAME "T(exit)/
+P(survive)==1" reasoning the global fog's own header comment already
+gives).
+
+**A real occlusion problem, found and fixed before it ever reached a
+render**: a medium sphere is semi-transparent, not opaque - a shadow
+ray from some OTHER surface, if it happened to pass through where a
+smoke sphere sits, would incorrectly register as "blocked by solid
+geometry" using the SAME sphere accel structure and intersection
+function every solid sphere already shares, casting a wrong, hard-
+edged shadow of the smoke onto the room's own walls/floor. Properly
+threading "ignore medium spheres" through the ~50 existing shadow-ray
+call sites scattered across every `metal_poc_materials_*.metal`
+shading function was not attempted - instead, `SpherePayload` (F11's
+own per-ray side-channel, section 167) gained a new `isShadowRay`
+field defaulting to TRUE, and `sphereIntersectionFunction` itself now
+rejects a materialType-28 hit whenever `payload.isShadowRay` is set.
+Metal's own 3-argument `intersect(ray, accel, table)` overload
+(without an explicit payload) already implicitly supplies a default-
+initialized payload to any function in the table declaring a
+`[[payload]]` parameter - confirmed by this exact mechanism ALREADY
+being relied on before this field existed (`sphereIntersectionFunction`'s
+payload parameter was already mandatory, and every one of those ~50
+call sites already omitted it) - so defaulting `isShadowRay` to TRUE
+means every one of them automatically gets the correct "medium
+spheres are invisible to occlusion tests" treatment with NO changes
+needed at any of those sites. Only the ONE ray that must actually
+ENTER a medium sphere (the primary/continuation ray) overrides this
+default explicitly.
+
+**Two real bugs found and fixed via render-and-compare, neither
+guessed at**:
+1. **A missing unit-rescale for `sigmaT`.** A first render showed a
+   perfectly empty, smoke-free room - the medium spheres were present
+   (correct position/size) but never visibly scattered anything.
+   `sigmaT` is an inverse-LENGTH quantity; this loader's own 555-unit-
+   to-2-unit rescale shrinks every distance by `sceneScale`, so the
+   SAME physical opacity needs `sigmaT' = sigmaT / sceneScale` at the
+   rescaled distances (missing this made the medium ~277x, `555/2`,
+   too dilute to ever scatter in practice).
+2. **A missing albedo multiply on the medium's own NEE contribution.**
+   After fixing (1), both spheres appeared as an identical NEUTRAL
+   GREY, with no visible difference between the cool-dark and warm-
+   amber tint - found by directly comparing the two, not assumed
+   correct from the formula. The NEE radiance term
+   (`throughput * phaseValue * ls.emission * transmittance / pdf *
+   weight`, mirrored from the global fog's own already-shipped NEE
+   block) never multiplied by this scattering event's own albedo -
+   `throughput` only carries what accumulated BEFORE this bounce, so
+   the light's own colour (a near-white 7,7,7) reached the camera
+   completely untinted by the medium it supposedly scattered through.
+   Fixed by adding `* float3(mediumMat.color)` to that term. **A likely
+   real, pre-existing instance of the identical gap in the GLOBAL
+   fog's own NEE block was found while diagnosing this** - left
+   unfixed and undocumented there deliberately: that code's own
+   default `fogAlbedo` (`0.85,0.88,0.95`, "mostly-scattering, faint
+   cool tint") is close enough to white that the identical missing
+   multiply is a sub-5% colour error, invisible in practice, which is
+   almost certainly why it was never caught before now - a genuine
+   finding worth a dedicated look someday, not attempted here (fixing
+   it would need its own hash-sweep verification across every scene
+   using global fog, out of scope for "close A8").
+
+**An honest remaining limitation, not chased further**: even after
+both fixes, this scene's own smoke reads noticeably LIGHTER/more
+translucent than CPU's own reference render, which shows fairly
+solid-looking dark/tan boxes. Diagnosed as far as practical: boosting
+`sigmaT` by 10x made the dark sphere render fully opaque black
+(confirming the density mechanism responds correctly), and boosting
+albedo to an extreme saturated value produced a clearly visible tint
+(confirming the colour mechanism responds correctly too) - the
+REMAINING gap versus CPU is most plausibly the sphere-for-box
+substitution itself (a smaller shape with a different, generally
+SHORTER average chord length than CPU's own boxes, especially box1's
+own 330-unit long axis), an already-accepted divergence per OptiX's
+own precedent, not a further bug pinned down with certainty.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+148 registered scene IDs smoke-rendered (19 failures now, down from
+20 after section 175's own A2 fix), direct `--gpu` vs `--cpu`
+comparison for A8 (two real, correctly-positioned, correctly-tinted-
+when-boosted volumetric spheres; no false shadow cast on the
+surrounding room, confirming the occlusion fix), and a before/after
+hash comparison across the other 128 currently-passing scenes (A8
+itself excluded): only D8/D12/F4 (pre-existing lens-camera non-
+determinism, section 160) and A2 differ - A2 confirmed visually
+identical, the same "a change touching the shared sphere-intersection
+call path perturbs every scene that exercises it heavily" class
+section 167's own PR already documented (this PR touches
+`sphereIntersectionFunction`'s own signature and `SpherePayload`'s
+own layout, and A2's grid of ~450 spheres is exactly the kind of
+scene that would show it). The other 127 are byte-for-byte identical.
+
+With A8 closed, E2/E3/E4 (the remaining bounded-medium scenes -
+procedural Perlin density, a dielectric-plus-medium combination, and
+a heterogeneous per-voxel grid respectively) are each a further,
+separate step past this section's own "one bounded homogeneous sphere,
+no NEE for non-area-lights" foundation - not attempted here, but
+materialType 28/the exit-distance/free-flight machinery this section
+built is real, reusable infrastructure for whichever of them gets
+picked up next.

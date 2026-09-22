@@ -340,9 +340,157 @@ kernel void primaryRayKernel(
             // the SAME simulated instant this ray's own camera position
             // was sampled at - a shadow ray cast later in this same
             // sample reuses the identical payload for the same reason.
-            SpherePayload spherePayload{shutterT};
+            // isShadowRay=false explicit override (SpherePayload::
+            // isShadowRay's own comment, section 176) - this is the ONE
+            // ray that must actually be able to ENTER a materialType-28
+            // medium sphere. shadowSpherePayload (used by this same
+            // sample's own fog-NEE shadow rays just below) is the
+            // opposite: isShadowRay=true, so a medium sphere stays
+            // invisible to a pure occlusion test.
+            SpherePayload spherePayload{shutterT, false};
+            SpherePayload shadowSpherePayload{shutterT, true};
             intersection_result<instancing, triangle_data> result =
                 isect.intersect(r, accelStructure, functionTable, spherePayload);
+
+            // Bounded, per-object homogeneous medium (A8, section 176) -
+            // materialType 28, a sphere whose OWN interior is a real
+            // participating medium instead of a solid surface (unlike the
+            // global `fogSigmaT` medium just below, which fills the WHOLE
+            // scene's interior up to whatever it hits first). Mirrors
+            // gpu/optix/scene_builder.cpp's own build_cornell_smoke_gpu()
+            // precedent exactly: CPU's own two rotated/translated BOXES
+            // have no Metal (or OptiX) primitive to represent directly, so
+            // both back-ends approximate each box as a sphere instead - an
+            // accepted, already-documented CPU/GPU divergence, not a new
+            // approximation invented here.
+            //
+            // The SAME free-flight sampling technique the global fog just
+            // below already uses (this whole kernel's own comment on it
+            // applies here identically), just bounded between the
+            // sphere's own ENTRY distance (`result.distance`, already
+            // known) and its EXIT distance - computed analytically, not
+            // via a second intersect() call: a ray's two roots of
+            // |O+tD-C|^2=r^2 sum to `2*dot(C-O,D)` (D already normalised,
+            // so the quadratic's leading coefficient is exactly 1), so the
+            // farther root is just that sum minus the already-known nearer
+            // one - no extra acceleration-structure traversal needed.
+            // `mat.color`/`mat.ior`/`mat.roughness` carry this sphere's
+            // OWN albedo/sigmaT/HG-asymmetry-g (TriangleMaterial's usual
+            // "one scalar slot, per-materialType meaning" reuse), letting
+            // several differently-tinted/dense medium spheres coexist in
+            // one scene, unlike the single shared `uniforms.fogSigmaT`.
+            //
+            // Real NEE to the scene's own registered area lights from a
+            // scatter point inside this medium - the SAME sampleAreaLight()/
+            // area-to-solid-angle/MIS machinery the global fog's own NEE
+            // block just below already uses (mirrored, not duplicated
+            // blindly: only the area-light case, since that's the only
+            // light kind A8 - the one scene exercising this so far -
+            // actually registers; point/directional/projection/
+            // goniometric lights would need the identical treatment the
+            // day a scene combining a bounded medium with one of those
+            // shows up, not attempted here). A first version of this
+            // shipped with NO NEE at all here (phase-sampled continuation
+            // only, the same "visible but not NEE-sampled" tier sphere/
+            // disk/cylinder-shaped area LIGHTS already established) -
+            // rendering and comparing against `--cpu` showed why that
+            // tier doesn't transfer to a participating MEDIUM the same
+            // way: a light SOURCE is often reached directly or after one
+            // bounce, but a scatter point deep in fog reaching a small
+            // ceiling light by pure phase-sampled chance is a far
+            // lower-probability event, so the smoke rendered as sparse
+            // black flecks on an otherwise-empty room instead of
+            // recognisable haze - a real correctness gap, not a
+            // cosmetic one, fixed properly rather than shipped.
+            bool scatteredInMedium = false;
+            bool passedThroughMediumSphere = false;
+            if (result.type == intersection_type::bounding_box && result.geometry_id == 0u) {
+                uint mediumPrimId = result.primitive_id;
+                TriangleMaterial mediumMat = sphereMaterials[mediumPrimId];
+                if (mediumMat.materialType == 28u) {
+                    SphereData mediumSphere = spheres[mediumPrimId];
+                    float3 sphereCenter = float3(mediumSphere.center) + shutterT * float3(mediumSphere.centerDelta1);
+                    float entryT = result.distance;
+                    float exitT = 2.0 * dot(sphereCenter - rayOrigin, rayDir) - entryT;
+                    float sigmaT = mediumMat.ior;
+                    float u = randFloat(rngState);
+                    float tScatter = -log(max(1.0 - u, 1e-6)) / sigmaT;
+                    if (tScatter < (exitT - entryT)) {
+                        float3 scatterPoint = rayOrigin + rayDir * (entryT + tScatter);
+                        float3 wo = -rayDir;
+
+                        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
+                        float3 toLight = ls.point - scatterPoint;
+                        float distSq = dot(toLight, toLight);
+                        float dist = sqrt(distSq);
+                        float3 wi = toLight / dist;
+                        float cosLight = dot(ls.normal, -wi);
+                        if ((cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
+                            ray mediumShadowRay;
+                            mediumShadowRay.origin = scatterPoint;
+                            mediumShadowRay.direction = wi;
+                            mediumShadowRay.min_distance = 0.001f;
+                            mediumShadowRay.max_distance = dist - 0.002f;
+                            intersection_result<instancing, triangle_data> mediumShadowResult =
+                                isect.intersect(mediumShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            if (mediumShadowResult.type == intersection_type::none) {
+                                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
+                                float phaseValue = henyeyGreensteinPhase(dot(wo, wi), mediumMat.roughness);
+                                float weight = (pdfSolidAngle * pdfSolidAngle)
+                                    / (pdfSolidAngle * pdfSolidAngle + phaseValue * phaseValue);
+                                // This shadow ray's own path never leaves
+                                // THIS medium sphere (A8's own two smoke
+                                // volumes sit apart, never overlapping) -
+                                // exp(-sigmaT*dist) attenuates it by this
+                                // sphere's own transmittance along its
+                                // length, the identical reasoning the
+                                // global fog's own NEE block gives for
+                                // its own shadow ray.
+                                //
+                                // `* float3(mediumMat.color)`: THIS
+                                // scattering event's own albedo weight
+                                // (this whole block's own header comment:
+                                // "weight = sigmaS*T(t)/p(t) = sigmaS/
+                                // sigmaT, the albedo" applies to ANY
+                                // estimator reached FROM this scatter
+                                // point, not just the phase-sampled
+                                // continuation ray below) - `throughput`
+                                // here only carries what accumulated
+                                // BEFORE this bounce, so leaving this out
+                                // would silently render every medium
+                                // sphere's own NEE contribution as the
+                                // LIGHT's own colour (a near-white 7,7,7
+                                // here) with no tint from the medium's own
+                                // albedo at all - caught by comparing a
+                                // real dark-tinted sphere against a
+                                // warm-amber one and finding them
+                                // indistinguishable, not assumed correct
+                                // from the formula alone.
+                                float transmittance = exp(-sigmaT * dist);
+                                radiance += throughput * float3(mediumMat.color) * phaseValue * ls.emission * transmittance
+                                            / pdfSolidAngle * weight;
+                            }
+                        }
+
+                        float3 newDir = sampleHenyeyGreenstein(wo, mediumMat.roughness, rngState);
+                        throughput *= float3(mediumMat.color);
+                        bsdfPdf = henyeyGreensteinPhase(dot(wo, newDir), mediumMat.roughness);
+                        rayDir = newDir;
+                        rayOrigin = scatterPoint;
+                        specularBounce = false;
+                        scatteredInMedium = true;
+                    } else {
+                        // Survived to the far side - continue from the
+                        // EXIT point, same direction, unchanged throughput
+                        // (this block's own header comment: T(exit)/
+                        // P(survive to exit) == 1 exactly). Consumes one
+                        // iteration of this loop's own depth budget, same
+                        // as any other bounce.
+                        rayOrigin = rayOrigin + rayDir * exitT;
+                        passedThroughMediumSphere = true;
+                    }
+                }
+            }
 
             // Homogeneous-medium free-flight distance sampling: draws a
             // random scattering distance from the medium's own
@@ -384,8 +532,8 @@ kernel void primaryRayKernel(
             // environment-map feature - that render came back an
             // unexplained near-black speckled mess, and tracing why
             // surfaced this.
-            bool scatteredInMedium = false;
-            if (uniforms.fogSigmaT > 0.0 && result.type != intersection_type::none) {
+            if (!scatteredInMedium && !passedThroughMediumSphere &&
+                uniforms.fogSigmaT > 0.0 && result.type != intersection_type::none) {
                 float surfaceDist = result.distance;
                 float u = randFloat(rngState);
                 float t = -log(max(1.0 - u, 1e-6)) / uniforms.fogSigmaT;
@@ -425,7 +573,7 @@ kernel void primaryRayKernel(
                         shadowRay.min_distance = 0.001f;
                         shadowRay.max_distance = dist - 0.002f;
                         intersection_result<instancing, triangle_data> shadowResult =
-                            isect.intersect(shadowRay, accelStructure, functionTable, spherePayload);
+                            isect.intersect(shadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (shadowResult.type == intersection_type::none) {
                             float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                             // HG's own sampling pdf for direction wi EQUALS
@@ -460,7 +608,7 @@ kernel void primaryRayKernel(
                         plShadowRay.min_distance = 0.001f;
                         plShadowRay.max_distance = plDist - 0.002f;
                         intersection_result<instancing, triangle_data> plShadowResult =
-                            isect.intersect(plShadowRay, accelStructure, functionTable, spherePayload);
+                            isect.intersect(plShadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (plShadowResult.type == intersection_type::none) {
                             float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), uniforms.fogAsymmetryG);
                             float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
@@ -483,7 +631,7 @@ kernel void primaryRayKernel(
                         dlShadowRay.min_distance = 0.001f;
                         dlShadowRay.max_distance = kDirectionalLightMaxDistance;
                         intersection_result<instancing, triangle_data> dlShadowResult =
-                            isect.intersect(dlShadowRay, accelStructure, functionTable, spherePayload);
+                            isect.intersect(dlShadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (dlShadowResult.type == intersection_type::none) {
                             float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), uniforms.fogAsymmetryG);
                             float dlExitDist = rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
@@ -512,7 +660,7 @@ kernel void primaryRayKernel(
                             pjShadowRay.min_distance = 0.001f;
                             pjShadowRay.max_distance = pjDist - 0.002f;
                             intersection_result<instancing, triangle_data> pjShadowResult =
-                                isect.intersect(pjShadowRay, accelStructure, functionTable, spherePayload);
+                                isect.intersect(pjShadowRay, accelStructure, functionTable, shadowSpherePayload);
                             if (pjShadowResult.type == intersection_type::none) {
                                 float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), uniforms.fogAsymmetryG);
                                 float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
@@ -540,7 +688,7 @@ kernel void primaryRayKernel(
                             glShadowRay.min_distance = 0.001f;
                             glShadowRay.max_distance = glDist - 0.002f;
                             intersection_result<instancing, triangle_data> glShadowResult =
-                                isect.intersect(glShadowRay, accelStructure, functionTable, spherePayload);
+                                isect.intersect(glShadowRay, accelStructure, functionTable, shadowSpherePayload);
                             if (glShadowResult.type == intersection_type::none) {
                                 float glPhaseValue = henyeyGreensteinPhase(dot(wo, glWi), uniforms.fogAsymmetryG);
                                 float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
@@ -558,7 +706,7 @@ kernel void primaryRayKernel(
                 }
             }
 
-            if (!scatteredInMedium) {
+            if (!scatteredInMedium && !passedThroughMediumSphere) {
             if (result.type == intersection_type::none) {
                 if (uniforms.useEnvironmentMap != 0u) {
                     float2 envUV = equirectangularUV(normalize(rayDir));
@@ -1130,7 +1278,7 @@ kernel void primaryRayKernel(
                                       isect, accelStructure, functionTable,
                                       rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             }
-            } // !scatteredInMedium
+            } // !scatteredInMedium && !passedThroughMediumSphere
 
             // Russian roulette after a few bounces, same "let cheap paths
             // terminate early, keep expensive ones unbiased" shape as

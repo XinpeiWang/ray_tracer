@@ -141,6 +141,125 @@ void MetalPocApp::buildCornellBoxA1() {
                     "no pbrt file - %d quads, 1 sphere, 1 light)\n", kNumQuads - 1 + 6);
 }
 
+// A8: Cornell Smoke (section 176) - matches CPU's own build_cornell_smoke()
+// (scenes_book.h) in STRUCTURE: the SAME 5 walls A1 uses
+// (cornell_box_data::kQuads[0..4], shared with CPU's own identical
+// comment on this), a differently-sized/coloured ceiling light, and TWO
+// tinted smoke volumes. CPU's own two volumes are ROTATED, TRANSLATED
+// BOXES (a shape Metal has no primitive for at all, and OptiX doesn't
+// either) - both approximated as SPHERES instead, the exact same
+// substitution gpu/optix/scene_builder.cpp's own build_cornell_smoke_gpu()
+// already makes (that function's own comment: "Two medium spheres
+// approximating CPU's two rotated boxes"), reusing its own centre/
+// radius/tint numbers directly rather than re-deriving new ones - a
+// real, already-accepted CPU/GPU divergence, not a new approximation
+// invented here. materialType 28 (metal_poc_kernel.metal's own new
+// bounded-medium-sphere handling, this same section) is the shape this
+// loader needed to add to represent one at all - see that file's own
+// comment for the full ray-through-a-medium-sphere mechanism.
+void MetalPocApp::buildCornellSmoke() {
+    using namespace cornell_box_data;
+    // SAME rescale/recentre/offset as buildCornellBoxA1() - this scene
+    // shares that one's own 555-unit Cornell-box scale exactly (CPU's
+    // own build_cornell_smoke() reuses the identical wall/light-quad
+    // coordinate system).
+    const float3 bboxMin{0.0f, 0.0f, 0.0f};
+    const float3 bboxMax{555.0f, 555.0f, 555.0f};
+    const float maxExtent = 555.0f;
+    const float sceneScale = 2.0f / maxExtent;
+    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+    auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
+
+    // The 5 standard walls only (index 5 is A1's OWN ceiling light,
+    // this scene's own light is a different size/colour, added
+    // separately below - matches CPU's own identical comment on this
+    // exact loop bound).
+    for (int i = 0; i < 5; ++i) {
+        const QuadSpec& q = kQuads[i];
+        const float3 Q{(float)q.Q.x, (float)q.Q.y, (float)q.Q.z};
+        const float3 u{(float)q.u.x, (float)q.u.y, (float)q.u.z};
+        const float3 v{(float)q.v.x, (float)q.v.y, (float)q.v.z};
+        const float3 a = toWorld(Q), b = toWorld(Q + u), c = toWorld(Q + u + v), d = toWorld(Q + v);
+        const float3 color{(float)q.color.r, (float)q.color.g, (float)q.color.b};
+        addQuad(verts, normals, uvs, materials, a, b, c, d, color);
+    }
+
+    // This scene's own ceiling light - CPU's own literal Q/u/v/colour,
+    // a real NEE-sampled AreaLight (same construction buildCornellBoxA1()'s
+    // own light quad already uses).
+    {
+        const float3 Q = toWorld(float3{113.0f, 554.0f, 127.0f});
+        const float3 b = toWorld(float3{113.0f + 330.0f, 554.0f, 127.0f});
+        const float3 d = toWorld(float3{113.0f, 554.0f, 127.0f + 305.0f});
+        const float3 c = toWorld(float3{113.0f + 330.0f, 554.0f, 127.0f + 305.0f});
+        const float3 color{7.0f, 7.0f, 7.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, Q, b, c, d, color,
+                /*materialType=*/0u, /*emission=*/color, lightId);
+        const float3 edgeU = b - Q, edgeV = d - Q;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = Q + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{color.x, color.y, color.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // The two smoke volumes - materialType 28, `color`/`ior`/`roughness`
+    // reused as this sphere's own albedo/sigmaT/HG-g (TriangleMaterial's
+    // usual per-materialType field reuse) - centres/radii/tints/sigmaT
+    // all gpu/optix/scene_builder.cpp's own build_cornell_smoke_gpu()
+    // literals, ported directly, not re-derived (that function's own
+    // comment for how each was chosen to approximate CPU's own rotated
+    // boxes). g=0 (isotropic) for both, matching OptiX's own choice.
+    // sigmaT (an inverse-LENGTH quantity, extinction per unit distance)
+    // is divided by sceneScale, not multiplied - this whole scene's own
+    // distances shrink by sceneScale (555 units -> 2), so a probability
+    // of NOT scattering over some real-world distance d, exp(-sigmaT*d),
+    // needs sigmaT' = sigmaT/sceneScale for the identical exp(-sigmaT'*d')
+    // at this loader's own rescaled d'=d*sceneScale to hold. Missing this
+    // the first time round left the medium ~277x (555/2) too dilute to
+    // ever actually scatter - caught by comparing against `--cpu`
+    // (rendered as a perfectly empty, smoke-free room), not assumed
+    // correct from the formula alone.
+    auto pushMediumSphere = [&](float3 center, float radius, float3 albedo, float sigmaT) {
+        const float3 c = toWorld(center);
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, sceneScale * radius});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{albedo.x, albedo.y, albedo.z},
+            /*materialType=*/28u, /*ior(sigmaT)=*/sigmaT / sceneScale, PackedFloat3{0, 0, 0}, /*lightId=*/-1,
+            /*roughness(HG g)=*/0.0f});
+    };
+    pushMediumSphere(float3{347.0f, 165.0f, 377.0f}, 115.0f, float3{0.05f, 0.07f, 0.12f}, 0.01f);
+    pushMediumSphere(float3{212.0f, 82.0f, 147.0f}, 82.0f, float3{1.0f, 0.85f, 0.6f}, 0.01f);
+
+    // Camera - the SAME A1 literal (fov=40, lookfrom=(278,278,-800),
+    // lookat=(278,278,278)) - CPU's own registry row for A8 reuses A1's
+    // own camera exactly (same room, same framing).
+    const float3 lookfrom = toWorld(float3{278.0f, 278.0f, -800.0f});
+    const float3 lookat = toWorld(float3{278.0f, 278.0f, 278.0f});
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = bboxCenter;
+    pbrtSceneScale = sceneScale;
+    pbrtSceneOffset = sceneOffset;
+}
+
 // A2: Bouncing Spheres (In One Weekend's own final scene, section 175) -
 // matches CPU's build_bouncing_spheres() (scenes_book.h) in STRUCTURE
 // exactly: a giant checker "ground" sphere, an 22x22 grid of small
