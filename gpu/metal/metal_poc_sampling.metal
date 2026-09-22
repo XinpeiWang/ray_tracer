@@ -690,6 +690,32 @@ inline float ggxG(float3 woLocal, float3 wiLocal, float alphaX, float alphaY) {
     return 1.0 / (1.0 + ggxLambda(woLocal, alphaX, alphaY) + ggxLambda(wiLocal, alphaX, alphaY));
 }
 
+// The rough-conductor microfacet BRDF value, D*G*F/(4*NdotO*NdotI) - pbrt-
+// v4's own ConductorBxDF::f() (src/shared/bxdfs_conductor.h's own
+// ConductorBxDF<T>::f(), the CPU reference this is numerically cross-
+// checked against in metal_poc_shader_tests.mm). Deliberately does NOT
+// include `energyScale` (shadeConductor()'s own multi-scatter energy-
+// compensation term, section 72/73) - that's an extra correction this
+// POC adds ON TOP of the base microfacet BRDF, applied at each call site
+// AFTER this function returns, not part of the closed-form formula
+// itself (the CPU reference has no such term either, so including it
+// here would make this untestable against that reference). Factored out
+// of shadeConductor() (metal_poc_materials_specular.metal, 7 call sites)
+// so it's independently testable, the same rationale as
+// lambertianPdf()/diffuseTransmissionPdf() above.
+inline float3 ggxConductorF(float Dh, float G, float3 F, float NdotO, float NdotI) {
+    return Dh * G * F / max(4.0 * NdotO * NdotI, 1e-6);
+}
+
+// The rough-conductor VNDF-sampling PDF, D*G1/(4*NdotO) - pbrt-v4's own
+// ConductorBxDF::pdf() (== ggx_vndf_reflection_pdf(), same header) -
+// purely geometric, no Fresnel term, matching that reference exactly.
+// Factored out of shadeConductor() (4 call sites), same rationale as
+// ggxConductorF() above.
+inline float ggxConductorPdf(float Dh, float G1, float NdotO) {
+    return (Dh * G1) / max(4.0 * NdotO, 1e-6);
+}
+
 // Schlick's Fresnel approximation for a CONDUCTOR: F0 (reflectance at
 // normal incidence) is itself an RGB colour here, not derived from a
 // scalar IOR the way frDielectric()'s own real-valued formula is - a

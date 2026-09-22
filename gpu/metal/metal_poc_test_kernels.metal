@@ -46,6 +46,55 @@ kernel void test_diffuseTransmissionPdf(
     outputs[tid] = diffuseTransmissionPdf(inputs[tid].x, inputs[tid].y, inputs[tid].z);
 }
 
+// Full-pipeline cross-check for shadeConductor()'s own rough-metal
+// BRDF/PDF: from raw local-frame directions all the way through
+// ggxD()/ggxG()/ggxG1()/frComplexRGB() to ggxConductorF()/
+// ggxConductorPdf() (metal_poc_sampling.metal) - the SAME sequence
+// shadeConductor() itself runs, not just the final combining step in
+// isolation, mirroring testHairEvalAndPdf()'s own "call the real
+// production path end to end" rigor. `wo`/`wi` here match
+// shadeConductor()'s own `woLocal` (the view/conditioning direction)
+// and `wiLocal` (the queried direction) - see
+// metal_poc_shader_tests.mm's own comment on why that maps to
+// ConductorBxDF<double>::f(wi=wo, wo=wi)'s own (reversed-looking, but
+// correct) naming convention.
+kernel void test_ggxConductorF(
+    device const float3* wos [[buffer(0)]],
+    device const float3* wis [[buffer(1)]],
+    device const float2* alphas [[buffer(2)]],   // (alphaX, alphaY)
+    device const float3* etas [[buffer(3)]],
+    device const float3* ks [[buffer(4)]],
+    device float3* outputs [[buffer(5)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float3 wo = wos[tid];
+    float3 wi = wis[tid];
+    float alphaX = alphas[tid].x;
+    float alphaY = alphas[tid].y;
+    float3 h = normalize(wo + wi);
+    float Dh = ggxD(h, alphaX, alphaY);
+    float G = ggxG(wo, wi, alphaX, alphaY);
+    float3 F = frComplexRGB(max(dot(wo, h), 0.0), etas[tid], ks[tid]);
+    outputs[tid] = ggxConductorF(Dh, G, F, wo.z, wi.z);
+}
+
+kernel void test_ggxConductorPdf(
+    device const float3* wos [[buffer(0)]],
+    device const float3* wis [[buffer(1)]],
+    device const float2* alphas [[buffer(2)]],
+    device float* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    float3 wo = wos[tid];
+    float3 wi = wis[tid];
+    float alphaX = alphas[tid].x;
+    float alphaY = alphas[tid].y;
+    float3 h = normalize(wo + wi);
+    float Dh = ggxD(h, alphaX, alphaY);
+    float G1 = ggxG1(wo, alphaX, alphaY);
+    outputs[tid] = ggxConductorPdf(Dh, G1, wo.z);
+}
+
 kernel void test_frDielectric(
     device const float2* inputs [[buffer(0)]],   // (cosThetaI, eta)
     device float* outputs [[buffer(1)]],
