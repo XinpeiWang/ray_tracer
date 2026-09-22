@@ -237,6 +237,92 @@ static void testFrDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MT
     }
 }
 
+// lambertianPdf()/diffuseTransmissionPdf() (metal_poc_sampling.metal) -
+// numeric cross-check against pbrt-v4's own DiffuseBxDF<double>/
+// DiffuseTransmissionBxDF<double>::scattering_pdf() (src/shared/
+// bxdfs_simple.h, bxdfs_layered.h), the SAME trusted CPU/OptiX reference
+// the CPU/OptiX renderers already use for these two materials - not a
+// hand-copied duplicate, the same "call the exact production formula"
+// principle testHairRandomSweep() already established for HairBxDF.
+// These two functions are the ones shadeLambertian()/
+// shadeDiffuseTransmission() (metal_poc_materials_diffuse.metal) call
+// directly for their own NEE MIS weights, so this covers real, currently-
+// running production code, not a parallel reimplementation of it.
+static void testLambertianAndDiffuseTransmissionPdf(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    std::mt19937 rng(4242);
+    std::uniform_real_distribution<double> unit(-1.0, 1.0);
+    std::uniform_real_distribution<double> zeroOne(0.0, 1.0);
+
+    // --- lambertianPdf(): fixed edge cases + a random sweep -------------
+    {
+        std::vector<float> cosWis;
+        std::vector<double> expected;
+        auto addCase = [&](double cosWi) {
+            cosWis.push_back((float)cosWi);
+            DiffuseBxDF<double> ref{};  // albedo unused by scattering_pdf(); pdf depends only on cos_theta
+            double wox = std::sqrt(std::max(0.0, 1.0 - cosWi * cosWi));
+            expected.push_back(ref.scattering_pdf(0.0, 0.0, 1.0, wox, 0.0, cosWi));
+        };
+        addCase(1.0);    // normal incidence: 1/pi
+        addCase(0.0);    // grazing: 0
+        addCase(-1.0);   // below surface: 0 (not -1/pi)
+        addCase(0.5);
+        for (int i = 0; i < 40; ++i) addCase(unit(rng));
+
+        int n = (int)cosWis.size();
+        id<MTLBuffer> inBuf = makeBuffer(device, cosWis.data(), n * sizeof(float));
+        id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+        if (runKernel(device, library, queue, @"test_lambertianPdf", @[inBuf, outBuf], nil, n)) {
+            float* out = (float*)outBuf.contents;
+            for (int i = 0; i < n; ++i) {
+                char label[128];
+                snprintf(label, sizeof(label), "lambertianPdf(cosWi=%.5f) matches DiffuseBxDF::scattering_pdf", cosWis[i]);
+                expectNear(label, out[i], expected[i], 1e-5);
+                snprintf(label, sizeof(label), "lambertianPdf(cosWi=%.5f) is non-negative", cosWis[i]);
+                expectTrue(label, out[i] >= 0.0f);
+            }
+        }
+    }
+
+    // --- diffuseTransmissionPdf(): fixed edge cases + a random sweep ----
+    {
+        std::vector<simd::float3> inputs;  // (cosWi, pr, pt)
+        std::vector<double> expected;
+        auto addCase = [&](double cosWi, double pr, double pt) {
+            inputs.push_back(simd::float3{(float)cosWi, (float)pr, (float)pt});
+            DiffuseTransmissionBxDF<double> ref{pr, pr, pr, pt, pt, pt};
+            double wox = std::sqrt(std::max(0.0, 1.0 - cosWi * cosWi));
+            expected.push_back(ref.scattering_pdf(0.0, 0.0, 1.0, wox, 0.0, cosWi));
+        };
+        addCase(1.0, 1.0, 0.0);    // pure reflector, normal incidence: 1/pi
+        addCase(-1.0, 1.0, 0.0);   // pure reflector, transmission side: pdf 0 (pt=0)
+        addCase(-1.0, 0.0, 1.0);   // pure transmitter, transmission side: 1/pi
+        addCase(1.0, 0.5, 0.5);    // balanced lobes, reflection side: 0.5/pi
+        addCase(-1.0, 0.5, 0.5);   // balanced lobes, transmission side: 0.5/pi
+        for (int i = 0; i < 40; ++i) {
+            double pr = zeroOne(rng), pt = zeroOne(rng);
+            if (pr + pt < 1e-6) pr = 0.5;  // avoid the degenerate pr+pt==0 case addressed separately
+            addCase(unit(rng), pr, pt);
+        }
+
+        int n = (int)inputs.size();
+        id<MTLBuffer> inBuf = makeBuffer(device, inputs.data(), n * sizeof(simd::float3));
+        id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+        if (runKernel(device, library, queue, @"test_diffuseTransmissionPdf", @[inBuf, outBuf], nil, n)) {
+            float* out = (float*)outBuf.contents;
+            for (int i = 0; i < n; ++i) {
+                char label[160];
+                snprintf(label, sizeof(label), "diffuseTransmissionPdf(cosWi=%.5f, pr=%.3f, pt=%.3f) matches reference",
+                         inputs[i].x, inputs[i].y, inputs[i].z);
+                expectNear(label, out[i], expected[i], 1e-5);
+                snprintf(label, sizeof(label), "diffuseTransmissionPdf(cosWi=%.5f, pr=%.3f, pt=%.3f) is non-negative",
+                         inputs[i].x, inputs[i].y, inputs[i].z);
+                expectTrue(label, out[i] >= 0.0f);
+            }
+        }
+    }
+}
+
 static void testGgxD(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     // At normal incidence (hLocal == the shading normal), ggxD() has an
     // exact closed form regardless of alpha: D = 1/(pi*alpha^2) - see
@@ -1395,6 +1481,7 @@ int main() {
         }
 
         testFrDielectric(device, library, queue);
+        testLambertianAndDiffuseTransmissionPdf(device, library, queue);
         testGgxD(device, library, queue);
         testGgxG1SmoothLimit(device, library, queue);
         testCheckerColor(device, library, queue);
