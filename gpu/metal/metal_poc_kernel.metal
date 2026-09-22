@@ -79,6 +79,14 @@ kernel void primaryRayKernel(
     // sphere's own material, read via `sphereMaterials` (already bound
     // above at buffer(4)).
     device const GpuCloudMedium* cloudMediums [[buffer(28)]],
+    // E4/section 179: materialType 30's own backing buffer, same
+    // conductorEta.x-index convention as cloudMediums above. Its own
+    // per-voxel R/G/B data lives in a SEPARATE flat buffer
+    // (`rgbGridData` - GpuRgbGridMedium::dataOffset indexes into it),
+    // since a whole grid's own voxel count can't fit inline the way
+    // GpuCloudMedium's own scalar parameters do.
+    device const GpuRgbGridMedium* rgbGridMediums [[buffer(29)]],
+    device const float* rgbGridData [[buffer(30)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -718,6 +726,131 @@ kernel void primaryRayKernel(
                         // continue unchanged from `missedExitT`, same
                         // "no interaction, free pass-through" contract as
                         // materialType 28's own else-branch above.
+                        rayOrigin = rayOrigin + rayDir * missedExitT;
+                        passedThroughMediumSphere = true;
+                    }
+                } else if (mediumMat.materialType == 30u) {
+                    // E4/section 179: heterogeneous per-voxel R/G/B
+                    // scattering grid (a real "nebula" - independently-
+                    // colored density per channel, unlike materialType
+                    // 29's single grayscale noise field). Same delta-
+                    // tracking shape as materialType 29's own block just
+                    // above - direct port of gpu/optix/
+                    // optix_intersection_sphere.h's own RgbGridMedium
+                    // closest-hit code (see that block's own comment).
+                    GpuRgbGridMedium grid = rgbGridMediums[uint(mediumMat.conductorEta.x)];
+                    float3 mo = rgbGridWorldToMediumPoint(grid, rayOrigin);
+                    float3 md = float3(
+                        grid.worldToMediumMat[0]*rayDir.x + grid.worldToMediumMat[1]*rayDir.y + grid.worldToMediumMat[2]*rayDir.z,
+                        grid.worldToMediumMat[3]*rayDir.x + grid.worldToMediumMat[4]*rayDir.y + grid.worldToMediumMat[5]*rayDir.z,
+                        grid.worldToMediumMat[6]*rayDir.x + grid.worldToMediumMat[7]*rayDir.y + grid.worldToMediumMat[8]*rayDir.z);
+                    float segMin, segMax;
+                    bool hasSeg = rgbGridAabbSlabIntersect(grid, mo, md, segMin, segMax);
+                    float sigmaMaj = grid.sigmaMaj;
+
+                    bool didScatter = false;
+                    float3 mediumPoint = float3(0.0, 0.0, 0.0);
+                    float3 wo = -rayDir;
+                    float missedExitT = result.distance;
+                    // Per-scatter tint, derived from the LOCAL R/G/B
+                    // density ratio at the accepted scatter point (unlike
+                    // materialType 28/29's own fixed `mediumMat.color`
+                    // albedo) - a nebula's whole point is spatially-
+                    // varying colour, so this can't be a single constant.
+                    float3 scatterColor = float3(1.0, 1.0, 1.0);
+                    if (hasSeg && sigmaMaj > 0.0) {
+                        float tt = max(segMin, 0.0);
+                        const int voxelCount = grid.nx * grid.ny * grid.nz;
+                        device const float* rData = rgbGridData + grid.dataOffset;
+                        device const float* gData = rData + voxelCount;
+                        device const float* bData = gData + voxelCount;
+                        for (int iter = 0; iter < 128 && !didScatter; ++iter) {
+                            float dt = -log(max(1.0 - randFloat(rngState), 1e-8)) / sigmaMaj;
+                            tt += dt;
+                            if (tt >= segMax) break;
+                            float3 p = rayOrigin + tt * rayDir;
+                            float3 mp = rgbGridWorldToMediumPoint(grid, p);
+                            float dr = gpuRgbGridTrilinear(rData, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z);
+                            float dg = gpuRgbGridTrilinear(gData, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z);
+                            float db = gpuRgbGridTrilinear(bData, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z);
+                            float sr = dr * grid.sigmaScale, sg = dg * grid.sigmaScale, sb = db * grid.sigmaScale;
+                            float sigmaTLocal = max(sr, max(sg, sb));
+                            if (randFloat(rngState) < sigmaTLocal / sigmaMaj) {
+                                didScatter = true;
+                                mediumPoint = p;
+                                float maxc = max(sr, max(sg, max(sb, 1e-6)));
+                                scatterColor = float3(sr, sg, sb) / maxc;
+                            }
+                        }
+                        if (!didScatter) missedExitT = segMax;
+                    }
+
+                    if (didScatter) {
+                        if (uniforms.lightCount > 0u) {
+                        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
+                        float3 toLight = ls.point - mediumPoint;
+                        float distSq = dot(toLight, toLight);
+                        float dist = sqrt(distSq);
+                        float3 wi = toLight / dist;
+                        float cosLight = dot(ls.normal, -wi);
+                        if ((cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
+                            ray gridShadowRay;
+                            gridShadowRay.origin = mediumPoint;
+                            gridShadowRay.direction = wi;
+                            gridShadowRay.min_distance = 0.001f;
+                            gridShadowRay.max_distance = dist - 0.002f;
+                            intersection_result<instancing, triangle_data> gridShadowResult =
+                                isect.intersect(gridShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            if (gridShadowResult.type == intersection_type::none) {
+                                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
+                                float phaseValue = henyeyGreensteinPhase(dot(wo, wi), grid.phaseG);
+                                float weight = (pdfSolidAngle * pdfSolidAngle)
+                                    / (pdfSolidAngle * pdfSolidAngle + phaseValue * phaseValue);
+                                radiance += throughput * scatterColor * phaseValue * ls.emission
+                                            / pdfSolidAngle * weight;
+                            }
+                        }
+                        }
+
+                        // NEE toward the constant background light - same
+                        // majorant-based self-attenuation approximation
+                        // materialType 29's own block above established
+                        // (section 178's own comment there has the full
+                        // "why"), reusing `sigmaMaj` (this medium's own
+                        // global majorant) in place of CloudMedium's
+                        // sigma_a+sigma_s.
+                        if (uniforms.pbrtHasConstantEnvLight != 0u) {
+                            float3 bgDir = sampleHenyeyGreenstein(wo, grid.phaseG, rngState);
+                            float3 bgMo = rgbGridWorldToMediumPoint(grid, mediumPoint);
+                            float3 bgMd = float3(
+                                grid.worldToMediumMat[0]*bgDir.x + grid.worldToMediumMat[1]*bgDir.y + grid.worldToMediumMat[2]*bgDir.z,
+                                grid.worldToMediumMat[3]*bgDir.x + grid.worldToMediumMat[4]*bgDir.y + grid.worldToMediumMat[5]*bgDir.z,
+                                grid.worldToMediumMat[6]*bgDir.x + grid.worldToMediumMat[7]*bgDir.y + grid.worldToMediumMat[8]*bgDir.z);
+                            float bgSegMin, bgSegMax;
+                            bool bgHasSeg = rgbGridAabbSlabIntersect(grid, bgMo, bgMd, bgSegMin, bgSegMax);
+                            float remainingDist = (bgHasSeg && bgSegMax > 0.0) ? bgSegMax : 0.0;
+                            float selfTransmittance = exp(-sigmaMaj * remainingDist);
+
+                            ray bgShadowRay;
+                            bgShadowRay.origin = mediumPoint;
+                            bgShadowRay.direction = bgDir;
+                            bgShadowRay.min_distance = 0.001f;
+                            bgShadowRay.max_distance = 1.0e6f;
+                            intersection_result<instancing, triangle_data> bgShadowResult =
+                                isect.intersect(bgShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            if (bgShadowResult.type == intersection_type::none) {
+                                radiance += throughput * scatterColor * float3(uniforms.pbrtEnvColor) * selfTransmittance;
+                            }
+                        }
+
+                        float3 newDir = sampleHenyeyGreenstein(wo, grid.phaseG, rngState);
+                        throughput *= scatterColor;
+                        bsdfPdf = henyeyGreensteinPhase(dot(wo, newDir), grid.phaseG);
+                        rayDir = newDir;
+                        rayOrigin = mediumPoint;
+                        specularBounce = false;
+                        scatteredInMedium = true;
+                    } else {
                         rayOrigin = rayOrigin + rayDir * missedExitT;
                         passedThroughMediumSphere = true;
                     }

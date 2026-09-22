@@ -417,6 +417,20 @@ struct GpuCloudMedium {
     float frequency;
 };
 
+// Mirrors metal_poc_types.metal's GpuRgbGridMedium byte-for-byte (E4,
+// section 179) - see that struct's own comment.
+struct GpuRgbGridMedium {
+    float boundsMin[3];
+    float boundsMax[3];
+    float worldToMediumMat[9];
+    float worldToMediumTranslate[3];
+    int nx, ny, nz;
+    int dataOffset;
+    float sigmaScale;
+    float sigmaMaj;
+    float phaseG;
+};
+
 // Mirrors metal_poc.metal's SphereData byte-for-byte. centerDelta1
 // (F11, section 167) defaults to {0,0,0} - see that struct's own
 // comment for why every existing 2-field `SphereData{center, radius}`
@@ -1148,6 +1162,12 @@ struct MetalPocApp {
     // E2's own backing buffer for materialType 29 (GpuCloudMedium's own
     // comment) - empty for every scene but E2.
     std::vector<GpuCloudMedium> cloudMediums;
+    // E4's own backing buffers for materialType 30 (GpuRgbGridMedium's
+    // own comment) - both empty for every scene but E4. `rgbGridData` is
+    // the flat, concatenated R-then-G-then-B voxel data every
+    // `rgbGridMediums` entry's own `dataOffset` indexes into.
+    std::vector<GpuRgbGridMedium> rgbGridMediums;
+    std::vector<float> rgbGridData;
     std::vector<PointLightData> pointLights;
     std::vector<DirectionalLightData> directionalLights;
     std::vector<ProjectionLightData> projectionLights;
@@ -1179,6 +1199,7 @@ struct MetalPocApp {
     id<MTLBuffer> diskBuffer, diskMaterialBuffer;
     id<MTLBuffer> cylinderBuffer, cylinderMaterialBuffer;
     id<MTLBuffer> cloudMediumBuffer;
+    id<MTLBuffer> rgbGridMediumBuffer, rgbGridDataBuffer;
     id<MTLBuffer> suzanneVertexBuffer, suzanneNormalBuffer, suzanneMaterialBuffer;
     id<MTLBuffer> instanceTransformBuffer;
     id<MTLBuffer> lensElementBuffer, exitPupilBoundsBuffer;
@@ -1616,6 +1637,13 @@ struct MetalPocApp {
     // definition comment (metal_poc_scenes_e.mm) for the full mechanism.
     // Section 178, docs/METAL_GPU_FEASIBILITY.md.
     void buildCloudMediumScene();
+    // E4: RGB Grid Medium - a real heterogeneous "nebula" with an
+    // independent per-voxel R/G/B scattering grid (pbrt-v4
+    // RGBGridMedium), delta-tracked via the SAME trigger-sphere
+    // convention as E2's own materialType 29 - see this method's own
+    // definition comment (metal_poc_scenes_e.mm) for the full mechanism.
+    // Section 179, docs/METAL_GPU_FEASIBILITY.md.
+    void buildRgbGridMediumScene();
     // B9: Cornell Crystal - buildCornellFamilyScene() with the sphere as
     // materialType 18 (NormalizedFresnelBxDF - a genuinely NEW material,
     // not previously implemented before this PR - see

@@ -941,6 +941,39 @@ struct GpuCloudMedium {
     float frequency;
 };
 
+// E4/section 179: a real heterogeneous per-voxel R/G/B scattering grid
+// (pbrt-v4 RGBGridMedium, src/shared/rgb_nebula_generator.h's own
+// generator) - the flat GPU metadata analog of CPU's `RGBGridMediumData`
+// (which can't be used device-side directly, same reason
+// `CloudMedium<T>` can't - see `GpuCloudMedium`'s own comment). Ported
+// from `gpu/optix/optix_types.h`'s own `GpuRgbGridMedium` (materialType
+// 29's own OptiX precedent), which documents the SAME deliberate
+// simplification kept here: a single GLOBAL majorant (`sigmaMaj`)
+// instead of CPU's real per-voxel DDA majorant grid, to keep delta
+// tracking algorithmically simple. No `leDataOffset`/`Le_scale`
+// (per-voxel emission) fields - E4's own scene never sets any (a pure
+// scattering-only nebula), so this struct omits what OptiX's own
+// version carries for scenes this port doesn't need.
+struct GpuRgbGridMedium {
+    // Medium-space unit cube [0,1]^3, NOT a world-space AABB (unlike
+    // OptiX's own same-named fields) - always {0,0,0}/{1,1,1} in
+    // practice, matching GpuCloudMedium::boundsMin/boundsMax's own
+    // convention, since rgbGridAabbSlabIntersect() (metal_poc_sampling.
+    // metal) compares these directly against a ray already transformed
+    // into medium space.
+    float boundsMin[3];
+    float boundsMax[3];
+    float worldToMediumMat[9];
+    float worldToMediumTranslate[3];
+    int nx, ny, nz;
+    // Element offset into the shared flat `rgbGridData` buffer - the R
+    // channel block starts here, G at +nx*ny*nz, B at +2*(nx*ny*nz).
+    int dataOffset;
+    float sigmaScale;
+    float sigmaMaj;
+    float phaseG;
+};
+
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
 // sphere intersection the way it does for triangles, so this needs an
 // explicit bounding-box geometry + an intersection function (below) to
@@ -1088,18 +1121,19 @@ SphereIntersectionResult sphereIntersectionFunction(
     SphereIntersectionResult result;
     result.accept = false;
 
-    // Medium spheres (materialType 28, homogeneous, and materialType 29,
-    // E2's own heterogeneous CloudMedium trigger sphere) are semi-
-    // transparent volumes, not opaque surfaces - a pure occlusion test
-    // (SpherePayload::isShadowRay's own comment) must not treat one as a
-    // blocker at all, so it's rejected here before any real geometric
-    // test runs. The PRIMARY/continuation ray that actually needs to
-    // detect ENTERING one of these spheres sets isShadowRay=false
-    // explicitly (metal_poc_kernel.metal's own primary-ray payload
-    // construction), so it's unaffected by this check.
+    // Medium spheres (materialType 28, homogeneous; materialType 29, E2's
+    // own heterogeneous CloudMedium; materialType 30, E4's own
+    // heterogeneous RgbGridMedium) are semi-transparent volumes, not
+    // opaque surfaces - a pure occlusion test (SpherePayload::
+    // isShadowRay's own comment) must not treat one as a blocker at all,
+    // so it's rejected here before any real geometric test runs. The
+    // PRIMARY/continuation ray that actually needs to detect ENTERING
+    // one of these spheres sets isShadowRay=false explicitly
+    // (metal_poc_kernel.metal's own primary-ray payload construction),
+    // so it's unaffected by this check.
     {
         uint mt = sphereMaterials[primitiveIndex].materialType;
-        if (payload.isShadowRay && (mt == 28u || mt == 29u)) return result;
+        if (payload.isShadowRay && (mt == 28u || mt == 29u || mt == 30u)) return result;
     }
 
     SphereData sphere = spheres[primitiveIndex];
