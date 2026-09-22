@@ -105,10 +105,90 @@ void MetalPocApp::buildHomogeneousMediumScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
-// B9: Cornell Crystal - matches CPU's own build_cornell_crystal()
-// exactly: the box stays plain white Lambertian (unchanged from A1's
-// own), the sphere is materialType 18 (NormalizedFresnelBxDF, IOR
-// 1.5) - a genuinely NEW material for this whole series, not an
-// existing one reused (see shadeNormalizedFresnel()'s own declaration
-// comment, metal_poc.metal, for the full derivation).
+// E3: Dielectric Medium Showcase (section 177) - matches CPU's own
+// build_dielectric_medium_scene() (scenes_advanced.h) in STRUCTURE: a
+// ground sphere plus 3 glass spheres, each wrapping CPU's own
+// `constant_medium` (a real participating medium) INSIDE a dielectric
+// boundary (thin red mist / medium green haze / dense blue fog, in
+// increasing optical density).
+//
+// Approximated here as TINTED GLASS (materialType 2, already real,
+// working infrastructure - `shadeDielectric()`'s own existing Beer-
+// Lambert absorption, `applyBeerLambertAbsorption()`, needs ZERO
+// changes), not as a real internal scattering medium the way A8's own
+// materialType 28 (section 176) is: combining THAT mechanism with
+// real dielectric refraction would need a second Fresnel reflect/
+// refract decision at the medium's own FAR boundary (exiting the
+// glass, not just "continue unchanged" the way A8's own pass-through
+// case does, since a dielectric bends light at both surfaces) plus
+// its own new NEE/shadow-ray-occlusion handling for a shape that's
+// simultaneously refractive AND scattering - a real, substantially
+// bigger combined feature, not attempted here. Deliberately, honestly
+// scoped down instead: `Material::color` (this materialType's own
+// Beer-Lambert absorption coefficient) is derived from the medium's
+// own `sigma_t * (1 - albedo)` - the ABSORBED (not scattered) fraction
+// per channel, so a channel with HIGH albedo (mostly scattering, e.g.
+// red mist's own 0.9 red channel) survives a straight pass THROUGH
+// the glass almost unattenuated, and a LOW-albedo channel (mostly
+// absorbed, that same sphere's own 0.2 green/blue) gets filtered out -
+// producing correctly-COLOURED, correctly-DENSITY-varying glass (thin/
+// misty to dense/opaque, matching each sphere's own real sigma_t), just
+// without CPU's own real internal single-scattering GLOW (no light
+// gets redirected sideways from inside the glass toward the camera the
+// way real scattering would - this is honestly a tinted-glass look,
+// not a lit-from-within haze).
+void MetalPocApp::buildDielectricMediumShowcase() {
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+
+    // Ground - CPU's own literal colour, radius-1000 sphere (the same
+    // A2/A3/A8-established "huge sphere as ground plane" convention).
+    {
+        const float3 c = float3{0.0f, -1000.0f, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 1000.0f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{0.4f, 0.5f, 0.3f}, /*materialType=*/0u,
+            1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+
+    // The 3 "fog" spheres - CPU's own exact x/albedo/sigmaT literals
+    // (build_dielectric_medium_scene()'s own fog_sphere table), radius
+    // 1.5, dielectric ior 1.5.
+    struct FogSphere { float x; float3 albedo; float sigmaT; };
+    const FogSphere kSpheres[3] = {
+        {-4.0f, {0.9f, 0.2f, 0.2f}, 0.5f},  // thin red mist
+        { 0.0f, {0.2f, 0.8f, 0.3f}, 1.5f},  // medium green haze
+        { 4.0f, {0.3f, 0.4f, 0.9f}, 3.0f},  // dense blue fog
+    };
+    const float radius = 1.5f;
+    for (const FogSphere& fs : kSpheres) {
+        const float3 absorption = fs.sigmaT * (float3{1, 1, 1} - fs.albedo);
+        const float3 c = float3{fs.x, radius, 0.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, radius});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{absorption.x, absorption.y, absorption.z},
+            /*materialType=*/2u, /*ior=*/1.5f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+
+    // Background - CPU's own registry row for E3, bg (0.5,0.7,1.0).
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.5f, 0.7f, 1.0f};
+
+    // Camera - CPU's own registry row for E3 (vfov 40, lookfrom
+    // (0,3,18), lookat (0,1.5,0)).
+    const float3 lookfrom = float3{0.0f, 3.0f, 18.0f} + sceneOffset;
+    const float3 lookat = float3{0.0f, 1.5f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
 

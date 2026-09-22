@@ -10366,3 +10366,74 @@ no NEE for non-area-lights" foundation - not attempted here, but
 materialType 28/the exit-distance/free-flight machinery this section
 built is real, reusable infrastructure for whichever of them gets
 picked up next.
+
+## 177. Closing E3: Dielectric Medium Showcase - tinted glass, an honest scope cut from a real scattering medium
+
+E3 is CPU's own `build_dielectric_medium_scene()`: a ground sphere
+plus 3 glass spheres, each wrapping a real `constant_medium` (colored
+internal fog, varying from thin/misty to dense/opaque) INSIDE a
+dielectric boundary. A real port would need materialType 28's own
+free-flight scattering (section 176) married to real Fresnel
+reflect/refract at BOTH the entry AND the exit surface (a dielectric
+bends light at each crossing, unlike materialType 28's own "just
+continue unchanged" pass-through case, which is only correct because
+A8's own medium spheres have no refracting surface at all) - plus
+that combination's own new NEE/shadow-ray-occlusion questions for a
+shape that's simultaneously refractive AND scattering. A genuinely
+bigger combined feature, not attempted here.
+
+**Scoped down instead to TINTED GLASS**, reusing materialType 2
+(dielectric) completely unchanged - zero new shader code, zero new
+intersection/occlusion machinery. `shadeDielectric()`'s own EXISTING
+Beer-Lambert absorption (`applyBeerLambertAbsorption()`, already
+real, working infrastructure since early in this series) already
+attenuates light travelling through a dielectric by
+`exp(-color*distance)` on exit - `Material::color` there is read as
+an absorption coefficient. This section's own new host-side loader
+derives that coefficient from the medium's own real physical
+quantities: `absorption = sigmaT * (1 - albedo)` - the fraction of
+extinction that's genuinely ABSORBED rather than scattered, per
+channel. A channel with HIGH albedo (e.g. the "red mist" sphere's own
+0.9 red channel - mostly scattering, little absorption) survives a
+straight pass through almost unattenuated; a LOW-albedo channel (that
+same sphere's own 0.2 green/blue - mostly absorbed) gets filtered
+out - producing correctly-COLOURED, correctly-DENSITY-varying glass
+(CPU's own thin/misty-to-dense/opaque progression across the 3
+spheres) with no new mechanism at all, just a different constant fed
+into one already-shipped formula.
+
+**The honest limitation**: this produces TINTED GLASS, not a real
+lit-from-within HAZE - no light gets redirected sideways from inside
+a sphere toward the camera the way real single-scattering would
+(there is no internal NEE/scattering event at all in this scope cut,
+only straight-line attenuation). Directly comparing against `--cpu`
+found this difference to be far LESS visually significant in practice
+than the mechanism's own name suggests: at this scene's own natural
+scale/lighting (an outdoor ground-plane scene under a flat sky, not a
+dark room where internal glow would read as the dominant visual cue),
+the two renders are close enough that the missing internal-scattering
+character is not obviously apparent at a glance - the colour and
+density progression across the 3 spheres (thin/light to dense/dark)
+reads correctly either way.
+
+**Verified**: full clean `RT_BUILD_METAL=ON` rebuild, ctest (4/4), all
+148 registered scene IDs smoke-rendered (18 failures now, down from
+19 after section 176's own A8 fix), direct `--gpu` vs `--cpu`
+comparison for E3 (three spheres with matching colours AND matching
+relative density ordering - the thin red-mist sphere visibly lighter/
+more translucent than the dense blue-fog one on both backends), and a
+before/after hash comparison across the other 129 currently-passing
+scenes (E3 itself excluded): only D8/D12/F4 (pre-existing lens-camera
+non-determinism, section 160) and A8 differ - A8 confirmed visually
+identical, a new instance of the same "any shader recompile can
+perturb a precision-sensitive Monte-Carlo scene even for a
+functionally-unrelated change" class section 160's own finding
+already covers, this time for a stochastic-scattering-threshold
+reason rather than a lens-camera one. The other 128 scenes are byte-
+for-byte identical.
+
+With E3 closed, E2 (procedural Perlin-noise density, needing a real
+per-point density function evaluated during free-flight sampling
+rather than this section's own flat sigmaT) and E4 (a heterogeneous
+per-voxel RGB grid, needing real 3D grid data) remain the two
+genuinely bigger volumetric scenes left.
