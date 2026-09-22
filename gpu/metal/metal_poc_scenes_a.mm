@@ -876,6 +876,254 @@ void MetalPocApp::buildSimpleLight() {
     pbrtSceneOffset = sceneOffset;
 }
 
+// A9: Final Scene - matches src/TheRestOfYourLife/scenes_book.h's own
+// build_final_scene() (Book 2's own combined finale), reusing several
+// already-shipped mechanisms rather than needing anything genuinely new:
+// object motion blur (F11/section 167, the moving sphere), earth-texture
+// + Perlin-marble spheres (materialType 3/17, already used by other A-
+// series scenes), and B13's own "dielectric shell + real constant_medium
+// interior -> tinted glass via Beer-Lambert absorption" approximation
+// (section 185) for the blue "smoke" sphere. Two genuinely new pieces:
+//
+// - The 400-box "ground" (a 20x20 grid of axis-aligned boxes, each a
+//   random height in [1,101]) and the 1000-sphere cluster (CPU's own
+//   `point3::random(0,165)`, rotated 15 degrees about Y then translated)
+//   are both RANDOM and UNSEEDED on CPU (`random_double()`, no fixed
+//   seed anywhere in build_final_scene()) - an exact match was never a
+//   meaningful bar here, the same "no fixed seed, no exact-match
+//   expectation" precedent buildBouncingSpheres()'s own comment already
+//   established (section 175). This loader uses a FIXED seed instead
+//   (deterministic/reproducible on this side, still not attempting to
+//   reproduce CPU's own specific heights/positions).
+// - CPU's own whole-scene "fog" (an enormous r=5000 dielectric sphere
+//   at the origin wrapping an extremely thin constant_medium,
+//   sigma_t=0.0001) is architecturally just a very faint homogeneous
+//   medium filling the entire visible scene at any normal viewing
+//   distance - rather than building actual geometry for it, this reuses
+//   the SAME whole-scene fog mechanism loadPbrtScene() already wires up
+//   for a real pbrt scene's own exterior medium (`havePbrtMedium`/
+//   `pbrtFogSigmaT`/`pbrtFogAlbedo`, metal_poc_dispatch.mm's own
+//   existing, generic read of these three fields - no new code needed
+//   at all, just set them from a hand-authored scene too, the same
+//   "reuse an existing generic field, hand-authored scenes can set it
+//   too" shape D13's own `sceneCameraVelocity` already established,
+//   section 174).
+void MetalPocApp::buildFinalScene() {
+    // Natural scale (sceneScale=1, no Cornell-family rescale) - this
+    // scene's own geometry (boxes spanning +-1000, spheres up to
+    // (400,400,200)) and its own camera (478,278,-600) are already
+    // internally consistent at this scale, the same "no rescale needed"
+    // convention B10/B11/B14 already use for their own non-Cornell scenes.
+    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+
+    // 400 ground boxes - a 20x20 grid, each cell a random-height
+    // (uniform [1,101]) axis-aligned box, Lambertian (0.48,0.83,0.53).
+    // Fixed seed (not CPU's own unseeded random_double()) - see this
+    // function's own header comment for why an exact match was never
+    // the bar here.
+    {
+        std::mt19937 rng(19700u);
+        std::uniform_real_distribution<float> heightDist(1.0f, 101.0f);
+        const float3 groundColor{0.48f, 0.83f, 0.53f};
+        const int boxesPerSide = 20;
+        const float w = 100.0f;
+        auto addBox = [&](float3 minC, float3 maxC) {
+            const float3 dx{maxC.x - minC.x, 0.0f, 0.0f};
+            const float3 dy{0.0f, maxC.y - minC.y, 0.0f};
+            const float3 dz{0.0f, 0.0f, maxC.z - minC.z};
+            struct Face { float3 Q, u, v; };
+            const Face faces[6] = {
+                {float3{minC.x, minC.y, maxC.z},  dx,  dy},
+                {float3{maxC.x, minC.y, maxC.z}, -dz,  dy},
+                {float3{maxC.x, minC.y, minC.z}, -dx,  dy},
+                {float3{minC.x, minC.y, minC.z},  dz,  dy},
+                {float3{minC.x, maxC.y, maxC.z},  dx, -dz},
+                {float3{minC.x, minC.y, minC.z},  dx,  dz},
+            };
+            for (const Face& f : faces) {
+                addQuad(verts, normals, uvs, materials,
+                        f.Q + sceneOffset, f.Q + f.u + sceneOffset,
+                        f.Q + f.u + f.v + sceneOffset, f.Q + f.v + sceneOffset,
+                        groundColor);
+            }
+        };
+        for (int i = 0; i < boxesPerSide; ++i) {
+            for (int j = 0; j < boxesPerSide; ++j) {
+                const float x0 = -1000.0f + i * w, z0 = -1000.0f + j * w, y0 = 0.0f;
+                const float x1 = x0 + w, y1 = heightDist(rng), z1 = z0 + w;
+                addBox(float3{x0, y0, z0}, float3{x1, y1, z1});
+            }
+        }
+    }
+
+    // Ceiling light - (123,554,147), 300x265, emission (7,7,7).
+    {
+        const float3 Q{123.0f, 554.0f, 147.0f}, u{300.0f, 0.0f, 0.0f}, v{0.0f, 0.0f, 265.0f};
+        const float3 a = Q + sceneOffset, b = Q + u + sceneOffset,
+                     c = Q + u + v + sceneOffset, d = Q + v + sceneOffset;
+        const float3 lightColor{7.0f, 7.0f, 7.0f};
+        const int32_t lightId = (int32_t)lights.size();
+        addQuad(verts, normals, uvs, materials, a, b, c, d, lightColor,
+                /*materialType=*/0u, /*emission=*/lightColor, lightId);
+        const float3 edgeU = b - a, edgeV = d - a;
+        const float3 normalV = simd::normalize(simd::cross(edgeU, edgeV));
+        const float area = simd::length(simd::cross(edgeU, edgeV));
+        const float3 center = a + 0.5f * edgeU + 0.5f * edgeV;
+        lights.push_back(AreaLightData{
+            PackedFloat3{center.x, center.y, center.z},
+            PackedFloat3{edgeU.x, edgeU.y, edgeU.z},
+            PackedFloat3{edgeV.x, edgeV.y, edgeV.z},
+            PackedFloat3{normalV.x, normalV.y, normalV.z},
+            area, PackedFloat3{lightColor.x, lightColor.y, lightColor.z},
+            /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+            /*twoSided=*/0.0f, /*useTexture=*/0.0f});
+    }
+
+    // Moving sphere - center (400,400,200) to +(30,0,0), r=50, Lambertian
+    // (0.7,0.3,0.1). Real object motion blur (F11/section 167's own
+    // SphereData::centerDelta1), not an approximation.
+    {
+        const float3 c0 = float3{400.0f, 400.0f, 200.0f} + sceneOffset;
+        SphereData sd{PackedFloat3{c0.x, c0.y, c0.z}, 50.0f};
+        sd.centerDelta1 = PackedFloat3{30.0f, 0.0f, 0.0f};
+        spheres.push_back(sd);
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{0.7f, 0.3f, 0.1f}, /*materialType=*/0u,
+            1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+
+    // Dielectric sphere - (260,150,45), r=50, ior=1.5.
+    {
+        const float3 c = float3{260.0f, 150.0f, 45.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 50.0f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/2u,
+            /*ior=*/1.5f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+
+    // Fuzzy metal sphere - (0,150,145), r=50, albedo (0.8,0.8,0.9),
+    // fuzz=1.0 -> materialType 4 (real GGX conductor), CPU's own fuzz
+    // reused directly as alpha - the same substitution
+    // buildRoughMetalSpheres()'s own comment already documents making
+    // for CPU's own simple `metal` class everywhere else in this project.
+    {
+        const float3 albedo{0.8f, 0.8f, 0.9f};
+        const float fuzz = 1.0f;
+        const float3 c = float3{0.0f, 150.0f, 145.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 50.0f});
+        TriangleMaterial mat{PackedFloat3{albedo.x, albedo.y, albedo.z}, /*materialType=*/4u,
+            /*ior(alphaX)=*/fuzz, PackedFloat3{0, 0, 0}, -1, /*roughness(alphaY)=*/fuzz};
+        const float3 k = reflectanceToConductorK(albedo);
+        mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+        mat.conductorK = PackedFloat3{k.x, k.y, k.z};
+        sphereMaterials.push_back(mat);
+    }
+
+    // Blue "smoke" sphere - dielectric shell (360,150,145) r=70 ior=1.5
+    // wrapping CPU's own constant_medium(sigma_t=0.2, albedo=(0.2,0.4,0.9))
+    // - tinted-glass approximation (E3/B13's own precedent, section
+    // 177/185). The LITERAL sigma_t*(1-albedo)=(0.16,0.12,0.02) does NOT
+    // survive this port, same "hand-compute the transmittance before
+    // ever rendering" finding B13's own jade sphere already made
+    // (section 185): across this sphere's own 140-unit diameter, that
+    // gives red/green transmittance of ~1e-10/~1e-7 (blue alone survives
+    // at ~6%) - a literal port renders essentially solid black, not
+    // CPU's own bright cyan-blue scattering look (confirmed by direct
+    // render comparison, not assumed). `kSmokeAbsorptionScale=0.15`
+    // scales this sphere's own absorption down (same documented-
+    // deliberate-departure shape B13's own kJadeAbsorptionScale already
+    // established) to put full-diameter transmittance around 66% blue /
+    // 8% green / 3.5% red - a recognizable cyan-blue translucent look,
+    // keeping blue as the clearly dominant, most-transmissive channel
+    // (matching the medium's own albedo ordering) rather than a literal
+    // physical port. No unit rescale needed (sceneScale=1 here, unlike
+    // B13's own Cornell-family scene).
+    {
+        const float kSmokeAbsorptionScale = 0.15f;
+        const float3 absorption = kSmokeAbsorptionScale *
+            float3{0.2f * (1.0f - 0.2f), 0.2f * (1.0f - 0.4f), 0.2f * (1.0f - 0.9f)};
+        const float3 c = float3{360.0f, 150.0f, 145.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 70.0f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{absorption.x, absorption.y, absorption.z},
+            /*materialType=*/2u, /*ior=*/1.5f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+
+    // Whole-scene extremely-thin fog - see this function's own header
+    // comment for why this reuses the generic pbrtFogSigmaT/pbrtFogAlbedo
+    // mechanism instead of building the giant r=5000 sphere CPU's own
+    // version uses.
+    havePbrtMedium = true;
+    pbrtFogSigmaT = 0.0001f;
+    pbrtFogAlbedo = float3{1.0f, 1.0f, 1.0f};
+
+    // Earth-textured sphere - (400,200,400), r=100, materialType 3
+    // (equirect earthTexture sampling, already used by other A-series
+    // scenes).
+    {
+        const float3 c = float3{400.0f, 200.0f, 400.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 100.0f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/3u,
+            1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+    }
+
+    // Perlin marble sphere - (220,280,300), r=80, materialType 17
+    // (real Perlin marble, `roughness` reused as noise scale - A5's own
+    // established convention), noise scale 0.2 matching CPU's own
+    // `noise_texture(0.2)`.
+    {
+        const float3 c = float3{220.0f, 280.0f, 300.0f} + sceneOffset;
+        spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 80.0f});
+        sphereMaterials.push_back(TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/17u,
+            1.0f, PackedFloat3{0, 0, 0}, -1, /*roughness(noiseScale)=*/0.2f});
+    }
+
+    // 1000-sphere cluster - CPU's own `point3::random(0,165)`, r=10,
+    // white (.73,.73,.73), rotated 15 degrees about Y then translated
+    // (-100,270,395). Fixed seed - see this function's own header
+    // comment for why an exact match was never the bar here.
+    {
+        std::mt19937 rng(20260922u);
+        std::uniform_real_distribution<float> pos(0.0f, 165.0f);
+        const float theta = 15.0f * (float)M_PI / 180.0f;
+        const float sinT = sinf(theta), cosT = cosf(theta);
+        const float3 translate{-100.0f, 270.0f, 395.0f};
+        const float3 white{0.73f, 0.73f, 0.73f};
+        for (int i = 0; i < 1000; ++i) {
+            float3 local{pos(rng), pos(rng), pos(rng)};
+            const float rx = cosT * local.x + sinT * local.z;
+            const float rz = -sinT * local.x + cosT * local.z;
+            const float3 c = float3{rx, local.y, rz} + translate + sceneOffset;
+            spheres.push_back(SphereData{PackedFloat3{c.x, c.y, c.z}, 10.0f});
+            sphereMaterials.push_back(TriangleMaterial{PackedFloat3{white.x, white.y, white.z}, /*materialType=*/0u,
+                1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f});
+        }
+    }
+
+    // Background - deep ambient (0.03,0.025,0.02), matching A9's own
+    // CameraConfig background_r/g/b exactly (scene_registry_data.h) - not
+    // pure black, since the box-grid ground and negative space would
+    // otherwise render into a stark void.
+    havePbrtConstantEnvLight = true;
+    pbrtEnvColor = float3{0.03f, 0.025f, 0.02f};
+
+    // Camera: fov=40, lookfrom=(478,278,-600), lookat=(278,278,0).
+    const float3 lookfrom = float3{478.0f, 278.0f, -600.0f} + sceneOffset;
+    const float3 lookat = float3{278.0f, 278.0f, 0.0f} + sceneOffset;
+    const float3 up{0.0f, 1.0f, 0.0f};
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    const float3 trueUp = simd::cross(right, forward);
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = trueUp;
+    pbrtTanHalfFov = tanf(0.5f * 40.0f * (float)M_PI / 180.0f);
+    havePbrtCamera = true;
+    pbrtCameraLookAtWorld = lookat;
+    pbrtCameraUpRaw = up;
+    pbrtBboxCenter = float3{0.0f, 0.0f, 0.0f};
+    pbrtSceneScale = 1.0f;
+    pbrtSceneOffset = sceneOffset;
+}
+
 // See this method's own declaration comment (this struct's own
 // definition) for the shape - reuses buildCornellBoxA1()'s own real
 // wall/light/rescale code verbatim, only the box's and sphere's own

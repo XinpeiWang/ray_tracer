@@ -985,6 +985,7 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B11",                         // Hair Fibers, new materialType 31 HairBxDF (section 183)
 		"B14",                         // Measured BRDF (actually Lambertian), new sphere-light NEE (section 184)
 		"B13",                         // Subsurface Slab, tinted-glass approximation (section 185)
+		"A9",                          // Final Scene, combined finale reusing existing mechanisms (section 186)
 		"C1",                          // HDRI Sky, no new materialType/shader code needed (section 146)
 		"C7",                          // Portal Infinite Light, no new materialType/shader code needed (section 147)
 		"I3",                          // ExposureToneMapping, reuses C1's own world + a new --exposure implementation (section 148)

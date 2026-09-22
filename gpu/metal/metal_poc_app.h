@@ -1722,6 +1722,13 @@ struct MetalPocApp {
     // scattering medium. See buildSubsurfaceSlab()'s own comment and
     // section 185, docs/METAL_GPU_FEASIBILITY.md.
     void buildSubsurfaceSlab();
+    // A9: Final Scene - Book 2's own combined finale (400-box ground,
+    // moving/dielectric/fuzzy-metal/tinted-glass/earth/Perlin-marble
+    // spheres, a 1000-sphere cluster, and a whole-scene faint fog),
+    // reusing several already-shipped mechanisms rather than needing
+    // anything genuinely new. See buildFinalScene()'s own comment and
+    // section 186, docs/METAL_GPU_FEASIBILITY.md.
+    void buildFinalScene();
     // C1: HDRI Sky - an open scene (ground + 3 spheres: diffuse, rough
     // metal, glass) lit ENTIRELY by a procedural gradient sky, no other
     // light at all. Needs NO new materialType or shader code at all -
