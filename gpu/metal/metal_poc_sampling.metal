@@ -911,6 +911,77 @@ inline bool cloudAabbSlabIntersect(GpuCloudMedium cloud, float3 mo, float3 md,
     return tMin <= tMax;
 }
 
+// E4/section 179: world_to_medium_pt() + ray/AABB slab test for
+// GpuRgbGridMedium - same shape as worldToMediumPoint()/
+// cloudAabbSlabIntersect() just above (a separate, parallel copy rather
+// than a shared generic helper, matching gpu/optix/optix_intersection_
+// sphere.h's own convention of a separate inline slab test per medium
+// type "for consistency" - that file's own comment on box_slab_intersect).
+inline float3 rgbGridWorldToMediumPoint(GpuRgbGridMedium grid, float3 p) {
+    float mx = grid.worldToMediumMat[0]*p.x + grid.worldToMediumMat[1]*p.y + grid.worldToMediumMat[2]*p.z + grid.worldToMediumTranslate[0];
+    float my = grid.worldToMediumMat[3]*p.x + grid.worldToMediumMat[4]*p.y + grid.worldToMediumMat[5]*p.z + grid.worldToMediumTranslate[1];
+    float mz = grid.worldToMediumMat[6]*p.x + grid.worldToMediumMat[7]*p.y + grid.worldToMediumMat[8]*p.z + grid.worldToMediumTranslate[2];
+    return float3(mx, my, mz);
+}
+
+inline bool rgbGridAabbSlabIntersect(GpuRgbGridMedium grid, float3 mo, float3 md,
+                                      thread float& outTMin, thread float& outTMax) {
+    float tMin = -1e30, tMax = 1e30;
+    float moArr[3] = { mo.x, mo.y, mo.z };
+    float mdArr[3] = { md.x, md.y, md.z };
+    for (int i = 0; i < 3; ++i) {
+        float bmin = grid.boundsMin[i], bmax = grid.boundsMax[i];
+        if (abs(mdArr[i]) < 1e-12) {
+            if (moArr[i] < bmin || moArr[i] > bmax) { outTMin = 1.0; outTMax = 0.0; return false; }
+        } else {
+            float invD = 1.0 / mdArr[i];
+            float t0 = (bmin - moArr[i]) * invD;
+            float t1 = (bmax - moArr[i]) * invD;
+            if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+            tMin = max(tMin, t0);
+            tMax = min(tMax, t1);
+        }
+    }
+    outTMin = tMin;
+    outTMax = tMax;
+    return tMin <= tMax;
+}
+
+// Clamped voxel fetch, one flat channel block (nx*ny*nz floats) of the
+// shared `rgbGridData` buffer - direct port of gpu/optix/
+// optix_intersection_sphere.h's own gpu_rgb_grid_at().
+inline float gpuRgbGridAt(device const float* d, int nx, int ny, int nz, int x, int y, int z) {
+    x = clamp(x, 0, nx - 1);
+    y = clamp(y, 0, ny - 1);
+    z = clamp(z, 0, nz - 1);
+    return d[x + nx * (y + ny * z)];
+}
+
+// Trilinear lookup into one channel of a GpuRgbGridMedium's flat voxel
+// data, px/py/pz in normalized [0,1]^3 medium space - direct port of
+// gpu/optix/optix_intersection_sphere.h's own gpu_rgb_grid_trilinear().
+inline float gpuRgbGridTrilinear(device const float* d, int nx, int ny, int nz,
+                                  float px, float py, float pz) {
+    float gx = px*nx - 0.5, gy = py*ny - 0.5, gz = pz*nz - 0.5;
+    int ix0 = int(floor(gx)), iy0 = int(floor(gy)), iz0 = int(floor(gz));
+    float fx = gx-ix0, fy = gy-iy0, fz = gz-iz0;
+    float c000 = gpuRgbGridAt(d,nx,ny,nz, ix0,   iy0,   iz0);
+    float c100 = gpuRgbGridAt(d,nx,ny,nz, ix0+1, iy0,   iz0);
+    float c010 = gpuRgbGridAt(d,nx,ny,nz, ix0,   iy0+1, iz0);
+    float c110 = gpuRgbGridAt(d,nx,ny,nz, ix0+1, iy0+1, iz0);
+    float c001 = gpuRgbGridAt(d,nx,ny,nz, ix0,   iy0,   iz0+1);
+    float c101 = gpuRgbGridAt(d,nx,ny,nz, ix0+1, iy0,   iz0+1);
+    float c011 = gpuRgbGridAt(d,nx,ny,nz, ix0,   iy0+1, iz0+1);
+    float c111 = gpuRgbGridAt(d,nx,ny,nz, ix0+1, iy0+1, iz0+1);
+    float c00 = mix(c000, c100, fx);
+    float c10 = mix(c010, c110, fx);
+    float c01 = mix(c001, c101, fx);
+    float c11 = mix(c011, c111, fx);
+    float c0 = mix(c00, c10, fy);
+    float c1 = mix(c01, c11, fy);
+    return mix(c0, c1, fz);
+}
+
 // Samples a half-vector from the GGX distribution of VISIBLE normals
 // (Heitz 2018, "Sampling the GGX Distribution of Visible Normals"), given
 // the outgoing direction `woLocal` already in the local (Z-up == shading
