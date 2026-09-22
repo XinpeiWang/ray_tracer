@@ -153,6 +153,91 @@ kernel void test_principledCombinedPdf(
     outputs[tid] = principledCombinedPdf(wDiff * invW, wSpec * invW, wCoat * invW, alpha, alphaCC, wo, wi);
 }
 
+// normalizedFresnelF() (metal_poc_materials_layered.metal) direct
+// dispatch - already a standalone, pure function (no extraction needed,
+// same as principledGgxBrdf()/principledGgxPdf() before it) - cross-
+// checked against pbrt-v4's own NormalizedFresnelBxDF formula
+// (src/shared/bxdfs_layered.h's own top comment: f = (1-Fr)/(c*pi))
+// via the shared FrDielectric<double>() free function in
+// metal_poc_shader_tests.mm (the class's own scattering_pdf() returns a
+// DIFFERENT combined f*cos quantity for this codebase's own NEE
+// convention, not a bare f() - so the free Fresnel function is the
+// right ground truth here, not the class method).
+kernel void test_normalizedFresnelF(
+    device const float3* wis [[buffer(0)]],
+    device const float3* ns [[buffer(1)]],
+    device const float* etas [[buffer(2)]],
+    device const float* cs [[buffer(3)]],
+    device float* outputs [[buffer(4)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = normalizedFresnelF(wis[tid], ns[tid], etas[tid], cs[tid]);
+}
+
+// layeredCoatedConductorF()/layeredCoatedDiffuseF()
+// (metal_poc_materials_extra.metal/metal_poc_materials_layered.metal),
+// coatedDiffuseProxyPdf() - PROPERTY tests, not a numeric cross-check:
+// both layered walk functions consume `rngState` directly as a genuine
+// stochastic Monte Carlo estimator (same value called twice gives
+// different results), and the CPU reference's own layered_f() is
+// ALSO a stochastic estimator but built on a structurally different
+// RNG (PCG32, 64-bit state, vs this file's own 32-bit hash-based
+// randFloat() - see metal_poc_types.metal's own pcgHash() comment: it
+// "mirrors [the CPU RNG] in spirit... without sharing implementation"),
+// so neither an exact numeric cross-check NOR a paired-seed comparison
+// is possible - a Monte-Carlo-convergence statistical test was
+// considered and deliberately NOT attempted here (real risk of CI
+// flakiness with an unknown/untuned sample count, an unbounded-variance
+// connection term, and Russian roulette past depth 3 - see
+// docs/METAL_GPU_FEASIBILITY.md's own writeup for this PR for the full
+// reasoning). What CAN be checked without a reference: every one of
+// these three deterministic-per-call INVARIANTS a real BRDF/pdf must
+// satisfy regardless of which specific stochastic estimate came back -
+// non-negative, finite (no NaN/Inf from a hidden 0/0 or overflow), and
+// (per-thread) a real varying value across repeat calls with the same
+// inputs but different rngState (proving it's genuinely sampling, not
+// silently returning a constant/zero due to a broken RNG wire-up).
+kernel void test_layeredCoatedConductorFProperties(
+    device const float3* wiLocals [[buffer(0)]],
+    device const float3* woLocals [[buffer(1)]],
+    device const float* etas [[buffer(2)]],
+    device const float* alphas [[buffer(3)]],
+    device const float3* conductorEtas [[buffer(4)]],
+    device const float3* conductorKs [[buffer(5)]],
+    device const uint* seeds [[buffer(6)]],
+    device float3* outputs [[buffer(7)]],
+    uint tid [[thread_position_in_grid]])
+{
+    thread uint rngState = seeds[tid];
+    outputs[tid] = layeredCoatedConductorF(wiLocals[tid], woLocals[tid], etas[tid], alphas[tid],
+                                            conductorEtas[tid], conductorKs[tid], rngState);
+}
+
+kernel void test_layeredCoatedDiffuseFProperties(
+    device const float3* wiLocals [[buffer(0)]],
+    device const float3* woLocals [[buffer(1)]],
+    device const float* etas [[buffer(2)]],
+    device const float* alphas [[buffer(3)]],
+    device const float3* albedos [[buffer(4)]],
+    device const uint* seeds [[buffer(5)]],
+    device float3* outputs [[buffer(6)]],
+    uint tid [[thread_position_in_grid]])
+{
+    thread uint rngState = seeds[tid];
+    outputs[tid] = layeredCoatedDiffuseF(wiLocals[tid], woLocals[tid], etas[tid], alphas[tid],
+                                          albedos[tid], rngState);
+}
+
+kernel void test_coatedDiffuseProxyPdf(
+    device const float3* wos [[buffer(0)]],
+    device const float3* wis [[buffer(1)]],
+    device const float* alphas [[buffer(2)]],
+    device float* outputs [[buffer(3)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = coatedDiffuseProxyPdf(wos[tid], wis[tid], alphas[tid]);
+}
+
 kernel void test_frDielectric(
     device const float2* inputs [[buffer(0)]],   // (cosThetaI, eta)
     device float* outputs [[buffer(1)]],
