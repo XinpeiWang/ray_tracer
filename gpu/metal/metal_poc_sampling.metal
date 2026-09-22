@@ -840,6 +840,77 @@ inline float3 sampleHenyeyGreenstein(float3 wo, float g, thread uint& rngState) 
     return sinTheta * cos(phi) * tangent + sinTheta * sin(phi) * bitangent + cosTheta * wo;
 }
 
+// E2/section 178: 5-octave-FBm-only cloud density at a MEDIUM-space
+// point, [0,1]-clamped - direct port of gpu/optix/optix_intersection_
+// sphere.h's own gpu_cloud_density() (the GPU-backend variant every GPU
+// backend uses; deliberately without CloudMedium<T>::compute_density()'s
+// own CPU-only wispiness perturbation - see that function's comment,
+// src/shared/cloud_medium.h). Reuses materialType 17's own
+// perlinNoise3D()/kNoisePerm (this file, above) rather than a second
+// copy of the same fixed permutation table - the fixed table + Noise()
+// formula is exactly the same pbrt-v4 primitive either caller needs.
+// `my` (medium-space Y) drives the altitude falloff: pbrt-v4's own
+// convention is medium-y=0 is the cloud's dense base, medium-y=1 is
+// thinned to nothing.
+inline float gpuCloudDensity(GpuCloudMedium cloud, float mx, float my, float mz) {
+    float3 pp = cloud.frequency * float3(mx, my, mz);
+    float d = 0.0;
+    float omega = 0.5, lambda = 1.0;
+    for (int oct = 0; oct < 5; ++oct) {
+        d += omega * perlinNoise3D(pp * lambda);
+        omega *= 0.5;
+        lambda *= 1.99;
+    }
+    d = clamp((1.0 - my) * 4.5 * cloud.density * d, 0.0, 1.0);
+    float extra = 2.0 * max(0.0, 0.5 - my);
+    return clamp(d + extra, 0.0, 1.0);
+}
+
+// world_to_medium_pt() - direct port of CloudMedium<T>::world_to_medium_pt()
+// (src/shared/cloud_medium.h). `worldToMediumMat` is row-major, matching
+// that function's own `mat[0]*wx + mat[1]*wy + mat[2]*wz + translate[0]`
+// convention exactly.
+inline float3 worldToMediumPoint(GpuCloudMedium cloud, float3 p) {
+    float mx = cloud.worldToMediumMat[0]*p.x + cloud.worldToMediumMat[1]*p.y + cloud.worldToMediumMat[2]*p.z + cloud.worldToMediumTranslate[0];
+    float my = cloud.worldToMediumMat[3]*p.x + cloud.worldToMediumMat[4]*p.y + cloud.worldToMediumMat[5]*p.z + cloud.worldToMediumTranslate[1];
+    float mz = cloud.worldToMediumMat[6]*p.x + cloud.worldToMediumMat[7]*p.y + cloud.worldToMediumMat[8]*p.z + cloud.worldToMediumTranslate[2];
+    return float3(mx, my, mz);
+}
+
+// Ray/AABB slab test against the medium's own `boundsMin`/`boundsMax`, in
+// MEDIUM space, given the ray ALREADY transformed there (`mo`/`md` -
+// direction transformed by the matrix only, no translation, matching
+// CloudMedium<T>::sample_ray()'s own convention). Because the world-to-
+// medium map is affine, world_point(t) = ray_o + t*ray_d maps to
+// medium_point(t) = mo + t*md for the SAME t - so the tMin/tMax this
+// returns are valid directly as world-space ray parameters along the
+// ORIGINAL (world-space) ray direction, exactly like
+// CloudMedium<T>::sample_ray()'s own returned segment. Returns false
+// (ray misses the box entirely, or is degenerate) via `outTMin >
+// outTMax`.
+inline bool cloudAabbSlabIntersect(GpuCloudMedium cloud, float3 mo, float3 md,
+                                    thread float& outTMin, thread float& outTMax) {
+    float tMin = -1e30, tMax = 1e30;
+    float moArr[3] = { mo.x, mo.y, mo.z };
+    float mdArr[3] = { md.x, md.y, md.z };
+    for (int i = 0; i < 3; ++i) {
+        float bmin = cloud.boundsMin[i], bmax = cloud.boundsMax[i];
+        if (abs(mdArr[i]) < 1e-12) {
+            if (moArr[i] < bmin || moArr[i] > bmax) { outTMin = 1.0; outTMax = 0.0; return false; }
+        } else {
+            float invD = 1.0 / mdArr[i];
+            float t0 = (bmin - moArr[i]) * invD;
+            float t1 = (bmax - moArr[i]) * invD;
+            if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+            tMin = max(tMin, t0);
+            tMax = min(tMax, t1);
+        }
+    }
+    outTMin = tMin;
+    outTMax = tMax;
+    return tMin <= tMax;
+}
+
 // Samples a half-vector from the GGX distribution of VISIBLE normals
 // (Heitz 2018, "Sampling the GGX Distribution of Visible Normals"), given
 // the outgoing direction `woLocal` already in the local (Z-up == shading

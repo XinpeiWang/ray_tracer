@@ -403,6 +403,20 @@ struct TriangleMaterial {
     uint32_t twoSided = 0;
 };
 
+// Mirrors metal_poc_types.metal's GpuCloudMedium byte-for-byte (E2,
+// section 178) - see that struct's own comment.
+struct GpuCloudMedium {
+    float boundsMin[3];
+    float boundsMax[3];
+    float worldToMediumMat[9];
+    float worldToMediumTranslate[3];
+    float sigmaA;
+    float sigmaS;
+    float density;
+    float wispiness;
+    float frequency;
+};
+
 // Mirrors metal_poc.metal's SphereData byte-for-byte. centerDelta1
 // (F11, section 167) defaults to {0,0,0} - see that struct's own
 // comment for why every existing 2-field `SphereData{center, radius}`
@@ -1131,6 +1145,9 @@ struct MetalPocApp {
     std::vector<TriangleMaterial> diskMaterials;
     std::vector<CylinderData> cylinders;
     std::vector<TriangleMaterial> cylinderMaterials;
+    // E2's own backing buffer for materialType 29 (GpuCloudMedium's own
+    // comment) - empty for every scene but E2.
+    std::vector<GpuCloudMedium> cloudMediums;
     std::vector<PointLightData> pointLights;
     std::vector<DirectionalLightData> directionalLights;
     std::vector<ProjectionLightData> projectionLights;
@@ -1161,6 +1178,7 @@ struct MetalPocApp {
     id<MTLBuffer> materialBuffer, sphereBuffer, sphereMaterialBuffer;
     id<MTLBuffer> diskBuffer, diskMaterialBuffer;
     id<MTLBuffer> cylinderBuffer, cylinderMaterialBuffer;
+    id<MTLBuffer> cloudMediumBuffer;
     id<MTLBuffer> suzanneVertexBuffer, suzanneNormalBuffer, suzanneMaterialBuffer;
     id<MTLBuffer> instanceTransformBuffer;
     id<MTLBuffer> lensElementBuffer, exitPupilBoundsBuffer;
@@ -1590,6 +1608,14 @@ struct MetalPocApp {
     // for the full "why," including the honest scope cut. Section 177,
     // docs/METAL_GPU_FEASIBILITY.md.
     void buildDielectricMediumShowcase();
+    // E2: Cloud Medium - a real heterogeneous, procedural Perlin-noise
+    // cloud (pbrt-v4 CloudMedium), delta-tracked through its own world-
+    // space AABB via a trigger sphere, the same "invisible bounding
+    // sphere plus analytic geometry" convention A8's own homogeneous
+    // medium (materialType 28) established. See this method's own
+    // definition comment (metal_poc_scenes_e.mm) for the full mechanism.
+    // Section 178, docs/METAL_GPU_FEASIBILITY.md.
+    void buildCloudMediumScene();
     // B9: Cornell Crystal - buildCornellFamilyScene() with the sphere as
     // materialType 18 (NormalizedFresnelBxDF - a genuinely NEW material,
     // not previously implemented before this PR - see

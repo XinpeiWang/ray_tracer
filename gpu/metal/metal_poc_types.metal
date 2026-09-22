@@ -906,6 +906,41 @@ struct TriangleMaterial {
     uint twoSided;
 };
 
+// E2/section 178: a real heterogeneous, procedural Perlin-FBm-density
+// medium (pbrt-v4 CloudMedium, src/shared/cloud_medium.h) - ported from
+// gpu/optix/optix_intersection_sphere.h's own gpu_cloud_density()/
+// delta-tracking closest-hit code, the hand-duplicated no-wispiness GPU
+// variant BOTH GPU backends now use (OptiX's own comment there explains
+// why calling CloudMedium<T>::compute_density() directly device-side is
+// unsafe on that backend - not applicable to Metal's very different
+// compute-kernel-loop architecture, but matched anyway for GPU-backend
+// parity rather than re-deriving a Metal-only variant). A separate
+// buffer (not folded into TriangleMaterial the way materialType 28's
+// homogeneous medium reuses color/ior/roughness directly) because this
+// needs far more state (a 3x3 affine world-to-medium transform) than
+// TriangleMaterial's remaining spare fields could hold - materialType 29
+// stores only an index into this buffer (TriangleMaterial::conductorEta.x,
+// cast to uint - unused by any real conductor, the same spare-field-reuse
+// convention every other materialType already follows) plus its own
+// albedo (`color`) and phase_g (`roughness`), matching how OptiX's own
+// MaterialData redundantly caches both alongside cloudMediumIdx.
+struct GpuCloudMedium {
+    float boundsMin[3];
+    float boundsMax[3];
+    // world_to_medium(p) = worldToMediumMat * p + worldToMediumTranslate
+    // (row-major 3x3, matching CloudMedium<T>::world_to_medium_pt()).
+    float worldToMediumMat[9];
+    float worldToMediumTranslate[3];
+    float sigmaA;
+    float sigmaS;
+    float density;
+    float wispiness;   // unread by gpuCloudDensity() (GPU variant has no
+                        // wispiness term) - kept only so this struct stays
+                        // a byte-for-byte mirror of CloudMedium<T>'s own
+                        // constructor argument list, for readability.
+    float frequency;
+};
+
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
 // sphere intersection the way it does for triangles, so this needs an
 // explicit bounding-box geometry + an intersection function (below) to
@@ -1053,15 +1088,19 @@ SphereIntersectionResult sphereIntersectionFunction(
     SphereIntersectionResult result;
     result.accept = false;
 
-    // Medium spheres (materialType 28) are semi-transparent volumes,
-    // not opaque surfaces - a pure occlusion test (SpherePayload::
-    // isShadowRay's own comment) must not treat one as a blocker at
-    // all, so it's rejected here before any real geometric test runs.
-    // The PRIMARY/continuation ray that actually needs to detect
-    // ENTERING this same sphere sets isShadowRay=false explicitly
-    // (metal_poc_kernel.metal's own primary-ray payload construction),
-    // so it's unaffected by this check.
-    if (payload.isShadowRay && sphereMaterials[primitiveIndex].materialType == 28u) return result;
+    // Medium spheres (materialType 28, homogeneous, and materialType 29,
+    // E2's own heterogeneous CloudMedium trigger sphere) are semi-
+    // transparent volumes, not opaque surfaces - a pure occlusion test
+    // (SpherePayload::isShadowRay's own comment) must not treat one as a
+    // blocker at all, so it's rejected here before any real geometric
+    // test runs. The PRIMARY/continuation ray that actually needs to
+    // detect ENTERING one of these spheres sets isShadowRay=false
+    // explicitly (metal_poc_kernel.metal's own primary-ray payload
+    // construction), so it's unaffected by this check.
+    {
+        uint mt = sphereMaterials[primitiveIndex].materialType;
+        if (payload.isShadowRay && (mt == 28u || mt == 29u)) return result;
+    }
 
     SphereData sphere = spheres[primitiveIndex];
     // lerp(center, center+0, anything) == center exactly, so this is a

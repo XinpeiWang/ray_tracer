@@ -73,6 +73,12 @@ kernel void primaryRayKernel(
     // on that split.
     device const CylinderData* cylinders [[buffer(26)]],
     device const TriangleMaterial* cylinderMaterials [[buffer(27)]],
+    // E2/section 178: materialType 29's own backing buffer - see
+    // GpuCloudMedium's own comment (metal_poc_types.metal). Index into
+    // this buffer comes from TriangleMaterial::conductorEta.x on the hit
+    // sphere's own material, read via `sphereMaterials` (already bound
+    // above at buffer(4)).
+    device const GpuCloudMedium* cloudMediums [[buffer(28)]],
     uint2 tid [[thread_position_in_grid]])
 {
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
@@ -487,6 +493,232 @@ kernel void primaryRayKernel(
                         // iteration of this loop's own depth budget, same
                         // as any other bounce.
                         rayOrigin = rayOrigin + rayDir * exitT;
+                        passedThroughMediumSphere = true;
+                    }
+                } else if (mediumMat.materialType == 29u) {
+                    // E2/section 178: heterogeneous, procedural Perlin-
+                    // noise cloud - delta tracking (null-collision free-
+                    // path sampling, pbrt-v4 SampleT_maj) through the
+                    // medium's own world-space AABB, NOT this trigger
+                    // sphere's bounds (the trigger sphere only exists to
+                    // get the ray into this branch at all, sized to
+                    // comfortably contain that AABB - see
+                    // buildCloudMediumScene()'s own comment,
+                    // metal_poc_scenes_e.mm). Direct port of
+                    // gpu/optix/optix_intersection_sphere.h's own
+                    // MaterialType::CloudMedium closest-hit code - see
+                    // that block's own comment for the algorithm.
+                    GpuCloudMedium cloud = cloudMediums[uint(mediumMat.conductorEta.x)];
+                    float3 mo = worldToMediumPoint(cloud, rayOrigin);
+                    // Direction transforms by the matrix only (no
+                    // translation) - CloudMedium<T>::sample_ray()'s own
+                    // convention.
+                    float3 md = float3(
+                        cloud.worldToMediumMat[0]*rayDir.x + cloud.worldToMediumMat[1]*rayDir.y + cloud.worldToMediumMat[2]*rayDir.z,
+                        cloud.worldToMediumMat[3]*rayDir.x + cloud.worldToMediumMat[4]*rayDir.y + cloud.worldToMediumMat[5]*rayDir.z,
+                        cloud.worldToMediumMat[6]*rayDir.x + cloud.worldToMediumMat[7]*rayDir.y + cloud.worldToMediumMat[8]*rayDir.z);
+                    float segMin, segMax;
+                    bool hasSeg = cloudAabbSlabIntersect(cloud, mo, md, segMin, segMax);
+                    float sigmaMaj = cloud.sigmaA + cloud.sigmaS;
+
+                    bool didScatter = false;
+                    float3 mediumPoint = float3(0.0, 0.0, 0.0);
+                    float3 wo = -rayDir;
+                    float missedExitT = result.distance; // trigger sphere's own entry hit
+                    if (hasSeg && sigmaMaj > 0.0) {
+                        float tt = max(segMin, 0.0);
+                        // Bounded iteration count - device code must not
+                        // risk an unbounded loop from a pathological
+                        // (near-zero majorant) configuration, same cap
+                        // OptiX's own port uses.
+                        for (int iter = 0; iter < 128 && !didScatter; ++iter) {
+                            float dt = -log(max(1.0 - randFloat(rngState), 1e-8)) / sigmaMaj;
+                            tt += dt;
+                            if (tt >= segMax) break;
+                            float3 p = rayOrigin + tt * rayDir;
+                            float3 mp = worldToMediumPoint(cloud, p);
+                            float d = gpuCloudDensity(cloud, mp.x, mp.y, mp.z);
+                            float sigmaSLocal = d * cloud.sigmaS;
+                            if (randFloat(rngState) < sigmaSLocal / sigmaMaj) {
+                                didScatter = true;
+                                mediumPoint = p;
+                            }
+                        }
+                        if (!didScatter) missedExitT = segMax;
+                    }
+
+                    if (didScatter) {
+                        // NEE only fires when a REAL area light is
+                        // registered - unlike A8/E1 (materialType 28's own
+                        // scenes), E2 has none: it's lit purely by the
+                        // constant background/environment colour, the
+                        // same "no NEE technique exists yet for that
+                        // light kind" scope cut every other light-type
+                        // (point/directional/projection/goniometric) NEE
+                        // block already documents. sampleAreaLight() has
+                        // no lightCount==0 guard of its own (every OTHER
+                        // call site is on a scene that always registers
+                        // at least one) - calling it unconditionally here
+                        // read lights[0] out of an empty (zero-filled)
+                        // buffer, giving ls.area==0/ls.pmf==0, and
+                        // `distSq/(0*cosLight)*0` evaluated to NaN
+                        // (INF*0), silently corrupting every pixel's own
+                        // accumulated radiance - caught by rendering and
+                        // comparing against `--cpu`, which showed a
+                        // washed-out, near-black speckled cloud instead
+                        // of CPU's own soft grey one, not assumed correct
+                        // from the formula alone.
+                        if (uniforms.lightCount > 0u) {
+                        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
+                        float3 toLight = ls.point - mediumPoint;
+                        float distSq = dot(toLight, toLight);
+                        float dist = sqrt(distSq);
+                        float3 wi = toLight / dist;
+                        float cosLight = dot(ls.normal, -wi);
+                        if ((cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
+                            ray cloudShadowRay;
+                            cloudShadowRay.origin = mediumPoint;
+                            cloudShadowRay.direction = wi;
+                            cloudShadowRay.min_distance = 0.001f;
+                            cloudShadowRay.max_distance = dist - 0.002f;
+                            intersection_result<instancing, triangle_data> cloudShadowResult =
+                                isect.intersect(cloudShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            if (cloudShadowResult.type == intersection_type::none) {
+                                float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
+                                float phaseValue = henyeyGreensteinPhase(dot(wo, wi), mediumMat.roughness);
+                                float weight = (pdfSolidAngle * pdfSolidAngle)
+                                    / (pdfSolidAngle * pdfSolidAngle + phaseValue * phaseValue);
+                                // Same "* float3(mediumMat.color)" albedo-
+                                // weight fix materialType 28's own NEE
+                                // block above already established - see
+                                // that block's own comment. No extra
+                                // transmittance factor here (unlike
+                                // materialType 28's homogeneous case):
+                                // delta tracking's own null-collision
+                                // sampling already makes reaching a real
+                                // scatter event at `mediumPoint` an
+                                // unbiased estimator with unit weight, so
+                                // this NEE ray only needs the target
+                                // light's own occlusion test - the same
+                                // reasoning OptiX's own medium_phase_nee_mis()
+                                // relies on.
+                                radiance += throughput * float3(mediumMat.color) * phaseValue * ls.emission
+                                            / pdfSolidAngle * weight;
+                            }
+                        }
+                        }
+
+                        // NEE toward the constant background/environment
+                        // light (E2's own real illumination source - see
+                        // buildCloudMediumScene()'s own comment, no
+                        // AreaLight is ever registered for this scene).
+                        // Without this, escaping a dense sigma_s==10
+                        // medium (mean free path ~0.1 world units across
+                        // an ~8-unit box) relies ENTIRELY on the plain
+                        // phase-sampled continuation ray below randomly
+                        // walking all the way out before max_depth runs
+                        // out - an astronomically low-probability event
+                        // in practice, which rendered as a near-solid-
+                        // black cloud (caught by comparing against
+                        // `--cpu`, which shows a properly lit soft grey
+                        // one - CPU's own hg_phase_material has an
+                        // equivalent NEE-against-every-registered-light
+                        // technique, ratio-tracking the transmittance;
+                        // ports_medium/materialType 28's own NEE only
+                        // ever needed area lights before this, since
+                        // every OTHER scene combining a bounded medium
+                        // with real light used one).
+                        //
+                        // The shadow ray here needs no companion
+                        // transmittance estimate along its own path back
+                        // out through the REST of this same cloud (unlike
+                        // CPU's own ratio-tracking estimator) because
+                        // shadowSpherePayload's own isShadowRay==true
+                        // convention already makes every medium/cloud
+                        // trigger sphere (materialType 28 AND 29)
+                        // completely transparent to a pure occlusion
+                        // test (SpherePayload::isShadowRay's own comment,
+                        // metal_poc_types.metal) - so this ray only ever
+                        // reports a REAL blocker (ground/background
+                        // spheres/room walls), never the cloud's own
+                        // density along the way. A real, honest
+                        // simplification versus CPU's own continuous
+                        // partial-transmittance estimate (this ray is a
+                        // binary hit/miss, ignoring the cloud's own self-
+                        // attenuation along its own remaining path out),
+                        // not a bug - documented the same "single-
+                        // scattering, medium doesn't self-shadow its own
+                        // NEE ray" scope cut a real-time renderer would
+                        // also make. No MIS weight against the
+                        // continuation ray's own eventual (vanishingly
+                        // rare) escape-to-background contribution, same
+                        // "no NEE strategy to double-count against"
+                        // weight==1.0 convention `pbrtHasConstantEnvLight`'s
+                        // own miss-path arm above already uses - the two
+                        // ever co-occurring for the same path is
+                        // negligible given how rare an unassisted escape
+                        // already is.
+                        if (uniforms.pbrtHasConstantEnvLight != 0u) {
+                            float3 bgDir = sampleHenyeyGreenstein(wo, mediumMat.roughness, rngState);
+                            // This NEE ray's own remaining self-
+                            // attenuation through the REST of the cloud,
+                            // approximated via the conservative MAJORANT
+                            // sigma_t (sigmaMaj) over the analytic box-
+                            // exit distance in this direction (the same
+                            // ray/AABB slab test the delta-tracking loop
+                            // above already uses) - a coarse stand-in for
+                            // CPU's own real ratio-tracking transmittance
+                            // estimate (src/shared/ratio_tracking.h),
+                            // cheap (one more slab test, no extra rays)
+                            // and enough to fix the massive over-
+                            // brightening an earlier, fully-unattenuated
+                            // version of this NEE ray produced (every
+                            // scatter event along a path added a FULL,
+                            // un-decayed background contribution
+                            // regardless of how deep inside the cloud it
+                            // was, summing to a blown-out white box -
+                            // caught by comparing against `--cpu`, not
+                            // assumed correct from the formula alone). Not
+                            // a bias-free match to CPU's own continuous
+                            // estimator - a real, documented scope cut.
+                            float3 bgMo = worldToMediumPoint(cloud, mediumPoint);
+                            float3 bgMd = float3(
+                                cloud.worldToMediumMat[0]*bgDir.x + cloud.worldToMediumMat[1]*bgDir.y + cloud.worldToMediumMat[2]*bgDir.z,
+                                cloud.worldToMediumMat[3]*bgDir.x + cloud.worldToMediumMat[4]*bgDir.y + cloud.worldToMediumMat[5]*bgDir.z,
+                                cloud.worldToMediumMat[6]*bgDir.x + cloud.worldToMediumMat[7]*bgDir.y + cloud.worldToMediumMat[8]*bgDir.z);
+                            float bgSegMin, bgSegMax;
+                            bool bgHasSeg = cloudAabbSlabIntersect(cloud, bgMo, bgMd, bgSegMin, bgSegMax);
+                            float remainingDist = (bgHasSeg && bgSegMax > 0.0) ? bgSegMax : 0.0;
+                            float selfTransmittance = exp(-sigmaMaj * remainingDist);
+
+                            ray bgShadowRay;
+                            bgShadowRay.origin = mediumPoint;
+                            bgShadowRay.direction = bgDir;
+                            bgShadowRay.min_distance = 0.001f;
+                            bgShadowRay.max_distance = 1.0e6f;
+                            intersection_result<instancing, triangle_data> bgShadowResult =
+                                isect.intersect(bgShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            if (bgShadowResult.type == intersection_type::none) {
+                                radiance += throughput * float3(mediumMat.color) * float3(uniforms.pbrtEnvColor) * selfTransmittance;
+                            }
+                        }
+
+                        float3 newDir = sampleHenyeyGreenstein(wo, mediumMat.roughness, rngState);
+                        throughput *= float3(mediumMat.color);
+                        bsdfPdf = henyeyGreensteinPhase(dot(wo, newDir), mediumMat.roughness);
+                        rayDir = newDir;
+                        rayOrigin = mediumPoint;
+                        specularBounce = false;
+                        scatteredInMedium = true;
+                    } else {
+                        // Either missed the medium's own tighter AABB
+                        // entirely (a real, expected case - the trigger
+                        // sphere is a loose bound) or survived the whole
+                        // delta-tracking segment with no scatter -
+                        // continue unchanged from `missedExitT`, same
+                        // "no interaction, free pass-through" contract as
+                        // materialType 28's own else-branch above.
+                        rayOrigin = rayOrigin + rayDir * missedExitT;
                         passedThroughMediumSphere = true;
                     }
                 }

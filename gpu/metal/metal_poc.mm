@@ -815,6 +815,7 @@ bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
     if (scene_id == "F1") { buildBilinearPatchScene(); return true; }
     if (scene_id == "F4") { buildCurveFibersScene(); return true; }
     if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
+    if (scene_id == "E2") { buildCloudMediumScene(); return true; }
     if (scene_id == "E3") { buildDielectricMediumShowcase(); return true; }
     if (scene_id == "B9") { buildCornellCrystal(); return true; }
     if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
@@ -978,6 +979,14 @@ bool MetalPocApp::buildGPUResources() {
         ? [device newBufferWithLength:sizeof(TriangleMaterial) options:MTLResourceStorageModeShared]
         : [device newBufferWithBytes:cylinderMaterials.data()
               length:cylinderMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+    // E2's own cloudMediums - empty for every scene but E2, same "empty
+    // std::vector::data() can return null, newBufferWithBytes:length:0
+    // then returns nil" guard as cylinderBuffer/cylinderMaterialBuffer
+    // just above.
+    cloudMediumBuffer = cloudMediums.empty()
+        ? [device newBufferWithLength:sizeof(GpuCloudMedium) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:cloudMediums.data()
+              length:cloudMediums.size() * sizeof(GpuCloudMedium) options:MTLResourceStorageModeShared];
 
     const uint32_t suzanneTriangleCount = (uint32_t)suzanneMaterials.size();
     suzanneVertexBuffer = [device newBufferWithBytes:suzanneVerts.data()
@@ -1953,6 +1962,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     checkGpuResource(materialBuffer, "materialBuffer", device, &anyResourceFailed);
     checkGpuResource(vertexBuffer, "vertexBuffer", device, &anyResourceFailed);
     checkGpuResource(sphereMaterialBuffer, "sphereMaterialBuffer", device, &anyResourceFailed);
+    checkGpuResource(cloudMediumBuffer, "cloudMediumBuffer", device, &anyResourceFailed);
     checkGpuResource(sphereBuffer, "sphereBuffer", device, &anyResourceFailed);
     checkGpuResource(normalBuffer, "normalBuffer", device, &anyResourceFailed);
     checkGpuResource(uvBuffer, "uvBuffer", device, &anyResourceFailed);
@@ -2024,6 +2034,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     [enc setBuffer:exitPupilBoundsBuffer offset:0 atIndex:25];
     [enc setBuffer:cylinderBuffer offset:0 atIndex:26];
     [enc setBuffer:cylinderMaterialBuffer offset:0 atIndex:27];
+    [enc setBuffer:cloudMediumBuffer offset:0 atIndex:28];
     // Mark the AS + its dependent primitive ASes as used so Metal
     // knows about the indirection - required for instance
     // acceleration structures referencing primitive ones (now three:
