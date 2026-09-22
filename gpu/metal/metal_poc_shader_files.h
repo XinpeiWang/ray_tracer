@@ -37,6 +37,7 @@ inline const char* const* metalShaderFileNames(int* outCount) {
         "metal_poc_materials_diffuse.metal",
         "metal_poc_materials_layered.metal",
         "metal_poc_materials_extra.metal",
+        "metal_poc_materials_medium.metal",
         "metal_poc_kernel.metal",
         "metal_poc_test_kernels.metal",
     };

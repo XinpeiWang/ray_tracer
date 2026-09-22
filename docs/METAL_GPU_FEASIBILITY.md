@@ -10750,3 +10750,53 @@ already-documented pre-existing lens-camera non-determinism (section
 160) that unpredictably shifts across unrelated rebuilds in EVERY prior
 PR's own hash sweep in this series - not a new finding, not caused by
 this change.
+
+## 181. Structural refactor, part 4: metal_poc_kernel.metal's own materialType 28/29/30 extracted into metal_poc_materials_medium.metal
+
+Same file-size review, second half: `metal_poc_kernel.metal` had grown
+to 1,729 lines, all of it ONE function (`primaryRayKernel`) with no
+internal helper functions to split along - unlike every SURFACE
+material (`shadeMirror()`, `shadeDielectric()`, `shadeLambertian()`,
+...), which already lives as its own standalone function in
+`metal_poc_materials_specular/diffuse/layered/extra.metal`, the three
+BOUNDED-MEDIUM sphere materials (28/29/30, sections 176/178/179) sat
+inline in the kernel's own main bounce loop, together accounting for
+roughly 435 of those 1,729 lines - the three most recently added, and
+largest, blocks in the file.
+
+Pure code motion: each branch's own body (everything between its own
+`if (mediumMat.materialType == Xu) {` and matching `}`, character-for-
+character unchanged, including every comment) became the body of a new
+standalone function - `shadeHomogeneousMediumSphere()`,
+`shadeCloudMediumSphere()`, `shadeRgbGridMediumSphere()` - in a new
+file, `gpu/metal/metal_poc_materials_medium.metal`, added to
+`metal_poc_shader_files.h`'s own concatenation order right after
+`metal_poc_materials_extra.metal` (needs `metal_poc_types.metal`'s
+struct definitions and `metal_poc_sampling.metal`'s own
+`gpuCloudDensity()`/`cloudAabbSlabIntersect()`/`gpuRgbGridTrilinear()`
+helpers, both of which already precede it; must itself precede
+`metal_poc_kernel.metal`, which now calls it). Unlike the surface-
+material `shadeXxx()` functions (which return `bool` - false means
+"break the bounce loop, a specular/terminal event happened"), these
+three are `void`: a medium interaction never early-terminates the
+path, so the caller's own `scatteredInMedium`/`passedThroughMediumSphere`
+locals (now passed as `thread bool&` out-parameters) are all the
+kernel needs back. The kernel's own dispatch shrinks to three plain
+function calls; `metal_poc_kernel.metal` drops to 1,314 lines.
+
+Verified the same way as section 176's own original F11 finding first
+established: full clean rebuild, ctest (4/4), 51-scene GPU smoke sweep
+(zero crashes), and a before/after hash comparison across all 51
+scenes. Two differed: D8 (the same already-documented lens-camera
+non-determinism, section 160) and, new this time, A8 - the one scene
+that actually exercises materialType 28's own new function boundary
+on every frame. Confirmed visually identical via a direct high-
+resolution `--gpu` render comparison (not assumed correct from the
+diff alone) before concluding this is the SAME "any change touching a
+shared, heavily-exercised code path can shift sub-ULP GPU rounding"
+class section 160/167's own findings already established - moving
+code across a real function-call boundary is exactly this kind of
+change, and A8's own materialType-28 spheres are precisely the kind of
+Monte-Carlo-heavy scene that class already predicts as most likely to
+show it. Not a new finding, not a regression - the other 49 scenes are
+byte-for-byte identical.
