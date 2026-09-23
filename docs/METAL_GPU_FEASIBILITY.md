@@ -12297,3 +12297,65 @@ objects, disabling fast-math) was a temporary, reverted diagnostic edit,
 confirmed via `git status`/`git diff` showing a clean tree before writing
 this section. Verified: full clean rebuild, ctest 4/4, after every
 diagnostic revert.
+
+## 201. A fresh gap audit, plus real test coverage for the two most recent PRs
+
+A fresh audit (user-requested: "what's next" -> "yes go ahead") scoped to
+find what the last 3 merged PRs (row-band progress dispatch #200,
+`--isolate-pbrt-lighting` #201, the G25/B14 docs-only pass #202) left
+behind, rather than re-reading old, already-closed findings. Two real,
+actionable gaps found and closed:
+
+**`docs/FEATURE_INVENTORY.md`'s own CLI flag inventory (section 12) was
+missing `--isolate-pbrt-lighting`** - every other flag PR #201 followed
+as precedent (`--exposure` explicitly) is listed there; the omission
+looked like a genuine miss, not intentional scoping. One-line fix.
+
+**Neither of the last 2 real features had ANY automated test coverage** -
+both shipped verified only by manual hash sweeps and hand-run renders,
+same gap this whole document's own test-coverage series (sections
+190-195) was built to close for shading functions, now recurring for
+integration-level features:
+- Row-band progress reporting (#200): the existing `metal_poc_smoke_render`
+  CTest already exercises >20 row-bands at its own 128x128 size (confirmed
+  in #200's own audit) but never asserted the `"Scanlines remaining: N"`
+  print actually happens - closed with a one-line `PASS_REGULAR_EXPRESSION`
+  property on that SAME existing test (`CMakeLists.txt`), no new binary
+  run needed.
+- `--isolate-pbrt-lighting` (#201): genuinely untestable via the standalone
+  `metal_poc` CLI (no `RenderOptions` at all - see `metal_poc_main.mm`'s
+  own comment), so this needed a real new test: `ray_tracer --gpu
+  --isolate-pbrt-lighting` rendering C9 (the scene this flag was built
+  for) at 64x64/spp=4/depth=2, a validate step reusing `metal_poc_validate`,
+  and an explicit `WORKING_DIRECTORY` (unlike every other Metal CTest
+  target, this one loads a real pbrt file via a path relative to the
+  process's own CWD, not `CMAKE_SOURCE_DIR` - ctest's own default CWD is
+  the build directory, which has no `pbrt_scenes/` of its own).
+
+**Both new tests verified via a real negative control, not just "it
+passed"** - matching this whole document's own established discipline:
+temporarily broke the `"Scanlines remaining"` string (typo'd to
+`"BROKEN"`) and confirmed `metal_poc_smoke_render` correctly FAILS
+(`Required regular expression not found`); separately, temporarily
+reverted `lightBuffer`'s own `empty() ? newBufferWithLength :
+newBufferWithBytes` guard (section 199's own fix) back to its pre-#201
+unguarded form and confirmed the new isolate-lighting test correctly
+FAILS too (`GPU resource allocation FAILED: 'lightBuffer' is nil`) -
+proving both tests actually catch the exact regressions they were
+written to catch, not silently passing regardless of whether the
+underlying feature works. Both diagnostic edits fully reverted before
+committing (confirmed via `git diff --stat` showing only the intended
+`CMakeLists.txt`/`docs/FEATURE_INVENTORY.md` changes).
+
+**A third, lower-priority finding left open**: `gpu/metal/metal_poc_shader_tests.mm`
+has grown to 2259 lines, past this project's own ~1500-2000 file-size
+split threshold (precedent: section 187's `metal_poc_app.h` split) -
+flagged but not split this pass, since it's pure pre-existing growth
+none of the 3 recent PRs touched, not urgent, and a mechanical mm-file
+split carries real risk of a copy-paste error worth its own careful,
+separate pass rather than bundling it into a test-coverage PR.
+
+**Verified**: full clean rebuild, `ctest` 6/6 (4 pre-existing + 2 new),
+both negative controls described above, and direct confirmation `docs/
+FEATURE_INVENTORY.md`'s own flag list now matches `launcher/launcher_
+args.h`'s real parsing.

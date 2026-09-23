@@ -514,7 +514,45 @@ if(RT_BUILD_METAL)
     set(METAL_POC_SMOKE_OUTPUT "${CMAKE_BINARY_DIR}/metal_poc_smoke_test.png")
     add_test(NAME metal_poc_smoke_render
         COMMAND metal_poc 128 128 "${METAL_POC_SMOKE_OUTPUT}" 16 4)
+    # A real coverage check, not just a crash check: compileShaderAndDispatch()
+    # (row-band progress reporting, docs/METAL_GPU_FEASIBILITY.md section
+    # 198) prints "Scanlines remaining: N\r" between bands on stderr, which
+    # this smoke test's own 128x128 render already exercises across 20 bands
+    # (numBands = min(20, height)) - this just asserts that output is really
+    # there, closing the gap section 198's own PR left open (shipped with
+    # zero automated coverage for the new print, verified manually only).
+    # CTest's PASS_REGULAR_EXPRESSION matches against this test's combined
+    # stdout+stderr, so no separate capture/redirect is needed.
+    set_tests_properties(metal_poc_smoke_render PROPERTIES
+        PASS_REGULAR_EXPRESSION "Scanlines remaining:")
     add_test(NAME metal_poc_smoke_validate
         COMMAND metal_poc_validate "${METAL_POC_SMOKE_OUTPUT}" 128 128)
     set_tests_properties(metal_poc_smoke_validate PROPERTIES DEPENDS metal_poc_smoke_render)
+
+    # Coverage for --isolate-pbrt-lighting (docs/METAL_GPU_FEASIBILITY.md
+    # section 199) - genuinely untestable via the metal_poc smoke test above,
+    # since that standalone CLI binary takes no RenderOptions at all (see
+    # metal_poc_main.mm's own comment) and so has no way to reach this flag;
+    # it only exists on the ray_tracer --gpu path (launcher/launcher_args.h ->
+    # render_options_from_args() -> MetalPocApp::isolatePbrtLighting). Renders
+    # C9 (goniometric-projection.pbrt) - the scene this flag was purpose-built
+    # for - at a small, fast size/quality, just to confirm the flag's own real
+    # code path (skipping every hardcoded-room light, including the two
+    # zero-size-buffer bugs section 199 found and fixed) still runs clean, not
+    # to check any specific pixel output. WORKING_DIRECTORY is needed here
+    # (unlike the metal_poc tests above, which use only hand-authored scenes
+    # with no file to load) since cpu_scene_pbrt_path_by_id() resolves
+    # pbrt_scenes/goniometric-projection.pbrt as a path relative to the
+    # process's own CWD, not to CMAKE_SOURCE_DIR - ctest's own default CWD is
+    # the build directory, which has no pbrt_scenes/ of its own.
+    set(METAL_ISOLATE_LIGHTING_OUTPUT "${CMAKE_BINARY_DIR}/metal_isolate_lighting_smoke_test.png")
+    add_test(NAME metal_poc_isolate_pbrt_lighting_smoke
+        COMMAND ray_tracer --gpu --isolate-pbrt-lighting
+            --output "${METAL_ISOLATE_LIGHTING_OUTPUT}" 64 4 2 C9)
+    set_tests_properties(metal_poc_isolate_pbrt_lighting_smoke PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_test(NAME metal_poc_isolate_pbrt_lighting_validate
+        COMMAND metal_poc_validate "${METAL_ISOLATE_LIGHTING_OUTPUT}" 64 64)
+    set_tests_properties(metal_poc_isolate_pbrt_lighting_validate PROPERTIES
+        DEPENDS metal_poc_isolate_pbrt_lighting_smoke)
 endif()

@@ -708,8 +708,10 @@ all), not gap closures.
 `--mlt[-bootstrap|-mutations|-max-depth]`, `--randomwalk`, `--ao[-max-dist|
 -uniform|-illum-scale|-illum-rgb]`, `--simplepath[-no-lights|-no-bsdf]`,
 `--simplevolpath`, `--lightpath`, `--video[-frames|-fps|-speed|
--camera-path|-preset]`. Full validation/mutual-exclusion logic in
-`launcher/main.cpp`.
+-camera-path|-preset]`, `--isolate-pbrt-lighting` (Metal/`--gpu` on macOS
+only - skips the hardcoded demo room's own lights for a loaded pbrt
+scene, `docs/METAL_GPU_FEASIBILITY.md` section 199). Full validation/
+mutual-exclusion logic in `launcher/main.cpp`.
 
 Tone mapping: ACES (Narkowicz approx, default), Reinhard, or none.
 
