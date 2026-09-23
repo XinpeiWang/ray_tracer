@@ -106,10 +106,15 @@ win32 {
 }
 
 macx {
-	# No .icns is generated yet - app_icon.png (already in the repo) is the
-	# source to run through iconutil/sips if/when a polished bundle icon is
-	# wanted. Cosmetic only; omitting ICON just falls back to Qt's default.
-	# ICON = app_icon.icns
+	# app_icon.icns - generated from app_icon.png (the same source Windows'
+	# own app_icon.ico, above, is built from) via `sips` (10 sizes, 16-1024px,
+	# upscaled from the 256x256 source for the two largest) piped into
+	# `iconutil -c icns`, the standard macOS toolchain this section's own
+	# comment used to point at before an actual .icns existed. qmake copies
+	# the referenced file into Contents/Resources/ and sets CFBundleIconFile
+	# in the generated Info.plist automatically - no separate step needed in
+	# scripts/build_and_deploy_macos.sh.
+	ICON = app_icon.icns
 }
 
 # Default rules for deployment
