@@ -296,6 +296,10 @@ struct Uniforms {
     packed_float3 cameraLookAtBlur;
     packed_float3 cameraUpRawBlur;
     uint hasCameraOrbitBlur;
+    // Row-band progress reporting - see metal_poc_gpu_types.h's own
+    // mirrored comment for the full "why". Appended at the very end,
+    // same reasoning as that comment.
+    uint rowOffset;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/

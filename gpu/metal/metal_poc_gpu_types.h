@@ -146,6 +146,23 @@ struct Uniforms {
     PackedFloat3 cameraLookAtBlur{0, 0, 0};
     PackedFloat3 cameraUpRawBlur{0, 1, 0};
     uint32_t hasCameraOrbitBlur = 0;
+    // Row-band progress reporting: `compileShaderAndDispatch()` now
+    // dispatches primaryRayKernel() once PER HORIZONTAL BAND of rows
+    // instead of once for the whole image, so the host gets a real
+    // checkpoint to print "Scanlines remaining: N" from between bands -
+    // the exact same problem OptiX's own wavefront backend already
+    // solved for the same reason (see that file's own comment,
+    // gpu/optix/wavefront_path_tracer.cpp - "unlike the recursive
+    // backend... no host-visible checkpoint to report from"). Each
+    // dispatch's own [[thread_position_in_grid]] only ever ranges over
+    // [0, bandHeight) - `rowOffset` (this band's own first real row) is
+    // added to it ONCE, right at the top of the kernel, before anything
+    // else reads `tid` - see primaryRayKernel()'s own comment. Appended
+    // at the very end of this struct (not inserted among the existing
+    // fields) so no other field's own byte offset shifts - the C++/MSL
+    // mirrors only need to agree on ONE new field's placement, not be
+    // re-verified against forty already-correct ones.
+    uint32_t rowOffset = 0;
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single
