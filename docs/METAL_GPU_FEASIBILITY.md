@@ -12213,3 +12213,87 @@ own established known-noise set; A9, already investigated in section
 repeat baseline-only renders producing 3 distinct hashes with zero code
 involved - the same established GPU-scheduling-noise class section 187
 first documented, not a regression from this change).
+
+## 200. G25 and B14, chased further - one real finding (B14), one more ruled out (G25), neither fully solved
+
+The last of a 3-item self-initiated backlog ("what's next" -> "do all
+in order": a fresh gap audit, section 199's C9 fix, then this). Both are
+long-standing, deliberately low-priority, previously-accepted-as-open
+artifacts (section 170's own G25 writeup, section 184's own B14
+writeup) - chased further here with the SAME forensic discipline this
+whole document uses, not with an expectation either would necessarily
+resolve. Neither did, fully - but real, decisive negative/positive
+evidence was found for both, worth recording rather than re-chasing
+from scratch next time.
+
+**G25 (Killeroo)**: section 170 already ruled out a leftover-hardcoded-
+room leak (same artifact regardless of the pbrt scene's own recentre
+offset) and left the standing-but-untested theory that the room's OWN
+lights/geometry, additively composited under every pbrt scene (the same
+architecture section 197/199 diagnosed for C9), might be involved. Three
+concrete candidate objects were tested directly this pass - temporarily
+moving each 100+ units away and re-rendering at 600x600/64spp, zoomed
+into the artifact's exact pixel region for a clean before/after
+comparison: the thin dielectric "glass pane" quad (`metal_poc.mm`
+line ~225, materialType 11 - the top suspect, since the artifact's own
+reflective/Fresnel-tinted look, confirmed via a 4x pixel-zoomed crop
+showing a hard-edged black rectangle with a cyan-tinted top edge,
+orange-tinted bottom edge, and two tiny bright-green highlight dots
+inside it, closely resembles a thin dielectric surface's own Fresnel
+rim and a reflection of the nearby green killeroo statue), the bump-
+mapped panel quad (materialType 7), and the wall-mounted mirror disk
+(materialType 1) - **all three ruled out**: the artifact is
+byte-for-byte unchanged (same crop, same crash-free render, directly
+compared) with each one moved away, individually and together. A camera-
+position shift (`--cam-x/y/z` override, `440 40 50` vs the scene's own
+default `400 20 30`) confirmed the artifact IS a real, fixed WORLD-space
+object (it followed to a different screen position under the new
+camera, not fixed in screen space) - consistent with section 170's own
+"real 3D geometry, not a screen-space effect" finding, just re-confirmed
+independently. **Net result**: the search space is now meaningfully
+narrower (3 more named candidates eliminated, on top of the room-leak
+theory section 170 already eliminated) but the true cause is still not
+identified - remains an accepted, low-priority, open artifact. A real
+next step for whoever picks this up: since it's confirmed both
+world-anchored AND not any tested hardcoded-room object, the two
+remaining candidate classes are (a) a floating-point self-intersection
+artifact in the pbrt scene's own floor mesh, given `killeroo-simple.pbrt`
+gets rescaled by a factor of 0.001 (`loadPbrtScene`'s own log line,
+`scale bounding box extent 2000.0 units`) - extreme rescale factors are
+a known general source of ray-triangle precision loss - or (b) one of
+the remaining untested room objects (the 5+ spheres, the projection/
+goniometric lights' own beams) rather than the 3 tested here.
+
+**B14 (Measured BRDF)**: section 184 already found and fixed two real
+bugs (sphere self-shadowing, wrong sphere-light normal) and left a
+"sub-pixel bright dot, fast-math suspected but never isolated" residue.
+This pass finally ran the literal test: temporarily forcing
+`MTLCompileOptions.fastMathEnabled = NO` (`metal_poc_dispatch.mm`'s own
+`compileOpts`, which never set this property explicitly before - Apple's
+compiler default applied silently) and rebuilding. Two genuinely
+DIFFERENT artifacts turned out to be visible in B14's own render, not
+one: a colored, speckled vertical band across one of the five diffuse
+spheres, and a small bright white dot near each sphere's own highlight
+point (the dot section 184 actually described). **With fast-math
+disabled, the speckled band completely disappeared** - a real, now-
+confirmed (not just suspected) fast-math rounding artifact, matching
+this document's own established `fastMathEnabled=YES` non-determinism
+precedent (sections 160/167/181/187/198) but for the first time directly
+isolated via a true A/B compile-flag test rather than inferred from
+context. **The bright dots, however, persisted identically with
+fast-math OFF** - ruling fast-math out as their cause, contrary to
+section 184's own standing suspicion. The dots remain unexplained; the
+speckled band does not (confirmed fast-math, same established class,
+not investigated further given `fastMathEnabled=NO`'s own real ~19x
+render-time cost, `16.29s` vs `0.86s` for the same B14 render, makes it
+a diagnostic tool only, not a real fix this POC could ship as a
+default). Net: B14's own open-artifact scope narrows from "one
+unexplained dot, fast-math suspected" to "two separate artifacts, one
+now confirmed-and-explained (the band), one still genuinely unexplained
+and confirmed NOT fast-math (the dots)".
+
+**No code changes shipped this pass** - every test above (moving room
+objects, disabling fast-math) was a temporary, reverted diagnostic edit,
+confirmed via `git status`/`git diff` showing a clean tree before writing
+this section. Verified: full clean rebuild, ctest 4/4, after every
+diagnostic revert.
