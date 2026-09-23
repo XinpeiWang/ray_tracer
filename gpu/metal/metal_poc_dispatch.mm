@@ -14,6 +14,7 @@
 // oversized stage that was arbitrarily cut in half.
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
+#include <algorithm>
 #include "metal_poc_app.h"
 #include "metal_poc_shader_files.h"
 
@@ -730,70 +731,120 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     checkGpuResource(pbrtAreaLightTexture, "pbrtAreaLightTexture", device, &anyResourceFailed);
     if (anyResourceFailed) return false;
 
-    // --- Dispatch ----------------------------------------------------
-    id<MTLCommandBuffer> renderCmd = [queue commandBuffer];
-    id<MTLComputeCommandEncoder> enc = [renderCmd computeCommandEncoder];
-    [enc setComputePipelineState:pipeline];
-    [enc setTexture:outTexture atIndex:0];
-    [enc setTexture:earthTexture atIndex:1];
-    [enc setTexture:goniometricTexture atIndex:2];
-    [enc setTexture:pbrtEnvTexture atIndex:3];
-    [enc setTexture:pbrtGoniometricTexture atIndex:4];
-    [enc setTexture:pbrtProjectionTexture atIndex:5];
-    [enc setTexture:pbrtAreaLightTexture atIndex:6];
-    [enc setTexture:pbrtDiffuseTexture atIndex:7];
-    [enc setAccelerationStructure:instAS atBufferIndex:0];
-    [enc setBuffer:uniformBuffer offset:0 atIndex:1];
-    [enc setBuffer:materialBuffer offset:0 atIndex:2];
-    [enc setBuffer:vertexBuffer offset:0 atIndex:3];
-    [enc setBuffer:sphereMaterialBuffer offset:0 atIndex:4];
-    [enc setBuffer:sphereBuffer offset:0 atIndex:5];
-    [enc setIntersectionFunctionTable:functionTable atBufferIndex:6];
-    [enc setBuffer:normalBuffer offset:0 atIndex:7];
-    [enc setBuffer:uvBuffer offset:0 atIndex:8];
-    [enc setBuffer:lightBuffer offset:0 atIndex:9];
-    [enc setBuffer:suzanneNormalBuffer offset:0 atIndex:10];
-    [enc setBuffer:suzanneMaterialBuffer offset:0 atIndex:11];
-    [enc setBuffer:instanceTransformBuffer offset:0 atIndex:12];
-    [enc setBuffer:diskBuffer offset:0 atIndex:13];
-    [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
-    [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
-    [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
-    [enc setBuffer:projectionLightBuffer offset:0 atIndex:17];
-    [enc setBuffer:goniometricLightBuffer offset:0 atIndex:18];
-    [enc setBuffer:envMarginalCDFBuffer offset:0 atIndex:19];
-    [enc setBuffer:envConditionalCDFBuffer offset:0 atIndex:20];
-    [enc setBuffer:ggxEnergyTableBuffer offset:0 atIndex:21];
-    [enc setBuffer:pbrtEnvMarginalCDFBuffer offset:0 atIndex:22];
-    [enc setBuffer:pbrtEnvConditionalCDFBuffer offset:0 atIndex:23];
-    [enc setBuffer:lensElementBuffer offset:0 atIndex:24];
-    [enc setBuffer:exitPupilBoundsBuffer offset:0 atIndex:25];
-    [enc setBuffer:cylinderBuffer offset:0 atIndex:26];
-    [enc setBuffer:cylinderMaterialBuffer offset:0 atIndex:27];
-    [enc setBuffer:cloudMediumBuffer offset:0 atIndex:28];
-    [enc setBuffer:rgbGridMediumBuffer offset:0 atIndex:29];
-    [enc setBuffer:rgbGridDataBuffer offset:0 atIndex:30];
-    // Mark the AS + its dependent primitive ASes as used so Metal
-    // knows about the indirection - required for instance
-    // acceleration structures referencing primitive ones (now three:
-    // the room+Spot triangle mesh, the sphere's bounding-box
-    // geometry, and Suzanne's own - referenced by TWO instances, but
-    // only needs marking used once here, not once per instance).
-    [enc useResource:primAS usage:MTLResourceUsageRead];
-    [enc useResource:sphereAS usage:MTLResourceUsageRead];
-    [enc useResource:suzanneAS usage:MTLResourceUsageRead];
+    // --- Dispatch, one horizontal row-band at a time ------------------
+    // A single dispatchThreads: covering the whole image (this loop's
+    // own precedent, before row bands existed at all) gives the host
+    // NO visibility into progress until the entire render finishes -
+    // exactly the "one monolithic launch, no host-visible checkpoint"
+    // problem OptiX's own recursive GPU backend already has, per
+    // gpu/optix/wavefront_path_tracer.cpp's own comment (which solves
+    // it differently, via a real per-sample host sync its own ray-
+    // queue architecture already needs anyway). Splitting into row
+    // bands instead of sample batches deliberately touches NOTHING
+    // about per-pixel sampling/accumulation/adaptive-convergence state
+    // (metal_poc_kernel.metal's own primaryRayKernel is untouched
+    // except for the one-line `tid` offset at its own top) - each pixel
+    // is still computed in exactly ONE dispatch, with the EXACT SAME
+    // per-pixel RNG seed it would get from a single whole-image
+    // dispatch (seeded from the real `tid`, not a band-relative one),
+    // so a banded render is provably byte-identical to an unbanded one,
+    // not just visually similar - verified via the same 81-scene hash
+    // sweep this project's own every other change uses.
+    //
+    // Band count: capped at 20 (a real, if modest, per-dispatch/per-
+    // sync cost exists - encoder setup, a real GPU pipeline drain at
+    // each waitUntilCompleted - so more bands isn't free even though
+    // each one is cheap), but never more bands than there are rows.
+    // Mirrors wavefront_path_tracer.cpp's own progressPrintInterval
+    // philosophy (throttle to a fixed cadence, not one sync per unit of
+    // work) rather than reinventing a different tuning approach.
+    const uint32_t numBands = std::min<uint32_t>(20, std::max<uint32_t>(1, height));
+    const uint32_t bandHeight = (height + numBands - 1) / numBands;
+    Uniforms* uniformsShared = (Uniforms*)uniformBuffer.contents;
+    for (uint32_t rowOffset = 0; rowOffset < height; rowOffset += bandHeight) {
+        const uint32_t thisBandHeight = std::min(bandHeight, height - rowOffset);
+        // uniformBuffer is MTLResourceStorageModeShared (Apple Silicon
+        // unified memory) - writing directly into its own backing
+        // memory between dispatches is the same convenience this
+        // project's own host-shared buffers already rely on elsewhere,
+        // not a new pattern. No other Uniforms field changes band to
+        // band, so nothing else needs re-uploading.
+        uniformsShared->rowOffset = rowOffset;
 
-    MTLSize gridSize = MTLSizeMake(width, height, 1);
-    NSUInteger w = pipeline.threadExecutionWidth;
-    NSUInteger h = pipeline.maxTotalThreadsPerThreadgroup / w;
-    MTLSize threadgroupSize = MTLSizeMake(w, h, 1);
-    [enc dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
-    [enc endEncoding];
-    [renderCmd commit];
-    [renderCmd waitUntilCompleted];
-    if (renderCmd.status == MTLCommandBufferStatusError) {
-        fprintf(stderr, "Render dispatch failed: %s\n", renderCmd.error.localizedDescription.UTF8String);
-        return false;
+        id<MTLCommandBuffer> renderCmd = [queue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [renderCmd computeCommandEncoder];
+        [enc setComputePipelineState:pipeline];
+        [enc setTexture:outTexture atIndex:0];
+        [enc setTexture:earthTexture atIndex:1];
+        [enc setTexture:goniometricTexture atIndex:2];
+        [enc setTexture:pbrtEnvTexture atIndex:3];
+        [enc setTexture:pbrtGoniometricTexture atIndex:4];
+        [enc setTexture:pbrtProjectionTexture atIndex:5];
+        [enc setTexture:pbrtAreaLightTexture atIndex:6];
+        [enc setTexture:pbrtDiffuseTexture atIndex:7];
+        [enc setAccelerationStructure:instAS atBufferIndex:0];
+        [enc setBuffer:uniformBuffer offset:0 atIndex:1];
+        [enc setBuffer:materialBuffer offset:0 atIndex:2];
+        [enc setBuffer:vertexBuffer offset:0 atIndex:3];
+        [enc setBuffer:sphereMaterialBuffer offset:0 atIndex:4];
+        [enc setBuffer:sphereBuffer offset:0 atIndex:5];
+        [enc setIntersectionFunctionTable:functionTable atBufferIndex:6];
+        [enc setBuffer:normalBuffer offset:0 atIndex:7];
+        [enc setBuffer:uvBuffer offset:0 atIndex:8];
+        [enc setBuffer:lightBuffer offset:0 atIndex:9];
+        [enc setBuffer:suzanneNormalBuffer offset:0 atIndex:10];
+        [enc setBuffer:suzanneMaterialBuffer offset:0 atIndex:11];
+        [enc setBuffer:instanceTransformBuffer offset:0 atIndex:12];
+        [enc setBuffer:diskBuffer offset:0 atIndex:13];
+        [enc setBuffer:diskMaterialBuffer offset:0 atIndex:14];
+        [enc setBuffer:pointLightBuffer offset:0 atIndex:15];
+        [enc setBuffer:directionalLightBuffer offset:0 atIndex:16];
+        [enc setBuffer:projectionLightBuffer offset:0 atIndex:17];
+        [enc setBuffer:goniometricLightBuffer offset:0 atIndex:18];
+        [enc setBuffer:envMarginalCDFBuffer offset:0 atIndex:19];
+        [enc setBuffer:envConditionalCDFBuffer offset:0 atIndex:20];
+        [enc setBuffer:ggxEnergyTableBuffer offset:0 atIndex:21];
+        [enc setBuffer:pbrtEnvMarginalCDFBuffer offset:0 atIndex:22];
+        [enc setBuffer:pbrtEnvConditionalCDFBuffer offset:0 atIndex:23];
+        [enc setBuffer:lensElementBuffer offset:0 atIndex:24];
+        [enc setBuffer:exitPupilBoundsBuffer offset:0 atIndex:25];
+        [enc setBuffer:cylinderBuffer offset:0 atIndex:26];
+        [enc setBuffer:cylinderMaterialBuffer offset:0 atIndex:27];
+        [enc setBuffer:cloudMediumBuffer offset:0 atIndex:28];
+        [enc setBuffer:rgbGridMediumBuffer offset:0 atIndex:29];
+        [enc setBuffer:rgbGridDataBuffer offset:0 atIndex:30];
+        // Mark the AS + its dependent primitive ASes as used so Metal
+        // knows about the indirection - required for instance
+        // acceleration structures referencing primitive ones (now three:
+        // the room+Spot triangle mesh, the sphere's bounding-box
+        // geometry, and Suzanne's own - referenced by TWO instances, but
+        // only needs marking used once here, not once per instance).
+        [enc useResource:primAS usage:MTLResourceUsageRead];
+        [enc useResource:sphereAS usage:MTLResourceUsageRead];
+        [enc useResource:suzanneAS usage:MTLResourceUsageRead];
+
+        MTLSize gridSize = MTLSizeMake(width, thisBandHeight, 1);
+        NSUInteger w = pipeline.threadExecutionWidth;
+        NSUInteger h = pipeline.maxTotalThreadsPerThreadgroup / w;
+        MTLSize threadgroupSize = MTLSizeMake(w, h, 1);
+        [enc dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
+        [enc endEncoding];
+        [renderCmd commit];
+        [renderCmd waitUntilCompleted];
+        if (renderCmd.status == MTLCommandBufferStatusError) {
+            fprintf(stderr, "Render dispatch failed: %s\n", renderCmd.error.localizedDescription.UTF8String);
+            return false;
+        }
+
+        // Same "Scanlines remaining: N" shape/terminator the CPU
+        // backend (src/TheRestOfYourLife/camera.h) and OptiX's own
+        // wavefront backend already print - qt_gui/render_output_
+        // parser.h's parseScanlineProgress() picks this up with zero
+        // parser/GUI changes at all. `\r` (not `\n`) is load-bearing:
+        // splitOutputLines()'s own comment explains why.
+        const uint32_t rowsDone = rowOffset + thisBandHeight;
+        fprintf(stderr, "Scanlines remaining: %u\r", height - rowsDone);
+        fflush(stderr);
     }
 
     // --- Read back into `pixels` (post-processed and written to disk

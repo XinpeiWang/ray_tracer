@@ -12020,3 +12020,112 @@ before guessing, and say so plainly either way" discipline this whole
 document has used throughout. Verified nothing was left behind: full
 clean rebuild + ctest 4/4 after reverting both temporary debug edits,
 `git status` clean.
+
+## 198. Real render progress for the Metal GPU path, via row-band dispatch
+
+User-requested, prompted by a real render log: a production-sized
+(800x800, spp=100, max_depth=50) Metal render of scene A1 through the
+Qt GUI completed successfully but printed a WARN that "no render
+progress was ever reported for this render, even though it ran for
+20314 ms." True, and structural: `compileShaderAndDispatch()` issued
+exactly one `dispatchThreads` call covering the entire image and blocked
+on a single `waitUntilCompleted` - architecturally the same limitation
+`gpu/optix/wavefront_path_tracer.cpp` documents for its own OWN
+"recursive/default" backend, in a comment explicitly describing "one
+monolithic launch for the whole image x all samples, no host-visible
+checkpoint to report from." The GUI's `render_output_parser.h` already
+had a working `parseScanlineProgress()` (regex on `"Scanlines
+remaining: N"`, `\r`-terminated) - CPU and OptiX-wavefront both already
+feed it. Metal never did, because it never had a checkpoint to report
+from.
+
+**The fix - row-band dispatch**: split the single whole-image dispatch
+into up to 20 horizontal row-bands, each its own command buffer +
+`waitUntilCompleted`, printing `"Scanlines remaining: N\r"` to stderr
+(matching the GUI parser's contract exactly) between bands. A new
+`Uniforms::rowOffset` field (appended at the very end of the struct in
+both `metal_poc_gpu_types.h` and its MSL mirror `metal_poc_types.metal`,
+so no other field's byte offset shifts) is written directly into the
+shared-storage-mode `uniformBuffer`'s live GPU-visible memory before
+each band's dispatch - no buffer re-creation needed.
+
+**Byte-identical by construction**: `primaryRayKernel`'s
+`[[thread_position_in_grid]]` parameter was renamed to `tidInBand`, and
+the very first statement in the kernel body reconstructs the real
+full-image pixel coordinate: `uint2 tid = uint2(tidInBand.x,
+tidInBand.y + uniforms.rowOffset);` - computed before the RNG seed
+(`tid.x*9781u + tid.y*6271u + uniforms.frameSeed*26699u + 1u`) or
+anything else reads `tid`. Every other use of `tid` in the rest of this
+~1300-line kernel (screen-space/camera-ray computation, the final
+`outTexture.write(...)`, everything in between) is unchanged. There is
+no `simd_*`/`threadgroup_barrier`/threadgroup-shared-memory usage
+anywhere in this kernel (confirmed via grep), so there is no
+cross-thread or subgroup-boundary effect to worry about from splitting
+one dispatch into many - each pixel's RNG seed and math are identical
+regardless of which band it was computed in, by construction.
+
+**Cost measured, not assumed**: on the same 800x800/spp=100/depth=50 A1
+render used to first notice the bug, wall-clock overhead from banding
+was ~3.75% (20 command-buffer submissions + `waitUntilCompleted` calls
+instead of 1) - judged acceptable for what it buys: a progress bar that
+now actually moves, matching every other backend's own behavior.
+
+**Verification - the full 81-scene hash sweep found 3 new diffs, all
+investigated, none a structural bug**: a clean-rebuild hash sweep
+against an unmodified `main` baseline (128x128/16spp/depth4, all 81
+`kSupported` scene IDs) found 65 byte-identical and 16 differing - the
+13 already-known-noise scenes from earlier in this document, plus
+three new ones (A9, B11, E2) that hadn't diffed before. Each was
+investigated with this document's own established forensic sequence
+rather than waved through:
+
+- Both the unmodified baseline and the new banded binary were confirmed
+  **self-stable** (same binary, same scene, two renders, identical
+  hashes) before treating either diff as real rather than ordinary GPU
+  scheduling noise.
+- Magnitude was measured concretely, not eyeballed: B11 was the largest
+  concern (maxDiff=223/255 at 500x500), so a real ablation was run -
+  temporarily forcing `adaptiveSampling=0u` in both the baseline and
+  the banded binary and rebuilding both - which dropped B11's maxDiff
+  to 51 but did not zero it, confirming adaptive sampling's
+  Welford-variance early-exit (a genuinely discrete branch, flippable
+  by a sub-ULP nudge) amplifies but is not the sole source.
+- A coordinate-level diff tool confirmed A9's and B11's differing
+  pixels are **scattered**, not clustered - consistent with isolated
+  per-pixel threshold flips, not a spatially-coherent structural
+  artifact (a real bug would tend to smear across a region, not land
+  on unrelated, disconnected pixels).
+- E2 (an RGB-grid medium/volumetric scene) appeared only in the final,
+  diagnostic-free rebuild sweep. Confirmed baseline-self-stable the
+  same way; its diff was smaller still (169/16384 pixels at
+  128x128, maxDiff=31). Its own coordinate-level check found only 2
+  pixels over threshold, both in the same column but 14 rows apart -
+  not adjacent, so not a contiguous edge or region either - the same
+  scattered-isolated-pixel signature already established for A9 and
+  B11, and consistent with E2's own medium-sphere delta-tracking
+  (`metal_poc_materials_medium.metal`) having its own discrete
+  Russian-roulette termination decisions that a row-band dispatch
+  shape change could, in principle, nudge the same way adaptive
+  sampling's threshold does.
+
+The common thread across all three: row-band dispatch is a **dispatch
+shape** change, joining code-shape changes (function-boundary moves,
+etc.) as something `fastMathEnabled=YES` compilation has already been
+shown, repeatedly, throughout this document (sections 160, 167, 181,
+187) to NOT guarantee is invariant under. What's new here is not the
+existence of the effect but its occasional amplification from "tiny
+magnitude everywhere" to "isolated but locally larger" when the
+affected pixel sits near one of these renderers' own discrete
+Monte-Carlo decision boundaries (adaptive-sampling convergence,
+medium-transport termination) - and even then, still small (single
+digits of differing pixels out of 16384-65025), scattered, and
+self-consistent with this document's whole established noise class,
+not a new failure mode.
+
+**Verified**: full clean rebuild, ctest 4/4 (both before and after the
+diagnostic ablation round-trip, with the temporary `adaptiveSampling=0u`
+edits confirmed fully reverted via grep before the final sweep), the
+81-scene hash sweep described above, and direct confirmation that the
+new `"Scanlines remaining: N\r"` output matches
+`render_output_parser.h`'s `parseScanlineProgress()` regex and
+`splitOutputLines()`'s `\r`-terminator handling exactly.

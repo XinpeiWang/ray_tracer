@@ -87,8 +87,17 @@ kernel void primaryRayKernel(
     // GpuCloudMedium's own scalar parameters do.
     device const GpuRgbGridMedium* rgbGridMediums [[buffer(29)]],
     device const float* rgbGridData [[buffer(30)]],
-    uint2 tid [[thread_position_in_grid]])
+    uint2 tidInBand [[thread_position_in_grid]])
 {
+    // Row-band dispatch (see Uniforms::rowOffset's own comment) - this
+    // dispatch only ever covers rows [0, bandHeight) of the actual
+    // image; `tid` (used everywhere below, exactly as before this
+    // field existed) is the REAL full-image pixel coordinate, computed
+    // once here so nothing past this line needs to know bands exist at
+    // all - a single-dispatch (whole-image) render still works
+    // unchanged, since `rowOffset` defaults to 0.
+    uint2 tid = uint2(tidInBand.x, tidInBand.y + uniforms.rowOffset);
+
     // Bilinear + repeat/wrap: the standard choice for a UV-mapped photo
     // texture (the earth-map's own left/right edges are meant to tile
     // seamlessly at the date line) - constexpr so it's resolved at
