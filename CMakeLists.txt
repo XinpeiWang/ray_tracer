@@ -499,7 +499,18 @@ if(RT_BUILD_METAL)
     # same requirement metal_poc/metal_poc_smoke_render already have, and
     # the same RT_METAL_SHADER_DIR definition so it finds metal_poc.metal's
     # own source to compile at runtime regardless of build directory.
-    add_executable(metal_poc_shader_tests gpu/metal/metal_poc_shader_tests.mm)
+    # One .mm per test CATEGORY (metal_poc_shader_tests.mm itself is now
+    # just the driver: device/library setup + calling every test in order)
+    # plus metal_poc_shader_tests_common.h's own shared includes/helpers/
+    # prototypes - split once the single-file version grew past ~2000
+    # lines, same pure-code-motion precedent as metal_poc_scenes_*.mm's
+    # own split (metal_renderer, above).
+    add_executable(metal_poc_shader_tests
+        gpu/metal/metal_poc_shader_tests.mm
+        gpu/metal/metal_poc_shader_tests_materials.mm
+        gpu/metal/metal_poc_shader_tests_media.mm
+        gpu/metal/metal_poc_shader_tests_lights.mm
+        gpu/metal/metal_poc_shader_tests_hair.mm)
     target_compile_definitions(metal_poc_shader_tests PRIVATE
         RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal")
     target_link_libraries(metal_poc_shader_tests PRIVATE

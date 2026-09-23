@@ -12359,3 +12359,76 @@ separate pass rather than bundling it into a test-coverage PR.
 both negative controls described above, and direct confirmation `docs/
 FEATURE_INVENTORY.md`'s own flag list now matches `launcher/launcher_
 args.h`'s real parsing.
+
+## 202. Splitting metal_poc_shader_tests.mm - the file-size gap section 201 flagged but deferred
+
+Closes the one item section 201's own audit found but deliberately left
+open: `metal_poc_shader_tests.mm` had grown to 2259 lines across 36 test
+functions, past this project's own ~1500-2000 split threshold, with
+zero relation to the 3 PRs that audit was actually scoped around - a
+genuinely separate, careful pass, exactly as section 201 predicted it
+should be.
+
+**Split into 6 files, by test CATEGORY** - same "pure code-motion
+refactor, no behaviour change" precedent `metal_poc_app.h`'s own split
+(section 187) and `metal_poc_scenes_*.mm`'s before it established:
+- `metal_poc_shader_tests_common.h` - shared includes, `expectNear`/
+  `expectTrue`/`runKernel`/`makeBuffer`/`makeOutputBuffer`/
+  `buildAliasTable` (each `static` -> `inline`, the SAME mechanical-only
+  change `metal_poc_app.h`'s own split comment already documents for its
+  own free functions), the 4 GPU-mirror structs, `g_failures` (a C++17
+  `inline` variable now, not a per-TU `static` one - one shared instance
+  across every split file that increments it, identical semantics to the
+  original single `static int g_failures`), and all 36 test functions'
+  own prototypes.
+- `metal_poc_shader_tests_materials.mm` (17 tests) - BSDF/Fresnel/GGX/
+  material checks plus the two general numeric edge cases (checkerColor,
+  atan2) that don't fit media/lights/hair.
+- `metal_poc_shader_tests_media.mm` (5 tests) - Perlin noise, cloud/RGB-
+  grid density, Henyey-Greenstein phase.
+- `metal_poc_shader_tests_lights.mm` (6 tests) - spot/environment-
+  direction/projection/area-light-alias-table/equal-area/goniometric.
+- `metal_poc_shader_tests_hair.mm` (8 tests) - the HairBxDF<double>
+  cross-check series (sections 183/197), plus `HairBxDFParamsGPU`/
+  `makeHairParamsGPU()` - a hair-specific helper struct/function that,
+  in the original file, happened to sit textually between the lights and
+  hair sections (right after `testGoniometricLightRadiance`, right
+  before `testHairMp`) rather than up in the shared preamble with the
+  other 4 GPU-mirror structs. A mechanical line-range extraction driven
+  purely by "which test function comes next" initially put this block in
+  the lights file instead, since it fell in the number range between two
+  test functions - caught immediately by a real compile error (`use of
+  undeclared identifier 'HairBxDFParamsGPU'` in the hair file), not
+  silently: moved to the hair file, where it's actually used, and the
+  build went clean.
+- `metal_poc_shader_tests.mm` itself - now just the driver (device/
+  library/shader-compile setup, calling all 36 tests in the SAME order
+  the original file's own `main()` did, reporting `g_failures`), 103
+  lines.
+
+**Extraction method**: every function's own line range (including its
+own leading comment block, found by scanning backward from each `static
+void testXxx(` line to the first non-comment line) was computed via
+`awk`, then moved via `sed -n 'START,ENDp'` into each category file - the
+same "extracted mechanically, not retyped from scratch" discipline
+`metal_poc_app.h`'s own split comment documents, for the same reason (a
+hand-retyped 1930-line body across 36 functions is exactly where a
+transcription slip hides).
+
+**Verified byte-for-byte identical, not just "it compiles and passes"**:
+compiled the ORIGINAL, pre-split single file standalone (a throwaway
+`clang++` invocation, not part of the real build) and diffed its actual
+test-suite stdout/stderr output against the new split version's - both
+84 `PASS`/`FAIL`/diagnostic lines are IDENTICAL, byte-for-byte (`diff`
+reported no differences). A real negative control was also run (not
+just an existing-tests-still-pass check): temporarily corrupted
+`testGgxD`'s own expected value in its new home
+(`metal_poc_shader_tests_materials.mm`), confirmed the split test suite
+correctly reports "4 check(s) failed," reverted.
+
+**Verified**: full clean rebuild, `ctest` 6/6, the byte-for-byte output
+diff and negative control above, and `git status` clean before
+committing (5 new files, `metal_poc_shader_tests.mm` rewritten,
+`CMakeLists.txt` updated to compile all 5 `.mm` files into the one
+`metal_poc_shader_tests` executable target - identical test behavior,
+just now compiled from 5 translation units instead of 1).
