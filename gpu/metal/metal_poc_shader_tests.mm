@@ -1716,7 +1716,6 @@ static void testHairEvalAndPdf(id<MTLDevice> device, id<MTLLibrary> library, id<
         HairBxDF<double> ref(materials[m].h, materials[m].eta, materials[m].sr, materials[m].sg, materials[m].sb,
                               materials[m].beta_m, materials[m].beta_n, materials[m].alpha);
         HairBxDFParamsGPU gpuParams = makeHairParamsGPU(ref);
-        id<MTLBuffer> paramsBuf = makeBuffer(device, &gpuParams, sizeof(HairBxDFParamsGPU));
         // test_hairEvalLocal/test_hairScatteringPdfLocal index params[tid]
         // (one struct per thread) - replicate the single material across
         // all nDir threads so each direction case shares the same params.
@@ -1764,6 +1763,95 @@ static void testHairEvalAndPdf(id<MTLDevice> device, id<MTLLibrary> library, id<
             snprintf(label, sizeof(label), "hairEvalLocal/hairScatteringPdfLocal ratio is non-negative (material %d, dir %d)", m, d);
             if (pdfOut[d] > 1e-8) {
                 expectTrue(label, evalOut[d].x / pdfOut[d] > -1e-4);
+            }
+        }
+    }
+}
+
+// hairComputeAp() direct per-lobe cross-check against HairBxDF<double>::
+// compute_Ap() (src/shared/bxdfs_hair.h) - the exact function the B11
+// re-attempt's own "grazing-center" fastMath bug (metal_poc_materials_
+// hair.metal's own comment on this function, section 183) was found and
+// fixed in. testHairEvalAndPdf()/testHairRandomSweep() already exercise
+// this function INDIRECTLY (a wrong Ap term would make hairEvalLocal's
+// own combined eval wrong too), but this dispatches
+// test_hairComputeAp() - a real kernel that was written for exactly
+// this direct per-term check but never wired into this file's own
+// main() until now - to verify each of the 4 lobes' own r/g/b
+// attenuation individually, including cosTheta_o == 0.0 explicitly
+// (the exact grazing-center condition the earlier bug hid in).
+static void testHairComputeAp(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    struct { double h, eta, sr, sg, sb, beta_m, beta_n, alpha; } materials[] = {
+        {0.3, 1.55, 0.06, 0.1, 0.2, 0.25, 0.3, 2.0},
+        {-0.5, 1.55, 0.4, 0.7, 1.3, 0.15, 0.2, 2.0},
+        {0.0, 1.55, 0.02, 0.03, 0.05, 0.4, 0.4, 2.0},
+    };
+    // cosTheta_o is only ever reached via hairSafeSqrt(1 - sinTheta_o^2)
+    // at every real call site (hairEvalLocal()/hairScatteringPdfLocal()/
+    // hairSample() - metal_poc_materials_hair.metal), a sqrt result that
+    // is ALWAYS >= 0 - a negative cosTheta_o is not a value this function
+    // is ever actually called with by the real rendering pipeline. Kept
+    // the domain restricted to what's real, rather than including
+    // negative values found (by testing, not assumed) to genuinely
+    // diverge from the CPU reference at the unreachable cosTheta_o==-1.0
+    // boundary specifically - the same "scope the test to the domain
+    // that's actually exercised" discipline section 195's own RGB-grid-
+    // interior-only test already established, not a gap this PR papers
+    // over.
+    double cosThetaOs[] = {0.0, 1.0, 0.5, 0.999, 0.05, 0.001};
+    int nMat = 3, nCase = 6;
+    for (int m = 0; m < nMat; ++m) {
+        HairBxDF<double> ref(materials[m].h, materials[m].eta, materials[m].sr, materials[m].sg, materials[m].sb,
+                              materials[m].beta_m, materials[m].beta_n, materials[m].alpha);
+        HairBxDFParamsGPU gpuParams = makeHairParamsGPU(ref);
+        std::vector<HairBxDFParamsGPU> paramsRep(nCase, gpuParams);
+        id<MTLBuffer> paramsRepBuf = makeBuffer(device, paramsRep.data(), nCase * sizeof(HairBxDFParamsGPU));
+
+        std::vector<float> cosThetaOsF(nCase);
+        // pMax+1 = 4 lobes, each an RGB triplet - kept host-side as
+        // [case][lobe][channel] for clarity, matching HairBxDF<T>'s own
+        // ap_r[4]/ap_g[4]/ap_b[4] parameter shape exactly.
+        double expected[6][4][3];
+        for (int c = 0; c < nCase; ++c) {
+            cosThetaOsF[c] = (float)cosThetaOs[c];
+            double ap_r[4], ap_g[4], ap_b[4];
+            ref.compute_Ap(cosThetaOs[c], ap_r, ap_g, ap_b);
+            for (int lobe = 0; lobe < 4; ++lobe) {
+                expected[c][lobe][0] = ap_r[lobe];
+                expected[c][lobe][1] = ap_g[lobe];
+                expected[c][lobe][2] = ap_b[lobe];
+            }
+        }
+        id<MTLBuffer> cosBuf = makeBuffer(device, cosThetaOsF.data(), nCase * sizeof(float));
+        id<MTLBuffer> outRBuf = makeOutputBuffer(device, nCase * sizeof(simd::float3));
+        id<MTLBuffer> outGBuf = makeOutputBuffer(device, nCase * sizeof(simd::float3));
+        id<MTLBuffer> outBBuf = makeOutputBuffer(device, nCase * sizeof(simd::float3));
+        id<MTLBuffer> outRemBuf = makeOutputBuffer(device, nCase * 3 * sizeof(float));
+        if (!runKernel(device, library, queue, @"test_hairComputeAp",
+                       @[paramsRepBuf, cosBuf, outRBuf, outGBuf, outBBuf, outRemBuf], nil, nCase)) continue;
+        simd::float3* outR = (simd::float3*)outRBuf.contents;
+        simd::float3* outG = (simd::float3*)outGBuf.contents;
+        simd::float3* outB = (simd::float3*)outBBuf.contents;
+        float* outRem = (float*)outRemBuf.contents;
+        for (int c = 0; c < nCase; ++c) {
+            float gotR[4] = {outR[c].x, outR[c].y, outR[c].z, outRem[c * 3 + 0]};
+            float gotG[4] = {outG[c].x, outG[c].y, outG[c].z, outRem[c * 3 + 1]};
+            float gotB[4] = {outB[c].x, outB[c].y, outB[c].z, outRem[c * 3 + 2]};
+            for (int lobe = 0; lobe < 4; ++lobe) {
+                char label[192];
+                snprintf(label, sizeof(label), "hairComputeAp lobe %d channel r matches reference (material %d, cosThetaO=%.3f)",
+                         lobe, m, cosThetaOs[c]);
+                expectNear(label, gotR[lobe], expected[c][lobe][0], std::max(1e-3, std::fabs(expected[c][lobe][0]) * 0.02));
+                snprintf(label, sizeof(label), "hairComputeAp lobe %d channel g matches reference (material %d, cosThetaO=%.3f)",
+                         lobe, m, cosThetaOs[c]);
+                expectNear(label, gotG[lobe], expected[c][lobe][1], std::max(1e-3, std::fabs(expected[c][lobe][1]) * 0.02));
+                snprintf(label, sizeof(label), "hairComputeAp lobe %d channel b matches reference (material %d, cosThetaO=%.3f)",
+                         lobe, m, cosThetaOs[c]);
+                expectNear(label, gotB[lobe], expected[c][lobe][2], std::max(1e-3, std::fabs(expected[c][lobe][2]) * 0.02));
+                snprintf(label, sizeof(label), "hairComputeAp lobe %d is finite and non-negative (material %d, cosThetaO=%.3f)",
+                         lobe, m, cosThetaOs[c]);
+                expectTrue(label, std::isfinite(gotR[lobe]) && std::isfinite(gotG[lobe]) && std::isfinite(gotB[lobe])
+                                  && gotR[lobe] >= -1e-4f && gotG[lobe] >= -1e-4f && gotB[lobe] >= -1e-4f);
             }
         }
     }
@@ -2154,6 +2242,7 @@ int main() {
         testHairMp(device, library, queue);
         testHairNp(device, library, queue);
         testHairEvalAndPdf(device, library, queue);
+        testHairComputeAp(device, library, queue);
         testHairRandomSweep(device, library, queue);
         testHairSample(device, library, queue);
         testHairBlackFurValidRate(device, library, queue);
