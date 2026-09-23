@@ -374,21 +374,29 @@ void MetalPocApp::buildScene() {
     // saturated blue the way an artistic RGB pick can. A real,
     // honestly-reported limitation of deriving colour from physical
     // temperature, not swept under the rug.
-    const float3 warmAreaLightColor = blackbodyColor(2700.0f) * 15.5f;
-    const float3 coolAreaLightColor = blackbodyColor(20000.0f) * 13.9f;
-    addAreaLight(float3{-0.58f,0.98f,-0.25f}, float3{-0.22f,0.98f,-0.25f},
-                 float3{-0.22f,0.98f,0.25f}, float3{-0.58f,0.98f,0.25f},
-                 /*emission=*/warmAreaLightColor);
-    // The cool light also gets a patterned diffuser-grid look
-    // (materialType 10 - see that comment for the full "why"), a
-    // real fixture detail the flat-emission warm light doesn't have:
-    // tile B at 40% of tile A's own brightness (a translucent grid,
-    // not fully opaque black bars) across a 6x6 tiling of the
-    // light's own 0-1 UV span.
-    addAreaLight(float3{0.22f,0.98f,-0.25f}, float3{0.58f,0.98f,-0.25f},
-                 float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
-                 /*emission=*/coolAreaLightColor,
-                 /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
+    // isolatePbrtLighting (RenderOptions::isolate_pbrt_lighting, section
+    // 197/199 - see MetalPocApp::isolatePbrtLighting's own comment) skips
+    // every hardcoded-room light below, this pair included, so a loaded
+    // pbrt scene's own lighting can be judged without this room's
+    // lights competing with it. False (default) leaves this block
+    // running exactly as before - unaffected for every existing caller.
+    if (!isolatePbrtLighting) {
+        const float3 warmAreaLightColor = blackbodyColor(2700.0f) * 15.5f;
+        const float3 coolAreaLightColor = blackbodyColor(20000.0f) * 13.9f;
+        addAreaLight(float3{-0.58f,0.98f,-0.25f}, float3{-0.22f,0.98f,-0.25f},
+                     float3{-0.22f,0.98f,0.25f}, float3{-0.58f,0.98f,0.25f},
+                     /*emission=*/warmAreaLightColor);
+        // The cool light also gets a patterned diffuser-grid look
+        // (materialType 10 - see that comment for the full "why"), a
+        // real fixture detail the flat-emission warm light doesn't have:
+        // tile B at 40% of tile A's own brightness (a translucent grid,
+        // not fully opaque black bars) across a 6x6 tiling of the
+        // light's own 0-1 UV span.
+        addAreaLight(float3{0.22f,0.98f,-0.25f}, float3{0.58f,0.98f,-0.25f},
+                     float3{0.58f,0.98f,0.25f}, float3{0.22f,0.98f,0.25f},
+                     /*emission=*/coolAreaLightColor,
+                     /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
+    }
     // Real pbrt scene loading (see loadPbrtScene()'s own comment):
     // ADDITIVE, not a replacement for the hardcoded room above - its own
     // geometry gets recentred/rescaled/offset well clear of this room's
@@ -623,6 +631,11 @@ void MetalPocApp::buildScene() {
     // intensity multiplier chosen to land in roughly the same
     // brightness range this scene's own lights already used - only
     // the HUE is now derived, not the overall exposure.
+    // Same isolatePbrtLighting gate as the two addAreaLight() calls
+    // above - see that comment. Skips this pair, the sun, the
+    // projection light, and the goniometric light below (5 blocks
+    // total), leaving only whatever loadPbrtScene() itself pushed.
+    if (!isolatePbrtLighting) {
     const float3 spotPos = float3{0.65f, 0.9f, -0.1f};
     const float3 spotTarget = float3{0.7f, -1.0f, 0.4f};
     const float3 spotDir = simd::normalize(spotTarget - spotPos);
@@ -709,6 +722,21 @@ void MetalPocApp::buildScene() {
                               /*worldUp=*/float3{0.0f, 1.0f, 0.0f},
                               /*emission=*/goniometricColor, /*scale=*/1.0f),
     });
+    }  // if (!isolatePbrtLighting) - see this block's own opening comment.
+    // Deliberately OUTSIDE the gate above, unlike the goniometricLights
+    // light itself just above: buildGPUResources() (metal_poc_gpu_resources.mm)
+    // unconditionally builds a goniometricTexture sized goniometricImageSize
+    // x goniometricImageSize, with no zero-size guard - the same reason
+    // `exitPupilBoundsBuffer` just above it falls back to a valid dummy
+    // buffer rather than a zero-length one when realisticExitPupilBounds is
+    // empty. Skipping this too (under isolatePbrtLighting, with a pbrt
+    // scene that has no real goniometric light of its own, e.g. it failed
+    // to load or simply has none) left goniometricImageSize at its 0
+    // default and crashed MTLTextureDescriptor's own validation - caught by
+    // actually running the new flag against C9, not assumed safe from
+    // reading the code alone. The room's own light being skipped above
+    // means this placeholder image is simply never sampled in that case,
+    // same "built but unused" shape as the dummy exitPupilBoundsBuffer.
     goniometricImageSize = 64;
     goniometricImage =
         buildGoniometricProfileImage(goniometricImageSize, /*cosCutoff=*/cosf(35.0f * (float)M_PI / 180.0f),
@@ -1037,6 +1065,7 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // See MetalPocApp::exposureValue's own comment for why this is a
         // direct field poke rather than a new argv[] slot.
         app.exposureValue = (float)options.exposure;
+        app.isolatePbrtLighting = options.isolate_pbrt_lighting;
         app.buildScene();
         if (force_camera_override) {
             if (app.havePbrtCamera) {

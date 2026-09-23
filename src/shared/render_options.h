@@ -1,7 +1,9 @@
 #pragma once
 // render_options.h -- the render-behavior flag tail shared by
-// cpu_render_main() (cpu_renderer/cpu_interface.h) and optix_render_main()
-// (gpu/optix/optix_interface.h).
+// cpu_render_main() (cpu_renderer/cpu_interface.h), optix_render_main()
+// (gpu/optix/optix_interface.h), and metal_render_main() (gpu/metal/
+// metal_interface.h) - the latter only reads a small subset of fields, see
+// that header's own comment for exactly which.
 //
 // Previously each of these took 4-5 trailing positional parameters
 // (exposure, sampler, spectral, tonemap / denoise, exposure, tonemap) -
@@ -127,4 +129,12 @@ struct RenderOptions {
 	// always 0. Both backends, default path tracer only - same scope cut
 	// as regularize/max_component_value/crop above.
 	long long seed = -1;
+	// Metal backend only (see gpu/metal/metal_interface.h's own comment on
+	// which fields this backend reads) - skip the hardcoded demo room's own
+	// lights when rendering a loaded pbrt scene, so that scene's real
+	// lighting can be judged in isolation. False (default) preserves every
+	// existing scene's hash-sweep-verified output unchanged; see
+	// launcher/launcher_args.h's LaunchArgs::isolate_pbrt_lighting for the
+	// full "why" (docs/METAL_GPU_FEASIBILITY.md section 197's C9 finding).
+	bool isolate_pbrt_lighting = false;
 };

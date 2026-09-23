@@ -12129,3 +12129,87 @@ edits confirmed fully reverted via grep before the final sweep), the
 new `"Scanlines remaining: N\r"` output matches
 `render_output_parser.h`'s `parseScanlineProgress()` regex and
 `splitOutputLines()`'s `\r`-terminator handling exactly.
+
+## 199. A real "isolate pbrt scene" lighting mode - the deferred half of C9's own fix (section 197)
+
+Section 197 found C9's goniometric-light artifact's real cause (the
+hardcoded demo room's undying "sun" `DirectionalLight` swamping C9's
+tiny, correctly-calibrated pbrt photometric light) but deliberately
+deferred building the actual fix, since a full isolation mode would
+touch the shared batch-smoke-test path every one of the 81 `kSupported`
+scene IDs relies on for its own hash-sweep-verified rendering - too big
+a blast radius for that investigation's own scope. This closes that
+gap: a new opt-in `--isolate-pbrt-lighting` CLI flag (Metal/`--gpu` on
+macOS only, a documented no-op everywhere else) skips every one of
+`MetalPocApp::buildScene()`'s own hardcoded-room lights - both
+`addAreaLight()` calls, the point light, the spot light, the sun, the
+projection light, and the goniometric light (plus its own synthetic
+64x64 profile image) - when rendering a loaded pbrt scene, so that
+scene's real lighting can be judged without the room's own lights
+competing with it.
+
+**Threading, smallest blast radius**: `RenderOptions::isolate_pbrt_lighting`
+(`src/shared/render_options.h`, false by default) -> `LaunchArgs::isolate_pbrt_lighting`
+(`launcher/launcher_args.h`, parsed from the new flag, a plain string
+literal deliberately NOT added to `src/shared/render_flag_names.h` since
+the GUI has no control for it, same "CLI-only, not GUI-exposed" scope as
+`--diagnose`) -> `render_options_from_args()` (`launcher/main.cpp`) ->
+`MetalPocApp::isolatePbrtLighting` (`gpu/metal/metal_poc_app.h`), poked
+directly by `metal_render_main()` right before `buildScene()` - the same
+"metal_render_main() pokes a field argv can't carry" shape
+`exposureValue` already established. `metal_poc_cli_main()` (the
+standalone `metal_poc` binary's own entry point) takes no `RenderOptions`
+at all, so it's structurally unable to reach this flag - the same
+reason the row-band progress work (section 198) and every prior
+`RenderOptions` field before it never needed to worry about the
+standalone CLI's own batch-smoke-test path.
+
+**Two real bugs found by actually running the new flag against C9, not assumed safe from reading the code alone:**
+1. Gating the goniometric light's own `goniometricImageSize`/`goniometricImage`
+   fallback assignment (a synthetic 64x64 profile) inside the same
+   `if (!isolatePbrtLighting)` block as the light itself crashed
+   `MTLTextureDescriptor`'s own validation ("width of zero") the moment a
+   pbrt scene had no real goniometric light of its own to populate the
+   texture instead - `buildGPUResources()` (`metal_poc_gpu_resources.mm`)
+   builds this texture unconditionally, with no zero-size guard. Fixed by
+   moving the fallback-image build outside the gate (only the light
+   itself stays gated) - the same "always allocate a valid dummy, just
+   leave it unused" shape `exitPupilBoundsBuffer` right above it in the
+   same file already uses when `realisticExitPupilBounds` is empty.
+2. `lightBuffer`/`pointLightBuffer`/`directionalLightBuffer`/
+   `projectionLightBuffer`/`goniometricLightBuffer` were all built via a
+   plain, unconditional `newBufferWithBytes:lights.data() length:...` -
+   that file's own standing comment on `lensElementBuffer` explicitly
+   (and, before this PR, correctly) claimed every one of these five was
+   "actually always non-empty in practice, because buildScene()'s own
+   hardcoded base room unconditionally adds at least one of each." This
+   flag breaks that invariant on purpose - a pbrt scene missing a given
+   light type (or one that fails to load at all) can now leave any of
+   these five genuinely empty, and `std::vector::data()` on an empty
+   vector may legally return null, which `newBufferWithBytes:length:0`
+   turns into a nil buffer. Fixed with the same `empty() ? newBufferWithLength
+   : newBufferWithBytes` ternary already established for
+   `lensElementBuffer`/`exitPupilBoundsBuffer`/cylinders/cloud-mediums/
+   rgb-grid-mediums in this same file - each buffer's real (unpadded)
+   element count still comes from the vector's own `.size()`
+   (`uniforms.lightCount` etc., `metal_poc_dispatch.mm`), so the shader
+   never iterates the dummy padding.
+
+**Confirmed working, not just non-crashing**: rendering C9 with
+`--isolate-pbrt-lighting --exposure 40` (needed to see anything at all -
+the real photometric light is genuinely dim, same finding section 197
+already made) shows a real, soft directional glow on the floor from the
+real pbrt goniometric light that is completely invisible in the default
+(sun-lit) render at the same settings - direct visual confirmation the
+isolation mode does what section 197 predicted, not just that it avoids
+crashing.
+
+**Verified default (flag off) behavior is byte-for-byte unaffected**: full
+clean rebuild, ctest 4/4, and an 81-scene hash sweep against an
+unmodified `main` baseline with the new flag never passed on either
+side - 77/81 identical, 4 differing (A3/F4, already in this document's
+own established known-noise set; A9, already investigated in section
+198; and E4, newly seen here but confirmed baseline-self-unstable via 5
+repeat baseline-only renders producing 3 distinct hashes with zero code
+involved - the same established GPU-scheduling-noise class section 187
+first documented, not a regression from this change).

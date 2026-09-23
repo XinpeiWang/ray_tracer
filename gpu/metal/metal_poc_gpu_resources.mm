@@ -24,45 +24,58 @@ bool MetalPocApp::buildGPUResources() {
     uvBuffer = [device newBufferWithBytes:uvs.data()
         length:uvs.size() * sizeof(PackedFloat2)
         options:MTLResourceStorageModeShared];
-    lightBuffer = [device newBufferWithBytes:lights.data()
-        length:lights.size() * sizeof(AreaLightData)
-        options:MTLResourceStorageModeShared];
-    pointLightBuffer = [device newBufferWithBytes:pointLights.data()
-        length:pointLights.size() * sizeof(PointLightData)
-        options:MTLResourceStorageModeShared];
-    directionalLightBuffer = [device newBufferWithBytes:directionalLights.data()
-        length:directionalLights.size() * sizeof(DirectionalLightData)
-        options:MTLResourceStorageModeShared];
-    projectionLightBuffer = [device newBufferWithBytes:projectionLights.data()
-        length:projectionLights.size() * sizeof(ProjectionLightData)
-        options:MTLResourceStorageModeShared];
-    goniometricLightBuffer = [device newBufferWithBytes:goniometricLights.data()
-        length:goniometricLights.size() * sizeof(GoniometricLightData)
-        options:MTLResourceStorageModeShared];
+    // point/directional/projection/goniometric lights, and area lights
+    // (`lights`), were ALL genuinely always non-empty in practice before
+    // isolatePbrtLighting existed (section 197/199) - buildScene()'s own
+    // hardcoded base room unconditionally added at least one of each. That
+    // flag can now skip every one of the room's own lights, so a pbrt
+    // scene with no light of a given type (or one that fails to load
+    // entirely) can leave any of these five genuinely empty - the same
+    // "std::vector::data() on an empty vector may legally return null,
+    // and newBufferWithBytes:length:0 then returns nil" pitfall the
+    // lensElementBuffer/exitPupilBoundsBuffer pair below was already
+    // fixed for (see that comment), now confirmed to apply here too by
+    // actually running --isolate-pbrt-lighting against C9 and hitting a
+    // real MTLTextureDescriptor/buffer validation failure, not assumed
+    // from reading the code alone. Same fix: a real (unread, since each
+    // count below is still driven by the vector's own true, unpadded
+    // size) 1-element buffer via newBufferWithLength: whenever empty.
+    lightBuffer = lights.empty()
+        ? [device newBufferWithLength:sizeof(AreaLightData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:lights.data()
+              length:lights.size() * sizeof(AreaLightData)
+              options:MTLResourceStorageModeShared];
+    pointLightBuffer = pointLights.empty()
+        ? [device newBufferWithLength:sizeof(PointLightData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:pointLights.data()
+              length:pointLights.size() * sizeof(PointLightData)
+              options:MTLResourceStorageModeShared];
+    directionalLightBuffer = directionalLights.empty()
+        ? [device newBufferWithLength:sizeof(DirectionalLightData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:directionalLights.data()
+              length:directionalLights.size() * sizeof(DirectionalLightData)
+              options:MTLResourceStorageModeShared];
+    projectionLightBuffer = projectionLights.empty()
+        ? [device newBufferWithLength:sizeof(ProjectionLightData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:projectionLights.data()
+              length:projectionLights.size() * sizeof(ProjectionLightData)
+              options:MTLResourceStorageModeShared];
+    goniometricLightBuffer = goniometricLights.empty()
+        ? [device newBufferWithLength:sizeof(GoniometricLightData) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:goniometricLights.data()
+              length:goniometricLights.size() * sizeof(GoniometricLightData)
+              options:MTLResourceStorageModeShared];
     // Realistic (multi-element-lens) camera's own lens/exit-pupil-bounds
     // tables (D4/D8, section 157) - empty for every earlier/other scene.
-    // NOT the same "zero-length buffer" shape the other optional per-
-    // scene buffers below already tolerate, despite this code's own
-    // original comment claiming otherwise: every OTHER optional buffer
-    // here (point/directional/projection/goniometric lights, etc.) is
-    // actually always non-empty in practice, because buildScene()'s own
-    // hardcoded base room (buildScene()'s own comment) unconditionally
-    // adds at least one of each - so the "tolerates zero-length" claim
-    // was never really exercised until these two, the first buffers
-    // that ARE genuinely empty for every scene but D4/D8. Confirmed by
-    // actually running a non-D4/D8 scene on GPU: newBufferWithBytes:
-    // length:0 (std::vector::data() on an empty vector may legally
-    // return null - cppreference) returned nil, which
-    // checkGpuResource() below correctly treats as fatal, aborting
-    // EVERY other hand-authored scene's own GPU render. Fixed by
-    // allocating a real (uninitialized, but real) 1-element buffer via
-    // newBufferWithLength: instead whenever empty - never read by the
-    // shader for these scenes anyway (sampleRealisticCameraRay's own
-    // numLensElements==0u/numExitPupilBounds==0u guard, driven by
-    // uniforms.numLensElements/numExitPupilBounds below, which still
-    // correctly read 0 from these vectors' own real (unpadded) size -
-    // this padding is buffer-allocation-only, not a change to that
-    // count).
+    // Same "zero-length buffer" shape the five light buffers above now
+    // also tolerate (see that comment) - allocating a real (uninitialized,
+    // but real) 1-element buffer via newBufferWithLength: instead whenever
+    // empty, never read by the shader for these scenes anyway
+    // (sampleRealisticCameraRay's own numLensElements==0u/
+    // numExitPupilBounds==0u guard, driven by uniforms.numLensElements/
+    // numExitPupilBounds below, which still correctly read 0 from these
+    // vectors' own real (unpadded) size - this padding is buffer-
+    // allocation-only, not a change to that count).
     lensElementBuffer = realisticLensElements.empty()
         ? [device newBufferWithLength:sizeof(GpuLensElementData) options:MTLResourceStorageModeShared]
         : [device newBufferWithBytes:realisticLensElements.data()
