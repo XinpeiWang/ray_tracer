@@ -93,6 +93,13 @@ struct MetalPocApp {
     // applyCameraOverride() call already uses. 1.0 (default) is a no-op,
     // unaffected for every scene/caller that never touches this field.
     float exposureValue = 1.0f;
+    // Skips buildScene()'s own hardcoded demo room lights (sun/fill/area/
+    // projection/goniometric) when set - RenderOptions::isolate_pbrt_lighting's
+    // own doc comment for the full "why" (section 197's C9 finding).
+    // Same "metal_render_main() pokes this field directly, argv doesn't
+    // carry it" shape as exposureValue above. False (default) is a no-op,
+    // unaffected for every scene/caller that never touches this field.
+    bool isolatePbrtLighting = false;
     // Optional 7th positional CLI arg - a real .pbrt scene file to load
     // via src/shared/pbrt_load.h INSTEAD of buildScene()'s own hardcoded
     // room (see loadPbrtScene()'s own comment for exactly what subset of

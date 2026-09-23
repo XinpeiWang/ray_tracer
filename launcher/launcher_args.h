@@ -113,6 +113,19 @@ struct LaunchArgs {
 	// per-launch cost) - see OptiXRenderer::createContext()'s own comment.
 	// Ignored under --cpu/--sppm.
 	bool optix_validate     = false;
+	// Metal backend only (--gpu on macOS): skip the hardcoded demo room's
+	// own lights (sun/fill/area/projection/goniometric, all unconditionally
+	// composited under every scene by MetalPocApp::buildScene() so 80+
+	// scene IDs can share one code path) when rendering a loaded pbrt
+	// scene. Exists purely for isolating a pbrt scene's OWN lighting during
+	// a comparison render - see docs/METAL_GPU_FEASIBILITY.md section 197's
+	// own finding that the demo room's undying, no-falloff "sun" swamped
+	// C9's tiny, correctly-calibrated real photometric light. Off by
+	// default so every one of the 81 kSupported scene IDs' existing
+	// hash-sweep-verified batch-render output is unaffected; deliberately
+	// NOT listed in src/shared/render_flag_names.h since the GUI has no
+	// control for it, same "CLI-only, not GUI-exposed" scope as --diagnose.
+	bool isolate_pbrt_lighting = false;
 	// GPU-only: run the OptiX AI denoiser on the finished render - see
 	// OptiXRenderer::enableDenoise()'s comment (albedo/normal-guided AOV
 	// denoising). Real support on both GPU backends (recursive and
@@ -416,6 +429,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 			consumed_args.insert(i);
 		} else if (arg == render_flags::kOptixValidate) {
 			out.optix_validate = true;
+			consumed_args.insert(i);
+		} else if (arg == "--isolate-pbrt-lighting") {
+			out.isolate_pbrt_lighting = true;
 			consumed_args.insert(i);
 		} else if (arg == render_flags::kDenoise) {
 			out.denoise = true;
@@ -825,6 +841,10 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 					  << "  " << render_flags::kOptixValidate << ": Enable OptiX validation mode (extra device-side checks,\n"
 					  << "               real per-launch cost - for debugging, not routine use).\n"
 					  << "               GPU-only, ignored under --cpu/--sppm.\n"
+					  << "  --isolate-pbrt-lighting: Skip the hardcoded demo room's own lights when\n"
+					  << "               rendering a loaded pbrt scene - for isolating that scene's\n"
+					  << "               OWN lighting during a comparison render, not routine use.\n"
+					  << "               Metal (--gpu on macOS) only, ignored on every other backend.\n"
 					  << "  " << render_flags::kDenoise << "  : Run the OptiX AI denoiser on the finished render, guided by\n"
 					  << "               albedo + normal AOV buffers. GPU-only, both backends\n"
 					  << "               (recursive and wavefront each have their own denoiser);\n"

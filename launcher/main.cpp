@@ -110,6 +110,7 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
     render_opts.denoise = args.denoise;
     render_opts.denoise_blend = static_cast<float>(args.denoise_blend);
+    render_opts.isolate_pbrt_lighting = args.isolate_pbrt_lighting;
     return render_opts;
 }
 
