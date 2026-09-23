@@ -11896,3 +11896,59 @@ re-derive a formula that already exists), verify byte-for-byte via the
 established 81-scene hash sweep methodology (section 187), and run a
 deliberate negative control before trusting any new test isn't
 accidentally a no-op.
+
+## 196. A follow-up gap audit, and wiring up an orphaned hair test kernel
+
+A second gap audit (user-requested follow-up: "review the mac gpu work,
+is there any gaps or issues to fix" - the same trigger phrase as the
+first one, sections 188-195's own origin), specifically scoped to find
+what changed or was missed SINCE that first audit, not re-report
+already-fixed items. Found: `README.md`'s own Metal-related claims were
+still flatly false (fixed separately, `docs/fix-readme-metal-gpu-
+staleness` branch - predates the entire `gpu/metal/` backend and was
+never touched by the in-code stale-comment fix, section 189); a real
+compiler warning (`metal_poc_shader_tests.mm`'s own `paramsBuf` in
+`testHairEvalAndPdf()`, genuinely unused since `paramsRepBuf` two lines
+later is what's actually passed to both `runKernel()` calls - fixed
+here, a pure dead-code removal); and one genuine, previously-orphaned
+test kernel.
+
+**`test_hairComputeAp`** (`metal_poc_test_kernels.metal`) was fully
+implemented - correctly dispatching `hairComputeAp()`, the exact
+function where the B11 re-attempt's own fastMath "grazing-center" bug
+was found and fixed (section 183) - but never once called from
+`metal_poc_shader_tests.mm`'s own `main()`, silently never running since
+whichever PR added it. Wired up a new `testHairComputeAp()` cross-
+checking each of the 4 lobes' own r/g/b attenuation directly against
+`HairBxDF<double>::compute_Ap()` (`src/shared/bxdfs_hair.h`), including
+`cosTheta_o == 0.0` explicitly - the exact grazing-center condition the
+earlier bug hid in, previously only exercised INDIRECTLY through
+`testHairEvalAndPdf()`'s/`testHairRandomSweep()`'s own combined-eval
+checks.
+
+**A real, if practically unreachable, divergence found and correctly
+scoped around, not silently accepted**: the first version of this test
+swept `cosTheta_o` across `[-1, 1]` (including negative values, since
+nothing in `compute_Ap()`'s own signature rules them out) and found 4
+genuine failures at exactly `cosThetaO = -1.0` for one material.
+Investigated before assuming it was a real bug: EVERY actual call site
+of `hairComputeAp()` (`hairEvalLocal()`/`hairScatteringPdfLocal()`/
+`hairSample()`, `metal_poc_materials_hair.metal`) derives `cosTheta_o`
+as `hairSafeSqrt(1 - sinTheta_o^2)` - a sqrt result that is ALWAYS `>=
+0`. A negative `cosTheta_o` is a value this function is never actually
+called with by the real rendering pipeline at all - the divergence is
+real but confined entirely to a mathematically-valid-looking input this
+codebase's own real geometry can never produce. Narrowed the test's own
+domain to `[0, 1]` (matching the real, reachable range) rather than
+either accepting a false failure or forcing a "fix" for an unreachable
+case - the same "scope the test to what's actually exercised" discipline
+section 195's own RGB-grid-interior-only test already established.
+
+**Verified**: full clean rebuild, ctest 4/4, a `-Wall -Wextra` rebuild
+confirming zero remaining warnings in any `gpu/metal/` file touched by
+this series (the 7 that remain are all pre-existing, in `src/shared/`
+headers shared by all three renderers - out of scope for this pass), a
+negative control (scaled `hairComputeAp()`'s own Fresnel term by 0.5,
+confirmed 190 cases failed with the right numbers, reverted), and an
+81-scene hash sweep (68/81 byte-identical, the same 13-scene known-noise
+set, zero new - expected, test-support file only).
