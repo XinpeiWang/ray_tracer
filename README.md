@@ -108,7 +108,7 @@ Download the portable package and run it directly - see the [📦 Download secti
 - **CUDA Toolkit 13.2+** ([download](https://developer.nvidia.com/cuda-downloads))
 - **Updated NVIDIA drivers**
 
-**macOS**: the CPU renderer, CLI, and Qt GUI build via the root `CMakeLists.txt` and `qt_gui/RayTracerGUI.pro` — see [macOS (CPU-only)](#macos-cpu-only) below. GPU rendering (`gpu/optix/`, `optix_renderer/`) is CUDA/OptiX and has no macOS equivalent — Apple dropped NVIDIA GPU support and Apple Silicon has no CUDA at all, so this isn't a "not ported yet" gap, it's a different renderer that would need to be built from scratch (e.g. on Metal/MetalRT). This macOS path has not been build-tested on real macOS hardware (this project was developed on Windows) — treat it as best-effort until confirmed on a real Mac.
+**macOS**: the CPU renderer, CLI, and Qt GUI build via the root `CMakeLists.txt` and `qt_gui/RayTracerGUI.pro` — see [macOS (CPU-only)](#macos-cpu-only) below. GPU rendering (`gpu/optix/`, `optix_renderer/`) is CUDA/OptiX and has no macOS equivalent — Apple dropped NVIDIA GPU support and Apple Silicon has no CUDA at all, so that specific backend isn't a "not ported yet" gap. macOS instead has its own real Metal/MetalRT GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON` — see [macOS (CPU-only)](#macos-cpu-only) below and `docs/METAL_GPU_FEASIBILITY.md` for its own status/coverage), including a real `--gpu` dispatch path in `ray_tracer`/`RayTracerGUI` and macOS CI coverage (`.github/workflows/unit-tests.yml`'s own `metal-poc` job) — build-verified on real Apple Silicon hardware, not just theorized.
 
 **Optional (for video generation):**
 - **ffmpeg** on `PATH` — video rendering assembles frames into MP4 via an `ffmpeg` subprocess; without it, frames are still rendered to disk but not muxed into a video.
@@ -188,17 +188,21 @@ See [BUILD.md](BUILD.md) for full details, advanced options, and troubleshooting
 
 ### macOS (CPU-only)
 
-No GPU/OptiX support (see the note above) — this builds the CPU path tracer,
-the `ray_tracer` CLI, and (optionally) the Qt GUI, purely additive alongside
-the Windows MSBuild solution.
+No CUDA/OptiX support (see the note above) — this builds the CPU path
+tracer, the `ray_tracer` CLI, and (optionally) the Qt GUI, purely additive
+alongside the Windows MSBuild solution. "CPU-only" describes this
+*default* build's own scope, not macOS as a platform — see
+[Metal GPU (opt-in)](#metal-gpu-opt-in) just below for the real,
+separate Metal/MetalRT GPU backend.
 
 **CLI + CPU renderer**, via the root `CMakeLists.txt`:
 ```bash
 cmake -B build && cmake --build build
 ./build/ray_tracer 800 100 50 A1   # width, spp, max_depth, scene_id
 ```
-Produces `cpu_renderer` (static lib), `ray_tracer` (CLI, always CPU — `--gpu`
-prints a warning and falls back), and `scene_metadata.dylib`.
+Produces `cpu_renderer` (static lib), `ray_tracer` (CLI - `--gpu` falls
+back to a warning on this default build; pass `-DRT_BUILD_METAL=ON` for
+a real macOS `--gpu` path instead, see below), and `scene_metadata.dylib`.
 
 **Qt GUI**, via `qt_gui/RayTracerGUI.pro` (Qt 6, same as Windows):
 ```bash
@@ -241,6 +245,26 @@ to open it with a plain double-click on first launch. Right-click the app →
 **Open** (or System Settings → Privacy & Security → **Open Anyway**) once to
 run it; this is a one-time step per machine, standard for any indie/unsigned
 Mac app.
+
+### Metal GPU (opt-in)
+
+A real Metal/MetalRT GPU backend (`gpu/metal/`), separate from the
+CPU-only build above - opt in with `-DRT_BUILD_METAL=ON`:
+```bash
+cmake -B build -DRT_BUILD_METAL=ON && cmake --build build
+./build/ray_tracer 800 100 50 A1 --gpu   # real macOS GPU path, not a fallback warning
+```
+Also builds a standalone `metal_poc` CLI and (via `ctest`, once
+configured this way) four regression tests covering both host-side math
+and real on-device shader kernels. Nowhere near OptiX's own feature
+parity yet - see `docs/METAL_GPU_FEASIBILITY.md` for exactly what's
+covered, what isn't, and the full incremental history (180+ numbered
+sections). CI builds and runs this on every push (`.github/workflows/
+unit-tests.yml`'s own `metal-poc` job, `macos-14`) - the device-
+dependent tests gracefully skip there (GitHub's own hosted runners don't
+currently expose hardware-raytracing-capable Metal), so full local
+verification on real Apple Silicon hardware remains the authoritative
+check.
 
 ### Running Tests
 
@@ -703,7 +727,7 @@ Being upfront about what's incomplete rather than overselling:
 - **BDPT and MLT are CPU-only and narrow in scope**: selectable via `--bdpt`/`--mlt`, but there's no GPU/OptiX implementation (`--gpu` is ignored with a warning), only area lights are supported for NEE (no punctual/sky-light sampling yet), and both are verified end-to-end on scene A1 (Cornell Box) only — other scenes are unverified.
 - **Hair/fur has two different fidelity levels**: scene F4 (Curve Fibers) uses real Bezier curve/strand geometry (`CurveShape`, exact ray-curve intersection on CPU, tessellated bilinear-patch tubes on GPU); the older scene B11 instead applies the Marschner/Chiang BxDF math via a shading-normal proxy on sphere primitives, not actual fiber geometry.
 - **GPU wavefront path tracer is opt-in and less exercised**: enabled via the `--wavefront` flag; the default recursive GPU backend is the primary, best-tested GPU path.
-- **GPU/OptiX rendering is Windows+NVIDIA only, with no fallback**: the CPU renderer, CLI, and Qt GUI now also build on macOS (see [macOS (CPU-only)](#macos-cpu-only)) via a purely-additive CMake path, unverified on real macOS hardware since this project is developed on Windows. GPU rendering has no macOS equivalent at all — CUDA/OptiX isn't available there (Apple dropped NVIDIA GPU support; Apple Silicon has no CUDA), so this is a genuinely different renderer (e.g. Metal/MetalRT), not a porting gap.
+- **GPU/OptiX rendering is Windows+NVIDIA only, with no fallback**: CUDA/OptiX isn't available on macOS at all (Apple dropped NVIDIA GPU support; Apple Silicon has no CUDA), so that specific backend can't be ported there. macOS instead has its own separate Metal/MetalRT GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON`) alongside the CPU renderer/CLI/Qt GUI (see [macOS (CPU-only)](#macos-cpu-only)) — nowhere near OptiX's own feature parity yet (see `docs/METAL_GPU_FEASIBILITY.md` for exactly what's covered), but a real, build-and-CI-verified renderer on real Apple Silicon hardware, not a stub.
 - **No adaptive sampling**: fixed samples-per-pixel for standard path tracing (SPPM itself is progressive by design).
 
 ### Planned / possible future work
@@ -712,7 +736,6 @@ Being upfront about what's incomplete rather than overselling:
 - [ ] Broader GPU SPPM scene support
 - [ ] Real curve/strand geometry for scene B11's hair fibers (matching scene F4's approach)
 - [ ] Adaptive sampling based on variance
-- [ ] Build-verify the new macOS CPU/CLI/GUI path on real macOS hardware (or CI)
 - [ ] Linux support (likely a small extension of the same CMake/POSIX groundwork the macOS port added)
 
 ## 🤝 Contributing
