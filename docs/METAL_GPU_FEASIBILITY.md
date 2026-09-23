@@ -11952,3 +11952,71 @@ negative control (scaled `hairComputeAp()`'s own Fresnel term by 0.5,
 confirmed 190 cases failed with the right numbers, reverted), and an
 81-scene hash sweep (68/81 byte-identical, the same 13-scene known-noise
 set, zero new - expected, test-support file only).
+
+## 197. C9's own goniometric artifact (section 165) - root cause found, real, NOT a shading bug at all
+
+A fresh, from-scratch re-investigation (user-requested: "chase a
+low-priority open artifact" after the test-coverage series and the
+follow-up gap audit both closed out - the most tractable of the three
+open items, since it already had a specific, never-confirmed hypothesis
+to test rather than a truly open-ended search). Section 165's own
+standing hypothesis - that the scene's own geometry puts every sampled
+direction too close to the equal-area map's own demagnified centre,
+compounded by bilinear filtering of only a 4x4 profile image -
+**refuted**, not confirmed: a standalone C++ program built directly
+from `equalAreaSphereToSquare()`'s own polynomial coefficients
+(`metal_poc_types.metal`) shows UV radius from the map's centre grows
+near-linearly with angle from the pole (a true equal-AREA map, no
+disproportionate compression near the pole at all), and feeding it
+C9's real geometry + the real `gonio-profile.bmp` content (confirmed
+byte-identical decode between CPU's `rtw_image` and Metal's
+`decodeInfiniteLightImage`) shows the brightness-weighted footprint
+spans nearly the ENTIRE 4x4 image, not one pixel. The light basis
+itself was also directly re-confirmed correct via a temporary debug
+print (`forward=(0,-1,0) right=(-1,0,0) up=(0,0,1)`, matching the pbrt
+scene file's own `Rotate 90 1 0 0` directive exactly).
+
+**The real, empirically-confirmed cause**: `metal_poc`/`ray_tracer
+--gpu` ALWAYS additively composites every pbrt-loaded scene on top of
+this POC's own fixed hardcoded demo room (a deliberate design choice,
+for cheap batch smoke-testing across 96+ scene IDs without a separate
+code path per scene). That hardcoded room's own "sun" `DirectionalLight`
+has no distance falloff and illuminates C9's floor at a magnitude
+comparable to or larger than the real pbrt-photometric goniometric
+light's own tiny, correctly-calibrated real-world-unit contribution
+(peak ≈0.015 per a debug dump) - the sun's flat, directionless
+contribution swamps the goniometric image's own directional contrast
+into what reads as "flat gray," and explains why boosting `--exposure`
+only ever revealed a faint hint (it boosts both terms equally, so their
+RATIO - the actual thing that makes the pattern visible - never
+changes). Directly verified, not just theorized: temporarily zeroing
+the sun's own contribution (a throwaway debug edit, reverted before
+finishing) makes the same diamond/X crease pattern appear on Metal,
+matching CPU's own shape - CPU never has this problem at all, since its
+own C9 render is a clean, single-scene render with no competing
+hardcoded-room lights to begin with.
+
+**Deliberately NOT fixed this pass**: the goniometric light's own
+decode/basis/shading math is now provably correct end to end - there is
+nothing left to fix THERE. The real issue is the additive-compositing
+design of the `metal_poc`/`ray_tracer --gpu` batch-test harness itself,
+deliberately shared by every OTHER pbrt-scene lighting comparison this
+whole series has ever run (all 51+ committed `pbrt_scenes/*.pbrt`
+files) - changing how the hardcoded room's own lights interact with a
+loaded pbrt scene is a materially bigger, riskier change than this
+investigation's own scope, and safely assessing its blast radius across
+every other scene wasn't attempted. A scoped remedy for whoever picks
+this up next: a real "isolate pbrt scene" mode (skip the hardcoded
+room's own lights, or zero its directional light specifically)
+purpose-built for lighting-comparison renders like this one, without
+touching the batch-smoke-test default every other scene relies on.
+
+**Net effect of this investigation**: C9 moves from "unexplained,
+partly-diagnosed, not chased to a fix" (section 165's own framing) to
+"fully explained, root cause confirmed, fix deliberately deferred as
+its own separate, larger, scoped decision" - a real, concrete step
+forward even without landing code, following the same "understand
+before guessing, and say so plainly either way" discipline this whole
+document has used throughout. Verified nothing was left behind: full
+clean rebuild + ctest 4/4 after reverting both temporary debug edits,
+`git status` clean.
