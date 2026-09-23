@@ -11,6 +11,7 @@
 #include <QPixmap>
 #include <QSet>
 #include <QSettings>
+#include <QStandardPaths>
 
 #include <algorithm>
 
@@ -238,13 +239,20 @@ QList<RecentRenderEntry> MainWindow::loadRecentRenders() const {
 	// past kMaxRecentRenders) - see buildScannedEntry()'s own comment.
 	// Anything Browse-saved outside these folders is invisible to this scan,
 	// same as it always was before Recent Renders existed at all; this only
-	// covers the common default-path case. Two folders, not one:
-	// <exe_dir>/output/ is m_outputPathEdit's own CURRENT default
-	// (mainwindow_tabs.cpp, matching the CLI's own <exe_dir>/output/ default
-	// - see launcher/main.cpp), and Desktop is scanned too so renders made
-	// before that default moved off Desktop don't silently vanish from this
-	// list.
+	// covers the common default-path case. Three folders, oldest-default
+	// first: Desktop (the very first default), <exe_dir>/output/ (a later
+	// default that matched the CLI's own <exe_dir>/output/, launcher/
+	// main.cpp - since replaced, see below), and QStandardPaths::
+	// PicturesLocation + "/RayTracer" (m_outputPathEdit's own CURRENT
+	// default, mainwindow_tabs.cpp) - <exe_dir>/output/ broke for any
+	// packaged macOS app run straight off a mounted, read-only .dmg (a real
+	// user report: render succeeded, GUI then couldn't find the file), so
+	// the default moved to a location that's always genuinely writable
+	// regardless of where the app binary itself lives. Each old default
+	// stays in this list so renders made under it don't silently vanish
+	// from this list, same reasoning the Desktop entry already established.
 	QList<QDir> scanDirs = {
+		QDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) + QStringLiteral("/RayTracer")),
 		QDir(QCoreApplication::applicationDirPath() + QStringLiteral("/output")),
 		QDir(QDir::homePath() + QStringLiteral("/Desktop")),
 	};

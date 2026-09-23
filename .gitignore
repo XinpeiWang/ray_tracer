@@ -121,6 +121,15 @@ Makefile*
 # from an old manual build layout) during the MinGW->MSVC toolchain switch
 .qmake.stash
 qt_gui/build/
+# scripts/build_and_deploy_macos.sh's own build directories (root CMake
+# build for cpu_renderer/ray_tracer/metal_renderer, and qt_gui's own qmake
+# build) - the SAME gap qt_gui/build/ above was already fixed for, just
+# under this script's own differently-named directory, never added when
+# that script was introduced. Found the same way: these two directories
+# showed up as real, uncommitted, untracked build output while testing an
+# unrelated fix.
+build_macos/
+qt_gui/build_macos/
 
 # Qt Creator
 *.autosave

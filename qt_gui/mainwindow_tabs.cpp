@@ -1583,14 +1583,29 @@ void MainWindow::createSettingsTab() {
 	QHBoxLayout *pathLayout = new QHBoxLayout();
 	// Use timestamped filename to avoid caching issues
 	QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
-	// <exe_dir>/output/ - matches launcher/main.cpp's own default for the CLI
-	// (<exe_dir>/output/image.ppm) rather than the Desktop this used to
-	// default to. applicationDirPath() is RayTracerGUI.exe's own directory,
-	// the same RayTracer_Package/ the CLI exe is deployed into, so this
-	// lands in the exact same place a bare `ray_tracer.exe` invocation
-	// (no --output) would. See recent_renders.cpp's own comment - its
-	// Desktop-scan backfill was updated to match this new default too.
-	QString defaultPath = QApplication::applicationDirPath() + "/output/render_" + timestamp + ".png";
+	// QStandardPaths::PicturesLocation (~/Pictures/RayTracer on macOS,
+	// Pictures\RayTracer on Windows), NOT applicationDirPath()'s own
+	// <exe_dir>/output/ this used to default to (which in turn had replaced
+	// an even earlier Desktop default - see recent_renders.cpp's own
+	// scanDirs comment for that whole history). That exe-relative default
+	// silently broke for any packaged macOS app run straight off a mounted
+	// .dmg without first being dragged to /Applications: disk images mount
+	// read-only, so writing into <bundle>/Contents/MacOS/output/ fails -
+	// caught via a real user report (a genuine A1 render completed but the
+	// GUI then warned "output file not found," because camera::render()'s
+	// own silent write-location fallback chain (src/TheRestOfYourLife/
+	// camera.h) quietly wrote to TMPDIR instead, and the exit-code-0-means-
+	// success check never noticed the mismatch). Same "always genuinely
+	// user-writable, regardless of where the app binary itself lives"
+	// reasoning this codebase's own theme_load.cpp (AppConfigLocation) and
+	// mainwindow_tabs.cpp's own thumbnail cache (CacheLocation) already
+	// use for exactly this class of path. The CLI's OWN default
+	// (launcher/main.cpp, <exe_dir>/output/image.ppm) is deliberately left
+	// unchanged - a bare `ray_tracer` invocation from a normal build
+	// directory (not a packaged, potentially-read-only .app bundle) has no
+	// equivalent problem, and changing it risks breaking existing scripts.
+	QString defaultPath = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)
+		+ "/RayTracer/render_" + timestamp + ".png";
 	m_outputPathEdit = new QLineEdit(QDir::toNativeSeparators(defaultPath), basicTab);
 	m_outputPathEdit->setStyleSheet(
 		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"
