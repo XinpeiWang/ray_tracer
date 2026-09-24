@@ -206,7 +206,20 @@ void MainWindow::refreshStatusBarInfo() {
 	// (mainwindow_tabs.cpp's "Wavefront (Experimental)") - this used to read
 	// lowercase here, a small terminology drift for the same mode name
 	// shown two different ways depending on where you looked.
-	QString deviceText = useGPU ? (useWavefront ? tr("GPU (OptiX, Wavefront)") : tr("GPU (OptiX)")) : tr("CPU");
+	// kGpuOptionAvailable (mainwindow.h, true only on the Windows/OptiX
+	// build) picks the real backend name - this used to say "GPU (OptiX)"
+	// unconditionally, including on macOS, where GPU always means Metal
+	// (gpu/metal/) and never OptiX at all. Found via a direct audit of
+	// every place the GUI names a backend, the same class of "generic GPU"
+	// bug already fixed for render-option graying-out (updateRenderOptionsEnabled()).
+	QString deviceText;
+	if (useGPU) {
+		deviceText = kGpuOptionAvailable
+			? (useWavefront ? tr("GPU (OptiX, Wavefront)") : tr("GPU (OptiX)"))
+			: tr("GPU (Metal)");
+	} else {
+		deviceText = tr("CPU");
+	}
 	// Append a short tag for a non-default Integrator - onIntegratorChanged()
 	// calls this after every change specifically so the status bar's
 	// ambient readout stays honest about more than just device/resolution/
@@ -326,7 +339,12 @@ void MainWindow::showAboutDialog() {
 #endif
 	QMessageBox::about(this, tr("About Ray Tracer"),
 		tr("<h3>Ray Tracer</h3>"
-		"<p>A physically-based path tracer with parallel CPU and GPU (OptiX) "
+		// Backend-neutral ("GPU backends", not "(OptiX)") - unlike
+		// refreshStatusBarInfo()'s own status-bar text just above, this
+		// About text is unconditional across every platform build, and
+		// GPU means OptiX on Windows but Metal on macOS; naming OptiX
+		// specifically here was stale/misleading on a Mac build.
+		"<p>A physically-based path tracer with parallel CPU and GPU "
 		"backends, built up from the <i>Ray Tracing in One Weekend</i> series "
 		"into a pbrt-v4-style feature set.</p>"
 		// Scene count is free-form text, not derived from
