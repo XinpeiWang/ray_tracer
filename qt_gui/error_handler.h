@@ -222,11 +222,25 @@ inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 			.arg(gpuSupportedSceneList(useMetal)).arg(sceneCount());
 	}
 
-	static const QMap<int, QString> hints = {
-		{ERR_FILE_WRITE_FAILED, "• Check that the output directory exists and is writable\n"
+	if (errorCode == ERR_FILE_WRITE_FAILED) {
+		QString hint = QString("• Check that the output directory exists and is writable\n"
 			"• Make sure you have enough disk space\n"
-			"• Try closing any programs that might be using the output file"},
+			"• Try closing any programs that might be using the output file");
+#ifdef Q_OS_WIN
+		// The ACLs on a protected folder still say "writable", so nothing in
+		// the generic list above points at this - it was found via Defender's
+		// event log, not from this dialog, when every default GUI render into
+		// Pictures failed with only the three bullets above to go on.
+		hint += QString("\n• Windows Security's \"Controlled folder access\" blocks apps it doesn't "
+			"recognize from writing to protected folders (Pictures, Documents, Desktop). "
+			"Either choose a different Output Path, or allow RayTracerGUI.exe and ray_tracer.exe "
+			"under Virus & threat protection > Ransomware protection > Controlled folder access "
+			"> Allow an app through");
+#endif
+		return hint;
+	}
 
+	static const QMap<int, QString> hints = {
 		{ERR_VIDEO_ASSEMBLY_FAILED, "• Install ffmpeg from https://ffmpeg.org/download.html and add it to your PATH\n"
 			 "• Check the render log above for the exact ffmpeg command and error output\n"
 			 "• Rendered frames are kept in output/frames/ - you can assemble the video manually"},
