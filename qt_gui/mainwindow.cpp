@@ -84,6 +84,49 @@ void setProcessThreadsSuspended(qint64 pid, bool suspend) {
 	kill(static_cast<pid_t>(pid), suspend ? SIGSTOP : SIGCONT);
 }
 #endif
+
+// ray_tracer.exe's argv reaches it in the system ANSI code page on Windows,
+// so a --output path containing characters that code page can't represent
+// (e.g. a localized Pictures folder like "图片" on a Western-locale PC -
+// QStandardPaths::PicturesLocation, this GUI's default output directory)
+// arrives as "C:\...\??\RayTracer\..." and the CLI fails with "File Write
+// Failed". Returns a path the CLI can actually open: the original if it
+// survives the ANSI round trip, else the SAME directory's ASCII 8.3 short
+// alias (GetShortPathNameW - needs the directory to exist, so it's created
+// here first; Qt's own mkpath handles the Unicode name fine). If no short
+// alias exists (8.3 generation disabled on that volume) the original is
+// returned unchanged and the CLI's own error surfaces as before. No-op on
+// non-Windows, where argv is UTF-8.
+QString cliSafeOutputPath(const QString &path) {
+#ifdef _WIN32
+	// Asks Windows itself (CP_ACP, the code page the CLI's argv goes through)
+	// rather than Qt's toLocal8Bit(), which round-trips these characters
+	// here and so can't be used to detect the loss.
+	const auto survivesAnsi = [](const QString &s) {
+		BOOL usedDefaultChar = FALSE;
+		QByteArray out(s.size() * 4 + 4, '\0');
+		const int written = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS,
+			reinterpret_cast<LPCWSTR>(s.utf16()), static_cast<int>(s.size()),
+			out.data(), static_cast<int>(out.size()), nullptr, &usedDefaultChar);
+		return written > 0 && !usedDefaultChar;
+	};
+	if (path.isEmpty() || survivesAnsi(path)) return path;
+
+	const QFileInfo info(path);
+	const QString dir = info.absolutePath();
+	QDir().mkpath(dir);
+	wchar_t shortDir[MAX_PATH * 2];
+	const DWORD len = GetShortPathNameW(
+		reinterpret_cast<const wchar_t *>(QDir::toNativeSeparators(dir).utf16()),
+		shortDir, static_cast<DWORD>(sizeof(shortDir) / sizeof(shortDir[0])));
+	if (len == 0 || len >= sizeof(shortDir) / sizeof(shortDir[0])) return path;
+	const QString candidate = QDir::toNativeSeparators(
+		QString::fromWCharArray(shortDir, static_cast<int>(len)) + QLatin1Char('/') + info.fileName());
+	return survivesAnsi(candidate) ? candidate : path;
+#else
+	return path;
+#endif
+}
 } // namespace
 
 // RenderController Implementation
@@ -358,11 +401,11 @@ void RenderController::start() {
 		QString videoOutputPath = !m_outputPath.isEmpty()
 			? m_outputPath
 			: QCoreApplication::applicationDirPath() + "/output/video.ppm";
-		args << render_flags::kOutput << videoOutputPath;
+		args << render_flags::kOutput << cliSafeOutputPath(videoOutputPath);
 	} else {
 		// Image mode: use custom output path if provided
 		if (!m_outputPath.isEmpty()) {
-			args << render_flags::kOutput << m_outputPath;
+			args << render_flags::kOutput << cliSafeOutputPath(m_outputPath);
 		}
 	}
 
