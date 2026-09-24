@@ -1876,6 +1876,20 @@ void MainWindow::onModeChanged(int index) {
 		stopLivePreview();
 #endif
 
+	// Mirrors m_renderModeCombo's own connect() lambda (mainwindow.cpp),
+	// guarding the OTHER direction of the same invalid (mode, backend)
+	// pair: that one catches "GPU just got selected while Video mode was
+	// already active", this one catches "Video mode was just selected
+	// while GPU was already active" - the same "the same invalid pair is
+	// reachable from either direction, but only one is ever guarded
+	// unless both are" lesson this codebase's own scene-compat check
+	// already learned (see that lambda's own comment). setCurrentIndex(1)
+	// re-enters m_renderModeCombo's lambda immediately - harmless, the
+	// same reentrant shape already established there.
+	if (isVideoMode() && m_renderModeCombo->currentData().toBool() && !kGpuOptionAvailable) {
+		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
+	}
+
 	// Every control in Video Generation Settings is inert unless Output Mode
 	// is "Generate Video" - the warning label (see its own comment,
 	// mainwindow.h) surfaces that, rather than disabling the group outright
