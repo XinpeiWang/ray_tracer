@@ -186,7 +186,14 @@ inline LogCategory classifyLogLine(const std::string &line) {
 		// it came from instead of collapsing every GPU/CPU line that happens
 		// to contain "error"/"failed" into a generic ERR tag.
 		if (contains(line, "[OptiX]") || contains(line, "[optix]") ||
-			contains(line, "OptiX") || containsNoCase(line, "GPU mode"))
+			contains(line, "OptiX") || containsNoCase(line, "GPU mode") ||
+			// "METAL RENDER FAILED" (launcher/main.cpp's own banner) and
+			// metal_render_main()'s own stderr messages ("GPU resource
+			// allocation FAILED", "Shader compile failed", "Render dispatch
+			// failed") - this rule was OptiX-keyword-only, so a real Metal
+			// render failure fell through to the generic "ERR " tag below
+			// instead of being recognized as a GPU-subsystem failure.
+			contains(line, "METAL RENDER FAILED") || containsNoCase(line, "metal_render_main"))
 			return LogCategory{LogSeverity::Error, "GPU "};
 		if (contains(line, "[cpu_interface]") || containsNoCase(line, "CPU mode"))
 			return LogCategory{LogSeverity::Error, "CPU "};
@@ -213,7 +220,14 @@ inline LogCategory classifyLogLine(const std::string &line) {
 	if (contains(line, "[OptiX]") || contains(line, "[optix]") ||
 		contains(line, "OptiX") || containsNoCase(line, "optix_render") ||
 		containsNoCase(line, "GPU mode") || contains(line, "NVIDIA") ||
-		contains(line, "RTX") || containsNoCase(line, "Launching renderer (GPU"))
+		contains(line, "RTX") || containsNoCase(line, "Launching renderer (GPU") ||
+		// Metal's own equivalent lines (metal_render_main()'s own stderr/
+		// stdout, gpu/metal/metal_poc.mm/metal_poc_dispatch.mm) - this rule
+		// was OptiX/NVIDIA-keyword-only, so a real macOS GPU render's own
+		// non-error log lines fell through to plain Info instead of the
+		// GPU-tagged/colored severity every OptiX line already gets.
+		containsNoCase(line, "metal_render_main") || contains(line, "(Metal)") ||
+		containsNoCase(line, "Metal device:"))
 		return LogCategory{LogSeverity::Gpu, "GPU "};
 
 	if (contains(line, "[cpu_interface]") || containsNoCase(line, "CPU mode") ||

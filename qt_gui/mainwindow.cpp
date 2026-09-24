@@ -633,7 +633,6 @@ void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exit
 		emit logMessage(QString("Result: FAILED (exit code %1)").arg(exitCode));
 
 		QString errorTitle = ErrorHandler::getErrorTitle(exitCode);
-		QString errorMessage = ErrorHandler::getErrorMessage(exitCode);
 		// This is RenderController, not MainWindow - it has no
 		// m_metalGpuAvailable, but it already knows m_useGPU for THIS
 		// specific render, which is the more precise signal anyway ("was
@@ -641,12 +640,16 @@ void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exit
 		// available at all"). Metal is macOS's only GPU backend, so
 		// m_useGPU on Q_OS_MAC means Metal was used; on every other
 		// platform GPU still means OptiX/CUDA, so useMetal is always false
-		// there regardless of m_useGPU.
+		// there regardless of m_useGPU. Computed before getErrorMessage()
+		// below too - ERR_GPU_NO_DEVICE's own text used to hardcode "No
+		// CUDA-capable GPU" unconditionally, wrong on a Mac whose Metal
+		// GPU is what actually failed to be found/used.
 #ifdef Q_OS_MAC
 		const bool useMetal = m_useGPU;
 #else
 		const bool useMetal = false;
 #endif
+		QString errorMessage = ErrorHandler::getErrorMessage(exitCode, useMetal);
 		QString hint = ErrorHandler::getTroubleshootingHint(exitCode, useMetal);
 		QString category = ErrorHandler::getCategoryName(exitCode);
 
@@ -1152,6 +1155,23 @@ void MainWindow::setupUI() {
 							return;
 						}
 					}
+				}
+				// Same shape as the scene-compat guard just above, for a
+				// second invalid (mode, backend) pair: launcher/main.cpp's
+				// video-frame loop only ever calls optix_render_main() per
+				// frame, with no Metal branch at all (unlike the single-
+				// image path, which does) - selecting GPU while Video mode
+				// is already active, on a non-OptiX (Metal) build, would
+				// otherwise reach a real per-frame render failure
+				// ("ERROR: OptiX is not available!") instead of a graceful
+				// auto-switch. kGpuOptionAvailable is a compile-time
+				// constant true only on the Windows/OptiX build, so this
+				// check (and its onModeChanged() twin, guarding the other
+				// direction) is a no-op there - Windows GPU video is
+				// unaffected either way.
+				if (m_renderModeCombo->currentData().toBool() && !kGpuOptionAvailable && isVideoMode()) {
+					m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
+					return;
 				}
 				refreshStatusBarInfo();
 				updateRenderOptionsEnabled();

@@ -156,12 +156,20 @@ inline QString getErrorTitle(int errorCode) {
 	return QString("Error Code %1").arg(errorCode);
 }
 
-// Get detailed error message
-inline QString getErrorMessage(int errorCode) {
+// Get detailed error message. useMetal: same meaning as getTroubleshootingHint()'s
+// own parameter below - which GPU backend the failed render actually used.
+// Unlike that function, this one DOES need it beyond just errorCode 211:
+// ERR_GPU_NO_DEVICE's own text names a specific GPU vendor/API, which is
+// backend-dependent in a way none of this map's other codes are.
+inline QString getErrorMessage(int errorCode, bool useMetal = false) {
 	// Scene count grows over time, so this one is built from the live scene
 	// table instead of living in the static map below.
 	if (errorCode == 11)
 		return QString("Scene ID must be a valid scene identifier (e.g. \"A1\"). Check the scene selector.");
+	if (errorCode == ERR_GPU_NO_DEVICE) {
+		return useMetal ? QString("No usable Metal GPU was found on this Mac.")
+			: QString("No CUDA-capable GPU was detected.");
+	}
 
 	static const QMap<int, QString> messages = {
 		{SUCCESS, "Render completed successfully."},
@@ -178,7 +186,9 @@ inline QString getErrorMessage(int errorCode) {
 		{ERR_CPU_RENDER_FAILED, "An error occurred while rendering the image."},
 		{ERR_CPU_MEMORY_ALLOCATION, "The system ran out of memory during rendering."},
 		{ERR_CPU_TEXTURE_LOAD_FAILED, "Failed to load texture file (e.g., earthmap.jpg for Earth scene)."},
-		{ERR_GPU_NO_DEVICE, "No CUDA-capable GPU was detected."},
+		// ERR_GPU_NO_DEVICE is NOT here - handled above, before this map,
+		// since its text is backend-dependent (see this function's own
+		// header comment).
 		{ERR_GPU_MEMORY_ALLOCATION, "The GPU ran out of memory."},
 		{ERR_GPU_KERNEL_LAUNCH_FAILED, "Failed to launch GPU rendering kernel."},
 		{ERR_GPU_OUT_OF_MEMORY, "GPU memory allocation failed."},
@@ -205,8 +215,10 @@ inline QString getErrorMessage(int errorCode) {
 }
 
 // Get troubleshooting hint. useMetal: which GPU backend the failed render
-// actually used - see gpuSupportedSceneList()'s own comment; only affects
-// errorCode 211's scene list, every other code's text is backend-agnostic.
+// actually used - affects errorCode 211's scene list (see
+// gpuSupportedSceneList()'s own comment) and ERR_GPU_NO_DEVICE's wording
+// below, both genuinely backend-dependent; every other code's text is
+// backend-agnostic.
 inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 	// Both of these depend on the live scene table (total count / which
 	// scenes are GPU-supported), so they're built here instead of hardcoded
@@ -220,6 +232,15 @@ inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 			"• Switch to CPU mode for all other scenes\n"
 			"• CPU mode supports all %2 scenes")
 			.arg(gpuSupportedSceneList(useMetal)).arg(sceneCount());
+	}
+	if (errorCode == ERR_GPU_NO_DEVICE) {
+		return useMetal
+			? QString("• No usable Metal GPU found on this Mac\n"
+				"• Switch to CPU mode in the renderer settings\n"
+				"• CPU mode works on all systems")
+			: QString("• No CUDA-capable GPU found\n"
+				"• Switch to CPU mode in the renderer settings\n"
+				"• CPU mode works on all systems");
 	}
 
 	if (errorCode == ERR_FILE_WRITE_FAILED) {
@@ -262,9 +283,9 @@ inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 		{ERR_CPU_TEXTURE_LOAD_FAILED, "• For the Earth scene, make sure earthmap.jpg is in the correct folder\n"
 			  "• Check that texture files are not corrupted"},
 
-		{ERR_GPU_NO_DEVICE, "• No CUDA-capable GPU found\n"
-			  "• Switch to CPU mode in the renderer settings\n"
-			  "• CPU mode works on all systems"},
+		// ERR_GPU_NO_DEVICE is NOT here - handled above, before this map,
+		// since its text is backend-dependent (see this function's own
+		// header comment).
 
 		{ERR_GPU_MEMORY_ALLOCATION, "• Try reducing image resolution\n"
 			  "• Try reducing samples per pixel\n"
