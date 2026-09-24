@@ -7,6 +7,10 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 
+// See this method's own declaration comment. Also sets up the SAME
+// camera every C2-C6 scene shares (kCornellBoxCamera) - a caller only
+// needs to add its own punctual light after calling this.
+
 std::function<float3(float3)> MetalPocApp::buildCornellNoLightWalls() {
     using namespace cornell_box_data;
     const float3 bboxMin{0.0f, 0.0f, 0.0f};
@@ -248,22 +252,8 @@ void MetalPocApp::buildProjectionLightCornell() {
     projectionLights.push_back(light);
 }
 
-// F2: Triangle Mesh - matches CPU's own build_triangle_mesh_scene()
-// exactly: a procedurally-generated regular icosahedron (12 vertices at
-// golden-ratio coordinates, 20 triangular faces, no per-vertex normals -
-// CPU's own triangle::hit() falls back to flat per-face geometric
-// normals for exactly this reason, matching this loader's own addQuad()
-// convention of one flat normal per face already). Ground is a flat
-// quad (materialType 16, real 3D checker), not CPU's own radius-1000
-// sphere - the SAME clearance fix sections 124/130 already established.
-// The metal material approximates CPU's own simple `metal(albedo,
-// fuzz=0.15)` the same honest way section 134's own accent sphere did
-// (no algebraic reconciliation exists between "fuzz" and GGX alpha).
-// The overhead light sphere is direct-hit-only (materialType 0,
-// `emission` set, no NEE registration) - this loader has no sphere-
-// light NEE strategy at all (A7's own established limitation, section
-// 125), even though CPU's own registry row DOES register it for NEE.
 
+// C1/I3: HDRI Sky - see the comments inside this function for the scene's details.
 void MetalPocApp::buildHdriSky() {
     // Spheres sit at raw x=-3/0/3 (radius 1) - comfortably clear of the
     // hardcoded POC room's own [-1,1] cube even at the series' usual +8

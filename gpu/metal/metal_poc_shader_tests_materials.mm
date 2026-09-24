@@ -211,6 +211,37 @@ void testGgxConductorFAndPdf(id<MTLDevice> device, id<MTLLibrary> library, id<MT
             expectTrue(label, pdfOut[i] >= 0.0f);
         }
     }
+
+    // Below-hemisphere regression: a direction at/below the shading plane
+    // must give exactly 0, NOT the spuriously positive value the old
+    // max(4*NdotO*NdotI, 1e-6) clamp alone returned for a negative product
+    // (case 0: queried wi below the surface; case 1: given wo below it).
+    {
+        std::vector<simd::float3> wos2 = {simd::float3{0.30f, 0.0f, 0.9539f}, simd::float3{0.30f, 0.0f, -0.20f}};
+        std::vector<simd::float3> wis2 = {simd::float3{0.30f, 0.0f, -0.20f}, simd::float3{0.30f, 0.0f, 0.9539f}};
+        std::vector<simd::float2> alphas2 = {simd::float2{0.3f, 0.3f}, simd::float2{0.3f, 0.3f}};
+        std::vector<simd::float3> etas2 = {simd::float3{0.2f, 0.2f, 0.2f}, simd::float3{0.2f, 0.2f, 0.2f}};
+        std::vector<simd::float3> ks2 = {simd::float3{3.0f, 3.0f, 3.0f}, simd::float3{3.0f, 3.0f, 3.0f}};
+        const int n2 = 2;
+        id<MTLBuffer> woBuf2 = makeBuffer(device, wos2.data(), n2 * sizeof(simd::float3));
+        id<MTLBuffer> wiBuf2 = makeBuffer(device, wis2.data(), n2 * sizeof(simd::float3));
+        id<MTLBuffer> alphaBuf2 = makeBuffer(device, alphas2.data(), n2 * sizeof(simd::float2));
+        id<MTLBuffer> etaBuf2 = makeBuffer(device, etas2.data(), n2 * sizeof(simd::float3));
+        id<MTLBuffer> kBuf2 = makeBuffer(device, ks2.data(), n2 * sizeof(simd::float3));
+        id<MTLBuffer> fOutBuf2 = makeOutputBuffer(device, n2 * sizeof(simd::float3));
+        id<MTLBuffer> pdfOutBuf2 = makeOutputBuffer(device, n2 * sizeof(float));
+        if (runKernel(device, library, queue, @"test_ggxConductorF",
+                      @[woBuf2, wiBuf2, alphaBuf2, etaBuf2, kBuf2, fOutBuf2], nil, n2)) {
+            simd::float3* fOut2 = (simd::float3*)fOutBuf2.contents;
+            expectNear("ggxConductorF is 0 when wi is below the hemisphere", fOut2[0].x, 0.0, 1e-9);
+            expectNear("ggxConductorF is 0 when wo is below the hemisphere", fOut2[1].x, 0.0, 1e-9);
+        }
+        if (runKernel(device, library, queue, @"test_ggxConductorPdf",
+                      @[woBuf2, wiBuf2, alphaBuf2, pdfOutBuf2], nil, n2)) {
+            float* pdfOut2 = (float*)pdfOutBuf2.contents;
+            expectNear("ggxConductorPdf is 0 when wo is below the hemisphere", pdfOut2[1], 0.0, 1e-9);
+        }
+    }
 }
 
 // Principled BSDF (materialType 24, B10) numeric cross-check - three
@@ -850,7 +881,21 @@ void testAtan2Zero(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQu
     if (!runKernel(device, library, queue, @"test_atan2Zero", @[inBuf, outBuf], nil, n)) return;
     float* out = (float*)outBuf.contents;
     for (int i = 0; i < n; ++i) {
+        double expected = std::atan2((double)inputs[i].y, (double)inputs[i].x);
         fprintf(stderr, "[atan2 diagnostic] atan2(%.9f,%.9f) = %.6f  (expected ~%.6f)\n",
-                inputs[i].y, inputs[i].x, out[i], std::atan2((double)inputs[i].y, (double)inputs[i].x));
+                inputs[i].y, inputs[i].x, out[i], expected);
+        // Real assertion for every case EXCEPT exact (0,0) - this used to be
+        // diagnostic-only and so could never fail. (0,0) is deliberately
+        // excluded: MSL's atan2(0,0) returns NaN under fastMathEnabled (a
+        // documented, worked-around behavior - see docs/
+        // METAL_GPU_FEASIBILITY.md's "atan2(0,0) returns NaN in MSL" bug),
+        // unlike std::atan2(0,0) == 0, and asserting it would just fail on
+        // known-correct behavior. Every other input, down to 1e-8, must be
+        // finite and match std::atan2 - that's the regression this guards.
+        if (inputs[i].x == 0.0f && inputs[i].y == 0.0f) continue;
+        char label[96];
+        snprintf(label, sizeof(label), "atan2 finite and matches std::atan2 (case %d)", i);
+        expectTrue(label, std::isfinite(out[i]));
+        expectNear(label, out[i], expected, 1e-3);
     }
 }

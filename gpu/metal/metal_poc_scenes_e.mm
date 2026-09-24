@@ -8,6 +8,17 @@
 #include "metal_poc_app.h"
 #include "../../src/shared/rgb_nebula_generator.h"
 
+// E1: Homogeneous Medium - matches CPU's own build_homogeneous_medium_scene()
+// in GEOMETRY exactly: the standard 6 Cornell walls (kQuads[0..5],
+// including the SAME light quad - CPU's own scene reuses these exact
+// literal numbers), no box, no sphere, filled with a real homogeneous
+// scattering fog. The fog DENSITY itself needed real empirical
+// recalibration, not just CPU's own literal sigma_t - see
+// pbrtFogSigmaT's own assignment below for the full explanation (a
+// genuine architectural mismatch between this loader's own "fog fills
+// whatever the ray already hits" convention and CPU's own explicit,
+// localized medium-boundary volume, not a simple scale-formula bug).
+
 void MetalPocApp::buildHomogeneousMediumScene() {
     using namespace cornell_box_data;
     const float3 bboxMin{0.0f, 0.0f, 0.0f};

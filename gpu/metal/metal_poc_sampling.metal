@@ -630,7 +630,13 @@ inline float frDielectric(float cosThetaI, float eta) {
 // A concave dielectric could re-enter/exit multiple times without this
 // simple per-hit check catching every segment correctly - not handled,
 // same "document the assumption, don't silently rely on it" approach
-// this POC's other simplifications use.
+// this POC's other simplifications use. KNOWN LIMITATION, now reachable:
+// materialType 2/5 is also assignable to arbitrary triangle meshes loaded
+// from .pbrt scenes (not only the analytic sphere), so a concave glass
+// mesh (bowl, torus) will get the wrong path length here versus the
+// CPU/OptiX backends' real segment-tracked absorption. Fixing it needs
+// per-path "currently inside a medium, entered at distance X" state
+// carried through the dielectric shaders - not done.
 //
 // `mat.color` is reinterpreted here as a per-unit-distance absorption
 // COEFFICIENT, not the flat reflectance/tint every other material reads
@@ -704,6 +710,13 @@ inline float ggxG(float3 woLocal, float3 wiLocal, float alphaX, float alphaY) {
 // so it's independently testable, the same rationale as
 // lambertianPdf()/diffuseTransmissionPdf() above.
 inline float3 ggxConductorF(float Dh, float G, float3 F, float NdotO, float NdotI) {
+    // Zero (not a clamped tiny denominator) when either direction is at or
+    // below the shading hemisphere - max(..., 1e-6) alone turned a NEGATIVE
+    // 4*NdotO*NdotI into a small POSITIVE one, returning a spuriously
+    // large positive BRDF for a VNDF sample that landed just below the
+    // surface (silhouettes, bump-mapped/shading-normal-divergent hits).
+    // Same convention lambertianPdf() uses above for cosWi <= 0.
+    if (NdotO <= 0.0 || NdotI <= 0.0) return float3(0.0);
     return Dh * G * F / max(4.0 * NdotO * NdotI, 1e-6);
 }
 
@@ -713,6 +726,8 @@ inline float3 ggxConductorF(float Dh, float G, float3 F, float NdotO, float Ndot
 // Factored out of shadeConductor() (4 call sites), same rationale as
 // ggxConductorF() above.
 inline float ggxConductorPdf(float Dh, float G1, float NdotO) {
+    // See ggxConductorF()'s own comment - same below-hemisphere guard.
+    if (NdotO <= 0.0) return 0.0;
     return (Dh * G1) / max(4.0 * NdotO, 1e-6);
 }
 
@@ -808,24 +823,19 @@ inline void buildOnb(float3 n, thread float3& tangent, thread float3& bitangent)
     bitangent = float3(b, sign + n.y * n.y * a, -n.y);
 }
 
-// Unlike buildOnb() above (an ARBITRARY orthonormal frame - fine for an
-// isotropic BRDF/phase function, which is rotationally symmetric around
-// the normal so any tangent choice gives an identical result), an
-// ANISOTROPIC material's highlight orientation depends on which
-// direction the tangent actually points - an arbitrary, discontinuously-
-// varying tangent (buildOnb()'s own choice depends on the normal's sign
-// bit) would make the anisotropy direction jump around incoherently
-// across a curved surface instead of reading as a single consistent
-// "brushed" direction. This projects a FIXED world-space reference axis
-// onto the tangent plane instead (Gram-Schmidt: bitangent = normalize
-// (cross(normal, ref)), tangent = cross(bitangent, normal)) - the same
-// construction Blender Cycles' own make_orthonormals_tangent() uses,
-// given a real per-vertex tangent there; this POC's analytic sphere has
-// no per-vertex tangent data to begin with, so a fixed world axis
-// (world-up, falling back to world-X exactly at the poles where up is
-// parallel to the normal and the projection would be degenerate) is the
-// simplest thing that gives a consistent "lines of longitude" brushed-
-// metal pattern instead of an arbitrary one.
+// Tangent frame for ANISOTROPIC materials (materialType 4's brushed-metal
+// sphere, alphaX != alphaY), where - unlike an isotropic BRDF/phase
+// function - the highlight orientation depends on which way the tangent
+// points. NOTE this is numerically the same construction as buildOnb()
+// above (Duff et al.), on purpose: an earlier version projected a fixed
+// world-space reference axis onto the tangent plane (Gram-Schmidt, "lines
+// of longitude"), but that had a hard discontinuity where the normal
+// crosses the reference axis's fallback threshold (see below). Any
+// tangent field on a sphere has a singularity somewhere (hairy-ball
+// theorem); the Duff construction's is a single, well-behaved one rather
+// than a visible seam, and there is no per-vertex tangent data on this
+// POC's analytic sphere to do better. Kept as a separate function so a
+// future real per-vertex-tangent path has one place to slot in.
 // Branchless orthonormal basis from a unit normal - Duff, Burgess,
 // Christensen, Hery, Kensler, Liani, Villemin, "Building an Orthonormal
 // Basis, Revisited" (JCGT 2017), ported from this POC's own reference
@@ -843,7 +853,9 @@ inline void buildOnb(float3 n, thread float3& tangent, thread float3& bitangent)
 // genuinely ANISOTROPIC one (materialType 4's own brushed-metal
 // sphere, alphaX != alphaY), which is the only caller of this function.
 // This formulation (using copysign rather than a manual branch) has no
-// singularity anywhere on the unit sphere, unlike the one it replaces.
+// hard discontinuity at the sign flip / reference-axis threshold, unlike
+// the one it replaces (its one remaining singularity is the unavoidable
+// hairy-ball one noted at the top of this comment).
 inline void buildAnisotropicOnb(float3 normal, thread float3& tangent, thread float3& bitangent) {
     float sign = copysign(1.0, normal.z);
     float a = -1.0 / (sign + normal.z);
@@ -864,6 +876,11 @@ inline void buildAnisotropicOnb(float3 normal, thread float3& tangent, thread fl
 // this formula, so it's called out explicitly rather than left to be
 // inferred from the algebra alone.
 inline float henyeyGreensteinPhase(float cosTheta, float g) {
+    // Same (-0.99, 0.99) clamp the CPU reference applies (src/shared/
+    // volume_scattering.h) - denom -> 0 as g -> +/-1 at cosTheta -> -/+1,
+    // and the sqrt() floor below only guards the sqrt, not the outer
+    // bare `denom` factor, so an unclamped |g| ~ 1 spikes toward Inf/NaN.
+    g = clamp(g, -0.99, 0.99);
     float denom = 1.0 + g * g + 2.0 * g * cosTheta;
     return (1.0 - g * g) / (4.0 * M_PI_F * denom * sqrt(max(denom, 1e-6)));
 }
@@ -881,6 +898,7 @@ inline float henyeyGreensteinPhase(float cosTheta, float g) {
 // degenerating correctly at its own
 // boundary case.
 inline float3 sampleHenyeyGreenstein(float3 wo, float g, thread uint& rngState) {
+    g = clamp(g, -0.99, 0.99);  // see henyeyGreensteinPhase()'s own comment
     float u1 = randFloat(rngState);
     float u2 = randFloat(rngState);
     float cosTheta;

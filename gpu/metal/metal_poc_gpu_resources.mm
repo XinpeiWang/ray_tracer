@@ -151,12 +151,37 @@ bool MetalPocApp::buildGPUResources() {
               length:rgbGridData.size() * sizeof(float) options:MTLResourceStorageModeShared];
 
     const uint32_t suzanneTriangleCount = (uint32_t)suzanneMaterials.size();
-    suzanneVertexBuffer = [device newBufferWithBytes:suzanneVerts.data()
-        length:suzanneVerts.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
-    suzanneNormalBuffer = [device newBufferWithBytes:suzanneNormals.data()
-        length:suzanneNormals.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
-    suzanneMaterialBuffer = [device newBufferWithBytes:suzanneMaterials.data()
-        length:suzanneMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+    // metal_poc.mm tolerates loadObjMesh(suzannePath, ...) failing (a
+    // missing/misplaced models/suzanne.obj) and carries on with all three of
+    // these vectors empty - same "empty std::vector::data() can be null,
+    // newBufferWithBytes:length:0 then returns nil" guard every sibling
+    // buffer above already has. suzanneTriangleCount stays 0 in that case,
+    // so the placeholder contents are never read as real geometry.
+    suzanneVertexBuffer = suzanneVerts.empty()
+        ? [device newBufferWithLength:sizeof(PackedFloat3) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:suzanneVerts.data()
+              length:suzanneVerts.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
+    suzanneNormalBuffer = suzanneNormals.empty()
+        ? [device newBufferWithLength:sizeof(PackedFloat3) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:suzanneNormals.data()
+              length:suzanneNormals.size() * sizeof(PackedFloat3) options:MTLResourceStorageModeShared];
+    suzanneMaterialBuffer = suzanneMaterials.empty()
+        ? [device newBufferWithLength:sizeof(TriangleMaterial) options:MTLResourceStorageModeShared]
+        : [device newBufferWithBytes:suzanneMaterials.data()
+              length:suzanneMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+
+    // These two feed geomDesc.vertexBuffer below, i.e. get consumed by the
+    // acceleration-structure BUILD - one stage BEFORE checkGpuResource()'s
+    // sweep in compileShaderAndDispatch() ever runs - so a nil here (OOM, or
+    // over device.maxBufferLength) must be caught now, not there.
+    if (!vertexBuffer || !suzanneVertexBuffer) {
+        fprintf(stderr, "GPU resource allocation FAILED: '%s' is nil (likely out of memory, or "
+                        "this scene is too large for this GPU's max buffer length of %llu bytes) "
+                        "- aborting before the acceleration-structure build consumes it.\n",
+                !vertexBuffer ? "vertexBuffer" : "suzanneVertexBuffer",
+                (unsigned long long)device.maxBufferLength);
+        return false;
+    }
 
     // --- Primitive acceleration structure (the mesh's own BVH) ------
     MTLAccelerationStructureTriangleGeometryDescriptor* geomDesc =

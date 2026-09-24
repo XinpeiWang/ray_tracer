@@ -415,6 +415,14 @@ void MetalPocApp::buildBouncingSpheres() {
     pbrtFocusDistance = focusDistRaw;
 }
 
+// A3: Checkered Spheres - matches CPU's build_checkered_spheres() (src/
+// TheRestOfYourLife/scenes_book.h) exactly: same 5 spheres (2 giant
+// checker "planets" + 3 small accent spheres), same positions/radii/
+// materials/colours, just offset by sceneOffset. Direct spheres.push_back()
+// calls, no shared helper - simple enough not to need one, and (unlike
+// G12) nothing here goes through loadObjMesh()'s own auto-fit convention,
+// so CPU's/OptiX's own real camera params port over directly too.
+
 void MetalPocApp::buildCheckeredSpheres() {
     // Same +8 offset convention every other hand-authored scene uses
     // (A1/G1-G24/G12) - even though this scene's own two checker

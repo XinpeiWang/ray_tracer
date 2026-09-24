@@ -1075,7 +1075,11 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 	// check below (see that block's own comment for why gpuCompatible and
 	// metalCompatible aren't interchangeable).
 #ifdef Q_OS_MAC
-	const bool gpuSupported = m_metalGpuAvailable ? meta->metalCompatible : meta->gpuCompatible;
+	// No OptiX fallback on macOS: when Metal isn't usable at runtime (or
+	// wasn't compiled in) there is NO GPU path at all, so falling back to
+	// gpuCompatible (the OptiX/Windows flag) would show "GPU Support: Yes"
+	// on a machine that can only render on the CPU.
+	const bool gpuSupported = m_metalGpuAvailable && meta->metalCompatible;
 #else
 	const bool gpuSupported = meta->gpuCompatible;
 #endif

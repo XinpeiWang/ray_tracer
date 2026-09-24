@@ -7,6 +7,20 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 
+// D5: Depth of Field Cornell Box - matches CPU's own registry row for
+// D5 exactly: the identical A1 Cornell box geometry (build_cornell_box
+// on CPU), with real thin-lens defocus blur added on top via a real
+// defocus_angle=2.0/focus_dist=800.0 (both in the scene's own pbrt-
+// file-scale units, matching CameraConfig's own field meaning -
+// scene_registry.h). `defocus_radius = focus_dist *
+// tan(defocus_angle/2)` is camera.h's own real formula (ported
+// directly, not re-derived) - both the resulting lens radius AND the
+// focus distance itself need the SAME `sceneScale` this scene's own
+// geometry/camera position already go through (they are WORLD-SPACE
+// distances in the pre-rescale coordinate system, just like a
+// lookfrom/lookat position), or the defocus cone would be sized for
+// the wrong (much larger) scale entirely.
+
 void MetalPocApp::buildDepthOfFieldCornellBox() {
     buildCornellBoxA1();
     const float sceneScale = 2.0f / 555.0f;

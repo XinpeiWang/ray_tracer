@@ -87,6 +87,11 @@
 #include "../../src/external/tinyexr.h"
 #undef TINYEXR_IMPLEMENTATION
 #include "../../src/shared/pbrt_load.h"
+// is_exr_output_path()/write_exr_image() - the same shared helpers the CPU
+// and OptiX backends use to honor a ".exr" output path (postProcessAndWrite()
+// below). Its own tinyexr.h include is a no-op here: that header's include
+// guard is already set by the TINYEXR_IMPLEMENTATION include above.
+#include "../../src/shared/exr_writer.h"
 #include "../../src/shared/cornell_box_data.h"
 // kConductorAu/kConductorCu - real (eta,k) presets for B7's own lacquered-
 // gold sphere/lacquered-copper box (buildCornellCoatedConductor()) -
@@ -922,6 +927,27 @@ void MetalPocApp::applyCameraOverride(double cam_x, double cam_y, double cam_z) 
 // (chromatic aberration, then lens vignette, then the selected tonemap
 // operator, then the real sRGB OETF, then bilateral denoise)
 void MetalPocApp::postProcessAndWrite() {
+    // ".exr" output: linear HDR radiance straight from the GPU buffer, no
+    // tonemap/vignette/chromatic-aberration/denoise/quantization - the same
+    // contract the CPU and OptiX backends' EXR path has (see
+    // src/shared/exr_writer.h). Without this branch a ".exr" path silently
+    // received 8-bit PNG bytes from stbi_write_png() below.
+    if (is_exr_output_path(outPath)) {
+        std::vector<float> rgb(size_t(width) * height * 3);
+        for (size_t i = 0; i < size_t(width) * height; ++i) {
+            rgb[i * 3 + 0] = pixels[i * 4 + 0];
+            rgb[i * 3 + 1] = pixels[i * 4 + 1];
+            rgb[i * 3 + 2] = pixels[i * 4 + 2];
+        }
+        std::string exrError;
+        if (write_exr_image(outPath, rgb.data(), int(width), int(height), exrError)) {
+            fprintf(stderr, "Wrote %s (%ux%u, linear HDR EXR)\n", outPath, width, height);
+        } else {
+            fprintf(stderr, "ERROR: failed to write EXR %s: %s\n", outPath, exrError.c_str());
+        }
+        return;
+    }
+
     const float vignetteStrength = 0.18f;
     const float chromaticAberrationStrength = 0.004f;
     std::vector<uint8_t> ldr(width * height * 3);

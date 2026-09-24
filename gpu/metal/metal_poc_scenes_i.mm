@@ -7,6 +7,15 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 
+// I8: Light Sampler Comparison - matches CPU's own
+// build_light_sampler_comparison() exactly: the same A1 Cornell shell
+// (walls/box/glass sphere), but 5 quad lights of deliberately lopsided
+// power (~1:2:6:15:80) instead of the usual single ceiling light - all
+// 5 real NEE-sampled AreaLights (this loader's own light picking is
+// already power-proportional, section 52 - a real, if incidental,
+// architectural match to CPU's own "power"/"bvh" light-sampler choices
+// this scene exists to contrast against "uniform").
+
 void MetalPocApp::buildLightSamplerComparison() {
     using namespace cornell_box_data;
     const float3 bboxMin{0.0f, 0.0f, 0.0f};
@@ -121,7 +130,4 @@ void MetalPocApp::buildLightSamplerComparison() {
     pbrtSceneOffset = sceneOffset;
 }
 
-// See this method's own declaration comment. Also sets up the SAME
-// camera every C2-C6 scene shares (kCornellBoxCamera) - a caller only
-// needs to add its own punctual light after calling this.
 

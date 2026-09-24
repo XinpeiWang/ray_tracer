@@ -1240,14 +1240,14 @@ int main(int argc, char** argv) {
 #ifdef RT_HAVE_METAL
         // GPU Renderer (Metal, macOS) - see docs/METAL_GPU_FEASIBILITY.md's
         // own "phase 3b" section for the full story. metal_render_main()
-        // itself (gpu/metal/metal_poc.mm) only supports pbrt-file-backed
-        // scenes (this backend's own loadPbrtScene() doesn't reproduce this
-        // project's hand-authored built-in scenes the way gpu/optix/
-        // scene_builder.cpp's own switch-case does) - a scene_id with no
-        // pbrt backing prints a clear message and returns non-zero, same
-        // "explain why, don't crash or silently render something else"
-        // precedent optix_render_main()'s own error path above already
-        // established for a GPU-unsupported scene.
+        // itself (gpu/metal/metal_poc.mm) renders a scene_id that is EITHER
+        // pbrt-file-backed (loadPbrtScene()) OR in
+        // cpu_scene_metal_hand_authored_supported()'s list (a real
+        // hand-authored builder, MetalPocApp::buildHandAuthoredScene()) -
+        // a scene_id with neither prints a clear message and returns
+        // non-zero, same "explain why, don't crash or silently render
+        // something else" precedent optix_render_main()'s own error path
+        // above already established for a GPU-unsupported scene.
         std::cout << "Calling metal_render_main(...) in-process (Metal)..." << std::endl;
         render_result = metal_render_main(
             image_width,
@@ -1420,11 +1420,12 @@ int main(int argc, char** argv) {
         std::filesystem::path ppm_path_obj(out_path);
 
 #ifdef RT_HAVE_METAL
-        if (use_gpu) {
-            // metal_render_main() (gpu/metal/metal_interface.h) always
-            // writes a real PNG directly at out_path via stbi_write_png -
-            // unlike cpu_render_main()/optix_render_main(), it doesn't
-            // sniff out_path's own extension and never writes PPM. The
+        if (use_gpu && !is_exr_output_path(out_path)) {
+            // metal_render_main() (gpu/metal/metal_interface.h) writes a
+            // real PNG directly at out_path via stbi_write_png for any
+            // non-".exr" path (its ".exr" path writes a linear-HDR EXR
+            // instead, handled by the is_exr_output_path() branch below,
+            // same as CPU/OptiX) and never writes PPM. The
             // convert_ppm_to_png() call below would misparse those PNG
             // bytes as a PPM header and fail, so skip it here, the same
             // way the is_exr_output_path() branch below skips it for

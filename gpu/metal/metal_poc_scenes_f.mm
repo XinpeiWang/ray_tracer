@@ -7,6 +7,22 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 
+// F2: Triangle Mesh - matches CPU's own build_triangle_mesh_scene()
+// exactly: a procedurally-generated regular icosahedron (12 vertices at
+// golden-ratio coordinates, 20 triangular faces, no per-vertex normals -
+// CPU's own triangle::hit() falls back to flat per-face geometric
+// normals for exactly this reason, matching this loader's own addQuad()
+// convention of one flat normal per face already). Ground is a flat
+// quad (materialType 16, real 3D checker), not CPU's own radius-1000
+// sphere - the SAME clearance fix sections 124/130 already established.
+// The metal material approximates CPU's own simple `metal(albedo,
+// fuzz=0.15)` the same honest way section 134's own accent sphere did
+// (no algebraic reconciliation exists between "fuzz" and GGX alpha).
+// The overhead light sphere is direct-hit-only (materialType 0,
+// `emission` set, no NEE registration) - this loader has no sphere-
+// light NEE strategy at all (A7's own established limitation, section
+// 125), even though CPU's own registry row DOES register it for NEE.
+
 void MetalPocApp::buildTriangleMeshScene() {
     const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
@@ -101,20 +117,8 @@ void MetalPocApp::buildTriangleMeshScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
-// D5: Depth of Field Cornell Box - matches CPU's own registry row for
-// D5 exactly: the identical A1 Cornell box geometry (build_cornell_box
-// on CPU), with real thin-lens defocus blur added on top via a real
-// defocus_angle=2.0/focus_dist=800.0 (both in the scene's own pbrt-
-// file-scale units, matching CameraConfig's own field meaning -
-// scene_registry.h). `defocus_radius = focus_dist *
-// tan(defocus_angle/2)` is camera.h's own real formula (ported
-// directly, not re-derived) - both the resulting lens radius AND the
-// focus distance itself need the SAME `sceneScale` this scene's own
-// geometry/camera position already go through (they are WORLD-SPACE
-// distances in the pre-rescale coordinate system, just like a
-// lookfrom/lookat position), or the defocus cone would be sized for
-// the wrong (much larger) scale entirely.
 
+// F1: Bilinear Patch - see the comments inside this function for the scene's details.
 void MetalPocApp::buildBilinearPatchScene() {
     using namespace cornell_box_data;
     const float3 bboxMin{0.0f, 0.0f, 0.0f};
@@ -294,14 +298,4 @@ void MetalPocApp::buildCurveFibersScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
-// E1: Homogeneous Medium - matches CPU's own build_homogeneous_medium_scene()
-// in GEOMETRY exactly: the standard 6 Cornell walls (kQuads[0..5],
-// including the SAME light quad - CPU's own scene reuses these exact
-// literal numbers), no box, no sphere, filled with a real homogeneous
-// scattering fog. The fog DENSITY itself needed real empirical
-// recalibration, not just CPU's own literal sigma_t - see
-// pbrtFogSigmaT's own assignment below for the full explanation (a
-// genuine architectural mismatch between this loader's own "fog fills
-// whatever the ray already hits" convention and CPU's own explicit,
-// localized medium-boundary volume, not a simple scale-formula bug).
 
