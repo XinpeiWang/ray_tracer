@@ -521,15 +521,8 @@ void MetalPocApp::buildCornellWaxSlab() {
         /*sphereTransmitColor=*/transmitT);
 }
 
-// I8: Light Sampler Comparison - matches CPU's own
-// build_light_sampler_comparison() exactly: the same A1 Cornell shell
-// (walls/box/glass sphere), but 5 quad lights of deliberately lopsided
-// power (~1:2:6:15:80) instead of the usual single ceiling light - all
-// 5 real NEE-sampled AreaLights (this loader's own light picking is
-// already power-proportional, section 52 - a real, if incidental,
-// architectural match to CPU's own "power"/"bvh" light-sampler choices
-// this scene exists to contrast against "uniform").
 
+// B9: Cornell Crystal - see the comments inside this function for the scene's details.
 void MetalPocApp::buildCornellCrystal() {
     const float3 white{0.73f, 0.73f, 0.73f};
     buildCornellFamilyScene(

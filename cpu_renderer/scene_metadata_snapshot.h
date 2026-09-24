@@ -44,9 +44,12 @@ struct SceneMetadataSnapshot {
 	// A SEPARATE compatibility criterion from gpu_compatible above, not a
 	// Metal-specific override of it - gpu_compatible means "OptiX's own
 	// scene_builder.cpp reproduces this scene" (Windows), metal_compatible
-	// means "this scene has a real .pbrt file backing it" (SceneDescriptor::
-	// is_pbrt_backed, gpu/metal/'s own criterion, macOS) - genuinely
-	// different scene sets that can disagree in either direction for the
+	// means "gpu/metal/ can render this scene" (macOS) - EITHER a real
+	// .pbrt file backing it (SceneDescriptor::is_pbrt_backed) OR a real
+	// hand-authored Metal builder for it
+	// (cpu_scene_metal_hand_authored_supported(), cpu_interface.cpp, the
+	// one canonical list metal_render_main()'s own gate also uses) -
+	// genuinely different scene sets that can disagree in either direction for the
 	// same scene_id. See qt_gui/mainwindow_slots.cpp's own "auto-switch to
 	// CPU" check for which one a given render actually consults.
 	int metal_compatible;             // 1/0, C-bool

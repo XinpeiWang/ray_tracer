@@ -129,6 +129,19 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     id<MTLFunction> sphereIntersectFn = [library newFunctionWithName:@"sphereIntersectionFunction"];
     id<MTLFunction> diskIntersectFn = [library newFunctionWithName:@"diskIntersectionFunction"];
     id<MTLFunction> cylinderIntersectFn = [library newFunctionWithName:@"cylinderIntersectionFunction"];
+    // newFunctionWithName: returns nil (it doesn't throw) for a name that
+    // isn't in the compiled library - and a nil inside the @[...] literal
+    // below would then raise an uncaught NSInvalidArgumentException instead
+    // of this function's normal print-and-return-false failure path.
+    if (!kernelFn || !sphereIntersectFn || !diskIntersectFn || !cylinderIntersectFn) {
+        fprintf(stderr, "Shader function lookup failed (nil): primaryRayKernel=%s "
+                        "sphereIntersectionFunction=%s diskIntersectionFunction=%s "
+                        "cylinderIntersectionFunction=%s - a function was renamed/removed "
+                        "in the .metal sources without updating this lookup.\n",
+                kernelFn ? "ok" : "MISSING", sphereIntersectFn ? "ok" : "MISSING",
+                diskIntersectFn ? "ok" : "MISSING", cylinderIntersectFn ? "ok" : "MISSING");
+        return false;
+    }
 
     // The intersection function has to be LINKED into the compute
     // pipeline (MTLLinkedFunctions) before an MTLIntersectionFunction
@@ -165,6 +178,17 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     MTLIntersectionFunctionTableDescriptor* fnTableDesc = [MTLIntersectionFunctionTableDescriptor new];
     fnTableDesc.functionCount = 3;
     id<MTLIntersectionFunctionTable> functionTable = [pipeline newIntersectionFunctionTableWithDescriptor:fnTableDesc];
+    // Not part of the checkGpuResource() sweep further down (that runs
+    // after this table has already been configured and bound) - and a nil
+    // table would make every setFunction:/setBuffer: below, and the later
+    // setIntersectionFunctionTable:, silently do nothing, leaving every
+    // sphere/disk/cylinder with undefined intersection behavior.
+    if (!functionTable) {
+        fprintf(stderr, "GPU resource allocation FAILED: 'functionTable' (intersection function "
+                        "table) is nil - aborting before the render would silently produce a "
+                        "wrong image instead of a visible error.\n");
+        return false;
+    }
     id<MTLFunctionHandle> sphereHandle = [pipeline functionHandleWithFunction:sphereIntersectFn];
     id<MTLFunctionHandle> diskHandle = [pipeline functionHandleWithFunction:diskIntersectFn];
     id<MTLFunctionHandle> cylinderHandle = [pipeline functionHandleWithFunction:cylinderIntersectFn];
@@ -729,6 +753,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     checkGpuResource(pbrtGoniometricTexture, "pbrtGoniometricTexture", device, &anyResourceFailed);
     checkGpuResource(pbrtProjectionTexture, "pbrtProjectionTexture", device, &anyResourceFailed);
     checkGpuResource(pbrtAreaLightTexture, "pbrtAreaLightTexture", device, &anyResourceFailed);
+    checkGpuResource(pbrtDiffuseTexture, "pbrtDiffuseTexture", device, &anyResourceFailed);
     if (anyResourceFailed) return false;
 
     // --- Dispatch, one horizontal row-band at a time ------------------

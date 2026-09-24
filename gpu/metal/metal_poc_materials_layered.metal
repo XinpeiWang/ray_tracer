@@ -844,7 +844,7 @@ inline bool shadeCoatedDiffuse(TriangleMaterial mat, float3 hitPoint, float3 fac
                         float3 glWiLocal = float3(dot(glWi, tangent), dot(glWi, bitangent), dot(glWi, facingNormal));
                         float3 glF = layeredCoatedDiffuseF(glWiLocal, woLocal, mat.ior, alpha, float3(mat.color), rngState);
                         float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
-                        radiance += throughput * glF * glRadiance * glCosSurface * glTransmittance;
+                        radiance += throughput * glF * glRadiance * glCosSurface * glTransmittance / glDistSq;
                     }
                 }
             }
