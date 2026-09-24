@@ -50,11 +50,62 @@
 #include <QStackedWidget>
 #include <QSlider>
 #include <QStandardPaths>
+#include <QTemporaryFile>
 #include <QFile>
 #include <QToolButton>
 #include <QButtonGroup>
 #include <cmath>
 #include <algorithm>
+
+namespace {
+// True if `dir` can be created and a file can actually be created in it.
+// A real write probe, not QFileInfo::isWritable(): that only reads ACLs/
+// permission bits, so it says "yes" for a Windows folder protected by
+// Defender's Controlled Folder Access, which allows the ACL yet blocks the
+// write - the exact case that made every default GUI render fail with
+// "File Write Failed" on a PC with that setting on.
+bool dirAcceptsWrites(const QString &dir) {
+	if (!QDir().mkpath(dir)) return false;
+	QTemporaryFile probe(dir + QStringLiteral("/.raytracer_write_probe_XXXXXX"));
+	return probe.open();  // removed automatically when `probe` goes out of scope
+}
+
+// Where the Output Path box points by default: the first of a per-platform
+// preference list that genuinely accepts writes, so one default works on
+// every platform this GUI ships on instead of hardcoding one location:
+//  - macOS: ~/Pictures/RayTracer first. <exe_dir>/output is INSIDE the .app
+//    bundle, which is read-only when the app is run straight off a mounted
+//    .dmg (a real user report: the render "succeeded" but the GUI then
+//    couldn't find the file), so it must not be the first choice there.
+//  - Windows: <exe_dir>/output first (the portable-package layout, also the
+//    CLI's own default), then Pictures\RayTracer. Pictures is a protected
+//    folder under Controlled Folder Access and can have a non-ANSI
+//    localized name (see cliSafeOutputPath() in mainwindow.cpp), so it is
+//    the fallback here, not the default.
+//  - Linux/other: Pictures first (an AppImage's own dir is read-only),
+//    then <exe_dir>/output.
+// The system temp dir is the last resort. If NOTHING accepts a write, the
+// platform's first choice is returned unchanged so the failure surfaces
+// exactly as it always did, rather than hiding behind a silent fallback.
+// recent_renders.cpp scans both the Pictures and <exe_dir>/output folders,
+// so renders remain listed in Recent Renders whichever one wins.
+QString defaultRenderOutputDir() {
+	const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)
+		+ QStringLiteral("/RayTracer");
+	const QString besideExe = QCoreApplication::applicationDirPath() + QStringLiteral("/output");
+	QStringList candidates;
+#ifdef Q_OS_WIN
+	candidates << besideExe << pictures;
+#else
+	candidates << pictures << besideExe;
+#endif
+	candidates << QDir::tempPath() + QStringLiteral("/RayTracer");
+	for (const QString &dir : candidates) {
+		if (dirAcceptsWrites(dir)) return dir;
+	}
+	return candidates.first();
+}
+} // namespace
 
 // Refills the scene dropdown with just one category's scenes, further
 // narrowed by m_sceneSearchBox's current text if any (name/id/description
@@ -1583,29 +1634,14 @@ void MainWindow::createSettingsTab() {
 	QHBoxLayout *pathLayout = new QHBoxLayout();
 	// Use timestamped filename to avoid caching issues
 	QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
-	// QStandardPaths::PicturesLocation (~/Pictures/RayTracer on macOS,
-	// Pictures\RayTracer on Windows), NOT applicationDirPath()'s own
-	// <exe_dir>/output/ this used to default to (which in turn had replaced
-	// an even earlier Desktop default - see recent_renders.cpp's own
-	// scanDirs comment for that whole history). That exe-relative default
-	// silently broke for any packaged macOS app run straight off a mounted
-	// .dmg without first being dragged to /Applications: disk images mount
-	// read-only, so writing into <bundle>/Contents/MacOS/output/ fails -
-	// caught via a real user report (a genuine A1 render completed but the
-	// GUI then warned "output file not found," because camera::render()'s
-	// own silent write-location fallback chain (src/TheRestOfYourLife/
-	// camera.h) quietly wrote to TMPDIR instead, and the exit-code-0-means-
-	// success check never noticed the mismatch). Same "always genuinely
-	// user-writable, regardless of where the app binary itself lives"
-	// reasoning this codebase's own theme_load.cpp (AppConfigLocation) and
-	// mainwindow_tabs.cpp's own thumbnail cache (CacheLocation) already
-	// use for exactly this class of path. The CLI's OWN default
-	// (launcher/main.cpp, <exe_dir>/output/image.ppm) is deliberately left
-	// unchanged - a bare `ray_tracer` invocation from a normal build
-	// directory (not a packaged, potentially-read-only .app bundle) has no
+	// defaultRenderOutputDir() (top of this file) picks the first location that
+	// genuinely accepts writes for this platform - see its own comment for the
+	// macOS/.dmg, Windows/Controlled-Folder-Access and localized-folder history
+	// this used to hardcode one answer to. The CLI's OWN default (launcher/
+	// main.cpp, <exe_dir>/output/image.ppm) is deliberately left unchanged - a
+	// bare `ray_tracer` invocation from a normal build directory has no
 	// equivalent problem, and changing it risks breaking existing scripts.
-	QString defaultPath = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)
-		+ "/RayTracer/render_" + timestamp + ".png";
+	QString defaultPath = defaultRenderOutputDir() + "/render_" + timestamp + ".png";
 	m_outputPathEdit = new QLineEdit(QDir::toNativeSeparators(defaultPath), basicTab);
 	m_outputPathEdit->setStyleSheet(
 		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"
