@@ -667,10 +667,11 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Slightly softens a rough, reflective, or glassy surface's\n"
 		"sharpness after the path's first non-mirror-like bounce - this\n"
 		"calms down fireflies (isolated bright speckles) from hard-to-\n"
-		"trace light paths, at the cost of a little extra blur. Both CPU\n"
-		"and GPU default path tracer only. A scene that already asks for\n"
-		"this itself is unaffected - this checkbox only ever adds the\n"
-		"request, never removes it."));
+		"trace light paths, at the cost of a little extra blur. CPU and\n"
+		"OptiX GPU default path tracer only - not implemented under Metal\n"
+		"(macOS GPU rendering). A scene that already asks for this itself\n"
+		"is unaffected - this checkbox only ever adds the request, never\n"
+		"removes it."));
 	styleCheckBox(m_regularizeCheck);
 	samplingLayout->addRow(checkboxWithInfo(m_regularizeCheck,
 		tr("Some light paths are genuinely hard for a path tracer to find "
@@ -693,10 +694,11 @@ void MainWindow::createRenderOptionsTab() {
 	m_maxComponentValueCheck->setToolTip(
 		tr("Caps any single sample whose brightest color channel exceeds\n"
 		"the value below, scaling all its channels down together so the\n"
-		"color/hue stays the same. CPU and both GPU backends - the\n"
+		"color/hue stays the same. CPU and both OptiX GPU backends - the\n"
 		"recursive GPU mode matches the CPU exactly, while the wavefront\n"
 		"GPU mode applies it slightly differently (per light bounce\n"
-		"rather than per whole sample)."));
+		"rather than per whole sample). Not implemented under Metal\n"
+		"(macOS GPU rendering)."));
 	styleCheckBox(m_maxComponentValueCheck);
 	m_maxComponentValueSpin = new QDoubleSpinBox(optionsTab);
 	// Range/step/default chosen for a typical 0-a-few-dozen linear-light
@@ -917,7 +919,8 @@ void MainWindow::createRenderOptionsTab() {
 	m_optixValidateCheck = new QCheckBox(tr("OptiX validation mode (slower, debugging only)"), optionsTab);
 	m_optixValidateCheck->setToolTip(
 		tr("Turns on extra GPU-side correctness checks, which have a real\n"
-		"performance cost each time the GPU runs. GPU only, meant for\n"
+		"performance cost each time the GPU runs. OptiX GPU only (not\n"
+		"available under Metal, macOS GPU rendering), meant for\n"
 		"debugging, not routine use."));
 	styleCheckBox(m_optixValidateCheck);
 	outputLayout->addRow(checkboxWithInfo(m_optixValidateCheck,
@@ -929,8 +932,9 @@ void MainWindow::createRenderOptionsTab() {
 		"own GPU code, not something a normal render benefits from - "
 		"it has a real performance cost and doesn't change what a "
 		"correct render looks like.\n\n"
-		"Grayed out? This is GPU-only - switch Renderer to GPU on "
-		"the Settings tab to use it.")));
+		"This is specific to the OptiX GPU backend (Windows); it has no "
+		"Metal equivalent, so it stays grayed out even with Renderer "
+		"set to GPU on macOS.")));
 
 	layout->addWidget(outputGroup);
 
@@ -970,8 +974,9 @@ void MainWindow::createRenderOptionsTab() {
 		tr("Runs an AI denoiser on the finished render to smooth out\n"
 		"graininess, using extra information about each pixel's base\n"
 		"color and surface direction to do a better job than a plain\n"
-		"blur. GPU only, both GPU modes (recursive and wavefront each\n"
-		"have their own denoiser)."));
+		"blur. OptiX GPU only, both GPU modes (recursive and wavefront\n"
+		"each have their own denoiser) - not available under Metal\n"
+		"(macOS GPU rendering)."));
 	styleCheckBox(m_denoiseCheck);
 	m_denoiseBlendSpin = new QDoubleSpinBox(optionsTab);
 	m_denoiseBlendSpin->setRange(0.0, 1.0);
@@ -1005,9 +1010,10 @@ void MainWindow::createRenderOptionsTab() {
 			"default); raising it keeps back some of the original grain, "
 			"useful when full-strength denoising smooths away texture "
 			"you wanted to keep.\n\n"
-			"Grayed out? This needs the GPU recursive backend - switch "
-			"Renderer to GPU (and GPU Backend to Recursive) on the Settings "
-			"tab to use it.")), denoiseRow);
+			"Grayed out? This needs the OptiX GPU backend (Windows) - "
+			"switch Renderer to GPU on the Settings tab. Both the "
+			"recursive and wavefront GPU modes support it; it has no "
+			"Metal equivalent, so it stays grayed out on macOS.")), denoiseRow);
 	}
 
 #ifdef RT_GUI_HAVE_GPU
@@ -1044,8 +1050,9 @@ void MainWindow::createRenderOptionsTab() {
 	m_cropCheck = new QCheckBox(tr("Render only part of the frame (--crop)"), optionsTab);
 	m_cropCheck->setToolTip(
 		tr("Restricts rendering to a rectangle of the frame, given as\n"
-		"fractions of the full image from 0 to 1. Both CPU and GPU\n"
-		"default path tracer only."));
+		"fractions of the full image from 0 to 1. CPU and OptiX GPU\n"
+		"default path tracer only - not implemented under Metal (macOS\n"
+		"GPU rendering)."));
 	styleCheckBox(m_cropCheck);
 	cropLayout->addRow(checkboxWithInfo(m_cropCheck,
 		tr("Renders only a rectangular slice of the full frame - "
@@ -1223,7 +1230,9 @@ void MainWindow::createRenderOptionsTab() {
 	m_seedCheck = new QCheckBox(tr("Reproducible render (--seed)"), optionsTab);
 	m_seedCheck->setToolTip(
 		tr("Makes this render reproduce byte-for-byte on a rerun with the\n"
-		"same seed. Both CPU and GPU default path tracer only."));
+		"same seed. CPU and OptiX GPU default path tracer only - not\n"
+		"implemented under Metal (macOS GPU rendering); Metal is already\n"
+		"deterministic at frame 0 by default."));
 	styleCheckBox(m_seedCheck);
 	seedLayout->addRow(checkboxWithInfo(m_seedCheck,
 		tr("Renders normally use a different random sequence every time, "
