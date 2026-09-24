@@ -2008,10 +2008,23 @@ void MainWindow::onIntegratorChanged(int) {
 	// 7 of the 8 alternate integrators are CPU-only (the CLI just warns
 	// and forces CPU under --gpu, never rejects - see launcher/main.cpp's
 	// own gpu_flag_explicit warnings); SPPM is the one exception with a
-	// real, scene-dependent GPU path. Mirrors onSceneChanged()'s existing
-	// GPU-compat auto-switch (same "no failure, just a stale/misleading
-	// control" class of problem).
-	const bool cpuOnly = (integrator != IntegratorMode::Default && integrator != IntegratorMode::Sppm);
+	// real, scene-dependent GPU path - but that path is OptiX's own
+	// optix_render_main_sppm() specifically (launcher/main.cpp:1189-1201),
+	// which unlike every other integrator's own GPU fallback does NOT warn
+	// and continue on CPU - it hard-errors ("OptiX is not available!
+	// (--sppm --gpu requires OptiX)") and aborts the render, since GPU
+	// SPPM has no equivalent Metal implementation at all. kGpuOptionAvailable
+	// (true only on the Windows/OptiX build - mainwindow.h) is what SPPM's
+	// own GPU capability actually depends on; without it (macOS/Metal,
+	// or any non-OptiX build) SPPM is exactly as CPU-only as the other 7 -
+	// found via a direct audit of the actual failure path, not assumed
+	// from the "one real exception" framing this comment used to make
+	// unconditionally. Mirrors onSceneChanged()'s existing GPU-compat
+	// auto-switch (same "no failure, just a stale/misleading control"
+	// class of problem this fixes for the other 7 integrators).
+	const bool sppmGpuCapable = kGpuOptionAvailable;
+	const bool cpuOnly = (integrator != IntegratorMode::Default)
+		&& !(integrator == IntegratorMode::Sppm && sppmGpuCapable);
 	m_renderModeCombo->setEnabled(!cpuOnly);
 	if (cpuOnly && m_renderModeCombo->currentData().toBool()) {
 		m_renderModeCombo->setCurrentIndex(m_renderModeCombo->count() - 1); // last item = CPU; fires its own lambda -> updateRenderOptionsEnabled()
