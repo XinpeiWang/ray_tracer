@@ -204,6 +204,10 @@ bool MetalPocApp::buildGPUResources() {
 
     MTLAccelerationStructureSizes primSizes = [device accelerationStructureSizesWithDescriptor:primDesc];
     primAS = [device newAccelerationStructureWithSize:primSizes.accelerationStructureSize];
+    if (!primAS) {
+        fprintf(stderr, "GPU resource allocation FAILED: 'primAS' is nil (newAccelerationStructureWithSize: returned nil - likely out of memory, or this scene is too large for this GPU) - aborting before the build encoder is handed a nil structure.\n");
+        return false;
+    }
     id<MTLBuffer> primScratch = [device newBufferWithLength:primSizes.buildScratchBufferSize
         options:MTLResourceStorageModePrivate];
 
@@ -329,6 +333,10 @@ bool MetalPocApp::buildGPUResources() {
 
     MTLAccelerationStructureSizes sphereSizes = [device accelerationStructureSizesWithDescriptor:sphereAccelDesc];
     sphereAS = [device newAccelerationStructureWithSize:sphereSizes.accelerationStructureSize];
+    if (!sphereAS) {
+        fprintf(stderr, "GPU resource allocation FAILED: 'sphereAS' is nil (newAccelerationStructureWithSize: returned nil - likely out of memory, or this scene is too large for this GPU) - aborting before the build encoder is handed a nil structure.\n");
+        return false;
+    }
     id<MTLBuffer> sphereScratch = [device newBufferWithLength:sphereSizes.buildScratchBufferSize
         options:MTLResourceStorageModePrivate];
 
@@ -363,6 +371,10 @@ bool MetalPocApp::buildGPUResources() {
 
     MTLAccelerationStructureSizes suzanneSizes = [device accelerationStructureSizesWithDescriptor:suzanneAccelDesc];
     suzanneAS = [device newAccelerationStructureWithSize:suzanneSizes.accelerationStructureSize];
+    if (!suzanneAS) {
+        fprintf(stderr, "GPU resource allocation FAILED: 'suzanneAS' is nil (newAccelerationStructureWithSize: returned nil - likely out of memory, or this scene is too large for this GPU) - aborting before the build encoder is handed a nil structure.\n");
+        return false;
+    }
     id<MTLBuffer> suzanneScratch = [device newBufferWithLength:suzanneSizes.buildScratchBufferSize
         options:MTLResourceStorageModePrivate];
 
@@ -454,6 +466,10 @@ bool MetalPocApp::buildGPUResources() {
 
     MTLAccelerationStructureSizes instSizes = [device accelerationStructureSizesWithDescriptor:instAccelDesc];
     instAS = [device newAccelerationStructureWithSize:instSizes.accelerationStructureSize];
+    if (!instAS) {
+        fprintf(stderr, "GPU resource allocation FAILED: 'instAS' is nil (newAccelerationStructureWithSize: returned nil - likely out of memory, or this scene is too large for this GPU) - aborting before the build encoder is handed a nil structure.\n");
+        return false;
+    }
     id<MTLBuffer> instScratch = [device newBufferWithLength:instSizes.buildScratchBufferSize
         options:MTLResourceStorageModePrivate];
 

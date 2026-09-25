@@ -1,8 +1,8 @@
 // Metal renderer C API - mirrors gpu/optix/optix_interface.h's own shape
-// exactly (down to reusing the same RenderOptions struct), so a future
-// launcher/main.cpp caller could route --gpu to this backend on macOS the
-// same way it already routes to optix_render_main() on Windows, with no
-// Metal/Objective-C headers of its own ever needing to leak into main.cpp.
+// exactly (down to reusing the same RenderOptions struct), so launcher/main.cpp
+// routes --gpu to this backend on macOS the same way it routes to
+// optix_render_main() on Windows, with no Metal/Objective-C headers of its
+// own ever needing to leak into main.cpp.
 //
 // WIRED IN: launcher/main.cpp's --gpu dispatch calls metal_render_main()
 // directly on a RT_HAVE_METAL build (see docs/METAL_GPU_FEASIBILITY.md's
