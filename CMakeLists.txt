@@ -566,4 +566,22 @@ if(RT_BUILD_METAL)
         COMMAND metal_poc_validate "${METAL_ISOLATE_LIGHTING_OUTPUT}" 64 64)
     set_tests_properties(metal_poc_isolate_pbrt_lighting_validate PROPERTIES
         DEPENDS metal_poc_isolate_pbrt_lighting_smoke)
+
+    # A render whose output file can't be written must FAIL, not report
+    # success: MetalPocApp::postProcessAndWrite() used to ignore
+    # stbi_write_png()'s return value (and the EXR branch just returned), so
+    # both callers exited 0 and the launcher/GUI reported "Render complete"
+    # for a file that was never created. Renders into a directory that
+    # deliberately doesn't exist and asserts the exact exit code (5 =
+    # ERR_FILE_WRITE_FAILED, src/TheRestOfYourLife/error_codes.h) - the
+    # sh wrapper prints a marker only when the code matches, since
+    # PASS_REGULAR_EXPRESSION would otherwise ignore the exit status.
+    # Needs a real Metal device like every render test here: with none, the
+    # marker never prints and this fails with the same "No Metal device"
+    # stderr text unit-tests.yml's device-test step already treats as a skip.
+    add_test(NAME metal_poc_write_failure_exit_code
+        COMMAND sh -c "\"$1\" 32 32 \"$2\" 1 1; rc=$?; [ $rc -eq 5 ] && echo WRITE_FAILURE_EXIT_OK"
+            sh $<TARGET_FILE:metal_poc> "${CMAKE_BINARY_DIR}/no_such_dir/out.png")
+    set_tests_properties(metal_poc_write_failure_exit_code PROPERTIES
+        PASS_REGULAR_EXPRESSION "WRITE_FAILURE_EXIT_OK")
 endif()

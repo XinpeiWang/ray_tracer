@@ -900,6 +900,6 @@ struct MetalPocApp {
     void applyCameraOverride(double cam_x, double cam_y, double cam_z);
     bool buildGPUResources();
     bool compileShaderAndDispatch(int argc, const char** argv);
-    void postProcessAndWrite();
+    bool postProcessAndWrite();  // false if the output file could not be written
 };
 

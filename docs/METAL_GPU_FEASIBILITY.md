@@ -12432,3 +12432,61 @@ committing (5 new files, `metal_poc_shader_tests.mm` rewritten,
 `CMakeLists.txt` updated to compile all 5 `.mm` files into the one
 `metal_poc_shader_tests` executable target - identical test behavior,
 just now compiled from 5 translation units instead of 1).
+
+## 203. A fresh audit: silent write failures, unchecked acceleration structures, stale docs
+
+A fresh `gpu/metal/` audit after the sections 198-202 series and an
+externally-authored review commit (7e1c59c, "Fix Metal backend
+code-review findings"). It found no shading or correctness bug; it found
+one real silent-failure gap plus stale comments and counts.
+
+**Silent write failures reported success.** `MetalPocApp::postProcessAndWrite()`
+was `void`: the PNG path ignored `stbi_write_png()`'s return value, and
+the `.exr` branch (added by 7e1c59c) printed an error and just returned.
+Both callers then returned 0, so `launcher/main.cpp` printed "Render
+complete" for a file that was never created (the CPU path had its own,
+separate version of this class of problem, fixed in PR #205; this is
+the Metal path's). Now
+`postProcessAndWrite()` returns `bool`, and both callers return
+`ERR_FILE_WRITE_FAILED` (5), so the launcher prints "METAL RENDER
+FAILED" and the GUI's existing write-failure hint applies. Checked end
+to end through the real `ray_tracer --gpu --output /nonexistent/...`
+path: exit 5, no "Render complete".
+
+**Acceleration structures were never nil-checked.** 7e1c59c hardened the
+buffer/texture side; `primAS`/`sphereAS`/`suzanneAS`/`instAS`
+(`newAccelerationStructureWithSize:`, which returns nil on failure) went
+straight to the build encoder. Each is now checked immediately after
+allocation in `buildGPUResources()`, before the encoder is handed it - a
+placement that can only turn an existing crash into a graceful failure,
+never reject a scene that works today (a nil AS already threw a few lines
+later). Not in the dispatch-stage `checkGpuResource()` sweep, which runs
+after the builds.
+
+**Test**: new `metal_poc_write_failure_exit_code` CTest renders into a
+deliberately nonexistent directory and asserts the exact exit code (a
+`sh` wrapper prints a marker only when it is 5, since
+`PASS_REGULAR_EXPRESSION` alone ignores exit status). Added to
+`unit-tests.yml`'s device-test regex so CI runs it, with the same
+no-raytracing-device skip handling as its siblings. Negative control
+run: restoring the old ignore-the-result behavior made it fail (error
+text printed, exit 0), restoring the fix made it pass; `ctest` 7/7.
+
+**Stale text fixed**: `metal_poc.mm`'s "still TODO" note that the target
+isn't linked into `ray_tracer` (it has been, since phase 3), the
+contradictory "a future launcher caller could" opening of
+`metal_interface.h` (its own next paragraph says WIRED IN), `README.md`'s
+"four regression tests" (six existed; now seven with this section's) and
+"180+" sections, and the workflow's "~22,000 lines" (about 24,000).
+
+**Recorded for the changelog** (behaviors 7e1c59c added with no section,
+taken from that commit's own diff as read by the audit, not re-derived
+here): `.exr` output on Metal via `write_exr_image()` (linear HDR, no
+tonemap/vignette/denoise, matching the CPU/OptiX contract), a
+Henyey-Greenstein `g` clamp in both the phase and sample functions, a
+below-hemisphere GGX guard, and a `/glDistSq` fix in the layered
+material's light term.
+
+**Not verified by an 81-scene hash sweep**: the changes touch only error
+paths (write result, allocation failure) and comments, not shading, and
+the rendering-path code is untouched.

@@ -107,7 +107,7 @@ jobs:
         # metal_poc_math_tests/metal_poc_shader_tests executables, AND
         # ray_tracer itself with RT_HAVE_METAL (the real launcher --gpu
         # dispatch path, gpu/metal/metal_interface.h) - a compile break
-        # anywhere in ~22,000 lines of Metal-backend code fails this
+        # anywhere in ~24,000 lines of Metal-backend code fails this
         # step unconditionally, independent of the device-availability
         # question the later steps deal with.
         run: cmake --build build --config Release
@@ -140,7 +140,7 @@ jobs:
         # device" skip handling below applies to them.
         run: |
           set +e
-          ctest --output-on-failure -R '^metal_poc_(shader_tests|smoke_render|smoke_validate|isolate_pbrt_lighting_smoke|isolate_pbrt_lighting_validate)$'
+          ctest --output-on-failure -R '^metal_poc_(shader_tests|smoke_render|smoke_validate|isolate_pbrt_lighting_smoke|isolate_pbrt_lighting_validate|write_failure_exit_code)$'
           rc=$?
           set -e
           if [ $rc -ne 0 ]; then

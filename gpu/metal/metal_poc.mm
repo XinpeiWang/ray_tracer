@@ -87,6 +87,9 @@
 #include "../../src/external/tinyexr.h"
 #undef TINYEXR_IMPLEMENTATION
 #include "../../src/shared/pbrt_load.h"
+// ERR_FILE_WRITE_FAILED - so a failed output write reaches the launcher/GUI as
+// the specific "check the folder is writable" error instead of a generic 1.
+#include "../../src/TheRestOfYourLife/error_codes.h"
 // is_exr_output_path()/write_exr_image() - the same shared helpers the CPU
 // and OptiX backends use to honor a ".exr" output path (postProcessAndWrite()
 // below). Its own tinyexr.h include is a no-op here: that header's include
@@ -100,9 +103,9 @@
 #include "../../src/shared/conductor_data.h"
 // metal_render_main()'s own callable signature (section 79) - matches
 // gpu/optix/optix_interface.h's own optix_render_main() shape exactly,
-// down to reusing this SAME struct, so a future launcher/main.cpp caller
-// (once this target is linked into ray_tracer itself, still TODO) needs
-// no Metal-specific parameter shape of its own.
+// down to reusing this SAME struct, so launcher/main.cpp's --gpu dispatch
+// (already linked and calling this, on a RT_HAVE_METAL build) needs no
+// Metal-specific parameter shape of its own.
 #include "../../src/shared/render_options.h"
 // cpu_scene_pbrt_path_by_id() - resolves a scene_id string to its pbrt
 // file path, the SAME shared C-ABI accessor gpu/optix/scene_builder.cpp
@@ -926,7 +929,7 @@ void MetalPocApp::applyCameraOverride(double cam_x, double cam_y, double cam_z) 
 // --- Stage 5: post-process the linear HDR buffer and write the PNG -----
 // (chromatic aberration, then lens vignette, then the selected tonemap
 // operator, then the real sRGB OETF, then bilateral denoise)
-void MetalPocApp::postProcessAndWrite() {
+bool MetalPocApp::postProcessAndWrite() {
     // ".exr" output: linear HDR radiance straight from the GPU buffer, no
     // tonemap/vignette/chromatic-aberration/denoise/quantization - the same
     // contract the CPU and OptiX backends' EXR path has (see
@@ -942,10 +945,10 @@ void MetalPocApp::postProcessAndWrite() {
         std::string exrError;
         if (write_exr_image(outPath, rgb.data(), int(width), int(height), exrError)) {
             fprintf(stderr, "Wrote %s (%ux%u, linear HDR EXR)\n", outPath, width, height);
-        } else {
-            fprintf(stderr, "ERROR: failed to write EXR %s: %s\n", outPath, exrError.c_str());
+            return true;
         }
-        return;
+        fprintf(stderr, "ERROR: failed to write EXR %s: %s\n", outPath, exrError.c_str());
+        return false;
     }
 
     const float vignetteStrength = 0.18f;
@@ -977,8 +980,17 @@ void MetalPocApp::postProcessAndWrite() {
     std::vector<uint8_t> denoised(width * height * 3);
     bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
 
-    stbi_write_png(outPath, width, height, 3, denoised.data(), width * 3);
+    // stbi_write_png() returns 0 on failure (unwritable/nonexistent
+    // directory, read-only volume, ...) - previously ignored, so a failed
+    // write still printed "Wrote ..." and both callers returned success,
+    // and launcher/main.cpp then reported "Render complete" for a file
+    // that was never created.
+    if (!stbi_write_png(outPath, width, height, 3, denoised.data(), width * 3)) {
+        fprintf(stderr, "ERROR: failed to write PNG %s (check the folder exists and is writable)\n", outPath);
+        return false;
+    }
     fprintf(stderr, "Wrote %s (%ux%u)\n", outPath, width, height);
+    return true;
 }
 
 // --- Callable entry point (phase 2 of real GPU integration - see
@@ -1108,7 +1120,7 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         }
         if (!app.buildGPUResources()) return 1;
         if (!app.compileShaderAndDispatch(argCount, args)) return 1;
-        app.postProcessAndWrite();
+        if (!app.postProcessAndWrite()) return ERR_FILE_WRITE_FAILED;
     }
     return 0;
 }
@@ -1130,7 +1142,7 @@ int metal_poc_cli_main(int argc, const char** argv) {
         app.buildScene();
         if (!app.buildGPUResources()) return 1;
         if (!app.compileShaderAndDispatch(argc, argv)) return 1;
-        app.postProcessAndWrite();
+        if (!app.postProcessAndWrite()) return ERR_FILE_WRITE_FAILED;
     }
     return 0;
 }

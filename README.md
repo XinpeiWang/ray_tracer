@@ -255,10 +255,10 @@ cmake -B build -DRT_BUILD_METAL=ON && cmake --build build
 ./build/ray_tracer 800 100 50 A1 --gpu   # real macOS GPU path, not a fallback warning
 ```
 Also builds a standalone `metal_poc` CLI and (via `ctest`, once
-configured this way) four regression tests covering both host-side math
+configured this way) seven regression tests covering both host-side math
 and real on-device shader kernels. Nowhere near OptiX's own feature
 parity yet - see `docs/METAL_GPU_FEASIBILITY.md` for exactly what's
-covered, what isn't, and the full incremental history (180+ numbered
+covered, what isn't, and the full incremental history (200+ numbered
 sections). CI builds and runs this on every push (`.github/workflows/
 unit-tests.yml`'s own `metal-poc` job, `macos-14`) - the device-
 dependent tests gracefully skip there (GitHub's own hosted runners don't
