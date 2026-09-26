@@ -4,6 +4,22 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Increase Log Font Size</source>
+        <translation>增大日志字号</translation>
+    </message>
+    <message>
+        <source>Decrease Log Font Size</source>
+        <translation>减小日志字号</translation>
+    </message>
+    <message>
+        <source>Reset Log Font Size</source>
+        <translation>重置日志字号</translation>
+    </message>
+    <message>
+        <source>Log font size: %1 pt</source>
+        <translation>日志字号:%1 pt</translation>
+    </message>
+    <message>
         <source>Language set to %1 - restart to apply.</source>
         <translation type="vanished">语言已设置为 %1 - 重启后生效。</translation>
     </message>

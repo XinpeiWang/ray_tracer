@@ -4,6 +4,22 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Increase Log Font Size</source>
+        <translation>ログのフォントサイズを拡大</translation>
+    </message>
+    <message>
+        <source>Decrease Log Font Size</source>
+        <translation>ログのフォントサイズを縮小</translation>
+    </message>
+    <message>
+        <source>Reset Log Font Size</source>
+        <translation>ログのフォントサイズをリセット</translation>
+    </message>
+    <message>
+        <source>Log font size: %1 pt</source>
+        <translation>ログのフォントサイズ: %1 pt</translation>
+    </message>
+    <message>
         <source>Language set to %1 - restart to apply.</source>
         <translation type="vanished">言語を%1に設定しました。適用するには再起動してください。</translation>
     </message>
