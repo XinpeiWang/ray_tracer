@@ -172,6 +172,23 @@ void MainWindow::createMenus() {
 	viewMenu->addAction(m_actCopyLog);
 	viewMenu->addAction(m_actClearLog);
 
+	// Log Output + Diagnostics text size. Ctrl+= as well as Ctrl++ because the
+	// plus key needs Shift on most layouts, so QKeySequence::ZoomIn alone is
+	// awkward to hit; Ctrl+wheel over either view does the same thing.
+	viewMenu->addSeparator();
+	QAction *logFontUp = viewMenu->addAction(tr("Increase Log Font Size"));
+	logFontUp->setObjectName("actLogFontIncrease");
+	logFontUp->setShortcuts({QKeySequence::ZoomIn, QKeySequence(Qt::CTRL | Qt::Key_Equal)});
+	connect(logFontUp, &QAction::triggered, this, [this]() { changeLogFontSize(+1); });
+	QAction *logFontDown = viewMenu->addAction(tr("Decrease Log Font Size"));
+	logFontDown->setObjectName("actLogFontDecrease");
+	logFontDown->setShortcut(QKeySequence::ZoomOut);
+	connect(logFontDown, &QAction::triggered, this, [this]() { changeLogFontSize(-1); });
+	QAction *logFontReset = viewMenu->addAction(tr("Reset Log Font Size"));
+	logFontReset->setObjectName("actLogFontReset");
+	logFontReset->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+	connect(logFontReset, &QAction::triggered, this, [this]() { resetLogFontSize(); });
+
 	// Between View and Help: Help is conventionally last in a menu bar, so a
 	// new menu goes before it rather than after. Font sits next to Theme -
 	// both are appearance choices.

@@ -4,6 +4,22 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Increase Log Font Size</source>
+        <translation>Aumentar tamaño de fuente del registro</translation>
+    </message>
+    <message>
+        <source>Decrease Log Font Size</source>
+        <translation>Reducir tamaño de fuente del registro</translation>
+    </message>
+    <message>
+        <source>Reset Log Font Size</source>
+        <translation>Restablecer tamaño de fuente del registro</translation>
+    </message>
+    <message>
+        <source>Log font size: %1 pt</source>
+        <translation>Tamaño de fuente del registro: %1 pt</translation>
+    </message>
+    <message>
         <source>Language set to %1 - restart to apply.</source>
         <translation type="vanished">Idioma establecido en %1; reinicia la aplicación para aplicarlo.</translation>
     </message>

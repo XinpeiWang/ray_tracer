@@ -345,6 +345,16 @@ private:
 	void createProgressTab();
 	void createLogTab();
 	void createDiagnosticsTab();
+	// Log Output / Diagnostics text size, adjustable independently of the
+	// Font menu (View menu items, Ctrl/Cmd +/-/0, Ctrl/Cmd+scroll). Both views
+	// used to be hardcoded to 9pt - tiny on a Retina Mac - with the size baked
+	// into every appended line's own inline HTML, so nothing could change it.
+	// m_logFontDelta is points added to that 9pt base, persisted
+	// (settings_keys::kLogFontDeltaKey); mainwindow_tabs_output.cpp.
+	int m_logFontDelta = 0;
+	void applyLogFontSize();
+	void changeLogFontSize(int deltaPoints);
+	void resetLogFontSize();
 #ifdef RT_GUI_HAVE_GPU
 	// GPU-only (see realtime_renderer.dll's own build - MSVC/CUDA/OptiX,
 	// same RT_GUI_HAVE_GPU scope as the "Use GPU" toggle itself). See this
@@ -1648,7 +1658,7 @@ private:
 	QMap<QString, int> m_previewTitleCounts;
 
 	// Log output
-	QTextEdit *m_logTextEdit;           // Log output display
+	QTextEdit *m_logTextEdit = nullptr;   // Log output display
 	int m_logTabIndex = -1;             // Index of the Log Output tab within m_tabWidget
 
 	// Every line the log has shown, kept so a theme change can re-render it.
@@ -1675,7 +1685,7 @@ private:
 	void rebuildLogPane();
 
 	// Diagnostics
-	QTextEdit *m_diagTextEdit;              // Diagnostics report display
+	QTextEdit *m_diagTextEdit = nullptr;      // Diagnostics report display
 	QPushButton *m_runDiagnosticsButton;    // Disabled while a probe is running
 	int m_diagnosticsTabIndex = -1;         // Index of the Diagnostics tab within m_tabWidget
 	DiagnosticsRunner *m_diagnosticsRunner = nullptr;  // nullptr when not running

@@ -20,6 +20,9 @@ constexpr const char *kFontKey = "ui/font";
 constexpr const char *kFontCustomFamilyKey = "ui/fontCustomFamily";
 constexpr const char *kFontCustomSizeKey = "ui/fontCustomSize";
 constexpr const char *kLanguageKey = "ui/language";
+// Points added to (or, if negative, taken from) the Log/Diagnostics text views'
+// 9pt base size - see MainWindow::changeLogFontSize(). Absent = 0.
+constexpr const char *kLogFontDeltaKey = "ui/logFontDelta";
 // QSettings array group name (beginWriteArray/beginReadArray) for the
 // Recent Renders list - see recent_renders.cpp. The first list-shaped
 // value this app persists, hence its own group rather than a scalar key.

@@ -38,6 +38,11 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QToolButton>
+#include <QSettings>
+#include <QStatusBar>
+#include <QWheelEvent>
+#include <functional>
+#include "settings_keys.h"
 #include <cmath>
 #include <algorithm>
 
@@ -129,6 +134,62 @@ void MainWindow::createProgressTab() {
 	m_progressTabIndex = m_tabWidget->addTab(progressWidget, tr("Progress"));
 }
 
+namespace {
+constexpr int kLogBasePt = 9;        // what both views were hardcoded to before this was adjustable
+constexpr int kLogMinDeltaPt = -3;   // 6pt floor
+constexpr int kLogMaxDeltaPt = 30;   // 39pt ceiling
+
+// Ctrl/Cmd + scroll wheel over a log view steps its font size instead of
+// QTextEdit's built-in zoom - that one changes the document's own default font
+// (never persisted, and stacking on top of the size set below), so leaving it
+// would give two competing "zoom" states. A trackpad delivers many small
+// angleDelta values per gesture, so they're accumulated to one step per 120
+// (a classic mouse wheel notch) rather than stepping on every event.
+class CtrlWheelFontStep : public QObject {
+public:
+	CtrlWheelFontStep(std::function<void(int)> onStep, QObject *parent)
+		: QObject(parent), m_onStep(std::move(onStep)) {}
+protected:
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		if (event->type() != QEvent::Wheel) return QObject::eventFilter(watched, event);
+		auto *wheel = static_cast<QWheelEvent *>(event);
+		if (!(wheel->modifiers() & Qt::ControlModifier)) return false;
+		m_accum += wheel->angleDelta().y();
+		while (m_accum >= 120)  { m_accum -= 120; m_onStep(+1); }
+		while (m_accum <= -120) { m_accum += 120; m_onStep(-1); }
+		return true;  // consumed, even while accumulating - never falls through to QTextEdit's own zoom
+	}
+private:
+	std::function<void(int)> m_onStep;
+	int m_accum = 0;
+};
+}  // namespace
+
+// A widget-level stylesheet rather than setFont(): the app-wide QTextEdit rule
+// (mainwindow_style.cpp) sets font-size itself, and a QSS font-size beats a
+// widget's own QFont size - which is why the old QFont("Consolas", 9) here was
+// never actually what controlled the size either. This local rule wins over the
+// app-wide one for just these two views, and survives applyTheme() re-setting
+// the app stylesheet.
+void MainWindow::applyLogFontSize() {
+	const QString qss = QStringLiteral("QTextEdit { font-size: %1pt; }").arg(kLogBasePt + m_logFontDelta);
+	if (m_logTextEdit) m_logTextEdit->setStyleSheet(qss);
+	if (m_diagTextEdit) m_diagTextEdit->setStyleSheet(qss);
+}
+
+void MainWindow::changeLogFontSize(int deltaPoints) {
+	const int next = std::clamp(m_logFontDelta + deltaPoints, kLogMinDeltaPt, kLogMaxDeltaPt);
+	if (next == m_logFontDelta) return;
+	m_logFontDelta = next;
+	QSettings(settings_keys::kOrg, settings_keys::kApp).setValue(settings_keys::kLogFontDeltaKey, m_logFontDelta);
+	applyLogFontSize();
+	statusBar()->showMessage(tr("Log font size: %1 pt").arg(kLogBasePt + m_logFontDelta), 2000);
+}
+
+void MainWindow::resetLogFontSize() {
+	changeLogFontSize(-m_logFontDelta);
+}
+
 void MainWindow::createLogTab() {
 	QWidget *logWidget = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(logWidget);
@@ -138,6 +199,9 @@ void MainWindow::createLogTab() {
 	m_logTextEdit->setReadOnly(true);
 	m_logTextEdit->setFont(QFont("Consolas", 9));
 	m_logTextEdit->setLineWrapMode(QTextEdit::NoWrap);
+	m_logFontDelta = std::clamp(
+		QSettings(settings_keys::kOrg, settings_keys::kApp).value(settings_keys::kLogFontDeltaKey, 0).toInt(),
+		kLogMinDeltaPt, kLogMaxDeltaPt);
 	// Bounds the pane's own memory/reflow cost the same way m_logHistory is
 	// bounded (see kMaxLogHistoryLines's own comment, mainwindow.h) - drops
 	// oldest blocks automatically as new ones are appended past this count.
@@ -146,6 +210,8 @@ void MainWindow::createLogTab() {
 	// surface, border and radius, and this local copy only duplicated it.
 
 	layout->addWidget(m_logTextEdit);
+	m_logTextEdit->viewport()->installEventFilter(
+		new CtrlWheelFontStep([this](int step) { changeLogFontSize(step); }, m_logTextEdit));
 
 	// Button bar: Copy | Save Log | Clear Log
 	QHBoxLayout *btnLayout = new QHBoxLayout();
@@ -200,6 +266,9 @@ void MainWindow::createDiagnosticsTab() {
 		tr("Click \"Run Diagnostics\" to check GPU/CUDA/OptiX availability, CPU/RAM, "
 		"disk space, and scene asset availability."));
 	layout->addWidget(m_diagTextEdit);
+	m_diagTextEdit->viewport()->installEventFilter(
+		new CtrlWheelFontStep([this](int step) { changeLogFontSize(step); }, m_diagTextEdit));
+	applyLogFontSize();  // both views exist now; the log tab is created first so its delta is already loaded
 
 	QHBoxLayout *btnLayout = new QHBoxLayout();
 	btnLayout->setContentsMargins(0, 4, 0, 0);

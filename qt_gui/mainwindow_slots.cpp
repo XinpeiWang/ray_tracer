@@ -42,17 +42,17 @@ QString styleLogLine(const render_output::LogCategory &cat, const QString &colou
 					 const QString &escaped) {
 	switch (cat.style) {
 	case render_output::LineStyle::Banner:
-		return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+		return QString("<span style='color:%1;font-family:Consolas,monospace;'>"
 					   "<b>%2</b></span>").arg(colour, escaped);
 	case render_output::LineStyle::BoldLabeled:
-		return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+		return QString("<span style='color:%1;font-family:Consolas,monospace;'>"
 					   "<b><span style='color:%5;'>%2</span> "
 					   "<span style='color:%1;'>[%3]</span> %4</b></span>")
 			.arg(colour, timestamp, QString::fromLatin1(cat.label), escaped, timestampColour);
 	case render_output::LineStyle::Normal:
 		break;
 	}
-	return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+	return QString("<span style='color:%1;font-family:Consolas,monospace;'>"
 				   "<span style='color:%5;'>%2</span> "
 				   "<span style='color:%1;'>[%3]</span> %4"
 				   "</span>")
@@ -67,7 +67,7 @@ QString styleLogLine(const render_output::LogCategory &cat, const QString &colou
 // writable), a healthy state (available/writable/present), or a neutral
 // measurement (a count, a size, a version string).
 QString styleDiagnosticsLine(const theme::Palette &p, const QString &line) {
-	const QString mono = "font-family:Consolas,monospace;font-size:9pt;";
+	const QString mono = "font-family:Consolas,monospace;";
 
 	if (line.startsWith("===")) {
 		return QString("<span style='color:%1;%2'><b>%3</b></span>")
