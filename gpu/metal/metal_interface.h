@@ -71,12 +71,13 @@ bool metal_get_diagnostics(MetalDiagnostics* out);
 // options: options.tonemap ("aces"/"reinhard"/"none", matching
 // cpu_render_main()/optix_render_main()'s own convention), options.exposure
 // (a flat pre-tonemap multiplier, section 148, docs/METAL_GPU_FEASIBILITY.md),
-// and options.isolate_pbrt_lighting (skips the hardcoded demo room's own
+// options.seed (selects the per-pixel RNG stream - section 204), and
+// options.isolate_pbrt_lighting (skips the hardcoded demo room's own
 // lights for a loaded pbrt scene - section 197/199, docs/
 // METAL_GPU_FEASIBILITY.md) are all read - every other RenderOptions field
 // is a documented no-op for this backend (this POC doesn't implement
 // sampler/adaptive_sampling/lightsampler/regularize/max_component_value/
-// crop/aperture-or-focus-override/spectral/denoise/seed yet), same "flag
+// crop/aperture-or-focus-override/spectral/denoise yet), same "flag
 // has no effect under X" convention render_options.h's own header comment
 // already documents for other backend/field combinations.
 int metal_render_main(

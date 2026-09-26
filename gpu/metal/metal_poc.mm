@@ -1104,6 +1104,11 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // direct field poke rather than a new argv[] slot.
         app.exposureValue = (float)options.exposure;
         app.isolatePbrtLighting = options.isolate_pbrt_lighting;
+        // --seed: options.seed < 0 means "not requested" (leave the default
+        // stream). Otherwise offset by 2 so seed 0 maps to 2, never to the
+        // default stream's own 1u - every explicit
+        // seed selects a stream distinct from a run that never passed one.
+        if (options.seed >= 0) app.frameSeedValue = (uint32_t)options.seed + 2u;
         app.buildScene();
         if (force_camera_override) {
             if (app.havePbrtCamera) {

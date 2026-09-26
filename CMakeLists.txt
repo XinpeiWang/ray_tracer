@@ -584,4 +584,16 @@ if(RT_BUILD_METAL)
             sh $<TARGET_FILE:metal_poc> "${CMAKE_BINARY_DIR}/no_such_dir/out.png")
     set_tests_properties(metal_poc_write_failure_exit_code PROPERTIES
         PASS_REGULAR_EXPRESSION "WRITE_FAILURE_EXIT_OK")
+
+    # --seed under Metal (section 204): same seed reproduces exactly, a
+    # different seed differs, an explicit seed differs from none. Renders A1
+    # through the real ray_tracer --gpu path (the only route that carries
+    # RenderOptions::seed; the standalone metal_poc CLI has none). Needs a
+    # real Metal device like every render test here.
+    add_test(NAME metal_poc_seed_reproducible
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
+            $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_seed_reproducible PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "SEED_TEST_OK")
 endif()

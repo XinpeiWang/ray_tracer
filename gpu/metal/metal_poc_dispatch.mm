@@ -530,7 +530,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uniforms.height = height;
     uniforms.samplesPerPixel = samplesPerPixel;
     uniforms.maxDepth = maxDepth;
-    uniforms.frameSeed = 1u;
+    uniforms.frameSeed = frameSeedValue;
     uniforms.lightCount = (uint32_t)lights.size();
     // Thin-lens depth of field: focused on the gold conductor sphere
     // (the nearest object to the camera), so it renders pixel-sharp

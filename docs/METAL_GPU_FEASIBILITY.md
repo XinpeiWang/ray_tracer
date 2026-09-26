@@ -12490,3 +12490,46 @@ material's light term.
 **Not verified by an 81-scene hash sweep**: the changes touch only error
 paths (write result, allocation failure) and comments, not shading, and
 the rendering-path code is untouched.
+
+## 204. `--seed` on Metal
+
+First of two Metal features picked from `metal_interface.h`'s list of
+`RenderOptions` fields the backend ignored (the other, `--crop`, is its
+own section). Asked for directly ("is there any more feature we can
+add"), chosen because it was the cheapest: the kernel already folded a
+seed into every pixel's initial RNG state (`rngState = tid.x*9781u +
+tid.y*6271u + uniforms.frameSeed*26699u + 1u`), but the host hardcoded
+`uniforms.frameSeed = 1u`, so no caller could change it.
+
+**Change**: `MetalPocApp::frameSeedValue` (default `1u`, the value that
+was always hardcoded), used at the one `uniforms.frameSeed` assignment;
+`metal_render_main()` sets it from `RenderOptions::seed` when `--seed`
+was passed, as `seed + 2` (so seed 0 selects a stream distinct from the
+default's 1, rather than silently equalling "no seed"). No kernel change.
+The launcher already passed `render_opts.seed` through unchanged. GUI:
+the "Reproducible render" control is no longer grayed out under Metal
+(it was gated off in PR #207) and its tooltip now says
+GPU renders are already repeatable and the seed selects a different,
+equally repeatable sequence. `metal_interface.h`'s field list updated.
+
+**Verified**: through the real `ray_tracer --gpu` path on A1, seed 5 twice
+gives the identical image, seeds 5, 6, 0 and "no seed" all give four
+different images. New CTest `metal_poc_seed_reproducible`
+(`gpu/metal/metal_poc_seed_test.sh`) asserts exactly those three
+properties, added to `unit-tests.yml`'s device-test regex. Negative
+control: disabling the `frameSeedValue` assignment made it fail with
+"different seeds gave identical images"; restored, it passes; local
+`ctest` 8/8.
+
+**Rendering unchanged when no seed is passed**: 81-scene hash sweep against a clean
+`main` baseline (`metal_poc`, 128x128, 16spp): 76 identical, 5 differing
+(A3, A9, E2, E4, F4) - all five confirmed self-unstable on the UNMODIFIED
+baseline by rendering it six times each (A3 and F4 produced six distinct
+images in six runs; A9 two, E2 and E4 three), the same nondeterminism class
+sections 187/198/199 already document, so not a regression from this change.
+
+**Not done / caveats**: `--seed` with `--video` on Metal is unreachable
+(see PR #209: GPU video is OptiX-only, the GUI auto-switches it to CPU).
+The GUI's long explanatory text for the seed control still describes
+CPU behavior ("a different random sequence every time"); only the tooltip
+was made backend-accurate.
