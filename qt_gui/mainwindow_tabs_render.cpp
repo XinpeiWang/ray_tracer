@@ -1230,9 +1230,9 @@ void MainWindow::createRenderOptionsTab() {
 	m_seedCheck = new QCheckBox(tr("Reproducible render (--seed)"), optionsTab);
 	m_seedCheck->setToolTip(
 		tr("Makes this render reproduce byte-for-byte on a rerun with the\n"
-		"same seed. CPU and OptiX GPU default path tracer only - not\n"
-		"implemented under Metal (macOS GPU rendering); Metal is already\n"
-		"deterministic at frame 0 by default."));
+		"same seed. Default path tracer only. On the GPU (both OptiX and\n"
+		"Metal) renders are already repeatable by default; the seed picks a\n"
+		"different, but equally repeatable, random sequence."));
 	styleCheckBox(m_seedCheck);
 	seedLayout->addRow(checkboxWithInfo(m_seedCheck,
 		tr("Renders normally use a different random sequence every time, "
@@ -1339,9 +1339,10 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_optixValidateCheck->setEnabled(isDefault && gpuIsOptix);
 	// "Both backends" per render_options.h's own comment, but that predates
 	// Metal - metal_interface.h's own field list confirms Metal doesn't
-	// actually read regularize/max_component_value/crop/seed at all, so
+	// actually read regularize/max_component_value/crop at all, so
 	// each is gated on !gpuIsMetal (CPU or OptiX-GPU, not Metal-GPU) rather
-	// than left unconditional.
+	// than left unconditional. (seed is NOT in this list - Metal reads it
+	// now, see gpu/metal/metal_interface.h, so it stays enabled below.)
 	m_regularizeCheck->setEnabled(isDefault && !gpuIsMetal);
 	m_maxComponentValueCheck->setEnabled(isDefault && !gpuIsMetal);
 	m_maxComponentValueSpin->setEnabled(isDefault && !gpuIsMetal && m_maxComponentValueCheck->isChecked());
@@ -1351,8 +1352,8 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_cropY0Spin->setEnabled(cropSpinsEnabled);
 	m_cropX1Spin->setEnabled(cropSpinsEnabled);
 	m_cropY1Spin->setEnabled(cropSpinsEnabled);
-	m_seedCheck->setEnabled(isDefault && !gpuIsMetal);
-	m_seedSpin->setEnabled(isDefault && !gpuIsMetal && m_seedCheck->isChecked());
+	m_seedCheck->setEnabled(isDefault);
+	m_seedSpin->setEnabled(isDefault && m_seedCheck->isChecked());
 	// Unlike every field above, NOT gated on isDefault - accelerator/
 	// splitmethod affect scene construction, shared by every integrator
 	// (default path tracer, BDPT/MLT, SPPM), not one integrator's own logic.

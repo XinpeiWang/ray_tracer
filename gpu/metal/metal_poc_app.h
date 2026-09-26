@@ -100,6 +100,14 @@ struct MetalPocApp {
     // carry it" shape as exposureValue above. False (default) is a no-op,
     // unaffected for every scene/caller that never touches this field.
     bool isolatePbrtLighting = false;
+    // Starting value of the per-pixel RNG stream (Uniforms::frameSeed, folded
+    // into every pixel's initial rngState in primaryRayKernel). 1u is the value
+    // this backend has always hardcoded, so a render that never asks for a
+    // seed is byte-for-byte unchanged. metal_render_main() pokes this from
+    // RenderOptions::seed (--seed) when one was requested - same "field
+    // metal_render_main() sets directly, argv can't carry" shape as
+    // exposureValue/isolatePbrtLighting above.
+    uint32_t frameSeedValue = 1u;
     // Optional 7th positional CLI arg - a real .pbrt scene file to load
     // via src/shared/pbrt_load.h INSTEAD of buildScene()'s own hardcoded
     // room (see loadPbrtScene()'s own comment for exactly what subset of
