@@ -4,6 +4,22 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Increase Log Font Size</source>
+        <translation>Augmenter la taille de police du journal</translation>
+    </message>
+    <message>
+        <source>Decrease Log Font Size</source>
+        <translation>Réduire la taille de police du journal</translation>
+    </message>
+    <message>
+        <source>Reset Log Font Size</source>
+        <translation>Réinitialiser la taille de police du journal</translation>
+    </message>
+    <message>
+        <source>Log font size: %1 pt</source>
+        <translation>Taille de police du journal : %1 pt</translation>
+    </message>
+    <message>
         <source>Language set to %1 - restart to apply.</source>
         <translation type="vanished">Langue définie sur %1 - redémarrez pour appliquer.</translation>
     </message>
