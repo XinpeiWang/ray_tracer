@@ -119,6 +119,28 @@ protected:
 		QTabBar::resizeEvent(event);
 	}
 
+	// Without this the bar lags exactly ONE window resize behind (found by
+	// rendering the real app offscreen at 1400px then 2000px wide: only 4 of
+	// the 6 tabs showed plus a scroll arrow, the bar ~1365px wide inside a
+	// 2000px window - i.e. its width from the PREVIOUS size). QTabWidget's own
+	// layout (setUpLayout(), run from ITS resizeEvent) asks this bar for its
+	// sizeHint() to decide the bar's width, and QTabBar::sizeHint() is derived
+	// from the per-tab size cache - which is only refreshed later, in this
+	// bar's own resizeEvent() above. So the layout always reads a hint computed
+	// for the old width, hands the bar that stale width, and nothing re-runs
+	// the layout once the cache catches up. The tabs then sum to ~the new
+	// full width inside a bar still sized for the old one, overflow, and tip
+	// into scroll-arrow mode (the "cliff" tabSizeHint() below already warns
+	// about). Answering from parentWidget()->width() - the QTabWidget's
+	// CURRENT width, already updated by the time its layout runs - skips the
+	// stale cache. Same source tabSizeHint() reads, for the same reason.
+	QSize sizeHint() const override {
+		QSize hint = QTabBar::sizeHint();
+		if (parentWidget() && parentWidget()->width() > hint.width())
+			hint.setWidth(parentWidget()->width());
+		return hint;
+	}
+
 	QSize tabSizeHint(int index) const override {
 		QSize hint = QTabBar::tabSizeHint(index);
 		const int n = count();
