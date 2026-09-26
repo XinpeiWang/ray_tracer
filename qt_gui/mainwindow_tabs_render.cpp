@@ -1050,9 +1050,9 @@ void MainWindow::createRenderOptionsTab() {
 	m_cropCheck = new QCheckBox(tr("Render only part of the frame (--crop)"), optionsTab);
 	m_cropCheck->setToolTip(
 		tr("Restricts rendering to a rectangle of the frame, given as\n"
-		"fractions of the full image from 0 to 1. CPU and OptiX GPU\n"
-		"default path tracer only - not implemented under Metal (macOS\n"
-		"GPU rendering)."));
+		"fractions of the full image from 0 to 1. Default path tracer\n"
+		"only; works on the CPU and both GPU backends (OptiX and\n"
+		"Metal). Pixels outside the rectangle are left black."));
 	styleCheckBox(m_cropCheck);
 	cropLayout->addRow(checkboxWithInfo(m_cropCheck,
 		tr("Renders only a rectangular slice of the full frame - "
@@ -1339,15 +1339,15 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_optixValidateCheck->setEnabled(isDefault && gpuIsOptix);
 	// "Both backends" per render_options.h's own comment, but that predates
 	// Metal - metal_interface.h's own field list confirms Metal doesn't
-	// actually read regularize/max_component_value/crop at all, so
-	// each is gated on !gpuIsMetal (CPU or OptiX-GPU, not Metal-GPU) rather
-	// than left unconditional. (seed is NOT in this list - Metal reads it
-	// now, see gpu/metal/metal_interface.h, so it stays enabled below.)
+	// actually read regularize/max_component_value at all, so each is
+	// gated on !gpuIsMetal (CPU or OptiX-GPU, not Metal-GPU) rather than left
+	// unconditional. (seed and crop are NOT in this list - Metal reads both
+	// now, see gpu/metal/metal_interface.h, so they stay enabled below.)
 	m_regularizeCheck->setEnabled(isDefault && !gpuIsMetal);
 	m_maxComponentValueCheck->setEnabled(isDefault && !gpuIsMetal);
 	m_maxComponentValueSpin->setEnabled(isDefault && !gpuIsMetal && m_maxComponentValueCheck->isChecked());
-	m_cropCheck->setEnabled(isDefault && !gpuIsMetal);
-	const bool cropSpinsEnabled = isDefault && !gpuIsMetal && m_cropCheck->isChecked();
+	m_cropCheck->setEnabled(isDefault);
+	const bool cropSpinsEnabled = isDefault && m_cropCheck->isChecked();
 	m_cropX0Spin->setEnabled(cropSpinsEnabled);
 	m_cropY0Spin->setEnabled(cropSpinsEnabled);
 	m_cropX1Spin->setEnabled(cropSpinsEnabled);
