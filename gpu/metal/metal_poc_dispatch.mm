@@ -783,18 +783,35 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // Mirrors wavefront_path_tracer.cpp's own progressPrintInterval
     // philosophy (throttle to a fixed cadence, not one sync per unit of
     // work) rather than reinventing a different tuning approach.
-    const uint32_t numBands = std::min<uint32_t>(20, std::max<uint32_t>(1, height));
-    const uint32_t bandHeight = (height + numBands - 1) / numBands;
+    // Crop window (--crop, section 205): only the window's ROWS [cropY0,cropY1)
+    // are dispatched (the saving crop buys), at full width; the columns
+    // outside [cropX0,cropX1) are computed like any other pixel in those rows
+    // and then zeroed with everything else outside the window, after readback
+    // below. Deliberately NOT a column-restricted dispatch: that needs a
+    // colOffset added to tid in primaryRayKernel, and that one extra kernel
+    // line was measured (section 205) to turn previously bit-stable scenes
+    // (B14, D1, D3) nondeterministic - the project's known code-shape
+    // sensitivity, hit for real - so the kernel is left untouched and
+    // no-crop renders stay exactly as they were. cropX1 < 0 = no crop
+    // requested, the whole image: every expression below then reduces to what
+    // this loop computed before crop existed (cy0 = 0, cropRows = height).
+    const uint32_t cx0 = (cropX1 >= 0) ? (uint32_t)cropX0 : 0;
+    const uint32_t cx1 = (cropX1 >= 0) ? (uint32_t)cropX1 : width;
+    const uint32_t cy0 = (cropX1 >= 0) ? (uint32_t)cropY0 : 0;
+    const uint32_t cy1 = (cropX1 >= 0) ? (uint32_t)cropY1 : height;
+    const uint32_t cropRows = cy1 - cy0;
+    const uint32_t numBands = std::min<uint32_t>(20, std::max<uint32_t>(1, cropRows));
+    const uint32_t bandHeight = (cropRows + numBands - 1) / numBands;
     Uniforms* uniformsShared = (Uniforms*)uniformBuffer.contents;
-    for (uint32_t rowOffset = 0; rowOffset < height; rowOffset += bandHeight) {
-        const uint32_t thisBandHeight = std::min(bandHeight, height - rowOffset);
+    for (uint32_t bandStart = 0; bandStart < cropRows; bandStart += bandHeight) {
+        const uint32_t thisBandHeight = std::min(bandHeight, cropRows - bandStart);
         // uniformBuffer is MTLResourceStorageModeShared (Apple Silicon
         // unified memory) - writing directly into its own backing
         // memory between dispatches is the same convenience this
         // project's own host-shared buffers already rely on elsewhere,
         // not a new pattern. No other Uniforms field changes band to
         // band, so nothing else needs re-uploading.
-        uniformsShared->rowOffset = rowOffset;
+        uniformsShared->rowOffset = cy0 + bandStart;
 
         id<MTLCommandBuffer> renderCmd = [queue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [renderCmd computeCommandEncoder];
@@ -867,8 +884,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         // parser.h's parseScanlineProgress() picks this up with zero
         // parser/GUI changes at all. `\r` (not `\n`) is load-bearing:
         // splitOutputLines()'s own comment explains why.
-        const uint32_t rowsDone = rowOffset + thisBandHeight;
-        fprintf(stderr, "Scanlines remaining: %u\r", height - rowsDone);
+        const uint32_t rowsDone = bandStart + thisBandHeight;
+        fprintf(stderr, "Scanlines remaining: %u\r", cropRows - rowsDone);
         fflush(stderr);
     }
 
@@ -877,5 +894,19 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     pixels.resize(width * height * 4);
     MTLRegion region = MTLRegionMake2D(0, 0, width, height);
     [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
+    // Crop window: only the dispatched rectangle was ever written; the rest of
+    // outTexture's contents are undefined (Metal does not guarantee a fresh
+    // texture is zeroed), so make "outside the window is black" - the same
+    // contract CPU/OptiX crop has - explicit rather than relying on it.
+    if (cropX1 >= 0) {
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) continue;
+                float* p = &pixels[((size_t)y * width + x) * 4];
+                p[0] = p[1] = p[2] = 0.0f;
+                p[3] = 1.0f;
+            }
+        }
+    }
     return true;
 }

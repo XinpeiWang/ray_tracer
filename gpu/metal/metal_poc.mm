@@ -87,6 +87,9 @@
 #include "../../src/external/tinyexr.h"
 #undef TINYEXR_IMPLEMENTATION
 #include "../../src/shared/pbrt_load.h"
+// resolve_crop_pixel_bounds() - the shared NDC-fraction -> pixel-rectangle
+// resolver OptiX already uses for --crop, so Metal rounds/clamps identically.
+#include "../../src/shared/cameras.h"
 // ERR_FILE_WRITE_FAILED - so a failed output write reaches the launcher/GUI as
 // the specific "check the folder is writable" error instead of a generic 1.
 #include "../../src/TheRestOfYourLife/error_codes.h"
@@ -1109,6 +1112,22 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // default stream's own 1u - every explicit
         // seed selects a stream distinct from a run that never passed one.
         if (options.seed >= 0) app.frameSeedValue = (uint32_t)options.seed + 2u;
+        // --crop: NDC fractions -> pixel bounds via the SAME shared resolver
+        // OptiX uses (src/shared/cameras.h), so rounding/clamping match. All
+        // four at their defaults (0,0,1,1) means not requested - leave the crop
+        // fields unset (full image, byte-identical to before crop existed).
+        if (options.crop_x0 != 0.0 || options.crop_y0 != 0.0 ||
+            options.crop_x1 != 1.0 || options.crop_y1 != 1.0) {
+            const CropPixelBounds b = resolve_crop_pixel_bounds(
+                options.crop_x0, options.crop_x1, options.crop_y0, options.crop_y1,
+                image_width, image_height);
+            if (b.wasDegenerate) {
+                fprintf(stderr, "Warning: --crop resolves to an empty pixel range at %dx%d - "
+                                "rendering the full frame instead.\n", image_width, image_height);
+            } else {
+                app.cropX0 = b.x0; app.cropX1 = b.x1; app.cropY0 = b.y0; app.cropY1 = b.y1;
+            }
+        }
         app.buildScene();
         if (force_camera_override) {
             if (app.havePbrtCamera) {

@@ -140,7 +140,7 @@ jobs:
         # device" skip handling below applies to them.
         run: |
           set +e
-          ctest --output-on-failure -R '^metal_poc_(shader_tests|smoke_render|smoke_validate|isolate_pbrt_lighting_smoke|isolate_pbrt_lighting_validate|write_failure_exit_code|seed_reproducible)$'
+          ctest --output-on-failure -R '^metal_poc_(shader_tests|smoke_render|smoke_validate|isolate_pbrt_lighting_smoke|isolate_pbrt_lighting_validate|write_failure_exit_code|seed_reproducible|crop_window)$'
           rc=$?
           set -e
           if [ $rc -ne 0 ]; then

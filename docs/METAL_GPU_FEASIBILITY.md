@@ -12533,3 +12533,73 @@ sections 187/198/199 already document, so not a regression from this change.
 The GUI's long explanatory text for the seed control still describes
 CPU behavior ("a different random sequence every time"); only the tooltip
 was made backend-accurate.
+
+## 205. `--crop` on Metal - and a design change forced by a real determinism regression
+
+Second of the two Metal features picked from `metal_interface.h`'s list of
+ignored `RenderOptions` fields (the first was `--seed`, section 204).
+
+**Behavior** (matches CPU/OptiX): `--crop x0 y0 x1 y1` (NDC fractions)
+renders only that rectangle and leaves everything outside it black; the
+output stays full-size. Bounds come from the same shared
+`resolve_crop_pixel_bounds()` (`src/shared/cameras.h`) OptiX uses, so
+rounding/clamping match; y0 = 0 is the TOP of the image, confirmed
+empirically by rendering CPU `--crop 0 0 1 0.5` (top half lit, bottom black)
+and matching it on Metal. A window that resolves to nothing warns and
+renders the full frame, as OptiX does. GUI: the crop controls are no longer
+grayed out under Metal, tooltip updated, `metal_interface.h` field list
+updated.
+
+**First design, and why it was abandoned.** Restrict the dispatch to the
+window's rows AND columns by adding a `colOffset` uniform next to
+`rowOffset` and one extra term in `primaryRayKernel`'s coordinate
+reconstruction (`tid = uint2(tidInBand.x + colOffset, ...)`). It worked (the
+new test passed, in-window pixels bit-identical to an uncropped render).
+The 81-scene hash sweep then showed 8 differing scenes instead of the
+usual 4-5, three of them (B14, D1, D3) NOT explained by known noise: on the
+unmodified baseline they were bit-stable (six renders, one distinct image;
+interleaved 8 baseline vs 8 new B14 runs: baseline 1 distinct image, new 8).
+So the change turned scenes that were deterministic into nondeterministic
+ones. Bisected without a rebuild (shaders compile at runtime from the source
+directory): with just that one kernel term removed - host code and the
+struct field unchanged - B14 returned to the baseline hash on 5 of 6 runs.
+The culprit is the single added kernel line: the same "any code-shape
+change can flip GPU nondeterminism" sensitivity sections 160/167/181/187/198
+document, this time turning stable scenes unstable rather than merely
+shifting sub-ULP values. (Checking the sweep's diff list against
+"is it already known noise" would have wrongly passed these three, since
+B14/D1/D3 ARE on the historical noise list - only re-running the baseline
+on THIS build showed they were stable today.)
+
+**Final design.** Leave the kernel and `Uniforms` completely untouched
+(no `colOffset`). Dispatch only the window's ROWS at full width using the
+existing `rowOffset` band mechanism (a crop saves compute in proportion to
+its HEIGHT), then zero every pixel outside the window on the host after
+readback. Columns outside the window are still computed for the window's
+rows - a width-only crop saves nothing. That is the cost of not touching the
+kernel; it is a real limitation, accepted deliberately.
+
+**Verified**: new host-side checker `metal_poc_crop_check.cpp` (driven by
+`metal_poc_crop_test.sh`, CTest `metal_poc_crop_window`, added to
+`unit-tests.yml`'s device-test regex) renders A1 whole and with
+`--crop 0.25 0.25 0.75 0.75` at 128x128 (window [32,96)^2) and asserts
+outside-the-window pixels are exactly black and well-inside pixels are
+bit-identical to the uncropped render (an 8-pixel margin excluded around
+window edges, since the post-process 7x7 bilateral denoise and chromatic
+aberration legitimately read across the boundary): 9,984 outside pixels
+checked, 0 not black; 2,304 inside pixels checked, 0 differ. Negative
+controls against the FINAL design: ignoring `--crop` fails (9,984 not
+black); skipping the host zeroing fails (3,416 not black - meaningful now,
+since the columns outside the window really are rendered). (Against the
+abandoned kernel design, skipping the zeroing did NOT fail - a fresh
+texture read back as zero on this hardware - which is exactly why the
+zeroing is kept explicit.) Local `ctest` 9/9.
+
+**No-crop renders unchanged**: 81-scene sweep vs a clean `main`: 77
+identical, 4 differing (A3, E2, E4, F4), all previously shown self-unstable
+on the unmodified baseline; B14/D1/D3 are bit-identical again. The
+kernel and shader sources are byte-identical to `main`'s.
+
+**Not done**: crop is not applied to a pbrt scene's own Film `cropwindow`
+under Metal (only the CLI option); `--crop` with `--video` on Metal is
+unreachable (GPU video is OptiX-only, PR #209).

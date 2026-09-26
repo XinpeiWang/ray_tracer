@@ -108,6 +108,11 @@ struct MetalPocApp {
     // metal_render_main() sets directly, argv can't carry" shape as
     // exposureValue/isolatePbrtLighting above.
     uint32_t frameSeedValue = 1u;
+    // Pixel crop window [cropX0,cropX1) x [cropY0,cropY1), from --crop
+    // (RenderOptions::crop_*, resolved to pixels by metal_render_main() via the
+    // same resolve_crop_pixel_bounds() OptiX uses). cropX1 < 0 = not requested:
+    // render the whole image, exactly as before. See compileShaderAndDispatch().
+    int cropX0 = 0, cropX1 = -1, cropY0 = 0, cropY1 = -1;
     // Optional 7th positional CLI arg - a real .pbrt scene file to load
     // via src/shared/pbrt_load.h INSTEAD of buildScene()'s own hardcoded
     // room (see loadPbrtScene()'s own comment for exactly what subset of

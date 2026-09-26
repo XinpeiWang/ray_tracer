@@ -590,6 +590,17 @@ if(RT_BUILD_METAL)
     # through the real ray_tracer --gpu path (the only route that carries
     # RenderOptions::seed; the standalone metal_poc CLI has none). Needs a
     # real Metal device like every render test here.
+    # --crop under Metal (section 205): metal_poc_crop_check.cpp is a host-only
+    # image comparer (no Metal, no device) driven by metal_poc_crop_test.sh, which
+    # renders A1 whole and cropped through the real ray_tracer --gpu path.
+    add_executable(metal_poc_crop_check gpu/metal/metal_poc_crop_check.cpp)
+    add_test(NAME metal_poc_crop_window
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_crop_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_crop_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_crop_window PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "CROP_TEST_OK")
+
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
             $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")

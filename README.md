@@ -255,7 +255,7 @@ cmake -B build -DRT_BUILD_METAL=ON && cmake --build build
 ./build/ray_tracer 800 100 50 A1 --gpu   # real macOS GPU path, not a fallback warning
 ```
 Also builds a standalone `metal_poc` CLI and (via `ctest`, once
-configured this way) eight regression tests covering both host-side math
+configured this way) nine regression tests covering both host-side math
 and real on-device shader kernels. Nowhere near OptiX's own feature
 parity yet - see `docs/METAL_GPU_FEASIBILITY.md` for exactly what's
 covered, what isn't, and the full incremental history (200+ numbered
