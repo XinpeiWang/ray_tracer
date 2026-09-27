@@ -34,6 +34,215 @@ void testFrDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MTLComman
     }
 }
 
+namespace dielectric_test_detail {
+// Host-side transcriptions of Metal's own `reflect`/`refract` built-ins
+// (MSL matches the GLSL definitions exactly - this project already relies
+// on that equivalence everywhere else this file uses double-precision
+// stand-ins for GPU intrinsics), used ONLY as an independent reference to
+// compare shadeDielectric()'s/shadeThinDielectric()'s ACTUAL returned
+// direction against, never called from the shader itself.
+simd::double3 reflectRef(simd::double3 I, simd::double3 N) {
+    return I - 2.0 * simd::dot(N, I) * N;
+}
+// Returns {0,0,0} on TIR, matching Metal's own refract() - callers here
+// only invoke it once cannotRefract has already been ruled out, same as
+// shadeDielectric() itself does.
+simd::double3 refractRef(simd::double3 I, simd::double3 N, double eta) {
+    double NdotI = simd::dot(N, I);
+    double k = 1.0 - eta * eta * (1.0 - NdotI * NdotI);
+    if (k < 0.0) return simd::double3{0.0, 0.0, 0.0};
+    return eta * I - (eta * NdotI + std::sqrt(k)) * N;
+}
+simd::double3 d3(simd::float3 v) { return simd::double3{v.x, v.y, v.z}; }
+simd::float3 f3(simd::double3 v) { return simd::float3{(float)v.x, (float)v.y, (float)v.z}; }
+bool isFiniteF3(simd::float3 v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); }
+}  // namespace dielectric_test_detail
+
+// shadeDielectric() (metal_poc_materials_specular.metal, materialType 2) -
+// the reflect-vs-refract branch selection, Snell-law refraction direction,
+// and TIR routing that testFrDielectric() above does NOT exercise (it only
+// checks the raw Fresnel-reflectance scalar, never the shading function
+// that consumes it). Every case below is constructed so the RNG draw
+// cannot change the outcome - matched-media (ior=1.0) forces transmission
+// unconditionally (frDielectric(eta=1) is exactly 0, so "reflectance >
+// randFloat" is false no matter what randFloat returns), and a beyond-
+// critical-angle exit forces TIR unconditionally (shadeDielectric()'s own
+// `cannotRefract ||` short-circuits before the RNG comparison) - so these
+// are exact geometric checks, not statistical ones.
+void testShadeDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    using namespace dielectric_test_detail;
+
+    struct Case {
+        const char *name;
+        simd::float3 rayDir, normal, facingNormal;
+        float ior;
+        simd::float3 absorption;
+        bool frontFace;
+        float hitDistance;
+        // What to check for this case.
+        bool expectReflect;   // true: expect reflectRef(); false: expect refractRef()
+        double refractEta;    // eta to feed refractRef() when expectReflect is false
+    };
+
+    // Incidence ~48.19 deg (cos=2/3): sin(48.19)=0.7454. Front-face air->
+    // glass (ior=1.5): refractionRatio=1/1.5, ratio*sin=0.497 < 1, refracts.
+    // Back-face glass->air (ior=1.5) at the SAME angle: refractionRatio=1.5,
+    // ratio*sin=1.118 > 1 -> TIR, forced reflection regardless of RNG (this
+    // is exactly the "steep exit angle" case METAL_GPU_FEASIBILITY.md and
+    // this codebase's own frDielectric test already use for TIR, section
+    // above's `{0.17364818f, 1.0f/1.5f, 1.0f}` case, just exercised through
+    // the full shading function instead of the raw Fresnel scalar).
+    const simd::float3 obliqueDir = simd::normalize(simd::float3{0.7454f, -0.6667f, 0.0f});
+    const simd::float3 upNormal{0.0f, 1.0f, 0.0f};
+
+    const simd::float3 noAbsorption = simd::float3{0.0f, 0.0f, 0.0f};
+    std::vector<Case> cases = {
+        {"front-face oblique refraction (air->glass, ior=1.5)",
+         obliqueDir, upNormal, upNormal, 1.5f, noAbsorption, true, 0.0f,
+         /*expectReflect=*/false, /*refractEta=*/1.0 / 1.5},
+
+        {"back-face oblique TIR (glass->air, ior=1.5, beyond critical angle)",
+         obliqueDir, upNormal, -upNormal, 1.5f, simd::float3{0.3f, 0.3f, 0.3f}, false, 2.0f,
+         /*expectReflect=*/true, /*refractEta=*/0.0},
+
+        {"matched-media straight-through (ior=1.0, oblique, front-face)",
+         obliqueDir, upNormal, upNormal, 1.0f, noAbsorption, true, 0.0f,
+         /*expectReflect=*/false, /*refractEta=*/1.0},
+
+        {"matched-media straight-through (ior=1.0, oblique, back-face)",
+         obliqueDir, upNormal, -upNormal, 1.0f, simd::float3{0.5f, 0.5f, 0.5f}, false, 3.0f,
+         /*expectReflect=*/false, /*refractEta=*/1.0},
+    };
+
+    std::vector<DielectricTestInput> inputs;
+    for (const Case &c : cases) {
+        // Two different rngSeeds per case - the whole point is that the
+        // outcome must NOT depend on which one lands, since every case
+        // above is constructed to force a deterministic branch.
+        for (uint32_t seed : {12345u, 999999937u}) {
+            DielectricTestInput in{};
+            in.rayDir = c.rayDir; in.normal = c.normal; in.facingNormal = c.facingNormal;
+            in.ior = c.ior; in.absorption = c.absorption;
+            in.frontFace = c.frontFace ? 1u : 0u; in.hitDistance = c.hitDistance;
+            in.rngSeed = seed;
+            inputs.push_back(in);
+        }
+    }
+    id<MTLBuffer> inBuf = makeBuffer(device, inputs.data(), inputs.size() * sizeof(DielectricTestInput));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, inputs.size() * sizeof(DielectricTestOutput));
+    if (!runKernel(device, library, queue, @"test_shadeDielectric", @[inBuf, outBuf], nil, (int)inputs.size())) return;
+    DielectricTestOutput *out = (DielectricTestOutput *)outBuf.contents;
+
+    for (size_t i = 0; i < cases.size(); ++i) {
+        const Case &c = cases[i];
+        for (int seedIdx = 0; seedIdx < 2; ++seedIdx) {
+            const DielectricTestOutput &o = out[i * 2 + seedIdx];
+            char label[192];
+
+            snprintf(label, sizeof(label), "shadeDielectric: %s (seed %d) - direction is finite", c.name, seedIdx);
+            expectTrue(label, isFiniteF3(simd::float3(o.rayDir)));
+
+            simd::double3 unitDir = simd::normalize(d3(c.rayDir));
+            simd::double3 expectedDir = c.expectReflect
+                ? reflectRef(unitDir, d3(c.facingNormal))
+                : refractRef(unitDir, d3(c.facingNormal), c.refractEta);
+            simd::float3 expectedDirF = f3(expectedDir);
+            snprintf(label, sizeof(label), "shadeDielectric: %s (seed %d) - direction matches %s",
+                     c.name, seedIdx, c.expectReflect ? "reflect()" : "refract() (Snell's law)");
+            expectNear(label, simd::length(simd::float3(o.rayDir) - expectedDirF), 0.0, 1e-4);
+
+            snprintf(label, sizeof(label), "shadeDielectric: %s (seed %d) - specularBounce is true", c.name, seedIdx);
+            expectTrue(label, o.specularBounce != 0);
+
+            // Absorption only applies on the backface (applyBeerLambertAbsorption's
+            // own gate) - verify the exact exp(-absorption*distance) factor when it
+            // should fire, and that throughput is untouched (still 1,1,1) otherwise.
+            simd::float3 expectedThroughput = c.frontFace
+                ? simd::float3{1.0f, 1.0f, 1.0f}
+                : simd::float3{(float)std::exp(-c.absorption.x * c.hitDistance),
+                               (float)std::exp(-c.absorption.y * c.hitDistance),
+                               (float)std::exp(-c.absorption.z * c.hitDistance)};
+            snprintf(label, sizeof(label), "shadeDielectric: %s (seed %d) - Beer-Lambert throughput", c.name, seedIdx);
+            expectNear(label, simd::length(simd::float3(o.throughput) - expectedThroughput), 0.0, 1e-5);
+        }
+    }
+}
+
+// shadeThinDielectric() (metal_poc_materials_specular.metal, materialType
+// 23) - same "force a deterministic branch, check it exactly" approach as
+// testShadeDielectric() above. ior=1.0 makes frDielectric() return exactly
+// 0, so thinR (after the multi-bounce boost, which leaves 0 unchanged)
+// stays 0 and the function transmits unconditionally; a near-grazing angle
+// pushes frDielectric() (and therefore the boosted thinR) to within a
+// tiny, explicitly-bounded distance of 1.0, making reflection overwhelmingly
+// likely for any of the 8 independent seeds tried - not mathematically
+// airtight the way the ior=1.0 case is, but the same "several independent
+// seeds must agree" standard this file's own coated-material property
+// tests already use, and the actual probability of a false failure here
+// (a uniform draw landing inside a sub-1e-5-wide window, 8 times running)
+// is astronomically smaller than that tolerance suggests.
+void testShadeThinDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    using namespace dielectric_test_detail;
+
+    const simd::float3 upNormal{0.0f, 1.0f, 0.0f};
+    const simd::float3 obliqueDir = simd::normalize(simd::float3{0.7454f, -0.6667f, 0.0f});
+    // cosTheta ~ 0.006 (theta ~ 89.6 deg): frDielectric(eta != 1) here is
+    // above 0.999 for any eta this test uses (eta=1.5 -> R ~= 0.9996), so
+    // the boosted thinR is even higher - "virtually always reflects."
+    const simd::float3 grazingDir = simd::normalize(simd::float3{0.99998f, -0.006f, 0.0f});
+
+    std::vector<uint32_t> seeds = {1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u};
+
+    // Case A: matched media (ior=1.0) - must transmit (straight-through,
+    // unchanged direction) for EVERY seed, no exceptions.
+    {
+        std::vector<DielectricTestInput> inputs;
+        for (uint32_t seed : seeds) {
+            DielectricTestInput in{};
+            in.rayDir = obliqueDir; in.normal = upNormal; in.facingNormal = upNormal;
+            in.ior = 1.0f; in.rngSeed = seed;
+            inputs.push_back(in);
+        }
+        id<MTLBuffer> inBuf = makeBuffer(device, inputs.data(), inputs.size() * sizeof(DielectricTestInput));
+        id<MTLBuffer> outBuf = makeOutputBuffer(device, inputs.size() * sizeof(DielectricTestOutput));
+        if (runKernel(device, library, queue, @"test_shadeThinDielectric", @[inBuf, outBuf], nil, (int)inputs.size())) {
+            DielectricTestOutput *out = (DielectricTestOutput *)outBuf.contents;
+            for (size_t i = 0; i < inputs.size(); ++i) {
+                char label[160];
+                snprintf(label, sizeof(label),
+                         "shadeThinDielectric: matched media (ior=1.0) transmits straight-through (seed %u)", seeds[i]);
+                expectNear(label, simd::length(simd::float3(out[i].rayDir) - obliqueDir), 0.0, 1e-5);
+                snprintf(label, sizeof(label), "shadeThinDielectric: matched media - throughput untinted (seed %u)", seeds[i]);
+                expectNear(label, simd::length(simd::float3(out[i].throughput) - simd::float3{1, 1, 1}), 0.0, 1e-6);
+            }
+        }
+    }
+
+    // Case B: near-grazing incidence, ior=1.5 - must reflect for every seed.
+    {
+        std::vector<DielectricTestInput> inputs;
+        for (uint32_t seed : seeds) {
+            DielectricTestInput in{};
+            in.rayDir = grazingDir; in.normal = upNormal; in.facingNormal = upNormal;
+            in.ior = 1.5f; in.rngSeed = seed;
+            inputs.push_back(in);
+        }
+        id<MTLBuffer> inBuf = makeBuffer(device, inputs.data(), inputs.size() * sizeof(DielectricTestInput));
+        id<MTLBuffer> outBuf = makeOutputBuffer(device, inputs.size() * sizeof(DielectricTestOutput));
+        if (runKernel(device, library, queue, @"test_shadeThinDielectric", @[inBuf, outBuf], nil, (int)inputs.size())) {
+            DielectricTestOutput *out = (DielectricTestOutput *)outBuf.contents;
+            simd::double3 expectedReflect = reflectRef(d3(grazingDir), d3(upNormal));
+            simd::float3 expectedReflectF = f3(expectedReflect);
+            for (size_t i = 0; i < inputs.size(); ++i) {
+                char label[160];
+                snprintf(label, sizeof(label),
+                         "shadeThinDielectric: near-grazing incidence reflects (seed %u)", seeds[i]);
+                expectNear(label, simd::length(simd::float3(out[i].rayDir) - expectedReflectF), 0.0, 1e-3);
+            }
+        }
+    }
+}
+
 // lambertianPdf()/diffuseTransmissionPdf() (metal_poc_sampling.metal) -
 // numeric cross-check against pbrt-v4's own DiffuseBxDF<double>/
 // DiffuseTransmissionBxDF<double>::scattering_pdf() (src/shared/

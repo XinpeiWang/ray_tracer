@@ -495,7 +495,7 @@ kernel void primaryRayKernel(
                 uniforms.fogSigmaT > 0.0 && result.type != intersection_type::none) {
                 float surfaceDist = result.distance;
                 float u = randFloat(rngState);
-                float t = -log(max(1.0 - u, 1e-6)) / uniforms.fogSigmaT;
+                float t = sampleFreePathDistance(u, uniforms.fogSigmaT);
                 if (t < surfaceDist) {
                     scatteredInMedium = true;
                     float3 scatterPoint = rayOrigin + rayDir * t;

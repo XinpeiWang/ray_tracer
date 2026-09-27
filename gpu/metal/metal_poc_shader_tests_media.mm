@@ -204,3 +204,91 @@ void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<
     }
 }
 
+// sampleFreePathDistance() (metal_poc_sampling.metal) - the free-flight
+// distance formula shared by the global-fog path (primaryRayKernel) and
+// shadeHomogeneousMediumSphere() (materialType 28), extracted specifically
+// for this test (previously duplicated inline verbatim at both call
+// sites, untested either way). Closes the gap the original code review of
+// this backend flagged: "a bug in the majorant/free-path sampling (e.g. a
+// wrong sigmaT used for the rejection test)... would leave every
+// volumetric render systematically too opaque or too transparent" while
+// every existing test only covered density lookups and the phase function,
+// never the actual scatter-vs-transmit decision.
+void testSampleFreePathDistance(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    // 1. Numeric cross-check against an independently-computed (double
+    // precision) transcription of the exact same inverse-CDF formula, for
+    // a spread of u/sigmaT including the u->1 guard's own boundary.
+    std::mt19937 rng(299792458);
+    std::uniform_real_distribution<double> uDist(0.0, 0.999999);
+    std::uniform_real_distribution<double> sigmaDist(0.05, 5.0);
+
+    const int n = 20;
+    std::vector<simd::float2> inputs(n);
+    std::vector<double> expected(n);
+    for (int i = 0; i < n; ++i) {
+        double u = uDist(rng), sigmaT = sigmaDist(rng);
+        inputs[i] = simd::float2{(float)u, (float)sigmaT};
+        expected[i] = -std::log(std::max(1.0 - u, 1e-6)) / sigmaT;
+    }
+    id<MTLBuffer> inBuf = makeBuffer(device, inputs.data(), n * sizeof(simd::float2));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (runKernel(device, library, queue, @"test_sampleFreePathDistance", @[inBuf, outBuf], nil, n)) {
+        float* out = (float*)outBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "sampleFreePathDistance matches -ln(1-u)/sigmaT (case %d)", i);
+            expectNear(label, out[i], expected[i], std::max(1e-4, std::fabs(expected[i]) * 1e-3));
+        }
+    }
+
+    // 2. Exact CDF-inversion check, no statistics/RNG needed: t(u) is a
+    // strictly increasing function of u, so "t(u) < targetDistance" is
+    // equivalent to "u < uThreshold" where uThreshold = 1 -
+    // exp(-sigmaT*targetDistance) is the analytic CDF at that distance.
+    // Feeding uThreshold itself back in must reproduce targetDistance
+    // exactly (up to float precision) BY CONSTRUCTION - if this function
+    // used the wrong sigmaT (scaled, inverted, or swapped with something
+    // else), this round trip would not close and the returned t would
+    // visibly differ from targetDistance, precisely the failure mode the
+    // review comment above describes, caught here without needing to
+    // render anything or take a statistical sample.
+    struct { double sigmaT, targetDistance; } roundTripCases[] = {
+        {1.0, 1.0}, {0.1, 5.0}, {2.5, 0.4}, {0.02, 50.0}, {8.0, 0.1},
+    };
+    std::vector<simd::float2> rtInputs;
+    std::vector<double> rtExpectedDistance;
+    for (const auto &c : roundTripCases) {
+        double uThreshold = 1.0 - std::exp(-c.sigmaT * c.targetDistance);
+        rtInputs.push_back(simd::float2{(float)uThreshold, (float)c.sigmaT});
+        rtExpectedDistance.push_back(c.targetDistance);
+    }
+    const int nrt = (int)rtInputs.size();
+    id<MTLBuffer> rtInBuf = makeBuffer(device, rtInputs.data(), nrt * sizeof(simd::float2));
+    id<MTLBuffer> rtOutBuf = makeOutputBuffer(device, nrt * sizeof(float));
+    if (runKernel(device, library, queue, @"test_sampleFreePathDistance", @[rtInBuf, rtOutBuf], nil, nrt)) {
+        float* out = (float*)rtOutBuf.contents;
+        for (int i = 0; i < nrt; ++i) {
+            char label[160];
+            snprintf(label, sizeof(label),
+                     "sampleFreePathDistance(CDF^-1(sigmaT=%.3g, dist=%.3g)) round-trips to that distance",
+                     roundTripCases[i].sigmaT, roundTripCases[i].targetDistance);
+            expectNear(label, out[i], rtExpectedDistance[i], std::max(1e-3, rtExpectedDistance[i] * 1e-3));
+        }
+    }
+
+    // 3. Monotonicity sanity check - a larger u must give a larger t for
+    // the same sigmaT (catches a sign flip that a single-point check could
+    // miss if it happened to land on a value that's still positive).
+    simd::float2 monoInputs[4] = {{0.1f, 1.0f}, {0.4f, 1.0f}, {0.7f, 1.0f}, {0.95f, 1.0f}};
+    id<MTLBuffer> monoInBuf = makeBuffer(device, monoInputs, sizeof(monoInputs));
+    id<MTLBuffer> monoOutBuf = makeOutputBuffer(device, 4 * sizeof(float));
+    if (runKernel(device, library, queue, @"test_sampleFreePathDistance", @[monoInBuf, monoOutBuf], nil, 4)) {
+        float* out = (float*)monoOutBuf.contents;
+        for (int i = 1; i < 4; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "sampleFreePathDistance is increasing in u (step %d)", i);
+            expectTrue(label, out[i] > out[i - 1]);
+        }
+    }
+}
+

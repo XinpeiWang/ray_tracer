@@ -166,6 +166,34 @@ struct AreaLightGPU {
     int32_t spherePrimId = -1;
 };
 
+// Mirrors metal_poc_test_kernels.metal's own DielectricTestInput/
+// DielectricTestOutput byte-for-byte - needed to build the buffers
+// test_shadeDielectric/test_shadeThinDielectric expect and read their
+// results back. Plain simd::float3 fields (not PackedFloat3), matching
+// the Metal side's own plain (non-packed) float3 choice there - Apple's
+// simd::float3 has the identical 16-byte-aligned layout as MSL's float3,
+// the same correspondence test_goniometricLightRadiance's own output
+// buffer already relies on (read directly as simd::float3* with no
+// conversion), so field-for-field parity here is enough for the two
+// structs to agree on layout with no manual packing.
+struct DielectricTestInput {
+    simd::float3 rayDir;
+    simd::float3 normal;
+    simd::float3 facingNormal;
+    float ior;
+    simd::float3 absorption;
+    uint32_t frontFace;
+    float hitDistance;
+    uint32_t rngSeed;
+};
+
+struct DielectricTestOutput {
+    simd::float3 rayDir;
+    simd::float3 rayOrigin;
+    simd::float3 throughput;
+    uint32_t specularBounce;
+};
+
 // A direct, deliberately-independent re-implementation of
 // buildPowerLightSampler()'s own Vose alias-table CONSTRUCTION (see
 // metal_poc_host_math.h - not called from here, that header pulls in
@@ -281,6 +309,8 @@ void testSampleGGXEnergyTableDevice(id<MTLDevice> device, id<MTLLibrary> library
 void testOrenNayarF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testVelvetF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testAtan2Zero(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
+void testShadeDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
+void testShadeThinDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 
 // metal_poc_shader_tests_media.mm - participating-medium/volumetric and
 // phase-function checks (Perlin noise, cloud/RGB-grid density, HG phase).
@@ -289,6 +319,7 @@ void testGpuCloudDensity(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCom
 void testGpuRgbGridTrilinear(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testSampleHenyeyGreensteinProperties(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
+void testSampleFreePathDistance(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 
 // metal_poc_shader_tests_lights.mm - light-type-specific checks (spot,
 // environment-direction sampling, projection, area-light alias table,
