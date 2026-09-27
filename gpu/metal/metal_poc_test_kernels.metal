@@ -473,6 +473,14 @@ kernel void test_henyeyGreensteinPhase(
     outputs[tid] = henyeyGreensteinPhase(inputs[tid].x, inputs[tid].y);
 }
 
+kernel void test_sampleFreePathDistance(
+    device const float2* inputs [[buffer(0)]],   // (u, sigmaT)
+    device float* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    outputs[tid] = sampleFreePathDistance(inputs[tid].x, inputs[tid].y);
+}
+
 // Mirrors ProjectionLight's own field layout exactly (see that struct's
 // own comment) - a plain input-data buffer for this test kernel, not a
 // re-declaration of the real struct.
@@ -641,4 +649,85 @@ kernel void test_goniometricLightRadiance(
     constexpr sampler nearestSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
     outputs[tid] = goniometricLightRadiance(wiFromLights[tid], light.forward, light.right, light.up,
                                              light.emission, light.scale, testImage, nearestSampler);
+}
+
+// shadeDielectric()/shadeThinDielectric() (metal_poc_materials_specular.metal)
+// - neither reads any scene resource (light buffers, textures, the
+// intersector), unlike every NEE-capable shadeXxx(), so both can be
+// dispatched directly with a minimal, hand-built TriangleMaterial the same
+// way every other test kernel in this file calls its own target function
+// with no reimplementation. metal_poc_shader_tests_materials.mm's own
+// testShadeDielectric()/testShadeThinDielectric() drive these with inputs
+// chosen to make the reflect-vs-refract branch deterministic (matched-media
+// ior=1.0 forces transmission; a beyond-critical-angle exit forces total
+// internal reflection) rather than depending on the RNG draw, so the
+// checks are exact, not statistical - see those functions' own comments.
+//
+// Plain (non-packed) float3 fields, not packed_float3 - this struct only
+// ever holds a handful of test cases (unlike the big per-vertex/per-
+// primitive scene buffers packed_float3 exists to save memory for), and
+// Metal's plain float3 has the same 16-byte-aligned layout as Apple's own
+// simd::float3, so the host side (metal_poc_shader_tests_materials.mm)
+// can mirror this struct with simd::float3 fields directly - no packed-
+// vs-unpacked conversion needed on either side of the buffer boundary.
+struct DielectricTestInput {
+    float3 rayDir;
+    float3 normal;        // geometric (unflipped-for-facing) normal
+    float3 facingNormal;  // normal flipped to face the incoming ray
+    float ior;
+    float3 absorption;    // mat.color, reinterpreted as Beer-Lambert absorption
+    uint frontFace;        // 0/1 - shadeThinDielectric ignores this
+    float hitDistance;
+    uint rngSeed;
+};
+
+struct DielectricTestOutput {
+    float3 rayDir;
+    float3 rayOrigin;
+    float3 throughput;    // starts at (1,1,1); shows exactly what each function multiplied in
+    uint specularBounce;
+};
+
+kernel void test_shadeDielectric(
+    device const DielectricTestInput* inputs [[buffer(0)]],
+    device DielectricTestOutput* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    DielectricTestInput in = inputs[tid];
+    TriangleMaterial mat;
+    mat.ior = in.ior;
+    mat.color = packed_float3(in.absorption);
+    float3 rayDir = in.rayDir;
+    float3 rayOrigin = float3(0.0);
+    float3 throughput = float3(1.0);
+    bool specularBounce = false;
+    uint rngState = in.rngSeed;
+    shadeDielectric(mat, /*hitPoint=*/float3(0.0), in.normal, in.facingNormal,
+                     in.frontFace != 0u, in.hitDistance,
+                     rayDir, rayOrigin, throughput, specularBounce, rngState);
+    outputs[tid].rayDir = rayDir;
+    outputs[tid].rayOrigin = rayOrigin;
+    outputs[tid].throughput = throughput;
+    outputs[tid].specularBounce = specularBounce ? 1u : 0u;
+}
+
+kernel void test_shadeThinDielectric(
+    device const DielectricTestInput* inputs [[buffer(0)]],
+    device DielectricTestOutput* outputs [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    DielectricTestInput in = inputs[tid];
+    TriangleMaterial mat;
+    mat.ior = in.ior;
+    float3 rayDir = in.rayDir;
+    float3 rayOrigin = float3(0.0);
+    float3 throughput = float3(1.0);
+    bool specularBounce = false;
+    uint rngState = in.rngSeed;
+    shadeThinDielectric(mat, /*hitPoint=*/float3(0.0), in.normal, in.facingNormal,
+                         rayDir, rayOrigin, throughput, specularBounce, rngState);
+    outputs[tid].rayDir = rayDir;
+    outputs[tid].rayOrigin = rayOrigin;
+    outputs[tid].throughput = throughput;
+    outputs[tid].specularBounce = specularBounce ? 1u : 0u;
 }

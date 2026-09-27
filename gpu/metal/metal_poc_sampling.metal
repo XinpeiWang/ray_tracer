@@ -650,6 +650,25 @@ inline void applyBeerLambertAbsorption(thread float3& throughput, packed_float3 
     }
 }
 
+// Samples a free-flight distance from an exponential (Beer-Lambert)
+// transmittance distribution with extinction coefficient sigmaT, given a
+// uniform random draw u in [0,1) - the standard inverse-CDF formula: T(t) =
+// exp(-sigmaT*t) is the probability of surviving to distance t, so
+// t = -ln(1-u)/sigmaT inverts it (max(1-u, 1e-6) only guards u==1.0 exactly,
+// which would otherwise take log(0) = -inf). This is the core decision that
+// makes free-flight sampling unbiased: comparing the returned t against a
+// known surface/boundary distance (t < dist => scattered before reaching
+// it) needs no separate transmittance/pdf-ratio correction in either
+// outcome, because p(t) = sigmaT*exp(-sigmaT*t) exactly cancels the
+// extinction term either way - see this function's two call sites' own
+// comments for the full derivation. Extracted here (previously duplicated
+// verbatim at both call sites) so it has one implementation and is
+// independently testable - metal_poc_shader_tests_media.mm's own
+// testSampleFreePathDistance() is the numeric cross-check.
+inline float sampleFreePathDistance(float u, float sigmaT) {
+    return -log(max(1.0 - u, 1e-6)) / sigmaT;
+}
+
 // ---------------------------------------------------------------------------
 // GGX / Trowbridge-Reitz microfacet distribution + height-correlated Smith
 // masking-shadowing - the standard model materialType == 4 (rough

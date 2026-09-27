@@ -48,7 +48,7 @@ inline void shadeHomogeneousMediumSphere(
     float exitT = 2.0 * dot(sphereCenter - rayOrigin, rayDir) - entryT;
     float sigmaT = mediumMat.ior;
     float u = randFloat(rngState);
-    float tScatter = -log(max(1.0 - u, 1e-6)) / sigmaT;
+    float tScatter = sampleFreePathDistance(u, sigmaT);
     if (tScatter < (exitT - entryT)) {
         float3 scatterPoint = rayOrigin + rayDir * (entryT + tScatter);
         float3 wo = -rayDir;

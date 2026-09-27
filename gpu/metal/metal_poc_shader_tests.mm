@@ -79,6 +79,7 @@ int main() {
         testOrenNayarF(device, library, queue);
         testVelvetF(device, library, queue);
         testHenyeyGreensteinPhase(device, library, queue);
+        testSampleFreePathDistance(device, library, queue);
         testProjectionLightRadiance(device, library, queue);
         testSampleAreaLightAliasTable(device, library, queue);
         testEqualAreaSphereToSquare(device, library, queue);
@@ -92,6 +93,8 @@ int main() {
         testHairBlackFurValidRate(device, library, queue);
         testHairGrazingCenterBias(device, library, queue);
         testAtan2Zero(device, library, queue);
+        testShadeDielectric(device, library, queue);
+        testShadeThinDielectric(device, library, queue);
 
         if (g_failures > 0) {
             fprintf(stderr, "FAIL: %d check(s) failed\n", g_failures);
