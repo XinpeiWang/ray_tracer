@@ -149,6 +149,7 @@
     <ClCompile Include="unit\sampling_sph_cone_tests.cpp" />
     <ClCompile Include="unit\shapes_tests.cpp" />
     <ClCompile Include="unit\area_lights_tests.cpp" />
+    <ClCompile Include="unit\backend_consistency_tests.cpp" />
     <ClCompile Include="unit\materials_tests.cpp" />
     <ClCompile Include="unit\cameras_tests.cpp" />
     <ClCompile Include="unit\film_tests.cpp" />
