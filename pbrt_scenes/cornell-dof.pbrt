@@ -1,0 +1,96 @@
+# cornell-dof.pbrt -- migration of the native "D5 Depth of Field Cornell
+# Box" demo scene (src/TheRestOfYourLife/scene_registry_data.h's D5 entry -
+# the exact same build_cornell_box()/build_cornell_box_lights() world as
+# A1/D6-D8, just with the perspective camera's thin-lens defocus enabled)
+# to a pbrt-backed scene, part of this project's GPU scene-construction-
+# duplication elimination.
+#
+# Cornell box geometry is IDENTICAL to cornell-box-native.pbrt (A1) - see
+# that file's own header comment for the quad/box-face authoring convention.
+#
+# Depth of field: native's CameraConfig carries `defocus_angle=2.0` degrees
+# and `focus_dist=800.0` world units - camera.h's own DOF convention (a
+# full-angle spread in degrees), NOT pbrt-v4's "lensradius" (a world-space
+# radius). This loader's own conversion
+# (pbrt_flatten::defocusAngleDegreesFor(), scene_registry.h) is
+# `defocus_angle = 2*atan(lensradius/focaldistance)*180/pi`, so reproducing
+# 2.0 degrees at focaldistance=800 needs
+# lensradius = 800*tan(1 degree) = 13.964051942574068 (solved exactly, not
+# guessed - see this project's own pbrt_flatten.h for the formula this
+# inverts).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+  "float lensradius" [ 13.964051942574068 ] "float focaldistance" [ 800.0 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+# Main ceiling light: Q=(213,554,227) u=(130,0,0) v=(0,0,105), color (15,15,15)
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+# Right wall (green): Q=(555,0,0) u=(0,0,555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+# Left wall (red): Q=(0,0,555) u=(0,0,-555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+# Ceiling (white): Q=(0,555,0) u=(555,0,0) v=(0,0,555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# Floor (white): Q=(0,0,555) u=(555,0,0) v=(0,0,-555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+# Back wall (white): Q=(555,0,555) u=(-555,0,0) v=(0,555,0)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+# Rotated white box (kBox: min=(0,0,0) max=(165,330,165), rotate_y=15,
+# translate=(265,0,295)) - 6 faces from quad.h's own box() algebra.
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 265 0 295
+  Rotate 15 0 1 0
+  # front: Q=(0,0,165) u=(165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 165   165 0 165   165 330 165   0 330 165 ]
+  # right: Q=(165,0,165) u=(0,0,-165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 165   165 0 0   165 330 0   165 330 165 ]
+  # back: Q=(165,0,0) u=(-165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 0   0 0 0   0 330 0   165 330 0 ]
+  # left: Q=(0,0,0) u=(0,0,165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 165   0 330 165   0 330 0 ]
+  # top: Q=(0,330,165) u=(165,0,0) v=(0,0,-165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 330 165   165 330 165   165 330 0   0 330 0 ]
+  # bottom: Q=(0,0,0) u=(165,0,0) v=(0,0,165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   165 0 0   165 0 165   0 0 165 ]
+AttributeEnd
+
+# Glass sphere: center (190,90,190) radius 90 ior 1.5
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
