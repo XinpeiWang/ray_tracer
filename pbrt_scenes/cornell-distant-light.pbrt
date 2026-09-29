@@ -1,0 +1,67 @@
+# cornell-distant-light.pbrt -- migration of the native "C3 Distant Light
+# Cornell" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_distant_light_cornell()/build_distant_light_punct()) to a
+# pbrt-backed scene, part of this project's GPU scene-construction-
+# duplication elimination.
+#
+# Walls/spheres are IDENTICAL to cornell-spotlight.pbrt (both share
+# cornell_walls_no_light()) - see that file's own header comment.
+#
+# Distant light direction: traced the ACTUAL code (not just its comments,
+# one of which is misleading) through pbrt_flatten.h's `pl.dir = from - to`,
+# pbrt_cpu_builder.h's add_distant(pl.dir, ...), punctual_light_list::
+# add_distant(), and distant_light_obj's own constructor - none of them
+# negate anything; distant_light_obj's own field comment ("dir: unit
+# direction *toward* the scene") confirms `from-to` is used exactly as
+# given, matching the native scene's own raw vec3(-0.4,-1.0,-0.2) argument
+# directly. `from`/`to` here are chosen so (from-to) equals that same
+# vector - any positive scalar multiple works since the result is
+# normalized either way. (An earlier version of this file assumed the
+# opposite, based on a stale/misleading comment on the native call site;
+# that version rendered almost entirely black, since the resulting
+# 180-degree-flipped shadow-ray direction self-occluded on nearly every NEE
+# sample - confirmed by tracing the code, not by guessing again.)
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "distant" "point3 from" [ -0.4 -1.0 -0.2 ] "point3 to" [ 0 0 0 ]
+  "rgb L" [ 1.0 0.98 0.92 ] "float scale" [ 14.0 ]
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.8 0.8 0.9 ] "float roughness" [ 0.1 ]
+AttributeBegin
+  Translate 370 120 380
+  Shape "sphere" "float radius" [ 120 ]
+AttributeEnd

@@ -464,50 +464,13 @@ inline hittable_list cornell_walls_no_light() {
 	return world;
 }
 
-// ============================================================================
-// Scene 25: Spotlight Cornell
-// Cornell box walls lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)
-// ============================================================================
-inline hittable_list build_spotlight_cornell() { return cornell_walls_no_light(); }
-
-inline std::shared_ptr<punctual_light_list> build_spotlight_punct() {
-	auto pl = std::make_shared<punctual_light_list>();
-	// Spotlight aimed downward from ceiling center
-	pl->add_spot(
-		point3(278, 548, 278),          // position: near ceiling
-		vec3(0, -1, 0),                 // direction: straight down
-		color(1.0, 0.95, 0.85),         // warm white
-		30.0,                           // total cone width (degrees)
-		15.0,                           // inner cone / falloff start (degrees)
-		600000.0                        // intensity scale
-	);
-	return pl;
-}
-
-// ============================================================================
-// Scene 26: Distant Light Cornell
-// Cornell box lit by a parallel sun-like DistantLight (pbrt-v4 DistantLight)
-// ============================================================================
-inline hittable_list build_distant_light_cornell() { return cornell_walls_no_light(); }
-
-inline std::shared_ptr<punctual_light_list> build_distant_light_punct() {
-	auto pl = std::make_shared<punctual_light_list>();
-	// Sun-like light coming from upper-right through the open top.
-	// DistantLightData::eval_Li() is `radiance * scale` with NO 1/r^2 falloff
-	// (that's the point of a directional/parallel light) - unlike the point/
-	// spot/goniometric lights below, this scale should NOT be a huge number
-	// compensating for r^2; it directly IS the incident irradiance. The
-	// previous 800000.0 (copy-pasted from the r^2-falloff lights' scale
-	// convention) made this scene almost total white blowout under the ACES
-	// tone map.
-	pl->add_distant(
-		vec3(-0.4, -1.0, -0.2),         // direction (toward light is negated inside)
-		color(1.0, 0.98, 0.92),         // warm sunlight
-		1000.0,                         // scene radius
-		14.0                            // radiance scale
-	);
-	return pl;
-}
+// build_spotlight_cornell()/build_spotlight_punct() (former scene 25 / C2)
+// and build_distant_light_cornell()/build_distant_light_punct() (former
+// scene 26 / C3) all deleted - migrated to pbrt-backed, see pbrt_scenes/
+// cornell-spotlight.pbrt/cornell-distant-light.pbrt and scene_registry_data.h's
+// own entries. Neither had any other consumer (unlike build_point_light_cornell()/
+// build_point_light_punct() just below, which tests/integration/
+// sppm_first_slice_test.cpp calls directly, so C4 keeps its CPU functions).
 
 // ============================================================================
 // Scene 27: Point Light Cornell

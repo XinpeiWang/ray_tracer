@@ -1,0 +1,52 @@
+# cornell-point-light.pbrt -- migration of the native "C4 Point Light
+# Cornell" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_point_light_cornell()/build_point_light_punct()) to a pbrt-backed
+# scene, part of this project's GPU scene-construction-duplication
+# elimination.
+#
+# Walls/spheres are IDENTICAL to cornell-spotlight.pbrt - see that file's
+# own header comment.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "point" "point3 from" [ 278 540 278 ]
+  "rgb I" [ 1.0 0.98 0.90 ] "float scale" [ 600000.0 ]
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.8 0.8 0.9 ] "float roughness" [ 0.1 ]
+AttributeBegin
+  Translate 370 120 380
+  Shape "sphere" "float radius" [ 120 ]
+AttributeEnd

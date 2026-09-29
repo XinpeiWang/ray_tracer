@@ -261,36 +261,28 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_hdri_sky,
             nullptr
         },
-        {
-            "C2", 25, SceneNames::SpotlightCornell, SceneCategories::Lights,
+        // C2 migrated to pbrt-backed - see pbrt_scenes/cornell-spotlight.pbrt.
+        // legacy_id 176 (next after B8's 175). build_spotlight_cornell()/
+        // build_spotlight_punct() have no other consumers - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C2", 176, SceneNames::SpotlightCornell, SceneCategories::Lights,
             "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_spotlight_cornell,
-            no_lights,
-            nullptr,
-            build_spotlight_punct
-        },
-        {
-            "C3", 26, SceneNames::DistantLightCornell, SceneCategories::Lights,
+            "Medium", "cornell-spotlight.pbrt", CameraMode::UserControlled),
+        // C3 migrated to pbrt-backed - see pbrt_scenes/cornell-distant-light.pbrt.
+        // legacy_id 177. build_distant_light_cornell()/build_distant_light_punct()
+        // have no other consumers - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C3", 177, SceneNames::DistantLightCornell, SceneCategories::Lights,
             "Cornell box lit by a parallel sun-like distant light (pbrt-v4 DistantLight)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_distant_light_cornell,
-            no_lights,
-            nullptr,
-            build_distant_light_punct
-        },
-        {
-            "C4", 27, SceneNames::PointLightCornell, SceneCategories::Lights,
+            "Medium", "cornell-distant-light.pbrt", CameraMode::UserControlled),
+        // C4 migrated to pbrt-backed - see pbrt_scenes/cornell-point-light.pbrt.
+        // legacy_id 178. build_point_light_cornell()/build_point_light_punct()
+        // (CPU) are NOT deleted - tests/integration/sppm_first_slice_test.cpp
+        // calls both directly.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C4", 178, SceneNames::PointLightCornell, SceneCategories::Lights,
             "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_point_light_cornell,
-            no_lights,
-            nullptr,
-            build_point_light_punct
-        },
+            "Medium", "cornell-point-light.pbrt", CameraMode::UserControlled),
         {
             "C5", 28, SceneNames::GoniometricLight, SceneCategories::Lights,
             "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
