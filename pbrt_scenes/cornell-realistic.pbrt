@@ -1,0 +1,114 @@
+# cornell-realistic.pbrt -- migration of the native "D8 Realistic Camera
+# Cornell Box" demo scene (src/TheRestOfYourLife/scene_registry_data.h's D8
+# entry - the exact same build_cornell_box()/build_cornell_box_lights()
+# world as A1/D5-D7, shot through a real multi-element lens simulation
+# instead of the thin-lens perspective approximation) to a pbrt-backed
+# scene, part of this project's GPU scene-construction-duplication
+# elimination.
+#
+# Cornell box geometry is IDENTICAL to cornell-box-native.pbrt (A1) - see
+# that file's own header comment for the quad/box-face authoring convention.
+#
+# Lens: geometry/dgauss-9-element.dat reproduces native's own inline 9-row
+# lens table verbatim (see that file's own header comment) - loaded through
+# this generic "realistic" camera path instead of a hardcoded
+# std::vector<double> in C++. aperturediameter=350 (mm) and
+# focusdistance=420 (world units, ~= lookfrom-to-lookat distance) both match
+# native's own values exactly (see that scene's own setup_camera lambda for
+# why 350mm - upscaled from D4's shared 8mm aperture so the defocus cone
+# stays visible at this box's much larger, ~550-unit scale).
+#
+# Film shape - a KNOWN, DISCLOSED divergence from native, not an authoring
+# mistake: native hardcodes ABSOLUTE film half-extents (3.0mm x 2.0mm, a
+# fixed 3:2 rectangle) regardless of the actual render resolution. This
+# loader's own generic "realistic" camera path instead derives film
+# half-extents from a single "filmdiag" (matching real pbrt-v4's own
+# convention) split by the render's ACTUAL aspect ratio
+# (scene_registry.h's realistic-camera branch: halfY = filmdiag /
+# (2*sqrt(aspect^2+1)), halfX = aspect*halfY) - and this project's own CLI
+# always renders width==height (launcher_args.h forces image_height =
+# image_width), so aspect is always exactly 1 in practice, which can only
+# ever produce a SQUARE film shape here, never native's 3:2 rectangle.
+# filmdiag is set to 2*sqrt(3^2+2^2) = 7.211102550927978 to at least
+# preserve native's own film DIAGONAL (the lens system's effective scale),
+# even though the resulting half-extents are square (~2.5498mm each) rather
+# than native's rectangular 3.0mm x 2.0mm - the closest reproduction
+# achievable without editing this shared, aspect-derived camera-setup code
+# (out of scope for a single scene's own migration).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -420    278 278 278    0 1 0
+Camera "realistic" "string lensfile" [ "geometry/dgauss-9-element.dat" ]
+  "float aperturediameter" [ 350.0 ] "float focusdistance" [ 420.0 ]
+  "float filmdiag" [ 7.211102550927978 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+# Main ceiling light: Q=(213,554,227) u=(130,0,0) v=(0,0,105), color (15,15,15)
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+# Right wall (green): Q=(555,0,0) u=(0,0,555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+# Left wall (red): Q=(0,0,555) u=(0,0,-555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+# Ceiling (white): Q=(0,555,0) u=(555,0,0) v=(0,0,555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# Floor (white): Q=(0,0,555) u=(555,0,0) v=(0,0,-555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+# Back wall (white): Q=(555,0,555) u=(-555,0,0) v=(0,555,0)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+# Rotated white box (kBox: min=(0,0,0) max=(165,330,165), rotate_y=15,
+# translate=(265,0,295)) - 6 faces from quad.h's own box() algebra.
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 265 0 295
+  Rotate 15 0 1 0
+  # front: Q=(0,0,165) u=(165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 165   165 0 165   165 330 165   0 330 165 ]
+  # right: Q=(165,0,165) u=(0,0,-165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 165   165 0 0   165 330 0   165 330 165 ]
+  # back: Q=(165,0,0) u=(-165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 0   0 0 0   0 330 0   165 330 0 ]
+  # left: Q=(0,0,0) u=(0,0,165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 165   0 330 165   0 330 0 ]
+  # top: Q=(0,330,165) u=(165,0,0) v=(0,0,-165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 330 165   165 330 165   165 330 0   0 330 0 ]
+  # bottom: Q=(0,0,0) u=(165,0,0) v=(0,0,165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   165 0 0   165 0 165   0 0 165 ]
+AttributeEnd
+
+# Glass sphere: center (190,90,190) radius 90 ior 1.5
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
