@@ -103,17 +103,9 @@ inline hittable_list build_cornell_smoke_lights() {
 	return lights;
 }
 
-// Light list for build_cornell_thin_glass() (scene 14): same ceiling light
-// rectangle as scene 0, but scene 14 has neither a glass sphere nor the
-// accent wall light, so build_cornell_box_lights()'s sphere entry aimed
-// samples at a phantom target with no real geometry there.
-inline hittable_list build_cornell_thin_glass_lights() {
-	hittable_list lights;
-	auto empty_material = shared_ptr<material>();
-	lights.add(
-		make_shared<quad>(point3(343,554,332), vec3(-130,0,0), vec3(0,0,-105), empty_material));
-	return lights;
-}
+// build_cornell_thin_glass_lights() (former scene 14 / B6's own light list)
+// deleted - B6 migrated to pbrt-backed, see pbrt_scenes/cornell-thin-glass.pbrt
+// and scene_registry_data.h's own B6 entry.
 
 // Light list for build_homogeneous_medium_scene() (scene 30): same ceiling
 // light rectangle as scene 0 (213,554,227)/(130,0,0)/(0,0,105), but scene

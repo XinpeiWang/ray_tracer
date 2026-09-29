@@ -139,111 +139,14 @@ inline hittable_list build_cornell_coated_diffuse() {
 	return world;
 }
 
-/*
- * build_cornell_thin_glass -- scene 14
- * Cornell box with a vertical thin-glass panel in the centre of the box,
- * demonstrating pbrt-v4 ThinDielectricBxDF: zero-thickness glass slab
- * with analytic multi-bounce Fresnel (R_eff = R + T^2*R/(1-R^2)).
- * The panel splits the box -- light refracts straight through (no bending)
- * and reflects specularly, producing subtle caustic-like interplay.
- */
-inline hittable_list build_cornell_thin_glass() {
-	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
-
-	// White diffuse box (right side)
-	auto box_mat = make_shared<lambertian>(color(.73, .73, .73));
-	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), box_mat);
-	box1 = make_shared<rotate_y>(box1, 15);
-	box1 = make_shared<translate>(box1, vec3(265,0,295));
-	world.add(box1);
-
-	// Thin-glass panel (IOR 1.5) -- angled ~62 degrees off the camera's
-	// straight-on view axis so it's actually visible. Fresnel reflectance
-	// for IOR 1.5 only rises steeply near grazing incidence (~4% at 0 deg,
-	// ~9% at 60 deg, ~35% at 80 deg) - facing the camera dead-on (0 deg, as
-	// this panel used to) or even a mild 28-degree tilt (still <5%) both
-	// made it imperceptible; 62 degrees was tuned by rendering until the
-	// sheen actually reads while the panel is still wide enough on screen
-	// to not foreshorten into an unreadable sliver. Built centered at the
-	// local origin so rotate_y (which pivots around world/local (0,0,0))
-	// rotates the panel in place, then translated to its position in the box.
-	auto panel = make_shared<thin_dielectric>(1.5);
-	shared_ptr<hittable> panel_quad = make_shared<quad>(
-		point3(-177.5, -277.5, 0), vec3(0, 555, 0), vec3(355, 0, 0), panel);
-	panel_quad = make_shared<rotate_y>(panel_quad, 62);
-	panel_quad = make_shared<translate>(panel_quad, vec3(277.5, 277.5, 200));
-	world.add(panel_quad);
-
-	return world;
-}
-
-/*
- * build_cornell_coated_conductor -- scene 15
- * Cornell box with a lacquered-gold sphere and a lacquered-copper box,
- * demonstrating pbrt-v4 CoatedConductorBxDF: rough dielectric coat over a
- * GGX conductor base with complex Fresnel (FrComplex per RGB channel).
- * The coat adds an achromatic gloss layer over the spectral metal tint.
- */
-inline hittable_list build_cornell_coated_conductor() {
-	hittable_list world;
-	add_cornell_walls_and_main_light(world);
-
-	// Lacquered-gold sphere (Au conductor, IOR-1.5 coat, roughness 0.1)
-	auto gold_lacquer = make_shared<coated_conductor>(kConductorAu, 1.5, 0.1);
-	world.add(make_shared<sphere>(point3(190, 90, 190), 90, gold_lacquer));
-
-	// Lacquered-copper box (Cu conductor, IOR-1.5 coat, roughness 0.2)
-	auto copper_lacquer = make_shared<coated_conductor>(kConductorCu, 1.5, 0.2);
-	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), copper_lacquer);
-	box1 = make_shared<rotate_y>(box1, 15);
-	box1 = make_shared<translate>(box1, vec3(265,0,295));
-	world.add(box1);
-
-	return world;
-}
-
-/**
- * build_cornell_wax_slab -- scene 16
- * Cornell box with a translucent wax slab and a diffuse box,
- * demonstrating pbrt-v4 DiffuseTransmissionBxDF: wax-like material
- * that scatters light both in the same hemisphere (diffuse reflection)
- * and the opposite hemisphere (diffuse transmission / subsurface approx).
- */
-inline hittable_list build_cornell_wax_slab() {
-	hittable_list world;
-	add_cornell_walls_and_main_light(world);
-	auto white = make_shared<lambertian>(color(.73, .73, .73));  // for the box below, same albedo as the walls
-
-	// Wax sphere (left): warm ivory wax color -- more transmittance than reflectance
-	// R (reflectance) = warm ivory, T (transmittance) = warm amber
-	auto wax = make_shared<diffuse_transmission>(
-		color(0.6, 0.5, 0.3),   // R: reflected diffuse color
-		color(0.8, 0.6, 0.3));  // T: transmitted diffuse color
-	world.add(make_shared<sphere>(point3(190, 90, 190), 90, wax));
-
-	// White diffuse box (right)
-	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
-	box1 = make_shared<rotate_y>(box1, 15);
-	box1 = make_shared<translate>(box1, vec3(265,0,295));
-	world.add(box1);
-
-	return world;
-}
+// build_cornell_thin_glass() (former scene 14 / B6), build_cornell_coated_
+// conductor() (former scene 15 / B7), and build_cornell_wax_slab() (former
+// scene 16 / B8) all deleted - B6/B7/B8 migrated to pbrt-backed, see
+// pbrt_scenes/cornell-thin-glass.pbrt/cornell-coated-conductor.pbrt/
+// cornell-wax-slab.pbrt and scene_registry_data.h's own entries. None of
+// these three had any other consumer (unlike build_cornell_box/
+// build_cornell_conductor/build_cornell_coated_diffuse/build_cornell_
+// rough_glass, which stay).
 
 /**
  * build_cornell_crystal -- scene 17

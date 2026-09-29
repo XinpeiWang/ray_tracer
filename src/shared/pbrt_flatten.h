@@ -2829,7 +2829,41 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		m.roughness_v = md.params.getFloat("vroughness", md.params.getFloat("roughness", 0.0));
 		m.remapRoughness = md.params.getBool("remaproughness", true);
 		// "eta" is pbrt's name for index of refraction on dielectrics.
-		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
+		//
+		// CoatedConductor is a real exception to this: it ALSO conventionally
+		// spells its base conductor's own complex IOR "eta" (rgb- or
+		// spectrum-typed), a completely different concept from the material's
+		// own coat IOR read here. ParamList::find()/getFloat() match by name
+		// only, never type, so an explicit "rgb eta" conductor base collides
+		// with this generic read: getFloat() only checks `!numbers.empty()`,
+		// and an "rgb eta" Param's numbers are its 3 real RGB values, so
+		// getFloat("eta", ...) would silently return conductorEta.r as if it
+		// were the coat's own IOR - confirmed to break CoatedConductor with
+		// an explicit "rgb eta" base (the coat's own IOR ends up < 1, a
+		// physically-degenerate dielectric). A "spectrum eta" conductor base
+		// happens to collide harmlessly instead (its payload lives in
+		// `strings`, so `numbers` is empty and this still falls through to
+		// "ior"/1.5) - which is exactly why this went unnoticed until an
+		// explicit-rgb-eta CoatedConductor scene hit it. Scoped to
+		// CoatedConductor specifically (not e.g. Dielectric/Subsurface/Hair,
+		// which have no second "eta" concept to collide with) because a
+		// resolved-constant-texture "eta" legitimately arrives here with
+		// Param::type=="rgb" too (the pre-pass above rewrites a "texture eta"
+		// bound to a constant texture in place, changing its type - see
+		// DielectricConstantTextureEtaResolvesWithoutASpuriousGlassWarning,
+		// pbrt_flatten_tests.cpp) - a blanket "must be float-typed" check
+		// would wrongly reject that real, already-correctly-resolved case.
+		if (m.kind == MaterialKind::CoatedConductor) {
+			const pbrt_scene::Param* etaFloatP = md.params.find("eta");
+			if (!etaFloatP || etaFloatP->type != "float") etaFloatP = nullptr;
+			if (!etaFloatP) {
+				const pbrt_scene::Param* iorFloatP = md.params.find("ior");
+				if (iorFloatP && iorFloatP->type == "float") etaFloatP = iorFloatP;
+			}
+			m.ior = (etaFloatP && !etaFloatP->numbers.empty()) ? etaFloatP->numbers[0] : 1.5;
+		} else {
+			m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
+		}
 		// MaterialKind::Interface (pbrt's Material "none"/"") ignores m.ior
 		// entirely - see interface_material's own comment
 		// (material_simple.h) for why it's a real pass-through, not a

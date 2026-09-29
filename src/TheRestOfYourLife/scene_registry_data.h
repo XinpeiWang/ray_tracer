@@ -155,38 +155,35 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B4", 170, SceneNames::CornellConductor, SceneCategories::Materials,
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
             "Medium", "cornell-conductor.pbrt", CameraMode::UserControlled),
-        {
-            "B5", 13, SceneNames::CornellCoatedDiffuse, SceneCategories::Materials,
+        // B5 migrated to pbrt-backed - see pbrt_scenes/cornell-coated-diffuse.pbrt.
+        // legacy_id 172 (next after B3's 171). build_cornell_coated_diffuse()
+        // itself is NOT deleted - tests/integration/skip_pdf_material_brightness_tests.cpp
+        // calls it directly.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B5", 172, SceneNames::CornellCoatedDiffuse, SceneCategories::Materials,
             "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (pbrt-v4 CoatedDiffuseBxDF)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_cornell_coated_diffuse,
-            build_cornell_box_lights
-        },
-        {
-            "B6", 14, SceneNames::CornellThinGlass, SceneCategories::Materials,
+            "Medium", "cornell-coated-diffuse.pbrt", CameraMode::UserControlled),
+        // B6 migrated to pbrt-backed - see pbrt_scenes/cornell-thin-glass.pbrt.
+        // legacy_id 173. build_cornell_thin_glass()/build_cornell_thin_glass_lights()
+        // have no other consumers - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B6", 173, SceneNames::CornellThinGlass, SceneCategories::Materials,
             "Cornell box with a vertical thin-glass panel, analytic multi-bounce Fresnel (pbrt-v4 ThinDielectricBxDF)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_cornell_thin_glass,
-            build_cornell_thin_glass_lights
-        },
-        {
-            "B7", 15, SceneNames::CornellCoatedConductor, SceneCategories::Materials,
+            "Medium", "cornell-thin-glass.pbrt", CameraMode::UserControlled),
+        // B7 migrated to pbrt-backed - see pbrt_scenes/cornell-coated-conductor.pbrt.
+        // legacy_id 174. build_cornell_coated_conductor() has no other
+        // consumers - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B7", 174, SceneNames::CornellCoatedConductor, SceneCategories::Materials,
             "Cornell box with lacquered-gold sphere and lacquered-copper box (pbrt-v4 CoatedConductorBxDF)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
-            build_cornell_coated_conductor,
-            build_cornell_box_lights
-        },
-        {
-            "B8", 16, SceneNames::CornellWaxSlab, SceneCategories::Materials,
+            "Medium", "cornell-coated-conductor.pbrt", CameraMode::UserControlled),
+        // B8 migrated to pbrt-backed - see pbrt_scenes/cornell-wax-slab.pbrt.
+        // legacy_id 175. build_cornell_wax_slab() has no other consumers -
+        // deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B8", 175, SceneNames::CornellWaxSlab, SceneCategories::Materials,
             "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_cornell_wax_slab,
-            build_cornell_box_lights
-        },
+            "Medium", "cornell-wax-slab.pbrt", CameraMode::UserControlled),
         {
             "B9", 17, SceneNames::CornellCrystal, SceneCategories::Materials,
             "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
