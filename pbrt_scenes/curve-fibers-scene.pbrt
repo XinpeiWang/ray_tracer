@@ -1,0 +1,342 @@
+# curve-fibers-scene.pbrt -- migration of the native "F4 Curve Fibers" demo
+# scene (src/TheRestOfYourLife/scenes_advanced.h's build_curve_fibers_scene())
+# to a pbrt-backed scene, part of this project's GPU scene-construction-
+# duplication elimination.
+#
+# Shape "curve": real pbrt-v4 cubic Bezier hair/fiber strands
+# (CurveShape<double> on CPU, tessellated into tapered bilinear-patch tubes
+# on GPU - src/shared/curve_tessellate.h, matching pbrt-v4's own real GPU
+# strategy of dicing curves rather than a native curve-intersection
+# program). This loader's own bundled pbrt_scenes/curve-tuft.pbrt example
+# already exercises the exact same Fibonacci-disk-placement + deterministic
+# hash01 formula this native scene uses (its own header comment says so
+# directly), just at a smaller strand count (24) with flat, uncolored
+# diffuse. This file instead reproduces F4's OWN full parameters exactly:
+# 70 strands, disk_radius=1.4, the same 5-tone hair palette cycling by
+# index, tapered width0=0.045/width1=0.006. All 70 strands' control points
+# were computed once (see this migration's own notes) from native's exact
+# formula (hash01(i,salt), Fibonacci sunflower disk placement, windswept
+# +X lean) and transcribed verbatim below - fully deterministic, no RNG
+# anywhere, so this is byte-for-byte the same geometry native builds.
+#
+# Checker ground: this loader's real pbrt-v4 3D "checkerboard" "integer
+# dimension" [3] support (pbrt_scenes/checkered-spheres.pbrt's own header
+# comment) reproduces native's checker_texture(0.8, ...) exactly via
+# `Scale 0.8 0.8 0.8` before the Texture directive - same convention as F2
+# (Triangle Mesh), which shares this exact ground.
+#
+# Flat background: native's own CameraConfig row carries a dark flat
+# background (0.04, 0.045, 0.06), reproduced via LightSource "infinite"
+# (this loader's wire_pbrt_backed_scene() hardcodes black otherwise).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  0 2.0 6.5    0 0.7 0    0 1 0
+Camera "perspective" "float fov" [ 38 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.04 0.045 0.06 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -2.5 4.0 -2.5   2.5 4.0 -2.5   2.5 4.0 2.5   -2.5 4.0 2.5 ]
+AttributeEnd
+
+AttributeBegin
+  Scale 0.8 0.8 0.8
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.15 0.15 0.15 ] "rgb tex2" [ 0.85 0.85 0.85 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# 70 strands, Fibonacci-disk placement, 5-tone palette cycling by index -
+# see this file's own header comment.
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.11832160 0.00000000 0.00000000  0.20631926 0.40891718 0.00000000  0.44097971 0.86740008 0.00000000  0.70497270 1.23914297 0.00000000 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.15111565 0.00000000 0.13843432  -0.07399473 0.45307358 0.13843432  0.13166105 0.96106517 0.13843432  0.36302380 1.37295025 0.13843432 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.02313067 0.00000000 -0.26356208  0.13655400 0.38822023 -0.26356208  0.43901619 0.82349745 -0.26356208  0.77928617 1.17642493 -0.26356208 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.19047149 0.00000000 0.24843633  0.27801819 0.43579693 0.24843633  0.51147606 0.92441772 0.24843633  0.77411616 1.32059674 0.24843633 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.34953861 0.00000000 -0.06182846  -0.29933245 0.30050246 -0.06182846  -0.16544934 0.63742945 -0.06182846  -0.01483085 0.91061350 -0.06182846 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.33111349 0.00000000 -0.21062730  0.42436637 0.31040100 -0.21062730  0.67304071 0.65842637 -0.21062730  0.95279935 0.94060909 -0.21062730 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.11075098 0.00000000 0.41198813  -0.01658796 0.35099582 0.41198813  0.23451345 0.74453659 0.41198813  0.51700252 1.06362370 0.41198813 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.21121413 0.00000000 -0.40667996  -0.12172584 0.40580022 -0.40667996  0.11690961 0.86078834 -0.40667996  0.38537450 1.22969763 -0.40667996 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.45825018 0.00000000 0.16735223  0.53396510 0.44167672 0.16735223  0.73587154 0.93689001 0.16735223  0.96301629 1.33841430 0.16735223 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.47673296 0.00000000 0.19678843  -0.40283796 0.32302598 0.19678843  -0.20578462 0.68520662 0.19678843  0.01590038 0.97886661 0.19678843 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.22981679 0.00000000 -0.49110513  0.28927773 0.32852112 -0.49110513  0.44784025 0.69686297 -0.49110513  0.62622308 0.99551854 -0.49110513 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.16982876 0.00000000 0.54144085  0.23800325 0.30040540 0.54144085  0.41980189 0.63722357 0.54144085  0.62432535 0.91031938 0.54144085 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.51186585 0.00000000 -0.29663673  -0.43389115 0.31223525 -0.29663673  -0.22595859 0.66231721 -0.29663673  0.00796554 0.94616744 -0.29663673 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.60047691 0.00000000 -0.13201317  0.66848727 0.31515719 -0.13201317  0.84984821 0.66851526 -0.13201317  1.05387927 0.95502180 -0.13201317 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.36646171 0.00000000 0.52125408  -0.27757660 0.43404060 0.52125408  -0.04054965 0.92069219 0.52125408  0.22610568 1.31527456 0.52125408 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.08466114 0.00000000 -0.65332419  0.01369918 0.37655793 -0.65332419  0.27599338 0.79875925 -0.65332419  0.57107436 1.14108465 -0.65332419 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.51973637 0.00000000 0.43803436  0.61967497 0.36391043 0.43803436  0.88617790 0.77193122 0.43803436  1.18599369 1.10275889 0.43803436 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.69940224 0.00000000 0.02892248  -0.61293357 0.31644074 0.02892248  -0.38235047 0.67123793 0.02892248  -0.12294447 0.95891133 0.02892248 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.51016024 0.00000000 -0.50767758  0.60054299 0.43952258 -0.50767758  0.84156365 0.93232063 -0.50767758  1.11271189 1.33188661 -0.50767758 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.03413170 0.00000000 0.73812941  0.06502917 0.35093344 0.73812941  0.32945814 0.74440426 0.73812941  0.62694074 1.06343466 0.73812941 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.48541911 0.00000000 -0.58169433  -0.41529995 0.33374822 -0.58169433  -0.22831552 0.70795076 -0.58169433  -0.01795804 1.01135823 -0.58169433 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.76895747 0.00000000 0.10346214  0.88211995 0.38592272 0.10346214  1.18388658 0.81862395 0.10346214  1.52337403 1.16946278 0.10346214 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.65153611 0.00000000 0.45332185  -0.54832865 0.32676084 0.45332185  -0.27310875 0.69312906 0.45332185  0.03651364 0.99018437 0.45332185 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.17803714 0.00000000 -0.79139293  0.28437848 0.40015985 -0.79139293  0.56795538 0.84882393 -0.79139293  0.88697939 1.21260561 -0.79139293 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.41179064 0.00000000 0.71862958  0.49359788 0.43549527 0.71862958  0.71175051 0.92377785 0.71862958  0.95717222 1.31968265 0.71862958 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.80501130 0.00000000 -0.25682056  -0.69558035 0.39353560 -0.25682056  -0.40376449 0.83477249 -0.25682056  -0.07547164 1.19253213 -0.25682056 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.78196603 0.00000000 -0.36128814  0.84992759 0.35012820 -0.36128814  1.03115841 0.74269618 -0.36128814  1.23504308 1.06099454 -0.36128814 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.33876722 0.00000000 0.80946696  -0.20544166 0.41932350 0.80946696  0.15009317 0.88947410 0.80946696  0.55006985 1.27067728 0.80946696 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.30234228 0.00000000 -0.84058857  -0.21896616 0.32659812 -0.84058857  0.00337019 0.69278390 -0.84058857  0.25349857 0.98969129 -0.84058857 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.80450037 0.00000000 0.42282285  0.87596204 0.40806966 0.42282285  1.06652651 0.86560231 0.42282285  1.28091154 1.23657472 0.42282285 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.89359749 0.00000000 0.23554943  -0.76321245 0.42887188 0.23554943  -0.41551901 0.90972824 0.23554943  -0.02436389 1.29961177 0.23554943 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.50792698 0.00000000 -0.78994315  0.60379503 0.39780928 -0.78994315  0.85944317 0.84383787 -0.78994315  1.14704734 1.20548267 -0.78994315 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.16157457 0.00000000 0.94015619  0.27000316 0.38292350 0.94015619  0.55914606 0.81226196 0.94015619  0.88443183 1.16037423 0.94015619 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.76572171 0.00000000 -0.59301793  -0.68501443 0.42728667 -0.59301793  -0.46979501 0.90636565 -0.59301793  -0.22767317 1.29480808 -0.59301793 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.97949721 0.00000000 -0.08114934  1.05622051 0.39906720 -0.08114934  1.26081596 0.84650618 -0.08114934  1.49098585 1.20929454 -0.08114934 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.67703904 0.00000000 0.73185937  -0.59565003 0.40745562 0.73185937  -0.37861268 0.86429979 0.73185937  -0.13444565 1.23471399 0.73185937 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.00493165 0.00000000 -1.01092813  0.10624571 0.38855587 -1.01092813  0.37641654 0.82420942 -1.01092813  0.68035873 1.17744202 -1.01092813 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.68847742 0.00000000 0.75894587  0.76759810 0.36091442 0.75894587  0.97858656 0.76557604 0.75894587  1.21594859 1.09368006 0.75894587 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -1.03383719 0.00000000 -0.09581580  -0.93020939 0.39946357 -0.09581580  -0.65386860 0.84734696 -0.09581580  -0.34298520 1.21049566 -0.09581580 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.83771396 0.00000000 -0.63579503  0.91355750 0.36491396 -0.63579503  1.11580693 0.77405992 -0.63579503  1.34333755 1.10579989 -0.63579503 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.19059861 0.00000000 1.04769851  -0.09935052 0.38840655 1.04769851  0.14397773 0.82389268 1.04769851  0.41772200 1.17698954 1.04769851 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.57412808 0.00000000 -0.91234695  -0.45038837 0.40883115 -0.91234695  -0.12041582 0.86721758 -0.91234695  0.25080330 1.23888226 -0.91234695 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 1.05207673 0.00000000 0.28833062  1.10310292 0.30764332 0.28833062  1.23917273 0.65257674 0.28833062  1.39225127 0.93225249 0.28833062 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.98188483 0.00000000 0.50388708  -0.92670230 0.30811369 0.50388708  -0.77954891 0.65357449 0.50388708  -0.61400135 0.93367785 0.50388708 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.38802508 0.00000000 -1.04663104  0.46650975 0.37849371 -1.04663104  0.67580220 0.80286545 -1.04663104  0.91125621 1.14695064 -1.04663104 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.42557411 0.00000000 1.04541220  0.49801105 0.29785417 1.04541220  0.69117623 0.63181187 1.04541220  0.90848706 0.90258839 1.04541220 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -1.03111846 0.00000000 -0.48866628  -0.95937916 0.37610106 -0.48866628  -0.76807439 0.79779013 -0.48866628  -0.55285651 1.13970018 -0.48866628 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 1.10206639 0.00000000 -0.33977885  1.22763275 0.46021618 -0.33977885  1.56247637 0.97621614 -0.33977885  1.93917544 1.39459448 -0.33977885 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.58921820 0.00000000 1.00539640  -0.49746092 0.34356917 1.00539640  -0.25277483 0.72878308 1.00539640  0.02249702 1.04111868 1.00539640 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.24717379 0.00000000 -1.15104523  -0.15659288 0.40121650 -1.15104523  0.08495621 0.85106530 -1.15104523  0.35669894 1.21580757 -1.15104523 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.96942439 0.00000000 0.68863368  1.05366452 0.45252237 0.68863368  1.27830484 0.95989594 0.68863368  1.53102521 1.37127992 0.68863368 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -1.19161453 0.00000000 0.14850862  -1.09489409 0.42819899 0.14850862  -0.83697290 0.90830088 0.14850862  -0.54681157 1.29757269 0.14850862 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.78586374 0.00000000 -0.92326496  0.86694475 0.32133744 -0.92326496  1.08316080 0.68162487 -0.92326496  1.32640386 0.97374981 -0.92326496 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.04460388 0.00000000 1.22311508  0.15026928 0.43653456 1.22311508  0.43204368 0.92598241 1.22311508  0.74903988 1.32283201 1.22311508 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.86708360 0.00000000 -0.87986705  -0.78304294 0.37865009 -0.87986705  -0.55893450 0.80319717 -0.87986705  -0.30681250 1.14742453 -0.87986705 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 1.24496904 0.00000000 0.06365610  1.35510716 0.40703630 0.06365610  1.64880883 0.86341033 0.06365610  1.97922321 1.23344333 0.06365610 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.96961951 0.00000000 0.80114793  -0.88781755 0.38741273 0.80114793  -0.66967897 0.82178459 0.80114793  -0.42427307 1.17397798 0.80114793 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.17533091 0.00000000 -1.25668575  0.25301599 0.35522766 -1.25668575  0.46017621 0.75351322 -1.25668575  0.69323146 1.07644746 -1.25668575 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.72582585 0.00000000 1.05412373  0.82575174 0.45598330 1.05412373  1.09222076 0.96723729 1.05412373  1.39199841 1.38176756 1.05412373 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -1.25786684 0.00000000 -0.28943222  -1.18253229 0.33454322 -0.28943222  -0.98164017 0.70963713 -0.28943222  -0.75563653 1.01376733 -0.28943222 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 1.13241834 0.00000000 -0.64158296  1.21358201 0.32440241 -0.64158296  1.43001846 0.68812633 -0.64158296  1.67350946 0.98303762 -0.64158296 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.40493261 0.00000000 1.24821055  -0.30622028 0.45361500 1.24821055  -0.04298743 0.96221363 1.24821055  0.25314953 1.37459090 1.24821055 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.54897895 0.00000000 -1.20358718  -0.47167575 0.42892294 -1.20358718  -0.26553386 0.90983655 -1.20358718  -0.03362424 1.29976650 -1.20358718 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 1.22751529 0.00000000 0.52077464  1.30251767 0.31846713 0.52077464  1.50252402 0.67553634 0.52077464  1.72753116 0.96505192 0.52077464 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -1.26676805 0.00000000 0.44866325  -1.20575259 0.37823619 0.44866325  -1.04304468 0.80231919 0.44866325  -0.85999829 1.14617027 0.44866325 ]
+
+Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.63588038 0.00000000 -1.19568229  0.74791189 0.39843803 -1.19568229  1.04666256 0.84517158 -1.19568229  1.38275708 1.20738797 -1.19568229 ]
+
+Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 0.34136979 0.00000000 1.32116111  0.41962796 0.31148584 1.32116111  0.62831641 0.66072755 1.32116111  0.86309092 0.94389650 1.32116111 ]
+
+Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -1.15271747 0.00000000 -0.74916115  -1.05442008 0.34321637 -0.74916115  -0.79229372 0.72803473 -0.74916115  -0.49740155 1.04004961 -0.74916115 ]
+
+Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ 1.36603681 0.00000000 -0.22791105  1.42240693 0.30099172 -0.22791105  1.57272725 0.63846728 -0.22791105  1.74183761 0.91209611 -0.22791105 ]
+
+Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
+  "point3 P" [ -0.85952738 0.00000000 1.09873231  -0.74985871 0.36616557 1.09873231  -0.45740891 0.77671484 1.09873231  -0.12840288 1.10959262 1.09873231 ]

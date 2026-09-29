@@ -506,19 +506,18 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
             "Fast", "triangle-mesh-scene.pbrt"),
         build_instanced_spheres_descriptor(),
-        {
-            "F4", 72, SceneNames::CurveFibers, SceneCategories::Geometry,
+        // F4 migrated to pbrt-backed - see pbrt_scenes/curve-fibers-scene.pbrt.
+        // legacy_id 189 (next after F2's 188). All 70 strands' control points
+        // are fully deterministic (hash01()-driven, no RNG) and were computed
+        // once from native's exact formula, transcribed verbatim - see that
+        // .pbrt file's own header comment, including how it relates to the
+        // already-bundled pbrt_scenes/curve-tuft.pbrt example (same formula,
+        // fewer strands, no palette). build_curve_fibers_scene() has no other
+        // consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F4", 189, SceneNames::CurveFibers, SceneCategories::Geometry,
             "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection on CPU, not the sphere+HairBxDF trick scene B11 uses. GPU renders the same 70 strands tessellated into tapered tubes of bilinear patches (matches pbrt-v4's own GPU curve strategy) rather than an exact curve intersection, so the tube surface reads slightly faceted up close.",
-            "Fast", 150, false, true,
-            { 38, 0, 2.0, 6.5,  0, 0.7, 0,  0.04, 0.045, 0.06 },
-            build_curve_fibers_scene,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<quad>(point3(-2.5,4.0,-2.5), vec3(5,0,0), vec3(0,0,5),
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
+            "Fast", "curve-fibers-scene.pbrt"),
         {
             "G1", 38, SceneNames::StanfordBunny, SceneCategories::Models,
             "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
