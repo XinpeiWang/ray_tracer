@@ -283,26 +283,20 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "C4", 178, SceneNames::PointLightCornell, SceneCategories::Lights,
             "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
             "Medium", "cornell-point-light.pbrt", CameraMode::UserControlled),
-        {
-            "C5", 28, SceneNames::GoniometricLight, SceneCategories::Lights,
+        // C5 migrated to pbrt-backed - see pbrt_scenes/cornell-goniometric.pbrt.
+        // legacy_id 179 (next after C4's 178). build_goniometric_light_scene()/
+        // build_goniometric_punct() have no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C5", 179, SceneNames::GoniometricLight, SceneCategories::Lights,
             "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_goniometric_light_scene,
-            no_lights,
-            nullptr,
-            build_goniometric_punct
-        },
-        {
-            "C6", 29, SceneNames::ProjectionLight, SceneCategories::Lights,
+            "Medium", "cornell-goniometric.pbrt", CameraMode::UserControlled),
+        // C6 migrated to pbrt-backed - see pbrt_scenes/cornell-projection.pbrt.
+        // legacy_id 180. build_projection_light_scene()/build_projection_punct()
+        // have no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C6", 180, SceneNames::ProjectionLight, SceneCategories::Lights,
             "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_projection_light_scene,
-            no_lights,
-            nullptr,
-            build_projection_punct
-        },
+            "Medium", "cornell-projection.pbrt", CameraMode::UserControlled),
         {
             "E1", 30, SceneNames::HomogeneousMedium, SceneCategories::Volumes,
             "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",

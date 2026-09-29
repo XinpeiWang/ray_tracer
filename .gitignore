@@ -203,6 +203,13 @@ RayTracer_Package/tls/
 # uv-checker.bmp above.
 !pbrt_scenes/nonsquare-checker.bmp
 
+# ...and the hand-generated 16x16 greyscale goniometric profile / 8x8
+# checkerboard projection slide used by pbrt_scenes/cornell-goniometric.pbrt/
+# cornell-projection.pbrt (C5/C6's pbrt-backed migration) - same reasoning
+# as uv-checker.bmp above.
+!pbrt_scenes/cornell-goniometric-profile.bmp
+!pbrt_scenes/cornell-projection-slide.bmp
+
 # Test output
 test_*.ppm
 test_*.png
