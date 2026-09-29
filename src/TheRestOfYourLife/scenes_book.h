@@ -239,47 +239,12 @@ inline hittable_list build_perlin_spheres_lights() {
 	return lights;
 }
 
-/**
- * Build colored quads scene
- */
-inline hittable_list build_quads() {
-	hittable_list world;
-
-	// Materials
-	auto left_red     = make_shared<lambertian>(color(1.0, 0.2, 0.2));
-	auto back_green   = make_shared<lambertian>(color(0.2, 1.0, 0.2));
-	auto right_blue   = make_shared<lambertian>(color(0.2, 0.2, 1.0));
-	auto upper_orange = make_shared<lambertian>(color(1.0, 0.5, 0.0));
-	auto lower_teal   = make_shared<lambertian>(color(0.2, 0.8, 0.8));
-
-	// Quads
-	world.add(make_shared<quad>(point3(-3,-2, 5), vec3(0, 0,-4), vec3(0, 4, 0), left_red));
-	world.add(make_shared<quad>(point3(-2,-2, 0), vec3(4, 0, 0), vec3(0, 4, 0), back_green));
-	world.add(make_shared<quad>(point3( 3,-2, 1), vec3(0, 0, 4), vec3(0, 4, 0), right_blue));
-	world.add(make_shared<quad>(point3(-2, 3, 1), vec3(4, 0, 0), vec3(0, 0, 4), upper_orange));
-	world.add(make_shared<quad>(point3(-2,-3, 5), vec3(4, 0, 0), vec3(0, 0,-4), lower_teal));
-
-	// A real light floating in the room, facing the camera - previously
-	// this scene had NO registered lights at all, so every quad read as a
-	// flat, orientation-independent color swatch lit only by the ambient
-	// background. See build_quads_lights() for its NEE-sampled twin.
-	auto lamp = make_shared<diffuse_light>(color(7, 7, 6.5));
-	world.add(make_shared<quad>(point3(-1,0.5,3), vec3(2,0,0), vec3(0,1,0), lamp));
-
-	return world;
-}
-
-/**
- * Light list for build_quads() - the floating lamp quad, for NEE importance
- * sampling. Replaces sky_dummy_lights() now that the scene has a real
- * light.
- */
-inline hittable_list build_quads_lights() {
-	hittable_list lights;
-	auto empty_mat = std::shared_ptr<material>();
-	lights.add(make_shared<quad>(point3(-1,0.5,3), vec3(2,0,0), vec3(0,1,0), empty_mat));
-	return lights;
-}
+// build_quads()/build_quads_lights() (former A6 Colored Quads native CPU
+// builder) deleted - A6 migrated to pbrt-backed, see pbrt_scenes/
+// colored-quads.pbrt and scene_registry_data.h's A6 entry. NOT the Metal
+// backend's own buildColoredQuads() (gpu/metal/metal_poc_scenes_a.mm) -
+// that's a fully independent, hardcoded dispatch unaffected by this C++
+// registry, deliberately out of this migration's scope.
 
 /**
  * Build simple light scene with Perlin spheres

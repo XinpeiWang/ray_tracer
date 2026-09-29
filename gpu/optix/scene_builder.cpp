@@ -2000,38 +2000,11 @@ static void build_cornell_rough_metal(SceneData& scene) {
 }
 
 /// @brief Build Cornell Conductor scene (scene 12)
-/// Matches CPU build_cornell_conductor(): Cornell box with a gold sphere and
-/// aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF).
-static void build_cornell_conductor(SceneData& scene) {
-    add_cornell_walls_and_main_light(scene);
-
-    // Gold sphere material (conductor, roughness 0.1 -- polished gold)
-    const int mat_gold = add_conductor(scene,
-        make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b),
-        make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b),
-        0.1f);   // roughness; alpha = sqrt(0.1)
-
-    // Aluminium box material (conductor, roughness 0.05 -- polished aluminium)
-    const int mat_alum = add_conductor(scene,
-        make_float3(kConductorAl.eta_r, kConductorAl.eta_g, kConductorAl.eta_b),
-        make_float3(kConductorAl.k_r,   kConductorAl.k_g,   kConductorAl.k_b),
-        0.05f);
-
-    // Gold sphere
-    SphereData sphere{};
-    sphere.center = make_float3(190.0f, 90.0f, 190.0f);
-    sphere.radius = 90.0f;
-    sphere.materialIdx = mat_gold;
-    scene.spheres.push_back(sphere);
-
-    // Polished aluminium box
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_alum,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-}
+// build_cornell_conductor() (former "scene 12" / B4 Cornell Conductor GPU
+// builder) deleted - B4 migrated to pbrt-backed, see pbrt_scenes/
+// cornell-conductor.pbrt and its case-12 removal below. add_cornell_walls_
+// and_main_light() itself is NOT deleted - B5-B9 and other cases still call
+// it directly for their own (still-native) scenes.
 
 /// @brief Build Cornell Coated Diffuse scene (scene 13)
 /// Matches CPU build_cornell_coated_diffuse(): Cornell box with a blue coated sphere
@@ -2567,72 +2540,9 @@ static void build_simple_light_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
-/**
- * Build colored quads scene (scene 5)
- * Five colored quads arranged in 3D space
- */
-void build_quads_scene(SceneData& scene) {
-	// Helper lambda to add a quad with its material
-	auto add_quad = [&scene](float Qx, float Qy, float Qz,
-							  float ux, float uy, float uz,
-							  float vx, float vy, float vz,
-							  float r, float g, float b) {
-		// Add material
-		const int mat_idx = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(r, g, b));
-
-		// Add quad
-		QuadData quad{};
-		quad.Q = make_float3(Qx, Qy, Qz);
-		quad.u = make_float3(ux, uy, uz);
-		quad.v = make_float3(vx, vy, vz);
-		const float3 cross_prod = cross(quad.u, quad.v);
-		quad.normal = normalize(cross_prod);
-		quad.D = dot(quad.normal, quad.Q);
-		quad.materialIdx = mat_idx;
-		scene.quads.push_back(quad);
-
-		// Track if emissive
-		if (is_emissive(scene, mat_idx)) {
-			scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-			scene.lightKinds.push_back(GpuLightKind::Quad);
-		}
-	};
-
-	// Left red quad
-	add_quad(-3.0f, -2.0f, 5.0f, 0.0f, 0.0f, -4.0f, 0.0f, 4.0f, 0.0f, 1.0f, 0.2f, 0.2f);
-
-	// Back green quad
-	add_quad(-2.0f, -2.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f, 4.0f, 0.0f, 0.2f, 1.0f, 0.2f);
-
-	// Right blue quad
-	add_quad(3.0f, -2.0f, 1.0f, 0.0f, 0.0f, 4.0f, 0.0f, 4.0f, 0.0f, 0.2f, 0.2f, 1.0f);
-
-	// Upper orange quad
-	add_quad(-2.0f, 3.0f, 1.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, 4.0f, 1.0f, 0.5f, 0.0f);
-
-	// Lower teal quad
-	add_quad(-2.0f, -3.0f, 5.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, -4.0f, 0.2f, 0.8f, 0.8f);
-
-	// A real light floating in the room, facing the camera - matches CPU
-	// build_quads() exactly (see its own comment). The add_quad lambda
-	// above only builds Lambertian materials, so this is added directly
-	// rather than through it.
-	const int lampMat = safe_cast_to_int(scene.materials.size());
-	add_diffuse_light(scene, make_float3(7.0f, 7.0f, 6.5f));
-	QuadData lamp{};
-	lamp.Q = make_float3(-1.0f, 0.5f, 3.0f);
-	lamp.u = make_float3(2.0f, 0.0f, 0.0f);
-	lamp.v = make_float3(0.0f, 1.0f, 0.0f);
-	const float3 lc = cross(lamp.u, lamp.v);
-	lamp.w = lc;
-	lamp.normal = normalize(lc);
-	lamp.D = dot(lamp.normal, lamp.Q);
-	lamp.materialIdx = lampMat;
-	scene.quads.push_back(lamp);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Quad);
-}
+// build_quads_scene() (former "scene 5" / A6 Colored Quads GPU builder)
+// deleted - A6 migrated to pbrt-backed, see pbrt_scenes/colored-quads.pbrt
+// and its case-5 removal above.
 
 /// @brief Cornell box walls (no light quad) + two spheres, for scenes lit by
 /// a punctual (point/spot/distant) light instead of an emissive quad.
@@ -2872,14 +2782,26 @@ static void build_ortho_camera_scene_gpu(SceneData& scene) {
 /// @brief Scene 33: Spherical Camera. Matches CPU build_spherical_camera_scene()
 /// in spirit (ground + a ring of colored spheres + one emissive sphere) -
 /// self-illuminating, needs no extra light unlike scenes 22/32 above.
+// Matches CPU's build_spherical_camera_scene() (scenes_advanced.h) exactly -
+// ground position/color, ring sphere radius/color formula, and the central
+// light sphere's radius/intensity were all previously written independently
+// of the CPU version rather than ported from it (this function was added a
+// day after the CPU one, in the commit that first wired up GPU camera-model
+// support generally, not specifically to port this scene's own geometry) and
+// had drifted: different ground clearance/color, a completely different
+// HSV-rainbow ring-color formula instead of CPU's cos/sin one, and a
+// different light sphere radius/intensity. tests/integration/
+// cpu_gpu_comparison_tests.cpp's CpuGpuLightParityTest only checks light
+// COUNT across the whole registry, so this went undetected until a direct
+// side-by-side render comparison caught it.
 static void build_spherical_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
+	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
 	SphereData ground{};
 	// CPU's SphericalCamera uses no camera_to_world (identity), so the
-	// camera sits exactly at world origin - keep the ground surface below
-	// that (top at y=-2) rather than tangent to it, matching how the row of
-	// spheres/light below are all placed comfortably above the camera.
-	ground.center = make_float3(0.0f, -1002.0f, 0.0f);
+	// camera sits exactly at world origin - the ground's top surface sits
+	// tangent to it at y=0, exactly like CPU's own (0,-1000,0) radius-1000
+	// sphere.
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 	ground.radius = 1000.0f;
 	ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
@@ -2888,25 +2810,25 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 	constexpr int kRingCount = 8;
 	for (int i = 0; i < kRingCount; ++i) {
 		float ang = (2.0f * kPi * i) / (float)kRingCount;
-		float hue = (float)i / (float)kRingCount;
-		float3 col = make_float3(0.5f + 0.5f * cosf(2.0f * kPi * hue),
-								   0.5f + 0.5f * cosf(2.0f * kPi * (hue + 0.33f)),
-								   0.5f + 0.5f * cosf(2.0f * kPi * (hue + 0.67f)));
+		float3 col = make_float3(0.2f + 0.5f * fabsf(cosf(ang)),
+								   0.2f + 0.5f * fabsf(sinf(ang)),
+								   0.5f + 0.3f * cosf(2.0f * ang));
 		const int mat = add_lambertian(scene, col);
 		SphereData s{};
 		s.center = make_float3(4.0f * cosf(ang), 1.0f, 4.0f * sinf(ang));
-		s.radius = 0.8f;
+		s.radius = 1.0f;
 		s.materialIdx = mat;
 		scene.spheres.push_back(s);
 	}
 
-	// Central emissive sphere, matches CPU's central diffuse_light sphere.
+	// Central emissive sphere, matches CPU's central diffuse_light sphere
+	// (point3(0,3,0), radius 0.5, color(10,10,10)) exactly.
 	const int mat_light = safe_cast_to_int(scene.materials.size());
-	constexpr float kSphericalLightIntensity = 8.0f;
+	constexpr float kSphericalLightIntensity = 10.0f;
 	add_diffuse_light(scene, make_float3(kSphericalLightIntensity, kSphericalLightIntensity, kSphericalLightIntensity));
 	SphereData lightSphere{};
 	lightSphere.center = make_float3(0.0f, 3.0f, 0.0f);
-	lightSphere.radius = 1.0f;
+	lightSphere.radius = 0.5f;
 	lightSphere.materialIdx = mat_light;
 	scene.spheres.push_back(lightSphere);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -4957,22 +4879,14 @@ bool build_scene(
 
 	// Build requested scene
 	switch (legacy_scene_id) {
-		case 0:  // Cornell Box
-			build_cornell_box(scene);
-
-			// Configure camera for Cornell Box
-			{
-				const float3 lookfrom = make_float3(
-					static_cast<float>(cam_x),
-					static_cast<float>(cam_y),
-					static_cast<float>(cam_z)
-				);
-				const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);  // Center of box
-				const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-				const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-				build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
-			}
-			break;
+		// case 0 (Cornell Box / A1) migrated to pbrt-backed - see
+		// pbrt_scenes/cornell-box-native.pbrt and scene_registry_data.h's A1
+		// entry. Falls through to default: -> build_loaded_pbrt_scene() now
+		// that legacy_id 0 is no longer assigned to any scene. build_cornell_box()
+		// itself is NOT deleted - D5-D8 and other cases below still call it
+		// directly for their own (still-native) scenes, and it's this
+		// function's own shared, single source of truth alongside CPU's
+		// identically-named build_cornell_box() (see cornell_box_data.h).
 
 				case 1:  // Bouncing Spheres (motion blur - see build_bouncing_spheres)
 					build_bouncing_spheres(scene);
@@ -5090,27 +5004,10 @@ bool build_scene(
 					}
 					break;
 
-				case 5:  // Colored Quads
-						build_quads_scene(scene);
-
-						// Configure camera
-					{
-						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
-						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
-						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-						build_pinhole_camera_params(lookfrom, lookat, vup, 80.0f, aspect, 1.0f, camera_params);  // 80: wide angle for quads
-
-						// Flat sky-blue fill background, matching CPU registry's
-						// bg=(0.70,0.80,1.00) for scene 5 (see
-						// GpuCameraParams::backgroundColor's comment) - now a
-						// secondary fill alongside the floating lamp quad
-						// build_quads_scene() adds (that quad used to be this
-						// scene's only possible radiance source before it had
-						// any registered light of its own; see its comment).
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
-					}
-					break;
+				// case 5 (Colored Quads / A6) migrated to pbrt-backed - see
+				// pbrt_scenes/colored-quads.pbrt and scene_registry_data.h's
+				// A6 entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 5 is no longer assigned to any scene.
 
 				case 6: {  // Simple Light (see build_simple_light_gpu's comment)
 					build_simple_light_gpu(scene);
@@ -5171,19 +5068,18 @@ bool build_scene(
 								}
 								break;
 
-							case 11:  // Cornell Rough Glass (GGX)
-								build_cornell_rough_glass(scene);
-								setup_cornell_box_camera();
-								break;
+							// case 11 (Cornell Rough Glass / B3) migrated to pbrt-backed - see
+							// pbrt_scenes/cornell-rough-glass.pbrt and scene_registry_data.h's
+							// B3 entry. Falls through to default: -> build_loaded_pbrt_scene()
+							// now that legacy_id 11 is no longer assigned to any scene.
+							// build_cornell_rough_glass() itself is NOT deleted - I5/I10's own
+							// cases (below) still call it directly for their own (still-native)
+							// "same world as B3" scenes.
 
-							case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
-								build_cornell_conductor(scene);
-								setup_cornell_box_camera();
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 12 (same reasoning as scene 10).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
-								}
-								break;
+							// case 12 (Cornell Conductor / B4) migrated to pbrt-backed - see
+							// pbrt_scenes/cornell-conductor.pbrt and scene_registry_data.h's
+							// B4 entry. Falls through to default: -> build_loaded_pbrt_scene()
+							// now that legacy_id 12 is no longer assigned to any scene.
 
 							case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
 								build_cornell_coated_diffuse(scene);
@@ -5396,6 +5292,12 @@ bool build_scene(
 									out_camera_extra->su = make_float3(1.0f, 0.0f, 0.0f);
 									out_camera_extra->sv = make_float3(0.0f, 1.0f, 0.0f);
 									out_camera_extra->sw = make_float3(0.0f, 0.0f, 1.0f);
+									// Sky-blue background matching CPU's build_spherical_sky()
+									// (sky_light(color(0.3,0.5,0.9))) - previously left at zero
+									// (black) here entirely, a real discrepancy found and fixed
+									// alongside build_spherical_camera_scene_gpu()'s own geometry
+									// drift (see that function's own comment).
+									out_camera_extra->backgroundColor = make_float3(0.3f, 0.5f, 0.9f);
 								}
 								break;
 							}
@@ -6133,10 +6035,25 @@ bool build_scene(
 									// about which file is scene 65.
 									const char* pbrtPath = cpu_scene_pbrt_path_by_id(scene_id);
 									if (pbrtPath && pbrtPath[0] != '\0') {
+										// A CameraMode::UserControlled scene (the Cornell-box
+										// family's own kCornellBoxCamera, migrated to pbrt-
+										// backed with that mode explicitly preserved - see
+										// build_curated_pbrt_scene_descriptor()'s own `mode`
+										// parameter comment) needs cam_x/y/z honored
+										// unconditionally, not just under force_camera_override
+										// (video mode) - build_loaded_pbrt_scene() itself has
+										// no CameraConfig of its own to read this from, so it's
+										// OR'd in here, at the one place both scene_id and
+										// force_camera_override are already in scope. Fixed
+										// (the default, every other pbrt-backed scene) leaves
+										// this unconditionally false, byte-identical to before
+										// this parameter existed.
+										const bool effectiveForceOverride = force_camera_override ||
+											(cpu_scene_camera_is_user_controlled_by_id(scene_id) != 0);
 										return build_loaded_pbrt_scene(
 											pbrtPath, scene, camera_params,
 											image_width, image_height,
-											cam_x, cam_y, cam_z, force_camera_override,
+											cam_x, cam_y, cam_z, effectiveForceOverride,
 											has_custom_lookat, lookat_x, lookat_y, lookat_z,
 											out_camera_extra,
 											has_dof_override, aperture_override, focus_distance_override);

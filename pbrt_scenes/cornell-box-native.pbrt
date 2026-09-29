@@ -1,0 +1,100 @@
+# cornell-box-native.pbrt -- migration of the native "A1 Cornell Box" demo
+# scene (src/shared/cornell_box_data.h, shared verbatim by both
+# src/TheRestOfYourLife/scenes_book.h's build_cornell_box() (CPU) and
+# gpu/optix/scene_builder.cpp's build_cornell_box() (GPU)) to a pbrt-backed
+# scene, part of this project's GPU scene-construction-duplication
+# elimination (pilot batch).
+#
+# NOT the same file as the pre-existing pbrt_scenes/example-cornell.pbrt -
+# that one is a hand-authored, intentionally-approximate Cornell box for the
+# Custom Scenes demo (different light color/power, glass+conductor spheres
+# instead of one dielectric sphere + a white box, an instanced-pyramid demo).
+# This file instead transcribes cornell_box_data.h's own exact constexpr
+# values byte-for-byte, since THIS migration needs bit-for-formula parity
+# with the native scene, not just "a" Cornell box.
+#
+# Wall/light quads follow the SAME Q,u,v -> P0=Q,P1=Q+u,P2=Q+u+v,P3=Q+v
+# convention as colored-quads.pbrt (matches this codebase's own quad(Q,u,v)
+# constructor's cross(u,v) normal exactly). The rotated white box's 6 faces
+# are transcribed from quad.h's own box(a,b,mat) helper algebra (front/right/
+# back/left/top/bottom face formulas), pre-rotation/translation, with
+# `Translate 265 0 295` written BEFORE `Rotate 15 0 1 0` in the pbrt file -
+# pbrt's CTM composes so the LATER-written transform applies first (closer to
+# the Shape), matching the native code's own `rotate_y` first, `translate`
+# second wrapping order exactly (confirmed against example-cornell.pbrt's own
+# identical Translate-then-Rotate ObjectInstance placements).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+# Main ceiling light: Q=(213,554,227) u=(130,0,0) v=(0,0,105), color (15,15,15)
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+# Right wall (green): Q=(555,0,0) u=(0,0,555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+# Left wall (red): Q=(0,0,555) u=(0,0,-555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+# Ceiling (white): Q=(0,555,0) u=(555,0,0) v=(0,0,555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# Floor (white): Q=(0,0,555) u=(555,0,0) v=(0,0,-555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+# Back wall (white): Q=(555,0,555) u=(-555,0,0) v=(0,555,0)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+# Rotated white box (kBox: min=(0,0,0) max=(165,330,165), rotate_y=15,
+# translate=(265,0,295)) - 6 faces from quad.h's own box() algebra.
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 265 0 295
+  Rotate 15 0 1 0
+  # front: Q=(0,0,165) u=(165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 165   165 0 165   165 330 165   0 330 165 ]
+  # right: Q=(165,0,165) u=(0,0,-165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 165   165 0 0   165 330 0   165 330 165 ]
+  # back: Q=(165,0,0) u=(-165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 0   0 0 0   0 330 0   165 330 0 ]
+  # left: Q=(0,0,0) u=(0,0,165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 165   0 330 165   0 330 0 ]
+  # top: Q=(0,330,165) u=(165,0,0) v=(0,0,-165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 330 165   165 330 165   165 330 0   0 330 0 ]
+  # bottom: Q=(0,0,0) u=(165,0,0) v=(0,0,165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   165 0 0   165 0 165   0 0 165 ]
+AttributeEnd
+
+# Glass sphere: center (190,90,190) radius 90 ior 1.5
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
