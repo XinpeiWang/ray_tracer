@@ -2426,56 +2426,12 @@ static void build_punctual_light_walls(SceneData& scene) {
 	{ SphereData s{}; s.center = make_float3(370.0f, 120.0f, 380.0f); s.radius = 120.0f; s.materialIdx = mat_metal_sphere; scene.spheres.push_back(s); }
 }
 
-/// @brief Scene 25: Spotlight Cornell. Matches CPU build_spotlight_punct().
-static void build_spotlight_cornell_gpu(SceneData& scene) {
-	build_punctual_light_walls(scene);
-
-	constexpr float kPi = 3.14159265358979323846f;
-	auto deg2rad = [](float d) { return d * kPi / 180.0f; };
-
-	PunctualLightGPU light{};
-	light.kind = PunctualLightKind::Spot;
-	light.spot.pos_x = 278.0f; light.spot.pos_y = 548.0f; light.spot.pos_z = 278.0f;
-	light.spot.dir_x = 0.0f;   light.spot.dir_y = -1.0f;  light.spot.dir_z = 0.0f;  // already unit
-	light.spot.ir = 1.0f; light.spot.ig = 0.95f; light.spot.ib = 0.85f;
-	light.spot.scale = 600000.0f;
-	light.spot.cos_falloff_start = cosf(deg2rad(15.0f));
-	light.spot.cos_falloff_end   = cosf(deg2rad(30.0f));
-	scene.punctualLights.push_back(light);
-}
-
-/// @brief Scene 26: Distant Light Cornell. Matches CPU build_distant_light_punct().
-static void build_distant_light_cornell_gpu(SceneData& scene) {
-	build_punctual_light_walls(scene);
-
-	float3 dir = normalize(make_float3(-0.4f, -1.0f, -0.2f));
-
-	PunctualLightGPU light{};
-	light.kind = PunctualLightKind::Distant;
-	light.distant.dir_x = dir.x; light.distant.dir_y = dir.y; light.distant.dir_z = dir.z;
-	light.distant.ir = 1.0f; light.distant.ig = 0.98f; light.distant.ib = 0.92f;
-	// No 1/r^2 falloff for a distant light - this scale directly IS the
-	// incident irradiance, not a huge r^2-compensating number like the
-	// point/spot/goniometric lights below (matches CPU's fix, see
-	// build_distant_light_punct()'s comment).
-	light.distant.scale = 14.0f;
-	light.distant.scene_radius = 1000.0f;
-	scene.punctualLights.push_back(light);
-}
-
-/// @brief Scene 27: Point Light Cornell. Matches CPU build_point_light_punct().
-static void build_point_light_cornell_gpu(SceneData& scene) {
-	build_punctual_light_walls(scene);
-
-	PunctualLightGPU light{};
-	light.kind = PunctualLightKind::Point;
-	light.point.pos_x = 278.0f; light.point.pos_y = 540.0f; light.point.pos_z = 278.0f;
-	light.point.ir = 1.0f; light.point.ig = 0.98f; light.point.ib = 0.90f;
-	// Matches CPU's fix (see build_point_light_punct()'s comment) - was
-	// ~8x too bright, blowing the room to near-white.
-	light.point.scale = 600000.0f;
-	scene.punctualLights.push_back(light);
-}
+// build_spotlight_cornell_gpu()/build_distant_light_cornell_gpu()/
+// build_point_light_cornell_gpu() (former scenes 25/26/27 - C2/C3/C4) all
+// deleted - migrated to pbrt-backed, see pbrt_scenes/cornell-spotlight.pbrt/
+// cornell-distant-light.pbrt/cornell-point-light.pbrt and their case
+// removal above. build_punctual_light_walls() itself stays - C5/C6 (still
+// native) call it directly.
 
 /// @brief Scene 28: Goniometric Light Cornell. Matches CPU build_goniometric_punct().
 static void build_goniometric_cornell_gpu(SceneData& scene) {
@@ -4945,20 +4901,11 @@ bool build_scene(
 								setup_cornell_box_camera();
 								break;
 
-							case 25:  // Spotlight Cornell (pbrt-v4 SpotLight)
-								build_spotlight_cornell_gpu(scene);
-								setup_cornell_box_camera();
-								break;
-
-							case 26:  // Distant Light Cornell (pbrt-v4 DistantLight)
-								build_distant_light_cornell_gpu(scene);
-								setup_cornell_box_camera();
-								break;
-
-							case 27:  // Point Light Cornell (pbrt-v4 PointLight)
-								build_point_light_cornell_gpu(scene);
-								setup_cornell_box_camera();
-								break;
+							// cases 25/26/27 (Spotlight/Distant/Point Light Cornell - C2/C3/C4)
+							// migrated to pbrt-backed - see pbrt_scenes/cornell-spotlight.pbrt/
+							// cornell-distant-light.pbrt/cornell-point-light.pbrt and
+							// scene_registry_data.h's own entries. build_punctual_light_walls()
+							// itself is NOT deleted - C5/C6 (still native) call it directly.
 
 							case 28:  // Goniometric Light Cornell (pbrt-v4 GoniometricLight)
 								build_goniometric_cornell_gpu(scene);

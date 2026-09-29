@@ -1,0 +1,62 @@
+# cornell-spotlight.pbrt -- migration of the native "C2 Spotlight Cornell"
+# demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_spotlight_cornell()/build_spotlight_punct(), gpu/optix/
+# scene_builder.cpp's build_punctual_light_walls()) to a pbrt-backed scene,
+# part of this project's GPU scene-construction-duplication elimination.
+#
+# Walls (5, no ceiling light - cornell_walls_no_light()) are the same
+# cornell_box_data.h[0..4] quads as every other Cornell scene, minus the
+# light quad. Two spheres: a plain white lambertian, and a blue-grey
+# "conductor with no eta/k, just reflectance" - this codebase's own
+# fuzz-mirror `metal` class fallback (pbrt_cpu_builder.h's own
+# MaterialKind::Conductor case: "Anything else [no recognized preset] keeps
+# the pre-existing approximation: our `metal` takes a flat albedo and a
+# fuzz, so roughness maps onto fuzz directly" - reachable by giving
+# "reflectance" instead of "eta"/"k", which is NOT the same gap as
+# rough_metal's real GGX-alpha model that blocks B1/B2).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# Spotlight aimed straight down from near the ceiling
+LightSource "spot" "point3 from" [ 278 548 278 ] "point3 to" [ 278 -452 278 ]
+  "rgb I" [ 1.0 0.95 0.85 ] "float scale" [ 600000.0 ]
+  "float coneangle" [ 30.0 ] "float conedeltaangle" [ 15.0 ]
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.8 0.8 0.9 ] "float roughness" [ 0.1 ]
+AttributeBegin
+  Translate 370 120 380
+  Shape "sphere" "float radius" [ 120 ]
+AttributeEnd
