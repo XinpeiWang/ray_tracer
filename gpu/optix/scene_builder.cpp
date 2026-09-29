@@ -3261,59 +3261,9 @@ static void build_measured_brdf_scene_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
-/// @brief Scene 37: Triangle Mesh. Matches CPU build_triangle_mesh_scene()
-/// exactly - same golden-ratio icosahedron vertex/face construction, same
-/// gold metal material, same ground/light placement, and (via
-/// add_checker_texture_gpu(), added for scene 38's ground) the same real
-/// checker-textured ground rather than the flat-gray approximation this
-/// scene used before that helper existed.
-static void build_triangle_mesh_scene_gpu(SceneData& scene) {
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
-		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	const int mat_ground = add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
-	SphereData ground = make_ground_sphere_1000(mat_ground);
-	scene.spheres.push_back(ground);
-
-	// Regular icosahedron: 12 vertices at golden-ratio coordinates, 20 faces.
-	// Matches src/TheRestOfYourLife/scenes_advanced.h's build_triangle_mesh_scene() exactly.
-	const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f;
-	const float radius = 1.5f;
-	const float3 raw_verts[12] = {
-		make_float3(-1,  phi,  0), make_float3( 1,  phi,  0), make_float3(-1, -phi,  0), make_float3( 1, -phi,  0),
-		make_float3( 0, -1,  phi), make_float3( 0,  1,  phi), make_float3( 0, -1, -phi), make_float3( 0,  1, -phi),
-		make_float3( phi,  0, -1), make_float3( phi,  0,  1), make_float3(-phi,  0, -1), make_float3(-phi,  0,  1),
-	};
-	const float vert_len = length(raw_verts[0]);
-	const float3 center = make_float3(0.0f, 2.5f, 0.0f);
-
-	float3 verts[12];
-	for (int i = 0; i < 12; ++i) {
-		float3 v = raw_verts[i];
-		verts[i] = center + (radius / vert_len) * v;
-	}
-	const int faces[20][3] = {
-		{0,11,5}, {0,5,1}, {0,1,7}, {0,7,10}, {0,10,11},
-		{1,5,9}, {5,11,4}, {11,10,2}, {10,7,6}, {7,1,8},
-		{3,9,4}, {3,4,2}, {3,2,6}, {3,6,8}, {3,8,9},
-		{4,9,5}, {2,4,11}, {6,2,10}, {8,6,7}, {9,8,1},
-	};
-
-	const int mat_mesh = add_metal(scene, make_float3(0.8f, 0.6f, 0.2f), 0.15f);
-	for (const auto& f : faces) {
-		TriangleData t{};
-		t.p0 = verts[f[0]];
-		t.p1 = verts[f[1]];
-		t.p2 = verts[f[2]];
-		t.materialIdx = mat_mesh;
-		scene.triangles.push_back(t);
-	}
-
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
-	scene.spheres.push_back(light);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-}
+// build_triangle_mesh_scene_gpu() (former "scene 37" / F2 Triangle Mesh
+// GPU builder) deleted - F2 migrated to pbrt-backed, see
+// pbrt_scenes/triangle-mesh-scene.pbrt and its case-37 removal above.
 
 /// @brief Scene 72: Curve Fibers. Matches CPU build_curve_fibers_scene()
 /// (src/TheRestOfYourLife/scenes_advanced.h) exactly in strand placement
@@ -4929,11 +4879,11 @@ bool build_scene(
 								break;
 							}
 
-							case 37: {  // Triangle Mesh (see build_triangle_mesh_scene_gpu's comment)
-								build_triangle_mesh_scene_gpu(scene);
-								apply_mesh_camera(make_float3(0.0f, 4.0f, 8.0f), make_float3(0.0f, 2.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
-								break;
-							}
+							// case 37 (Triangle Mesh / F2) migrated to pbrt-backed - see
+							// pbrt_scenes/triangle-mesh-scene.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 37
+							// is no longer assigned to any scene.
 
 							case 18: {  // Principled Showcase (see build_principled_showcase_gpu's comment)
 								build_principled_showcase_gpu(scene);

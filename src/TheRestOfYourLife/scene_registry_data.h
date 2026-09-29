@@ -496,19 +496,15 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             nullptr,
             nullptr
         },
-        {
-            "F2", 37, SceneNames::TriangleMesh, SceneCategories::Geometry,
+        // F2 migrated to pbrt-backed - see pbrt_scenes/triangle-mesh-scene.pbrt.
+        // legacy_id 188 (next after D4's 187). The icosahedron's 12 vertices/
+        // 20 faces are fully deterministic (golden-ratio formula, no RNG),
+        // transcribed verbatim into the .pbrt file's own Shape "trianglemesh".
+        // build_triangle_mesh_scene() has no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F2", 188, SceneNames::TriangleMesh, SceneCategories::Geometry,
             "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
-            "Fast", 100, false, true,
-            { 35, 0, 4, 8,  0, 2.5, 0,  0.05, 0.05, 0.08 },
-            build_triangle_mesh_scene,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
+            "Fast", "triangle-mesh-scene.pbrt"),
         build_instanced_spheres_descriptor(),
         {
             "F4", 72, SceneNames::CurveFibers, SceneCategories::Geometry,
