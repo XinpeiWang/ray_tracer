@@ -722,29 +722,9 @@ inline hittable_list build_rgb_grid_medium_scene() {
 	return world;
 }
 
-// ============================================================================
-// Scene 32: Orthographic Camera
-// Geometric showcase rendered with an orthographic camera
-// setup_camera lambda creates the OrthographicCamera<double>
-// ============================================================================
-inline hittable_list build_ortho_camera_scene() {
-	hittable_list world;
-	// Ground
-	auto checker = make_shared<checker_texture>(1.0, color(0.2,0.2,0.2), color(0.9,0.9,0.9));
-	world.add(make_shared<sphere>(point3(0,-100,0), 100, make_shared<lambertian>(checker)));
-	// Column of spheres at various heights
-	for (int i = 0; i < 5; ++i) {
-		double x = (i - 2) * 2.5;
-		world.add(make_shared<sphere>(point3(x, 1.0, 0), 1.0,
-									 make_shared<lambertian>(color(0.2+0.15*i, 0.3, 0.8-0.1*i))));
-	}
-	// Sky light
-	return world;
-}
-
-inline std::shared_ptr<sky_light> build_ortho_sky() {
-	return std::make_shared<sky_light>(color(0.5, 0.7, 1.0));
-}
+// build_ortho_camera_scene()/build_ortho_sky() deleted - D2 migrated to
+// pbrt-backed, see pbrt_scenes/ortho-camera-scene.pbrt and
+// scene_registry_data.h's own entry. Neither had any other consumer.
 
 // ============================================================================
 // Scene 33: Spherical Camera
@@ -898,29 +878,9 @@ inline std::shared_ptr<sky_light> build_portal_sky() {
 	return std::make_shared<sky_light>(color(0.55, 0.65, 0.85));
 }
 
-// ============================================================================
-// Scene 36: Realistic Camera
-// Spheres rendered through a simple realistic thin-lens camera model
-// ============================================================================
-inline hittable_list build_realistic_camera_scene() {
-	hittable_list world;
-	// Ground
-	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
-	// Row of spheres at varying depths to show bokeh
-	const color sphere_colors[] = {
-		color(0.9,0.2,0.2), color(0.2,0.8,0.2), color(0.2,0.2,0.9),
-		color(0.8,0.8,0.2), color(0.8,0.2,0.8)
-	};
-	for (int i = 0; i < 5; ++i) {
-		double z = 2.0 + i * 1.5;
-		world.add(make_shared<sphere>(point3(0, 1, z), 0.8,
-									 make_shared<lambertian>(sphere_colors[i])));
-	}
-	// Area light
-	world.add(make_shared<sphere>(point3(0, 8, 5), 2, make_shared<diffuse_light>(color(6,6,6))));
-	return world;
-}
+// build_realistic_camera_scene() deleted - D4 migrated to pbrt-backed, see
+// pbrt_scenes/realistic-camera-scene.pbrt and scene_registry_data.h's own
+// entry. No other consumer.
 
 // ============================================================================
 // Scene 37: Triangle Mesh

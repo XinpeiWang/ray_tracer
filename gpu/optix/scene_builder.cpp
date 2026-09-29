@@ -2421,34 +2421,17 @@ static void build_depth_of_field_gpu(SceneData& scene) {
 	}
 }
 
-/// @brief Scene 32: Orthographic Camera. Matches CPU build_ortho_camera_scene()
-/// in spirit (ground + a row of colored lambertian spheres) - simplified to
-/// solid-color materials, same reasoning as scene 22 above. No emissive
-/// geometry either, matching CPU - build_ortho_sky() is a flat-color
-/// sky_light there, mirrored via backgroundColor in this scene's
-/// build_scene() case below, same as scene 22 (see that scene's comment for
-/// why - this scene had the identical spurious-overhead-light bug).
-static void build_ortho_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	const float3 colors[5] = {
-		make_float3(0.8f, 0.2f, 0.2f), make_float3(0.8f, 0.6f, 0.2f), make_float3(0.2f, 0.8f, 0.3f),
-		make_float3(0.2f, 0.4f, 0.9f), make_float3(0.7f, 0.2f, 0.8f)
-	};
-	for (int i = 0; i < 5; ++i) {
-		const int mat = add_lambertian(scene, colors[i]);
-		SphereData s{};
-		s.center = make_float3((i - 2) * 2.5f, 1.0f, 0.0f);
-		s.radius = 1.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-}
+// build_ortho_camera_scene_gpu() (former "scene 32" / D2 Orthographic
+// Camera GPU builder) deleted - D2 migrated to pbrt-backed, see
+// pbrt_scenes/ortho-camera-scene.pbrt and its case-32 removal above. Found
+// along the way (worth recording since it's now permanently gone rather
+// than just quietly fixed): this function's 5 sphere colors never matched
+// CPU's own build_ortho_camera_scene() formula
+// ((0.2+0.15*i, 0.3, 0.8-0.1*i)) at all - a real, pre-existing native
+// CPU/GPU divergence for this scene, presumably introduced the same way as
+// scene 33's own since-fixed drift noted just below (written independently
+// of the CPU version rather than ported from it). The migrated .pbrt file
+// uses CPU's real formula, so both backends now render identically.
 
 /// @brief Scene 33: Spherical Camera. Matches CPU build_spherical_camera_scene()
 /// in spirit (ground + a ring of colored spheres + one emissive sphere) -
@@ -2506,42 +2489,14 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
-/// @brief Scene 36: Realistic Camera. Matches CPU build_realistic_camera_scene()
-/// (ground + 5 colored spheres at increasing depth to show bokeh + one area
-/// light) - ground uses a flat gray instead of CPU's checker_texture, matching
-/// this file's established "no procedural textures on GPU" simplification
-/// used elsewhere (e.g. build_triangle_mesh_scene_gpu).
-static void build_realistic_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	const float3 sphere_colors[5] = {
-		make_float3(0.9f, 0.2f, 0.2f), make_float3(0.2f, 0.8f, 0.2f), make_float3(0.2f, 0.2f, 0.9f),
-		make_float3(0.8f, 0.8f, 0.2f), make_float3(0.8f, 0.2f, 0.8f)
-	};
-	for (int i = 0; i < 5; ++i) {
-		const float z = 2.0f + i * 1.5f;
-		const int mat = add_lambertian(scene, sphere_colors[i]);
-		SphereData s{};
-		s.center = make_float3(0.0f, 1.0f, z);
-		s.radius = 0.8f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	SphereData lightSphere{};
-	lightSphere.center = make_float3(0.0f, 8.0f, 5.0f);
-	lightSphere.radius = 2.0f;
-	lightSphere.materialIdx = mat_light;
-	scene.spheres.push_back(lightSphere);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-}
+// build_realistic_camera_scene_gpu() (former "scene 36" / D4 Realistic
+// Camera GPU builder) deleted - D4 migrated to pbrt-backed, see
+// pbrt_scenes/realistic-camera-scene.pbrt and its case-36 removal above.
+// Unlike scene 32/D2 just above, this one's 5 sphere colors DID already
+// match CPU's own sphere_colors[] exactly - only the ground (flat gray vs.
+// CPU's checker_texture) and lens (identical to D8's own, already carried
+// forward into geometry/dgauss-9-element.dat) needed reconciling, both
+// resolved by this migration.
 
 /// @brief B23/B24: Glass/Frosted Prism Dispersion geometry, screen, and
 /// light - shared by both scenes (case 131/136 below), parameterized on the
@@ -4841,57 +4796,11 @@ bool build_scene(
 								break;
 							}
 
-							case 32: {  // Orthographic Camera (parallel projection)
-								build_ortho_camera_scene_gpu(scene);
-								// lookfrom moved higher/farther back (was (0,3,12)) and the
-								// screen-window scale reduced (was 8) - matches CPU's
-								// setup_camera lambda for scene 32; see that lambda's comment
-								// for why the old values put ray origins below the giant
-								// ground sphere's surface for the bottom rows.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 10.0f, 20.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								float xmin, xmax, ymin, ymax;
-								if (aspect >= 1.0f) { xmin = -aspect; xmax = aspect; ymin = -1.0f; ymax = 1.0f; }
-								else                { xmin = -1.0f; xmax = 1.0f; ymin = -1.0f / aspect; ymax = 1.0f / aspect; }
-								constexpr float kScreenScale = 5.0f;
-								xmin *= kScreenScale; xmax *= kScreenScale; ymin *= kScreenScale; ymax *= kScreenScale;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3((xmax - xmin) * u.x, (xmax - xmin) * u.y, (xmax - xmin) * u.z);
-								const float3 vertical   = make_float3((ymax - ymin) * v.x, (ymax - ymin) * v.y, (ymax - ymin) * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x + xmin * u.x + ymin * v.x,
-									lookfrom.y + xmin * u.y + ymin * v.y,
-									lookfrom.z + xmin * u.z + ymin * v.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
-
-								if (out_camera_extra) {
-									out_camera_extra->kind = CameraKind::Orthographic;
-									out_camera_extra->lower_left_corner = lower_left_corner;
-									out_camera_extra->horizontal = horizontal;
-									out_camera_extra->vertical = vertical;
-									out_camera_extra->w = make_float3(-w.x, -w.y, -w.z);  // forward = negated look-from/look-at "backward" w
-									// Matches CPU's build_ortho_sky() flat sky_light(0.5,0.7,1.0) - see
-									// build_ortho_camera_scene_gpu's comment for why this replaced a
-									// synthetic overhead light.
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
-								}
-								break;
-							}
+							// case 32 (Orthographic Camera / D2) migrated to pbrt-backed -
+							// see pbrt_scenes/ortho-camera-scene.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 32
+							// is no longer assigned to any scene.
 
 							case 33: {  // Spherical (equirectangular) Camera
 								build_spherical_camera_scene_gpu(scene);
@@ -4931,95 +4840,13 @@ bool build_scene(
 								break;
 							}
 
-							case 36: {  // Realistic Camera (pbrt-v4 multi-element lens)
-								build_realistic_camera_scene_gpu(scene);
-								// Fixed-mode scene - let lookfrom track cam_x/y/z only under
-								// force_camera_override (video mode), matching CPU's scene 36
-								// setup_camera lambda; lookat stays fixed (this scene never
-								// overrides it, matching every other scene's convention). The
-								// oblique default (not dead-on with the sphere row) is required -
-								// see scene_registry.h's scene 36 comment: the row sits exactly on
-								// the old dead-on viewing axis, so the near sphere fully occluded
-								// the rest from every lens sample.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 1.65f, 1.07f, -6.85f);
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, zero);
-								pack_float3(camera_params, 6, zero);
-								pack_float3(camera_params, 9, zero);
-
-								if (out_camera_extra) {
-									// Directly instantiate a host-side RealisticCamera<float> - reusing
-									// the CPU C++ class from cameras.h - so FocusThickLens/
-									// BoundExitPupil (both expensive, one-time precomputes) never need
-									// a CUDA port. Same lens table, focus distance, aperture, and
-									// camera-to-world as the CPU scene 36 (src/TheRestOfYourLife/
-									// scene_registry.h) - keep both in sync if either changes.
-									std::vector<float> lens = {
-										 35.98738f,  1.21638f, 1.54f,  23.716f,
-										 11.69718f,  9.9957f,  1.0f,   17.996f,
-										 13.08714f, 15.9948f,  1.77f,  12.364f,
-										-22.63294f,  2.7757f,  1.617f, 9.812f,
-										  0.0f,      2.75f,    0.0f,   7.4f,     // aperture stop
-										 36.3581f,   8.9722f,  1.617f, 12.7f,
-										-17.8595f,   1.2f,     1.0f,   12.7f,
-										100.0f,      2.9804f,  1.567f, 14.478f,
-										-24.5656f,   0.0f,     1.0f,   15.0f
-									};
-									Mat4<float> ctw = make_look_at<float>(
-										lookfrom.x, lookfrom.y, lookfrom.z,   // from
-										1.4f, 1.0f,  5.5f,   // to
-										0.0f, 1.0f,  0.0f    // up
-									);
-									// Film half-extents shrunk from 18/12mm (a full 35mm frame) to
-									// 3.0/2.0mm, and focus distance/camera position updated to an
-									// oblique framing of the sphere row - matches CPU's fix in
-									// scene_registry.h's scene 36 setup_camera lambda, see that
-									// comment for the full reasoning (lens vignetting at the old film
-									// size, plus the row sitting on the old dead-on viewing axis).
-									RealisticCamera<float> realCam(ctw, 3.0f, 2.0f, 12.4f, 8.0f, lens, 512);
-
-									scene.lensElements.clear();
-									for (int i = 0; i < realCam.num_elements(); ++i) {
-										GpuLensElement le{};
-										le.curvatureRadius = realCam.lens_curvature_radius(i);
-										le.thickness       = realCam.lens_thickness(i);
-										le.eta              = realCam.lens_eta(i);
-										le.apertureRadius   = realCam.lens_aperture_radius(i);
-										scene.lensElements.push_back(le);
-									}
-									scene.exitPupilBounds.clear();
-									for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
-										GpuExitPupilBounds b{};
-										b.xMin = realCam.exit_pupil_xmin(i);
-										b.xMax = realCam.exit_pupil_xmax(i);
-										b.yMin = realCam.exit_pupil_ymin(i);
-										b.yMax = realCam.exit_pupil_ymax(i);
-										b.degenerate = realCam.exit_pupil_degenerate(i) ? 1 : 0;
-										scene.exitPupilBounds.push_back(b);
-									}
-
-									CamVec3<float> wo = realCam.world_origin();
-									CamVec3<float> wr = realCam.world_right();
-									CamVec3<float> wu = realCam.world_up();
-									CamVec3<float> wf = realCam.world_forward();
-
-									out_camera_extra->kind = CameraKind::Realistic;
-									out_camera_extra->origin = make_float3(wo.x, wo.y, wo.z);
-									out_camera_extra->su = make_float3(wr.x, wr.y, wr.z);
-									out_camera_extra->sv = make_float3(wu.x, wu.y, wu.z);
-									out_camera_extra->sw = make_float3(wf.x, wf.y, wf.z);
-									out_camera_extra->film_half_x = realCam.film_half_x();
-									out_camera_extra->film_half_y = realCam.film_half_y();
-									out_camera_extra->lens_rear_z = realCam.lens_rear_z();
-									out_camera_extra->numLensElements = static_cast<int>(scene.lensElements.size());
-									out_camera_extra->numExitPupilBounds = static_cast<int>(scene.exitPupilBounds.size());
-								}
-								break;
-							}
+							// case 36 (Realistic Camera / D4) migrated to pbrt-backed - see
+							// pbrt_scenes/realistic-camera-scene.pbrt and
+							// scene_registry_data.h's own entry (reuses the same
+							// geometry/dgauss-9-element.dat lens table as D8's own
+							// migration). Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 36 is no
+							// longer assigned to any scene.
 
 							// cases 65/66/67/68 (Depth of Field/Orthographic/Spherical/
 							// Realistic Camera Cornell Box - D5/D6/D7/D8, each the exact

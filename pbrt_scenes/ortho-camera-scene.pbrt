@@ -1,0 +1,76 @@
+# ortho-camera-scene.pbrt -- migration of the native "D2 Orthographic
+# Camera" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_ortho_camera_scene()/build_ortho_sky()) to a pbrt-backed scene, part
+# of this project's GPU scene-construction-duplication elimination.
+#
+# Checker ground: this loader's newly-added real pbrt-v4 "checkerboard"
+# "integer dimension" [3] support (see pbrt_scenes/checkered-spheres.pbrt's
+# own header comment for the full explanation) reproduces native's
+# checker_texture(1.0, ...) exactly via a `Scale 1 1 1` (a no-op scale,
+# since native's own scale parameter here happens to be 1.0) before the
+# Texture directive.
+#
+# Screen window: same reasoning as cornell-orthographic.pbrt (D6) - native's
+# own setup_camera lambda scales compute_screen_window()'s output (+-1 at
+# this loader's own always-square CLI resolution) by 5, so an explicit
+# "screenwindow" of +-5 on both axes reproduces it exactly at that
+# resolution.
+#
+# Sky: native's build_ortho_sky() is a flat/uniform sky_light(0.5,0.7,1.0),
+# not a gradient - a plain constant-colour LightSource "infinite"
+# reproduces it exactly (uniform sphere sampling either way).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  0 10 20    0 1 0    0 1 0
+Camera "orthographic" "float screenwindow" [ -5 5 -5 5 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 100 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.5 0.7 1.0 ]
+
+AttributeBegin
+  Scale 1 1 1
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.2 0.2 0.2 ] "rgb tex2" [ 0.9 0.9 0.9 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -100 0
+  Shape "sphere" "float radius" [ 100 ]
+AttributeEnd
+
+# Column of 5 spheres at x = (i-2)*2.5, color = (0.2+0.15*i, 0.3, 0.8-0.1*i)
+Material "diffuse" "rgb reflectance" [ 0.2 0.3 0.8 ]
+AttributeBegin
+  Translate -5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.35 0.3 0.7 ]
+AttributeBegin
+  Translate -2.5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.3 0.6 ]
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.3 0.5 ]
+AttributeBegin
+  Translate 2.5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.3 0.4 ]
+AttributeBegin
+  Translate 5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

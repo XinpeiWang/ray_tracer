@@ -1,0 +1,89 @@
+# realistic-camera-scene.pbrt -- migration of the native "D4 Realistic
+# Camera" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_realistic_camera_scene()) to a pbrt-backed scene, part of this
+# project's GPU scene-construction-duplication elimination.
+#
+# Checker ground: this loader's real pbrt-v4 3D "checkerboard" "integer
+# dimension" [3] support (pbrt_scenes/checkered-spheres.pbrt's own header
+# comment) reproduces native's checker_texture(0.8, ...) exactly via
+# `Scale 0.8 0.8 0.8` before the Texture directive.
+#
+# Lens: geometry/dgauss-9-element.dat - the SAME 9-element simplified dgauss
+# lens table as cornell-realistic.pbrt (D8), which already transcribes
+# native's own inline lens data verbatim (D4 and D8's own native
+# setup_camera lambdas share this exact lens table - D8's own comment says
+# so directly: "Same simplified 9-element dgauss lens as D4"). aperture
+# diameter is D4's own much smaller 8mm (not D8's scaled-up 350mm - D4's own
+# comment: this scene is only a few world-units across, unlike D8's
+# ~550-unit Cornell box). focusdistance=12.4 matches native's own value.
+#
+# Film shape - the SAME known, disclosed divergence as cornell-realistic.pbrt
+# (D8): native hardcodes an absolute 3.0mm x 2.0mm half-extent film
+# regardless of render resolution; this loader's generic realistic-camera
+# path derives film half-extents from "filmdiag" split by the render's
+# ACTUAL aspect ratio, which is always 1 at this project's own always-square
+# CLI resolution - see that file's own header comment for the full
+# explanation. filmdiag = 2*sqrt(3^2+2^2) = 7.211102550927978 preserves
+# native's own film diagonal (same value as D8, since D4 and D8 share the
+# identical 3.0/2.0mm film size).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  1.65 1.07 -6.85    1.4 1 5.5    0 1 0
+Camera "realistic" "string lensfile" [ "geometry/dgauss-9-element.dat" ]
+  "float aperturediameter" [ 8.0 ] "float focusdistance" [ 12.4 ]
+  "float filmdiag" [ 7.211102550927978 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ]
+  Translate 0 8 5
+  Shape "sphere" "float radius" [ 2 ]
+AttributeEnd
+
+AttributeBegin
+  Scale 0.8 0.8 0.8
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.15 0.15 0.15 ] "rgb tex2" [ 0.85 0.85 0.85 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# Row of 5 spheres at varying depths (z = 2.0 + i*1.5), x=0, y=1, radius 0.8
+Material "diffuse" "rgb reflectance" [ 0.9 0.2 0.2 ]
+AttributeBegin
+  Translate 0 1 2.0
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2 0.8 0.2 ]
+AttributeBegin
+  Translate 0 1 3.5
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2 0.2 0.9 ]
+AttributeBegin
+  Translate 0 1 5.0
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.8 0.2 ]
+AttributeBegin
+  Translate 0 1 6.5
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.2 0.8 ]
+AttributeBegin
+  Translate 0 1 8.0
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd
