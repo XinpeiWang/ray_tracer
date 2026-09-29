@@ -2007,169 +2007,20 @@ static void build_cornell_rough_metal(SceneData& scene) {
 // it directly for their own (still-native) scenes.
 
 /// @brief Build Cornell Coated Diffuse scene (scene 13)
-/// Matches CPU build_cornell_coated_diffuse(): Cornell box with a blue coated sphere
-/// and a red coated box (rough dielectric coat over Lambertian base, pbrt-v4 CoatedDiffuseBxDF)
-static void build_cornell_coated_diffuse(SceneData& scene) {
-    add_cornell_walls_and_main_light(scene);
+// build_cornell_coated_diffuse() (GPU, former "scene 13" / B5) deleted - B5
+// migrated to pbrt-backed, see pbrt_scenes/cornell-coated-diffuse.pbrt and
+// its case-13 removal above. The CPU function of the same name is NOT
+// deleted (tests/integration/skip_pdf_material_brightness_tests.cpp calls
+// it directly) - this GPU-only deletion has no effect on that.
 
-    // Blue coated-diffuse sphere (IOR 1.5, roughness 0.1)
-    const int mat_coated_blue = add_coated_diffuse(scene,
-        make_float3(0.2f, 0.3f, 0.9f),  // diffuse base colour
-        0.1f,                            // coat roughness (RoughnessToAlpha done in shader)
-        1.5f);                           // coat IOR (glass-like)
-
-    // Orange/terracotta coated-diffuse box (IOR 1.5, roughness 0.2) - was
-    // near-identical red to the wall behind it (matches CPU's fix, see
-    // build_cornell_coated_diffuse()'s comment there).
-    const int mat_coated_red = add_coated_diffuse(scene, make_float3(0.75f, 0.35f, 0.1f), 0.2f, 1.5f);
-
-    // Blue coated-diffuse sphere
-    SphereData sph{};
-    sph.center    = make_float3(190.0f, 90.0f, 190.0f);
-    sph.radius    = 90.0f;
-    sph.materialIdx = mat_coated_blue;
-    scene.spheres.push_back(sph);
-
-    // Red coated-diffuse box
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_coated_red,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-}
-
-/// @brief Build Cornell Thin Glass scene (scene 14)
-/// Matches CPU build_cornell_thin_glass(): Cornell box with a vertical thin-glass panel
-/// using pbrt-v4 ThinDielectricBxDF (analytic multi-bounce Fresnel, no bending).
-static void build_cornell_thin_glass(SceneData& scene) {
-    const int mat_red   = safe_cast_to_int(scene.materials.size());
-    add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
-
-    const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-
-    const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    add_diffuse_light(scene, make_float3(kLightIntensity, kLightIntensity, kLightIntensity));
-
-    // White diffuse box
-    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-
-    // Thin-glass panel (IOR 1.5)
-    const int mat_panel = add_thin_dielectric(scene, 1.5f);
-
-    // Cornell Box walls
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.lightKinds.push_back(GpuLightKind::Quad); }
-    { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-
-    // White diffuse box (right side)
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_box,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-
-    // Thin-glass panel: rotated ~28 degrees off the camera's straight-on
-    // view axis so it's actually visible (matches CPU build_cornell_thin_glass()
-    // - see that function's comment: at 0 degrees incidence, IOR-1.5 Fresnel
-    // reflectance is only ~4%, imperceptible). Built centered at local
-    // origin, rotated about Y (same convention as CPU's rotate_y: x'=cos*x
-    // + sin*z, z'=-sin*x + cos*z, y untouched), then translated into place.
-    {
-        const float panelAngleRad = 62.0f * 3.14159265358979323846f / 180.0f;  // matches CPU's 62-degree tilt
-        const float cosA = cosf(panelAngleRad), sinA = sinf(panelAngleRad);
-        auto rotate_y_pt = [&](float x, float y, float z) {
-            return make_float3(cosA * x + sinA * z, y, -sinA * x + cosA * z);
-        };
-        const float3 Q_rot = rotate_y_pt(-177.5f, -277.5f, 0.0f);
-        const float3 u_rot = rotate_y_pt(0.0f, 555.0f, 0.0f);  // vertical edge, unchanged by Y rotation
-        const float3 v_rot = rotate_y_pt(355.0f, 0.0f, 0.0f);
-        const float3 translate = make_float3(277.5f, 277.5f, 200.0f);
-
-        QuadData q{};
-        q.Q = make_float3(Q_rot.x + translate.x, Q_rot.y + translate.y, Q_rot.z + translate.z);
-        q.u = u_rot;
-        q.v = v_rot;
-        const float3 c = cross(q.u, q.v);
-        q.w      = c;
-        q.normal = normalize(c);
-        q.D      = dot(q.normal, q.Q);
-        q.materialIdx = mat_panel;
-        scene.quads.push_back(q);
-    }
-}
-
-/// @brief Build Cornell Coated Conductor scene (scene 15)
-/// Matches CPU build_cornell_coated_conductor(): Cornell box with a lacquered-gold sphere
-/// and a lacquered-copper box using pbrt-v4 CoatedConductorBxDF.
-/// coat: IOR=1.5, roughness=0.1/0.2; conductor: Au sphere, Cu box.
-static void build_cornell_coated_conductor(SceneData& scene) {
-    add_cornell_walls_and_main_light(scene);
-
-    // Lacquered-gold sphere (Au conductor, IOR-1.5 coat, roughness 0.1)
-    const int mat_gold_lacquer = add_coated_conductor(scene,
-        make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b),
-        make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b),
-        0.1f,   // coat roughness
-        1.5f);  // coat IOR
-
-    // Lacquered-copper box (Cu conductor, IOR-1.5 coat, roughness 0.2)
-    const int mat_copper_lacquer = add_coated_conductor(scene,
-        make_float3(kConductorCu.eta_r, kConductorCu.eta_g, kConductorCu.eta_b),
-        make_float3(kConductorCu.k_r,   kConductorCu.k_g,   kConductorCu.k_b),
-        0.2f, 1.5f);
-
-    // Lacquered-gold sphere
-    SphereData sphere{};
-    sphere.center = make_float3(190.0f, 90.0f, 190.0f);
-    sphere.radius = 90.0f;
-    sphere.materialIdx = mat_gold_lacquer;
-    scene.spheres.push_back(sphere);
-
-    // Lacquered-copper box
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_copper_lacquer,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-}
-
-/// Matches CPU build_cornell_wax_slab(): Cornell box with a wax sphere (DiffuseTransmissionBxDF).
-/// albedo = reflectance R, emission field = transmittance T.
-static void build_cornell_wax_slab(SceneData& scene) {
-    add_cornell_walls_and_main_light(scene);
-
-    // Wax sphere: albedo = R (reflectance), emission = T (transmittance)
-    const int mat_wax = add_diffuse_transmission(scene,
-        make_float3(0.6f, 0.5f, 0.3f),   // R: reflected diffuse color
-        make_float3(0.8f, 0.6f, 0.3f));  // T: transmitted diffuse color
-
-    // White diffuse box material (same albedo as the walls, own index)
-    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-
-    // Wax sphere (left)
-    SphereData wax_sphere{};
-    wax_sphere.center    = make_float3(190.0f, 90.0f, 190.0f);
-    wax_sphere.radius    = 90.0f;
-    wax_sphere.materialIdx = mat_wax;
-    scene.spheres.push_back(wax_sphere);
-
-    // White diffuse box (right)
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_box,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-}
+// build_cornell_thin_glass() (GPU, former "scene 14" / B6), build_cornell_
+// coated_conductor() (GPU, former "scene 15" / B7), and build_cornell_
+// wax_slab() (GPU, former "scene 16" / B8) all deleted - B6/B7/B8 migrated
+// to pbrt-backed, see their own cornell-thin-glass.pbrt/cornell-coated-
+// conductor.pbrt/cornell-wax-slab.pbrt and the case-14/15/16 removal above.
+// None of these three has any other consumer (unlike build_cornell_box/
+// build_cornell_conductor/build_cornell_coated_diffuse/build_cornell_rough_
+// glass, which stay - other scenes or tests still call them directly).
 
 /// @brief Build Cornell Crystal scene (scene 17)
 /// Matches CPU build_cornell_crystal(): Cornell box with NormalizedFresnelBxDF crystal sphere.
@@ -5081,29 +4932,13 @@ bool build_scene(
 							// B4 entry. Falls through to default: -> build_loaded_pbrt_scene()
 							// now that legacy_id 12 is no longer assigned to any scene.
 
-							case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
-								build_cornell_coated_diffuse(scene);
-								setup_cornell_box_camera();
-								break;
-
-							case 14:  // Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)
-								build_cornell_thin_glass(scene);
-								setup_cornell_box_camera();
-								break;
-
-							case 15:  // Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)
-								build_cornell_coated_conductor(scene);
-								setup_cornell_box_camera();
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 15 (same reasoning as scene 10).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
-								}
-								break;
-
-							case 16:  // Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)
-								build_cornell_wax_slab(scene);
-								setup_cornell_box_camera();
-								break;
+							// cases 13/14/15/16 (Cornell Coated Diffuse/Thin Glass/Coated
+							// Conductor/Wax Slab - B5/B6/B7/B8) migrated to pbrt-backed -
+							// see pbrt_scenes/cornell-coated-diffuse.pbrt/cornell-thin-glass.pbrt/
+							// cornell-coated-conductor.pbrt/cornell-wax-slab.pbrt and
+							// scene_registry_data.h's own entries. All fall through to
+							// default: -> build_loaded_pbrt_scene() now that these legacy_ids
+							// are no longer assigned to any scene.
 
 							case 17:  // Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)
 								build_cornell_crystal(scene);
