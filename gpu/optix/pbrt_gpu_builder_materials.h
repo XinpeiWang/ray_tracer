@@ -486,6 +486,66 @@ inline bool resolveProceduralReflectanceTexture(const pbrt_flatten::Material &m,
 												 SceneData &out, std::map<std::string, int> &imageTextureCache) {
 	if (m.hasCheckerReflectance) {
 		TextureData tex{};
+		// "integer dimension" [3] (Material::checkerIs3D's own comment) -
+		// this project's OWN original 3D world-space TextureKind::Checker
+		// (matches add_checker_texture_gpu()'s exact scene_builder.cpp
+		// convention: noiseScale = 1/scale, so this can share ITS device-
+		// side eval code, sample_texture(), unchanged), not the 2D UVChecker
+		// kind the default variant below uses. TextureKind::Checker has no
+		// tex1ImageIdx/tex2ImageIdx nesting slots at all (optix_types.h's
+		// own comment on that field) - a checkerTex1Filename/
+		// checkerTex2Filename nested bare imagemap is silently NOT
+		// represented here (falls back to whatever flat colour
+		// m.checkerColor1/2 already resolved to - CPU's own equivalent
+		// nested-procedural fallback, nestedProceduralAverageColor(), is the
+		// only bundled case that leaves a non-default color here; no
+		// bundled scene binds a 3D checker's tex1/tex2 to a bare imagemap).
+		// checkerWorldToTexture's diagonal already IS 1/scale (the uniform-
+		// scale constructor on the CPU side sets it that way - see texture.h's
+		// checker_texture comment) whenever the authoring Texture's own CTM
+		// was a pure uniform Scale, which is the only shape this project's
+		// own migrated .pbrt scenes ever author; a rotated/translated/non-
+		// uniformly-scaled 3D checker (a real pbrt-v4 capability CPU's
+		// general 4x4 transform DOES support - see checker_texture's other
+		// constructor) has no GPU representation and falls back to the same
+		// flat-average color instead of misrendering a wrong pattern.
+		const double *w2t = m.checkerWorldToTexture;
+		const bool isUniformScale =
+			std::fabs(w2t[1]) < 1e-9 && std::fabs(w2t[2]) < 1e-9 && std::fabs(w2t[3]) < 1e-9 &&
+			std::fabs(w2t[4]) < 1e-9 && std::fabs(w2t[6]) < 1e-9 && std::fabs(w2t[7]) < 1e-9 &&
+			std::fabs(w2t[8]) < 1e-9 && std::fabs(w2t[9]) < 1e-9 && std::fabs(w2t[11]) < 1e-9 &&
+			std::fabs(w2t[0] - w2t[5]) < 1e-6 && std::fabs(w2t[0] - w2t[10]) < 1e-6;
+		if (m.checkerIs3D && isUniformScale) {
+			tex.kind = TextureKind::Checker;
+			tex.noiseScale = static_cast<float>(w2t[0]);
+			tex.color1 = make_float3(static_cast<float>(m.checkerColor1[0]),
+									 static_cast<float>(m.checkerColor1[1]),
+									 static_cast<float>(m.checkerColor1[2]));
+			tex.color2 = make_float3(static_cast<float>(m.checkerColor2[0]),
+									 static_cast<float>(m.checkerColor2[1]),
+									 static_cast<float>(m.checkerColor2[2]));
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+			return true;
+		}
+		if (m.checkerIs3D) {
+			// Non-uniform/rotated/translated 3D checker - no GPU
+			// representation (comment above); a flat average of the two
+			// cell colours is at least the right BRIGHTNESS, unlike leaving
+			// the pattern unset entirely.
+			tex.kind = TextureKind::Checker;
+			tex.noiseScale = 1.0f;
+			const float3 c1 = make_float3(static_cast<float>(m.checkerColor1[0]),
+										  static_cast<float>(m.checkerColor1[1]),
+										  static_cast<float>(m.checkerColor1[2]));
+			const float3 c2 = make_float3(static_cast<float>(m.checkerColor2[0]),
+										  static_cast<float>(m.checkerColor2[1]),
+										  static_cast<float>(m.checkerColor2[2]));
+			tex.color1 = tex.color2 = make_float3((c1.x + c2.x) * 0.5f, (c1.y + c2.y) * 0.5f, (c1.z + c2.z) * 0.5f);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+			return true;
+		}
 		tex.kind = TextureKind::UVChecker;
 		tex.color1 = make_float3(static_cast<float>(m.checkerColor1[0]),
 								 static_cast<float>(m.checkerColor1[1]),

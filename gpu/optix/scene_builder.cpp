@@ -2082,9 +2082,12 @@ static void build_cornell_rough_glass(SceneData& scene) {
 /**
  * Build bouncing spheres scene (scene 1, "In One Weekend" final scene).
  * Structurally mirrors src/TheRestOfYourLife/scenes_book.h's
- * build_bouncing_spheres() - a checker-ground plane (approximated as flat
- * gray, matching this file's established "GPU has no checker/procedural
- * texture support" simplification - see build_checkered_spheres below and
+ * build_bouncing_spheres() - a real checker-ground plane (add_checker_texture_gpu,
+ * matching CPU's checker_texture(0.32, ...) exactly - this comment used to
+ * say GPU approximated it as flat gray, "no checker/procedural texture
+ * support"; that claim went stale once add_checker_texture_gpu was added
+ * for A3/other scenes and was never updated here, a real pre-existing bug
+ * fixed in passing while adding real pbrt-v4 3D-checkerboard support - see
  * GpuCameraParams::backgroundColor's comment), a grid of small random
  * spheres, and 3 large signature spheres (glass/diffuse/metal).
  *
@@ -2101,10 +2104,13 @@ static void build_cornell_rough_glass(SceneData& scene) {
  * random sequence either.
  */
 void build_bouncing_spheres(SceneData& scene) {
-	// Ground sphere - checker approximated as flat gray.
+	// Ground sphere - real checker (matches CPU's checker_texture(0.32, ...)
+	// exactly, same as add_checker_texture_gpu's other call sites below).
 	{
+		const int checkerTexIdx = add_checker_texture_gpu(scene, 0.32f,
+			make_float3(0.2f, 0.3f, 0.1f), make_float3(0.9f, 0.9f, 0.9f));
 		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
+		add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 		SphereData ground{};
 		ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 		ground.center1 = ground.center;  // static
@@ -2195,56 +2201,9 @@ void build_bouncing_spheres(SceneData& scene) {
 	}
 }
 
-/// @brief Build checkered spheres scene (scene 2). Matches CPU
-/// build_checkered_spheres() (src/TheRestOfYourLife/scenes_book.h) exactly:
-/// a single checker_texture(scale=0.32, color(.2,.3,.1), color(.9,.9,.9))
-/// shared across both spheres - not two separately flat-colored spheres (an
-/// earlier version of this function approximated the checker that way,
-/// before this codebase had any GPU checker-texture support; see
-/// add_checker_texture_gpu, added for scene 38's ground).
-void build_checkered_spheres(SceneData& scene) {
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.32f,
-		make_float3(0.2f, 0.3f, 0.1f), make_float3(0.9f, 0.9f, 0.9f));
-	const int mat = safe_cast_to_int(scene.materials.size());
-	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
-
-	SphereData sphere1{};
-	sphere1.center = make_float3(0.0f, -10.0f, 0.0f);
-	sphere1.radius = 10.0f;
-	sphere1.materialIdx = mat;
-	scene.spheres.push_back(sphere1);
-
-	SphereData sphere2{};
-	sphere2.center = make_float3(0.0f, 10.0f, 0.0f);
-	sphere2.radius = 10.0f;
-	sphere2.materialIdx = mat;
-	scene.spheres.push_back(sphere2);
-
-	// Small accent spheres resting on the visible cap of the lower
-	// "planet" - matches CPU build_checkered_spheres() exactly (see its
-	// own comment for the reasoning).
-	const int warmMat  = add_lambertian(scene, make_float3(0.55f, 0.15f, 0.10f));
-	const int metalMat = add_metal(scene, make_float3(0.8f, 0.75f, 0.6f), 0.05f);
-	const int glassMat = add_dielectric(scene, 1.5f);
-
-	SphereData accent1{};
-	accent1.center = make_float3(1.6f, 0.5f, 2.2f);
-	accent1.radius = 0.9f;
-	accent1.materialIdx = warmMat;
-	scene.spheres.push_back(accent1);
-
-	SphereData accent2{};
-	accent2.center = make_float3(-1.4f, 0.45f, 1.6f);
-	accent2.radius = 0.7f;
-	accent2.materialIdx = metalMat;
-	scene.spheres.push_back(accent2);
-
-	SphereData accent3{};
-	accent3.center = make_float3(0.1f, 0.15f, 3.0f);
-	accent3.radius = 0.6f;
-	accent3.materialIdx = glassMat;
-	scene.spheres.push_back(accent3);
-}
+// build_checkered_spheres() (former "scene 2" / A3 Checkered Spheres GPU
+// builder) deleted - A3 migrated to pbrt-backed, see
+// pbrt_scenes/checkered-spheres.pbrt and its case-2 removal above.
 
 /// @brief Scene 3: Earth. Matches CPU build_earth() (src/TheRestOfYourLife/
 /// scenes_book.h) exactly: a single radius-2 sphere at the origin with the
@@ -4658,25 +4617,10 @@ bool build_scene(
 					}
 					break;
 
-				case 2:  // Checkered Spheres
-					build_checkered_spheres(scene);
-
-					// Configure camera. Same Fixed-mode situation as scene 1
-					// above (no CameraMode::UserControlled in this scene's
-					// registry entry, and the same force_camera_override
-					// escape hatch for video mode) - ignore cam_x/y/z by
-					// default, matching CPU exactly, rather than placing the
-					// camera at whatever Cornell-Box-scale position happened
-					// to be leftover from a previous scene.
-					{
-						apply_mesh_camera(make_float3(13.0f, 2.0f, 3.0f), make_float3(0.0f, 0.0f, 0.0f), 20.0f);
-
-						// Warm sunset-ish flat background, matching CPU registry's
-						// bg=(0.90,0.75,0.55) for this scene - fits the "planet"
-						// motif and contrasts with the new accent spheres.
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.90f, 0.75f, 0.55f);
-					}
-					break;
+				// case 2 (Checkered Spheres / A3) migrated to pbrt-backed - see
+				// pbrt_scenes/checkered-spheres.pbrt and scene_registry_data.h's
+				// own entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 2 is no longer assigned to any scene.
 
 				case 3:  // Earth (see build_earth_gpu's comment)
 					build_earth_gpu(scene);

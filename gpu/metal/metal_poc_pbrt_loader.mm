@@ -158,8 +158,18 @@ void MetalPocApp::loadPbrtScene() {
                 // no bundled scene needs it (matches roughnessTextureFilename's
                 // own identical "bare imagemap only" scope-narrowing,
                 // pbrt_flatten.h) - falls through to the flat-colour
-                // default below instead of misrendering it.
-                if (m.hasCheckerReflectance && m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
+                // default below instead of misrendering it. Also excludes
+                // m.checkerIs3D ("integer dimension" [3], pbrt_flatten.h's
+                // own Material::checkerIs3D comment) - materialType 25's own
+                // shader reads m.checkerUScale/checkerVScale as UV tile
+                // frequencies, which would misinterpret a 3D checker's world-
+                // space transform as a UV one; this Metal POC backend has no
+                // 3D-checker representation at all (unlike CPU/OptiX - see
+                // texture.h's checker_texture and pbrt_gpu_builder_materials.h's
+                // TextureKind::Checker), so it falls through to the same
+                // flat-colour default instead of rendering the wrong pattern.
+                if (m.hasCheckerReflectance && !m.checkerIs3D &&
+                    m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
                     TriangleMaterial mat{
                         PackedFloat3{(float)m.checkerColor1[0], (float)m.checkerColor1[1], (float)m.checkerColor1[2]},
                         /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};

@@ -108,6 +108,19 @@ inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const d
 		: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(filename.c_str()));
 }
 
+// A resolved "checkerboard" Texture's own top-level pattern class -
+// Material::checkerIs3D's own comment: pbrt-v4's real "integer dimension"
+// [3] variant is this project's OWN original world-space checker_texture
+// (texture.h), keyed on a transformed hit point; the default 2D variant
+// stays the existing UV-tiled uv_checker_texture. Shared by the Diffuse and
+// CoatedDiffuse hasCheckerReflectance cases below so the branch exists once.
+inline shared_ptr<texture> checkerPatternTexture(const pbrt_flatten::Material &m,
+												  shared_ptr<texture> tex1, shared_ptr<texture> tex2) {
+	if (m.checkerIs3D)
+		return std::make_shared<checker_texture>(m.checkerWorldToTexture, tex1, tex2);
+	return std::make_shared<uv_checker_texture>(m.checkerUScale, m.checkerVScale, tex1, tex2);
+}
+
 // Builds the MipMapOptions for m.textureFilename specifically - see
 // Material::textureGamma's own comment (pbrt_flatten.h) for why this slot
 // keeps its own 3 loose fields instead of a TextureDecodeOptions like
@@ -275,7 +288,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1, &m.checkerTex1Nested);
 			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2, &m.checkerTex2Nested);
 			return std::make_shared<coated_diffuse>(
-				std::make_shared<uv_checker_texture>(m.checkerUScale, m.checkerVScale, tex1, tex2),
+				checkerPatternTexture(m, tex1, tex2),
 				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		}
 		if (m.hasFbmReflectance)
@@ -443,19 +456,20 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			return std::make_shared<lambertian>(tex);
 		}
 		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own
-		// comment) - a procedural pbrt-v4 checkerboard, not an image file,
-		// so uv_checker_texture (texture.h) is built directly from the
-		// resolved colours/scales rather than decoded from disk. tex1/tex2
-		// each independently use uv_checker_texture's own polymorphic
-		// constructor when checkerTex1Filename/checkerTex2Filename named a
-		// one-level-nested bare imagemap instead of a flat literal (see that
-		// field's own comment) - a mipmap_texture per nested slot instead of
-		// the flat solid_color the plain literal case still uses.
+		// comment) - a procedural pbrt-v4 checkerboard, not an image file, so
+		// checkerPatternTexture() (this file, above) builds either the
+		// default 2D uv_checker_texture or - "integer dimension" [3],
+		// Material::checkerIs3D - this project's own original 3D world-space
+		// checker_texture (texture.h) directly, rather than decoding
+		// anything from disk. tex1/tex2 each independently use their own
+		// polymorphic slot when checkerTex1Filename/checkerTex2Filename
+		// named a one-level-nested bare imagemap instead of a flat literal
+		// (see that field's own comment) - a mipmap_texture per nested slot
+		// instead of the flat solid_color the plain literal case still uses.
 		if (m.hasCheckerReflectance) {
 			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1, &m.checkerTex1Nested);
 			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2, &m.checkerTex2Nested);
-			return std::make_shared<lambertian>(std::make_shared<uv_checker_texture>(
-				m.checkerUScale, m.checkerVScale, tex1, tex2));
+			return std::make_shared<lambertian>(checkerPatternTexture(m, tex1, tex2));
 		}
 		// m.hasFbmReflectance/hasMarbleReflectance/hasMixReflectance
 		// (Material's own comments) - same procedural-not-file pattern as

@@ -46,17 +46,17 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_bouncing_spheres,
             sky_dummy_lights
         },
-        {
-            "A3", 2, SceneNames::CheckeredSpheres, SceneCategories::Basics,
+        // A3 migrated to pbrt-backed - see pbrt_scenes/checkered-spheres.pbrt.
+        // legacy_id 185 (next after D8's 184). First scene to use this
+        // loader's newly-added real pbrt-v4 "checkerboard" "integer
+        // dimension" [3] support (see that .pbrt file's own header comment)
+        // - a genuine fix, not an approximation: A3's own checker_texture is
+        // now expressible in pbrt exactly. build_checkered_spheres() has no
+        // other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "A3", 185, SceneNames::CheckeredSpheres, SceneCategories::Basics,
             "Two spheres with procedural checker texture",
-            "Fast", 100, false, true,
-            // Warm sunset-ish flat background instead of generic sky-blue -
-            // fits the "planet" motif better and gives the new accent
-            // spheres something to contrast against.
-            { 20, 13, 2, 3,  0, 0, 0,  0.90, 0.75, 0.55 },
-            build_checkered_spheres,
-            sky_dummy_lights
-        },
+            "Fast", "checkered-spheres.pbrt"),
         {
             "A4", 3, SceneNames::Earth, SceneCategories::Basics,
             "Globe with earth texture mapping (requires earthmap.jpg)",

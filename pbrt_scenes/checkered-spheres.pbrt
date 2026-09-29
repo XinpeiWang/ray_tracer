@@ -1,0 +1,79 @@
+# checkered-spheres.pbrt -- migration of the native "A3 Checkered Spheres"
+# demo scene (src/TheRestOfYourLife/scenes_book.h's build_checkered_spheres())
+# to a pbrt-backed scene, part of this project's GPU scene-construction-
+# duplication elimination.
+#
+# This is the first scene to use this loader's newly-added pbrt-v4 real
+# "checkerboard" "integer dimension" [3] support (a genuine, previously-
+# missing pbrt-v4 feature - CheckerboardTexture::Evaluate's dimension==3
+# branch, a 3D world-space checker, as opposed to the default 2D UV-tiled
+# variant this loader already had). This is NOT an approximation: it is
+# this project's own original checker_texture (src/TheRestOfYourLife/
+# texture.h) exactly, byte-for-byte, bit-for-bit the same
+# floor(p.x)+floor(p.y)+floor(p.z) parity test, just reached via a real
+# pbrt-v4 directive instead of hand-written C++.
+#
+# Scale: native's checker_texture(0.32, even, odd) constructor takes a
+# single scalar `scale` and internally computes inv_scale=1/scale, applied
+# uniformly to all 3 axes. Reproduced here via `Scale 0.32 0.32 0.32`
+# BEFORE the Texture directive - this establishes the Texture's own
+# texture-to-world transform as Scale(0.32); this loader inverts that CTM
+# to get world-to-texture (pbrt_flatten.h's own Material::checkerIs3D
+# comment), i.e. Scale(1/0.32) = Scale(3.125) = the exact same inv_scale
+# native's own constructor computes. tex1/tex2 map to native's even/odd
+# slots in the same order (checker_texture(scale, even, odd) <->
+# "tex1"/"tex2" - see pbrt_cpu_builder.h's checkerPatternTexture()).
+#
+# Flat background: native's own CameraConfig row carries a warm sunset-ish
+# flat background (0.90, 0.75, 0.55), NOT pbrt-v4's usual black - this
+# loader's wire_pbrt_backed_scene() hardcodes a migrated scene's background
+# to (0,0,0) unless an explicit LightSource "infinite" constant colour is
+# authored (this project's own established "flat background pitfall" - see
+# the migration plan's own Verification section), so one is given below.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  13 2 3    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 20 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.90 0.75 0.55 ]
+
+AttributeBegin
+  Scale 0.32 0.32 0.32
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.2 0.3 0.1 ] "rgb tex2" [ 0.9 0.9 0.9 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -10 0
+  Shape "sphere" "float radius" [ 10 ]
+AttributeEnd
+AttributeBegin
+  Translate 0 10 0
+  Shape "sphere" "float radius" [ 10 ]
+AttributeEnd
+
+# Small accent spheres (scale/depth reference and material variety)
+Material "diffuse" "rgb reflectance" [ 0.55 0.15 0.10 ]
+AttributeBegin
+  Translate 1.6 0.5 2.2
+  Shape "sphere" "float radius" [ 0.9 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.8 0.75 0.6 ] "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate -1.4 0.45 1.6
+  Shape "sphere" "float radius" [ 0.7 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 0.1 0.15 3.0
+  Shape "sphere" "float radius" [ 0.6 ]
+AttributeEnd

@@ -1043,6 +1043,23 @@ struct Material {
 	NestedProceduralTexture checkerTex2Nested;
 	double checkerUScale = 1.0;
 	double checkerVScale = 1.0;
+	// pbrt-v4's real "checkerboard" texture also supports "integer
+	// dimension" [3] - a 3D WORLD-SPACE checker (CheckerboardTexture::
+	// Evaluate's dimension==3 branch), keyed on a texture-space point
+	// instead of (u,v) - checkerUScale/checkerVScale above are meaningless
+	// for this variant (real pbrt-v4 ignores them too). This is the exact
+	// same pattern this project's OWN original (pre-pbrt) checker_texture
+	// (src/TheRestOfYourLife/texture.h) already implements - see that
+	// class's own header comment. checkerWorldToTexture is the inverse of
+	// the CTM active when the Texture directive was declared
+	// (TextureDecl::xform's own comment) - a plain "Scale s s s" before the
+	// Texture directive reproduces this project's own native checker_
+	// texture(scale, ...) constructor exactly, since its inv_scale=1/scale
+	// is exactly what Scale(s)'s own inverse applies to a world point.
+	// Row-major affine 4x4, identity when dimension isn't 3 (checkerIs3D
+	// stays false so callers never need to consult this field).
+	bool checkerIs3D = false;
+	double checkerWorldToTexture[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 
 	// A Diffuse material's "reflectance" bound to an "fbm" Texture (pbrt-v4
 	// FBmTexture - fractional Brownian motion noise, e.g. a cloudy/mottled
@@ -2597,6 +2614,23 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						}
 						m.checkerUScale = tex->params.getFloat("uscale", 1.0);
 						m.checkerVScale = tex->params.getFloat("vscale", 1.0);
+						// "integer dimension" [3] - pbrt-v4's real 3D world-space
+						// checker variant (Material::checkerIs3D's own comment).
+						// worldToTexture is the CTM's inverse at Texture-
+						// declaration time; inverseAffine() fails only for a
+						// singular (zero-scale-on-some-axis) CTM, which would
+						// make the checker degenerate on any renderer anyway -
+						// falls back to identity (whole-world one cell) rather
+						// than propagating a failure, matching this loader's
+						// own "render something sensible, don't abort the
+						// load" convention for a malformed-but-present feature.
+						if (tex->params.getInt("dimension", 2) == 3) {
+							m.checkerIs3D = true;
+							pbrt_scene::Matrix4 worldToTexture;
+							if (!tex->xform.inverseAffine(worldToTexture))
+								worldToTexture = pbrt_scene::Matrix4::identity();
+							for (int i = 0; i < 16; ++i) m.checkerWorldToTexture[i] = worldToTexture.m[i];
+						}
 						m.hasCheckerReflectance = true;
 						continue;   // resolved to a procedural checker, not a "not supported" warning
 					}

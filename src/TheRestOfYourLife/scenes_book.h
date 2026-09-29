@@ -134,31 +134,9 @@ inline hittable_list build_bouncing_spheres() {
 	return world;
 }
 
-/**
- * Build checkered spheres scene
- */
-inline hittable_list build_checkered_spheres() {
-	hittable_list world;
-
-	auto checker = make_shared<checker_texture>(0.32, color(.2, .3, .1), color(.9, .9, .9));
-
-	world.add(make_shared<sphere>(point3(0,-10, 0), 10, make_shared<lambertian>(checker)));
-	world.add(make_shared<sphere>(point3(0, 10, 0), 10, make_shared<lambertian>(checker)));
-
-	// Small accent spheres resting on the visible cap of the lower "planet"
-	// (radius 10, centered (0,-10,0), so its near-camera pole sits right
-	// around y=0) - scale/depth reference and material variety for what was
-	// otherwise just 2 bare checker spheres with nothing to catch light or
-	// frame against.
-	world.add(make_shared<sphere>(point3(1.6, 0.5, 2.2), 0.9,
-		make_shared<lambertian>(color(0.55, 0.15, 0.10))));
-	world.add(make_shared<sphere>(point3(-1.4, 0.45, 1.6), 0.7,
-		make_shared<metal>(color(0.8, 0.75, 0.6), 0.05)));
-	world.add(make_shared<sphere>(point3(0.1, 0.15, 3.0), 0.6,
-		make_shared<dielectric>(1.5)));
-
-	return world;
-}
+// build_checkered_spheres() deleted - A3 migrated to pbrt-backed, see
+// pbrt_scenes/checkered-spheres.pbrt and scene_registry_data.h's own entry.
+// No other consumer.
 
 /**
  * Build earth globe scene (requires earthmap.jpg)
