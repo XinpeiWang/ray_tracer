@@ -2395,110 +2395,15 @@ static void build_simple_light_gpu(SceneData& scene) {
 // deleted - A6 migrated to pbrt-backed, see pbrt_scenes/colored-quads.pbrt
 // and its case-5 removal above.
 
-/// @brief Cornell box walls (no light quad) + two spheres, for scenes lit by
-/// a punctual (point/spot/distant) light instead of an emissive quad.
-/// Matches CPU src/TheRestOfYourLife/scenes_advanced.h cornell_walls_no_light()
-/// exactly: same 5 walls, same two sphere positions/materials.
-static void build_punctual_light_walls(SceneData& scene) {
-	using namespace cornell_box_data;
-
-	// The 5 standard walls (green/red/ceiling/floor/back), no light quad -
-	// shares kQuads[0..4] with CPU's cornell_walls_no_light() so the two
-	// can't drift apart, same pattern as scene 0's build_cornell_box().
-	for (int i = 0; i < 5; ++i) {
-		const QuadSpec& q = kQuads[i];
-		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
-		add_transformed_quad(scene,
-			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
-			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
-			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
-			mat);
-	}
-
-	// Sphere materials: white lambertian + blue-tinted fuzzy metal (matches CPU)
-	const int mat_white_sphere = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-
-	const int mat_metal_sphere = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.1f);
-
-	// Two spheres (matches CPU cornell_walls_no_light exactly)
-	{ SphereData s{}; s.center = make_float3(190.0f, 90.0f, 190.0f); s.radius = 90.0f; s.materialIdx = mat_white_sphere; scene.spheres.push_back(s); }
-	{ SphereData s{}; s.center = make_float3(370.0f, 120.0f, 380.0f); s.radius = 120.0f; s.materialIdx = mat_metal_sphere; scene.spheres.push_back(s); }
-}
-
 // build_spotlight_cornell_gpu()/build_distant_light_cornell_gpu()/
 // build_point_light_cornell_gpu() (former scenes 25/26/27 - C2/C3/C4) all
 // deleted - migrated to pbrt-backed, see pbrt_scenes/cornell-spotlight.pbrt/
 // cornell-distant-light.pbrt/cornell-point-light.pbrt and their case
-// removal above. build_punctual_light_walls() itself stays - C5/C6 (still
-// native) call it directly.
-
-/// @brief Scene 28: Goniometric Light Cornell. Matches CPU build_goniometric_punct().
-static void build_goniometric_cornell_gpu(SceneData& scene) {
-	build_punctual_light_walls(scene);
-
-	PunctualLightGPU light{};
-	light.kind = PunctualLightKind::Goniometric;
-	GoniometricLightGPU& g = light.gonio;
-	g.pos_x = 278.0f; g.pos_y = 520.0f; g.pos_z = 278.0f;
-	// Identity rotation (matches CPU's id[9] = {1,0,0, 0,1,0, 0,0,1})
-	g.world_to_light[0] = 1.0f; g.world_to_light[1] = 0.0f; g.world_to_light[2] = 0.0f;
-	g.world_to_light[3] = 0.0f; g.world_to_light[4] = 1.0f; g.world_to_light[5] = 0.0f;
-	g.world_to_light[6] = 0.0f; g.world_to_light[7] = 0.0f; g.world_to_light[8] = 1.0f;
-	g.ir = 1.0f; g.ig = 0.9f; g.ib = 0.7f;
-	// Matches CPU's fix (see build_goniometric_punct()'s comment) - was
-	// blowing the room to near-white.
-	g.scale = 600000.0f;
-	// Same synthetic profile as CPU build_goniometric_punct(): bright toward
-	// the bottom hemisphere (v > NV/2), dim toward the top.
-	g.nu = 16; g.nv = 8;
-	for (int v = 0; v < g.nv; ++v) {
-		float t = (float)v / (float)g.nv;
-		for (int u = 0; u < g.nu; ++u)
-			g.image[v * g.nu + u] = 0.2f + 0.8f * t;
-	}
-	scene.punctualLights.push_back(light);
-}
-
-/// @brief Scene 29: Projection Light Cornell. Matches CPU build_projection_punct().
-static void build_projection_cornell_gpu(SceneData& scene) {
-	build_punctual_light_walls(scene);
-
-	PunctualLightGPU light{};
-	light.kind = PunctualLightKind::Projection;
-	ProjectionLightGPU& pr = light.proj;
-	pr.pos_x = 278.0f; pr.pos_y = 278.0f; pr.pos_z = -50.0f;
-	// Identity rotation (matches CPU's wtl[9] = {1,0,0, 0,1,0, 0,0,1})
-	pr.world_to_light[0] = 1.0f; pr.world_to_light[1] = 0.0f; pr.world_to_light[2] = 0.0f;
-	pr.world_to_light[3] = 0.0f; pr.world_to_light[4] = 1.0f; pr.world_to_light[5] = 0.0f;
-	pr.world_to_light[6] = 0.0f; pr.world_to_light[7] = 0.0f; pr.world_to_light[8] = 1.0f;
-	pr.scale = 1000000.0f;
-	pr.hither = 1e-3f;
-	pr.nx = 8; pr.ny = 8;
-	constexpr float kPi = 3.14159265358979323846f;
-	const float fov_deg = 40.0f;
-	// Screen bounds (mirrors ProjectionLight<T>::make, cameras.h aspect logic)
-	const float aspect = (float)pr.nx / (float)pr.ny;
-	if (aspect >= 1.0f) {
-		pr.sb_xmin = -aspect; pr.sb_xmax = aspect;
-		pr.sb_ymin = -1.0f;   pr.sb_ymax = 1.0f;
-	} else {
-		pr.sb_xmin = -1.0f;         pr.sb_xmax = 1.0f;
-		pr.sb_ymin = -1.0f/aspect;  pr.sb_ymax = 1.0f/aspect;
-	}
-	// screenFromLight reduces to a single scalar - see ProjectionLightGPU's
-	// comment in optix_types.h for why the full 4x4 matrix isn't needed.
-	pr.inv_tan = 1.0f / tanf((kPi / 180.0f) * fov_deg / 2.0f);
-	// Same 8x8 checkerboard slide as CPU build_projection_punct().
-	for (int y = 0; y < pr.ny; ++y) {
-		for (int x = 0; x < pr.nx; ++x) {
-			float v = ((x + y) % 2 == 0) ? 1.0f : 0.05f;
-			int idx = (y * pr.nx + x) * 3;
-			pr.image_rgb[idx] = v; pr.image_rgb[idx + 1] = v; pr.image_rgb[idx + 2] = v;
-		}
-	}
-	scene.punctualLights.push_back(light);
-}
+// removal above. build_goniometric_cornell_gpu()/build_projection_cornell_gpu()
+// (former scenes 28/29 - C5/C6) and the build_punctual_light_walls() helper
+// they both shared are likewise deleted now that C5/C6 are migrated too -
+// see pbrt_scenes/cornell-goniometric.pbrt/cornell-projection.pbrt and their
+// case removal above. No remaining GPU builder calls build_punctual_light_walls().
 
 /// @brief Scene 22: Depth of Field. Matches CPU build_depth_of_field() in
 /// spirit (ground + a row of spheres spanning near/far of the focus plane to
@@ -4907,15 +4812,13 @@ bool build_scene(
 							// scene_registry_data.h's own entries. build_punctual_light_walls()
 							// itself is NOT deleted - C5/C6 (still native) call it directly.
 
-							case 28:  // Goniometric Light Cornell (pbrt-v4 GoniometricLight)
-								build_goniometric_cornell_gpu(scene);
-								setup_cornell_box_camera();
-								break;
-
-							case 29:  // Projection Light Cornell (pbrt-v4 ProjectionLight)
-								build_projection_cornell_gpu(scene);
-								setup_cornell_box_camera();
-								break;
+							// cases 28/29 (Goniometric/Projection Light Cornell - C5/C6)
+							// migrated to pbrt-backed - see pbrt_scenes/cornell-goniometric.pbrt/
+							// cornell-projection.pbrt and scene_registry_data.h's own entries.
+							// Falls through to default: -> build_loaded_pbrt_scene() now that
+							// legacy_ids 28/29 are no longer assigned to any scene.
+							// build_punctual_light_walls() itself is deleted below - no scene
+							// calls it directly any more now that C5/C6 are both migrated.
 
 							case 35:  // Portal Infinite Light (pbrt-v4 PortalImageInfiniteLight)
 								build_portal_light_scene_gpu(scene);

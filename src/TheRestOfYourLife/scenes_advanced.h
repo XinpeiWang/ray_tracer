@@ -492,71 +492,11 @@ inline std::shared_ptr<punctual_light_list> build_point_light_punct() {
 	return pl;
 }
 
-// ============================================================================
-// Scene 28: Goniometric Light
-// Cornell box lit by a goniometric (IES-like) point light
-// ============================================================================
-inline hittable_list build_goniometric_light_scene() { return cornell_walls_no_light(); }
-
-inline std::shared_ptr<punctual_light_list> build_goniometric_punct() {
-	auto pl = std::make_shared<punctual_light_list>();
-	// Build a synthetic goniometric profile: bright spot forward, dimmer backward
-	// 16x8 greyscale image; maps to equal-area sphere UV
-	const int NU = 16, NV = 8;
-	std::vector<double> img(NU * NV);
-	for (int v = 0; v < NV; ++v) {
-		for (int u = 0; u < NU; ++u) {
-			// Simple: bright in the "forward" half (v > NV/2), dim in backward half
-			double t = (double)v / NV;  // 0=top, 1=bottom in equal-area
-			img[v * NU + u] = 0.2 + 0.8 * t;  // brighter toward bottom hemisphere
-		}
-	}
-	// Identity rotation (light looks down -Z in light space)
-	double id[9] = {1,0,0, 0,1,0, 0,0,1};
-	// Scale matches build_spotlight_punct()'s calibrated 600000.0 (same
-	// 1/r^2 falloff formula, similar height) - the previous 4000000.0
-	// blew the room to near-white.
-	pl->add_gonio(
-		point3(278, 520, 278),
-		color(1.0, 0.9, 0.7),  // warm tint
-		600000.0,
-		id,
-		img, NU, NV
-	);
-	return pl;
-}
-
-// ============================================================================
-// Scene 29: Projection Light
-// Cornell box with a slide-projector beam casting a checkerboard pattern
-// ============================================================================
-inline hittable_list build_projection_light_scene() { return cornell_walls_no_light(); }
-
-inline std::shared_ptr<punctual_light_list> build_projection_punct() {
-	auto pl = std::make_shared<punctual_light_list>();
-	// 8x8 checkerboard slide
-	const int NX = 8, NY = 8;
-	std::vector<double> img(NX * NY * 3);
-	for (int y = 0; y < NY; ++y) {
-		for (int x = 0; x < NX; ++x) {
-			double v = ((x + y) % 2 == 0) ? 1.0 : 0.05;
-			int idx = (y * NX + x) * 3;
-			img[idx] = v; img[idx+1] = v; img[idx+2] = v;
-		}
-	}
-	// Projector aimed from in front of scene toward back wall
-	// wtl[9]: rotate world to light (projector looks down -Z world => +Z light)
-	// Projector is at (278, 278, -200) looking toward +Z
-	double wtl[9] = {1,0,0,  0,1,0,  0,0,1}; // identity (projector looks +Z in world)
-	pl->add_projection(
-		point3(278, 278, -50),  // position: in front of front wall
-		1000000.0,              // scale
-		wtl,
-		40.0,                   // fov degrees
-		img, NX, NY
-	);
-	return pl;
-}
+// build_goniometric_light_scene()/build_goniometric_punct() (former scene 28
+// / C5) and build_projection_light_scene()/build_projection_punct() (former
+// scene 29 / C6) both deleted - migrated to pbrt-backed, see pbrt_scenes/
+// cornell-goniometric.pbrt/cornell-projection.pbrt and scene_registry_data.h's
+// own entries. Neither had any other consumer.
 
 // ============================================================================
 // Scene 30: Homogeneous Medium
