@@ -19,14 +19,21 @@
 // beyond these came from a .pbrt file found on disk at startup.
 inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
     static const std::vector<SceneDescriptor> registry = {
-        {
-            "A1", 0, SceneNames::CornellBox, SceneCategories::Basics,
+        // A1 migrated to pbrt-backed (this project's GPU scene-construction-
+        // duplication elimination, pilot batch) - see pbrt_scenes/
+        // cornell-box-native.pbrt's own header comment. legacy_id 169 (past
+        // every real case in gpu/optix/scene_builder.cpp's switch, same
+        // convention A6's own migration used, next after A6's 168) since 0
+        // no longer has a switch case of its own to reuse. CameraMode::
+        // UserControlled explicitly passed (see build_curated_pbrt_scene_
+        // descriptor()'s own `mode` parameter comment) - kCornellBoxCamera
+        // was UserControlled, and wire_pbrt_backed_scene()'s own default
+        // (Fixed) would otherwise silently disable --cam_x/y/z and the
+        // GUI's camera controls for this scene.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "A1", 169, SceneNames::CornellBox, SceneCategories::Basics,
             "Classic Cornell box with glass sphere and aluminum box",
-            "Medium", 100, false, true,
-            kCornellBoxCamera,
-            build_cornell_box,
-            build_cornell_box_lights
-        },
+            "Medium", "cornell-box-native.pbrt", CameraMode::UserControlled),
         {
             "A2", 1, SceneNames::BouncingSpheres, SceneCategories::Basics,
             "Random spheres with checker ground (In One Weekend final)",
@@ -68,14 +75,16 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_perlin_spheres,
             build_perlin_spheres_lights
         },
-        {
-            "A6", 5, SceneNames::ColoredQuads, SceneCategories::Basics,
+        // A6 migrated to pbrt-backed (this project's GPU scene-construction-
+        // duplication elimination, pilot batch) - see pbrt_scenes/
+        // colored-quads.pbrt's own header comment. legacy_id 168 (past every
+        // real case in gpu/optix/scene_builder.cpp's switch, same 100+
+        // convention every other curated pbrt scene below uses) since 5 no
+        // longer has a switch case of its own to reuse.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "A6", 168, SceneNames::ColoredQuads, SceneCategories::Basics,
             "Five colored quad primitives",
-            "Fast", 100, false, true,
-            { 80, 0, 0, 9,  0, 0, 0,  0.70, 0.80, 1.00 },
-            build_quads,
-            build_quads_lights
-        },
+            "Fast", "colored-quads.pbrt"),
         {
             "A7", 6, SceneNames::SimpleLight, SceneCategories::Basics,
             "Perlin spheres with emissive light sources",
@@ -123,22 +132,29 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_cornell_rough_metal,
             build_cornell_box_lights
         },
-        {
-            "B3", 11, SceneNames::CornellRoughGlass, SceneCategories::Materials,
+        // B3 migrated to pbrt-backed (this project's GPU scene-construction-
+        // duplication elimination, pilot batch) - see pbrt_scenes/
+        // cornell-rough-glass.pbrt's own header comment (also fixes I5/I10,
+        // which reuse "the same world as B3" - see their own entries below).
+        // legacy_id 171 (next after B4's 170) since 11 no longer has a
+        // switch case of its own to reuse (I5/I10's own cases still call
+        // build_cornell_rough_glass(scene) directly and are unaffected).
+        // CameraMode::UserControlled explicitly passed, same reason as
+        // A1's/B4's own migrations.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B3", 171, SceneNames::CornellRoughGlass, SceneCategories::Materials,
             "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_cornell_rough_glass,
-            build_cornell_box_lights
-        },
-        {
-            "B4", 12, SceneNames::CornellConductor, SceneCategories::Materials,
+            "Medium", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
+        // B4 migrated to pbrt-backed (this project's GPU scene-construction-
+        // duplication elimination, pilot batch) - see pbrt_scenes/
+        // cornell-conductor.pbrt's own header comment. legacy_id 170 (next
+        // after A1's 169) since 12 no longer has a switch case of its own to
+        // reuse. CameraMode::UserControlled explicitly passed, same reason
+        // as A1's own migration.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B4", 170, SceneNames::CornellConductor, SceneCategories::Materials,
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
-            build_cornell_conductor,
-            build_cornell_box_lights
-        },
+            "Medium", "cornell-conductor.pbrt", CameraMode::UserControlled),
         {
             "B5", 13, SceneNames::CornellCoatedDiffuse, SceneCategories::Materials,
             "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (pbrt-v4 CoatedDiffuseBxDF)",

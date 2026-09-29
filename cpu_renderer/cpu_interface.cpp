@@ -916,6 +916,16 @@ extern "C" int cpu_scene_camera_is_animated_by_id(const char* scene_id) {
 	return s->camera.animated ? 1 : 0;
 }
 
+// Lets gpu/optix/scene_builder.cpp OR this into force_camera_override for a
+// pbrt-backed scene - see this function's own header comment
+// (cpu_interface.h) for why GPU has no other way to know a scene wants
+// --cam_x/y/z honored unconditionally, not just under --video.
+extern "C" int cpu_scene_camera_is_user_controlled_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	if (!s) return 0;
+	return s->camera.mode == CameraMode::UserControlled ? 1 : 0;
+}
+
 // Lets launcher/main.cpp warn that --accelerator/--splitmethod has no effect
 // when the selected scene is a native (non-.pbrt) builder - see
 // SceneDescriptor::is_pbrt_backed's own comment (scene_registry.h) for why

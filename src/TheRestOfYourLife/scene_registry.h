@@ -285,7 +285,21 @@ namespace pbrt_scene_registry {
     // reference the caller's string after this function returns.
     inline void wire_pbrt_backed_scene(SceneDescriptor& s,
                                         const pbrt_discover::Discovered& d,
-                                        const std::string& path) {
+                                        const std::string& path,
+                                        // CameraMode::Fixed (the default) matches every
+                                        // pre-existing caller's behavior unchanged. A
+                                        // migrated scene that was CameraMode::UserControlled
+                                        // natively (the Cornell-box family's own
+                                        // kCornellBoxCamera - see that constant's comment)
+                                        // needs this passed explicitly as UserControlled,
+                                        // or --cam_x/y/z and the GUI's own camera controls
+                                        // silently stop moving the camera for that scene
+                                        // once it's pbrt-backed - a real, user-visible
+                                        // regression on exactly the scenes (A1 and its
+                                        // siblings) most likely to be interactively
+                                        // navigated, found and fixed here rather than
+                                        // accepted as a side effect of migration.
+                                        CameraMode mode = CameraMode::Fixed) {
         const auto state = std::make_shared<Loaded>();
         const auto ensure = [state, path]() -> pbrt_cpu::BuildResult& {
             if (!state->attempted) {
@@ -339,7 +353,7 @@ namespace pbrt_scene_registry {
             d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],
             d.camera.lookat[0],   d.camera.lookat[1],   d.camera.lookat[2],
             0.0, 0.0, 0.0,                      // pbrt has no flat background
-            CameraMode::Fixed,
+            mode,
             // NOT d.camera.aperture directly - see defocusAngleDegreesFor()'s
             // comment: that field is a world-space lens DIAMETER (pbrt's
             // lensradius*2), not a degrees value, and camera.h's
@@ -605,7 +619,16 @@ namespace pbrt_scene_registry {
     // renders on both backends.
     inline SceneDescriptor build_curated_pbrt_scene_descriptor(
             const char* id, int legacy_id, const char* name, const char* category,
-            const char* description, const char* performance, const char* filename) {
+            const char* description, const char* performance, const char* filename,
+            // See wire_pbrt_backed_scene()'s own `mode` parameter comment.
+            // Fixed (the default) preserves every pre-existing call site's
+            // behavior unchanged; pass UserControlled for a scene migrated
+            // FROM a native scene that was CameraMode::UserControlled (the
+            // Cornell-box family's kCornellBoxCamera), so interactive
+            // camera control (--cam_x/y/z, the GUI's own camera controls)
+            // keeps working after migration instead of silently regressing
+            // to a fixed camera.
+            CameraMode mode = CameraMode::Fixed) {
         // Same search-path walk as build_instanced_spheres_descriptor()'s own
         // comment explains: the working directory differs between running
         // from the repo root (development) and from RayTracer_Package/ (GUI/
@@ -630,7 +653,7 @@ namespace pbrt_scene_registry {
         s.requires_files = false;
         s.gpu_compatible = true;
 
-        wire_pbrt_backed_scene(s, d, path);
+        wire_pbrt_backed_scene(s, d, path, mode);
 
         paths()[id] = path;
         return s;

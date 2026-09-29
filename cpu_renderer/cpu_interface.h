@@ -474,6 +474,19 @@ int cpu_scene_camera_is_animated_by_id(const char* scene_id);
 /// @return 1 if pbrt-backed, 0 if not (including if scene_id isn't found)
 int cpu_scene_is_pbrt_backed_by_id(const char* scene_id);
 
+/// Whether this scene's CameraConfig.mode is CameraMode::UserControlled
+/// (the Cornell-box family's kCornellBoxCamera, and any pbrt-backed scene
+/// explicitly migrated with that mode - see build_curated_pbrt_scene_
+/// descriptor()'s own `mode` parameter comment, scene_registry.h) rather
+/// than the default Fixed. gpu/optix/scene_builder.cpp's build_scene()/
+/// build_loaded_pbrt_scene() OR this into force_camera_override so
+/// --cam_x/y/z (and the GUI's own camera controls) keep moving the camera
+/// for a pbrt-backed UserControlled scene exactly like they already do for
+/// its native equivalent - GPU has no CameraConfig of its own to read this
+/// from directly, unlike CPU's applyCameraConfig() (cpu_interface.cpp).
+/// @return 1 if UserControlled, 0 if not (including if scene_id isn't found)
+int cpu_scene_camera_is_user_controlled_by_id(const char* scene_id);
+
 /// The rest of this file's index-based accessors (cpu_scene_name/
 /// description/performance/recommended_spp/requires_files) are also
 /// available by id - lets a caller with just a scene_id (the GUI's scene

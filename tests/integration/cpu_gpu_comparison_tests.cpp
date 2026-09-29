@@ -458,3 +458,82 @@ INSTANTIATE_TEST_SUITE_P(
 		for (char c : name) sanitized += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
 		return "Scene" + std::to_string(info.param) + "_" + sanitized;
 	});
+
+// ----------------------------------------------------------------------------
+// Regression test for a real, confirmed CPU/GPU drift in D3 (Spherical
+// Camera): build_spherical_camera_scene_gpu() (gpu/optix/scene_builder.cpp)
+// had been written independently of the CPU builder it's supposed to match
+// (scenes_advanced.h's build_spherical_camera_scene()) rather than ported
+// from it, and had drifted on ground color/position, ring-sphere radius/
+// color formula, and the central light's radius/intensity - plus the GPU
+// switch case never set a background color at all (rendered black instead
+// of CPU's sky-blue). CpuGpuLightParityTest above only checks light COUNT,
+// which stayed correct (1 emissive sphere on both sides) throughout all of
+// this - it cannot catch a color/geometry mismatch. This test checks the
+// one signal CpuGpuLightParityTest structurally can't: that the two
+// renderers actually agree on what color the scene is, per channel, not
+// just how many lights it has.
+TEST(SphericalCameraCpuGpuColorParityTest, ChannelAveragesAgree) {
+	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
+
+	const char* cpuFile = "cmp_d3_cpu_color.ppm";
+	const char* gpuFile = "cmp_d3_gpu_color.ppm";
+	// Fixed-mode scene (no CameraMode::UserControlled) - cam_x/y/z are
+	// ignored in favor of the registry's own lookfrom, same as every other
+	// Fixed-mode scene in this file; passed anyway for clarity.
+	ASSERT_EQ(cpu_render_main(200, 200, 100, 8, cpuFile, "D3", 0.0, 1.0, 0.0), 0)
+		<< "CPU render of D3 failed";
+	ASSERT_EQ(optix_render_main(200, 200, 100, 8, gpuFile, "D3", 0.0, 1.0, 0.0), 0)
+		<< "GPU render of D3 failed";
+
+	Image cpu = load_image(cpuFile);
+	Image gpu = load_image(gpuFile);
+	std::remove(cpuFile);
+	std::remove(gpuFile);
+	ASSERT_TRUE(cpu.valid) << "Failed to load CPU D3 render";
+	ASSERT_TRUE(gpu.valid) << "Failed to load GPU D3 render";
+
+	RGBAverage cpuAvg = avg_channels(cpu);
+	RGBAverage gpuAvg = avg_channels(gpu);
+
+	// Both must be non-black - catches the "missing background" half of the
+	// bug just fixed (GPU rendered pure black there) directly, before even
+	// looking at hue. Threshold matches this file's own CPUIsBrighterAtLowSPP
+	// convention.
+	EXPECT_GT(cpuAvg.r + cpuAvg.g + cpuAvg.b, 0.05f) << "CPU D3 render is unexpectedly dark";
+	EXPECT_GT(gpuAvg.r + gpuAvg.g + gpuAvg.b, 0.05f) << "GPU D3 render is unexpectedly dark";
+
+	// Compare NORMALIZED channel proportions (each channel's share of R+G+B),
+	// not raw brightness - deliberately NOT reusing this file's own
+	// brightness-ratio tolerances (HighSPPBrightnessConverges/
+	// CPUIsBrighterAtLowSPP): confirmed empirically that CPU (importance
+	// sampling) and GPU (naive path tracing) legitimately differ in overall
+	// brightness by ~2x at matched 100 spp for this scene, same "CPU is more
+	// efficient" gap this file's own docstring already documents for every
+	// scene, not a defect. What the bug just fixed actually changed was HUE
+	// (a completely different ring-sphere color formula, a different ground
+	// color) - normalizing out overall brightness isolates exactly that
+	// signal, uncontaminated by the expected sampler-efficiency gap.
+	auto normalize = [](const RGBAverage& c) {
+		const float total = c.r + c.g + c.b;
+		return (total > 1e-6f) ? RGBAverage{c.r / total, c.g / total, c.b / total}
+								: RGBAverage{0.0f, 0.0f, 0.0f};
+	};
+	RGBAverage cpuNorm = normalize(cpuAvg);
+	RGBAverage gpuNorm = normalize(gpuAvg);
+
+	// Absolute (not relative) difference on a [0,1] proportion - a channel
+	// carrying, say, 30% of the image's total light on one backend and only
+	// 10% on the other (the wrong-formula bug's actual signature) is a 0.20
+	// absolute gap, comfortably outside this tolerance; ordinary per-run
+	// Monte Carlo noise at 100 spp is not.
+	auto expect_close = [](float a, float b, const char* channel) {
+		EXPECT_LT(std::abs(a - b), 0.08f)
+			<< channel << " channel's normalized share of total brightness differs too "
+			<< "much: CPU=" << a << " GPU=" << b << " - "
+			<< "the two D3 scene builders may have drifted out of sync again.";
+	};
+	expect_close(cpuNorm.r, gpuNorm.r, "Red");
+	expect_close(cpuNorm.g, gpuNorm.g, "Green");
+	expect_close(cpuNorm.b, gpuNorm.b, "Blue");
+}
