@@ -743,8 +743,14 @@ TEST(SceneBuilderTest, CornellFamilyLightsAreNonEmpty) {
 }
 
 TEST(SceneBuilderTest, SkyDummyLightsAreNonEmpty) {
-	// All sky-lit scenes should still return a dummy light for PDF sampling
-	for (const std::string& id : {"A2", "A3", "A5", "A6", "B1"}) {
+	// All sky-lit scenes should still return a dummy light for PDF sampling.
+	// A3 excluded: it's pbrt-backed now (checkered-spheres.pbrt) - the
+	// generic pbrt build_lights() legitimately returns an empty list for a
+	// background-only scene (SceneDescriptor::build_lights's own doc
+	// comment: "may return empty list"), since sky_dummy_lights() below is
+	// a native-scene-only PDF-sampling hack the pbrt loader path never uses
+	// or needs.
+	for (const std::string& id : {"A2", "A5", "A6", "B1"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr);
 		hittable_list lights;

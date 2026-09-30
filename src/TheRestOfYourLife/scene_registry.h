@@ -611,12 +611,17 @@ namespace pbrt_scene_registry {
     // doesn't need to - see this function's own callers for why that's
     // intentional, matching the instanced-spheres/F3 precedent).
     //
-    // Every caller here passes a self-contained, git-tracked file (no
-    // external assets beyond the repo checkout), so requires_files is always
-    // false and gpu_compatible always true - a curated entry exists
+    // Almost every caller here passes a self-contained, git-tracked file (no
+    // external assets beyond the repo checkout), so requires_files defaults
+    // to false and gpu_compatible is always true - a curated entry exists
     // specifically BECAUSE the scene is worth surfacing under a real topic
     // tab, which only makes sense for a scene that's always present and
-    // renders on both backends.
+    // renders on both backends. The one exception: a curated file that
+    // itself references an asset the user could still be missing/have
+    // deleted (e.g. A4's earth-globe.pbrt -> images/earthmap.jpg) - pass
+    // requires_files=true explicitly for those, matching what the native
+    // SceneDescriptor this call replaced had set (see FindSceneTest.
+    // EarthSceneRequiresFiles, which this migration briefly regressed).
     inline SceneDescriptor build_curated_pbrt_scene_descriptor(
             const char* id, int legacy_id, const char* name, const char* category,
             const char* description, const char* performance, const char* filename,
@@ -628,7 +633,8 @@ namespace pbrt_scene_registry {
             // camera control (--cam_x/y/z, the GUI's own camera controls)
             // keeps working after migration instead of silently regressing
             // to a fixed camera.
-            CameraMode mode = CameraMode::Fixed) {
+            CameraMode mode = CameraMode::Fixed,
+            bool requires_files = false) {
         // Same search-path walk as build_instanced_spheres_descriptor()'s own
         // comment explains: the working directory differs between running
         // from the repo root (development) and from RayTracer_Package/ (GUI/
@@ -650,7 +656,7 @@ namespace pbrt_scene_registry {
         s.category = category;
         s.description = description;
         s.performance = performance;
-        s.requires_files = false;
+        s.requires_files = requires_files;
         s.gpu_compatible = true;
 
         wire_pbrt_backed_scene(s, d, path, mode);
