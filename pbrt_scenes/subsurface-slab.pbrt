@@ -1,0 +1,97 @@
+# subsurface-slab.pbrt -- migration of the native "B13 Subsurface Slab"
+# demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_subsurface_slab()) to a pbrt-backed scene, part of this project's
+# GPU scene-construction-duplication elimination.
+#
+# Cornell box geometry (walls + light) is IDENTICAL to cornell-box-native.pbrt
+# (A1) - see that file's own header comment.
+#
+# Unlike cornell-smoke.pbrt (A8)/homogeneous-medium.pbrt (E1)'s fog, native
+# here adds EACH boundary shape to the world TWICE - once with a REAL
+# dielectric surface material, once wrapped in constant_medium - so the
+# glass surface itself is genuinely visible (refracting light in/out), not
+# a near-invisible shell. Reproduced by combining the shape's real Material
+# "dielectric" with MediumInterface on the SAME Shape declaration (this
+# loader's own established convention for a shape that is simultaneously a
+# real refractive surface AND a medium boundary - see cylinder-medium.pbrt's
+# identical pattern, just with a real eta instead of that file's ~1.0
+# invisibility trick). This works for the jade SPHERE below exactly.
+#
+# The wax SLAB is a KNOWN, DISCLOSED divergence from native, though - this
+# loader's MediumInterface support has no trianglemesh wiring at all
+# (verified directly - see cornell-smoke.pbrt/A8's own header comment for
+# the full explanation), so the slab's real box shape (both its surface AND
+# its medium) is approximated here as a sphere instead, centered on the
+# native box's own centroid (270,0,230)-(470,300,390) with a radius
+# (200) comfortably covering its half-diagonal (~197.2). Unlike A8/E1,
+# this IS a real regression from native GPU too (native's own GPU builder,
+# deleted by this migration, already used a genuine box -
+# GpuMediumShapeKind::Box - matching CPU exactly) - a rectangular slab
+# becomes a round blob. Accepted as the fastest path; a proper fix would
+# extend this loader with real trianglemesh-medium support (a Triangle::
+# medium field, a CPU secondary boundary BVH, and GPU's existing
+# GpuMediumShapeKind::Box wired generically) - out of scope for this
+# migration. Radius shrunk from the box's own true half-diagonal (~197.2)
+# to 160 so this sphere doesn't overlap the jade sphere below (center-to-
+# center distance is only ~265, so a radius above ~165 would visibly
+# intersect it) - already an approximation, so undershooting the box's
+# far corners slightly is the lesser problem.
+#
+# sigma_s derivation: same density/albedo -> sigma_s formula as A8/E1 - see
+# cornell-smoke.pbrt's own header comment.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 300 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- wax "slab" (sphere approximation - see header)
+MakeNamedMedium "wax" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.0408367364 0.0400033336 0.0375031253 ]
+
+AttributeBegin
+  Translate 370 150 310
+  Material "dielectric" "float eta" [ 1.4 ]
+  MediumInterface "wax" ""
+  Shape "sphere" "float radius" [ 160 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- jade sphere
+MakeNamedMedium "jade" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.0152555301 0.0762776506 0.0305110603 ]
+
+AttributeBegin
+  Translate 160 90 160
+  Material "dielectric" "float eta" [ 1.5 ]
+  MediumInterface "jade" ""
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd

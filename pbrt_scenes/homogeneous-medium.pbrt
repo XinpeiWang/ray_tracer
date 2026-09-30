@@ -1,0 +1,65 @@
+# homogeneous-medium.pbrt -- migration of the native "E1 Homogeneous
+# Medium" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_homogeneous_medium_scene()) to a pbrt-backed scene, part of this
+# project's GPU scene-construction-duplication elimination.
+#
+# Cornell box geometry (walls + light) is IDENTICAL to cornell-box-native.pbrt
+# (A1) - see that file's own header comment.
+#
+# Fog sphere: KNOWN, DISCLOSED divergence from native CPU's own inset box
+# boundary - this loader's MediumInterface support has no trianglemesh
+# wiring at all (verified directly - see cornell-smoke.pbrt/A8's own header
+# comment for the full explanation), so this is a sphere instead, same
+# "near-invisible dielectric shell (eta~1.001) + MediumInterface"
+# convention. NOT a fresh compromise: native's own GPU builder (deleted by
+# this migration) already approximated the box as this exact same sphere
+# (center (277.5,277.5,277.5), radius 270 - build_homogeneous_medium_scene_gpu)
+# for the identical "GPU media are sphere-only" reason, so this matches an
+# already-accepted native GPU look exactly. sigma_s derivation matches
+# cornell-smoke.pbrt's own header comment.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 300 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- fog sphere
+MakeNamedMedium "fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.0045148765 0.0050792361 0.0056435956 ]
+  "float g" [ 0.3 ]
+
+AttributeBegin
+  Translate 277.5 277.5 277.5
+  Material "dielectric" "float eta" [ 1.001 ]
+  MediumInterface "fog" ""
+  Shape "sphere" "float radius" [ 270 ]
+AttributeEnd

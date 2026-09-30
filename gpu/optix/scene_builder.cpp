@@ -2205,50 +2205,9 @@ void build_bouncing_spheres(SceneData& scene) {
 // builder) deleted - A3 migrated to pbrt-backed, see
 // pbrt_scenes/checkered-spheres.pbrt and its case-2 removal above.
 
-/// @brief Scene 3: Earth. Matches CPU build_earth() (src/TheRestOfYourLife/
-/// scenes_book.h) exactly: a single radius-2 sphere at the origin with the
-/// earthmap.jpg image texture (see load_image_texture_gpu's comment for the
-/// solid-cyan fallback if that file can't be found - it now can, see
-/// images/earthmap.jpg), no other geometry. Illuminated purely by the flat
-/// sky background (CameraConfig bg=(0.70,0.80,1.00)), same as scenes 1/2/5.
-static void build_earth_gpu(SceneData& scene) {
-	const int earthTexIdx = load_image_texture_gpu(scene, "earthmap.jpg");
-	const int mat = safe_cast_to_int(scene.materials.size());
-	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), earthTexIdx);
-	SphereData s{};
-	s.center = make_float3(0.0f, 0.0f, 0.0f);
-	s.center1 = s.center;
-	s.radius = 2.0f;
-	s.materialIdx = mat;
-	scene.spheres.push_back(s);
-
-	// Small grey "moon" for scale/context - matches CPU build_earth() (see
-	// its own comment).
-	const int moonMat = add_lambertian(scene, make_float3(0.6f, 0.6f, 0.62f));
-	SphereData moon{};
-	moon.center = make_float3(2.0f, 1.3f, 0.5f);
-	moon.center1 = moon.center;
-	moon.radius = 0.35f;
-	moon.materialIdx = moonMat;
-	scene.spheres.push_back(moon);
-
-	// Dim cool rim light behind the globe - matches CPU build_earth()'s
-	// quad exactly (see build_earth_lights()).
-	const int rimMat = safe_cast_to_int(scene.materials.size());
-	add_diffuse_light(scene, make_float3(0.9f, 1.0f, 1.3f));
-	QuadData rim{};
-	rim.Q = make_float3(-4.0f, -2.5f, -6.0f);
-	rim.u = make_float3(3.0f, 0.0f, 0.0f);
-	rim.v = make_float3(0.0f, 5.0f, 0.0f);
-	const float3 rc = cross(rim.u, rim.v);
-	rim.w = rc;
-	rim.normal = normalize(rc);
-	rim.D = dot(rim.normal, rim.Q);
-	rim.materialIdx = rimMat;
-	scene.quads.push_back(rim);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Quad);
-}
+// build_earth_gpu() (former "scene 3" / A4 Earth GPU builder) deleted - A4
+// migrated to pbrt-backed, see pbrt_scenes/earth-globe.pbrt and its case-3
+// removal above.
 
 /// @brief Ground + Perlin-noise sphere pair shared by scenes 4 (Perlin
 /// Spheres) and 6 (Simple Light) - both start from identical code in CPU
@@ -2433,61 +2392,9 @@ static void build_depth_of_field_gpu(SceneData& scene) {
 // of the CPU version rather than ported from it). The migrated .pbrt file
 // uses CPU's real formula, so both backends now render identically.
 
-/// @brief Scene 33: Spherical Camera. Matches CPU build_spherical_camera_scene()
-/// in spirit (ground + a ring of colored spheres + one emissive sphere) -
-/// self-illuminating, needs no extra light unlike scenes 22/32 above.
-// Matches CPU's build_spherical_camera_scene() (scenes_advanced.h) exactly -
-// ground position/color, ring sphere radius/color formula, and the central
-// light sphere's radius/intensity were all previously written independently
-// of the CPU version rather than ported from it (this function was added a
-// day after the CPU one, in the commit that first wired up GPU camera-model
-// support generally, not specifically to port this scene's own geometry) and
-// had drifted: different ground clearance/color, a completely different
-// HSV-rainbow ring-color formula instead of CPU's cos/sin one, and a
-// different light sphere radius/intensity. tests/integration/
-// cpu_gpu_comparison_tests.cpp's CpuGpuLightParityTest only checks light
-// COUNT across the whole registry, so this went undetected until a direct
-// side-by-side render comparison caught it.
-static void build_spherical_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
-	SphereData ground{};
-	// CPU's SphericalCamera uses no camera_to_world (identity), so the
-	// camera sits exactly at world origin - the ground's top surface sits
-	// tangent to it at y=0, exactly like CPU's own (0,-1000,0) radius-1000
-	// sphere.
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	constexpr float kPi = 3.14159265358979323846f;
-	constexpr int kRingCount = 8;
-	for (int i = 0; i < kRingCount; ++i) {
-		float ang = (2.0f * kPi * i) / (float)kRingCount;
-		float3 col = make_float3(0.2f + 0.5f * fabsf(cosf(ang)),
-								   0.2f + 0.5f * fabsf(sinf(ang)),
-								   0.5f + 0.3f * cosf(2.0f * ang));
-		const int mat = add_lambertian(scene, col);
-		SphereData s{};
-		s.center = make_float3(4.0f * cosf(ang), 1.0f, 4.0f * sinf(ang));
-		s.radius = 1.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// Central emissive sphere, matches CPU's central diffuse_light sphere
-	// (point3(0,3,0), radius 0.5, color(10,10,10)) exactly.
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	constexpr float kSphericalLightIntensity = 10.0f;
-	add_diffuse_light(scene, make_float3(kSphericalLightIntensity, kSphericalLightIntensity, kSphericalLightIntensity));
-	SphereData lightSphere{};
-	lightSphere.center = make_float3(0.0f, 3.0f, 0.0f);
-	lightSphere.radius = 0.5f;
-	lightSphere.materialIdx = mat_light;
-	scene.spheres.push_back(lightSphere);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-}
+// build_spherical_camera_scene_gpu() (former "scene 33" / D3 Spherical
+// Camera GPU builder) deleted - D3 migrated to pbrt-backed, see
+// pbrt_scenes/spherical-camera-scene.pbrt and its case-33 removal above.
 
 // build_realistic_camera_scene_gpu() (former "scene 36" / D4 Realistic
 // Camera GPU builder) deleted - D4 migrated to pbrt-backed, see
@@ -2597,135 +2504,20 @@ static void build_hdri_sky_world_gpu(SceneData& scene) {
 	scene.spheres.push_back(s3);
 }
 
-/// @brief Scene 35: Portal Infinite Light. Matches CPU build_portal_light_scene()
-/// (5-wall room, no front wall - "portal" for the sky to enter - + one metal
-/// sphere). Uses the same wall-quad layout as build_punctual_light_walls,
-/// duplicated here rather than shared since materials/sphere content differ.
-static void build_portal_light_scene_gpu(SceneData& scene) {
-	const int mat_red = add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
-	const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-	const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
-	const int mat_metal_sphere = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
-
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
-	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
-
-	// Back wall with an actual window cut into it (matches CPU
-	// build_portal_light_scene() - see that function's comment) instead of
-	// one solid quad, so this scene visually has something a "portal"
-	// description can point at.
-	add_transformed_quad(scene, make_float3(555, 400, 555), make_float3(-555, 0, 0), make_float3(0, 155, 0), mat_white); // top strip
-	add_transformed_quad(scene, make_float3(555, 0, 555),   make_float3(-555, 0, 0), make_float3(0, 155, 0), mat_white); // bottom strip
-	add_transformed_quad(scene, make_float3(555, 155, 555), make_float3(-155, 0, 0), make_float3(0, 245, 0), mat_white); // right-of-window strip
-	add_transformed_quad(scene, make_float3(155, 155, 555), make_float3(-155, 0, 0), make_float3(0, 245, 0), mat_white); // left-of-window strip
-
-	SphereData s{};
-	s.center = make_float3(190.0f, 100.0f, 190.0f);
-	s.radius = 100.0f;
-	s.materialIdx = mat_metal_sphere;
-	scene.spheres.push_back(s);
-}
-
-/// @brief Scene 7: Cornell Smoke. Matches CPU build_cornell_smoke() (full
-/// Cornell box + two constant_medium boxes, density 0.01, black/white).
-/// GPU approximates the two rotated boxes as spheres (MaterialType::Medium
-/// is sphere-only - see its comment in optix_types.h) positioned at roughly
-/// the same locations, since a box boundary would need a second, more
-/// involved AABB-slab intersection path not worth the complexity here.
-static void build_cornell_smoke_gpu(SceneData& scene) {
-	using namespace cornell_box_data;
-
-	// The 5 standard walls (green/red/ceiling/floor/back) - shares
-	// cornell_box_data::kQuads[0..4] with CPU's build_cornell_smoke(). This
-	// scene's own light is a different size/color than kQuads[5], so it's
-	// added separately below rather than looping through index 5.
-	for (int i = 0; i < 5; ++i) {
-		const QuadSpec& q = kQuads[i];
-		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
-		add_transformed_quad(scene,
-			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
-			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
-			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
-			mat);
-	}
-
-	const int mat_light = add_diffuse_light(scene, make_float3(7.0f, 7.0f, 7.0f));
-	{
-		QuadData lq{};
-		lq.Q = make_float3(113.0f, 554.0f, 127.0f);
-		lq.u = make_float3(330.0f, 0.0f, 0.0f);
-		lq.v = make_float3(0.0f, 0.0f, 305.0f);
-		const float3 lc = cross(lq.u, lq.v);
-		lq.w = lc;
-		lq.normal = normalize(lc);
-		lq.D = dot(lq.normal, lq.Q);
-		lq.materialIdx = mat_light;
-		scene.quads.push_back(lq);
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.lightKinds.push_back(GpuLightKind::Quad);
-	}
-
-	// Two medium spheres approximating CPU's two rotated boxes (centered
-	// roughly where box1 [265,0,295]+165/2 and box2 [130,0,65]+82.5 sit).
-	// Tinted (cool blue-grey / warm amber) instead of black/white - matches
-	// CPU build_cornell_smoke() exactly.
-	const int mat_medium_dark = add_medium(scene, make_float3(0.05f, 0.07f, 0.12f), 0.0f, 0.01f);
-	const int mat_medium_white = add_medium(scene, make_float3(1.0f, 0.85f, 0.6f), 0.0f, 0.01f);
-
-	SphereData m1{}; m1.center = make_float3(347.0f, 165.0f, 377.0f); m1.radius = 115.0f; m1.materialIdx = mat_medium_dark;
-	scene.spheres.push_back(m1);
-	SphereData m2{}; m2.center = make_float3(212.0f, 82.0f, 147.0f); m2.radius = 82.0f; m2.materialIdx = mat_medium_white;
-	scene.spheres.push_back(m2);
-}
-
-/// @brief Scene 30: Homogeneous Medium. Matches CPU
-/// build_homogeneous_medium_scene() exactly (full Cornell box + a single
-/// medium sphere at the box's center, radius 400, density 0.005, HG g=0.3).
-static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
-	const int mat_red = add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
-	const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-	const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
-	const int mat_light = add_diffuse_light(scene, make_float3(15.0f, 15.0f, 15.0f));
-
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
-	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
-	{
-		QuadData lq{};
-		lq.Q = make_float3(213.0f, 554.0f, 227.0f);
-		lq.u = make_float3(130.0f, 0.0f, 0.0f);
-		lq.v = make_float3(0.0f, 0.0f, 105.0f);
-		const float3 lc = cross(lq.u, lq.v);
-		lq.w = lc;
-		lq.normal = normalize(lc);
-		lq.D = dot(lq.normal, lq.Q);
-		lq.materialIdx = mat_light;
-		scene.quads.push_back(lq);
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.lightKinds.push_back(GpuLightKind::Quad);
-	}
-
-	// Radius shrunk from 400 (matches CPU's fix, see build_homogeneous_medium_scene's
-	// comment) - GPU media only support sphere boundaries (see
-	// optix_intersection_sphere.h), unlike CPU which can use an inset box, so this
-	// stays a sphere but sized to stay safely inside the 277.5-unit center-to-wall
-	// distance instead of poking through every wall (the r=400 case reached past
-	// even the room's 480.6-unit corner-to-corner distance in the diagonal
-	// direction). This leaves the room's corners visibly less foggy than CPU's
-	// wall-to-wall box, an accepted CPU/GPU divergence matching build_cornell_smoke_gpu's
-	// own box-approximated-as-spheres precedent above.
-	const int mat_medium = add_medium(scene, make_float3(0.8f, 0.9f, 1.0f), 0.3f, 0.005f);
-	SphereData fog{};
-	fog.center = make_float3(277.5f, 277.5f, 277.5f);
-	fog.radius = 270.0f;
-	fog.materialIdx = mat_medium;
-	scene.spheres.push_back(fog);
-}
+// build_portal_light_scene_gpu()/build_cornell_smoke_gpu()/
+// build_homogeneous_medium_scene_gpu() (former "scenes 35/7/30" / C7/A8/E1
+// GPU builders) deleted - all three migrated to pbrt-backed, see
+// pbrt_scenes/portal-window-room.pbrt/cornell-smoke.pbrt/
+// homogeneous-medium.pbrt and their case removal above. Worth recording
+// since these are now permanently gone rather than just quietly fixed: all
+// three native GPU builders APPROXIMATED their fog/medium boundary as a
+// sphere where CPU used a real box (GPU media were sphere-only when these
+// were written) - a real, pre-existing, disclosed CPU/GPU geometry
+// divergence for all three scenes. The migrated .pbrt files use a real
+// box boundary (GpuMediumShapeKind::Box, the same mechanism
+// build_subsurface_slab_gpu's own wax slab already used below) on GPU too,
+// via this loader's generic pbrt medium builder - a genuine fidelity
+// improvement over the deleted sphere approximation, not a regression.
 
 /// @brief Scene 20: Normal Mapped Cornell. Matches CPU
 /// build_normal_mapped_cornell() (scenes_advanced.h). CPU's bump-mapped
@@ -2798,197 +2590,23 @@ static void build_normal_mapped_cornell_gpu(SceneData& scene) {
 	scene.spheres.push_back(s);
 }
 
-/// @brief Scene 21: Subsurface Slab. Matches CPU build_subsurface_slab()
-/// (scenes_advanced.h) - CPU's own header comment there is explicit this
-/// isn't a real BSSRDF: it's the same "dielectric boundary + internal
-/// constant_medium" trick as scene 8's fog spheres, which
-/// MaterialType::DielectricMedium already implements exactly (see that
-/// type's comment in optix_types.h) - no new device code needed. The jade
-/// sphere maps onto it with zero approximation (it's already a sphere);
-/// the wax slab's box boundary now uses a REAL axis-aligned box
-/// (SphereData::shapeKind == GpuMediumShapeKind::Box, see that enum's
-/// comment in optix_types.h) rather than the sphere-shaped approximation
-/// this used to be (a sphere sized to roughly match the box's footprint -
-/// bulging through its side walls while falling short of its floor/
-/// ceiling). This geometric mismatch was the original hypothesis for this
-/// scene's ~32-38% CPU/GPU brightness gap, but an isolated A/B measurement
-/// (sphere vs box, otherwise identical) showed the shape alone moves
-/// average brightness by under 1% - see GpuMediumShapeKind's own comment
-/// in optix_types.h for the measured numbers and why this fix is kept
-/// anyway (it makes the geometry genuinely correct) despite not explaining
-/// the brightness gap.
-static void build_subsurface_slab_gpu(SceneData& scene) {
-	using namespace cornell_box_data;
+// build_subsurface_slab_gpu() (former "scene 21" / B13 Subsurface Slab GPU
+// builder) deleted - B13 migrated to pbrt-backed, see
+// pbrt_scenes/subsurface-slab.pbrt and its case-21 removal above. This one
+// already used a real box boundary (GpuMediumShapeKind::Box) for the wax
+// slab, matching CPU exactly - no geometry approximation to note here,
+// unlike A8/C7/E1's deleted sphere-approximated builders just above.
 
-	// The 5 standard walls (green/red/ceiling/floor/back) - shares
-	// cornell_box_data::kQuads[0..4] with CPU's build_subsurface_slab().
-	// This scene's own light is a different color than kQuads[5], so it's
-	// added separately below rather than looping through index 5.
-	for (int i = 0; i < 5; ++i) {
-		const QuadSpec& q = kQuads[i];
-		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
-		add_transformed_quad(scene,
-			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
-			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
-			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
-			mat);
-	}
-
-	const int mat_light = add_diffuse_light(scene, make_float3(12.0f, 12.0f, 12.0f));
-	{
-		QuadData lq{};
-		lq.Q = make_float3(213.0f, 554.0f, 227.0f);
-		lq.u = make_float3(130.0f, 0.0f, 0.0f);
-		lq.v = make_float3(0.0f, 0.0f, 105.0f);
-		const float3 lc = cross(lq.u, lq.v);
-		lq.w = lc;
-		lq.normal = normalize(lc);
-		lq.D = dot(lq.normal, lq.Q);
-		lq.materialIdx = mat_light;
-		scene.quads.push_back(lq);
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.lightKinds.push_back(GpuLightKind::Quad);
-	}
-
-	// Wax slab: CPU's box(0,0,0)-(200,300,160) translated by (270,0,230),
-	// i.e. world-space [270,470]x[0,300]x[230,390] - now a REAL box
-	// (GpuMediumShapeKind::Box), matching CPU's geometry exactly instead of
-	// the old sphere approximation. ior=1.4/sigma_t=0.04/
-	// albedo=(0.98,0.96,0.90), matching CPU's dielectric(1.4) +
-	// constant_medium(...,0.04,milky-white) exactly.
-	{
-		const int mat_slab = add_dielectric_medium(scene, make_float3(0.98f, 0.96f, 0.90f), 1.4f, 0.04f);
-		SphereData s{};
-		s.shapeKind = GpuMediumShapeKind::Box;
-		s.boxMin = make_float3(270.0f, 0.0f, 230.0f);
-		s.boxMax = make_float3(470.0f, 300.0f, 390.0f);
-		s.materialIdx = mat_slab;
-		scene.spheres.push_back(s);
-	}
-
-	// Jade sphere: CPU's sphere(160,90,160,r=90) - matches exactly, no
-	// approximation needed (it's already a sphere). ior=1.5/sigma_t=0.06/
-	// albedo=(0.1,0.5,0.2), matching CPU's dielectric(1.5) +
-	// constant_medium(...,0.06,jade-green) exactly.
-	{
-		const int mat_jade = add_dielectric_medium(scene, make_float3(0.1f, 0.5f, 0.2f), 1.5f, 0.06f);
-		SphereData s{};
-		s.center = make_float3(160.0f, 90.0f, 160.0f);
-		s.radius = 90.0f;
-		s.materialIdx = mat_jade;
-		scene.spheres.push_back(s);
-	}
-}
-
-/// @brief Scene 31: Cloud Medium. Matches CPU build_cloud_medium_scene()
-/// (ground + one medium sphere, density 0.8, HG g=0.05) - the CPU's Perlin-
-/// noise density texture is dead code there too (constructed but never
-/// actually used by the constant_medium call, which passes a constant
-/// density), so this is a faithful, not simplified, port.
-// Matches CPU build_cloud_medium_scene() exactly (scenes_advanced.h) - see
-// that function's comment for the full reasoning (CloudMedium is a real
-// heterogeneous, Perlin-FBm-density medium, not the old uniform-density
-// constant_medium sphere this scene used to render as).
-//
-// GPU's medium handling (both Medium and now CloudMedium) is triggered by
-// hitting a real SPHERE primitive - see optix_intersection_sphere.h's
-// closest-hit program - so CloudMedium still needs *a* sphere to attach its
-// materialIdx to, even though CloudMedium's own axis-aligned world AABB (not
-// this sphere) is what actually bounds the medium: the sphere here is sized
-// to comfortably contain that AABB (its half-diagonal, from the box's
-// center) and only serves as the trigger geometry. The tight [tMin,tMax]
-// used for delta tracking comes from CloudMedium::sample_ray()'s own AABB
-// test against the ray, clipped to the sphere's own entry/exit - see
-// optix_intersection_sphere.h's CloudMedium case.
-static void build_cloud_medium_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	// World AABB - matches CPU's cloud_min/cloud_max exactly.
-	const float3 cloud_min = make_float3(-4.0f, 1.0f, -3.0f);
-	const float3 cloud_max = make_float3(4.0f, 4.0f, 3.0f);
-	const float sx = 1.0f / (cloud_max.x - cloud_min.x);
-	const float sy = 1.0f / (cloud_max.y - cloud_min.y);
-	const float sz = 1.0f / (cloud_max.z - cloud_min.z);
-	const float world_to_medium_mat[9] = { sx,0,0,  0,sy,0,  0,0,sz };
-	const float world_to_medium_translate[3] = {
-		-cloud_min.x*sx, -cloud_min.y*sy, -cloud_min.z*sz
-	};
-	CloudMedium<float> cloud_medium = CloudMedium<float>::make(
-		0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,   // medium-space bounds: unit cube
-		world_to_medium_mat, world_to_medium_translate,
-		0.0f,   // sigma_a: pure scattering (matches CPU)
-		10.0f,  // sigma_s: matches CPU's build_cloud_medium_scene() - see that
-		        // function's comment.
-		0.3f,   // phase_g
-		1.0f,   // density
-		1.0f,   // wispiness
-		4.0f    // frequency
-	);
-	const int mat_medium = add_cloud_medium(scene, cloud_medium, make_float3(1.0f, 1.0f, 1.0f));
-
-	const float3 cloud_center = make_float3(
-		0.5f*(cloud_min.x+cloud_max.x), 0.5f*(cloud_min.y+cloud_max.y), 0.5f*(cloud_min.z+cloud_max.z));
-	const float3 half = make_float3(
-		0.5f*(cloud_max.x-cloud_min.x), 0.5f*(cloud_max.y-cloud_min.y), 0.5f*(cloud_max.z-cloud_min.z));
-	const float trigger_radius = sqrtf(half.x*half.x + half.y*half.y + half.z*half.z);
-	SphereData cloud{};
-	cloud.center = cloud_center;
-	cloud.radius = trigger_radius;
-	cloud.materialIdx = mat_medium;
-	scene.spheres.push_back(cloud);
-
-	// Background spheres for context - matches CPU exactly.
-	const int mat_orange = add_lambertian(scene, make_float3(0.9f, 0.3f, 0.2f));
-	SphereData s1{};
-	s1.center = make_float3(-6.0f, 0.5f, 4.0f);
-	s1.radius = 0.5f;
-	s1.materialIdx = mat_orange;
-	scene.spheres.push_back(s1);
-
-	const int mat_metal = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
-	SphereData s2{};
-	s2.center = make_float3(6.0f, 0.5f, 4.0f);
-	s2.radius = 0.5f;
-	s2.materialIdx = mat_metal;
-	scene.spheres.push_back(s2);
-}
-
-/// @brief Scene E3: Dielectric Medium Showcase. Matches CPU
-/// build_dielectric_medium_scene() - three glass spheres with colored
-/// internal fog at varying density, using the already-wired single-material
-/// MaterialType::DielectricMedium (add_dielectric_medium()) rather than
-/// CPU's two-hittable dielectric+constant_medium pair, since the whole
-/// point of that material type is to fuse the two into one.
-static void build_dielectric_medium_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	struct fog_sphere { float x; float3 albedo; float sigma_t; };
-	const fog_sphere spheres[3] = {
-		{ -4.0f, make_float3(0.9f, 0.2f, 0.2f), 0.5f },  // thin red mist
-		{  0.0f, make_float3(0.2f, 0.8f, 0.3f), 1.5f },  // medium green haze
-		{  4.0f, make_float3(0.3f, 0.4f, 0.9f), 3.0f },  // dense blue fog
-	};
-	const float radius = 1.5f;
-	for (const auto& s : spheres) {
-		const int mat = add_dielectric_medium(scene, s.albedo, 1.5f, s.sigma_t);
-		SphereData sp{};
-		sp.center = make_float3(s.x, radius, 0.0f);
-		sp.radius = radius;
-		sp.materialIdx = mat;
-		scene.spheres.push_back(sp);
-	}
-}
+// build_cloud_medium_scene_gpu()/build_dielectric_medium_scene_gpu() (former
+// "scenes 31/69" / E2/E3 GPU builders) deleted - both migrated to pbrt-
+// backed, see pbrt_scenes/cloud-medium-scene.pbrt/
+// dielectric-medium-showcase.pbrt and their case removal above. Both
+// already matched CPU exactly (no geometry approximation to record, unlike
+// A8/C7/E1 above) - the cloud used a sphere trigger the same way its
+// pbrt-authored replacement does (see cloud-medium-scene.pbrt's own header
+// comment), and the dielectric spheres were already a single fused
+// MaterialType::DielectricMedium matching CPU's own two-hittable
+// dielectric+constant_medium pair.
 
 /// @brief Scene E4: RGB Grid Medium ("nebula"). Matches CPU
 /// build_rgb_grid_medium_scene() exactly - same world AABB, same
@@ -3074,113 +2692,12 @@ static void build_rgb_grid_medium_scene_gpu(SceneData& scene) {
 	scene.spheres.push_back(s2);
 }
 
-/// @brief Scene 23: Bilinear Patch Scene. Matches CPU build_bilinear_patch_scene()
-/// exactly - standard Cornell box + two genuinely curved (non-planar) metal
-/// bilinear patches (see optix_intersection_bilinear_patch.h). Unlike scene 7's
-/// medium boxes, these are NOT approximated as another shape - bilinear
-/// patches have their own GPU geometry type.
-static void build_bilinear_patch_scene_gpu(SceneData& scene) {
-	const int mat_red = add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
-	const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-	const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
-	const int mat_light = add_diffuse_light(scene, make_float3(15.0f, 15.0f, 15.0f));
-
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
-	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
-	{
-		QuadData lq{};
-		lq.Q = make_float3(213.0f, 554.0f, 227.0f);
-		lq.u = make_float3(130.0f, 0.0f, 0.0f);
-		lq.v = make_float3(0.0f, 0.0f, 105.0f);
-		const float3 lc = cross(lq.u, lq.v);
-		lq.w = lc;
-		lq.normal = normalize(lc);
-		lq.D = dot(lq.normal, lq.Q);
-		lq.materialIdx = mat_light;
-		scene.quads.push_back(lq);
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.lightKinds.push_back(GpuLightKind::Quad);
-	}
-
-	// Patch 1: classic hyperbolic paraboloid saddle, gold metal. Roughness
-	// matches CPU's build_bilinear_patch_scene() - see that function's
-	// comment for why (0.05 read as flat/mirror-like, hiding the curvature).
-	const int mat_gold = add_metal(scene, make_float3(0.8f, 0.7f, 0.3f), 0.15f);
-	{
-		BilinearPatchData p{};
-		p.p00 = make_float3(150.0f, 80.0f, 200.0f);
-		p.p10 = make_float3(400.0f, 50.0f, 200.0f);
-		p.p01 = make_float3(150.0f, 50.0f, 400.0f);
-		p.p11 = make_float3(400.0f, 80.0f, 400.0f);
-		p.materialIdx = mat_gold;
-		scene.bilinearPatches.push_back(p);
-	}
-
-	// Patch 2: curved ramp (linear in u, curved in v), blue metal. Roughness
-	// matches CPU, same reason as the gold patch above.
-	const int mat_blue = add_metal(scene, make_float3(0.2f, 0.4f, 0.8f), 0.25f);
-	{
-		BilinearPatchData p{};
-		p.p00 = make_float3(200.0f, 200.0f, 220.0f);
-		p.p10 = make_float3(370.0f, 200.0f, 220.0f);
-		p.p01 = make_float3(150.0f, 380.0f, 420.0f);
-		p.p11 = make_float3(420.0f, 320.0f, 420.0f);
-		p.materialIdx = mat_blue;
-		scene.bilinearPatches.push_back(p);
-	}
-}
-
-/// @brief Scene 19: Hair Fibers. Matches CPU build_hair_fibers() exactly - a
-/// dark-floor ground sphere plus 5 spheres shaded with MaterialType::Hair
-/// (Marschner/Chiang fiber scattering; no literal fiber geometry - see
-/// MaterialType::Hair's comment in optix_types.h).
-static void build_hair_fibers_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.05f, 0.05f, 0.06f));
-	SphereData ground = make_ground_sphere_1000(mat_ground);
-	scene.spheres.push_back(ground);
-
-	// Hair MaterialData reuse: albedo=sigma_a(r,g,b), fuzz=beta_m, ior=eta(1.55),
-	// eta_c.x=beta_n, eta_c.y=alpha_deg.
-	struct HairSphere { float3 center; float3 sigma_a; float beta_m; float beta_n; float alpha_deg; };
-	// Spacing widened (matches CPU build_hair_fibers() - see that function's
-	// comment) so the 5 distinct hair colors read as 5 distinct spheres
-	// instead of fusing into one shape.
-	const HairSphere hairs[5] = {
-		{ make_float3(-3.5f, 1.0f, 0.0f), make_float3(0.06f, 0.10f, 0.20f), 0.25f, 0.25f, 2.0f }, // dark brown
-		{ make_float3(-1.2f, 1.0f, 0.4f), make_float3(0.01f, 0.015f, 0.03f), 0.30f, 0.30f, 2.0f }, // blonde
-		{ make_float3(1.2f, 1.0f, -0.4f), make_float3(0.02f, 0.08f, 0.18f), 0.20f, 0.20f, 3.0f }, // auburn
-		{ make_float3(3.5f, 1.0f, 0.0f), make_float3(0.001f, 0.001f, 0.002f), 0.45f, 0.45f, 1.0f }, // white/silver fur
-		{ make_float3(0.0f, 1.0f, 2.3f), make_float3(0.50f, 0.55f, 0.60f), 0.15f, 0.15f, 2.0f }, // fine black fur
-	};
-	for (const auto& h : hairs) {
-		// 1.55f: fiber eta, matches CPU hair_material's default
-		const int mat_idx = add_hair(scene, h.sigma_a, h.beta_m, 1.55f, h.beta_n, h.alpha_deg);
-		SphereData s{}; s.center = h.center; s.radius = 1.0f; s.materialIdx = mat_idx;
-		scene.spheres.push_back(s);
-	}
-
-	// Overhead area light -- matches CPU build_hair_fibers()'s own light
-	// (see that function's comment for the intensity-calibration rationale:
-	// hair's peak BSDF response is far brighter than diffuse/glossy
-	// surfaces, so this codebase's usual 6,6,6 light-quad intensity blew
-	// the whole visible hemisphere to white under the ACES tone map).
-	const int mat_light = add_diffuse_light(scene, make_float3(0.22f, 0.22f, 0.19f));
-	QuadData lq{};
-	lq.Q = make_float3(-5.0f, 6.0f, -5.0f);
-	lq.u = make_float3(10.0f, 0.0f, 0.0f);
-	lq.v = make_float3(0.0f, 0.0f, 7.0f);
-	const float3 lc = cross(lq.u, lq.v);
-	lq.w = lc;
-	lq.normal = normalize(lc);
-	lq.D = dot(lq.normal, lq.Q);
-	lq.materialIdx = mat_light;
-	scene.quads.push_back(lq);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Quad);
-}
+// build_bilinear_patch_scene_gpu()/build_hair_fibers_gpu() (former "scenes
+// 23/19" / F1/B11 GPU builders) deleted - both migrated to pbrt-backed, see
+// pbrt_scenes/bilinear-patch-scene.pbrt/hair-fibers-scene.pbrt and their
+// case removal above. Both already matched CPU exactly (bilinear patches
+// and MaterialType::Hair are both real, non-approximated GPU geometry/
+// material types already).
 
 /// @brief Scene 18: Principled Showcase. Matches CPU build_principled_showcase()
 /// exactly: 7 spheres sweeping the Disney/pbrt-v4 principled BSDF parameter
@@ -4436,29 +3953,10 @@ bool build_scene(
 				// own entry. Falls through to default: -> build_loaded_pbrt_scene()
 				// now that legacy_id 2 is no longer assigned to any scene.
 
-				case 3:  // Earth (see build_earth_gpu's comment)
-					build_earth_gpu(scene);
-
-					// Same Fixed-mode situation as scenes 1/2 above - ignore
-					// cam_x/y/z by default (this scene's single sphere sits
-					// right at the origin, so a leftover Cornell-Box-scale
-					// camera position would place it out of frame entirely).
-					{
-						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 0.0f, 12.0f);
-						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
-						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-						// vfov 20->25: matches CPU registry, widened to leave
-						// room for the new moon accent sphere near the frame
-						// edge without cropping it.
-						build_pinhole_camera_params(lookfrom, lookat, vup, 25.0f, aspect, 1.0f, camera_params);
-
-						// Flat light-blue background, matching CPU registry's
-						// bg=(0.70,0.80,1.00) for this scene (see
-						// GpuCameraParams::backgroundColor's comment).
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
-					}
-					break;
+				// case 3 (Earth / A4) migrated to pbrt-backed - see
+				// pbrt_scenes/earth-globe.pbrt and scene_registry_data.h's own
+				// entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 3 is no longer assigned to any scene.
 
 				case 4:  // Perlin Spheres (see add_perlin_spheres_pair_gpu's comment)
 					build_perlin_spheres_gpu(scene);
@@ -4578,45 +4076,24 @@ bool build_scene(
 							// build_punctual_light_walls() itself is deleted below - no scene
 							// calls it directly any more now that C5/C6 are both migrated.
 
-							case 35:  // Portal Infinite Light (pbrt-v4 PortalImageInfiniteLight)
-								build_portal_light_scene_gpu(scene);
-								setup_cornell_box_camera();
-								// Matches CPU build_portal_sky()'s fix (see that function's
-								// comment) - dimmed from (1.0,1.2,1.5), which pushed the room
-								// toward overexposed.
-								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.55f, 0.65f, 0.85f);
-								break;
-
-							case 7:  // Cornell Smoke (constant_medium)
-								build_cornell_smoke_gpu(scene);
-								setup_cornell_box_camera();
-								break;
-
-							case 30:  // Homogeneous Medium (constant_medium, HG g=0.3)
-								build_homogeneous_medium_scene_gpu(scene);
-								setup_cornell_box_camera();
-								break;
-
-							case 21:  // Subsurface Slab (see build_subsurface_slab_gpu's comment)
-								build_subsurface_slab_gpu(scene);
-								setup_cornell_box_camera();
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 21 (same reasoning as scene 10 -
-									// the dielectric shell's reflection/refraction rays hit the same
-									// open-front-of-box black-background issue).
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
-								}
-								break;
+							// cases 35/7/30/21 (Portal Infinite Light/Cornell Smoke/
+							// Homogeneous Medium/Subsurface Slab - C7/A8/E1/B13) all
+							// migrated to pbrt-backed - see pbrt_scenes/portal-window-room.pbrt/
+							// cornell-smoke.pbrt/homogeneous-medium.pbrt/subsurface-slab.pbrt
+							// and scene_registry_data.h's own entries. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_ids
+							// 35/7/30/21 are no longer assigned to any scene.
 
 							case 20:  // Normal Mapped Cornell (see build_normal_mapped_cornell_gpu's comment)
 								build_normal_mapped_cornell_gpu(scene);
 								setup_cornell_box_camera();
 								break;
 
-							case 23:  // Bilinear Patch Scene (pbrt-v4 BilinearPatch shape)
-								build_bilinear_patch_scene_gpu(scene);
-								setup_cornell_box_camera();
-								break;
+							// case 23 (Bilinear Patch Scene / F1) migrated to pbrt-backed -
+							// see pbrt_scenes/bilinear-patch-scene.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 23
+							// is no longer assigned to any scene.
 
 							case 22: {  // Depth of Field (thin-lens perspective camera)
 								build_depth_of_field_gpu(scene);
@@ -4661,43 +4138,11 @@ bool build_scene(
 							// default: -> build_loaded_pbrt_scene() now that legacy_id 32
 							// is no longer assigned to any scene.
 
-							case 33: {  // Spherical (equirectangular) Camera
-								build_spherical_camera_scene_gpu(scene);
-								// SphericalCamera captures the full 360-degree sphere around
-								// its origin, so orientation doesn't gate a field of view -
-								// keep the original fixed su/sv/sw basis (right=+X, up=+Y,
-								// forward=+Z, matching an identity camera-to-world) so the
-								// panorama's default orientation is unchanged, but let the
-								// origin track cam_x/y/z (only under force_camera_override,
-								// same convention as scenes 1-4 above - matches CPU: origin
-								// previously hardcoded to the world origin regardless, so
-								// video mode's animated camera position had no effect and
-								// every frame was identical).
-								const float3 origin = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 0.0f, 0.0f);
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
-								pack_float3(camera_params, 0, origin);
-								pack_float3(camera_params, 3, zero);
-								pack_float3(camera_params, 6, zero);
-								pack_float3(camera_params, 9, zero);
-
-								if (out_camera_extra) {
-									out_camera_extra->kind = CameraKind::Spherical;
-									out_camera_extra->origin = origin;
-									out_camera_extra->su = make_float3(1.0f, 0.0f, 0.0f);
-									out_camera_extra->sv = make_float3(0.0f, 1.0f, 0.0f);
-									out_camera_extra->sw = make_float3(0.0f, 0.0f, 1.0f);
-									// Sky-blue background matching CPU's build_spherical_sky()
-									// (sky_light(color(0.3,0.5,0.9))) - previously left at zero
-									// (black) here entirely, a real discrepancy found and fixed
-									// alongside build_spherical_camera_scene_gpu()'s own geometry
-									// drift (see that function's own comment).
-									out_camera_extra->backgroundColor = make_float3(0.3f, 0.5f, 0.9f);
-								}
-								break;
-							}
+							// case 33 (Spherical Camera / D3) migrated to pbrt-backed - see
+							// pbrt_scenes/spherical-camera-scene.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 33
+							// is no longer assigned to any scene.
 
 							// case 36 (Realistic Camera / D4) migrated to pbrt-backed - see
 							// pbrt_scenes/realistic-camera-scene.pbrt and
@@ -4743,19 +4188,11 @@ bool build_scene(
 								break;
 							}
 
-							case 31: {  // Cloud Medium (CloudMedium: heterogeneous Perlin-noise density)
-								build_cloud_medium_scene_gpu(scene);
-								// lookfrom/vfov widened/pulled back (was 20 deg at (0,5,20)) - matches
-								// CPU CameraConfig row for scene 31; see that row's comment.
-								apply_mesh_camera(make_float3(0.0f, 4.0f, 26.0f), make_float3(0.0f, 2.0f, 0.0f), 40.0f, true, make_float3(0.5f, 0.7f, 1.0f));
-								break;
-							}
-
-							case 69: {  // Dielectric Medium Showcase (glass spheres w/ colored fog)
-								build_dielectric_medium_scene_gpu(scene);
-								apply_mesh_camera(make_float3(0.0f, 3.0f, 18.0f), make_float3(0.0f, 1.5f, 0.0f), 40.0f, true, make_float3(0.5f, 0.7f, 1.0f));
-								break;
-							}
+							// cases 31/69 (Cloud Medium/Dielectric Medium Showcase - E2/E3)
+							// migrated to pbrt-backed - see pbrt_scenes/cloud-medium-scene.pbrt/
+							// dielectric-medium-showcase.pbrt and scene_registry_data.h's own
+							// entries. Falls through to default: -> build_loaded_pbrt_scene()
+							// now that legacy_ids 31/69 are no longer assigned to any scene.
 
 							case 70: {  // RGB Grid Medium (heterogeneous per-voxel R/G/B nebula)
 								build_rgb_grid_medium_scene_gpu(scene);
@@ -4769,13 +4206,11 @@ bool build_scene(
 							// default: -> build_loaded_pbrt_scene() now that legacy_id 72
 							// is no longer assigned to any scene.
 
-							case 19: {  // Hair Fibers (pbrt-v4 HairBxDF)
-								build_hair_fibers_gpu(scene);
-								// lookfrom/vfov widened/pulled back to fit the now wider-spaced
-								// cluster - matches CPU CameraConfig row for scene 19.
-								apply_mesh_camera(make_float3(0.0f, 2.5f, 14.0f), make_float3(0.0f, 1.0f, 0.0f), 45.0f, true, make_float3(0.05f, 0.05f, 0.07f));
-								break;
-							}
+							// case 19 (Hair Fibers / B11) migrated to pbrt-backed - see
+							// pbrt_scenes/hair-fibers-scene.pbrt and scene_registry_data.h's
+							// own entry. Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 19 is no longer
+							// assigned to any scene.
 
 							case 34: {  // Measured BRDF (see build_measured_brdf_scene_gpu's comment)
 								build_measured_brdf_scene_gpu(scene);
@@ -5136,18 +4571,15 @@ bool build_scene(
 								break;
 							}
 
-							case 138: {  // D13: Camera Motion Blur (Cornell Box) - real per-ray AnimatedTransform-based interpolation on both GPU backends now (see GpuCameraParams::animated, optix_types.h). Matches CPU's own precedence: an animated camera ALWAYS uses its own registered keyframes, ignoring cam_x/y/z/force_camera_override entirely (see applyCameraConfig()'s comment, cpu_interface.cpp - a moving camera has no single "current position" for an override to mean).
-								build_cornell_box(scene);
-								const float3 lookfrom0 = make_float3(278.0f, 278.0f, -800.0f);
-								const float3 lookat0   = make_float3(278.0f, 278.0f, 278.0f);
-								const float3 lookfrom1 = make_float3(378.0f, 278.0f, -800.0f);
-								const float3 lookat1   = make_float3(278.0f, 278.0f, 278.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_gpu_animated_camera_params(lookfrom0, lookat0, lookfrom1, lookat1,
-									vup, 40.0f, aspect, 0.0f, 10.0f, camera_params, out_camera_extra);
-								break;
-							}
+							// case 138 (Camera Motion Blur / D13) migrated to pbrt-backed -
+							// see pbrt_scenes/cornell-camera-motion-blur.pbrt and
+							// scene_registry_data.h's own entry (a real pbrt-v4
+							// ActiveTransform "StartTime"/"EndTime" animated camera, already
+							// supported generically - see that .pbrt file's own header
+							// comment). Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 138 is no longer
+							// assigned to any scene. build_cornell_box() itself is NOT
+							// deleted - other scenes below still call it directly.
 
 							case 139: {  // I5: SPPM: Rough Glass Caustic (same world as B3 Cornell Rough Glass - see that entry's own comment) - GPU default path tracer only here; --sppm --gpu goes through its own dedicated pipeline (gpu/optix/optix_interface.cpp), not this switch.
 								build_cornell_rough_glass(scene);

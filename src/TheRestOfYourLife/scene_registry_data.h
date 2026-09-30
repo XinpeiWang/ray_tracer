@@ -57,16 +57,14 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A3", 185, SceneNames::CheckeredSpheres, SceneCategories::Basics,
             "Two spheres with procedural checker texture",
             "Fast", "checkered-spheres.pbrt"),
-        {
-            "A4", 3, SceneNames::Earth, SceneCategories::Basics,
+        // A4 migrated to pbrt-backed - see pbrt_scenes/earth-globe.pbrt.
+        // legacy_id 190 (next after F4's 189). Reuses the already-bundled
+        // images/earthmap.jpg - no new asset needed. build_earth()/
+        // build_earth_lights() have no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "A4", 190, SceneNames::Earth, SceneCategories::Basics,
             "Globe with earth texture mapping (requires earthmap.jpg)",
-            "Fast", 100, true, true,
-            // vfov widened 20->25 to leave room for the new moon accent
-            // sphere near the frame edge without cropping it.
-            { 25, 0, 0, 12,  0, 0, 0,  0.70, 0.80, 1.00 },
-            build_earth,
-            build_earth_lights
-        },
+            "Fast", "earth-globe.pbrt"),
         {
             "A5", 4, SceneNames::PerlinSpheres, SceneCategories::Basics,
             "Spheres with Perlin noise marble texture",
@@ -93,14 +91,13 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_simple_light,
             no_lights
         },
-        {
-            "A8", 7, SceneNames::CornellSmoke, SceneCategories::Basics,
+        // A8 migrated to pbrt-backed - see pbrt_scenes/cornell-smoke.pbrt.
+        // legacy_id 191. build_cornell_smoke()/build_cornell_smoke_lights()
+        // have no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "A8", 191, SceneNames::CornellSmoke, SceneCategories::Basics,
             "Cornell box with volumetric fog",
-            "Slow", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_cornell_smoke,
-            build_cornell_smoke_lights
-        },
+            "Slow", "cornell-smoke.pbrt", CameraMode::UserControlled),
         {
             "A9", 8, SceneNames::FinalScene, SceneCategories::Basics,
             "Complex scene from The Next Week",
@@ -205,19 +202,16 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
                 return l;
             }
         },
-        {
-            "B11", 19, SceneNames::HairFibers, SceneCategories::Materials,
+        // B11 migrated to pbrt-backed - see pbrt_scenes/hair-fibers-scene.pbrt.
+        // legacy_id 192. Uses real Material "hair" on Shape "sphere" - the
+        // same normal-as-tangent proxy native's own hair_material class
+        // already documents using for this exact scene (see that .pbrt
+        // file's own header comment) - not an approximation.
+        // build_hair_fibers() has no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B11", 192, SceneNames::HairFibers, SceneCategories::Materials,
             "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
-            "Medium", 200, false, true,
-            { 45, 0, 2.5, 14,  0, 1, 0,  0.05, 0.05, 0.07 },
-            build_hair_fibers,
-            []() {
-                hittable_list l;
-                auto empty_mat = std::shared_ptr<material>();
-                l.add(std::make_shared<quad>(point3(-5,6,-5), vec3(10,0,0), vec3(0,0,7), empty_mat));
-                return l;
-            }
-        },
+            "Medium", "hair-fibers-scene.pbrt"),
         {
             "B12", 20, SceneNames::NormalMappedCornell, SceneCategories::Materials,
             "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
@@ -226,14 +220,14 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_normal_mapped_cornell,
             build_cornell_box_lights
         },
-        {
-            "B13", 21, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
+        // B13 migrated to pbrt-backed - see pbrt_scenes/subsurface-slab.pbrt.
+        // legacy_id 193. build_subsurface_slab() has no other consumer -
+        // deleted below (build_cornell_box_lights() stays - many other
+        // scenes still use it).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B13", 193, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
-            "Slow", 300, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
-            build_subsurface_slab,
-            build_cornell_box_lights
-        },
+            "Slow", "subsurface-slab.pbrt", CameraMode::UserControlled),
         {
             "D1", 22, SceneNames::DepthOfField, SceneCategories::Cameras,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
@@ -242,14 +236,14 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_depth_of_field,
             sky_dummy_lights
         },
-        {
-            "F1", 23, SceneNames::BilinearPatchScene, SceneCategories::Geometry,
+        // F1 migrated to pbrt-backed - see pbrt_scenes/bilinear-patch-scene.pbrt.
+        // legacy_id 200. build_bilinear_patch_scene()/
+        // build_bilinear_patch_lights() have no other consumer - deleted
+        // below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F1", 200, SceneNames::BilinearPatchScene, SceneCategories::Geometry,
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_bilinear_patch_scene,
-            build_bilinear_patch_lights
-        },
+            "Medium", "bilinear-patch-scene.pbrt", CameraMode::UserControlled),
         // ---- pbrt-v4 light / camera / medium showcase ----
         {
             "C1", 24, SceneNames::HdriSky, SceneCategories::Lights,
@@ -297,37 +291,29 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "C6", 180, SceneNames::ProjectionLight, SceneCategories::Lights,
             "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
             "Medium", "cornell-projection.pbrt", CameraMode::UserControlled),
-        {
-            "E1", 30, SceneNames::HomogeneousMedium, SceneCategories::Volumes,
+        // E1 migrated to pbrt-backed - see pbrt_scenes/homogeneous-medium.pbrt.
+        // legacy_id 197. build_homogeneous_medium_scene()/
+        // build_homogeneous_medium_lights() have no other consumer -
+        // deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E1", 197, SceneNames::HomogeneousMedium, SceneCategories::Volumes,
             "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",
-            "Slow", 300, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_homogeneous_medium_scene,
-            build_homogeneous_medium_lights
-        },
-        {
-            "E2", 31, SceneNames::CloudMedium, SceneCategories::Volumes,
+            "Slow", "homogeneous-medium.pbrt", CameraMode::UserControlled),
+        // E2 migrated to pbrt-backed - see pbrt_scenes/cloud-medium-scene.pbrt.
+        // legacy_id 198. build_cloud_medium_scene() has no other consumer -
+        // deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E2", 198, SceneNames::CloudMedium, SceneCategories::Volumes,
             "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
-            "Slow", 300, false, true,
-            // vfov widened/camera pulled back (was 20 deg at (0,5,20)) - the
-            // cloud's world AABB (x:[-4,4]) alone overflowed that framing,
-            // and the two "context" spheres at x=+-5 were entirely outside
-            // it. See build_cloud_medium_scene's comment for the cloud's
-            // actual extent.
-            { 40, 0, 4, 26,  0, 2, 0,  0.5, 0.7, 1.0 },
-            build_cloud_medium_scene,
-            sky_dummy_lights
-        },
-        {
-            "E3", 69, SceneNames::DielectricMediumShowcase, SceneCategories::Volumes,
+            "Slow", "cloud-medium-scene.pbrt"),
+        // E3 migrated to pbrt-backed - see
+        // pbrt_scenes/dielectric-medium-showcase.pbrt. legacy_id 199.
+        // build_dielectric_medium_scene() has no other consumer - deleted
+        // below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E3", 199, SceneNames::DielectricMediumShowcase, SceneCategories::Volumes,
             "Three glass spheres containing colored internal fog at varying density - dielectric surface + participating medium combined (pbrt-v4 style)",
-            "Medium", 200, false, true,
-            // vfov/lookfrom chosen so all 3 spheres (x:[-5.5,5.5] incl.
-            // radius) fit comfortably in frame - see build_dielectric_medium_scene.
-            { 40, 0, 3, 18,  0, 1.5, 0,  0.5, 0.7, 1.0 },
-            build_dielectric_medium_scene,
-            sky_dummy_lights
-        },
+            "Medium", "dielectric-medium-showcase.pbrt"),
         {
             "E4", 70, SceneNames::RgbGridMedium, SceneCategories::Volumes,
             "Heterogeneous nebula with an independent per-voxel R/G/B scattering grid (pbrt-v4 RGBGridMedium)",
@@ -346,44 +332,14 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D2", 186, SceneNames::OrthographicCamera, SceneCategories::Cameras,
             "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
             "Fast", "ortho-camera-scene.pbrt"),
-        {
-            "D3", 33, SceneNames::SphericalCamera, SceneCategories::Cameras,
+        // D3 migrated to pbrt-backed - see pbrt_scenes/spherical-camera-scene.pbrt.
+        // legacy_id 195. Camera type already proven pbrt-representable via
+        // D7's own earlier migration. build_spherical_camera_scene()/
+        // build_spherical_sky() have no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "D3", 195, SceneNames::SphericalCamera, SceneCategories::Cameras,
             "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
-            "Medium", 200, false, true,
-            { 90, 0, 1, 0,  0, 0, 0,  0, 0, 0 },
-            build_spherical_camera_scene,
-            no_lights,
-            build_spherical_sky,
-            nullptr,
-            [](camera_t& cam) {
-                // SphericalCamera captures the full 360-degree sphere around
-                // its origin, so its orientation doesn't gate a field of
-                // view the way lookat does for other cameras - this scene's
-                // own registry entry sets lookat=(0,0,0) directly below
-                // lookfrom=(0,1,0), which would make the polar (up) axis of
-                // the equirect mapping parallel to world up, a degenerate
-                // input to make_look_at (cross(up,forward) == 0). Use a
-                // fixed horizontal forward reference (+Z, matching the old
-                // hardcoded identity transform's own forward axis, so the
-                // panorama's default orientation is unchanged) instead, so
-                // it stays stable and well-defined regardless of the
-                // scene's lookat value; only the origin needs to track
-                // cam.lookfrom (previously hardcoded to the world origin
-                // via an identity transform, so video mode's animated
-                // camera position had no effect and every frame was
-                // identical).
-                Mat4<double> ctw = make_look_at<double>(
-                    cam.lookfrom.x(), cam.lookfrom.y(),     cam.lookfrom.z(),
-                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z() + 1.0,
-                    0, 1, 0     // up
-                );
-                cam.alt_spherical_cam = std::make_shared<SphericalCamera<double>>(
-                    cam.image_width, cam.image_height,
-                    SphericalCamera<double>::EquiRectangular,
-                    ctw
-                );
-            }
-        },
+            "Medium", "spherical-camera-scene.pbrt"),
         {
             "B14", 34, SceneNames::MeasuredBrdf, SceneCategories::Materials,
             "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
@@ -421,15 +377,13 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             nullptr,
             build_prism_dispersion_punct
         },
-        {
-            "C7", 35, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
+        // C7 migrated to pbrt-backed - see pbrt_scenes/portal-window-room.pbrt.
+        // legacy_id 194. build_portal_light_scene()/build_portal_sky() have
+        // no other consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C7", 194, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
             "Room scene with a sky visible through a windowed wall aperture (a flat sky_light behind a geometric hole, NOT the real pbrt-v4 PortalImageInfiniteLight class - see pbrt_scenes/portal-light.pbrt for that)",
-            "Slow", 300, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_portal_light_scene,
-            no_lights,
-            build_portal_sky
-        },
+            "Slow", "portal-window-room.pbrt", CameraMode::UserControlled),
         // D4 migrated to pbrt-backed - see pbrt_scenes/realistic-camera-scene.pbrt.
         // legacy_id 187. build_realistic_camera_scene() has no other
         // consumer - deleted below. The two real bugs found and fixed
@@ -478,24 +432,25 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D8", 184, SceneNames::RealisticCameraCornellBox, SceneCategories::Cameras,
             "The classic Cornell box (same scene as A1/D5-D7), rendered through a multi-element lens for realistic bokeh (pbrt-v4 RealisticCamera)",
             "Medium", "cornell-realistic.pbrt"),
-        {
-            // Same Cornell box world as A1/D5-D8 - only the camera differs
-            // (keyframed across the exposure instead of static). closes the
-            // "no motion blur anywhere" gap from docs/FEATURE_INVENTORY.md -
-            // CPU default path tracer (+SPPM), see camera.h's own
-            // camera_is_animated comment, AND both GPU backends (see
-            // GpuCameraParams::animated, gpu/optix/optix_types.h).
-            "D13", 138, SceneNames::CameraMotionBlur, SceneCategories::Cameras,
+        // Same Cornell box world as A1/D5-D8 - only the camera differs
+        // (keyframed across the exposure instead of static). closes the
+        // "no motion blur anywhere" gap from docs/FEATURE_INVENTORY.md -
+        // CPU default path tracer (+SPPM), see camera.h's own
+        // camera_is_animated comment, AND both GPU backends (see
+        // GpuCameraParams::animated, gpu/optix/optix_types.h).
+        // D13 migrated to pbrt-backed - see
+        // pbrt_scenes/cornell-camera-motion-blur.pbrt. legacy_id 196. Reuses
+        // A1's exact world (cornell-box-native.pbrt's own geometry,
+        // transcribed again here since this scene needs its own Camera
+        // block) with a real ActiveTransform "StartTime"/"EndTime" animated
+        // camera - ordinary already-supported pbrt-v4 camera motion blur, no
+        // new loader capability needed. build_cornell_box()/
+        // build_cornell_box_lights() are NOT deleted - many other scenes
+        // still call them directly.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "D13", 196, SceneNames::CameraMotionBlur, SceneCategories::Cameras,
             "The classic Cornell box (same scene as A1/D5-D8), camera trucking sideways (lookat stays fixed, so this is really a small combined translate+rotate) across the exposure for real AnimatedTransform-based motion blur - CPU and GPU (both recursive and wavefront) all interpolate the same two keyframes",
-            "Medium", 200, false, false,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0,
-              CameraMode::Fixed, 0.0, 10.0,
-              true, 378, 278, -800,  278, 278, 278,  0.0, 1.0 },
-            build_cornell_box,
-            build_cornell_box_lights,
-            nullptr,
-            nullptr
-        },
+            "Medium", "cornell-camera-motion-blur.pbrt"),
         // F2 migrated to pbrt-backed - see pbrt_scenes/triangle-mesh-scene.pbrt.
         // legacy_id 188 (next after D4's 187). The icosahedron's 12 vertices/
         // 20 faces are fully deterministic (golden-ratio formula, no RNG),

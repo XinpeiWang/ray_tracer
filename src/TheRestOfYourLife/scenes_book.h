@@ -138,48 +138,9 @@ inline hittable_list build_bouncing_spheres() {
 // pbrt_scenes/checkered-spheres.pbrt and scene_registry_data.h's own entry.
 // No other consumer.
 
-/**
- * Build earth globe scene (requires earthmap.jpg)
- */
-inline hittable_list build_earth() {
-	hittable_list world;
-
-	// Repeat wrap: the sphere's UV mapping wraps at u=0/1 (the antimeridian).
-	// Clamp (the default) makes any EWA filter footprint that straddles that
-	// seam sample only the edge column on each side instead of wrapping,
-	// producing a visible smeared seam that the old point-sampled
-	// image_texture never showed (a single texel never blends across a
-	// boundary). Repeat matches how an equirectangular texture is actually
-	// meant to be addressed.
-	auto earth_texture = make_shared<mipmap_texture>("earthmap.jpg",
-		MipMapOptions{MipFilter::EWA, 8.0f, MipWrapMode::Repeat});
-	auto earth_surface = make_shared<lambertian>(earth_texture);
-	world.add(make_shared<sphere>(point3(0,0,0), 2, earth_surface));
-
-	// Small grey "moon" for scale/context - the globe used to float alone
-	// with nothing to read its size against.
-	world.add(make_shared<sphere>(point3(2.0, 1.3, 0.5), 0.35,
-		make_shared<lambertian>(color(0.6, 0.6, 0.62))));
-
-	// Dim cool rim light behind the globe (far side from camera, offset to
-	// one side so it reads as a crescent highlight rather than a flat
-	// silhouette wash) - see build_earth_lights() for its NEE-sampled twin.
-	auto rim = make_shared<diffuse_light>(color(0.9, 1.0, 1.3));
-	world.add(make_shared<quad>(point3(-4.0, -2.5, -6.0), vec3(3.0,0,0), vec3(0,5.0,0), rim));
-
-	return world;
-}
-
-/**
- * Light list for build_earth() - the rim-light quad, for NEE importance
- * sampling. Replaces sky_dummy_lights() now that the scene has a real light.
- */
-inline hittable_list build_earth_lights() {
-	hittable_list lights;
-	auto empty_mat = std::shared_ptr<material>();
-	lights.add(make_shared<quad>(point3(-4.0, -2.5, -6.0), vec3(3.0,0,0), vec3(0,5.0,0), empty_mat));
-	return lights;
-}
+// build_earth()/build_earth_lights() deleted - A4 migrated to pbrt-backed,
+// see pbrt_scenes/earth-globe.pbrt and scene_registry_data.h's own entry.
+// Neither had any other consumer.
 
 /**
  * Build Perlin noise spheres scene
@@ -246,46 +207,9 @@ inline hittable_list build_simple_light() {
 	return world;
 }
 
-/**
- * Build Cornell box with smoke/fog
- */
-inline hittable_list build_cornell_smoke() {
-	using namespace cornell_box_data;
-	hittable_list world;
-
-	// The 5 standard walls (green/red/ceiling/floor/back) - shares
-	// cornell_box_data::kQuads[0..4] with GPU's build_cornell_smoke_gpu().
-	// This scene's own light is a different size/color than kQuads[5], so
-	// it's added separately below rather than looping through index 5.
-	for (int i = 0; i < 5; ++i) {
-		const QuadSpec& q = kQuads[i];
-		auto mat = make_shared<lambertian>(color(q.color.r, q.color.g, q.color.b));
-		world.add(make_shared<quad>(
-			point3(q.Q.x, q.Q.y, q.Q.z),
-			vec3(q.u.x, q.u.y, q.u.z),
-			vec3(q.v.x, q.v.y, q.v.z),
-			mat));
-	}
-
-	auto white = make_shared<lambertian>(color(.73, .73, .73));  // for the boxes below
-	auto light = make_shared<diffuse_light>(color(7, 7, 7));
-	world.add(make_shared<quad>(point3(113,554,127), vec3(330,0,0), vec3(0,0,305), light));
-
-	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
-	box1 = make_shared<rotate_y>(box1, 15);
-	box1 = make_shared<translate>(box1, vec3(265,0,295));
-
-	shared_ptr<hittable> box2 = box(point3(0,0,0), point3(165,165,165), white);
-	box2 = make_shared<rotate_y>(box2, -18);
-	box2 = make_shared<translate>(box2, vec3(130,0,65));
-
-	// Tinted fog instead of monochrome black/white - gives the two smoke
-	// boxes real color interest as light scatters through them.
-	world.add(make_shared<constant_medium>(box1, 0.01, color(0.05, 0.07, 0.12)));
-	world.add(make_shared<constant_medium>(box2, 0.01, color(1.0, 0.85, 0.6)));
-
-	return world;
-}
+// build_cornell_smoke() deleted - A8 migrated to pbrt-backed, see
+// pbrt_scenes/cornell-smoke.pbrt and scene_registry_data.h's own entry. No
+// other consumer.
 
 /**
  * Build final complex scene (very computationally expensive!)

@@ -71,56 +71,22 @@ inline hittable_list build_cornell_box_lights() {
 	return lights;
 }
 
-// Light list for build_bilinear_patch_scene() (scene F1): same ceiling
-// light rectangle as build_cornell_box_lights() (matching geometry: the
-// scene's own quad Q=(213,554,227), u=(130,0,0), v=(0,0,105) is the same
-// rectangle from the opposite corner), but scene F1 has no glass sphere -
-// its "second object" is two bilinear patches, not a sphere - so
-// build_cornell_box_lights()'s sphere entry aimed roughly half of every
-// NEE sample at a phantom target with no real geometry there, same class
-// of bug already fixed for build_cornell_smoke_lights() below.
-inline hittable_list build_bilinear_patch_lights() {
-	hittable_list lights;
-	auto empty_material = shared_ptr<material>();
-	lights.add(
-		make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), empty_material));
-	return lights;
-}
+// build_bilinear_patch_lights() (former scene F1's own light list) deleted -
+// F1 migrated to pbrt-backed, see pbrt_scenes/bilinear-patch-scene.pbrt and
+// scene_registry_data.h's own F1 entry.
 
-// Light list for build_cornell_smoke() (scene 7): that scene's ceiling light
-// is its own, much larger rectangle (world quad Q=(113,554,127),
-// u=(330,0,0), v=(0,0,305), emission (7,7,7) - see scenes_book.h) rather
-// than the standard Cornell-box light build_cornell_box_lights() assumes,
-// and scene 7 has neither a glass sphere nor the accent wall light - so
-// reusing build_cornell_box_lights() aimed importance sampling at a
-// mis-sized light rect plus a phantom sphere target with no real geometry
-// there. This gives scene 7 its own correctly-sized single-light list.
-inline hittable_list build_cornell_smoke_lights() {
-	hittable_list lights;
-	auto empty_material = shared_ptr<material>();
-	lights.add(
-		make_shared<quad>(point3(443,554,432), vec3(-330,0,0), vec3(0,0,-305), empty_material));
-	return lights;
-}
+// build_cornell_smoke_lights() (former scene 7 / A8's own light list)
+// deleted - A8 migrated to pbrt-backed, see pbrt_scenes/cornell-smoke.pbrt
+// and scene_registry_data.h's own A8 entry.
 
 // build_cornell_thin_glass_lights() (former scene 14 / B6's own light list)
 // deleted - B6 migrated to pbrt-backed, see pbrt_scenes/cornell-thin-glass.pbrt
 // and scene_registry_data.h's own B6 entry.
 
-// Light list for build_homogeneous_medium_scene() (scene 30): same ceiling
-// light rectangle as scene 0 (213,554,227)/(130,0,0)/(0,0,105), but scene
-// 30 has neither a glass sphere nor the accent wall light (just fog), so
-// build_cornell_box_lights()'s sphere entry aimed roughly half of every
-// NEE sample at a phantom target with no real geometry there - a real,
-// meaningful contributor to this scene's noise on top of the medium
-// boundary fix (see build_homogeneous_medium_scene's comment).
-inline hittable_list build_homogeneous_medium_lights() {
-	hittable_list lights;
-	auto empty_material = shared_ptr<material>();
-	lights.add(
-		make_shared<quad>(point3(343,554,332), vec3(-130,0,0), vec3(0,0,-105), empty_material));
-	return lights;
-}
+// build_homogeneous_medium_lights() (former scene 30 / E1's own light list)
+// deleted - E1 migrated to pbrt-backed, see
+// pbrt_scenes/homogeneous-medium.pbrt and scene_registry_data.h's own E1
+// entry.
 
 // Education (I8): same Cornell box shell (walls/rotated box/glass sphere,
 // via cornell_box_data.h - shared with the real A1/GPU builder, not the
