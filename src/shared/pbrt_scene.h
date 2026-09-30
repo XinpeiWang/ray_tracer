@@ -254,6 +254,17 @@ struct TextureDecl {
 	std::string dataType;   // "float" or "spectrum"
 	std::string cls;        // "imagemap", "checkerboard", "scale", ...
 	ParamList params;
+	// The CTM in effect when this Texture directive was declared - pbrt-v4's
+	// real convention for a 3D texture's own coordinate system (e.g. a
+	// "checkerboard" with "integer dimension" [3]): the texture is evaluated
+	// in the coordinate system this transform maps INTO (texture-to-world;
+	// a renderer inverts it to map a world-space hit point back into texture
+	// space before evaluating). Identity unless a Scale/Rotate/Translate
+	// precedes the Texture directive - matches LightDecl::xform's own
+	// capture-at-declaration pattern (used by pbrt_flatten.h's checkerboard
+	// "dimension"==3 handling; the 2D UV-mapped default variant ignores this
+	// entirely, same as real pbrt-v4's own TextureMapping2D texture kinds).
+	Matrix4 xform;
 };
 
 struct LightDecl {
@@ -1185,6 +1196,7 @@ private:
 			if (pos_ < t_.size() && t_[pos_].quoted) { tx.dataType = t_[pos_].text; ++pos_; }
 			if (pos_ < t_.size() && t_[pos_].quoted) { tx.cls = t_[pos_].text; ++pos_; }
 			tx.params = readParams();
+			tx.xform = gs_.ctm;   // see TextureDecl::xform's own comment
 			s_.textures.push_back(tx);
 			return true;
 		}

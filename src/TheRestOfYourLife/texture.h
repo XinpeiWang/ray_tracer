@@ -60,15 +60,41 @@ class solid_color : public texture {
 class checker_texture : public texture {
   public:
     checker_texture(double scale, shared_ptr<texture> even, shared_ptr<texture> odd)
-      : inv_scale(1.0 / scale), even(even), odd(odd) {}
+      : even(even), odd(odd) {
+        const double inv_scale = 1.0 / scale;
+        for (double& x : world_to_texture) x = 0.0;
+        world_to_texture[0] = world_to_texture[5] = world_to_texture[10] = inv_scale;
+        world_to_texture[15] = 1.0;
+    }
 
     checker_texture(double scale, const color& c1, const color& c2)
       : checker_texture(scale, make_shared<solid_color>(c1), make_shared<solid_color>(c2)) {}
 
+    // pbrt-v4's real 3D "checkerboard" texture (Texture "..." "checkerboard"
+    // "integer dimension" [3] - see pbrt_flatten.h's own Material::
+    // checkerIs3D comment): world_to_texture is the full affine inverse of
+    // the CTM active when the Texture directive was declared, not just a
+    // uniform scale - a real pbrt-v4 scene is free to rotate/translate/
+    // non-uniformly scale its checker grid via a Scale/Rotate/Translate
+    // preceding the Texture directive, which this project's own hand-
+    // authored native scenes (the constructors above) never needed. Row-
+    // major affine 4x4 (translation in indices 3/7/11, bottom row implicitly
+    // [0 0 0 1] - matches pbrt_scene::Matrix4's own layout exactly, so a
+    // caller can pass that struct's raw `.m` array straight through).
+    checker_texture(const double world_to_texture_in[16],
+                     shared_ptr<texture> even, shared_ptr<texture> odd)
+      : even(even), odd(odd) {
+        for (int i = 0; i < 16; ++i) world_to_texture[i] = world_to_texture_in[i];
+    }
+
     color value(double u, double v, const point3& p) const override {
-        auto xInteger = int(std::floor(inv_scale * p.x()));
-        auto yInteger = int(std::floor(inv_scale * p.y()));
-        auto zInteger = int(std::floor(inv_scale * p.z()));
+        const double tx = world_to_texture[0]*p.x() + world_to_texture[1]*p.y() + world_to_texture[2]*p.z()  + world_to_texture[3];
+        const double ty = world_to_texture[4]*p.x() + world_to_texture[5]*p.y() + world_to_texture[6]*p.z()  + world_to_texture[7];
+        const double tz = world_to_texture[8]*p.x() + world_to_texture[9]*p.y() + world_to_texture[10]*p.z() + world_to_texture[11];
+
+        auto xInteger = int(std::floor(tx));
+        auto yInteger = int(std::floor(ty));
+        auto zInteger = int(std::floor(tz));
 
         bool isEven = (xInteger + yInteger + zInteger) % 2 == 0;
 
@@ -76,7 +102,12 @@ class checker_texture : public texture {
     }
 
   private:
-    double inv_scale;
+    // Row-major affine 4x4 world-to-texture transform. The two constructors
+    // above that take a scalar `scale` set this to a uniform diagonal
+    // (inv_scale, inv_scale, inv_scale) with zero translation - algebraically
+    // identical to this class's original inv_scale*p.x()/p.y()/p.z() (no
+    // behavior change for any existing caller of those two constructors).
+    double world_to_texture[16];
     shared_ptr<texture> even;
     shared_ptr<texture> odd;
 };

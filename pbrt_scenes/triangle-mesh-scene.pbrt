@@ -1,0 +1,81 @@
+# triangle-mesh-scene.pbrt -- migration of the native "F2 Triangle Mesh"
+# demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_triangle_mesh_scene()) to a pbrt-backed scene, part of this
+# project's GPU scene-construction-duplication elimination.
+#
+# The icosahedron is fully deterministic (12 vertices at golden-ratio
+# coordinates, radius 1.5, centered at (0,2.5,0), scaled by
+# 1.5/length(raw_vert) - no RNG anywhere), so its exact vertex positions
+# were computed once (see this file's own migration notes) and transcribed
+# verbatim below, along with the SAME 20 face-index triples native's own
+# `faces[20][3]` array uses, in the SAME winding order - this Shape
+# "trianglemesh" carries no "point3 N" (no per-vertex normals), so both
+# backends fall back to flat per-face geometric normals from the winding,
+# exactly matching native's own triangle::hit() fallback (the "faceted
+# low-poly" look the scene is going for).
+#
+# Checker ground: this loader's real pbrt-v4 3D "checkerboard" "integer
+# dimension" [3] support (pbrt_scenes/checkered-spheres.pbrt's own header
+# comment) reproduces native's checker_texture(0.8, ...) exactly via
+# `Scale 0.8 0.8 0.8` before the Texture directive.
+#
+# Flat background: native's own CameraConfig row carries a dark flat
+# background (0.05, 0.05, 0.08), reproduced via LightSource "infinite"
+# (this loader's wire_pbrt_backed_scene() hardcodes black otherwise - the
+# established "flat background pitfall" from this project's own migration
+# notes).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  0 4 8    0 2.5 0    0 1 0
+Camera "perspective" "float fov" [ 35 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 100 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.05 0.05 0.08 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ]
+  Translate 0 8 0
+  Shape "sphere" "float radius" [ 2 ]
+AttributeEnd
+
+AttributeBegin
+  Scale 0.8 0.8 0.8
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.15 0.15 0.15 ] "rgb tex2" [ 0.85 0.85 0.85 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# Regular icosahedron: 12 vertices (golden-ratio coordinates, radius 1.5,
+# centered at (0,2.5,0)), 20 faces - see this file's own header comment.
+Material "conductor" "rgb reflectance" [ 0.8 0.6 0.2 ] "float roughness" [ 0.15 ]
+Shape "trianglemesh"
+  "point3 P" [
+    -0.7885966682 3.7759762125 0.0000000000
+     0.7885966682 3.7759762125 0.0000000000
+    -0.7885966682 1.2240237875 0.0000000000
+     0.7885966682 1.2240237875 0.0000000000
+     0.0000000000 1.7114033318 1.2759762125
+     0.0000000000 3.2885966682 1.2759762125
+     0.0000000000 1.7114033318 -1.2759762125
+     0.0000000000 3.2885966682 -1.2759762125
+     1.2759762125 2.5000000000 -0.7885966682
+     1.2759762125 2.5000000000 0.7885966682
+    -1.2759762125 2.5000000000 -0.7885966682
+    -1.2759762125 2.5000000000 0.7885966682
+  ]
+  "integer indices" [
+    0 11 5   0 5 1   0 1 7   0 7 10   0 10 11
+    1 5 9    5 11 4  11 10 2 10 7 6   7 1 8
+    3 9 4    3 4 2   3 2 6   3 6 8    3 8 9
+    4 9 5    2 4 11  6 2 10  8 6 7    9 8 1
+  ]

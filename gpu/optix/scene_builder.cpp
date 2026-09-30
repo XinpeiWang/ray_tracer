@@ -2082,9 +2082,12 @@ static void build_cornell_rough_glass(SceneData& scene) {
 /**
  * Build bouncing spheres scene (scene 1, "In One Weekend" final scene).
  * Structurally mirrors src/TheRestOfYourLife/scenes_book.h's
- * build_bouncing_spheres() - a checker-ground plane (approximated as flat
- * gray, matching this file's established "GPU has no checker/procedural
- * texture support" simplification - see build_checkered_spheres below and
+ * build_bouncing_spheres() - a real checker-ground plane (add_checker_texture_gpu,
+ * matching CPU's checker_texture(0.32, ...) exactly - this comment used to
+ * say GPU approximated it as flat gray, "no checker/procedural texture
+ * support"; that claim went stale once add_checker_texture_gpu was added
+ * for A3/other scenes and was never updated here, a real pre-existing bug
+ * fixed in passing while adding real pbrt-v4 3D-checkerboard support - see
  * GpuCameraParams::backgroundColor's comment), a grid of small random
  * spheres, and 3 large signature spheres (glass/diffuse/metal).
  *
@@ -2101,10 +2104,13 @@ static void build_cornell_rough_glass(SceneData& scene) {
  * random sequence either.
  */
 void build_bouncing_spheres(SceneData& scene) {
-	// Ground sphere - checker approximated as flat gray.
+	// Ground sphere - real checker (matches CPU's checker_texture(0.32, ...)
+	// exactly, same as add_checker_texture_gpu's other call sites below).
 	{
+		const int checkerTexIdx = add_checker_texture_gpu(scene, 0.32f,
+			make_float3(0.2f, 0.3f, 0.1f), make_float3(0.9f, 0.9f, 0.9f));
 		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
+		add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 		SphereData ground{};
 		ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 		ground.center1 = ground.center;  // static
@@ -2195,56 +2201,9 @@ void build_bouncing_spheres(SceneData& scene) {
 	}
 }
 
-/// @brief Build checkered spheres scene (scene 2). Matches CPU
-/// build_checkered_spheres() (src/TheRestOfYourLife/scenes_book.h) exactly:
-/// a single checker_texture(scale=0.32, color(.2,.3,.1), color(.9,.9,.9))
-/// shared across both spheres - not two separately flat-colored spheres (an
-/// earlier version of this function approximated the checker that way,
-/// before this codebase had any GPU checker-texture support; see
-/// add_checker_texture_gpu, added for scene 38's ground).
-void build_checkered_spheres(SceneData& scene) {
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.32f,
-		make_float3(0.2f, 0.3f, 0.1f), make_float3(0.9f, 0.9f, 0.9f));
-	const int mat = safe_cast_to_int(scene.materials.size());
-	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
-
-	SphereData sphere1{};
-	sphere1.center = make_float3(0.0f, -10.0f, 0.0f);
-	sphere1.radius = 10.0f;
-	sphere1.materialIdx = mat;
-	scene.spheres.push_back(sphere1);
-
-	SphereData sphere2{};
-	sphere2.center = make_float3(0.0f, 10.0f, 0.0f);
-	sphere2.radius = 10.0f;
-	sphere2.materialIdx = mat;
-	scene.spheres.push_back(sphere2);
-
-	// Small accent spheres resting on the visible cap of the lower
-	// "planet" - matches CPU build_checkered_spheres() exactly (see its
-	// own comment for the reasoning).
-	const int warmMat  = add_lambertian(scene, make_float3(0.55f, 0.15f, 0.10f));
-	const int metalMat = add_metal(scene, make_float3(0.8f, 0.75f, 0.6f), 0.05f);
-	const int glassMat = add_dielectric(scene, 1.5f);
-
-	SphereData accent1{};
-	accent1.center = make_float3(1.6f, 0.5f, 2.2f);
-	accent1.radius = 0.9f;
-	accent1.materialIdx = warmMat;
-	scene.spheres.push_back(accent1);
-
-	SphereData accent2{};
-	accent2.center = make_float3(-1.4f, 0.45f, 1.6f);
-	accent2.radius = 0.7f;
-	accent2.materialIdx = metalMat;
-	scene.spheres.push_back(accent2);
-
-	SphereData accent3{};
-	accent3.center = make_float3(0.1f, 0.15f, 3.0f);
-	accent3.radius = 0.6f;
-	accent3.materialIdx = glassMat;
-	scene.spheres.push_back(accent3);
-}
+// build_checkered_spheres() (former "scene 2" / A3 Checkered Spheres GPU
+// builder) deleted - A3 migrated to pbrt-backed, see
+// pbrt_scenes/checkered-spheres.pbrt and its case-2 removal above.
 
 /// @brief Scene 3: Earth. Matches CPU build_earth() (src/TheRestOfYourLife/
 /// scenes_book.h) exactly: a single radius-2 sphere at the origin with the
@@ -2462,34 +2421,17 @@ static void build_depth_of_field_gpu(SceneData& scene) {
 	}
 }
 
-/// @brief Scene 32: Orthographic Camera. Matches CPU build_ortho_camera_scene()
-/// in spirit (ground + a row of colored lambertian spheres) - simplified to
-/// solid-color materials, same reasoning as scene 22 above. No emissive
-/// geometry either, matching CPU - build_ortho_sky() is a flat-color
-/// sky_light there, mirrored via backgroundColor in this scene's
-/// build_scene() case below, same as scene 22 (see that scene's comment for
-/// why - this scene had the identical spurious-overhead-light bug).
-static void build_ortho_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	const float3 colors[5] = {
-		make_float3(0.8f, 0.2f, 0.2f), make_float3(0.8f, 0.6f, 0.2f), make_float3(0.2f, 0.8f, 0.3f),
-		make_float3(0.2f, 0.4f, 0.9f), make_float3(0.7f, 0.2f, 0.8f)
-	};
-	for (int i = 0; i < 5; ++i) {
-		const int mat = add_lambertian(scene, colors[i]);
-		SphereData s{};
-		s.center = make_float3((i - 2) * 2.5f, 1.0f, 0.0f);
-		s.radius = 1.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-}
+// build_ortho_camera_scene_gpu() (former "scene 32" / D2 Orthographic
+// Camera GPU builder) deleted - D2 migrated to pbrt-backed, see
+// pbrt_scenes/ortho-camera-scene.pbrt and its case-32 removal above. Found
+// along the way (worth recording since it's now permanently gone rather
+// than just quietly fixed): this function's 5 sphere colors never matched
+// CPU's own build_ortho_camera_scene() formula
+// ((0.2+0.15*i, 0.3, 0.8-0.1*i)) at all - a real, pre-existing native
+// CPU/GPU divergence for this scene, presumably introduced the same way as
+// scene 33's own since-fixed drift noted just below (written independently
+// of the CPU version rather than ported from it). The migrated .pbrt file
+// uses CPU's real formula, so both backends now render identically.
 
 /// @brief Scene 33: Spherical Camera. Matches CPU build_spherical_camera_scene()
 /// in spirit (ground + a ring of colored spheres + one emissive sphere) -
@@ -2547,42 +2489,14 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
-/// @brief Scene 36: Realistic Camera. Matches CPU build_realistic_camera_scene()
-/// (ground + 5 colored spheres at increasing depth to show bokeh + one area
-/// light) - ground uses a flat gray instead of CPU's checker_texture, matching
-/// this file's established "no procedural textures on GPU" simplification
-/// used elsewhere (e.g. build_triangle_mesh_scene_gpu).
-static void build_realistic_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	const float3 sphere_colors[5] = {
-		make_float3(0.9f, 0.2f, 0.2f), make_float3(0.2f, 0.8f, 0.2f), make_float3(0.2f, 0.2f, 0.9f),
-		make_float3(0.8f, 0.8f, 0.2f), make_float3(0.8f, 0.2f, 0.8f)
-	};
-	for (int i = 0; i < 5; ++i) {
-		const float z = 2.0f + i * 1.5f;
-		const int mat = add_lambertian(scene, sphere_colors[i]);
-		SphereData s{};
-		s.center = make_float3(0.0f, 1.0f, z);
-		s.radius = 0.8f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	SphereData lightSphere{};
-	lightSphere.center = make_float3(0.0f, 8.0f, 5.0f);
-	lightSphere.radius = 2.0f;
-	lightSphere.materialIdx = mat_light;
-	scene.spheres.push_back(lightSphere);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-}
+// build_realistic_camera_scene_gpu() (former "scene 36" / D4 Realistic
+// Camera GPU builder) deleted - D4 migrated to pbrt-backed, see
+// pbrt_scenes/realistic-camera-scene.pbrt and its case-36 removal above.
+// Unlike scene 32/D2 just above, this one's 5 sphere colors DID already
+// match CPU's own sphere_colors[] exactly - only the ground (flat gray vs.
+// CPU's checker_texture) and lens (identical to D8's own, already carried
+// forward into geometry/dgauss-9-element.dat) needed reconciling, both
+// resolved by this migration.
 
 /// @brief B23/B24: Glass/Frosted Prism Dispersion geometry, screen, and
 /// light - shared by both scenes (case 131/136 below), parameterized on the
@@ -3347,158 +3261,17 @@ static void build_measured_brdf_scene_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
-/// @brief Scene 37: Triangle Mesh. Matches CPU build_triangle_mesh_scene()
-/// exactly - same golden-ratio icosahedron vertex/face construction, same
-/// gold metal material, same ground/light placement, and (via
-/// add_checker_texture_gpu(), added for scene 38's ground) the same real
-/// checker-textured ground rather than the flat-gray approximation this
-/// scene used before that helper existed.
-static void build_triangle_mesh_scene_gpu(SceneData& scene) {
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
-		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	const int mat_ground = add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
-	SphereData ground = make_ground_sphere_1000(mat_ground);
-	scene.spheres.push_back(ground);
+// build_triangle_mesh_scene_gpu() (former "scene 37" / F2 Triangle Mesh
+// GPU builder) deleted - F2 migrated to pbrt-backed, see
+// pbrt_scenes/triangle-mesh-scene.pbrt and its case-37 removal above.
 
-	// Regular icosahedron: 12 vertices at golden-ratio coordinates, 20 faces.
-	// Matches src/TheRestOfYourLife/scenes_advanced.h's build_triangle_mesh_scene() exactly.
-	const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f;
-	const float radius = 1.5f;
-	const float3 raw_verts[12] = {
-		make_float3(-1,  phi,  0), make_float3( 1,  phi,  0), make_float3(-1, -phi,  0), make_float3( 1, -phi,  0),
-		make_float3( 0, -1,  phi), make_float3( 0,  1,  phi), make_float3( 0, -1, -phi), make_float3( 0,  1, -phi),
-		make_float3( phi,  0, -1), make_float3( phi,  0,  1), make_float3(-phi,  0, -1), make_float3(-phi,  0,  1),
-	};
-	const float vert_len = length(raw_verts[0]);
-	const float3 center = make_float3(0.0f, 2.5f, 0.0f);
-
-	float3 verts[12];
-	for (int i = 0; i < 12; ++i) {
-		float3 v = raw_verts[i];
-		verts[i] = center + (radius / vert_len) * v;
-	}
-	const int faces[20][3] = {
-		{0,11,5}, {0,5,1}, {0,1,7}, {0,7,10}, {0,10,11},
-		{1,5,9}, {5,11,4}, {11,10,2}, {10,7,6}, {7,1,8},
-		{3,9,4}, {3,4,2}, {3,2,6}, {3,6,8}, {3,8,9},
-		{4,9,5}, {2,4,11}, {6,2,10}, {8,6,7}, {9,8,1},
-	};
-
-	const int mat_mesh = add_metal(scene, make_float3(0.8f, 0.6f, 0.2f), 0.15f);
-	for (const auto& f : faces) {
-		TriangleData t{};
-		t.p0 = verts[f[0]];
-		t.p1 = verts[f[1]];
-		t.p2 = verts[f[2]];
-		t.materialIdx = mat_mesh;
-		scene.triangles.push_back(t);
-	}
-
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
-	scene.spheres.push_back(light);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-}
-
-/// @brief Scene 72: Curve Fibers. Matches CPU build_curve_fibers_scene()
-/// (src/TheRestOfYourLife/scenes_advanced.h) exactly in strand placement
-/// (same 70-strand Fibonacci-disk arrangement, same deterministic hash01
-/// pseudo-random, same windswept lean/taper), but NOT in intersection
-/// method: the CPU side renders each strand as a real CurveShape with an
-/// exact recursive-subdivision ray-curve test, while this GPU builder
-/// tessellates each strand into a tapered tube of bilinear patches
-/// (curve_tessellate.h) and feeds them into the SAME bilinear-patch GPU
-/// pipeline scene F1 already uses - no new OptiX intersection program,
-/// hit group, or GAS/SBT wiring needed. This mirrors pbrt-v4's own GPU
-/// backend, which dices curves into bilinear patches for the identical
-/// reason (see curve_tessellate.h's header comment): the real recursive
-/// curve-intersection algorithm is a poor fit for the GPU. The tube reads
-/// as slightly faceted up close compared to the CPU's perfectly smooth
-/// curve - an expected, documented tessellation trade-off, not a bug.
-static void build_curve_fibers_scene_gpu(SceneData& scene) {
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
-		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	const int mat_ground = add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
-	SphereData ground = make_ground_sphere_1000(mat_ground);
-	scene.spheres.push_back(ground);
-
-	// Same 5 hair tones as build_curve_fibers_scene() (CPU) / build_hair_fibers()
-	// (scene 19): dark brown, blonde, auburn, silver, black.
-	const float3 palette[5] = {
-		make_float3(0.25f, 0.14f, 0.06f),
-		make_float3(0.80f, 0.65f, 0.35f),
-		make_float3(0.45f, 0.13f, 0.05f),
-		make_float3(0.75f, 0.75f, 0.78f),
-		make_float3(0.03f, 0.03f, 0.03f),
-	};
-	int matIdx[5];
-	for (int c = 0; c < 5; ++c) matIdx[c] = add_lambertian(scene, palette[c]);
-
-	// Deterministic per-strand pseudo-random in [0,1) - identical hash to
-	// build_curve_fibers_scene()'s own hash01 lambda, so both backends grow
-	// the same 70 strands from the same roots/heights/leans.
-	auto hash01 = [](int i, int salt) -> float {
-		unsigned int h = static_cast<unsigned int>(i) * 374761393u
-		                + static_cast<unsigned int>(salt) * 668265263u;
-		h = (h ^ (h >> 13)) * 1274126177u;
-		h ^= (h >> 16);
-		return static_cast<float>(h & 0xFFFFFFu) / static_cast<float>(0xFFFFFFu);
-	};
-
-	const int strand_count = 70;
-	const float disk_radius = 1.4f;
-	const float golden_angle = 2.399963229728653f;  // sunflower packing (~137.5 deg)
-	const int n_length = 10, n_radial = 8;           // tube tessellation density
-
-	std::vector<curve_tessellate::Quad> quads;
-	for (int i = 0; i < strand_count; ++i) {
-		float frac = (i + 0.5f) / strand_count;
-		float r = disk_radius * std::sqrt(frac);
-		float angle = i * golden_angle;
-		float bx = r * std::cos(angle);
-		float bz = r * std::sin(angle);
-
-		float height = 0.9f + 0.5f * hash01(i, 1);
-		float lean   = height * (0.35f + 0.35f * hash01(i, 2));
-
-		float cp[4][3] = {
-			{ bx,               0.0f,          bz },
-			{ bx + 0.15f*lean,  height*0.33f,  bz },
-			{ bx + 0.55f*lean,  height*0.70f,  bz },
-			{ bx + lean,        height,        bz },
-		};
-
-		quads.clear();
-		curve_tessellate::tessellate(cp, 0.0f, 1.0f, 0.045f, 0.006f, n_length, n_radial, quads);
-
-		const int mat = matIdx[i % 5];
-		for (const curve_tessellate::Quad& q : quads) {
-			BilinearPatchData p{};
-			p.p00 = make_float3(q.p00[0], q.p00[1], q.p00[2]);
-			p.p10 = make_float3(q.p10[0], q.p10[1], q.p10[2]);
-			p.p01 = make_float3(q.p01[0], q.p01[1], q.p01[2]);
-			p.p11 = make_float3(q.p11[0], q.p11[1], q.p11[2]);
-			p.materialIdx = mat;
-			scene.bilinearPatches.push_back(p);
-		}
-	}
-
-	// Overhead area light - matches CPU's quad(-2.5,4.0,-2.5)/(5,0,0)/(0,0,5).
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	QuadData lq{};
-	lq.Q = make_float3(-2.5f, 4.0f, -2.5f);
-	lq.u = make_float3(5.0f, 0.0f, 0.0f);
-	lq.v = make_float3(0.0f, 0.0f, 5.0f);
-	const float3 lc = cross(lq.u, lq.v);
-	lq.w = lc;
-	lq.normal = normalize(lc);
-	lq.D = dot(lq.normal, lq.Q);
-	lq.materialIdx = mat_light;
-	scene.quads.push_back(lq);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Quad);
-}
+// build_curve_fibers_scene_gpu() (former "scene 72" / F4 Curve Fibers GPU
+// builder) deleted - F4 migrated to pbrt-backed, see
+// pbrt_scenes/curve-fibers-scene.pbrt and its case-72 removal above. Real
+// pbrt Shape "curve" already tessellates into bilinear patches on this
+// loader's own generic pbrt_gpu_builder.h path (see that file's own "----
+// curves ----" section), the identical strategy this deleted function used
+// by hand.
 
 
 // Imported third-party mesh gallery (Stanford models onward, plus Sponza/
@@ -4658,25 +4431,10 @@ bool build_scene(
 					}
 					break;
 
-				case 2:  // Checkered Spheres
-					build_checkered_spheres(scene);
-
-					// Configure camera. Same Fixed-mode situation as scene 1
-					// above (no CameraMode::UserControlled in this scene's
-					// registry entry, and the same force_camera_override
-					// escape hatch for video mode) - ignore cam_x/y/z by
-					// default, matching CPU exactly, rather than placing the
-					// camera at whatever Cornell-Box-scale position happened
-					// to be leftover from a previous scene.
-					{
-						apply_mesh_camera(make_float3(13.0f, 2.0f, 3.0f), make_float3(0.0f, 0.0f, 0.0f), 20.0f);
-
-						// Warm sunset-ish flat background, matching CPU registry's
-						// bg=(0.90,0.75,0.55) for this scene - fits the "planet"
-						// motif and contrasts with the new accent spheres.
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.90f, 0.75f, 0.55f);
-					}
-					break;
+				// case 2 (Checkered Spheres / A3) migrated to pbrt-backed - see
+				// pbrt_scenes/checkered-spheres.pbrt and scene_registry_data.h's
+				// own entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 2 is no longer assigned to any scene.
 
 				case 3:  // Earth (see build_earth_gpu's comment)
 					build_earth_gpu(scene);
@@ -4897,57 +4655,11 @@ bool build_scene(
 								break;
 							}
 
-							case 32: {  // Orthographic Camera (parallel projection)
-								build_ortho_camera_scene_gpu(scene);
-								// lookfrom moved higher/farther back (was (0,3,12)) and the
-								// screen-window scale reduced (was 8) - matches CPU's
-								// setup_camera lambda for scene 32; see that lambda's comment
-								// for why the old values put ray origins below the giant
-								// ground sphere's surface for the bottom rows.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 10.0f, 20.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								float xmin, xmax, ymin, ymax;
-								if (aspect >= 1.0f) { xmin = -aspect; xmax = aspect; ymin = -1.0f; ymax = 1.0f; }
-								else                { xmin = -1.0f; xmax = 1.0f; ymin = -1.0f / aspect; ymax = 1.0f / aspect; }
-								constexpr float kScreenScale = 5.0f;
-								xmin *= kScreenScale; xmax *= kScreenScale; ymin *= kScreenScale; ymax *= kScreenScale;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3((xmax - xmin) * u.x, (xmax - xmin) * u.y, (xmax - xmin) * u.z);
-								const float3 vertical   = make_float3((ymax - ymin) * v.x, (ymax - ymin) * v.y, (ymax - ymin) * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x + xmin * u.x + ymin * v.x,
-									lookfrom.y + xmin * u.y + ymin * v.y,
-									lookfrom.z + xmin * u.z + ymin * v.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
-
-								if (out_camera_extra) {
-									out_camera_extra->kind = CameraKind::Orthographic;
-									out_camera_extra->lower_left_corner = lower_left_corner;
-									out_camera_extra->horizontal = horizontal;
-									out_camera_extra->vertical = vertical;
-									out_camera_extra->w = make_float3(-w.x, -w.y, -w.z);  // forward = negated look-from/look-at "backward" w
-									// Matches CPU's build_ortho_sky() flat sky_light(0.5,0.7,1.0) - see
-									// build_ortho_camera_scene_gpu's comment for why this replaced a
-									// synthetic overhead light.
-									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
-								}
-								break;
-							}
+							// case 32 (Orthographic Camera / D2) migrated to pbrt-backed -
+							// see pbrt_scenes/ortho-camera-scene.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 32
+							// is no longer assigned to any scene.
 
 							case 33: {  // Spherical (equirectangular) Camera
 								build_spherical_camera_scene_gpu(scene);
@@ -4987,95 +4699,13 @@ bool build_scene(
 								break;
 							}
 
-							case 36: {  // Realistic Camera (pbrt-v4 multi-element lens)
-								build_realistic_camera_scene_gpu(scene);
-								// Fixed-mode scene - let lookfrom track cam_x/y/z only under
-								// force_camera_override (video mode), matching CPU's scene 36
-								// setup_camera lambda; lookat stays fixed (this scene never
-								// overrides it, matching every other scene's convention). The
-								// oblique default (not dead-on with the sphere row) is required -
-								// see scene_registry.h's scene 36 comment: the row sits exactly on
-								// the old dead-on viewing axis, so the near sphere fully occluded
-								// the rest from every lens sample.
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 1.65f, 1.07f, -6.85f);
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, zero);
-								pack_float3(camera_params, 6, zero);
-								pack_float3(camera_params, 9, zero);
-
-								if (out_camera_extra) {
-									// Directly instantiate a host-side RealisticCamera<float> - reusing
-									// the CPU C++ class from cameras.h - so FocusThickLens/
-									// BoundExitPupil (both expensive, one-time precomputes) never need
-									// a CUDA port. Same lens table, focus distance, aperture, and
-									// camera-to-world as the CPU scene 36 (src/TheRestOfYourLife/
-									// scene_registry.h) - keep both in sync if either changes.
-									std::vector<float> lens = {
-										 35.98738f,  1.21638f, 1.54f,  23.716f,
-										 11.69718f,  9.9957f,  1.0f,   17.996f,
-										 13.08714f, 15.9948f,  1.77f,  12.364f,
-										-22.63294f,  2.7757f,  1.617f, 9.812f,
-										  0.0f,      2.75f,    0.0f,   7.4f,     // aperture stop
-										 36.3581f,   8.9722f,  1.617f, 12.7f,
-										-17.8595f,   1.2f,     1.0f,   12.7f,
-										100.0f,      2.9804f,  1.567f, 14.478f,
-										-24.5656f,   0.0f,     1.0f,   15.0f
-									};
-									Mat4<float> ctw = make_look_at<float>(
-										lookfrom.x, lookfrom.y, lookfrom.z,   // from
-										1.4f, 1.0f,  5.5f,   // to
-										0.0f, 1.0f,  0.0f    // up
-									);
-									// Film half-extents shrunk from 18/12mm (a full 35mm frame) to
-									// 3.0/2.0mm, and focus distance/camera position updated to an
-									// oblique framing of the sphere row - matches CPU's fix in
-									// scene_registry.h's scene 36 setup_camera lambda, see that
-									// comment for the full reasoning (lens vignetting at the old film
-									// size, plus the row sitting on the old dead-on viewing axis).
-									RealisticCamera<float> realCam(ctw, 3.0f, 2.0f, 12.4f, 8.0f, lens, 512);
-
-									scene.lensElements.clear();
-									for (int i = 0; i < realCam.num_elements(); ++i) {
-										GpuLensElement le{};
-										le.curvatureRadius = realCam.lens_curvature_radius(i);
-										le.thickness       = realCam.lens_thickness(i);
-										le.eta              = realCam.lens_eta(i);
-										le.apertureRadius   = realCam.lens_aperture_radius(i);
-										scene.lensElements.push_back(le);
-									}
-									scene.exitPupilBounds.clear();
-									for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
-										GpuExitPupilBounds b{};
-										b.xMin = realCam.exit_pupil_xmin(i);
-										b.xMax = realCam.exit_pupil_xmax(i);
-										b.yMin = realCam.exit_pupil_ymin(i);
-										b.yMax = realCam.exit_pupil_ymax(i);
-										b.degenerate = realCam.exit_pupil_degenerate(i) ? 1 : 0;
-										scene.exitPupilBounds.push_back(b);
-									}
-
-									CamVec3<float> wo = realCam.world_origin();
-									CamVec3<float> wr = realCam.world_right();
-									CamVec3<float> wu = realCam.world_up();
-									CamVec3<float> wf = realCam.world_forward();
-
-									out_camera_extra->kind = CameraKind::Realistic;
-									out_camera_extra->origin = make_float3(wo.x, wo.y, wo.z);
-									out_camera_extra->su = make_float3(wr.x, wr.y, wr.z);
-									out_camera_extra->sv = make_float3(wu.x, wu.y, wu.z);
-									out_camera_extra->sw = make_float3(wf.x, wf.y, wf.z);
-									out_camera_extra->film_half_x = realCam.film_half_x();
-									out_camera_extra->film_half_y = realCam.film_half_y();
-									out_camera_extra->lens_rear_z = realCam.lens_rear_z();
-									out_camera_extra->numLensElements = static_cast<int>(scene.lensElements.size());
-									out_camera_extra->numExitPupilBounds = static_cast<int>(scene.exitPupilBounds.size());
-								}
-								break;
-							}
+							// case 36 (Realistic Camera / D4) migrated to pbrt-backed - see
+							// pbrt_scenes/realistic-camera-scene.pbrt and
+							// scene_registry_data.h's own entry (reuses the same
+							// geometry/dgauss-9-element.dat lens table as D8's own
+							// migration). Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 36 is no
+							// longer assigned to any scene.
 
 							// cases 65/66/67/68 (Depth of Field/Orthographic/Spherical/
 							// Realistic Camera Cornell Box - D5/D6/D7/D8, each the exact
@@ -5133,11 +4763,11 @@ bool build_scene(
 								break;
 							}
 
-							case 72: {  // Curve Fibers (see build_curve_fibers_scene_gpu's comment)
-								build_curve_fibers_scene_gpu(scene);
-								apply_mesh_camera(make_float3(0.0f, 2.0f, 6.5f), make_float3(0.0f, 0.7f, 0.0f), 38.0f, true, make_float3(0.04f, 0.045f, 0.06f));
-								break;
-							}
+							// case 72 (Curve Fibers / F4) migrated to pbrt-backed - see
+							// pbrt_scenes/curve-fibers-scene.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 72
+							// is no longer assigned to any scene.
 
 							case 19: {  // Hair Fibers (pbrt-v4 HairBxDF)
 								build_hair_fibers_gpu(scene);
@@ -5158,11 +4788,11 @@ bool build_scene(
 								break;
 							}
 
-							case 37: {  // Triangle Mesh (see build_triangle_mesh_scene_gpu's comment)
-								build_triangle_mesh_scene_gpu(scene);
-								apply_mesh_camera(make_float3(0.0f, 4.0f, 8.0f), make_float3(0.0f, 2.5f, 0.0f), 35.0f, true, make_float3(0.05f, 0.05f, 0.08f));
-								break;
-							}
+							// case 37 (Triangle Mesh / F2) migrated to pbrt-backed - see
+							// pbrt_scenes/triangle-mesh-scene.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 37
+							// is no longer assigned to any scene.
 
 							case 18: {  // Principled Showcase (see build_principled_showcase_gpu's comment)
 								build_principled_showcase_gpu(scene);

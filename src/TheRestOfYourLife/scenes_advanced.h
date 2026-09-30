@@ -722,29 +722,9 @@ inline hittable_list build_rgb_grid_medium_scene() {
 	return world;
 }
 
-// ============================================================================
-// Scene 32: Orthographic Camera
-// Geometric showcase rendered with an orthographic camera
-// setup_camera lambda creates the OrthographicCamera<double>
-// ============================================================================
-inline hittable_list build_ortho_camera_scene() {
-	hittable_list world;
-	// Ground
-	auto checker = make_shared<checker_texture>(1.0, color(0.2,0.2,0.2), color(0.9,0.9,0.9));
-	world.add(make_shared<sphere>(point3(0,-100,0), 100, make_shared<lambertian>(checker)));
-	// Column of spheres at various heights
-	for (int i = 0; i < 5; ++i) {
-		double x = (i - 2) * 2.5;
-		world.add(make_shared<sphere>(point3(x, 1.0, 0), 1.0,
-									 make_shared<lambertian>(color(0.2+0.15*i, 0.3, 0.8-0.1*i))));
-	}
-	// Sky light
-	return world;
-}
-
-inline std::shared_ptr<sky_light> build_ortho_sky() {
-	return std::make_shared<sky_light>(color(0.5, 0.7, 1.0));
-}
+// build_ortho_camera_scene()/build_ortho_sky() deleted - D2 migrated to
+// pbrt-backed, see pbrt_scenes/ortho-camera-scene.pbrt and
+// scene_registry_data.h's own entry. Neither had any other consumer.
 
 // ============================================================================
 // Scene 33: Spherical Camera
@@ -898,86 +878,13 @@ inline std::shared_ptr<sky_light> build_portal_sky() {
 	return std::make_shared<sky_light>(color(0.55, 0.65, 0.85));
 }
 
-// ============================================================================
-// Scene 36: Realistic Camera
-// Spheres rendered through a simple realistic thin-lens camera model
-// ============================================================================
-inline hittable_list build_realistic_camera_scene() {
-	hittable_list world;
-	// Ground
-	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
-	// Row of spheres at varying depths to show bokeh
-	const color sphere_colors[] = {
-		color(0.9,0.2,0.2), color(0.2,0.8,0.2), color(0.2,0.2,0.9),
-		color(0.8,0.8,0.2), color(0.8,0.2,0.8)
-	};
-	for (int i = 0; i < 5; ++i) {
-		double z = 2.0 + i * 1.5;
-		world.add(make_shared<sphere>(point3(0, 1, z), 0.8,
-									 make_shared<lambertian>(sphere_colors[i])));
-	}
-	// Area light
-	world.add(make_shared<sphere>(point3(0, 8, 5), 2, make_shared<diffuse_light>(color(6,6,6))));
-	return world;
-}
+// build_realistic_camera_scene() deleted - D4 migrated to pbrt-backed, see
+// pbrt_scenes/realistic-camera-scene.pbrt and scene_registry_data.h's own
+// entry. No other consumer.
 
-// ============================================================================
-// Scene 37: Triangle Mesh
-// A procedurally-generated icosahedron (12 vertices, 20 triangular faces,
-// flat per-face geometric normals - no external .obj file needed) sitting on
-// a checkered ground, lit by an overhead area light. Exercises triangle.h's
-// real watertight Woop/Moller-Trumbore intersection (mesh.h's load_obj also
-// builds on triangle_mesh_data + triangle the same way; a procedural mesh
-// here sidesteps needing to source/commit an actual .obj asset).
-// ============================================================================
-inline hittable_list build_triangle_mesh_scene() {
-	hittable_list world;
-
-	// Ground
-	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
-
-	// Regular icosahedron: 12 vertices at golden-ratio coordinates, 20 faces.
-	const double phi = (1.0 + std::sqrt(5.0)) / 2.0;
-	const double radius = 1.5;
-	const point3 raw_verts[12] = {
-		point3(-1,  phi,  0), point3( 1,  phi,  0), point3(-1, -phi,  0), point3( 1, -phi,  0),
-		point3( 0, -1,  phi), point3( 0,  1,  phi), point3( 0, -1, -phi), point3( 0,  1, -phi),
-		point3( phi,  0, -1), point3( phi,  0,  1), point3(-phi,  0, -1), point3(-phi,  0,  1),
-	};
-	const double vert_len = raw_verts[0].length();  // all 12 raw verts share this length
-	const point3 center(0, 2.5, 0);
-
-	auto mesh_data = make_shared<triangle_mesh_data>();
-	mesh_data->positions.reserve(12);
-	for (const auto& v : raw_verts)
-		mesh_data->positions.push_back(center + (radius / vert_len) * v);
-	// No per-vertex normals -> triangle::hit() falls back to flat geometric
-	// normals per face (faceted look, matches a procedural low-poly showcase).
-	const int faces[20][3] = {
-		{0,11,5}, {0,5,1}, {0,1,7}, {0,7,10}, {0,10,11},
-		{1,5,9}, {5,11,4}, {11,10,2}, {10,7,6}, {7,1,8},
-		{3,9,4}, {3,4,2}, {3,2,6}, {3,6,8}, {3,8,9},
-		{4,9,5}, {2,4,11}, {6,2,10}, {8,6,7}, {9,8,1},
-	};
-	mesh_data->indices.reserve(60);
-	for (const auto& f : faces) {
-		mesh_data->indices.push_back(f[0]);
-		mesh_data->indices.push_back(f[1]);
-		mesh_data->indices.push_back(f[2]);
-	}
-
-	auto mesh_mat = make_shared<metal>(color(0.8, 0.6, 0.2), 0.15);
-	hittable_list tris;
-	for (int i = 0; i < mesh_data->num_triangles(); ++i)
-		tris.add(make_shared<triangle>(mesh_data, i, mesh_mat));
-	world.add(make_shared<bvh_node>(tris));
-
-	// Area light
-	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
-	return world;
-}
+// build_triangle_mesh_scene() deleted - F2 migrated to pbrt-backed, see
+// pbrt_scenes/triangle-mesh-scene.pbrt and scene_registry_data.h's own
+// entry. No other consumer.
 
 //==============================================================================================
 // Scene F4: Curve Fibers
@@ -990,67 +897,9 @@ inline hittable_list build_triangle_mesh_scene() {
 // scenes read as companions: B11 shows the shading model, this one shows the
 // actual fiber shape a real strand traces.
 //==============================================================================================
-inline hittable_list build_curve_fibers_scene() {
-	hittable_list world;
-
-	// Ground - same checker convention as scene F2 (Triangle Mesh)
-	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
-
-	// Deterministic per-strand pseudo-random in [0,1) - independent of the
-	// engine's global RNG so this scene's geometry is identical every run.
-	auto hash01 = [](int i, int salt) -> double {
-		unsigned int h = static_cast<unsigned int>(i) * 374761393u
-		                + static_cast<unsigned int>(salt) * 668265263u;
-		h = (h ^ (h >> 13)) * 1274126177u;
-		h ^= (h >> 16);
-		return (h & 0xFFFFFFu) / double(0xFFFFFFu);
-	};
-
-	// Same 5 hair tones as build_hair_fibers() (B11): dark brown, blonde,
-	// auburn, silver, black.
-	const color palette[5] = {
-		color(0.25, 0.14, 0.06),
-		color(0.80, 0.65, 0.35),
-		color(0.45, 0.13, 0.05),
-		color(0.75, 0.75, 0.78),
-		color(0.03, 0.03, 0.03),
-	};
-
-	const int strand_count = 70;
-	const double disk_radius = 1.4;
-	const double golden_angle = 2.399963229728653;  // sunflower packing (~137.5 deg)
-
-	for (int i = 0; i < strand_count; ++i) {
-		// Fibonacci sunflower disk placement - even root coverage with no RNG.
-		double frac = (i + 0.5) / strand_count;
-		double r = disk_radius * std::sqrt(frac);
-		double angle = i * golden_angle;
-		double bx = r * std::cos(angle);
-		double bz = r * std::sin(angle);
-
-		double height = 0.9 + 0.5 * hash01(i, 1);
-		double lean   = height * (0.35 + 0.35 * hash01(i, 2));  // windswept toward +x
-
-		double cx[4] = { bx, bx + 0.15*lean, bx + 0.55*lean, bx + lean };
-		double cy[4] = { 0.0, height*0.33,   height*0.70,    height    };
-		double cz[4] = { bz,  bz,            bz,             bz        };
-
-		auto curve = CurveShape<double>::make(
-			cx, cy, cz, 0.0, 1.0,
-			0.045, 0.006,             // tapered: thick root, fine tip
-			CurveType::Cylinder);      // round cross-section
-
-		auto mat = make_shared<lambertian>(palette[i % 5]);
-		world.add(make_shared<curve_shape_hittable>(curve, mat));
-	}
-
-	// Overhead area light
-	world.add(make_shared<quad>(point3(-2.5, 4.0, -2.5), vec3(5, 0, 0), vec3(0, 0, 5),
-		make_shared<diffuse_light>(color(6,6,6))));
-
-	return world;
-}
+// build_curve_fibers_scene() deleted - F4 migrated to pbrt-backed, see
+// pbrt_scenes/curve-fibers-scene.pbrt and scene_registry_data.h's own
+// entry. No other consumer.
 
 
 // ============================================================================
