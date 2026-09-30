@@ -64,7 +64,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A4", 190, SceneNames::Earth, SceneCategories::Basics,
             "Globe with earth texture mapping (requires earthmap.jpg)",
-            "Fast", "earth-globe.pbrt"),
+            "Fast", "earth-globe.pbrt", CameraMode::Fixed,
+            /*requires_files=*/true),
         {
             "A5", 4, SceneNames::PerlinSpheres, SceneCategories::Basics,
             "Spheres with Perlin noise marble texture",

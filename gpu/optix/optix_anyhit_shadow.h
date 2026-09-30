@@ -28,52 +28,91 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		return;
 	}
 
+	// Homogeneous Medium/DielectricMedium: real Beer-Lambert attenuation of
+	// the running shadow-ray transmittance (payload 1), NOT unconditional
+	// pass-through - matches CPU's hg_phase_material::shadow_transmittance_
+	// impl (constant_medium.h) and GPU-wavefront's identical branch
+	// (__anyhit__wf_shadow_sphere, wavefront_anyhit_shadow.h) exactly, using
+	// the same analytic near/far chord math. This replaced an earlier
+	// unconditional optixIgnoreIntersection() (below, still used for
+	// CloudMedium/RgbGridMedium/GridMedium, and for the dielectric-family
+	// surface types) that treated these two types as perfectly, losslessly
+	// transparent to every shadow ray - confirmed as the actual cause of a
+	// real CPU/GPU-recursive/GPU-wavefront 3-way brightness mismatch on B13
+	// (Subsurface Slab, MaterialCpuGpuParityTest.
+	// BrightnessAndChannelsConsistentAcrossBackends/Scene21_Subsurface_Slab):
+	// CPU and GPU-wavefront both already dim a shadow ray by the medium's
+	// own extinction; GPU-recursive alone let 100% of a light's contribution
+	// straight through the wax slab/jade sphere's own fill, every time
+	// medium_phase_nee_mis()'s interior phase-scatter NEE (optix_device_
+	// helpers_lighting.h) sampled a shadow ray back out through this same
+	// boundary toward a light - measured ~36-42% too bright vs. both other
+	// backends (which agreed with each other) before this fix.
+	if (mat.type == MaterialType::Medium || mat.type == MaterialType::DielectricMedium) {
+		const float3 ray_orig = optixGetWorldRayOrigin();
+		const float3 ray_dir = optixGetWorldRayDirection();  // unit length by construction (trace_shadow_ray's own callers)
+		const bool is_box = (sphere.shapeKind == GpuMediumShapeKind::Box);
+		float t_near, t_far;
+		if (is_box) {
+			float bn, bf;
+			box_slab_intersect(ray_orig, ray_dir, sphere.boxMin, sphere.boxMax, bn, bf);
+			t_near = fmaxf(0.0f, bn);
+			t_far = bf;
+		} else {
+			// Object-space center/radius via the intersection program's own
+			// reported attributes (time-interpolated for a moving sphere) -
+			// see __closesthit__sphere's identical read just above, in this
+			// same translation unit's own optix_intersection_sphere.h.
+			const float3 sphere_center = make_float3(
+				__int_as_float(optixGetAttribute_0()),
+				__int_as_float(optixGetAttribute_1()),
+				__int_as_float(optixGetAttribute_2()));
+			const float sphere_radius = __int_as_float(optixGetAttribute_3());
+			const float3 oc = ray_orig - sphere_center;
+			const float half_b = dot(oc, ray_dir);
+			const float c = dot(oc, oc) - sphere_radius * sphere_radius;
+			const float disc = fmaxf(0.0f, half_b * half_b - c);
+			const float sq = sqrtf(disc);
+			t_near = fmaxf(0.0f, -half_b - sq);
+			t_far = -half_b + sq;
+		}
+		const float sigma_t = (mat.type == MaterialType::Medium)
+			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
+		// shadow_t (this function's own optixGetRayTmax(), read above) is the
+		// shadow ray's ORIGINAL max_distance (the light's own distance) for
+		// every candidate along an all-ignoring traversal like this one - the
+		// same quantity wavefront's WfShadowPayload::tMax caches explicitly.
+		const float segFar = fminf(t_far, shadow_t);
+		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
+		float transmittance = __uint_as_float(optixGetPayload_1());
+		transmittance *= expf(-sigma_t * segLen);
+		optixSetPayload_1(__float_as_uint(transmittance));
+		if (transmittance <= 0.0f) {
+			optixSetPayload_0(1);  // fully attenuated - treat as occluded
+			optixTerminateRay();
+			return;
+		}
+		optixIgnoreIntersection();  // continue traversal (attenuated, not occluding)
+		return;
+	}
+
 	// Transmissive materials let light through -- ignore them in shadow rays.
-	// Medium (participating media) is included here too: full Beer-Lambert
-	// shadow-ray transmittance isn't implemented, so it's treated as
-	// non-occluding (light passes straight through) rather than wrongly
-	// blocking NEE entirely - a reasonable simplification matching how
-	// this file already approximates other volumetric-adjacent cases.
-	// CloudMedium's, RgbGridMedium's, and GridMedium's trigger spheres get
-	// the same treatment for the same reason - without this, every shadow
-	// ray toward a light on the far side of one of these bounding spheres
-	// would be wrongly treated as fully occluded, rather than just passing
-	// through
-	// unattenuated.
-	//
-	// MaterialType::DielectricMedium belongs in this list for the identical
-	// reason, and its omission was a real bug (found while adding real NEE
-	// to that material's medium-interior phase-scatter case - see
-	// optix_intersection_sphere.h's DielectricMedium comment): CPU's
-	// equivalent two-hittable construction (an outer `class dielectric`
-	// shell wrapping a `constant_medium` fill, src/TheRestOfYourLife/
-	// scenes_advanced.h build_subsurface_slab()) is non-occluding for
-	// shadow rays on BOTH layers (dielectric::is_shadow_transmissive() and
-	// hg_phase_material::is_shadow_transmissive(), material_simple.h /
-	// constant_medium.h, both return true) - so CPU shadow rays pass
-	// straight through the wax slab/jade sphere entirely. Without
-	// DielectricMedium here, GPU's shadow any-hit instead treated that same
-	// sphere/box as a fully opaque occluder, so EVERY shadow ray whose path
-	// crossed the slab/jade sphere - not just the new phase-scatter NEE's
-	// own shadow rays, but any other surface's NEE shadow ray that happened
-	// to graze it too - was wrongly reported occluded. This alone made the
-	// phase-scatter NEE fix above measure as a no-op (every one of its
-	// shadow rays died right here, at the medium's own boundary, before
-	// ever reaching the light). MaterialType::GridMedium had the IDENTICAL
-	// bug at the same time, for the same reason - the round that added real
-	// NEE to Medium/CloudMedium/RgbGridMedium/GridMedium's own phase-scatter
-	// cases updated this list for the other three but missed GridMedium,
-	// caught by a follow-up review pass; a code-review lesson worth
-	// repeating here since it already happened once for DielectricMedium.
+	// CloudMedium's/RgbGridMedium's/GridMedium's trigger spheres get the
+	// same unconditional pass-through as the dielectric-family surface types
+	// below: their heterogeneous ratio-tracking (wavefront_anyhit_shadow.h's
+	// own CloudMedium/RgbGridMedium/GridMedium branches) hasn't been ported
+	// to this shadow-ray path yet, so - like Medium/DielectricMedium used to
+	// be, just above - they're treated as non-occluding (light passes
+	// straight through) rather than wrongly blocking NEE entirely. Without
+	// this, every shadow ray toward a light on the far side of one of these
+	// bounding spheres would be wrongly treated as fully occluded.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Medium ||
 		mat.type == MaterialType::CloudMedium ||
 		mat.type == MaterialType::RgbGridMedium ||
 		mat.type == MaterialType::GridMedium ||
-		mat.type == MaterialType::DielectricMedium ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;

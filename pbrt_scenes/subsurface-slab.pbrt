@@ -22,20 +22,35 @@
 # (verified directly - see cornell-smoke.pbrt/A8's own header comment for
 # the full explanation), so the slab's real box shape (both its surface AND
 # its medium) is approximated here as a sphere instead, centered on the
-# native box's own centroid (270,0,230)-(470,300,390) with a radius
-# (200) comfortably covering its half-diagonal (~197.2). Unlike A8/E1,
-# this IS a real regression from native GPU too (native's own GPU builder,
+# native box's own centroid (270,0,230)-(470,300,390). Unlike A8/E1, this
+# IS a real regression from native GPU too (native's own GPU builder,
 # deleted by this migration, already used a genuine box -
 # GpuMediumShapeKind::Box - matching CPU exactly) - a rectangular slab
 # becomes a round blob. Accepted as the fastest path; a proper fix would
 # extend this loader with real trianglemesh-medium support (a Triangle::
 # medium field, a CPU secondary boundary BVH, and GPU's existing
 # GpuMediumShapeKind::Box wired generically) - out of scope for this
-# migration. Radius shrunk from the box's own true half-diagonal (~197.2)
-# to 160 so this sphere doesn't overlap the jade sphere below (center-to-
-# center distance is only ~265, so a radius above ~165 would visibly
-# intersect it) - already an approximation, so undershooting the box's
-# far corners slightly is the lesser problem.
+# migration.
+#
+# Radius is 150, NOT the box's own true half-diagonal (~197.2) or even the
+# ~160-165 that just clears the jade sphere (center-to-center distance is
+# ~265, jade radius 90, so up to ~175 would still clear jade) - it's capped
+# at the box's own half-HEIGHT instead (box spans y=[0,300], centroid
+# y=150) so the sphere's bottom sits exactly at the floor (y=0) rather than
+# poking through it. A radius of 160 (this file's first version) put the
+# sphere's bottom at y=-10 - a real, self-inflicted interpenetrating-
+# geometry bug (sphere clipping through the Cornell floor quad), NOT the
+# disclosed box-vs-sphere shape difference - and was the actual root cause
+# of a real CPU/GPU-recursive/GPU-wavefront 3-way brightness divergence
+# (MaterialCpuGpuParityTest.BrightnessAndChannelsConsistentAcrossBackends/
+# Scene21_Subsurface_Slab, ~38-44% relative diff on all three backend
+# pairs) caught by the full test suite after this migration's first
+# commit: CPU and GPU-wavefront agreed closely with each other but
+# GPU-recursive was a large outlier, exactly the "different backends
+# resolve coincident surfaces differently" signature, not ordinary Monte-
+# Carlo noise. Fixed by capping the radius at 150 instead of widening the
+# test's tolerance (which the test's own failure message explicitly warns
+# against doing blindly).
 #
 # sigma_s derivation: same density/albedo -> sigma_s formula as A8/E1 - see
 # cornell-smoke.pbrt's own header comment.
@@ -82,7 +97,7 @@ AttributeBegin
   Translate 370 150 310
   Material "dielectric" "float eta" [ 1.4 ]
   MediumInterface "wax" ""
-  Shape "sphere" "float radius" [ 160 ]
+  Shape "sphere" "float radius" [ 150 ]
 AttributeEnd
 
 # ---------------------------------------------------------------- jade sphere

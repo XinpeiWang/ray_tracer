@@ -862,13 +862,31 @@ __device__ __forceinline__ float sphere_light_pdf(
 
 // Trace a shadow ray to test visibility
 // Returns true if path to light is unoccluded (false if occluded)
+//
+// `out_transmittance` (optional): when non-null, receives the shadow ray's
+// real Beer-Lambert transmittance through any homogeneous Medium/
+// DielectricMedium sphere it passed through en route (1.0 if it crossed
+// none, 0.0 if fully occluded) - see __anyhit__shadow_sphere's own comment
+// (optix_anyhit_shadow.h) for why this exists: without it, GPU-recursive
+// treated these two material types as perfectly, losslessly transparent to
+// every shadow ray, unlike CPU (constant_medium.h's hg_phase_material::
+// shadow_transmittance_impl) and GPU-wavefront (WfShadowPayload::
+// transmittance), which both already attenuate. Every OTHER call site here
+// leaves this null and keeps its old pure-boolean behavior unchanged - the
+// any-hit program always computes the real value regardless (it has no way
+// to know which caller asked), so passing null just means a caller doesn't
+// read it, not that the medium goes unattenuated for some other caller's
+// shadow ray that happens to cross the same sphere.
 __device__ __forceinline__ bool trace_shadow_ray(
 	const float3& origin,
 	const float3& direction,
-	float max_distance
+	float max_distance,
+	float* out_transmittance = nullptr
 ) {
-	// Pack shadow payload (single bool: occluded)
+	// Pack shadow payload (bool: occluded, plus a running medium
+	// transmittance - see this function's own header comment above).
 	unsigned int occluded = 1;  // Default to occluded (will be set to 0 if miss)
+	unsigned int transmittance_bits = __float_as_uint(1.0f);
 
 	// Nudge the origin along the ray's own travel direction before tracing,
 	// mirroring optix_raygen.h's scatter_origin = hit_point + 0.01f *
@@ -918,8 +936,13 @@ __device__ __forceinline__ bool trace_shadow_ray(
 		RAY_TYPE_SHADOW,               // SBT offset (shadow ray type)
 		RAY_TYPE_COUNT,                // SBT stride (number of ray types)
 		RAY_TYPE_SHADOW,               // Miss SBT index
-		occluded                       // Payload (single unsigned int)
+		occluded,                      // Payload 0 (occluded bool)
+		transmittance_bits             // Payload 1 (medium transmittance, float bits)
 	);
+
+	if (out_transmittance) {
+		*out_transmittance = (occluded == 0) ? __uint_as_float(transmittance_bits) : 0.0f;
+	}
 
 	// Return true if NOT occluded (path is clear)
 	return (occluded == 0);
@@ -1049,11 +1072,20 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 			float light_pdf = selection_pdf * geom_pdf;
 			if (light_pdf > 1e-6f) {
 				float phase_val = hg_phase_value(dot(wo, to_light), g);
-				if (trace_shadow_ray(medium_point, to_light, max_dist)) {
+				// shadow_tr: real Beer-Lambert transmittance through any
+				// Medium/DielectricMedium boundary this shadow ray exits
+				// through (e.g. this same medium's own surface) - see
+				// trace_shadow_ray()'s own comment and __anyhit__shadow_
+				// sphere's (optix_anyhit_shadow.h) for why this matters here
+				// specifically: an interior phase-scatter shadow ray almost
+				// always has to cross back out through its own medium's
+				// boundary to reach an external light.
+				float shadow_tr = 0.0f;
+				if (trace_shadow_ray(medium_point, to_light, max_dist, &shadow_tr)) {
 					float mis_weight = mis_power_heuristic(light_pdf, phase_val);
 					medium_emission = medium_emission +
 						(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission
-						* camera_medium_shadow_trans(max_dist);
+						* shadow_tr * camera_medium_shadow_trans(max_dist);
 				}
 			}
 		}
@@ -1065,11 +1097,15 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 			sample_sky_nee(seed, skyColor, medium_point, sky_dir, pdf_sky, sky_Le_val);
 			if (pdf_sky > 0.0f) {
 				float phase_val_sky = hg_phase_value(dot(wo, sky_dir), g);
-				if (trace_shadow_ray(medium_point, sky_dir, 1e30f)) {
+				// See the area-light NEE block just above for why shadow_tr
+				// matters here (this same shadow ray still has to cross back
+				// out through its own medium's boundary).
+				float shadow_tr = 0.0f;
+				if (trace_shadow_ray(medium_point, sky_dir, 1e30f, &shadow_tr)) {
 					float mis_weight = mis_power_heuristic(pdf_sky, phase_val_sky);
 					medium_emission = medium_emission +
 						(mis_weight * phase_val_sky / pdf_sky) * attenuation * sky_Le_val
-						* camera_medium_shadow_trans(1e30f);
+						* shadow_tr * camera_medium_shadow_trans(1e30f);
 				}
 			}
 		}
