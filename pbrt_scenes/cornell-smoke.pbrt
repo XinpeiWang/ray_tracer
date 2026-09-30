@@ -1,0 +1,99 @@
+# cornell-smoke.pbrt -- migration of the native "A8 Cornell Smoke" demo
+# scene (src/TheRestOfYourLife/scenes_book.h's build_cornell_smoke()) to a
+# pbrt-backed scene, part of this project's GPU scene-construction-
+# duplication elimination.
+#
+# Cornell box geometry (walls) is IDENTICAL to cornell-box-native.pbrt (A1)
+# - see that file's own header comment for the quad convention. The light
+# here is a different size/color (330x305, color(7,7,7)) than A1's own.
+#
+# Fog boxes: native wraps each box in constant_medium(box, density, albedo)
+# and NEVER separately adds the box itself to the world - the box's own
+# material is entirely unused (constant_medium's hit() overrides shading
+# completely, using only the boundary's geometry for entry/exit).
+#
+# KNOWN, DISCLOSED divergence from native CPU's own box boundary: this
+# loader's MediumInterface support was only ever wired up for Shape
+# sphere/disk/cylinder/cone/paraboloid - pbrt_flatten::Triangle has no
+# `medium` field at all, so MediumInterface on a trianglemesh box is
+# silently dropped (verified directly: an earlier version of this file used
+# a real box here and rendered with NO visible fog at all, on both
+# backends). Reproduced instead as a sphere via the established "near-
+# invisible dielectric shell (eta~1.001) + MediumInterface" convention this
+# loader's own bundled cloud-medium.pbrt/cylinder-medium.pbrt examples use -
+# NOT a new approximation: native's own GPU builder (deleted by this
+# migration) already approximated both these boxes as spheres at these
+# exact same centers/radii (GPU media were sphere-only when it was
+# written), so this matches an already-accepted native GPU look exactly,
+# not a fresh compromise. CPU's native box shape is the one real fidelity
+# loss here.
+#
+# sigma_a/sigma_s: native's constant_medium(boundary, density, albedo_color)
+# 3-arg constructor sets sigma_a=0, sigma_s=density (a SCALAR), and the
+# phase function's own colour comes from albedo_color directly, unweighted.
+# This loader's real pbrt-v4 homogeneous medium instead takes sigma_a/
+# sigma_s as full RGB triples, deriving its own "sigma_s / luminance(sigma_s)"
+# colour internally (pbrt_cpu_builder.h's addMediumIfPresent) - solved
+# exactly (not guessed) so the two match: sigma_s = (density /
+# luminance(albedo_color)) * albedo_color, which cancels back out to
+# albedo_color after the loader's own luminance-normalization and preserves
+# luminance(sigma_s) = density exactly (luminance = Rec.709 0.2126/0.7152/
+# 0.0722, matching this loader's own formula bit-for-bit).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 7 7 7 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 113 554 127   443 554 127   443 554 432   113 554 432 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- fog spheres
+# Sphere centers/radii match native GPU's own former sphere approximation
+# exactly (build_cornell_smoke_gpu, deleted by this migration): box1's
+# center+165/2, box2's center+82.5 - see this file's own header comment.
+MakeNamedMedium "smoke1" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.0072089737 0.0100925632 0.0173015370 ]
+
+AttributeBegin
+  Translate 347 165 377
+  Material "dielectric" "float eta" [ 1.001 ]
+  MediumInterface "smoke1" ""
+  Shape "sphere" "float radius" [ 115 ]
+AttributeEnd
+
+MakeNamedMedium "smoke2" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.0115762178 0.0098397851 0.0069457307 ]
+
+AttributeBegin
+  Translate 212 82 147
+  Material "dielectric" "float eta" [ 1.001 ]
+  MediumInterface "smoke2" ""
+  Shape "sphere" "float radius" [ 82 ]
+AttributeEnd

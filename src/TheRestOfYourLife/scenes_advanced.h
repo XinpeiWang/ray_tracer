@@ -80,55 +80,9 @@ inline hittable_list build_principled_showcase() {
 	return world;
 }
 
-//==============================================================================================
-// Scene 19: Hair Fibers
-// A cluster of spheres using the hair_material to mimic fur/fiber appearance.
-// Each sphere uses slightly different hair parameters (color, roughness) to show variety.
-//==============================================================================================
-inline hittable_list build_hair_fibers() {
-	hittable_list world;
-
-	// Dark floor
-	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
-		make_shared<lambertian>(color(0.05, 0.05, 0.06))));
-
-	// Spacing widened (radius 1.0, min separation ~2.25) from the original
-	// tightly-packed cluster where every neighbor pair physically
-	// overlapped, so the 5 distinct hair colors read as 5 distinct spheres
-	// instead of fusing into one shape (same fix as build_principled_showcase()'s
-	// spacing - see that function's comment).
-	// Dark brown hair (default sigma_a)
-	world.add(make_shared<sphere>(point3(-3.5, 1, 0), 1.0,
-		make_shared<hair_material>(0.06, 0.10, 0.20, 0.25, 0.25, 2.0)));
-	// Blonde hair (low absorption, warm tint)
-	world.add(make_shared<sphere>(point3(-1.2, 1, 0.4), 1.0,
-		make_shared<hair_material>(0.01, 0.015, 0.03, 0.30, 0.30, 2.0)));
-	// Auburn hair (strong red absorption pattern)
-	world.add(make_shared<sphere>(point3(1.2, 1, -0.4), 1.0,
-		make_shared<hair_material>(0.02, 0.08, 0.18, 0.20, 0.20, 3.0)));
-	// White/silver fur (very low absorption, rough)
-	world.add(make_shared<sphere>(point3(3.5, 1, 0), 1.0,
-		make_shared<hair_material>(0.001, 0.001, 0.002, 0.45, 0.45, 1.0)));
-	// Fine black fur (very high absorption)
-	world.add(make_shared<sphere>(point3(0, 1, 2.3), 1.0,
-		make_shared<hair_material>(0.50, 0.55, 0.60, 0.15, 0.15, 2.0)));
-
-	// Overhead area light -- without a real light source, the scene was lit
-	// only by the flat ambient background. Intensity calibrated much
-	// dimmer than this codebase's other light-quad scenes (e.g.
-	// build_rough_metal_spheres()/build_principled_showcase() both use
-	// 6,6,6): hair's peak BSDF response (real hair strongly forward/
-	// specular-scatters) is far brighter than a typical diffuse/glossy
-	// surface's, so the same "normal" intensity blew the whole visible
-	// hemisphere to solid white under the ACES tone map. Confirmed by a
-	// direct sweep of light intensity alone (down to near-zero and back
-	// up) with scene geometry/depth held fixed - this was a lighting
-	// calibration issue, not a BSDF or path-throughput bug.
-	world.add(make_shared<quad>(point3(-5, 6, -5), vec3(10, 0, 0), vec3(0, 0, 7),
-		make_shared<diffuse_light>(color(0.22, 0.22, 0.19))));
-
-	return world;
-}
+// build_hair_fibers() deleted - B11 migrated to pbrt-backed, see
+// pbrt_scenes/hair-fibers-scene.pbrt and scene_registry_data.h's own entry.
+// No other consumer.
 
 //==============================================================================================
 // Scene 20: Normal Mapped Cornell Box
@@ -173,50 +127,9 @@ inline hittable_list build_normal_mapped_cornell() {
 	return world;
 }
 
-//==============================================================================================
-// Scene 21: Subsurface Slab
-// Cornell box with layered constant_medium objects that approximate subsurface
-// scattering: a translucent milk-white slab and a jade-green sphere.
-// True BSSRDF would require a separate path-length sampling loop;
-// here we use constant_medium (homogeneous participating media) to achieve
-// a similar translucent glow that shows light scattering inside the object.
-//==============================================================================================
-inline hittable_list build_subsurface_slab() {
-	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(12, 12, 12));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
-
-	// Translucent wax slab: opaque glass boundary + dense scattering interior
-	// Outer shell is dielectric (lets light in/out), interior is constant_medium (milky scattering)
-	auto glass = make_shared<dielectric>(1.4);
-	shared_ptr<hittable> slab = box(point3(0,0,0), point3(200,300,160), glass);
-	slab = make_shared<translate>(slab, vec3(270,0,230));
-	world.add(slab);
-	// Volumetric fill inside the slab (milky white, moderate density)
-	shared_ptr<hittable> slab_vol = box(point3(0,0,0), point3(200,300,160), glass);
-	slab_vol = make_shared<translate>(slab_vol, vec3(270,0,230));
-	world.add(make_shared<constant_medium>(slab_vol, 0.04, color(0.98, 0.96, 0.90)));
-
-	// Jade sphere: glass shell + green scattering interior
-	auto jade_glass = make_shared<dielectric>(1.5);
-	world.add(make_shared<sphere>(point3(160, 90, 160), 90, jade_glass));
-	world.add(make_shared<constant_medium>(
-		make_shared<sphere>(point3(160, 90, 160), 90, jade_glass),
-		0.06, color(0.1, 0.5, 0.2)));
-
-	return world;
-}
+// build_subsurface_slab() deleted - B13 migrated to pbrt-backed, see
+// pbrt_scenes/subsurface-slab.pbrt and scene_registry_data.h's own entry.
+// No other consumer.
 
 //==============================================================================================
 // Scene 22: Depth of Field
@@ -347,52 +260,12 @@ private:
 	aabb bbox;
 };
 
-inline hittable_list build_bilinear_patch_scene() {
-	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
-
-	// Bilinear patch saddle surface: four corners with different Y heights
-	// p00=bottom-left, p10=bottom-right, p01=top-left, p11=top-right
-	// Saddle: p00 and p11 high, p10 and p01 low (classic hyperbolic paraboloid)
-	// Roughness raised from 0.05 - at near-mirror sharpness the curved
-	// surface read as mostly flat dark metal with one tiny highlight, which
-	// doesn't actually show the curvature (the whole point of this shape).
-	// A broader, softer highlight lets the surface's shading gradient trace
-	// the saddle/ramp shape instead.
-	auto patch_mat = make_shared<metal>(color(0.8, 0.7, 0.3), 0.15);
-	world.add(make_shared<bilinear_patch_hittable>(
-		point3(150,  80, 200),   // p00 (u=0,v=0) -- higher
-		point3(400,  50, 200),   // p10 (u=1,v=0) -- lower
-		point3(150,  50, 400),   // p01 (u=0,v=1) -- lower
-		point3(400,  80, 400),   // p11 (u=1,v=1) -- higher
-		patch_mat
-	));
-
-	// Second patch: curved ramp (linear in u, curved in v). Roughness raised
-	// from 0.1 for the same reason as the saddle patch above.
-	auto blue_mat = make_shared<metal>(color(0.2, 0.4, 0.8), 0.25);
-	world.add(make_shared<bilinear_patch_hittable>(
-		point3(200, 200, 220),   // p00
-		point3(370, 200, 220),   // p10
-		point3(150, 380, 420),   // p01
-		point3(420, 320, 420),   // p11
-		blue_mat
-	));
-
-	return world;
-}
+// build_bilinear_patch_scene() deleted - F1 migrated to pbrt-backed, see
+// pbrt_scenes/bilinear-patch-scene.pbrt and scene_registry_data.h's own
+// entry. No other consumer. bilinear_patch_hittable itself (above) is NOT
+// deleted - the pbrt loader's own pbrt_cpu_builder.h builds real
+// Shape "bilinearmesh" geometry with it directly, and unit tests exercise
+// it too.
 
 // ============================================================================
 // Scene 24: HDRI Sky
@@ -498,162 +371,17 @@ inline std::shared_ptr<punctual_light_list> build_point_light_punct() {
 // cornell-goniometric.pbrt/cornell-projection.pbrt and scene_registry_data.h's
 // own entries. Neither had any other consumer.
 
-// ============================================================================
-// Scene 30: Homogeneous Medium
-// Cornell box filled with a homogeneous scattering fog
-// ============================================================================
-inline hittable_list build_homogeneous_medium_scene() {
-	hittable_list world;
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+// build_homogeneous_medium_scene() deleted - E1 migrated to pbrt-backed,
+// see pbrt_scenes/homogeneous-medium.pbrt and scene_registry_data.h's own
+// entry. No other consumer.
 
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light_mat));
+// build_cloud_medium_scene() deleted - E2 migrated to pbrt-backed, see
+// pbrt_scenes/cloud-medium-scene.pbrt and scene_registry_data.h's own
+// entry. No other consumer.
 
-	// Homogeneous fog fills the box (constant_medium with HenyeyGreenstein g=0.3).
-	// Boundary is a box inset 5 units from each wall, not a sphere: a sphere
-	// large enough to reach the room's face centers (needs r>277.5, the
-	// center-to-wall distance) necessarily also reaches past the room's
-	// corners into the walls themselves (r=400 vs the 480.6 corner
-	// distance), so the medium boundary was coincident with/inside the
-	// solid wall geometry over most of the room - every diffuse bounce off
-	// a wall then had to resolve overlapping medium/wall surfaces at
-	// (near-)zero distance, which is a classic source of severe, resistant
-	// noise (confirmed: unlike this scene, A8's Cornell Smoke - same
-	// constant_medium machinery, small boxes safely inset from every wall -
-	// converges cleanly at the same 300 spp; this scene stayed heavily
-	// noisy even at 5x that sample count until this fix).
-	auto box_boundary = box(point3(5,5,5), point3(550,550,550),
-							make_shared<lambertian>(color(1,1,1)));
-	world.add(make_shared<constant_medium>(box_boundary, 0.005, color(0.8, 0.9, 1.0), 0.3));
-
-	return world;
-}
-
-// ============================================================================
-// Scene 31: Cloud Medium
-// Open scene with a real heterogeneous, procedural Perlin-noise cloud volume
-// (pbrt-v4 CloudMedium, src/shared/cloud_medium.h - 5-octave Perlin FBm
-// density with wispiness perturbation and altitude falloff), rendered via
-// cloud_medium_hittable's delta-tracking hit() (see that file's comment).
-//
-// Previously this scene declared a `noise_texture` but never actually used
-// it - the medium itself was a plain uniform-density constant_medium
-// sphere, so despite the scene's name it rendered as a smooth, hard-edged
-// pale ball with no cloud-like structure at all. This is the CloudMedium
-// class actually being wired into a scene for the first time; GPU support
-// (a new MaterialType::CloudMedium + device-side delta tracking, since GPU
-// media were previously only ever homogeneous) is mirrored in
-// gpu/optix/scene_builder.cpp's build_cloud_medium_scene_gpu.
-// ============================================================================
-inline hittable_list build_cloud_medium_scene() {
-	hittable_list world;
-	// Ground
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
-								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
-
-	// Cloud's world-space AABB maps onto CloudMedium's [0,1]^3 medium space
-	// via a diagonal affine transform. CloudMedium's altitude-falloff term
-	// treats medium-y=0 as the cloud's dense base and medium-y=1 as
-	// thinned to nothing (pbrt-v4 convention), so the box's bottom face
-	// (world y=1) reads as the cloud's base and its top (world y=4) tapers
-	// off naturally - matches how real clouds look denser toward their
-	// base rather than being a uniform-density blob.
-	point3 cloud_min(-4, 1, -3), cloud_max(4, 4, 3);
-	double sx = 1.0 / (cloud_max.x() - cloud_min.x());
-	double sy = 1.0 / (cloud_max.y() - cloud_min.y());
-	double sz = 1.0 / (cloud_max.z() - cloud_min.z());
-	double world_to_medium_mat[9] = { sx,0,0,  0,sy,0,  0,0,sz };
-	double world_to_medium_translate[3] = {
-		-cloud_min.x()*sx, -cloud_min.y()*sy, -cloud_min.z()*sz
-	};
-	auto cloud_medium = CloudMedium<double>::make(
-		0.0, 0.0, 0.0,   1.0, 1.0, 1.0,          // medium-space bounds: unit cube
-		world_to_medium_mat, world_to_medium_translate,
-		0.0,    // sigma_a: pure scattering, no absorption (see cloud_medium_hittable.h)
-		10.0,   // sigma_s: majorant scattering coefficient. Was 40.0 - at that
-		        // value the medium's mean free path (~0.025 world units inside
-		        // a ~3-unit-thick cloud) made delta tracking take ~43 min for a
-		        // 500x500 @ 250spp CPU render. 10.0 keeps the cloud visually
-		        // dense (2.0 was tried first but rendered nearly transparent -
-		        // see cloud_medium_hittable.h's write-up of the algorithm)
-		        // while still cutting the average step count several-fold.
-		        // The GPU recursive backend's real bottleneck turned out to be
-		        // a separate bug (see CloudMedium::compute_density's
-		        // CPU_GPU_NOINLINE comment in cloud_medium.h) rather than
-		        // sigma_s itself, so this doesn't need to be pushed as low as
-		        // earlier iterations assumed.
-		0.3,    // phase_g: slight forward scattering (matches scene 30's fog)
-		1.0,    // density: noise-sum scale
-		1.0,    // wispiness: gradient-noise perturbation for wispy edges
-		4.0     // frequency: spatial frequency of the noise octaves
-	);
-	world.add(make_shared<cloud_medium_hittable>(cloud_medium, color(1,1,1),
-												 cloud_min, cloud_max));
-
-	// Background spheres for context - moved out to x=+-6 (was +-5, inside
-	// the cloud's own x:[-4,4] extent) and forward to z=4 (was -2, inside
-	// the cloud's z:[-3,3] depth) so they read clearly as beside/in front
-	// of the cloud instead of nearly buried in its silhouette; the camera's
-	// CameraConfig row was also widened (see scene_registry.h) so both are
-	// actually in frame at all, which they previously weren't either way.
-	world.add(make_shared<sphere>(point3(-6, 0.5, 4), 0.5,
-								 make_shared<lambertian>(color(0.9, 0.3, 0.2))));
-	world.add(make_shared<sphere>(point3(6, 0.5, 4), 0.5,
-								 make_shared<metal>(color(0.8,0.8,0.9), 0.05)));
-	return world;
-}
-
-// ============================================================================
-// Scene E3: Dielectric Medium Showcase
-// Three glass spheres, each containing a different colored internal fog at a
-// different density, showing the "dielectric surface + internal medium"
-// combination as its own subject - A9's Final Scene and B13's Subsurface
-// Slab already use this same combination, but only as one element among
-// several other things; this scene exists purely to show the range (thin
-// mist -> dense fog) side by side.
-//
-// CPU builds this the same way A9/B13 already do: the boundary shape is
-// added to `world` TWICE - once with a `dielectric` surface material, once
-// wrapped in `constant_medium` for the internal scattering - rather than one
-// combined material (see constant_medium's own header comment: the medium's
-// sampled hit distance can never be closer than the entry surface, so this
-// works without any explicit ordering logic). GPU instead uses the already-
-// wired single-material MaterialType::DielectricMedium fusion (see
-// build_dielectric_medium_scene_gpu in gpu/optix/scene_builder.cpp) since
-// that's the whole point of that material type existing.
-// ============================================================================
-inline hittable_list build_dielectric_medium_scene() {
-	hittable_list world;
-	// Ground
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
-								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
-
-	struct fog_sphere { double x; color albedo; double sigma_t; };
-	// sigma_t values chosen so optical depth (sigma_t * diameter, diameter=3)
-	// spans thin/misty (1.5) to dense/opaque (9.0) - a visibly different
-	// look per sphere, not just three different colors at the same density.
-	const fog_sphere spheres[3] = {
-		{ -4.0, color(0.9, 0.2, 0.2), 0.5 },  // thin red mist
-		{  0.0, color(0.2, 0.8, 0.3), 1.5 },  // medium green haze
-		{  4.0, color(0.3, 0.4, 0.9), 3.0 },  // dense blue fog
-	};
-	const double radius = 1.5;
-	for (const auto& s : spheres) {
-		auto boundary = make_shared<sphere>(point3(s.x, radius, 0), radius,
-											 make_shared<dielectric>(1.5));
-		world.add(boundary);
-		world.add(make_shared<constant_medium>(boundary, s.sigma_t, s.albedo));
-	}
-	return world;
-}
+// build_dielectric_medium_scene() deleted - E3 migrated to pbrt-backed, see
+// pbrt_scenes/dielectric-medium-showcase.pbrt and scene_registry_data.h's
+// own entry. No other consumer.
 
 // ============================================================================
 // Scene E4: RGB Grid Medium ("nebula")
@@ -726,35 +454,9 @@ inline hittable_list build_rgb_grid_medium_scene() {
 // pbrt-backed, see pbrt_scenes/ortho-camera-scene.pbrt and
 // scene_registry_data.h's own entry. Neither had any other consumer.
 
-// ============================================================================
-// Scene 33: Spherical Camera
-// 360-degree equirectangular panorama of a colorful scene
-// ============================================================================
-inline hittable_list build_spherical_camera_scene() {
-	hittable_list world;
-	// Ground
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
-								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
-	// Ring of colored spheres
-	for (int i = 0; i < 8; ++i) {
-		double angle = i * (2.0 * 3.14159265 / 8.0);
-		double cx = 4.0 * std::cos(angle);
-		double cz = 4.0 * std::sin(angle);
-		color c(0.2 + 0.5*std::abs(std::cos(angle)),
-				0.2 + 0.5*std::abs(std::sin(angle)),
-				0.5 + 0.3*std::cos(2*angle));
-		world.add(make_shared<sphere>(point3(cx, 1, cz), 1,
-									 make_shared<lambertian>(c)));
-	}
-	// Central emissive sphere
-	world.add(make_shared<sphere>(point3(0, 3, 0), 0.5,
-								 make_shared<diffuse_light>(color(10,10,10))));
-	return world;
-}
-
-inline std::shared_ptr<sky_light> build_spherical_sky() {
-	return std::make_shared<sky_light>(color(0.3, 0.5, 0.9));
-}
+// build_spherical_camera_scene()/build_spherical_sky() deleted - D3
+// migrated to pbrt-backed, see pbrt_scenes/spherical-camera-scene.pbrt and
+// scene_registry_data.h's own entry. Neither had any other consumer.
 
 // ============================================================================
 // B14: Measured BRDF
@@ -837,46 +539,9 @@ inline hittable_list build_measured_brdf_scene() {
 	return world;
 }
 
-// ============================================================================
-// Scene 35: Portal Infinite Light
-// Room scene with a portal window sampling sky through a planar quad
-// ============================================================================
-inline hittable_list build_portal_light_scene() {
-	hittable_list world;
-	auto white = make_shared<lambertian>(color(.73,.73,.73));
-	auto red   = make_shared<lambertian>(color(.65,.05,.05));
-	auto green = make_shared<lambertian>(color(.12,.45,.15));
-
-	// Room walls (no ceiling light -- sky comes through the portal)
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));  // right
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));    // left
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white)); // ceiling
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white)); // floor
-
-	// Back wall with an actual window cut into it (a "portal" the sky is
-	// visible through) instead of one solid quad. Previously the room was
-	// fully enclosed except for the same open-front convention every other
-	// Cornell scene here uses, so nothing in the render distinguished this
-	// scene as having a "portal" at all - a 245x245 hole (centered in the
-	// 555x555 wall), built from 4 border quads around it, gives the
-	// PortalImageInfiniteLight description something real to point at.
-	world.add(make_shared<quad>(point3(555,400,555), vec3(-555,0,0), vec3(0,155,0), white)); // top strip
-	world.add(make_shared<quad>(point3(555,0,555),   vec3(-555,0,0), vec3(0,155,0), white)); // bottom strip
-	world.add(make_shared<quad>(point3(555,155,555), vec3(-155,0,0), vec3(0,245,0), white)); // right-of-window strip
-	world.add(make_shared<quad>(point3(155,155,555), vec3(-155,0,0), vec3(0,245,0), white)); // left-of-window strip
-
-	// Objects inside
-	world.add(make_shared<sphere>(point3(190,100,190), 100, make_shared<metal>(color(0.8,0.8,0.9),0.05)));
-	return world;
-}
-
-inline std::shared_ptr<sky_light> build_portal_sky() {
-	// Sky light visible through the window (simulates portal sampling via
-	// sky_light). Dimmed from the original (1.0,1.2,1.5) - max component
-	// >1 was pushing the room toward overexposed even before the window
-	// narrowed how much of it reaches the room.
-	return std::make_shared<sky_light>(color(0.55, 0.65, 0.85));
-}
+// build_portal_light_scene()/build_portal_sky() deleted - C7 migrated to
+// pbrt-backed, see pbrt_scenes/portal-window-room.pbrt and
+// scene_registry_data.h's own entry. Neither had any other consumer.
 
 // build_realistic_camera_scene() deleted - D4 migrated to pbrt-backed, see
 // pbrt_scenes/realistic-camera-scene.pbrt and scene_registry_data.h's own

@@ -1,0 +1,87 @@
+# spherical-camera-scene.pbrt -- migration of the native "D3 Spherical
+# Camera" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_spherical_camera_scene()/build_spherical_sky()) to a pbrt-backed
+# scene, part of this project's GPU scene-construction-duplication
+# elimination.
+#
+# Camera: SphericalCamera ignores lookat the way other cameras use it (the
+# panorama covers the full sphere around the origin) - native's own
+# setup_camera lambda uses a fixed +Z forward reference instead (same
+# reasoning as cornell-spherical.pbrt/D7's own header comment): LookAt
+# lookfrom -> lookfrom+(0,0,1).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  0 1 0    0 1 1    0 1 0
+Camera "spherical"
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.3 0.5 0.9 ]
+
+Material "diffuse" "rgb reflectance" [ 0.4 0.5 0.3 ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# Ring of 8 colored spheres (angle = i*2*pi/8; color = (0.2+0.5|cos|,
+# 0.2+0.5|sin|, 0.5+0.3*cos(2*angle)) - computed exactly, not by hand)
+Material "diffuse" "rgb reflectance" [ 0.7 0.2 0.8 ]
+AttributeBegin
+  Translate 4.0000000000 1 0.0000000000
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5535533906 0.5535533906 0.5 ]
+AttributeBegin
+  Translate 2.8284271247 1 2.8284271247
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2 0.7 0.2 ]
+AttributeBegin
+  Translate 0.0000000000 1 4.0000000000
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5535533906 0.5535533906 0.5 ]
+AttributeBegin
+  Translate -2.8284271247 1 2.8284271247
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.7 0.2 0.8 ]
+AttributeBegin
+  Translate -4.0000000000 1 0.0000000000
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5535533906 0.5535533906 0.5 ]
+AttributeBegin
+  Translate -2.8284271247 1 -2.8284271247
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2 0.7 0.2 ]
+AttributeBegin
+  Translate 0.0000000000 1 -4.0000000000
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5535533906 0.5535533906 0.5 ]
+AttributeBegin
+  Translate 2.8284271247 1 -2.8284271247
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+# Central emissive sphere
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 10 10 10 ]
+  Translate 0 3 0
+  Shape "sphere" "float radius" [ 0.5 ]
+AttributeEnd

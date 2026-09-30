@@ -1,0 +1,82 @@
+# cornell-camera-motion-blur.pbrt -- migration of the native "D13 Camera
+# Motion Blur" demo scene (scene_registry_data.h's own D13 entry, which
+# reuses build_cornell_box()/build_cornell_box_lights() - A1's exact world -
+# with an animated camera instead of A1's static one) to a pbrt-backed
+# scene, part of this project's GPU scene-construction-duplication
+# elimination.
+#
+# Cornell box geometry is IDENTICAL to cornell-box-native.pbrt (A1) - see
+# that file's own header comment.
+#
+# Camera motion blur: pbrt-v4's real ActiveTransform "StartTime"/"EndTime"
+# idiom, bracketing two different LookAt keyframes BEFORE the Camera
+# directive (this loader's own real support - pbrt_scene.h's
+# Scene::cameraIsAnimated()/worldToCameraEnd). Native's own two keyframes:
+# lookfrom (278,278,-800) -> (378,278,-800) (lookat stays fixed at
+# (278,278,278) - a small sideways truck, not a rotation), over shutter
+# [0,1] (pbrt-v4's own default, matching native's shutter_open=0.0/
+# shutter_close=1.0 exactly).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+ActiveTransform "StartTime"
+LookAt  278 278 -800    278 278 278    0 1 0
+ActiveTransform "EndTime"
+LookAt  378 278 -800    278 278 278    0 1 0
+ActiveTransform "All"
+Camera "perspective" "float fov" [ 40 ] "float shutteropen" [ 0.0 ] "float shutterclose" [ 1.0 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 265 0 295
+  Rotate 15 0 1 0
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 165   165 0 165   165 330 165   0 330 165 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 165   165 0 0   165 330 0   165 330 165 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 0   0 0 0   0 330 0   165 330 0 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 165   0 330 165   0 330 0 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 330 165   165 330 165   165 330 0   0 330 0 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   165 0 0   165 0 165   0 0 165 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd

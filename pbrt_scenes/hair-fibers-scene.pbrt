@@ -1,0 +1,77 @@
+# hair-fibers-scene.pbrt -- migration of the native "B11 Hair Fibers" demo
+# scene (src/TheRestOfYourLife/scenes_advanced.h's build_hair_fibers()) to a
+# pbrt-backed scene, part of this project's GPU scene-construction-
+# duplication elimination.
+#
+# Uses real pbrt-v4 Material "hair" on Shape "sphere" - this loader's own
+# hair-material builder picks the shading-normal-as-tangent proxy
+# automatically for any non-curve shape (pbrt_cpu_builder.h's makeMaterial
+# forCurve parameter, only ever true for real curve geometry), the exact
+# same "normal as tangent" trick native's own hair_material class documents
+# using for this identical scene (see that class's own header comment,
+# which names B11 directly) - so this is not an approximation, it is the
+# same technique reached through a real pbrt-v4 material directive.
+# sigma_a/beta_m/beta_n/alpha/eta all map to native's own hair_material
+# constructor parameters 1:1 (native's default eta=1.55 matches pbrt-v4's
+# own "hair" material default, so it's omitted below except where already
+# implied).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  0 2.5 14    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.05 0.05 0.07 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 0.22 0.22 0.19 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -5 6 -5   5 6 -5   5 6 2   -5 6 2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.05 0.05 0.06 ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# Dark brown hair (default sigma_a)
+Material "hair" "rgb sigma_a" [ 0.06 0.10 0.20 ] "float beta_m" [ 0.25 ] "float beta_n" [ 0.25 ] "float alpha" [ 2.0 ]
+AttributeBegin
+  Translate -3.5 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# Blonde hair (low absorption, warm tint)
+Material "hair" "rgb sigma_a" [ 0.01 0.015 0.03 ] "float beta_m" [ 0.30 ] "float beta_n" [ 0.30 ] "float alpha" [ 2.0 ]
+AttributeBegin
+  Translate -1.2 1 0.4
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# Auburn hair (strong red absorption pattern)
+Material "hair" "rgb sigma_a" [ 0.02 0.08 0.18 ] "float beta_m" [ 0.20 ] "float beta_n" [ 0.20 ] "float alpha" [ 3.0 ]
+AttributeBegin
+  Translate 1.2 1 -0.4
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# White/silver fur (very low absorption, rough)
+Material "hair" "rgb sigma_a" [ 0.001 0.001 0.002 ] "float beta_m" [ 0.45 ] "float beta_n" [ 0.45 ] "float alpha" [ 1.0 ]
+AttributeBegin
+  Translate 3.5 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# Fine black fur (very high absorption)
+Material "hair" "rgb sigma_a" [ 0.50 0.55 0.60 ] "float beta_m" [ 0.15 ] "float beta_n" [ 0.15 ] "float alpha" [ 2.0 ]
+AttributeBegin
+  Translate 0 1 2.3
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
