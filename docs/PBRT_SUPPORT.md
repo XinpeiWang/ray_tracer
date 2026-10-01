@@ -596,19 +596,67 @@ loader and no longer match the code:
   before (a flat, matte, fog-only look), now matching CPU's reference
   render closely.
 
-  Still **not** fixed, and a real, remaining GPU limitation: any OTHER
-  surface material combined with a medium (diffuse+medium, metal+medium,
-  rough/thin dielectric+medium) on a sphere, or **any** surface material at
-  all combined with a medium on a **cylinder** — no `DielectricMedium`
-  closest-hit case exists for cylinder geometry at all (`__closesthit__
-  cylinder`, `optix_intersection_disk_cylinder.h`, only ever handles plain
-  `Medium`). CPU's generic two-hittable composition (`pbrt_cpu_builder.h`'s
-  `addMediumIfPresent`, which wraps a separate medium-boundary hittable
-  around the shape's own already-real-material geometry) handles every one
-  of these uniformly; GPU would need an actual second, coincident-geometry
-  primitive per medium shape (or new cylinder shading code for the
-  dielectric case) to match — a bigger structural change than this round
-  made.
+  **Follow-up round: cylinder fusion, and the opaque-surface case closed
+  outright.** Two more real gaps from the paragraph above are now fixed:
+
+  - **Cylinder + smooth dielectric + medium** now fuses exactly like
+    sphere. `__closesthit__cylinder` (`optix_intersection_disk_cylinder.h`)
+    and `__closesthit__wf_cylinder`/`evaluate_materials()`'s
+    `MaterialType::DielectricMedium` case (`wavefront_intersection_disk_
+    cylinder.h`/`wavefront_kernels_materials.cu`) both gained the same
+    entry-surface-refracts / exit-surface-or-interior-phase-scatter
+    structure sphere's own `DielectricMedium` case already had, reusing
+    each backend's existing cylinder near/far chord math (tube quadric
+    clipped to a z-slab). Both backends' cylinder shadow any-hit
+    (`__anyhit__shadow_cylinder`/`__anyhit__wf_shadow_cylinder`) gained
+    real Beer-Lambert attenuation for it too, matching sphere's identical
+    fix. `pbrt_scenes/cylinder-medium.pbrt` (scene E6, eta=1.001 near-
+    invisible shell) is this project's own pre-existing bundled example of
+    exactly this combination — verified via direct before/after GPU render
+    comparison against CPU: GPU averaged **0.243** brightness before this
+    fix (CPU: 0.112, a huge, clearly-visible over-brightening — the old
+    plain-`Medium` cylinder path rendered a nearly flat, overexposed-
+    looking fog block) and **0.093** after (within normal Monte-Carlo noise
+    of CPU's 0.112), with the post-fix image's brightness gradient now
+    visually matching CPU's closely. Not previously caught by any test:
+    the existing unit test only checked which `MaterialType` a cylinder
+    resolved to, never its actual rendered brightness.
+  - **Opaque surface + medium** (diffuse+medium, metal+medium,
+    coateddiffuse/coatedconductor+medium, subsurface+medium, measured+
+    medium, hair+medium — on **either** sphere or cylinder) is a real,
+    separate bug now fixed without needing CPU's dual-hittable machinery
+    at all: `pbrt_gpu_builder.h`'s `isOpaqueSurfaceMaterial()` recognizes
+    that CPU's own two-hittable composition always resolves this
+    combination identically to the surface material alone anyway (an
+    opaque surface's own entry-point hit can never lose a nearest-hit
+    comparison to the medium's own stochastically-sampled interior hit, so
+    the medium is never actually visible on CPU either), so GPU now simply
+    builds the real surface material and skips the medium path entirely —
+    the exact same visual result CPU already produces, far more cheaply
+    than a true dual-primitive composition. Before this fix, GPU built a
+    plain fog-only `Medium` instead, silently discarding the real, always-
+    winning opaque material — arguably a worse divergence than the
+    dielectric case, since the rendered material was wrong in both
+    transparency and response, not just missing a refractive highlight. No
+    bundled scene exercised this combination before now (every existing
+    `MediumInterface` scene in `pbrt_scenes/` already used a dielectric
+    surface), so this was a latent, never-triggered bug rather than a
+    visible regression in any shipped scene — closed proactively, with new
+    unit test coverage (`pbrt_gpu_disk_cylinder_tests.cpp`'s
+    `CylinderMediumInterfaceWithOpaqueSurfaceKeepsRealMaterial`).
+
+  Still **not** fixed, and a real, remaining GPU limitation: **rough** or
+  **thin** dielectric, or `DiffuseTransmission`/`Interface`, combined with a
+  medium — `MaterialType::DielectricMedium`'s shading code only ever calls
+  the same smooth `dielectric_scatter()` a plain `Dielectric` surface uses
+  (no rough/thin variant exists for the fused type), so
+  `isSmoothDielectric`/`isOpaqueSurfaceMaterial` both correctly decline
+  these combinations and they still fall back to the old plain-`Medium`
+  (surface dropped) behavior. A genuine fix needs either a new rough/thin
+  variant of the fused material, or CPU's real dual-primitive composition
+  (an actual second, coincident-geometry primitive per medium shape) —
+  both bigger engineering than this round made, and no bundled scene
+  currently needs either.
 
 - A phase-function scatter event inside a participating medium (any of
   `MaterialType::Medium`/`CloudMedium`/`RgbGridMedium`/`GridMedium`, on

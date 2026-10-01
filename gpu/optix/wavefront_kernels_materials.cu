@@ -199,17 +199,18 @@ extern "C" __global__ void evaluate_materials(
 	// dielectricHitQueue only ever receive Lambertian/Metal and
 	// Dielectric/RoughDielectric hits respectively, never these types.
 	//
-	// Hair and (cylinder-only) Medium are real, reachable combinations this
-	// single shared queue already knows how to shade (Hair via the real
-	// MaterialType::Hair case below, keyed only on mat.type; Medium via
-	// h.t/h.mediumTFar, recomputed by __closesthit__wf_cylinder - see
-	// pbrt_gpu_builder.h's cylinder loop comment) - trapping either here
-	// would be a genuine regression from real support to "falls back to
-	// Lambertian"/an abort, not the unreachable-defensive-code every other
-	// trapped type here still is. wf_material_supported_on_disk_cylinder_
-	// geom() (this file, above) is the one place these per-shape exemptions
-	// live, so this condition itself doesn't grow a new `&& !flagN` term
-	// each time another (shape, material) combination gains real support.
+	// Hair and (cylinder-only) Medium/DielectricMedium are real, reachable
+	// combinations this single shared queue already knows how to shade
+	// (Hair via the real MaterialType::Hair case below, keyed only on
+	// mat.type; Medium/DielectricMedium via h.t/h.mediumTFar/h.frontFace,
+	// recomputed by __closesthit__wf_cylinder - see pbrt_gpu_builder.h's
+	// cylinder loop comment) - trapping any of these here would be a
+	// genuine regression from real support to "falls back to Lambertian"/
+	// an abort, not the unreachable-defensive-code every other trapped type
+	// here still is. wf_material_supported_on_disk_cylinder_geom() (this
+	// file, above) is the one place these per-shape exemptions live, so
+	// this condition itself doesn't grow a new `&& !flagN` term each time
+	// another (shape, material) combination gains real support.
 	if ((h.geomType == 4 || h.geomType == 5) &&
 		!wf_material_supported_on_disk_cylinder_geom(mat.type, h.geomType)) {
 		printf("[WF-DISK-CYL-SHADE] MaterialType %d is not supported on disk/cylinder geometry (geomType=%d)\n",

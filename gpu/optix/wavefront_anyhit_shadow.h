@@ -421,11 +421,15 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 		optixIgnoreIntersection();
 		return;
 	}
-	// MaterialType::Medium (homogeneous only - the pbrt loader never assigns
-	// CloudMedium/RgbGridMedium/GridMedium/DielectricMedium to a cylinder):
-	// Beer-Lambert over the cylinder's own analytic near/far chord, same
-	// treatment as __anyhit__wf_shadow_sphere's identical Medium case.
-	if (mat.type == MaterialType::Medium) {
+	// MaterialType::Medium and MaterialType::DielectricMedium (homogeneous
+	// only - the pbrt loader never assigns CloudMedium/RgbGridMedium/
+	// GridMedium to a cylinder): Beer-Lambert over the cylinder's own
+	// analytic near/far chord, same treatment as __anyhit__wf_shadow_
+	// sphere's identical Medium/DielectricMedium case. DielectricMedium
+	// reaching a cylinder at all is new (pbrt_gpu_builder.h's cylinder loop
+	// now resolves MediumInterface + a smooth dielectric surface via
+	// mediumMaterialIndex(), mirroring the sphere loop).
+	if (mat.type == MaterialType::Medium || mat.type == MaterialType::DielectricMedium) {
 		// ray_dir (raw, not normalize()'d) - matches __closesthit__wf_cylinder's
 		// own call into this same helper exactly (wavefront_intersection_
 		// disk_cylinder.h); world ray directions reaching this point are
@@ -435,7 +439,9 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 		wf_medium_cylinder_near_far(ray_orig, ray_dir, cyl, t_near, t_far);
 		const float segFar = fminf(t_far, sp->tMax);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
-		sp->transmittance *= expf(-mat.sigma_t * segLen);
+		const float sigma_t = (mat.type == MaterialType::Medium)
+			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
+		sp->transmittance *= expf(-sigma_t * segLen);
 		if (sp->transmittance <= 0.0f) { optixTerminateRay(); return; }
 		optixIgnoreIntersection();
 		return;

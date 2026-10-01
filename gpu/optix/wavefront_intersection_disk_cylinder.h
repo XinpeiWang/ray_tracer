@@ -252,14 +252,19 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 	payload->objDpdu = wf_dc_apply_vector(cyl.o2w,
 		make_float3(-cyl.phiMax * obj_hit.y, cyl.phiMax * obj_hit.x, 0.0f));
 
-	// MaterialType::Medium: override with the entry (near) / exit (far)
-	// roots, matching __closesthit__wf_sphere's own needsNearFar block and
-	// the recursive backend's identical __closesthit__cylinder Medium case
-	// (optix_intersection_disk_cylinder.h - see that comment for the tube-
-	// quadric-clipped-to-a-z-slab derivation and its phi-sweep scope limit).
-	// Object space, since CylinderData::zMin/zMax are object-space.
+	// MaterialType::Medium (always) and MaterialType::DielectricMedium (exit
+	// surface only, front_face false - its entry surface just refracts/
+	// reflects normally, no re-intersection needed there): override with the
+	// entry (near) / exit (far) roots, matching __closesthit__wf_sphere's
+	// own identical needsNearFar block and the recursive backend's
+	// __closesthit__cylinder Medium/DielectricMedium cases (optix_
+	// intersection_disk_cylinder.h - see that comment for the tube-quadric-
+	// clipped-to-a-z-slab derivation and its phi-sweep scope limit). Object
+	// space, since CylinderData::zMin/zMax are object-space.
 	const MaterialData& cyl_mat = wf_params.materials[cyl.materialIdx];
-	if (cyl_mat.type == MaterialType::Medium) {
+	const bool needsNearFar = (cyl_mat.type == MaterialType::Medium) ||
+		(cyl_mat.type == MaterialType::DielectricMedium && !front_face);
+	if (needsNearFar) {
 		float t_near, t_far;
 		wf_medium_cylinder_near_far(ray_orig, ray_dir, cyl, t_near, t_far);
 		float3 unit_dir = normalize(ray_dir);
