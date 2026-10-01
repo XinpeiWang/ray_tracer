@@ -130,6 +130,73 @@
  *   scene-by-scene in isolation specifically to route around this bug, not
  *   to rely on a full run of this suite.
  *
+ * Regional (block-based) diff, added later: every check described above
+ * reduces a whole rendered image to 1-4 floats (overall brightness, 3
+ * channel averages), which an audit of this project's testing found to be
+ * a real, structural gap - it cannot catch a divergence that's spatially
+ * localized rather than global (a camera-framing/geometry shift, a shading
+ * bug confined to part of a surface, a color-channel swap on a scene where
+ * R/B happen to average close together), since any such bug gets diluted
+ * across every other unaffected pixel before the whole-image average ever
+ * sees it. mp_regional_diff()/check_regional_parity() add a 6x6-grid,
+ * per-block relative-difference check reusing the exact same cached renders
+ * (no extra rendering cost), coarse enough to stay robust to ordinary
+ * Monte-Carlo noise but fine-grained enough to actually localize a
+ * divergence - see mp_regional_diff's own comment for the full reasoning,
+ * and regional_tolerance_for's own comment for why its tolerance is scaled
+ * from each scene's own whole-image tolerance rather than one fixed global
+ * number (so E10/Volumes/B13/B1's already-documented, already-accepted
+ * gaps above don't get re-flagged here as if they were new findings).
+ *
+ * Single-scene isolation for calibration/debugging: set the
+ * MATPARITY_ONLY_SCENE_ID environment variable to a scene id (e.g. "B14")
+ * before running this suite to render ONLY that scene, routing around the
+ * GPU cross-scene corruption bug described above so a finding can be
+ * verified as real rather than a corruption artifact (exactly the manual
+ * "temporarily filter testable_scenes()" workaround the B1/B13 findings
+ * above used, now a real, permanent, documented mechanism instead of a
+ * one-off edit-and-revert).
+ *
+ * The regional check immediately found 4 new, real, isolation-verified
+ * divergences on its first real run that NONE of the whole-image checks
+ * above had ever caught (none of these 4 scenes had any pre-existing
+ * tolerance exception) - left intentionally failing below, same philosophy
+ * as B1/B13, not masked by a widened tolerance:
+ *   - B14 (Measured BRDF): CPU ~50-60% brighter than BOTH GPU backends in
+ *     one block, confirmed NOT Monte-Carlo noise (re-rendered at 10x the
+ *     SPP - 2000 CPU/6000 GPU vs this suite's 200/600 - and the gap barely
+ *     moved, 50.4% vs 60.6%; true sampling noise would have shrunk
+ *     substantially at 10x samples). All three backends dispatch
+ *     MaterialType::Measured identically (a single VNDF-importance-sampled
+ *     BSDF bounce, is_specular=true/skip_pdf=true, no NEE - verified in
+ *     material_pbrt.h's `measured::scatter()`, optix_device_helpers.h's
+ *     MaterialType::Measured case, and wavefront_kernels_materials.cu's),
+ *     so this points at a real numerical discrepancy somewhere in the
+ *     CPU vs GPU MeasuredBxDF sample_f()/eval() port itself (src/shared/
+ *     measured_bxdf.h vs gpu/optix/optix_measured_bxdf.h/wavefront_
+ *     measured_bxdf.h), not an algorithmic/NEE-strategy difference - not
+ *     root-caused further here (a real debugging task, not a test-authoring
+ *     one), flagged for human follow-up.
+ *   - E6 (Cylinder Medium, pbrt example): CPU vs GPU-recursive AND
+ *     CPU vs GPU-wavefront both show a 100% block diff (total disagreement,
+ *     not a magnitude mismatch) confined to 5-6 of 24 comparable blocks,
+ *     confirmed in single-scene isolation - looks like a real geometry/
+ *     medium-boundary placement or visibility issue specific to cylinder-
+ *     shaped media, not generic Volumes noise (the already-wide 55%/~92%
+ *     Volumes tolerance was not nearly enough margin). Not root-caused
+ *     further here.
+ *   - B11 (Hair Fibers): CPU vs both GPU backends differ by 58-65% in 2-4
+ *     blocks, confirmed in isolation. Plausibly an anti-aliasing/sampling
+ *     difference on hair's inherently thin, high-frequency geometry rather
+ *     than a shading bug, but not distinguished from one here.
+ *   - J2 (DiffuseTransmission Texture, pbrt example): CPU vs GPU-recursive
+ *     differs by ~70% in 3 of 8 comparable blocks, confirmed in isolation.
+ *     Consistent with (and a more precise, localized measurement of) this
+ *     file's own already-documented MaterialType::DiffuseTransmission
+ *     algorithmic gap above (neither GPU backend does CPU's correct
+ *     two-hemisphere NEE) - not a surprise that the gap exists, but the
+ *     whole-image checks never caught its real magnitude before now.
+ *
  * Known, deliberate backend behavior differences considered and NOT
  * special-cased here (each was checked against current code, not just old
  * comments/notes - see below):
@@ -236,6 +303,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cctype>
+#include <cstdlib>
 #include <vector>
 #include <cmath>
 #include <numeric>
@@ -306,11 +374,122 @@ static MPRGBAverage mp_avg_channels(const MPImage& img) {
 	return out;
 }
 
+// ============================================================================
+// Regional (block-based) diff - catches what whole-image averages can't.
+//
+// Every check above this point reduces an entire rendered image to 1-4
+// floats (one overall brightness average, three per-channel averages). That
+// is enough to catch a GROSS, image-wide shift (the HDRI-sky flat-color-
+// fallback bug this file's header comment describes, a 35-58% whole-image
+// gap) but structurally CANNOT catch a divergence that is spatially
+// localized rather than global: a camera-framing/FOV bug that shifts
+// geometry sideways, a shading bug confined to part of one object's
+// surface, a missing shadow, or a color-channel swap on a scene where R and
+// B happen to average close to each other - each of these can leave the
+// whole-image brightness and per-channel totals comfortably inside
+// kRelTolerance while large parts of the actual image are visibly wrong,
+// diluted into invisibility by every other unaffected pixel in the frame.
+//
+// mp_regional_diff splits each image into a gridSize x gridSize grid of
+// blocks, averages color per block, and reports the worst (max) per-block
+// relative difference plus how many blocks exceed the given threshold.
+// Each block still averages many pixels (a 60x60 render on a 6x6 grid is
+// 100 pixels/block), so this stays robust to ordinary per-pixel Monte-Carlo
+// noise between backends - it is NOT a per-pixel/bit-exact comparison
+// (scripts/compare_images.py already does that, and is unsuitable for CPU-
+// vs-GPU for exactly this reason: different sampling algorithms never
+// produce bit-identical pixels). It's the middle ground between "one float
+// for the whole image" and "exact pixel match": coarse enough to tolerate
+// noise, fine-grained enough to actually localize a divergence.
+// ============================================================================
+
+struct MPRegionalDiffResult {
+	float maxBlockRelDiff = 0.0f;
+	int worstBlockX = -1, worstBlockY = -1;
+	int blocksOverThreshold = 0;
+	int comparableBlocks = 0;
+};
+
+static MPRegionalDiffResult mp_regional_diff(const MPImage& a, const MPImage& b,
+                                              int gridSize, float minComparable, float threshold) {
+	MPRegionalDiffResult result;
+	if (!a.valid || !b.valid || a.width != b.width || a.height != b.height ||
+	    a.width <= 0 || a.height <= 0) {
+		return result;
+	}
+	const int blockW = std::max(1, a.width / gridSize);
+	const int blockH = std::max(1, a.height / gridSize);
+	for (int by = 0; by < gridSize; ++by) {
+		const int y0 = by * blockH;
+		const int y1 = (by == gridSize - 1) ? a.height : std::min(a.height, y0 + blockH);
+		if (y0 >= a.height) continue;
+		for (int bx = 0; bx < gridSize; ++bx) {
+			const int x0 = bx * blockW;
+			const int x1 = (bx == gridSize - 1) ? a.width : std::min(a.width, x0 + blockW);
+			if (x0 >= a.width) continue;
+
+			float sumA = 0.0f, sumB = 0.0f;
+			int n = 0;
+			for (int y = y0; y < y1; ++y) {
+				for (int x = x0; x < x1; ++x) {
+					const int idx = (y * a.width + x) * 3;
+					sumA += a.pixels[idx] + a.pixels[idx + 1] + a.pixels[idx + 2];
+					sumB += b.pixels[idx] + b.pixels[idx + 1] + b.pixels[idx + 2];
+					n += 3;
+				}
+			}
+			if (n == 0) continue;
+			const float avgA = sumA / n, avgB = sumB / n;
+			if (avgA < minComparable && avgB < minComparable) continue;
+
+			++result.comparableBlocks;
+			const float maxV = std::max(avgA, avgB);
+			const float relDiff = std::abs(avgA - avgB) / maxV;
+			if (relDiff > threshold) ++result.blocksOverThreshold;
+			if (relDiff > result.maxBlockRelDiff) {
+				result.maxBlockRelDiff = relDiff;
+				result.worstBlockX = bx;
+				result.worstBlockY = by;
+			}
+		}
+	}
+	return result;
+}
+
+// 6x6 grid on a 60x60 render = 100 pixels/block, the same resolution this
+// whole file already renders at (kWidth/kHeight below) - chosen so each
+// block still has enough samples to average out Monte-Carlo noise rather
+// than chasing single-pixel fireflies.
+constexpr int kRegionalGridSize = 6;
+
+// Per-block tolerance is deliberately looser than kRelTolerance: a block
+// covers ~1/36th of the pixels a whole-image average does, so it carries
+// more residual Monte-Carlo variance for the same SPP, and is also more
+// exposed to ordinary scene content (a block straddling a hard shadow edge,
+// or sitting right on a specular highlight, legitimately differs more
+// between two independently-dithered sample sets than the whole-image
+// average ever would). This is the STANDARD value, for scenes using the
+// standard kRelTolerance - calibrated the same way as this file's other
+// tolerances, against this codebase's real renderer, not guessed.
+constexpr float kRegionalRelTolerance = 0.50f;
+
 // Relative-difference tolerance shared by both the overall-brightness and
 // per-channel checks - see this file's header comment for the calibration
 // reasoning (tighter than cpu_gpu_comparison_tests.cpp's 50%, with margin
 // below the 35-58% gap the real HDRI-sky bug produced).
 constexpr float kRelTolerance = 0.30f;
+
+// Scenes with their own wider whole-image tolerance (E10, Volumes, B13, B1 -
+// see those constants' own comments for why) need a correspondingly wider
+// regional tolerance too, or this new per-block check would just re-flag
+// those same already-documented, already-accepted gaps as "new" failures -
+// pure noise, not new information. Scaled by the same ratio the standard
+// tolerances use (kRegionalRelTolerance/kRelTolerance), capped below 1.0 so
+// the check stays meaningful even for E10's wide 85% whole-image ceiling.
+static float regional_tolerance_for(float wholeImageTolerance) {
+	constexpr float kMultiplier = kRegionalRelTolerance / kRelTolerance;  // ~1.667
+	return std::min(wholeImageTolerance * kMultiplier, 0.95f);
+}
 
 // Below this brightness, both values are close enough to black that a
 // relative-difference comparison is meaningless (dividing by near-zero
@@ -426,6 +605,30 @@ static void check_relative_parity(const char* sceneName, const std::string& scen
 		<< "tolerance to make the failure go away without investigating first.";
 }
 
+// See mp_regional_diff's own comment for why this exists alongside
+// check_relative_parity rather than instead of it: this catches spatially
+// localized divergence (framing/geometry shifts, a shading bug confined to
+// part of the frame, a channel swap) the whole-image check structurally
+// can't see.
+static void check_regional_parity(const char* sceneName, const std::string& sceneId,
+                                   const char* backendA, const char* backendB,
+                                   const MPImage& a, const MPImage& b, float regionalTolerance) {
+	const MPRegionalDiffResult r = mp_regional_diff(a, b, kRegionalGridSize,
+	                                                 kMinComparableValue, regionalTolerance);
+	if (r.comparableBlocks == 0) return;  // whole image too dark to compare, same as check_relative_parity
+	EXPECT_EQ(r.blocksOverThreshold, 0)
+		<< sceneName << " (" << sceneId << ") regional diff, " << backendA << " vs " << backendB << ": "
+		<< r.blocksOverThreshold << "/" << r.comparableBlocks << " blocks (of a "
+		<< kRegionalGridSize << "x" << kRegionalGridSize << " grid) exceed "
+		<< (regionalTolerance * 100.0f) << "% relative difference; worst block ("
+		<< r.worstBlockX << "," << r.worstBlockY << ") differs by "
+		<< (r.maxBlockRelDiff * 100.0f) << "% -- this can indicate a localized divergence "
+		<< "(camera framing/geometry shift, a shading bug confined to part of the frame, a "
+		<< "color-channel swap) that the whole-image brightness/channel checks above cannot "
+		<< "see, since they'd dilute it across every other unaffected pixel. Investigate before "
+		<< "widening this scene's regional tolerance.";
+}
+
 // Registry positions (NOT scene ids - see CpuGpuLightParityTest's own
 // comment in cpu_gpu_comparison_tests.cpp for why registry position is
 // used as the TEST_P param) whose category is Materials, Volumes, or
@@ -521,6 +724,15 @@ static std::vector<const SceneDescriptor*> testable_scenes() {
 		const SceneDescriptor* s = find_scene(regDesc.id);
 		if (!s || !s->gpu_compatible || s->requires_files) continue;
 		out.push_back(s);
+	}
+	// Single-scene isolation for calibration/debugging - see this file's
+	// header comment ("Single-scene isolation for calibration/debugging")
+	// for why this exists: routes around the GPU cross-scene corruption
+	// bug documented above by rendering only one scene in the process.
+	if (const char* only = std::getenv("MATPARITY_ONLY_SCENE_ID")) {
+		std::vector<const SceneDescriptor*> filtered;
+		for (const SceneDescriptor* s : out) if (s->id == only) filtered.push_back(s);
+		return filtered;
 	}
 	return out;
 }
@@ -704,6 +916,18 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	check_relative_parity(s->name, s->id, "R channel", "GPU-recursive", "GPU-wavefront", recC.r, wfC.r, tolerance);
 	check_relative_parity(s->name, s->id, "G channel", "GPU-recursive", "GPU-wavefront", recC.g, wfC.g, tolerance);
 	check_relative_parity(s->name, s->id, "B channel", "GPU-recursive", "GPU-wavefront", recC.b, wfC.b, tolerance);
+
+	// Regional (block-based) diff, same three backend pairs - reuses the
+	// already-rendered/cached images above, no extra rendering cost. See
+	// mp_regional_diff's own comment for what this catches that the
+	// whole-image checks above cannot. Uses a tolerance scaled from this
+	// scene's own whole-image `tolerance` (see regional_tolerance_for's own
+	// comment) so an already-documented, already-accepted per-scene gap
+	// (E10, Volumes, B13, B1) doesn't get re-flagged here as new information.
+	const float regionalTolerance = regional_tolerance_for(tolerance);
+	check_regional_parity(s->name, s->id, "CPU", "GPU-recursive", cpuImg, recImg, regionalTolerance);
+	check_regional_parity(s->name, s->id, "CPU", "GPU-wavefront", cpuImg, wfImg, regionalTolerance);
+	check_regional_parity(s->name, s->id, "GPU-recursive", "GPU-wavefront", recImg, wfImg, regionalTolerance);
 }
 
 INSTANTIATE_TEST_SUITE_P(

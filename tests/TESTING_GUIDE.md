@@ -109,6 +109,16 @@ cuts it to ~72s. See the main [README.md](../README.md)'s "Quick dev-loop
 filter" section for a more aggressive variant. Always run the full,
 unfiltered suite before pushing.
 
+This suite also does a **regional (block-based) diff** alongside its
+whole-image brightness/channel checks, specifically to catch a divergence
+that's spatially localized rather than global (a framing/geometry shift, a
+shading bug confined to part of a surface) - something a whole-image
+average structurally cannot see. If it fails and you want to verify a
+finding is real rather than this suite's own documented GPU cross-scene
+corruption artifact (see that file's header comment), set
+`MATPARITY_ONLY_SCENE_ID=<id>` (e.g. `B14`) before running to render only
+that one scene in isolation.
+
 To actually run tests in parallel (not just skip a slow suite in one
 process), use `scripts/run_tests_parallel.ps1 -Tier Fast` instead of a
 hand-written filter - it excludes every GPU-touching and thread-pool-
