@@ -13,11 +13,16 @@ Successfully implemented video generation capability for the ray tracer, enablin
 ## Files Created
 
 ### 1. `launcher/camera_path.h` (NEW)
-Camera animation path generator with 4 built-in paths:
+Camera animation path generator with 6 built-in paths:
 - **Orbit**: Circular motion around scene center
 - **Linear**: Straight-line movement between two points
 - **Figure-8**: Lemniscate pattern for dynamic motion
 - **Spiral**: Zoom-in effect with rotation
+- **Tour**: Interior walkthrough - lateral S-curve sway, forward-and-back
+  glide, vertical bob, and an independently-drifting look-at point
+- **Showcase**: Advertisement-style product reveal - an oscillating swing to
+  one side and back through the front-on angle (deliberately not a full
+  360, so a studio-lit subject never swings into its own unlit back half)
 
 Each function takes `(frame_number, total_frames)` and returns `CameraPosition` struct with lookfrom/lookat/vup coordinates.
 
@@ -43,6 +48,12 @@ Comprehensive user guide covering:
 ### `main.cpp`
 Extended launcher with video mode support:
 - Added video-related flags: `--video`, `--frames`, `--fps`, `--camera-path`
+- Also added later: `--video-preset ID` (`src/shared/video_preset.h`) - one
+  flag sets scene + camera path + frames + fps + speed together from a
+  named preset: `V1`/`cornell-orbit`, `V2`/`teapot-spin`,
+  `V3`/`one-weekend-flyby`, `V4`/`next-week-finale`,
+  `V5`/`glass-dragon-caustics`, `V6`/`sponza-flythrough`. See
+  `docs/VIDEO_GENERATION.md` for the full list and usage.
 - Implemented frame rendering loop that iterates through camera positions
 - Automatic frame directory creation (`output/frames/`)
 - Sequential frame naming: `frame_0001.ppm`, `frame_0002.ppm`, etc.

@@ -57,6 +57,14 @@ The ray tracer uses a comprehensive error code system to make debugging easier. 
 - Check that all texture files are present and readable
 - Verify file paths are correct
 
+### 4 - ERR_FILE_READ_FAILED
+**Message:** Failed to read file  
+**Meaning:** Reserved for a generic file-read failure; not currently returned
+by any code path (registered in `error_codes.h`'s enum/message table and
+`qt_gui/error_handler.h`, exercised by `tests/unit/error_codes_tests.cpp`,
+but no `return ERR_FILE_READ_FAILED` call site exists yet - texture/resource
+read failures currently surface as `ERR_FILE_NOT_FOUND` (3) instead).
+
 ### 5 - ERR_FILE_WRITE_FAILED
 **Message:** Failed to write output file  
 **Meaning:** Cannot write the rendered image to disk  
@@ -129,6 +137,18 @@ default-location-then-copy step that could fail this way.
 - Check that the path exists and is writable
 - Avoid special characters in path
 - Use absolute paths for reliability
+
+### 14 - ERR_VIDEO_ASSEMBLY_FAILED
+**Message:** Failed to assemble rendered frames into a video  
+**Meaning:** A `--video` render finished generating its frames, but ffmpeg
+could not be launched to assemble them into an output video file  
+**Troubleshooting:**
+- Install [ffmpeg](https://ffmpeg.org/download.html) and ensure it is on
+  `PATH`
+- Or assemble the rendered frames manually using the ffmpeg command printed
+  by the renderer above this error
+- See [`docs/VIDEO_GENERATION.md`](VIDEO_GENERATION.md) for the full video
+  workflow
 
 ---
 
@@ -404,14 +424,14 @@ Exit code 0 = success, any other value = specific error code.
 4. Choose simpler scenes
 5. Switch CPU ↔ GPU mode
 
-### File Errors (3, 5, 6, 7, 13)
+### File Errors (3, 4, 5, 6, 7, 13, 14)
 1. Check file/folder permissions
 2. Verify disk space
 3. Ensure paths are valid
 4. Check for special characters in paths
 5. Try different output location
 
-### GPU Errors (200-211)
+### GPU Errors (200-215)
 1. Update NVIDIA drivers
 2. Switch to CPU mode
 3. Reduce resolution/samples
@@ -477,10 +497,10 @@ If you're extending the renderer, follow these steps:
 - `src/TheRestOfYourLife/error_codes.h` - C++ error code definitions
 - `qt_gui/error_handler.h` - Qt GUI error mappings
 - `docs/SCENE_SELECTION.md` - Scene IDs and descriptions
-- `LOG_TAB_ADDED.md` - How to read GUI logs
+- `qt_gui/QT_GUI_DOCUMENTATION.md` - GUI Log Output tab and other GUI features
 
 ---
 
 **Last Updated:** Error code system v1.0  
-**Total Error Codes:** 40+ distinct error codes  
-**Error Coverage:** General (13), CPU (10), GPU (12)
+**Total Error Codes:** 42 distinct error codes  
+**Error Coverage:** General (15), CPU (10), GPU (16), User (1)

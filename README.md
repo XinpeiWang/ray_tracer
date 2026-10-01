@@ -1,6 +1,6 @@
 # Ray Tracer
 
-A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 123 built-in scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
+A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 151 built-in scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
@@ -40,14 +40,15 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 ### Core Rendering
 - ✅ **Path tracing** with next-event estimation and multiple importance sampling (power heuristic)
 - ✅ **BVH acceleration** on both CPU and GPU (SAH-based CPU BVH; OptiX's native BVH/GAS on GPU) — not a linear scan
-- ✅ **123 built-in scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
+- ✅ **151 built-in scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
 - ✅ **Real triangle meshes**: OBJ loading with BVH, per-face `.mtl` materials, and real `map_Kd` image-texture sampling (not just flat colors) on both CPU and GPU
 - ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — CPU-verified broadly, GPU-verified on one reference scene (see [Known Limitations](#-known-limitations))
-- ✅ **Volumetric media**: homogeneous participating media and procedural (Perlin-noise) cloud/fog
+- ✅ **Bidirectional Path Tracing (BDPT) and Metropolis Light Transport (MLT)**, additional alternative integrators (CPU-only, `--bdpt`/`--mlt`) for scenes with difficult light transport
+- ✅ **Volumetric media**: homogeneous participating media, procedural (Perlin-noise) cloud/fog, and heterogeneous NanoVDB grid media (CPU-only)
 - ✅ **Anti-aliasing** through multi-sampling, **ACES filmic tone mapping** + sRGB output
 
 ### Materials
-Lambertian, Metal, Dielectric (smooth and rough), Conductor (GGX + complex Fresnel), Coated Diffuse/Conductor (clear-coat layering), Thin Dielectric, Diffuse Transmission, Normalized Fresnel, Principled (Disney-style multi-lobe), Hair (Marschner/Chiang fiber scattering), Normal/Bump mapping, homogeneous participating media, and mixed materials — see `docs/` and `src/TheRestOfYourLife/material_*.h` for details.
+Lambertian, Metal, Dielectric (smooth and rough), Conductor (GGX + complex Fresnel), Coated Diffuse/Conductor (clear-coat layering), Thin Dielectric, Diffuse Transmission, Normalized Fresnel, Principled (Disney-style multi-lobe), Hair (Marschner/Chiang fiber scattering), Measured (real importance-sampled pbrt-v4 `MeasuredBxDF`, loaded from a `.bsdf` tensor file), Subsurface (tabulated BSSRDF), Normal/Bump mapping, homogeneous participating media (plus rough/thin-dielectric+medium fusion for a single shape that's both a refractive boundary and a scattering volume), and mixed materials — see `docs/` and `src/TheRestOfYourLife/material_*.h` for details.
 
 ### Lighting
 Area lights (quad/sphere), point/spot/distant (sun) punctual lights, goniometric (IES-profile) lights, projection lights, procedural sky, and image-based HDRI environment lighting (including portal-sampled HDRI through a window).
@@ -268,7 +269,7 @@ check.
 
 ### Running Tests
 
-The test suite uses **Google Test** and covers **3,830 unit and integration tests** (524 test suites) across ~184 test files.
+The test suite uses **Google Test** and covers a large, growing number of tests (4,292 across 570 test suites as of this writing - run with `--gtest_list_tests` for the live count).
 
 #### Option A: Automated script (builds + runs in one step)
 ```powershell
@@ -401,7 +402,7 @@ Both formats are generated after each render completes.
 
 ## 🖼️ Scenes
 
-123 built-in scenes, identified by a category letter + number (e.g. `A1`,
+151 built-in scenes, identified by a category letter + number (e.g. `A1`,
 `B10`, `G25`) rather than a flat integer, selected via the CLI's scene-id
 argument or the GUI's scene dropdown. Categories: **A** Basics (the book
 progression), **B** Materials, **C** Lights, **D** Cameras, **E** Volumes,
@@ -552,7 +553,7 @@ ray_tracer/
 │
 ├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
 │
-├── tests/                         # Google Test suite (3,830 tests)
+├── tests/                         # Google Test suite (4,292+ tests, growing)
 │   ├── unit/                     # Unit tests
 │   └── integration/              # Integration tests
 │
@@ -772,7 +773,7 @@ See individual source files for specific attributions, and the [Mesh & Texture C
 
 ---
 
-**Last Updated:** August 11, 2026
-**Version:** 2.1.0 (Textured meshes + expanded scene library)
+**Last Updated:** October 1, 2026
+**Version:** 2.2.0 (pbrt-v4 scene migration, rough/thin dielectric+medium fusion, real measured-BRDF support)
 
 View the [OptiX GPU documentation](gpu/optix/README.md) for detailed OptiX build instructions.

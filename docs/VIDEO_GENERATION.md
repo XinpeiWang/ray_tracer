@@ -141,6 +141,56 @@ Spiraling inward while rotating around the scene.
 
 **Best for:** Zoom-in effect, dramatic intro/outro
 
+### 5. Tour
+Interior walkthrough: a lateral S-curve sway combined with a gentle
+forward-and-back glide, a subtle vertical bob, and a look-at point that
+drifts independently - the way an actual visitor's head turns while walking
+rather than staring at one fixed spot.
+
+```powershell
+.\ray_tracer.exe --video --camera-path tour
+```
+
+**Best for:** Room/interior scenes (Cornell-box family, architectural
+interiors)
+
+### 6. Showcase
+Advertisement-style product reveal: an oscillating swing out to one side
+and back through the original front-on angle - deliberately not a full
+360°, since a studio-lit subject (three-point lighting, like H19's
+`crown.pbrt`) is typically only lit/framed from roughly the front and would
+swing into its own dim, unlit back half on a full orbit.
+
+```powershell
+.\ray_tracer.exe --video --camera-path showcase
+```
+
+**Best for:** Single studio-lit hero objects/statues
+
+## Video Presets
+
+`--video-preset ID` sets scene + camera path + frame count + fps + speed
+together from one named preset (`src/shared/video_preset.h`), so you don't
+need to look up a good combination by hand. Matches against either the
+short id or the descriptive key:
+
+| ID | Key | Scene | Path | Frames | FPS | Speed |
+|----|-----|-------|------|--------|-----|-------|
+| V1 | cornell-orbit | A1 (Cornell Box) | orbit | 90 | 30 | 1.0 |
+| V2 | teapot-spin | G6 (Utah Teapot) | orbit | 90 | 30 | 1.0 |
+| V3 | one-weekend-flyby | A2 (Bouncing Spheres) | linear | 90 | 30 | 0.8 |
+| V4 | next-week-finale | A9 (Final Scene) | figure8 | 120 | 30 | 0.6 |
+| V5 | glass-dragon-caustics | G13 (dragon) | spiral | 120 | 30 | 0.5 |
+| V6 | sponza-flythrough | H1 (Sponza) | linear | 120 | 24 | 0.5 |
+
+```powershell
+# By id
+.\ray_tracer.exe --video-preset V1
+
+# Or by key, with an override (fps wins over the preset's own default)
+.\ray_tracer.exe --video-preset cornell-orbit --fps 60
+```
+
 ## Examples
 
 ### Example 1: Quick Preview (Low Quality)

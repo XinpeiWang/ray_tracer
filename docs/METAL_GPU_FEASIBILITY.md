@@ -12603,3 +12603,39 @@ kernel and shader sources are byte-identical to `main`'s.
 **Not done**: crop is not applied to a pbrt scene's own Film `cropwindow`
 under Metal (only the CLI option); `--crop` with `--video` on Metal is
 unreachable (GPU video is OptiX-only, PR #209).
+
+## 206. B14 migrated to pbrt-backed - sections 184/200's own B14 description is now stale
+
+Commits `af83bb8a` (CPU: deleted `measured_material`/`build_measured_brdf_
+scene()`, migrated B14 to a real importance-sampled pbrt-v4 `MeasuredBxDF`
+via `pbrt_scenes/measured-brdf-showroom.pbrt`) and `f9a2d528` (fixed the
+resulting stale comments in `gpu/metal/metal_poc_scenes_b.mm`,
+`metal_poc_app.h`, `cpu_interface.cpp`) mean sections 184 and 200's
+descriptions of B14's Metal render (tan Lambertian spheres via
+`buildMeasuredBrdfScene()`, the sphere-light NEE fixes, the "speckled
+band"/"bright dot" artifacts) are now a description of DEAD, UNREACHABLE
+code, not current behavior - left as-is below as the historical record of
+that PR, not rewritten; this entry is the pointer forward.
+
+`metal_render_main()` always prefers a scene's pbrt path when one exists
+(`metal_poc.mm` line ~1072, `cpu_scene_pbrt_path_by_id()` tried first), and
+B14 now has one, so `buildHandAuthoredScene()`'s own `scene_id == "B14"`
+dispatch line (section 184's own code, still physically present) never
+actually runs any more. Metal's ACTUAL current render for scene_id "B14"
+goes through `metal_poc_pbrt_loader.mm`'s generic `mapMaterial()` instead,
+which has no `MaterialKind::Measured` case and falls back to flat gray
+Lambertian (the same `default:` every other unsupported material kind
+hits) - a real, visible divergence from CPU/OptiX's now-correct
+importance-sampled gold BRDF for the same scene. `cpu_scene_metal_hand_
+authored_supported()`'s `"B14"` entry stays in the `kSupported` set only to
+satisfy `backend_consistency_tests.cpp`'s `MetalSupportedSceneListMatches
+Dispatcher` exact-match parity check (removing it without also removing
+the now-dead dispatch line would fail that test), not because Metal has
+real measured-BRDF support. The sphere-light NEE feature section 184 built
+(`AreaLight::kind==1`) is, as of this entry, exercised by no reachable
+scene at all - kept only for its historical/example value inside the now-
+dead `buildMeasuredBrdfScene()`.
+
+Real Metal measured-BRDF support would mean porting `src/shared/
+measured_bxdf.h`'s `PiecewiseLinear2D`/`MeasuredBxDF` machinery to MSL -
+not attempted here; this entry is a documentation-only correction.

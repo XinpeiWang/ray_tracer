@@ -26,9 +26,11 @@ On the "Select Components" screen, expand the tree and select:
 
 ```
 Qt
-├── Qt 6.8 (or latest stable 6.x version)
+├── Qt 6.11.1 (pinned - must match scripts/build_all.ps1, deploy_qt_gui.ps1,
+│              package.ps1, and QT_GUI_DOCUMENTATION.md's own build path)
 	├── MSVC 2022 64-bit ✅ (REQUIRED - matches your Visual Studio)
-	├── Qt 5 Compatibility Module ✅ (recommended)
+	├── Qt Multimedia ✅ (REQUIRED - Preview tab's embedded video playback)
+	├── Qt SVG ✅ (REQUIRED - icon rendering via QIcon)
 	├── Qt Debug Information Files (optional, skip to save space)
 	└── Sources (optional, skip to save space)
 ├── Developer and Designer Tools
@@ -38,8 +40,9 @@ Qt
 ```
 
 **Minimal Required Components:**
-- ✅ Qt 6.x → MSVC 2022 64-bit
-- ✅ Qt 5 Compatibility Module
+- ✅ Qt 6.11.1 → MSVC 2022 64-bit
+- ✅ Qt Multimedia (required - Preview tab video playback)
+- ✅ Qt SVG (required - icon rendering via QIcon)
 
 **Total Download Size:** ~2-3GB  
 **Installed Size:** ~4-5GB

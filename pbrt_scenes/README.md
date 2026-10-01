@@ -32,15 +32,49 @@ order is yours to control.
 
 ## Supported subset
 
-The parser covers pbrt-v4's core: `LookAt`/`Translate`/`Rotate`/`Scale`/
-`Transform`, `AttributeBegin`/`End`, `Camera`, `Film`, `Sampler`, `Material`,
-`MakeNamedMaterial`/`NamedMaterial`, `Texture`, `AreaLightSource`, `Shape`
-(`trianglemesh`, `plymesh`, `sphere`), and `Include`.
+The parser covers a large and growing subset of pbrt-v4 — rather than keep an
+itemized list in sync here (it has outgrown that once already), the
+authoritative list is the directive dispatch in `src/shared/pbrt_scene.h`.
+As of this writing that includes: `LookAt`/`Translate`/`Rotate`/`Scale`/
+`Transform`, `AttributeBegin`/`End`, `ObjectBegin`/`ObjectInstance`
+(instancing), `ReverseOrientation`, `Accelerator`, `CoordinateSystem`,
+`ColorSpace`, `Camera`, `Film`, `Sampler`, `Material`, `MakeNamedMaterial`/
+`NamedMaterial`, `Texture`, `MakeNamedMedium`/`MediumInterface` (homogeneous,
+cloud, nanovdb and rgbgrid media), `LightSource` (point, spot, distant,
+infinite, projection, goniometric) and `AreaLightSource`, `Shape`
+(`trianglemesh`, `plymesh`, `sphere`, `cylinder`, `cone`, `disk`,
+`paraboloid`, `curve`, `bilinearmesh`), animated transforms (motion blur),
+and `Include`. The `measured` material (a real, importance-sampled pbrt-v4
+`MeasuredBxDF` loaded from a `.bsdf` tensor file) is also supported — see
+`pbrt_scenes/measured-brdf-showroom.pbrt` for an example.
 
 Anything the parser does not understand is skipped with a warning on stderr
 rather than failing the load, so a scene using an unsupported feature still
 renders — without that feature. Unsupported constructs are worth reading the warnings
 for: a missing displacement map or medium can change a render substantially.
+One known structural gap: there is no `.obj` mesh ingestion at all (only
+inline `trianglemesh` and external `.ply`), so a scene that references raw
+`.obj` files won't load as-is.
+
+## Authoring conventions
+
+Not enforced by the parser, but followed by every scene this project authors
+itself (as opposed to a downloaded multi-file bundle like
+`barcelona-pavilion/` or `sportscar/`):
+
+- **Licensing header**: a self-authored scene ends its header comment with
+  `# Original, not derived from any distributed scene, so it carries no
+  licence constraints.` A scene migrated from a native C++ demo scene opens
+  with a short provenance note instead (which native scene/function it
+  replaces, and whether it's a byte-for-byte port or a disclosed fidelity
+  improvement) — see `scene_registry_data.h`'s matching comment for the same
+  scene for the full rationale.
+- **Sibling binary assets resolve scene-directory-first**: a bare filename
+  in `"string filename" [ "foo.bsdf" ]` (or `.exr`, `.ply`, `.bmp`, `.nvdb`)
+  resolves against the `.pbrt` file's own directory first, then as given —
+  the same rule `Include`d files use for their own nested includes (see
+  `src/shared/pbrt_load.h`'s `resolveExistingPath()`). This is why every
+  scene here references its sibling assets by bare filename with no path.
 
 ## CPU and GPU
 

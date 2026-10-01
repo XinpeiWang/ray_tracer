@@ -180,7 +180,7 @@ wavelength-aware too (`scattering_pdf_dispersive()`), not just the initial
 `add_dispersive_dielectric()`/`add_dispersive_rough_dielectric()` derive the
 same Cauchy coefficients at scene-build time and store them in
 `MaterialData`'s `dispersive_extra` union slot (`optix_types.h`);
-`wavefront_kernels.cu`'s `evaluate_materials_dielectric()` resolves the
+`wavefront_kernels_materials.cu`'s `evaluate_materials_dielectric()` resolves the
 per-hit ior via `CauchyEta()` at the path's hero wavelength when dispersive,
 for both its `Dielectric` and `RoughDielectric` cases, reusing wavefront's
 own always-on `SampledWavelengths<4>` hero-wavelength pipeline (no new
@@ -215,8 +215,10 @@ covers every material GPU-wavefront supports at all.
 
 Procedural: checker (2D + 3D), noise/FBm, marble (cubic-Bezier color ramp,
 matches pbrt-v4's 9 control points), windy, wrinkled (turbulence), dots,
-scale, mix, bilerp, solid color — `src/shared/procedural_textures.h` +
-`src/TheRestOfYourLife/texture.h`.
+scale, mix, bilerp, solid color — `src/TheRestOfYourLife/texture.h` (the
+procedural classes themselves; `src/shared/procedural_textures.h` provides
+only real anti-aliased checkerboard filtering, used by
+`uv_checker_texture::value_diff()`).
 
 Image textures: Y, with a real mipmap + EWA filter
 (`src/shared/mipmap.h`, ported from pbrt-v4's `mipmap.cpp` — 128-entry

@@ -97,19 +97,19 @@ tracer only, see the Note column. GPU: both backends (recursive and
 wavefront) honor it too - `gpu/optix/scene_builder.cpp` resolves the same
 NDC-fraction rectangle to pixel bounds at scene-build time, threaded via
 `GpuCameraParams::cropX0`/`X1`/`Y0`/`Y1`; `gpu_in_crop()`
-(`optix_device_helpers.h`, duplicated in `wavefront_kernels.cu` per that
+(`optix_device_helpers.h`, duplicated in `wavefront_kernels_materials.cu` per that
 file's own "separate translation unit" convention) is the device-side gate.
 
 | pbrt param | CPU | GPU | Note |
 |---|---|---|---|
 | `"float[4] cropwindow"` / `"integer[4] pixelbounds"` | Approx | Approx | Restricts rendering to a sub-rectangle of the frame - pbrt-v4 allows both together (cropwindow as an NDC fraction, pixelbounds in pixel space), each independently narrowing the region via intersection; both resolve here to one NDC-fraction rectangle (`pbrt_flatten::FlatScene::cropX0`/`X1`/`Y0`/`Y1`) rather than pixel indices, since `xresolution`/`yresolution` are only advisory in this codebase (a CLI width/height argument wins, same as `maxdepth`/`Sampler` type above) - a pixel-space bound resolved against the wrong resolution would be wrong, where a fraction stays correct. **Approx, not Full, on every integrator/backend**: real pbrt-v4 writes a smaller *output image* sized to just the crop rectangle; this codebase instead still writes the full `xresolution`×`yresolution` frame, with every pixel outside the crop rectangle left explicit black rather than sampled/traced - CPU via the existing per-pixel filter-weight-sum-of-zero path (default path tracer) or an equivalent per-pixel/per-splat crop gate (BDPT/MLT/RandomWalk/AO/SimplePath/SimpleVolPath/LightPath/SPPM, see below), GPU via an early-return in each backend's own primary-ray-generation kernel (`__raygen__rg`'s explicit black write; `generate_camera_rays`'s skip-the-enqueue; GPU SPPM's `__raygen__sppm_camera_pass` early-return, relying on its own pixel buffer's one-time zero-init) - a real, deliberate simplification everywhere, chosen to avoid rippling a genuinely different output image size through the PPM/EXR writers, the PNG conversion step, and the Qt GUI's preview, all of which currently assume the output image is `image_width`×`image_height`. **Now honored by every CPU integrator and both main GPU backends, plus GPU SPPM** - `--bdpt`/`--mlt`/`--randomwalk`/`--ao`/`--simplepath`/`--simplevolpath` skip the whole per-pixel loop body for an out-of-crop pixel (`bdpt_adapter.h`'s `*_render_with_adapter()` drivers); `--lightpath` and BDPT's own t==1 light-tracing strategy have no per-pixel loop to skip (samples land at essentially arbitrary pixels), so `SplatFilm` itself gates each splat against the crop rect instead; `--mlt`'s own Markov-chain splat lambda does the identical gate inline, since chain mutations aren't pixel-indexed either - none of this needs renormalization, since each accepted splat already carries its own correct weight regardless of how many other splats were dropped. CPU `--sppm` (`sppm_adapter.h`'s `sppm_camera_pass_with_sky()`) skips the camera pass for an out-of-crop pixel every iteration, leaving its visible point permanently invalid (`SPPMFinalImage()` already reconstructs an untouched pixel as black with no divide-by-zero risk, since `radius` stays at its nonzero initial value). GPU SPPM's own `SPPMLaunchParams::camera` is a direct copy of the same `GpuCameraParams` the other two GPU backends already use, so it already carried a resolved crop rectangle with nothing reading it - `__raygen__sppm_camera_pass` now does. The wavefront backend's own `generate_camera_rays` kernel (launched once per SAMPLE, unlike the recursive backend's single whole-render launch) goes further than an early-return: `wf_launch_generate_camera_rays` (`wavefront_launch.cu`) sizes its CUDA launch grid to just the crop rectangle when one is active, so a cropped-out pixel's GPU thread is never scheduled at all on that backend, not merely skipped after the fact. |
 
-| `"float maxcomponentvalue"` | Full | Approx | Per-sample firefly clamp: if the largest of a sample's r/g/b exceeds this, all three are scaled down so the max component lands exactly at the threshold (pbrt-v4's own real default is effectively unbounded, `1e9`). CPU: `pbrt_scene.h` parses it into `Scene::maxComponentValue`, `pbrt_flatten.h` carries it through to `FlatScene::maxComponentValue`, and `scene_registry.h` wires it onto `camera::max_component_value`, applied unconditionally in `camera.h`'s per-sample loop via `src/shared/film.h`'s `clamp_sensor_rgb()` - a pre-existing, independently-tested helper that had no caller anywhere in the codebase until this. Default CPU path tracer only (same scope cut as `PixelFilter`/`regularize`) - `--spectral` accumulates in CIE XYZ at the point in the loop this clamp needs to run in RGB, so it's skipped there; BDPT/MLT/SPPM/the debug integrators have no equivalent clamp either. **Now real on GPU too, split by backend** (`GpuCameraParams::maxComponentValue`, `optix_types.h`; wired from both the CLI `--maxcomponentvalue` flag - `optix_interface.cpp` - and a loaded scene's own directive - `scene_builder.cpp`): the **recursive backend is Full** - one sample's whole radiance is already known as a single local (`radiance`, `optix_raygen.h`) before it's ever added to the pixel accumulator, so the clamp there is an exact, byte-for-byte port of CPU's own semantics. The **wavefront backend is only Approx** - this backend's framebuffer is a single running total shared across every sample AND bounce of the entire render, fed by 7 independent `atomicAdd` call sites (NEE shadow hits across 4 material-evaluation kernels, escaped/miss rays, BSSRDF probe-exit success and failure, deferred shadow-ray accumulation) with no single point where "this one sample's total radiance" is ever known as one value - a true per-sample-total clamp would need deferring every one of those adds into a per-ray accumulator until definitive path termination, a materially bigger architectural change (the same class of tradeoff already accepted for GPU's area-light texture filtering, ~30 lines up). Instead, each of the 7 sites clamps its own individual contribution independently before adding (`wavefront_kernels.cu`) - real firefly suppression, but not pbrt-v4's exact semantics: a sample whose total exceeds the threshold via several individually-under-threshold contributions isn't caught. |
+| `"float maxcomponentvalue"` | Full | Approx | Per-sample firefly clamp: if the largest of a sample's r/g/b exceeds this, all three are scaled down so the max component lands exactly at the threshold (pbrt-v4's own real default is effectively unbounded, `1e9`). CPU: `pbrt_scene.h` parses it into `Scene::maxComponentValue`, `pbrt_flatten.h` carries it through to `FlatScene::maxComponentValue`, and `scene_registry.h` wires it onto `camera::max_component_value`, applied unconditionally in `camera.h`'s per-sample loop via `src/shared/film.h`'s `clamp_sensor_rgb()` - a pre-existing, independently-tested helper that had no caller anywhere in the codebase until this. Default CPU path tracer only (same scope cut as `PixelFilter`/`regularize`) - `--spectral` accumulates in CIE XYZ at the point in the loop this clamp needs to run in RGB, so it's skipped there; BDPT/MLT/SPPM/the debug integrators have no equivalent clamp either. **Now real on GPU too, split by backend** (`GpuCameraParams::maxComponentValue`, `optix_types.h`; wired from both the CLI `--maxcomponentvalue` flag - `optix_interface.cpp` - and a loaded scene's own directive - `scene_builder.cpp`): the **recursive backend is Full** - one sample's whole radiance is already known as a single local (`radiance`, `optix_raygen.h`) before it's ever added to the pixel accumulator, so the clamp there is an exact, byte-for-byte port of CPU's own semantics. The **wavefront backend is only Approx** - this backend's framebuffer is a single running total shared across every sample AND bounce of the entire render, fed by 7 independent `atomicAdd` call sites (NEE shadow hits across 4 material-evaluation kernels, escaped/miss rays, BSSRDF probe-exit success and failure, deferred shadow-ray accumulation) with no single point where "this one sample's total radiance" is ever known as one value - a true per-sample-total clamp would need deferring every one of those adds into a per-ray accumulator until definitive path termination, a materially bigger architectural change (the same class of tradeoff already accepted for GPU's area-light texture filtering, ~30 lines up). Instead, each of the 7 sites clamps its own individual contribution independently before adding (`wavefront_kernels_materials.cu`) - real firefly suppression, but not pbrt-v4's exact semantics: a sample whose total exceeds the threshold via several individually-under-threshold contributions isn't caught. |
 
 ## Integrator
 
 CPU: `src/TheRestOfYourLife/camera.h` (`ray_color()`/`ray_color_spectral()`).
-GPU: `gpu/optix/wavefront_kernels.cu` (`evaluate_materials`/
+GPU: `gpu/optix/wavefront_kernels_materials.cu` (`evaluate_materials`/
 `evaluate_materials_dielectric`) for `--wavefront`; `gpu/optix/optix_device_helpers.h`
 (`shade_material()`) for the recursive backend.
 
@@ -397,7 +397,7 @@ loader and no longer match the code:
   the Hair branch instead of the shading normal every other Hair-material
   shape (e.g. a plain sphere) still uses as a proxy — see
   `hair_material.h`'s `tangent_is_dpdu` parameter comment for the full
-  reasoning and `optix_intersection_bilinear_patch.h`/`wavefront_kernels.cu`'s
+  reasoning and `optix_intersection_bilinear_patch.h`/`wavefront_kernels_materials.cu`'s
   own Hair branches for the GPU mirror.
 
 - `MakeNamedMedium`'s `"type"` parameter supports `"homogeneous"` (the
@@ -498,7 +498,7 @@ loader and no longer match the code:
   all (only `rgbgrid`'s does), so this isn't a scope gap, just a
   non-feature for those two types. **`rgbgrid`'s own `"Le"` support is now
   real on GPU too**, not CPU-only (`GpuRgbGridMedium::leDataOffset`/
-  `Le_scale`, `optix_intersection_sphere.h`/`wavefront_kernels.cu`'s own
+  `Le_scale`, `optix_intersection_sphere.h`/`wavefront_kernels_materials.cu`'s own
   RgbGridMedium closest-hit cases, `gpu/optix/pbrt_gpu_builder.h`'s scene
   builder) - GPU emits the FULL per-voxel `Le` at every accepted scatter
   collision rather than CPU's real sigma_a/sigma_t-weighted fraction, since
@@ -738,7 +738,7 @@ loader and no longer match the code:
 
   The chosen fix instead: `evaluate_materials()`'s `DielectricMedium` case
   (`wavefront_kernels_materials.cu`) does its own real GGX VNDF scatter
-  sampling (mirroring `evaluate_materials_dielectric.cu`'s own
+  sampling (mirroring `wavefront_kernels_materials_dielectric.cu`'s own
   `RoughDielectric` case, the same shared `TrowbridgeReitz<float>`/
   `RoughDielectricBxDF<float>` templates), then — only for the genuinely
   glossy (non-`EffectivelySmooth`) sub-case — passes `MaterialType::
@@ -987,14 +987,19 @@ per-`MaterialKind` behavior.)
   touching every material and texture in the renderer, not a contained
   texture-kind addition - tracked here as a deliberately deferred gap,
   not a quick follow-up.
-  **Note**: `src/shared/procedural_textures.h`/`src/shared/textures.h`
-  contain a SEPARATE, more general (anti-aliased, `TextureEvalContext`-based)
-  procedural texture library that already has its own tested
-  `WindyTexture<T>`/`WrinkledTexture<T>`/`DotsTexture<T>`/`BilerpTexture<T>`
-  - discovered while implementing this round, confirmed to have no live
-  consumer anywhere in the actual rendering pipeline (only its own test
-  file). Not used here; flagged separately for investigation into whether
-  it's worth finishing/integrating or removing.
+  **Historical note**: an earlier, separate procedural-texture port
+  (`src/shared/textures.h`, plus most of `src/shared/procedural_textures.h`'s
+  original content) duplicated `windy`/`wrinkled`/`dots`/`bilerp`/`marble`/
+  `fbm` with no live consumer anywhere in the actual rendering pipeline -
+  discovered while implementing this round, flagged for investigation into
+  whether it was worth finishing/integrating or removing. It's since been
+  removed as dead code (`dcdf15cf`); `src/shared/textures.h` no longer
+  exists, and `procedural_textures.h` now keeps only the one piece that
+  wasn't redundant (real anti-aliased checkerboard filtering, used by
+  `uv_checker_texture::value_diff()` - see that file's own header comment).
+  The actually-wired `windy_texture`/`wrinkled_texture`/`dots_texture`/
+  `bilerp_texture` implementations live in `src/TheRestOfYourLife/texture.h`
+  alone.
 
   **Update**: `Shape "trianglemesh"`'s own per-vertex `"point2 uv"` data
   (`"st"` is not a pbrt-v4 alias for it - confirmed against pbrt-v4 source,
@@ -1063,7 +1068,7 @@ per-`MaterialKind` behavior.)
   `mipmap_texture::value()`/`value_ewa()`/`value_lod()` (`texture.h`) used
   to hard-clamp `u`/`v` to `[0,1]` *before* `MipWrapMode` ever saw them, and
   GPU's own `sampleImage()` (`gpu/optix/optix_device_helpers.h`,
-  `gpu/optix/wavefront_kernels.cu`) did the identical hard `[0,1]` clamp, so
+  `gpu/optix/wavefront_kernels_materials.cu`) did the identical hard `[0,1]` clamp, so
   `"wrap" "repeat"` on a UV>1 scene was a structural no-op on both; the
   clamp is now a much wider `wide_clamp([-1024,1024])` on CPU (still
   bounding `bilerp()`'s integer texel math against a pathological UV, just

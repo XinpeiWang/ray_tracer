@@ -2,8 +2,12 @@
 
 Distribution packages and release artifacts, for BOTH platforms this
 project builds on - Windows (CLI + optional Qt GUI + optional GPU/OptiX)
-and macOS (CLI + Qt GUI, CPU rendering only - there is no CUDA/OptiX on
-macOS at all). The two platforms use separate build/package scripts (see
+and macOS (CLI + Qt GUI, CPU rendering + a real Metal GPU backend - there
+is no CUDA/OptiX on macOS, but `scripts/build_and_deploy_macos.sh` always
+builds with `-DRT_BUILD_METAL=ON`, so every macOS release ships a fully-
+integrated `--gpu` option, not just CPU rendering - see `docs/
+METAL_GPU_FEASIBILITY.md`). The two platforms use separate
+build/package scripts (see
 `scripts/README.md`) but share the same tag-and-upload release step at
 the end, and can both be attached to the SAME GitHub Release (e.g.
 `v1.x.x`) as separate, clearly-named assets - a user picks whichever
@@ -58,9 +62,9 @@ publish; a release doesn't have to include all three.
 
 ## Creating New Releases (macOS)
 
-One combined build (CLI + Qt GUI together, always - there's no separate
-tiering the way Windows has, since there's no GPU tier to opt into at all
-on this platform):
+One combined build (CLI + Qt GUI + Metal GPU together, always - there's no
+separate tiering the way Windows has, since this platform always ships
+everything it supports in one bundle rather than opting GPU in/out per tier):
 
 1. Build and package (run this ON macOS, from the repo root - it is not
    usable from Windows or via cross-compilation):
@@ -84,8 +88,10 @@ on this platform):
      stray-relative-path concern the Windows step above already explains)
    - Mount it and drag `RayTracerGUI.app` to `/Applications` (or just
      launch it straight from the mounted volume for a quick check)
-   - Verify the GUI starts and renders a few scene presets - CPU rendering
-     only, there is no GPU/Live Preview tier to check here
+   - Verify the GUI starts and renders a few scene presets on CPU
+   - Also verify GPU mode: switch the GUI (or CLI `--gpu`) to Metal and
+     confirm a render completes - every macOS build includes it (no "Lite"
+     cut that skips GPU the way Windows has)
    - If macOS Gatekeeper blocks the unsigned app (`.app` isn't
      notarized/code-signed by this project), right-click → Open once, or
      `xattr -cr RayTracerGUI.app` before testing - a real step a real
@@ -147,8 +153,9 @@ RayTracer_Package/
 
 ### macOS
 
-One combined bundle - no tiers, since there's no GPU backend to opt in or
-out of on this platform at all:
+One combined bundle - no tiers, since this platform always ships everything
+it supports (CPU + Metal GPU) in one bundle rather than opting GPU in/out
+per tier:
 
 ```
 RayTracer_Package_macOS/
@@ -156,8 +163,10 @@ RayTracer_Package_macOS/
 │   └── Contents/
 │       ├── MacOS/
 │       │   ├── RayTracerGUI            # Qt GUI
-│       │   ├── ray_tracer              # CLI renderer, CPU-only - the GUI's own subprocess
-│       │   └── scene_metadata.dylib
+│       │   ├── ray_tracer              # CLI renderer, CPU + Metal GPU - the GUI's own subprocess
+│       │   ├── scene_metadata.dylib
+│       │   └── metal_poc_*.metal       # Metal shader source (compiled from source at runtime,
+│       │                               #   no offline .metallib step - see metal_poc.mm)
 │       └── Frameworks/                 # Qt frameworks, bundled by macdeployqt
 └── RayTracerGUI.dmg                    # the actual file to publish/distribute
 ```

@@ -64,6 +64,12 @@ Utility scripts for building, packaging, and testing the ray tracer.
   - Compares CPU vs GPU output
   - Pixel-by-pixel difference analysis
   - Usage: `python scripts/compare_images.py image1.ppm image2.ppm`
+- **`run_tests_parallel.ps1`** - Shards `ray_tracer_tests.exe` across multiple
+  parallel processes (`GTEST_TOTAL_SHARDS`), with per-shard scratch
+  directories to avoid output-file collisions
+  - `-Tier Fast|Slow|All` selects/excludes GPU-touching and thread-pool-
+    oversubscribing tests
+  - See `tests/TESTING_GUIDE.md` for the full usage pattern
 
 ### Maintenance
 - **`clean_vs_cache.bat`** - Batch script to clean Visual Studio build cache
