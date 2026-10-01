@@ -50,12 +50,18 @@ result down, because the other strategy's sample is already covering it.
 
 ## Current implementation
 
-The power heuristic itself lives in one place, shared by every backend:
-`src/shared/mis_sampling.h`'s `PowerHeuristic(nf, fPdf, ng, gPdf)` (a
+The CPU renderer and the GPU-recursive backend share one implementation:
+`src/shared/math_utils.h`'s 2-argument `PowerHeuristic(pdf_a, pdf_b)` (a
 `CPU_GPU`-tagged template, compiled by both the host compiler and nvcc -
-see that file's own comment). Both the CPU renderer and both GPU backends
-wrap it in a local `mis_power_heuristic()` helper and use it at every NEE
-(light-sampling) site:
+see that file's own comment), each wrapped in a local `mis_power_heuristic()`
+helper and used at every NEE (light-sampling) site. The GPU-wavefront
+backend does NOT call into this shared helper - it has its own independent
+`wf_mis()` implementation (`gpu/optix/wavefront_device_helpers.h`) with its
+own copy of the `a^2/(a^2+b^2)` formula, kept separate rather than sharing
+the CPU/GPU-recursive helper. (`src/shared/mis_sampling.h` also defines a
+different, 4-argument `PowerHeuristic(nf, fPdf, ng, gPdf)` used by other,
+unrelated call sites - e.g. sphere/cone light sampling and its own tests -
+not this NEE/MIS path.)
 
 - **CPU**: `src/TheRestOfYourLife/camera.h`'s `ray_color()` (and its
   spectral counterpart `ray_color_spectral()`) - one-sample MIS combining
@@ -65,7 +71,8 @@ wrap it in a local `mis_power_heuristic()` helper and use it at every NEE
   - real NEE + MIS at every non-delta material hit, including against the
   sky/infinite lights, not just area lights.
 - **GPU-wavefront**: the equivalent NEE-gated path in
-  `wavefront_kernels.cu`'s material-evaluation kernel.
+  `wavefront_kernels_materials.cu`'s `evaluate_materials()` kernel, via its
+  own `wf_mis()` helper (`wavefront_device_helpers.h`).
 
 Delta-distribution materials (mirror, perfect dielectric) skip NEE/MIS
 entirely on all three backends, since a delta BSDF has zero probability of

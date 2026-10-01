@@ -32,14 +32,31 @@ are distinguished by prefix instead - see File Structure below.
   (init/scene-build/render) rather than one large file.
 - `optix_programs.cu` - recursive backend's OptiX device programs (raygen,
   miss, closest-hit, intersection).
-- `optix_device_helpers.h` - recursive backend's shared `__device__` helpers
-  (material shading dispatch, NEE/light sampling).
+- `optix_device_helpers.h` - recursive backend's shared `__device__` helpers:
+  material shading dispatch (`shade_material()`) and texture sampling.
+- `optix_device_helpers_lighting.h` - split out of `optix_device_helpers.h`;
+  holds the recursive backend's NEE/light-sampling and medium/shadow-ray
+  `__device__` helpers.
+- `optix_measured_bxdf.h` / `wavefront_measured_bxdf.h` - real,
+  importance-sampled Measured BRDF (pbrt-v4 `MeasuredBxDF`/
+  `PiecewiseLinear2D`) for the recursive and wavefront backends
+  respectively.
+- `wavefront_kernels_materials*.cu` - the wavefront backend's material-
+  evaluation kernels (split per material family for faster incremental
+  builds), the wavefront equivalent of `optix_device_helpers.h`'s
+  `shade_material()`.
 - `scene_builder.cpp`/`.h` - converts both native hand-authored demo scenes
   and pbrt-v4-loaded scenes into GPU-uploadable `SceneData`.
 - `pbrt_gpu_builder.h` - the pbrt-v4 loader's GPU-side half: takes a
   flattened pbrt scene (`src/shared/pbrt_flatten.h`'s `FlatScene`) and builds
   `SceneData` from it. The CPU-side equivalent is
   `src/TheRestOfYourLife/pbrt_cpu_builder.h`.
+
+This directory also has several more advanced subsystems not itemized here
+(NRC, ReSTIR, SVGF denoising, BSSRDF, temporal upscaling, probe grids,
+portal/sky lights, motion blur, the mesh gallery) - see
+`docs/FEATURE_INVENTORY.md` for the full per-feature matrix across all three
+backends.
 
 ## Build System
 

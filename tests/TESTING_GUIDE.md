@@ -1,8 +1,9 @@
 # Ray Tracer Testing Guide
 
-Complete guide for running and maintaining the ray tracer test suite:
-**3,830 tests across 524 test suites**, in ~184 files under `tests/unit/`
-and `tests/integration/`.
+Complete guide for running and maintaining the ray tracer test suite: a
+large and growing number of tests (4,292 across 570 test suites as of this
+writing - run `--gtest_list_tests` for the live count, it drifts fast), in
+`tests/unit/` and `tests/integration/`.
 
 ## Two build paths - pick one
 
@@ -55,8 +56,8 @@ configure + Debug/Release build + run).
 
 ```
 tests/
-├── unit/                  # 172 files - fast, isolated unit tests
-├── integration/           # 12 files - slower, exercise real rendering
+├── unit/                  # fast, isolated unit tests (190+ files and growing)
+├── integration/           # slower, exercise real rendering (22+ files and growing)
 ├── ray_tracer_tests.vcxproj  # MSVC target - full coverage, see above
 ├── CMakeLists.txt         # Standalone CMake target - portable subset
 ├── build_and_run_tests.ps1/.bat  # Automates the CMake path
@@ -76,7 +77,7 @@ list, or `Glob`/`grep` the `tests/unit/`/`tests/integration/` directories.
 ray_tracer_tests.exe --gtest_filter=CameraTest.*
 
 # Multiple patterns
-ray_tracer_tests.exe --gtest_filter=CameraTest.*:MathTest.*
+ray_tracer_tests.exe --gtest_filter=CameraTest.*:Vec3Test.*
 
 # Exclude a pattern (illustrative - not the complete GPU/slow exclusion
 # list; see scripts/run_tests_parallel.ps1's own $gpuAndOversubscribingFilter

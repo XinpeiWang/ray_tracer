@@ -115,9 +115,23 @@ The solution contains the following projects:
    - PTX shader compilation: `optix_programs.ptx`
    - Requires NVIDIA GPU with OptiX support
 
+4. **scene_metadata** (`scene_metadata/scene_metadata.vcxproj`)
+   - Dynamic library: `scene_metadata.dll`
+   - Exposes the C++ scene registry's live scene list/metadata to the Qt
+     GUI (which shells out to the CLI rather than linking `cpu_renderer.lib`
+     directly) - must be rebuilt whenever `scene_registry.h`/
+     `scene_registry_data.h` changes, or the GUI will show a stale scene
+     list
+
+5. **realtime_renderer** (`realtime_renderer/realtime_renderer.vcxproj`)
+   - Dynamic library: `realtime_renderer.dll`
+   - Backs the GUI's GPU-only "Live Preview" tab (adaptive-sampling pixel
+     skip, Neural Radiance Cache, Neural Temporal Upscale, DOF override) -
+     `Full`-tier only, see `releases/README.md`'s packaging tiers
+
 ### Testing
 
-4. **ray_tracer_tests** (`tests/ray_tracer_tests.vcxproj`)
+6. **ray_tracer_tests** (`tests/ray_tracer_tests.vcxproj`)
    - Test executable: `ray_tracer_tests.exe`
    - Google Test framework
    - Unit and integration tests
@@ -125,7 +139,7 @@ The solution contains the following projects:
 
 ### GUI (External Qt Build)
 
-5. **Qt GUI** (`qt_gui/RayTracerGUI.pro`)
+7. **Qt GUI** (`qt_gui/RayTracerGUI.pro`)
    - Qt 6.11.1 application
    - MSVC 2022 64-bit build
    - Spawns `ray_tracer.exe` as subprocess
