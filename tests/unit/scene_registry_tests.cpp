@@ -565,15 +565,18 @@ TEST(FindSceneTest, HairFibersSceneIsGpuCompatible) {
 }
 
 TEST(FindSceneTest, MeasuredBrdfSceneIsGpuCompatible) {
-	// Scene 34's "measured BRDF" is a misnomer at the CPU level, not just the
-	// GPU level: src/TheRestOfYourLife/scenes_advanced.h's measured_material::
-	// scatter() builds a MeasuredBRDFData member but never reads it - it's
-	// byte-for-byte a Lambertian material (cosine-hemisphere sampling, flat
-	// tint attenuation). The real pbrt-v4 MeasuredBxDF importance-sampling
-	// chain (src/shared/measured_bxdf.h + piecewise_linear_2d.h) is fully
-	// implemented and unit-tested elsewhere in this codebase but never wired
-	// to this scene, so the GPU port matches actual CPU behavior with plain
-	// MaterialType::Lambertian rather than porting unused tensor-BRDF math.
+	// B14 is pbrt-backed now (pbrt_scenes/measured-brdf-showroom.pbrt) - a
+	// real, disclosed fidelity IMPROVEMENT over its old native self: the
+	// now-deleted measured_material class (scenes_advanced.h) built a
+	// MeasuredBRDFData member but never read it in scatter() - byte-for-byte
+	// a mislabeled Lambertian, identically on CPU and GPU. This loader's
+	// real pbrt-v4 MeasuredBxDF importance-sampling chain (src/shared/
+	// measured_bxdf.h + measured_bxdf_loader.h's real .bsdf tensor-file
+	// reader, already proven on 3 downloaded pbrt-v4-scenes bundles) is now
+	// reachable from this scene too, via a small synthetic .bsdf baked
+	// specifically for it - on BOTH GPU backends (gpu/optix/optix_measured_
+	// bxdf.h/wavefront_measured_bxdf.h), not the plain MaterialType::
+	// Lambertian fallback this test's own name/comment used to describe.
 	const SceneDescriptor* s = find_scene("B14");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
