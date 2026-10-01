@@ -1,0 +1,91 @@
+# measured-brdf-showroom.pbrt -- migration of the native "B14 Measured
+# BRDF" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_measured_brdf_scene()) to a pbrt-backed scene, part of this
+# project's GPU scene-construction-duplication elimination.
+#
+# This migration is a real, disclosed FIDELITY IMPROVEMENT, not a lateral
+# move: native's own measured_material class (scenes_advanced.h) never
+# actually reads its own MeasuredBRDFData member at all - scatter() just
+# cosine-hemisphere-samples and returns a flat tint attenuation, making it
+# byte-for-byte a mislabeled Lambertian, identically on both CPU and GPU
+# (the GPU builder's own comment explicitly matches it with a plain
+# Lambertian rather than porting "the unused tensor-BRDF machinery"). This
+# project's generic pbrt loader instead has REAL, working, importance-
+# sampled Measured BRDF support on both CPU and BOTH GPU backends (a real
+# ported pbrt-v4 PiecewiseLinear2D/MeasuredBxDF, backed by a real .bsdf
+# tensor-file reader - see src/shared/measured_bxdf.h/measured_bxdf_
+# loader.h, gpu/optix/optix_measured_bxdf.h/wavefront_measured_bxdf.h),
+# already proven on 3 real downloaded pbrt-v4-scenes bundles (sportscar/
+# contemporary-bathroom/barcelona-pavilion), just never reachable from a
+# small, self-contained, git-trackable demo scene before now.
+#
+# pbrt_scenes/synthetic-gold.bsdf is a small (~11KB), original, licence-
+# free synthetic tensor file baked specifically for this scene (NOT a real
+# gonioreflectometer measurement) - an 8x8 angular grid x 4 incident
+# elevations x 2 (isotropic) azimuths x 3 representative wavelengths,
+# shaped into a real glossy lobe (a Gaussian peak near the specular
+# direction, falling off toward grazing - not a flat/uniform placeholder)
+# with a warm, gold-like per-wavelength tint (strong red/green, weak
+# blue). Written directly in the pbrt-v4 "tensor_file" binary format this
+# loader's own measured_bxdf_loader.h parses (12-byte magic, versioned
+# field table, little-endian raw data - see that file's own header
+# comment for the exact layout this mirrors), using the same recipe this
+# project's own tests/unit/measured_bxdf_pbrt_tests.cpp already tests
+# against (WriteTensorFile()/WriteMinimalValidBsdf()), just at a richer
+# resolution with real angular/spectral variation instead of uniform
+# placeholder values.
+#
+# Geometry/camera/light unchanged from native: a ground plane and 5
+# spheres showing the same measured material from different silhouette
+# angles, lit by one overhead area light.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 3.2 17    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 42 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 8 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 8 8 8 ]
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.3 0.3 0.3 ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+Material "measured" "string filename" [ "synthetic-gold.bsdf" ]
+
+AttributeBegin
+  Translate -5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate -2.5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 2.5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 5 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

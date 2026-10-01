@@ -2720,32 +2720,16 @@ static void build_principled_showcase_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
-/// @brief Scene 34: Measured BRDF. Matches CPU build_measured_brdf_scene()'s
-/// ACTUAL rendered behavior, not its name: src/TheRestOfYourLife/scenes_advanced.h's
-/// `measured_material::scatter()` never reads its MeasuredBRDFData member at
-/// all (built from synthetic all-1.0 tabulated data, but the real pbrt-v4
-/// MeasuredBxDF importance-sampling chain in src/shared/measured_bxdf.h is
-/// never called) - it's byte-for-byte a Lambertian material with a flat tint,
-/// cosine-hemisphere sampling and constant attenuation. GPU parity means
-/// matching that actual behavior with MaterialType::Lambertian, not porting
-/// the unused tensor-BRDF machinery.
-static void build_measured_brdf_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.3f, 0.3f, 0.3f));
-	SphereData ground = make_ground_sphere_1000(mat_ground);
-	scene.spheres.push_back(ground);
-
-	const int mat_measured = add_lambertian(scene, make_float3(0.7f, 0.5f, 0.3f));
-	for (int i = -2; i <= 2; ++i) {
-		SphereData s{}; s.center = make_float3(static_cast<float>(i) * 2.5f, 1.0f, 0.0f); s.radius = 1.0f; s.materialIdx = mat_measured;
-		scene.spheres.push_back(s);
-	}
-
-	const int mat_light = add_diffuse_light(scene, make_float3(8.0f, 8.0f, 8.0f));
-	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 1.5f; light.materialIdx = mat_light;
-	scene.spheres.push_back(light);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-}
+// build_measured_brdf_scene_gpu() (former "scene 34" / B14 Measured BRDF
+// GPU builder) deleted - B14 migrated to pbrt-backed, see pbrt_scenes/
+// measured-brdf-showroom.pbrt and scene_registry_data.h's own entry. This
+// native builder only ever matched CPU's own mislabeled-Lambertian
+// behavior (MaterialType::Lambertian, not real measured-BRDF math); the
+// pbrt-backed version uses this project's REAL, working, importance-
+// sampled Measured BRDF support instead (gpu/optix/optix_measured_bxdf.h/
+// wavefront_measured_bxdf.h), already proven on 3 downloaded
+// pbrt-v4-scenes bundles, now reachable from this small self-contained
+// scene too.
 
 // build_triangle_mesh_scene_gpu() (former "scene 37" / F2 Triangle Mesh
 // GPU builder) deleted - F2 migrated to pbrt-backed, see
@@ -4173,16 +4157,11 @@ bool build_scene(
 							// build_loaded_pbrt_scene() now that legacy_id 19 is no longer
 							// assigned to any scene.
 
-							case 34: {  // Measured BRDF (see build_measured_brdf_scene_gpu's comment)
-								build_measured_brdf_scene_gpu(scene);
-								// lookfrom/vfov widened/pulled back so all 5 spheres (spanning
-								// x=+-5) actually fit in frame - matches CPU CameraConfig row for
-								// scene 34.
-								apply_mesh_camera(make_float3(0.0f, 3.2f, 17.0f), make_float3(0.0f, 1.0f, 0.0f), 42.0f);
-								// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) - this
-								// scene has a real emissive light sphere, unlike scenes 19/31.
-								break;
-							}
+							// case 34 (Measured BRDF / B14) migrated to pbrt-backed - see
+							// pbrt_scenes/measured-brdf-showroom.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 34
+							// is no longer assigned to any scene.
 
 							// case 37 (Triangle Mesh / F2) migrated to pbrt-backed - see
 							// pbrt_scenes/triangle-mesh-scene.pbrt and

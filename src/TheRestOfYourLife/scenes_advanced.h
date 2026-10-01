@@ -30,7 +30,6 @@
 #include "../shared/bilinear_patch.h"
 #include "../shared/cameras.h"
 #include "../shared/cornell_box_data.h"
-#include "../shared/measured_bxdf.h"
 #include "../shared/portal_image_infinite_light.h"
 #include <memory>
 
@@ -458,86 +457,13 @@ inline hittable_list build_rgb_grid_medium_scene() {
 // migrated to pbrt-backed, see pbrt_scenes/spherical-camera-scene.pbrt and
 // scene_registry_data.h's own entry. Neither had any other consumer.
 
-// ============================================================================
-// B14: Measured BRDF
-// Sphere cluster with a measured BRDF material (pbrt-v4 MeasuredBxDF)
-// Uses synthetically generated tabulated data to demonstrate the pipeline.
-// ============================================================================
-
-// CPU material wrapper around MeasuredBxDF<double>
-class measured_material : public material {
-  public:
-	measured_material(const MeasuredBRDFData& brdf_data, const color& tint = color(1,1,1))
-		: brdf_(brdf_data), tint_(tint) {}
-
-	bool scatter(const ray& r_in, const hit_record& rec,
-				 scatter_record& srec, bool do_regularize = false) const override {
-		// Sample from cosine hemisphere (simplified: use lambertian sampling)
-		// Full MeasuredBxDF importance sampling requires 5D warp chain;
-		// here we use cosine-hemisphere sampling and evaluate the BRDF for the weight.
-		srec.attenuation = tint_;
-		srec.pdf_ptr = make_shared<cosine_pdf>(rec.normal);
-		srec.skip_pdf = false;
-		return true;
-	}
-
-	double scattering_pdf(const ray& r_in, const hit_record& rec,
-						  const ray& scattered) const override {
-		auto cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
-		return cos_theta < 0 ? 0 : cos_theta / pi;
-	}
-
-  private:
-	MeasuredBRDFData brdf_;
-	color tint_;
-};
-
-inline hittable_list build_measured_brdf_scene() {
-	hittable_list world;
-	// Ground
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
-				 make_shared<lambertian>(color(0.3, 0.3, 0.3))));
-
-	// Build a synthetic MeasuredBRDFData with uniform tabulated values.
-	// This gives a Lambertian-like appearance and exercises the full pipeline.
-	const int N = 4;
-	std::vector<float> ndf_data(N*N, 1.f);
-	std::vector<float> sigma_data(N*N, 1.f);
-	std::vector<float> vndf_data(N*N*N*N, 1.f);
-	std::vector<float> lum_data(N*N*N*N, 1.f);
-	const int nwl = 4;
-	std::vector<float> spectra_data(N*N*nwl*N*N, 1.f);
-	std::vector<float> phi_i(N), theta_i(N), wl_vals(nwl);
-	for (int i = 0; i < N; ++i) {
-		phi_i[i]   = (float)(i * 3.14159265f * 2.f / N);
-		theta_i[i] = (float)(i * 3.14159265f * 0.5f / N);
-	}
-	for (int i = 0; i < nwl; ++i)
-		wl_vals[i] = 400.f + i * 100.f;
-
-	MeasuredBRDFData brdf_data;
-	brdf_data.Build(
-		ndf_data.data(),    N, N,
-		sigma_data.data(),  N, N,
-		vndf_data.data(),   N, N,
-		N, phi_i.data(),
-		N, theta_i.data(),
-		lum_data.data(),
-		spectra_data.data(),
-		nwl, wl_vals.data(),
-		true
-	);
-
-	auto mat_measured = make_shared<measured_material>(brdf_data, color(0.7, 0.5, 0.3));
-	// Showroom: row of spheres with the measured BRDF
-	for (int i = -2; i <= 2; ++i) {
-		world.add(make_shared<sphere>(point3(i*2.5, 1, 0), 1, mat_measured));
-	}
-	// Light
-	world.add(make_shared<sphere>(point3(0, 8, 0), 1.5,
-				 make_shared<diffuse_light>(color(8, 8, 8))));
-	return world;
-}
+// measured_material/build_measured_brdf_scene() (former B14) deleted - B14
+// migrated to pbrt-backed, see pbrt_scenes/measured-brdf-showroom.pbrt and
+// scene_registry_data.h's own entry for the full derivation (a real
+// fidelity improvement: measured_material's own scatter() never read its
+// MeasuredBRDFData member at all, byte-for-byte a mislabeled Lambertian -
+// the pbrt-backed version uses this project's REAL, working, importance-
+// sampled Measured BRDF support instead). No other consumer.
 
 // build_portal_light_scene()/build_portal_sky() deleted - C7 migrated to
 // pbrt-backed, see pbrt_scenes/portal-window-room.pbrt and

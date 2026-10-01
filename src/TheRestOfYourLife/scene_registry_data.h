@@ -391,19 +391,24 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D3", 195, SceneNames::SphericalCamera, SceneCategories::Cameras,
             "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
             "Medium", "spherical-camera-scene.pbrt"),
-        {
-            "B14", 34, SceneNames::MeasuredBrdf, SceneCategories::Materials,
-            "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
-            "Medium", 200, false, true,
-            { 42, 0, 3.2, 17,  0, 1, 0,  0, 0, 0 },
-            build_measured_brdf_scene,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 1.5,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
+        // B14 migrated to pbrt-backed - see pbrt_scenes/measured-brdf-
+        // showroom.pbrt for the full derivation. A real, disclosed fidelity
+        // IMPROVEMENT, not a lateral move: native's own measured_material
+        // (scenes_advanced.h) never read its own MeasuredBRDFData at all -
+        // scatter() just returned a flat tint, a mislabeled Lambertian on
+        // both backends. This loader's real Measured BRDF support (already
+        // proven on 3 downloaded pbrt-v4-scenes bundles) is now reachable
+        // from a small, self-contained, git-tracked demo too, via a new
+        // synthetic pbrt_scenes/synthetic-gold.bsdf baked specifically for
+        // this scene (an original, licence-free glossy lobe, not a real
+        // gonioreflectometer measurement - see the .pbrt file's own header
+        // comment). legacy_id 205 (next after C1's 203/I3's 204).
+        // build_measured_brdf_scene()/measured_material have no other
+        // consumer - deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B14", 205, SceneNames::MeasuredBrdf, SceneCategories::Materials,
+            "Sphere cluster with a real, importance-sampled measured BRDF (pbrt-v4 MeasuredBxDF) loaded from a synthetic .bsdf tensor file",
+            "Medium", "measured-brdf-showroom.pbrt"),
         {
             "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
             "A real glass prism splitting a parallel white light into a visible chromatic fan (CPU --spectral, GPU --wavefront: real continuous spectral integration; GPU-recursive (--gpu, no --wavefront): a simplified 3-representative-wavelength RGB-channel approximation, same qualitative fan, see shade_material()'s inout_rgb_channel comment, optix_device_helpers.h - see dielectric's dispersive constructor, material_simple.h)",
