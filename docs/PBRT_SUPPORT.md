@@ -567,12 +567,48 @@ loader and no longer match the code:
   convention. `CloudMedium`/`RgbGridMedium`/`GridMedium` remain unsupported
   on GPU too, matching CPU's identical `"homogeneous"`-only scope —
   `scene_builder.cpp` still warns once at scene-load time if one of those
-  three declares a nonzero `"Le"`. Also out of scope on GPU: `DielectricMedium`
-  (a fused dielectric-surface-plus-interior-medium material) — the pbrt
-  loader never actually builds this `MaterialType` for a `.pbrt` scene at
-  all (see `pbrt_gpu_builder.h`'s own comment on why; it's reachable only
-  from this codebase's hand-built native scenes, which don't parse `"Le"`),
-  so there is no live gap to close there.
+  three declares a nonzero `"Le"`. `DielectricMedium` (a fused dielectric-
+  surface-plus-interior-medium material) now also gets `"Le"` for the one
+  case the pbrt loader actually builds it for (see immediately below) —
+  `MaterialData::medium_emission` lives in the same union slot as plain
+  `Medium`'s, and `medium_phase_nee_mis()` already read it unconditionally
+  for every medium-interior scatter case including `DielectricMedium`
+  before this round, so populating it at build time was a one-line addition
+  once the loader started reaching that `MaterialType` at all.
+
+  **`DielectricMedium` fusion, now live for pbrt-authored scenes**: earlier
+  revisions of this doc described `DielectricMedium` as reachable only from
+  this codebase's hand-built native scenes, since `pbrt_gpu_builder.h`
+  unconditionally built a plain `Medium` (dropping the shape's own surface
+  Material entirely) whenever `MediumInterface` was present — a scene
+  pairing fog with a real dielectric shell ("jade"/"wax"/mist-in-glass)
+  rendered as a plain fog sphere on GPU, with no visible glass surface at
+  all. Fixed for the specific, common case this codebase's own
+  `subsurface-slab.pbrt`/`dielectric-medium-showcase.pbrt` scenes use: a
+  **sphere** whose own `Material` is a real, **smooth** dielectric (no
+  roughness, no roughness texture) now builds the pre-existing fused
+  `MaterialType::DielectricMedium` instead — the exact material
+  `scene_builder.cpp`'s `add_dielectric_medium()` already built for the
+  native scenes these migrated from, now reachable from the generic loader
+  too (`pbrt_gpu_builder.h`'s `mediumMaterialIndex()`). Verified via direct
+  before/after GPU render comparison on B13 (Subsurface Slab): the fix adds
+  visible specular highlights on both spheres that were completely absent
+  before (a flat, matte, fog-only look), now matching CPU's reference
+  render closely.
+
+  Still **not** fixed, and a real, remaining GPU limitation: any OTHER
+  surface material combined with a medium (diffuse+medium, metal+medium,
+  rough/thin dielectric+medium) on a sphere, or **any** surface material at
+  all combined with a medium on a **cylinder** — no `DielectricMedium`
+  closest-hit case exists for cylinder geometry at all (`__closesthit__
+  cylinder`, `optix_intersection_disk_cylinder.h`, only ever handles plain
+  `Medium`). CPU's generic two-hittable composition (`pbrt_cpu_builder.h`'s
+  `addMediumIfPresent`, which wraps a separate medium-boundary hittable
+  around the shape's own already-real-material geometry) handles every one
+  of these uniformly; GPU would need an actual second, coincident-geometry
+  primitive per medium shape (or new cylinder shading code for the
+  dielectric case) to match — a bigger structural change than this round
+  made.
 
 - A phase-function scatter event inside a participating medium (any of
   `MaterialType::Medium`/`CloudMedium`/`RgbGridMedium`/`GridMedium`, on

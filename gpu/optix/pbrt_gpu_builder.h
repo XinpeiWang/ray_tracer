@@ -265,29 +265,62 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		return materialIndexDepth(mi, ai, 0);
 	};
 
-	// MediumInterface "insideMedium" "" on a sphere. GPU's MaterialType::
-	// Medium is sphere-only (see optix_types.h's comment on that enumerator)
-	// AND takes over the sphere's material slot entirely, unlike the CPU
-	// builder's constant_medium, which wraps a separately-added boundary
-	// hittable around the sphere's own real surface material (pbrt_cpu_
-	// builder.h's identical sphere loop) - so a scene pairing MediumInterface
-	// with a dielectric surface (fog inside glass) loses the glass shell on
-	// GPU and renders as a plain fog sphere instead. Documented, scoped
-	// simplification (docs/PBRT_SUPPORT.md), not an oversight: layering a
-	// second material onto one sphere would need a real combined material
-	// slot (this codebase already has one for the dielectric+fog case
-	// specifically - MaterialType::DielectricMedium, gpu/optix/scene_
-	// builder.cpp's add_dielectric_medium() - but resolving here whether the
-	// shape's own Material directive was "dielectric" to pick between the
-	// two is more than this phase's scope). Same luminance/albedo-tint
-	// collapse as pbrt_cpu_builder.h's identical derivation - see its
-	// comment for why a scalar sigma_a/sigma_s plus a chromatic tint is
-	// what MaterialData::medium_albedo/g/sigma_t actually store.
-	std::map<int, int> mediumCache;
-	const auto mediumMaterialIndex = [&](int medIdx) {
-		const auto it = mediumCache.find(medIdx);
-		if (it != mediumCache.end()) return it->second;
+	// MediumInterface "insideMedium" "" on a sphere/cylinder. GPU's
+	// MaterialType::Medium takes over the shape's material slot entirely,
+	// unlike the CPU builder's constant_medium, which wraps a separately-
+	// added boundary hittable around the shape's own real surface material
+	// (pbrt_cpu_builder.h's identical sphere/cylinder loop) - so a scene
+	// pairing MediumInterface with a real surface Material loses that
+	// surface on GPU and renders as a plain fog shape instead, for most
+	// material kinds. FIXED for the specific, common case this codebase's
+	// own subsurface-slab.pbrt/dielectric-medium-showcase.pbrt actually use
+	// - a SPHERE whose own Material is a real, SMOOTH dielectric ("fog
+	// inside glass": jade/wax/mist-in-a-glass-sphere) - by building the
+	// pre-existing fused MaterialType::DielectricMedium instead of a plain
+	// Medium: the exact same material gpu/optix/scene_builder.cpp's
+	// add_dielectric_medium() already builds for the hand-written native
+	// scenes this migrated from, now reachable from the generic pbrt loader
+	// too (`surfaceMaterialIdx` below, passed only by the sphere loop's own
+	// call site - see its own comment for why cylinder's call site
+	// deliberately doesn't pass one). Still NOT fixed, and a real,
+	// documented (docs/PBRT_SUPPORT.md) GPU limitation beyond this: any
+	// OTHER surface material (diffuse+medium, metal+medium, rough/thin
+	// dielectric+medium) on a sphere, or ANY surface material at all on a
+	// cylinder (no MaterialType::DielectricMedium closest-hit case exists
+	// for cylinder geometry - __closesthit__cylinder, optix_intersection_
+	// disk_cylinder.h, only ever handles plain Medium) - CPU's generic two-
+	// hittable composition handles every one of these; GPU would need an
+	// actual second, coincident-geometry primitive (or new cylinder shading
+	// code) to match, a bigger structural change than this fix makes. Same
+	// luminance/albedo-tint collapse as pbrt_cpu_builder.h's identical
+	// derivation either way - see its comment for why a scalar sigma_a/
+	// sigma_s plus a chromatic tint is what MaterialData::medium_albedo/g/
+	// sigma_t (or dielectric_medium_extra.sigma_t, for the fused case)
+	// actually store.
+	std::map<std::pair<int,int>, int> mediumCache;
+	const auto mediumMaterialIndex = [&](int medIdx, int surfaceMaterialIdx = -1) {
 		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(medIdx)];
+
+		// Fusion only applies to pbrt-v4's "homogeneous" medium type (no
+		// fused GPU material exists for cloud/rgbgrid/uniformgrid) paired
+		// with a real, SMOOTH dielectric surface - MaterialType::
+		// DielectricMedium's own shading code calls the same
+		// dielectric_scatter() a plain smooth Dielectric uses (no rough/
+		// thin variant exists for the fused type). The roughness-texture
+		// check mirrors makeMaterial()'s own Dielectric case exactly (a
+		// texture-bound roughness is still "rough" even when the flat
+		// roughness_u/v floats are both 0 - see that case's own comment).
+		bool isSmoothDielectric = false;
+		if (md.type == "homogeneous" && surfaceMaterialIdx >= 0
+				&& static_cast<std::size_t>(surfaceMaterialIdx) < scene.materials.size()) {
+			const pbrt_flatten::Material &sm = scene.materials[static_cast<std::size_t>(surfaceMaterialIdx)];
+			isSmoothDielectric = sm.kind == pbrt_flatten::MaterialKind::Dielectric
+				&& sm.roughness_u <= 0.0 && sm.roughness_v <= 0.0
+				&& sm.roughnessTextureFilename.empty();
+		}
+		const auto cacheKey = std::make_pair(medIdx, isSmoothDielectric ? surfaceMaterialIdx : -1);
+		const auto it = mediumCache.find(cacheKey);
+		if (it != mediumCache.end()) return it->second;
 		const auto luminance = [](const double c[3]) {
 			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 		};
@@ -330,7 +363,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			d.cloud_medium_extra.cloudMediumIdx = static_cast<float>(cloudIdx);
 			const int idx = static_cast<int>(out.materials.size());
 			out.materials.push_back(d);
-			mediumCache.emplace(medIdx, idx);
+			mediumCache.emplace(cacheKey, idx);
 			return idx;
 		}
 		if (md.type == "rgbgrid") {
@@ -424,7 +457,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			d.rgb_grid_medium_extra.rgbGridMediumIdx = static_cast<float>(gridIdx);
 			const int idx = static_cast<int>(out.materials.size());
 			out.materials.push_back(d);
-			mediumCache.emplace(medIdx, idx);
+			mediumCache.emplace(cacheKey, idx);
 			return idx;
 		}
 		if (md.type == "uniformgrid") {
@@ -473,7 +506,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			d.grid_medium_extra.gridMediumIdx = static_cast<float>(gridIdx);
 			const int idx = static_cast<int>(out.materials.size());
 			out.materials.push_back(d);
-			mediumCache.emplace(medIdx, idx);
+			mediumCache.emplace(cacheKey, idx);
 			return idx;
 		}
 
@@ -484,21 +517,40 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		// BuildStats::unsupportedMediumTypeCounts's own comment).
 		if (md.type != "homogeneous") ++stats.unsupportedMediumTypeCounts[md.type];
 
-		MaterialData d = {};
-		d.type = MaterialType::Medium;
-		d.medium_albedo = albedo;
-		d.g = static_cast<float>(md.g);
-		d.sigma_t = static_cast<float>(sig_a + sig_s);
+		const float sigmaTVal = static_cast<float>(sig_a + sig_s);
 		// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - same
 		// sigma_a/sigma_t collision-probability weighting as CPU's
 		// constant_medium constructor (src/TheRestOfYourLife/constant_
 		// medium.h) applies to the identical raw md.Le, so the two backends
 		// agree on the exact weighted value, not just which color to use.
-		const float leWeight = (d.sigma_t > 1e-9f) ? static_cast<float>(sig_a) / d.sigma_t : 0.0f;
-		d.medium_emission = f3(md.Le) * leWeight;
+		// Shared by both branches below - MaterialData::medium_emission
+		// lives in the SAME union slot for Medium and DielectricMedium
+		// (optix_types.h), and medium_phase_nee_mis() already reads it
+		// unconditionally for every medium-interior scatter case,
+		// DielectricMedium included (see that function's own comment) -
+		// so a MakeNamedMedium "rgb Le" fused onto a dielectric surface
+		// below still emits correctly, even though add_dielectric_medium()
+		// (the native scene builder's own constructor for this type) never
+		// had a reason to populate it since none of its hand-written
+		// callers use "Le".
+		const float leWeight = (sigmaTVal > 1e-9f) ? static_cast<float>(sig_a) / sigmaTVal : 0.0f;
+		const float3 mediumEmission = f3(md.Le) * leWeight;
+
+		MaterialData d = {};
+		d.medium_albedo = albedo;
+		d.g = static_cast<float>(md.g);
+		if (isSmoothDielectric) {
+			d.type = MaterialType::DielectricMedium;
+			d.ior = static_cast<float>(scene.materials[static_cast<std::size_t>(surfaceMaterialIdx)].ior);
+			d.dielectric_medium_extra.sigma_t = sigmaTVal;
+		} else {
+			d.type = MaterialType::Medium;
+			d.sigma_t = sigmaTVal;
+		}
+		d.medium_emission = mediumEmission;
 		const int idx = static_cast<int>(out.materials.size());
 		out.materials.push_back(d);
-		mediumCache.emplace(medIdx, idx);
+		mediumCache.emplace(cacheKey, idx);
 		return idx;
 	};
 
@@ -602,13 +654,18 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		// shape's own emissive material AND layers a separate medium-wrapped
 		// hittable on top - see pbrt_cpu_builder.h's addMediumIfPresent), so
 		// this is a real, accepted GPU-only divergence for this specific
-		// combination, not a bug this loop can fix without a combined
-		// material slot (out of scope here - same "more than this phase's
-		// scope" reasoning mediumMaterialIndex()'s own comment already gives
-		// for the dielectric+fog case).
+		// (AreaLightSource + MediumInterface) combination, not a bug this
+		// loop can fix without a combined material slot - unlike the
+		// dielectric+fog combination just below, this one has no existing
+		// fused MaterialType to reuse (out of scope here).
 		const bool sphereHasMedium = s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size();
+		// s.material passed through so mediumMaterialIndex() can build a
+		// real fused MaterialType::DielectricMedium instead of a plain fog
+		// sphere when this shape's own Material is a smooth dielectric -
+		// see that lambda's own comment for the full scope of what this
+		// does and doesn't cover.
 		sd.materialIdx = sphereHasMedium
-			? mediumMaterialIndex(s.medium)
+			? mediumMaterialIndex(s.medium, s.material)
 			: materialIndex(s.material, s.areaLight);
 		if (s.areaLight >= 0 && !sphereHasMedium) {
 			out.lightIndices.push_back(static_cast<int>(out.spheres.size()));
