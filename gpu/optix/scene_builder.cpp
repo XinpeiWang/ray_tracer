@@ -2469,40 +2469,9 @@ static void build_prism_dispersion_gpu(SceneData& scene, int mat_glass) {
 	scene.punctualLights.push_back(light);
 }
 
-/// @brief Scene 24: HDRI Sky. Matches CPU build_hdri_sky_world() (ground +
-/// three spheres showcasing lambertian/metal/dielectric under sky light).
-/// The CPU "HDRI" is actually a flat-color sky_light in practice (see
-/// GpuCameraParams::backgroundColor's comment) - the caller sets that
-/// separately, this only builds the ground+spheres geometry.
-static void build_hdri_sky_world_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.4f, 0.4f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	const int mat_lambertian = add_lambertian(scene, make_float3(0.7f, 0.3f, 0.2f));
-	SphereData s1{};
-	s1.center = make_float3(-3.0f, 1.0f, 0.0f);
-	s1.radius = 1.0f;
-	s1.materialIdx = mat_lambertian;
-	scene.spheres.push_back(s1);
-
-	const int mat_metal = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
-	SphereData s2{};
-	s2.center = make_float3(0.0f, 1.0f, 0.0f);
-	s2.radius = 1.0f;
-	s2.materialIdx = mat_metal;
-	scene.spheres.push_back(s2);
-
-	const int mat_glass = add_dielectric(scene, 1.5f);
-	SphereData s3{};
-	s3.center = make_float3(3.0f, 1.0f, 0.0f);
-	s3.radius = 1.0f;
-	s3.materialIdx = mat_glass;
-	scene.spheres.push_back(s3);
-}
+// build_hdri_sky_world_gpu() (former "scene 24"/C1, and its case-134/I3
+// alias) deleted - both migrated to pbrt-backed, see pbrt_scenes/
+// hdri-sky-gradient.pbrt and scene_registry_data.h's own C1/I3 entries.
 
 // build_portal_light_scene_gpu()/build_cornell_smoke_gpu()/
 // build_homogeneous_medium_scene_gpu() (former "scenes 35/7/30" / C7/A8/E1
@@ -4168,25 +4137,17 @@ bool build_scene(
 							// there). build_cornell_box() itself is NOT deleted - other
 							// scenes below still call it directly.
 
-							case 24: {  // HDRI Sky (flat-color background - see backgroundColor's comment)
-								build_hdri_sky_world_gpu(scene);
-								// lookfrom/vfov widened/pulled back so all 3 spheres (spanning
-								// x=+-4) actually fit in frame - matches CPU CameraConfig row
-								// for scene 24.
-								apply_mesh_camera(make_float3(0.0f, 2.3f, 15.0f), make_float3(0.0f, 1.0f, 0.0f), 42.0f);
-
-								if (out_camera_extra) {
-									// CPU's build_hdri_sky() now actually uses its procedural
-									// blue-to-warm-horizon gradient (previously built the image
-									// then discarded it, returning a flat solid_color sky_light -
-									// see that function's comment). GPU has no per-pixel
-									// environment-map sampling (see GpuCameraParams::backgroundColor's
-									// comment), so this flat color approximates the gradient's
-									// average tone instead of matching it exactly.
-									out_camera_extra->backgroundColor = make_float3(0.4f, 0.5f, 0.53f);
-								}
-								break;
-							}
+							// case 24 (HDRI Sky / C1) migrated to pbrt-backed - see
+							// pbrt_scenes/hdri-sky-gradient.pbrt and scene_registry_data.h's
+							// own entry. The old flat-color backgroundColor approximation
+							// this case used (GPU had no per-pixel environment-map sampling
+							// for a hand-built scene) is gone - the generic pbrt loader's own
+							// image-infinite-light support gives GPU the real gradient for
+							// the first time, matching CPU exactly. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 24 is
+							// no longer assigned to any scene. build_hdri_sky_world_gpu()
+							// itself (and case 134, I3's own identical copy of this case) -
+							// deleted below, no other GPU consumer.
 
 							// cases 31/69 (Cloud Medium/Dielectric Medium Showcase - E2/E3)
 							// migrated to pbrt-backed - see pbrt_scenes/cloud-medium-scene.pbrt/
@@ -4505,13 +4466,10 @@ bool build_scene(
 							// message if ever requested - see scene_registry.h's own comment on
 							// those two entries.)
 
-							case 134: {  // Education: Exposure & Tone Mapping (same world as C1 HDRI Sky - see that entry's own comment)
-								build_hdri_sky_world_gpu(scene);
-								// Identical camera setup to case 24 (C1) - same CameraConfig row,
-								// reused verbatim rather than re-derived.
-								apply_mesh_camera(make_float3(0.0f, 2.3f, 15.0f), make_float3(0.0f, 1.0f, 0.0f), 42.0f, true, make_float3(0.4f, 0.5f, 0.53f));
-								break;
-							}
+							// case 134 (Education: Exposure & Tone Mapping / I3) migrated to
+							// pbrt-backed alongside case 24 (C1) - see scene_registry_data.h's
+							// own I3 entry. Falls through to default: -> build_loaded_pbrt_
+							// scene() now that legacy_id 134 is no longer assigned.
 
 							case 135: {  // Education: GPU Denoiser Before & After (same world as A1 Cornell Box - see that entry's own comment)
 								build_cornell_box(scene);

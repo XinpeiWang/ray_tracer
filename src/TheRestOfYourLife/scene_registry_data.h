@@ -293,16 +293,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
             "Medium", "bilinear-patch-scene.pbrt", CameraMode::UserControlled),
         // ---- pbrt-v4 light / camera / medium showcase ----
-        {
-            "C1", 24, SceneNames::HdriSky, SceneCategories::Lights,
-            "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",
-            "Medium", 200, false, true,
-            { 42, 0, 2.3, 15,  0, 1, 0,  0, 0, 0 },
-            build_hdri_sky_world,
-            no_lights,
-            build_hdri_sky,
-            nullptr
-        },
+        // C1 migrated to pbrt-backed - see pbrt_scenes/hdri-sky-gradient.pbrt
+        // for the full derivation (native's own gradient baked losslessly
+        // to a real, git-tracked .exr via write_exr_image(), then loaded
+        // back through a real LightSource "infinite" "string filename" -
+        // a genuine GPU fidelity improvement, since native GPU never
+        // reproduced the gradient at all, only a flat average-tone
+        // approximation). legacy_id 203 (next after E12's 202).
+        // build_hdri_sky_world()/build_hdri_sky() have no other consumer -
+        // deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C1", 203, SceneNames::HdriSky, SceneCategories::Lights,
+            "Open scene lit by a real pbrt-v4 image infinite light (the same procedural gradient native always used, now a real baked .exr on both backends)",
+            "Medium", "hdri-sky-gradient.pbrt"),
         // C2 migrated to pbrt-backed - see pbrt_scenes/cornell-spotlight.pbrt.
         // legacy_id 176 (next after B8's 175). build_spotlight_cornell()/
         // build_spotlight_punct() have no other consumers - deleted below.
@@ -1099,22 +1102,20 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             nullptr,
             build_prism_dispersion_punct
         },
-        {
-            // Same world/lights/sky as C1 (HDRI Sky) - its bright procedural
-            // sky gradient against a shadowed diffuse sphere is a wide
-            // enough dynamic range to make both Exposure and Tone mapping
-            // (Render Options tab) visibly change the image. GPU-compatible:
-            // see gpu/optix/scene_builder.cpp's case 134 (a near-verbatim
-            // copy of case 24, C1's own GPU case).
-            "I3", 134, SceneNames::ExposureToneMapping, SceneCategories::Education,
+        // I3 migrated to pbrt-backed alongside C1 (same world/sky, just a
+        // different curated row for the Education category's own purpose) -
+        // reuses the identical pbrt_scenes/hdri-sky-gradient.pbrt file C1's
+        // own entry does, exactly the "fix an alias scene for free" this
+        // project's migration plan anticipated for same-world I-series
+        // entries. legacy_id 204 (next after C1's 203). This was the LAST
+        // consumer of build_hdri_sky_world_gpu()/case 134 on GPU - deleted
+        // below. build_hdri_sky_world()/build_hdri_sky() themselves stay on
+        // CPU (tests/integration/sppm_first_slice_test.cpp still calls them
+        // directly, independent of the scene registry).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "I3", 204, SceneNames::ExposureToneMapping, SceneCategories::Education,
             "Same HDR sky gradient as C1: try raising/lowering Exposure, then compare ACES/Reinhard/None Tone mapping (both on the Render Options tab) against this scene's bright sky vs. shadowed sphere.",
-            "Medium", 200, false, true,
-            { 42, 0, 2.3, 15,  0, 1, 0,  0, 0, 0 },
-            build_hdri_sky_world,
-            no_lights,
-            build_hdri_sky,
-            nullptr
-        },
+            "Medium", "hdri-sky-gradient.pbrt"),
         {
             // Same world/lights as A1 (Cornell Box), at a deliberately low
             // 32 spp (vs A1's 100) so it's genuinely noisy on the GPU
