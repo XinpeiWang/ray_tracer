@@ -66,6 +66,26 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Globe with earth texture mapping (requires earthmap.jpg)",
             "Fast", "earth-globe.pbrt", CameraMode::Fixed,
             /*requires_files=*/true),
+        // A5/A7 PERMANENTLY stay native - the native noise_texture class
+        // (src/TheRestOfYourLife/texture.h) computes a book-specific
+        // grayscale formula, 0.5*(1+sin(scale*p.z + 10*Turbulence(p,
+        // octaves=7))) (the classic "Ray Tracing: The Next Week" marble
+        // recipe) - pbrt-v4 itself never implements this exact formula.
+        // This loader's own real pbrt-v4 noise textures (marble_texture/
+        // wrinkled_texture/windy_texture/fbm_texture, texture.h) share the
+        // identical underlying pbrt-v4-exact noise basis (perlin_noise<T>,
+        // src/shared/noise.h) but are structurally different compositions
+        // of it: marble_texture uses p.y (not p.z) and FBm (signed octave
+        // sum, not Turbulence's abs-value sum) inside the sine, and always
+        // outputs a COLORED 9-knot Bezier-spline-mapped result, never the
+        // native class's flat grayscale; wrinkled_texture has the right
+        // inner Turbulence function but applies no sin() wrap at all. No
+        // parameter choice on any of the four bridges this gap - pbrt-v4
+        // has no generic "wrap this texture in a scene-specified sin()"
+        // composition primitive, so expressing the native formula from a
+        // .pbrt file would need an invented, non-standard texture type,
+        // defeating the point of migrating to real pbrt-v4 syntax. Both
+        // GPU switch cases/native builders stay.
         {
             "A5", 4, SceneNames::PerlinSpheres, SceneCategories::Basics,
             "Spheres with Perlin noise marble texture",
@@ -84,6 +104,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A6", 168, SceneNames::ColoredQuads, SceneCategories::Basics,
             "Five colored quad primitives",
             "Fast", "colored-quads.pbrt"),
+        // A7 PERMANENTLY stays native - same noise_texture gap as A5's own
+        // comment just above. Despite the SimpleLight name/id (inherited
+        // from the book chapter, not its actual content), A7's own
+        // description ("Perlin spheres with emissive light sources") and
+        // its build_simple_light() builder confirm it uses the identical
+        // noise_texture(4) formula on its ground/center spheres.
         {
             "A7", 6, SceneNames::SimpleLight, SceneCategories::Basics,
             "Perlin spheres with emissive light sources",
@@ -109,6 +135,25 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_final_scene,
             build_final_scene_lights
         },
+        // B1/B2 PERMANENTLY stay native - rough_metal has no pbrt-authorable
+        // equivalent, confirmed at the BxDF-formula level (src/shared/
+        // bxdfs_conductor.h): rough_metal::sample_local() weights purely by
+        // the GGX G/G1 shadow-masking ratio times a flat, direction-
+        // independent RGB albedo (no Fresnel model at all), while pbrt-v4's
+        // real Material "conductor" (ConductorBxDF) weights by FrComplex(wi,
+        // wm, eta, k) - a genuine complex-IOR Fresnel that is NEVER angle-
+        // independent for any physically valid (k>0) conductor. No (eta, k)
+        // choice reproduces a constant-angle albedo, so this is a real,
+        // structural mismatch, not a missing parameter - same conclusion
+        // this project already reached and skipped B2 for specifically, in
+        // commits aa57e0d2 and 19d8bd01 ("rough_metal has no pbrt-
+        // authorable equivalent - confirmed by checking both pbrt builders
+        // never construct it"). B1 was re-investigated independently (not
+        // named in those two commits) and uses the identical rough_metal
+        // class, so the identical verdict applies. Both GPU switch cases/
+        // native builders stay - deleting them would be a real feature
+        // loss (GGX-microfacet-with-flat-tint has no equivalent GPU
+        // material slot to fall back to either).
         {
             "B1", 9, SceneNames::RoughMetalSpheres, SceneCategories::Materials,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
@@ -122,6 +167,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
                 return l;
             }
         },
+        // B2 PERMANENTLY stays native - same rough_metal gap as B1's own
+        // comment just above (aluminum box, gold sphere, both rough_metal).
         {
             "B2", 10, SceneNames::CornellRoughMetal, SceneCategories::Materials,
             "Cornell box with rough aluminum box and rough gold sphere",
