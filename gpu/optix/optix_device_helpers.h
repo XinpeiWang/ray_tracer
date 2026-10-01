@@ -447,21 +447,37 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 	// tex1ImageIdx/tex2ImageIdx (a one-level-nested bare imagemap bound to
 	// tex1/tex2 instead of a flat literal - see TextureData's own comment)
 	// - factored out so both call sites share one copy of the pixel-lookup
-	// math instead of duplicating it. Matches mipmap_texture::value()
-	// (texture.h) exactly: wide-clamp uv to [-1024,1024] (a safety rail
-	// against a pathological UV, NOT [0,1] - see wide_clamp()'s own
-	// comment), flip v (stored image rows are top-to-bottom, v=0 is the
-	// bottom of the [0,1] texture-coordinate convention), then wrap the
-	// resulting integer pixel index per t.wrapMode (GpuWrapMode's own
-	// comment) - Repeat/Black/Clamp, matching CPU's own texel() exactly
-	// (mipmap.h) - nearest-neighbor, 8-bit -> [0,1] float. t.wrapMode stays
-	// Clamp for every texture NOT built through the reflectance-slot-with-
-	// options path (checker/mix/roughness/transmittance/displacement), so
-	// this is byte-for-byte the same result as the old hard-[0,1]-clamp for
-	// all of those - only Repeat/Black are new behavior, and only reachable
-	// for a texture that explicitly requested one. A failed image load
-	// (width/height <= 0) matches CPU's own solid-cyan debugging fallback
-	// (texture.h) exactly.
+	// math instead of duplicating it. wide-clamp uv to [-1024,1024] (a
+	// safety rail against a pathological UV, NOT [0,1] - see wide_clamp()'s
+	// own comment), flip v (stored image rows are top-to-bottom, v=0 is the
+	// bottom of the [0,1] texture-coordinate convention), then bilinearly
+	// interpolate the 4 texels around (u,v), each wrapped independently per
+	// t.wrapMode (GpuWrapMode's own comment) - Repeat/Black/Clamp. A failed
+	// image load (width/height <= 0) matches CPU's own solid-cyan debugging
+	// fallback (texture.h) exactly.
+	//
+	// BILINEAR, not nearest-neighbor: this now matches CPU's own
+	// mipmap_texture::value() (texture.h) exactly - its "zero derivatives"
+	// path (used whenever no real screen-space UV footprint is available,
+	// e.g. every non-primary-ray hit) is NOT a nearest-neighbor lookup, it's
+	// MIPMap::filter()'s own LOD-0 `bilerp()` (mipmap.h) - a real 4-tap
+	// bilinear blend with texel CENTERS at (i+0.5)/width, hence the `-0.5f`
+	// before floor() below (mirrors bilerp()'s own `s*w - 0.5`). A prior
+	// version of this function did pure nearest-neighbor and claimed (in
+	// this now-corrected comment) that this matched CPU's value() - it did
+	// not; CPU has never been nearest-neighbor here, even without ray
+	// differentials. Confirmed as a real, non-noise, texture-filtering
+	// discrepancy (not just the already-known MaterialType::
+	// DiffuseTransmission NEE-strategy noise) by a CPU/GPU parity sweep's
+	// regional-diff check on scene J2 (a 4x4-pixel texture, where
+	// nearest-vs-bilinear snapping is maximally visible) - see tests/
+	// integration/material_cpu_gpu_parity_tests.cpp's own J2 comment. This
+	// still does NOT implement full EWA/mipmap minification filtering (no
+	// GPU mip pyramid exists - TextureData holds one resolution level only,
+	// a real, larger, and still-open architectural gap for a texture
+	// MINIFIED below screen resolution) - bilinear only fixes MAGNIFICATION
+	// (texture resolution below screen resolution, J2's exact case and the
+	// common one for small/debug textures), which needs no mip chain at all.
 	auto sampleImage = [&](const TextureData& t) -> float3 {
 		if (t.width <= 0 || t.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
 		const float uw = fminf(fmaxf(u, -1024.0f), 1024.0f);
@@ -472,29 +488,44 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		// +-1024 clamp above) times a large texture width can exceed
 		// float's exact-integer range (2^24), losing sub-texel precision
 		// right before floor() picks the pixel index.
-		int i = static_cast<int>(floor((double)uw * t.width));
-		int j = static_cast<int>(floor((double)vw * t.height));
-		// No `default:` case, deliberately - this is what lets the compiler
+		const double x = (double)uw * t.width - 0.5;
+		const double y = (double)vw * t.height - 0.5;
+		const int x0 = static_cast<int>(floor(x)), x1 = x0 + 1;
+		const int y0 = static_cast<int>(floor(y)), y1 = y0 + 1;
+		const float fx = (float)(x - x0), fy = (float)(y - y0);
+
+		// One corner's wrapped texel fetch - No `default:` case in the
+		// switch, deliberately - this is what lets the compiler
 		// (-Wswitch/MSVC's equivalent) flag a future 4th GpuWrapMode
 		// enumerator left unhandled here, in BOTH this copy and
-		// wavefront_kernels.cu's own duplicate, instead of both silently
-		// falling through to Clamp behavior with no diagnostic anywhere.
-		switch (t.wrapMode) {
-		case GpuWrapMode::Repeat:
-			i = ((i % t.width) + t.width) % t.width;
-			j = ((j % t.height) + t.height) % t.height;
-			break;
-		case GpuWrapMode::Black:
-			if (i < 0 || i >= t.width || j < 0 || j >= t.height) return make_float3(0.0f, 0.0f, 0.0f);
-			break;
-		case GpuWrapMode::Clamp:
-			i = min(max(i, 0), t.width - 1);
-			j = min(max(j, 0), t.height - 1);
-			break;
-		}
-		const unsigned char* px = params.texturePixels + t.pixelOffset + (j * t.width + i) * 3;
-		constexpr float kColorScale = 1.0f / 255.0f;
-		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+		// wavefront_device_helpers.h's own duplicate, instead of both
+		// silently falling through to Clamp behavior with no diagnostic
+		// anywhere.
+		auto wrapTexel = [&](int xi, int yi) -> float3 {
+			switch (t.wrapMode) {
+			case GpuWrapMode::Repeat:
+				xi = ((xi % t.width) + t.width) % t.width;
+				yi = ((yi % t.height) + t.height) % t.height;
+				break;
+			case GpuWrapMode::Black:
+				if (xi < 0 || xi >= t.width || yi < 0 || yi >= t.height) return make_float3(0.0f, 0.0f, 0.0f);
+				break;
+			case GpuWrapMode::Clamp:
+				xi = min(max(xi, 0), t.width - 1);
+				yi = min(max(yi, 0), t.height - 1);
+				break;
+			}
+			const unsigned char* px = params.texturePixels + t.pixelOffset + (yi * t.width + xi) * 3;
+			constexpr float kColorScale = 1.0f / 255.0f;
+			return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+		};
+
+		const float3 c00 = wrapTexel(x0, y0);
+		const float3 c10 = wrapTexel(x1, y0);
+		const float3 c01 = wrapTexel(x0, y1);
+		const float3 c11 = wrapTexel(x1, y1);
+		return (1.0f - fy) * ((1.0f - fx) * c00 + fx * c10)
+		     +         fy  * ((1.0f - fx) * c01 + fx * c11);
 	};
 	if (tex.kind == TextureKind::Image) {
 		return sampleImage(tex);
