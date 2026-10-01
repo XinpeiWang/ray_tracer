@@ -647,9 +647,16 @@ __device__ __forceinline__ float3 wf_sample_texture(
 	// TextureData's own comment and optix_device_helpers.h's identical
 	// sampleImage lambda) - factored out so both call sites in THIS
 	// duplicated copy share one instance too. See optix_device_helpers.h's
-	// own sampleImage comment for the full wide-clamp/wrap-mode rationale -
-	// mirrored here verbatim (same cross-module duplication reason every
-	// other wf_ helper in this file is duplicated rather than shared).
+	// own sampleImage comment for the full wide-clamp/wrap-mode/BILINEAR
+	// rationale - mirrored here verbatim (same cross-module duplication
+	// reason every other wf_ helper in this file is duplicated rather than
+	// shared). BILINEAR, not nearest-neighbor, matching CPU's own
+	// mipmap_texture::value() (texture.h)'s LOD-0 bilerp() exactly - a
+	// prior version of this function (and the comment it carried) was
+	// genuinely wrong about matching CPU's nearest-neighbor behavior; CPU
+	// has never been nearest-neighbor here. See optix_device_helpers.h's
+	// own comment for the full investigation (scene J2's regional-diff
+	// finding) this fixes.
 	auto sampleImage = [&](const TextureData& t) -> float3 {
 		if (t.width <= 0 || t.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
 		const float uw = fminf(fmaxf(u, -1024.0f), 1024.0f);
@@ -658,27 +665,40 @@ __device__ __forceinline__ float3 wf_sample_texture(
 		// sampleImage comment for why (matches CPU's own bilerp() promotion,
 		// mipmap.h - guards against float's 2^24 exact-integer limit for a
 		// wide-tiled UV times a large texture width).
-		int i = static_cast<int>(floor((double)uw * t.width));
-		int j = static_cast<int>(floor((double)vw * t.height));
+		const double x = (double)uw * t.width - 0.5;
+		const double y = (double)vw * t.height - 0.5;
+		const int x0 = static_cast<int>(floor(x)), x1 = x0 + 1;
+		const int y0 = static_cast<int>(floor(y)), y1 = y0 + 1;
+		const float fx = (float)(x - x0), fy = (float)(y - y0);
+
 		// No `default:` case, deliberately - see optix_device_helpers.h's
 		// identical comment for why (lets the compiler flag a future
 		// unhandled GpuWrapMode enumerator here too).
-		switch (t.wrapMode) {
-		case GpuWrapMode::Repeat:
-			i = ((i % t.width) + t.width) % t.width;
-			j = ((j % t.height) + t.height) % t.height;
-			break;
-		case GpuWrapMode::Black:
-			if (i < 0 || i >= t.width || j < 0 || j >= t.height) return make_float3(0.0f, 0.0f, 0.0f);
-			break;
-		case GpuWrapMode::Clamp:
-			i = min(max(i, 0), t.width - 1);
-			j = min(max(j, 0), t.height - 1);
-			break;
-		}
-		const unsigned char* px = texturePixels + t.pixelOffset + (j * t.width + i) * 3;
-		constexpr float kColorScale = 1.0f / 255.0f;
-		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+		auto wrapTexel = [&](int xi, int yi) -> float3 {
+			switch (t.wrapMode) {
+			case GpuWrapMode::Repeat:
+				xi = ((xi % t.width) + t.width) % t.width;
+				yi = ((yi % t.height) + t.height) % t.height;
+				break;
+			case GpuWrapMode::Black:
+				if (xi < 0 || xi >= t.width || yi < 0 || yi >= t.height) return make_float3(0.0f, 0.0f, 0.0f);
+				break;
+			case GpuWrapMode::Clamp:
+				xi = min(max(xi, 0), t.width - 1);
+				yi = min(max(yi, 0), t.height - 1);
+				break;
+			}
+			const unsigned char* px = texturePixels + t.pixelOffset + (yi * t.width + xi) * 3;
+			constexpr float kColorScale = 1.0f / 255.0f;
+			return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+		};
+
+		const float3 c00 = wrapTexel(x0, y0);
+		const float3 c10 = wrapTexel(x1, y0);
+		const float3 c01 = wrapTexel(x0, y1);
+		const float3 c11 = wrapTexel(x1, y1);
+		return (1.0f - fy) * ((1.0f - fx) * c00 + fx * c10)
+		     +         fy  * ((1.0f - fx) * c01 + fx * c11);
 	};
 	if (tex.kind == TextureKind::Image) {
 		return sampleImage(tex);
