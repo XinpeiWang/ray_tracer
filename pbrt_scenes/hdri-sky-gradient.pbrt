@@ -1,0 +1,73 @@
+# hdri-sky-gradient.pbrt -- migration of the native "C1 HDRI Sky" demo
+# scene (src/TheRestOfYourLife/scenes_advanced.h's build_hdri_sky_world()/
+# build_hdri_sky()) to a pbrt-backed scene, part of this project's GPU
+# scene-construction-duplication elimination.
+#
+# Native's own "HDRI" name was aspirational, not literal: build_hdri_sky()
+# never loaded a file - it built a 64x32 procedural gradient (deep blue
+# top -> warm horizon -> pale blue) directly into an in-memory float
+# buffer and fed it straight into sky_light's raw-pixel-data constructor.
+# This migration bakes that EXACT same gradient (identical per-pixel
+# formula, identical resolution) out to a real, git-tracked
+# hdri-sky-gradient.exr via this project's own write_exr_image()
+# (src/shared/exr_writer.h, interleaved float RGB - the same layout the
+# native buffer already used, so the bake is a lossless round-trip, not a
+# re-derivation), then loads it back through pbrt-v4's real
+# LightSource "infinite" "string filename" directive - already proven on
+# this loader (see infinite-light-image.pbrt's own identical convention).
+#
+# This is also a real, disclosed GPU fidelity IMPROVEMENT, not just a
+# lateral move: native GPU (scene_builder.cpp's deleted build_hdri_sky_
+# world_gpu()) never reproduced the gradient at all - it used a flat
+# backgroundColor approximating the average tone, since GPU's native path
+# had no per-direction environment-image sampling for a hand-built scene.
+# The generic pbrt loader's own image-infinite-light support (gpu/optix/
+# pbrt_gpu_builder.h / optix_sky_light.h / wavefront_sky_light.h) already
+# does real per-direction importance-sampled image lookups on both GPU
+# backends, so this migration gives GPU the exact same gradient CPU always
+# had, for the first time.
+#
+# Geometry/materials unchanged from native: a ground sphere, and one
+# sphere each of diffuse/conductor(fuzzy metal)/dielectric to show the sky
+# reflecting/refracting differently per material. Native's `metal(albedo,
+# fuzz)` maps to `Material "conductor" "rgb reflectance" [...] "float
+# roughness" [...]` - this project's own established convention (see e.g.
+# triangle-mesh-scene.pbrt's icosahedron, and every other native "metal"
+# accent sphere migrated so far).
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2.3 15    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 42 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "string filename" [ "hdri-sky-gradient.exr" ] "float scale" [ 1 ]
+
+Material "diffuse" "rgb reflectance" [ 0.4 0.4 0.4 ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.7 0.3 0.2 ]
+AttributeBegin
+  Translate -3 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.8 0.8 0.9 ] "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 3 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

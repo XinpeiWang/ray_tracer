@@ -500,14 +500,18 @@ TEST(FindSceneTest, NonDefaultCameraScenesAreGpuCompatible) {
 }
 
 TEST(FindSceneTest, BackgroundColorScenesAreGpuCompatible) {
-	// Scenes 24 (HdriSky) and 35 (PortalInfiniteLight) both actually use a
-	// flat-color sky_light on the CPU side (scenes_advanced.h's
-	// build_hdri_sky()/build_portal_sky() - the importance-sampled-image
-	// machinery in src/shared/image_infinite_light.h is unused dead code,
-	// never wired to any scene), so the GPU port only needed a constant
-	// background color for missed rays (GpuCameraParams::backgroundColor in
-	// optix_types.h, consumed by optix_miss.h and wavefront_kernels.cu's
-	// accumulate_miss), not a full environment-map sampler.
+	// C1 (HdriSky) is pbrt-backed now (pbrt_scenes/hdri-sky-gradient.pbrt) -
+	// a real image infinite light, with genuine per-direction importance-
+	// sampled environment lookups on BOTH GPU backends (gpu/optix/
+	// pbrt_gpu_builder.h / optix_sky_light.h / wavefront_sky_light.h), not
+	// the flat-color GpuCameraParams::backgroundColor approximation its
+	// native GPU builder (deleted) used to fall back to - this test's own
+	// name predates that fix, kept only as a tripwire for "still gpu_
+	// compatible", not a description of how C1 renders on GPU anymore. C7
+	// (PortalInfiniteLight) still uses a genuinely flat `LightSource
+	// "infinite" "rgb L"` (no image at all, by design - see that scene's
+	// own pbrt file), so GPU's constant-background-color path remains
+	// exactly correct for it, not an approximation.
 	for (const std::string& id : {"C1", "C7"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
