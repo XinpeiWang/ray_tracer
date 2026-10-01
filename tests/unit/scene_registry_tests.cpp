@@ -123,7 +123,13 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// MediumInterface now reaches the same MaterialType::DielectricMedium
 	// the smooth-dielectric fusion case uses, see pbrt_gpu_builder.h's
 	// mediumMaterialIndex().
-	EXPECT_EQ(builtin_scene_count(), 150);
+	//
+	// 150 -> 151: E12 added (Rough Dielectric Medium pbrt example), closing
+	// the rest of that gap - a frosted (rough) Material "dielectric" fused
+	// with MediumInterface now reaches a real GGX microfacet DielectricMedium
+	// surface with real glossy NEE, see mediumMaterialIndex()'s own comment
+	// and rough_dielectric_scatter_and_nee() (optix_device_helpers.h).
+	EXPECT_EQ(builtin_scene_count(), 151);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -789,7 +795,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 150;
+	constexpr int kGuiSceneCount = 151;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

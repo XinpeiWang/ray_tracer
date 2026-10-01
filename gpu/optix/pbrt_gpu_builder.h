@@ -286,6 +286,12 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	//   below, passed by both shape loops' own call sites - see
 	//   __closesthit__cylinder's own comment, optix_intersection_disk_
 	//   cylinder.h, for the cylinder-side shading support this needed).
+	// - SPHERE or CYLINDER + a real ROUGH dielectric surface (frosted/
+	//   sandblasted glass) ALSO fuses into MaterialType::DielectricMedium -
+	//   see this function's own comment just below for the full rough-
+	//   specific derivation (GGX microfacet entry/exit + real glossy NEE,
+	//   the one sub-case that needed real new shading-kernel work on both
+	//   backends rather than reusing an existing self-contained helper).
 	// - SPHERE or CYLINDER + an OPAQUE surface (diffuse/conductor/
 	//   coateddiffuse/coatedconductor/subsurface/measured/hair - see
 	//   isOpaqueSurfaceMaterial()'s own comment, below) skips the medium
@@ -295,56 +301,70 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	//   the nearest-hit comparison against the medium's own
 	//   stochastically-sampled interior hit).
 	//
-	// Still NOT fixed, and a real, documented (docs/PBRT_SUPPORT.md) GPU
-	// limitation: a ROUGH dielectric (nonzero roughness or a roughness
-	// texture) combined with a medium, on either shape - MaterialType::
-	// DielectricMedium's shading code has no microfacet/tangent-frame/
-	// glossy-NEE path, only smooth refraction and the thin coin-flip (see
-	// isSmoothDielectric/isThinDielectric below) - still falls back to a
-	// plain, surface-dropped Medium. CPU's generic two-hittable composition
-	// handles this uniformly with everything else; GPU would need either a
-	// real rough variant of the fused material (a materially bigger
-	// feature - tangent frame, texture-bound roughness, inline glossy NEE/
-	// MIS at the entry/exit boundary, and on the wavefront backend a real
-	// design change to wf_finish_material_scatter()'s matType-based event
-	// classification) or an actual second, coincident-geometry primitive
-	// per medium shape to match CPU exactly - out of scope for this round.
-	// Same luminance/albedo-tint collapse as pbrt_cpu_builder.h's identical
-	// derivation either way - see its comment for why a scalar sigma_a/
-	// sigma_s plus a chromatic tint is what MaterialData::medium_albedo/g/
-	// sigma_t (or dielectric_medium_extra.sigma_t, for the fused case)
-	// actually store.
+	// ROUGH dielectric (nonzero roughness or a roughness texture) combined
+	// with a medium, on either shape, now ALSO fuses - MaterialType::
+	// DielectricMedium's entry/exit boundary dispatches to a real GGX
+	// microfacet path with real glossy NEE/MIS when isRoughDielectric
+	// below. Recursive backend: rough_dielectric_scatter_and_nee()
+	// (optix_device_helpers.h), factored out of shade_material()'s own
+	// plain RoughDielectric case so both reuse the identical logic.
+	// Wavefront backend: evaluate_materials()'s own DielectricMedium case
+	// (wavefront_kernels_materials.cu) does its own GGX scatter sampling,
+	// then - only for the genuinely glossy sub-case - passes MaterialType::
+	// RoughDielectric instead of the real mat.type as the matType argument
+	// to the shared wf_finish_material_scatter() tail call every case
+	// already falls through to, reusing that function's EXISTING,
+	// already-correct RoughDielectric glossy-NEE path verbatim rather than
+	// either reworking its matType-based event classification (which
+	// unconditionally assumes every DielectricMedium entry/exit event is a
+	// medium-interior phase scatter) or hand-duplicating NEE inline (found,
+	// while scoping that option, to need forcing is_specular=true to
+	// suppress the shared function's own NEE attempt - which also wrongly
+	// marks the next bounce specular for ITS OWN later MIS decision, a real
+	// bias avoidable only by also taking over that function's next-ray-
+	// setup logic, i.e. reworking it anyway). Zero edits to the shared
+	// function either way, and full ReSTIR DI/GI/probe-cache/NRC-training
+	// support for this combination as a result. Same luminance/albedo-tint
+	// collapse as pbrt_cpu_builder.h's identical derivation either way -
+	// see its comment for why a scalar sigma_a/sigma_s plus a chromatic
+	// tint is what MaterialData::medium_albedo/g/sigma_t (or dielectric_
+	// medium_extra.sigma_t, for the fused case) actually store.
 	std::map<std::pair<int,int>, int> mediumCache;
 	const auto mediumMaterialIndex = [&](int medIdx, int surfaceMaterialIdx = -1) {
 		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(medIdx)];
 
-		// Fusion only applies to pbrt-v4's "homogeneous" medium type (no
-		// fused GPU material exists for cloud/rgbgrid/uniformgrid) paired
-		// with a real SMOOTH or THIN dielectric surface - MaterialType::
-		// DielectricMedium's own shading code calls either the same
-		// dielectric_scatter() a plain smooth Dielectric uses, or (when
-		// isThinDielectric below) the same reflect-or-transmit coin-flip a
-		// plain ThinDielectric uses (see thin_dielectric_scatter()/
-		// wf_thin_dielectric_scatter() - no bending, no NEE, so it's exactly
-		// as cheap to fuse as smooth). ROUGH dielectric is still excluded
-		// (no rough variant exists for the fused type - it would need a
-		// real tangent frame, texture-bound roughness, and inline glossy
-		// NEE/MIS at the entry/exit boundary, a materially bigger feature
-		// than this). The roughness-texture check mirrors makeMaterial()'s
-		// own Dielectric case exactly (a texture-bound roughness is still
-		// "rough" even when the flat roughness_u/v floats are both 0 - see
-		// that case's own comment).
+		// Fusion applies to pbrt-v4's "homogeneous" medium type (no fused
+		// GPU material exists for cloud/rgbgrid/uniformgrid) paired with a
+		// real SMOOTH, THIN, or ROUGH dielectric surface - MaterialType::
+		// DielectricMedium's own shading code dispatches on dielectric_
+		// medium_extra.surfaceKind (0/1/2, set below) to the matching one
+		// of dielectric_scatter() (smooth), thin_dielectric_scatter()
+		// (thin, no bending/NEE - exactly as cheap to fuse as smooth), or
+		// a real rough microfacet path with inline glossy NEE (rough - the
+		// one case that needed real new shading-kernel work rather than
+		// reusing an existing self-contained helper). The roughness-texture
+		// check mirrors makeMaterial()'s own Dielectric case exactly (a
+		// texture-bound roughness is still "rough" even when the flat
+		// roughness_u/v floats are both 0 - see that case's own comment).
 		bool isSmoothDielectric = false;
 		bool isThinDielectric = false;
+		bool isRoughDielectric = false;
+		const pbrt_flatten::Material *fusedSurfaceMat = nullptr;
 		if (md.type == "homogeneous" && surfaceMaterialIdx >= 0
 				&& static_cast<std::size_t>(surfaceMaterialIdx) < scene.materials.size()) {
 			const pbrt_flatten::Material &sm = scene.materials[static_cast<std::size_t>(surfaceMaterialIdx)];
-			isSmoothDielectric = sm.kind == pbrt_flatten::MaterialKind::Dielectric
-				&& sm.roughness_u <= 0.0 && sm.roughness_v <= 0.0
-				&& sm.roughnessTextureFilename.empty();
-			isThinDielectric = sm.kind == pbrt_flatten::MaterialKind::ThinDielectric;
+			const bool hasRoughness = sm.roughness_u > 0.0 || sm.roughness_v > 0.0
+				|| !sm.roughnessTextureFilename.empty();
+			if (sm.kind == pbrt_flatten::MaterialKind::Dielectric) {
+				isSmoothDielectric = !hasRoughness;
+				isRoughDielectric = hasRoughness;
+				fusedSurfaceMat = &sm;
+			} else if (sm.kind == pbrt_flatten::MaterialKind::ThinDielectric) {
+				isThinDielectric = true;
+				fusedSurfaceMat = &sm;
+			}
 		}
-		const bool isFusableDielectric = isSmoothDielectric || isThinDielectric;
+		const bool isFusableDielectric = isSmoothDielectric || isThinDielectric || isRoughDielectric;
 		const auto cacheKey = std::make_pair(medIdx, isFusableDielectric ? surfaceMaterialIdx : -1);
 		const auto it = mediumCache.find(cacheKey);
 		if (it != mediumCache.end()) return it->second;
@@ -568,9 +588,36 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		d.g = static_cast<float>(md.g);
 		if (isFusableDielectric) {
 			d.type = MaterialType::DielectricMedium;
-			d.ior = static_cast<float>(scene.materials[static_cast<std::size_t>(surfaceMaterialIdx)].ior);
+			d.ior = static_cast<float>(fusedSurfaceMat->ior);
 			d.dielectric_medium_extra.sigma_t = sigmaTVal;
-			d.dielectric_medium_extra.isThin = isThinDielectric ? 1.0f : 0.0f;
+			if (isThinDielectric) {
+				d.dielectric_medium_extra.surfaceKind = 1.0f;
+			} else if (isRoughDielectric) {
+				d.dielectric_medium_extra.surfaceKind = 2.0f;
+				// Mirrors makeMaterial()'s own plain-RoughDielectric build
+				// path (this file's Dielectric case) exactly: texture-bound
+				// roughness takes priority, same gamma/wrap/invert options,
+				// same imageTextureCache; otherwise the flat roughness_u/v
+				// floats are stored directly (no isotropic sentinel needed
+				// at build time - ResolveAnisotropicAlphaV's own -1
+				// convention is a SHADING-time fallback for a case this
+				// loader never actually produces, since roughness_v already
+				// falls back to roughness_u at flatten() time when only
+				// "roughness" was given - see pbrt_flatten.h's own parsing).
+				if (!fusedSurfaceMat->roughnessTextureFilename.empty()) {
+					d.textureIdx = getOrBuildPbrtImageTexture(
+						fusedSurfaceMat->roughnessTextureFilename, out, imageTextureCache,
+						static_cast<float>(fusedSurfaceMat->roughnessTextureOptions.gamma),
+						static_cast<GpuWrapMode>(fusedSurfaceMat->roughnessTextureOptions.wrapIndex),
+						fusedSurfaceMat->roughnessTextureOptions.invert);
+				} else {
+					d.dielectric_medium_extra.roughness = static_cast<float>(fusedSurfaceMat->roughness_u);
+					d.roughnessV = static_cast<float>(fusedSurfaceMat->roughness_v);
+				}
+				d.remapRoughness = fusedSurfaceMat->remapRoughness;
+			} else {
+				d.dielectric_medium_extra.surfaceKind = 0.0f;  // smooth
+			}
 		} else {
 			d.type = MaterialType::Medium;
 			d.sigma_t = sigmaTVal;

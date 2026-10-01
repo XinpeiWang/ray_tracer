@@ -96,10 +96,14 @@ __device__ __forceinline__ void wf_medium_sphere_near_far(
 // Wavefront-native duplicate of optix_device_helpers.h's material_needs_dpdu()
 // (same reason every other wf_ helper in this file is duplicated rather than
 // shared - see this file's own header comment) - only these material kinds
-// ever read objDpdu (NormalMappedLambertian's tangent-space basis, or the 4
-// anisotropic BxDFs' UV-aligned frame), so every other kind (the overwhelming
-// common case - Lambertian, Metal, Dielectric, DiffuseLight, etc.) can skip
-// the dpdu trig/pole-fallback/transform work below entirely.
+// ever read objDpdu (NormalMappedLambertian's tangent-space basis, the 4
+// anisotropic BxDFs' UV-aligned frame, or DielectricMedium's own fused rough
+// sub-case - see material_needs_dpdu()'s own identical addition and comment,
+// optix_device_helpers.h, for why this is unconditional on MaterialType
+// alone rather than also checking surfaceKind here), so every other kind
+// (the overwhelming common case - Lambertian, Metal, Dielectric,
+// DiffuseLight, etc.) can skip the dpdu trig/pole-fallback/transform work
+// below entirely.
 __device__ __forceinline__ bool wf_material_needs_dpdu(MaterialType type) {
 	switch (type) {
 		case MaterialType::NormalMappedLambertian:
@@ -107,6 +111,7 @@ __device__ __forceinline__ bool wf_material_needs_dpdu(MaterialType type) {
 		case MaterialType::RoughDielectric:
 		case MaterialType::CoatedDiffuse:
 		case MaterialType::CoatedConductor:
+		case MaterialType::DielectricMedium:
 			return true;
 		default:
 			return false;

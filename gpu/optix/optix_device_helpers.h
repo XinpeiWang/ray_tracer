@@ -838,6 +838,242 @@ __device__ __forceinline__ bool bssrdf_probe_walk(
 	return true;
 }
 
+// GGX microfacet rough-dielectric scatter + real glossy NEE/MIS (pbrt-v4
+// RoughDielectricBxDF), factored out of shade_material()'s own
+// MaterialType::RoughDielectric case (below) so MaterialType::
+// DielectricMedium's entry/exit boundary (optix_intersection_sphere.h/
+// optix_intersection_disk_cylinder.h) can call the EXACT same logic when
+// fused with a rough dielectric surface, instead of duplicating it a
+// second time inside this one file (duplication across the recursive/
+// wavefront BACKEND boundary is this codebase's own established
+// convention - see wavefront_device_helpers.h's own header comment - but
+// duplicating within a single backend's own file has no such precedent or
+// justification).
+//
+// `flatRoughness`: the "mat.fuzz"-equivalent flat (pre-remap) isotropic
+// roughness value - a plain parameter rather than always reading mat.fuzz
+// directly, because DielectricMedium's own copy of that same union slot
+// (fuzz/roughness/g/beta_m, optix_types.h) is already taken by `g` (the
+// medium's Henyey-Greenstein asymmetry); DielectricMedium's caller passes
+// mat.dielectric_medium_extra.roughness instead (see that field's own
+// comment), while plain RoughDielectric's caller passes mat.fuzz, same as
+// before this factoring. `mat.roughnessV`/`mat.remapRoughness`/
+// `mat.textureIdx` need no such indirection - genuinely unused by
+// DielectricMedium otherwise (see optix_types.h), so both callers read
+// them directly off `mat`.
+//
+// `allowDispersion`: false for the DielectricMedium caller - critically,
+// NOT just "no dispersive scene currently fuses a medium", a genuine
+// safety requirement: mat.dispersive_extra and mat.dielectric_medium_extra
+// are THE SAME UNION SLOT (optix_types.h), so reading mat.dispersive_extra.
+// cauchy_A for a DielectricMedium material would reinterpret its own
+// sigma_t/roughness/surfaceKind bits as a bogus Cauchy coefficient -
+// almost always a small positive float, which the dispersion gate
+// (`cauchy_A > 0.0f`) would misread as "this material IS dispersive",
+// triggering a spurious per-path RGB-channel lock and a nonsense IOR.
+// Plain RoughDielectric's caller passes true (its own dispersive_extra is
+// a real, intentional field for that type).
+//
+// Returns false only in the rare grazing-angle degenerate case (the
+// sampled microfacet reflection/TIR-fallback direction ends up below the
+// local hemisphere, wo_z<=0) - the caller must then treat this hit as "no
+// scatter at all" (matching shade_material()'s own `scattered=false`
+// handling for this same condition, the one place the original case could
+// early-exit via `break` before reaching this function's own call site).
+// Returns true otherwise, having written scattered_dir/attenuation/
+// is_specular/brdf_pdf_override, added any NEE contribution into
+// `emission`, and set `eta` on a genuine transmission (left untouched -
+// already defaulted to 1.0f by every caller - otherwise).
+__device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
+	const MaterialData& mat, float flatRoughness, bool allowDispersion,
+	const float3& normal, const float3& ray_dir, const float3& hit_point,
+	bool front_face, float uv_u, float uv_v, const float3& dpdu,
+	bool do_regularize, unsigned int& seed, unsigned int& inout_rgb_channel,
+	float3& attenuation, float3& scattered_dir, bool& is_specular,
+	float& brdf_pdf_override, float3& emission, float& eta)
+{
+	// RoughnessToAlpha (sqrt), unless pbrt-v4 "remaproughness" is false (see
+	// MaterialData::remapRoughness) - then flatRoughness/mat.roughnessV
+	// already ARE the alpha values. mat.textureIdx>=0 means "roughness" was
+	// texture-bound - sample the image's red/x channel as the scalar
+	// isotropic roughness at THIS hit instead of the flat value, matching
+	// CPU's rough_dielectric::true_alpha() (material_pbrt.h) exactly,
+	// including its isotropic-only scope (no separate uroughness/
+	// vroughness texture support).
+	float rd_alpha_x, rd_alpha_y;
+	if (mat.textureIdx >= 0) {
+		const float rd_rough = sample_texture(mat.textureIdx, uv_u, uv_v, hit_point).x;
+		rd_alpha_x = rd_alpha_y = mat.remapRoughness ? sqrtf(rd_rough) : rd_rough;
+	} else {
+		rd_alpha_x = mat.remapRoughness ? sqrtf(flatRoughness) : flatRoughness;
+		rd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, flatRoughness, mat.remapRoughness);
+	}
+	if (do_regularize) {
+		rd_alpha_x = RegularizeAlpha(rd_alpha_x);
+		rd_alpha_y = RegularizeAlpha(rd_alpha_y);
+	}
+	// pbrt-v4 dispersion (Cauchy formula) - see this function's own header
+	// comment for why allowDispersion must be false for the DielectricMedium
+	// caller specifically, not just "no scene currently combines these".
+	float rd_ior = mat.ior;
+	if (allowDispersion && mat.dispersive_extra.cauchy_A > 0.0f) {
+		if (inout_rgb_channel == kRgbChannelUnset) {
+			inout_rgb_channel = static_cast<unsigned int>(random_float(seed) * 3.0f);
+			if (inout_rgb_channel > 2u) inout_rgb_channel = 2u;  // 3.0f*u can hit exactly 3.0f
+		}
+		rd_ior = CauchyEta(kRgbChannelWavelengthNm[inout_rgb_channel],
+		                   mat.dispersive_extra.cauchy_A, mat.dispersive_extra.cauchy_B);
+	}
+	float rd_ri = front_face ? (1.0f / rd_ior) : rd_ior;
+
+	// Local shading frame (n = +Z)
+	float3 n = normal;
+	float3 tan, bitan;
+	BuildDpduTangentFrame(n.x, n.y, n.z, dpdu.x, dpdu.y, dpdu.z, tan.x, tan.y, tan.z, bitan.x, bitan.y, bitan.z);
+
+	float3 wi_w = normalize(-ray_dir);
+	float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+	// Track whether wi got sign-flipped below so any OTHER direction
+	// queried against this same local wi (NEE light directions, see
+	// below) can be put through the identical flip - f()/pdf() (see
+	// RoughDielectricBxDF in src/shared/bxdfs_conductor.h) branch on
+	// wo_z's sign relative to THIS wi, so a queried direction must be
+	// expressed in the same mirrored coordinate system, not just
+	// dotted against the raw (tan,bitan,n) basis.
+	bool rd_flip = (wi_z < 0.0f);
+	if (rd_flip) { wi_z=-wi_z; wi_x=-wi_x; wi_y=-wi_y; }
+
+	TrowbridgeReitz<float> rd_dist(rd_alpha_x, rd_alpha_y);
+	float wm_x, wm_y, wm_z;
+	rd_dist.Sample_wm(wi_x, wi_y, wi_z,
+					  random_float(seed), random_float(seed),
+					  wm_x, wm_y, wm_z);
+
+	float cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+	float F = FrDielectric(cos_i, 1.0f / rd_ri);
+
+	float3 wo_local;
+	if (random_float(seed) < F) {
+		// Reflect
+		float wo_x = 2.0f*cos_i*wm_x - wi_x;
+		float wo_y = 2.0f*cos_i*wm_y - wi_y;
+		float wo_z = 2.0f*cos_i*wm_z - wi_z;
+		if (wo_z <= 0.0f) return false;
+		wo_local = make_float3(wo_x, wo_y, wo_z);
+	} else {
+		// Refract
+		if (wm_z < 0.0f) { wm_x=-wm_x; wm_y=-wm_y; wm_z=-wm_z; }
+		float sin2_t = rd_ri*rd_ri * (1.0f - cos_i*cos_i);
+		if (sin2_t >= 1.0f) {
+			// TIR: reflect
+			float wo_x = 2.0f*cos_i*wm_x - wi_x;
+			float wo_y = 2.0f*cos_i*wm_y - wi_y;
+			float wo_z = 2.0f*cos_i*wm_z - wi_z;
+			if (wo_z <= 0.0f) return false;
+			wo_local = make_float3(wo_x, wo_y, wo_z);
+		} else {
+			// Transmitted direction (pbrt-v4 Refract in local frame):
+			//   wo = -eta*wi + (eta*dot(wi,wm) - cos_t)*wm
+			// wo_z < 0: ray crosses through the surface boundary
+			float cos_t = sqrtf(1.0f - sin2_t);
+			float wo_x = rd_ri*(-wi_x) + (rd_ri*cos_i - cos_t)*wm_x;
+			float wo_y = rd_ri*(-wi_y) + (rd_ri*cos_i - cos_t)*wm_y;
+			float wo_z = -(rd_ri*wi_z  - (rd_ri*cos_i - cos_t)*wm_z);
+			wo_local = make_float3(wo_x, wo_y, wo_z);
+			// pbrt-v4 etaScale - a genuine transmission (not the TIR
+			// fallback-to-reflect branch above), eta = rd_ri exactly
+			// like plain Dielectric's own eta.
+			eta = rd_ri;
+		}
+	}
+	scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+	// pbrt-v4 RoughDielectricBxDF: BSDF weight with VNDF sampling = G(wo,wi)/G1(wi)
+	// (the D, cos, and pdf terms cancel; only shadow-masking ratio remains)
+	{
+		float wo_x = wo_local.x, wo_y = wo_local.y, wo_z = fabsf(wo_local.z);
+		float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
+		float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
+		float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
+		attenuation = make_float3(w, w, w);
+	}
+
+	// Real NEE/MIS for glossy (non-EffectivelySmooth) rough glass - NEE here
+	// can reach lights on EITHER side of the interface (reflection when the
+	// local light direction's z is positive, transmission/"seen through the
+	// glass" when negative) - trace_shadow_ray() nudges its origin along the
+	// shadow ray's OWN direction (not the surface normal), so a
+	// transmission-side shadow ray correctly steps through the interface
+	// instead of immediately self-intersecting it.
+	if (!rd_dist.EffectivelySmooth()) {
+		is_specular = false;
+		// rd_ior, not mat.ior: RoughDielectricBxDF::f()/pdf() (src/shared/
+		// bxdfs_conductor.h) take eta as an explicit call parameter and
+		// never read this struct's own .ior member - so this value is
+		// currently inert either way - but using the dispersion-resolved
+		// one here avoids leaving a flat, undispersed IOR sitting in a
+		// field literally named for the thing this whole case just
+		// computed a dispersed value for.
+		RoughDielectricBxDF<float> rd_bxdf{ rd_ior, rd_alpha_x, rd_alpha_y };
+		// wo_local was already derived (above) from the flip-adjusted
+		// wi_x/wi_y/wi_z - it's already in the same mirrored frame as
+		// wi, same as the attenuation-weight G2/G1 computation just
+		// above uses it unflipped. Re-flipping it here would double-
+		// flip it relative to wi, breaking RoughDielectricBxDF::pdf()'s
+		// documented "wo expressed in the same flipped frame as wi"
+		// contract (src/shared/bxdfs_conductor.h) - matches
+		// wavefront_kernels.cu's identical computation, which passes
+		// wo_local's components through unmodified.
+		brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_local.x, wo_local.y, wo_local.z);
+
+		{
+			float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+			if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
+				float llx = dot(to_light, tan), lly = dot(to_light, bitan), llz = dot(to_light, n);
+				if (rd_flip) { llx=-llx; lly=-lly; llz=-llz; }
+				if (llz != 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+					float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
+					float brdf_pdf = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
+					float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+					emission = emission + mis_weight * make_float3(fval, fval, fval) * sampled_light_emission * fabsf(llz) / light_pdf
+						* camera_medium_shadow_trans(max_dist);
+				}
+			}
+		}
+
+		for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+			float3 wi_p, Li_p; float t_max_p;
+			if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+			float plx = dot(wi_p, tan), ply = dot(wi_p, bitan), plz = dot(wi_p, n);
+			if (rd_flip) { plx=-plx; ply=-ply; plz=-plz; }
+			if (plz == 0.0f) continue;
+			if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+				float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, plx, ply, plz);
+				emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz) * camera_medium_shadow_trans(t_max_p);
+			}
+		}
+
+		{
+			const float3& skyColor = params.camera.backgroundColor;
+			if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+				float3 sky_dir, sky_Le_val; float pdf_sky;
+				sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
+				float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bitan), skz = dot(sky_dir, n);
+				if (rd_flip) { skx=-skx; sky_y=-sky_y; skz=-skz; }
+				if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+					float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
+					float brdf_pdf_sky = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
+					float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+					emission = emission + mis_weight * make_float3(fval, fval, fval) * sky_Le_val * fabsf(skz) / pdf_sky
+						* camera_medium_shadow_trans(1e30f);
+				}
+			}
+		}
+	} else {
+		is_specular = true;
+	}
+	return true;
+}
+
 // Evaluates material scattering for every MaterialType except Medium and
 // Hair, which are sphere-only and stay in optix_intersection_sphere.h's own
 // closest-hit program (they need shape-specific re-intersection/geometry
@@ -1428,213 +1664,24 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::RoughDielectric: {
-			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF)
-			// fuzz field stores GGX roughness; ior = index of refraction
-			// RoughnessToAlpha (sqrt), unless pbrt-v4 "remaproughness" is
-			// false (see MaterialData::remapRoughness) - then mat.fuzz/
-			// mat.roughnessV already ARE the alpha values. mat.roughnessV<0
-			// means "isotropic" - see MaterialData::roughnessV's own
-			// comment (optix_types.h) and ResolveAnisotropicAlphaV's own
-			// comment (microfacet.h) for the shared sentinel/remap logic.
-			// mat.textureIdx>=0 means "roughness" was texture-bound (pbrt-v4
-			// "texture roughness" on a Dielectric - see MaterialData::
-			// textureIdx's own comment) - sample the image's red/x channel
-			// as the scalar isotropic roughness at THIS hit instead of the
-			// flat mat.fuzz, matching CPU's rough_dielectric::true_alpha()
-			// (material_pbrt.h) exactly, including its isotropic-only scope
-			// (no separate uroughness/vroughness texture support).
-			// Untested: no bundled scene combines a texture-bound roughness
-			// (this branch) with a dispersive IOR (mat.dispersive_extra
-			// below) on RoughDielectric - B24 uses a flat scalar roughness.
-			// The two are structurally independent fields/conditions with no
-			// aliasing between them, so this is believed safe, just unverified
-			// by any render or test.
-			float rd_alpha_x, rd_alpha_y;
-			if (mat.textureIdx >= 0) {
-				const float rd_rough = sample_texture(mat.textureIdx, uv_u, uv_v, hit_point).x;
-				rd_alpha_x = rd_alpha_y = mat.remapRoughness ? sqrtf(rd_rough) : rd_rough;
-			} else {
-				rd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
-				rd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF) - factored
+			// into rough_dielectric_scatter_and_nee() (above) so MaterialType::
+			// DielectricMedium's own fused rough case can call the exact
+			// same logic - see that function's own header comment for the
+			// full derivation this case used to carry inline. flatRoughness
+			// is mat.fuzz here (this type's own real roughness field, unlike
+			// DielectricMedium's borrowed slot); allowDispersion is true
+			// (this type's own dispersive_extra is a real, intentional
+			// field, unlike DielectricMedium's aliased one).
+			if (!rough_dielectric_scatter_and_nee(
+					mat, mat.fuzz, /*allowDispersion=*/true,
+					normal, ray_dir, hit_point, front_face, uv_u, uv_v, dpdu,
+					do_regularize, seed, inout_rgb_channel,
+					attenuation, scattered_dir, is_specular, brdf_pdf_override, emission, eta)) {
+				scattered = false;
+				break;
 			}
-			if (do_regularize) {
-				rd_alpha_x = RegularizeAlpha(rd_alpha_x);
-				rd_alpha_y = RegularizeAlpha(rd_alpha_y);
-			}
-			// pbrt-v4 dispersion (Cauchy formula) - same lazy, once-per-path
-			// channel pick as MaterialType::Dielectric above (see that case's
-			// own comment for the full rationale/scope). A frosted/rough
-			// dispersive glass (e.g. B24) previously stayed flat on this
-			// backend even after smooth Dielectric gained real dispersion,
-			// since this case never read mat.dispersive_extra at all.
-			// Deliberately copy-pasted rather than factored into a shared
-			// helper: exactly 2 occurrences (this one and Dielectric's,
-			// above) inside one already-small function, each immediately
-			// followed by a different scatter routine - CauchyEta() itself
-			// (the actual non-trivial math) is already a shared primitive
-			// (src/shared/fresnel.h); a 3rd occurrence would tip this into
-			// worth extracting.
-			float rd_ior = mat.ior;
-			if (mat.dispersive_extra.cauchy_A > 0.0f) {
-				if (inout_rgb_channel == kRgbChannelUnset) {
-					inout_rgb_channel = static_cast<unsigned int>(random_float(seed) * 3.0f);
-					if (inout_rgb_channel > 2u) inout_rgb_channel = 2u;  // 3.0f*u can hit exactly 3.0f
-				}
-				rd_ior = CauchyEta(kRgbChannelWavelengthNm[inout_rgb_channel],
-				                   mat.dispersive_extra.cauchy_A, mat.dispersive_extra.cauchy_B);
-			}
-			float rd_ri    = front_face ? (1.0f / rd_ior) : rd_ior;
-
-			// Local shading frame (n = +Z)
-			float3 n = normal;
-			float3 tan, bitan;
-			BuildDpduTangentFrame(n.x, n.y, n.z, dpdu.x, dpdu.y, dpdu.z, tan.x, tan.y, tan.z, bitan.x, bitan.y, bitan.z);
-
-			float3 wi_w = normalize(-ray_dir);
-			float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
-			// Track whether wi got sign-flipped below so any OTHER direction
-			// queried against this same local wi (NEE light directions, see
-			// below) can be put through the identical flip - f()/pdf() (see
-			// RoughDielectricBxDF in src/shared/bxdfs_conductor.h) branch on
-			// wo_z's sign relative to THIS wi, so a queried direction must be
-			// expressed in the same mirrored coordinate system, not just
-			// dotted against the raw (tan,bitan,n) basis.
-			bool rd_flip = (wi_z < 0.0f);
-			if (rd_flip) { wi_z=-wi_z; wi_x=-wi_x; wi_y=-wi_y; }
-
-			TrowbridgeReitz<float> rd_dist(rd_alpha_x, rd_alpha_y);
-			float wm_x, wm_y, wm_z;
-			rd_dist.Sample_wm(wi_x, wi_y, wi_z,
-							  random_float(seed), random_float(seed),
-							  wm_x, wm_y, wm_z);
-
-			float cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-			float F = FrDielectric(cos_i, 1.0f / rd_ri);
-
-			float3 wo_local;
-			if (random_float(seed) < F) {
-				// Reflect
-				float wo_x = 2.0f*cos_i*wm_x - wi_x;
-				float wo_y = 2.0f*cos_i*wm_y - wi_y;
-				float wo_z = 2.0f*cos_i*wm_z - wi_z;
-				if (wo_z <= 0.0f) { scattered = false; break; }
-				wo_local = make_float3(wo_x, wo_y, wo_z);
-			} else {
-				// Refract
-				if (wm_z < 0.0f) { wm_x=-wm_x; wm_y=-wm_y; wm_z=-wm_z; }
-				float sin2_t = rd_ri*rd_ri * (1.0f - cos_i*cos_i);
-				if (sin2_t >= 1.0f) {
-					// TIR: reflect
-					float wo_x = 2.0f*cos_i*wm_x - wi_x;
-					float wo_y = 2.0f*cos_i*wm_y - wi_y;
-					float wo_z = 2.0f*cos_i*wm_z - wi_z;
-					if (wo_z <= 0.0f) { scattered = false; break; }
-					wo_local = make_float3(wo_x, wo_y, wo_z);
-				} else {
-					// Transmitted direction (pbrt-v4 Refract in local frame):
-					//   wo = -eta*wi + (eta*dot(wi,wm) - cos_t)*wm
-					// wo_z < 0: ray crosses through the surface boundary
-					float cos_t = sqrtf(1.0f - sin2_t);
-					float wo_x = rd_ri*(-wi_x) + (rd_ri*cos_i - cos_t)*wm_x;
-					float wo_y = rd_ri*(-wi_y) + (rd_ri*cos_i - cos_t)*wm_y;
-					float wo_z = -(rd_ri*wi_z  - (rd_ri*cos_i - cos_t)*wm_z);
-					wo_local = make_float3(wo_x, wo_y, wo_z);
-					// pbrt-v4 etaScale - a genuine transmission (not the TIR
-					// fallback-to-reflect branch above), eta = rd_ri exactly
-					// like plain Dielectric's own eta above.
-					eta = rd_ri;
-				}
-			}
-			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
-			// pbrt-v4 RoughDielectricBxDF: BSDF weight with VNDF sampling = G(wo,wi)/G1(wi)
-			// (the D, cos, and pdf terms cancel; only shadow-masking ratio remains)
-			{
-				float wo_x = wo_local.x, wo_y = wo_local.y, wo_z = fabsf(wo_local.z);
-				float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
-				float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
-				float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
-				attenuation = make_float3(w, w, w);
-			}
-			scattered     = true;
-
-			// Real NEE/MIS for glossy (non-EffectivelySmooth) rough glass,
-			// mirroring MaterialType::Conductor's NEE block above but via
-			// the shared RoughDielectricBxDF<float>'s scalar (achromatic)
-			// f()/pdf() - the same CPU_GPU template already verified on CPU
-			// for #222/#226/#227. NEE here can reach lights on EITHER side
-			// of the interface (reflection when the local light direction's
-			// z is positive, transmission/"seen through the glass" when
-			// negative) - trace_shadow_ray() nudges its origin along the
-			// shadow ray's OWN direction (not the surface normal), so a
-			// transmission-side shadow ray correctly steps through the
-			// interface instead of immediately self-intersecting it.
-			if (!rd_dist.EffectivelySmooth()) {
-				is_specular = false;
-				// rd_ior, not mat.ior: RoughDielectricBxDF::f()/pdf() (src/shared/
-				// bxdfs_conductor.h) take eta as an explicit call parameter and
-				// never read this struct's own .ior member - so this value is
-				// currently inert either way - but using the dispersion-resolved
-				// one here avoids leaving a flat, undispersed IOR sitting in a
-				// field literally named for the thing this whole case just
-				// computed a dispersed value for.
-				RoughDielectricBxDF<float> rd_bxdf{ rd_ior, rd_alpha_x, rd_alpha_y };
-				// wo_local was already derived (above) from the flip-adjusted
-				// wi_x/wi_y/wi_z - it's already in the same mirrored frame as
-				// wi, same as the attenuation-weight G2/G1 computation just
-				// above uses it unflipped. Re-flipping it here would double-
-				// flip it relative to wi, breaking RoughDielectricBxDF::pdf()'s
-				// documented "wo expressed in the same flipped frame as wi"
-				// contract (src/shared/bxdfs_conductor.h) - matches
-				// wavefront_kernels.cu's identical computation, which passes
-				// wo_local's components through unmodified.
-				brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_local.x, wo_local.y, wo_local.z);
-
-				{
-					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
-						float llx = dot(to_light, tan), lly = dot(to_light, bitan), llz = dot(to_light, n);
-						if (rd_flip) { llx=-llx; lly=-lly; llz=-llz; }
-						if (llz != 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
-							float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
-							float brdf_pdf = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
-							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fval, fval, fval) * sampled_light_emission * fabsf(llz) / light_pdf
-								* camera_medium_shadow_trans(max_dist);
-						}
-					}
-				}
-
-				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
-					float3 wi_p, Li_p; float t_max_p;
-					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
-					float plx = dot(wi_p, tan), ply = dot(wi_p, bitan), plz = dot(wi_p, n);
-					if (rd_flip) { plx=-plx; ply=-ply; plz=-plz; }
-					if (plz == 0.0f) continue;
-					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
-						float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, plx, ply, plz);
-						emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz) * camera_medium_shadow_trans(t_max_p);
-					}
-				}
-
-				{
-					const float3& skyColor = params.camera.backgroundColor;
-					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
-						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
-						float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bitan), skz = dot(sky_dir, n);
-						if (rd_flip) { skx=-skx; sky_y=-sky_y; skz=-skz; }
-						if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
-							float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
-							float brdf_pdf_sky = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
-							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fval, fval, fval) * sky_Le_val * fabsf(skz) / pdf_sky
-								* camera_medium_shadow_trans(1e30f);
-						}
-					}
-				}
-			} else {
-				is_specular = true;
-			}
+			scattered = true;
 			break;
 		}
 
@@ -2194,15 +2241,22 @@ __device__ __forceinline__ bool material_requires_sphere_only_handling(MaterialT
 }
 
 // Whether shade_material()'s dpdu parameter is ever actually read for this
-// material type - NormalMappedLambertian (its normal-map tangent basis) and
-// the 4 anisotropy-capable kinds (their UV-aligned shading frame, see
-// BuildDpduTangentFrame's own comment, microfacet.h). Every OTHER material
-// kind (Lambertian, Metal, Dielectric, DiffuseLight, RoughMetal, the
+// material type - NormalMappedLambertian (its normal-map tangent basis), the
+// 4 anisotropy-capable kinds (their UV-aligned shading frame, see
+// BuildDpduTangentFrame's own comment, microfacet.h), and DielectricMedium
+// (rough_dielectric_scatter_and_nee()'s own tangent frame, needed whenever
+// THIS material's own surfaceKind turns out to be rough - checked per-hit
+// inside that function, not here, since this dispatch only has the
+// MaterialType to go on, not the fused sub-flavor; a smooth/thin
+// DielectricMedium pays a small, unconditional dpdu-computation cost it
+// doesn't actually use, the same trade-off material_requires_sphere_only_
+// handling()'s own switch-based dispatch style already accepts elsewhere
+// for simplicity over per-instance precision). Every OTHER material kind
+// (Lambertian, Metal, Dielectric, DiffuseLight, RoughMetal, the rest of the
 // Medium family, etc.) never touches dpdu at all, so each intersection
-// file's own dpdu computation is gated on this - matching
-// material_requires_sphere_only_handling()'s own switch-based dispatch
-// style - rather than paying for trig/solve/transform work on every hit
-// regardless of whether the material can ever use the result.
+// file's own dpdu computation is gated on this - rather than paying for
+// trig/solve/transform work on every hit regardless of whether the
+// material can ever use the result.
 __device__ __forceinline__ bool material_needs_dpdu(MaterialType type) {
 	switch (type) {
 		case MaterialType::NormalMappedLambertian:
@@ -2210,6 +2264,7 @@ __device__ __forceinline__ bool material_needs_dpdu(MaterialType type) {
 		case MaterialType::RoughDielectric:
 		case MaterialType::CoatedDiffuse:
 		case MaterialType::CoatedConductor:
+		case MaterialType::DielectricMedium:
 			return true;
 		default:
 			return false;

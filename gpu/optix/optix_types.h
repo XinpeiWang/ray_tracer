@@ -1148,17 +1148,26 @@ struct MaterialData {
 	union {
 		float3 eta_c;  // Conductor/CoatedConductor: real part η per R/G/B channel (pbrt-v4 ConductorBxDF)
 		struct { float beta_n, alpha_deg, _hair_pad; } hair_extra;               // Hair
-		// `isThin` (0.0f=smooth/default, 1.0f=thin): whether the entry/exit
-		// surface uses the ThinDielectric reflect-or-transmit model (no
-		// bending, no NEE, folded internal-bounce Fresnel) instead of the
+		// `surfaceKind` (0.0f=smooth/default, 1.0f=thin, 2.0f=rough): which
+		// BSDF model the entry/exit surface uses instead of always the
 		// default smooth Dielectric refraction - see pbrt_gpu_builder.h's
-		// mediumMaterialIndex() for how a shape's own `Material
-		// "thindielectric"` sets this. A plain float, not a bool, matching
-		// this union's own existing "flag/index stored as a float" idiom
-		// (cloud_medium_extra.cloudMediumIdx's own comment just below) so
-		// this struct's layout stays uniform. _dielectric_medium_pad1 is
-		// still genuinely free (unused by any DielectricMedium reader).
-		struct { float sigma_t, _dielectric_medium_pad1, isThin; } dielectric_medium_extra; // DielectricMedium
+		// mediumMaterialIndex() for how a shape's own Material "dielectric"
+		// (rough, via roughness_u/v or a roughness texture) / "thindielectric"
+		// sets this. A plain float, not an enum, matching this union's own
+		// existing "flag/index stored as a float" idiom (cloud_medium_extra.
+		// cloudMediumIdx's own comment just below) so this struct's layout
+		// stays uniform. `roughness`: the fused material's own flat/u-axis
+		// GGX roughness (pre-remap, same convention as the top-level
+		// `roughness` field RoughDielectric uses - stored HERE instead,
+		// since DielectricMedium's own copy of that same union slot
+		// (fuzz/roughness/g/beta_m, below) is already taken by `g`, the
+		// medium's Henyey-Greenstein asymmetry) - meaningful only when
+		// surfaceKind==2 (rough); the v-axis roughness reuses the top-level
+		// `roughnessV` field directly (genuinely unused by DielectricMedium
+		// otherwise, same -1-or-real-value convention RoughDielectric's own
+		// reader already has), and `remapRoughness`/`textureIdx` (both
+		// top-level, also otherwise unused here) are reused the same way.
+		struct { float sigma_t, roughness, surfaceKind; } dielectric_medium_extra; // DielectricMedium
 		struct { float metallic, clearcoat, clearcoat_rough; } principled_params; // Principled
 		// CloudMedium: index into LaunchParams::cloudMediums (stored as a
 		// float so it lives in this union without changing MaterialData's

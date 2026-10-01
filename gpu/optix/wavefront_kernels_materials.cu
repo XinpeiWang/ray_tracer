@@ -366,6 +366,31 @@ extern "C" __global__ void evaluate_materials(
 	// non-glossy case.
 	float glossyAlphaForNEE = 0.0f;
 	float glossyAlphaVForNEE = 0.0f;
+	// wf_finish_material_scatter's own matType argument - mat.type by
+	// default (every case's real material type, unchanged). MaterialType::
+	// DielectricMedium's own fused ROUGH entry/exit sub-case (see that case
+	// below) overrides this to MaterialType::RoughDielectric for just that
+	// one tail call: wf_finish_material_scatter's isPhase/glossy_isType
+	// dispatch (wavefront_device_helpers.h) is driven entirely by this
+	// argument, not by re-reading mat.type itself, and unconditionally
+	// treats every DielectricMedium event as a medium-interior phase
+	// scatter - there is no fused "rough dielectric surface" case in that
+	// dispatch to route into instead. Passing RoughDielectric here (while
+	// h.materialIdx/mat still correctly point at the real DielectricMedium
+	// MaterialData for every index-based field lookup - ior, glossyAlpha,
+	// etc., all identical between the two types - see DielectricMedium's
+	// own case for which fields alias which) reuses that EXISTING, already-
+	// correct, already-tested glossy code path verbatim: zero edits to the
+	// shared function, correct is_specular/MIS/next-bounce behavior, and
+	// ReSTIR DI/GI/probe-cache/NRC-training all keep working for this
+	// combination - chosen over hand-duplicating the NEE block inline after
+	// finding that the naive duplicate needs to force is_specular=true to
+	// suppress the shared function's own (wrong, phase-based) NEE attempt,
+	// which also mislabels the next bounce as specular for its own later
+	// MIS decision, a real bias a true duplicate would need to additionally
+	// take over next-ray-setup/RR/throughput logic to avoid - this
+	// substitution avoids that trade-off entirely instead.
+	MaterialType effectiveMatType = mat.type;
 
 	// Helper: uplift RGB albedo to SampledSpectrum via device sigmoid polynomial
 	auto albedoSpectrum = [&](float3 rgb) -> SS {
@@ -1303,25 +1328,121 @@ extern "C" __global__ void evaluate_materials(
 		// through that interior segment and either scatter via the HG phase
 		// function or fall through to a normal exit refraction/reflection
 		// at the far surface.
-		// is_thin: whether this fused material's surface uses the
-		// ThinDielectric model instead of smooth Dielectric refraction -
-		// see pbrt_gpu_builder.h's mediumMaterialIndex() for how a shape's
-		// own Material "thindielectric" sets dielectric_medium_extra.isThin,
-		// and optix_intersection_sphere.h's identical DielectricMedium
-		// branch for the full comment. Thin needs no etaScale adjustment
-		// (no actual refraction/depth change), unlike the smooth path.
-		const bool is_thin = mat.dielectric_medium_extra.isThin > 0.5f;
-		if (h.frontFace) {
-			attenuation   = SS(1.f);
-			if (is_thin) {
-				scattered_dir = wf_thin_dielectric_scatter(h.rayDir, normal, mat.ior, seed);
+		//
+		// surfaceKind: which BSDF model this fused material's surface uses
+		// instead of always smooth Dielectric refraction - see pbrt_gpu_
+		// builder.h's mediumMaterialIndex() for how a shape's own Material
+		// "dielectric" (rough) / "thindielectric" (thin) sets dielectric_
+		// medium_extra.surfaceKind (0=smooth/default, 1=thin, 2=rough), and
+		// optix_intersection_sphere.h's identical DielectricMedium branch
+		// for the full comment on all three. Thin needs no etaScale
+		// adjustment (no actual refraction/depth change).
+		const float rdm_kind = mat.dielectric_medium_extra.surfaceKind;
+		const bool is_rough = rdm_kind >= 1.5f;
+		const bool is_thin  = !is_rough && rdm_kind >= 0.5f;
+
+		// Real GGX microfacet rough-dielectric scatter, shared by the entry
+		// and exit surface sub-cases below (both need the identical math,
+		// just with their own front_face). Mirrors evaluate_materials_
+		// dielectric.cu's own MaterialType::RoughDielectric case exactly
+		// (same shared CPU_GPU TrowbridgeReitz<float>/RoughDielectricBxDF<float>
+		// templates), reading roughness from dielectric_medium_extra.
+		// roughness instead of mat.fuzz - that union slot is already taken
+		// by `g` (the medium's own Henyey-Greenstein asymmetry) for this
+		// fused type, see optix_types.h's own comment.
+		//
+		// Returns false only in the rare grazing-angle degenerate case
+		// (mirrors evaluate_materials_dielectric.cu's own `scattered=false;
+		// break;` for the identical situation). On success, also sets
+		// effectiveMatType to MaterialType::RoughDielectric when the glossy
+		// (non-EffectivelySmooth) lobe fires, so the shared tail call below
+		// reuses wf_finish_material_scatter's EXISTING, already-correct
+		// RoughDielectric glossy-NEE path instead of its own DielectricMedium
+		// handling (which unconditionally assumes a medium-interior phase
+		// event) - see effectiveMatType's own declaration comment (above,
+		// this function) for the full rationale on why this substitution was
+		// chosen over a hand-duplicated inline NEE block.
+		auto roughDielectricMediumScatter = [&](bool rd_front_face) -> bool {
+			float rd_alpha_x, rd_alpha_y;
+			if (mat.textureIdx >= 0) {
+				const float rd_rough = wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point).x;
+				const float rd_a = mat.remapRoughness ? sqrtf(rd_rough) : rd_rough;
+				rd_alpha_x = rd_alpha_y = do_regularize ? RegularizeAlpha(rd_a) : rd_a;
 			} else {
-				scattered_dir = wf_dielectric_scatter(h.rayDir, normal, true, mat.ior, seed);
-				// pbrt-v4 etaScale (entry surface) - see MaterialType::
-				// Dielectric's identical eta computation above.
-				if (dot(scattered_dir, normal) < 0.0f) eventEta = 1.0f / mat.ior;
+				const float rd_flat = mat.dielectric_medium_extra.roughness;
+				float rd_a  = mat.remapRoughness ? sqrtf(rd_flat) : rd_flat;
+				float rd_av = ResolveAnisotropicAlphaV(mat.roughnessV, rd_flat, mat.remapRoughness);
+				rd_alpha_x = do_regularize ? RegularizeAlpha(rd_a)  : rd_a;
+				rd_alpha_y = do_regularize ? RegularizeAlpha(rd_av) : rd_av;
 			}
-			is_specular   = true;  // genuinely specular (Dirac-delta) dielectric bounce
+			glossyAlphaForNEE  = rd_alpha_x;
+			glossyAlphaVForNEE = rd_alpha_y;
+			const float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
+
+			float3 n = normal;
+			float3 tan_v, bitan;
+			BuildDpduTangentFrame(n.x, n.y, n.z, h.objDpdu.x, h.objDpdu.y, h.objDpdu.z,
+								  tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
+			float3 wi_w = normalize(-h.rayDir);
+			float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+			if (wi_z < 0.0f) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
+
+			TrowbridgeReitz<float> rd_dist(rd_alpha_x, rd_alpha_y);
+			float wm_x, wm_y, wm_z;
+			rd_dist.Sample_wm(wi_x, wi_y, wi_z, wf_rand(seed), wf_rand(seed), wm_x, wm_y, wm_z);
+			const float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+			const float Fr = FrDielectric(rd_dot, 1.0f / rd_ri);
+
+			float wo_x, wo_y, wo_z;
+			if (wf_rand(seed) < Fr) {
+				wo_x = 2.0f*rd_dot*wm_x - wi_x;
+				wo_y = 2.0f*rd_dot*wm_y - wi_y;
+				wo_z = 2.0f*rd_dot*wm_z - wi_z;
+				if (wo_z <= 0.0f) return false;
+				scattered_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
+			} else {
+				float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
+				const float eta_ratio = rd_front_face ? (1.0f / mat.ior) : mat.ior;
+				float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta_ratio);
+				wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
+				scattered_dir = refracted;
+				eventEta = eta_ratio;
+			}
+			{
+				const float wo_z_abs = fabsf(wo_z);
+				const float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z_abs);
+				const float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
+				const float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
+				attenuation = SS(w);
+			}
+			if (!rd_dist.EffectivelySmooth()) {
+				is_specular = false;
+				matEta = rd_ri;
+				effectiveMatType = MaterialType::RoughDielectric;
+				RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha_x, rd_alpha_y };
+				brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
+				phaseWo = wi_w;
+			} else {
+				is_specular = true;
+			}
+			return true;
+		};
+
+		if (h.frontFace) {
+			if (is_rough) {
+				if (!roughDielectricMediumScatter(true)) { scattered = false; break; }
+			} else {
+				attenuation   = SS(1.f);
+				if (is_thin) {
+					scattered_dir = wf_thin_dielectric_scatter(h.rayDir, normal, mat.ior, seed);
+				} else {
+					scattered_dir = wf_dielectric_scatter(h.rayDir, normal, true, mat.ior, seed);
+					// pbrt-v4 etaScale (entry surface) - see MaterialType::
+					// Dielectric's identical eta computation above.
+					if (dot(scattered_dir, normal) < 0.0f) eventEta = 1.0f / mat.ior;
+				}
+				is_specular   = true;  // genuinely specular (Dirac-delta) dielectric bounce
+			}
 		} else {
 			float t_near = h.t;
 			float t_far  = h.mediumTFar;
@@ -1345,6 +1466,9 @@ extern "C" __global__ void evaluate_materials(
 				scattered_dir = wf_sample_phase_scatter(unit_dir, mat.fuzz, seed, phaseWo, phaseG, brdf_pdf_override);
 				attenuation   = albedoSpectrum(mat.albedo);
 				is_specular = false;
+			} else if (is_rough) {
+				hit_point = h.rayOrigin + t_far * unit_dir;
+				if (!roughDielectricMediumScatter(false)) { scattered = false; break; }
 			} else {
 				hit_point     = h.rayOrigin + t_far * unit_dir;
 				attenuation   = SS(1.f);
@@ -1485,7 +1609,7 @@ extern "C" __global__ void evaluate_materials(
 
 	// eventEta was set above only on a genuine transmission (DielectricMedium's
 	// entry/exit surfaces) - see this function's own eventEta local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, maxComponentValue, normal, hit_point, h.objDpdu, seed,
+	wf_finish_material_scatter(effectiveMatType, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, maxComponentValue, normal, hit_point, h.objDpdu, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
