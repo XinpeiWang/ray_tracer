@@ -781,16 +781,20 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::ThinDielectric: {
-		float3 V = -normalize(h.rayDir);
-		float cos_i = fabsf(dot(V, normal));
-		float Fr = FrDielectric(cos_i, mat.ior);
-		// Account for double transmission (glass slab): T^2
-		float T2 = (1.0f - Fr) * (1.0f - Fr);
-		if (wf_rand(seed) < Fr / (Fr + T2)) {
-			scattered_dir = wf_reflect(-V, normal);
-		} else {
-			scattered_dir = normalize(h.rayDir); // straight through
-		}
+		// Was: a hand-rolled Fr/(Fr+T^2) weighting (T=1-Fr) - a REAL, pre-
+		// existing bug found while adding DielectricMedium's own thin-fused
+		// variant (see wf_thin_dielectric_scatter()'s own comment,
+		// wavefront_device_helpers.h): that formula does not match pbrt-v4's
+		// ThinDielectricBxDF, and diverges substantially from it (e.g.
+		// R=0.1: old gives ~0.110, correct gives ~0.182) - both the
+		// authoritative shared src/shared/bxdfs_simple.h::ThinDielectricBxDF
+		// (used by CPU, material_pbrt.h's thin_dielectric) and the recursive
+		// GPU backend's own MaterialType::ThinDielectric case (optix_device_
+		// helpers.h) already used the correct R_eff = R + T^2*R/(1-R^2)
+		// multi-bounce geometric series; only this wavefront case had its
+		// own independently-wrong formula. Now shares the same corrected
+		// helper DielectricMedium's thin-fused case uses just below.
+		scattered_dir = wf_thin_dielectric_scatter(h.rayDir, normal, mat.ior, seed);
 		attenuation = SS(1.f);
 		scattered   = true;
 		is_specular = true;
@@ -1299,13 +1303,25 @@ extern "C" __global__ void evaluate_materials(
 		// through that interior segment and either scatter via the HG phase
 		// function or fall through to a normal exit refraction/reflection
 		// at the far surface.
+		// is_thin: whether this fused material's surface uses the
+		// ThinDielectric model instead of smooth Dielectric refraction -
+		// see pbrt_gpu_builder.h's mediumMaterialIndex() for how a shape's
+		// own Material "thindielectric" sets dielectric_medium_extra.isThin,
+		// and optix_intersection_sphere.h's identical DielectricMedium
+		// branch for the full comment. Thin needs no etaScale adjustment
+		// (no actual refraction/depth change), unlike the smooth path.
+		const bool is_thin = mat.dielectric_medium_extra.isThin > 0.5f;
 		if (h.frontFace) {
 			attenuation   = SS(1.f);
-			scattered_dir = wf_dielectric_scatter(h.rayDir, normal, true, mat.ior, seed);
+			if (is_thin) {
+				scattered_dir = wf_thin_dielectric_scatter(h.rayDir, normal, mat.ior, seed);
+			} else {
+				scattered_dir = wf_dielectric_scatter(h.rayDir, normal, true, mat.ior, seed);
+				// pbrt-v4 etaScale (entry surface) - see MaterialType::
+				// Dielectric's identical eta computation above.
+				if (dot(scattered_dir, normal) < 0.0f) eventEta = 1.0f / mat.ior;
+			}
 			is_specular   = true;  // genuinely specular (Dirac-delta) dielectric bounce
-			// pbrt-v4 etaScale (entry surface) - see MaterialType::
-			// Dielectric's identical eta computation above.
-			if (dot(scattered_dir, normal) < 0.0f) eventEta = 1.0f / mat.ior;
 		} else {
 			float t_near = h.t;
 			float t_far  = h.mediumTFar;
@@ -1332,12 +1348,16 @@ extern "C" __global__ void evaluate_materials(
 			} else {
 				hit_point     = h.rayOrigin + t_far * unit_dir;
 				attenuation   = SS(1.f);
-				scattered_dir = wf_dielectric_scatter(h.rayDir, normal, false, mat.ior, seed);
+				if (is_thin) {
+					scattered_dir = wf_thin_dielectric_scatter(h.rayDir, normal, mat.ior, seed);
+				} else {
+					scattered_dir = wf_dielectric_scatter(h.rayDir, normal, false, mat.ior, seed);
+					// pbrt-v4 etaScale (exit surface, front_face is false here) -
+					// see MaterialType::Dielectric's identical eta computation
+					// above.
+					if (dot(scattered_dir, normal) < 0.0f) eventEta = mat.ior;
+				}
 				is_specular   = true;  // genuinely specular exit refraction/reflection
-				// pbrt-v4 etaScale (exit surface, front_face is false here) -
-				// see MaterialType::Dielectric's identical eta computation
-				// above.
-				if (dot(scattered_dir, normal) < 0.0f) eventEta = mat.ior;
 			}
 		}
 		scattered   = true;

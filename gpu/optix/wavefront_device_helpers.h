@@ -818,6 +818,32 @@ __device__ __forceinline__ float3 wf_dielectric_scatter(
 	}
 }
 
+// Zero-thickness glass slab reflect-or-straight-through (pbrt-v4
+// ThinDielectricBxDF), duplicated from optix_device_helpers.h's
+// thin_dielectric_scatter (with the wf_ prefix, same reason every other
+// wf_ helper here is duplicated rather than shared) - shared by
+// MaterialType::ThinDielectric's existing case (wavefront_kernels_
+// materials.cu) and MaterialType::DielectricMedium's entry/exit boundary
+// when fused with a thin surface (mat.dielectric_medium_extra.isThin - see
+// pbrt_gpu_builder.h's mediumMaterialIndex()). Multiple internal bounces
+// folded analytically: R_eff = R + T^2*R/(1-R^2).
+__device__ __forceinline__ float3 wf_thin_dielectric_scatter(
+	const float3& ray_dir, const float3& normal, float ior, unsigned int& seed)
+{
+	float3 unit_direction = normalize(ray_dir);
+	float cos_theta = fabsf(dot(unit_direction, normal));
+	float R = FrDielectric(cos_theta, ior);
+	if (R < 1.0f) {
+		float T = 1.0f - R;
+		R += T * T * R / (1.0f - R * R);
+	}
+	if (wf_rand(seed) < R) {
+		return wf_reflect(unit_direction, normal);
+	} else {
+		return unit_direction;  // straight through
+	}
+}
+
 // pbrt-v4 NormalizedFresnelBxDF direction sample - factored out of
 // MaterialType::NormalizedFresnel's own switch case below so
 // resolve_bssrdf_exit() (MaterialType::Subsurface's BSSRDF exit point,

@@ -1,0 +1,48 @@
+# thin-dielectric-medium.pbrt -- exercises Material "thindielectric" fused
+# with MediumInterface on Shape "sphere", now real on GPU (both backends):
+# MaterialType::DielectricMedium's entry/exit boundary now dispatches to
+# the same reflect-or-straight-through coin-flip (thin_dielectric_scatter()/
+# wf_thin_dielectric_scatter(), pbrt-v4 ThinDielectricBxDF's R_eff = R +
+# T^2*R/(1-R^2) multi-bounce series) a plain Material "thindielectric"
+# already uses, instead of unconditionally falling back to a plain fog-only
+# MaterialType::Medium with the shell dropped entirely - see pbrt_gpu_
+# builder.h's mediumMaterialIndex() for the full derivation and docs/
+# PBRT_SUPPORT.md's dielectric+medium fusion entry.
+#
+# Unlike the smooth-dielectric "near-invisible shell" convention this
+# project's own cornell-smoke.pbrt/homogeneous-medium.pbrt/cylinder-
+# medium.pbrt use (eta~1.001, needed there to avoid visibly BENDING the
+# view into the fog through real refraction), a thin shell never bends
+# anything at all - transmission is always a straight line, zero thickness
+# by definition - so this scene uses a real, visible eta (1.5, ordinary
+# glass) instead: the fog inside stays clearly visible straight through the
+# shell, with a genuine thin-film-like Fresnel glint strengthening toward
+# grazing angles, not a smooth-glass caustic/distortion look.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 400 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 5 -2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+MakeNamedMedium "fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0.05 0.05 0.05 ] "rgb sigma_s" [ 1.2 0.8 0.4 ]
+
+AttributeBegin
+  Translate 0 1.5 0
+  Material "thindielectric" "float eta" [ 1.5 ]
+  MediumInterface "fog" ""
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd

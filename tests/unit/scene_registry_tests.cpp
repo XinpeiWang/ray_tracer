@@ -116,7 +116,14 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// rather than reusing an already-local fixture.
 	// 146 -> 149: H19/H20/H21 added (Crown, Villa, Transparent Machines),
 	// three more freshly-downloaded pbrt-v4-scenes bundles.
-	EXPECT_EQ(builtin_scene_count(), 149);
+	//
+	// 149 -> 150: E11 added (Thin Dielectric Medium pbrt example), closing
+	// part of the "rough/thin dielectric + medium" GPU gap from docs/
+	// PBRT_SUPPORT.md - Material "thindielectric" fused with
+	// MediumInterface now reaches the same MaterialType::DielectricMedium
+	// the smooth-dielectric fusion case uses, see pbrt_gpu_builder.h's
+	// mediumMaterialIndex().
+	EXPECT_EQ(builtin_scene_count(), 150);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -782,7 +789,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 149;
+	constexpr int kGuiSceneCount = 150;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

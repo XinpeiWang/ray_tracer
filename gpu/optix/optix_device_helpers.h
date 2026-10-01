@@ -356,6 +356,34 @@ __device__ __forceinline__ float3 dielectric_scatter(const float3& ray_dir, cons
 	}
 }
 
+// Zero-thickness glass slab reflect-or-straight-through (pbrt-v4
+// ThinDielectricBxDF), shared by MaterialType::ThinDielectric (shade_
+// material's case below) and MaterialType::DielectricMedium's own entry/
+// exit boundary when fused with a thin surface (optix_intersection_
+// sphere.h/optix_intersection_disk_cylinder.h, mat.dielectric_medium_
+// extra.isThin - see pbrt_gpu_builder.h's mediumMaterialIndex() for how a
+// shape's own Material "thindielectric" sets that flag) - same drop-in
+// relationship to dielectric_scatter() just above. No bending (unlike
+// smooth refraction) and no actual interior path length, so unlike rough
+// dielectric this needed no new per-call-site setup (tangent frame,
+// texture, NEE) to fuse - it's exactly as cheap here as the smooth case.
+// Multiple internal bounces folded analytically: R_eff = R + T^2*R/(1-R^2).
+__device__ __forceinline__ float3 thin_dielectric_scatter(const float3& ray_dir, const float3& normal,
+		float ior, unsigned int& seed) {
+	float3 unit_direction = normalize(ray_dir);
+	float cos_theta = fabsf(dot(unit_direction, normal));
+	float R = FrDielectric(cos_theta, ior);
+	if (R < 1.0f) {
+		float T = 1.0f - R;
+		R += T * T * R / (1.0f - R * R);
+	}
+	if (random_float(seed) < R) {
+		return reflect(unit_direction, normal);
+	} else {
+		return unit_direction;  // straight through
+	}
+}
+
 //==============================================================================
 // Multiple Importance Sampling (MIS) Helpers
 //==============================================================================
@@ -1225,24 +1253,14 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::ThinDielectric: {
-			// Zero-thickness glass slab (pbrt-v4 ThinDielectricBxDF) -- sphere version
-			// Transmission goes straight through (no bending); reflection is specular.
-			// Multiple internal bounces folded analytically: R_eff = R + T^2*R/(1-R^2)
-			float3 unit_direction = normalize(ray_dir);
-			float cos_theta = fabsf(dot(unit_direction, normal));
-			float R = FrDielectric(cos_theta, mat.ior);
-			if (R < 1.0f) {
-				float T = 1.0f - R;
-				R += T * T * R / (1.0f - R * R);
-			}
-			attenuation = make_float3(1.0f, 1.0f, 1.0f);
-			if (random_float(seed) < R) {
-				scattered_dir = reflect(unit_direction, normal);
-			} else {
-				scattered_dir = unit_direction;  // straight through
-			}
-			scattered   = true;
-			is_specular = true;
+			// Zero-thickness glass slab (pbrt-v4 ThinDielectricBxDF) -- see
+			// thin_dielectric_scatter()'s own comment (above) for the full
+			// derivation - factored out so MaterialType::DielectricMedium's
+			// own thin-fused entry/exit boundary can reuse it exactly.
+			attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+			scattered     = true;
+			is_specular   = true;
 			break;
 		}
 
