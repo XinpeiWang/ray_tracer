@@ -993,7 +993,19 @@ extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
 		"B24",                         // Frosted Prism Dispersion, new materialType 23 dispersive rough dielectric (section 144)
 		"B10",                         // Principled Showcase, new materialType 24 PrincipledBxDF (section 145)
 		"B11",                         // Hair Fibers, new materialType 31 HairBxDF (section 183)
-		"B14",                         // Measured BRDF (actually Lambertian), new sphere-light NEE (section 184)
+		"B14",                         // STALE entry since B14's pbrt migration (commit af83bb8a): B14 is
+		                               // now pbrt-backed, so metal_render_main() always takes the pbrt
+		                               // path and never reaches buildHandAuthoredScene()'s "B14" case -
+		                               // kept here only so tests/unit/backend_consistency_tests.cpp's
+		                               // MetalSupportedSceneListMatchesDispatcher stays green (it
+		                               // requires this set and buildHandAuthoredScene()'s dispatch to
+		                               // match exactly), not because this is Metal's real B14 path.
+		                               // Metal's ACTUAL "B14" render goes through
+		                               // metal_poc_pbrt_loader.mm's generic material mapper, which has
+		                               // no MaterialKind::Measured case and falls back to flat gray
+		                               // Lambertian - see that file's own comment. Originally added for
+		                               // new sphere-light NEE (section 184), still true of the
+		                               // now-unreachable buildMeasuredBrdfScene() builder itself.
 		"B13",                         // Subsurface Slab, tinted-glass approximation (section 185)
 		"A9",                          // Final Scene, combined finale reusing existing mechanisms (section 186)
 		"C1",                          // HDRI Sky, no new materialType/shader code needed (section 146)

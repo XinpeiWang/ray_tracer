@@ -854,13 +854,24 @@ struct MetalPocApp {
     // that Metal function's own comment for the field-reuse layout and
     // section 183, docs/METAL_GPU_FEASIBILITY.md.
     void buildHairFibersScene();
-    // B14: Measured BRDF - 5 Lambertian spheres (matching CPU's own
-    // measured_material, which never actually reads its own tabulated
-    // data - see that class's own comment) under the first emissive
-    // SPHERE light this loader supports (AreaLight::kind==1, new sphere-
-    // light NEE - metal_poc_sampling.metal's sampleAreaLight()). See
-    // buildMeasuredBrdfScene()'s own comment and section 184,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // B14: Measured BRDF - STALE/UNREACHABLE for scene_id "B14" as of
+    // B14's pbrt migration (ray_tracer commit af83bb8a): the CPU
+    // measured_material class this was written to match is deleted, and
+    // metal_render_main() always prefers cpu_scene_pbrt_path_by_id() over
+    // this hand-authored path when a pbrt file exists for the scene - B14
+    // now has one, so this function is never actually invoked for "B14"
+    // through the normal entry point (buildHandAuthoredScene()'s own
+    // dispatch line is dead code, kept only so this function stays
+    // reachable/compilable). The ACTUAL Metal render for scene_id "B14"
+    // today goes through metal_poc_pbrt_loader.mm's generic pbrt material
+    // mapper, which has no case for MaterialKind::Measured and falls back
+    // to flat gray Lambertian (see that file's `default:` case) - visibly
+    // different from CPU/OptiX's real importance-sampled gold BRDF. This
+    // function is kept only as the first (and still only) example of this
+    // loader's sphere-light NEE support (AreaLight::kind==1,
+    // metal_poc_sampling.metal's sampleAreaLight()) - see its own comment
+    // and section 184, docs/METAL_GPU_FEASIBILITY.md - not as a current
+    // description of what scene_id "B14" renders.
     void buildMeasuredBrdfScene();
     // B13: Subsurface Slab - a Cornell box with a dielectric wax slab
     // (box) and jade sphere, each approximated as tinted glass
