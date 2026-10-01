@@ -211,6 +211,15 @@ __device__ __forceinline__ bool wf_gpu_measured_sample_f(
 	float phi_m = (2.0f * u_wm_y - 1.0f) * kPi;
 	const float theta_m = u_wm_x * u_wm_x * (kPi * 0.5f);
 	if (isotropic) phi_m += phi_o;
+	// See optix_measured_bxdf.h's identical fix for the full explanation:
+	// phi_m+phi_o can land outside [-pi,pi], where this build's
+	// --use_fast_math-substituted __sinf()/__cosf() measurably degrade
+	// (unlike CPU's std::sin/std::cos, which range-reduce exactly) - wrap
+	// back into [-pi,pi] first so the fast intrinsics stay accurate. A
+	// real, if minor, precision-hardening fix - NOT confirmed to explain
+	// B14's regional-diff test finding (ruled out empirically, see that
+	// file's own comment on optix_measured_bxdf.h's identical fix).
+	phi_m -= 2.0f * kPi * floorf((phi_m + kPi) * (1.0f / (2.0f * kPi)));
 	const float sinTheta_m = sinf(theta_m), cosTheta_m = cosf(theta_m);
 	const float wmx = sinTheta_m * cosf(phi_m);
 	const float wmy = sinTheta_m * sinf(phi_m);

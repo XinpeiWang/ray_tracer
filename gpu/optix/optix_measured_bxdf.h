@@ -278,6 +278,25 @@ __device__ __forceinline__ bool gpu_measured_sample_f(
 	float phi_m = (2.0f * u_wm_y - 1.0f) * kPi;
 	const float theta_m = u_wm_x * u_wm_x * (kPi * 0.5f);
 	if (isotropic) phi_m += phi_o;
+	// phi_m (already in [-pi,pi] before the += above) plus phi_o (also
+	// [-pi,pi], from atan2f) can land in [-2pi, 2pi] - this build compiles
+	// with --use_fast_math (build_optix.targets), which silently replaces
+	// sinf()/cosf() with the __sinf()/__cosf() hardware intrinsics; those
+	// are only accurate for arguments within [-pi,pi] and measurably
+	// degrade outside it (CPU's std::sin/std::cos, used by the reference
+	// src/shared/measured_bxdf.h, always do full, accurate range
+	// reduction regardless of magnitude). Wrap back into [-pi,pi] before
+	// calling sinf/cosf so the fast intrinsics stay in their accurate
+	// range - a real, if minor, precision-hardening fix independent of
+	// scene content. NOTE: this was investigated as a candidate cause of
+	// B14 (Measured BRDF)'s regional-diff test finding (CPU vs both GPU
+	// backends differing ~50-60% in one block), but applying this fix in
+	// isolation moved that gap by under 1 percentage point - confirmed NOT
+	// the explanation (see tests/integration/material_cpu_gpu_parity_
+	// tests.cpp's own comment on B14 for what the real, most likely
+	// explanation turned out to be: firefly variance from this material's
+	// narrow, NEE-less specular lobe, not a code bug).
+	phi_m -= 2.0f * kPi * floorf((phi_m + kPi) * (1.0f / (2.0f * kPi)));
 	const float sinTheta_m = sinf(theta_m), cosTheta_m = cosf(theta_m);
 	const float wmx = sinTheta_m * cosf(phi_m);
 	const float wmy = sinTheta_m * sinf(phi_m);
