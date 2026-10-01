@@ -1343,6 +1343,10 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A homogeneous fog medium on pbrt's Shape \"cylinder\", now real on both GPU backends instead of silently rendering as ordinary empty geometry.",
             "Fast", "cylinder-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E11", 201, SceneNames::ThinDielectricMediumPbrtExample, SceneCategories::Volumes,
+            "Material \"thindielectric\" fused with MediumInterface, now real on both GPU backends via the same DielectricMedium material the smooth-dielectric fusion case uses.",
+            "Fast", "thin-dielectric-medium.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E7", 122, SceneNames::RgbGridMediumPbrtExample, SceneCategories::Volumes,
             "pbrt's MakeNamedMedium \"rgbgrid\" (an RGB voxel grid) rendering as a soft coloured nebula, on both backends.",
             "Fast", "rgbgrid-medium.pbrt"),

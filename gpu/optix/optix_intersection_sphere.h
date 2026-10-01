@@ -941,19 +941,34 @@ extern "C" __global__ void __closesthit__sphere() {
 			// direct dielectric surface always wins the bounce (matches the
 			// CPU's two-hittable trick: the medium's sampled hit distance
 			// can never be closer than the entry surface), so just refract/
-			// reflect normally. On the following bounce, now travelling
-			// inside toward this sphere's exit surface (front_face false),
-			// recompute both roots exactly like the Medium branch above to
-			// get the remaining distance to the exit, sample a free path,
-			// and either scatter via the HG phase function or fall through
-			// to a normal exit refraction/reflection at the far surface.
+			// reflect normally (or, when is_thin, reflect-or-straight-
+			// through - see thin_dielectric_scatter()'s own comment). On the
+			// following bounce, now travelling inside toward this sphere's
+			// exit surface (front_face false), recompute both roots exactly
+			// like the Medium branch above to get the remaining distance to
+			// the exit, sample a free path, and either scatter via the HG
+			// phase function or fall through to a normal exit refraction/
+			// reflection (or thin coin-flip) at the far surface.
+			//
+			// is_thin: whether this fused material's surface uses the
+			// ThinDielectric model instead of smooth Dielectric refraction -
+			// see pbrt_gpu_builder.h's mediumMaterialIndex() for how a
+			// shape's own Material "thindielectric" sets
+			// dielectric_medium_extra.isThin. Thin needs no etaScale
+			// adjustment (no actual refraction/depth change), unlike the
+			// smooth path just below.
+			const bool is_thin = mat.dielectric_medium_extra.isThin > 0.5f;
 			if (front_face) {
 				attenuation = make_float3(1.0f, 1.0f, 1.0f);
-				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+				if (is_thin) {
+					scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+				} else {
+					scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+					// pbrt-v4 etaScale (entry surface) - see MaterialType::
+					// Dielectric's identical eta computation above.
+					if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+				}
 				is_specular = true;
-				// pbrt-v4 etaScale (entry surface) - see MaterialType::
-				// Dielectric's identical eta computation above.
-				if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
 			} else {
 				float3 unit_dir = normalize(ray_dir);
 				float t_near, t_far;
@@ -1001,22 +1016,26 @@ extern "C" __global__ void __closesthit__sphere() {
 					// genuinely specular (a Dirac-delta BSDF) and correctly stay
 					// is_specular=true - only this interior phase-function event
 					// is smooth/continuous like a diffuse BRDF and benefits from
-					// NEE the same way. mat.medium_emission is always zero here
-					// (DielectricMedium never sets it - "rgb Le" support is
-					// homogeneous-Medium only, and this MaterialType isn't even
-					// reachable from the pbrt loader - see pbrt_gpu_builder.h's
-					// own comment), so this is a pure no-op self-emission term.
+					// NEE the same way. mat.medium_emission carries
+					// MakeNamedMedium's own "rgb Le" when the pbrt loader's
+					// mediumMaterialIndex() populated it (pbrt_gpu_builder.h) -
+					// zero for the native scene_builder.cpp::add_dielectric_
+					// medium() path, which never had a reason to set it.
 					emission = emission + medium_phase_nee_mis(
 						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 					is_specular = false;
 				} else {
 					attenuation = make_float3(1.0f, 1.0f, 1.0f);
-					scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+					if (is_thin) {
+						scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+					} else {
+						scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+						// pbrt-v4 etaScale (exit surface, front_face is false
+						// here) - see MaterialType::Dielectric's identical eta
+						// computation above.
+						if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+					}
 					is_specular = true;
-					// pbrt-v4 etaScale (exit surface, front_face is false
-					// here) - see MaterialType::Dielectric's identical eta
-					// computation above.
-					if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
 				}
 			}
 			scattered   = true;

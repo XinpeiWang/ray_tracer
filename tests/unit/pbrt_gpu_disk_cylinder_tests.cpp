@@ -201,6 +201,33 @@ TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithSmoothDielectricFusesTo
 	const MaterialData &mat = scene.materials[scene.cylinders[0].materialIdx];
 	EXPECT_EQ(mat.type, MaterialType::DielectricMedium);
 	EXPECT_NEAR(mat.ior, 1.001f, 1e-5f);
+	EXPECT_LT(mat.dielectric_medium_extra.isThin, 0.5f);
+}
+
+// Material "thindielectric" + MediumInterface also fuses to DielectricMedium
+// - thin_dielectric_scatter()/wf_thin_dielectric_scatter() (optix_device_
+// helpers.h/wavefront_device_helpers.h) need no tangent frame/texture/NEE
+// setup beyond what the entry/exit boundary already has, so (unlike rough)
+// this was exactly as cheap to fuse as the smooth case just above -
+// dielectric_medium_extra.isThin is what the entry/exit branches on both
+// backends key off to pick the thin coin-flip over smooth refraction.
+TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithThinDielectricFusesToDielectricMedium) {
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"homogeneous\" ]\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 1.0 1.0 1.0 ]\n"
+		"AttributeBegin\n"
+		"  Material \"thindielectric\" \"float eta\" [ 1.5 ]\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ] \"float zmax\" [ 2 ]\n"
+		"AttributeEnd\n");
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.cylinders.size(), 1u);
+	ASSERT_GE(scene.cylinders[0].materialIdx, 0);
+	const MaterialData &mat = scene.materials[scene.cylinders[0].materialIdx];
+	EXPECT_EQ(mat.type, MaterialType::DielectricMedium);
+	EXPECT_NEAR(mat.ior, 1.5f, 1e-5f);
+	EXPECT_GT(mat.dielectric_medium_extra.isThin, 0.5f);
 }
 
 // A ROUGH dielectric (roughness > 0) is NOT fused - MaterialType::

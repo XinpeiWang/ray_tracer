@@ -645,18 +645,64 @@ loader and no longer match the code:
     unit test coverage (`pbrt_gpu_disk_cylinder_tests.cpp`'s
     `CylinderMediumInterfaceWithOpaqueSurfaceKeepsRealMaterial`).
 
-  Still **not** fixed, and a real, remaining GPU limitation: **rough** or
-  **thin** dielectric, or `DiffuseTransmission`/`Interface`, combined with a
-  medium — `MaterialType::DielectricMedium`'s shading code only ever calls
-  the same smooth `dielectric_scatter()` a plain `Dielectric` surface uses
-  (no rough/thin variant exists for the fused type), so
-  `isSmoothDielectric`/`isOpaqueSurfaceMaterial` both correctly decline
-  these combinations and they still fall back to the old plain-`Medium`
-  (surface dropped) behavior. A genuine fix needs either a new rough/thin
-  variant of the fused material, or CPU's real dual-primitive composition
-  (an actual second, coincident-geometry primitive per medium shape) —
-  both bigger engineering than this round made, and no bundled scene
-  currently needs either.
+  **Follow-up round: THIN dielectric fusion closed too.** `Material
+  "thindielectric"` combined with a medium now fuses into
+  `MaterialType::DielectricMedium` exactly like smooth `Dielectric`
+  does — `thin_dielectric_scatter()`/`wf_thin_dielectric_scatter()`
+  (`optix_device_helpers.h`/`wavefront_device_helpers.h`, pbrt-v4's own
+  `ThinDielectricBxDF` reflect-or-straight-through coin-flip, no bending)
+  needed no tangent frame, texture, or NEE setup to drop into the entry/
+  exit boundary alongside the smooth case, unlike rough (see below) — a
+  cheap, mechanical extension, not a new architecture. `mediumMaterialIndex()`
+  (`pbrt_gpu_builder.h`) now also recognizes `MaterialKind::ThinDielectric`
+  and sets a new `dielectric_medium_extra.isThin` flag both backends' entry/
+  exit branches key off. New example scene `pbrt_scenes/thin-dielectric-
+  medium.pbrt` (E11) demonstrates it — unlike the smooth-dielectric "near-
+  invisible shell" convention (`eta≈1.001`, needed there to avoid visibly
+  bending the view through real refraction), a thin shell never bends
+  anything, so this scene uses a real, visible `eta=1.5` glass shell with
+  the fog clearly visible straight through it, plus a genuine thin-film-
+  like Fresnel glint. Verified via direct GPU/CPU visual + numeric
+  comparison (`MaterialCpuGpuParityTest` passes at the standard 30%
+  tolerance, no special-case override needed) — both images match closely.
+
+  **A real, independent, pre-existing bug found and fixed while scoping
+  this**: the wavefront backend's own PLAIN (non-fused)
+  `MaterialType::ThinDielectric` case (`wavefront_kernels_materials.cu`)
+  used a different, incorrect reflectance formula (`Fr/(Fr+T²)`) that does
+  not match pbrt-v4's `ThinDielectricBxDF` — both CPU
+  (`src/shared/bxdfs_simple.h`'s shared `ThinDielectricBxDF`, used by
+  `material_pbrt.h`'s `thin_dielectric`) and the recursive GPU backend's
+  own `MaterialType::ThinDielectric` case already used the correct
+  multi-bounce geometric series (`R_eff = R + T²R/(1-R²)`); only this one
+  wavefront case had independently drifted. Diverges substantially at
+  moderate incidence (e.g. R=0.1: old gives ≈0.110, correct gives ≈0.182).
+  Fixed by routing it through the same corrected `wf_thin_dielectric_
+  scatter()` helper the new `DielectricMedium`-fused case needed anyway —
+  this was not something the fusion work introduced, a latent bug this
+  project's own authoritative shared BxDF reference made easy to catch by
+  comparison.
+
+  Still **not** fixed, and a real, remaining GPU limitation: **rough**
+  dielectric, or `DiffuseTransmission`/`Interface`, combined with a
+  medium — `MaterialType::DielectricMedium`'s shading code has no
+  microfacet/tangent-frame/glossy-NEE path, so `isSmoothDielectric`/
+  `isThinDielectric`/`isOpaqueSurfaceMaterial` all correctly decline these
+  combinations and they still fall back to the old plain-`Medium` (surface
+  dropped) behavior. Scoped and found materially more expensive than the
+  thin case: a real rough-dielectric fusion needs a world-space tangent
+  frame, texture-bound roughness resolution, and inline glossy NEE/MIS at
+  the entry/exit boundary on the recursive backend (~150-250 new lines),
+  and on the wavefront backend specifically, either a real design change to
+  `wf_finish_material_scatter()`'s `matType`-based event classification
+  (currently assumes every `DielectricMedium` entry/exit event is
+  specular) or duplicating a substantial chunk of its existing glossy-NEE
+  logic inline (~400-700+ lines total, 8 files) — a real engineering
+  decision, not a mechanical extension, and no bundled scene currently
+  needs it. CPU's real dual-primitive composition (an actual second,
+  coincident-geometry primitive per medium shape) remains the only way to
+  close the gap for every remaining material combination uniformly, rough
+  dielectric included — bigger engineering than any round so far.
 
 - A phase-function scatter event inside a participating medium (any of
   `MaterialType::Medium`/`CloudMedium`/`RgbGridMedium`/`GridMedium`, on

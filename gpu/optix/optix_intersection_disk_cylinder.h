@@ -456,15 +456,22 @@ extern "C" __global__ void __closesthit__cylinder() {
 		// (front_face false), recompute the remaining tube/z-slab chord via
 		// cylinderMediumNearFar() to get the distance to the exit, sample a
 		// free path, and either scatter via the HG phase function or fall
-		// through to a normal exit refraction/reflection at the far
-		// surface.
+		// through to a normal exit refraction/reflection (or thin coin-
+		// flip) at the far surface. is_thin: see sphere's own identical
+		// DielectricMedium branch (optix_intersection_sphere.h) for the
+		// full comment on this flag.
+		const bool is_thin = mat.dielectric_medium_extra.isThin > 0.5f;
 		if (front_face) {
 			attenuation = make_float3(1.0f, 1.0f, 1.0f);
-			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+			if (is_thin) {
+				scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+			} else {
+				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+				// pbrt-v4 etaScale (entry surface) - see MaterialType::
+				// Dielectric's identical eta computation (optix_device_helpers.h).
+				if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+			}
 			is_specular = true;
-			// pbrt-v4 etaScale (entry surface) - see MaterialType::
-			// Dielectric's identical eta computation (optix_device_helpers.h).
-			if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
 		} else {
 			const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
 			const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see file header comment
@@ -501,11 +508,15 @@ extern "C" __global__ void __closesthit__cylinder() {
 				is_specular = false;
 			} else {
 				attenuation = make_float3(1.0f, 1.0f, 1.0f);
-				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+				if (is_thin) {
+					scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+				} else {
+					scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+					// pbrt-v4 etaScale (exit surface, front_face is false here) -
+					// see MaterialType::Dielectric's identical eta computation.
+					if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+				}
 				is_specular = true;
-				// pbrt-v4 etaScale (exit surface, front_face is false here) -
-				// see MaterialType::Dielectric's identical eta computation.
-				if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
 			}
 		}
 		scattered = true;
