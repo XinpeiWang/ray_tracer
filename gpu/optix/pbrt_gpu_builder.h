@@ -554,6 +554,65 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		return idx;
 	};
 
+	// Whether a shape's own surface Material is OPAQUE - i.e. never lets a
+	// ray transmit into its interior at all. An explicit ALLOW-list
+	// (Diffuse/Conductor/CoatedDiffuse/CoatedConductor/Subsurface/Measured/
+	// Hair), not a deny-list, so a future MaterialKind this list doesn't
+	// know about defaults to the OLD "medium wins, surface dropped"
+	// behavior below rather than being silently misclassified as safe to
+	// drop. Mix is deliberately excluded too (not allow-listed) - it can
+	// resolve to a transmissive sub-material depending on the hash, so
+	// it's not safely opaque in general; it keeps the old behavior,
+	// unchanged by this round. A missing Material directive at all
+	// (materialIdx < 0) defaults to the SAME `kind = MaterialKind::Diffuse`
+	// every other caller's `kDefault` fallback already uses (pbrt_flatten.h's
+	// own Material struct default) - genuinely opaque, not a conservative
+	// guess.
+	//
+	// WHY this is correct, not an approximation: when a shape pairs
+	// MediumInterface with an opaque surface, CPU's generic two-hittable
+	// composition (pbrt_cpu_builder.h's addMediumIfPresent, which adds the
+	// shape's own real-material hittable AND a separate medium-boundary
+	// hittable at the SAME geometry) always resolves this combination
+	// identically to the surface material alone: hittable_list::hit()
+	// returns the globally nearest candidate across both hittables, and
+	// the medium's own stochastically-sampled free-path hit distance can
+	// never be closer than the surface's own entry-point hit (a free-path
+	// sample only ever lands AT or AFTER the entry root) - so the opaque
+	// surface deterministically wins that comparison every time, and the
+	// interior medium is never actually visible in the final image. GPU has
+	// no such dual-primitive mechanism (see mediumMaterialIndex()'s own
+	// comment on why), but reaches the IDENTICAL correct visual result far
+	// more cheaply for this class of material: build the real surface
+	// material and skip the medium path entirely, rather than the OLD
+	// behavior of building a fog-only Medium and silently discarding a
+	// surface that would always have won anyway. This closes a real,
+	// visible GPU-only bug: an opaque diffuse/metal/etc. sphere or cylinder
+	// with an interior fog medium rendered as a translucent fog ball
+	// instead of its own correct, fully opaque material - arguably a worse
+	// divergence from CPU than the dielectric case above, since the wrong
+	// material is wrong in BOTH shape (round vs. the sphere's true profile
+	// is unaffected here, but material response) and transparency, not just
+	// missing a refractive highlight.
+	const auto isOpaqueSurfaceMaterial = [&](int materialIdx) {
+		static const pbrt_flatten::Material kDefaultSurface{};
+		const pbrt_flatten::Material &sm =
+			(materialIdx >= 0 && static_cast<std::size_t>(materialIdx) < scene.materials.size())
+				? scene.materials[static_cast<std::size_t>(materialIdx)] : kDefaultSurface;
+		switch (sm.kind) {
+			case pbrt_flatten::MaterialKind::Diffuse:
+			case pbrt_flatten::MaterialKind::Conductor:
+			case pbrt_flatten::MaterialKind::CoatedDiffuse:
+			case pbrt_flatten::MaterialKind::CoatedConductor:
+			case pbrt_flatten::MaterialKind::Subsurface:
+			case pbrt_flatten::MaterialKind::Measured:
+			case pbrt_flatten::MaterialKind::Hair:
+				return true;
+			default:
+				return false;
+		}
+	};
+
 	// Shared by clipped spheres (below) and disk/cylinder (further down,
 	// which originally declared these) - a generic "flatten a row-major 4x4
 	// affine to the 3x4 device convention" helper and the degrees->radians
@@ -658,7 +717,11 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		// loop can fix without a combined material slot - unlike the
 		// dielectric+fog combination just below, this one has no existing
 		// fused MaterialType to reuse (out of scope here).
-		const bool sphereHasMedium = s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size();
+		// isOpaqueSurfaceMaterial() excludes an opaque-surfaced sphere even
+		// when it has a real medium index - see that lambda's own comment
+		// for why this is the exact, not approximate, correct behavior.
+		const bool sphereHasMedium = s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size()
+			&& !isOpaqueSurfaceMaterial(s.material);
 		// s.material passed through so mediumMaterialIndex() can build a
 		// real fused MaterialType::DielectricMedium instead of a plain fog
 		// sphere when this shape's own Material is a smooth dielectric -
@@ -818,21 +881,35 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		// comment (optix_intersection_disk_cylinder.h) and __closesthit__wf_
 		// cylinder's (wavefront_programs.cu). mediumMaterialIndex() itself is
 		// shape-agnostic (also handles cloud/rgbgrid/uniformgrid media, not
-		// just homogeneous) - only the homogeneous MaterialType::Medium case
-		// gets real near/far support on cylinder in this pass, so a
-		// cloud/rgbgrid/uniformgrid MediumInterface on a cylinder still
-		// correctly traps (material_requires_sphere_only_handling()) rather
-		// than silently misrendering, exactly like every other still-
-		// sphere-only type does on any non-sphere shape.
+		// just homogeneous) - only the homogeneous MaterialType::Medium and
+		// (when fused with a smooth dielectric surface, same rule as the
+		// sphere loop above) MaterialType::DielectricMedium cases get real
+		// near/far support on cylinder, so a cloud/rgbgrid/uniformgrid
+		// MediumInterface on a cylinder still correctly traps (material_
+		// requires_sphere_only_handling()) rather than silently
+		// misrendering, exactly like every other still-sphere-only type
+		// does on any non-sphere shape.
 		// Same "medium wins the material slot, so don't register a now-non-
 		// emissive shape as an NEE light" fix as the sphere loop above - see
 		// its own comment for the full reasoning (CPU has no such gap; this
 		// is an accepted GPU-only divergence for MediumInterface + real
 		// emission on the same shape, not fixable here without a combined
 		// material slot).
-		const bool cylinderHasMedium = c.medium >= 0 && static_cast<std::size_t>(c.medium) < scene.media.size();
+		// isOpaqueSurfaceMaterial() excludes an opaque-surfaced cylinder even
+		// when it has a real medium index - see that lambda's own comment
+		// (sphere loop, above) for why this is the exact, not approximate,
+		// correct behavior.
+		const bool cylinderHasMedium = c.medium >= 0 && static_cast<std::size_t>(c.medium) < scene.media.size()
+			&& !isOpaqueSurfaceMaterial(c.material);
+		// c.material passed through so mediumMaterialIndex() can build a real
+		// fused MaterialType::DielectricMedium when this cylinder's own
+		// Material is a smooth dielectric, same as the sphere loop's
+		// identical call just above - __closesthit__cylinder/__closesthit__
+		// wf_cylinder (and both backends' cylinder shadow any-hit) now have
+		// real DielectricMedium support, mirroring their existing Medium
+		// case exactly.
 		cd.materialIdx = cylinderHasMedium
-			? mediumMaterialIndex(c.medium)
+			? mediumMaterialIndex(c.medium, c.material)
 			: materialIndex(c.material, c.areaLight);
 		flattenTransform(o2w.m, cd.o2w);
 		flattenTransform(w2o.m, cd.w2o);

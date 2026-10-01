@@ -167,14 +167,25 @@ TEST(PbrtGpuDiskCylinderTest, EmissiveDiskAndCylinderAreRegisteredAsNeeLights) {
 	EXPECT_EQ(scene.lightIndices[1], 0);
 }
 
-// MediumInterface on a cylinder now resolves to a real MaterialType::Medium
-// (see optix_intersection_disk_cylinder.h/wavefront_programs.cu's Medium
-// near/far re-intersection and docs/PBRT_SUPPORT.md's cylinder-medium
-// entry) - not the shape's own declared surface Material at all, matching
-// how the sphere loop already resolves s.medium via mediumMaterialIndex().
-// Disk's own medium field stays intentionally unresolved (structurally not
+// MediumInterface on a cylinder resolves to a real medium-flavoured
+// material (see optix_intersection_disk_cylinder.h/wavefront_programs.cu's
+// Medium/DielectricMedium near/far re-intersection and docs/
+// PBRT_SUPPORT.md's cylinder-medium entry) - not the shape's own declared
+// surface Material LOST entirely the way it used to be, matching how the
+// sphere loop already resolves s.medium via mediumMaterialIndex(). Disk's
+// own medium field stays intentionally unresolved (structurally not
 // meaningful - a zero-thickness plane has no "inside" volume).
-TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceResolvesToRealMediumMaterial) {
+//
+// This specific scene's surface Material is a real, SMOOTH dielectric
+// (eta=1.001, the established "near-invisible shell" idiom this project's
+// own cornell-smoke.pbrt/homogeneous-medium.pbrt use for sphere fog
+// boundaries) - fusion now applies to cylinders too, so this resolves to
+// the fused MaterialType::DielectricMedium, carrying the surface's own ior
+// through, NOT a plain Medium (this test used to assert exactly that -
+// updated when cylinder fusion was added; see the two companion tests
+// just below for the cases that still correctly produce a plain Medium or
+// skip the medium path entirely).
+TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithSmoothDielectricFusesToDielectricMedium) {
 	const pbrt_flatten::FlatScene flat = flattenSource(
 		"MakeNamedMedium \"fog\" \"string type\" [ \"homogeneous\" ]\n"
 		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 1.0 1.0 1.0 ]\n"
@@ -187,7 +198,59 @@ TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceResolvesToRealMediumMateria
 	pbrt_gpu::build(flat, scene);
 	ASSERT_EQ(scene.cylinders.size(), 1u);
 	ASSERT_GE(scene.cylinders[0].materialIdx, 0);
+	const MaterialData &mat = scene.materials[scene.cylinders[0].materialIdx];
+	EXPECT_EQ(mat.type, MaterialType::DielectricMedium);
+	EXPECT_NEAR(mat.ior, 1.001f, 1e-5f);
+}
+
+// A ROUGH dielectric (roughness > 0) is NOT fused - MaterialType::
+// DielectricMedium's own shading code only ever calls the same
+// dielectric_scatter() a plain SMOOTH Dielectric uses (no rough variant
+// exists for the fused type - see mediumMaterialIndex()'s own comment),
+// so this must still fall back to the plain, pre-existing Medium path,
+// exactly like the original (pre-cylinder-fusion) version of this test
+// suite asserted for every dielectric+medium cylinder.
+TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithRoughDielectricStaysPlainMedium) {
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"homogeneous\" ]\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 1.0 1.0 1.0 ]\n"
+		"AttributeBegin\n"
+		"  Material \"dielectric\" \"float eta\" [ 1.5 ] \"float roughness\" [ 0.3 ]\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ] \"float zmax\" [ 2 ]\n"
+		"AttributeEnd\n");
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.cylinders.size(), 1u);
+	ASSERT_GE(scene.cylinders[0].materialIdx, 0);
 	EXPECT_EQ(scene.materials[scene.cylinders[0].materialIdx].type, MaterialType::Medium);
+}
+
+// An OPAQUE surface Material (diffuse - never lets a ray transmit into the
+// shape's interior at all) paired with MediumInterface skips the medium
+// path entirely and keeps the shape's own real material - see
+// isOpaqueSurfaceMaterial()'s own comment (pbrt_gpu_builder.h) for why this
+// is the exact, not approximate, correct behavior (CPU's generic two-
+// hittable composition always resolves this combination identically to
+// the surface material alone, since an opaque surface's own hit always
+// wins the nearest-hit comparison against the medium's own stochastically-
+// sampled interior hit). Before this fix, a cylinder in this situation
+// built a plain fog-only Medium instead, silently discarding its real,
+// always-winning diffuse material - a real, visible GPU-only bug.
+TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithOpaqueSurfaceKeepsRealMaterial) {
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"homogeneous\" ]\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 1.0 1.0 1.0 ]\n"
+		"AttributeBegin\n"
+		"  Material \"diffuse\" \"rgb reflectance\" [ 0.2 0.6 0.3 ]\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ] \"float zmax\" [ 2 ]\n"
+		"AttributeEnd\n");
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.cylinders.size(), 1u);
+	ASSERT_GE(scene.cylinders[0].materialIdx, 0);
+	EXPECT_EQ(scene.materials[scene.cylinders[0].materialIdx].type, MaterialType::Lambertian);
 }
 
 TEST(PbrtGpuDiskCylinderTest, ObjectMotionBlurIsCountedAsUnsupportedAndRendersStatic) {

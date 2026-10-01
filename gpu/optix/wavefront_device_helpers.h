@@ -436,6 +436,17 @@ __device__ __forceinline__ bool wf_material_requires_sphere_only_handling(Materi
 __device__ __forceinline__ bool wf_material_supported_on_disk_cylinder_geom(MaterialType type, int geomType) {
 	if (type == MaterialType::Hair) return true;           // real support on disk (4) and cylinder (5) alike
 	if (type == MaterialType::Medium) return geomType == 5; // real support on cylinder only - see pbrt_gpu_builder.h's cylinder loop
+	// DielectricMedium: real support on cylinder only, same restriction as
+	// Medium just above and for the same reason - the case in
+	// evaluate_materials() (wavefront_kernels_materials.cu) is already
+	// shape-agnostic (reads only h.frontFace/h.t/h.mediumTFar), it just
+	// needed __closesthit__wf_cylinder (wavefront_intersection_disk_
+	// cylinder.h) to populate those the same way __closesthit__wf_sphere
+	// already does - done, this is the matching gate update. Not disk (4):
+	// no MaterialType::DielectricMedium closest-hit case exists for disk
+	// geometry (MediumInterface is sphere/cylinder only - see pbrt_gpu_
+	// builder.h's disk loop comment).
+	if (type == MaterialType::DielectricMedium) return geomType == 5;
 	return !wf_material_requires_sphere_only_handling(type) && type != MaterialType::NormalMappedLambertian;
 }
 

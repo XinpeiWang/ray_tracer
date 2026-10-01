@@ -348,29 +348,23 @@ extern "C" __global__ void __closesthit__cylinder() {
 	// still survives unchanged through this one, regardless of which
 	// branch below (Hair/Medium/shade_material) actually runs.
 	unsigned int rgbChannel = optixGetPayload_24();
-	if (mat.type == MaterialType::Hair) {
-		scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
-		is_specular = true;
-	} else if (mat.type == MaterialType::Medium) {
-		// Homogeneous participating medium - see MaterialType::Medium's
-		// comment in optix_types.h and optix_intersection_sphere.h's
-		// identical closesthit case. Unlike sphere (a single closed
-		// quadric), a finite cylinder is a tube quadric CLIPPED to a z-slab
-		// (and a phi sweep, ignored here - see below); entry/exit is
-		// computed as the tube-quadric interval intersected with the
-		// z-slab interval, in OBJECT space (matching __intersection__
-		// cylinder's own ray transform) since CylinderData::zMin/zMax are
-		// object-space. Deliberately does NOT account for a partial phi
-		// sweep (phiMax < 2*pi) - a "pie slice" cross-section makes the
-		// entry/exit computation genuinely harder (the volume is no longer
-		// a simple slab-clipped tube), and MediumInterface on a phi-clipped
-		// cylinder is a rare enough combination that this scope limitation
-		// is documented (docs/PBRT_SUPPORT.md) rather than handled; a
-		// mismatch there under-estimates dist_inside rather than crashing
-		// or overestimating (the tube/z-slab bound is still a superset of
-		// the real phi-clipped volume), so this degrades gracefully.
-		const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
-		const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see file header comment
+	// Shared cylinder entry(near)/exit(far) chord against the tube-quadric +
+	// z-slab bound - factored out so both the homogeneous Medium case below
+	// AND DielectricMedium's own exit-surface sub-case (further below) use
+	// the exact same object-space math instead of two independently-
+	// drifting copies. `ro`/`rd` are object-space (dc_apply_point/vector of
+	// the WORLD ray through cyl.w2o), NOT normalised - matches this file's
+	// own "t needs no rescaling between object/world space" convention.
+	// Deliberately does NOT account for a partial phi sweep (phiMax < 2*pi)
+	// - a "pie slice" cross-section makes the entry/exit computation
+	// genuinely harder (the volume is no longer a simple slab-clipped
+	// tube), and MediumInterface on a phi-clipped cylinder is a rare enough
+	// combination that this scope limitation is documented (docs/
+	// PBRT_SUPPORT.md) rather than handled; a mismatch there under-
+	// estimates dist_inside rather than crashing or overestimating (the
+	// tube/z-slab bound is still a superset of the real phi-clipped
+	// volume), so this degrades gracefully.
+	const auto cylinderMediumNearFar = [&](const float3 &ro, const float3 &rd, float &t_near, float &t_far) {
 		// Ray parallel to the axis (rd.x==rd.y==0) is handled here directly,
 		// NOT via dc_solve_tube_quadratic() below - that function's a==0
 		// case answers "is there a discrete surface crossing" (always no),
@@ -397,9 +391,26 @@ extern "C" __global__ void __closesthit__cylinder() {
 			z_t1 = fmaxf(za, zb);
 		}
 
-		float t_near = fmaxf(0.0f, fmaxf(tube_t0, z_t0));
-		float t_far  = fminf(tube_t1, z_t1);
+		t_near = fmaxf(0.0f, fmaxf(tube_t0, z_t0));
+		t_far  = fminf(tube_t1, z_t1);
 		if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
+	};
+	if (mat.type == MaterialType::Hair) {
+		scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
+		is_specular = true;
+	} else if (mat.type == MaterialType::Medium) {
+		// Homogeneous participating medium - see MaterialType::Medium's
+		// comment in optix_types.h and optix_intersection_sphere.h's
+		// identical closesthit case. Unlike sphere (a single closed
+		// quadric), a finite cylinder is a tube quadric CLIPPED to a z-slab
+		// (see cylinderMediumNearFar() above for the full derivation);
+		// entry/exit is computed in OBJECT space (matching __intersection__
+		// cylinder's own ray transform) since CylinderData::zMin/zMax are
+		// object-space.
+		const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
+		const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see file header comment
+		float t_near, t_far;
+		cylinderMediumNearFar(ro, rd, t_near, t_far);
 		float dist_inside = fmaxf(0.0f, t_far - t_near);
 
 		float sigma_t = mat.ior;
@@ -433,6 +444,71 @@ extern "C" __global__ void __closesthit__cylinder() {
 		}
 		scattered   = true;
 		is_medium   = true;
+	} else if (mat.type == MaterialType::DielectricMedium) {
+		// Combined dielectric surface + internal medium on a cylinder - real
+		// GPU support, mirroring optix_intersection_sphere.h's own
+		// DielectricMedium branch and this file's Medium case just above
+		// exactly. On entry (front_face) the direct dielectric surface
+		// always wins the bounce (matches CPU's two-hittable trick: the
+		// medium's sampled hit distance can never be closer than the entry
+		// surface), so just refract/reflect normally. On the following
+		// bounce, now travelling inside toward this cylinder's exit surface
+		// (front_face false), recompute the remaining tube/z-slab chord via
+		// cylinderMediumNearFar() to get the distance to the exit, sample a
+		// free path, and either scatter via the HG phase function or fall
+		// through to a normal exit refraction/reflection at the far
+		// surface.
+		if (front_face) {
+			attenuation = make_float3(1.0f, 1.0f, 1.0f);
+			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+			is_specular = true;
+			// pbrt-v4 etaScale (entry surface) - see MaterialType::
+			// Dielectric's identical eta computation (optix_device_helpers.h).
+			if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+		} else {
+			const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
+			const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see file header comment
+			float t_near, t_far;
+			cylinderMediumNearFar(ro, rd, t_near, t_far);
+			float dist_inside = fmaxf(0.0f, t_far - t_near);
+
+			float sigma_t = mat.dielectric_medium_extra.sigma_t;
+			float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t) : 1e30f;
+			float3 unit_dir = normalize(ray_dir);
+
+			if (free_path < dist_inside) {
+				medium_t_hit = t_near + free_path;
+				// medium_t_hit/medium_point parametrized against the RAW
+				// ray_dir, not unit_dir - see the Medium branch's own
+				// identical comment just above.
+				float3 medium_point = ray_orig + medium_t_hit * ray_dir;
+				float g = mat.g;  // Medium/DielectricMedium: HG asymmetry
+				float3 wo = -unit_dir;
+				scattered_dir = sample_henyey_greenstein(wo, g, seed);
+				attenuation = mat.medium_albedo;
+				is_medium = true;
+				// Real NEE+MIS at the phase-function scatter event - see
+				// medium_phase_nee_mis()'s own comment (optix_device_
+				// helpers_lighting.h). The two OTHER DielectricMedium sub-
+				// cases (the entry/exit dielectric-surface refractions just
+				// above/below) are genuinely specular and correctly stay
+				// is_specular=true - only this interior phase-function
+				// event is smooth/continuous like a diffuse BRDF and
+				// benefits from NEE the same way, matching sphere's
+				// identical DielectricMedium branch.
+				emission = emission + medium_phase_nee_mis(
+					medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
+				is_specular = false;
+			} else {
+				attenuation = make_float3(1.0f, 1.0f, 1.0f);
+				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+				is_specular = true;
+				// pbrt-v4 etaScale (exit surface, front_face is false here) -
+				// see MaterialType::Dielectric's identical eta computation.
+				if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+			}
+		}
+		scattered = true;
 	} else {
 		if (material_requires_sphere_only_handling(mat.type) ||
 			mat.type == MaterialType::NormalMappedLambertian) {

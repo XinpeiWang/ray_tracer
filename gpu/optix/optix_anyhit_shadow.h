@@ -236,21 +236,70 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		return;
 	}
 
-	// MaterialType::Medium belongs here for the same reason as
-	// __anyhit__shadow_sphere's own Medium entry: full Beer-Lambert shadow-
-	// ray transmittance through a fog cylinder isn't implemented, so it's
-	// treated as non-occluding (light passes straight through) rather than
-	// wrongly blocking NEE entirely. Real, reachable now that pbrt_gpu_
-	// builder.h's cylinder loop resolves MediumInterface via
-	// mediumMaterialIndex() - omitting it here was a real bug (a shadow ray
-	// toward a light on the far side of a fog cylinder was wrongly reported
-	// fully occluded), same bug class __anyhit__shadow_sphere's own comment
-	// already documents for that shape.
+	// Homogeneous Medium/DielectricMedium: real Beer-Lambert attenuation of
+	// the running shadow-ray transmittance (payload 1), same fix and same
+	// reasoning as __anyhit__shadow_sphere's identical branch (this file,
+	// above) - see that comment for the full B13/Subsurface-Slab root-cause
+	// derivation. Cylinder's own near/far chord (tube quadric clipped to a
+	// z-slab, ignoring a partial phi sweep - see __closesthit__cylinder's
+	// cylinderMediumNearFar() for the full derivation, duplicated here since
+	// shadow any-hit and closest-hit are different OptiX programs with no
+	// shared local-lambda scope) replaces sphere's quadric-root math; the
+	// Beer-Lambert integral itself is identical. MaterialType::Medium was
+	// previously ignored unconditionally here too, same gap sphere's own
+	// comment describes; DielectricMedium reaching a cylinder at all is new
+	// this round (pbrt_gpu_builder.h's cylinder loop now resolves
+	// MediumInterface + a smooth dielectric surface via mediumMaterialIndex()).
+	if (mat.type == MaterialType::Medium || mat.type == MaterialType::DielectricMedium) {
+		const float3 ray_orig = optixGetWorldRayOrigin();
+		const float3 ray_dir = optixGetWorldRayDirection();  // unit length by construction (trace_shadow_ray's own callers)
+		const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
+		const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see optix_disk_cylinder_helpers.h's own convention
+
+		float tube_t0 = -1e30f, tube_t1 = 1e30f;
+		bool hasTube;
+		if (rd.x == 0.0f && rd.y == 0.0f) {
+			hasTube = (double)ro.x * ro.x + (double)ro.y * ro.y <= (double)cyl.radius * (double)cyl.radius;
+		} else {
+			hasTube = dc_solve_tube_quadratic(ro, rd, cyl.radius, tube_t0, tube_t1);
+		}
+		float z_t0 = -1e30f, z_t1 = 1e30f;
+		bool hasZSlab = true;
+		if (rd.z == 0.0f) {
+			hasZSlab = (ro.z >= cyl.zMin && ro.z <= cyl.zMax);
+		} else {
+			float za = (cyl.zMin - ro.z) / rd.z;
+			float zb = (cyl.zMax - ro.z) / rd.z;
+			z_t0 = fminf(za, zb);
+			z_t1 = fmaxf(za, zb);
+		}
+		float t_near = fmaxf(0.0f, fmaxf(tube_t0, z_t0));
+		float t_far  = fminf(tube_t1, z_t1);
+		if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
+
+		const float sigma_t = (mat.type == MaterialType::Medium)
+			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
+		// shadow_t (this function's own optixGetRayTmax(), read above) is the
+		// shadow ray's ORIGINAL max_distance - see __anyhit__shadow_sphere's
+		// identical comment.
+		const float segFar = fminf(t_far, shadow_t);
+		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
+		float transmittance = __uint_as_float(optixGetPayload_1());
+		transmittance *= expf(-sigma_t * segLen);
+		optixSetPayload_1(__float_as_uint(transmittance));
+		if (transmittance <= 0.0f) {
+			optixSetPayload_0(1);  // fully attenuated - treat as occluded
+			optixTerminateRay();
+			return;
+		}
+		optixIgnoreIntersection();  // continue traversal (attenuated, not occluding)
+		return;
+	}
+
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Medium ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
