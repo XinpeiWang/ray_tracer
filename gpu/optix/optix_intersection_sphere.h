@@ -950,25 +950,48 @@ extern "C" __global__ void __closesthit__sphere() {
 			// phase function or fall through to a normal exit refraction/
 			// reflection (or thin coin-flip) at the far surface.
 			//
-			// is_thin: whether this fused material's surface uses the
-			// ThinDielectric model instead of smooth Dielectric refraction -
-			// see pbrt_gpu_builder.h's mediumMaterialIndex() for how a
-			// shape's own Material "thindielectric" sets
-			// dielectric_medium_extra.isThin. Thin needs no etaScale
-			// adjustment (no actual refraction/depth change), unlike the
-			// smooth path just below.
-			const bool is_thin = mat.dielectric_medium_extra.isThin > 0.5f;
+			// surfaceKind: which BSDF model this fused material's surface
+			// uses instead of always smooth Dielectric refraction - see
+			// pbrt_gpu_builder.h's mediumMaterialIndex() for how a shape's
+			// own Material "dielectric" (rough) / "thindielectric" (thin)
+			// sets dielectric_medium_extra.surfaceKind (0=smooth/default,
+			// 1=thin, 2=rough). Thin needs no etaScale adjustment (no actual
+			// refraction/depth change); rough's real glossy NEE is handled
+			// entirely inside rough_dielectric_scatter_and_nee() (optix_
+			// device_helpers.h), including its own etaScale/is_specular/
+			// emission updates - unlike thin/smooth, it isn't a simple
+			// "just compute scattered_dir" call.
+			const float rdm_kind = mat.dielectric_medium_extra.surfaceKind;
+			const bool is_rough = rdm_kind >= 1.5f;
+			const bool is_thin  = !is_rough && rdm_kind >= 0.5f;
+			// Set false only by a rough entry/exit surface call below that
+			// hits the rare grazing-angle degenerate case (rough_dielectric_
+			// scatter_and_nee() returns false) - mirrors shade_material()'s
+			// own `scattered=false` handling for a plain RoughDielectric in
+			// the identical situation. Stays true for every other path
+			// (smooth/thin always "scatter", the interior phase-scatter
+			// sub-case below always "scatters" too), matching the
+			// unconditional `scattered = true;` this replaced.
+			bool rdm_scatter_ok = true;
 			if (front_face) {
-				attenuation = make_float3(1.0f, 1.0f, 1.0f);
-				if (is_thin) {
-					scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+				if (is_rough) {
+					rdm_scatter_ok = rough_dielectric_scatter_and_nee(
+						mat, mat.dielectric_medium_extra.roughness, /*allowDispersion=*/false,
+						normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, sphere_dpdu,
+						do_regularize, seed, rgbChannel,
+						attenuation, scattered_dir, is_specular, brdf_pdf_override, emission, out_eta);
 				} else {
-					scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
-					// pbrt-v4 etaScale (entry surface) - see MaterialType::
-					// Dielectric's identical eta computation above.
-					if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+					attenuation = make_float3(1.0f, 1.0f, 1.0f);
+					if (is_thin) {
+						scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+					} else {
+						scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+						// pbrt-v4 etaScale (entry surface) - see MaterialType::
+						// Dielectric's identical eta computation above.
+						if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+					}
+					is_specular = true;
 				}
-				is_specular = true;
 			} else {
 				float3 unit_dir = normalize(ray_dir);
 				float t_near, t_far;
@@ -1024,6 +1047,12 @@ extern "C" __global__ void __closesthit__sphere() {
 					emission = emission + medium_phase_nee_mis(
 						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 					is_specular = false;
+				} else if (is_rough) {
+					rdm_scatter_ok = rough_dielectric_scatter_and_nee(
+						mat, mat.dielectric_medium_extra.roughness, /*allowDispersion=*/false,
+						normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, sphere_dpdu,
+						do_regularize, seed, rgbChannel,
+						attenuation, scattered_dir, is_specular, brdf_pdf_override, emission, out_eta);
 				} else {
 					attenuation = make_float3(1.0f, 1.0f, 1.0f);
 					if (is_thin) {
@@ -1038,7 +1067,7 @@ extern "C" __global__ void __closesthit__sphere() {
 					is_specular = true;
 				}
 			}
-			scattered   = true;
+			scattered = rdm_scatter_ok;
 	} else if (mat.type == MaterialType::NormalMappedLambertian) {
 			// Real analytic dpdu, computed once above (sphere_dpdu) and
 			// shared with the anisotropic-material path below - previously

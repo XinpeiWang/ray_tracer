@@ -348,6 +348,13 @@ extern "C" __global__ void __closesthit__cylinder() {
 	// still survives unchanged through this one, regardless of which
 	// branch below (Hair/Medium/shade_material) actually runs.
 	unsigned int rgbChannel = optixGetPayload_24();
+	// Integrator "bool regularize" - see current_do_regularize()'s own
+	// comment (optix_device_helpers.h). Hoisted here (rather than declared
+	// just before the final shade_material() call site below, as it used
+	// to be) so MaterialType::DielectricMedium's own rough-fused sub-case,
+	// further up this if-chain, can read it too - matches __closesthit__
+	// sphere's identical early hoist (optix_intersection_sphere.h).
+	const bool do_regularize = current_do_regularize();
 	// Shared cylinder entry(near)/exit(far) chord against the tube-quadric +
 	// z-slab bound - factored out so both the homogeneous Medium case below
 	// AND DielectricMedium's own exit-surface sub-case (further below) use
@@ -457,21 +464,33 @@ extern "C" __global__ void __closesthit__cylinder() {
 		// cylinderMediumNearFar() to get the distance to the exit, sample a
 		// free path, and either scatter via the HG phase function or fall
 		// through to a normal exit refraction/reflection (or thin coin-
-		// flip) at the far surface. is_thin: see sphere's own identical
-		// DielectricMedium branch (optix_intersection_sphere.h) for the
-		// full comment on this flag.
-		const bool is_thin = mat.dielectric_medium_extra.isThin > 0.5f;
+		// flip, or rough glass with real glossy NEE) at the far surface.
+		// surfaceKind/is_rough/is_thin/rdm_scatter_ok: see sphere's own
+		// identical DielectricMedium branch (optix_intersection_sphere.h)
+		// for the full comment on all four.
+		const float rdm_kind = mat.dielectric_medium_extra.surfaceKind;
+		const bool is_rough = rdm_kind >= 1.5f;
+		const bool is_thin  = !is_rough && rdm_kind >= 0.5f;
+		bool rdm_scatter_ok = true;
 		if (front_face) {
-			attenuation = make_float3(1.0f, 1.0f, 1.0f);
-			if (is_thin) {
-				scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+			if (is_rough) {
+				rdm_scatter_ok = rough_dielectric_scatter_and_nee(
+					mat, mat.dielectric_medium_extra.roughness, /*allowDispersion=*/false,
+					normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu,
+					do_regularize, seed, rgbChannel,
+					attenuation, scattered_dir, is_specular, brdf_pdf_override, emission, out_eta);
 			} else {
-				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
-				// pbrt-v4 etaScale (entry surface) - see MaterialType::
-				// Dielectric's identical eta computation (optix_device_helpers.h).
-				if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+				attenuation = make_float3(1.0f, 1.0f, 1.0f);
+				if (is_thin) {
+					scattered_dir = thin_dielectric_scatter(ray_dir, normal, mat.ior, seed);
+				} else {
+					scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+					// pbrt-v4 etaScale (entry surface) - see MaterialType::
+					// Dielectric's identical eta computation (optix_device_helpers.h).
+					if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
+				}
+				is_specular = true;
 			}
-			is_specular = true;
 		} else {
 			const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
 			const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see file header comment
@@ -506,6 +525,12 @@ extern "C" __global__ void __closesthit__cylinder() {
 				emission = emission + medium_phase_nee_mis(
 					medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
 				is_specular = false;
+			} else if (is_rough) {
+				rdm_scatter_ok = rough_dielectric_scatter_and_nee(
+					mat, mat.dielectric_medium_extra.roughness, /*allowDispersion=*/false,
+					normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu,
+					do_regularize, seed, rgbChannel,
+					attenuation, scattered_dir, is_specular, brdf_pdf_override, emission, out_eta);
 			} else {
 				attenuation = make_float3(1.0f, 1.0f, 1.0f);
 				if (is_thin) {
@@ -519,7 +544,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 				is_specular = true;
 			}
 		}
-		scattered = true;
+		scattered = rdm_scatter_ok;
 	} else {
 		if (material_requires_sphere_only_handling(mat.type) ||
 			mat.type == MaterialType::NormalMappedLambertian) {
@@ -527,9 +552,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 			__trap();
 		}
 
-		// Integrator "bool regularize" - see current_do_regularize()'s own
-		// comment (optix_device_helpers.h).
-		const bool do_regularize = current_do_regularize();
+		// do_regularize already hoisted above (see its own comment).
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta, rgbChannel);

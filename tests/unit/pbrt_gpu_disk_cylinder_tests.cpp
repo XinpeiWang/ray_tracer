@@ -201,7 +201,7 @@ TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithSmoothDielectricFusesTo
 	const MaterialData &mat = scene.materials[scene.cylinders[0].materialIdx];
 	EXPECT_EQ(mat.type, MaterialType::DielectricMedium);
 	EXPECT_NEAR(mat.ior, 1.001f, 1e-5f);
-	EXPECT_LT(mat.dielectric_medium_extra.isThin, 0.5f);
+	EXPECT_LT(mat.dielectric_medium_extra.surfaceKind, 0.5f);
 }
 
 // Material "thindielectric" + MediumInterface also fuses to DielectricMedium
@@ -209,8 +209,9 @@ TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithSmoothDielectricFusesTo
 // helpers.h/wavefront_device_helpers.h) need no tangent frame/texture/NEE
 // setup beyond what the entry/exit boundary already has, so (unlike rough)
 // this was exactly as cheap to fuse as the smooth case just above -
-// dielectric_medium_extra.isThin is what the entry/exit branches on both
-// backends key off to pick the thin coin-flip over smooth refraction.
+// dielectric_medium_extra.surfaceKind (1.0f=thin) is what the entry/exit
+// branches on both backends key off to pick the thin coin-flip over
+// smooth refraction.
 TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithThinDielectricFusesToDielectricMedium) {
 	const pbrt_flatten::FlatScene flat = flattenSource(
 		"MakeNamedMedium \"fog\" \"string type\" [ \"homogeneous\" ]\n"
@@ -227,17 +228,23 @@ TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithThinDielectricFusesToDi
 	const MaterialData &mat = scene.materials[scene.cylinders[0].materialIdx];
 	EXPECT_EQ(mat.type, MaterialType::DielectricMedium);
 	EXPECT_NEAR(mat.ior, 1.5f, 1e-5f);
-	EXPECT_GT(mat.dielectric_medium_extra.isThin, 0.5f);
+	EXPECT_NEAR(mat.dielectric_medium_extra.surfaceKind, 1.0f, 1e-5f);
 }
 
-// A ROUGH dielectric (roughness > 0) is NOT fused - MaterialType::
-// DielectricMedium's own shading code only ever calls the same
-// dielectric_scatter() a plain SMOOTH Dielectric uses (no rough variant
-// exists for the fused type - see mediumMaterialIndex()'s own comment),
-// so this must still fall back to the plain, pre-existing Medium path,
-// exactly like the original (pre-cylinder-fusion) version of this test
-// suite asserted for every dielectric+medium cylinder.
-TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithRoughDielectricStaysPlainMedium) {
+// A ROUGH dielectric (nonzero roughness) now ALSO fuses - MaterialType::
+// DielectricMedium's entry/exit boundary dispatches to a real GGX
+// microfacet path with inline-equivalent glossy NEE (rough_dielectric_
+// scatter_and_nee() on the recursive backend; the wavefront backend
+// reuses wf_finish_material_scatter's existing RoughDielectric glossy path
+// via an effectiveMatType substitution at its own tail call - see
+// wavefront_kernels_materials.cu's own DielectricMedium case comment for
+// why that was chosen over a hand-duplicated NEE block) - see
+// mediumMaterialIndex()'s own comment (pbrt_gpu_builder.h). surfaceKind
+// (2.0f=rough) and the roughness value itself (stored in dielectric_
+// medium_extra.roughness, NOT the top-level fuzz/roughness field - that
+// union slot is already taken by `g`, the medium's own HG asymmetry) are
+// both populated here.
+TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithRoughDielectricFusesToDielectricMedium) {
 	const pbrt_flatten::FlatScene flat = flattenSource(
 		"MakeNamedMedium \"fog\" \"string type\" [ \"homogeneous\" ]\n"
 		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 1.0 1.0 1.0 ]\n"
@@ -250,7 +257,11 @@ TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceWithRoughDielectricStaysPla
 	pbrt_gpu::build(flat, scene);
 	ASSERT_EQ(scene.cylinders.size(), 1u);
 	ASSERT_GE(scene.cylinders[0].materialIdx, 0);
-	EXPECT_EQ(scene.materials[scene.cylinders[0].materialIdx].type, MaterialType::Medium);
+	const MaterialData &mat = scene.materials[scene.cylinders[0].materialIdx];
+	EXPECT_EQ(mat.type, MaterialType::DielectricMedium);
+	EXPECT_NEAR(mat.ior, 1.5f, 1e-5f);
+	EXPECT_NEAR(mat.dielectric_medium_extra.surfaceKind, 2.0f, 1e-5f);
+	EXPECT_NEAR(mat.dielectric_medium_extra.roughness, 0.3f, 1e-5f);
 }
 
 // An OPAQUE surface Material (diffuse - never lets a ray transmit into the

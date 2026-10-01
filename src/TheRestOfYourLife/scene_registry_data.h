@@ -1347,6 +1347,10 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Material \"thindielectric\" fused with MediumInterface, now real on both GPU backends via the same DielectricMedium material the smooth-dielectric fusion case uses.",
             "Fast", "thin-dielectric-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E12", 202, SceneNames::RoughDielectricMediumPbrtExample, SceneCategories::Volumes,
+            "A frosted (rough) Material \"dielectric\" fused with MediumInterface, now real on both GPU backends via a GGX microfacet DielectricMedium surface with real glossy NEE.",
+            "Fast", "rough-dielectric-medium.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E7", 122, SceneNames::RgbGridMediumPbrtExample, SceneCategories::Volumes,
             "pbrt's MakeNamedMedium \"rgbgrid\" (an RGB voxel grid) rendering as a soft coloured nebula, on both backends.",
             "Fast", "rgbgrid-medium.pbrt"),

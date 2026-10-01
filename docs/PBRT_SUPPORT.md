@@ -655,7 +655,8 @@ loader and no longer match the code:
   exit boundary alongside the smooth case, unlike rough (see below) — a
   cheap, mechanical extension, not a new architecture. `mediumMaterialIndex()`
   (`pbrt_gpu_builder.h`) now also recognizes `MaterialKind::ThinDielectric`
-  and sets a new `dielectric_medium_extra.isThin` flag both backends' entry/
+  and sets `dielectric_medium_extra.surfaceKind` (0=smooth/1=thin/2=rough,
+  see the rough entry below for the third value) both backends' entry/
   exit branches key off. New example scene `pbrt_scenes/thin-dielectric-
   medium.pbrt` (E11) demonstrates it — unlike the smooth-dielectric "near-
   invisible shell" convention (`eta≈1.001`, needed there to avoid visibly
@@ -683,26 +684,110 @@ loader and no longer match the code:
   project's own authoritative shared BxDF reference made easy to catch by
   comparison.
 
-  Still **not** fixed, and a real, remaining GPU limitation: **rough**
-  dielectric, or `DiffuseTransmission`/`Interface`, combined with a
-  medium — `MaterialType::DielectricMedium`'s shading code has no
-  microfacet/tangent-frame/glossy-NEE path, so `isSmoothDielectric`/
-  `isThinDielectric`/`isOpaqueSurfaceMaterial` all correctly decline these
-  combinations and they still fall back to the old plain-`Medium` (surface
-  dropped) behavior. Scoped and found materially more expensive than the
-  thin case: a real rough-dielectric fusion needs a world-space tangent
-  frame, texture-bound roughness resolution, and inline glossy NEE/MIS at
-  the entry/exit boundary on the recursive backend (~150-250 new lines),
-  and on the wavefront backend specifically, either a real design change to
-  `wf_finish_material_scatter()`'s `matType`-based event classification
-  (currently assumes every `DielectricMedium` entry/exit event is
-  specular) or duplicating a substantial chunk of its existing glossy-NEE
-  logic inline (~400-700+ lines total, 8 files) — a real engineering
-  decision, not a mechanical extension, and no bundled scene currently
-  needs it. CPU's real dual-primitive composition (an actual second,
-  coincident-geometry primitive per medium shape) remains the only way to
-  close the gap for every remaining material combination uniformly, rough
-  dielectric included — bigger engineering than any round so far.
+  **Follow-up round: ROUGH dielectric fusion closed too — the real
+  engineering case.** A frosted/rough `Material "dielectric"` (nonzero
+  roughness, or a roughness texture) combined with a medium now fuses into
+  `MaterialType::DielectricMedium`'s entry/exit boundary with a genuine GGX
+  microfacet BSDF and real glossy NEE/MIS, not just a cheap coin-flip or
+  refraction call. `mediumMaterialIndex()` (`pbrt_gpu_builder.h`) now
+  classifies rough the same way the plain (non-fused) `RoughDielectric`
+  build path already does (`roughness_u`/`roughness_v` > 0, or a roughness
+  texture), setting `surfaceKind=2` and storing the flat roughness in
+  `dielectric_medium_extra.roughness` — NOT the top-level `fuzz`/`roughness`
+  field `RoughDielectric` itself uses, since that union slot is already
+  `g` (the medium's own Henyey-Greenstein asymmetry) for this fused type;
+  `roughnessV`/`remapRoughness`/`textureIdx` are reused directly (genuinely
+  free for `DielectricMedium` otherwise).
+
+  **Recursive backend**: `rough_dielectric_scatter_and_nee()`
+  (`optix_device_helpers.h`) factors the GGX VNDF sample/reflect/refract +
+  inline NEE/MIS (against area, punctual, and sky lights) straight out of
+  `shade_material()`'s own `MaterialType::RoughDielectric` case — both the
+  plain material and `DielectricMedium`'s fused entry/exit sub-cases now
+  call the identical function (parameterized by which union slot the flat
+  roughness lives in, and whether dispersion is even safe to read — see the
+  function's own header comment on why `mat.dispersive_extra` and `mat.
+  dielectric_medium_extra` alias the same union slot, making dispersion
+  support for the fused case actively unsafe, not just unimplemented).
+  `material_needs_dpdu()` now includes `DielectricMedium` unconditionally
+  (every fused instance pays a small tangent-frame cost, even smooth/thin
+  ones that don't use it, rather than threading a finer per-instance gate
+  through that dispatch).
+
+  **Wavefront backend — the real decision point**: `wf_finish_material_
+  scatter()`'s `isPhase`/`glossy_isType` event classification is driven
+  entirely by a `matType` function ARGUMENT (not by re-reading the
+  material's own stored type), and unconditionally routes every
+  `DielectricMedium` event into its medium-interior-phase-scatter handling
+  — there is no "fused rough dielectric surface" case in that dispatch to
+  route into instead, and reworking that ~1100-line shared function's event
+  classification (used by every other glossy and medium material type) was
+  explicitly out of scope. A true hand-duplicated inline NEE block was
+  scoped and found to have a real correctness problem of its own, not just
+  more code: `wf_finish_material_scatter()`'s own NEE gate and the next
+  bounce's `specular_bounce` flag both read the SAME `is_specular` value,
+  so suppressing the shared function's own (wrong, phase-based) NEE
+  attempt by forcing `is_specular=true` would also mislabel a genuinely
+  glossy bounce as specular for the NEXT vertex's own MIS decision — a real
+  bias (that bounce's BSDF-sampled continuation ray, if it later hits a
+  light directly, would skip MIS weighting and add full unweighted
+  radiance instead of its correct fractional share). Avoiding that bias
+  with a true duplicate would mean also taking over the shared function's
+  next-ray-setup/Russian-roulette/throughput logic - the exact scope
+  explosion avoiding a rework was meant to prevent.
+
+  The chosen fix instead: `evaluate_materials()`'s `DielectricMedium` case
+  (`wavefront_kernels_materials.cu`) does its own real GGX VNDF scatter
+  sampling (mirroring `evaluate_materials_dielectric.cu`'s own
+  `RoughDielectric` case, the same shared `TrowbridgeReitz<float>`/
+  `RoughDielectricBxDF<float>` templates), then — only for the genuinely
+  glossy (non-`EffectivelySmooth`) sub-case — passes `MaterialType::
+  RoughDielectric` instead of the real `mat.type` as the `matType`
+  ARGUMENT to the shared `wf_finish_material_scatter()` tail call every
+  case already falls through to (a new `effectiveMatType` local, `mat.type`
+  by default, overridden only there). Every other argument (`h.materialIdx`,
+  `glossyAlphaForNEE`/`glossyAlphaVForNEE`, `matEta`) still correctly points
+  at/derives from the real fused material, so this reuses the EXISTING,
+  already-correct, already-tested `RoughDielectric` glossy-NEE path
+  verbatim — zero edits to the shared function, correct `is_specular`/MIS/
+  next-bounce behavior, and ReSTIR DI/GI/probe-cache/NRC-training all keep
+  working for this combination (better than the disclosed trade-off an
+  earlier draft of this fix accepted). `wf_material_needs_dpdu()` gained
+  the identical `DielectricMedium` addition as the recursive backend's own
+  `material_needs_dpdu()` (cylinder's own `objDpdu` was already
+  unconditional, no change needed there).
+
+  **A real, independent bug found while reading this shared function
+  closely**: none found this round beyond the thin-dielectric one above -
+  the matType-substitution approach was chosen specifically because it
+  reuses already-verified code rather than writing new NEE math that could
+  hide a fresh one.
+
+  New example scene `pbrt_scenes/rough-dielectric-medium.pbrt` (E12,
+  "frosted jade" — a real `eta=1.5`, `roughness=0.25` glass sphere wrapping
+  a jade-green scattering medium, comparable directly against
+  `subsurface-slab.pbrt`'s smooth jade sphere) verified this is correct, not
+  just compiling: `MaterialCpuGpuParityTest` passed at the standard 30%
+  tolerance on the first attempt (no special-case override needed, itself
+  a good sign for an implementation this involved), and a direct three-way
+  visual/numeric render comparison showed all three backends producing the
+  same soft, frosted-glass look with the jade glow diffusing through it —
+  CPU 0.1425 avg brightness, GPU-recursive 0.1381 (1.3% mean-abs-diff from
+  CPU), GPU-wavefront 0.1174 (2.7%/2.3% mean-abs-diff from CPU/recursive
+  respectively) — all comfortably within normal Monte-Carlo noise at this
+  scene's 128spp, not a bias signature.
+
+  Still **not** fixed, and the real remaining GPU limitation:
+  `DiffuseTransmission`/`Interface` combined with a medium (on either
+  shape), and ANY surface material combined with a medium on a disk (never
+  meaningful - no "inside" for a zero-thickness plane) or combined with
+  CloudMedium/RgbGridMedium/GridMedium specifically (the fused material
+  only exists for homogeneous media). CPU's real dual-primitive
+  composition (an actual second, coincident-geometry primitive per medium
+  shape) remains the only way to close the gap for these remaining
+  combinations uniformly - a materially different, bigger architecture
+  change than anything this or the prior rounds made, and no bundled scene
+  currently needs it.
 
 - A phase-function scatter event inside a participating medium (any of
   `MaterialType::Medium`/`CloudMedium`/`RgbGridMedium`/`GridMedium`, on

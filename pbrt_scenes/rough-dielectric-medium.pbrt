@@ -1,0 +1,48 @@
+# rough-dielectric-medium.pbrt -- exercises Material "dielectric" with a
+# nonzero roughness fused with MediumInterface on Shape "sphere", now real
+# on GPU (both backends): MaterialType::DielectricMedium's entry/exit
+# boundary dispatches to a real GGX microfacet path with inline-equivalent
+# glossy NEE (rough_dielectric_scatter_and_nee() on the recursive backend;
+# the wavefront backend reuses wf_finish_material_scatter's existing
+# RoughDielectric glossy path via an effectiveMatType substitution at its
+# own tail call - see wavefront_kernels_materials.cu's own DielectricMedium
+# case comment for the full rationale), instead of unconditionally falling
+# back to a plain fog-only MaterialType::Medium with the frosted shell
+# dropped entirely - see pbrt_gpu_builder.h's mediumMaterialIndex() and
+# docs/PBRT_SUPPORT.md's dielectric+medium fusion entry.
+#
+# "Frosted jade": a real, visible eta=1.5 glass sphere with real surface
+# roughness (0.25, a frosted/sandblasted look - soft, blurred specular
+# highlights and a diffused transmission silhouette, not sharp refraction
+# caustics) wrapping a jade-green homogeneous scattering medium. Compare
+# against pbrt_scenes/subsurface-slab.pbrt's jade sphere (same medium
+# convention, smooth surface instead) to see the frosting's effect on the
+# same interior color.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 400 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 5 -2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+MakeNamedMedium "jade-fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.15 0.75 0.30 ]
+
+AttributeBegin
+  Translate 0 1.5 0
+  Material "dielectric" "float eta" [ 1.5 ] "float roughness" [ 0.25 ]
+  MediumInterface "jade-fog" ""
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd
