@@ -410,6 +410,15 @@ void MetalPocApp::loadPbrtScene() {
                 // scene case in this file.
                 [[fallthrough]];
             }
+            // MaterialKind::Measured falls through to here too (no case
+            // above) - notably, scene "B14" (pbrt_scenes/measured-brdf-
+            // showroom.pbrt) uses it, so Metal currently renders B14 as
+            // flat gray rather than the real importance-sampled gold BRDF
+            // CPU/OptiX render for the same scene post-migration (see
+            // metal_poc_scenes_b.mm's buildMeasuredBrdfScene() - now dead
+            // code - for the full history). Real support would mean
+            // porting src/shared/measured_bxdf.h's PiecewiseLinear2D/
+            // MeasuredBxDF machinery to Metal shaders - not done yet.
             default:
                 if (warnedUnsupportedMaterialKinds.insert(m.pbrtType).second) {
                     fprintf(stderr, "loadPbrtScene: material kind '%s' not supported by this POC's "

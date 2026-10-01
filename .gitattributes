@@ -24,3 +24,15 @@ models/**/*.png filter=lfs diff=lfs merge=lfs -text
 # anyway as still-correct, harmless practice for a binary asset - just
 # don't assume it explains that specific test failure.
 *.nvdb -text
+
+# pbrt-v4 "tensor_file" measured-BRDF tensor files (e.g.
+# pbrt_scenes/synthetic-gold.bsdf, src/shared/measured_bxdf_loader.h's own
+# format) are raw binary blobs for the exact same reason *.nvdb is above -
+# a Windows core.autocrlf=true checkout could silently LF->CRLF-convert an
+# embedded 0x0A byte that isn't a real line ending, corrupting the file's
+# field table/data (measured_bxdf_loader.h would then warn and silently
+# fall back to a diffuse approximation - see its own "warn and fall back"
+# comment - rather than fail loudly, making this exact corruption easy to
+# miss). Other pre-existing binary types under pbrt_scenes/ (*.exr, *.ply,
+# *.bmp, etc.) have this same latent exposure but are out of scope here.
+*.bsdf -text

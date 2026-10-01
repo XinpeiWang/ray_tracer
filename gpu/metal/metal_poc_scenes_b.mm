@@ -1009,20 +1009,29 @@ void MetalPocApp::buildHairFibersScene() {
     pbrtSceneOffset = sceneOffset;
 }
 
-// B14: Measured BRDF - matches src/TheRestOfYourLife/scenes_advanced.h's
-// own build_measured_brdf_scene() exactly, but see that function's own
-// `measured_material` class first: it stores a `MeasuredBRDFData brdf_`
-// member and never reads it - `scatter()`/`scattering_pdf()` are a plain
-// cosine-weighted Lambertian using `tint_` as albedo, and the "measured"
-// data built for the scene is a synthetic all-1.0 4x4 table, not real
-// tabulated RGL data (no such data files exist anywhere in this repo).
-// gpu/optix/scene_builder.cpp's own comment already documents this and
-// ports the scene as plain Lambertian - mirrored here for the same
-// reason, not a Metal-specific simplification. The scene's own REAL gap
-// was a sphere-shaped area light (`(0,8,0)`, r=1.5, `diffuse_light(8,8,8)`)
-// this loader had no NEE support for at all (AreaLight::kind==0 quad-only
-// until now) - see AreaLight::kind's own comment (metal_poc_types.metal)
-// for the new sphere-light NEE this scene exercises for the first time.
+// B14: Measured BRDF - STALE/UNREACHABLE for scene_id "B14" since B14's
+// pbrt migration (ray_tracer commit af83bb8a). This function originally
+// matched src/TheRestOfYourLife/scenes_advanced.h's own
+// build_measured_brdf_scene(): that CPU function's `measured_material`
+// class stored a `MeasuredBRDFData brdf_` member and never read it -
+// `scatter()`/`scattering_pdf()` were a plain cosine-weighted Lambertian
+// using `tint_` as albedo - so this function mirrored that same
+// Lambertian behaviour rather than a Metal-specific simplification. That
+// CPU class is now DELETED (B14 is pbrt-backed, see
+// pbrt_scenes/measured-brdf-showroom.pbrt), and metal_render_main()
+// always prefers a scene's pbrt path over this hand-authored one when
+// both exist, so buildHandAuthoredScene()'s own `scene_id == "B14"`
+// dispatch line can no longer actually run - this function is dead code
+// for that scene_id. The real current Metal render for "B14" goes
+// through metal_poc_pbrt_loader.mm's generic material mapper instead,
+// which has no MaterialKind::Measured case and falls back to flat gray
+// Lambertian (see that file's `default:` case) - a real, currently
+// unaddressed divergence from CPU/OptiX's real importance-sampled gold
+// BRDF for the same scene. This function is kept only because it's still
+// the first (and only) example of this loader's sphere-shaped area-light
+// NEE support (`(0,8,0)`, r=1.5, `diffuse_light(8,8,8)` - AreaLight::
+// kind==0 was quad-only before this) - see AreaLight::kind's own comment
+// (metal_poc_types.metal) - not as a description of what "B14" renders.
 void MetalPocApp::buildMeasuredBrdfScene() {
     const float3 sceneOffset{60.0f, 0.0f, 0.0f};
 
@@ -1036,7 +1045,9 @@ void MetalPocApp::buildMeasuredBrdfScene() {
     }
 
     // 5 "measured BRDF" spheres - byte-for-byte Lambertian(0.7,0.5,0.3),
-    // matching `measured_material`'s own actual (not advertised) behaviour.
+    // matching the now-deleted CPU `measured_material`'s own actual (not
+    // advertised) behaviour. Historical only - see this function's own
+    // header comment: this code path no longer runs for scene_id "B14".
     for (int i = -2; i <= 2; ++i) {
         const float3 center = float3{i * 2.5f, 1.0f, 0.0f} + sceneOffset;
         TriangleMaterial mat{PackedFloat3{0.7f, 0.5f, 0.3f},
