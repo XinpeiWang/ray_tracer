@@ -307,6 +307,52 @@
  *     1.0 ceiling - see that constant's own comment for why this is the
  *     honest value, not a tuned one) rather than a wider generic cap.
  *
+ * GPU-recursive vs GPU-wavefront: separately calibrated (2026-10-02), no
+ * longer reusing the CPU-pair tolerances. A full 40-scene MaterialsAndVolumes
+ * sweep with this pair's own tolerance temporarily forced to ~0 (so every
+ * EXPECT_LT failure printed its real measured gap) showed this pair agrees
+ * MUCH more tightly than either GPU backend agrees with CPU - expected,
+ * since both are independent ports of the same material math, while the
+ * CPU-pair tolerances already absorb real, documented algorithmic
+ * differences (NEE strategy, rough_metal's missing Fresnel model, ...).
+ * Whole-image gaps were almost all under 5%; regional gaps ran higher, as
+ * expected for a per-block comparison with fewer pixels/more residual
+ * noise per block. Two real outliers emerged, each given its own new
+ * rec-vs-wf-specific exception rather than being folded into the new
+ * tighter standard (kRecWfRelTolerance/kRecWfRegionalRelTolerance - see
+ * their own comments for the full numbers):
+ *   - E1 (Homogeneous Medium): the only scene whose gap didn't fit the new
+ *     standard on EITHER axis (24.16% whole-image, 52.70% regional) - not
+ *     investigated further here (real follow-up work, not a calibration
+ *     task), given its own named exception
+ *     (kHomogeneousMediumRecWfRelTolerance/
+ *     kHomogeneousMediumRecWfRegionalRelTolerance) rather than silently
+ *     widening the standard for every Volumes scene.
+ *   - B13 (Subsurface Slab): whole-image gap (15.74%) fits the new
+ *     standard; regional (59.06%) does not - same shape as its own
+ *     existing CPU-pair exception (kSubsurfaceSlabRelTolerance) having a
+ *     real, specific, already-documented cause. Given its own regional-only
+ *     exception (kSubsurfaceSlabRecWfRegionalRelTolerance).
+ * E10/B11/B14/J2 keep using their EXISTING named exceptions for this pair
+ * too (no new constant needed) - each was independently measured in this
+ * same sweep to already comfortably cover its rec-vs-wf-specific gap
+ * (e.g. B11's 50.14% regional fits inside its existing 70% exception).
+ *
+ * A third exception was added on VERIFICATION, not the original sweep:
+ * B23 (Glass Prism Dispersion) measured 31.04% regional in the calibration
+ * run but 42.28% on a later full-suite run, exceeding the standard
+ * kRecWfRegionalRelTolerance (42%, sized from the single calibration
+ * measurement). Not noise re-landing slightly differently - a real,
+ * already-documented algorithmic difference for THIS scene specifically:
+ * GPU-recursive approximates dispersion with 3 representative wavelengths,
+ * GPU-wavefront does real continuous spectral integration, so which
+ * wavelengths each backend's own stochastic sampling happens to land on
+ * can shift a regional block's color more than ordinary same-algorithm
+ * noise would. B24 (same material, roughness-blurred) shares the cause and
+ * gets the same exception (kDispersivePrismRecWfRegionalRelTolerance, 55%)
+ * even though its own measured value (5.66%) was far lower, rather than
+ * relying on it staying small by chance.
+ *
  * Known, deliberate backend behavior differences considered and NOT
  * special-cased here (each was checked against current code, not just old
  * comments/notes - see below):
@@ -782,6 +828,87 @@ constexpr float kDiffuseTransmissionTextureRegionalRelTolerance = 0.85f;
 // rather than a tolerance tuned to just barely pass today's measurement.
 constexpr float kCameraMediumRegionalRelTolerance = 1.0f;
 
+// ============================================================================
+// GPU-recursive vs GPU-wavefront - SEPARATELY calibrated tolerances.
+//
+// Every tolerance above was calibrated for a CPU-vs-GPU pair and, until now,
+// reused unchanged for the GPU-recursive-vs-GPU-wavefront comparison too
+// (this file's own prior comment called this "deliberately conservative
+// pending real measured rec-vs-wf gap data"). That data now exists: a full
+// MaterialsAndVolumes sweep (40 scenes, 2026-10-02) with this pair's own
+// tolerance temporarily forced to ~0 to force every EXPECT_LT failure
+// message to print its real measured gap - see this section's own constants
+// below for what that run showed.
+//
+// The headline finding: two independent GPU ports of nominally the same
+// material math agree MUCH more tightly with each other than either does
+// with CPU (whose gaps already have documented algorithmic causes baked
+// into the tolerances above - different NEE strategies, rough_metal's
+// missing Fresnel model, etc.). Whole-image gaps were almost all under 5%
+// (most under 2%); regional (per-block) gaps run higher, as expected -
+// fewer pixels per block means more residual Monte-Carlo variance for the
+// same spp, the same reason kRegionalRelTolerance is already looser than
+// kRelTolerance for the CPU pairs.
+//
+// Standard values below give real margin over every scene's measured gap
+// EXCEPT the ones with their own named exception just below (E1, B13, and
+// E10/B11/B14/J2, which already had an exception for other pairs that
+// turns out to already cover this pair's own measured gap too - see each
+// one's own comment for why no NEW constant was needed there).
+// 25%: the true worst non-E1/non-E10 whole-image gap was E11 (Thin
+// Dielectric Medium, pbrt example) at 22.39% (R channel) - a first pass at
+// this constant (20%) missed that this scene's R channel, not just its
+// average brightness (11.14%), was the real outlier, and failed on
+// verification. 25% gives real margin over E11 (+2.6pt) and E12 (Rough
+// Dielectric Medium, 20.60% R channel, +4.4pt) without masking a future
+// regression beyond what these two already-measured gaps explain.
+constexpr float kRecWfRelTolerance = 0.25f;
+// 42%: the worst non-excepted regional gap was E7 (pbrt example) at
+// 39.23%, with B12/B23/E12/E11/E4/J1/B7/E2/E6 all in the high-20s/low-30s -
+// regional gaps run higher than whole-image ones across the board here, the
+// same reason kRegionalRelTolerance is already looser than kRelTolerance
+// for the CPU pairs (fewer pixels per block, more residual Monte-Carlo
+// variance for the same spp). 42% gives real margin over E7 (+2.8pt).
+constexpr float kRecWfRegionalRelTolerance = 0.42f;
+
+// E1 (Homogeneous Medium) - the one scene whose rec-vs-wf gap doesn't fit
+// the standard values above on EITHER axis: measured whole-image up to
+// 24.16% (B channel) and regional worst-block 52.70%, both real outliers
+// among the 40 scenes swept (nothing else in Volumes ran anywhere close -
+// e.g. E2 Cloud Medium measured 3.73%/26.73%, E6 Cylinder Medium measured
+// 2.72%/24.00%). Not investigated further here (that's real follow-up work,
+// not a calibration task) - given real margin rather than silently folded
+// into the standard tolerance, so a future regression has room to be
+// caught rather than being absorbed into "every Volumes scene gets this
+// much slack".
+constexpr float kHomogeneousMediumRecWfRelTolerance = 0.30f;
+constexpr float kHomogeneousMediumRecWfRegionalRelTolerance = 0.60f;
+
+// B13 (Subsurface Slab) - whole-image rec-vs-wf gap (15.74% max) already
+// fits the standard kRecWfRelTolerance above, but its regional worst-block
+// (59.06%) does not - same shape as its own existing CPU-pair exception
+// (kSubsurfaceSlabRelTolerance) having a real, specific, already-documented
+// cause rather than being ordinary noise.
+constexpr float kSubsurfaceSlabRecWfRegionalRelTolerance = 0.65f;
+
+// B23/B24 (Glass/Frosted Prism Dispersion) - regional-only, found on
+// verification (not the original calibration sweep): B23 measured 31.04%
+// in the calibration run but 42.28% on a LATER full-suite run, exceeding
+// the standard kRecWfRegionalRelTolerance (42%) set from the first
+// measurement alone. This is not ordinary Monte-Carlo noise re-landing
+// slightly differently - it's this scene's own already-documented,
+// already-accepted algorithmic difference between the two GPU backends
+// (see this scene's own registry description/pbrt_flatten.h's Material::
+// abbeNumber comment): GPU-recursive approximates dispersion with 3
+// representative wavelengths, GPU-wavefront does real continuous spectral
+// integration, so WHICH wavelengths each backend's stochastic sampling
+// happens to land on for a given run can shift a regional block's color
+// noticeably more than ordinary same-algorithm sampling noise would. B24
+// shares the identical cause (same material, just roughness-blurred) even
+// though its own measured value (5.66%) was far lower - given the same
+// exception rather than relying on its own gap staying small by chance.
+constexpr float kDispersivePrismRecWfRegionalRelTolerance = 0.55f;
+
 static void check_relative_parity(const char* sceneName, const std::string& sceneId,
                                    const char* label, const char* backendA, const char* backendB,
                                    float a, float b, float tolerance) {
@@ -1101,15 +1228,18 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// media/DiffuseTransmission, see this file's header comment - baked into
 	// their tolerance) while disagreeing with each other by more than that
 	// gap actually warrants, which neither existing check would catch.
-	// Reuses the same tolerance as the CPU comparisons above rather than a
-	// separately-calibrated tighter one - deliberately conservative pending
-	// real measured rec-vs-wf gap data with the same isolated-run rigor this
-	// file's header comment used for the CPU comparisons, but strictly better
-	// than not comparing this pair at all.
-	check_relative_parity(s->name, s->id, "avg brightness", "GPU-recursive", "GPU-wavefront", recBright, wfBright, tolerance);
-	check_relative_parity(s->name, s->id, "R channel", "GPU-recursive", "GPU-wavefront", recC.r, wfC.r, tolerance);
-	check_relative_parity(s->name, s->id, "G channel", "GPU-recursive", "GPU-wavefront", recC.g, wfC.g, tolerance);
-	check_relative_parity(s->name, s->id, "B channel", "GPU-recursive", "GPU-wavefront", recC.b, wfC.b, tolerance);
+	// Uses its OWN separately-calibrated tolerance (kRecWfRelTolerance and
+	// its own named exceptions, above) rather than reusing the CPU pairs'
+	// `tolerance` - see that constant's own comment for the real measured
+	// data behind this, and why it's much tighter than the CPU-pair values.
+	const float recWfTolerance =
+		(s->id == "E10") ? kCameraMediumRelTolerance :
+		(s->id == "E1")  ? kHomogeneousMediumRecWfRelTolerance :
+		kRecWfRelTolerance;
+	check_relative_parity(s->name, s->id, "avg brightness", "GPU-recursive", "GPU-wavefront", recBright, wfBright, recWfTolerance);
+	check_relative_parity(s->name, s->id, "R channel", "GPU-recursive", "GPU-wavefront", recC.r, wfC.r, recWfTolerance);
+	check_relative_parity(s->name, s->id, "G channel", "GPU-recursive", "GPU-wavefront", recC.g, wfC.g, recWfTolerance);
+	check_relative_parity(s->name, s->id, "B channel", "GPU-recursive", "GPU-wavefront", recC.b, wfC.b, recWfTolerance);
 
 	// Regional (block-based) diff, same three backend pairs - reuses the
 	// already-rendered/cached images above, no extra rendering cost. See
@@ -1129,7 +1259,22 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 		regional_tolerance_for(tolerance);
 	check_regional_parity(s->name, s->id, "CPU", "GPU-recursive", cpuImg, recImg, regionalTolerance);
 	check_regional_parity(s->name, s->id, "CPU", "GPU-wavefront", cpuImg, wfImg, regionalTolerance);
-	check_regional_parity(s->name, s->id, "GPU-recursive", "GPU-wavefront", recImg, wfImg, regionalTolerance);
+	// Rec-vs-wavefront regional: its OWN separately-calibrated tolerance,
+	// same reasoning as recWfTolerance above - B14/B11/J2/E10 reuse their
+	// existing named exceptions (already measured to comfortably cover this
+	// pair's own gap too, see kRecWfRegionalRelTolerance's own comment for
+	// why no new constant was needed for those four); E1 and B13 get their
+	// own new exceptions, measured specifically for this pair.
+	const float recWfRegionalTolerance =
+		(s->id == "B14") ? kMeasuredBrdfRegionalRelTolerance :
+		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
+		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
+		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
+		(s->id == "E1")  ? kHomogeneousMediumRecWfRegionalRelTolerance :
+		(s->id == "B13") ? kSubsurfaceSlabRecWfRegionalRelTolerance :
+		(s->id == "B23" || s->id == "B24") ? kDispersivePrismRecWfRegionalRelTolerance :
+		kRecWfRegionalRelTolerance;
+	check_regional_parity(s->name, s->id, "GPU-recursive", "GPU-wavefront", recImg, wfImg, recWfRegionalTolerance);
 }
 
 INSTANTIATE_TEST_SUITE_P(
