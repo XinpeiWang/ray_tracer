@@ -148,30 +148,11 @@ inline hittable_list build_cornell_coated_diffuse() {
 // build_cornell_conductor/build_cornell_coated_diffuse/build_cornell_
 // rough_glass, which stay).
 
-/**
- * build_cornell_crystal -- scene 17
- * Cornell box with a crystal sphere demonstrating pbrt-v4 NormalizedFresnelBxDF:
- * Fresnel-weighted diffuse reflection -- light exits more at grazing angles
- * (low Fresnel reflection = high BSDF value at grazing).
- * IOR 1.5 (typical glass/crystal).
- */
-inline hittable_list build_cornell_crystal() {
-	hittable_list world;
-	add_cornell_walls_and_main_light(world);
-	auto white = make_shared<lambertian>(color(.73, .73, .73));  // for the box below, same albedo as the walls
-
-	// Crystal sphere (left): NormalizedFresnelBxDF with IOR 1.5
-	auto crystal = make_shared<normalized_fresnel>(1.5);
-	world.add(make_shared<sphere>(point3(190, 90, 190), 90, crystal));
-
-	// White diffuse box (right)
-	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
-	box1 = make_shared<rotate_y>(box1, 15);
-	box1 = make_shared<translate>(box1, vec3(265,0,295));
-	world.add(box1);
-
-	return world;
-}
+// build_cornell_crystal() deleted - B9 migrated to pbrt-backed, see
+// pbrt_scenes/cornell-crystal.pbrt and scene_registry_data.h's own entry
+// (that file's own header comment documents the new, non-standard Material
+// "normalizedfresnel" kind added to the pbrt loader for this migration).
+// No other consumer.
 
 /**
  * build_prism_dispersion -- scene B23

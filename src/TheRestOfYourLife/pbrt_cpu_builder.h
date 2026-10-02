@@ -391,6 +391,11 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		return std::make_shared<principled>(
 			color(m.color[0], m.color[1], m.color[2]),
 			m.metallic, m.roughness, m.ior, m.clearcoat, m.clearcoatRoughness);
+	case pbrt_flatten::MaterialKind::NormalizedFresnel:
+		// Not real pbrt-v4 either (see MaterialKind::NormalizedFresnel's own
+		// comment, pbrt_flatten.h) - single parameter, m.ior, already
+		// generically parsed above from "eta" like every other kind.
+		return std::make_shared<normalized_fresnel>(m.ior);
 	case pbrt_flatten::MaterialKind::Hair:
 		return std::make_shared<hair_material>(
 			m.sigma_a[0], m.sigma_a[1], m.sigma_a[2],

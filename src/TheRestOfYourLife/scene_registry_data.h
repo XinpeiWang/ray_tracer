@@ -237,14 +237,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B8", 175, SceneNames::CornellWaxSlab, SceneCategories::Materials,
             "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
             "Medium", "cornell-wax-slab.pbrt", CameraMode::UserControlled),
-        {
+        // B9 migrated to pbrt-backed - see pbrt_scenes/cornell-crystal.pbrt
+        // (legacy_id 17 kept). Uses a new Material "normalizedfresnel" kind
+        // added to this loader specifically for this migration (not real
+        // pbrt-v4 - see MaterialKind::NormalizedFresnel's own comment,
+        // pbrt_flatten.h). Wired to this project's own already-implemented,
+        // already-working NormalizedFresnelBxDF on both CPU and GPU - full
+        // fidelity, not an approximation. build_cornell_crystal() has no
+        // other consumer - deleted below (build_cornell_box_lights() stays -
+        // many other scenes still use it).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B9", 17, SceneNames::CornellCrystal, SceneCategories::Materials,
             "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_cornell_crystal,
-            build_cornell_box_lights
-        },
+            "Medium", "cornell-crystal.pbrt", CameraMode::UserControlled),
         // B10 migrated to pbrt-backed - see pbrt_scenes/principled-showcase.pbrt
         // (legacy_id 18 kept). Uses a new Material "principled" kind added to
         // this loader specifically for this migration (not real pbrt-v4 -

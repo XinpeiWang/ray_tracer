@@ -1,0 +1,101 @@
+# cornell-crystal.pbrt -- migration of the native "B9 Cornell Crystal" demo
+# scene (src/TheRestOfYourLife/scenes_materials.h's build_cornell_crystal())
+# to a pbrt-backed scene, part of this project's GPU scene-construction-
+# duplication elimination.
+#
+# Uses Material "normalizedfresnel" - NOT a standalone real pbrt-v4 material
+# (pbrt-v4's real NormalizedFresnelBxDF is an internal implementation detail
+# of its own "subsurface" material, the Fresnel-weighted diffuse term shaded
+# at a BSSRDF probe's exit point, never exposed as its own top-level
+# material in real pbrt-v4 - see MaterialKind::NormalizedFresnel's own
+# comment, src/shared/pbrt_flatten.h, for the full rationale, and
+# MaterialKind::Principled's own comment for this loader's first such
+# extension). Exists purely to expose this codebase's own already-
+# implemented, already-working standalone version of that same BRDF (CPU:
+# material_pbrt.h's `normalized_fresnel` class; GPU: MaterialType::
+# NormalizedFresnel, shared with Subsurface's own real exit-point shading)
+# for a scene demonstrating the Fresnel-weighted-diffuse term in isolation,
+# with no subsurface light transport underneath. Single parameter: "float
+# eta" - reuses the exact same generic "eta" parsing every other material
+# kind already shares. Real, full fidelity on both CPU and GPU - not an
+# approximation.
+#
+# Cornell box geometry is IDENTICAL to cornell-box-native.pbrt (A1) - see
+# that file's own header comment for the quad/box-face authoring convention.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+# Main ceiling light: Q=(213,554,227) u=(130,0,0) v=(0,0,105), color (15,15,15)
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+# Right wall (green): Q=(555,0,0) u=(0,0,555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+# Left wall (red): Q=(0,0,555) u=(0,0,-555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+# Ceiling (white): Q=(0,555,0) u=(555,0,0) v=(0,0,555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# Floor (white): Q=(0,0,555) u=(555,0,0) v=(0,0,-555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+# Back wall (white): Q=(555,0,555) u=(-555,0,0) v=(0,555,0)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+# White diffuse box (right, rotated): kBox: min=(0,0,0) max=(165,330,165),
+# rotate_y=15, translate=(265,0,295) - 6 faces from quad.h's own box()
+# algebra, same convention as cornell-box-native.pbrt.
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 265 0 295
+  Rotate 15 0 1 0
+  # front: Q=(0,0,165) u=(165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 165   165 0 165   165 330 165   0 330 165 ]
+  # right: Q=(165,0,165) u=(0,0,-165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 165   165 0 0   165 330 0   165 330 165 ]
+  # back: Q=(165,0,0) u=(-165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 0   0 0 0   0 330 0   165 330 0 ]
+  # left: Q=(0,0,0) u=(0,0,165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 165   0 330 165   0 330 0 ]
+  # top: Q=(0,330,165) u=(165,0,0) v=(0,0,-165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 330 165   165 330 165   165 330 0   0 330 0 ]
+  # bottom: Q=(0,0,0) u=(165,0,0) v=(0,0,165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   165 0 0   165 0 165   0 0 165 ]
+AttributeEnd
+
+# Crystal sphere (left): NormalizedFresnelBxDF with IOR 1.5 - center
+# (190,90,190) radius 90
+Material "normalizedfresnel" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd

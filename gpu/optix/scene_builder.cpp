@@ -358,15 +358,6 @@ namespace {
 		return idx;
 	}
 
-	inline int add_normalized_fresnel(SceneData& scene, float ior) {
-		const int idx = safe_cast_to_int(scene.materials.size());
-		MaterialData m{};
-		m.type = MaterialType::NormalizedFresnel;
-		m.ior = ior;
-		scene.materials.push_back(m);
-		return idx;
-	}
-
 	inline int add_medium(SceneData& scene, float3 albedo, float g, float sigma_t) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
@@ -2007,35 +1998,15 @@ static void build_cornell_rough_metal(SceneData& scene) {
 // build_cornell_conductor/build_cornell_coated_diffuse/build_cornell_rough_
 // glass, which stay - other scenes or tests still call them directly).
 
-/// @brief Build Cornell Crystal scene (scene 17)
-/// Matches CPU build_cornell_crystal(): Cornell box with NormalizedFresnelBxDF crystal sphere.
-/// ior stored in mat.ior; normalization constant c computed on GPU via FresnelMoment1.
-static void build_cornell_crystal(SceneData& scene) {
-    add_cornell_walls_and_main_light(scene);
-
-    // Crystal sphere: NormalizedFresnelBxDF, IOR 1.5 (glass/crystal).
-    // albedo is unused (weight computed from Fresnel) -- add_normalized_fresnel()
-    // leaves it default-zeroed like every other field this type doesn't use.
-    const int mat_crystal = add_normalized_fresnel(scene, 1.5f);
-
-    // White diffuse box material (same albedo as the walls, own index)
-    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-
-    // Crystal sphere (left)
-    SphereData crystal_sphere{};
-    crystal_sphere.center    = make_float3(190.0f, 90.0f, 190.0f);
-    crystal_sphere.radius    = 90.0f;
-    crystal_sphere.materialIdx = mat_crystal;
-    scene.spheres.push_back(crystal_sphere);
-
-    // White diffuse box (right)
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_box,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-}
+// build_cornell_crystal() (former "scene 17" / B9 GPU builder) deleted - B9
+// migrated to pbrt-backed, see pbrt_scenes/cornell-crystal.pbrt and its
+// case-17 removal below. add_normalized_fresnel() (this file's own
+// convenience wrapper) had no other caller - deleted too. The new generic
+// pbrt Material "normalizedfresnel" dispatch (gpu/optix/pbrt_gpu_builder_
+// materials.h) sets MaterialData's type directly instead, same convention
+// as the Principled case there. MaterialType::NormalizedFresnel itself
+// stays - that's the real, shared GPU material type (also used by
+// Subsurface's own exit-point shading), not a now-dead convenience wrapper.
 
 // build_bouncing_spheres() (former "scene 1" / A2 GPU builder) deleted - A2
 // migrated to pbrt-backed, see pbrt_scenes/bouncing-spheres.pbrt and its
@@ -3415,10 +3386,11 @@ bool build_scene(
 							// default: -> build_loaded_pbrt_scene() now that these legacy_ids
 							// are no longer assigned to any scene.
 
-							case 17:  // Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)
-								build_cornell_crystal(scene);
-								setup_cornell_box_camera();
-								break;
+							// case 17 (Cornell Crystal / B9) migrated to pbrt-backed - see
+							// pbrt_scenes/cornell-crystal.pbrt and scene_registry_data.h's
+							// own entry. Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 17 is no longer
+							// assigned to any scene.
 
 							// cases 25/26/27 (Spotlight/Distant/Point Light Cornell - C2/C3/C4)
 							// migrated to pbrt-backed - see pbrt_scenes/cornell-spotlight.pbrt/
