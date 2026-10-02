@@ -23,8 +23,9 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	// IMPORTANT: When hitting light source, set NOT occluded and terminate
 	// This allows the shadow ray to "see" the light
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixSetPayload_0(0);  // NOT occluded - light is visible
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 
@@ -138,8 +139,9 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	// IMPORTANT: When hitting a light source, set NOT occluded and terminate
 	// This allows the shadow ray to "see" the light
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixSetPayload_0(0);  // NOT occluded - light is visible
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 
@@ -169,8 +171,9 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixSetPayload_0(0);
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 
@@ -202,8 +205,9 @@ extern "C" __global__ void __anyhit__shadow_disk() {
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixSetPayload_0(0);
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 
@@ -231,8 +235,9 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixSetPayload_0(0);
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 
@@ -351,8 +356,9 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 	}
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixSetPayload_0(0);
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 

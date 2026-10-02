@@ -2897,8 +2897,17 @@ static bool build_loaded_pbrt_scene(
 				compute_screen_window<float>(image_width, image_height, xmin, xmax, ymin, ymax);
 			}
 			const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-			const float3 u = normalize(cross(vup, w));
-			const float3 v = cross(w, u);
+			// pbrt-v4's own (left-handed) LookAt basis, matching CPU's
+			// OrthographicCamera (src/shared/cameras.h, built from
+			// make_look_at) and this same file's spherical/realistic cases
+			// below: right = cross(up, forward) = cross(w, up) (forward = -w),
+			// up' = cross(right, w). This block previously used the RTiOW
+			// perspective basis (u = cross(up, w), the NEGATIVE of this), which
+			// mirrored every GPU orthographic render left-to-right relative to
+			// CPU - found by the Phase 2 Cameras-category sweep (D6, see
+			// tests/integration/material_cpu_gpu_parity_tests.cpp).
+			const float3 u = normalize(cross(w, vup));
+			const float3 v = cross(u, w);
 			const float3 horizontal = make_float3((xmax - xmin) * u.x, (xmax - xmin) * u.y, (xmax - xmin) * u.z);
 			const float3 vertical   = make_float3((ymax - ymin) * v.x, (ymax - ymin) * v.y, (ymax - ymin) * v.z);
 			const float3 lower_left_corner = make_float3(

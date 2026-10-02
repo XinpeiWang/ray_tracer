@@ -52,7 +52,9 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 		optixGetPayload_0(), optixGetPayload_1());
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 	if (mat.type == MaterialType::Dielectric ||
@@ -274,7 +276,9 @@ extern "C" __global__ void __anyhit__wf_shadow_quad() {
 		optixGetPayload_0(), optixGetPayload_1());
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 	if (mat.type == MaterialType::Dielectric ||
@@ -300,7 +304,9 @@ extern "C" __global__ void __anyhit__wf_shadow_bilinear_patch() {
 		optixGetPayload_0(), optixGetPayload_1());
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 	if (mat.type == MaterialType::Dielectric ||
@@ -351,7 +357,9 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 		optixGetPayload_0(), optixGetPayload_1());
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 	if (mat.type == MaterialType::Dielectric ||
@@ -383,7 +391,9 @@ extern "C" __global__ void __anyhit__wf_shadow_disk() {
 		optixGetPayload_0(), optixGetPayload_1());
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 	if (mat.type == MaterialType::Dielectric ||
@@ -411,7 +421,9 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 		optixGetPayload_0(), optixGetPayload_1());
 
 	if (mat.type == MaterialType::DiffuseLight) {
-		optixTerminateRay();
+		// Emitter: not an occluder, but must not end traversal as "visible" either
+		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
+		optixIgnoreIntersection();
 		return;
 	}
 	if (mat.type == MaterialType::Dielectric ||
