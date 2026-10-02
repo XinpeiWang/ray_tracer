@@ -2052,33 +2052,6 @@ static void build_cornell_crystal(SceneData& scene) {
         make_float3(265.0f, 0.0f, 295.0f));
 }
 
-/// @brief Build Cornell Rough Glass scene (scene 11)
-/// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
-static void build_cornell_rough_glass(SceneData& scene) {
-    add_cornell_walls_and_main_light(scene);
-
-    // Rough glass sphere (roughness 0.2, IOR 1.5 -- frosted glass)
-    const int mat_rough_glass = add_rough_dielectric(scene, 0.2f, kGlassIOR);
-
-    // White diffuse box material (same albedo as the walls, own index)
-    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-
-    // White diffuse box (right)
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_box,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-
-    // Rough glass sphere (left, same position as original glass sphere)
-    SphereData rg_sphere{};
-    rg_sphere.center    = make_float3(190.0f, 90.0f, 190.0f);
-    rg_sphere.radius    = 90.0f;
-    rg_sphere.materialIdx = mat_rough_glass;
-    scene.spheres.push_back(rg_sphere);
-}
-
 /**
  * Build bouncing spheres scene (scene 1, "In One Weekend" final scene).
  * Structurally mirrors src/TheRestOfYourLife/scenes_book.h's
@@ -3993,9 +3966,10 @@ bool build_scene(
 							// pbrt_scenes/cornell-rough-glass.pbrt and scene_registry_data.h's
 							// B3 entry. Falls through to default: -> build_loaded_pbrt_scene()
 							// now that legacy_id 11 is no longer assigned to any scene.
-							// build_cornell_rough_glass() itself is NOT deleted - I5/I10's own
-							// cases (below) still call it directly for their own (still-native)
-							// "same world as B3" scenes.
+							// build_cornell_rough_glass(SceneData&) (this file's GPU builder,
+							// not the CPU scenes_materials.h function of the same name) is
+							// deleted below - I5/I10 (its only remaining callers) have since
+							// migrated to pbrt-backed too.
 
 							// case 12 (Cornell Conductor / B4) migrated to pbrt-backed - see
 							// pbrt_scenes/cornell-conductor.pbrt and scene_registry_data.h's
@@ -4450,21 +4424,10 @@ bool build_scene(
 							// own I3 entry. Falls through to default: -> build_loaded_pbrt_
 							// scene() now that legacy_id 134 is no longer assigned.
 
-							case 135: {  // Education: GPU Denoiser Before & After (same world as A1 Cornell Box - see that entry's own comment)
-								build_cornell_box(scene);
-								// Identical camera setup to case 0 (A1) - same CameraConfig row
-								// (CameraMode::UserControlled), reused verbatim rather than re-derived.
-								const float3 lookfrom = make_float3(
-									static_cast<float>(cam_x),
-									static_cast<float>(cam_y),
-									static_cast<float>(cam_z)
-								);
-								const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);
-								const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
-								break;
-							}
+							// case 135 (Education: GPU Denoiser Before & After / I4) migrated
+							// to pbrt-backed alongside case 0 (A1) - see scene_registry_data.h's
+							// own I4 entry. Falls through to default: -> build_loaded_pbrt_
+							// scene() now that legacy_id 135 is no longer assigned.
 
 							case 136: {  // B24: Frosted Prism Dispersion (same prism as B23, rough_dielectric instead of dielectric)
 								// Geometry/screen/light shared with case 131 (B23) via
@@ -4518,23 +4481,28 @@ bool build_scene(
 							// assigned to any scene. build_cornell_box() itself is NOT
 							// deleted - other scenes below still call it directly.
 
-							case 139: {  // I5: SPPM: Rough Glass Caustic (same world as B3 Cornell Rough Glass - see that entry's own comment) - GPU default path tracer only here; --sppm --gpu goes through its own dedicated pipeline (gpu/optix/optix_interface.cpp), not this switch.
-								build_cornell_rough_glass(scene);
-								apply_mesh_camera(make_float3(278.0f, 278.0f, -800.0f), make_float3(278.0f, 278.0f, 278.0f), 40.0f);
-								break;
-							}
+							// case 139 (I5: SPPM: Rough Glass Caustic) migrated to pbrt-backed
+							// alongside case 171/B3 (Cornell Rough Glass) - see scene_registry_
+							// data.h's own I5 entry. Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 139 is no longer
+							// assigned. SPPM's own GPU capability check (gpu/optix/optix_types.h's
+							// sppm_gpu_material_supported()) is unaffected - it checks material
+							// type, not scene id, so --sppm --gpu still works here.
 
-							case 140: {  // I6: BDPT / MLT: Bidirectional Light Transport (same world as A1 Cornell Box - see that entry's own comment) - GPU default path tracer only; BDPT/MLT themselves have no GPU implementation at all.
-								build_cornell_box(scene);
-								apply_mesh_camera(make_float3(278.0f, 278.0f, -800.0f), make_float3(278.0f, 278.0f, 278.0f), 40.0f);
-								break;
-							}
+							// case 140 (I6: BDPT / MLT: Bidirectional Light Transport) migrated
+							// to pbrt-backed alongside case 0 (A1) - see scene_registry_data.h's
+							// own I6 entry. Falls through to default: -> build_loaded_pbrt_
+							// scene() now that legacy_id 140 is no longer assigned. BDPT/MLT
+							// themselves still have no GPU implementation at all, unaffected by
+							// this migration.
 
-							case 158: {  // I10: Firefly Suppression: Regularize / Clamp (same world as B3 Cornell Rough Glass - see that entry's own comment and I5/case 139's identical reuse)
-								build_cornell_rough_glass(scene);
-								apply_mesh_camera(make_float3(278.0f, 278.0f, -800.0f), make_float3(278.0f, 278.0f, 278.0f), 40.0f);
-								break;
-							}
+							// case 158 (I10: Firefly Suppression: Regularize / Clamp) migrated
+							// to pbrt-backed alongside case 171/B3 (Cornell Rough Glass) and
+							// case 139/I5 above - see scene_registry_data.h's own I10 entry.
+							// Falls through to default: -> build_loaded_pbrt_scene() now that
+							// legacy_id 158 is no longer assigned. Both --regularize and
+							// --maxcomponentvalue are unaffected - they check material/sample
+							// state, not scene id.
 
 							default: {
 									// A scene loaded from a .pbrt file has no case of its
