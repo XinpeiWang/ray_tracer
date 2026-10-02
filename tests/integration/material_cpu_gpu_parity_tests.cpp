@@ -160,10 +160,13 @@
  * The regional check immediately found 4 new, real, isolation-verified
  * divergences on its first real run that NONE of the whole-image checks
  * above had ever caught (none of these 4 scenes had any pre-existing
- * tolerance exception) - left intentionally failing below, same philosophy
- * as B1/B13, not masked by a widened tolerance (except B14, resolved to a
- * per-scene regional-tolerance exception below once properly understood -
- * see that constant's own comment for the full investigation):
+ * tolerance exception). All 4 are now resolved, each described below:
+ * B14 and B11 turned out to be firefly variance, not bugs - given their
+ * own regional-tolerance exceptions rather than masked by a widened one,
+ * same philosophy as B1/B13; E6 was a real bug, fully fixed, no exception
+ * needed; J2 got a real, if partial, texture-filtering fix plus a
+ * tolerance exception for its remaining already-documented NEE-strategy
+ * gap.
  *   - B14 (Measured BRDF): CPU ~50-60% brighter than BOTH GPU backends in
  *     one block. Thoroughly investigated, NOT found to be a code bug -
  *     likely explained by firefly variance from this material's narrow,
@@ -196,39 +199,39 @@
  *     differ from CPU by a similar ~57-60% - consistent with "GPU's two
  *     backends resemble each other more than either resembles CPU's
  *     independent noise realization," not "both GPU ports share a bug".
- *   - E6 (Cylinder Medium, pbrt example): CPU vs GPU-recursive AND
- *     CPU vs GPU-wavefront both show a 100% block diff (total disagreement,
- *     not a magnitude mismatch) confined to 5-6 of 24 comparable blocks,
- *     confirmed in single-scene isolation - a real geometry/medium-boundary
- *     visibility issue specific to cylinder-shaped media, not generic
- *     Volumes noise (the already-wide 55%/~92% Volumes tolerance was not
- *     nearly enough margin). A specific hypothesis was investigated and
- *     DISPROVEN, not just untried, worth recording so it isn't re-attempted
- *     blind: pbrt cylinders have no end caps, and GPU's `__intersection__
- *     cylinder`/`__intersection__wf_cylinder` only ever test the lateral
- *     WALL crossing (rejecting a ray whose wall-quadric roots fall outside
- *     [zMin,zMax]) - unlike CPU's dedicated `volume_bounds()` path
- *     (disk_cylinder_hittable.h) for a Medium/DielectricMedium-attached
- *     cylinder, which also accounts for a ray entering/exiting purely
- *     through the open ends. A fallback was implemented on both GPU
- *     backends (reporting an intersection from the tube-x-zslab volume
- *     interval whenever the surface test rejects both roots) and verified
- *     to compile and run correctly - but it produced ZERO change in this
- *     test's own regional-diff numbers for this scene, even with the
- *     fallback's material-type gate forced unconditionally true as a
- *     diagnostic (ruling out "wrong material type" as the blocker). The
- *     volume-interval math itself evaluates to an EMPTY interval for the
- *     camera rays responsible for this gap, meaning the actual root cause
- *     is something other than (or in addition to) the open-ends surface-
- *     test gap this hypothesis targeted - possibly in the rotated
- *     cylinder's object<->world transform, the camera ray generation for
- *     this scene's specific FOV/aspect combination, or something not yet
- *     identified. The attempted fix was reverted rather than left in as
- *     non-functional code. Not root-caused further here - needs dedicated,
- *     tooled GPU-side debugging (e.g. device-side printf of the actual
- *     per-pixel ray origin/direction and tube/z-slab interval for the
- *     flagged block) rather than more static code comparison, which was
- *     already pushed about as far as it usefully goes for this bug.
+ *   - E6 (Cylinder Medium, pbrt example) - RESOLVED, a real bug, found via
+ *     device-side printf after static code comparison alone wasn't enough:
+ *     CPU vs both GPU backends originally showed a 100% block diff (total
+ *     disagreement) confined to 5-6 of 24 comparable blocks. The root
+ *     theory (pbrt cylinders have no end caps; GPU's `__intersection__
+ *     cylinder`/`__intersection__wf_cylinder` only ever tested the lateral
+ *     WALL crossing, unlike CPU's dedicated `volume_bounds()` path for a
+ *     Medium/DielectricMedium-attached cylinder) was CORRECT, but a first
+ *     fix attempt (an intersection-program fallback reporting a hit from
+ *     the tube-x-zslab volume interval) measured as producing ZERO change,
+ *     which falsely looked like a disproof. Gating the fallback's debug
+ *     printf to the actual flagged pixel block (not a single guessed pixel)
+ *     revealed the real, second half of the bug: even when the fallback
+ *     DOES fire and find a valid interval, `__closesthit__cylinder`'s own
+ *     radial-normal computation (`obj_hit.x/obj_hit.y` normalized away from
+ *     the axis) is only geometrically valid for a hit ON the lateral wall -
+ *     for an open-end entry, the hit point is INSIDE the cross-section, not
+ *     on its boundary, making the derived normal (and therefore
+ *     `front_face`) meaningless. Confirmed via printf that `front_face`
+ *     then evaluates to `true` often enough to route the hit into
+ *     MaterialType::DielectricMedium's "fresh surface entry, refract/
+ *     reflect" branch instead of "already inside, sample the medium" -
+ *     silently skipping the fog scattering entirely and passing the
+ *     near-invisible (eta=1.001) ray straight through to the dark
+ *     background, exactly matching "GPU shows nothing" for these blocks.
+ *     Fixed by tagging the fallback's `optixReportIntersection()` call with
+ *     a `kOpenEndVolumeHit` hit-kind sentinel (both backends) and checking
+ *     it in the closest-hit program to force `front_face=false` for that
+ *     hit kind - the DielectricMedium "already inside" branch already
+ *     independently recomputes its own entry/exit interval from the
+ *     current ray on every call, so this one targeted override is
+ *     sufficient; no other downstream change needed. Verified: this
+ *     scene's own regional-diff check now passes.
  *   - B11 (Hair Fibers) - RESOLVED, not a code bug, same pattern as B14:
  *     CPU vs both GPU backends differed by up to 61% in 1-2 blocks. The
  *     scene (pbrt_scenes/hair-fibers-scene.pbrt) is 5 plain spheres shaded

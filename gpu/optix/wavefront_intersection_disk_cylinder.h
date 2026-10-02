@@ -125,46 +125,27 @@ __device__ __forceinline__ bool wf_dc_cylinder_check(const CylinderData& cyl, co
 	return phi <= cyl.phiMax;
 }
 
-extern "C" __global__ void __intersection__wf_cylinder() {
-	const unsigned int primIdx = optixGetPrimitiveIndex();
-	const CylinderData& cyl = wf_params.cylinders[primIdx];
-
-	const float3 ray_orig_w = optixGetWorldRayOrigin();
-	const float3 ray_dir_w  = optixGetWorldRayDirection();
-	const float ray_tmin = optixGetRayTmin();
-	const float ray_tmax = optixGetRayTmax();
-
-	const float3 ro = wf_dc_apply_point(cyl.w2o, ray_orig_w);
-	const float3 rd = wf_dc_apply_vector(cyl.w2o, ray_dir_w);
-
-	// Stable quadratic solve in double precision - see optix_intersection_
-	// disk_cylinder.h's own __intersection__cylinder for why (avoids
-	// catastrophic cancellation for a thin cylinder seen nearly edge-on) -
-	// factored into wf_dc_solve_tube_quadratic (this file), shared with the
-	// Medium closest-hit case below.
-	float t0, t1;
-	if (!wf_dc_solve_tube_quadratic(ro, rd, cyl.radius, t0, t1)) return;
-	if (t0 > ray_tmax || t1 < ray_tmin) return;
-
-	float t = t0;
-	if (!wf_dc_cylinder_check(cyl, ro, rd, t0, ray_tmin, ray_tmax)) {
-		t = t1;
-		if (!wf_dc_cylinder_check(cyl, ro, rd, t1, ray_tmin, ray_tmax)) return;
-	}
-
-	optixReportIntersection(t, 0, 0, 0, 0, 0);
-}
+// Hit-kind sentinel - see optix_intersection_disk_cylinder.h's identical
+// kOpenEndVolumeHit (that file's own comment has the full explanation of
+// the bug this fixes; redefined here since this is a separate OptiX
+// module/translation unit from the recursive backend, same reasoning every
+// other wf_ helper in this file is duplicated rather than shared).
+constexpr unsigned int kOpenEndVolumeHit = 1u;
 
 // Recomputes a homogeneous MaterialType::Medium cylinder's entry (near) /
 // exit (far) roots (object-space tube-quadric clipped to the z-slab) - shared
-// by __closesthit__wf_cylinder's own Medium case below (primary-ray re-
-// intersection after an interior scatter) and __anyhit__wf_shadow_cylinder
-// (wavefront_anyhit_shadow.h, shadow-ray Beer-Lambert segment length), so
-// both compute the exact same near/far instead of two independently-
-// drifting copies. ray_orig/ray_dir are WORLD space (transformed to object
-// space here via cyl.w2o) - see the recursive backend's identical
+// by __intersection__wf_cylinder's own open-ends fallback just below,
+// __closesthit__wf_cylinder's own Medium case further down (primary-ray re-
+// intersection after an interior scatter), and __anyhit__wf_shadow_cylinder
+// (wavefront_anyhit_shadow.h, shadow-ray Beer-Lambert segment length), so all
+// three compute the exact same near/far instead of independently-drifting
+// copies. ray_orig/ray_dir are WORLD space (transformed to object space here
+// via cyl.w2o) - see the recursive backend's identical
 // __closesthit__cylinder Medium case (optix_intersection_disk_cylinder.h)
-// for the full derivation and its phi-sweep scope limit.
+// for the full derivation and its phi-sweep scope limit. Defined here,
+// BEFORE __intersection__wf_cylinder (it didn't used to need to be - moved
+// up from just after that function once it gained its own open-ends-fallback
+// caller, see that fallback's own comment for the bug this closes).
 __device__ __forceinline__ void wf_medium_cylinder_near_far(
 		const float3& ray_orig, const float3& ray_dir, const CylinderData& cyl,
 		float& t_near, float& t_far) {
@@ -200,6 +181,66 @@ __device__ __forceinline__ void wf_medium_cylinder_near_far(
 	if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
 }
 
+extern "C" __global__ void __intersection__wf_cylinder() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const CylinderData& cyl = wf_params.cylinders[primIdx];
+
+	const float3 ray_orig_w = optixGetWorldRayOrigin();
+	const float3 ray_dir_w  = optixGetWorldRayDirection();
+	const float ray_tmin = optixGetRayTmin();
+	const float ray_tmax = optixGetRayTmax();
+
+	const float3 ro = wf_dc_apply_point(cyl.w2o, ray_orig_w);
+	const float3 rd = wf_dc_apply_vector(cyl.w2o, ray_dir_w);
+
+	// Stable quadratic solve in double precision - see optix_intersection_
+	// disk_cylinder.h's own __intersection__cylinder for why (avoids
+	// catastrophic cancellation for a thin cylinder seen nearly edge-on) -
+	// factored into wf_dc_solve_tube_quadratic (this file), shared with the
+	// Medium closest-hit case below.
+	float t0, t1;
+	if (wf_dc_solve_tube_quadratic(ro, rd, cyl.radius, t0, t1) && !(t0 > ray_tmax || t1 < ray_tmin)) {
+		float t = t0;
+		if (wf_dc_cylinder_check(cyl, ro, rd, t0, ray_tmin, ray_tmax)) {
+			optixReportIntersection(t, 0, 0, 0, 0, 0);
+			return;
+		}
+		t = t1;
+		if (wf_dc_cylinder_check(cyl, ro, rd, t1, ray_tmin, ray_tmax)) {
+			optixReportIntersection(t, 0, 0, 0, 0, 0);
+			return;
+		}
+	}
+
+	// Lateral-wall surface test above found no crossing within [zMin,zMax] -
+	// but pbrt cylinders have no end caps, so a ray can still legitimately
+	// pass through this cylinder's attached Medium/DielectricMedium volume
+	// purely via its OPEN ends, which the surface-only test above has no way
+	// to see - a real bug a CPU/GPU parity sweep found (tests/integration/
+	// material_cpu_gpu_parity_tests.cpp's E6 finding, and optix_
+	// intersection_disk_cylinder.h's identical fix for the recursive
+	// backend - see that file's kOpenEndVolumeHit comment for the full root
+	// cause: a hit reported here without this tag makes __closesthit__
+	// wf_cylinder's own radial-normal/front_face computation meaningless,
+	// which can silently route a DielectricMedium hit into the "fresh
+	// surface entry" path instead of "already inside, sample the medium",
+	// skipping the fog scattering entirely). Fall back to the tube-x-zslab
+	// volume interval wf_medium_cylinder_near_far() above already computes
+	// for the closest-hit/shadow-ray medium paths, and report an
+	// intersection at its near root (tagged kOpenEndVolumeHit) if it's
+	// non-empty and overlaps this ray's valid range.
+	const MaterialData& cyl_mat = wf_params.materials[cyl.materialIdx];
+	const bool isMediumAttached = (cyl_mat.type == MaterialType::Medium) ||
+		(cyl_mat.type == MaterialType::DielectricMedium);
+	if (!isMediumAttached) return;
+
+	float t_near, t_far;
+	wf_medium_cylinder_near_far(ray_orig_w, ray_dir_w, cyl, t_near, t_far);
+	if (t_far <= t_near) return;                        // empty interval
+	if (t_near > ray_tmax || t_far < ray_tmin) return;   // doesn't overlap the ray's valid range
+	optixReportIntersection(fmaxf(t_near, ray_tmin), kOpenEndVolumeHit, 0, 0, 0, 0);
+}
+
 extern "C" __global__ void __closesthit__wf_cylinder() {
 	WfHitPayload* payload = (WfHitPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
@@ -214,14 +255,27 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 
 	// Cylinder's normal varies with hit position (radial, from the axis) -
 	// recover the object-space hit point to compute it, same technique as
-	// the recursive backend's __closesthit__cylinder.
+	// the recursive backend's __closesthit__cylinder. Only geometrically
+	// valid for a hitKind-0 hit (a real lateral-wall crossing) - see
+	// kOpenEndVolumeHit's own comment (optix_intersection_disk_cylinder.h)
+	// for why a hitKind-1 hit point isn't on this surface at all, and the
+	// front_face override just below for what actually matters for it.
 	const float3 obj_hit = wf_dc_apply_point(cyl.w2o, hit_point);
 	const float obj_hit_len = sqrtf(obj_hit.x * obj_hit.x + obj_hit.y * obj_hit.y);
 	const float3 obj_normal = (obj_hit_len > 1e-8f)
 		? make_float3(obj_hit.x / obj_hit_len, obj_hit.y / obj_hit_len, 0.0f)
 		: make_float3(1.0f, 0.0f, 0.0f);
 	float3 outward_normal = normalize(wf_dc_apply_normal_from_w2o(cyl.w2o, obj_normal));
-	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
+	// A kOpenEndVolumeHit is, by construction, already inside this
+	// cylinder's attached medium - force front_face=false so the
+	// needsNearFar check below takes its "already inside, recompute near/
+	// far" path for MaterialType::DielectricMedium too, matching the
+	// recursive backend's identical override (optix_intersection_
+	// disk_cylinder.h) - see that file's kOpenEndVolumeHit comment for the
+	// full bug this fixes.
+	const bool front_face = (optixGetHitKind() == kOpenEndVolumeHit)
+		? false
+		: (dot(ray_dir, outward_normal) < 0.0f);
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 
 	payload->hitPoint    = hit_point;
