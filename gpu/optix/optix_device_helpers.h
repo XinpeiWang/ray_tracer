@@ -694,7 +694,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 	{
 		float3 to_light, light_emission; float max_dist, light_pdf;
 		if (sample_nee_light(hit_point, seed, to_light, light_emission, max_dist, light_pdf, optixGetRayTime())) {
-			bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+			bool visible = trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed);
 			if (visible) {
 				float cos_to_light = fmaxf(dot(to_light, normal), 0.0f);
 				if (cos_to_light > 0.0f) {
@@ -719,7 +719,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 			sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 			float  cos_sky = dot(sky_dir, normal);
 			if (cos_sky > 0.0f && pdf_sky > 0.0f) {
-				if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+				if (trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
 					float fr_sky       = FrDielectric(cos_sky, nf_eta);
 					float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
 					float brdf_pdf_sky = brdf_val_sky * cos_sky;
@@ -1060,7 +1060,7 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 			if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 				float llx = dot(to_light, tan), lly = dot(to_light, bitan), llz = dot(to_light, n);
 				if (rd_flip) { llx=-llx; lly=-lly; llz=-llz; }
-				if (llz != 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+				if (llz != 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
 					float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
 					float brdf_pdf = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
 					float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
@@ -1076,7 +1076,7 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 			float plx = dot(wi_p, tan), ply = dot(wi_p, bitan), plz = dot(wi_p, n);
 			if (rd_flip) { plx=-plx; ply=-ply; plz=-plz; }
 			if (plz == 0.0f) continue;
-			if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+			if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
 				float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, plx, ply, plz);
 				emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz) * camera_medium_shadow_trans(t_max_p);
 			}
@@ -1089,7 +1089,7 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 				sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 				float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bitan), skz = dot(sky_dir, n);
 				if (rd_flip) { skx=-skx; sky_y=-sky_y; skz=-skz; }
-				if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+				if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
 					float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 					float brdf_pdf_sky = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 					float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
@@ -1230,7 +1230,7 @@ __device__ __forceinline__ void shade_material(
 				float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 				if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 					// Check if light is visible (shadow ray)
-					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+					bool visible = trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed);
 
 					if (visible) {
 						// Evaluate BRDF PDF for this direction
@@ -1317,7 +1317,7 @@ __device__ __forceinline__ void shade_material(
 					// (src/TheRestOfYourLife/camera.h) and medium_phase_nee_
 					// mis()'s own pdf_sky>0.0f check just above in this file.
 					if (cos_sky > 0.0f && pdf_sky > 0.0f) {
-						if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
 							float brdf_pdf_sky = cosine_pdf(sky_dir, normal);
 							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							float3 brdf = attenuation / 3.14159265358979323846f;
@@ -1645,7 +1645,7 @@ __device__ __forceinline__ void shade_material(
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, cc_tan), lly = dot(to_light, cc_bit), llz = dot(to_light, cc_n);
-						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
@@ -1662,7 +1662,7 @@ __device__ __forceinline__ void shade_material(
 					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
 					float plx = dot(wi_p, cc_tan), ply = dot(wi_p, cc_bit), plz = dot(wi_p, cc_n);
 					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
 						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 						float fr, fg, fb;
 						cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
@@ -1676,7 +1676,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, cc_tan), sky_y = dot(sky_dir, cc_bit), skz = dot(sky_dir, cc_n);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
@@ -1770,7 +1770,7 @@ __device__ __forceinline__ void shade_material(
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, ctan), lly = dot(to_light, cbitan), llz = dot(to_light, cn);
-						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
 							float fr, fg, fb;
 							c_bxdf.f(cwi_x, cwi_y, cwi_z, llx, lly, llz, fr, fg, fb);
 							float brdf_pdf = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, llx, lly, llz);
@@ -1786,7 +1786,7 @@ __device__ __forceinline__ void shade_material(
 					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
 					float plx = dot(wi_p, ctan), ply = dot(wi_p, cbitan), plz = dot(wi_p, cn);
 					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
 						float fr, fg, fb;
 						c_bxdf.f(cwi_x, cwi_y, cwi_z, plx, ply, plz, fr, fg, fb);
 						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
@@ -1799,7 +1799,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, ctan), sky_y = dot(sky_dir, cbitan), skz = dot(sky_dir, cn);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
 							float fr, fg, fb;
 							c_bxdf.f(cwi_x, cwi_y, cwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, skx, sky_y, skz);
@@ -1860,7 +1860,7 @@ __device__ __forceinline__ void shade_material(
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, rmtan), lly = dot(to_light, rmbitan), llz = dot(to_light, rmn);
-						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
 							float fr, fg, fb;
 							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz, fr, fg, fb);
 							float brdf_pdf = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz);
@@ -1876,7 +1876,7 @@ __device__ __forceinline__ void shade_material(
 					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
 					float plx = dot(wi_p, rmtan), ply = dot(wi_p, rmbitan), plz = dot(wi_p, rmn);
 					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
 						float fr, fg, fb;
 						rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, plx, ply, plz, fr, fg, fb);
 						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
@@ -1889,7 +1889,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, rmtan), sky_y = dot(sky_dir, rmbitan), skz = dot(sky_dir, rmn);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
 							float fr, fg, fb;
 							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz);
@@ -2031,7 +2031,7 @@ __device__ __forceinline__ void shade_material(
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, cdtan), lly = dot(to_light, cdbit), llz = dot(to_light, cdn);
-						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
@@ -2048,7 +2048,7 @@ __device__ __forceinline__ void shade_material(
 					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
 					float plx = dot(wi_p, cdtan), ply = dot(wi_p, cdbit), plz = dot(wi_p, cdn);
 					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
 						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 						float fr, fg, fb;
 						cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
@@ -2062,7 +2062,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, cdtan), sky_y = dot(sky_dir, cdbit), skz = dot(sky_dir, cdn);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);

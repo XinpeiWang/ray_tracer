@@ -79,17 +79,24 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		}
 		const float sigma_t = (mat.type == MaterialType::Medium)
 			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
-		// shadow_t (this function's own optixGetRayTmax(), read above) is the
-		// shadow ray's ORIGINAL max_distance (the light's own distance) for
-		// every candidate along an all-ignoring traversal like this one - the
-		// same quantity wavefront's WfShadowPayload::tMax caches explicitly.
-		const float segFar = fminf(t_far, shadow_t);
+		// NOT optixGetRayTmax(): inside an any-hit program that is the CANDIDATE
+		// hit's own t (OptiX shrinks tmax to it while the program runs), not the
+		// ray's original max_distance. Using it (as this did, wrongly believing
+		// it was the original) clipped the chord to [t_near, t_hit] - zero length
+		// for a ray entering the sphere from outside, where the reported hit IS
+		// the near root - so any shadow ray crossing a medium sphere from outside
+		// read T=1 and the sphere cast no shadow at all (B13/E11-with-floor: rec
+		// 2.5x too bright under the spheres; only interior-origin rays, where the
+		// reported hit is the far root, got a correct chord). The original
+		// distance is cached in the ShadowRayState explicitly, the same quantity
+		// wavefront's WfShadowPayload::tMax holds.
+		const float segFar = fminf(t_far, shadow_state_from_payload()->maxDistance);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
-		float transmittance = __uint_as_float(optixGetPayload_1());
+		float transmittance = shadow_state_from_payload()->transmittance;
 		transmittance *= expf(-sigma_t * segLen);
-		optixSetPayload_1(__float_as_uint(transmittance));
+		shadow_state_from_payload()->transmittance = transmittance;  // memory write: survives optixIgnoreIntersection (a payload-register write would not)
 		if (transmittance <= 0.0f) {
-			optixSetPayload_0(1);  // fully attenuated - treat as occluded
+			shadow_state_from_payload()->occluded = 1;  // fully attenuated - treat as occluded
 			optixTerminateRay();
 			return;
 		}
@@ -120,7 +127,7 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	}
 
 	// For opaque materials, treat as occluder
-	optixSetPayload_0(1);  // occluded = true
+	shadow_state_from_payload()->occluded = 1;  // occluded = true
 	optixTerminateRay();   // Stop traversal (found occlusion)
 }
 
@@ -156,7 +163,7 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	}
 
 	// For opaque materials, treat as occluder
-	optixSetPayload_0(1);  // occluded = true
+	shadow_state_from_payload()->occluded = 1;  // occluded = true
 	optixTerminateRay();   // Stop traversal (found occlusion)
 }
 
@@ -186,7 +193,7 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 		return;
 	}
 
-	optixSetPayload_0(1);  // occluded = true
+	shadow_state_from_payload()->occluded = 1;  // occluded = true
 	optixTerminateRay();
 }
 
@@ -220,7 +227,7 @@ extern "C" __global__ void __anyhit__shadow_disk() {
 		return;
 	}
 
-	optixSetPayload_0(1);  // occluded = true
+	shadow_state_from_payload()->occluded = 1;  // occluded = true
 	optixTerminateRay();
 }
 
@@ -284,16 +291,15 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 
 		const float sigma_t = (mat.type == MaterialType::Medium)
 			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
-		// shadow_t (this function's own optixGetRayTmax(), read above) is the
-		// shadow ray's ORIGINAL max_distance - see __anyhit__shadow_sphere's
-		// identical comment.
-		const float segFar = fminf(t_far, shadow_t);
+		// Original max_distance, NOT optixGetRayTmax() (the candidate hit's own
+		// t inside an any-hit) - see __anyhit__shadow_sphere's identical comment.
+		const float segFar = fminf(t_far, shadow_state_from_payload()->maxDistance);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
-		float transmittance = __uint_as_float(optixGetPayload_1());
+		float transmittance = shadow_state_from_payload()->transmittance;
 		transmittance *= expf(-sigma_t * segLen);
-		optixSetPayload_1(__float_as_uint(transmittance));
+		shadow_state_from_payload()->transmittance = transmittance;  // memory write: survives optixIgnoreIntersection (a payload-register write would not)
 		if (transmittance <= 0.0f) {
-			optixSetPayload_0(1);  // fully attenuated - treat as occluded
+			shadow_state_from_payload()->occluded = 1;  // fully attenuated - treat as occluded
 			optixTerminateRay();
 			return;
 		}
@@ -310,7 +316,7 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		return;
 	}
 
-	optixSetPayload_0(1);  // occluded = true
+	shadow_state_from_payload()->occluded = 1;  // occluded = true
 	optixTerminateRay();
 }
 
@@ -384,7 +390,7 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 		return;
 	}
 
-	optixSetPayload_0(1);  // occluded = true
+	shadow_state_from_payload()->occluded = 1;  // occluded = true
 	optixTerminateRay();
 }
 

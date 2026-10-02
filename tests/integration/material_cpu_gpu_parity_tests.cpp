@@ -44,43 +44,31 @@
  *     resolution, mirrors HighSPPBrightnessConverges's own CPU-buys-more-
  *     efficiency-per-sample reasoning (that test used 100 CPU / 500 GPU at
  *     80x80).
- *   - Volumes scenes (E1-E4) get both higher SPP AND a separately-justified
- *     55% ceiling (not just higher SPP against the standard 30%), originally
- *     calibrated against a real 46.8% measured gap caused by a confirmed,
- *     deliberate backend gap (GPU medium scattering had no NEE/MIS) that has
- *     SINCE BEEN FIXED and this ceiling now needs re-measuring - see
- *     kVolumeRelTolerance's own comment for the full, current status.
- *   - IMPORTANT - B1 (RoughMetalSpheres) and B13 (SubsurfaceSlab) are
- *     deliberately NOT given a wider tolerance despite both failing at the
- *     standard 30%, and are left FAILING intentionally - that failure IS
- *     the sweep doing its job. Both were re-verified with EACH SCENE AS THE
- *     ONLY GPU RENDER IN ITS OWN PROCESS, specifically to rule out the
- *     cross-scene corruption described below contaminating the numbers:
- *       - B13: consistently measured CPU ~32-38% BRIGHTER than BOTH
- *         independent GPU backends, across avg brightness and every
- *         channel, in isolated single-scene runs with no other scene ever
- *         rendered in the same process (e.g. G channel: CPU=0.374 vs
- *         GPU-wavefront=0.231, 37.6%). Two independently-implemented GPU
- *         backends landing in the same ~32-38% dimmer band, on every
- *         channel, with no cross-scene state involved, is far too
- *         systematic to be Monte-Carlo noise or a corruption artifact.
- *         This looks like a genuine, currently-unexplained CPU vs GPU
- *         BSSRDF discrepancy.
- *         SUPERSEDED: this CPU-brighter gap was since fixed (root cause no
- *         longer reproduces - confirmed by re-running against a pre-
- *         shadow-transmittance build, where B13 passed at the standard 30%
- *         tolerance). A NEW, opposite-signed gap (CPU ~32% DARKER) appeared
- *         after CPU shadow rays gained real transmittance through media -
- *         see kSubsurfaceSlabRelTolerance's own comment below for that
- *         gap's cause. The paragraph above is kept as history for why 30%
- *         was the original standard tolerance, not as the current gap.
- *       - B1: measured CPU-vs-GPU-wavefront B-channel gap sits right at the
- *         30% edge (30.08% / 30.03% / 30.10% across repeated isolated runs)
- *         and is confined to that one backend pair and one channel -
- *         GPU-recursive matches CPU fine. Much smaller and less certain
- *         than B13, but flagged rather than silently tolerance-widened
- *         away, since it sits consistently just past the line rather than
- *         drifting either side of it run to run.
+ *   - Volumes scenes get higher SPP (300/900) and a 30% whole-image tolerance
+ *     like everything else (kVolumeRelTolerance), but a wider 85% regional
+ *     one (kVolumeRegionalRelTolerance): after the 2026-10-02 fixes below the
+ *     worst Volumes whole-image gap is 14.3% (E6; E12 and E10 have their own
+ *     named exceptions), so the old 55% ceiling had become pure slack.
+ *   - HISTORY - B1 and B13 used to be left FAILING here on purpose (that
+ *     failure was the sweep doing its job), and both turned out to be real
+ *     GPU bugs, now fixed (2026-10-02), so neither has an exception any more:
+ *       - B1 (RoughMetalSpheres): its CPU-vs-GPU gap (22-26%, first seen as a
+ *         30.03-30.10% B-channel gap) was a missing flat background colour -
+ *         GPU case 9 never set the (0.10,0.10,0.12) CPU background, so the
+ *         whole upper half of the frame rendered black. Now 0.6%/3.0%.
+ *       - B13 (SubsurfaceSlab, a wax + a jade medium-filled dielectric sphere
+ *         in a Cornell box): the recursive backend's shadow any-hit program
+ *         for Medium/DielectricMedium spheres clipped the Beer-Lambert chord
+ *         to the any-hit's own candidate t (optixGetRayTmax() inside an
+ *         any-hit is the CANDIDATE hit's t, not the ray's original tmax), so
+ *         any shadow ray entering a medium sphere from outside - every
+ *         surface-NEE ray from the floor beneath it - read T=1 and the spheres
+ *         cast no shadow; payload-register writes were also lost across
+ *         optixIgnoreIntersection(), and surface NEE only branched on a bool.
+ *         Fixed with a stack ShadowRayState (pointer payload carrying
+ *         maxDistance + transmittance) and a stochastic-visibility wrapper
+ *         (trace_shadow_ray_stochastic). B13 rec-vs-wf 12.0% -> 1.1%, and E1's
+ *         long-standing outlier rec-vs-wf gap (17.4%) fell to 0.8%.
  *     A scene positioned LATER in registry order during a full,
  *     non-isolated multi-scene run of this suite (e.g. B2 CornellRoughMetal)
  *     can ALSO show up as "FAILED" - that is cross-scene state corruption
@@ -417,24 +405,10 @@
  * Summary of what this suite's own calibration surfaced that is NOT fixed
  * here (out of scope per this task - reported for a human to triage):
  *
- *   1. [SUPERSEDED - see kSubsurfaceSlabRelTolerance's comment below] B13
- *      (SubsurfaceSlab) used to fail BrightnessAndChannelsConsistentAcrossBackends
- *      at the standard 30% tolerance, verified in single-scene process
- *      isolation: CPU was consistently ~32-38% brighter than BOTH
- *      GPU-recursive and GPU-wavefront, across avg brightness and every
- *      channel. See the tolerance-calibration note above for why this reads
- *      as a real discrepancy rather than noise or cross-scene corruption.
- *      That gap has since been fixed; B13 now gets a dedicated, narrower
- *      tolerance for a new, differently-signed (CPU darker) gap instead -
- *      this paragraph is kept as history, not the current state.
- *
- *   2. B1 (RoughMetalSpheres) fails the same test on its B channel alone,
- *      CPU vs GPU-wavefront only (GPU-recursive matches CPU fine), also
- *      verified in isolation: the gap sits right at the 30% edge across
- *      repeated isolated runs (30.03-30.10%). Much smaller and less certain
- *      than B13, but consistently just past the line rather than drifting
- *      either side of it, so left failing deliberately rather than
- *      tolerance-widened away.
+ *   1./2. B1 and B13 - RESOLVED 2026-10-02 (a missing GPU background colour,
+ *      and the recursive backend's medium-sphere shadow chord/payload bugs
+ *      respectively - see the tolerance-calibration note at the top of this
+ *      comment). They no longer fail and carry no tolerance exception.
  *
  *   3. A GPU cross-scene state corruption bug independent of anything
  *      measured above: rendering enough different scenes back-to-back on
@@ -668,78 +642,26 @@ constexpr float kMinComparableValue = 0.004f;
 // showed up in blocks of 8 vs 20 of 255 (0.031 vs 0.078), which this keeps.
 constexpr float kRegionalMinComparableValue = 0.02f;
 
-// Volumes scenes (E1-E4) get a wider tolerance than kRelTolerance. The 46.8%
-// (B channel, CPU vs GPU-wavefront) gap this 0.55 ceiling was originally
-// calibrated against was fully explained by a confirmed, deliberate backend
-// difference: neither GPU backend did real NEE/MIS for an in-medium
-// Henyey-Greenstein phase-function scatter event (MaterialType::Medium/
-// CloudMedium/RgbGridMedium/GridMedium all treated it as specular) - only
-// lucky HG-sampled random walks that happened to escape the medium and hit a
-// light picked up any illumination at all, converging far slower than a
-// surface BSDF would.
-// STALE, NEEDS RE-CALIBRATION: that gap was since closed - both GPU backends
-// now do real NEE+MIS at these events (medium_phase_nee_mis(),
-// gpu/optix/optix_device_helpers.h; the equivalent isPhase-gated path in
-// wavefront_kernels.cu's wf_finish_material_scatter()) - and a real render
-// comparison at the time of that fix showed E1 dramatically brighter/better-
-// converged on GPU at the same SPP than before, the expected NEE signature.
-// This 0.55 ceiling is very likely now much looser than the real post-fix
-// gap requires, but this file could not be rebuilt/re-run in the environment
-// that landed the fix (tests/ray_tracer_tests.vcxproj has a pre-existing,
-// unrelated broken gtest include path - confirmed unrelated: the same error
-// occurs on ~40 test files untouched by that change) to measure a real
-// replacement number, so the tolerance itself was deliberately left
-// unchanged (safe - a looser-than-necessary ceiling can't cause a false
-// failure, only reduced sensitivity) rather than guessed at. Whoever next
-// gets a working build of this test should re-run E1-E4 in isolation (same
-// per-scene-isolated methodology as the B1/B13 findings below) and tighten
-// this back down to whatever the real post-fix gap turns out to be.
-constexpr float kVolumeRelTolerance = 0.55f;
+// Volumes scenes: whole-image tolerance is now the standard 30%. This used to
+// be a 55% ceiling, calibrated against a 46.8% gap caused by neither GPU
+// backend doing NEE/MIS for in-medium scattering (since fixed) and then
+// carrying real slack for a pile of medium bugs found afterwards (a wavefront
+// albedo clamp, the recursive medium-shadow chord bug - see this file's header
+// comment). Measured after those fixes (2026-10-02, two passes): worst
+// non-excepted CPU-pair gap E6 14.3%, E11 13.2%, E1 8.6%, E3 8.2%. E12 (spectral
+// vs RGB multi-scatter) and E10 (camera medium) keep their own exceptions.
+constexpr float kVolumeRelTolerance = 0.30f;
+// Volumes REGIONAL CPU-pair tolerance: dim, high-variance fog blocks run well
+// above the whole-image gap. E6 (Cylinder Medium) is the outlier and swings
+// run to run - worst block 55.0% in one calibration pass, 71.8-72.9% in
+// others (a few dark blocks around 2-7/255) - E7 36%, E12 33%; 85% keeps ~12pts
+// over E6's worst, and the whole-image check stays at 30%.
+constexpr float kVolumeRegionalRelTolerance = 0.85f;
 
-// B13 (SubsurfaceSlab) specifically - NOT a Volumes-category scene, but its
-// CPU implementation (scenes_advanced.h's build_subsurface_slab) approximates
-// subsurface scattering with layered constant_medium fog rather than a real
-// BSSRDF, unlike GPU's tabulated-profile Subsurface implementation. Real
-// shadow-ray transmittance through participating media (constant_medium.h's
-// shadow_transmittance_impl(), added after this file's original calibration)
-// now legitimately attenuates CPU's light contribution through that internal
-// fog - GPU's real BSSRDF path has no equivalent medium to attenuate through,
-// so it doesn't dim the same way. Verified this is the actual cause, not a
-// reversion of the OLD (since-fixed) B13 gap this file's header/summary
-// comments describe: re-running this exact test against the code as it
-// stood immediately before that shadow-transmittance change showed B13
-// PASSING at the standard kRelTolerance (30%) - so those header/summary
-// sections describing B13 as "left failing intentionally" are now stale
-// history from an earlier, different (and since-fixed) gap, not a
-// description of the current failure. This is a new, different, understood
-// gap: CPU measured ~32% dimmer than both GPU backends on G/B channels
-// specifically (not brighter, like the old stale-documented gap), so 35%
-// gives real margin without masking a regression of a different size.
-constexpr float kSubsurfaceSlabRelTolerance = 0.35f;
+// B13 (SubsurfaceSlab) - RETIRED exception (was 35%): see this file's header comment.
 
-// B1 (RoughMetalSpheres) - this file's own header/summary comments already
-// document this scene's CPU-vs-GPU-wavefront B-channel gap as sitting
-// "right at the 30% edge (30.08%/30.03%/30.10% across repeated isolated
-// runs)" BEFORE the change below, i.e. already known-borderline, not a new
-// finding. camera.h's default PixelFilter reconstruction radius (a scene
-// with no explicit PixelFilter directive, this one included) was changed
-// from a previously-hardcoded 0.5px to pbrt-v4's real Gaussian default of
-// 1.5px (real cross-pixel filter importance sampling now reaches
-// neighboring pixels - see FilterSampler's own comment, filter_sampler.h) -
-// CPU's own reconstruction got MORE correct, but GPU-wavefront's own
-// "Box filter (1 sample per pixel sub-region, averaged in kernel)" (see its
-// own [TECH] log line) did not change, widening this ALREADY-borderline
-// gap just past the standard 30% line on this scene's bright specular
-// highlights specifically (avg brightness CPU=0.574 vs GPU-wavefront=0.401,
-// 30.0%; B channel 31.8%, in one isolated single-scene run - some further
-// run-to-run variance is expected, same as the pre-existing 30.03-30.10%
-// spread this file's own header comment already documents for the OLD,
-// narrower-radius gap). A real, understood, expected-direction shift (CPU
-// brighter, matching a wider real reconstruction filter integrating more
-// of each highlight's own falloff), not a new backend bug - 34% gives a
-// couple of points of real margin over the single worst measured run
-// without approaching B13's own, differently-caused, larger 35% gap.
-constexpr float kRoughMetalSpheresRelTolerance = 0.34f;
+// B1 (RoughMetalSpheres) - RETIRED exception (was 34%): the gap was a missing GPU flat
+// background; see this file's header comment.
 
 // E10 (Camera Medium pbrt example) - a genuinely different-magnitude, fully
 // understood gap: GPU-wavefront does not implement pbrt-v4's camera-medium
@@ -865,17 +787,18 @@ constexpr float kCameraMediumRegionalRelTolerance = 1.0f;
 // E10/B11/B14/J2, which already had an exception for other pairs that
 // turns out to already cover this pair's own measured gap too - see each
 // one's own comment for why no NEW constant was needed there).
-// 18% (was 25%): that older value existed to cover E11 and E12's R-channel
+// 14% (was 18%, originally 25%): that older value existed to cover E11 and E12's R-channel
 // gaps (22.39% / 20.60%), which came from the wavefront backend CLAMPING
 // medium albedo to [0,1] (MaterialType::Medium/DielectricMedium's albedo is
 // sigma_s/luminance(sigma_s) per channel and exceeds 1 - E11's R is 1.40;
 // albedoSpectrum() capped it, rendering that channel ~12% too dark; fixed by
 // uplifting with unboundedSpectrum() instead - see wavefront_kernels_
-// materials.cu). E11 is now 9.3% (worst channel). The worst NON-excepted
-// whole-image gaps in the 2026-10-02 calibration runs are B13 13.7%, E11 9.3%,
-// F10 8.9%, A9 8.8%, E3 8.2% (E1/E10/E12 have their own named exceptions
-// below), so 18% keeps 4.3pts over B13 without leaving the old 25% slack.
-constexpr float kRecWfRelTolerance = 0.18f;
+// materials.cu). E11 is now 9.3% (worst channel). After the recursive
+// medium-shadow fix B13 (was 13.7%) and E1 (was 20.6%) fell below 8%; the worst
+// NON-excepted whole-image gaps in the final 2026-10-02 passes are E11 9.3%,
+// F10 8.9%, E3 7.9%, A9 7.2%, J2 7.1% (E10 and E12 have their own named
+// exceptions below), so 14% keeps 4.7pts over E11.
+constexpr float kRecWfRelTolerance = 0.14f;
 
 // E12 (Rough Dielectric Medium) - whole-image rec-vs-wf gap that does NOT go
 // away with the albedo fix above and is not a bug: measured 67.1% on the R
@@ -905,25 +828,10 @@ constexpr float kRoughDielectricMediumRecWfRelTolerance = 0.80f;
 // variance for the same spp). 42% gives real margin over E7 (+2.8pt).
 constexpr float kRecWfRegionalRelTolerance = 0.42f;
 
-// E1 (Homogeneous Medium) - the one scene whose rec-vs-wf gap doesn't fit
-// the standard values above on EITHER axis: measured whole-image up to
-// 24.16% (B channel) and regional worst-block 52.70%, both real outliers
-// among the 40 scenes swept (nothing else in Volumes ran anywhere close -
-// e.g. E2 Cloud Medium measured 3.73%/26.73%, E6 Cylinder Medium measured
-// 2.72%/24.00%). Not investigated further here (that's real follow-up work,
-// not a calibration task) - given real margin rather than silently folded
-// into the standard tolerance, so a future regression has room to be
-// caught rather than being absorbed into "every Volumes scene gets this
-// much slack".
-constexpr float kHomogeneousMediumRecWfRelTolerance = 0.30f;
-constexpr float kHomogeneousMediumRecWfRegionalRelTolerance = 0.60f;
+// E1 (Homogeneous Medium) - RETIRED rec-vs-wf exceptions (were 30% whole-image / 60% regional, for a
+// 24.2%/52.7% outlier): the cause was the recursive medium-shadow bug, now 0.8%; see this file's header comment.
 
-// B13 (Subsurface Slab) - whole-image rec-vs-wf gap (15.74% max) already
-// fits the standard kRecWfRelTolerance above, but its regional worst-block
-// (59.06%) does not - same shape as its own existing CPU-pair exception
-// (kSubsurfaceSlabRelTolerance) having a real, specific, already-documented
-// cause rather than being ordinary noise.
-constexpr float kSubsurfaceSlabRecWfRegionalRelTolerance = 0.70f;  // re-measured 63.3% in the Phase 2 calibration runs (59.06% originally)
+// B13 (Subsurface Slab) - RETIRED rec-vs-wf regional exception (was 65-70%): same medium-shadow cause as E1.
 
 // B23/B24 (Glass/Frosted Prism Dispersion) - regional-only, found on
 // verification (not the original calibration sweep): B23 measured 31.04%
@@ -966,22 +874,18 @@ constexpr float kDispersivePrismRecWfRegionalRelTolerance = 0.55f;
 // worst block 62.8% -> 15.1% (so its regional exception is gone too).
 // ============================================================================
 
-// C11/A9 - CPU-vs-GPU REGIONAL only: the two scenes still within a few points
-// of (or past) the standard 50% line after the fixes above - C11 at 52.1%
-// (GPU's nearest-neighbour vs CPU's bilinear emissive-texture lookup, a
-// documented approximation: PBRT_SUPPORT.md, AreaLightSource "diffuse"
-// filename) and A9 at 48.7% (hundreds of small random spheres, high block
-// variance).
+// C11 - CPU-vs-GPU REGIONAL only: still past the standard 50% line after the
+// fixes above, at 51.5-52.1% (GPU's nearest-neighbour vs CPU's bilinear
+// emissive-texture lookup, a documented approximation: PBRT_SUPPORT.md,
+// AreaLightSource "diffuse" filename). (A9, 48.7% before the later fixes, is now
+// well inside the standard.)
 constexpr float kLightTextureRegionalRelTolerance = 0.65f;
 
-// A9/E7/E12 - GPU-recursive-vs-wavefront REGIONAL only (measured over
-// repeated runs: A9 45.5-47.1%, E12 43.5-48.1%, E7 39-40.1%, vs the standard
-// kRecWfRegionalRelTolerance of 42%). A9 and E7 are Monte-Carlo variance of a
-// 100-pixel block (direct renders agree within a few percent). E12 is the
-// spectral-vs-RGB multi-scatter difference documented at
-// kRoughDielectricMediumRecWfRelTolerance (the wavefront darkness itself was
-// investigated: its albedo-clamp component is fixed, the remainder is inherent).
-constexpr float kNoisyBlockRecWfRegionalRelTolerance = 0.60f;
+// E7 - GPU-recursive-vs-wavefront REGIONAL only: 39-40.1% across repeated
+// runs against the standard 42% (RGB grid medium; Monte-Carlo variance of a
+// 100-pixel block - direct renders agree within a few percent). A9 and E12,
+// which used to share this exception, are now well inside the standard.
+constexpr float kNoisyBlockRecWfRegionalRelTolerance = 0.55f;
 
 static void check_relative_parity(const char* sceneName, const std::string& sceneId,
                                    const char* label, const char* backendA, const char* backendB,
@@ -1249,16 +1153,13 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 
 	// See kVolumeRelTolerance's own comment for why Volumes scenes need a
 	// wider, separately-justified tolerance than everything else. B13
-	// (SubsurfaceSlab) and B1 (RoughMetalSpheres) each get their own narrow
-	// carve-out for a different, specific, understood reason - see
-	// kSubsurfaceSlabRelTolerance's/kRoughMetalSpheresRelTolerance's own
-	// comments below.
+	// E10 and E12 get their own named carve-outs for specific, understood
+	// reasons - see kCameraMediumRelTolerance's/
+	// kRoughDielectricMediumRecWfRelTolerance's own comments.
 	const float tolerance =
 		(s->id == "E10")                                          ? kCameraMediumRelTolerance :
 		(s->id == "E12")                                          ? kRoughDielectricMediumRecWfRelTolerance :
 		(std::strcmp(s->category, SceneCategories::Volumes) == 0) ? kVolumeRelTolerance :
-		(s->id == "B13")                                          ? kSubsurfaceSlabRelTolerance :
-		(s->id == "B1")                                           ? kRoughMetalSpheresRelTolerance :
 		kRelTolerance;
 
 	auto cpuIt = cache.cpuImages.find(s->id);
@@ -1319,7 +1220,6 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// data behind this, and why it's much tighter than the CPU-pair values.
 	const float recWfTolerance =
 		(s->id == "E10") ? kCameraMediumRelTolerance :
-		(s->id == "E1")  ? kHomogeneousMediumRecWfRelTolerance :
 		(s->id == "E12") ? kRoughDielectricMediumRecWfRelTolerance :
 		kRecWfRelTolerance;
 	check_relative_parity(s->name, s->id, "avg brightness", "GPU-recursive", "GPU-wavefront", recBright, wfBright, recWfTolerance);
@@ -1338,14 +1238,11 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// constants' comments) - their whole-image `tolerance` above stays
 	// standard.
 	const float regionalTolerance =
-		// E12's whole-image `tolerance` above is widened for its spectral-vs-RGB
-		// R-channel gap; its REGIONAL tolerance stays the ordinary Volumes one
-		// (measured CPU-pair worst block 38.7%) rather than scaling up with it.
-		(s->id == "E12") ? regional_tolerance_for(kVolumeRelTolerance) :
 		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
 		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
-		(s->id == "C11" || s->id == "A9") ? kLightTextureRegionalRelTolerance :
+		(s->id == "C11") ? kLightTextureRegionalRelTolerance :
+		(std::strcmp(s->category, SceneCategories::Volumes) == 0) ? kVolumeRegionalRelTolerance :
 		regional_tolerance_for(tolerance);
 	check_regional_parity(s->name, s->id, "CPU", "GPU-recursive", cpuImg, recImg, regionalTolerance);
 	check_regional_parity(s->name, s->id, "CPU", "GPU-wavefront", cpuImg, wfImg, regionalTolerance);
@@ -1359,10 +1256,8 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
 		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
-		(s->id == "E1")  ? kHomogeneousMediumRecWfRegionalRelTolerance :
-		(s->id == "B13") ? kSubsurfaceSlabRecWfRegionalRelTolerance :
 		(s->id == "B23" || s->id == "B24") ? kDispersivePrismRecWfRegionalRelTolerance :
-		(s->id == "A9" || s->id == "E7" || s->id == "E12") ? kNoisyBlockRecWfRegionalRelTolerance :
+		(s->id == "E7") ? kNoisyBlockRecWfRegionalRelTolerance :
 		kRecWfRegionalRelTolerance;
 	check_regional_parity(s->name, s->id, "GPU-recursive", "GPU-wavefront", recImg, wfImg, recWfRegionalTolerance);
 }

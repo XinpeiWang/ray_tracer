@@ -70,7 +70,7 @@ extern "C" __global__ void __miss__ms() {
 
 extern "C" __global__ void __miss__shadow() {
 	// Shadow ray missed all geometry - path is clear (not occluded)
-	optixSetPayload_0(0);  // occluded = false
+	shadow_state_from_payload()->occluded = 0;  // occluded = false (see ShadowRayState)
 }
 
 //==============================================================================
