@@ -112,14 +112,15 @@ extern "C" __global__ void generate_camera_rays(
 		rx = wf_rand(seed);
 		ry = wf_rand(seed);
 	}
-	float u = (float(px) + rx) / float(width  - 1);
+	// (px+r)/width, not /(width-1) - see optix_raygen.h's identical mapping for why.
+	float u = (float(px) + rx) / float(width);
 	// Flip Y to match optix_raygen.h's lower-left-origin viewport convention
 	// (py=0/top row -> v=1, matching how lower_left_corner+u*horizontal+
 	// v*vertical is constructed for Perspective/Orthographic, and how
 	// Spherical's theta=pi*v expects v=0 at the bottom). Without this flip
 	// every wavefront-mode render using those camera kinds came out
 	// vertically mirrored relative to the recursive path.
-	float v = (float(height - 1 - py) + ry) / float(height - 1);
+	float v = (float(height - 1 - py) + ry) / float(height);
 	// NOTE for future CameraKind additions: same lower-left-origin `v` as
 	// optix_raygen.h's __raygen__rg (see that function's matching comment) -
 	// a camera whose reference model assumes raw raster order (v=0 at the
@@ -132,8 +133,21 @@ extern "C" __global__ void generate_camera_rays(
 	// even function in each axis).
 	float ox = rx - 0.5f;
 	float oy = ry - 0.5f;
-	float filter_w = gpu_filter_evaluate(camera.filterKind, camera.filterB,
-		camera.filterC, camera.filterSigma, camera.filterTau, ox, oy);
+	float filter_w;
+	if (camera.filterSampler) {
+		// Real importance-sampled reconstruction filter - see optix_raygen.h's
+		// identical block (and GpuCameraParams::filterSampler's own comment)
+		// for why the camera ray is regenerated through the sampled position.
+		const FilterSample<float> fs = camera.filterSampler->sample(rx, ry);
+		ox = fs.p_x;
+		oy = fs.p_y;
+		filter_w = fs.weight;
+		u = (float(px) + 0.5f + ox) / float(width);
+		v = (float(height - 1 - py) + 0.5f + oy) / float(height);
+	} else {
+		filter_w = gpu_filter_evaluate(camera.filterKind, camera.filterB,
+			camera.filterC, camera.filterSigma, camera.filterTau, ox, oy);
+	}
 
 	RayWorkItem item;
 	float cam_weight;

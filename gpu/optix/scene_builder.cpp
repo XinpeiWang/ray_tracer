@@ -2256,31 +2256,6 @@ static void build_simple_light_gpu(SceneData& scene) {
 // C++ program - not a new or different layout.
 
 
-// See gpu_filter_evaluate()'s own comment (optix_device_helpers.h) - GPU's
-// own per-sample filter weighting is still hardcoded to radius=0.5, unlike
-// CPU's now-real pbrt-v4-default radius (camera::filter_radius's own
-// comment, src/TheRestOfYourLife/camera.h). A scene relying on a real,
-// wider footprint (any non-default PixelFilter, or even the plain default
-// Gaussian's own real radius of 1.5 - CPU's class-level default, so this
-// applies to EVERY scene that doesn't explicitly request a narrower one,
-// native/built-in scenes included) renders visibly sharper/noisier on GPU
-// than CPU - disclosed here rather than silently diverging with nothing in
-// the log to explain why. Shared by both call sites below (a loaded .pbrt
-// scene's own resolved PixelFilter, and every native scene's fixed
-// "gaussian"/1.5 class default) so the two can't drift out of sync.
-static void warn_if_filter_radius_mismatches_gpu(const std::string& kind, double radius) {
-	if (std::abs(radius - 0.5) > 1e-6) {
-		std::cerr << "[OptiX] Warning: this scene's PixelFilter \"" << kind
-			  << "\" has a real radius of " << radius << " pixels, but GPU's "
-				 "own reconstruction filter is still hardcoded to a 0.5-pixel "
-				 "radius (no cross-pixel splatting there yet) - GPU will render "
-				 "visibly sharper/noisier than CPU for this scene; use --cpu "
-				 "instead if the requested filter width matters for this "
-				 "render.\n";
-	}
-}
-
-
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -2438,7 +2413,7 @@ static bool build_loaded_pbrt_scene(
 		out_camera_extra->filterC = static_cast<float>(pf.C);
 		out_camera_extra->filterSigma = static_cast<float>(pf.sigma);
 		out_camera_extra->filterTau = static_cast<float>(pf.tau);
-		warn_if_filter_radius_mismatches_gpu(pf.kind, pf.radius);
+		out_camera_extra->filterRadius = static_cast<float>(pf.radius);  // real support radius - see GpuCameraParams::filterSampler
 	}
 
 	// Film "float maxcomponentvalue" - CPU's own per-sample firefly clamp
@@ -3109,28 +3084,6 @@ bool build_scene(
 		::build_pinhole_camera_params(lookfrom, effectiveLookAt, vup, vfov_degrees, aspect,
 									   focus_dist, cam_params_out, out_u, out_v, out_w, screen_window);
 	};
-
-	// A native/built-in scene's CPU camera is built entirely by
-	// scene_registry.h/scene_registry_data.h, which never overrides
-	// camera::filter_kind/filter_radius away from their class-level
-	// defaults ("gaussian", 1.5) - unlike a loaded .pbrt scene, which can
-	// carry its own PixelFilter directive (checked below, inside
-	// build_loaded_pbrt_scene()). So the same GPU-vs-CPU filter-radius
-	// mismatch this file discloses for a loaded scene applies, always and
-	// unconditionally, to every native scene too - warn here, once, up
-	// front, rather than leaving this whole other category of scene with
-	// no disclosure at all. Native scenes are every category except
-	// CustomScenes (scenes discovered from a .pbrt file on disk - see
-	// SceneCategories::letter_for_category's own comment for why its
-	// letter isn't hardcoded here, or in this comment: it shifts whenever
-	// a new compiled-in category is inserted before it in kAll, e.g. from
-	// 'J' to 'K' when SceneCategories::Textures was added).
-	if (out_camera_extra) {
-		const std::string category = cpu_scene_category_by_id(scene_id);
-		if (category != SceneCategories::CustomScenes) {
-			warn_if_filter_radius_mismatches_gpu("gaussian", 1.5);
-		}
-	}
 
 	// The switch below still keys on the OLD flat 0..68 int id (unchanged,
 	// on purpose - see SceneDescriptor::legacy_id's comment in

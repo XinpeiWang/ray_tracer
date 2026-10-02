@@ -831,6 +831,8 @@ extern "C" bool rt_realtime_render_frame(
 		// before that. Batch/offline rendering (optix_render_main(), above)
 		// keeps using each scene's own configured filter unchanged.
 		cameraExtra.filterKind = 1;  // 1 = box (GpuCameraParams::filterKind)
+		cameraExtra.filterRadius = 0.5f;  // box's own 1-pixel support - without this a scene's wider
+		                                  // (e.g. Gaussian 1.5) radius would be applied to the box shape
 		// Live Preview firefly clamp, kept as defense-in-depth alongside the
 		// filter fix above - prepareSceneAndCamera()'s own default
 		// (cameraExtra.maxComponentValue = 1e9f, above) is effectively

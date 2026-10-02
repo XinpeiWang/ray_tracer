@@ -16,6 +16,7 @@
 //==============================================================================================
 
 #include <cmath>
+#include <string>  // PixelFilterDispatch's kind_ (self-contained: GPU TUs include this via optix_types.h)
 #include "scalar_math.h"
 
 // ---------------------------------------------------------------------------

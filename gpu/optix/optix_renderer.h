@@ -647,6 +647,14 @@ private:
 	}
 
   private:
+	/// Device FilterSampler<float,32> (GpuCameraParams::filterSampler) plus the
+	/// parameters it was last built from, so render() only rebuilds/re-uploads
+	/// it when the filter actually changes (Live Preview calls render() per
+	/// frame).
+	CUdeviceptr d_filterSampler_ = 0;
+	int   filterSamplerKind_ = -1;
+	float filterSamplerRadius_ = 0.0f, filterSamplerB_ = 0.0f, filterSamplerC_ = 0.0f,
+	      filterSamplerSigma_ = 0.0f, filterSamplerTau_ = 0.0f;
 	CUdeviceptr d_lensElements_ = 0;      ///< Device RealisticCamera lens table
 	unsigned int numLensElements_ = 0;    ///< Number of lens elements
 	CUdeviceptr d_exitPupilBounds_ = 0;    ///< Device RealisticCamera exit-pupil bounds table

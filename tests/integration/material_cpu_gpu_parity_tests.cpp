@@ -657,6 +657,17 @@ static float regional_tolerance_for(float wholeImageTolerance) {
 // just applied per-comparison instead of skipping the whole test.
 constexpr float kMinComparableValue = 0.004f;
 
+// Regional (per-block) floor, higher than the whole-image one above: a 10x10px
+// block averaging under ~5/255 on BOTH sides is within a couple of 8-bit
+// quantization levels of black, where a "relative" difference (2 vs 5 levels
+// = 60%) is pure noise - the dark fringe of a participating-medium glow or a
+// hair strand's shadow. After the GPU filter-reach fix (see
+// GpuCameraParams::filterSampler) these were the ONLY remaining outliers
+// in E6/E11/B11 (worst blocks of 2-7/255, whole-image gaps unchanged and
+// already inside tolerance). Deliberately low: D4's real shadow-leak bug
+// showed up in blocks of 8 vs 20 of 255 (0.031 vs 0.078), which this keeps.
+constexpr float kRegionalMinComparableValue = 0.02f;
+
 // Volumes scenes (E1-E4) get a wider tolerance than kRelTolerance. The 46.8%
 // (B channel, CPU vs GPU-wavefront) gap this 0.55 ceiling was originally
 // calibrated against was fully explained by a confirmed, deliberate backend
@@ -746,27 +757,19 @@ constexpr float kRoughMetalSpheresRelTolerance = 0.34f;
 // (which passes comfortably within the standard Volumes tolerance already).
 constexpr float kCameraMediumRelTolerance = 0.85f;
 
-// B14 (Measured BRDF) - a REGIONAL-check-only exception (its whole-image
-// brightness/channel checks above pass comfortably at the standard 30% -
-// this material's own tolerance stays kRelTolerance, deliberately NOT
-// listed in the ternary chain below that picks `tolerance`). See this
-// file's header comment's B14 entry for the full investigation: this
-// material has a narrow, NEE-less specular lobe (is_specular=true,
-// confirmed identical on all three backends) reflected toward a small
-// area light, which produces real, substantial same-backend firefly
-// variance at this suite's own 200spp/60x60 settings - re-rendering CPU
-// alone 5x with different seeds showed this scene's own worst block
-// swinging by up to 24.6% with NO GPU involved at all. 65% gives real
-// margin over the worst isolated CPU-vs-GPU measurement without masking a
-// materially larger future regression; it does NOT invalidate the regional
-// check generally - every OTHER scene still uses the standard
-// kRegionalRelTolerance via regional_tolerance_for(tolerance).
-// 70% (was 65%): the Phase 2 calibration runs (2026-10-02) measured the
-// worst block at 62.8%/61.5% (CPU vs recursive/wavefront), leaving only
-// ~2-3pts of headroom under 65% for a scene already shown to swing 24.6%
-// run-to-run on seed variance alone - widened for flake headroom, not
-// because of any new gap.
-constexpr float kMeasuredBrdfRegionalRelTolerance = 0.70f;
+// B14 (Measured BRDF) - RETIRED regional exception (was 65%, then 70%).
+// It existed for a CPU-vs-GPU worst-block gap of up to ~63% on this
+// scene's narrow, NEE-less specular lobe toward a small area light (see this
+// file's header comment's B14 entry for that investigation: real same-backend
+// firefly variance, swings of up to 24.6% from seed alone). The Phase 2 filter
+// work (GPU now importance-samples the same Gaussian r=1.5 reconstruction
+// filter as CPU - GpuCameraParams::filterSampler - and maps pixels to the
+// viewport with width/height instead of width-1/height-1) cut the measured
+// worst block to 15.1% CPU-vs-GPU / 8.5% recursive-vs-wavefront, so the
+// seed-variance headroom that exception bought is no longer needed: B14 now
+// uses the standard regional tolerance like every other scene. If it ever
+// flakes again, the 24.6% same-backend swing above is the number to
+// reason from before restoring an exception.
 
 // B11 (Hair Fibers) - same pattern as B14 above, a REGIONAL-check-only
 // exception (whole-image checks pass comfortably at the standard 30%).
@@ -921,64 +924,42 @@ constexpr float kDispersivePrismRecWfRegionalRelTolerance = 0.55f;
 //
 // Expanding this suite from 40 to 96 scenes (2026-10-02) found two REAL GPU
 // bugs (D6 orthographic mirroring, D4 emitter shadow-ray light leak - both
-// fixed in 916ef9df) and left a dozen further scenes failing only on the regional
-// check (every whole-image check passed for every new scene). Each is
-// accounted for below; none is a code bug.
+// fixed in 916ef9df), and its first calibration pass then needed a dozen
+// regional-only exceptions for dark, sharp-edged lighting scenes (C11/C17/
+// C18/C19/F13 at up to 100%, A7/A9/C13/D4/F10 at 47-59%). Those traced to
+// two further REAL GPU/CPU mismatches, fixed afterwards, which is why most of
+// those exceptions are gone again:
+//   1. Reconstruction filter reach: GPU weighted samples only inside their
+//      own pixel (hardcoded 0.5px) while CPU importance-samples pbrt-v4's
+//      Gaussian r=1.5 across neighbouring pixels. GPU now draws from the
+//      same FilterSampler table (GpuCameraParams::filterSampler).
+//   2. Pixel->viewport mapping: GPU divided by (width-1)/(height-1) instead
+//      of width/height, stretching every GPU render by width/(width-1) about
+//      the centre (the outermost pixel centre overshot the viewport by half a
+//      pixel: ~1.7% at this suite's 60px).
+// Measured effect (60px, same spp): C19 whole-image gap 10.2% -> 0.0%, C18
+// 3.0% -> 0.1%, D2 3.0% -> 0.0%, A1 0.2%/2.7% -> 0.1%/0.4%; B14's CPU-pair
+// worst block 62.8% -> 15.1% (so its regional exception is gone too).
 // ============================================================================
 
-// C11/C17/C18/C19/F13 - CPU-vs-GPU REGIONAL only. These are dark scenes
-// dominated by a few small, sharp-edged bright features (a spotlight/
-// projection footprint, a textured emitter, a grazing-angle emitter sliver),
-// so a handful of 10x10px blocks that merely BORDER a bright edge hold very
-// small absolute values (typically 4-14 of 255) where one backend's block
-// is 0-2x the other's. Two documented, expected causes (not bugs):
-//   1. Reconstruction filter reach: CPU splats each sample across its
-//      pixel's Gaussian radius (default 1.5px, pbrt-v4), GPU weights
-//      samples only within the pixel's own footprint (see
-//      PBRT_SUPPORT.md). Verified empirically: forcing PixelFilter "box"
-//      on C19 drops the whole-image gap 10.2% -> 0.4%, C18 3.0% -> 0.7%,
-//      F13 0.7% -> 0.3% (the remaining dark-block gaps are the next cause).
-//   2. Sub-pixel/edge geometry: C18's worst block (5,0) is a ~1px-thick
-//      sliver of its area light seen at a grazing angle (isolated by
-//      removing the other two lights: 9 vs 5 of 255 with a box filter on
-//      both); C11/C19 additionally use GPU nearest-neighbour vs CPU
-//      bilinear image lookup for light textures (PBRT_SUPPORT.md,
-//      AreaLightSource "diffuse"/"projection").
-// Measured worst blocks: C11 55.7%, C17 95.4%, F13 85.9%, C18/C19 100%.
-// 1.0 is the exact mathematical ceiling (same reasoning as
-// kCameraMediumRegionalRelTolerance): the CPU-pair regional check cannot
-// fail for these five scenes, which is the honest statement that their
-// dark-edge blocks aren't comparable - every OTHER check still applies
-// unchanged (whole-image brightness/channels for both CPU pairs at the
-// standard tolerance, and rec-vs-wf at the standard whole-image AND
-// regional tolerances, where both GPU backends share the filter/texture
-// behaviour and agree within a few percent).
-constexpr float kSharpLightEdgeRegionalRelTolerance = 1.0f;
+// C11/A9 - CPU-vs-GPU REGIONAL only: the two scenes still within a few points
+// of (or past) the standard 50% line after the fixes above - C11 at 52.1%
+// (GPU's nearest-neighbour vs CPU's bilinear emissive-texture lookup, a
+// documented approximation: PBRT_SUPPORT.md, AreaLightSource "diffuse"
+// filename) and A9 at 48.7% (hundreds of small random spheres, high block
+// variance).
+constexpr float kLightTextureRegionalRelTolerance = 0.65f;
 
-// A7/A9/C13/D4/F10 - CPU-vs-GPU REGIONAL only: dim scenes whose worst
-// 10x10px block sits at or just under the standard 50% line, so repeated
-// full-suite runs flip them between pass and fail on Monte-Carlo noise
-// alone. Measured across repeated runs: A7 50-59% (systematic: two blocks
-// beside the emitter's edge, e.g. 10 vs 4 of 255), C13 50.4%, D4 50.2%
-// (both failed once in three back-to-back runs, passed the other two), F10
-// 47.9%, A9 47.3%. Same filter-reach/edge cause as the sharp-edge scenes
-// above, but these never reach the 1.0 ceiling, so they get a calibrated
-// 70% that keeps the check live. (D4's real shadow-leak bug was a ~12%
-// whole-image gap plus 47-58% blocks beside its sphere on the run that
-// found it; after the fix its remaining worst blocks are dark-fringe ones
-// at ~50%, and the whole-image check at the standard tolerance still
-// applies in full.)
-constexpr float kDimSceneRegionalRelTolerance = 0.70f;
-
-// A9/E6/E11 - GPU-recursive-vs-wavefront REGIONAL only: one block each
-// landed at 45.5%/47.7%/54.9% on the Phase 2 run, just over the standard
-// kRecWfRegionalRelTolerance (42%). Direct 120px renders of all three agree
-// between the two backends within ~0-5% overall (cmp3 sweep, same day), and
-// E6/E11 have flaked on this exact check across earlier full-suite runs
-// while passing in isolation - Monte-Carlo variance of a 100-pixel block,
-// not drift. Given a shared, explicitly-named tolerance (like B13's) rather
-// than widening the standard value every other scene relies on.
-constexpr float kNoisyBlockRecWfRegionalRelTolerance = 0.65f;
+// A9/E7/E12 - GPU-recursive-vs-wavefront REGIONAL only (measured over
+// repeated runs: A9 45.5-47.1%, E12 48.1%, E7 39-40.1%, vs the standard
+// kRecWfRegionalRelTolerance of 42%). A9 and E7 are Monte-Carlo variance of a
+// 100-pixel block (direct renders agree within a few percent). E12 is a REAL,
+// separate, still-open wavefront gap: GPU-recursive matches CPU within 1.5%
+// but GPU-wavefront renders ~15% darker (E11, the thin-dielectric twin, shows
+// the same 11.5% wavefront deficit) - both are rough/thin dielectric+medium
+// "fusion" scenes (see kRecWfRelTolerance's comment for their whole-image
+// R-channel gaps). Tracked as follow-up work, not a tolerance problem.
+constexpr float kNoisyBlockRecWfRegionalRelTolerance = 0.60f;
 
 static void check_relative_parity(const char* sceneName, const std::string& sceneId,
                                    const char* label, const char* backendA, const char* backendB,
@@ -1006,7 +987,7 @@ static void check_regional_parity(const char* sceneName, const std::string& scen
                                    const char* backendA, const char* backendB,
                                    const MPImage& a, const MPImage& b, float regionalTolerance) {
 	const MPRegionalDiffResult r = mp_regional_diff(a, b, kRegionalGridSize,
-	                                                 kMinComparableValue, regionalTolerance);
+	                                                 kRegionalMinComparableValue, regionalTolerance);
 	if (r.comparableBlocks == 0) return;  // whole image too dark to compare, same as check_relative_parity
 	EXPECT_EQ(r.blocksOverThreshold, 0)
 		<< sceneName << " (" << sceneId << ") regional diff, " << backendA << " vs " << backendB << ": "
@@ -1333,14 +1314,10 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// constants' comments) - their whole-image `tolerance` above stays
 	// standard.
 	const float regionalTolerance =
-		(s->id == "B14") ? kMeasuredBrdfRegionalRelTolerance :
 		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
 		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
-		(s->id == "C11" || s->id == "C17" || s->id == "C18" || s->id == "C19" || s->id == "F13")
-			? kSharpLightEdgeRegionalRelTolerance :
-		(s->id == "A7" || s->id == "A9" || s->id == "C13" || s->id == "D4" || s->id == "F10")
-			? kDimSceneRegionalRelTolerance :
+		(s->id == "C11" || s->id == "A9") ? kLightTextureRegionalRelTolerance :
 		regional_tolerance_for(tolerance);
 	check_regional_parity(s->name, s->id, "CPU", "GPU-recursive", cpuImg, recImg, regionalTolerance);
 	check_regional_parity(s->name, s->id, "CPU", "GPU-wavefront", cpuImg, wfImg, regionalTolerance);
@@ -1351,14 +1328,13 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// why no new constant was needed for those four); E1 and B13 get their
 	// own new exceptions, measured specifically for this pair.
 	const float recWfRegionalTolerance =
-		(s->id == "B14") ? kMeasuredBrdfRegionalRelTolerance :
 		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
 		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
 		(s->id == "E1")  ? kHomogeneousMediumRecWfRegionalRelTolerance :
 		(s->id == "B13") ? kSubsurfaceSlabRecWfRegionalRelTolerance :
 		(s->id == "B23" || s->id == "B24") ? kDispersivePrismRecWfRegionalRelTolerance :
-		(s->id == "A9" || s->id == "E6" || s->id == "E11") ? kNoisyBlockRecWfRegionalRelTolerance :
+		(s->id == "A9" || s->id == "E7" || s->id == "E12") ? kNoisyBlockRecWfRegionalRelTolerance :
 		kRecWfRegionalRelTolerance;
 	check_regional_parity(s->name, s->id, "GPU-recursive", "GPU-wavefront", recImg, wfImg, recWfRegionalTolerance);
 }
