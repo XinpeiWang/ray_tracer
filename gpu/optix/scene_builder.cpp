@@ -2481,163 +2481,11 @@ static void build_principled_showcase_gpu(SceneData& scene) {
 #include "scene_builder_mesh_gallery.h"
 
 
-/// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
-/// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
-/// structurally: 400-box randomized-height ground, area light quad, moving
-/// sphere, dielectric + metal spheres, Earth-image and Perlin-noise
-/// textured spheres, and a 1000-sphere rotated/translated cluster - all
-/// now real GPU features (boxes-as-quads, motion blur, large static sphere
-/// counts, and - as of this function - image/noise textures via
-/// load_image_texture_gpu/add_noise_texture_gpu and shade_material()'s
-/// texture sampling, see optix_types.h's MaterialData::textureIdx).
-/// The two constant_medium fog spheres (small blue fog + giant whole-scene
-/// haze) use MaterialType::DielectricMedium, which collapses CPU's "same
-/// dielectric boundary sphere added to the world twice - once directly,
-/// once wrapped in constant_medium, whichever hits closer each bounce wins"
-/// trick into a single material (see that type's comment in optix_types.h).
-/// Uses its own fixed-seed RNG for the ground/sphere-cluster randomization,
-/// like every other procedural GPU scene (e.g. build_bouncing_spheres) -
-/// not intended to pixel-match CPU's independently-seeded layout.
-void build_final_scene_gpu(SceneData& scene) {
-	std::mt19937 rng(8u);
-	std::uniform_real_distribution<float> unit(0.0f, 1.0f);
-
-	// Ground: 20x20 grid of boxes with randomized height, matching CPU's
-	// loop bounds/spacing (w=100, x0/z0 in [-1000,1000)) exactly.
-	{
-		const int mat_ground = add_lambertian(scene, make_float3(0.48f, 0.83f, 0.53f));
-		constexpr int kBoxesPerSide = 20;
-		constexpr float w = 100.0f;
-		for (int i = 0; i < kBoxesPerSide; ++i) {
-			for (int j = 0; j < kBoxesPerSide; ++j) {
-				const float x0 = -1000.0f + i * w;
-				const float z0 = -1000.0f + j * w;
-				const float y1 = 1.0f + unit(rng) * 100.0f;  // random_double(1,101)
-				add_box(scene, make_float3(x0, 0.0f, z0), make_float3(x0 + w, y1, z0 + w), mat_ground);
-			}
-		}
-	}
-
-	// Area light quad (matches CPU exactly: Q=(123,554,147), u=(300,0,0), v=(0,0,265))
-	{
-		const int mat_light = add_diffuse_light(scene, make_float3(7.0f, 7.0f, 7.0f));
-		add_transformed_quad(scene, make_float3(123.0f, 554.0f, 147.0f), make_float3(300.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 265.0f), mat_light);
-	}
-
-	// Moving sphere (real GPU motion blur - center1 differs from center).
-	{
-		const int mat = add_lambertian(scene, make_float3(0.7f, 0.3f, 0.1f));
-		SphereData s{};
-		s.center = make_float3(400.0f, 400.0f, 200.0f);
-		s.center1 = make_float3(430.0f, 400.0f, 200.0f);  // center + (30,0,0)
-		s.radius = 50.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// Dielectric (glass) sphere.
-	{
-		const int mat = add_dielectric(scene, 1.5f);
-		SphereData s{};
-		s.center = make_float3(260.0f, 150.0f, 45.0f);
-		s.center1 = s.center;
-		s.radius = 50.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// Metal sphere.
-	{
-		const int mat = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 1.0f);
-		SphereData s{};
-		s.center = make_float3(0.0f, 150.0f, 145.0f);
-		s.center1 = s.center;
-		s.radius = 50.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// Small fog sphere: dielectric(1.5) boundary with an internal blue-
-	// tinted medium (matches CPU's constant_medium(boundary, 0.2,
-	// color(0.2,0.4,0.9)) wrapping the same dielectric(1.5) boundary).
-	// MaterialData.eta_c.x carries sigma_t=0.2 (density); .fuzz=0 is the
-	// HG asymmetry g, matching CPU's legacy constructor's g=0.0 default.
-	{
-		const int mat = add_dielectric_medium(scene, make_float3(0.2f, 0.4f, 0.9f), 1.5f, 0.2f);
-		SphereData s{};
-		s.center = make_float3(360.0f, 150.0f, 145.0f);
-		s.center1 = s.center;
-		s.radius = 70.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// Giant whole-scene haze sphere: extremely subtle white atmospheric
-	// tint (matches CPU's constant_medium(boundary_r5000, .0001,
-	// color(1,1,1))). The camera and every other object in this scene sit
-	// well within its radius-5000 boundary, so every primary ray starts
-	// already inside it - see MaterialType::DielectricMedium's comment in
-	// optix_types.h for why that makes the "entry from outside" half of
-	// this material's logic unreachable here, which is fine, it's still
-	// correct.
-	{
-		const int mat = add_dielectric_medium(scene, make_float3(1.0f, 1.0f, 1.0f), 1.5f, 0.0001f);
-		SphereData s{};
-		s.center = make_float3(0.0f, 0.0f, 0.0f);
-		s.center1 = s.center;
-		s.radius = 5000.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// Earth-image-texture sphere. Falls back to CPU's own solid-cyan
-	// missing-texture color if earthmap.jpg can't be found (see
-	// load_image_texture_gpu's comment) - this matches CPU's behavior
-	// exactly rather than being a GPU-specific limitation.
-	{
-		const int earthTexIdx = load_image_texture_gpu(scene, "earthmap.jpg");
-		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), earthTexIdx);
-		SphereData s{};
-		s.center = make_float3(400.0f, 200.0f, 400.0f);
-		s.center1 = s.center;
-		s.radius = 100.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// Perlin-noise-texture sphere (matches CPU's noise_texture(0.2) exactly).
-	{
-		const int noiseTexIdx = add_noise_texture_gpu(scene, 0.2f);
-		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), noiseTexIdx);
-		SphereData s{};
-		s.center = make_float3(220.0f, 280.0f, 300.0f);
-		s.center1 = s.center;
-		s.radius = 80.0f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-
-	// 1000-sphere white cluster, rotated 15deg around Y then translated -
-	// matches CPU's random_double(0,165) box + rotate_y(15) + translate
-	// (-100,270,395) exactly in structure (own RNG sequence, not CPU's).
-	{
-		const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
-		constexpr int kNumSpheres = 1000;
-		constexpr float kTranslate_x = -100.0f, kTranslate_y = 270.0f, kTranslate_z = 395.0f;
-		for (int i = 0; i < kNumSpheres; ++i) {
-			const float3 local = make_float3(unit(rng) * 165.0f, unit(rng) * 165.0f, unit(rng) * 165.0f);
-			const float3 rotated = rotate_y(local, 15.0f);
-			SphereData s{};
-			s.center = make_float3(rotated.x + kTranslate_x, rotated.y + kTranslate_y, rotated.z + kTranslate_z);
-			s.center1 = s.center;
-			s.radius = 10.0f;
-			s.materialIdx = mat_white;
-			scene.spheres.push_back(s);
-		}
-	}
-}
+// build_final_scene_gpu() (former "scene 8" / A9 GPU builder) deleted - A9
+// migrated to pbrt-backed, see pbrt_scenes/final-scene.pbrt and its case-8
+// removal below. That file's ground-box/sphere-cluster layout is this exact
+// function's own fixed std::mt19937(8) sequence, dumped once by a throwaway
+// C++ program - not a new or different layout.
 
 
 // See gpu_filter_evaluate()'s own comment (optix_device_helpers.h) - GPU's
@@ -3626,24 +3474,10 @@ bool build_scene(
 					break;
 				}
 
-				case 8:  // Final Scene (see build_final_scene_gpu's own comment
-						 // for what's ported vs. placeholder-approximated)
-					build_final_scene_gpu(scene);
-					{
-						// Fixed-mode scene (no CameraMode::UserControlled in its
-						// registry entry) - ignore cam_x/y/z by default, matching
-						// CPU, UNLESS force_camera_override is set (video mode's
-						// per-frame animated position), same convention as
-						// scenes 1-4 above.
-						apply_mesh_camera(make_float3(478.0f, 278.0f, -600.0f), make_float3(278.0f, 278.0f, 0.0f), 40.0f);
-						// Subtle deep ambient instead of pure black, matching CPU
-						// registry's bg=(0.03,0.025,0.02) - the box-grid ground and
-						// negative space used to render into a stark void even
-						// though this scene has a real area light (the light quad
-						// above) doing the actual illumination.
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.03f, 0.025f, 0.02f);
-					}
-					break;
+				// case 8 (Final Scene / A9) migrated to pbrt-backed - see
+				// pbrt_scenes/final-scene.pbrt and scene_registry_data.h's own
+				// entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 8 is no longer assigned to any scene.
 
 				case 9: {  // Rough Metal Spheres (GGX)
 										build_rough_metal_spheres(scene);
