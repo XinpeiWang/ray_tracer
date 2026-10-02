@@ -1,0 +1,57 @@
+# frosted-prism-dispersion.pbrt -- migration of the native "B24 Frosted
+# Prism Dispersion" demo scene (src/TheRestOfYourLife/scenes_materials.h's
+# build_prism_dispersion_rough()) to a pbrt-backed scene, part of this
+# project's GPU scene-construction-duplication elimination.
+#
+# Identical geometry/light/camera to prism-dispersion.pbrt (B23) - see that
+# file's own header comment for the full derivation - with one difference:
+# the prism's own Material adds "float roughness" [ 0.08 ], giving a real
+# GGX microfacet dielectric (pbrt-v4 DielectricBxDF's rough path, already
+# wired by this loader - see pbrt_cpu_builder.h/pbrt_gpu_builder_materials.h's
+# own Dielectric case) instead of a perfectly smooth one, exactly matching
+# native's own rough_dielectric::make_dispersive(1.52, 59.0, 0.08). The
+# chromatic fan is the same hue order as B23's, just blurred by the
+# roughness - demonstrating that dispersion isn't special-cased to smooth
+# glass, since rough_dielectric's real NEE/MIS path had to become
+# wavelength-aware too, not just its initial scatter (see native's own
+# header comment for the full rationale this migration doesn't change at
+# all - only which code constructs the material differs).
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  75 60 -400    75 75 250    0 1 0
+Camera "perspective" "float fov" [ 30 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "distant" "point3 from" [ 0 0.06 -1.0 ] "point3 to" [ 0 0 0 ]
+  "rgb L" [ 1 1 1 ] "float scale" [ 3.0 ]
+
+# ---------------------------------------------------------------- prism (frosted)
+Material "dielectric" "float eta" [ 1.52 ] "float abbenumber" [ 59.0 ]
+  "float roughness" [ 0.08 ]
+
+# base (z=0..140 side, y=0): Q=A u=depth v=(B-A)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   150 0 0   150 0 140   0 0 140 ]
+# exit slant (toward +z): Q=B u=depth v=(C-B)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 140   150 0 140   150 121 70   0 121 70 ]
+# entry slant (toward -z): Q=C u=depth v=(A-C)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 121 70   150 121 70   150 0 0   0 0 0 ]
+# x=0 end cap (forward winding A,B,C -> outward -X)
+Shape "trianglemesh" "integer indices" [ 0 1 2 ]
+  "point3 P" [ 0 0 0   0 0 140   0 121 70 ]
+# x=150 end cap (reversed winding A',C',B' -> outward +X)
+Shape "trianglemesh" "integer indices" [ 0 1 2 ]
+  "point3 P" [ 150 0 0   150 121 70   150 0 140 ]
+
+# ---------------------------------------------------------------- catcher screen
+Material "diffuse" "rgb reflectance" [ 0.9 0.9 0.9 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -300 -300 600   300 -300 600   300 400 600   -300 400 600 ]

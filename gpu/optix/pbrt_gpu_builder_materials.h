@@ -839,6 +839,16 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			// identical-shape override above for the full rationale.
 			d.roughness  = static_cast<float>(m.roughness_u);
 			d.roughnessV = static_cast<float>(m.roughness_v);
+			// "abbenumber" (Material::abbeNumber's own comment, pbrt_flatten.h
+			// - not real pbrt-v4 syntax) - mirrors gpu/optix/scene_builder.cpp's
+			// own add_dispersive_rough_dielectric() exactly, only wired for
+			// isotropic roughness (same scope cut as pbrt_cpu_builder.h's
+			// identical branch - no bundled scene needs anisotropic-dispersive).
+			if (m.abbeNumber > 0.0) {
+				double A, B;
+				CauchyCoefficientsFromAbbe(m.ior, m.abbeNumber, A, B);
+				d.dispersive_extra = { static_cast<float>(A), static_cast<float>(B), 0.0f };
+			}
 			break;
 		}
 		d.type = MaterialType::Dielectric;
@@ -850,6 +860,14 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
         // here rather than accidentally tinting every pbrt-loaded glass
         // material by whatever m.color happened to default to.
 		d.transmission_filter = make_float3(1.0f, 1.0f, 1.0f);
+		// "abbenumber" - mirrors add_dispersive_dielectric()'s own Cauchy
+		// derivation exactly, see the rough branch above for the full
+		// rationale.
+		if (m.abbeNumber > 0.0) {
+			double A, B;
+			CauchyCoefficientsFromAbbe(m.ior, m.abbeNumber, A, B);
+			d.dispersive_extra = { static_cast<float>(A), static_cast<float>(B), 0.0f };
+		}
 		break;
 	case pbrt_flatten::MaterialKind::ThinDielectric:
 		d.type = MaterialType::ThinDielectric;

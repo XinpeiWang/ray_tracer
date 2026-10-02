@@ -194,31 +194,6 @@ namespace {
 		return idx;
 	}
 
-	// Wavelength-dependent (chromatic dispersion) Dielectric - GPU-wavefront
-	// counterpart of CPU's dielectric::make_dispersive(eta_d, abbe_number).
-	// eta_d/abbe_number are the same two Abbe-number inputs CPU takes; the
-	// Cauchy (A, B) pair is derived once here, at scene-build time (host-
-	// side, CauchyCoefficientsFromAbbe() is not CPU_GPU-tagged - it doesn't
-	// need to be, this never runs per-ray), and stored in MaterialData's
-	// dispersive_extra union slot for wavefront_kernels.cu's
-	// evaluate_materials_dielectric() to read per-hit. m.ior stays the flat
-	// eta_d value - unused once dispersive_extra.cauchy_A > 0 marks this
-	// material dispersive, but harmless to leave set (matches what a
-	// non-dispersive add_dielectric() call already looks like).
-	inline int add_dispersive_dielectric(SceneData& scene, float eta_d, float abbe_number,
-										  float3 transmissionFilter = make_float3(1.0f, 1.0f, 1.0f)) {
-		const int idx = safe_cast_to_int(scene.materials.size());
-		double A, B;
-		CauchyCoefficientsFromAbbe(static_cast<double>(eta_d), static_cast<double>(abbe_number), A, B);
-		MaterialData m{};
-		m.type = MaterialType::Dielectric;
-		m.ior = eta_d;
-		m.transmission_filter = transmissionFilter;
-		m.dispersive_extra = { static_cast<float>(A), static_cast<float>(B), 0.0f };
-		scene.materials.push_back(m);
-		return idx;
-	}
-
 	inline int add_diffuse_light(SceneData& scene, float3 emission, int textureIdx = -1) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
@@ -251,22 +226,6 @@ namespace {
 		// transmission), never as a black hole, so a mid-bright grey is a
 		// much better denoiser guide than silent zero.
 		m.albedo = make_float3(0.9f, 0.9f, 0.9f);
-		scene.materials.push_back(m);
-		return idx;
-	}
-
-	// Wavelength-dependent RoughDielectric - see add_dispersive_dielectric()'s
-	// own comment, same shape, GPU-wavefront counterpart of CPU's
-	// rough_dielectric::make_dispersive(eta_d, abbe_number, roughness).
-	inline int add_dispersive_rough_dielectric(SceneData& scene, float roughness, float eta_d, float abbe_number) {
-		const int idx = safe_cast_to_int(scene.materials.size());
-		double A, B;
-		CauchyCoefficientsFromAbbe(static_cast<double>(eta_d), static_cast<double>(abbe_number), A, B);
-		MaterialData m{};
-		m.type = MaterialType::RoughDielectric;
-		m.roughness = roughness;
-		m.ior = eta_d;
-		m.dispersive_extra = { static_cast<float>(A), static_cast<float>(B), 0.0f };
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -2168,69 +2127,19 @@ static void build_simple_light_gpu(SceneData& scene) {
 // forward into geometry/dgauss-9-element.dat) needed reconciling, both
 // resolved by this migration.
 
-/// @brief B23/B24: Glass/Frosted Prism Dispersion geometry, screen, and
-/// light - shared by both scenes (case 131/136 below), parameterized on the
-/// glass material the same way CPU's own build_prism_dispersion_geometry()
-/// is (src/TheRestOfYourLife/scenes_materials.h) - only the material itself
-/// (smooth vs. frosted dispersive dielectric) differs between the two.
-/// Direct GPU port of that function plus build_prism_dispersion_punct():
-/// same prism cross-section, catcher screen, and distant light, byte-for-
-/// byte the same coordinates.
-static void build_prism_dispersion_gpu(SceneData& scene, int mat_glass) {
-	const int mat_screen = add_lambertian(scene, make_float3(0.9f, 0.9f, 0.9f));
-
-	const float3 A(make_float3(0.0f, 0.0f, 0.0f));
-	const float3 B(make_float3(0.0f, 0.0f, 140.0f));
-	const float3 C(make_float3(0.0f, 121.0f, 70.0f));
-	const float3 depth = make_float3(150.0f, 0.0f, 0.0f);
-
-	auto push_quad = [&](float3 Q, float3 u, float3 v, int matIdx) {
-		QuadData q{};
-		q.Q = Q; q.u = u; q.v = v;
-		const float3 c = cross(u, v);
-		q.w = c;
-		q.normal = normalize(c);
-		q.D = dot(q.normal, q.Q);
-		q.materialIdx = matIdx;
-		scene.quads.push_back(q);
-	};
-	// 3 rectangular sides - same outward-normal winding as the CPU
-	// geometry's own comment (scenes_materials.h).
-	push_quad(A, depth, B - A, mat_glass);  // base
-	push_quad(B, depth, C - B, mat_glass);  // exit slant
-	push_quad(C, depth, A - C, mat_glass);  // entry slant
-
-	// 2 triangular end caps - same winding as CPU's mesh_data
-	// (indices {0,1,2, 3,5,4} into {A,B,C,A+depth,B+depth,C+depth}).
-	{
-		TriangleData t{};
-		t.p0 = A; t.p1 = B; t.p2 = C;
-		t.materialIdx = mat_glass;
-		scene.triangles.push_back(t);
-	}
-	{
-		TriangleData t{};
-		t.p0 = A + depth; t.p1 = C + depth; t.p2 = B + depth;
-		t.materialIdx = mat_glass;
-		scene.triangles.push_back(t);
-	}
-
-	// Catcher screen.
-	push_quad(make_float3(-300.0f, -300.0f, 600.0f),
-			  make_float3(600.0f, 0.0f, 0.0f),
-			  make_float3(0.0f, 700.0f, 0.0f), mat_screen);
-
-	// Distant light - dir is TOWARD the light, see DistantLightData's own
-	// comment (src/shared/punctual_lights.h).
-	float3 dir = normalize(make_float3(0.0f, 0.06f, -1.0f));
-	PunctualLightGPU light{};
-	light.kind = PunctualLightKind::Distant;
-	light.distant.dir_x = dir.x; light.distant.dir_y = dir.y; light.distant.dir_z = dir.z;
-	light.distant.ir = 1.0f; light.distant.ig = 1.0f; light.distant.ib = 1.0f;
-	light.distant.scale = 3.0f;
-	light.distant.scene_radius = 1000.0f;
-	scene.punctualLights.push_back(light);
-}
+// build_prism_dispersion_gpu() (former B23/B24 shared GPU geometry builder)
+// deleted - both B23 and B24 migrated to pbrt-backed, see
+// pbrt_scenes/prism-dispersion.pbrt/frosted-prism-dispersion.pbrt and their
+// case removal below. add_dispersive_dielectric()/
+// add_dispersive_rough_dielectric() (this file's own convenience wrappers)
+// had no other caller - deleted too. The new generic pbrt Material
+// "dielectric" dispatch's "abbenumber" handling (gpu/optix/
+// pbrt_gpu_builder_materials.h) sets MaterialData's dispersive_extra fields
+// directly instead, same convention as every other generic pbrt material
+// case. I2 (CPU-only, out of scope) still uses the CPU-side
+// build_prism_dispersion()/build_prism_dispersion_geometry()/
+// build_prism_dispersion_punct(), none of which this GPU-only deletion
+// touches.
 
 // build_hdri_sky_world_gpu() (former "scene 24"/C1, and its case-134/I3
 // alias) deleted - both migrated to pbrt-backed, see pbrt_scenes/
@@ -3801,47 +3710,21 @@ bool build_scene(
 							// own I4 entry. Falls through to default: -> build_loaded_pbrt_
 							// scene() now that legacy_id 135 is no longer assigned.
 
-							case 136: {  // B24: Frosted Prism Dispersion (same prism as B23, rough_dielectric instead of dielectric)
-								// Geometry/screen/light shared with case 131 (B23) via
-								// build_prism_dispersion_gpu() - only the glass material
-								// differs (frosted instead of smooth).
-								const int mat_glass = add_dispersive_rough_dielectric(scene, 0.08f, 1.52f, 59.0f);
-								build_prism_dispersion_gpu(scene, mat_glass);
+							// case 136 (Frosted Prism Dispersion / B24) migrated to
+							// pbrt-backed - see
+							// pbrt_scenes/frosted-prism-dispersion.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id
+							// 136 is no longer assigned to any scene.
 
-								const float3 lookfrom = make_float3(
-									static_cast<float>(cam_x),
-									static_cast<float>(cam_y),
-									static_cast<float>(cam_z)
-								);
-								const float3 lookat = make_float3(75.0f, 75.0f, 250.0f);
-								const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);
-								break;
-							}
-
-							case 131: {  // B23: Glass Prism Dispersion (GPU wavefront - see MaterialData::dispersive_extra's own comment)
-								// Geometry/screen/light: build_prism_dispersion_gpu() above -
-								// direct GPU port of CPU build_prism_dispersion_geometry()/
-								// build_prism_dispersion()/build_prism_dispersion_punct()
-								// (src/TheRestOfYourLife/scenes_materials.h), byte-for-byte
-								// the same coordinates.
-								const int mat_glass = add_dispersive_dielectric(scene, 1.52f, 59.0f);
-								build_prism_dispersion_gpu(scene, mat_glass);
-
-								// Camera: identical to CameraConfig kPrismCamera (scene_registry.h)
-								// - CameraMode::UserControlled, same shape as case 0/135 above.
-								const float3 lookfrom = make_float3(
-									static_cast<float>(cam_x),
-									static_cast<float>(cam_y),
-									static_cast<float>(cam_z)
-								);
-								const float3 lookat = make_float3(75.0f, 75.0f, 250.0f);
-								const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);
-								break;
-							}
+							// case 131 (Glass Prism Dispersion / B23) migrated to
+							// pbrt-backed - see pbrt_scenes/prism-dispersion.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id
+							// 131 is no longer assigned to any scene. I2 (CPU-only,
+							// out of scope) still uses the CPU-side
+							// build_prism_dispersion()/build_prism_dispersion_punct()
+							// directly, unaffected by this GPU-only case removal.
 
 							// case 138 (Camera Motion Blur / D13) migrated to pbrt-backed -
 							// see pbrt_scenes/cornell-camera-motion-blur.pbrt and
