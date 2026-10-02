@@ -1,0 +1,169 @@
+# normal-mapped-cornell.pbrt -- migration of the native "B12 Normal Mapped
+# Cornell Box" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_normal_mapped_cornell()) to a pbrt-backed scene, part of this
+# project's GPU scene-construction-duplication elimination.
+#
+# This is the first demo scene authored to use real pbrt-v4 "texture
+# displacement" (Material::displacementTextureFilename, pbrt_flatten.h) -
+# already fully wired end to end before this file existed (CPU:
+# pbrt_cpu_builder.h's materialFor() lambda; GPU: both backends via
+# pbrt_gpu_builder_materials.h, dispatching to MaterialType::
+# NormalMappedLambertian for a real RGB tangent-space normal map, or
+# falling back to flat/unperturbed shading for a grayscale bump/height map -
+# GPU has no device-side scalar bump-displacement path at all, the same
+# documented, accepted gap this project's OBJ/MTL loader already has for
+# map_Bump; see pbrt_gpu_builder_materials.h's own comment on this dispatch
+# for the full reasoning). Proven already by the bundled barcelona-pavilion
+# scene's own "pavet"/water materials - this file is simply the first
+# ORIGINAL (not downloaded) demo scene to exercise it.
+#
+# Two baked PNG textures (NOT hand-authored, generated once by a throwaway
+# Python/numpy script, not checked in) stand in for native's two procedural
+# sources, because "texture displacement" only resolves to a real imagemap
+# file in this loader (pbrt_flatten.h's own comment: a direct "imagemap", or
+# one wrapped in a "scale"-class texture - no procedural checkerboard/fbm
+# binding is supported for this specific parameter, unlike reflectance):
+#
+#   - images/bump-marble.png (grayscale): stands in for native's
+#     bump_map_material(noise_texture(4.0), white_base, scale, 0.002) on the
+#     back wall and rotated box. noise_texture's own sin(scale*z +
+#     10*turbulence) world-space marble-stripe formula has no pbrt directive
+#     mapping at all (the SAME already-accepted gap as A9's own noise-
+#     texture substitution - see final-scene.pbrt's own header comment) -
+#     this is a documented visual APPROXIMATION via simple value noise, not
+#     a reproduction of the exact formula. The point being demonstrated is
+#     real pbrt-v4 BumpMap finite-difference displacement, not this specific
+#     noise pattern. The wall and box reuse the SAME bump-marble.png but
+#     each wraps it in its own "scale"-class texture (0.08 vs 0.05 -
+#     "float displacementscale" has no direct pbrt param of its own, so
+#     this is pbrt-v4's own real mechanism for per-material scale, matching
+#     barcelona-pavilion's "water-bump" convention exactly). The finite-
+#     difference "step" (native's own 0.002) is NOT separately exposed via
+#     any pbrt param - pbrt_cpu_builder.h's bump_map_material construction
+#     always uses that constructor's own default step=0.001, close enough
+#     to native's 0.002 that this isn't worth a scope-widening parser change
+#     for one demo scene.
+#
+#   - images/normal-checker.png (RGB): stands in for native's
+#     normal_map_material(checker_texture(8.0, (0.5,0.5,1.0), (0.8,0.8,1.0)),
+#     blue_base) on the sphere. The two RGB byte values baked into this
+#     image ARE bit-exact to native's own constructor arguments (127,127,255
+#     and 204,204,255, i.e. (0.5,0.5,1.0)/(0.8,0.8,1.0) each *255) - only the
+#     checker CELL BOUNDARIES differ, since native evaluates its checker in
+#     3D world space projected onto the sphere, while this bakes an
+#     equivalent 2D spherical-UV checkerboard instead (the honest limit of
+#     reproducing a world-space-evaluated procedural pattern as a single 2D
+#     image file). This one IS real, non-approximated NormalMappedLambertian
+#     shading on GPU (the sphere's own base material, Lambertian with no
+#     other texture, qualifies - see pbrt_gpu_builder_materials.h's own
+#     dispatch comment).
+#
+# IMPORTANT finding from the GPU native builder's own header comment
+# (gpu/optix/scene_builder.cpp, build_normal_mapped_cornell_gpu(), now
+# deleted alongside this migration): native's own CPU bump-mapped wall/box
+# was a CONFIRMED NO-OP, not a subtle rendering difference. bump_map_
+# material::apply() (normal_map_materials.h) samples its displacement
+# texture at 3 different (u,v) pairs but the SAME 3D hit point `rec.p` for
+# all 3 taps; noise_texture::value() (texture.h) ignores u,v entirely and
+# depends only on p - so all 3 samples were bit-identical, the finite-
+# difference gradient was always exactly zero, and native's back
+# wall/box rendered as plain flat white on CPU (verified empirically by
+# the GPU builder's own author, who deliberately matched that flat
+# behavior on GPU too rather than building bump-map device code for an
+# effect no scene ever actually showed). This migration's baked
+# images/bump-marble.png is a real, UV-indexed imagemap (pbrt_cpu_builder.h's
+# image_texture DOES vary with u,v), so the new pbrt-backed scene shows a
+# REAL, VISIBLE bump effect on CPU for the first time - a genuine fidelity
+# improvement that fixes a latent, previously-invisible bug, not a
+# regression or a new divergence from a previously-working CPU render.
+# GPU-wavefront/recursive both still render the wall/box flat (the
+# already-documented, separately-accepted "no scalar bump displacement
+# material on GPU" gap - see this file's own header above), so CPU and GPU
+# diverge MORE after this migration than native's own (both-flat) render
+# did - an expected, already-documented consequence of fixing CPU's bug,
+# not a new one.
+#
+# Cornell box geometry is IDENTICAL to cornell-box-native.pbrt (A1) - see
+# that file's own header comment for the quad/box-face authoring convention.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+# Main ceiling light: Q=(213,554,227) u=(130,0,0) v=(0,0,105), color (15,15,15)
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+# Right wall (green): Q=(555,0,0) u=(0,0,555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+# Left wall (red): Q=(0,0,555) u=(0,0,-555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+# Ceiling (white): Q=(0,555,0) u=(555,0,0) v=(0,0,555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# Floor (white): Q=(0,0,555) u=(555,0,0) v=(0,0,-555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+
+# Back wall (bump-mapped white): Q=(555,0,555) u=(-555,0,0) v=(0,555,0)
+Texture "bump-marble-tex" "float" "imagemap" "string filename" [ "images/bump-marble.png" ]
+Texture "bump-wall-scaled" "float" "scale" "float scale" [ 0.08 ] "texture tex" [ "bump-marble-tex" ]
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ] "texture displacement" [ "bump-wall-scaled" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+# Normal-mapped sphere: center (190,90,190) radius 90
+Texture "normal-checker-tex" "spectrum" "imagemap" "string filename" [ "images/normal-checker.png" ]
+Material "diffuse" "rgb reflectance" [ 0.2 0.3 0.8 ] "texture displacement" [ "normal-checker-tex" ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
+
+# Rotated bump-mapped white box (kBox: min=(0,0,0) max=(165,330,165),
+# rotate_y=15, translate=(265,0,295)) - 6 faces from quad.h's own box()
+# algebra, same reuse of bump-marble-tex at a different scale (0.05).
+Texture "bump-box-scaled" "float" "scale" "float scale" [ 0.05 ] "texture tex" [ "bump-marble-tex" ]
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ] "texture displacement" [ "bump-box-scaled" ]
+AttributeBegin
+  Translate 265 0 295
+  Rotate 15 0 1 0
+  # front: Q=(0,0,165) u=(165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 165   165 0 165   165 330 165   0 330 165 ]
+  # right: Q=(165,0,165) u=(0,0,-165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 165   165 0 0   165 330 0   165 330 165 ]
+  # back: Q=(165,0,0) u=(-165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 0   0 0 0   0 330 0   165 330 0 ]
+  # left: Q=(0,0,0) u=(0,0,165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 165   0 330 165   0 330 0 ]
+  # top: Q=(0,330,165) u=(165,0,0) v=(0,0,-165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 330 165   165 330 165   165 330 0   0 330 0 ]
+  # bottom: Q=(0,0,0) u=(165,0,0) v=(0,0,165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   165 0 0   165 0 165   0 0 165 ]
+AttributeEnd

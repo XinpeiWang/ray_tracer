@@ -2295,76 +2295,21 @@ static void build_prism_dispersion_gpu(SceneData& scene, int mat_glass) {
 // via this loader's generic pbrt medium builder - a genuine fidelity
 // improvement over the deleted sphere approximation, not a regression.
 
-/// @brief Scene 20: Normal Mapped Cornell. Matches CPU
-/// build_normal_mapped_cornell() (scenes_advanced.h). CPU's bump-mapped
-/// back wall and rotated box (bump_map_material wrapping a noise_texture
-/// displacement source) are a confirmed no-op on CPU itself:
-/// bump_map_material::apply() samples the texture at 3 different (u,v) but
-/// the SAME hit point p, and noise_texture::value() (texture.h:127-129)
-/// ignores u/v entirely and depends only on p - so disp==disp_u==disp_v
-/// bit-for-bit, the finite-difference gradient apply_bump_map() computes
-/// is always exactly zero, and it returns the unperturbed geometric normal
-/// unchanged. Verified empirically too, not just from reading the code: a
-/// CPU render of this scene shows the back wall and box as flat white,
-/// zero visible bump texture. So this GPU port renders them as plain flat
-/// Lambertian white (same kBox/kQuads[] geometry and color already used by
-/// the standard Cornell Box scene) - matching CPU's actual rendered pixels
-/// exactly, rather than implementing bump-map device code that would never
-/// be visually exercised by any current scene.
-/// The sphere's normal_map_material IS non-degenerate (its normal source,
-/// checker_texture, uses world-position p directly per-sample with no
-/// finite-difference step, so it varies meaningfully across the sphere)
-/// and is ported for real via MaterialType::NormalMappedLambertian - see
-/// that type's comment in optix_types.h and its handling in
-/// optix_intersection_sphere.h.
-static void build_normal_mapped_cornell_gpu(SceneData& scene) {
-	using namespace cornell_box_data;
-
-	// 5 walls + the one light this scene actually has - kQuads[5]'s
-	// position and color (15,15,15) match CPU's light exactly. Not
-	// kQuads[6] (the secondary accent light), which this scene doesn't use.
-	for (int i = 0; i < 6; ++i) {
-		const QuadSpec& q = kQuads[i];
-		const int mat = safe_cast_to_int(scene.materials.size());
-		if (q.is_light) {
-			add_diffuse_light(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
-		} else {
-			add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
-		}
-		// add_transformed_quad() already auto-registers emissive quads into
-		// lightIndices/lightKinds itself (it checks the material type) -
-		// do not also push here, or the one light double-counts.
-		add_transformed_quad(scene,
-			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
-			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
-			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
-			mat);
-	}
-
-	// Rotated box: same kBox geometry/color as the standard Cornell Box
-	// scene - matches CPU's (effectively-flat-white, see header comment
-	// above) bumped_box exactly.
-	const int mat_box = safe_cast_to_int(scene.materials.size());
-	add_lambertian(scene, make_float3(static_cast<float>(kBox.color.r), static_cast<float>(kBox.color.g), static_cast<float>(kBox.color.b)));
-	add_box(scene,
-		make_float3(static_cast<float>(kBox.corner_min.x), static_cast<float>(kBox.corner_min.y), static_cast<float>(kBox.corner_min.z)),
-		make_float3(static_cast<float>(kBox.corner_max.x), static_cast<float>(kBox.corner_max.y), static_cast<float>(kBox.corner_max.z)),
-		mat_box,
-		static_cast<float>(kBox.rotate_y_degrees),
-		make_float3(static_cast<float>(kBox.translate.x), static_cast<float>(kBox.translate.y), static_cast<float>(kBox.translate.z)));
-
-	// Normal-mapped sphere: matches CPU's normal_map_material(
-	// checker_texture(8.0, (0.5,0.5,1.0), (0.8,0.8,1.0)),
-	// lambertian(0.2,0.3,0.8)) exactly.
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 8.0f,
-		make_float3(0.5f, 0.5f, 1.0f), make_float3(0.8f, 0.8f, 1.0f));
-	const int mat_sphere = add_normal_mapped_lambertian(scene, make_float3(0.2f, 0.3f, 0.8f), checkerTexIdx);
-	SphereData s{};
-	s.center = make_float3(190.0f, 90.0f, 190.0f);
-	s.radius = 90.0f;
-	s.materialIdx = mat_sphere;
-	scene.spheres.push_back(s);
-}
+// build_normal_mapped_cornell_gpu() (former "scene 20" / B12 GPU builder)
+// deleted - B12 migrated to pbrt-backed, see pbrt_scenes/
+// normal-mapped-cornell.pbrt and its case-20 removal below. That file's own
+// header comment documents an important finding this function's own removed
+// comment first surfaced: native CPU's bump-mapped wall/box was a CONFIRMED
+// NO-OP (bump_map_material sampling 3 different (u,v) but the same 3D hit
+// point, combined with noise_texture ignoring u,v entirely, producing an
+// always-zero gradient) - this function deliberately matched that flat
+// behavior rather than building unexercised bump-map device code. The new
+// pbrt file uses a real UV-indexed image texture instead, so CPU now shows
+// a real, visible bump effect for the first time - a genuine fidelity
+// improvement, not a regression, even though it means GPU (which still has
+// no scalar bump-displacement material type - the same already-accepted
+// gap as every other grayscale "texture displacement" scene) now diverges
+// MORE from CPU on this scene than before.
 
 // build_subsurface_slab_gpu() (former "scene 21" / B13 Subsurface Slab GPU
 // builder) deleted - B13 migrated to pbrt-backed, see
@@ -3554,10 +3499,11 @@ bool build_scene(
 							// default: -> build_loaded_pbrt_scene() now that legacy_ids
 							// 35/7/30/21 are no longer assigned to any scene.
 
-							case 20:  // Normal Mapped Cornell (see build_normal_mapped_cornell_gpu's comment)
-								build_normal_mapped_cornell_gpu(scene);
-								setup_cornell_box_camera();
-								break;
+							// case 20 (Normal Mapped Cornell / B12) migrated to pbrt-backed -
+							// see pbrt_scenes/normal-mapped-cornell.pbrt and
+							// scene_registry_data.h's own entry. Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 20 is no longer
+							// assigned to any scene.
 
 							// case 23 (Bilinear Patch Scene / F1) migrated to pbrt-backed -
 							// see pbrt_scenes/bilinear-patch-scene.pbrt and

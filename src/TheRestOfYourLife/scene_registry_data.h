@@ -268,14 +268,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B11", 192, SceneNames::HairFibers, SceneCategories::Materials,
             "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
             "Medium", "hair-fibers-scene.pbrt"),
-        {
+        // B12 migrated to pbrt-backed - see pbrt_scenes/normal-mapped-cornell.pbrt
+        // (legacy_id 20 kept). Uses real pbrt-v4 "texture displacement"
+        // (already fully wired on both CPU and GPU before this file existed -
+        // see that file's own header comment for the full derivation,
+        // including why its bump/normal sources are two newly-baked PNG
+        // textures rather than inline procedural references).
+        // build_normal_mapped_cornell() has no other consumer - deleted
+        // below (build_cornell_box_lights() stays - many other scenes still
+        // use it).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B12", 20, SceneNames::NormalMappedCornell, SceneCategories::Materials,
             "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
-            build_normal_mapped_cornell,
-            build_cornell_box_lights
-        },
+            "Medium", "normal-mapped-cornell.pbrt", CameraMode::UserControlled),
         // B13 migrated to pbrt-backed - see pbrt_scenes/subsurface-slab.pbrt.
         // legacy_id 193. build_subsurface_slab() has no other consumer -
         // deleted below (build_cornell_box_lights() stays - many other
