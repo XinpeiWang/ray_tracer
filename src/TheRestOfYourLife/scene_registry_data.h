@@ -1121,51 +1121,64 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "I3", 204, SceneNames::ExposureToneMapping, SceneCategories::Education,
             "Same HDR sky gradient as C1: try raising/lowering Exposure, then compare ACES/Reinhard/None Tone mapping (both on the Render Options tab) against this scene's bright sky vs. shadowed sphere.",
             "Medium", "hdri-sky-gradient.pbrt"),
-        {
-            // Same world/lights as A1 (Cornell Box), at a deliberately low
-            // 32 spp (vs A1's 100) so it's genuinely noisy on the GPU
-            // recursive backend before denoising. GPU-compatible: see
-            // gpu/optix/scene_builder.cpp's case 135 (a near-verbatim copy
-            // of case 0, A1's own GPU case).
-            "I4", 135, SceneNames::DenoiserComparison, SceneCategories::Education,
-            "Cornell box at a deliberately low 32 spp - render once with the OptiX AI denoiser (Render Options tab, GPU only - both the recursive and wavefront backends have their own denoiser) off, once on, and compare. The neighboring OptiX validation mode checkbox has no visual effect either way - it only adds debugging checks.",
-            "Fast", 32, false, true,
-            kCornellBoxCamera,
-            build_cornell_box,
-            build_cornell_box_lights
-        },
-        {
-            // Same world/lights as B3 (Cornell Rough Glass) - the GGX
-            // rough-dielectric sphere's floor caustic is the one CPU scene
-            // launcher_args.h's --sppm help text calls "verified end-to-end",
-            // and it's specifically the "hard caustic/glass" case SPPM
-            // exists for. gpu_compatible=true carries over from B3 for the
-            // default path tracer's own GPU case - separately, SPPM's own
-            // GPU capability check (gpu/optix/optix_types.h's
+        [] {
+            // Same world/lights as A1 (Cornell Box) - migrated to
+            // pbrt-backed alongside A1 (reuses cornell-box-native.pbrt
+            // verbatim, see A1's own entry below). recommended_spp is
+            // force-overridden to 32 after wiring (vs. the file's own 200,
+            // which A1 uses) because this scene's whole point is being
+            // genuinely noisy on the GPU recursive backend before
+            // denoising - build_curated_pbrt_scene_descriptor() has no spp
+            // parameter of its own (spp comes from the file's Sampler
+            // directive), so this is the one pbrt-backed Education alias
+            // that needs its own spp distinct from the file it reuses.
+            // Was gpu/optix/scene_builder.cpp's case 135 (a near-verbatim
+            // copy of case 0/A1's own GPU case) - deleted now that this
+            // falls through to default: -> build_loaded_pbrt_scene() like
+            // every other pbrt-backed scene.
+            auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+                "I4", 135, SceneNames::DenoiserComparison, SceneCategories::Education,
+                "Cornell box at a deliberately low 32 spp - render once with the OptiX AI denoiser (Render Options tab, GPU only - both the recursive and wavefront backends have their own denoiser) off, once on, and compare. The neighboring OptiX validation mode checkbox has no visual effect either way - it only adds debugging checks.",
+                "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled);
+            s.recommended_spp = 32;
+            return s;
+        }(),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            // Same world/lights as B3 (Cornell Rough Glass) - migrated to
+            // pbrt-backed alongside B3 (reuses cornell-rough-glass.pbrt
+            // verbatim, see B3's own entry below). No spp override needed:
+            // the file's own Sampler already specifies 200, matching this
+            // scene's original intended spp exactly. Was
+            // gpu/optix/scene_builder.cpp's case 139 - deleted now that
+            // this falls through to default: -> build_loaded_pbrt_scene()
+            // like every other pbrt-backed scene. SPPM's own GPU capability
+            // check (gpu/optix/optix_types.h's
             // sppm_gpu_material_supported()) already whitelists
-            // RoughDielectric, so --sppm --gpu works here too, not just
-            // plain --sppm.
+            // RoughDielectric independent of this registry entry, so
+            // --sppm --gpu keeps working here too, not just plain --sppm.
             "I5", 139, SceneNames::SppmCausticsEducation, SceneCategories::Education,
             "Same Cornell box as B3, with a rough-dielectric (frosted glass) sphere: render once with the default Path Tracer, once with SPPM (Integrator dropdown, Render Options tab), and compare how much faster the floor caustic cleans up - SPPM's photon mapping is built for exactly this case.",
-            "Medium", 200, false, true,
-            kCornellBoxCamera,
-            build_cornell_rough_glass,
-            build_cornell_box_lights
-        },
-        {
-            // Same world/lights as A1 (Cornell Box) - the one CPU scene
-            // launcher_args.h's --bdpt/--mlt help text calls "verified
-            // end-to-end". gpu_compatible=true carries over from A1 for the
-            // default path tracer's own GPU case - BDPT/MLT themselves have
-            // no GPU implementation at all (CPU only, unconditionally; see
-            // main.cpp's own --gpu-ignored warning under either flag).
-            "I6", 140, SceneNames::BdptMltEducation, SceneCategories::Education,
-            "Same Cornell box as A1: try BDPT or MLT (Integrator dropdown, Render Options tab) instead of the default Path Tracer - both trace light paths from the camera AND the light source and connect them, which can converge differently than the default on scenes with indirect lighting like this one.",
-            "Medium", 100, false, true,
-            kCornellBoxCamera,
-            build_cornell_box,
-            build_cornell_box_lights
-        },
+            "Medium", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
+        [] {
+            // Same world/lights as A1 (Cornell Box) - migrated to
+            // pbrt-backed alongside A1 (reuses cornell-box-native.pbrt
+            // verbatim, see A1's own entry below). recommended_spp is
+            // force-overridden to 100 after wiring (vs. the file's own 200)
+            // to preserve this scene's original BDPT/MLT-comparison spp -
+            // see I4's own entry just above for why the override is needed
+            // at all. Was gpu/optix/scene_builder.cpp's case 140 - deleted
+            // now that this falls through to default: ->
+            // build_loaded_pbrt_scene() like every other pbrt-backed scene.
+            // BDPT/MLT themselves still have no GPU implementation at all
+            // (CPU only, unconditionally; see main.cpp's own --gpu-ignored
+            // warning under either flag) - unaffected by this migration.
+            auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+                "I6", 140, SceneNames::BdptMltEducation, SceneCategories::Education,
+                "Same Cornell box as A1: try BDPT or MLT (Integrator dropdown, Render Options tab) instead of the default Path Tracer - both trace light paths from the camera AND the light source and connect them, which can converge differently than the default on scenes with indirect lighting like this one.",
+                "Medium", "cornell-box-native.pbrt", CameraMode::UserControlled);
+            s.recommended_spp = 100;
+            return s;
+        }(),
         {
             // Same world/lights as A1 (Cornell Box) - deliberately CPU-only
             // (gpu_compatible=false, matching I1's own precedent) since
@@ -1221,7 +1234,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_cornell_box,
             build_cornell_box_lights
         },
-        {
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             // Same world/lights as B3 (Cornell Rough Glass) - the same
             // hard-caustic scene I5 already reuses for SPPM, and for the
             // identical reason: it's the one CPU scene launcher_args.h's
@@ -1231,18 +1244,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // under plain path tracing - exactly the case --regularize
             // and --maxcomponentvalue each exist to tame, via two
             // different mechanisms (widening the BSDF vs. clamping the
-            // sample directly). gpu_compatible=true: both --regularize and
-            // --maxcomponentvalue now work on both GPU backends (recursive
-            // exact, wavefront approximate for the clamp - see each
-            // flag's own help text), unlike --lightsampler/RandomWalk/
-            // SimplePath/AO above.
+            // sample directly). Migrated to pbrt-backed alongside B3/I5
+            // (reuses cornell-rough-glass.pbrt verbatim). No spp override
+            // needed: the file's own Sampler already specifies 200,
+            // matching this scene's original intended spp exactly. Was
+            // gpu/optix/scene_builder.cpp's case 158 - deleted now that
+            // this falls through to default: -> build_loaded_pbrt_scene()
+            // like every other pbrt-backed scene. Both --regularize and
+            // --maxcomponentvalue still work on both GPU backends
+            // (recursive exact, wavefront approximate for the clamp - see
+            // each flag's own help text), unaffected by this migration.
             "I10", 158, SceneNames::FireflySuppression, SceneCategories::Education,
             "Same rough-glass Cornell box as B3 (and I5's own SPPM demo): render once plain, once with Regularize checked, once with Firefly clamp (--maxcomponentvalue) checked instead (both on the Render Options tab) - the hard caustic through the frosted sphere is exactly the case each is built to tame, via two different mechanisms (blurring the BSDF vs. clamping the sample directly).",
-            "Medium", 200, false, true,
-            kCornellBoxCamera,
-            build_cornell_rough_glass,
-            build_cornell_box_lights
-        },
+            "Medium", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
 
         // ---------------------------------------------------------------
         // Curated pbrt_scenes/*.pbrt example scenes, under their real topic
