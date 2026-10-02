@@ -34,18 +34,21 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A1", 169, SceneNames::CornellBox, SceneCategories::Basics,
             "Classic Cornell box with glass sphere and aluminum box",
             "Medium", "cornell-box-native.pbrt", CameraMode::UserControlled),
-        {
+        // A2 migrated to pbrt-backed - see pbrt_scenes/bouncing-spheres.pbrt
+        // (legacy_id 1 kept, the book's own "scene 1"). The grid's layout is
+        // GPU's own deterministic std::mt19937(42) sequence, not CPU's
+        // unseeded one - see that file's own header comment for why (CPU's
+        // own layout was never reproducible to begin with). Real per-sphere
+        // motion blur (the "bounce") carries over unchanged: GPU's
+        // sceneHasMotion_ auto-detects any uploaded SphereData whose
+        // center1 != center (optix_renderer_scene.cpp), which the generic
+        // pbrt GPU builder already populates correctly for an
+        // ActiveTransform-animated Shape "sphere" - not scene-id-specific,
+        // so migration doesn't disturb it.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A2", 1, SceneNames::BouncingSpheres, SceneCategories::Basics,
             "Random spheres with checker ground (In One Weekend final)",
-            "Slow", 100, false, true,
-            // defocus_angle/focus_dist: the book's own final-render values
-            // for this exact scene - a subtle depth-of-field "beauty shot"
-            // focused on the 3 hero spheres near the origin, without
-            // redesigning the iconic grid composition itself.
-            { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 0.6, 10.0 },
-            build_bouncing_spheres,
-            sky_dummy_lights
-        },
+            "Slow", "bouncing-spheres.pbrt"),
         // A3 migrated to pbrt-backed - see pbrt_scenes/checkered-spheres.pbrt.
         // legacy_id 185 (next after D8's 184). First scene to use this
         // loader's newly-added real pbrt-v4 "checkerboard" "integer
