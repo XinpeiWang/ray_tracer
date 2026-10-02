@@ -98,16 +98,31 @@ TEST(LivePreviewNrcTest, WarmStartMatchesNrcDisabledBeforeWarmup) {
 	std::vector<float> rgbNrcOff(numChannels), rgbNrcOn(numChannels);
 
 	constexpr int kFramesBeforeWarmup = 10;  // well under kNrcWarmupSteps=256
+	// Mean of the LAST kAveragedFrames frames of each phase, not just the final
+	// frame: a single 1-spp 32x32 frame's mean carries Monte-Carlo noise of the
+	// same order as this test's tolerance, so comparing two single frames made
+	// the test pass or fail on the exact random-number realization (any
+	// unrelated numerical change to camera sampling - e.g. the 2026-10-02
+	// reconstruction-filter/pixel-mapping fixes - or even which tests ran
+	// earlier in the process flipped it, with no change to the NRC gate it is
+	// meant to check). Averaging 5 frames cuts that noise ~sqrt(5)x.
+	constexpr int kAveragedFrames = 5;
+	double sumOff = 0.0, sumOn = 0.0;
 	for (int frame = 0; frame < kFramesBeforeWarmup; ++frame) {
 		ASSERT_TRUE(renderOneFrame(width, height, rgbNrcOff, /*enable_nrc=*/false));
+		if (frame >= kFramesBeforeWarmup - kAveragedFrames) {
+			for (size_t i = 0; i < numChannels; ++i) sumOff += rgbNrcOff[i];
+		}
 	}
 	for (int frame = 0; frame < kFramesBeforeWarmup; ++frame) {
 		ASSERT_TRUE(renderOneFrame(width, height, rgbNrcOn, /*enable_nrc=*/true));
-	}
-
-	for (size_t i = 0; i < numChannels; ++i) {
-		ASSERT_FALSE(std::isnan(rgbNrcOn[i])) << "NaN channel " << i;
-		ASSERT_FALSE(std::isinf(rgbNrcOn[i])) << "Inf channel " << i;
+		for (size_t i = 0; i < numChannels; ++i) {
+			ASSERT_FALSE(std::isnan(rgbNrcOn[i])) << "NaN channel " << i;
+			ASSERT_FALSE(std::isinf(rgbNrcOn[i])) << "Inf channel " << i;
+		}
+		if (frame >= kFramesBeforeWarmup - kAveragedFrames) {
+			for (size_t i = 0; i < numChannels; ++i) sumOn += rgbNrcOn[i];
+		}
 	}
 	// Not bit-exact (the training pipeline's own RNG draws still perturb the
 	// GPU's global PCG state differently than the NRC-disabled run, and the
@@ -116,10 +131,8 @@ TEST(LivePreviewNrcTest, WarmStartMatchesNrcDisabledBeforeWarmup) {
 	// "the query gate genuinely stayed closed" without requiring bit-exact
 	// determinism this codebase doesn't otherwise guarantee across an
 	// unrelated pipeline's own RNG draws.
-	double sumOff = 0.0, sumOn = 0.0;
-	for (size_t i = 0; i < numChannels; ++i) { sumOff += rgbNrcOff[i]; sumOn += rgbNrcOn[i]; }
-	const double meanOff = sumOff / static_cast<double>(numChannels);
-	const double meanOn = sumOn / static_cast<double>(numChannels);
+	const double meanOff = sumOff / (static_cast<double>(numChannels) * kAveragedFrames);
+	const double meanOn = sumOn / (static_cast<double>(numChannels) * kAveragedFrames);
 	EXPECT_NEAR(meanOn, meanOff, std::max(0.05, meanOff * 0.5))
 		<< "meanOn=" << meanOn << " meanOff=" << meanOff
 		<< " - NRC query should still be fully gated off before warmup.";

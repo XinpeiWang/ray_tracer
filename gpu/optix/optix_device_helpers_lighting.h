@@ -860,6 +860,37 @@ __device__ __forceinline__ float sphere_light_pdf(
 	return 1.0f / solid_angle;
 }
 
+// Shadow-ray payload: a POINTER (packed into the two payload registers) to a
+// small per-call struct on the caller's stack, instead of the occluded flag and
+// the running transmittance living in the payload registers themselves.
+// OptiX discards payload-register writes made in an any-hit program that then
+// calls optixIgnoreIntersection() - which is exactly how the shadow any-hit
+// programs "pass through" a Medium/DielectricMedium sphere after attenuating
+// the running Beer-Lambert transmittance. With the transmittance in a register
+// every such attenuation was silently lost, so a surface NEE shadow ray
+// crossing a wax/jade/fog sphere always read T=1 - the sphere cast no shadow on
+// the floor beneath it (B13, E11 + floor: rec ~2.5x brighter than CPU and
+// GPU-wavefront, whose WfShadowPayload is likewise a stack struct reached by
+// pointer). Memory writes through the pointer survive the ignore. Only the
+// interior phase-scatter shadow rays were unaffected (they terminate on the
+// fully-attenuated case instead).
+struct ShadowRayState {
+	unsigned int occluded;      // 1 = blocked (default), 0 = reached the light
+	float        transmittance; // running Beer-Lambert product through media
+	float        maxDistance;   // the shadow ray's ORIGINAL tmax - see __anyhit__shadow_sphere
+};
+
+__device__ __forceinline__ void shadow_pack_state_ptr(ShadowRayState* p, unsigned int& p0, unsigned int& p1) {
+	const unsigned long long u = reinterpret_cast<unsigned long long>(p);
+	p0 = static_cast<unsigned int>(u >> 32);
+	p1 = static_cast<unsigned int>(u & 0xffffffffull);
+}
+__device__ __forceinline__ ShadowRayState* shadow_state_from_payload() {
+	const unsigned long long u = (static_cast<unsigned long long>(optixGetPayload_0()) << 32)
+	                           | static_cast<unsigned long long>(optixGetPayload_1());
+	return reinterpret_cast<ShadowRayState*>(u);
+}
+
 // Trace a shadow ray to test visibility
 // Returns true if path to light is unoccluded (false if occluded)
 //
@@ -885,8 +916,12 @@ __device__ __forceinline__ bool trace_shadow_ray(
 ) {
 	// Pack shadow payload (bool: occluded, plus a running medium
 	// transmittance - see this function's own header comment above).
-	unsigned int occluded = 1;  // Default to occluded (will be set to 0 if miss)
-	unsigned int transmittance_bits = __float_as_uint(1.0f);
+	ShadowRayState shadow_state;
+	shadow_state.occluded = 1;           // Default to occluded (set to 0 by the miss program)
+	shadow_state.transmittance = 1.0f;
+	shadow_state.maxDistance = max_distance;
+	unsigned int sp0, sp1;
+	shadow_pack_state_ptr(&shadow_state, sp0, sp1);
 
 	// Nudge the origin along the ray's own travel direction before tracing,
 	// mirroring optix_raygen.h's scatter_origin = hit_point + 0.01f *
@@ -936,16 +971,39 @@ __device__ __forceinline__ bool trace_shadow_ray(
 		RAY_TYPE_SHADOW,               // SBT offset (shadow ray type)
 		RAY_TYPE_COUNT,                // SBT stride (number of ray types)
 		RAY_TYPE_SHADOW,               // Miss SBT index
-		occluded,                      // Payload 0 (occluded bool)
-		transmittance_bits             // Payload 1 (medium transmittance, float bits)
+		sp0,                           // Payload 0/1: pointer to shadow_state (see ShadowRayState)
+		sp1
 	);
 
 	if (out_transmittance) {
-		*out_transmittance = (occluded == 0) ? __uint_as_float(transmittance_bits) : 0.0f;
+		*out_transmittance = (shadow_state.occluded == 0) ? shadow_state.transmittance : 0.0f;
 	}
 
 	// Return true if NOT occluded (path is clear)
-	return (occluded == 0);
+	return (shadow_state.occluded == 0);
+}
+
+// Surface-NEE shadow test that also honours participating-media attenuation.
+// trace_shadow_ray()'s boolean result alone treats a Medium/DielectricMedium
+// sphere on the path as perfectly transparent unless the caller asks for its
+// transmittance - and every surface NEE call site below only has a boolean
+// "visible?" to branch on, so a wax/jade sphere (B13) cast NO shadow on the
+// floor beneath it (rec rendered those blocks ~2.5x brighter than CPU and
+// GPU-wavefront, which both attenuate). Turning the Beer-Lambert transmittance
+// T into a Russian-roulette visibility draw (visible with probability T) keeps
+// the estimator unbiased - E[contribution] = T x contribution - without
+// threading a multiplier through ~20 call sites; it only adds variance when
+// 0 < T < 1. T == 1 (no medium crossed, the overwhelmingly common case) takes
+// the no-draw fast path, so it consumes no RNG and changes nothing there.
+__device__ __forceinline__ bool trace_shadow_ray_stochastic(
+	const float3& origin,
+	const float3& direction,
+	float max_distance,
+	unsigned int& seed
+) {
+	float transmittance = 1.0f;
+	if (!trace_shadow_ray(origin, direction, max_distance, &transmittance)) return false;
+	return transmittance >= 1.0f || random_float(seed) < transmittance;
 }
 
 // Beer-Lambert transmittance of the camera medium (GpuCameraParams::

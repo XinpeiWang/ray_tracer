@@ -3220,6 +3220,12 @@ bool build_scene(
 										const float3 vup9      = make_float3(0.0f, 1.0f, 0.0f);
 										const float aspect9    = static_cast<float>(image_width) / static_cast<float>(image_height);
 										build_pinhole_camera_params(lookfrom9, lookat9, vup9, 42.0f, aspect9, 1.0f, camera_params);
+										// CPU's registry row for this scene has a (0.10, 0.10, 0.12) flat
+										// background - it fills the whole upper half of the frame, but this
+										// case never set it, so GPU rendered pure black there (CPU avg
+										// brightness 142 vs GPU 105: B1's long-standing ~22-26% "gap", which
+										// was misattributed to rough-metal Fresnel / filter differences).
+										if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.10f, 0.10f, 0.12f);
 										break;
 									}
 
