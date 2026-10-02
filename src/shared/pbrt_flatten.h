@@ -726,6 +726,24 @@ enum class MaterialKind {
 	// uses to skip the crossing entirely rather than treating it as a
 	// specular bounce.
 	Interface,
+	// This loader's own non-standard extension - NOT a real pbrt-v4 material
+	// type (pbrt-v4 has no "principled"/Disney-style material at all; its
+	// closest real equivalents are CoatedDiffuse (metallic=0) and
+	// CoatedConductor (metallic=1), which this loader already fully
+	// supports as their own, separate, real material kinds). Exists purely
+	// to expose this codebase's own already-implemented, already-working
+	// PrincipledBxDF<T> (src/shared/bxdfs_principled.h; CPU: src/
+	// TheRestOfYourLife/principled_material.h's `principled` class; GPU:
+	// MaterialType::Principled/MaterialData::principled_params) from a
+	// .pbrt file, for scenes whose whole point IS demonstrating that
+	// specific, unified base_color/metallic/roughness/clearcoat parameter
+	// space in one material rather than pbrt-v4's own split
+	// dielectric-coat-over-diffuse-or-conductor modeling. "reflectance"/
+	// "roughness"/"eta" reuse the exact same generic parsing every other
+	// kind already shares (Material::color/roughness/ior above) - only
+	// "metallic"/"clearcoat"/"clearcoatroughness" are new, Principled-only
+	// fields (see their own comments below).
+	Principled,
 	Unsupported,
 };
 
@@ -840,6 +858,24 @@ struct Material {
 	// overrides this field's default to pbrt-v4's own Hair-specific 1.55
 	// (HairMaterial::Create) rather than this field's general 1.5.
 	double ior = 1.5;
+	// Principled only (this loader's own non-standard material - see
+	// MaterialKind::Principled's own comment): 0 = pure dielectric/plastic,
+	// 1 = pure metal, blended in between - matches `principled` (CPU,
+	// principled_material.h) and MaterialData::principled_params.metallic
+	// (GPU) exactly, same default (0.0) as that CPU class's own convenience
+	// constructor.
+	double metallic = 0.0;
+	// Principled only: clearcoat layer weight (0 = none) and its own
+	// independent specular roughness - matches `principled`'s clearcoat_tex/
+	// clearcoat_rough and MaterialData::principled_params.clearcoat/
+	// clearcoat_rough exactly, same defaults (0.0/0.1) as that CPU class's
+	// own convenience constructor. Deliberately separate fields from
+	// roughness/roughness_u/roughness_v above (CoatedDiffuse/CoatedConductor's
+	// own coat-roughness slots) - Principled's clearcoat is a SEPARATE third
+	// layer on top of its own base metallic/roughness response, not a
+	// substitute for either.
+	double clearcoat = 0.0;
+	double clearcoatRoughness = 0.1;
 	// DiffuseTransmission only: the light that passes through rather than
 	// reflects. pbrt-v4's own default (0.25) is closer to that material's
 	// intent than reusing `color`'s 0.5 default would be - a
@@ -2242,6 +2278,9 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	if (type == "mix")                 return MaterialKind::Mix;
 	if (type == "hair")                return MaterialKind::Hair;
 	if (type == "none" || type.empty()) return MaterialKind::Interface;
+	// Not real pbrt-v4 - this loader's own extension, see MaterialKind::
+	// Principled's own comment above for why it exists anyway.
+	if (type == "principled")          return MaterialKind::Principled;
 	return MaterialKind::Unsupported;
 }
 
@@ -2959,6 +2998,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					m.ior = md.params.getFloat("ior", 1.5);
 				}
 			}
+		}
+
+		// Principled only (this loader's own non-standard material - see
+		// MaterialKind::Principled's own comment): "metallic"/"clearcoat"/
+		// "clearcoatroughness" plain float params, same defaults as
+		// `principled`'s own CPU convenience constructor. Scoped to this one
+		// kind so an unrelated material's own unrecognized float param
+		// doesn't silently do nothing here instead of hitting whatever
+		// generic "not supported" handling it would otherwise get.
+		if (m.kind == MaterialKind::Principled) {
+			m.metallic = md.params.getFloat("metallic", 0.0);
+			m.clearcoat = md.params.getFloat("clearcoat", 0.0);
+			m.clearcoatRoughness = md.params.getFloat("clearcoatroughness", 0.1);
 		}
 
 		// Conductor OR CoatedConductor: pbrt describes a conductor's complex

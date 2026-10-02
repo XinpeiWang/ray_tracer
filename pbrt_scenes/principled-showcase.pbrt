@@ -1,0 +1,118 @@
+# principled-showcase.pbrt -- migration of the native "B10 Principled
+# Showcase" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_principled_showcase()) to a pbrt-backed scene, part of this
+# project's GPU scene-construction-duplication elimination.
+#
+# Uses Material "principled" - NOT a real pbrt-v4 material type (pbrt-v4 has
+# no Disney-style unified base-color/metallic/roughness/clearcoat material;
+# its own closest real equivalents are CoatedDiffuse (metallic=0) and
+# CoatedConductor (metallic=1), both already fully supported separately by
+# this loader). This is this loader's own deliberate, explicitly-discussed
+# extension (see MaterialKind::Principled's own comment, src/shared/
+# pbrt_flatten.h) added specifically to make this project's own
+# already-implemented, already-working PrincipledBxDF (src/shared/
+# bxdfs_principled.h) reachable from a .pbrt file, since this scene's whole
+# point is demonstrating that exact material's own unified parameter space,
+# not pbrt-v4's split dielectric-coat-over-diffuse-or-conductor modeling.
+# Params: "rgb reflectance" (base color - reuses the SAME generic parsing
+# every other material kind already shares), "float roughness"/"float eta"
+# (ditto), plus 3 new Principled-only params: "float metallic" (0=dielectric/
+# plastic, 1=metal), "float clearcoat" (clearcoat layer weight, 0=none),
+# "float clearcoatroughness" (the clearcoat's own independent roughness).
+# Real, full fidelity on both CPU (principled_material.h's `principled`
+# class) and GPU (MaterialType::Principled, already implemented and used by
+# the now-deleted native GPU builder - this migration doesn't change either
+# backend's actual material math at all, only how the scene reaches it).
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2.7 17    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.10 0.10 0.12 ]
+
+# ---------------------------------------------------------- checker ground
+AttributeBegin
+  Scale 0.5 0.5 0.5
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.1 0.1 0.12 ] "rgb tex2" [ 0.2 0.2 0.22 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# ---------------------------------------------------------- overhead light
+AttributeBegin
+  Translate -7 7 -5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   14 0 0   14 0 10   0 0 10 ]
+AttributeEnd
+
+# ---------------------------------------------------------- 7 principled spheres
+# 0: pure matte diffuse (red)
+Material "principled" "rgb reflectance" [ 0.8 0.1 0.1 ] "float metallic" [ 0.0 ]
+  "float roughness" [ 0.9 ] "float eta" [ 1.5 ] "float clearcoat" [ 0.0 ]
+AttributeBegin
+  Translate -6 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# 1: plastic, low roughness (blue)
+Material "principled" "rgb reflectance" [ 0.1 0.2 0.8 ] "float metallic" [ 0.0 ]
+  "float roughness" [ 0.2 ] "float eta" [ 1.5 ] "float clearcoat" [ 0.0 ]
+AttributeBegin
+  Translate -4 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# 2: plastic, clearcoated (green)
+Material "principled" "rgb reflectance" [ 0.1 0.7 0.2 ] "float metallic" [ 0.0 ]
+  "float roughness" [ 0.3 ] "float eta" [ 1.5 ] "float clearcoat" [ 1.0 ]
+  "float clearcoatroughness" [ 0.05 ]
+AttributeBegin
+  Translate -2 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# 3: semi-metallic (gold-tinted)
+Material "principled" "rgb reflectance" [ 0.9 0.7 0.2 ] "float metallic" [ 0.5 ]
+  "float roughness" [ 0.3 ] "float eta" [ 1.5 ] "float clearcoat" [ 0.0 ]
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# 4: near-metallic, rough (copper-ish)
+Material "principled" "rgb reflectance" [ 0.8 0.45 0.2 ] "float metallic" [ 0.8 ]
+  "float roughness" [ 0.4 ] "float eta" [ 1.5 ] "float clearcoat" [ 0.0 ]
+AttributeBegin
+  Translate 2 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# 5: fully metallic, smooth (silver)
+Material "principled" "rgb reflectance" [ 0.9 0.9 0.9 ] "float metallic" [ 1.0 ]
+  "float roughness" [ 0.05 ] "float eta" [ 1.5 ] "float clearcoat" [ 0.0 ]
+AttributeBegin
+  Translate 4 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# 6: fully metallic, clearcoated (lacquered gold)
+Material "principled" "rgb reflectance" [ 0.9 0.7 0.1 ] "float metallic" [ 1.0 ]
+  "float roughness" [ 0.1 ] "float eta" [ 1.5 ] "float clearcoat" [ 1.0 ]
+  "float clearcoatroughness" [ 0.08 ]
+AttributeBegin
+  Translate 6 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd

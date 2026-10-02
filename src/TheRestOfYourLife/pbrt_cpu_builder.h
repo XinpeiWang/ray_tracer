@@ -33,6 +33,7 @@
 #include "hair_material.h"
 #include "hittable_list.h"
 #include "material.h"
+#include "principled_material.h"
 #include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
 #include "scenes_advanced.h"   // bilinear_patch_hittable
 #include "sphere_clipped_hittable.h"
@@ -381,6 +382,15 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	}
 	case pbrt_flatten::MaterialKind::Subsurface:
 		return std::make_shared<subsurface>(m.ior, m.sigma_a, m.sigma_s, m.g);
+	case pbrt_flatten::MaterialKind::Principled:
+		// Not real pbrt-v4 (see MaterialKind::Principled's own comment,
+		// pbrt_flatten.h) - m.color/m.roughness/m.ior are already generically
+		// parsed above from "reflectance"/"roughness"/"eta" like every other
+		// kind; only metallic/clearcoat/clearcoatRoughness are Principled-
+		// specific fields.
+		return std::make_shared<principled>(
+			color(m.color[0], m.color[1], m.color[2]),
+			m.metallic, m.roughness, m.ior, m.clearcoat, m.clearcoatRoughness);
 	case pbrt_flatten::MaterialKind::Hair:
 		return std::make_shared<hair_material>(
 			m.sigma_a[0], m.sigma_a[1], m.sigma_a[2],

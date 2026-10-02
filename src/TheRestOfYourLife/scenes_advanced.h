@@ -33,51 +33,13 @@
 #include "../shared/portal_image_infinite_light.h"
 #include <memory>
 
-//==============================================================================================
-// Scene 18: Principled Showcase
-// A row of 7 spheres demonstrating the principled BSDF parameter space:
-//   matte diffuse -> plastic -> semi-metallic -> fully metallic -> clearcoated metal
-//==============================================================================================
-inline hittable_list build_principled_showcase() {
-	hittable_list world;
-
-	// Ground plane (subtle dark checker)
-	auto checker = make_shared<checker_texture>(0.5, color(0.1, 0.1, 0.12), color(0.2, 0.2, 0.22));
-	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
-
-	// Row of 7 spheres: metallic 0->1, roughness varies, clearcoat on last two.
-	// Spacing 2.0 (radius 1.0 each) so neighbors don't overlap/fuse -- each
-	// material needs to read as its own distinct sphere.
-	//  0: pure matte diffuse (red)
-	world.add(make_shared<sphere>(point3(-6, 1, 0), 1.0,
-		make_shared<principled>(color(0.8, 0.1, 0.1), 0.0, 0.9, 1.5, 0.0)));
-	//  1: plastic, low roughness (blue)
-	world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0,
-		make_shared<principled>(color(0.1, 0.2, 0.8), 0.0, 0.2, 1.5, 0.0)));
-	//  2: plastic, clearcoated (green)
-	world.add(make_shared<sphere>(point3(-2, 1, 0), 1.0,
-		make_shared<principled>(color(0.1, 0.7, 0.2), 0.0, 0.3, 1.5, 1.0, 0.05)));
-	//  3: semi-metallic (gold-tinted)
-	world.add(make_shared<sphere>(point3(0, 1, 0), 1.0,
-		make_shared<principled>(color(0.9, 0.7, 0.2), 0.5, 0.3, 1.5, 0.0)));
-	//  4: near-metallic, rough (copper-ish)
-	world.add(make_shared<sphere>(point3(2, 1, 0), 1.0,
-		make_shared<principled>(color(0.8, 0.45, 0.2), 0.8, 0.4, 1.5, 0.0)));
-	//  5: fully metallic, smooth (silver)
-	world.add(make_shared<sphere>(point3(4, 1, 0), 1.0,
-		make_shared<principled>(color(0.9, 0.9, 0.9), 1.0, 0.05, 1.5, 0.0)));
-	//  6: fully metallic, clearcoated (lacquered gold)
-	world.add(make_shared<sphere>(point3(6, 1, 0), 1.0,
-		make_shared<principled>(color(0.9, 0.7, 0.1), 1.0, 0.1, 1.5, 1.0, 0.08)));
-
-	// Overhead area light -- without a real light source the clearcoat/
-	// metallic spheres show no specular highlight, defeating the point of
-	// the demo (matches build_rough_metal_spheres()'s own light style).
-	world.add(make_shared<quad>(point3(-7, 7, -5), vec3(14, 0, 0), vec3(0, 0, 10),
-		make_shared<diffuse_light>(color(6, 6, 6))));
-
-	return world;
-}
+// build_principled_showcase() deleted - B10 migrated to pbrt-backed, see
+// pbrt_scenes/principled-showcase.pbrt and scene_registry_data.h's own
+// entry (that file's own header comment documents the new, non-standard
+// Material "principled" kind added to the pbrt loader for this migration).
+// No other consumer (gpu/metal/metal_poc_scenes_b.mm's own scene is an
+// independent hand-ported Metal implementation that never called this
+// function).
 
 // build_hair_fibers() deleted - B11 migrated to pbrt-backed, see
 // pbrt_scenes/hair-fibers-scene.pbrt and scene_registry_data.h's own entry.
