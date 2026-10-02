@@ -314,10 +314,11 @@ Open `ray_tracer.sln`, then **Test → Test Explorer** and click **Run All**.
 
 #### Quick dev-loop filter
 
-A full GPU-enabled run takes ~160s, but that time is extremely
+A full GPU-enabled run takes ~5 minutes, but that time is extremely
 concentrated: `MaterialsAndVolumes/MaterialCpuGpuParityTest` alone accounts
-for ~55% of it (it lazily renders every Materials/Volumes/Textures scene
-(the suite name predates Textures being split out of Materials) across
+for ~60% of it (~3 minutes; it lazily renders every Materials/Volumes/
+Textures/Lights/Cameras/Geometry/Basics scene - ~96 in all; the suite name
+predates the later categories being added - across
 CPU, GPU-recursive, and GPU-wavefront the first time any of its
 parameterized instances runs - a deliberate, thorough per-material
 CPU/GPU parity sweep, not wasted work, just expensive). A handful of other
