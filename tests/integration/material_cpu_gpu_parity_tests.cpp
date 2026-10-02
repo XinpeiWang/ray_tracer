@@ -757,11 +757,16 @@ constexpr float kCameraMediumRelTolerance = 0.85f;
 // variance at this suite's own 200spp/60x60 settings - re-rendering CPU
 // alone 5x with different seeds showed this scene's own worst block
 // swinging by up to 24.6% with NO GPU involved at all. 65% gives real
-// margin over the worst isolated CPU-vs-GPU measurement (~60%) without
-// masking a materially larger future regression; it does NOT invalidate
-// the regional check generally - every OTHER scene still uses the
-// standard kRegionalRelTolerance via regional_tolerance_for(tolerance).
-constexpr float kMeasuredBrdfRegionalRelTolerance = 0.65f;
+// margin over the worst isolated CPU-vs-GPU measurement without masking a
+// materially larger future regression; it does NOT invalidate the regional
+// check generally - every OTHER scene still uses the standard
+// kRegionalRelTolerance via regional_tolerance_for(tolerance).
+// 70% (was 65%): the Phase 2 calibration runs (2026-10-02) measured the
+// worst block at 62.8%/61.5% (CPU vs recursive/wavefront), leaving only
+// ~2-3pts of headroom under 65% for a scene already shown to swing 24.6%
+// run-to-run on seed variance alone - widened for flake headroom, not
+// because of any new gap.
+constexpr float kMeasuredBrdfRegionalRelTolerance = 0.70f;
 
 // B11 (Hair Fibers) - same pattern as B14 above, a REGIONAL-check-only
 // exception (whole-image checks pass comfortably at the standard 30%).
