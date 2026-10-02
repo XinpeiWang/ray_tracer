@@ -249,8 +249,20 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// mirror-and-refract surface instead. Round 6 Phase 3: independent
 		// u/v roughness (anisotropic GGX) instead of the single collapsed
 		// value.
-		if (m.roughness_u > 0.0 || m.roughness_v > 0.0)
+		// "abbenumber" (Material::abbeNumber's own comment - not real
+		// pbrt-v4 syntax) - only wired for the flat-roughness/smooth paths
+		// just below, matching the only two shapes this codebase's own
+		// dielectric::make_dispersive()/rough_dielectric::make_dispersive()
+		// support (isotropic roughness only, no anisotropic-dispersive or
+		// texture-roughness-dispersive combination - no bundled scene needs
+		// either, not worth the extra surface for this one param).
+		if (m.roughness_u > 0.0 || m.roughness_v > 0.0) {
+			if (m.abbeNumber > 0.0)
+				return rough_dielectric::make_dispersive(m.ior, m.abbeNumber, m.roughness_u);
 			return std::make_shared<rough_dielectric>(m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		}
+		if (m.abbeNumber > 0.0)
+			return dielectric::make_dispersive(m.ior, m.abbeNumber);
 		return std::make_shared<dielectric>(m.ior);
 	case pbrt_flatten::MaterialKind::ThinDielectric:
 		// A zero-thickness slab (thin_dielectric, material_pbrt.h) is NOT the

@@ -432,30 +432,31 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B14", 205, SceneNames::MeasuredBrdf, SceneCategories::Materials,
             "Sphere cluster with a real, importance-sampled measured BRDF (pbrt-v4 MeasuredBxDF) loaded from a synthetic .bsdf tensor file",
             "Medium", "measured-brdf-showroom.pbrt"),
-        {
+        // B23 migrated to pbrt-backed - see pbrt_scenes/prism-dispersion.pbrt
+        // (legacy_id 131 kept). Uses a new "float abbenumber" parameter on
+        // the existing, already-standard Material "dielectric" kind (not a
+        // new kind - a narrower extension than Principled/NormalizedFresnel -
+        // see Material::abbeNumber's own comment, pbrt_flatten.h). Full
+        // fidelity on all 3 backends - not an approximation.
+        // build_prism_dispersion()/build_prism_dispersion_geometry()/
+        // build_prism_dispersion_punct() are NOT deleted - I2 (Spectral
+        // Dispersion Education, deliberately CPU-only/out of scope, same as
+        // I1/I7/I8/I9) still calls them directly.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
             "A real glass prism splitting a parallel white light into a visible chromatic fan (CPU --spectral, GPU --wavefront: real continuous spectral integration; GPU-recursive (--gpu, no --wavefront): a simplified 3-representative-wavelength RGB-channel approximation, same qualitative fan, see shade_material()'s inout_rgb_channel comment, optix_device_helpers.h - see dielectric's dispersive constructor, material_simple.h)",
-            "Medium", 200, false, true,
-            kPrismCamera,
-            build_prism_dispersion,
-            no_lights,
-            nullptr,
-            build_prism_dispersion_punct
-        },
-        {
-            // Same prism/light/screen as B23, frosted glass instead of
-            // smooth - see build_prism_dispersion_rough()'s own comment
-            // (scenes_materials.h) for why this exercises rough_dielectric's
-            // real NEE/MIS path, not just its initial scatter.
+            "Medium", "prism-dispersion.pbrt", CameraMode::UserControlled),
+        // B24 migrated to pbrt-backed - see
+        // pbrt_scenes/frosted-prism-dispersion.pbrt (legacy_id 136 kept).
+        // Same "float abbenumber" extension as B23, plus "float roughness"
+        // for the existing, already-wired rough-dielectric dispatch.
+        // build_prism_dispersion_rough() had no other consumer - deleted
+        // below (unlike B23's own builders, I2 only ever used the smooth
+        // variant).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
             "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (CPU --spectral, GPU --wavefront with real continuous-wavelength dispersion, and GPU-recursive with the same 3-representative-wavelength approximation as B23)",
-            "Medium", 200, false, true,
-            kPrismCamera,
-            build_prism_dispersion_rough,
-            no_lights,
-            nullptr,
-            build_prism_dispersion_punct
-        },
+            "Medium", "frosted-prism-dispersion.pbrt", CameraMode::UserControlled),
         // C7 migrated to pbrt-backed - see pbrt_scenes/portal-window-room.pbrt.
         // legacy_id 194. build_portal_light_scene()/build_portal_sky() have
         // no other consumer - deleted below.

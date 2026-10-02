@@ -42,6 +42,11 @@
 #include "../../src/shared/pbrt_flatten.h"
 #include "../../src/shared/pbrt_quadify.h"
 #include "../../src/shared/curve_tessellate.h"
+// CauchyCoefficientsFromAbbe() - pbrt_gpu_builder_materials.h's own
+// Material "abbenumber" dispersive-dielectric dispatch (not already
+// reachable here via scene_builder.cpp's own later #include of this same
+// header - this file is textually inserted before that point).
+#include "../../src/shared/fresnel.h"
 // pbrt_scene::Matrix4::inverseAffine() - used below (disks/cylinders loop) to
 // precompute each primitive's w2o from its flattened o2w, host-side, once,
 // the same "invert once at scene-build time, never on device" split

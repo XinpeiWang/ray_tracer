@@ -893,6 +893,25 @@ struct Material {
 	// substitute for either.
 	double clearcoat = 0.0;
 	double clearcoatRoughness = 0.1;
+	// Dielectric only (smooth or rough, via m.roughness/m.roughness_u/
+	// m.roughness_v above) - an ARTIST-FACING ABBE NUMBER, not real pbrt-v4
+	// syntax at all (pbrt-v4's own genuine spectral dispersion is a full
+	// "spectrum eta" per-wavelength curve, which this loader doesn't
+	// integrate). 0.0 (the default) means "not dispersive" - a real Abbe
+	// number is always positive (common glasses run roughly 20-90), so this
+	// needs no separate bool, same "zero means off" convention
+	// dispersive_extra.cauchy_A > 0.0f already uses on the GPU side
+	// (optix_types.h). Reachable only under --spectral (per-wavelength
+	// hero-wavelength tracing) - see dispersive_material's own comment,
+	// material_base.h, for why a dispersive material renders identically to
+	// a flat-IOR one under the default RGB path. Thin wrapper around this
+	// codebase's own already-implemented, already-working
+	// dielectric::make_dispersive()/rough_dielectric::make_dispersive()
+	// (CPU) and add_dispersive_dielectric()/add_dispersive_rough_dielectric()'s
+	// own Cauchy-coefficient derivation (GPU, CauchyCoefficientsFromAbbe() -
+	// src/shared/fresnel.h) - not a new rendering feature, purely new pbrt-
+	// file reachability for an existing one.
+	double abbeNumber = 0.0;
 	// DiffuseTransmission only: the light that passes through rather than
 	// reflects. pbrt-v4's own default (0.25) is closer to that material's
 	// intent than reusing `color`'s 0.5 default would be - a
@@ -3030,6 +3049,14 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			m.metallic = md.params.getFloat("metallic", 0.0);
 			m.clearcoat = md.params.getFloat("clearcoat", 0.0);
 			m.clearcoatRoughness = md.params.getFloat("clearcoatroughness", 0.1);
+		}
+
+		// Dielectric only - "abbenumber", a plain float (see Material::
+		// abbeNumber's own comment for why this isn't real pbrt-v4 syntax).
+		// Scoped to this one kind for the same reason as Principled's own
+		// scalar params just above.
+		if (m.kind == MaterialKind::Dielectric) {
+			m.abbeNumber = md.params.getFloat("abbenumber", 0.0);
 		}
 
 		// Conductor OR CoatedConductor: pbrt describes a conductor's complex

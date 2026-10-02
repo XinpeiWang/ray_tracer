@@ -228,20 +228,11 @@ inline hittable_list build_prism_dispersion() {
 	return build_prism_dispersion_geometry(dielectric::make_dispersive(1.52, 59.0));
 }
 
-// Same prism, same light, same catcher screen as build_prism_dispersion()
-// (B23) - only the glass is frosted (rough_dielectric::make_dispersive())
-// instead of perfectly smooth. Demonstrates that dispersion isn't special-
-// cased to smooth glass: the fan on the screen is the same hue order as
-// B23's, just blurred by the roughness, because rough_dielectric's real
-// NEE/MIS path (see that class's own comment in material_pbrt.h) had to
-// become wavelength-aware too, not just its initial scatter. Roughness
-// 0.08 is deliberately small - visibly frosted (not a sharp fan) while
-// staying well short of TrowbridgeReitz::EffectivelySmooth()'s threshold,
-// so the render actually exercises the glossy ggx_dielectric_pdf branch
-// rather than silently falling back to the same specular path B23 uses.
-inline hittable_list build_prism_dispersion_rough() {
-	return build_prism_dispersion_geometry(rough_dielectric::make_dispersive(1.52, 59.0, 0.08));
-}
+// build_prism_dispersion_rough() deleted - B24 migrated to pbrt-backed, see
+// pbrt_scenes/frosted-prism-dispersion.pbrt and scene_registry_data.h's own
+// entry. No other consumer (unlike build_prism_dispersion()/
+// build_prism_dispersion_geometry()/build_prism_dispersion_punct() just
+// above/below, which I2 still calls directly).
 
 inline std::shared_ptr<punctual_light_list> build_prism_dispersion_punct() {
 	auto pl = std::make_shared<punctual_light_list>();
