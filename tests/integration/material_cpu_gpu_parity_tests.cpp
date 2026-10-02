@@ -84,51 +84,50 @@
  *     (see below), not a material bug; only the isolated-run numbers above
  *     are trustworthy as material findings.
  *
- * GPU cross-scene state corruption (found while building this suite, not
- * fixed here - out of scope, flagged for human follow-up):
+ * GPU cross-scene state corruption - RESOLVED (2026-08-17, commit
+ * 7f2bc463), this comment block just never got updated to say so:
  *
  *   Rendering enough DIFFERENT scenes back-to-back on the GPU in one process
- *   eventually corrupts the CUDA/OptiX context (CUDA error 700, "an illegal
- *   memory access was encountered"), after which every further OptiX call in
- *   that process fails. This was found empirically while building this
+ *   used to eventually corrupt the CUDA/OptiX context (CUDA error 700, "an
+ *   illegal memory access was encountered"), after which every further OptiX
+ *   call in that process failed. Found empirically while building this
  *   suite's tolerance calibration: an early per-scene-interleaved design
  *   (CPU/recursive/wavefront for scene N, then scene N+1, ...) crashed after
  *   ~2 scenes; restructuring to three separate whole-suite passes (all-CPU,
  *   then one uninterrupted all-scenes GPU-recursive pass, then one
  *   uninterrupted all-scenes GPU-wavefront pass - see build_cache_once()
- *   below) moved the crash later but did NOT eliminate it: in one observed
- *   run the GPU-RECURSIVE-ONLY pass (no wavefront mode involved at all)
- *   crashed partway through, right as it reached the 13th scene in that
- *   pass. Rendering that same 13th scene (B13) ALONE, first and only in a
- *   fresh process, on both GPU backends, does NOT crash and produces the
- *   real B13 finding described above - so the trigger is cumulative
- *   cross-scene state from several prior scene rebuilds in one process, NOT
- *   a property of any one scene, and NOT specifically a wavefront-then-
- *   recursive backend-mode transition (an earlier hypothesis considered and
- *   ruled out by this same isolation testing). This is consistent with an
- *   incompletely-cleaned-up GPU resource (memory or context state) from a
- *   previous scene's build/teardown that only manifests once enough scene
- *   switches have accumulated - likely a variant of the same class of
- *   scene-switch GPU bug this codebase has hit and partially fixed before
- *   (see prior work titled "Fix wavefront shadow-pipeline crash on scene
- *   switch" and "Investigate GPUSceneSwitchTest -> WavefrontRenderTest
- *   cross-contamination"), not a wholly new phenomenon.
+ *   below) moved the crash later but did not eliminate it - in one observed
+ *   run the GPU-recursive-only pass crashed partway through, at the 13th
+ *   scene. Root-caused and fixed the same day this suite was first added
+ *   (7f2bc463, ~2 hours after 134106bd): WorkQueue::push()
+ *   (wavefront_types.h) incremented its counter past capacity
+ *   unconditionally, and 5 wavefront kernel consumers trusted that counter
+ *   alone as a bounds check - scene B2 (Cornell Rough Metal) pushes both an
+ *   area-light and a sky-NEE shadow ray per hit, overflowing the shadow
+ *   queue, and the resulting out-of-bounds device read is what corrupted the
+ *   context. A second bug in the same commit - optix_render_main() never
+ *   called enableWavefront(false), so wavefront mode stayed latched on once
+ *   any earlier call enabled it - explains why the "GPU-recursive-only" pass
+ *   that crashed at scene 13 (B13) was secretly still running wavefront.
  *
- *   Practical consequence for this suite: a full, non-isolated run of all 18
- *   parameterized instances in one process is NOT guaranteed to get real
- *   comparisons for every scene - scenes rendered after the corruption point
- *   will fail with an honest "render failed to produce a valid PPM" message
- *   (from this file's own ASSERT_TRUE checks) rather than a false material-
- *   bug claim, so a failure past the corruption point is distinguishable
- *   from a real tolerance violation by its message, but is not useful
- *   evidence either way about that scene's actual CPU/GPU parity. The real
- *   fix would be rendering each scene in its own child process (this
- *   codebase has no per-scene CLI entry point of its own since launcher/
- *   main.cpp was removed - see git history), which is real engineering work
- *   deliberately left out of scope for this task (a new test file, not a
- *   GPU resource-lifecycle fix). The B1/B13 findings above were re-verified
- *   scene-by-scene in isolation specifically to route around this bug, not
- *   to rely on a full run of this suite.
+ *   Re-verified empirically for THIS file specifically (2026-10-02, Phase 2
+ *   test-coverage scoping): a trial expansion from this suite's 40 Materials/
+ *   Volumes/Textures scenes to 96 (adding Lights/Cameras/Geometry/Basics) ran
+ *   in one process with zero CUDA errors and zero "render failed to produce
+ *   a valid PPM" failures - the corruption this section used to describe
+ *   does not recur even at more than double this suite's own scene count.
+ *   That same trial is what surfaced a REAL bug of the identical shape (a
+ *   wavefront work queue sized for 1 item/pixel silently dropping items for
+ *   a scene that legitimately needs more) in a different queue - see
+ *   wavefront_path_tracer.cpp's own shadowQueueCapacity_ comment for the
+ *   full story (fixed separately, not a corruption-class issue - WorkQueue::
+ *   push()'s overflow guard already made it safe, just silently incorrect).
+ *
+ *   The now-safely-contained version of this bug class (a work queue
+ *   consumer trusting its own push() counter without checking the OTHER end
+ *   - the backing buffer's real capacity - for every site that reads it) is
+ *   worth a one-time audit if a future queue's capacity ever needs to differ
+ *   from numPixels again, but is not tracked as a known open issue today.
  *
  * Regional (block-based) diff, added later: every check described above
  * reduces a whole rendered image to 1-4 floats (overall brightness, 3
