@@ -276,14 +276,17 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B13", 193, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
             "Slow", "subsurface-slab.pbrt", CameraMode::UserControlled),
-        {
+        // D1 migrated to pbrt-backed - see pbrt_scenes/depth-of-field-spheres.pbrt
+        // (legacy_id 22 kept). build_depth_of_field() (CPU) has no other
+        // consumer - deleted below. build_depth_of_field_gpu() (GPU) is ALSO
+        // deleted below, its own case 22 having diverged into a different,
+        // simpler scene than CPU's - the new pbrt file reunifies both
+        // backends on CPU's original, richer design (see that file's own
+        // header comment).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D1", 22, SceneNames::DepthOfField, SceneCategories::Cameras,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
-            "Medium", 200, false, true,
-            { 62, 0, 2, 9,  0, 1, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 10.0, 9.0 },
-            build_depth_of_field,
-            sky_dummy_lights
-        },
+            "Medium", "depth-of-field-spheres.pbrt"),
         // F1 migrated to pbrt-backed - see pbrt_scenes/bilinear-patch-scene.pbrt.
         // legacy_id 200. build_bilinear_patch_scene()/
         // build_bilinear_patch_lights() have no other consumer - deleted

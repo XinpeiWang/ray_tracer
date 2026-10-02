@@ -1,0 +1,140 @@
+# depth-of-field-spheres.pbrt -- migration of the native "D1 Depth of
+# Field" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
+# build_depth_of_field()) to a pbrt-backed scene, part of this project's
+# GPU scene-construction-duplication elimination.
+#
+# This migration uses the CPU builder's geometry as the reference, NOT the
+# GPU switch case's (gpu/optix/scene_builder.cpp's build_depth_of_field_gpu(),
+# deleted alongside this migration) - the two had already diverged into two
+# different scenes: GPU used a flat grey ground sphere and 5 spheres in a
+# single row along z (an independent redesign, per that function's own
+# "first attempt... blew out" comments), while CPU (and this scene's own
+# registry description, "Row of spheres with defocus blur") uses a checker
+# ground and a diagonal row of 5 named spheres plus 7 small accent spheres.
+# This migration restores GPU to CPU's original, richer design - expect
+# GPU's render of D1 to change visibly (more geometry, checker ground, a
+# diagonal row instead of a straight one), which is the intended effect of
+# fixing the duplication rather than a regression.
+#
+# Depth of field: native's CameraConfig row carries defocus_angle=10.0
+# degrees and focus_dist=9.0 world units - camera.h's own DOF convention (a
+# full-angle spread in degrees), NOT pbrt-v4's "lensradius" (a world-space
+# radius). This loader's own conversion (pbrt_flatten::defocusAngleDegreesFor(),
+# scene_registry.h) is `defocus_angle = 2*atan(lensradius/focaldistance)*180/pi`,
+# so reproducing 10.0 degrees at focaldistance=9.0 needs
+# lensradius = 9*tan(5 degrees) = 0.787397971733316 (solved exactly, not
+# guessed - see cornell-dof.pbrt's own identical derivation for D5).
+#
+# The 7 small accent spheres: CPU's own build_depth_of_field() picks their
+# color via random_double(0.3, 0.9) per channel, seeded from
+# std::random_device - genuinely different every single CPU run, with no
+# fixed reference color to reproduce. The 7 colors below are simply one
+# representative sample in that same [0.3, 0.9] range, spaced for visible
+# variety - exactly as reproducible (or not) as any native CPU render.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2 9    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 62 ]
+  "float lensradius" [ 0.787397971733316 ] "float focaldistance" [ 9.0 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.70 0.80 1.00 ]
+
+# ---------------------------------------------------------- checker ground
+AttributeBegin
+  Scale 0.5 0.5 0.5
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.2 0.3 0.1 ] "rgb tex2" [ 0.9 0.9 0.9 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# ---------------------------------------------------------- named spheres
+# Background sphere (out of focus far)
+Material "diffuse" "rgb reflectance" [ 0.4 0.2 0.1 ]
+AttributeBegin
+  Translate -4 1 -3
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# Near sphere (out of focus near)
+Material "diffuse" "rgb reflectance" [ 0.7 0.3 0.3 ]
+AttributeBegin
+  Translate -1.5 0.5 1.5
+  Shape "sphere" "float radius" [ 0.5 ]
+AttributeEnd
+
+# In-focus center sphere (glass)
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# In-focus metal sphere
+Material "conductor" "rgb reflectance" [ 0.7 0.6 0.5 ] "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 2 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# Far sphere (out of focus)
+Material "diffuse" "rgb reflectance" [ 0.1 0.2 0.6 ]
+AttributeBegin
+  Translate 4 1 -2
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# ---------------------------------------------------------- small accent row
+# i = -3..3: center (i*1.2, 0.2, 2.5+i*0.3), radius 0.2 - see header comment
+# on why these 7 colors are a representative sample, not a reproduction.
+Material "diffuse" "rgb reflectance" [ 0.80 0.35 0.35 ]
+AttributeBegin
+  Translate -3.6 0.2 1.6
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.85 0.60 0.30 ]
+AttributeBegin
+  Translate -2.4 0.2 1.9
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.80 0.80 0.35 ]
+AttributeBegin
+  Translate -1.2 0.2 2.2
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.35 0.80 0.40 ]
+AttributeBegin
+  Translate 0 0.2 2.5
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.35 0.65 0.85 ]
+AttributeBegin
+  Translate 1.2 0.2 2.8
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.45 0.35 0.85 ]
+AttributeBegin
+  Translate 2.4 0.2 3.1
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.80 0.35 0.75 ]
+AttributeBegin
+  Translate 3.6 0.2 3.4
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd

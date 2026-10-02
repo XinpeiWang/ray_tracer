@@ -2296,62 +2296,12 @@ static void build_simple_light_gpu(SceneData& scene) {
 // see pbrt_scenes/cornell-goniometric.pbrt/cornell-projection.pbrt and their
 // case removal above. No remaining GPU builder calls build_punctual_light_walls().
 
-/// @brief Scene 22: Depth of Field. Matches CPU build_depth_of_field() in
-/// spirit (ground + a row of spheres spanning near/far of the focus plane to
-/// show defocus blur) - simplified to solid-color materials since GPU has no
-/// checker/procedural texture support. No emissive geometry, matching CPU
-/// exactly (build_depth_of_field() has none either) - both are lit purely by
-/// a flat sky background color, set via backgroundColor in this scene's
-/// build_scene() case below (matching CameraConfig's bg for scene 22) rather
-/// than a synthetic light. An earlier version of this function added a
-/// hand-placed overhead area-light quad instead, under the mistaken belief
-/// that GPU had no background/miss-color mechanism (it does - see
-/// optix_miss.h's __miss__ms() and scene 5/24's own use of this same field)
-/// - that extra light was a real, NEE-sampled light CPU doesn't have,
-/// silently breaking CpuGpuLightParityTest for this scene.
-static void build_depth_of_field_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
-	SphereData ground{};
-	// Modest flat ground (not the usual radius-1000 "planet" sphere used
-	// elsewhere in this file) - at this camera's close distance/narrow fov,
-	// a radius-1000 ground's curvature toward the horizon caught the
-	// overhead light at a bad grazing angle and blew out most of the frame.
-	ground.center = make_float3(0.0f, -50.0f, 0.0f);
-	ground.radius = 50.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	// Five spheres spanning z = -4..+4 around the lookat point (z=0, matching
-	// CPU's focus_dist=9 from lookfrom z=9), alternating material, so the
-	// defocus blur visibly increases toward the near/far ends.
-	const float3 colors[5] = {
-		make_float3(0.8f, 0.2f, 0.2f), make_float3(0.2f, 0.8f, 0.2f), make_float3(0.9f, 0.9f, 0.9f),
-		make_float3(0.2f, 0.2f, 0.8f), make_float3(0.8f, 0.8f, 0.2f)
-	};
-	const MaterialType kinds[5] = {
-		MaterialType::Lambertian, MaterialType::Metal, MaterialType::Dielectric,
-		MaterialType::Metal, MaterialType::Lambertian
-	};
-	for (int i = 0; i < 5; ++i) {
-		// Material kind varies per sphere (see kinds[] above), so this picks
-		// the matching named factory per-iteration instead of one fixed call.
-		int mat;
-		switch (kinds[i]) {
-			case MaterialType::Metal:      mat = add_metal(scene, colors[i], 0.05f); break;
-			case MaterialType::Dielectric: mat = add_dielectric(scene, 1.5f); break;
-			default:                       mat = add_lambertian(scene, colors[i]); break;
-		}
-		SphereData s{};
-		// Smaller radius than a first attempt at this scene used: at only 5
-		// world units from the camera (nearest sphere, z=+4) with a narrow
-		// 20-degree vfov, radius-1 spheres subtended more than the whole
-		// frame and blew out to a solid color filling the image.
-		s.center = make_float3(0.0f, 0.5f, (i - 2) * 2.0f);
-		s.radius = 0.5f;
-		s.materialIdx = mat;
-		scene.spheres.push_back(s);
-	}
-}
+// Scene 22 (Depth of Field / D1) migrated to pbrt-backed - see
+// pbrt_scenes/depth-of-field-spheres.pbrt and scene_registry_data.h's own
+// D1 entry. build_depth_of_field_gpu() itself is deleted - its own case 22
+// (below) was its only caller, and the new pbrt file reunifies GPU with
+// CPU's original design (see that file's own header comment on why GPU's
+// render of this scene changes as a result).
 
 // build_ortho_camera_scene_gpu() (former "scene 32" / D2 Orthographic
 // Camera GPU builder) deleted - D2 migrated to pbrt-backed, see
@@ -3389,8 +3339,8 @@ static bool build_loaded_pbrt_scene(
 	// never read here at all: every loaded .pbrt scene rendered pinhole-sharp
 	// on GPU regardless of what its own Camera directive's "lensradius"
 	// asked for, while the identical scene on CPU (scene_registry.h, which
-	// does read it via defocusAngleDegreesFor()) correctly blurred. Case 1/
-	// case 22 elsewhere in this file show the pattern this now follows: pass
+	// does read it via defocusAngleDegreesFor()) correctly blurred. Case 1 and the generic pbrt
+	// Depth-of-Field (D1) path elsewhere in this file show the pattern this now follows: pass
 	// the real focus_dist into build_pinhole_camera_params (capturing its u/v
 	// basis) only when there's a nonzero aperture to blur with, and derive
 	// defocus_disk_u/v from it exactly as camera.h does - a zero-aperture
@@ -3486,7 +3436,8 @@ static bool build_loaded_pbrt_scene(
 			// optix_interface.cpp's generic camera_params->cameraExtra
 			// fallback (see CameraKind::Perspective's own comment there), so
 			// kind/origin/lower_left_corner/horizontal/vertical must be set
-			// explicitly here too - same full set case 1/case 22 set.
+			// explicitly here too - same full set case 1/the generic pbrt
+			// Depth-of-Field (D1) path set.
 			out_camera_extra->kind = CameraKind::Perspective;
 			out_camera_extra->origin = lookfrom;
 			out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
@@ -3842,7 +3793,7 @@ bool build_scene(
 						// CameraConfig's DOF values for this scene (the
 						// book's own final-render "beauty shot" values,
 						// focused near the 3 hero spheres) - same thin-lens
-						// wiring as case 22 (Depth of Field scene).
+						// wiring as the generic pbrt Depth of Field (D1) scene.
 						constexpr float kPi = 3.14159265358979323846f;
 						constexpr float defocus_angle = 0.6f;
 						constexpr float focus_dist    = 10.0f;
@@ -3855,7 +3806,7 @@ bool build_scene(
 							// cameraExtra fallback (see its own comment on
 							// defocusDiskZero), so kind/origin/lower_left_corner/
 							// horizontal/vertical must be set explicitly here too -
-							// same full set case 22 (Depth of Field scene) sets.
+							// same full set the generic pbrt Depth of Field (D1) scene sets.
 							out_camera_extra->kind = CameraKind::Perspective;
 							out_camera_extra->origin = lookfrom;
 							out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
@@ -4022,42 +3973,13 @@ bool build_scene(
 							// default: -> build_loaded_pbrt_scene() now that legacy_id 23
 							// is no longer assigned to any scene.
 
-							case 22: {  // Depth of Field (thin-lens perspective camera)
-								build_depth_of_field_gpu(scene);
-								constexpr float kPi = 3.14159265358979323846f;
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 9.0f);
-								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								constexpr float defocus_angle = 10.0f;   // matches CPU CameraConfig row for scene 22
-								constexpr float focus_dist    = 9.0f;    // ditto
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								// vfov widened from 20 to 62 so the row of spheres (spanning
-								// x=+-5) actually fits in frame at focus_dist=9 - matches CPU
-								// CameraConfig row for scene 22. defocus_angle/focus_dist
-								// unchanged so the DOF blur physics stays as designed.
-								float3 u, v;
-								build_pinhole_camera_params(lookfrom, lookat, vup, 62.0f, aspect, focus_dist, camera_params, &u, &v);
-
-								if (out_camera_extra) {
-									out_camera_extra->kind = CameraKind::Perspective;
-									out_camera_extra->origin = lookfrom;
-									out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
-									out_camera_extra->horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
-									out_camera_extra->vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
-									// pbrt-v4/book-style thin-lens disk basis, scaled by focus_dist and
-									// half the defocus cone angle - matches src/TheRestOfYourLife/
-									// camera.h's defocus_disk_u/v exactly.
-									const float defocus_radius = focus_dist * tanf((defocus_angle * kPi / 180.0f) / 2.0f);
-									out_camera_extra->defocus_disk_u = make_float3(u.x * defocus_radius, u.y * defocus_radius, u.z * defocus_radius);
-									out_camera_extra->defocus_disk_v = make_float3(v.x * defocus_radius, v.y * defocus_radius, v.z * defocus_radius);
-									// Matches CPU CameraConfig bg for scene 22 - see
-									// build_depth_of_field_gpu's comment for why this replaced a
-									// synthetic overhead light.
-									out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
-								}
-								break;
-							}
+							// case 22 (Depth of Field / D1) migrated to pbrt-backed - see
+							// pbrt_scenes/depth-of-field-spheres.pbrt and scene_registry_data.h's
+							// own D1 entry. Falls through to default: -> build_loaded_pbrt_
+							// scene() now that legacy_id 22 is no longer assigned - the generic
+							// pbrt camera-type dispatch's thin-lens lensradius/focaldistance
+							// support (already proven by D5-D8's own migration) handles this
+							// scene's defocus blur without any bespoke case needed here.
 
 							// case 32 (Orthographic Camera / D2) migrated to pbrt-backed -
 							// see pbrt_scenes/ortho-camera-scene.pbrt and
