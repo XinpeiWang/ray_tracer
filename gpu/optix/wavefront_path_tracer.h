@@ -422,7 +422,7 @@ private:
     bool loadModule();
     void destroyProgramGroups();
     void destroySBT();
-    bool allocateQueues(int numPixels);
+    bool allocateQueues(int numPixels, int numPunctualLights);
     void freeQueues();
     void launchGenerateCameraRays(int width, int height, int sampleIdx,
         const GpuCameraParams& camera, float* d_weightBuffer, bool checkerboardActive,
@@ -919,6 +919,13 @@ private:
     // simpleHitQueue/dielectricHitQueue are mutually disjoint at push time.
     cudaStream_t dielectricMaterialStream_ = nullptr;
     int          queueCapacity_ = 0;
+    // Separate, LARGER capacity for d_shadowItems_/d_shadowCounter_ only -
+    // see allocateQueues()'s own comment for why a single shadow NEE pass
+    // can legitimately need multiple shadow rays per pixel (one stochastic
+    // area-light pick + one sky-light pick + one per punctual/delta light),
+    // unlike every other per-bounce queue here (ray/hit/miss/probe/exit),
+    // which are genuinely bounded at one live item per pixel.
+    int          shadowQueueCapacity_ = 0;
     CUdeviceptr  d_bssrdfTables_ = 0;         ///< see setBssrdfTables()
     unsigned int numBssrdfTables_ = 0;
     CUdeviceptr  d_bssrdfRhoSamples_ = 0;
