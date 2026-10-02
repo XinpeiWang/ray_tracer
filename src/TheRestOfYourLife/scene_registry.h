@@ -232,13 +232,13 @@ struct SceneDescriptor {
     bool is_pbrt_backed = false;
 };
 
-// Dummy sphere light used by scenes that have no explicit light geometry
-static inline hittable_list sky_dummy_lights() {
-    hittable_list l;
-    auto empty_mat = std::shared_ptr<material>();
-    l.add(std::make_shared<sphere>(point3(0, 1000, 0), 500, empty_mat));
-    return l;
-}
+// sky_dummy_lights() deleted - it was a dummy sphere light for native
+// scenes with no explicit light geometry (PDF-sampling placeholder); its
+// last caller (A2) migrated to pbrt-backed, and the generic pbrt
+// build_lights() path never used it (see
+// tests/unit/scene_registry_tests.cpp's SkyDummyLightsAreNonEmpty test for
+// why that's fine - a background-only pbrt scene legitimately returns an
+// empty lights list instead).
 
 static inline hittable_list no_lights() { return hittable_list{}; }
 

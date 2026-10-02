@@ -1,0 +1,4533 @@
+# bouncing-spheres.pbrt -- migration of the native "A2 Bouncing Spheres"
+# demo scene (src/TheRestOfYourLife/scenes_book.h's build_bouncing_spheres(),
+# the "In One Weekend" book's own final-render scene) to a pbrt-backed
+# scene, part of this project's GPU scene-construction-duplication
+# elimination.
+#
+# The 481 small grid spheres below are NOT hand-authored or newly
+# randomized - they are the literal, deterministic output of GPU's own
+# build_bouncing_spheres() (gpu/optix/scene_builder.cpp): a fixed
+# std::mt19937(42) seed with std::uniform_real_distribution<float>(0,1),
+# sampled in the exact same order GPU's own loop uses, dumped by a
+# throwaway C++ program (scratch_gen_a2_bouncing.cpp, not checked in) that
+# replicated that exact call sequence. CPU's OWN build_bouncing_spheres()
+# uses unseeded random_double() (std::random_device-backed) and produces a
+# genuinely different random layout on every single run - it has no fixed
+# reference layout to match at all (see that function's own GPU-side
+# header comment: "none of which reproduce the CPU's exact random sequence
+# either") - so GPU's already-deterministic layout is the only reproducible
+# choice available, and reusing it exactly (rather than inventing a third
+# layout) keeps this migration from adding yet another independent random
+# sequence to a scene that already has two.
+#
+# Motion blur: each diffuse grid sphere "bounces" - real per-shape motion
+# blur via ActiveTransform "StartTime"/"EndTime" bracketing two different
+# Translate CTMs (pbrt_flatten.h bakes this into Sphere::center1, sampled
+# per-ray by the default [0,1] shutter interval), matching both CPU's
+# `sphere(center1, center2, radius, mat)` moving-sphere constructor and
+# GPU's own `SphereData::center1` field exactly - not an approximation,
+# see object-motion-blur.pbrt's own header comment for this same mechanism
+# proven on all 3 backends already.
+#
+# Depth of field: native's CameraConfig row carries defocus_angle=0.6
+# degrees and focus_dist=10.0 world units ("the book's own final-render
+# values ... a subtle depth-of-field beauty shot") - converted to pbrt's
+# "lensradius" the same way every other migrated DOF scene in this project
+# does (see cornell-dof.pbrt's own derivation): lensradius =
+# 10*tan(0.3 degrees) = 0.052360356057001275.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  13 2 3    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 20 ]
+  "float lensradius" [ 0.052360356057001275 ] "float focaldistance" [ 10.0 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 100 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.70 0.80 1.00 ]
+
+# ---------------------------------------------------------- checker ground
+AttributeBegin
+  Scale 0.32 0.32 0.32
+  Texture "ground-checker" "spectrum" "checkerboard" "integer dimension" [ 3 ]
+    "rgb tex1" [ 0.2 0.3 0.1 ] "rgb tex2" [ 0.9 0.9 0.9 ]
+AttributeEnd
+Material "diffuse" "texture reflectance" [ "ground-checker" ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+
+# ---------------------------------------------------------- hero spheres
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.4 0.2 0.1 ]
+AttributeBegin
+  Translate -4 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.7 0.6 0.5 ] "float roughness" [ 0.0 ]
+AttributeBegin
+  Translate 4 1 0
+  Shape "sphere" "float radius" [ 1.0 ]
+AttributeEnd
+
+# ---------------------------------------------------------- grid spheres (481)
+Material "diffuse" "rgb reflectance" [ 0.13427314 0.46676859 0.093119733 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.283112 0.2 -10.144357
+  ActiveTransform "EndTime"
+  Translate -10.283112 0.42291635 -10.144357
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.39779037 0.20059723 0.10116005 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.910023 0.2 -9.9477243
+  ActiveTransform "EndTime"
+  Translate -10.910023 0.52544421 -9.9477243
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.60102248 0.19929144 0.00014159338 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.949229 0.2 -8.1270809
+  ActiveTransform "EndTime"
+  Translate -10.949229 0.69610578 -8.1270809
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.32096893 0.0030522312 0.0067164451 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.444266 0.2 -7.726182
+  ActiveTransform "EndTime"
+  Translate -10.444266 0.46238732 -7.726182
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.013633106 0.35674679 0.10616001 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.640125 0.2 -6.8744555
+  ActiveTransform "EndTime"
+  Translate -10.640125 0.2453032 -6.8744555
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.19667511 0.58248025 0.021681311 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.443453 0.2 -5.8202934
+  ActiveTransform "EndTime"
+  Translate -10.443453 0.62997019 -5.8202934
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.029305676 0.012586922 0.90982014 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.387723 0.2 -4.8465281
+  ActiveTransform "EndTime"
+  Translate -10.387723 0.48164409 -4.8465281
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.50798309 0.54883605 0.61544693 ] "float roughness" [ 0.3421165 ]
+AttributeBegin
+  Translate -10.653125 0.2 -3.7258477
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.074442878 0.41257882 0.0059617469 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.603863 0.2 -2.3850629
+  ActiveTransform "EndTime"
+  Translate -10.603863 0.65466017 -2.3850629
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5004437 0.13252577 0.1081438 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.767098 0.2 -1.8359876
+  ActiveTransform "EndTime"
+  Translate -10.767098 0.47335511 -1.8359876
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.81666631 0.34861916 0.37124318 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.833631 0.2 -0.97181809
+  ActiveTransform "EndTime"
+  Translate -10.833631 0.64741367 -0.97181809
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.96093714 0.66327035 0.5442462 ] "float roughness" [ 0.28522196 ]
+AttributeBegin
+  Translate -10.46189 0.2 0.65454477
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.31269839 0.32825106 0.20278455 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.531249 0.2 1.0407045
+  ActiveTransform "EndTime"
+  Translate -10.531249 0.46984607 1.0407045
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.98262763 0.64046723 0.8035171 ] "float roughness" [ 0.27134803 ]
+AttributeBegin
+  Translate -10.471924 0.2 2.3210778
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13257663 0.0011657022 0.41784939 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.873168 0.2 3.2666461
+  ActiveTransform "EndTime"
+  Translate -10.873168 0.58612239 3.2666461
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 7.7749726e-05 0.16214825 0.50281727 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.821156 0.2 4.2641392
+  ActiveTransform "EndTime"
+  Translate -10.821156 0.56450355 4.2641392
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.068587616 0.23338874 0.1060155 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.305857 0.2 5.5453639
+  ActiveTransform "EndTime"
+  Translate -10.305857 0.63155168 5.5453639
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.66544902 0.54770505 0.53177917 ] "float roughness" [ 0.1854091 ]
+AttributeBegin
+  Translate -10.439032 0.2 6.4045057
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.48586103 0.37698629 0.24373661 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.398043 0.2 7.292665
+  ActiveTransform "EndTime"
+  Translate -10.398043 0.4806217 7.292665
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.6930685 0.64584094 0.40509027 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.655366 0.2 8.1076345
+  ActiveTransform "EndTime"
+  Translate -10.655366 0.31799245 8.1076345
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.021135962 0.30383751 0.0028187463 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.769539 0.2 9.444416
+  ActiveTransform "EndTime"
+  Translate -10.769539 0.41966826 9.444416
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.57007319 0.14943545 0.28646541 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -10.818453 0.2 10.028286
+  ActiveTransform "EndTime"
+  Translate -10.818453 0.54775804 10.028286
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.80220866 0.70519143 0.76992053 ] "float roughness" [ 0.37777555 ]
+AttributeBegin
+  Translate -9.8746014 0.2 -10.775637
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.046100587 0.2013149 0.14195015 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.7940817 0.2 -9.151432
+  ActiveTransform "EndTime"
+  Translate -9.7940817 0.6648488 -9.151432
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.06682042 0.39785185 0.17555445 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.2726917 0.2 -8.7339296
+  ActiveTransform "EndTime"
+  Translate -9.2726917 0.29328501 -8.7339296
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.17493296 0.098578662 0.31927535 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.1966972 0.2 -7.2050476
+  ActiveTransform "EndTime"
+  Translate -9.1966972 0.3590017 -7.2050476
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.61396754 0.82384503 0.71355391 ] "float roughness" [ 0.00026017427 ]
+AttributeBegin
+  Translate -9.9009533 0.2 -6.7550812
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.6523906 0.50347602 0.5823279 ] "float roughness" [ 0.25537363 ]
+AttributeBegin
+  Translate -9.6826878 0.2 -5.2253428
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.15379541 0.0322932 0.082420461 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.6243305 0.2 -4.563653
+  ActiveTransform "EndTime"
+  Translate -9.6243305 0.67145485 -4.563653
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.28953806 0.28390443 0.023596736 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.7091169 0.2 -3.8031123
+  ActiveTransform "EndTime"
+  Translate -9.7091169 0.68589103 -3.8031123
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.17531705 0.35417545 0.044556133 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.1337976 0.2 -2.7778115
+  ActiveTransform "EndTime"
+  Translate -9.1337976 0.34242022 -2.7778115
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -9.9668016 0.2 -1.7598971
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.021159668 0.0092094634 0.31341636 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.1210461 0.2 -0.54758894
+  ActiveTransform "EndTime"
+  Translate -9.1210461 0.51717567 -0.54758894
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.25986737 0.44135761 0.13383065 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.3873653 0.2 0.13040535
+  ActiveTransform "EndTime"
+  Translate -9.3873653 0.49634832 0.13040535
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.087843761 0.17634478 0.29538125 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.9272318 0.2 1.6854576
+  ActiveTransform "EndTime"
+  Translate -9.9272318 0.43515033 1.6854576
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21368 0.073715396 0.66685963 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.1149197 0.2 2.5701766
+  ActiveTransform "EndTime"
+  Translate -9.1149197 0.27535874 2.5701766
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.028371848 0.50719815 0.22085808 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.5426216 0.2 3.1678667
+  ActiveTransform "EndTime"
+  Translate -9.5426216 0.31012052 3.1678667
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.18334852 0.22494978 0.016769953 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.3599653 0.2 4.4608836
+  ActiveTransform "EndTime"
+  Translate -9.3599653 0.67026162 4.4608836
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.48499319 0.11520265 0.23045513 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.6421852 0.2 5.3480616
+  ActiveTransform "EndTime"
+  Translate -9.6421852 0.56760806 5.3480616
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.47503355 0.17947175 0.15083936 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.8118353 0.2 6.8322244
+  ActiveTransform "EndTime"
+  Translate -9.8118353 0.28747743 6.8322244
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.75831795 0.76482528 0.63041461 ] "float roughness" [ 0.12092614 ]
+AttributeBegin
+  Translate -9.1160488 0.2 7.4996805
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -9.9162073 0.2 8.8688774
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.94131815 0.81655073 0.59435356 ] "float roughness" [ 0.16951489 ]
+AttributeBegin
+  Translate -9.4975357 0.2 9.8103762
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.61463839 0.76821727 0.35883364 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -9.6857119 0.2 10.630322
+  ActiveTransform "EndTime"
+  Translate -9.6857119 0.58993775 10.630322
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.54206997 0.96781749 0.58081436 ] "float roughness" [ 0.3926703 ]
+AttributeBegin
+  Translate -8.4221716 0.2 -10.234164
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.79034328 0.5045985 0.68614137 ] "float roughness" [ 0.050735742 ]
+AttributeBegin
+  Translate -8.3979111 0.2 -9.4542141
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.50253081 0.6419605 0.58040404 ] "float roughness" [ 0.15268192 ]
+AttributeBegin
+  Translate -8.4028482 0.2 -8.123703
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.29235512 0.22302625 0.12529026 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.5629473 0.2 -7.3772945
+  ActiveTransform "EndTime"
+  Translate -8.5629473 0.20903768 -7.3772945
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13348959 0.23807013 0.63196695 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.5554953 0.2 -6.7071404
+  ActiveTransform "EndTime"
+  Translate -8.5554953 0.56046993 -6.7071404
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.050822299 0.18709895 0.16875689 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.7227449 0.2 -5.4885225
+  ActiveTransform "EndTime"
+  Translate -8.7227449 0.3252309 -5.4885225
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.38480049 0.43419662 0.57187396 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.4691162 0.2 -4.1242905
+  ActiveTransform "EndTime"
+  Translate -8.4691162 0.41719717 -4.1242905
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.37216261 0.3294569 0.1687226 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.6849298 0.2 -3.5476267
+  ActiveTransform "EndTime"
+  Translate -8.6849298 0.31509262 -3.5476267
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.013908828 0.49608028 0.0077226837 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.5507259 0.2 -2.7473049
+  ActiveTransform "EndTime"
+  Translate -8.5507259 0.69727522 -2.7473049
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.63978016 0.95743215 0.94174701 ] "float roughness" [ 0.18507934 ]
+AttributeBegin
+  Translate -8.5770502 0.2 -1.1414644
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.30704162 0.23668516 0.55320925 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.9860888 0.2 -0.1422354
+  ActiveTransform "EndTime"
+  Translate -8.9860888 0.68180996 -0.1422354
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -8.2322912 0.2 0.067811608
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.16249134 0.085085563 0.082251407 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.7248726 0.2 1.3465879
+  ActiveTransform "EndTime"
+  Translate -8.7248726 0.38634342 1.3465879
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.58759749 0.53016645 0.0068427888 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.6447773 0.2 2.8425393
+  ActiveTransform "EndTime"
+  Translate -8.6447773 0.30445933 2.8425393
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.050240662 0.13174054 0.25907996 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.3959713 0.2 3.8910484
+  ActiveTransform "EndTime"
+  Translate -8.3959713 0.36127537 3.8910484
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.095974281 0.25484717 0.1623034 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.2361975 0.2 4.6273141
+  ActiveTransform "EndTime"
+  Translate -8.2361975 0.34825504 4.6273141
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.62810349 0.93353617 0.80575681 ] "float roughness" [ 0.45662028 ]
+AttributeBegin
+  Translate -8.6221972 0.2 5.7291021
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.31489927 0.15508795 0.046109032 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.5397921 0.2 6.0046663
+  ActiveTransform "EndTime"
+  Translate -8.5397921 0.55098343 6.0046663
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.78909391 0.009334323 0.21741177 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.2837868 0.2 7.0456915
+  ActiveTransform "EndTime"
+  Translate -8.2837868 0.24699096 7.0456915
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.011794547 0.072187044 0.53279066 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -8.4795475 0.2 8.6048231
+  ActiveTransform "EndTime"
+  Translate -8.4795475 0.3432706 8.6048231
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.51525009 0.62512565 0.51867408 ] "float roughness" [ 0.019417346 ]
+AttributeBegin
+  Translate -8.4682503 0.2 9.7743645
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.76854122 0.56353021 0.66332561 ] "float roughness" [ 0.2611216 ]
+AttributeBegin
+  Translate -8.7270613 0.2 10.324172
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.60791051 0.9826259 0.81144524 ] "float roughness" [ 0.22863257 ]
+AttributeBegin
+  Translate -7.3070059 0.2 -10.755611
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1032847 0.22239235 0.44588998 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.2421794 0.2 -9.9534864
+  ActiveTransform "EndTime"
+  Translate -7.2421794 0.26917654 -9.9534864
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5005722 0.23078309 0.032656293 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.8805289 0.2 -8.1217327
+  ActiveTransform "EndTime"
+  Translate -7.8805289 0.39941043 -8.1217327
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.058374863 0.0063594868 0.17744847 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.6098313 0.2 -7.6049256
+  ActiveTransform "EndTime"
+  Translate -7.6098313 0.24043648 -7.6049256
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.84424996 0.70447648 0.52909678 ] "float roughness" [ 0.086647153 ]
+AttributeBegin
+  Translate -7.6145172 0.2 -6.3736234
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.62512147 0.61989367 0.77461332 ] "float roughness" [ 0.046936631 ]
+AttributeBegin
+  Translate -7.8592067 0.2 -5.6018829
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.26163009 0.60946238 0.3812685 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.8354206 0.2 -4.4058223
+  ActiveTransform "EndTime"
+  Translate -7.8354206 0.52855563 -4.4058223
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.30632451 0.011820751 0.20149375 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.6078944 0.2 -3.4494514
+  ActiveTransform "EndTime"
+  Translate -7.6078944 0.27932322 -3.4494514
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.039682861 0.0042229961 0.003834896 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.8918519 0.2 -2.987046
+  ActiveTransform "EndTime"
+  Translate -7.8918519 0.35570663 -2.987046
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.58766508 0.73708689 0.50858057 ] "float roughness" [ 0.048917055 ]
+AttributeBegin
+  Translate -7.1184406 0.2 -1.366708
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1639653 0.080482356 0.28190535 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.5575457 0.2 -0.27377838
+  ActiveTransform "EndTime"
+  Translate -7.5575457 0.39925236 -0.27377838
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.56312507 0.011819523 0.0057332604 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.445735 0.2 0.85423106
+  ActiveTransform "EndTime"
+  Translate -7.445735 0.51292992 0.85423106
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.92824495 0.76968873 0.82934678 ] "float roughness" [ 0.34198186 ]
+AttributeBegin
+  Translate -7.5471773 0.2 1.4509358
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.60637408 0.025033291 0.50798392 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.445734 0.2 2.0635118
+  ActiveTransform "EndTime"
+  Translate -7.445734 0.51820177 2.0635118
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.83858418 0.69408494 0.7866835 ] "float roughness" [ 0.3216441 ]
+AttributeBegin
+  Translate -7.2791457 0.2 3.5179267
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.44775462 0.58930016 0.31676894 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.5875726 0.2 4.7300835
+  ActiveTransform "EndTime"
+  Translate -7.5875726 0.68059528 4.7300835
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.053639159 0.014884174 0.038019408 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.1851845 0.2 5.1860161
+  ActiveTransform "EndTime"
+  Translate -7.1851845 0.2091109 5.1860161
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.22986877 0.046679992 0.12293212 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.9150014 0.2 6.5564284
+  ActiveTransform "EndTime"
+  Translate -7.9150014 0.62243766 6.5564284
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21232745 0.1398105 0.081875235 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.9790554 0.2 7.3065619
+  ActiveTransform "EndTime"
+  Translate -7.9790554 0.54836857 7.3065619
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.03438488 0.30721998 0.77743244 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.4339514 0.2 8.8429832
+  ActiveTransform "EndTime"
+  Translate -7.4339514 0.34101725 8.8429832
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.42673966 0.46467587 0.72470081 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.8403044 0.2 9.3811235
+  ActiveTransform "EndTime"
+  Translate -7.8403044 0.40630883 9.3811235
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.45074186 0.29551637 0.5229615 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -7.665184 0.2 10.225015
+  ActiveTransform "EndTime"
+  Translate -7.665184 0.62920636 10.225015
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.55557609 0.17975937 0.038952854 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.6139054 0.2 -10.38814
+  ActiveTransform "EndTime"
+  Translate -6.6139054 0.65127647 -10.38814
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.32200274 0.095258005 0.089538783 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.5452728 0.2 -9.5530949
+  ActiveTransform "EndTime"
+  Translate -6.5452728 0.39460081 -9.5530949
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.76698804 0.032398108 0.30551952 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.9902463 0.2 -8.1373129
+  ActiveTransform "EndTime"
+  Translate -6.9902463 0.67503095 -8.1373129
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.28271955 0.052622166 0.041124303 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.1444535 0.2 -7.565731
+  ActiveTransform "EndTime"
+  Translate -6.1444535 0.34660536 -7.565731
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1430634 0.7118926 0.6184575 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.7042017 0.2 -6.5016675
+  ActiveTransform "EndTime"
+  Translate -6.7042017 0.59480906 -6.5016675
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.48168805 0.057324521 0.030702796 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.9179144 0.2 -5.1621637
+  ActiveTransform "EndTime"
+  Translate -6.9179144 0.42076522 -5.1621637
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.24768682 0.11339715 0.098382555 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.2010665 0.2 -4.5086761
+  ActiveTransform "EndTime"
+  Translate -6.2010665 0.58075529 -4.5086761
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.55056131 0.91924036 0.5420534 ] "float roughness" [ 0.21304572 ]
+AttributeBegin
+  Translate -6.443604 0.2 -3.2198181
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.32599205 0.62989521 0.011926119 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.7996812 0.2 -2.9345133
+  ActiveTransform "EndTime"
+  Translate -6.7996812 0.45666307 -2.9345133
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2175656 0.31991547 0.71555614 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.7900949 0.2 -1.1120244
+  ActiveTransform "EndTime"
+  Translate -6.7900949 0.31834257 -1.1120244
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.79594433 0.87668908 0.67510915 ] "float roughness" [ 0.18812978 ]
+AttributeBegin
+  Translate -6.1830759 0.2 -0.11259913
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.29375187 0.39372206 0.10551424 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.9248495 0.2 0.43350026
+  ActiveTransform "EndTime"
+  Translate -6.9248495 0.6531772 0.43350026
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.12497018 0.0046005067 0.26782688 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.8999224 0.2 1.3910066
+  ActiveTransform "EndTime"
+  Translate -6.8999224 0.22815163 1.3910066
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.096699446 0.48314983 0.50808597 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.893064 0.2 2.6904752
+  ActiveTransform "EndTime"
+  Translate -6.893064 0.49168438 2.6904752
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.17908122 0.023683039 0.45894179 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.1340446 0.2 3.3602006
+  ActiveTransform "EndTime"
+  Translate -6.1340446 0.31179792 3.3602006
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.011885854 0.53925747 0.013927112 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.1330996 0.2 4.7218981
+  ActiveTransform "EndTime"
+  Translate -6.1330996 0.64557153 4.7218981
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.91264945 0.018669788 0.38515636 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.5250692 0.2 5.8321791
+  ActiveTransform "EndTime"
+  Translate -6.5250692 0.68465126 5.8321791
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13645934 0.20489375 0.45264623 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.529212 0.2 6.1495938
+  ActiveTransform "EndTime"
+  Translate -6.529212 0.51377904 6.1495938
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.66424412 0.041594956 0.26936007 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.4741173 0.2 7.3457818
+  ActiveTransform "EndTime"
+  Translate -6.4741173 0.67520571 7.3457818
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.048644103 0.20815372 0.047066007 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.1987629 0.2 8.3550692
+  ActiveTransform "EndTime"
+  Translate -6.1987629 0.29406059 8.3550692
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.081057131 0.15521629 0.028011275 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.5826716 0.2 9.3494415
+  ActiveTransform "EndTime"
+  Translate -6.5826716 0.68719739 9.3494415
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.022561729 0.14998017 0.1272798 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -6.1124105 0.2 10.407917
+  ActiveTransform "EndTime"
+  Translate -6.1124105 0.60689747 10.407917
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.021658147 0.069412984 0.77362239 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.3837419 0.2 -10.756138
+  ActiveTransform "EndTime"
+  Translate -5.3837419 0.67489994 -10.756138
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.56383681 0.034608945 0.81768709 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.3468523 0.2 -9.4769535
+  ActiveTransform "EndTime"
+  Translate -5.3468523 0.6330319 -9.4769535
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.010843541 0.29273877 0.38936552 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.9593034 0.2 -8.8516493
+  ActiveTransform "EndTime"
+  Translate -5.9593034 0.69363803 -8.8516493
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -5.864625 0.2 -7.6609349
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.38116607 0.69825488 0.47707728 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.3253794 0.2 -6.6571984
+  ActiveTransform "EndTime"
+  Translate -5.3253794 0.2317559 -6.6571984
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.036596097 0.0007707614 0.065164655 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.9668603 0.2 -5.6266623
+  ActiveTransform "EndTime"
+  Translate -5.9668603 0.54585719 -5.6266623
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.87495536 0.99831843 0.9565829 ] "float roughness" [ 0.27771583 ]
+AttributeBegin
+  Translate -5.5190883 0.2 -4.1002541
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.71526432 0.32103971 0.059631862 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.3079114 0.2 -3.3464913
+  ActiveTransform "EndTime"
+  Translate -5.3079114 0.42527205 -3.3464913
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.26210812 0.12561613 0.20079879 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.8837566 0.2 -2.7737019
+  ActiveTransform "EndTime"
+  Translate -5.8837566 0.53585035 -2.7737019
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.096228458 0.0025192441 0.33455434 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.4436846 0.2 -1.9577932
+  ActiveTransform "EndTime"
+  Translate -5.4436846 0.46015382 -1.9577932
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.16009447 0.69570875 0.53423131 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.3049135 0.2 -0.25176567
+  ActiveTransform "EndTime"
+  Translate -5.3049135 0.48046899 -0.25176567
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23803708 0.064333454 0.01210414 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.2110119 0.2 0.71263599
+  ActiveTransform "EndTime"
+  Translate -5.2110119 0.57756859 0.71263599
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.56681561 0.19233876 0.084177129 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.4417214 0.2 1.5754251
+  ActiveTransform "EndTime"
+  Translate -5.4417214 0.20727231 1.5754251
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -5.6844711 0.2 2.5472791
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.24271789 0.082280286 0.25297171 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.4270201 0.2 3.3530197
+  ActiveTransform "EndTime"
+  Translate -5.4270201 0.47372311 3.3530197
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.36104077 0.18535659 0.45153558 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.5941806 0.2 4.7052875
+  ActiveTransform "EndTime"
+  Translate -5.5941806 0.54882091 4.7052875
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.72967339 0.96329379 0.92104566 ] "float roughness" [ 0.24605814 ]
+AttributeBegin
+  Translate -5.2831755 0.2 5.1323662
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.021056535 0.60840976 0.1711421 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.76758 0.2 6.0596123
+  ActiveTransform "EndTime"
+  Translate -5.76758 0.36437577 6.0596123
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.08202488 0.040758576 0.059299998 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.4299393 0.2 7.5216851
+  ActiveTransform "EndTime"
+  Translate -5.4299393 0.26402289 7.5216851
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.096855193 0.11540055 0.12667972 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.8632874 0.2 8.3602705
+  ActiveTransform "EndTime"
+  Translate -5.8632874 0.37283361 8.3602705
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.24420208 0.6496073 0.1037254 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.1928906 0.2 9.7868862
+  ActiveTransform "EndTime"
+  Translate -5.1928906 0.29614449 9.7868862
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.058296546 0.09684334 0.0056297616 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -5.9632182 0.2 10.739612
+  ActiveTransform "EndTime"
+  Translate -5.9632182 0.24435125 10.739612
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.16403329 0.18450715 0.046899144 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.8914275 0.2 -10.519019
+  ActiveTransform "EndTime"
+  Translate -4.8914275 0.45170861 -10.519019
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0036281387 0.38463259 0.43186024 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.3786449 0.2 -9.7105751
+  ActiveTransform "EndTime"
+  Translate -4.3786449 0.24087949 -9.7105751
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.34743223 0.00015849774 0.24041316 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.2137794 0.2 -8.8587198
+  ActiveTransform "EndTime"
+  Translate -4.2137794 0.60310066 -8.8587198
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.18198508 0.11233486 0.34233165 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.3265662 0.2 -7.46245
+  ActiveTransform "EndTime"
+  Translate -4.3265662 0.44226146 -7.46245
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.19599114 0.33326364 0.046598334 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.4435706 0.2 -6.31604
+  ActiveTransform "EndTime"
+  Translate -4.4435706 0.2183416 -6.31604
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.49018922 0.75594902 0.38356167 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.7728066 0.2 -5.8801947
+  ActiveTransform "EndTime"
+  Translate -4.7728066 0.4660567 -5.8801947
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.15844958 0.21153627 0.025427669 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.9035454 0.2 -4.2195067
+  ActiveTransform "EndTime"
+  Translate -4.9035454 0.33462161 -4.2195067
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.011319427 0.27077514 0.018862069 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.6604443 0.2 -3.8359444
+  ActiveTransform "EndTime"
+  Translate -4.6604443 0.36374867 -3.8359444
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.30538571 0.28134495 0.24115212 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.8922143 0.2 -2.7901053
+  ActiveTransform "EndTime"
+  Translate -4.8922143 0.5945856 -2.7901053
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.050778765 0.39575213 0.32730606 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.5514021 0.2 -1.5683762
+  ActiveTransform "EndTime"
+  Translate -4.5514021 0.57271975 -1.5683762
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.048323918 0.095759258 0.32664603 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.6115065 0.2 -0.49198735
+  ActiveTransform "EndTime"
+  Translate -4.6115065 0.52295864 -0.49198735
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.17742434 0.32589376 0.56560695 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.4862995 0.2 0.2199178
+  ActiveTransform "EndTime"
+  Translate -4.4862995 0.31861341 0.2199178
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.05584811 0.11998056 0.13671052 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.9083958 0.2 1.2027996
+  ActiveTransform "EndTime"
+  Translate -4.9083958 0.29328352 1.2027996
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0096488381 0.75535804 0.0041429023 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.7434144 0.2 2.7252784
+  ActiveTransform "EndTime"
+  Translate -4.7434144 0.46225566 2.7252784
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.97968245 0.10045518 0.22916417 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.6306429 0.2 3.6272652
+  ActiveTransform "EndTime"
+  Translate -4.6306429 0.68473518 3.6272652
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.90853602 0.98753357 0.62895143 ] "float roughness" [ 0.24537438 ]
+AttributeBegin
+  Translate -4.2210436 0.2 4.0047698
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.76288891 0.40001032 0.30583373 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.3493938 0.2 5.601779
+  ActiveTransform "EndTime"
+  Translate -4.3493938 0.43830973 5.601779
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.038358465 0.31331953 0.30246508 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.2452755 0.2 6.6925435
+  ActiveTransform "EndTime"
+  Translate -4.2452755 0.29975343 6.6925435
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.060845137 0.43184885 0.2216046 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.3373775 0.2 7.2181687
+  ActiveTransform "EndTime"
+  Translate -4.3373775 0.24364509 7.2181687
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.44842944 0.17077062 0.030777099 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.5445065 0.2 8.1389265
+  ActiveTransform "EndTime"
+  Translate -4.5445065 0.38461524 8.1389265
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.034767687 0.5434109 0.065028578 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -4.5911589 0.2 9.1209736
+  ActiveTransform "EndTime"
+  Translate -4.5911589 0.54228574 9.1209736
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.56941235 0.84075135 0.50135541 ] "float roughness" [ 0.38011393 ]
+AttributeBegin
+  Translate -4.9209189 0.2 10.229177
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2858232 0.32712084 0.037223972 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.4639251 0.2 -10.57415
+  ActiveTransform "EndTime"
+  Translate -3.4639251 0.66476458 -10.57415
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.98251343 0.70425916 0.56214857 ] "float roughness" [ 0.46646902 ]
+AttributeBegin
+  Translate -3.2524426 0.2 -9.3286228
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.037153095 0.025217276 0.68661076 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.1081636 0.2 -8.1554937
+  ActiveTransform "EndTime"
+  Translate -3.1081636 0.56079829 -8.1554937
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.10923412 0.65843427 0.15132168 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.9567149 0.2 -7.2423544
+  ActiveTransform "EndTime"
+  Translate -3.9567149 0.59976858 -7.2423544
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.15184076 0.15678148 0.33149716 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.2573805 0.2 -6.8521609
+  ActiveTransform "EndTime"
+  Translate -3.2573805 0.65393305 -6.8521609
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23087806 0.55772275 0.19846639 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.7154231 0.2 -5.2105198
+  ActiveTransform "EndTime"
+  Translate -3.7154231 0.5568912 -5.2105198
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.18809037 0.40354535 0.22056587 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.1902993 0.2 -4.5835881
+  ActiveTransform "EndTime"
+  Translate -3.1902993 0.48874313 -4.5835881
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1502865 0.2890926 0.060388353 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.6801739 0.2 -3.190383
+  ActiveTransform "EndTime"
+  Translate -3.6801739 0.31451267 -3.190383
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.40556395 0.20891112 0.24466495 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.5114355 0.2 -2.8947918
+  ActiveTransform "EndTime"
+  Translate -3.5114355 0.54685879 -2.8947918
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.54481393 0.2642892 0.6627863 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.8499424 0.2 -1.2853774
+  ActiveTransform "EndTime"
+  Translate -3.8499424 0.48657542 -1.2853774
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23454063 0.17567691 0.57921565 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.1020768 0.2 -0.86349261
+  ActiveTransform "EndTime"
+  Translate -3.1020768 0.27156401 -0.86349261
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.54444432 0.43310598 0.25814694 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.8159099 0.2 0.51290071
+  ActiveTransform "EndTime"
+  Translate -3.8159099 0.25145799 0.51290071
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.68941081 0.92322612 0.72850013 ] "float roughness" [ 0.063744307 ]
+AttributeBegin
+  Translate -3.5171669 0.2 1.0995685
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.43042836 0.072913453 0.093753539 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.6424415 0.2 2.4520595
+  ActiveTransform "EndTime"
+  Translate -3.6424415 0.56112629 2.4520595
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.38369009 0.39243358 0.38868788 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.3519671 0.2 3.0109828
+  ActiveTransform "EndTime"
+  Translate -3.3519671 0.32589954 3.0109828
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.17416577 0.31116632 0.13263467 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.6888735 0.2 4.7441187
+  ActiveTransform "EndTime"
+  Translate -3.6888735 0.40042567 4.7441187
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.58253211 0.13983381 0.08155404 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.5841949 0.2 5.2591367
+  ActiveTransform "EndTime"
+  Translate -3.5841949 0.45294434 5.2591367
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.013149704 0.51713711 0.095274232 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.4496913 0.2 6.2304139
+  ActiveTransform "EndTime"
+  Translate -3.4496913 0.4825666 6.2304139
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.96124971 0.51151133 0.85361934 ] "float roughness" [ 0.32568359 ]
+AttributeBegin
+  Translate -3.3730142 0.2 7.7110763
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.22717556 0.029231722 0.056942642 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.3058782 0.2 8.5186596
+  ActiveTransform "EndTime"
+  Translate -3.3058782 0.25212348 8.5186596
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.95534313 0.72541964 0.56140542 ] "float roughness" [ 0.056619018 ]
+AttributeBegin
+  Translate -3.2436044 0.2 9.8330116
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1563042 0.1044038 0.30585432 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -3.1136429 0.2 10.148969
+  ActiveTransform "EndTime"
+  Translate -3.1136429 0.63494819 10.148969
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.35943297 0.15134397 0.040756293 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.5330458 0.2 -10.795344
+  ActiveTransform "EndTime"
+  Translate -2.5330458 0.36759859 -10.795344
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0027964357 0.038108043 0.16504273 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.277432 0.2 -9.2909889
+  ActiveTransform "EndTime"
+  Translate -2.277432 0.46869779 -9.2909889
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.67317295 0.73285007 0.67347658 ] "float roughness" [ 0.24041846 ]
+AttributeBegin
+  Translate -2.1721301 0.2 -8.1693363
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13185833 0.014861112 0.12856713 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.1733909 0.2 -7.5930037
+  ActiveTransform "EndTime"
+  Translate -2.1733909 0.32411319 -7.5930037
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.069337718 0.030994156 0.11287595 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.4801311 0.2 -6.5514688
+  ActiveTransform "EndTime"
+  Translate -2.4801311 0.59024787 -6.5514688
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0028820462 0.14112163 0.091719419 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.7501717 0.2 -5.4309621
+  ActiveTransform "EndTime"
+  Translate -2.7501717 0.68777066 -5.4309621
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -2.58691 0.2 -4.8662038
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.045667995 0.18388626 0.15045556 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.6268382 0.2 -3.2254312
+  ActiveTransform "EndTime"
+  Translate -2.6268382 0.49769253 -3.2254312
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.32007477 0.16787869 0.31376848 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.9396312 0.2 -2.6424139
+  ActiveTransform "EndTime"
+  Translate -2.9396312 0.30256981 -2.6424139
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.013805741 0.39491457 0.33181792 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.8283811 0.2 -1.4375217
+  ActiveTransform "EndTime"
+  Translate -2.8283811 0.23285432 -1.4375217
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23917678 0.28026342 0.21204561 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.3020253 0.2 -0.35734677
+  ActiveTransform "EndTime"
+  Translate -2.3020253 0.40038151 -0.35734677
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.015986865 0.06082999 0.065067701 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.4963238 0.2 0.6888206
+  ActiveTransform "EndTime"
+  Translate -2.4963238 0.67305773 0.6888206
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.24297445 0.33911625 0.32729375 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.6640215 0.2 1.2450716
+  ActiveTransform "EndTime"
+  Translate -2.6640215 0.21269317 1.2450716
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -2.8594627 0.2 2.75581
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.011054737 0.12246703 0.058667231 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.2197056 0.2 3.5930314
+  ActiveTransform "EndTime"
+  Translate -2.2197056 0.29805654 3.5930314
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.061949696 0.27138847 0.10167108 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.545043 0.2 4.0177393
+  ActiveTransform "EndTime"
+  Translate -2.545043 0.64373022 4.0177393
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.071678624 0.19583018 0.71412605 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.4989505 0.2 5.2143645
+  ActiveTransform "EndTime"
+  Translate -2.4989505 0.50159872 5.2143645
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.98132467 0.69859171 0.9722048 ] "float roughness" [ 0.33404255 ]
+AttributeBegin
+  Translate -2.2738349 0.2 6.7471976
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.094976932 0.077913962 0.0082333451 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.8155141 0.2 7.3657532
+  ActiveTransform "EndTime"
+  Translate -2.8155141 0.24275427 7.3657532
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.003257537 0.15901798 0.3748523 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.8129025 0.2 8.7633152
+  ActiveTransform "EndTime"
+  Translate -2.8129025 0.41071224 8.7633152
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.51070702 0.11480477 0.21405211 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.1965954 0.2 9.819562
+  ActiveTransform "EndTime"
+  Translate -2.1965954 0.38984621 9.819562
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.22266825 0.2154513 0.31681681 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -2.4687347 0.2 10.030806
+  ActiveTransform "EndTime"
+  Translate -2.4687347 0.47602355 10.030806
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.064638317 0.92431247 0.59542829 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.6074862 0.2 -10.225039
+  ActiveTransform "EndTime"
+  Translate -1.6074862 0.27005661 -10.225039
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.48029873 0.42139259 0.14565931 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.2183789 0.2 -9.4908009
+  ActiveTransform "EndTime"
+  Translate -1.2183789 0.41260672 -9.4908009
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.19927448 0.37851879 0.25500667 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.9797777 0.2 -8.5387878
+  ActiveTransform "EndTime"
+  Translate -1.9797777 0.32894385 -8.5387878
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.35209328 0.13021296 0.47342199 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.8745795 0.2 -7.4194512
+  ActiveTransform "EndTime"
+  Translate -1.8745795 0.28583962 -7.4194512
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.015127856 0.48426899 0.095973521 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.7549235 0.2 -6.3851347
+  ActiveTransform "EndTime"
+  Translate -1.7549235 0.48825824 -6.3851347
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.22457956 0.32405871 0.59758216 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.7533504 0.2 -5.9395423
+  ActiveTransform "EndTime"
+  Translate -1.7533504 0.30321062 -5.9395423
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.036094509 0.23985352 0.63984877 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.9901037 0.2 -4.8739834
+  ActiveTransform "EndTime"
+  Translate -1.9901037 0.49870652 -4.8739834
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.3287102 0.10053933 0.76637495 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.4595349 0.2 -3.4302118
+  ActiveTransform "EndTime"
+  Translate -1.4595349 0.40938526 -3.4302118
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21900196 0.016619906 0.1594037 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.6551754 0.2 -2.3061798
+  ActiveTransform "EndTime"
+  Translate -1.6551754 0.56901681 -2.3061798
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.46502176 0.016745003 0.32587114 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.9254812 0.2 -1.9186968
+  ActiveTransform "EndTime"
+  Translate -1.9254812 0.34434688 -1.9186968
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.51881522 0.18136446 0.53769171 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.6798947 0.2 -0.17603773
+  ActiveTransform "EndTime"
+  Translate -1.6798947 0.43802518 -0.17603773
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.12647317 0.35438535 0.058014806 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.402696 0.2 0.85867816
+  ActiveTransform "EndTime"
+  Translate -1.402696 0.21559156 0.85867816
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.50077564 0.043527164 0.47414699 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.7639624 0.2 1.1458124
+  ActiveTransform "EndTime"
+  Translate -1.7639624 0.49842143 1.1458124
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.36559528 0.036710683 0.026413931 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.6991806 0.2 2.5609992
+  ActiveTransform "EndTime"
+  Translate -1.6991806 0.56409436 2.5609992
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.41186151 0.19988209 0.018710142 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.5540578 0.2 3.634433
+  ActiveTransform "EndTime"
+  Translate -1.5540578 0.60955113 3.634433
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.6722573 0.0014297937 0.060849085 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.2805258 0.2 4.0021052
+  ActiveTransform "EndTime"
+  Translate -1.2805258 0.38048697 4.0021052
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.88254619 0.10808854 0.65619612 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.9175762 0.2 5.7266874
+  ActiveTransform "EndTime"
+  Translate -1.9175762 0.4230029 5.7266874
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.51923364 0.66203547 0.46785459 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.8333803 0.2 6.0780349
+  ActiveTransform "EndTime"
+  Translate -1.8333803 0.60328054 6.0780349
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.44114044 0.83270144 0.22554103 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.407095 0.2 7.6516929
+  ActiveTransform "EndTime"
+  Translate -1.407095 0.44471246 7.6516929
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.050959468 0.63244182 0.0017413019 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.8009115 0.2 8.6238575
+  ActiveTransform "EndTime"
+  Translate -1.8009115 0.5527876 8.6238575
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.10036495 0.2687574 0.28641492 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.1672766 0.2 9.8994179
+  ActiveTransform "EndTime"
+  Translate -1.1672766 0.21697299 9.8994179
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.057269115 0.10656624 0.40955606 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -1.3723218 0.2 10.657921
+  ActiveTransform "EndTime"
+  Translate -1.3723218 0.67213321 10.657921
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.047311127 0.38439125 0.1667091 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.57320726 0.2 -10.329442
+  ActiveTransform "EndTime"
+  Translate -0.57320726 0.61445773 -10.329442
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21745795 0.12896067 0.058000114 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.96669316 0.2 -9.4148493
+  ActiveTransform "EndTime"
+  Translate -0.96669316 0.23847659 -9.4148493
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.66993749 0.72051609 0.86238337 ] "float roughness" [ 0.2022427 ]
+AttributeBegin
+  Translate -0.37334013 0.2 -8.5227613
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.43373853 0.4257265 0.21090421 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.48481506 0.2 -7.7162385
+  ActiveTransform "EndTime"
+  Translate -0.48481506 0.56892788 -7.7162385
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.26286086 0.20422748 0.010187469 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.53184879 0.2 -6.20262
+  ActiveTransform "EndTime"
+  Translate -0.53184879 0.43097138 -6.20262
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.50011873 0.93735081 0.59273648 ] "float roughness" [ 0.26446855 ]
+AttributeBegin
+  Translate -0.10869282 0.2 -5.9808574
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.055938527 0.0094658276 0.018476838 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.1548391 0.2 -4.1606693
+  ActiveTransform "EndTime"
+  Translate -0.1548391 0.58359414 -4.1606693
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23023531 0.36442828 0.23736663 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.63826227 0.2 -3.9661629
+  ActiveTransform "EndTime"
+  Translate -0.63826227 0.6920417 -3.9661629
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.14052437 0.2201671 0.54011071 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.30855393 0.2 -2.9174707
+  ActiveTransform "EndTime"
+  Translate -0.30855393 0.31938857 -2.9174707
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.10532378 0.24496363 0.21202423 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.90057331 0.2 -1.5794203
+  ActiveTransform "EndTime"
+  Translate -0.90057331 0.31680387 -1.5794203
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.016271293 0.044546898 0.046827283 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.96211618 0.2 -0.75046098
+  ActiveTransform "EndTime"
+  Translate -0.96211618 0.39216334 -0.75046098
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2087414 0.75805885 0.20364967 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.38831747 0.2 0.11199376
+  ActiveTransform "EndTime"
+  Translate -0.38831747 0.24470548 0.11199376
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.77731544 0.56759351 0.42240193 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.62417734 0.2 1.8840975
+  ActiveTransform "EndTime"
+  Translate -0.62417734 0.5067057 1.8840975
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -0.84966946 0.2 2.6690176
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate -0.94151223 0.2 3.2085044
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1497885 0.50481194 0.061696284 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.15154147 0.2 4.7540431
+  ActiveTransform "EndTime"
+  Translate -0.15154147 0.31533492 4.7540431
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0080988752 0.17847174 0.64409709 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.84112483 0.2 5.3456817
+  ActiveTransform "EndTime"
+  Translate -0.84112483 0.37506264 5.3456817
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.98455131 0.60816199 0.94189292 ] "float roughness" [ 0.25913018 ]
+AttributeBegin
+  Translate -0.9479416 0.2 6.5668001
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.76251572 0.58694762 0.6301167 ] "float roughness" [ 0.19812098 ]
+AttributeBegin
+  Translate -0.46245337 0.2 7.8954172
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.69347018 0.1381117 0.3780413 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.31758541 0.2 8.4420681
+  ActiveTransform "EndTime"
+  Translate -0.31758541 0.31222028 8.4420681
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.018721687 0.53063464 0.49894765 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.7985642 0.2 9.6730843
+  ActiveTransform "EndTime"
+  Translate -0.7985642 0.24574341 9.6730843
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.072498009 0.061736736 0.039439626 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate -0.21028525 0.2 10.352053
+  ActiveTransform "EndTime"
+  Translate -0.21028525 0.67782575 10.352053
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.90475804 0.66452563 0.82762098 ] "float roughness" [ 0.46579474 ]
+AttributeBegin
+  Translate 0.77591485 0.2 -10.96812
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.114935 0.094159395 0.0013201025 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.66169137 0.2 -9.9217119
+  ActiveTransform "EndTime"
+  Translate 0.66169137 0.54785711 -9.9217119
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.043165389 0.21184309 0.074795522 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.043905184 0.2 -8.5537119
+  ActiveTransform "EndTime"
+  Translate 0.043905184 0.64723998 -8.5537119
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.030459927 0.42431286 0.30572921 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.89232773 0.2 -7.2339139
+  ActiveTransform "EndTime"
+  Translate 0.89232773 0.65325683 -7.2339139
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.831056 0.83900809 0.77188945 ] "float roughness" [ 0.28286597 ]
+AttributeBegin
+  Translate 0.51418704 0.2 -6.6869717
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.93931496 0.76063013 0.89871299 ] "float roughness" [ 0.43408039 ]
+AttributeBegin
+  Translate 0.24032539 0.2 -5.3394814
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13646063 0.11362148 0.27956986 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.22075695 0.2 -4.2344766
+  ActiveTransform "EndTime"
+  Translate 0.22075695 0.319345 -4.2344766
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.065470152 0.52614188 0.030011496 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.83708125 0.2 -3.3878734
+  ActiveTransform "EndTime"
+  Translate 0.83708125 0.64081854 -3.3878734
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.73273498 0.51462364 0.93953574 ] "float roughness" [ 0.41290838 ]
+AttributeBegin
+  Translate 0.86518371 0.2 -2.2153409
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.076616585 0.67562687 0.0001800656 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.11598285 0.2 -1.2620478
+  ActiveTransform "EndTime"
+  Translate 0.11598285 0.60898352 -1.2620478
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13127597 0.0012333196 0.024139393 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.74892068 0.2 -0.31902784
+  ActiveTransform "EndTime"
+  Translate 0.74892068 0.50846344 -0.31902784
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.073191702 0.097866781 0.0057519297 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.88306749 0.2 0.50385982
+  ActiveTransform "EndTime"
+  Translate 0.88306749 0.4699927 0.50385982
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.55349028 0.64167142 0.88051391 ] "float roughness" [ 0.009213835 ]
+AttributeBegin
+  Translate 0.70186079 0.2 1.1156038
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.28721413 0.24808341 0.16729651 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.38901663 0.2 2.8666928
+  ActiveTransform "EndTime"
+  Translate 0.38901663 0.5768494 2.8666928
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1195225 0.052292425 0.2851021 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.70992625 0.2 3.8435056
+  ActiveTransform "EndTime"
+  Translate 0.70992625 0.28318876 3.8435056
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.41250965 0.16380115 0.035963707 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.69388586 0.2 4.0606155
+  ActiveTransform "EndTime"
+  Translate 0.69388586 0.2373472 4.0606155
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.96389848 0.65501201 0.33431339 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.76717311 0.2 5.7843833
+  ActiveTransform "EndTime"
+  Translate 0.76717311 0.52378678 5.7843833
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0094318409 0.001451881 0.26584995 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.53495622 0.2 6.6824369
+  ActiveTransform "EndTime"
+  Translate 0.53495622 0.38591677 6.6824369
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.17253803 0.00045902643 0.043489732 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.73690701 0.2 7.6933665
+  ActiveTransform "EndTime"
+  Translate 0.73690701 0.43426967 7.6933665
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 0.84987324 0.2 8.383563
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.08623369 0.65644968 0.20697702 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 0.40624827 0.2 9.7687883
+  ActiveTransform "EndTime"
+  Translate 0.40624827 0.31038481 9.7687883
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.84024966 0.61502683 0.82725561 ] "float roughness" [ 0.06566754 ]
+AttributeBegin
+  Translate 0.074142911 0.2 10.69554
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.14550444 0.013533061 0.69003803 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.7812488 0.2 -10.144223
+  ActiveTransform "EndTime"
+  Translate 1.7812488 0.65476227 -10.144223
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.38348791 0.20842931 0.43521202 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.7716241 0.2 -9.4253263
+  ActiveTransform "EndTime"
+  Translate 1.7716241 0.35597599 -9.4253263
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.16658431 0.15894134 0.0062379944 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.2886684 0.2 -8.1953106
+  ActiveTransform "EndTime"
+  Translate 1.2886684 0.6340614 -8.1953106
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.48641786 0.22313379 0.52595443 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.6434317 0.2 -7.6683264
+  ActiveTransform "EndTime"
+  Translate 1.6434317 0.27962285 -7.6683264
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.070798039 0.11845833 0.38327274 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.183331 0.2 -6.2182393
+  ActiveTransform "EndTime"
+  Translate 1.183331 0.46517718 -6.2182393
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1045756 0.0095681464 0.83966225 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.0160756 0.2 -5.4364018
+  ActiveTransform "EndTime"
+  Translate 1.0160756 0.68375564 -5.4364018
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.22251016 0.00014449895 0.074902065 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.1669129 0.2 -4.2831163
+  ActiveTransform "EndTime"
+  Translate 1.1669129 0.50365323 -4.2831163
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.11197553 0.11087427 0.010326428 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.2227859 0.2 -3.6127248
+  ActiveTransform "EndTime"
+  Translate 1.2227859 0.5257597 -3.6127248
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.47077033 0.1344633 0.44809654 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.2933328 0.2 -2.757906
+  ActiveTransform "EndTime"
+  Translate 1.2933328 0.27479029 -2.757906
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.26707482 0.18983743 0.58483988 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.4181387 0.2 -1.9347978
+  ActiveTransform "EndTime"
+  Translate 1.4181387 0.56094378 -1.9347978
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.65116358 0.74292392 0.035966676 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.5912855 0.2 -0.37451631
+  ActiveTransform "EndTime"
+  Translate 1.5912855 0.56214267 -0.37451631
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.035319705 0.10142139 0.081351325 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.6742454 0.2 0.094437145
+  ActiveTransform "EndTime"
+  Translate 1.6742454 0.2091838 0.094437145
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.14776319 0.19364768 0.0075802407 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.4341207 0.2 1.5563402
+  ActiveTransform "EndTime"
+  Translate 1.4341207 0.67061871 1.5563402
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.046941981 0.30943996 0.0027395352 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.0651746 0.2 2.4659405
+  ActiveTransform "EndTime"
+  Translate 1.0651746 0.612257 2.4659405
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.042747021 0.55475205 0.13848528 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.3220212 0.2 3.3572309
+  ActiveTransform "EndTime"
+  Translate 1.3220212 0.54659694 3.3572309
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.52059174 0.58374131 0.83519268 ] "float roughness" [ 0.052283913 ]
+AttributeBegin
+  Translate 1.7392967 0.2 4.1801353
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 1.5727872 0.2 5.1117978
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.55683714 0.032045715 0.3317844 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.8065991 0.2 6.0284276
+  ActiveTransform "EndTime"
+  Translate 1.8065991 0.34941792 6.0284276
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.67649055 0.5013243 0.26593298 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.8416815 0.2 7.7838721
+  ActiveTransform "EndTime"
+  Translate 1.8416815 0.50612897 7.7838721
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.83041 0.94740832 0.7765007 ] "float roughness" [ 0.27379617 ]
+AttributeBegin
+  Translate 1.4359586 0.2 8.0721035
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21752156 0.026228417 0.086329736 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.735568 0.2 9.7054491
+  ActiveTransform "EndTime"
+  Translate 1.735568 0.56579477 9.7054491
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.035805568 0.16068979 0.076466389 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 1.0734669 0.2 10.652344
+  ActiveTransform "EndTime"
+  Translate 1.0734669 0.6358918 10.652344
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.4588348 0.25074446 0.15877633 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.1972926 0.2 -10.703884
+  ActiveTransform "EndTime"
+  Translate 2.1972926 0.59484923 -10.703884
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.080544561 0.011585488 0.46982786 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.5928369 0.2 -9.9607048
+  ActiveTransform "EndTime"
+  Translate 2.5928369 0.31422734 -9.9607048
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.48084286 0.053018749 0.080467731 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.8967004 0.2 -8.5117693
+  ActiveTransform "EndTime"
+  Translate 2.8967004 0.5401141 -8.5117693
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0062401742 0.21657017 0.08058583 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.0649786 0.2 -7.6234403
+  ActiveTransform "EndTime"
+  Translate 2.0649786 0.63413626 -7.6234403
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 2.6544521 0.2 -6.6256833
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21751174 0.27284342 0.75824213 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.7616208 0.2 -5.6170559
+  ActiveTransform "EndTime"
+  Translate 2.7616208 0.45242244 -5.6170559
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.29743674 0.25793144 0.021318505 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.4889705 0.2 -4.2196717
+  ActiveTransform "EndTime"
+  Translate 2.4889705 0.39775759 -4.2196717
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.53837067 0.33440617 0.18132477 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.5455699 0.2 -3.2139192
+  ActiveTransform "EndTime"
+  Translate 2.5455699 0.69606662 -3.2139192
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.075659536 0.23912391 0.29418883 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.2554691 0.2 -2.1788731
+  ActiveTransform "EndTime"
+  Translate 2.2554691 0.61799902 -2.1788731
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5554803 0.36844009 0.10814323 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.2122128 0.2 -1.8815892
+  ActiveTransform "EndTime"
+  Translate 2.2122128 0.51627028 -1.8815892
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.092771523 0.35288766 0.034032516 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.3355637 0.2 -0.12574446
+  ActiveTransform "EndTime"
+  Translate 2.3355637 0.41858268 -0.12574446
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.18035787 0.30524465 0.20814511 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.0876541 0.2 0.7836749
+  ActiveTransform "EndTime"
+  Translate 2.0876541 0.53131062 0.7836749
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.25503334 0.30260015 0.10300709 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.0857353 0.2 1.1471715
+  ActiveTransform "EndTime"
+  Translate 2.0857353 0.62899309 1.1471715
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.45512131 0.078355864 0.38468894 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.0081275 0.2 2.292671
+  ActiveTransform "EndTime"
+  Translate 2.0081275 0.31851393 2.292671
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.064949743 0.075037129 0.17198764 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.2112067 0.2 3.2124453
+  ActiveTransform "EndTime"
+  Translate 2.2112067 0.42438877 3.2124453
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.062804677 0.1117806 0.36280987 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.6024513 0.2 4.745995
+  ActiveTransform "EndTime"
+  Translate 2.6024513 0.67429167 4.745995
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.060217306 0.01391161 0.44591948 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.2272749 0.2 5.1503377
+  ActiveTransform "EndTime"
+  Translate 2.2272749 0.37836599 5.1503377
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.65996426 0.56830812 0.26128381 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.4801607 0.2 6.4271679
+  ActiveTransform "EndTime"
+  Translate 2.4801607 0.63210809 6.4271679
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.76995289 0.55595982 0.5170939 ] "float roughness" [ 0.13487479 ]
+AttributeBegin
+  Translate 2.5023263 0.2 7.185257
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 2.0513783 0.2 8.1106739
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0020339363 0.07815069 0.10160964 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 2.2080178 0.2 9.8429451
+  ActiveTransform "EndTime"
+  Translate 2.2080178 0.29000521 9.8429451
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.55165446 0.75361741 0.79233533 ] "float roughness" [ 0.020786405 ]
+AttributeBegin
+  Translate 2.0797 0.2 10.28454
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.47348085 0.66204017 8.5855558e-05 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.1335089 0.2 -10.642359
+  ActiveTransform "EndTime"
+  Translate 3.1335089 0.67590588 -10.642359
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.50348997 0.11560602 0.2690019 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.5752079 0.2 -9.1242123
+  ActiveTransform "EndTime"
+  Translate 3.5752079 0.44442326 -9.1242123
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.017559953 0.0039779306 0.044200987 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.6001778 0.2 -8.5209799
+  ActiveTransform "EndTime"
+  Translate 3.6001778 0.55234039 -8.5209799
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.83671618 0.58119094 0.98495603 ] "float roughness" [ 0.094174534 ]
+AttributeBegin
+  Translate 3.181668 0.2 -7.3403912
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.069297723 0.20363255 0.17065667 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.6577463 0.2 -6.3946581
+  ActiveTransform "EndTime"
+  Translate 3.6577463 0.32765323 -6.3946581
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.92442894 0.25573748 0.0087084919 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.595469 0.2 -5.2456961
+  ActiveTransform "EndTime"
+  Translate 3.595469 0.32207364 -5.2456961
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.49335417 0.023353031 0.10529939 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.7477894 0.2 -4.2179856
+  ActiveTransform "EndTime"
+  Translate 3.7477894 0.59775519 -4.2179856
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.12953654 0.61992908 0.32566237 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.8268099 0.2 -3.3911381
+  ActiveTransform "EndTime"
+  Translate 3.8268099 0.53348577 -3.3911381
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2293075 0.15919399 0.029166032 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.5194666 0.2 -2.9040663
+  ActiveTransform "EndTime"
+  Translate 3.5194666 0.35905576 -2.9040663
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 3.7797947 0.2 -1.6337829
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2131796 0.095854461 0.26289797 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.0814335 0.2 0.51031458
+  ActiveTransform "EndTime"
+  Translate 3.0814335 0.58259541 0.51031458
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.35397571 0.68710518 0.7003935 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.8331072 0.2 1.600834
+  ActiveTransform "EndTime"
+  Translate 3.8331072 0.35859787 1.600834
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.045159195 0.16164204 0.0037377891 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.7820106 0.2 2.7360508
+  ActiveTransform "EndTime"
+  Translate 3.7820106 0.36419058 2.7360508
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.24159865 0.39185324 0.14781514 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.5671878 0.2 3.3298154
+  ActiveTransform "EndTime"
+  Translate 3.5671878 0.47424984 3.3298154
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.20367856 0.10100302 0.0010735664 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.5368369 0.2 4.2137899
+  ActiveTransform "EndTime"
+  Translate 3.5368369 0.49353087 4.2137899
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.39806956 0.35195151 0.19006202 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.1515999 0.2 5.6013913
+  ActiveTransform "EndTime"
+  Translate 3.1515999 0.47118181 5.6013913
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.92358363 0.73959088 0.95711827 ] "float roughness" [ 0.012821019 ]
+AttributeBegin
+  Translate 3.8563306 0.2 6.4671736
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.69009781 0.57449591 0.69941139 ] "float roughness" [ 0.26331189 ]
+AttributeBegin
+  Translate 3.3071229 0.2 7.0980263
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.28978556 0.3016434 0.44666591 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.2214627 0.2 8.4802427
+  ActiveTransform "EndTime"
+  Translate 3.2214627 0.57343787 8.4802427
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.009503413 0.1610065 0.0032585305 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.6439419 0.2 9.859971
+  ActiveTransform "EndTime"
+  Translate 3.6439419 0.64835715 9.859971
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23244281 0.60692304 0.022906099 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 3.0641522 0.2 10.808228
+  ActiveTransform "EndTime"
+  Translate 3.0641522 0.29857707 10.808228
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.59727919 0.55071044 0.58316576 ] "float roughness" [ 0.24293587 ]
+AttributeBegin
+  Translate 4.4312649 0.2 -10.683539
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.19089217 0.28565854 0.42741868 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.2310987 0.2 -9.5292234
+  ActiveTransform "EndTime"
+  Translate 4.2310987 0.46958065 -9.5292234
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.43799731 0.28639236 0.26627868 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.2801771 0.2 -8.9193363
+  ActiveTransform "EndTime"
+  Translate 4.2801771 0.40677452 -8.9193363
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.59057462 0.56161129 0.84055889 ] "float roughness" [ 0.42970788 ]
+AttributeBegin
+  Translate 4.1096973 0.2 -7.529767
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13087937 0.031558428 0.45010957 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.7198029 0.2 -6.5273528
+  ActiveTransform "EndTime"
+  Translate 4.7198029 0.29261422 -6.5273528
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.20527837 0.07015273 0.44884652 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.8259773 0.2 -5.1333656
+  ActiveTransform "EndTime"
+  Translate 4.8259773 0.38675481 -5.1333656
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.10684671 0.0015545532 0.52263033 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.4738493 0.2 -4.4301639
+  ActiveTransform "EndTime"
+  Translate 4.4738493 0.4575876 -4.4301639
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.89687192 0.60602242 0.82330298 ] "float roughness" [ 0.30549049 ]
+AttributeBegin
+  Translate 4.5341845 0.2 -3.7947283
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.76082283 0.69296801 0.19672741 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.3699255 0.2 -2.6753049
+  ActiveTransform "EndTime"
+  Translate 4.3699255 0.31843525 -2.6753049
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.20114647 0.7001881 0.28450829 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.7024727 0.2 -1.7281456
+  ActiveTransform "EndTime"
+  Translate 4.7024727 0.53377491 -1.7281456
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.039522909 0.64053452 0.40800974 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.5279474 0.2 1.1376854
+  ActiveTransform "EndTime"
+  Translate 4.5279474 0.30836987 1.1376854
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0073816506 0.14781144 0.12517436 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.086143 0.2 2.1606014
+  ActiveTransform "EndTime"
+  Translate 4.086143 0.47334868 2.1606014
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.24705863 0.034749858 0.070428796 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.2087522 0.2 3.2311954
+  ActiveTransform "EndTime"
+  Translate 4.2087522 0.69389278 3.2311954
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.46980733 0.17899877 0.19088748 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.1227956 0.2 4.5373421
+  ActiveTransform "EndTime"
+  Translate 4.1227956 0.55879885 4.5373421
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.33810753 0.10511728 0.062800959 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.6231923 0.2 5.0142388
+  ActiveTransform "EndTime"
+  Translate 4.6231923 0.56216937 5.0142388
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21182272 0.021037815 0.055274356 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.5205483 0.2 6.8149724
+  ActiveTransform "EndTime"
+  Translate 4.5205483 0.64709544 6.8149724
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.11866314 0.077870168 0.21908797 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.1726804 0.2 7.3610692
+  ActiveTransform "EndTime"
+  Translate 4.1726804 0.2347119 7.3610692
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.045273524 0.055970185 0.14961503 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.4671535 0.2 8.7486763
+  ActiveTransform "EndTime"
+  Translate 4.4671535 0.47000593 8.7486763
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.44268247 0.1230222 0.14817466 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.7920713 0.2 9.5335312
+  ActiveTransform "EndTime"
+  Translate 4.7920713 0.36650097 9.5335312
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.37625825 0.24021073 0.55526245 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 4.6025381 0.2 10.047105
+  ActiveTransform "EndTime"
+  Translate 4.6025381 0.56532526 10.047105
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.034911122 0.049913596 0.92091537 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.418685 0.2 -10.699787
+  ActiveTransform "EndTime"
+  Translate 5.418685 0.28765148 -10.699787
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.034254748 0.21940954 0.040864062 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.6210046 0.2 -9.3206463
+  ActiveTransform "EndTime"
+  Translate 5.6210046 0.42518544 -9.3206463
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.67378575 0.65042651 0.83245587 ] "float roughness" [ 0.49061817 ]
+AttributeBegin
+  Translate 5.6805468 0.2 -8.9988871
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.089756742 0.047849625 0.14847827 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.4273977 0.2 -7.1655402
+  ActiveTransform "EndTime"
+  Translate 5.4273977 0.21001317 -7.1655402
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 5.6634622 0.2 -6.165699
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.56547457 0.048412167 0.16029097 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.4859614 0.2 -5.7807088
+  ActiveTransform "EndTime"
+  Translate 5.4859614 0.24456219 -5.7807088
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.077711888 0.41868278 0.12458017 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.6797433 0.2 -4.2217827
+  ActiveTransform "EndTime"
+  Translate 5.6797433 0.55437231 -4.2217827
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.068918422 0.089898832 0.13717937 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.0325441 0.2 -3.8941159
+  ActiveTransform "EndTime"
+  Translate 5.0325441 0.24382137 -3.8941159
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.28228638 0.25214493 0.11103711 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.8432617 0.2 -2.7848504
+  ActiveTransform "EndTime"
+  Translate 5.8432617 0.42360127 -2.7848504
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.75783968 0.58088207 0.95969594 ] "float roughness" [ 0.39313796 ]
+AttributeBegin
+  Translate 5.540535 0.2 -1.2139971
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.48239636 0.081536494 0.46637055 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.5171285 0.2 -0.10705781
+  ActiveTransform "EndTime"
+  Translate 5.5171285 0.39858937 -0.10705781
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23901239 0.59202135 0.4622238 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.4857593 0.2 0.73570472
+  ActiveTransform "EndTime"
+  Translate 5.4857593 0.56071103 0.73570472
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.60599124 0.65233958 0.9093675 ] "float roughness" [ 0.040459633 ]
+AttributeBegin
+  Translate 5.1271501 0.2 1.7110274
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.026686529 0.15540107 0.33132911 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.3626823 0.2 2.0206044
+  ActiveTransform "EndTime"
+  Translate 5.3626823 0.68780512 2.0206044
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.47306064 0.06352628 0.27043781 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.5768747 0.2 3.8394575
+  ActiveTransform "EndTime"
+  Translate 5.5768747 0.66137856 3.8394575
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.54457372 0.63428152 0.055516746 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.4383559 0.2 4.125278
+  ActiveTransform "EndTime"
+  Translate 5.4383559 0.45128304 4.125278
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 5.3587966 0.2 5.7426805
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0083007831 0.012344104 0.068408675 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.5996761 0.2 6.330781
+  ActiveTransform "EndTime"
+  Translate 5.5996761 0.31627566 6.330781
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 5.071969 0.2 7.4945765
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.25702947 0.29199994 0.44343349 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.8692398 0.2 8.1098318
+  ActiveTransform "EndTime"
+  Translate 5.8692398 0.41975582 8.1098318
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.00021305853 0.0038212393 0.37333462 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.095098 0.2 9.766304
+  ActiveTransform "EndTime"
+  Translate 5.095098 0.52510053 9.766304
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.03462822 0.14973633 0.097365193 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 5.1368222 0.2 10.347815
+  ActiveTransform "EndTime"
+  Translate 5.1368222 0.22908188 10.347815
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.035794891 0.20667219 0.42331356 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.8953795 0.2 -10.321172
+  ActiveTransform "EndTime"
+  Translate 6.8953795 0.31959003 -10.321172
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.095007494 0.080485381 0.017962543 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.1280246 0.2 -9.9328327
+  ActiveTransform "EndTime"
+  Translate 6.1280246 0.54608065 -9.9328327
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.32256079 0.22813851 0.18936653 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.0560627 0.2 -8.4437532
+  ActiveTransform "EndTime"
+  Translate 6.0560627 0.50760972 -8.4437532
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.40910324 0.4469395 0.30861959 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.2756281 0.2 -7.8436227
+  ActiveTransform "EndTime"
+  Translate 6.2756281 0.26535517 -7.8436227
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.29419321 0.068942316 0.19325922 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.7979436 0.2 -6.6356816
+  ActiveTransform "EndTime"
+  Translate 6.7979436 0.40706486 -6.6356816
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.28396648 0.74147314 0.0027421408 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.7447839 0.2 -5.8408017
+  ActiveTransform "EndTime"
+  Translate 6.7447839 0.408077 -5.8408017
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.015168333 0.15124978 0.51773816 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.4332099 0.2 -4.6232777
+  ActiveTransform "EndTime"
+  Translate 6.4332099 0.26855487 -4.6232777
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.069617882 0.01011236 0.15178774 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.4817791 0.2 -3.4429467
+  ActiveTransform "EndTime"
+  Translate 6.4817791 0.68793684 -3.4429467
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.040909797 0.18119313 0.029173473 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.7213836 0.2 -2.9418449
+  ActiveTransform "EndTime"
+  Translate 6.7213836 0.47397971 -2.9418449
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.22461522 0.014637618 0.062104132 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.4089394 0.2 -1.5505996
+  ActiveTransform "EndTime"
+  Translate 6.4089394 0.27502429 -1.5505996
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.86867851 0.82585531 0.73800904 ] "float roughness" [ 0.40534294 ]
+AttributeBegin
+  Translate 6.2922082 0.2 -0.78086984
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.39492443 0.30803555 0.85303116 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.5526733 0.2 0.3550286
+  ActiveTransform "EndTime"
+  Translate 6.5526733 0.26657248 0.3550286
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 6.0919347 0.2 1.7082131
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.55662072 0.033440251 0.071146742 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.2838659 0.2 2.8485479
+  ActiveTransform "EndTime"
+  Translate 6.2838659 0.62043577 2.8485479
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.950881 0.89058518 0.73073876 ] "float roughness" [ 0.4125661 ]
+AttributeBegin
+  Translate 6.0345836 0.2 3.2277524
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.34582773 0.28658053 0.13934122 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.4459066 0.2 4.5934186
+  ActiveTransform "EndTime"
+  Translate 6.4459066 0.64469546 4.5934186
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13251801 0.077941924 0.50621617 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.4055576 0.2 5.466567
+  ActiveTransform "EndTime"
+  Translate 6.4055576 0.42163652 5.466567
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0032239431 0.53452569 0.047506116 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.0430479 0.2 6.0375056
+  ActiveTransform "EndTime"
+  Translate 6.0430479 0.60106528 6.0375056
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.034023575 0.37508145 0.13691854 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.0948305 0.2 7.0108976
+  ActiveTransform "EndTime"
+  Translate 6.0948305 0.43097347 7.0108976
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.75199479 0.62321961 0.14516418 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.8924294 0.2 8.3147326
+  ActiveTransform "EndTime"
+  Translate 6.8924294 0.37742066 8.3147326
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.36291295 0.63483781 0.018212089 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.3709178 0.2 9.0885563
+  ActiveTransform "EndTime"
+  Translate 6.3709178 0.41214842 9.0885563
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.49811646 0.2655755 0.60190547 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 6.0743561 0.2 10.073955
+  ActiveTransform "EndTime"
+  Translate 6.0743561 0.31392121 10.073955
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13726544 0.0012657754 0.15708259 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.8783917 0.2 -10.656255
+  ActiveTransform "EndTime"
+  Translate 7.8783917 0.33035666 -10.656255
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.50899798 0.020063372 0.86758631 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.0623288 0.2 -9.4204865
+  ActiveTransform "EndTime"
+  Translate 7.0623288 0.36110777 -9.4204865
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.46483526 0.068588398 0.28306642 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.11271 0.2 -8.7364597
+  ActiveTransform "EndTime"
+  Translate 7.11271 0.66014856 -8.7364597
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.40471888 0.020064712 0.01479434 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.4686913 0.2 -7.2694073
+  ActiveTransform "EndTime"
+  Translate 7.4686913 0.255404 -7.2694073
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.54750586 0.6860835 0.68799639 ] "float roughness" [ 0.21603844 ]
+AttributeBegin
+  Translate 7.5386782 0.2 -6.7978458
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.10032825 0.25820592 0.22343922 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.3954644 0.2 -5.6502128
+  ActiveTransform "EndTime"
+  Translate 7.3954644 0.26075065 -5.6502128
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.011277128 0.64091253 0.19197348 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.1777234 0.2 -4.5535569
+  ActiveTransform "EndTime"
+  Translate 7.1777234 0.60797346 -4.5535569
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21876605 0.49991119 0.16044313 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.7752328 0.2 -3.2086582
+  ActiveTransform "EndTime"
+  Translate 7.7752328 0.57752097 -3.2086582
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.62997645 0.40636167 0.14022218 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.4144855 0.2 -2.1194425
+  ActiveTransform "EndTime"
+  Translate 7.4144855 0.52808088 -2.1194425
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.41050735 0.26520234 0.50577354 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.1596861 0.2 -1.7119462
+  ActiveTransform "EndTime"
+  Translate 7.1596861 0.22158687 -1.7119462
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.090273455 0.066696383 0.78926891 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.1483331 0.2 -0.90285063
+  ActiveTransform "EndTime"
+  Translate 7.1483331 0.30675566 -0.90285063
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.28784293 0.3029522 0.41111606 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.4552674 0.2 0.13560846
+  ActiveTransform "EndTime"
+  Translate 7.4552674 0.49517381 0.13560846
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.031519506 0.085640028 0.064587757 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.4575243 0.2 1.5507464
+  ActiveTransform "EndTime"
+  Translate 7.4575243 0.63666147 1.5507464
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.33017486 0.025747221 0.25756857 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.5726624 0.2 2.7894247
+  ActiveTransform "EndTime"
+  Translate 7.5726624 0.20466579 2.7894247
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.86323082 0.94072539 0.99590492 ] "float roughness" [ 0.13895103 ]
+AttributeBegin
+  Translate 7.2220111 0.2 3.6675408
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.7039156 0.13416569 0.17259194 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.1745586 0.2 4.3613448
+  ActiveTransform "EndTime"
+  Translate 7.1745586 0.57117403 4.3613448
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.11563109 0.24446337 0.29412562 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.7336063 0.2 5.5543871
+  ActiveTransform "EndTime"
+  Translate 7.7336063 0.46934783 5.5543871
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.64535648 0.029660255 0.62095791 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.4717431 0.2 6.0047069
+  ActiveTransform "EndTime"
+  Translate 7.4717431 0.20551579 6.0047069
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.27914792 0.22178347 0.11259872 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.6745911 0.2 7.8622661
+  ActiveTransform "EndTime"
+  Translate 7.6745911 0.62098515 7.8622661
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.50020981 0.045933358 0.17288369 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.4232869 0.2 8.7889853
+  ActiveTransform "EndTime"
+  Translate 7.4232869 0.52168256 8.7889853
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.12881458 0.053961191 0.27358556 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.7023597 0.2 9.797576
+  ActiveTransform "EndTime"
+  Translate 7.7023597 0.20093994 9.797576
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.018012287 0.059326477 0.14400326 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 7.1605353 0.2 10.002896
+  ActiveTransform "EndTime"
+  Translate 7.1605353 0.3938368 10.002896
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.42049652 0.32765645 0.046915367 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.3620949 0.2 -10.470618
+  ActiveTransform "EndTime"
+  Translate 8.3620949 0.25206864 -10.470618
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.39411229 0.031866521 0.32916769 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.2028952 0.2 -9.4946642
+  ActiveTransform "EndTime"
+  Translate 8.2028952 0.49968445 -9.4946642
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.51146638 0.9125247 0.66105402 ] "float roughness" [ 0.24912784 ]
+AttributeBegin
+  Translate 8.5419312 0.2 -8.7571611
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.040717207 0.24931677 0.77074462 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.0693521 0.2 -7.8659
+  ActiveTransform "EndTime"
+  Translate 8.0693521 0.55384046 -7.8659
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2691333 0.16439784 0.018044753 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.709753 0.2 -6.2573824
+  ActiveTransform "EndTime"
+  Translate 8.709753 0.36409634 -6.2573824
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.032908138 0.013797555 0.47939789 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.3906174 0.2 -5.7877283
+  ActiveTransform "EndTime"
+  Translate 8.3906174 0.56783152 -5.7877283
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.27941468 0.11147223 0.26856804 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.8985128 0.2 -4.3397455
+  ActiveTransform "EndTime"
+  Translate 8.8985128 0.5180887 -4.3397455
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.081168093 0.40626752 0.62751669 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.7070866 0.2 -3.8395729
+  ActiveTransform "EndTime"
+  Translate 8.7070866 0.39191645 -3.8395729
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.11927976 0.10433049 0.35486272 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.5146847 0.2 -2.1447186
+  ActiveTransform "EndTime"
+  Translate 8.5146847 0.36725563 -2.1447186
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.014171764 0.48777288 0.19051343 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.0235767 0.2 -1.3697733
+  ActiveTransform "EndTime"
+  Translate 8.0235767 0.45903939 -1.3697733
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.9703396 0.52806807 0.62964833 ] "float roughness" [ 0.426364 ]
+AttributeBegin
+  Translate 8.2688532 0.2 -0.29567629
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.31733665 0.085929111 0.38599592 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.2029867 0.2 0.78545713
+  ActiveTransform "EndTime"
+  Translate 8.2029867 0.4175902 0.78545713
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.094239384 0.050873309 0.036281947 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.8436184 0.2 1.434672
+  ActiveTransform "EndTime"
+  Translate 8.8436184 0.65195668 1.434672
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.56917185 0.0053809248 0.0091022961 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.8184509 0.2 2.3931656
+  ActiveTransform "EndTime"
+  Translate 8.8184509 0.31261182 2.3931656
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.29967543 0.60612196 0.45157987 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.1182146 0.2 3.1218185
+  ActiveTransform "EndTime"
+  Translate 8.1182146 0.20670129 3.1218185
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.012584099 0.0094966711 0.068096943 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.2544708 0.2 4.0513492
+  ActiveTransform "EndTime"
+  Translate 8.2544708 0.33780617 4.0513492
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.98741734 0.63597488 0.6856035 ] "float roughness" [ 0.37969911 ]
+AttributeBegin
+  Translate 8.7084141 0.2 5.2245917
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.20826638 0.010222076 0.41594189 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.4047661 0.2 6.7603102
+  ActiveTransform "EndTime"
+  Translate 8.4047661 0.21680678 6.7603102
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.50941133 0.048167806 0.16781339 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.0563879 0.2 7.5577297
+  ActiveTransform "EndTime"
+  Translate 8.0563879 0.4055478 7.5577297
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.21306638 0.015984481 0.36396948 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.3126087 0.2 8.0777817
+  ActiveTransform "EndTime"
+  Translate 8.3126087 0.68169719 8.0777817
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.36859074 0.043262608 0.32988888 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.5041513 0.2 9.7939224
+  ActiveTransform "EndTime"
+  Translate 8.5041513 0.3300789 9.7939224
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.9612304 0.037187893 0.47437844 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 8.6577387 0.2 10.445033
+  ActiveTransform "EndTime"
+  Translate 8.6577387 0.29904878 10.445033
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.14321536 0.920524 0.58866256 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.5087967 0.2 -10.695563
+  ActiveTransform "EndTime"
+  Translate 9.5087967 0.37475318 -10.695563
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.1088989 0.094180182 0.02229592 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.1026859 0.2 -9.9801683
+  ActiveTransform "EndTime"
+  Translate 9.1026859 0.62530804 -9.9801683
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.51319355 0.026099527 0.34747741 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.5051003 0.2 -8.5094051
+  ActiveTransform "EndTime"
+  Translate 9.5051003 0.56140715 -8.5094051
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.38848722 0.33313465 0.018481931 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.0609016 0.2 -7.2874699
+  ActiveTransform "EndTime"
+  Translate 9.0609016 0.42915028 -7.2874699
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.58288729 0.57047981 0.97284907 ] "float roughness" [ 0.33209395 ]
+AttributeBegin
+  Translate 9.4362268 0.2 -6.6142325
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.54878128 0.73114777 0.93099344 ] "float roughness" [ 0.20588276 ]
+AttributeBegin
+  Translate 9.1944818 0.2 -5.3978801
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.15849571 0.049007054 0.057367448 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.5858765 0.2 -4.3256445
+  ActiveTransform "EndTime"
+  Translate 9.5858765 0.60320181 -4.3256445
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.041252952 0.3909815 0.06841886 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.4133158 0.2 -3.1197443
+  ActiveTransform "EndTime"
+  Translate 9.4133158 0.32931042 -3.1197443
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.66510749 0.8792125 0.87837577 ] "float roughness" [ 0.37705383 ]
+AttributeBegin
+  Translate 9.1482353 0.2 -2.5096371
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.11082931 0.58019799 0.14070269 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.0161514 0.2 -1.8156068
+  ActiveTransform "EndTime"
+  Translate 9.0161514 0.32774669 -1.8156068
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.55177367 0.57957256 0.015158874 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.8519745 0.2 -0.59388465
+  ActiveTransform "EndTime"
+  Translate 9.8519745 0.47625679 -0.59388465
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.31246546 0.15214603 0.19450945 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.0847368 0.2 0.41753817
+  ActiveTransform "EndTime"
+  Translate 9.0847368 0.59917206 0.41753817
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.37134138 0.1511718 0.072448291 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.3347397 0.2 1.5911021
+  ActiveTransform "EndTime"
+  Translate 9.3347397 0.42053604 1.5911021
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 9.1760483 0.2 2.1833897
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.10241374 0.60057282 0.15967084 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.4709969 0.2 3.0846324
+  ActiveTransform "EndTime"
+  Translate 9.4709969 0.51729119 3.0846324
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.077547163 0.8207972 0.27727652 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.7181225 0.2 4.5784073
+  ActiveTransform "EndTime"
+  Translate 9.7181225 0.27897739 4.5784073
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.13170858 0.19432478 0.31124237 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.6263094 0.2 5.502038
+  ActiveTransform "EndTime"
+  Translate 9.6263094 0.65307164 5.502038
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.99176073 0.7535255 0.57035577 ] "float roughness" [ 0.29905629 ]
+AttributeBegin
+  Translate 9.2492142 0.2 6.151969
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.32513788 0.47935772 0.1247829 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.0300455 0.2 7.1658025
+  ActiveTransform "EndTime"
+  Translate 9.0300455 0.35658097 7.1658025
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.080772802 0.75611961 0.094539098 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.7187338 0.2 8.5537682
+  ActiveTransform "EndTime"
+  Translate 9.7187338 0.56986517 8.5537682
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.41292161 0.47764674 0.081776008 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.2876997 0.2 9.8704138
+  ActiveTransform "EndTime"
+  Translate 9.2876997 0.56259274 9.8704138
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.87935084 0.41884682 0.10644682 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 9.2907104 0.2 10.14936
+  ActiveTransform "EndTime"
+  Translate 9.2907104 0.2649132 10.14936
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.049064223 0.021123178 0.73264533 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.618175 0.2 -10.49622
+  ActiveTransform "EndTime"
+  Translate 10.618175 0.30487645 -10.49622
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.18243749 0.28906873 0.24284396 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.341125 0.2 -9.3416529
+  ActiveTransform "EndTime"
+  Translate 10.341125 0.65910399 -9.3416529
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23877478 0.46554473 0.740538 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.099673 0.2 -8.3607817
+  ActiveTransform "EndTime"
+  Translate 10.099673 0.52583396 -8.3607817
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.12568904 0.67854738 0.29492334 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.282655 0.2 -7.6779814
+  ActiveTransform "EndTime"
+  Translate 10.282655 0.46271747 -7.6779814
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.093288593 0.0087735131 0.17248802 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.219906 0.2 -6.3591876
+  ActiveTransform "EndTime"
+  Translate 10.219906 0.41005933 -6.3591876
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.33311167 0.14322083 0.39965963 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.814824 0.2 -5.6868529
+  ActiveTransform "EndTime"
+  Translate 10.814824 0.41775274 -5.6868529
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.62104642 0.37994972 0.82610738 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.519525 0.2 -4.6828628
+  ActiveTransform "EndTime"
+  Translate 10.519525 0.32698745 -4.6828628
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.4998945 0.034572758 0.21613783 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.028004 0.2 -3.8863618
+  ActiveTransform "EndTime"
+  Translate 10.028004 0.20190854 -3.8863618
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.14302103 0.14886674 0.83012933 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.613503 0.2 -2.8426068
+  ActiveTransform "EndTime"
+  Translate 10.613503 0.23633541 -2.8426068
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23627502 0.44415712 0.065803565 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.06937 0.2 -1.4214063
+  ActiveTransform "EndTime"
+  Translate 10.06937 0.38018888 -1.4214063
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.23195828 0.26669046 0.71240664 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.061655 0.2 -0.97012961
+  ActiveTransform "EndTime"
+  Translate 10.061655 0.65180391 -0.97012961
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.90369797 0.89422369 0.52954692 ] "float roughness" [ 0.33249244 ]
+AttributeBegin
+  Translate 10.209487 0.2 0.68945825
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "conductor" "rgb reflectance" [ 0.95359749 0.93711334 0.83536613 ] "float roughness" [ 9.4175339e-05 ]
+AttributeBegin
+  Translate 10.234258 0.2 1.5856917
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.17424408 0.17470729 0.19602281 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.152173 0.2 2.0998905
+  ActiveTransform "EndTime"
+  Translate 10.152173 0.39080596 2.0998905
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.40318516 0.088837124 0.20243028 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.115964 0.2 3.3423605
+  ActiveTransform "EndTime"
+  Translate 10.115964 0.20900004 3.3423605
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.024948739 0.27058417 0.10939901 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.379299 0.2 4.6659136
+  ActiveTransform "EndTime"
+  Translate 10.379299 0.55384415 4.6659136
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.6228019 0.56288362 0.015115756 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.875499 0.2 5.8196931
+  ActiveTransform "EndTime"
+  Translate 10.875499 0.69089931 5.8196931
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 10.55921 0.2 6.6540041
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.44179851 0.178791 0.39260146 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.274276 0.2 7.5654144
+  ActiveTransform "EndTime"
+  Translate 10.274276 0.2562902 7.5654144
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.036951818 0.025419034 0.011157005 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.633317 0.2 8.108222
+  ActiveTransform "EndTime"
+  Translate 10.633317 0.20620202 8.108222
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.24840367 0.044422574 0.067280196 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.421891 0.2 9.2554455
+  ActiveTransform "EndTime"
+  Translate 10.421891 0.34995955 9.2554455
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.0031047869 0.79205507 0.74765849 ]
+AttributeBegin
+  ActiveTransform "StartTime"
+  Translate 10.668874 0.2 10.538927
+  ActiveTransform "EndTime"
+  Translate 10.668874 0.53390235 10.538927
+  ActiveTransform "All"
+  Shape "sphere" "float radius" [ 0.2 ]
+AttributeEnd

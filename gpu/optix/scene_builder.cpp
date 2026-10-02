@@ -2052,127 +2052,11 @@ static void build_cornell_crystal(SceneData& scene) {
         make_float3(265.0f, 0.0f, 295.0f));
 }
 
-/**
- * Build bouncing spheres scene (scene 1, "In One Weekend" final scene).
- * Structurally mirrors src/TheRestOfYourLife/scenes_book.h's
- * build_bouncing_spheres() - a real checker-ground plane (add_checker_texture_gpu,
- * matching CPU's checker_texture(0.32, ...) exactly - this comment used to
- * say GPU approximated it as flat gray, "no checker/procedural texture
- * support"; that claim went stale once add_checker_texture_gpu was added
- * for A3/other scenes and was never updated here, a real pre-existing bug
- * fixed in passing while adding real pbrt-v4 3D-checkerboard support - see
- * GpuCameraParams::backgroundColor's comment), a grid of small random
- * spheres, and 3 large signature spheres (glass/diffuse/metal).
- *
- * The small diffuse spheres get real GPU motion blur: each one's center1
- * (see SphereData's doc comment) is set to its "bounced" end-of-shutter
- * position, exactly like the CPU's moving-sphere constructor
- * (sphere(center1, center2, radius, mat)). This is the one GPU scene that
- * exercises OptiXRenderer::buildScene()'s sceneHasMotion_ path.
- *
- * Uses a fixed-seed std::mt19937 rather than CPU's random_double() RNG, so
- * the exact sphere layout won't pixel-match the CPU render - consistent
- * with every other procedural GPU scene in this file (e.g. Perlin noise,
- * random material assignment), none of which reproduce the CPU's exact
- * random sequence either.
- */
-void build_bouncing_spheres(SceneData& scene) {
-	// Ground sphere - real checker (matches CPU's checker_texture(0.32, ...)
-	// exactly, same as add_checker_texture_gpu's other call sites below).
-	{
-		const int checkerTexIdx = add_checker_texture_gpu(scene, 0.32f,
-			make_float3(0.2f, 0.3f, 0.1f), make_float3(0.9f, 0.9f, 0.9f));
-		const int mat = safe_cast_to_int(scene.materials.size());
-		add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
-		SphereData ground{};
-		ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-		ground.center1 = ground.center;  // static
-		ground.radius = 1000.0f;
-		ground.materialIdx = mat;
-		scene.spheres.push_back(ground);
-	}
-
-	std::mt19937 rng(42u);
-	std::uniform_real_distribution<float> unit(0.0f, 1.0f);
-
-	for (int a = -11; a < 11; a++) {
-		for (int b = -11; b < 11; b++) {
-			const float choose_mat = unit(rng);
-			const float3 center = make_float3(
-				a + 0.9f * unit(rng),
-				0.2f,
-				b + 0.9f * unit(rng)
-			);
-
-			const float3 d = make_float3(center.x - 4.0f, center.y - 0.2f, center.z - 0.0f);
-			const float dist = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
-			if (dist <= 0.9f) continue;
-
-			int mat_idx;
-			float3 center1 = center;  // default: static
-
-			if (choose_mat < 0.8f) {
-				// Diffuse - moving sphere (the "bounce": hops straight up by
-				// a random amount between t=0 and t=1, matching CPU's
-				// `center2 = center + vec3(0, random_double(0,.5), 0)`).
-				const float3 albedo = make_float3(
-					unit(rng) * unit(rng),
-					unit(rng) * unit(rng),
-					unit(rng) * unit(rng)
-				);
-				mat_idx = safe_cast_to_int(scene.materials.size());
-				add_lambertian(scene, albedo);
-				center1 = make_float3(center.x, center.y + unit(rng) * 0.5f, center.z);
-			} else if (choose_mat < 0.95f) {
-				// Metal
-				const float3 albedo = make_float3(0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng));
-				const float fuzz = 0.5f * unit(rng);
-				mat_idx = safe_cast_to_int(scene.materials.size());
-				add_metal(scene, albedo, fuzz);
-			} else {
-				// Glass
-				mat_idx = safe_cast_to_int(scene.materials.size());
-				add_dielectric(scene, 1.5f);
-			}
-
-			SphereData sph{};
-			sph.center = center;
-			sph.center1 = center1;
-			sph.radius = 0.2f;
-			sph.materialIdx = mat_idx;
-			scene.spheres.push_back(sph);
-		}
-	}
-
-	// Three large signature spheres - static.
-	{
-		const int mat1 = add_dielectric(scene, 1.5f);
-		SphereData s1{};
-		s1.center = make_float3(0.0f, 1.0f, 0.0f);
-		s1.center1 = s1.center;
-		s1.radius = 1.0f;
-		s1.materialIdx = mat1;
-		scene.spheres.push_back(s1);
-	}
-	{
-		const int mat2 = add_lambertian(scene, make_float3(0.4f, 0.2f, 0.1f));
-		SphereData s2{};
-		s2.center = make_float3(-4.0f, 1.0f, 0.0f);
-		s2.center1 = s2.center;
-		s2.radius = 1.0f;
-		s2.materialIdx = mat2;
-		scene.spheres.push_back(s2);
-	}
-	{
-		const int mat3 = add_metal(scene, make_float3(0.7f, 0.6f, 0.5f), 0.0f);
-		SphereData s3{};
-		s3.center = make_float3(4.0f, 1.0f, 0.0f);
-		s3.center1 = s3.center;
-		s3.radius = 1.0f;
-		s3.materialIdx = mat3;
-		scene.spheres.push_back(s3);
-	}
-}
+// build_bouncing_spheres() (former "scene 1" / A2 GPU builder) deleted - A2
+// migrated to pbrt-backed, see pbrt_scenes/bouncing-spheres.pbrt and its
+// case-1 removal below. That file's grid layout is this exact function's
+// own fixed std::mt19937(42) sequence, dumped once by a throwaway C++
+// program - not a new or different layout.
 
 // build_checkered_spheres() (former "scene 2" / A3 Checkered Spheres GPU
 // builder) deleted - A3 migrated to pbrt-backed, see
@@ -3690,63 +3574,14 @@ bool build_scene(
 		// function's own shared, single source of truth alongside CPU's
 		// identically-named build_cornell_box() (see cornell_box_data.h).
 
-				case 1:  // Bouncing Spheres (motion blur - see build_bouncing_spheres)
-					build_bouncing_spheres(scene);
-
-					// Configure camera. This scene's CameraConfig in
-					// scene_registry.h doesn't set CameraMode::UserControlled,
-					// so it defaults to Fixed - the CPU renderer (cpu_interface.cpp)
-					// ignores cam_x/y/z for Fixed scenes and always uses the
-					// registry's own lookfrom (13,2,3), UNLESS force_camera_override
-					// is set (main.cpp's video-mode frame loop, which must animate
-					// the camera every frame). Match that here rather than always
-					// forwarding cam_x/y/z verbatim: this scene's spheres are
-					// clustered within roughly +-15 units of the origin, so a
-					// leftover Cornell-Box-scale camera position (e.g. (278,278,-800),
-					// a common default/preset for other scenes) would place the
-					// camera absurdly far away, rendering an unrecognizable speck,
-					// for any single-image render that doesn't opt into the override.
-					{
-						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 13.0f, 2.0f, 3.0f);
-						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
-						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-						// defocus_angle=0.6, focus_dist=10.0: matches CPU
-						// CameraConfig's DOF values for this scene (the
-						// book's own final-render "beauty shot" values,
-						// focused near the 3 hero spheres) - same thin-lens
-						// wiring as the generic pbrt Depth of Field (D1) scene.
-						constexpr float kPi = 3.14159265358979323846f;
-						constexpr float defocus_angle = 0.6f;
-						constexpr float focus_dist    = 10.0f;
-						float3 dof_u, dof_v;
-						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, focus_dist, camera_params, &dof_u, &dof_v);
-
-						if (out_camera_extra) {
-							// A nonzero defocus disk opts this scene out of
-							// optix_interface.cpp's generic camera_params->
-							// cameraExtra fallback (see its own comment on
-							// defocusDiskZero), so kind/origin/lower_left_corner/
-							// horizontal/vertical must be set explicitly here too -
-							// same full set the generic pbrt Depth of Field (D1) scene sets.
-							out_camera_extra->kind = CameraKind::Perspective;
-							out_camera_extra->origin = lookfrom;
-							out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
-							out_camera_extra->horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
-							out_camera_extra->vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
-
-							const float defocus_radius = focus_dist * tanf((defocus_angle * kPi / 180.0f) / 2.0f);
-							out_camera_extra->defocus_disk_u = make_float3(dof_u.x * defocus_radius, dof_u.y * defocus_radius, dof_u.z * defocus_radius);
-							out_camera_extra->defocus_disk_v = make_float3(dof_v.x * defocus_radius, dof_v.y * defocus_radius, dof_v.z * defocus_radius);
-
-							// Flat light-blue background, matching CPU registry's
-							// bg=(0.70,0.80,1.00) for this scene (see
-							// GpuCameraParams::backgroundColor's comment).
-							out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
-						}
-					}
-					break;
+					// case 1 (Bouncing Spheres / A2) migrated to pbrt-backed - see
+					// pbrt_scenes/bouncing-spheres.pbrt and scene_registry_data.h's own
+					// A2 entry. Falls through to default: -> build_loaded_pbrt_scene()
+					// now that legacy_id 1 is no longer assigned to any scene - the
+					// generic pbrt camera-type dispatch's thin-lens DOF support
+					// (proven by D5-D8/D1's own migrations) and ActiveTransform object
+					// motion blur (proven by object-motion-blur.pbrt) together cover
+					// everything this scene's bespoke camera math/motion setup did.
 
 				// case 2 (Checkered Spheres / A3) migrated to pbrt-backed - see
 				// pbrt_scenes/checkered-spheres.pbrt and scene_registry_data.h's
