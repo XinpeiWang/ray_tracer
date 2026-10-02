@@ -83,48 +83,13 @@ inline hittable_list build_principled_showcase() {
 // pbrt_scenes/hair-fibers-scene.pbrt and scene_registry_data.h's own entry.
 // No other consumer.
 
-//==============================================================================================
-// Scene 20: Normal Mapped Cornell Box
-// Cornell box where the back wall has a bump-mapped wavy displacement and the
-// sphere has a procedural normal-map perturbation, showing pbrt-v4 NormalMap/BumpMap.
-//==============================================================================================
-inline hittable_list build_normal_mapped_cornell() {
-	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls (plain)
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
-
-	// Back wall: bump-mapped wavy surface (uses marble Perlin noise as displacement)
-	auto marble_tex = make_shared<noise_texture>(4.0);
-	auto white_base = make_shared<lambertian>(color(.73, .73, .73));
-	auto bumped_back = make_shared<bump_map_material>(marble_tex, white_base, 0.08, 0.002);
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), bumped_back));
-
-	// Sphere: normal-map perturbed lambertian (checker pattern as normal source)
-	// The checker drives subtle low-frequency normal variation over the sphere surface
-	auto norm_tex = make_shared<checker_texture>(8.0, color(0.5, 0.5, 1.0), color(0.8, 0.8, 1.0));
-	auto blue_base = make_shared<lambertian>(color(0.2, 0.3, 0.8));
-	auto normal_sphere_mat = make_shared<normal_map_material>(norm_tex, blue_base);
-	world.add(make_shared<sphere>(point3(190, 90, 190), 90, normal_sphere_mat));
-
-	// Rotated box: bump-mapped white
-	auto bumped_box = make_shared<bump_map_material>(marble_tex, white_base, 0.05, 0.002);
-	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), bumped_box);
-	box1 = make_shared<rotate_y>(box1, 15);
-	box1 = make_shared<translate>(box1, vec3(265,0,295));
-	world.add(box1);
-
-	return world;
-}
+// build_normal_mapped_cornell() deleted - B12 migrated to pbrt-backed, see
+// pbrt_scenes/normal-mapped-cornell.pbrt and scene_registry_data.h's own
+// entry (that file's own header comment has the full derivation, including
+// the two baked-PNG approximations for its procedural bump/normal sources).
+// No other consumer (gpu/metal/metal_poc_scenes_b.mm's own scene is an
+// independent hand-ported Metal implementation that never called this
+// function).
 
 // build_subsurface_slab() deleted - B13 migrated to pbrt-backed, see
 // pbrt_scenes/subsurface-slab.pbrt and scene_registry_data.h's own entry.
