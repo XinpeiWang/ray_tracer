@@ -128,16 +128,21 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A8", 191, SceneNames::CornellSmoke, SceneCategories::Basics,
             "Cornell box with volumetric fog",
             "Slow", "cornell-smoke.pbrt", CameraMode::UserControlled),
-        {
+        // A9 migrated to pbrt-backed - see pbrt_scenes/final-scene.pbrt
+        // (legacy_id 8 kept, the book's own "scene 8"). The 400 ground boxes
+        // and 1000-sphere cluster reuse GPU's own deterministic
+        // std::mt19937(8) layout (CPU's own layout was never reproducible -
+        // same reasoning as A2's own migration). One deliberate
+        // approximation: the noise-textured sphere uses pbrt's "fbm" texture
+        // in place of native's own unmapped sin+turbulence noise_texture
+        // formula - see that file's own header comment for why this one
+        // substitution is acceptable here but wasn't for B9/B10/B12/B23/B24
+        // (each deferred separately, still native, pending real pbrt support
+        // for their own specific unmapped materials).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A9", 8, SceneNames::FinalScene, SceneCategories::Basics,
             "Complex scene from The Next Week",
-            "Very Slow", 500, false, true,
-            // Subtle deep ambient instead of pure black - the box-grid
-            // ground and negative space used to render into a stark void.
-            { 40, 478, 278, -600,  278, 278, 0,  0.03, 0.025, 0.02 },
-            build_final_scene,
-            build_final_scene_lights
-        },
+            "Very Slow", "final-scene.pbrt"),
         // B1/B2 PERMANENTLY stay native - rough_metal has no pbrt-authorable
         // equivalent, confirmed at the BxDF-formula level (src/shared/
         // bxdfs_conductor.h): rough_metal::sample_local() weights purely by
