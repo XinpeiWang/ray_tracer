@@ -969,16 +969,48 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 // allocateQueues
 // ============================================================================
 
-bool WavefrontPathTracer::allocateQueues(int numPixels) {
-	if (queueCapacity_ == numPixels) return true;  // already allocated
+bool WavefrontPathTracer::allocateQueues(int numPixels, int numPunctualLights) {
+	// Shadow queue needs more headroom than every other per-bounce queue
+	// here: up to ONE shadow ray per pixel for a stochastically-picked area
+	// light, ONE more for the sky/infinite light, and one MORE PER
+	// PUNCTUAL/DELTA LIGHT (wf_push_nee_shadow_ray's own call sites in
+	// wavefront_device_helpers.h - the punctual-light loop pushes one
+	// unconditionally per light, no stochastic selection, since delta
+	// lights have zero probability of being hit by BSDF sampling). A scene
+	// with N simultaneous punctual lights can therefore need up to (2+N)
+	// shadow-ray slots for a single bounce's worth of hits, not 1 - sizing
+	// this queue the same numPixels-per-bounce way every OTHER queue here
+	// is (ray/hit/miss/probe/exit, each genuinely bounded at one live item
+	// per pixel) silently overflowed WorkQueue::push() (returns -1 on a full
+	// queue, dropping that shadow ray's contribution entirely, not
+	// corrupting memory - see WorkQueue::push()'s own comment) for any scene
+	// with 2+ simultaneous punctual lights, systematically under-lighting
+	// it. Confirmed empirically: pbrt_scenes/punctual-lights.pbrt (5
+	// punctual lights, scene C8) rendered 40-46% too dark on GPU-wavefront
+	// specifically (CPU and GPU-recursive, which push each NEE shadow ray
+	// through OptiX's own `optixTrace()` immediately rather than queuing it
+	// for a later kernel pass, have no equivalent capacity to overflow).
+	const int maxShadowRaysPerHit = 2 + std::max(0, numPunctualLights);
+	const int shadowCapacity = numPixels * maxShadowRaysPerHit;
+	if (queueCapacity_ == numPixels && shadowQueueCapacity_ == shadowCapacity) return true;  // already allocated
 
 	freeQueues();
 	queueCapacity_ = numPixels;
+	shadowQueueCapacity_ = shadowCapacity;
 	size_t rayItemSz    = numPixels * sizeof(RayWorkItem);
 	size_t hitItemSz    = numPixels * sizeof(HitWorkItem);
 	size_t missItemSz   = numPixels * sizeof(MissWorkItem);
-	size_t shadowItemSz = numPixels * sizeof(ShadowRayWorkItem);
-	size_t transmittanceSz = numPixels * sizeof(float);
+	size_t shadowItemSz = static_cast<size_t>(shadowCapacity) * sizeof(ShadowRayWorkItem);
+	// d_transmittance_ is indexed by the SAME shadow-queue slot index as
+	// d_shadowItems_ (written by the shadow-ray-tracing kernel, read back by
+	// accumulate_shadow - see that kernel's own "Must also guard against
+	// shadowQueue.capacity" comment, wavefront_kernels_accumulate.cu), so it
+	// needs the same shadowCapacity sizing, not numPixels - sizing it to
+	// numPixels here was the one spot this fix originally missed, confirmed
+	// by a real out-of-bounds-read artifact (colorful noise in the upper
+	// portion of the frame, near scene C8's own overhead lights) once the
+	// shadow queue itself could legitimately hold more than numPixels items.
+	size_t transmittanceSz = static_cast<size_t>(shadowCapacity) * sizeof(float);
 	// Worst case every hit this bounce is a Subsurface transmission -
 	// same numPixels capacity class as every other per-bounce queue.
 	size_t probeItemSz  = numPixels * sizeof(BssrdfProbeWorkItem);
@@ -1026,6 +1058,7 @@ void WavefrontPathTracer::freeQueues() {
 	freeDev(d_shadowCounter_);
 	freeDev(d_probeCounter_);  freeDev(d_exitCounter_);
 	queueCapacity_ = 0;
+	shadowQueueCapacity_ = 0;
 }
 
 // ============================================================================
@@ -1132,7 +1165,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	WorkQueue<ShadowRayWorkItem> sq;
 	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
-	sq.capacity = queueCapacity_;
+	sq.capacity = shadowQueueCapacity_;
 
 	// BSSRDF probe-request queue (MaterialType::Subsurface, Phase 2) - filled
 	// by evaluate_materials's own Subsurface case instead of scattering
@@ -1251,7 +1284,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 	WorkQueue<ShadowRayWorkItem> sq;
 	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
-	sq.capacity = queueCapacity_;
+	sq.capacity = shadowQueueCapacity_;
 
 	wf_launch_evaluate_materials_simple(hq, numHits, nq, sq, d_framebuffer,
 		d_spheres, numSpheres,
@@ -1326,7 +1359,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 	WorkQueue<ShadowRayWorkItem> sq;
 	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
-	sq.capacity = queueCapacity_;
+	sq.capacity = shadowQueueCapacity_;
 
 	wf_launch_evaluate_materials_dielectric(hq, numHits, nq, sq, d_framebuffer,
 		d_spheres, numSpheres,
@@ -1554,7 +1587,7 @@ void WavefrontPathTracer::launchProbeCacheUpdate(const WavefrontLaunchParams& lp
 	WorkQueue<ShadowRayWorkItem> sq;
 	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
-	sq.capacity = queueCapacity_;
+	sq.capacity = shadowQueueCapacity_;
 
 	wf_launch_probe_cache_shade(
 		hq, numHits,
@@ -1768,7 +1801,7 @@ void WavefrontPathTracer::launchNrcTrainingUpdate(const WavefrontLaunchParams& l
 		WorkQueue<ShadowRayWorkItem> sq;
 		sq.items = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 		sq.counter = reinterpret_cast<int*>(d_shadowCounter_);
-		sq.capacity = queueCapacity_;
+		sq.capacity = shadowQueueCapacity_;
 
 		if (numSimpleHits > 0) {
 			WorkQueue<HitWorkItem> shq;
@@ -2101,7 +2134,7 @@ void WavefrontPathTracer::launchAccumulateShadow(
 	WorkQueue<ShadowRayWorkItem> sq;
 	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
-	sq.capacity = queueCapacity_;
+	sq.capacity = shadowQueueCapacity_;
 
 	wf_launch_accumulate_shadow(sq, numShadow, d_transmittance, d_framebuffer, maxComponentValue, stream_,
 								 reinterpret_cast<GpuGiSample*>(d_giCandidateOut_));
@@ -2137,7 +2170,7 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 	WorkQueue<ShadowRayWorkItem> sq;
 	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
-	sq.capacity = queueCapacity_;
+	sq.capacity = shadowQueueCapacity_;
 
 	wf_launch_resolve_bssrdf_exit(eq, numExit, nq, sq, d_framebuffer,
 		d_spheres, numSpheres,
@@ -2272,7 +2305,7 @@ bool WavefrontPathTracer::render(
 		int samplesCompleted = 0;
 	} stats;
 
-	if (!allocateQueues(numPixels)) return false;
+	if (!allocateQueues(numPixels, static_cast<int>(num_punctual_lights))) return false;
 
 	// Framebuffer accumulator + per-pixel filter-weight buffer - persisted
 	// across calls and only reallocated when numPixels changes (same
@@ -3005,7 +3038,7 @@ bool WavefrontPathTracer::render(
 				// Store shadow queue pointers in lp for the shadow raygen.
 				lp.shadowQueue.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
 				lp.shadowQueue.counter  = reinterpret_cast<int*>(d_shadowCounter_);
-				lp.shadowQueue.capacity = queueCapacity_;
+				lp.shadowQueue.capacity = shadowQueueCapacity_;
 
 				// Temporarily point framebuffer to the transmittance float
 				// array so __raygen__wf_shadow can write results there.
