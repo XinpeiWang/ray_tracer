@@ -36,6 +36,41 @@ bool OptiXRenderer::render(
 	// neither WavefrontPathTracer nor the recursive raygen need any further
 	// camera wiring changes for CameraKind::Realistic.
 	GpuCameraParams gpuCam = camera;
+
+	// Pixel reconstruction filter importance-sampling table - same lifecycle
+	// as the lens tables below (device pointer patched in fresh here), built
+	// from the CPU's own PixelFilterDispatch/FilterSampler so both backends
+	// draw sub-pixel positions from an identical distribution (see
+	// GpuCameraParams::filterSampler's own comment).
+	{
+		static const char* const kKindNames[] = { "gaussian", "box", "triangle", "mitchell", "sinc" };
+		static const float kDefaultRadius[] = { 1.5f, 0.5f, 2.0f, 2.0f, 4.0f };
+		const int kind = (gpuCam.filterKind >= 0 && gpuCam.filterKind <= 4) ? gpuCam.filterKind : 0;
+		const float radius = (gpuCam.filterRadius > 0.0f) ? gpuCam.filterRadius : kDefaultRadius[kind];
+		// Same zero-init guards gpu_filter_evaluate() applies (sigma<=0 ->
+		// 0.5, tau<=0 -> 3). B/C are used as given: scene_builder always sets
+		// them from the scene's PixelFilter (default 1/3,1/3), and the only
+		// zero-init caller (a native scene) is Gaussian, which ignores them.
+		const float sigma = (gpuCam.filterSigma > 0.0f) ? gpuCam.filterSigma : 0.5f;
+		const float tau   = (gpuCam.filterTau > 0.0f) ? gpuCam.filterTau : 3.0f;
+		const float B = gpuCam.filterB, C = gpuCam.filterC;
+		if (!d_filterSampler_ || kind != filterSamplerKind_ || radius != filterSamplerRadius_ ||
+		    B != filterSamplerB_ || C != filterSamplerC_ ||
+		    sigma != filterSamplerSigma_ || tau != filterSamplerTau_) {
+			const PixelFilterDispatch dispatch(kKindNames[kind], radius, B, C, sigma, tau);
+			const FilterSampler<float, 32> sampler(dispatch);
+			if (!d_filterSampler_) {
+				CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_filterSampler_), sizeof(sampler)));
+			}
+			CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_filterSampler_), &sampler,
+			                      sizeof(sampler), cudaMemcpyHostToDevice));
+			filterSamplerKind_ = kind;
+			filterSamplerRadius_ = radius;
+			filterSamplerB_ = B; filterSamplerC_ = C;
+			filterSamplerSigma_ = sigma; filterSamplerTau_ = tau;
+		}
+		gpuCam.filterSampler = reinterpret_cast<const FilterSampler<float, 32>*>(d_filterSampler_);
+	}
 	if (gpuCam.kind == CameraKind::Realistic) {
 		gpuCam.lensElements = reinterpret_cast<GpuLensElement*>(d_lensElements_);
 		gpuCam.exitPupilBounds = reinterpret_cast<GpuExitPupilBounds*>(d_exitPupilBounds_);
@@ -503,6 +538,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_disks_) cudaFree(reinterpret_cast<void*>(d_disks_));
 	if (d_cylinders_) cudaFree(reinterpret_cast<void*>(d_cylinders_));
 	if (d_triangles_) cudaFree(reinterpret_cast<void*>(d_triangles_));
+	if (d_filterSampler_) { cudaFree(reinterpret_cast<void*>(d_filterSampler_)); d_filterSampler_ = 0; filterSamplerKind_ = -1; }
 	if (d_lensElements_) cudaFree(reinterpret_cast<void*>(d_lensElements_));
 	if (d_exitPupilBounds_) cudaFree(reinterpret_cast<void*>(d_exitPupilBounds_));
 	if (d_cloudMediums_) cudaFree(reinterpret_cast<void*>(d_cloudMediums_));

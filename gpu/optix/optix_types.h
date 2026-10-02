@@ -18,6 +18,7 @@
 // CPU_GPU tag on GpuLightSample/GpuReservoir's own accessor methods further
 // down this file.
 #include "../../src/shared/cpu_gpu.h"
+#include "../../src/shared/filter_sampler.h"  // FilterSampler<float,32> - GpuCameraParams::filterSampler
 // Same relative-path reasoning as punctual_lights.h above. CloudMedium<T> is
 // CPU_GPU-tagged and templated, so CloudMedium<float> compiles directly for
 // device code (it already calls perlin_noise<T> from noise.h, itself
@@ -1664,11 +1665,28 @@ struct GpuCameraParams {
 	// default to 0.0f via plain zero-init instead, which would be a
 	// degenerate Gaussian - gpu_filter_evaluate() defends against exactly
 	// this (sigma<=0 -> 0.5f, tau<=0 -> 3.0f) rather than relying on this
-	// struct's own initialization. Radius is always 0.5 pixel on both
-	// backends, matching CPU's own PixelFilterDispatch (no cross-pixel
-	// splatting - see that class's own comment for why).
+	// struct's own initialization.
+	//
+	// Reconstruction filter reach: filterRadius is the filter's real support
+	// radius in pixels (<=0, the zero-init default, means "pbrt-v4's own
+	// default for this kind": gaussian 1.5, box 0.5, triangle 2, mitchell 2,
+	// sinc 4 - the same defaults CPU's PixelFilterDispatch/camera::filter_
+	// radius use, so a native scene with no explicit PixelFilter matches
+	// CPU's Gaussian-1.5 with no scene-side wiring). filterSampler is a
+	// device pointer to the SAME FilterSampler<float,32> table CPU builds
+	// (src/shared/filter_sampler.h, pbrt-v4's tabulated importance sampling),
+	// built from those parameters and uploaded by OptiXRenderer::render() -
+	// like lensElements/skyDist it can't be known at scene-build time. Each
+	// camera sample CDF-inverts its (Halton) [0,1)^2 draw through it into a
+	// sub-pixel position that can land OUTSIDE the pixel for a filter wider
+	// than one pixel (reaching the neighbouring pixels' area, exactly like
+	// CPU's camera.h get_ray() offset), weighted by FilterSample::weight.
+	// nullptr (a caller that never went through render()) keeps the old
+	// within-pixel, gpu_filter_evaluate()-weighted fallback.
 	int   filterKind;   // 0=gaussian 1=box 2=triangle 3=mitchell 4=sinc
 	float filterB, filterC, filterSigma, filterTau;
+	float filterRadius;
+	const FilterSampler<float, 32>* filterSampler;
 
 	// pbrt-v4 Integrator "bool regularize" - defaults false via zero-init
 	// (matching pbrt-v4's own real default), same "no in-class initializer"

@@ -67,8 +67,17 @@ extern "C" __global__ void __raygen__rg() {
 		// Bounce RNG (seed) keeps using PCG32 for scatter/light directions.
 		float hx = halton2(s, px, py);
 		float hy = halton3(s, px, py);
-		float u = (float(px) + hx) / float(params.width - 1);
-		float v = (float(params.height - 1 - py) + hy) / float(params.height - 1);  // Flip Y
+		// Pixel (px,py) with sub-pixel position (sx,sy) in [0,1) maps to
+		// u=(px+sx)/width, v=(height-1-py+sy)/height - the viewport spans
+		// exactly [0,1] over `width` pixels (lower_left_corner/horizontal are
+		// built edge-to-edge), so pixel CENTRES sit at (px+0.5)/width, exactly
+		// like CPU's pixel00_loc + 0.5-pixel centering. This used to divide by
+		// (width-1)/(height-1), stretching every GPU render by width/(width-1)
+		// about the centre (~1.7% at 60px, 0.8% at 120px: the outermost pixel
+		// centre overshot the viewport edge by half a pixel) - a framing
+		// mismatch CPU vs GPU that no whole-image check could see.
+		float u = (float(px) + hx) / float(params.width);
+		float v = (float(params.height - 1 - py) + hy) / float(params.height);  // Flip Y
 
 		// Sub-pixel offset in [-0.5, 0.5] for the reconstruction filter -
 		// same underlying Halton values as u/v above (u/v's own pixel-
@@ -78,9 +87,27 @@ extern "C" __global__ void __raygen__rg() {
 		// relative to CPU's own doesn't matter).
 		float ox = hx - 0.5f;
 		float oy = hy - 0.5f;
-		float filter_w = gpu_filter_evaluate(params.camera.filterKind,
-			params.camera.filterB, params.camera.filterC,
-			params.camera.filterSigma, params.camera.filterTau, ox, oy);
+		float filter_w;
+		if (params.camera.filterSampler) {
+			// Real importance-sampled reconstruction filter (pbrt-v4
+			// FilterSampler, identical table to CPU's - see GpuCameraParams::
+			// filterSampler's own comment): the sub-pixel position can land
+			// outside this pixel (any filter wider than 1px, incl. the
+			// default Gaussian r=1.5), so the camera ray below is generated
+			// through the REAL sampled film position, and the sample's
+			// weight is FilterSample::weight (f/pdf, ~constant for a
+			// non-negative filter) rather than an in-pixel evaluate().
+			const FilterSample<float> fs = params.camera.filterSampler->sample(hx, hy);
+			ox = fs.p_x;
+			oy = fs.p_y;
+			filter_w = fs.weight;
+			u = (float(px) + 0.5f + ox) / float(params.width);
+			v = (float(params.height - 1 - py) + 0.5f + oy) / float(params.height);
+		} else {
+			filter_w = gpu_filter_evaluate(params.camera.filterKind,
+				params.camera.filterB, params.camera.filterC,
+				params.camera.filterSigma, params.camera.filterTau, ox, oy);
+		}
 		weight_sum += filter_w;
 
 		// NOTE for future CameraKind additions: this `v` is Y-flipped to a
