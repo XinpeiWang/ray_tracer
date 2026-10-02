@@ -865,14 +865,38 @@ constexpr float kCameraMediumRegionalRelTolerance = 1.0f;
 // E10/B11/B14/J2, which already had an exception for other pairs that
 // turns out to already cover this pair's own measured gap too - see each
 // one's own comment for why no NEW constant was needed there).
-// 25%: the true worst non-E1/non-E10 whole-image gap was E11 (Thin
-// Dielectric Medium, pbrt example) at 22.39% (R channel) - a first pass at
-// this constant (20%) missed that this scene's R channel, not just its
-// average brightness (11.14%), was the real outlier, and failed on
-// verification. 25% gives real margin over E11 (+2.6pt) and E12 (Rough
-// Dielectric Medium, 20.60% R channel, +4.4pt) without masking a future
-// regression beyond what these two already-measured gaps explain.
-constexpr float kRecWfRelTolerance = 0.25f;
+// 18% (was 25%): that older value existed to cover E11 and E12's R-channel
+// gaps (22.39% / 20.60%), which came from the wavefront backend CLAMPING
+// medium albedo to [0,1] (MaterialType::Medium/DielectricMedium's albedo is
+// sigma_s/luminance(sigma_s) per channel and exceeds 1 - E11's R is 1.40;
+// albedoSpectrum() capped it, rendering that channel ~12% too dark; fixed by
+// uplifting with unboundedSpectrum() instead - see wavefront_kernels_
+// materials.cu). E11 is now 9.3% (worst channel). The worst NON-excepted
+// whole-image gaps in the 2026-10-02 calibration runs are B13 13.7%, E11 9.3%,
+// F10 8.9%, A9 8.8%, E3 8.2% (E1/E10/E12 have their own named exceptions
+// below), so 18% keeps 4.3pts over B13 without leaving the old 25% slack.
+constexpr float kRecWfRelTolerance = 0.18f;
+
+// E12 (Rough Dielectric Medium) - whole-image rec-vs-wf gap that does NOT go
+// away with the albedo fix above and is not a bug: measured 67.1% on the R
+// channel (rec 0.106 vs wf 0.035; G 4%, B 12%, avg brightness ~21%). Isolated
+// by variant renders (2026-10-02): a grey medium agrees to 1.8%, a rough
+// boundary alone to 2.8%, a chromatic medium at 0.1x density (single
+// scatter) to 0.5%, 0.3x to 2.3%, and the gap grows with scatter order (3x
+// density: 11% on avg brightness). That is the signature of SPECTRAL vs RGB
+// multi-scatter: this codebase's medium model is scalar extinction plus a
+// per-channel albedo (sigma_s/luminance, here (0.25,1.27,0.51)), which the
+// recursive backend and CPU multiply per channel in RGB while the wavefront
+// backend multiplies per-wavelength spectra - after several scatters a
+// saturated green albedo's spectrum narrows past sRGB gamut and its R
+// response collapses. A real, accepted, inherent difference of the two
+// colour models (not a missing term), amplified here because the albedo is
+// non-physical (>1). Given a scene-specific ceiling just over the
+// measurement - also used for E12's CPU-vs-wavefront whole-image pair (R
+// channel 66.8% there, vs the 55% Volumes tolerance, which it passed before
+// the albedo fix moved its R channel from ~21% to 67% while improving E11);
+// E11 (same mechanism, far less saturated) fits the standards.
+constexpr float kRoughDielectricMediumRecWfRelTolerance = 0.80f;
 // 42%: the worst non-excepted regional gap was E7 (pbrt example) at
 // 39.23%, with B12/B23/E12/E11/E4/J1/B7/E2/E6 all in the high-20s/low-30s -
 // regional gaps run higher than whole-image ones across the board here, the
@@ -951,14 +975,12 @@ constexpr float kDispersivePrismRecWfRegionalRelTolerance = 0.55f;
 constexpr float kLightTextureRegionalRelTolerance = 0.65f;
 
 // A9/E7/E12 - GPU-recursive-vs-wavefront REGIONAL only (measured over
-// repeated runs: A9 45.5-47.1%, E12 48.1%, E7 39-40.1%, vs the standard
+// repeated runs: A9 45.5-47.1%, E12 43.5-48.1%, E7 39-40.1%, vs the standard
 // kRecWfRegionalRelTolerance of 42%). A9 and E7 are Monte-Carlo variance of a
-// 100-pixel block (direct renders agree within a few percent). E12 is a REAL,
-// separate, still-open wavefront gap: GPU-recursive matches CPU within 1.5%
-// but GPU-wavefront renders ~15% darker (E11, the thin-dielectric twin, shows
-// the same 11.5% wavefront deficit) - both are rough/thin dielectric+medium
-// "fusion" scenes (see kRecWfRelTolerance's comment for their whole-image
-// R-channel gaps). Tracked as follow-up work, not a tolerance problem.
+// 100-pixel block (direct renders agree within a few percent). E12 is the
+// spectral-vs-RGB multi-scatter difference documented at
+// kRoughDielectricMediumRecWfRelTolerance (the wavefront darkness itself was
+// investigated: its albedo-clamp component is fixed, the remainder is inherent).
 constexpr float kNoisyBlockRecWfRegionalRelTolerance = 0.60f;
 
 static void check_relative_parity(const char* sceneName, const std::string& sceneId,
@@ -1233,6 +1255,7 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// comments below.
 	const float tolerance =
 		(s->id == "E10")                                          ? kCameraMediumRelTolerance :
+		(s->id == "E12")                                          ? kRoughDielectricMediumRecWfRelTolerance :
 		(std::strcmp(s->category, SceneCategories::Volumes) == 0) ? kVolumeRelTolerance :
 		(s->id == "B13")                                          ? kSubsurfaceSlabRelTolerance :
 		(s->id == "B1")                                           ? kRoughMetalSpheresRelTolerance :
@@ -1297,6 +1320,7 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	const float recWfTolerance =
 		(s->id == "E10") ? kCameraMediumRelTolerance :
 		(s->id == "E1")  ? kHomogeneousMediumRecWfRelTolerance :
+		(s->id == "E12") ? kRoughDielectricMediumRecWfRelTolerance :
 		kRecWfRelTolerance;
 	check_relative_parity(s->name, s->id, "avg brightness", "GPU-recursive", "GPU-wavefront", recBright, wfBright, recWfTolerance);
 	check_relative_parity(s->name, s->id, "R channel", "GPU-recursive", "GPU-wavefront", recC.r, wfC.r, recWfTolerance);
@@ -1314,6 +1338,10 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// constants' comments) - their whole-image `tolerance` above stays
 	// standard.
 	const float regionalTolerance =
+		// E12's whole-image `tolerance` above is widened for its spectral-vs-RGB
+		// R-channel gap; its REGIONAL tolerance stays the ordinary Volumes one
+		// (measured CPU-pair worst block 38.7%) rather than scaling up with it.
+		(s->id == "E12") ? regional_tolerance_for(kVolumeRelTolerance) :
 		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
 		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :

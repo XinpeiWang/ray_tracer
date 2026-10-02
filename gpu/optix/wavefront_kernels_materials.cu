@@ -1009,7 +1009,15 @@ extern "C" __global__ void evaluate_materials(
 			// own interior sub-case, same file, for the identical mechanism
 			// already wired up).
 			scattered_dir = wf_sample_phase_scatter(unit_dir, mat.fuzz, seed, phaseWo, phaseG, brdf_pdf_override);
-			attenuation   = albedoSpectrum(mat.albedo);
+			// Medium albedo is sigma_s/luminance(sigma_s) per channel (pbrt_gpu_builder.h),
+			// which EXCEEDS 1 for any channel brighter than the luminance - E11's
+			// sigma_s=(1.2,0.8,0.4) gives R=1.40. albedoSpectrum() clamps each channel
+			// to [0,1] (it is a reflectance uplift), so the wavefront backend silently
+			// capped that channel and rendered ~12-15% darker than both CPU and
+			// GPU-recursive (which multiply the raw RGB). unboundedSpectrum() is the
+			// right uplift for an unbounded weight. A grey medium (albedo<=1) was
+			// never affected, which is how this was isolated.
+			attenuation   = unboundedSpectrum(mat.albedo);
 			is_specular   = false;
 			// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - see
 			// MaterialData::medium_emission's own comment (optix_types.h) for
@@ -1464,7 +1472,8 @@ extern "C" __global__ void evaluate_materials(
 				// needs to do is hand off phaseWo/phaseG/brdf_pdf_override
 				// (via wf_sample_phase_scatter()) and flip is_specular.
 				scattered_dir = wf_sample_phase_scatter(unit_dir, mat.fuzz, seed, phaseWo, phaseG, brdf_pdf_override);
-				attenuation   = albedoSpectrum(mat.albedo);
+				// Unbounded uplift - see MaterialType::Medium's identical site above.
+				attenuation   = unboundedSpectrum(mat.albedo);
 				is_specular = false;
 			} else if (is_rough) {
 				hit_point = h.rayOrigin + t_far * unit_dir;
