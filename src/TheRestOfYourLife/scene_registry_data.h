@@ -368,17 +368,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "E3", 199, SceneNames::DielectricMediumShowcase, SceneCategories::Volumes,
             "Three glass spheres containing colored internal fog at varying density - dielectric surface + participating medium combined (pbrt-v4 style)",
             "Medium", "dielectric-medium-showcase.pbrt"),
-        {
+        // E4 migrated to pbrt-backed - see pbrt_scenes/rgb-grid-nebula.pbrt
+        // (legacy_id 70 kept). The "rgb sigma_s" array in that file is the
+        // literal baked output of generate_nebula_channel() (see that
+        // file's own header comment for the full derivation) - both CPU and
+        // GPU already shared this exact generator before migration (see
+        // build_rgb_grid_medium_scene_gpu()'s own "exactly - same world
+        // AABB" comment, deleted below), so this migration doesn't change
+        // either backend's render, just removes the now-redundant
+        // hand-written scene-construction code.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E4", 70, SceneNames::RgbGridMedium, SceneCategories::Volumes,
             "Heterogeneous nebula with an independent per-voxel R/G/B scattering grid (pbrt-v4 RGBGridMedium)",
-            "Slow", 300, false, true,
-            // Pulled back further than E2's cloud camera - this box is
-            // taller (world y:[1,5] vs E2's [1,4]) and the context spheres
-            // sit further out (x:+-6) - see build_rgb_grid_medium_scene.
-            { 45, 0, 5, 30,  0, 3, 0,  0.5, 0.7, 1.0 },
-            build_rgb_grid_medium_scene,
-            sky_dummy_lights
-        },
+            "Slow", "rgb-grid-nebula.pbrt"),
         // D2 migrated to pbrt-backed - see pbrt_scenes/ortho-camera-scene.pbrt.
         // legacy_id 186 (next after A3's 185). build_ortho_camera_scene()/
         // build_ortho_sky() have no other consumer - deleted below.

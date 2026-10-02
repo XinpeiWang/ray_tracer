@@ -351,72 +351,12 @@ inline std::shared_ptr<punctual_light_list> build_point_light_punct() {
 // pbrt_scenes/dielectric-medium-showcase.pbrt and scene_registry_data.h's
 // own entry. No other consumer.
 
-// ============================================================================
-// Scene E4: RGB Grid Medium ("nebula")
-// A heterogeneous medium with an independent per-voxel R/G/B scattering
-// grid (pbrt-v4 RGBGridMedium / src/shared/rgb_grid_medium.h), wired up for
-// the first time - previously only unit-tested, never used by any scene
-// (the same "built but unwired" state CloudMedium was in before scene E2).
-// Unlike E2's CloudMedium (procedural, evaluated analytically per point at
-// render time), this stores real per-voxel data in a grid baked once at
-// scene-build time via generate_nebula_channel() (src/shared/
-// rgb_nebula_generator.h) - the SAME generator GPU's build_rgb_grid_medium_
-// scene_gpu() calls, so both backends render identical voxel data. Each
-// channel uses a different frequency-space offset so R/G/B genuinely
-// decorrelate into visible color variation, not just a uniformly-tinted
-// cloud.
-// ============================================================================
-inline hittable_list build_rgb_grid_medium_scene() {
-	hittable_list world;
-	// Ground
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
-								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
-
-	const int nx = 24, ny = 24, nz = 24;
-	std::vector<double> sa_zero(static_cast<size_t>(nx)*ny*nz, 0.0);  // sigma_a=0: pure
-	                                                                  // scattering (see
-	                                                                  // rgb_grid_medium_hittable.h)
-	std::vector<double> ss_r, ss_g, ss_b;
-	generate_nebula_channel<double>(nx, ny, nz, 3.0, 0.0,  0.0,  0.0,  ss_r);
-	generate_nebula_channel<double>(nx, ny, nz, 3.0, 5.2,  1.7,  3.3,  ss_g);
-	generate_nebula_channel<double>(nx, ny, nz, 3.0, 11.4, 8.8,  2.1,  ss_b);
-
-	Bounds3<double> unit_cube(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-	auto grid = RGBGridMediumData<double>::build(
-		sa_zero, sa_zero, sa_zero,   // sigma_a: zero everywhere (must be non-empty
-		                             // to actually get 0 - see build()'s own doc:
-		                             // an OMITTED grid defaults to 1, not 0)
-		ss_r, ss_g, ss_b,            // sigma_s: the nebula's actual per-channel density
-		{}, {}, {},                  // Le: no emission
-		nx, ny, nz,
-		unit_cube,
-		4.0,   // sigma_scale: overall density multiplier, tuned so the ~8-unit
-		       // box reads as a real volumetric nebula rather than a faint haze
-		0.0,   // Le_scale: unused (no emission)
-		0.2,   // phase_g: slight forward scattering, matches E1/E2's fog
-		16     // maj_res: majorant grid resolution (DDA acceleration)
-	);
-
-	point3 world_min(-4, 1, -4), world_max(4, 5, 4);
-	double sx = 1.0 / (world_max.x() - world_min.x());
-	double sy = 1.0 / (world_max.y() - world_min.y());
-	double sz = 1.0 / (world_max.z() - world_min.z());
-	double world_to_medium_mat[9] = { sx,0,0,  0,sy,0,  0,0,sz };
-	double world_to_medium_translate[3] = {
-		-world_min.x()*sx, -world_min.y()*sy, -world_min.z()*sz
-	};
-	world.add(make_shared<rgb_grid_medium_hittable>(
-		grid, 0.2, world_min, world_max,
-		world_to_medium_mat, world_to_medium_translate));
-
-	// Context spheres, same idea as E2's - clearly outside the nebula's own
-	// x:[-4,4] extent so they read as separate objects, not buried in it.
-	world.add(make_shared<sphere>(point3(-6, 0.5, 4), 0.5,
-								 make_shared<lambertian>(color(0.9, 0.3, 0.2))));
-	world.add(make_shared<sphere>(point3(6, 0.5, 4), 0.5,
-								 make_shared<metal>(color(0.8,0.8,0.9), 0.05)));
-	return world;
-}
+// build_rgb_grid_medium_scene() deleted - E4 migrated to pbrt-backed, see
+// pbrt_scenes/rgb-grid-nebula.pbrt and scene_registry_data.h's own entry
+// (the pbrt file's own header comment has the full derivation of its baked
+// "rgb sigma_s" array from generate_nebula_channel()). No other consumer
+// (gpu/metal/metal_poc_scenes_e.mm's own scene is an independent
+// hand-ported Metal implementation that never called this function).
 
 // build_ortho_camera_scene()/build_ortho_sky() deleted - D2 migrated to
 // pbrt-backed, see pbrt_scenes/ortho-camera-scene.pbrt and

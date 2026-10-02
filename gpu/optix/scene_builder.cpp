@@ -2500,89 +2500,12 @@ static void build_normal_mapped_cornell_gpu(SceneData& scene) {
 // MaterialType::DielectricMedium matching CPU's own two-hittable
 // dielectric+constant_medium pair.
 
-/// @brief Scene E4: RGB Grid Medium ("nebula"). Matches CPU
-/// build_rgb_grid_medium_scene() exactly - same world AABB, same
-/// generate_nebula_channel() calls (so both backends render identical voxel
-/// data), same sigma_scale/phase_g. Uses the new MaterialType::RgbGridMedium
-/// (add_rgb_grid_medium()) with a "trigger sphere" the same way CloudMedium
-/// does (see build_cloud_medium_scene_gpu's comment) - the sphere's own
-/// geometry only exists to get the ray into this branch at all; the medium's
-/// real bounds are GpuRgbGridMedium::bounds_min/max, tested fresh in the
-/// closesthit branch.
-static void build_rgb_grid_medium_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	const int nx = 24, ny = 24, nz = 24;
-	std::vector<float> ss_r, ss_g, ss_b;
-	generate_nebula_channel<float>(nx, ny, nz, 3.0f, 0.0f,  0.0f, 0.0f, ss_r);
-	generate_nebula_channel<float>(nx, ny, nz, 3.0f, 5.2f,  1.7f, 3.3f, ss_g);
-	generate_nebula_channel<float>(nx, ny, nz, 3.0f, 11.4f, 8.8f, 2.1f, ss_b);
-
-	float max_density = 0.0f;
-	for (float v : ss_r) max_density = fmaxf(max_density, v);
-	for (float v : ss_g) max_density = fmaxf(max_density, v);
-	for (float v : ss_b) max_density = fmaxf(max_density, v);
-
-	const float3 world_min = make_float3(-4.0f, 1.0f, -4.0f);
-	const float3 world_max = make_float3(4.0f, 5.0f, 4.0f);
-	const float sx = 1.0f / (world_max.x - world_min.x);
-	const float sy = 1.0f / (world_max.y - world_min.y);
-	const float sz = 1.0f / (world_max.z - world_min.z);
-	const float sigma_scale = 4.0f;  // matches CPU's sigma_scale
-
-	GpuRgbGridMedium meta{};
-	meta.bounds_min[0] = world_min.x; meta.bounds_min[1] = world_min.y; meta.bounds_min[2] = world_min.z;
-	meta.bounds_max[0] = world_max.x; meta.bounds_max[1] = world_max.y; meta.bounds_max[2] = world_max.z;
-	meta.mat[0] = sx;   meta.mat[1] = 0.0f; meta.mat[2] = 0.0f;
-	meta.mat[3] = 0.0f; meta.mat[4] = sy;   meta.mat[5] = 0.0f;
-	meta.mat[6] = 0.0f; meta.mat[7] = 0.0f; meta.mat[8] = sz;
-	meta.translate[0] = -world_min.x*sx;
-	meta.translate[1] = -world_min.y*sy;
-	meta.translate[2] = -world_min.z*sz;
-	meta.nx = nx; meta.ny = ny; meta.nz = nz;
-	meta.sigma_scale = sigma_scale;
-	meta.sigma_maj = max_density * sigma_scale * 1.01f;  // small safety margin
-	meta.phase_g = 0.2f;
-	// No per-voxel "rgb Le" for this scattering-only demo scene - -1 is the
-	// documented "no emission" sentinel (GpuRgbGridMedium::leDataOffset's
-	// own comment, optix_types.h). Unlike leDataOffset, Le_scale needs no
-	// explicit assignment here: `GpuRgbGridMedium meta{};` above already
-	// zero-inits it, matching CPU's own RGBGridMediumData::Le_scale default.
-	meta.leDataOffset = -1;
-
-	const int mat_medium = add_rgb_grid_medium(scene, meta, ss_r, ss_g, ss_b);
-
-	const float3 center = make_float3(
-		0.5f*(world_min.x+world_max.x), 0.5f*(world_min.y+world_max.y), 0.5f*(world_min.z+world_max.z));
-	const float3 half = make_float3(
-		0.5f*(world_max.x-world_min.x), 0.5f*(world_max.y-world_min.y), 0.5f*(world_max.z-world_min.z));
-	const float trigger_radius = sqrtf(half.x*half.x + half.y*half.y + half.z*half.z);
-	SphereData trigger{};
-	trigger.center = center;
-	trigger.radius = trigger_radius;
-	trigger.materialIdx = mat_medium;
-	scene.spheres.push_back(trigger);
-
-	// Context spheres - matches CPU exactly.
-	const int mat_orange = add_lambertian(scene, make_float3(0.9f, 0.3f, 0.2f));
-	SphereData s1{};
-	s1.center = make_float3(-6.0f, 0.5f, 4.0f);
-	s1.radius = 0.5f;
-	s1.materialIdx = mat_orange;
-	scene.spheres.push_back(s1);
-
-	const int mat_metal = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
-	SphereData s2{};
-	s2.center = make_float3(6.0f, 0.5f, 4.0f);
-	s2.radius = 0.5f;
-	s2.materialIdx = mat_metal;
-	scene.spheres.push_back(s2);
-}
+// build_rgb_grid_medium_scene_gpu() (former "scene 70" / E4 GPU builder)
+// deleted - E4 migrated to pbrt-backed, see pbrt_scenes/rgb-grid-nebula.pbrt
+// and its case removal below. Already matched CPU exactly (same world AABB,
+// same generate_nebula_channel() calls, same sigma_scale/phase_g - no
+// geometry approximation to record), so this migration doesn't change
+// either backend's render.
 
 // build_bilinear_patch_scene_gpu()/build_hair_fibers_gpu() (former "scenes
 // 23/19" / F1/B11 GPU builders) deleted - both migrated to pbrt-backed, see
@@ -4035,11 +3958,11 @@ bool build_scene(
 							// entries. Falls through to default: -> build_loaded_pbrt_scene()
 							// now that legacy_ids 31/69 are no longer assigned to any scene.
 
-							case 70: {  // RGB Grid Medium (heterogeneous per-voxel R/G/B nebula)
-								build_rgb_grid_medium_scene_gpu(scene);
-								apply_mesh_camera(make_float3(0.0f, 5.0f, 30.0f), make_float3(0.0f, 3.0f, 0.0f), 45.0f, true, make_float3(0.5f, 0.7f, 1.0f));
-								break;
-							}
+							// case 70 (RGB Grid Medium / E4) migrated to pbrt-backed - see
+							// pbrt_scenes/rgb-grid-nebula.pbrt and scene_registry_data.h's
+							// own entry. Falls through to default: ->
+							// build_loaded_pbrt_scene() now that legacy_id 70 is no
+							// longer assigned to any scene.
 
 							// case 72 (Curve Fibers / F4) migrated to pbrt-backed - see
 							// pbrt_scenes/curve-fibers-scene.pbrt and
