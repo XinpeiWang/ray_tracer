@@ -988,6 +988,17 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.principled_params.clearcoat = static_cast<float>(m.clearcoat);
 		d.principled_params.clearcoat_rough = static_cast<float>(m.clearcoatRoughness);
 		break;
+	case pbrt_flatten::MaterialKind::NormalizedFresnel:
+		// Not real pbrt-v4 either (see MaterialKind::NormalizedFresnel's own
+		// comment, pbrt_flatten.h) - single parameter, d.ior, already holds
+		// m.ior from the generic assignment above (same "eta" parsing every
+		// other kind shares). Already fully wired for shading on both GPU
+		// backends via this exact MaterialType - see optix_device_helpers.h's
+		// shade_normalized_fresnel() and wavefront_device_helpers.h's
+		// equivalent, both shared with MaterialType::Subsurface's own real
+		// BSSRDF exit-point shading.
+		d.type = MaterialType::NormalizedFresnel;
+		break;
 	case pbrt_flatten::MaterialKind::Hair:
 		// MaterialType::Hair is already fully wired for shading on both GPU
 		// backends (sample_hair_material(), optix_device_helpers.h/

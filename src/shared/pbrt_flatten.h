@@ -744,6 +744,23 @@ enum class MaterialKind {
 	// "metallic"/"clearcoat"/"clearcoatroughness" are new, Principled-only
 	// fields (see their own comments below).
 	Principled,
+	// This loader's own second non-standard extension (see MaterialKind::
+	// Principled's own comment for the first) - NOT a standalone real
+	// pbrt-v4 material either. pbrt-v4's real NormalizedFresnelBxDF is an
+	// internal implementation detail of its own "subsurface" material (the
+	// Fresnel-weighted diffuse BRDF shaded at a BSSRDF probe's exit point,
+	// already real and working here too - MaterialKind::Subsurface above),
+	// never exposed as its own user-facing top-level material in real
+	// pbrt-v4. Exists purely to expose this codebase's own already-
+	// implemented, already-working standalone version of that same BRDF in
+	// isolation (CPU: src/TheRestOfYourLife/material_pbrt.h's
+	// `normalized_fresnel` class; GPU: MaterialType::NormalizedFresnel,
+	// shared by both GPU backends' real Subsurface exit-point shading too)
+	// for a scene demonstrating the Fresnel-weighted-diffuse term on its
+	// own, with no actual subsurface light transport underneath. Single
+	// parameter: "eta" - reuses the exact same generic Material::ior
+	// parsing every other kind already shares; no new fields at all.
+	NormalizedFresnel,
 	Unsupported,
 };
 
@@ -2281,6 +2298,8 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	// Not real pbrt-v4 - this loader's own extension, see MaterialKind::
 	// Principled's own comment above for why it exists anyway.
 	if (type == "principled")          return MaterialKind::Principled;
+	// Ditto - see MaterialKind::NormalizedFresnel's own comment.
+	if (type == "normalizedfresnel")   return MaterialKind::NormalizedFresnel;
 	return MaterialKind::Unsupported;
 }
 
