@@ -245,19 +245,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_cornell_crystal,
             build_cornell_box_lights
         },
-        {
+        // B10 migrated to pbrt-backed - see pbrt_scenes/principled-showcase.pbrt
+        // (legacy_id 18 kept). Uses a new Material "principled" kind added to
+        // this loader specifically for this migration (not real pbrt-v4 -
+        // see MaterialKind::Principled's own comment, pbrt_flatten.h, and
+        // that file's own header comment for the full rationale). Wired to
+        // this project's own already-implemented, already-working
+        // PrincipledBxDF on both CPU and GPU - full fidelity, not an
+        // approximation. build_principled_showcase() has no other consumer -
+        // deleted below.
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B10", 18, SceneNames::PrincipledShowcase, SceneCategories::Materials,
             "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
-            "Medium", 200, false, true,
-            { 45, 0, 2.7, 17,  0, 1, 0,  0.10, 0.10, 0.12 },
-            build_principled_showcase,
-            []() {
-                hittable_list l;
-                auto empty_mat = std::shared_ptr<material>();
-                l.add(std::make_shared<quad>(point3(-7,7,-5), vec3(14,0,0), vec3(0,0,10), empty_mat));
-                return l;
-            }
-        },
+            "Medium", "principled-showcase.pbrt"),
         // B11 migrated to pbrt-backed - see pbrt_scenes/hair-fibers-scene.pbrt.
         // legacy_id 192. Uses real Material "hair" on Shape "sphere" - the
         // same normal-as-tangent proxy native's own hair_material class

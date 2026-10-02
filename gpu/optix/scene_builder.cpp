@@ -463,21 +463,6 @@ namespace {
 		return idx;
 	}
 
-	inline int add_principled(SceneData& scene, float3 baseColor, float ior, float roughness,
-			float metallic, float clearcoat, float clearcoatRoughness) {
-		const int idx = safe_cast_to_int(scene.materials.size());
-		MaterialData m{};
-		m.type = MaterialType::Principled;
-		m.base_color = baseColor;
-		m.ior = ior;
-		m.roughness = roughness;
-		m.principled_params.metallic = metallic;
-		m.principled_params.clearcoat = clearcoat;
-		m.principled_params.clearcoat_rough = clearcoatRoughness;
-		scene.materials.push_back(m);
-		return idx;
-	}
-
 	// Helper to rotate a point around Y axis
 	inline float3 rotate_y(const float3& p, float angle_degrees) {
 		const float radians = angle_degrees * (3.14159265358979323846f / 180.0f);
@@ -2343,57 +2328,15 @@ static void build_prism_dispersion_gpu(SceneData& scene, int mat_glass) {
 // and MaterialType::Hair are both real, non-approximated GPU geometry/
 // material types already).
 
-/// @brief Scene 18: Principled Showcase. Matches CPU build_principled_showcase()
-/// exactly: 7 spheres sweeping the Disney/pbrt-v4 principled BSDF parameter
-/// space (matte -> plastic -> semi-metallic -> fully metallic -> clearcoated
-/// metal) over a checkered ground, using MaterialType::Principled - see that
-/// type's comment in optix_types.h for how it reuses the shared CPU_GPU
-/// PrincipledBxDF<T> struct directly instead of reimplementing the multi-lobe
-/// math by hand.
-static void build_principled_showcase_gpu(SceneData& scene) {
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.5f,
-		make_float3(0.1f, 0.1f, 0.12f), make_float3(0.2f, 0.2f, 0.22f));
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	add_lambertian(scene, make_float3(0.0f, 0.0f, 0.0f), checkerTexIdx);
-	SphereData ground = make_ground_sphere_1000(mat_ground);
-	scene.spheres.push_back(ground);
-
-	// x position, base color, metallic, roughness, clearcoat, clearcoat_rough
-	// - matches CPU's 7 principled(...) calls exactly (ior=1.5 for all).
-	// Spacing 2.0 (radius 1.0 each) so neighbors don't overlap/fuse.
-	struct PrincipledSphere { float x; float3 base; float metallic; float roughness; float clearcoat; float clearcoat_rough; };
-	const PrincipledSphere spheres[7] = {
-		{ -6.0f, make_float3(0.8f, 0.1f, 0.1f),  0.0f, 0.9f,  0.0f, 0.1f  }, // 0: matte diffuse (red)
-		{ -4.0f, make_float3(0.1f, 0.2f, 0.8f),  0.0f, 0.2f,  0.0f, 0.1f  }, // 1: plastic, low roughness (blue)
-		{ -2.0f, make_float3(0.1f, 0.7f, 0.2f),  0.0f, 0.3f,  1.0f, 0.05f }, // 2: plastic, clearcoated (green)
-		{  0.0f, make_float3(0.9f, 0.7f, 0.2f),  0.5f, 0.3f,  0.0f, 0.1f  }, // 3: semi-metallic (gold-tinted)
-		{  2.0f, make_float3(0.8f, 0.45f, 0.2f), 0.8f, 0.4f,  0.0f, 0.1f  }, // 4: near-metallic, rough (copper-ish)
-		{  4.0f, make_float3(0.9f, 0.9f, 0.9f),  1.0f, 0.05f, 0.0f, 0.1f  }, // 5: fully metallic, smooth (silver)
-		{  6.0f, make_float3(0.9f, 0.7f, 0.1f),  1.0f, 0.1f,  1.0f, 0.08f }, // 6: fully metallic, clearcoated (lacquered gold)
-	};
-	for (const auto& p : spheres) {
-		const int mat_idx = add_principled(scene, p.base, 1.5f, p.roughness, p.metallic, p.clearcoat, p.clearcoat_rough);
-		SphereData s{}; s.center = make_float3(p.x, 1.0f, 0.0f); s.radius = 1.0f; s.materialIdx = mat_idx;
-		scene.spheres.push_back(s);
-	}
-
-	// Overhead area light -- matches CPU build_principled_showcase()'s own
-	// light (see that function's comment). Without it the clearcoat/metallic
-	// spheres showed no specular highlight.
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	QuadData lq{};
-	lq.Q = make_float3(-7.0f, 7.0f, -5.0f);
-	lq.u = make_float3(14.0f, 0.0f, 0.0f);
-	lq.v = make_float3(0.0f, 0.0f, 10.0f);
-	const float3 lc = cross(lq.u, lq.v);
-	lq.w = lc;
-	lq.normal = normalize(lc);
-	lq.D = dot(lq.normal, lq.Q);
-	lq.materialIdx = mat_light;
-	scene.quads.push_back(lq);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Quad);
-}
+// build_principled_showcase_gpu() (former "scene 18" / B10 GPU builder)
+// deleted - B10 migrated to pbrt-backed, see pbrt_scenes/
+// principled-showcase.pbrt and its case-18 removal below. add_principled()
+// (this file's own convenience wrapper) had no other caller - deleted too.
+// The new generic pbrt Material "principled" dispatch (gpu/optix/
+// pbrt_gpu_builder_materials.h) sets MaterialData's fields directly instead,
+// same convention as every other generic pbrt material case there.
+// MaterialType::Principled itself stays - that's the real, shared GPU
+// material type, not a now-dead convenience wrapper.
 
 // build_measured_brdf_scene_gpu() (former "scene 34" / B14 Measured BRDF
 // GPU builder) deleted - B14 migrated to pbrt-backed, see pbrt_scenes/
@@ -3603,14 +3546,11 @@ bool build_scene(
 							// default: -> build_loaded_pbrt_scene() now that legacy_id 37
 							// is no longer assigned to any scene.
 
-							case 18: {  // Principled Showcase (see build_principled_showcase_gpu's comment)
-								build_principled_showcase_gpu(scene);
-								// lookfrom/vfov widened/pulled back so all 7 spheres (spanning
-								// x=+-7 after the spacing fix) actually fit in frame - matches
-								// CPU CameraConfig row for scene 18.
-								apply_mesh_camera(make_float3(0.0f, 2.7f, 17.0f), make_float3(0.0f, 1.0f, 0.0f), 45.0f, true, make_float3(0.10f, 0.10f, 0.12f));
-								break;
-							}
+							// case 18 (Principled Showcase / B10) migrated to pbrt-backed -
+							// see pbrt_scenes/principled-showcase.pbrt and
+							// scene_registry_data.h's own entry. Falls through to
+							// default: -> build_loaded_pbrt_scene() now that legacy_id 18
+							// is no longer assigned to any scene.
 
 							case 38: {  // Stanford Bunny (see build_stanford_bunny_gpu's comment)
 								build_stanford_bunny_gpu(scene);

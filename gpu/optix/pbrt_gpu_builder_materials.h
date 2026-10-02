@@ -972,6 +972,22 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// point (shade_material()'s probe-walk success path).
 		d.textureIdx = getOrBuildBssrdfTable(m.g, m.ior, out, bssrdfTableCache);
 		break;
+	case pbrt_flatten::MaterialKind::Principled:
+		// Not real pbrt-v4 (see MaterialKind::Principled's own comment,
+		// pbrt_flatten.h) - d.albedo/d.roughness/d.ior already hold
+		// m.color/m.roughness/m.ior from the generic assignment above
+		// (reflectance/roughness/eta, same as every other kind); only
+		// metallic/clearcoat/clearcoat_rough are Principled-specific,
+		// matching gpu/optix/scene_builder.cpp's own add_principled() field
+		// layout exactly (not called directly - see that function's own
+		// comment on why this dispatch sets MaterialData's fields inline
+		// instead, same convention as the NormalMappedLambertian case
+		// above).
+		d.type = MaterialType::Principled;
+		d.principled_params.metallic = static_cast<float>(m.metallic);
+		d.principled_params.clearcoat = static_cast<float>(m.clearcoat);
+		d.principled_params.clearcoat_rough = static_cast<float>(m.clearcoatRoughness);
+		break;
 	case pbrt_flatten::MaterialKind::Hair:
 		// MaterialType::Hair is already fully wired for shading on both GPU
 		// backends (sample_hair_material(), optix_device_helpers.h/
