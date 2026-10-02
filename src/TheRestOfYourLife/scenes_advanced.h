@@ -130,42 +130,11 @@ inline hittable_list build_normal_mapped_cornell() {
 // pbrt_scenes/subsurface-slab.pbrt and scene_registry_data.h's own entry.
 // No other consumer.
 
-//==============================================================================================
-// Scene 22: Depth of Field
-// An open-air scene with spheres at varying depths, rendered with defocus blur.
-// The camera is focused at distance 3.5 with a wide aperture to exaggerate DOF.
-// Camera setup (defocus_angle, focus_dist) is applied in cpu_interface via CameraConfig.
-//==============================================================================================
-inline hittable_list build_depth_of_field() {
-	hittable_list world;
-
-	// Checker ground
-	auto checker = make_shared<checker_texture>(0.5, color(0.2, 0.3, 0.1), color(0.9, 0.9, 0.9));
-	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
-
-	// Background sphere (out of focus far)
-	world.add(make_shared<sphere>(point3(-4, 1, -3), 1.0,
-		make_shared<lambertian>(color(0.4, 0.2, 0.1))));
-	// Near sphere (out of focus near)
-	world.add(make_shared<sphere>(point3(-1.5, 0.5, 1.5), 0.5,
-		make_shared<lambertian>(color(0.7, 0.3, 0.3))));
-	// In-focus center sphere (glass)
-	world.add(make_shared<sphere>(point3(0, 1, 0), 1.0,
-		make_shared<dielectric>(1.5)));
-	// In-focus metal sphere
-	world.add(make_shared<sphere>(point3(2, 1, 0), 1.0,
-		make_shared<metal>(color(0.7, 0.6, 0.5), 0.05)));
-	// Far sphere (out of focus)
-	world.add(make_shared<sphere>(point3(4, 1, -2), 1.0,
-		make_shared<lambertian>(color(0.1, 0.2, 0.6))));
-	// Small near spheres
-	for (int i = -3; i <= 3; ++i) {
-		world.add(make_shared<sphere>(point3(i * 1.2, 0.2, 2.5 + i * 0.3), 0.2,
-			make_shared<lambertian>(color(random_double(0.3,0.9), random_double(0.3,0.9), random_double(0.3,0.9)))));
-	}
-
-	return world;
-}
+// build_depth_of_field() deleted - D1 migrated to pbrt-backed, see
+// pbrt_scenes/depth-of-field-spheres.pbrt and scene_registry_data.h's own
+// entry. No other consumer (gpu/metal/metal_poc_scenes_d.mm's own
+// buildDepthOfField() is an independent hand-ported Metal implementation
+// that never called this function).
 
 //==============================================================================================
 // Scene 23: Bilinear Patch
