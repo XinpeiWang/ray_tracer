@@ -393,6 +393,9 @@ inline int getOrBuildPbrtAlphaMaskTexture(const std::string& resolvedPath, Scene
 	tex.pixelOffset = static_cast<int>(out.texturePixels.size());
 	tex.width = width;
 	tex.height = height;
+	// pbrt-v4 reads the alpha texture with its default Repeat wrap; TextureData's zero-init Clamp
+	// collapsed tiled foliage UVs onto the image border.
+	tex.wrapMode = GpuWrapMode::Repeat;
 	const std::size_t total = static_cast<std::size_t>(width) * height * 3;
 	out.texturePixels.resize(out.texturePixels.size() + total);
 	std::memcpy(out.texturePixels.data() + tex.pixelOffset, bdata, total);

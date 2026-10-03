@@ -167,9 +167,10 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	// backend: specular materials (conductor, dielectric) reflect the facet
 	// normal, which is why diffuse agreed to <1% but a conductor Suzanne or
 	// Beetle differed ~30% in blocks from CPU and GPU-recursive.
+	const float3 facet_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
 	float3 geom_normal = tri.hasNormals
-		? normalize(b0 * tri.n0 + b1 * tri.n1 + b2 * tri.n2)
-		: normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
+		? interpolate_shading_normal(tri.n0, tri.n1, tri.n2, b0, b1, b2, facet_normal)
+		: facet_normal;
 	if (instBase >= 0)
 		geom_normal = normalize(optixTransformNormalFromObjectToWorldSpace(geom_normal));
 	bool front_face = dot(ray_dir, geom_normal) < 0.0f;

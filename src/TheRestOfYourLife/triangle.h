@@ -155,10 +155,12 @@ class triangle : public hittable {
 		// Interpolated normal
 		vec3 shading_n;
 		if (mesh->has_normals()) {
-			shading_n = unit_vector(
-				b0 * mesh->normals[idx[0]] +
+			const vec3 interp = b0 * mesh->normals[idx[0]] +
 				b1 * mesh->normals[idx[1]] +
-				b2 * mesh->normals[idx[2]]);
+				b2 * mesh->normals[idx[2]];
+			// A zero-length interpolation (opposite vertex normals, degenerate authored
+			// normal) falls back to the facet normal, as pbrt-v4 does (shapes.h:947).
+			shading_n = interp.length_squared() > 1e-20 ? unit_vector(interp) : geom_normal;
 		} else {
 			shading_n = geom_normal;
 		}
@@ -300,10 +302,10 @@ class triangle : public hittable {
 		out.p = b0*p0 + b1*p1 + b2*p2;
 
 		if (mesh->has_normals()) {
-			out.n = unit_vector(
-				b0 * mesh->normals[idx[0]] +
+			const vec3 interp = b0 * mesh->normals[idx[0]] +
 				b1 * mesh->normals[idx[1]] +
-				b2 * mesh->normals[idx[2]]);
+				b2 * mesh->normals[idx[2]];
+			out.n = interp.length_squared() > 1e-20 ? unit_vector(interp) : geom_normal;
 		} else {
 			out.n = geom_normal;
 		}

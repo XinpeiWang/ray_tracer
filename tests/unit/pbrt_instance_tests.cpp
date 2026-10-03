@@ -170,7 +170,7 @@ TEST(PbrtInstanceTest, TheInstanceTransformComposesWithTheShapesOwn) {
 		"ObjectBegin \"o\"\n"
 		"  Scale 2 2 2\n"
 		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
-		"    \"point3 P\" [ 1 0 0  1 0 0  1 0 0 ]\n"
+		"    \"point3 P\" [ 1 0 0  1 1 0  1 0 1 ]\n"
 		"ObjectEnd\n"
 		"Translate 100 0 0\n"
 		"ObjectInstance \"o\"\n");
@@ -193,11 +193,11 @@ TEST(PbrtInstanceTest, RedefiningAnObjectMakesTheLaterDefinitionWin) {
 	const FlatScene s = build(
 		"ObjectBegin \"o\"\n"
 		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
-		"    \"point3 P\" [ 1 0 0  1 0 0  1 0 0 ]\n"
+		"    \"point3 P\" [ 1 0 0  1 1 0  1 0 1 ]\n"
 		"ObjectEnd\n"
 		"ObjectBegin \"o\"\n"
 		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
-		"    \"point3 P\" [ 9 0 0  9 0 0  9 0 0 ]\n"
+		"    \"point3 P\" [ 9 0 0  9 1 0  9 0 1 ]\n"
 		"ObjectEnd\n"
 		"ObjectInstance \"o\"\n");
 	EXPECT_TRUE(warned(s, "redefined"));

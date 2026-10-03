@@ -226,7 +226,8 @@ extern "C" __global__ void __closesthit__probe_triangle() {
 	if (tri.hasNormals) {
 		const float2 bary = optixGetTriangleBarycentrics();
 		const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
-		shading_normal = normalize(b0 * tri.n0 + b1 * tri.n1 + b2 * tri.n2);
+		shading_normal = interpolate_shading_normal(tri.n0, tri.n1, tri.n2, b0, b1, b2,
+			normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0)));
 	} else {
 		shading_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
 	}

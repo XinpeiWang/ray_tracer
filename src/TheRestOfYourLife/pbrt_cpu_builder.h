@@ -1076,7 +1076,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// Displacement images decoded once per file (bump vs normal map decided by pixel
 	// content, once), shared by every material that names the same file - see
 	// sharedMipmapTexture()'s comment for why per-material copies are not affordable.
-	struct DispEntry { std::shared_ptr<image_texture> tex; bool grayscale = false; };
+	struct DispEntry { std::shared_ptr<texture> tex; bool grayscale = false; };
 	std::map<std::string, DispEntry> dispCache;
 	const auto materialFor = [&scene, &dispCache](int materialIndex, int areaLightIndex,
 									   bool forCurve = false)
@@ -1108,7 +1108,17 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				DispEntry entry;
 				if (disp_probe.height() > 0) {
 					entry.grayscale = is_grayscale_image(disp_probe);
-					entry.tex = std::make_shared<image_texture>(std::move(disp_probe));
+					// Bilinear + Repeat, like pbrt-v4's displacement/normal-map lookups: the nearest,
+					// clamped image_texture gave blocky bump gradients and ignored tiled UVs.
+					const int dw = disp_probe.width(), dh = disp_probe.height();
+					std::vector<unsigned char> bytes(static_cast<std::size_t>(dw) * dh * 3);
+					for (int y = 0; y < dh; ++y)
+						for (int x = 0; x < dw; ++x) {
+							const unsigned char *px = disp_probe.pixel_data(x, y);
+							unsigned char *o = &bytes[(static_cast<std::size_t>(y) * dw + x) * 3];
+							o[0] = px[0]; o[1] = px[1]; o[2] = px[2];
+						}
+					entry.tex = std::make_shared<bilinear_wrap_texture>(dw, dh, std::move(bytes), MipWrapMode::Repeat);
 				}
 				disp = dispCache.emplace(m.displacementTextureFilename, std::move(entry)).first;
 			}
@@ -1181,10 +1191,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				int w = 0, h = 0, channels = 0;
 				unsigned char *bdata = stbi_load(fn.c_str(), &w, &h, &channels, 3);
 				if (bdata) {
-					std::vector<float> pixels(static_cast<std::size_t>(w) * h * 3);
-					for (std::size_t i = 0; i < pixels.size(); ++i) pixels[i] = bdata[i] / 255.0f;
+					// Bilinear + Repeat, like pbrt-v4's alpha lookup (primitive.cpp:57-71 reads
+					// the texture at mip level 0 with the default wrap); raw bytes, so the mask is
+					// read linear. 3 bytes/pixel instead of the 12 the float copy needed.
+					std::vector<unsigned char> bytes(bdata, bdata + static_cast<std::size_t>(w) * h * 3);
 					stbi_image_free(bdata);
-					mask = std::make_shared<image_texture>(rtw_image(w, h, pixels.data()));
+					mask = std::make_shared<bilinear_wrap_texture>(w, h, std::move(bytes), MipWrapMode::Repeat);
 				}
 				alphaMaskByFile.emplace(fn, mask);
 			}
