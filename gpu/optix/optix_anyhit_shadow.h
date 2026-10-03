@@ -1,6 +1,133 @@
 // optix_anyhit_shadow.h -- Shadow any-hit programs
 // Included by optix_programs.cu
 
+// Stochastic ratio tracking of a shadow ray through a heterogeneous medium
+// (CloudMedium / RgbGridMedium / GridMedium), multiplying the running
+// transmittance in the ShadowRayState. Ports wavefront_anyhit_shadow.h's
+// identical branches (same single GLOBAL majorant, same achromatic max-channel
+// simplification for RgbGrid, same clamped 1 - sigma_t_local/sigma_maj update,
+// same 128-step cap), so both GPU backends - and the primary-ray free-path
+// sampling they already share - stay mutually consistent. Until this existed
+// the recursive backend let every surface-NEE shadow ray through these media
+// untouched ("hasn't been ported to this shadow-ray path yet"), so a cloud or
+// nebula cast no shadow on anything behind it (E4/E5: recursive 20-28% brighter
+// than wavefront in the blocks behind the medium).
+__device__ __forceinline__ void shadow_ratio_track_heterogeneous(
+	const MaterialData& mat, ShadowRayState* st
+) {
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 unit_dir = normalize(optixGetWorldRayDirection());
+	const float tMax = st->maxDistance;
+
+	if (mat.type == MaterialType::CloudMedium) {
+		const int cloudIdx = (int)mat.cloud_medium_extra.cloudMediumIdx;
+		// Bounds check: an unsupported volume kind can leave a material tagged
+		// with this type but no uploaded entry (see the wavefront copy).
+		if (cloudIdx < 0 || (unsigned int)cloudIdx >= params.numCloudMediums) return;
+		const CloudMedium<float>& cloud = params.cloudMediums[cloudIdx];
+		float ray_o3[3] = { ray_orig.x, ray_orig.y, ray_orig.z };
+		float ray_d3[3] = { unit_dir.x, unit_dir.y, unit_dir.z };
+		auto maj_it = cloud.sample_ray(ray_o3, ray_d3, tMax);
+		float segMin, segMax, sigma_maj;
+		if (maj_it.next(segMin, segMax, sigma_maj) && sigma_maj > 0.0f) {
+			if (segMin < 0.0f) segMin = 0.0f;
+			float t = segMin;
+			for (int i = 0; i < 128 && st->transmittance > 0.0f; ++i) {
+				float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(st->seed))) / sigma_maj;
+				t += dt;
+				if (t >= segMax) break;
+				float3 p = ray_orig + t * unit_dir;
+				float mx, my, mz;
+				cloud.world_to_medium_pt(p.x, p.y, p.z, mx, my, mz);
+				float d = gpu_cloud_density(cloud, mx, my, mz);
+				// Total extinction (absorption + out-scattering), unlike the
+				// primary path's accept/reject on sigma_s alone.
+				float sigma_t_local = d * (cloud.sigma_a + cloud.sigma_s);
+				st->transmittance *= fmaxf(0.0f, 1.0f - sigma_t_local / sigma_maj);
+			}
+		}
+		return;
+	}
+
+	// RgbGridMedium / GridMedium
+	const bool isRgb = (mat.type == MaterialType::RgbGridMedium);
+	const int idx = isRgb ? (int)mat.rgb_grid_medium_extra.rgbGridMediumIdx
+	                      : (int)mat.grid_medium_extra.gridMediumIdx;
+	const unsigned int count = isRgb ? params.numRgbGridMediums : params.numGridMediums;
+	if (idx < 0 || (unsigned int)idx >= count) return;
+	const float* mat9; const float* translate3;
+	int nx, ny, nz, dataOffset; float sigma_maj, sigma_scale;
+	if (isRgb) {
+		const GpuRgbGridMedium& g = params.rgbGridMediums[idx];
+		mat9 = g.mat; translate3 = g.translate;
+		nx = g.nx; ny = g.ny; nz = g.nz; dataOffset = g.dataOffset;
+		sigma_maj = g.sigma_maj; sigma_scale = g.sigma_scale;
+	} else {
+		const GpuGridMedium& g = params.gridMediums[idx];
+		mat9 = g.mat; translate3 = g.translate;
+		nx = g.nx; ny = g.ny; nz = g.nz; dataOffset = g.dataOffset;
+		sigma_maj = g.sigma_maj; sigma_scale = g.sigma_scale;
+	}
+	// Ray into the medium's normalized [0,1]^3 space, then a box-slab test -
+	// identical to the recursive primary path's own setup.
+	const float mox = mat9[0]*ray_orig.x + mat9[1]*ray_orig.y + mat9[2]*ray_orig.z + translate3[0];
+	const float moy = mat9[3]*ray_orig.x + mat9[4]*ray_orig.y + mat9[5]*ray_orig.z + translate3[1];
+	const float moz = mat9[6]*ray_orig.x + mat9[7]*ray_orig.y + mat9[8]*ray_orig.z + translate3[2];
+	const float mdx = mat9[0]*unit_dir.x + mat9[1]*unit_dir.y + mat9[2]*unit_dir.z;
+	const float mdy = mat9[3]*unit_dir.x + mat9[4]*unit_dir.y + mat9[5]*unit_dir.z;
+	const float mdz = mat9[6]*unit_dir.x + mat9[7]*unit_dir.y + mat9[8]*unit_dir.z;
+	float segMin = 0.0f, segMax = tMax;
+	bool has_seg = true;
+	{
+		float invd, s0, s1;
+		invd = (mdx != 0.0f) ? 1.0f/mdx : 1e30f;
+		s0 = (0.0f - mox)*invd; s1 = (1.0f - mox)*invd;
+		if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+		segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+		if (segMin > segMax) has_seg = false;
+		invd = (mdy != 0.0f) ? 1.0f/mdy : 1e30f;
+		s0 = (0.0f - moy)*invd; s1 = (1.0f - moy)*invd;
+		if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+		segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+		if (segMin > segMax) has_seg = false;
+		invd = (mdz != 0.0f) ? 1.0f/mdz : 1e30f;
+		s0 = (0.0f - moz)*invd; s1 = (1.0f - moz)*invd;
+		if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+		segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+		if (segMin > segMax) has_seg = false;
+	}
+	if (!has_seg || sigma_maj <= 0.0f) return;
+	if (segMin < 0.0f) segMin = 0.0f;
+	float tt = segMin;
+	const int voxelCount = nx * ny * nz;
+	if (isRgb) {
+		const float* rData = params.rgbGridData + dataOffset;
+		const float* gData = rData + voxelCount;
+		const float* bData = gData + voxelCount;
+		for (int iter = 0; iter < 128 && st->transmittance > 0.0f; ++iter) {
+			float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(st->seed))) / sigma_maj;
+			tt += dt;
+			if (tt >= segMax) break;
+			float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+			float dr = gpu_rgb_grid_trilinear(rData, nx, ny, nz, px, py, pz);
+			float dg = gpu_rgb_grid_trilinear(gData, nx, ny, nz, px, py, pz);
+			float db = gpu_rgb_grid_trilinear(bData, nx, ny, nz, px, py, pz);
+			float sigma_t_local = fmaxf(dr * sigma_scale, fmaxf(dg * sigma_scale, db * sigma_scale));
+			st->transmittance *= fmaxf(0.0f, 1.0f - sigma_t_local / sigma_maj);
+		}
+	} else {
+		const float* data = params.gridData + dataOffset;
+		for (int iter = 0; iter < 128 && st->transmittance > 0.0f; ++iter) {
+			float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(st->seed))) / sigma_maj;
+			tt += dt;
+			if (tt >= segMax) break;
+			float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+			float d = gpu_rgb_grid_trilinear(data, nx, ny, nz, px, py, pz);
+			st->transmittance *= fmaxf(0.0f, 1.0f - (d * sigma_scale) / sigma_maj);
+		}
+	}
+}
+
 extern "C" __global__ void __anyhit__shadow_sphere() {
 	// Get primitive and material
 	const unsigned int primIdx = optixGetPrimitiveIndex();
@@ -104,23 +231,29 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		return;
 	}
 
+	// Heterogeneous media (Cloud/RgbGrid/Grid): stochastic ratio tracking of the
+	// running transmittance, exactly like the wavefront backend - see
+	// shadow_ratio_track_heterogeneous() above. (These used to be an
+	// unconditional pass-through, i.e. they cast no shadow at all.)
+	if (mat.type == MaterialType::CloudMedium ||
+		mat.type == MaterialType::RgbGridMedium ||
+		mat.type == MaterialType::GridMedium) {
+		ShadowRayState* st = shadow_state_from_payload();
+		shadow_ratio_track_heterogeneous(mat, st);
+		if (st->transmittance <= 0.0f) {
+			st->occluded = 1;  // fully attenuated - treat as occluded
+			optixTerminateRay();
+			return;
+		}
+		optixIgnoreIntersection();  // continue traversal (attenuated, not occluding)
+		return;
+	}
+
 	// Transmissive materials let light through -- ignore them in shadow rays.
-	// CloudMedium's/RgbGridMedium's/GridMedium's trigger spheres get the
-	// same unconditional pass-through as the dielectric-family surface types
-	// below: their heterogeneous ratio-tracking (wavefront_anyhit_shadow.h's
-	// own CloudMedium/RgbGridMedium/GridMedium branches) hasn't been ported
-	// to this shadow-ray path yet, so - like Medium/DielectricMedium used to
-	// be, just above - they're treated as non-occluding (light passes
-	// straight through) rather than wrongly blocking NEE entirely. Without
-	// this, every shadow ray toward a light on the far side of one of these
-	// bounding spheres would be wrongly treated as fully occluded.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::CloudMedium ||
-		mat.type == MaterialType::RgbGridMedium ||
-		mat.type == MaterialType::GridMedium ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;

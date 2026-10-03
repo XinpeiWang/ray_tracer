@@ -820,13 +820,15 @@ constexpr float kRecWfRelTolerance = 0.14f;
 // the albedo fix moved its R channel from ~21% to 67% while improving E11);
 // E11 (same mechanism, far less saturated) fits the standards.
 constexpr float kRoughDielectricMediumRecWfRelTolerance = 0.80f;
-// 42%: the worst non-excepted regional gap was E7 (pbrt example) at
+// 38% (was 42%; the older reasoning follows): the worst non-excepted regional gap was E7 (pbrt example) at
 // 39.23%, with B12/B23/E12/E11/E4/J1/B7/E2/E6 all in the high-20s/low-30s -
 // regional gaps run higher than whole-image ones across the board here, the
 // same reason kRegionalRelTolerance is already looser than kRelTolerance
 // for the CPU pairs (fewer pixels per block, more residual Monte-Carlo
-// variance for the same spp). 42% gives real margin over E7 (+2.8pt).
-constexpr float kRecWfRegionalRelTolerance = 0.42f;
+// variance for the same spp). E7 fell to <17% once cloud/grid shadow rays were ported to the
+// recursive backend; the worst non-excepted rec-vs-wf blocks are now B12 31.2%, B23 31.1% (own
+// exception), J1 27.9%, so 38% keeps ~7pts over B12.
+constexpr float kRecWfRegionalRelTolerance = 0.38f;
 
 // E1 (Homogeneous Medium) - RETIRED rec-vs-wf exceptions (were 30% whole-image / 60% regional, for a
 // 24.2%/52.7% outlier): the cause was the recursive medium-shadow bug, now 0.8%; see this file's header comment.
@@ -881,11 +883,9 @@ constexpr float kDispersivePrismRecWfRegionalRelTolerance = 0.55f;
 // well inside the standard.)
 constexpr float kLightTextureRegionalRelTolerance = 0.65f;
 
-// E7 - GPU-recursive-vs-wavefront REGIONAL only: 39-40.1% across repeated
-// runs against the standard 42% (RGB grid medium; Monte-Carlo variance of a
-// 100-pixel block - direct renders agree within a few percent). A9 and E12,
-// which used to share this exception, are now well inside the standard.
-constexpr float kNoisyBlockRecWfRegionalRelTolerance = 0.55f;
+// E7 - RETIRED rec-vs-wf regional exception (was 55%, for a 39-40.1% worst block): the cause was
+// the recursive backend letting shadow rays through cloud/grid media untouched (now ratio-tracked,
+// like wavefront); E7's worst block is below 17% and E4/E5's fell from 28%/20% to ~1%.
 
 static void check_relative_parity(const char* sceneName, const std::string& sceneId,
                                    const char* label, const char* backendA, const char* backendB,
@@ -1257,8 +1257,7 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
 		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
 		(s->id == "B23" || s->id == "B24") ? kDispersivePrismRecWfRegionalRelTolerance :
-		(s->id == "E7") ? kNoisyBlockRecWfRegionalRelTolerance :
-		kRecWfRegionalRelTolerance;
+				kRecWfRegionalRelTolerance;
 	check_regional_parity(s->name, s->id, "GPU-recursive", "GPU-wavefront", recImg, wfImg, recWfRegionalTolerance);
 }
 

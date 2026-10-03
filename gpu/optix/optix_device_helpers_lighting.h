@@ -878,6 +878,7 @@ struct ShadowRayState {
 	unsigned int occluded;      // 1 = blocked (default), 0 = reached the light
 	float        transmittance; // running Beer-Lambert product through media
 	float        maxDistance;   // the shadow ray's ORIGINAL tmax - see __anyhit__shadow_sphere
+	unsigned int seed;          // RNG state for the heterogeneous-medium ratio tracking in the any-hit
 };
 
 __device__ __forceinline__ void shadow_pack_state_ptr(ShadowRayState* p, unsigned int& p0, unsigned int& p1) {
@@ -920,6 +921,12 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	shadow_state.occluded = 1;           // Default to occluded (set to 0 by the miss program)
 	shadow_state.transmittance = 1.0f;
 	shadow_state.maxDistance = max_distance;
+	// Stateless per-ray seed (the shadow any-hit has no access to the caller's
+	// RNG): hash of the ray's own origin/direction bits, which differ for every
+	// shadow ray a path fires.
+	shadow_state.seed = pcg_hash(__float_as_uint(origin.x) ^ pcg_hash(__float_as_uint(origin.y)
+		^ pcg_hash(__float_as_uint(origin.z) ^ pcg_hash(__float_as_uint(direction.x)
+		^ pcg_hash(__float_as_uint(direction.y) ^ __float_as_uint(direction.z))))));
 	unsigned int sp0, sp1;
 	shadow_pack_state_ptr(&shadow_state, sp0, sp1);
 
