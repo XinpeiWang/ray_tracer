@@ -488,3 +488,82 @@ TEST(ObjTest, LoadFileChoosesTheObjReaderByExtension) {
 	ASSERT_TRUE(r.ok) << r.error;
 	EXPECT_EQ(r.mesh.triangleCount(), 1u);
 }
+
+// ---- "file.obj#material" group loading ---------------------------------------
+
+namespace {
+// Two quads sharing an edge, split across two materials, plus one stray face
+// before any usemtl: 3 groups ("" / red / blue), each compacted on its own.
+const char *kGroupedObj =
+	"v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nv 2 0 0\nv 2 1 0\nv 5 5 5\n"
+	"vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n"
+	"f 7 7 7\n"
+	"usemtl red\nf 1/1 2/2 3/3 4/4\n"
+	"usemtl blue\nf 2/2 5/1 6/3 3/4\n"
+	"usemtl red\nf 1/1 2/2 3/3\n";
+
+LoadResult loadGroup(const char *obj, const std::string &group) {
+	const std::string path = "ply_mesh_tests_tmp_groups.obj";
+	{
+		std::ofstream out(path, std::ios::binary);
+		out << obj;
+	}
+	LoadResult r = loadFile(path + "#" + group);
+	clearObjGroupCache();
+	std::remove(path.c_str());
+	return r;
+}
+} // namespace
+
+TEST(ObjGroupTest, EachMaterialGetsOnlyItsOwnFacesAndVertices) {
+	std::vector<ObjGroup> groups;
+	std::string error;
+	ASSERT_TRUE(parseObjGroups(kGroupedObj, /*splitByMaterial=*/true, groups, error)) << error;
+	ASSERT_EQ(groups.size(), 3u);
+	EXPECT_EQ(groups[0].name, "");
+	EXPECT_EQ(groups[0].mesh.triangleCount(), 1u);
+	EXPECT_EQ(groups[1].name, "red");
+	EXPECT_EQ(groups[1].mesh.triangleCount(), 3u);   // the quad's two + the later triangle
+	EXPECT_EQ(groups[1].mesh.vertexCount(), 4u);     // corners 1..4, shared across both red usemtl runs
+	EXPECT_EQ(groups[1].mesh.uvs.size(), 8u);
+	EXPECT_EQ(groups[2].name, "blue");
+	EXPECT_EQ(groups[2].mesh.triangleCount(), 2u);
+	EXPECT_EQ(groups[2].mesh.vertexCount(), 4u);
+}
+
+TEST(ObjGroupTest, ThePlainReaderStillIgnoresUsemtl) {
+	const LoadResult r = parseObj(kGroupedObj);
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.mesh.triangleCount(), 1u + 3u + 2u);
+}
+
+TEST(ObjGroupTest, HashSuffixSelectsAMaterial) {
+	const LoadResult blue = loadGroup(kGroupedObj, "blue");
+	ASSERT_TRUE(blue.ok) << blue.error;
+	EXPECT_EQ(blue.mesh.triangleCount(), 2u);
+	const LoadResult stray = loadGroup(kGroupedObj, "");
+	ASSERT_TRUE(stray.ok) << stray.error;
+	EXPECT_EQ(stray.mesh.triangleCount(), 1u);
+}
+
+TEST(ObjGroupTest, UnknownMaterialIsAnErrorNamingIt) {
+	const LoadResult r = loadGroup(kGroupedObj, "green");
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("green"), std::string::npos) << r.error;
+}
+
+TEST(ObjGroupTest, AGroupCanBeLoadedTwiceWhileTheCacheIsLive) {
+	const std::string path = "ply_mesh_tests_tmp_groups_twice.obj";
+	{
+		std::ofstream out(path, std::ios::binary);
+		out << kGroupedObj;
+	}
+	const LoadResult a = loadFile(path + "#red");
+	const LoadResult b = loadFile(path + "#red");   // CPU then GPU build of one scene
+	clearObjGroupCache();
+	std::remove(path.c_str());
+	ASSERT_TRUE(a.ok) << a.error;
+	ASSERT_TRUE(b.ok) << b.error;
+	EXPECT_EQ(a.mesh.indices, b.mesh.indices);
+	EXPECT_EQ(a.mesh.positions, b.mesh.positions);
+}

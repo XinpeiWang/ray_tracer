@@ -678,126 +678,90 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "G24", 61, SceneNames::RockerArm, SceneCategories::Models,
             "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scene (G15), but much smaller overall and taller than that comparison suggested - the camera is pulled back/up further than originally set, which cropped the two boss/lobe cylinders at the top of the part. Now visible, those bosses' flat tops catch a strong mirror-like specular highlight from the overhead light - a legitimate result of a flat, low-roughness surface facing a point-ish light, confirmed by testing (repositioning/brightening the light didn't change it), not a bug.",
             "Slow", "mesh-rocker-arm.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        {
+        // H1 migrated to pbrt-backed - see pbrt_scenes/environment-sponza.pbrt (legacy_id 62 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H1", 62, SceneNames::CrytekSponza, SceneCategories::LargeScene,
             "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, with real per-face .mtl materials and image textures (curtains, columns, floor) loaded from models/sponza_textures/, lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",
-            "Very Slow", 150, true, true,
-            { 70, -800, 300, 0,  800, 300, 0,  0, 0, 0 },
-            build_sponza,
-            build_sponza_lights,
-            build_sponza_sky,
-            nullptr
-        },
-        {
+            "Very Slow", "environment-sponza.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H2 migrated to pbrt-backed - see pbrt_scenes/environment-bistro-exterior.pbrt (legacy_id 63 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H2", 63, SceneNames::AmazonBistro, SceneCategories::LargeScene,
             "Amazon Lumberyard Bistro, Exterior (2.84M triangles) - a full outdoor street block (multiple buildings + plaza), with real per-face .mtl materials and image textures (windows, doors, foliage) loaded from models/bistro_textures/, lit by an open sky, loaded from an external .obj file (requires models/bistro_exterior.obj). Second 'whole environment' mesh scene, same design rationale as scene 62 (Crytek Sponza) -- see build_bistro_exterior()'s own comment. Camera nudged 300 units in Z from the original verified-clear-sightline position: a decorative streetlamp post sat directly in the foreground as a fully-black silhouette blocking most of the frame; the shift turns it into a pleasant framing element instead (visible tree/building behind it) rather than eliminating it.",
-            "Very Slow", 150, true, true,
-            { 60, 1500, 700, 1700,  4000, 700, 2000,  0, 0, 0 },
-            build_bistro_exterior,
-            build_bistro_exterior_lights,
-            build_bistro_exterior_sky,
-            nullptr
-        },
-        {
+            "Very Slow", "environment-bistro-exterior.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H3 migrated to pbrt-backed - see pbrt_scenes/environment-rungholt.pbrt (legacy_id 64 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H3", 64, SceneNames::Rungholt, SceneCategories::LargeScene,
             "Rungholt (6.7M triangles) - a giant blocky Minecraft-style town, with real per-face .mtl material colors (no image textures for this one, unlike scenes 62/63's Sponza/Bistro), loaded from an external .obj file (requires models/rungholt.obj). Third 'whole environment' mesh scene, same design rationale as scenes 62-63 -- see build_rungholt()'s own comment (including a real OBJ-loader bug this mesh exposed and fixed: negative/relative face indices).",
-            "Very Slow", 150, true, true,
-            { 45, 400, 300, 400,  0, 40, 0,  0, 0, 0 },
-            build_rungholt,
-            build_rungholt_lights,
-            build_rungholt_sky,
-            nullptr
-        },
-        {
+            "Very Slow", "environment-rungholt.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H4 migrated to pbrt-backed - see pbrt_scenes/environment-fireplace-room.pbrt (legacy_id 73 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H4", 73, SceneNames::FireplaceRoom, SceneCategories::LargeScene,
             "Fireplace Room - a small, human-scale furnished living room (fireplace, wood floor, framed pictures, a potted plant), with real per-face .mtl materials and image textures loaded from models/fireplace_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/fireplace_room.obj). Fourth 'whole environment' mesh scene, same design rationale as scenes 62-64 -- see build_fireplace_room()'s own comment. A furnished interior rather than a building/street/town-scale environment.",
-            "Slow", 150, true, true,
-            { 55, -2.0, 1.6, -1.5,  0, 1.3, 0,  0, 0, 0 },
-            build_fireplace_room,
-            build_fireplace_room_lights,
-            build_fireplace_room_sky,
-            nullptr
-        },
-        {
+            "Slow", "environment-fireplace-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H5 migrated to pbrt-backed - see pbrt_scenes/environment-san-miguel.pbrt (legacy_id 74 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H5", 74, SceneNames::SanMiguel, SceneCategories::LargeScene,
             "San Miguel (9.9M triangles) - a dense Mexican hacienda courtyard/villa, the classic 'hero' benchmark scene with real per-face .mtl materials and image textures (tile, wood, fabric, foliage) loaded from models/san_miguel_textures/, lit by an open sky, loaded from an external .obj file (requires models/san_miguel.obj). Fifth 'whole environment' mesh scene, same design rationale as scenes 62-64/73 -- see build_san_miguel()'s own comment.",
-            "Very Slow", 150, true, true,
-            { 45, 10, 3, 5,  0, 3, 0,  0, 0, 0 },
-            build_san_miguel,
-            build_san_miguel_lights,
-            build_san_miguel_sky,
-            nullptr
-        },
-        {
+            "Very Slow", "environment-san-miguel.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H6 migrated to pbrt-backed - see pbrt_scenes/environment-sibenik-cathedral.pbrt (legacy_id 75 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H6", 75, SceneNames::SibenikCathedral, SceneCategories::LargeScene,
             "Sibenik Cathedral - a Gothic cathedral interior (vaulted nave, stone columns, a rose window, colored stained glass), with real per-face .mtl materials, image textures, and real bump maps loaded from models/sibenik_cathedral_textures/, lit through its open doorway/arches, loaded from an external .obj file (requires models/sibenik_cathedral.obj). Sixth 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74 -- see build_sibenik_cathedral()'s own comment.",
-            "Very Slow", 400, true, true,
-            { 60, -15, 1.7, 0,  15, 5, 0,  0, 0, 0 },
-            build_sibenik_cathedral,
-            build_sibenik_cathedral_lights,
-            build_sibenik_cathedral_sky,
-            nullptr
-        },
-        {
+            "Very Slow", "environment-sibenik-cathedral.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H7 migrated to pbrt-backed - see pbrt_scenes/environment-breakfast-room.pbrt (legacy_id 76 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H7", 76, SceneNames::BreakfastRoom, SceneCategories::LargeScene,
             "Breakfast Room - a cozy furnished dining interior with glassware, table settings, and marble/tile textures, with real per-face .mtl materials and image textures loaded from models/breakfast_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/breakfast_room.obj). Seventh 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74/75 -- see build_breakfast_room()'s own comment.",
-            "Very Slow", 300, true, true,
-            { 70, -3.0, 1.5, 3.0,  2.5, 1.3, 0,  0, 0, 0 },
-            build_breakfast_room,
-            build_breakfast_room_lights,
-            build_breakfast_room_sky,
-            nullptr
-        },
-        {
+            "Very Slow", "environment-breakfast-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H8 migrated to pbrt-backed - see pbrt_scenes/environment-salle-de-bain.pbrt (legacy_id 77 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H8", 77, SceneNames::SalleDeBain, SceneCategories::LargeScene,
             "Salle de Bain - a tiled bathroom interior with a mirror, tub, and a real ceiling light fixture (genuine Ke emission -- exercises the NEE-light path a second time, after Fireplace Room), with real per-face .mtl materials and image textures loaded from models/salle_de_bain_textures/, loaded from an external .obj file (requires models/salle_de_bain.obj). Eighth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-75 -- see build_salle_de_bain()'s own comment.",
-            "Slow", 150, true, true,
-            { 50, 10, 15, -5,  -10, 12, 5,  0, 0, 0 },
-            build_salle_de_bain,
-            build_salle_de_bain_lights,
-            build_salle_de_bain_sky,
-            nullptr
-        },
-        {
+            "Slow", "environment-salle-de-bain.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H9 migrated to pbrt-backed - see pbrt_scenes/environment-gallery.pbrt (legacy_id 78 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H9", 78, SceneNames::Gallery, SceneCategories::LargeScene,
             "Gallery - the Hallwyl Museum picture gallery in Stockholm, an ornate room of framed paintings, chandeliers, and a parquet floor, with a real per-face .mtl material and an image texture loaded from models/gallery_textures/, lit by an open sky, loaded from an external .obj file (requires models/gallery.obj). Ninth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-76 -- see build_gallery()'s own comment.",
-            "Very Slow", 300, true, true,
-            { 55, 0, 2.2, -5,  0, 2.2, 0,  0, 0, 0 },
-            build_gallery,
-            build_gallery_lights,
-            build_gallery_sky,
-            nullptr
-        },
-        {
+            "Very Slow", "environment-gallery.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H10 migrated to pbrt-backed - see pbrt_scenes/environment-lost-empire.pbrt (legacy_id 79 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H10", 79, SceneNames::LostEmpire, SceneCategories::LargeScene,
             "Lost Empire - a large half-buried ancient city exported from a Minecraft world, with temple platforms, staircases, and a lava chamber, with real per-face .mtl materials and an image texture loaded from models/lost_empire_textures/, lit by an open sky, loaded from an external .obj file (requires models/lost_empire.obj). Tenth 'whole environment' mesh scene, and the first at a scale (165 units deep) that suits a long video flythrough -- see build_lost_empire()'s own comment.",
-            "Slow", 150, true, true,
-            { 55, 0, 60, 100,  0, 10, 0,  0, 0, 0 },
-            build_lost_empire,
-            build_lost_empire_lights,
-            build_lost_empire_sky,
-            nullptr
-        },
-        {
+            "Slow", "environment-lost-empire.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H11 migrated to pbrt-backed - see pbrt_scenes/environment-vokselia-spawn.pbrt (legacy_id 80 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H11", 80, SceneNames::VokseliaSpawn, SceneCategories::LargeScene,
             "Vokselia Spawn - a small floating voxel island, exported from the same Minecraft world as Lost Empire from its spawn point, with a real per-face .mtl material and an image texture loaded from models/vokselia_spawn_textures/, lit by an open sky, loaded from an external .obj file (requires models/vokselia_spawn.obj). Eleventh 'whole environment' mesh scene -- see build_vokselia_spawn()'s own comment.",
-            "Medium", 100, true, true,
-            { 40, 4.5, 0.9, 4.5,  0, 0.25, 0,  0, 0, 0 },
-            build_vokselia_spawn,
-            build_vokselia_spawn_lights,
-            build_vokselia_spawn_sky,
-            nullptr
-        },
-        {
+            "Medium", "environment-vokselia-spawn.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // H12 migrated to pbrt-backed - see pbrt_scenes/environment-power-plant.pbrt (legacy_id 81 kept). The .mtl materials,
+        // textures, camera and sky were ported by a one-off generator (that file's header lists the
+        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H12", 81, SceneNames::PowerPlant, SceneCategories::LargeScene,
             "Power Plant - a complete model of an actual coal-fired power plant (12.76M triangles, 5.98M vertices), the largest scene in this collection by triangle count, with flat per-face .mtl colors (no image textures), lit by an open sky, loaded from an external .obj file (requires models/powerplant.obj). Twelfth 'whole environment' mesh scene, and the first needing a real coordinate rescale rather than raw OBJ units -- see build_power_plant()'s own comment.",
-            "Slow", 150, true, true,
-            { 40, 130, 85, 130,  -55, 40, -35,  0, 0, 0 },
-            build_power_plant,
-            build_power_plant_lights,
-            build_power_plant_sky,
-            nullptr
-        },
+            "Slow", "environment-power-plant.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         // H13/H14: real pbrt-v4-scenes bundles (github.com/mmp/pbrt-v4-scenes),
         // NOT git-tracked (see build_curated_external_pbrt_scene_descriptor()'s
         // own comment, scene_registry.h, for why) - download into

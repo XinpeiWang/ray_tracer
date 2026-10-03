@@ -1,0 +1,117 @@
+# environment-salle-de-bain.pbrt -- migration of the native "H8 Salle de Bain" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/salle_de_bain.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: emissive=1, metal=7, textured=1, flat=5 (of 14 shapes)
+# Requires models/salle_de_bain.obj and models/salle_de_bain_textures/ (registry requires_files=true).
+
+LookAt  10 15 -5    -10 12 5    0 1 0
+Camera "perspective" "float fov" [ 50 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 0.4 0.45 0.5 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/salle_de_bain_textures/textures/Label_BaseColor.png" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate 0.08 -0.03 0.39
+
+  AttributeBegin
+    # Bin
+    Material "conductor" "rgb reflectance" [ 0 0 0 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Bin" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Plastic
+    Material "diffuse" "rgb reflectance" [ 0.01 0.01 0.01 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Plastic" ]
+  AttributeEnd
+
+  AttributeBegin
+    # DarkBorder
+    Material "diffuse" "rgb reflectance" [ 1 1 1 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#DarkBorder" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Ceramic
+    Material "conductor" "rgb reflectance" [ 0.95 0.95 0.95 ] "float roughness" [ 0.0623782862 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Ceramic" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Trims
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.632455532 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Trims" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wood
+    Material "conductor" "rgb reflectance" [ 0.48 0.48 0.48 ] "float roughness" [ 0.534522484 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Wood" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Mirror
+    Material "conductor" "rgb reflectance" [ 0 0 0 ] "float roughness" [ 0.015623093 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Mirror" ]
+  AttributeEnd
+
+  AttributeBegin
+    # DarkPlastic
+    Material "diffuse" "rgb reflectance" [ 0.1 0.1 0.1 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#DarkPlastic" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wall
+    Material "diffuse" "rgb reflectance" [ 0.98 0.98 0.98 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Wall" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Towel
+    Material "diffuse" "rgb reflectance" [ 0.8 0.8 0.8 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Towel" ]
+  AttributeEnd
+
+  AttributeBegin
+    # BlackWoodLacquer
+    Material "conductor" "rgb reflectance" [ 0.078481 0.078481 0.078481 ] "float roughness" [ 0.632455532 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#BlackWoodLacquer" ]
+  AttributeEnd
+
+  AttributeBegin
+    # WoodFloor
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.534522484 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#WoodFloor" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Label
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Label" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Light
+    AreaLightSource "diffuse" "rgb L" [ 10 10 10 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/salle_de_bain.obj#Light" ]
+  AttributeEnd
+AttributeEnd

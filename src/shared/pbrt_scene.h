@@ -454,6 +454,13 @@ struct Scene {
 	// scatter() as a do_regularize parameter; this field is what was
 	// missing to gate it, rather than applying it unconditionally.
 	bool regularize = false;
+	// Integrator "float shadowrayepsilon" (non-standard, GPU only) - the world-unit
+	// offset a GPU shadow ray's origin is nudged along its own direction before
+	// tracing (GpuCameraParams::shadowRayEpsilon). 0 (the default) keeps the
+	// renderer's own 0.01. A scene whose geometry is dense enough that 0.01 starts
+	// shadow rays inside a neighbouring surface (a stone-tracery cathedral)
+	// raises it; the CPU renderer has no such offset and ignores it.
+	double shadowRayEpsilon = 0.0;
 	// Integrator "string lightsampler" (pbrt-v4's real default is "bvh" -
 	// confirmed against pbrt-v4's own integrators.cpp:
 	// parameters.GetOneString("lightsampler", "bvh")). Same "purely
@@ -1149,6 +1156,7 @@ private:
 			const ParamList p = readParams();
 			s_.maxDepth = p.getInt("maxdepth", s_.maxDepth);
 			s_.regularize = p.getBool("regularize", s_.regularize);
+			s_.shadowRayEpsilon = p.getFloat("shadowrayepsilon", s_.shadowRayEpsilon);
 			s_.lightSamplerType = p.getString("lightsampler", s_.lightSamplerType);
 			return true;
 		}

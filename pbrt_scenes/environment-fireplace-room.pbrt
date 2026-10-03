@@ -1,0 +1,169 @@
+# environment-fireplace-room.pbrt -- migration of the native "H4 Fireplace Room" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/fireplace_room.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: emissive=2, glass=1, metal=1, textured=4, flat=14 (of 22 shapes)
+# Requires models/fireplace_room.obj and models/fireplace_room_textures/ (registry requires_files=true).
+
+LookAt  -2 1.6 -1.5    0 1.3 0    0 1 0
+Camera "perspective" "float fov" [ 55 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 0.6 0.75 0.95 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/fireplace_room_textures/textures/wood5.png" ]
+Texture "c1" "spectrum" "imagemap" "string filename" [ "../models/fireplace_room_textures/textures/picture8.png" ]
+Texture "c2" "spectrum" "imagemap" "string filename" [ "../models/fireplace_room_textures/textures/leaf.png" ]
+Texture "c3" "spectrum" "imagemap" "string filename" [ "../models/fireplace_room_textures/textures/wood.png" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate -2.305 0.003 1.518
+
+  AttributeBegin
+    # grey_and_white_room:TableWood
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:TableWood" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Glass
+    Material "dielectric" "float eta" [ 1 ] "rgb tf" [ 0.1 0.1 0.1 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:BottleCap
+    Material "diffuse" "rgb reflectance" [ 0.46 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:BottleCap" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:PaintingBack
+    Material "diffuse" "rgb reflectance" [ 0.26 0.25 0.14 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:PaintingBack" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:MattePaint
+    Material "diffuse" "rgb reflectance" [ 0.9 0.9 0.9 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:MattePaint" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Painting
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Painting" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Leaves
+    Material "diffuse" "texture reflectance" [ "c2" ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Leaves" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Branches
+    Material "diffuse" "rgb reflectance" [ 0.16 0.08 0.02 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Branches" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Dirt
+    Material "diffuse" "rgb reflectance" [ 0.1 0.05 0.04 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Dirt" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:PlantPot
+    Material "diffuse" "rgb reflectance" [ 0.1 0.1 0.1 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:PlantPot" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:SofaLegs
+    Material "diffuse" "rgb reflectance" [ 0.1 0.1 0.1 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:SofaLegs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Sofa
+    Material "diffuse" "rgb reflectance" [ 0.9 0.9 0.88 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Sofa" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Paneling
+    Material "diffuse" "rgb reflectance" [ 0.9 0.9 0.9 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Paneling" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Walls
+    Material "diffuse" "rgb reflectance" [ 0.17 0.132 0.1 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Walls" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Floor
+    Material "diffuse" "texture reflectance" [ "c3" ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Floor" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Mirror
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.00447209123 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Mirror" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:FireplaceGlass
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:FireplaceGlass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:BrushedStainlessSteel
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:BrushedStainlessSteel" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:Transluscent
+    Material "diffuse" "rgb reflectance" [ 0.3 0.3 0.3 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:Transluscent" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:initialShadingGroup
+    Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:initialShadingGroup" ]
+  AttributeEnd
+
+  AttributeBegin
+    # lambert3SG
+    AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#lambert3SG" ]
+  AttributeEnd
+
+  AttributeBegin
+    # grey_and_white_room:lambert2SG_light
+    AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/fireplace_room.obj#grey_and_white_room:lambert2SG_light" ]
+  AttributeEnd
+AttributeEnd

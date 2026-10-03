@@ -3244,6 +3244,28 @@ TEST(FlattenMaterialTest, DielectricRoughnessImagemapIsThreadedThrough) {
 	EXPECT_FALSE(warnedAbout(s, "dielectric"));
 }
 
+TEST(FlattenMaterialTest, DielectricTransmissionFilterIsReadFromRgbTf) {
+	// Non-standard "rgb tf": the OBJ/.mtl Tf transmission filter, for the
+	// environment scenes migrated from .mtl assets (pbrt_scenes/environment-*.pbrt).
+	const FlatScene tinted = flattenSource(
+		"Material \"dielectric\" \"float eta\" [ 1.5 ] \"rgb tf\" [ 0.25 0.5 0.75 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(tinted.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(tinted.materials[0].transmissionFilter[0], 0.25);
+	EXPECT_DOUBLE_EQ(tinted.materials[0].transmissionFilter[1], 0.5);
+	EXPECT_DOUBLE_EQ(tinted.materials[0].transmissionFilter[2], 0.75);
+
+	// Absent means white (a no-op filter), and only a dielectric reads it.
+	const FlatScene plain = flattenSource(
+		"Material \"dielectric\"\n" + std::string(kQuadMesh));
+	ASSERT_EQ(plain.materials.size(), 1u);
+	for (int c = 0; c < 3; ++c) EXPECT_DOUBLE_EQ(plain.materials[0].transmissionFilter[c], 1.0);
+	const FlatScene diffuse = flattenSource(
+		"Material \"diffuse\" \"rgb tf\" [ 0.1 0.1 0.1 ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(diffuse.materials.size(), 1u);
+	for (int c = 0; c < 3; ++c) EXPECT_DOUBLE_EQ(diffuse.materials[0].transmissionFilter[c], 1.0);
+}
+
 TEST(FlattenMaterialTest, DielectricRoughnessEncodingWrapInvertAreNowResolved) {
 	// Previously silently dropped for every non-primary slot - now resolved
 	// the same way the primary reflectance slot's own textureGamma/

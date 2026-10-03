@@ -1,0 +1,534 @@
+# environment-rungholt.pbrt -- migration of the native "H3 Rungholt" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/rungholt.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: glass=1, flat=83 (of 84 shapes)
+# Requires models/rungholt.obj (registry requires_files=true).
+
+LookAt  400 300 400    0 40 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 0.55 0.72 0.95 ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate 0 0 0
+
+  AttributeBegin
+    # Stone
+    Material "diffuse" "rgb reflectance" [ 0.470588 0.470588 0.470588 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Grass
+    Material "diffuse" "rgb reflectance" [ 0.470588 0.701961 0.301961 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Grass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dirt
+    Material "diffuse" "rgb reflectance" [ 0.54902 0.388235 0.266667 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Dirt" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cobblestone
+    Material "diffuse" "rgb reflectance" [ 0.509804 0.509804 0.509804 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Cobblestone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Plank
+    Material "diffuse" "rgb reflectance" [ 0.623529 0.505882 0.313726 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Wooden_Plank" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sapling
+    Material "diffuse" "rgb reflectance" [ 0.482353 0.603922 0.160784 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Sapling" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stationary_Water
+    Material "dielectric" "float eta" [ 1.5 ] "rgb tf" [ 0.91398 0.804882 0.467098 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stationary_Water" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stationary_Lava
+    Material "diffuse" "rgb reflectance" [ 0.960784 0.427451 0 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stationary_Lava" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sand
+    Material "diffuse" "rgb reflectance" [ 0.878431 0.847059 0.65098 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Sand" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gravel
+    Material "diffuse" "rgb reflectance" [ 0.521569 0.482353 0.482353 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Gravel" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Ore
+    Material "diffuse" "rgb reflectance" [ 0.737255 0.6 0.501961 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Iron_Ore" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Coal_Ore
+    Material "diffuse" "rgb reflectance" [ 0.203922 0.203922 0.203922 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Coal_Ore" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Log
+    Material "diffuse" "rgb reflectance" [ 0.694118 0.564706 0.352941 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Log" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Leaves
+    Material "diffuse" "rgb reflectance" [ 0.223529 0.670588 0.152941 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Leaves" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Glass
+    Material "diffuse" "rgb reflectance" [ 0.752941 0.964706 0.996078 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dispenser
+    Material "diffuse" "rgb reflectance" [ 0.435294 0.435294 0.435294 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Dispenser" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sandstone
+    Material "diffuse" "rgb reflectance" [ 0.878431 0.847059 0.65098 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Sandstone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bed
+    Material "diffuse" "rgb reflectance" [ 1 0.2 0.2 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Bed" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Tall_Grass
+    Material "diffuse" "rgb reflectance" [ 0.407843 0.639216 0.239216 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Tall_Grass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Piston
+    Material "diffuse" "rgb reflectance" [ 0.584314 0.466667 0.294118 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Piston" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Piston_Head
+    Material "diffuse" "rgb reflectance" [ 0.584314 0.466667 0.294118 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Piston_Head" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dandelion
+    Material "diffuse" "rgb reflectance" [ 0.996078 0.996078 0.00784314 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Dandelion" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Rose
+    Material "diffuse" "rgb reflectance" [ 1 0.0588235 0.0588235 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Rose" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brown_Mushroom
+    Material "diffuse" "rgb reflectance" [ 0.756863 0.568627 0.443137 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Brown_Mushroom" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Red_Mushroom
+    Material "diffuse" "rgb reflectance" [ 0.988235 0.360784 0.364706 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Red_Mushroom" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gold_Block
+    Material "diffuse" "rgb reflectance" [ 0.996078 0.968627 0.305882 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Gold_Block" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Block
+    Material "diffuse" "rgb reflectance" [ 0.933333 0.933333 0.933333 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Iron_Block" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Double_Slab
+    Material "diffuse" "rgb reflectance" [ 0.65098 0.65098 0.65098 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Double_Slab" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Slab
+    Material "diffuse" "rgb reflectance" [ 0.647059 0.647059 0.647059 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stone_Slab" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brick
+    Material "diffuse" "rgb reflectance" [ 0.627451 0.501961 0.482353 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Brick" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bookshelf
+    Material "diffuse" "rgb reflectance" [ 0.47451 0.352941 0.223529 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Bookshelf" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Moss_Stone
+    Material "diffuse" "rgb reflectance" [ 0.384314 0.443137 0.384314 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Moss_Stone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Obsidian
+    Material "diffuse" "rgb reflectance" [ 0.105882 0.0901961 0.160784 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Obsidian" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Torch
+    Material "diffuse" "rgb reflectance" [ 0.988235 0.988235 0 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Torch" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Fire
+    Material "diffuse" "rgb reflectance" [ 0.988235 0.631373 0 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Fire" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Monster_Spawner
+    Material "diffuse" "rgb reflectance" [ 0.145098 0.258824 0.329412 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Monster_Spawner" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Stairs
+    Material "diffuse" "rgb reflectance" [ 0.619608 0.501961 0.309804 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Wooden_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Chest
+    Material "diffuse" "rgb reflectance" [ 0.627451 0.435294 0.137255 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Chest" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Wire
+    Material "diffuse" "rgb reflectance" [ 0.839216 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Redstone_Wire" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Crafting_Table
+    Material "diffuse" "rgb reflectance" [ 0.509804 0.329412 0.196078 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Crafting_Table" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Crops
+    Material "diffuse" "rgb reflectance" [ 0.462745 0.4 0.0823529 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Crops" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Farmland
+    Material "diffuse" "rgb reflectance" [ 0.25098 0.133333 0.0431373 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Farmland" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Furnace
+    Material "diffuse" "rgb reflectance" [ 0.462745 0.462745 0.466667 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Furnace" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sign_Post
+    Material "diffuse" "rgb reflectance" [ 0.623529 0.505882 0.309804 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Sign_Post" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Door
+    Material "diffuse" "rgb reflectance" [ 0.494118 0.364706 0.176471 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Wooden_Door" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Ladder
+    Material "diffuse" "rgb reflectance" [ 0.666667 0.52549 0.317647 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Ladder" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Rail
+    Material "diffuse" "rgb reflectance" [ 0.407843 0.407843 0.407843 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Rail" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cobblestone_Stairs
+    Material "diffuse" "rgb reflectance" [ 0.505882 0.505882 0.505882 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Cobblestone_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wall_Sign
+    Material "diffuse" "rgb reflectance" [ 0.65098 0.541176 0.27451 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Wall_Sign" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Lever
+    Material "diffuse" "rgb reflectance" [ 0.541176 0.415686 0.239216 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Lever" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Plate
+    Material "diffuse" "rgb reflectance" [ 0.643137 0.643137 0.643137 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stone_Plate" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Door
+    Material "diffuse" "rgb reflectance" [ 0.698039 0.698039 0.698039 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Iron_Door" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Plate
+    Material "diffuse" "rgb reflectance" [ 0.615686 0.498039 0.305882 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Wooden_Plate" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Torch_(off)
+    Material "diffuse" "rgb reflectance" [ 0.337255 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Redstone_Torch_(off)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Torch_(on)
+    Material "diffuse" "rgb reflectance" [ 0.992157 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Redstone_Torch_(on)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Button
+    Material "diffuse" "rgb reflectance" [ 0.67451 0.67451 0.67451 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stone_Button" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Clay
+    Material "diffuse" "rgb reflectance" [ 0.635294 0.654902 0.705882 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Clay" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sugar_Cane
+    Material "diffuse" "rgb reflectance" [ 0.447059 0.580392 0.305882 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Sugar_Cane" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Fence
+    Material "diffuse" "rgb reflectance" [ 0.623529 0.505882 0.305882 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Fence" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Netherrack
+    Material "diffuse" "rgb reflectance" [ 0.447059 0.227451 0.219608 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Netherrack" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Glowstone
+    Material "diffuse" "rgb reflectance" [ 0.976471 0.831373 0.611765 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Glowstone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Jack-O-Lantern
+    Material "diffuse" "rgb reflectance" [ 0.913725 0.705882 0.0862745 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Jack-O-Lantern" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cake
+    Material "diffuse" "rgb reflectance" [ 1 0.992157 0.992157 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Cake" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Repeater_(on)
+    Material "diffuse" "rgb reflectance" [ 0.933333 0.333333 0.333333 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Repeater_(on)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Trapdoor
+    Material "diffuse" "rgb reflectance" [ 0.533333 0.4 0.203922 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Trapdoor" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Brick
+    Material "diffuse" "rgb reflectance" [ 0.47451 0.47451 0.47451 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stone_Brick" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Bars
+    Material "diffuse" "rgb reflectance" [ 0.639216 0.643137 0.643137 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Iron_Bars" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Glass_Pane
+    Material "diffuse" "rgb reflectance" [ 0.752941 0.964706 0.996078 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Glass_Pane" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Vines
+    Material "diffuse" "rgb reflectance" [ 0.117647 0.298039 0.0392157 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Vines" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Fence_Gate
+    Material "diffuse" "rgb reflectance" [ 0.658824 0.529412 0.329412 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Fence_Gate" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brick_Stairs
+    Material "diffuse" "rgb reflectance" [ 0.627451 0.501961 0.482353 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Brick_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Brick_Stairs
+    Material "diffuse" "rgb reflectance" [ 0.47451 0.47451 0.47451 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Stone_Brick_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Lily_Pad
+    Material "diffuse" "rgb reflectance" [ 0.0470588 0.372549 0.0784314 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Lily_Pad" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Enchantment_Table
+    Material "diffuse" "rgb reflectance" [ 0.65098 0.439216 0.101961 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Enchantment_Table" ]
+  AttributeEnd
+
+  AttributeBegin
+    # White_Wool
+    Material "diffuse" "rgb reflectance" [ 0.866667 0.866667 0.866667 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#White_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Orange_Wool
+    Material "diffuse" "rgb reflectance" [ 0.917647 0.501961 0.215686 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Orange_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Light_Blue_Wool
+    Material "diffuse" "rgb reflectance" [ 0.4 0.537255 0.827451 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Light_Blue_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gray_Wool
+    Material "diffuse" "rgb reflectance" [ 0.262745 0.262745 0.262745 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Gray_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Light_Gray_Wool
+    Material "diffuse" "rgb reflectance" [ 0.615686 0.643137 0.643137 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Light_Gray_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cyan_Wool
+    Material "diffuse" "rgb reflectance" [ 0.152941 0.454902 0.580392 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Cyan_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brown_Wool
+    Material "diffuse" "rgb reflectance" [ 0.337255 0.2 0.105882 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Brown_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Green_Wool
+    Material "diffuse" "rgb reflectance" [ 0.215686 0.301961 0.0941176 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Green_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Red_Wool
+    Material "diffuse" "rgb reflectance" [ 0.639216 0.172549 0.156863 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Red_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Black_Wool
+    Material "diffuse" "rgb reflectance" [ 0.105882 0.0901961 0.0901961 ]
+    Shape "plymesh" "string filename" [ "../models/rungholt.obj#Black_Wool" ]
+  AttributeEnd
+AttributeEnd

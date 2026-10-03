@@ -1,0 +1,905 @@
+# environment-bistro-exterior.pbrt -- migration of the native "H2 Amazon Lumberyard Bistro (exterior)" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/bistro_exterior.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: emissive=1, glass=4, metal=88, textured=39, normal=33, alpha=11 (of 132 shapes)
+# Requires models/bistro_exterior.obj and models/bistro_textures/ (registry requires_files=true).
+
+LookAt  1500 700 1700    4000 700 2000    0 1 0
+Camera "perspective" "float fov" [ 60 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 0.55 0.72 0.95 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Paris_Curbstones_01_diff.png" ]
+Texture "c1" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Cobblestone_Small_01_diff.png" ]
+Texture "c2" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Cobblestone_Small_01_ddna.png" ]
+Texture "c3" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Cobblestone_Big_01_diff.png" ]
+Texture "c4" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Cobblestone_Big_01_ddna.png" ]
+Texture "c5" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Brick_01_Diff.png" ]
+Texture "c6" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Brick_01_ddna.png" ]
+Texture "c7" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Cobblestone_03_ddna.png" ]
+Texture "c8" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Paris_manholecover_01b_ddna.png" ]
+Texture "c9" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Cobble_02B_Diff.png" ]
+Texture "c10" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Cobble_02B_ddna.png" ]
+Texture "c11" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Pavement_Cobblestone_01_b_ddna.png" ]
+Texture "c12" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Brick_Small_03_diff.png" ]
+Texture "c13" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Brick_Small_03_ddna.png" ]
+Texture "c14" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/concrete_smooth_02_diff.png" ]
+Texture "c15" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/bistro_woodpanelornament_01_ddna.png" ]
+Texture "c16" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/concrete_grooved_02_diff.png" ]
+Texture "c17" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Wood_Painted_02_ddna.png" ]
+Texture "c18" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Bistro_Main_Door_Concrete_01A_diff.png" ]
+Texture "f19" "float" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Paris_BistroSideBanner_mask.png" ]
+Texture "c20" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_MainBalcony_01/Paris_MainBalcony_02A_ddna.png" ]
+Texture "c21" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_MainBalcony_01/Paris_MainBalcony_01A_ddna.png" ]
+Texture "c22" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Plastic_01_Planters_Diff.png" ]
+Texture "c23" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Plaster_01A_yellow_diff.png" ]
+Texture "c24" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Plaster_01A_ddna.png" ]
+Texture "c25" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/concrete_smooth_02_ddna.png" ]
+Texture "c26" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/OtherTextures/Tiling/Concrete_Smooth_03/Concrete_Smooth_03_ddna.png" ]
+Texture "c27" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Roofing_Shingle_01_Diff.png" ]
+Texture "c28" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Roofing_Shingle_01_ddna.png" ]
+Texture "c29" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/concrete_smooth_03_diff.png" ]
+Texture "c30" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Roofing_Shingle_03_diff.png" ]
+Texture "c31" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Roofing_Shingle_03_ddna.png" ]
+Texture "c32" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Trim_cornice_01_ddna.png" ]
+Texture "c33" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Paris_Building01_Window_01_ddna.png" ]
+Texture "f34" "float" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Paris_Building01_Window_01_mask.png" ]
+Texture "c35" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Windows_curtains_diff.png" ]
+Texture "c36" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Grain_Metal_01_ddna.png" ]
+Texture "c37" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/brick_large_03_diff.png" ]
+Texture "c38" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/brick_large_03_ddna.png" ]
+Texture "c39" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/grain_metal_01_black_metal_diff.png" ]
+Texture "c40" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/brick_large_02_ddna.png" ]
+Texture "c41" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/brick_small_02_diff.png" ]
+Texture "c42" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/brick_small_02_ddna.png" ]
+Texture "c43" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/roofing_metal_01_diff.png" ]
+Texture "c44" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Room_Interior_diff.png" ]
+Texture "c45" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Boulangeria_diff.png" ]
+Texture "c46" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/Books_Covers_diff.png" ]
+Texture "c47" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/BuildingTextures/concrete_smooth_01_diff.png" ]
+Texture "c48" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/OtherTextures/Tiling/Metal_ RollDoor_01/Metal_ RollDoor_01_diff.png" ]
+Texture "c49" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Buxus/buxus_diff.png" ]
+Texture "c50" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Buxus/buxus_ddna.png" ]
+Texture "f51" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Buxus/buxus_mask.png" ]
+Texture "c52" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Italian_Cypress/Italian_Cypress_Leaves_diff.png" ]
+Texture "c53" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Italian_Cypress/Italian_Cypress_Leaves_ddna.png" ]
+Texture "f54" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Italian_Cypress/Italian_Cypress_Leaves_mask.png" ]
+Texture "c55" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Italian_Cypress/Italian_Cypress_Bark_diff.png" ]
+Texture "c56" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_flowers_01a/Paris_Foliage_01a_diff.png" ]
+Texture "f57" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_flowers_01a/Paris_Foliage_01a_mask.png" ]
+Texture "c58" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_flowers_01a/Paris_flowers_01a_diff.png" ]
+Texture "f59" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_flowers_01a/Paris_flowers_01a_mask.png" ]
+Texture "c60" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/linden/Linden_Bark_A_diff.png" ]
+Texture "c61" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/linden/Leaves_B_diff.png" ]
+Texture "f62" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/linden/Leaves_B_mask.png" ]
+Texture "c63" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/linden/Leaves_A_diff.png" ]
+Texture "f64" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/linden/Leaves_A_mask.png" ]
+Texture "c65" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_ivy_01a/Paris_ivy_leaf_a_diff.png" ]
+Texture "c66" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_ivy_01a/Paris_ivy_leaf_a_ddna.png" ]
+Texture "f67" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_ivy_01a/Paris_ivy_leaf_a_mask.png" ]
+Texture "c68" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Natural/Paris_ivy_01a/Paris_ivy_branch_diff.png" ]
+Texture "f69" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_StreetLight_01/Street_decals_mask.png" ]
+Texture "c70" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_ShopSign_01/Paris_ShopSign_bakery_ddna.png" ]
+Texture "c71" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_StreetSign_01/Paris_StreetSign_01A_ddna.png" ]
+Texture "c72" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_StringLights_01/paris_stringlights_01_diff.png" ]
+Texture "c73" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_BistroAwning_01/Paris_BistroAwning_fabric_01A_ddna.png" ]
+Texture "c74" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_BistroAwning_02/Paris_BistroAwning_02_ddna.png" ]
+Texture "c75" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/OtherTextures/Colors/Grey_80.png" ]
+Texture "c76" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_PlantPot_01/Paris_PlantPot_01A_diff.png" ]
+Texture "c77" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_PlantPot_01/Paris_PlantPot_01A_ddna.png" ]
+Texture "c78" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/OtherTextures/Tiling/Concrete_Grooved_02/Concrete_Grooved_02_ddna.png" ]
+Texture "c79" "spectrum" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_Lantern_01/Paris_Lantern_01A_diff.png" ]
+Texture "f80" "float" "imagemap" "string filename" [ "../models/bistro_textures/PropTextures/Bistro/Paris_LiquorBottle_01/Paris_LiquorBottle_labels_01_Diff.png" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate -1526.37 472.62 -267.01
+
+  AttributeBegin
+    # Pavement_Curbstones
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Curbstones" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Cobblestone_Small_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c1" ] "texture displacement" [ "c2" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Cobblestone_Small_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Cobblestone_Big_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c3" ] "texture displacement" [ "c4" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Cobblestone_Big_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Brick_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c5" ] "texture displacement" [ "c6" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Brick_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Cobblestone_02
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.40824829 ] "texture displacement" [ "c7" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Cobblestone_02" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Ground_Wet
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Ground_Wet" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Manhole_Cover
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c8" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Manhole_Cover" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Cobblestone_Wet_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c9" ] "texture displacement" [ "c10" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Cobblestone_Wet_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Cobblestone_Wet_Leaves_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c9" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Cobblestone_Wet_Leaves_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Cobble_Leaves_BLENDSHADER
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Cobble_Leaves_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pavement_Cobblestone_01_BLENDSHADER
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c11" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Pavement_Cobblestone_01_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Brick_Small_Red_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c12" ] "texture displacement" [ "c13" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Brick_Small_Red_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Concrete3
+    Material "diffuse" "texture reflectance" [ "c14" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Concrete3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Focus
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Focus" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Metal
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Focus_Glass
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Focus_Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Focus_Ornament
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c15" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Focus_Ornament" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Bistro_Main_Door
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Bistro_Main_Door" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete_Grooved
+    Material "diffuse" "texture reflectance" [ "c16" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete_Grooved" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Glass_Exterior
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.0441510786 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Glass_Exterior" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Light_Bulb
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Light_Bulb" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Wood_Painted3
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.40824829 ] "texture displacement" [ "c17" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Wood_Painted3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete1
+    Material "diffuse" "texture reflectance" [ "c18" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Side_Letters
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Side_Letters" ] "texture alpha" [ "f19" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Balcony_Concrete
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Balcony_Concrete" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Balcony_Trims
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c20" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Balcony_Trims" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Balcony_Ornaments
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c21" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Balcony_Ornaments" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Balcony_Green_Wood
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Balcony_Green_Wood" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Glass_Dirty
+    Material "dielectric" "float eta" [ 1 ] "rgb tf" [ 0.2 0.2 0.2 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Glass_Dirty" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Plastic
+    Material "diffuse" "texture reflectance" [ "c22" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Plastic" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Grain_Metal
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Grain_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete_Yellow
+    Material "diffuse" "texture reflectance" [ "c23" ] "texture displacement" [ "c24" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete_Yellow" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c25" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete_Smooth
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c26" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete_Smooth" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Roofing_Shingle_Grey
+    Material "diffuse" "texture reflectance" [ "c27" ] "texture displacement" [ "c28" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Roofing_Shingle_Grey" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete_Plaster1_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c29" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete_Plaster1_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Roofing_Shingle_Green
+    Material "diffuse" "texture reflectance" [ "c30" ] "texture displacement" [ "c31" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Roofing_Shingle_Green" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Trim_Cornice
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c32" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Trim_Cornice" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Forge_Metal
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c33" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Forge_Metal" ] "texture alpha" [ "f34" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Curtains
+    Material "diffuse" "texture reflectance" [ "c35" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Curtains" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Metal_Pipe
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c36" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Metal_Pipe" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Wood_Polished
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Wood_Polished" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Doors
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Doors" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Brick_Large_Beige_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c37" ] "texture displacement" [ "c38" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Brick_Large_Beige_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Wood_Brown
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Wood_Brown" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Glass_Clean
+    Material "dielectric" "float eta" [ 1 ] "rgb tf" [ 0.2 0.2 0.2 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Glass_Clean" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Wood_Painted_Green
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Wood_Painted_Green" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete_Plaster
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete_Plaster" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Black_Metal
+    Material "diffuse" "texture reflectance" [ "c39" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Black_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Brick_Large_White
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.301511345 ] "texture displacement" [ "c40" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Brick_Large_White" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Building_Details
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Building_Details" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Wood_Painted_Cyan
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.196116135 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Wood_Painted_Cyan" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Brick_Small_Red
+    Material "diffuse" "texture reflectance" [ "c41" ] "texture displacement" [ "c42" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Brick_Small_Red" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Roofing_Metal_01
+    Material "diffuse" "texture reflectance" [ "c43" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Roofing_Metal_01" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Room_Interior
+    Material "diffuse" "texture reflectance" [ "c44" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Room_Interior" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Awning_Beams
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Awning_Beams" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Boulangerie
+    Material "diffuse" "texture reflectance" [ "c45" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Boulangerie" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Frosted_Glass
+    Material "conductor" "rgb reflectance" [ 0 1 0 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Frosted_Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Awning_Fabric_Cyan
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Awning_Fabric_Cyan" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Bronze_BLENDSHADER
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Bronze_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete_White
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c24" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete_White" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Awning_Fabric_Red
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Awning_Fabric_Red" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Book_Covers
+    Material "diffuse" "texture reflectance" [ "c46" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Book_Covers" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Concrete_Smooth_BLENDSHADER
+    Material "diffuse" "texture reflectance" [ "c47" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Concrete_Smooth_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Wood_Painted_Green_BLENDSHADER
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Wood_Painted_Green_BLENDSHADER" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Rollup_Door
+    Material "diffuse" "texture reflectance" [ "c48" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Rollup_Door" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MASTER_Details_Dark
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MASTER_Details_Dark" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Bux_Hedges46
+    Material "diffuse" "texture reflectance" [ "c49" ] "texture displacement" [ "c50" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Bux_Hedges46" ] "texture alpha" [ "f51" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Leaves
+    Material "diffuse" "texture reflectance" [ "c52" ] "texture displacement" [ "c53" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Leaves" ] "texture alpha" [ "f54" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Trunk
+    Material "diffuse" "texture reflectance" [ "c55" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Trunk" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Flowers
+    Material "diffuse" "texture reflectance" [ "c56" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Flowers" ] "texture alpha" [ "f57" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Paris_Flowers
+    Material "diffuse" "texture reflectance" [ "c58" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Paris_Flowers" ] "texture alpha" [ "f59" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Linde_Tree_Large_Trunk
+    Material "diffuse" "texture reflectance" [ "c60" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Linde_Tree_Large_Trunk" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Linde_Tree_Large_Orange_Leaves
+    Material "diffuse" "texture reflectance" [ "c61" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Linde_Tree_Large_Orange_Leaves" ] "texture alpha" [ "f62" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Linde_Tree_Large_Green_Leaves
+    Material "diffuse" "texture reflectance" [ "c63" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Linde_Tree_Large_Green_Leaves" ] "texture alpha" [ "f64" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Ivy_leaf_a
+    Material "diffuse" "texture reflectance" [ "c65" ] "texture displacement" [ "c66" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Ivy_leaf_a" ] "texture alpha" [ "f67" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Foliage_Ivy_branches
+    Material "diffuse" "texture reflectance" [ "c68" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Foliage_Ivy_branches" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Streetlight_Glass
+    Material "dielectric" "float eta" [ 1 ] "rgb tf" [ 0.3 0.3 0.3 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Streetlight_Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Streetlight_Metal
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Streetlight_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Streetlight_Chains
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Streetlight_Chains" ] "texture alpha" [ "f69" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_StringLights_01_White_Color
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.334730964 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_StringLights_01_White_Color" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Streetlight_Support_Bulb
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Streetlight_Support_Bulb" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_Streetpivot
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_Streetpivot" ]
+  AttributeEnd
+
+  AttributeBegin
+    # ElectricBox
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#ElectricBox" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Banner_Metal
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Banner_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Shopsign_Bakery
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c70" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Shopsign_Bakery" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Shopsign_Book_Store
+    AreaLightSource "diffuse" "string filename" [ "../models/bistro_textures/PropTextures/Street/Paris_ShopSign_01/Paris_ShopSign_bookshop_emt.png" ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Shopsign_Book_Store" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Shopsign_Pharmacy
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Shopsign_Pharmacy" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Shopsign_Ties_Shop
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Shopsign_Ties_Shop" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Spotlight_Main
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Spotlight_Main" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Spotlight_Emissive
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Spotlight_Emissive" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Spotlight_Glass
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Spotlight_Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_StreetSign_01
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c71" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_StreetSign_01" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_TrafficSign_A
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_TrafficSign_A" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MenuSign_01
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MenuSign_01" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MenuSign_02_Mesh
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.334730964 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MenuSign_02_Mesh" ]
+  AttributeEnd
+
+  AttributeBegin
+    # MenuSign_02_Glass
+    Material "dielectric" "float eta" [ 1.5 ] "rgb tf" [ 0.39 0.39 0.39 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#MenuSign_02_Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Trashcan
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Trashcan" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stringlights
+    Material "diffuse" "texture reflectance" [ "c72" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Stringlights" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_StringLights_01_Red_Color
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.341255193 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_StringLights_01_Red_Color" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_StringLights_01_Blue_Color
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.341255193 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_StringLights_01_Blue_Color" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_StringLights_01_Green_Color
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.334730964 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_StringLights_01_Green_Color" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_StringLights_01_Pink_Color
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.334730964 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_StringLights_01_Pink_Color" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_StringLights_01_Orange_Color
+    Material "conductor" "rgb reflectance" [ 0.8 0.8 0.8 ] "float roughness" [ 0.340868378 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_StringLights_01_Orange_Color" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bollards
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Bollards" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Vespa_Odometer_Glass
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Vespa_Odometer_Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Vespa_Headlight
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Vespa_Headlight" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Vespa
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Vespa" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Vespa_Odometer
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Vespa_Odometer" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Antenna_Metal
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Antenna_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Antenna_Plastic_Blue
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Antenna_Plastic_Blue" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Antenna_Plastic
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Antenna_Plastic" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Awnings_Fabric
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.208514414 ] "texture displacement" [ "c73" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Awnings_Fabric" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Awnings_Beams
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.40824829 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Awnings_Beams" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Awnings_Hotel_Fabric
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ] "texture displacement" [ "c74" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Awnings_Hotel_Fabric" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bistro_Sign_Main
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Bistro_Sign_Main" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bistro_Sign_Letters
+    Material "diffuse" "texture reflectance" [ "c75" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Bistro_Sign_Letters" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Plantpots
+    Material "diffuse" "texture reflectance" [ "c76" ] "texture displacement" [ "c77" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Plantpots" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sidewalkbarrier
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Sidewalkbarrier" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Concrete
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Concrete" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Plaster
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Plaster" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Concrete2
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Concrete2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Chimneys_Metal
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Chimneys_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Concrete_Striped
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.40824829 ] "texture displacement" [ "c78" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Concrete_Striped" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Lantern
+    Material "diffuse" "texture reflectance" [ "c79" ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Lantern" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_Chair_01
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_Chair_01" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_Table_Terrace
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.40824829 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_Table_Terrace" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Ashtray
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Ashtray" ]
+  AttributeEnd
+
+  AttributeBegin
+    # NapkinHolder
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#NapkinHolder" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_LiquorBottle_01_Glass_Wine
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_LiquorBottle_01_Glass_Wine" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_LiquorBottle_01_Caps
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_LiquorBottle_01_Caps" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Paris_LiquorBottle_01_Labels
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.140028008 ]
+    Shape "plymesh" "string filename" [ "../models/bistro_exterior.obj#Paris_LiquorBottle_01_Labels" ] "texture alpha" [ "f80" ]
+  AttributeEnd
+AttributeEnd

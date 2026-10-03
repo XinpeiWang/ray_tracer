@@ -1,8 +1,9 @@
 #pragma once
 // ---------------------------------------------------------------------------
-// mtl_parse.h -- Wavefront .mtl parser, shared between the CPU OBJ loader
-// (src/TheRestOfYourLife/mesh.h's load_obj_mtl()) and the GPU OBJ loader
-// (gpu/optix/scene_builder.cpp's load_obj_triangles_mtl_gpu()).
+// mtl_parse.h -- Wavefront .mtl parser, used by the CPU OBJ loader
+// (src/TheRestOfYourLife/mesh_mtl.h's load_obj_mtl()). It was shared with a GPU
+// OBJ loader (load_obj_triangles_mtl_gpu()) until the H1-H12 environment scenes
+// went pbrt-backed and that loader was deleted.
 //
 // Both loaders used to carry their own independently hand-ported copy of
 // this exact parsing logic (7 near-identical functions each, one per .mtl

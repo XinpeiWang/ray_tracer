@@ -317,6 +317,10 @@ inline LoadResult loadFile(const std::string &path,
 		return r;
 	}
 
+	// "file.obj#material" Shapes share one parsed copy of the OBJ for the length of
+	// this load (ply_mesh.h's ObjGroupCache); release it on every exit path.
+	struct ObjGroupCacheScope { ~ObjGroupCacheScope() { ply_mesh::clearObjGroupCache(); } } objGroupCacheScope;
+
 	const pbrt_flatten::MeshResolver meshes =
 		[&sceneDir](const std::string &want, std::vector<float> &positions,
 					std::vector<int> &indices, std::vector<float> &uvs,
