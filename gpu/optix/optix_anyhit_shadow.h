@@ -250,10 +250,7 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	}
 
 	// Transmissive materials let light through -- ignore them in shadow rays.
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission ||
+	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
@@ -286,10 +283,7 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	}
 
 	// Transmissive materials let light through -- ignore them in shadow rays
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission ||
+	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
@@ -317,10 +311,7 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 		return;
 	}
 
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission ||
+	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
@@ -351,10 +342,7 @@ extern "C" __global__ void __anyhit__shadow_disk() {
 		return;
 	}
 
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission ||
+	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
@@ -440,10 +428,7 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		return;
 	}
 
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission ||
+	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
@@ -513,10 +498,7 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 	// wax, marble - Subsurface is triangle-only in this backend, which is
 	// why only this triangle any-hit needs it, not the sphere one above)
 	// was wrongly reported fully occluded instead of passing through.
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission ||
+	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Subsurface ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();

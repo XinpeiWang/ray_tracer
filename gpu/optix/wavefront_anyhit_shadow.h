@@ -22,9 +22,11 @@
 //     showroom, sphere light only): floor and sphere-tops facing the light
 //     directly went black under --wavefront while the recursive path
 //     rendered them correctly lit.
-//   - Dielectric/RoughDielectric/ThinDielectric/DiffuseTransmission let
-//     light through unattenuated rather than blocking NEE outright (matches
-//     optix_anyhit_shadow.h's own comment).
+//   - DiffuseTransmission and Interface let light through unattenuated rather than
+//     blocking NEE outright. Dielectric/RoughDielectric/ThinDielectric do NOT: like
+//     every pbrt-v4 surface with a material they block shadow rays (VolPathIntegrator::
+//     SampleLd, integrators.cpp:1335), and the glass is lit through its specular BSDF
+//     path instead (matches optix_anyhit_shadow.h).
 //   - Medium/CloudMedium/RgbGridMedium/GridMedium/DielectricMedium (sphere/
 //     cylinder only - the pbrt loader never assigns these to quad/bilinear-
 //     patch/triangle/disk) let light through too, but ATTENUATED: real
@@ -57,10 +59,8 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 		optixIgnoreIntersection();
 		return;
 	}
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+	if (mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -281,10 +281,8 @@ extern "C" __global__ void __anyhit__wf_shadow_quad() {
 		optixIgnoreIntersection();
 		return;
 	}
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+	if (mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -309,10 +307,8 @@ extern "C" __global__ void __anyhit__wf_shadow_bilinear_patch() {
 		optixIgnoreIntersection();
 		return;
 	}
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+	if (mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -362,10 +358,8 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 		optixIgnoreIntersection();
 		return;
 	}
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+	if (mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -396,10 +390,8 @@ extern "C" __global__ void __anyhit__wf_shadow_disk() {
 		optixIgnoreIntersection();
 		return;
 	}
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+	if (mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -426,10 +418,8 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 		optixIgnoreIntersection();
 		return;
 	}
-	if (mat.type == MaterialType::Dielectric ||
-		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+	if (mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
