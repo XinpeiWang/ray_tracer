@@ -116,23 +116,3 @@ inline hittable_list build_cornell_coated_diffuse() {
 	return world;
 }
 
-// build_cornell_thin_glass() (former scene 14 / B6), build_cornell_coated_
-// conductor() (former scene 15 / B7), and build_cornell_wax_slab() (former
-// scene 16 / B8) all deleted - B6/B7/B8 migrated to pbrt-backed, see
-// pbrt_scenes/cornell-thin-glass.pbrt/cornell-coated-conductor.pbrt/
-// cornell-wax-slab.pbrt and scene_registry_data.h's own entries. None of
-// these three had any other consumer (unlike build_cornell_box/
-// build_cornell_conductor/build_cornell_coated_diffuse/build_cornell_
-// rough_glass, which stay).
-
-// build_cornell_crystal() deleted - B9 migrated to pbrt-backed, see
-// pbrt_scenes/cornell-crystal.pbrt and scene_registry_data.h's own entry
-// (that file's own header comment documents the new, non-standard Material
-// "normalizedfresnel" kind added to the pbrt loader for this migration).
-// No other consumer.
-
-// build_prism_dispersion()/build_prism_dispersion_geometry()/build_prism_dispersion_punct()
-// deleted - B23 migrated to pbrt-backed earlier and I2 (their last consumer, a CPU-only
-// Education scene) has now too: both read pbrt_scenes/prism-dispersion.pbrt. No other
-// consumer.
-

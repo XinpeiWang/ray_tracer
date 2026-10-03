@@ -30,36 +30,6 @@
 #include "../shared/portal_image_infinite_light.h"
 #include <memory>
 
-// build_principled_showcase() deleted - B10 migrated to pbrt-backed, see
-// pbrt_scenes/principled-showcase.pbrt and scene_registry_data.h's own
-// entry (that file's own header comment documents the new, non-standard
-// Material "principled" kind added to the pbrt loader for this migration).
-// No other consumer (gpu/metal/metal_poc_scenes_b.mm's own scene is an
-// independent hand-ported Metal implementation that never called this
-// function).
-
-// build_hair_fibers() deleted - B11 migrated to pbrt-backed, see
-// pbrt_scenes/hair-fibers-scene.pbrt and scene_registry_data.h's own entry.
-// No other consumer.
-
-// build_normal_mapped_cornell() deleted - B12 migrated to pbrt-backed, see
-// pbrt_scenes/normal-mapped-cornell.pbrt and scene_registry_data.h's own
-// entry (that file's own header comment has the full derivation, including
-// the two baked-PNG approximations for its procedural bump/normal sources).
-// No other consumer (gpu/metal/metal_poc_scenes_b.mm's own scene is an
-// independent hand-ported Metal implementation that never called this
-// function).
-
-// build_subsurface_slab() deleted - B13 migrated to pbrt-backed, see
-// pbrt_scenes/subsurface-slab.pbrt and scene_registry_data.h's own entry.
-// No other consumer.
-
-// build_depth_of_field() deleted - D1 migrated to pbrt-backed, see
-// pbrt_scenes/depth-of-field-spheres.pbrt and scene_registry_data.h's own
-// entry. No other consumer (gpu/metal/metal_poc_scenes_d.mm's own
-// buildDepthOfField() is an independent hand-ported Metal implementation
-// that never called this function).
-
 //==============================================================================================
 // Scene 23: Bilinear Patch
 // Cornell box containing a curved bilinear patch saddle surface demonstrating
@@ -152,13 +122,6 @@ private:
 	aabb bbox;
 };
 
-// build_bilinear_patch_scene() deleted - F1 migrated to pbrt-backed, see
-// pbrt_scenes/bilinear-patch-scene.pbrt and scene_registry_data.h's own
-// entry. No other consumer. bilinear_patch_hittable itself (above) is NOT
-// deleted - the pbrt loader's own pbrt_cpu_builder.h builds real
-// Shape "bilinearmesh" geometry with it directly, and unit tests exercise
-// it too.
-
 // ============================================================================
 // Scene 24: HDRI Sky
 // Open scene lit by a procedural gradient sky_light (pbrt-v4 ImageInfiniteLight).
@@ -229,14 +192,6 @@ inline hittable_list cornell_walls_no_light() {
 	return world;
 }
 
-// build_spotlight_cornell()/build_spotlight_punct() (former scene 25 / C2)
-// and build_distant_light_cornell()/build_distant_light_punct() (former
-// scene 26 / C3) all deleted - migrated to pbrt-backed, see pbrt_scenes/
-// cornell-spotlight.pbrt/cornell-distant-light.pbrt and scene_registry_data.h's
-// own entries. Neither had any other consumer (unlike build_point_light_cornell()/
-// build_point_light_punct() just below, which tests/integration/
-// sppm_first_slice_test.cpp calls directly, so C4 keeps its CPU functions).
-
 // ============================================================================
 // Scene 27: Point Light Cornell
 // Cornell box lit by a single overhead point light with 1/r^2 falloff
@@ -257,58 +212,13 @@ inline std::shared_ptr<punctual_light_list> build_point_light_punct() {
 	return pl;
 }
 
-// build_goniometric_light_scene()/build_goniometric_punct() (former scene 28
-// / C5) and build_projection_light_scene()/build_projection_punct() (former
-// scene 29 / C6) both deleted - migrated to pbrt-backed, see pbrt_scenes/
-// cornell-goniometric.pbrt/cornell-projection.pbrt and scene_registry_data.h's
-// own entries. Neither had any other consumer.
-
-// build_homogeneous_medium_scene() deleted - E1 migrated to pbrt-backed,
-// see pbrt_scenes/homogeneous-medium.pbrt and scene_registry_data.h's own
-// entry. No other consumer.
-
-// build_cloud_medium_scene() deleted - E2 migrated to pbrt-backed, see
-// pbrt_scenes/cloud-medium-scene.pbrt and scene_registry_data.h's own
-// entry. No other consumer.
-
-// build_dielectric_medium_scene() deleted - E3 migrated to pbrt-backed, see
-// pbrt_scenes/dielectric-medium-showcase.pbrt and scene_registry_data.h's
-// own entry. No other consumer.
-
-// build_rgb_grid_medium_scene() deleted - E4 migrated to pbrt-backed, see
-// pbrt_scenes/rgb-grid-nebula.pbrt and scene_registry_data.h's own entry
-// (the pbrt file's own header comment has the full derivation of its baked
-// "rgb sigma_s" array from generate_nebula_channel()). No other consumer
-// (gpu/metal/metal_poc_scenes_e.mm's own scene is an independent
-// hand-ported Metal implementation that never called this function).
-
 // build_ortho_camera_scene()/build_ortho_sky() deleted - D2 migrated to
 // pbrt-backed, see pbrt_scenes/ortho-camera-scene.pbrt and
 // scene_registry_data.h's own entry. Neither had any other consumer.
 
-// build_spherical_camera_scene()/build_spherical_sky() deleted - D3
-// migrated to pbrt-backed, see pbrt_scenes/spherical-camera-scene.pbrt and
-// scene_registry_data.h's own entry. Neither had any other consumer.
-
-// measured_material/build_measured_brdf_scene() (former B14) deleted - B14
-// migrated to pbrt-backed, see pbrt_scenes/measured-brdf-showroom.pbrt and
-// scene_registry_data.h's own entry for the full derivation (a real
-// fidelity improvement: measured_material's own scatter() never read its
-// MeasuredBRDFData member at all, byte-for-byte a mislabeled Lambertian -
-// the pbrt-backed version uses this project's REAL, working, importance-
-// sampled Measured BRDF support instead). No other consumer.
-
 // build_portal_light_scene()/build_portal_sky() deleted - C7 migrated to
 // pbrt-backed, see pbrt_scenes/portal-window-room.pbrt and
 // scene_registry_data.h's own entry. Neither had any other consumer.
-
-// build_realistic_camera_scene() deleted - D4 migrated to pbrt-backed, see
-// pbrt_scenes/realistic-camera-scene.pbrt and scene_registry_data.h's own
-// entry. No other consumer.
-
-// build_triangle_mesh_scene() deleted - F2 migrated to pbrt-backed, see
-// pbrt_scenes/triangle-mesh-scene.pbrt and scene_registry_data.h's own
-// entry. No other consumer.
 
 //==============================================================================================
 // Scene F4: Curve Fibers
