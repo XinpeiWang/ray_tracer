@@ -519,6 +519,18 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     fprintf(stderr, "Samples/pixel: %u, max depth: %u\n", samplesPerPixel, maxDepth);
 
     Uniforms uniforms{};
+    {
+        // Build the reconstruction-filter sampling table once, host-side, from the
+        // same PixelFilterDispatch/FilterSampler CPU uses, and embed its raw bytes
+        // (see Uniforms::filterTable's layout comment).
+        const PixelFilterDispatch filterDispatch(filterKind, filterRadius, filterB, filterC,
+                                                 filterSigma, filterTau);
+        const FilterSampler<float, 16> filterSampler(filterDispatch);
+        static_assert(sizeof(filterSampler) == sizeof(uniforms.filterTable),
+                      "FilterSampler<float,16> layout no longer matches Uniforms::filterTable");
+        std::memcpy(static_cast<void*>(uniforms.filterTable),
+                    static_cast<const void*>(&filterSampler), sizeof(filterSampler));
+    }
     uniforms.cameraPos = PackedFloat3{0.0f, 0.0f, 3.2f};
     float3 forward = simd::normalize(float3{0, 0, -1});
     uniforms.cameraForward = PackedFloat3{forward.x, forward.y, forward.z};

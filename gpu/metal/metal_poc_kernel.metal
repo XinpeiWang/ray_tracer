@@ -156,7 +156,21 @@ kernel void primaryRayKernel(
         // not a separate feature: without the jitter every sample would
         // retrace the exact same primary ray.
         float2 jitter = float2(randFloat(rngState), randFloat(rngState));
-        float2 pixelNDC = (float2(tid) + jitter) / float2(uniforms.width, uniforms.height);
+        // Pixel position: the real importance-sampled reconstruction filter
+        // (pbrt-v4 FilterSampler, same table as CPU - see sampleFilterOffset()
+        // / Uniforms::filterTable) when one was uploaded, which can land
+        // outside this pixel for any filter wider than 1px (the default
+        // Gaussian r=1.5); otherwise the old uniform in-pixel jitter. The
+        // jitter draws are the SAME two randFloat()s either way, so the RNG
+        // stream is unchanged. Previously this was ALWAYS the in-pixel jitter,
+        // i.e. an implicit box filter, narrower than CPU's Gaussian - the
+        // CPU-vs-GPU gap the CUDA backends had until the same fix landed there.
+        float2 filterOffset;
+        float2 pixelPos = float2(tid) + jitter;
+        if (sampleFilterOffset(uniforms, jitter.x, jitter.y, filterOffset)) {
+            pixelPos = float2(tid) + 0.5 + filterOffset;
+        }
+        float2 pixelNDC = pixelPos / float2(uniforms.width, uniforms.height);
         float2 screen = pixelNDC * 2.0 - 1.0;
         screen.y = -screen.y;
         screen.x *= uniforms.aspect;

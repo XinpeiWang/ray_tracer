@@ -1318,6 +1318,16 @@ void MetalPocApp::loadPbrtCamera(const pbrt_flatten::FlatScene& scene, const Pbr
     pbrtCameraUp = trueUp;
     pbrtTanHalfFov = tanf(0.5f * (float)cam.vfov * (float)M_PI / 180.0f);
     havePbrtCamera = true;
+    // The scene's own PixelFilter directive (pbrt-v4 default gaussian r=1.5 when
+    // absent - FlatScene::filter's own defaults) - feeds Uniforms::filterTable in
+    // compileShaderAndDispatch(), so the Metal backend importance-samples the same
+    // reconstruction filter CPU and the CUDA backends do.
+    filterKind = scene.filter.kind;
+    filterRadius = scene.filter.radius;
+    filterB = scene.filter.B;
+    filterC = scene.filter.C;
+    filterSigma = scene.filter.sigma;
+    filterTau = scene.filter.tau;
     // Saved for applyCameraOverride() - see that method's own comment.
     pbrtCameraLookAtWorld = lookat;
     pbrtCameraUpRaw = up;

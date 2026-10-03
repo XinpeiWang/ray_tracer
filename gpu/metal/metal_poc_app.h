@@ -42,6 +42,7 @@
 // on its own host side to precompute a GPU-portable lens/exit-pupil
 // table - see Uniforms::cameraRealistic's own comment.
 #include "../../src/shared/realistic_camera.h"
+#include "../../src/shared/filter_sampler.h"  // FilterSampler<float,16> -> Uniforms::filterTable
 
 #include "metal_poc_gpu_types.h"
 #include "metal_poc_scene_helpers.h"
@@ -349,6 +350,13 @@ struct MetalPocApp {
     id<MTLBuffer> suzanneVertexBuffer, suzanneNormalBuffer, suzanneMaterialBuffer;
     id<MTLBuffer> instanceTransformBuffer;
     id<MTLBuffer> lensElementBuffer, exitPupilBoundsBuffer;
+    // Pixel reconstruction filter for Uniforms::filterTable (see that field's
+    // comment): pbrt-v4's own default (Gaussian, radius 1.5, sigma 0.5) - the
+    // same default CPU's camera::filter_* use - unless a loaded .pbrt scene's
+    // PixelFilter directive overrides it (loadPbrtCamera()).
+    std::string filterKind = "gaussian";
+    double filterRadius = 1.5, filterB = 1.0 / 3.0, filterC = 1.0 / 3.0,
+           filterSigma = 0.5, filterTau = 3.0;
     id<MTLAccelerationStructure> primAS, sphereAS, suzanneAS, instAS;
     id<MTLTexture> goniometricTexture = nil;
 

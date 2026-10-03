@@ -1,3 +1,50 @@
+// Importance-sample a pixel reconstruction filter offset (pbrt-v4 FilterSampler,
+// MSL port of src/shared/filter_sampler.h's FilterSampler<T,N>::sample() for
+// N = 16, reading the table embedded in Uniforms::filterTable - see that
+// field's comment for the layout). `u1`/`u2` are uniform [0,1) draws; the
+// returned offset is in pixels, relative to the pixel CENTRE, and lands outside
+// [-0.5,0.5] for any filter wider than one pixel (reaching the neighbouring
+// pixels' film area, exactly like CPU's get_ray() offset). The sample weight
+// f/pdf is the table's constant integral for a non-negative filter, so the
+// caller's plain uniform average over samples is already the right
+// reconstruction. Returns false (outOffset untouched) when no table was
+// uploaded (radius 0), so the caller keeps the legacy in-pixel jitter.
+inline bool sampleFilterOffset(constant Uniforms& uniforms, float u1, float u2,
+                               thread float2& outOffset) {
+    const float radius = uniforms.filterTable[0];
+    if (radius <= 0.0) return false;
+    const int N = 16;
+    const int kCondBase = 513, kMargBase = 769;
+
+    // u2 -> row via the marginal CDF (first index with cdf >= u2).
+    int lo = 0, hi = N - 1;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (uniforms.filterTable[kMargBase + mid] < u2) lo = mid + 1; else hi = mid;
+    }
+    const int row = lo;
+    // u1 -> column via this row's conditional CDF.
+    lo = 0; hi = N - 1;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (uniforms.filterTable[kCondBase + row * N + mid] < u1) lo = mid + 1; else hi = mid;
+    }
+    const int col = lo;
+
+    // Intra-cell interpolation (pbrt-v4 PiecewiseConstant1D::Sample).
+    const float cdfColPrev = (col > 0) ? uniforms.filterTable[kCondBase + row * N + col - 1] : 0.0;
+    const float cdfColCurr = uniforms.filterTable[kCondBase + row * N + col];
+    const float du = (cdfColCurr > cdfColPrev) ? (u1 - cdfColPrev) / (cdfColCurr - cdfColPrev) : 0.5;
+    const float cdfRowPrev = (row > 0) ? uniforms.filterTable[kMargBase + row - 1] : 0.0;
+    const float cdfRowCurr = uniforms.filterTable[kMargBase + row];
+    const float dv = (cdfRowCurr > cdfRowPrev) ? (u2 - cdfRowPrev) / (cdfRowCurr - cdfRowPrev) : 0.5;
+
+    const float cell = 2.0 * radius / float(N);
+    outOffset = float2(-radius + (float(col) + du) * cell,
+                       -radius + (float(row) + dv) * cell);
+    return true;
+}
+
 inline bool sampleRealisticCameraRay(constant Uniforms& uniforms,
                                       device const LensElement* lensElements,
                                       device const ExitPupilBounds* exitPupilBounds,

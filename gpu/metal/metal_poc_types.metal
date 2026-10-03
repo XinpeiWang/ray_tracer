@@ -300,6 +300,18 @@ struct Uniforms {
     // mirrored comment for the full "why". Appended at the very end,
     // same reasoning as that comment.
     uint rowOffset;
+    // Pixel reconstruction filter importance-sampling table: the raw bytes of a
+    // host-built FilterSampler<float,16> (src/shared/filter_sampler.h - the SAME
+    // class CPU's camera.h uses, pbrt-v4's tabulated filter sampling), laid out as
+    //   [0]       radius (pixels)       [1..256]    f[row][col]   (unused here)
+    //   [257..512] pdf[row][col] (unused) [513..768] conditional CDF over columns, [row][col]
+    //   [769..784] marginal CDF over rows [785]       integral (unused)
+    // 786 floats. All-zero (radius 0) means "no table": primaryRayKernel falls
+    // back to the old uniform in-pixel jitter. Appended at the very end, same
+    // reasoning as rowOffset above - one new field's placement for the C++/MSL
+    // mirrors to agree on. Embedded in Uniforms rather than bound as its own
+    // buffer because the kernel already uses all 31 buffer slots (0..30).
+    float filterTable[786];
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
