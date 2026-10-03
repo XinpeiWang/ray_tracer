@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include "../shared/srgb_decode.h"
 
 
 class rtw_image {
@@ -174,10 +175,20 @@ class rtw_image {
         // constructs its rtw_image the old way (relying on the default
         // parameter) still gets stb_image's genuine default rather than
         // silently inheriting this call's override.
-        stbi_ldr_to_hdr_gamma(gamma_);
+        // The default gamma (2.2) stands for sRGB, the encoding pbrt-v4 assumes for an 8-bit image: decode
+        // it with the exact transfer function (srgb_decode.h) rather than stb's pow(c, 2.2), which is
+        // about 2x off in the darks. stb is asked for the raw c/255 (gamma 1) and the table does the rest;
+        // an HDR source is already linear and is left alone, and any other gamma keeps stb's power law.
+        const bool exact_srgb = (gamma_ == kDefaultGamma) && !stbi_is_hdr(filename.c_str());
+        stbi_ldr_to_hdr_gamma(exact_srgb ? 1.0f : gamma_);
         fdata = stbi_loadf(filename.c_str(), &image_width, &image_height, &n, bytes_per_pixel);
         stbi_ldr_to_hdr_gamma(kDefaultGamma);
         if (fdata == nullptr) return false;
+        if (exact_srgb) {
+            const std::size_t count = static_cast<std::size_t>(image_width) * image_height * bytes_per_pixel;
+            for (std::size_t i = 0; i < count; ++i)
+                fdata[i] = srgb_decode::byteToLinear(static_cast<unsigned char>(fdata[i] * 255.0f + 0.5f));
+        }
 
         bytes_per_scanline = image_width * bytes_per_pixel;
         convert_to_bytes();

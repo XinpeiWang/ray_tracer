@@ -401,8 +401,7 @@ __device__ __forceinline__ float3 nee_light_texture_emission(const MaterialData&
 			break;
 		}
 		const unsigned char* px = params.texturePixels + dtex.pixelOffset + (tj * dtex.width + ti) * 3;
-		constexpr float kCS = 1.0f / 255.0f;
-		return make_float3(px[0]*kCS*lm.emissionScale, px[1]*kCS*lm.emissionScale, px[2]*kCS*lm.emissionScale);
+		return texel_rgb(px, dtex.srgb) * lm.emissionScale;
 	}
 	return make_float3(0.0f, 1.0f, 1.0f);
 }
@@ -531,8 +530,7 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 					emission = make_float3(0.0f, 0.0f, 0.0f);
 				} else {
 					const unsigned char* px = params.texturePixels + dtex.pixelOffset + (tj * dtex.width + ti) * 3;
-					constexpr float kCS = 1.0f / 255.0f;
-					emission = make_float3(px[0]*kCS*lm.emissionScale, px[1]*kCS*lm.emissionScale, px[2]*kCS*lm.emissionScale);
+					emission = texel_rgb(px, dtex.srgb) * lm.emissionScale;
 				}
 			} else {
 				emission = make_float3(0.0f, 1.0f, 1.0f);

@@ -343,7 +343,7 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 			uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
 			uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
 		}
-		if (!wf_passes_alpha_cutout(mat.alphaMaskTexIdx, uv_u, uv_v)) {
+		if (!wf_passes_alpha_cutout(mat.alphaMaskTexIdx, uv_u, uv_v, optixGetWorldRayOrigin(), optixGetWorldRayDirection())) {
 			optixIgnoreIntersection();
 			return;
 		}

@@ -50,6 +50,7 @@
 // directly (unlike gpu_cloud_density below, which is a hand-duplicated,
 // wavefront-module-local reimplementation of the non-portable parts).
 #include "../../src/shared/noise.h"
+#include "../../src/shared/ray_hash.h"   // pbrt-v4 stochastic alpha test hash - see wf_passes_alpha_cutout()
 
 // Wavefront launch params live in constant memory.
 extern "C" { __constant__ WavefrontLaunchParams wf_params; }
@@ -82,38 +83,40 @@ __device__ __forceinline__ unsigned int wf_prim_base(int instBase) {
 // deliberately narrower than the full sample_texture() - matches its
 // Image-kind branch exactly. Returns true (keep the hit) for
 // alphaMaskTexIdx < 0, i.e. the overwhelming majority of triangles.
-__device__ __forceinline__ bool wf_passes_alpha_cutout(int alphaMaskTexIdx, float u, float v) {
+__device__ __forceinline__ bool wf_passes_alpha_cutout(int alphaMaskTexIdx, float u, float v,
+													   const float3& rayOrigin, const float3& rayDir) {
 	if (alphaMaskTexIdx < 0) return true;
 	const TextureData& tex = wf_params.textures[alphaMaskTexIdx];
 	if (tex.width <= 0 || tex.height <= 0) return true;
-	// Wrap-mode-aware, matching wavefront_kernels.cu's own sampleImage lambda
-	// - currently a no-op in practice (alpha-mask textures are built via
-	// getOrBuildPbrtAlphaMaskTexture(), pbrt_gpu_builder.h, which never sets
-	// a non-default wrap), kept in sync so this copy doesn't silently
-	// diverge - including from the RECURSIVE backend's own equivalent
-	// passes_alpha_cutout() (optix_device_helpers.h), which already inherits
-	// wrap-awareness for free by calling the shared sample_texture() - if
-	// wrap support is ever extended to alpha-cutout textures.
+	// Bilinear with the texture's wrap mode - the same lookup as the recursive backend's sample_texture()
+	// and the CPU's bilinear_wrap_texture (this copy used to take the nearest texel, which made the three
+	// backends cut foliage edges differently). Red channel only: the builder stores the mask replicated.
 	const float uw = fminf(fmaxf(u, -1024.0f), 1024.0f);
 	const float vw = fminf(fmaxf(1.0f - v, -1024.0f), 1024.0f);
-	int i = static_cast<int>(floor((double)uw * tex.width));
-	int j = static_cast<int>(floor((double)vw * tex.height));
-	switch (tex.wrapMode) {
-	case GpuWrapMode::Repeat:
-		i = ((i % tex.width) + tex.width) % tex.width;
-		j = ((j % tex.height) + tex.height) % tex.height;
-		break;
-	case GpuWrapMode::Black:
-		if (i < 0 || i >= tex.width || j < 0 || j >= tex.height) return false;  // alpha 0 -> cut out
-		break;
-	case GpuWrapMode::Clamp:
-		i = min(max(i, 0), tex.width - 1);
-		j = min(max(j, 0), tex.height - 1);
-		break;
-	}
-	const unsigned char* px = wf_params.texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
-	constexpr float kAlphaCutoutThreshold = 0.5f;
-	return (px[0] * (1.0f / 255.0f)) >= kAlphaCutoutThreshold;
+	const double x = (double)uw * tex.width - 0.5;
+	const double y = (double)vw * tex.height - 0.5;
+	const int x0 = static_cast<int>(floor(x)), y0 = static_cast<int>(floor(y));
+	const float fx = (float)(x - x0), fy = (float)(y - y0);
+	auto texel = [&](int xi, int yi) -> float {
+		switch (tex.wrapMode) {
+		case GpuWrapMode::Repeat:
+			xi = ((xi % tex.width) + tex.width) % tex.width;
+			yi = ((yi % tex.height) + tex.height) % tex.height;
+			break;
+		case GpuWrapMode::Black:
+			if (xi < 0 || xi >= tex.width || yi < 0 || yi >= tex.height) return 0.0f;
+			break;
+		case GpuWrapMode::Clamp:
+			xi = min(max(xi, 0), tex.width - 1);
+			yi = min(max(yi, 0), tex.height - 1);
+			break;
+		}
+		return wf_params.texturePixels[tex.pixelOffset + (yi * tex.width + xi) * 3] * (1.0f / 255.0f);
+	};
+	const float a = (1.0f - fy) * ((1.0f - fx) * texel(x0, y0) + fx * texel(x0 + 1, y0)) +
+	                       fy  * ((1.0f - fx) * texel(x0, y0 + 1) + fx * texel(x0 + 1, y0 + 1));
+	// pbrt-v4's stochastic alpha test (cpu/primitive.cpp:57-71); see ray_hash.h.
+	return ray_hash::alphaPasses(a, rayOrigin.x, rayOrigin.y, rayOrigin.z, rayDir.x, rayDir.y, rayDir.z);
 }
 
 // Wavefront-native duplicate of optix_device_helpers.h's mix_branch_hash01()/

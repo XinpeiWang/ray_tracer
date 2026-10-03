@@ -8,6 +8,7 @@
 #include "optix_types.h"
 #include "optix_math_helpers.h"
 #include "../../src/shared/fresnel.h"    // Shared exact Fresnel (CPU+GPU)
+#include "../../src/shared/ray_hash.h"  // pbrt-v4 stochastic alpha test hash (CPU+GPU)
 #include "../../src/shared/microfacet.h" // GGX TrowbridgeReitz (CPU+GPU)
 #include "../../src/shared/bxdfs.h"      // HairBxDF<T> (CPU+GPU) - see MaterialType::Hair
 #include "../../src/shared/noise.h"      // Perlin turbulence (CPU+GPU) - see sample_texture()
@@ -515,8 +516,7 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 				break;
 			}
 			const unsigned char* px = params.texturePixels + t.pixelOffset + (yi * t.width + xi) * 3;
-			constexpr float kColorScale = 1.0f / 255.0f;
-			return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+			return texel_rgb(px, t.srgb);
 		};
 
 		const float3 c00 = wrapTexel(x0, y0);
@@ -637,15 +637,18 @@ __device__ __forceinline__ float3 material_emission(
 // any-hit call site (radiance or shadow) should then call
 // optixIgnoreIntersection() so the ray continues past this point as if the
 // geometry weren't there. A no-op (always true) for alphaMaskTexIdx < 0,
-// i.e. the overwhelming majority of materials. Samples the mask's red
-// channel only against a fixed threshold - real alpha-cutout masks are
-// strongly bimodal (opaque/transparent), so a fixed threshold is the
-// standard, simple choice, matching CPU's own kAlphaCutoutThreshold
-// (triangle.h).
+// i.e. the overwhelming majority of materials. pbrt-v4's stochastic alpha test
+// (cpu/primitive.cpp:57-71): a hit is kept with probability `alpha`, decided by a
+// hash of the ray itself (ray_hash.h), so shadow rays and radiance rays make
+// independent, state-free choices and a partial-alpha material is partly
+// transparent instead of snapping to a threshold. Must be called from an any-hit
+// program: it reads the current ray.
 __device__ __forceinline__ bool passes_alpha_cutout(int alphaMaskTexIdx, float u, float v, const float3& p) {
 	if (alphaMaskTexIdx < 0) return true;
-	constexpr float kAlphaCutoutThreshold = 0.5f;
-	return sample_texture(alphaMaskTexIdx, u, v, p).x >= kAlphaCutoutThreshold;
+	const float a = sample_texture(alphaMaskTexIdx, u, v, p).x;
+	const float3 o = optixGetWorldRayOrigin();
+	const float3 d = optixGetWorldRayDirection();
+	return ray_hash::alphaPasses(a, o.x, o.y, o.z, d.x, d.y, d.z);
 }
 
 // pbrt-v4 NormalizedFresnelBxDF (MaterialType::NormalizedFresnel's own

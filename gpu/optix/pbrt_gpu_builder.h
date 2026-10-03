@@ -35,6 +35,8 @@
 #include <mutex>
 #include <string>
 #include <utility>
+
+#include "../../src/shared/srgb_decode.h"   // alphaMaskFromRgb8() - see getOrBuildPbrtAlphaMaskTexture()
 #include <vector>
 
 #include "scene_builder.h"

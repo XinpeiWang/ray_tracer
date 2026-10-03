@@ -19,6 +19,8 @@
 #include "pbrt_cpu_builder.h"
 #include "pbrt_gpu_builder.h"
 #include "../../src/shared/pbrt_load.h"
+#include "../../src/shared/ray_hash.h"
+#include "../../src/shared/srgb_decode.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -183,3 +185,57 @@ TEST_F(AlphaCutoutTempTree, AShapeWithNoAlphaParameterIsUnaffected) {
 	EXPECT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
 							 interval(0.001, infinity), rec));
 }
+
+// ---- pbrt-v4's stochastic alpha test and sRGB-decoded masks ---------------------------------
+
+TEST(SrgbDecodeTest, MatchesTheExactTransferFunctionNotAPowerOfTwoPointTwo) {
+	// pbrt-v4's SRGB8ToLinear. 2.2 is close in the midtones (128: 0.2159 vs 0.2195) but about 2x off
+	// in the darks, which is what darkened shadows and dark brick before.
+	EXPECT_NEAR(srgb_decode::byteToLinear(0), 0.0f, 1e-7f);
+	EXPECT_NEAR(srgb_decode::byteToLinear(255), 1.0f, 1e-6f);
+	EXPECT_NEAR(srgb_decode::byteToLinear(20), 0.00699f, 1e-4f);        // pow(20/255, 2.2) would be 0.0037
+	EXPECT_NEAR(srgb_decode::byteToLinear(128), 0.2159f, 1e-3f);
+	EXPECT_NEAR(srgb_decode::byteToLinear(10), 10.0f / 255.0f / 12.92f, 1e-6f);   // the linear toe
+}
+
+TEST(SrgbDecodeTest, AnAlphaMaskIsTheDecodedMeanOfItsChannels) {
+	const unsigned char px[3] = {153, 153, 153};     // authored 0.6 -> pbrt reads 0.32
+	const std::vector<unsigned char> m = srgb_decode::alphaMaskFromRgb8(px, 1);
+	ASSERT_EQ(m.size(), 3u);
+	EXPECT_NEAR(m[0] / 255.0f, 0.3185f, 1.5f / 255.0f);
+	EXPECT_EQ(m[0], m[1]);
+	EXPECT_EQ(m[1], m[2]);
+	const unsigned char mixed[3] = {255, 0, 0};      // mean of (1, 0, 0)
+	EXPECT_NEAR(srgb_decode::alphaMaskFromRgb8(mixed, 1)[0] / 255.0f, 1.0f / 3.0f, 1.5f / 255.0f);
+}
+
+TEST(RayHashTest, AlphaOneAlwaysPassesZeroNeverAndHalfAboutHalf) {
+	int half = 0;
+	const int n = 20000;
+	for (int i = 0; i < n; ++i) {
+		const float x = 0.37f * i, y = 1.0f + 0.011f * i, z = -3.0f;
+		EXPECT_TRUE(ray_hash::alphaPasses(1.0f, x, y, z, 0, 0, 1));
+		EXPECT_FALSE(ray_hash::alphaPasses(0.0f, x, y, z, 0, 0, 1));
+		if (ray_hash::alphaPasses(0.5f, x, y, z, 0.1f, 0.2f, 0.97f)) ++half;
+	}
+	EXPECT_NEAR(static_cast<double>(half) / n, 0.5, 0.03);
+}
+
+TEST_F(AlphaCutoutTempTree, AHalfAlphaMaskKeepsAboutHalfTheRaysInsteadOfAllOrNone) {
+	// Byte 188 sRGB-decodes to ~0.50. A fixed 0.5 threshold made this all-or-nothing; pbrt keeps ~half.
+	write("scene.pbrt", quadSceneWithAlpha("mask"));
+	write("mask.bmp", solidBmp1x1(188, 188, 188));
+	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(loaded.ok) << loaded.error;
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(loaded.scene);
+	int hits = 0;
+	const int n = 4000;
+	for (int i = 0; i < n; ++i) {
+		hit_record rec;
+		const double x = 0.05 + 0.9 * ((i * 37) % 997) / 997.0, y = 0.05 + 0.9 * ((i * 91) % 991) / 991.0;
+		if (b.world->hit(ray(point3(x, y, -5), vec3(0, 0, 1)), interval(0.001, infinity), rec)) ++hits;
+	}
+	EXPECT_GT(hits, n * 0.40);
+	EXPECT_LT(hits, n * 0.60);
+}
+
