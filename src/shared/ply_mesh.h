@@ -41,6 +41,7 @@
 
 #include <cstdint>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -611,13 +612,41 @@ inline bool parseObjGroups(const std::string &data, bool splitByMaterial,
 				m.uvs.push_back(cv.t >= 0 ? uv[cv.t * 2 + 1] : 0.0f);
 			}
 			if (needN) {
-				// A corner with no normal (mixed file) gets +Z rather than garbage.
+				// A corner with no normal (mixed file) is filled in below from the faces that
+				// use it; a placeholder here keeps the array indexable.
 				m.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 0] : 0.0f);
 				m.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 1] : 0.0f);
-				m.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 2] : 1.0f);
+				m.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 2] : 0.0f);
 			}
 		}
 		m.indices = std::move(g.indices);
+		if (needN) {
+			// Area-weighted face normal for every corner that had none (the cross product's
+			// length is the weight), so a mixed file shades those faces by their own geometry
+			// instead of facing +Z in object space.
+			bool anyMissing = false;
+			for (const Corner &cv : g.corners) if (cv.n < 0) { anyMissing = true; break; }
+			if (anyMissing) {
+				std::vector<float> acc(m.normals.size(), 0.0f);
+				for (std::size_t f = 0; f + 2 < m.indices.size(); f += 3) {
+					const int ia = m.indices[f], ib = m.indices[f + 1], ic = m.indices[f + 2];
+					const float *pa = &m.positions[ia * 3], *pb = &m.positions[ib * 3], *pc = &m.positions[ic * 3];
+					const float e1[3] = {pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]};
+					const float e2[3] = {pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]};
+					const float fn[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
+										 e1[0] * e2[1] - e1[1] * e2[0]};
+					for (int idx : {ia, ib, ic})
+						if (g.corners[static_cast<std::size_t>(idx)].n < 0)
+							for (int k = 0; k < 3; ++k) acc[idx * 3 + k] += fn[k];
+				}
+				for (std::size_t v = 0; v < g.corners.size(); ++v) {
+					if (g.corners[v].n >= 0) continue;
+					float *n = &acc[v * 3];
+					const float len = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+					for (int k = 0; k < 3; ++k) m.normals[v * 3 + k] = len > 0.0f ? n[k] / len : (k == 2 ? 1.0f : 0.0f);
+				}
+			}
+		}
 		g.corner.clear();
 		g.corners.clear();
 		out.push_back(std::move(og));

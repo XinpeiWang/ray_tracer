@@ -218,6 +218,53 @@ class image_texture : public texture {
 };
 
 
+// Bilinear, wrap-aware 8-bit RGB lookup - pbrt-v4's Image::Bilerp at mip level 0 (util/image.cpp), texel
+// centres at (i+0.5)/w, with the wrap mode applied per texel (Repeat is pbrt's imagemap default). Used for
+// the pbrt loader's alpha-cutout masks and bump/normal displacement images, which image_texture got wrong
+// in two ways: nearest-neighbour sampling (blocky bump gradients, jagged cutout edges) and UVs clamped to
+// [0,1] (tiled foliage UVs all collapsed onto the image border). Takes raw bytes so a linear mask is read
+// exactly (byte/255, no gamma), unlike the rtw_image float path.
+class bilinear_wrap_texture : public texture {
+  public:
+    bilinear_wrap_texture(int w, int h, std::vector<unsigned char> rgb,
+                          MipWrapMode wrap = MipWrapMode::Repeat)
+        : w_(w), h_(h), rgb_(std::move(rgb)), wrap_(wrap) {}
+
+    color value(double u, double v, const point3& /*p*/) const override {
+        if (w_ <= 0 || h_ <= 0 || rgb_.size() < static_cast<std::size_t>(w_) * h_ * 3) return color(0,1,1);
+        const double s = u * w_ - 0.5;
+        const double t = (1.0 - v) * h_ - 0.5;       // image row 0 is the top
+        const double fx = std::floor(s), fy = std::floor(t);
+        const double dx = s - fx, dy = t - fy;
+        const long x0 = static_cast<long>(fx), y0 = static_cast<long>(fy);
+        const color c00 = texel(x0, y0),     c10 = texel(x0 + 1, y0);
+        const color c01 = texel(x0, y0 + 1), c11 = texel(x0 + 1, y0 + 1);
+        return (1 - dx) * (1 - dy) * c00 + dx * (1 - dy) * c10 + (1 - dx) * dy * c01 + dx * dy * c11;
+    }
+
+  private:
+    color texel(long x, long y) const {
+        auto wrapOne = [&](long i, long n, bool& black) -> long {
+            switch (wrap_) {
+                case MipWrapMode::Repeat: { long m = i % n; return m < 0 ? m + n : m; }
+                case MipWrapMode::Black:  if (i < 0 || i >= n) { black = true; return 0; } return i;
+                default:                  return i < 0 ? 0 : (i >= n ? n - 1 : i);   // Clamp
+            }
+        };
+        bool black = false;
+        const long xi = wrapOne(x, w_, black), yi = wrapOne(y, h_, black);
+        if (black) return color(0, 0, 0);
+        const unsigned char* p = &rgb_[(static_cast<std::size_t>(yi) * w_ + xi) * 3];
+        const double k = 1.0 / 255.0;
+        return color(p[0] * k, p[1] * k, p[2] * k);
+    }
+
+    int w_, h_;
+    std::vector<unsigned char> rgb_;
+    MipWrapMode wrap_;
+};
+
+
 // HDR-preserving image texture -- reads raw float pixels so values > 1 are retained.
 // Use this for environment maps / sky lights loaded from .hdr files.
 // Mirrors pbrt-v4: image data is kept in linear floating-point throughout.

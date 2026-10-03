@@ -449,6 +449,30 @@ TEST(ObjTest, TextureCoordinatesBecomePerVertexByDuplicatingSharedPositions) {
 	EXPECT_FLOAT_EQ(r.mesh.positions[dup * 3 + 1], 1.0f);
 }
 
+TEST(ObjTest, ACornerWithNoNormalGetsItsFaceNormalNotPlusZ) {
+	// Mixed file: face 1 carries normals (all +X, deliberately not +Z), face 2 has none and lies in the
+	// XY plane, so its fallback must be +Z from the geometry; a placeholder of "+Z in object space"
+	// would be indistinguishable, hence the second face is wound to face -Z.
+	const LoadResult r = parseObj(R"(v 0 0 0
+v 1 0 0
+v 0 1 0
+v 0 0 1
+v 1 0 1
+v 0 1 1
+vn 1 0 0
+f 1//1 2//1 3//1
+f 4 6 5
+)");
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.mesh.normals.size(), r.mesh.positions.size());
+	// corners 3..5 belong to the normal-less face (cross of (0,1,0)x(1,0,0) = -Z)
+	EXPECT_NEAR(r.mesh.normals[3 * 3 + 2], -1.0f, 1e-6f);
+	EXPECT_NEAR(r.mesh.normals[4 * 3 + 2], -1.0f, 1e-6f);
+	EXPECT_NEAR(r.mesh.normals[5 * 3 + 2], -1.0f, 1e-6f);
+	// the authored face keeps its normal
+	EXPECT_FLOAT_EQ(r.mesh.normals[0], 1.0f);
+}
+
 TEST(ObjTest, NegativeIndicesCountBackFromTheEnd) {
 	const LoadResult r = parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nf -3 -2 -1\n");
 	ASSERT_TRUE(r.ok) << r.error;

@@ -117,3 +117,15 @@ inline __host__ __device__ float lerp(float a, float b, float t) {
 inline __host__ __device__ float3 lerp(const float3& a, const float3& b, float t) {
 	return a + (b - a) * t;
 }
+
+// Barycentric-interpolated vertex normal, falling back to the facet's geometric normal when the
+// interpolation cancels to (near) zero - opposite vertex normals at a mid-edge point, or a
+// degenerate authored normal. pbrt-v4 does the same (Triangle::InteractionFromIntersection,
+// shapes.h:947); a bare normalize() here would turn that into a NaN shading normal.
+inline __host__ __device__ float3 interpolate_shading_normal(
+		const float3& n0, const float3& n1, const float3& n2,
+		float b0, float b1, float b2, const float3& geometric_normal) {
+	const float3 n = b0 * n0 + b1 * n1 + b2 * n2;
+	const float len2 = n.x * n.x + n.y * n.y + n.z * n.z;
+	return len2 > 1e-20f ? n * (1.0f / sqrtf(len2)) : geometric_normal;
+}

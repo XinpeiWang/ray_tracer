@@ -554,6 +554,16 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 			 "they are ignored and it will render flat-shaded");
 	}
 
+	// pbrt-v4 negates every authored vertex normal when ReverseOrientation is set
+	// (TriangleMesh's constructor, util/mesh.cpp:49-56, after the inverse-transpose
+	// transform) - NOT the reverseOrientation-XOR-swapsHandedness rule the geometric
+	// normal follows (that one is the winding swap below; a mirroring transform
+	// already flips authored normals through transformNormal above). The negated
+	// normal is what decides which side faces out and, for an emissive mesh, which
+	// side emits.
+	if (shape.reverseOrientation)
+		for (double &x : worldN) x = -x;
+
 	// meshAnimated only: the SAME vertices/normals, but left in
 	// OBJECT space (no CTM applied) - what animated_transform_
 	// instance.h's real per-ray motion-blur wrapper actually needs
@@ -565,7 +575,11 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 	std::vector<double> objP, objN;
 	if (meshAnimated) {
 		objP = P;
-		if (!worldN.empty()) objN = N;
+		if (!worldN.empty()) {
+			objN = N;
+			if (shape.reverseOrientation)
+				for (double &x : objN) x = -x;
+		}
 	}
 
 	// UV: real per-vertex "point2 uv" when given (same "refused
@@ -593,31 +607,15 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 		warn("a mesh supplied fewer uv pairs than vertices; they are ignored");
 	}
 
-	// pbrt-v4 ReverseOrientation: a shape's normal ends up flipped when
-	// reverseOrientation XOR transformSwapsHandedness (a "Scale -1 1 1"-
-	// style mirroring transform already flips it once on its own, so
-	// ReverseOrientation on top of one cancels back out - matching
-	// pbrt-v4's own rule exactly, not just negating reverseOrientation
-	// alone). Achieved here purely as flatten-time data manipulation, no
-	// backend changes needed: swapping the b/c vertex (and uv, to keep
-	// per-vertex correspondence) order flips the sign of every backend's
-	// own cross(e1,e2)-derived geometric normal. Applied unconditionally
-	// (not gated on whether the mesh has authored "normal N") - real
-	// pbrt-v4 (confirmed against its own Triangle::InteractionFromIntersection/
-	// SurfaceInteraction::SetShadingGeometry) does NOT flip an authored
-	// per-vertex normal at all; it flips only the geometric normal, then
-	// face-forwards that geometric normal to agree with the (untouched)
-	// authored one - so ReverseOrientation has no effect on shading for a
-	// mesh that has real "normal N" data, only on one without it. Every
-	// consumer of this codebase's own Triangle struct already matches
-	// that: hasNormals ? interpolated-N : geom_normal - a mesh WITH
-	// authored normals never reads geom_normal for shading/orientation at
-	// all (see CPU triangle.h's identical hit()/sample_area() branches),
-	// so leaving the b/c swap unconditional and NOT separately negating
-	// worldN is correct and safe: the swap still flips geom_normal's
-	// sign for the (only relevant) no-N case, and is a pure no-op for a
-	// hasNormals mesh's actual rendered result, since both barycentric
-	// position and barycentric-N interpolation are order-invariant.
+	// pbrt-v4 ReverseOrientation: the GEOMETRIC normal ends up flipped when
+	// reverseOrientation XOR transformSwapsHandedness (a "Scale -1 1 1"-style
+	// mirroring transform already flips it once on its own, so ReverseOrientation
+	// on top of one cancels back out). Achieved here as flatten-time data
+	// manipulation: swapping the b/c vertex (and uv, to keep per-vertex
+	// correspondence) order flips the sign of every backend's cross(e1,e2)-derived
+	// geometric normal. AUTHORED vertex normals are flipped separately and by
+	// reverseOrientation alone, above (worldN/objN) - both pieces together are
+	// what pbrt-v4 does, and an authored normal decides the facing side.
 	const bool flip = shape.reverseOrientation ^ matrixSwapsHandedness(xform);
 
 	// meshAnimated: accumulated here instead of pushed straight into
@@ -629,6 +627,7 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 	std::vector<Triangle> animTris;
 
 	bool reportedRange = false;
+	std::size_t degenerate = 0;
 	for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
 		const int a = indices[i], b0 = indices[i + 1], c0 = indices[i + 2];
 		const int b = flip ? c0 : b0;
@@ -644,6 +643,21 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 			}
 			continue;
 		}
+		// pbrt-v4 rejects zero-area triangles at intersection (shapes.cpp:172); dropping
+		// them here also keeps an emissive sliver from carrying a NaN geometric normal
+		// into light sampling. Repeated indices are the common cause.
+		if (a == b || b == c || a == c) { ++degenerate; continue; }
+		{
+			const double *pa = &world[static_cast<std::size_t>(a) * 3];
+			const double *pb = &world[static_cast<std::size_t>(b) * 3];
+			const double *pc = &world[static_cast<std::size_t>(c) * 3];
+			const double e1[3] = {pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]};
+			const double e2[3] = {pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]};
+			const double cx = e1[1] * e2[2] - e1[2] * e2[1];
+			const double cy = e1[2] * e2[0] - e1[0] * e2[2];
+			const double cz = e1[0] * e2[1] - e1[1] * e2[0];
+			if (cx * cx + cy * cy + cz * cz == 0.0) { ++degenerate; continue; }
+		}
 		Triangle t;
 		for (int k = 0; k < 3; ++k) {
 			t.v[0 + k] = world[static_cast<std::size_t>(a) * 3 + k];
@@ -656,9 +670,6 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 				t.n[3 + k] = worldN[static_cast<std::size_t>(b) * 3 + k];
 				t.n[6 + k] = worldN[static_cast<std::size_t>(c) * 3 + k];
 			}
-			// No flip-driven negation here - see this branch's own
-			// comment above for why an authored normal is never
-			// flipped by ReverseOrientation in real pbrt-v4.
 			t.hasNormals = true;
 		}
 		if (!worldUV.empty()) {
@@ -712,6 +723,8 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 			animTris.push_back(tObj);
 		}
 	}
+	if (degenerate > 0)
+		warn(std::to_string(degenerate) + " degenerate (zero-area or repeated-vertex) triangle(s) in a mesh were dropped");
 	if (meshAnimated && !animTris.empty()) {
 		AnimatedTriangleMesh atm;
 		atm.triangles = std::move(animTris);

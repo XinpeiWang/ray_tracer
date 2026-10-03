@@ -121,6 +121,34 @@ TEST(FlattenTest, LoopsubdivDoesNotThreadUV) {
 	EXPECT_FALSE(s.triangles[0].hasUVs);
 }
 
+TEST(FlattenTest, ReverseOrientationNegatesAuthoredNormals) {
+	// pbrt-v4's TriangleMesh negates every vertex N under ReverseOrientation (util/mesh.cpp:49-56);
+	// the authored normal decides which side faces out and, for an emitter, which side emits.
+	const std::string mesh = R"(Shape "trianglemesh" "integer indices" [ 0 1 2 ]
+  "point3 P" [ 0 0 0  1 0 0  0 1 0 ]
+  "normal N" [ 0 0 1  0 0 1  0 0 1 ]
+)";
+	const FlatScene plain = flattenSource(mesh);
+	const FlatScene reversed = flattenSource("ReverseOrientation\n" + mesh);
+	ASSERT_EQ(plain.triangles.size(), 1u);
+	ASSERT_EQ(reversed.triangles.size(), 1u);
+	ASSERT_TRUE(plain.triangles[0].hasNormals);
+	ASSERT_TRUE(reversed.triangles[0].hasNormals);
+	for (int v = 0; v < 3; ++v) {
+		EXPECT_DOUBLE_EQ(plain.triangles[0].n[v * 3 + 2], 1.0);
+		EXPECT_DOUBLE_EQ(reversed.triangles[0].n[v * 3 + 2], -1.0);
+	}
+}
+
+TEST(FlattenTest, DegenerateTrianglesAreDroppedWithAWarning) {
+	// Face 0 repeats a vertex, face 1 is collinear (zero area), face 2 is real.
+	const FlatScene s = flattenSource(R"(Shape "trianglemesh" "integer indices" [ 0 1 1  0 1 3  0 1 2 ]
+  "point3 P" [ 0 0 0  1 0 0  0 1 0  2 0 0 ]
+)");
+	EXPECT_EQ(s.triangles.size(), 1u);
+	EXPECT_TRUE(warnedAbout(s, "degenerate"));
+}
+
 TEST(FlattenTest, TranslationIsBakedIntoEveryVertex) {
 	const FlatScene s = flattenSource(std::string("Translate 10 20 30\n") + kQuadMesh);
 	ASSERT_EQ(s.triangles.size(), 2u);
