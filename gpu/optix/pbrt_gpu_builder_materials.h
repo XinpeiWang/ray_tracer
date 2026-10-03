@@ -244,6 +244,7 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	// why - a link-order constraint, not a design choice).
 	struct DecodedImage {
 		bool found = false;
+		bool srgb = false;   // pixels are the file's own sRGB bytes (decoded per texel on the GPU), not 8-bit linear
 		int width = 0, height = 0;
 		std::vector<unsigned char> pixels;
 	};
@@ -265,13 +266,29 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 			static std::mutex gammaMutex;
 			int width = 0, height = 0, channels = 0;
 			float* fdata = nullptr;
-			{
+			// The default gamma stands for sRGB: keep the file's own 8-bit bytes and let the GPU
+			// decode each texel exactly (srgb8_to_linear, optix_types.h) as pbrt-v4 does. The
+			// float decode below would pow(c, 2.2) and requantize to 8-bit LINEAR, which crushes
+			// dark texels to zero and bands the darks. invert and HDR sources keep that path.
+			bool done = false;
+			if (gamma == kGpuImagemapDefaultGamma && !invert && !stbi_is_hdr(resolvedPath.c_str())) {
+				unsigned char* raw = stbi_load(resolvedPath.c_str(), &width, &height, &channels, 3);
+				if (raw) {
+					entry.width = width;
+					entry.height = height;
+					entry.pixels.assign(raw, raw + static_cast<std::size_t>(width) * height * 3);
+					entry.srgb = true;
+					stbi_image_free(raw);
+					done = true;
+				}
+			}
+			if (!done) {
 				std::lock_guard<std::mutex> gammaLock(gammaMutex);
 				stbi_ldr_to_hdr_gamma(gamma);
 				fdata = stbi_loadf(resolvedPath.c_str(), &width, &height, &channels, 3);
 				stbi_ldr_to_hdr_gamma(kGpuImagemapDefaultGamma);
 			}
-			entry.found = (fdata != nullptr);
+			entry.found = done || (fdata != nullptr);
 			if (fdata) {
 				entry.width = width;
 				entry.height = height;
@@ -320,6 +337,7 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	tex.width = decoded->width;
 	tex.height = decoded->height;
 	tex.wrapMode = wrap;
+	tex.srgb = decoded->srgb;
 	out.texturePixels.insert(out.texturePixels.end(), decoded->pixels.begin(), decoded->pixels.end());
 
 	const int idx = static_cast<int>(out.textures.size());
@@ -352,7 +370,11 @@ inline float3 averageTextureColor(int textureIdx, const SceneData& out) {
 	std::size_t sampled = 0;
 	for (std::size_t p = 0; p < pixelCount; p += stride) {
 		const unsigned char* px = base + p * 3;
-		sumR += px[0]; sumG += px[1]; sumB += px[2];
+		if (tex.srgb) {   // the bytes are sRGB-encoded: average the decoded values
+			sumR += 255.0f * srgb8_to_linear(px[0]); sumG += 255.0f * srgb8_to_linear(px[1]); sumB += 255.0f * srgb8_to_linear(px[2]);
+		} else {
+			sumR += px[0]; sumG += px[1]; sumB += px[2];
+		}
 		++sampled;
 	}
 	const double norm = 1.0 / (255.0 * static_cast<double>(sampled ? sampled : 1));
@@ -397,8 +419,11 @@ inline int getOrBuildPbrtAlphaMaskTexture(const std::string& resolvedPath, Scene
 	// collapsed tiled foliage UVs onto the image border.
 	tex.wrapMode = GpuWrapMode::Repeat;
 	const std::size_t total = static_cast<std::size_t>(width) * height * 3;
+	// pbrt-v4 reads the mask as the mean of the channels, sRGB-decoded by default (textures.cpp:436,
+	// mipmap.cpp:396-405); stored decoded and replicated, so the GPU's red-channel lookup sees it.
+	const std::vector<unsigned char> mask = srgb_decode::alphaMaskFromRgb8(bdata, static_cast<std::size_t>(width) * height);
 	out.texturePixels.resize(out.texturePixels.size() + total);
-	std::memcpy(out.texturePixels.data() + tex.pixelOffset, bdata, total);
+	std::memcpy(out.texturePixels.data() + tex.pixelOffset, mask.data(), total);
 	stbi_image_free(bdata);
 
 	const int idx = static_cast<int>(out.textures.size());

@@ -1009,6 +1009,22 @@ enum class TextureKind : int {
 // buffer, index in device code" convention as every other array in this
 // codebase (see LaunchParams below). Matches src/TheRestOfYourLife/
 // rtw_stb_image.h's own byte layout exactly (3 bytes/pixel, row-major).
+// Exact sRGB -> linear for one 8-bit texel channel (pbrt-v4's SRGB8ToLinear, util/color.h). An Image
+// TextureData with `srgb` set keeps the file's own sRGB bytes and every lookup decodes them before
+// filtering, as pbrt does; the previous 8-bit LINEAR copy (decoded with pow 2.2, then requantized)
+// crushed dark texels to zero and banded the darks.
+inline __host__ __device__ float srgb8_to_linear(unsigned char b) {
+	const float c = static_cast<float>(b) * (1.0f / 255.0f);
+	return c <= 0.04045f ? c * (1.0f / 12.92f) : powf((c + 0.055f) * (1.0f / 1.055f), 2.4f);
+}
+
+// One texel's RGB as linear floats, decoding the sRGB bytes when the texture asks for it.
+inline __host__ __device__ float3 texel_rgb(const unsigned char* px, bool srgb) {
+	if (srgb) return make_float3(srgb8_to_linear(px[0]), srgb8_to_linear(px[1]), srgb8_to_linear(px[2]));
+	const float k = 1.0f / 255.0f;
+	return make_float3(px[0] * k, px[1] * k, px[2] * k);
+}
+
 struct TextureData {
 	TextureKind kind;
 	int pixelOffset;   // Image: byte offset into texturePixels. Unused otherwise.
@@ -1022,6 +1038,10 @@ struct TextureData {
 	// stays at the zero-init Clamp default regardless of what the scene's
 	// own imagemap "wrap" declares.
 	GpuWrapMode wrapMode = GpuWrapMode::Clamp;
+	// Image only: texturePixels holds the file's own sRGB-encoded bytes, decoded per texel at lookup
+	// (texel_rgb above). False (the zero-init default) for every linear texture: normal maps, alpha
+	// masks, inverted images, HDR-derived data, native scenes.
+	bool srgb = false;
 	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused otherwise.
 	float3 color1;     // Checker/UVChecker: "even"/tex1 cell color. Mix: tex1. Unused otherwise.
 	float3 color2;     // Checker/UVChecker: "odd"/tex2 cell color. Mix: tex2. Unused otherwise.

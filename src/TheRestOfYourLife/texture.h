@@ -733,8 +733,11 @@ class mipmap_texture : public texture {
         const double scale = 1.0 / 255.0;
         for (int j = 0; j < h; ++j)
             for (int i = 0; i < w; ++i) {
+                // The decoded float pixel when the image has one (every file-loaded image does): the
+                // 8-bit linear copy quantized dark texels to zero after the gamma decode.
+                const float* f = img.float_pixel_data(i, j);
                 const unsigned char* p = img.pixel_data(i, j);
-                color c(p[0]*scale, p[1]*scale, p[2]*scale);
+                color c = f ? color(f[0], f[1], f[2]) : color(p[0]*scale, p[1]*scale, p[2]*scale);
                 // Texture "imagemap" "bool invert" (pbrt-v4) - 1-v per
                 // channel; clamped at 0 even though bdata is already [0,1]
                 // here (defensive, matches the general invert-a-linear-

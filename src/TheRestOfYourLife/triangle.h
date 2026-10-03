@@ -16,6 +16,7 @@
 #include "hittable.h"
 #include "texture.h"
 #include "../shared/sampling.h"
+#include "../shared/ray_hash.h"
 #include <array>
 #include <memory>
 
@@ -182,15 +183,20 @@ class triangle : public hittable {
 		// a triangle has at most one intersection with a given ray, so
 		// "reject" is simply "this triangle isn't a hit for this ray" - the
 		// BVH naturally continues to whatever's behind it, no re-search-
-		// along-this-triangle complexity. Real alpha-cutout masks are
-		// strongly bimodal (opaque/transparent), so a fixed threshold is
-		// the standard, simple choice - matches the GPU path's identical
-		// kAlphaCutoutThreshold (optix_device_helpers.h's
-		// passes_alpha_cutout(), wavefront_programs.cu's
-		// wf_passes_alpha_cutout()). No-op for the overwhelming majority of
-		// triangles, whose material has no alpha mask.
-		if (alpha_mask && alpha_mask->value(rec.u, rec.v, rec.p).x() < kAlphaCutoutThreshold)
-			return false;
+		// along-this-triangle complexity. pbrt-v4's stochastic alpha test
+		// (cpu/primitive.cpp:57-71): keep the hit with probability `alpha`,
+		// decided by a hash of the ray (ray_hash.h), identical on both GPU
+		// backends (passes_alpha_cutout(), wf_passes_alpha_cutout()). No-op
+		// for the overwhelming majority of triangles, whose material has no
+		// alpha mask.
+		if (alpha_mask) {
+			const float a = static_cast<float>(alpha_mask->value(rec.u, rec.v, rec.p).x());
+			const point3 o = r.origin();
+			const vec3 d = r.direction();
+			if (!ray_hash::alphaPasses(a, static_cast<float>(o.x()), static_cast<float>(o.y()), static_cast<float>(o.z()),
+									   static_cast<float>(d.x()), static_cast<float>(d.y()), static_cast<float>(d.z())))
+				return false;
+		}
 
 		// dpdu/dpdv: standard 2x2 UV-edge Jacobian solve (pbrt-v4's own
 		// technique) so both surface tangents fall out of one linear solve,
@@ -331,8 +337,6 @@ class triangle : public hittable {
 	std::shared_ptr<material> get_material() const { return mat; }
 
   private:
-	static constexpr double kAlphaCutoutThreshold = 0.5;
-
 	std::shared_ptr<triangle_mesh_data> mesh;
 	int tri_idx;
 	std::shared_ptr<material> mat;

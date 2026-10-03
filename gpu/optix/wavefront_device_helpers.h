@@ -689,8 +689,7 @@ __device__ __forceinline__ float3 wf_sample_texture(
 				break;
 			}
 			const unsigned char* px = texturePixels + t.pixelOffset + (yi * t.width + xi) * 3;
-			constexpr float kColorScale = 1.0f / 255.0f;
-			return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+			return texel_rgb(px, t.srgb);
 		};
 
 		const float3 c00 = wrapTexel(x0, y0);

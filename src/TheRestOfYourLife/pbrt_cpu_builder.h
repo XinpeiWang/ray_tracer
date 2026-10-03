@@ -36,6 +36,7 @@
 #include "material.h"
 #include "mesh_mtl.h"        // is_grayscale_image() - see the displacement-map bump-vs-normal dispatch
 #include "principled_material.h"
+#include "../shared/srgb_decode.h"
 #include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
 #include "scenes_advanced.h"   // bilinear_patch_hittable
 #include "sphere_clipped_hittable.h"
@@ -1196,9 +1197,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				unsigned char *bdata = stbi_load(fn.c_str(), &w, &h, &channels, 3);
 				if (bdata) {
 					// Bilinear + Repeat, like pbrt-v4's alpha lookup (primitive.cpp:57-71 reads
-					// the texture at mip level 0 with the default wrap); raw bytes, so the mask is
-					// read linear. 3 bytes/pixel instead of the 12 the float copy needed.
-					std::vector<unsigned char> bytes(bdata, bdata + static_cast<std::size_t>(w) * h * 3);
+					// the texture at mip level 0 with the default wrap). pbrt reads a float
+					// imagemap from an 8-bit image as the mean of its channels, sRGB-decoded by
+					// default (textures.cpp:436, mipmap.cpp:396-405), so a mid-grey mask of byte
+					// 153 is 0.32, not 0.6. 3 bytes/pixel instead of the 12 the float copy needed.
+					std::vector<unsigned char> bytes =
+						srgb_decode::alphaMaskFromRgb8(bdata, static_cast<std::size_t>(w) * h);
 					stbi_image_free(bdata);
 					mask = std::make_shared<bilinear_wrap_texture>(w, h, std::move(bytes), MipWrapMode::Repeat);
 				}
