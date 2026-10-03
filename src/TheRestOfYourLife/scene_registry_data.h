@@ -19,43 +19,18 @@
 // beyond these came from a .pbrt file found on disk at startup.
 inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
     static const std::vector<SceneDescriptor> registry = {
-        // A1 migrated to pbrt-backed (this project's GPU scene-construction-
-        // duplication elimination, pilot batch) - see pbrt_scenes/
-        // cornell-box-native.pbrt's own header comment. legacy_id 169 (past
-        // every real case in gpu/optix/scene_builder.cpp's switch, same
-        // convention A6's own migration used, next after A6's 168) since 0
-        // no longer has a switch case of its own to reuse. CameraMode::
-        // UserControlled explicitly passed (see build_curated_pbrt_scene_
-        // descriptor()'s own `mode` parameter comment) - the Cornell-box camera
-        // was UserControlled, and wire_pbrt_backed_scene()'s own default
-        // (Fixed) would otherwise silently disable --cam_x/y/z and the
-        // GUI's camera controls for this scene.
+        // CameraMode::UserControlled is passed explicitly: the Cornell-box camera is user-controlled, and the default
+        // (Fixed) would silently disable --cam_x/y/z and the GUI's camera controls for this scene.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A1", 169, SceneNames::CornellBox, SceneCategories::Basics,
             "Classic Cornell box with glass sphere and aluminum box",
             "Medium", "cornell-box-native.pbrt", CameraMode::UserControlled),
-        // A2 migrated to pbrt-backed - see pbrt_scenes/bouncing-spheres.pbrt
-        // (legacy_id 1 kept, the book's own "scene 1"). The grid's layout is
-        // GPU's own deterministic std::mt19937(42) sequence, not CPU's
-        // unseeded one - see that file's own header comment for why (CPU's
-        // own layout was never reproducible to begin with). Real per-sphere
-        // motion blur (the "bounce") carries over unchanged: GPU's
-        // sceneHasMotion_ auto-detects any uploaded SphereData whose
-        // center1 != center (optix_renderer_scene.cpp), which the generic
-        // pbrt GPU builder already populates correctly for an
-        // ActiveTransform-animated Shape "sphere" - not scene-id-specific,
-        // so migration doesn't disturb it.
+        // A2's grid layout is a deterministic std::mt19937(42) sequence (see pbrt_scenes/bouncing-spheres.pbrt's
+        // header for why); the per-sphere motion blur comes from ActiveTransform on each sphere.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A2", 1, SceneNames::BouncingSpheres, SceneCategories::Basics,
             "Random spheres with checker ground (In One Weekend final)",
             "Slow", "bouncing-spheres.pbrt"),
-        // A3 migrated to pbrt-backed - see pbrt_scenes/checkered-spheres.pbrt.
-        // legacy_id 185 (next after D8's 184). First scene to use this
-        // loader's newly-added real pbrt-v4 "checkerboard" "integer
-        // dimension" [3] support (see that .pbrt file's own header comment)
-        // - a genuine fix, not an approximation: A3's own checker_texture is
-        // now expressible in pbrt exactly. build_checkered_spheres() has no
-        // other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A3", 185, SceneNames::CheckeredSpheres, SceneCategories::Basics,
             "Two spheres with procedural checker texture",
@@ -65,48 +40,14 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Globe with earth texture mapping (requires earthmap.jpg)",
             "Fast", "earth-globe.pbrt", CameraMode::Fixed,
             /*requires_files=*/true),
-        // A5/A7 PERMANENTLY stay native - the native noise_texture class
-        // (src/TheRestOfYourLife/texture.h) computes a book-specific
-        // grayscale formula, 0.5*(1+sin(scale*p.z + 10*Turbulence(p,
-        // octaves=7))) (the classic "Ray Tracing: The Next Week" marble
-        // recipe) - pbrt-v4 itself never implements this exact formula.
-        // This loader's own real pbrt-v4 noise textures (marble_texture/
-        // wrinkled_texture/windy_texture/fbm_texture, texture.h) share the
-        // identical underlying pbrt-v4-exact noise basis (perlin_noise<T>,
-        // src/shared/noise.h) but are structurally different compositions
-        // of it: marble_texture uses p.y (not p.z) and FBm (signed octave
-        // sum, not Turbulence's abs-value sum) inside the sine, and always
-        // outputs a COLORED 9-knot Bezier-spline-mapped result, never the
-        // native class's flat grayscale; wrinkled_texture has the right
-        // inner Turbulence function but applies no sin() wrap at all. No
-        // parameter choice on any of the four bridges this gap - pbrt-v4
-        // has no generic "wrap this texture in a scene-specified sin()"
-        // composition primitive, so expressing the native formula from a
-        // .pbrt file would need an invented, non-standard texture type,
-        // defeating the point of migrating to real pbrt-v4 syntax. Both
-        // GPU switch cases/native builders stay.
-        // A5 migrated to pbrt-backed - see pbrt_scenes/perlin-spheres.pbrt (legacy_id 4 kept).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A5", 4, SceneNames::PerlinSpheres, SceneCategories::Basics,
             "Spheres with Perlin noise marble texture",
             "Fast", "perlin-spheres.pbrt", CameraMode::Fixed),
-        // A6 migrated to pbrt-backed (this project's GPU scene-construction-
-        // duplication elimination, pilot batch) - see pbrt_scenes/
-        // colored-quads.pbrt's own header comment. legacy_id 168 (past every
-        // real case in gpu/optix/scene_builder.cpp's switch, same 100+
-        // convention every other curated pbrt scene below uses) since 5 no
-        // longer has a switch case of its own to reuse.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A6", 168, SceneNames::ColoredQuads, SceneCategories::Basics,
             "Five colored quad primitives",
             "Fast", "colored-quads.pbrt"),
-        // A7 PERMANENTLY stays native - same noise_texture gap as A5's own
-        // comment just above. Despite the SimpleLight name/id (inherited
-        // from the book chapter, not its actual content), A7's own
-        // description ("Perlin spheres with emissive light sources") and
-        // its build_simple_light() builder confirm it uses the identical
-        // noise_texture(4) formula on its ground/center spheres.
-        // A7 migrated to pbrt-backed - see pbrt_scenes/simple-light.pbrt (legacy_id 6 kept).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A7", 6, SceneNames::SimpleLight, SceneCategories::Basics,
             "Perlin spheres with emissive light sources",
@@ -115,41 +56,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A8", 191, SceneNames::CornellSmoke, SceneCategories::Basics,
             "Cornell box with volumetric fog",
             "Slow", "cornell-smoke.pbrt", CameraMode::UserControlled),
-        // A9 migrated to pbrt-backed - see pbrt_scenes/final-scene.pbrt
-        // (legacy_id 8 kept, the book's own "scene 8"). The 400 ground boxes
-        // and 1000-sphere cluster reuse GPU's own deterministic
-        // std::mt19937(8) layout (CPU's own layout was never reproducible -
-        // same reasoning as A2's own migration). One deliberate
-        // approximation: the noise-textured sphere uses pbrt's "fbm" texture
-        // in place of native's own unmapped sin+turbulence noise_texture
-        // formula - see that file's own header comment for why this one
-        // substitution is acceptable here but wasn't for B9/B10/B12/B23/B24
-        // (each deferred separately, still native, pending real pbrt support
-        // for their own specific unmapped materials).
+        // A9's noise-textured sphere uses pbrt's "fbm" texture in place of the book's sin+turbulence formula
+        // (see pbrt_scenes/final-scene.pbrt's header).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A9", 8, SceneNames::FinalScene, SceneCategories::Basics,
             "Complex scene from The Next Week",
             "Very Slow", "final-scene.pbrt"),
-        // B1/B2 PERMANENTLY stay native - rough_metal has no pbrt-authorable
-        // equivalent, confirmed at the BxDF-formula level (src/shared/
-        // bxdfs_conductor.h): rough_metal::sample_local() weights purely by
-        // the GGX G/G1 shadow-masking ratio times a flat, direction-
-        // independent RGB albedo (no Fresnel model at all), while pbrt-v4's
-        // real Material "conductor" (ConductorBxDF) weights by FrComplex(wi,
-        // wm, eta, k) - a genuine complex-IOR Fresnel that is NEVER angle-
-        // independent for any physically valid (k>0) conductor. No (eta, k)
-        // choice reproduces a constant-angle albedo, so this is a real,
-        // structural mismatch, not a missing parameter - same conclusion
-        // this project already reached and skipped B2 for specifically, in
-        // commits aa57e0d2 and 19d8bd01 ("rough_metal has no pbrt-
-        // authorable equivalent - confirmed by checking both pbrt builders
-        // never construct it"). B1 was re-investigated independently (not
-        // named in those two commits) and uses the identical rough_metal
-        // class, so the identical verdict applies. Both GPU switch cases/
-        // native builders stay - deleting them would be a real feature
-        // loss (GGX-microfacet-with-flat-tint has no equivalent GPU
-        // material slot to fall back to either).
-        // B1 migrated to pbrt-backed - see pbrt_scenes/rough-metal-spheres.pbrt (legacy_id 9 kept).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B1", 9, SceneNames::RoughMetalSpheres, SceneCategories::Materials,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
@@ -158,25 +70,14 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B2", 10, SceneNames::CornellRoughMetal, SceneCategories::Materials,
             "Cornell box with rough aluminum box and rough gold sphere",
             "Medium", "cornell-rough-metal.pbrt", CameraMode::UserControlled),
-        // B3 migrated to pbrt-backed (this project's GPU scene-construction-
-        // duplication elimination, pilot batch) - see pbrt_scenes/
-        // cornell-rough-glass.pbrt's own header comment (also fixes I5/I10,
-        // which reuse "the same world as B3" - see their own entries below).
-        // legacy_id 171 (next after B4's 170) since 11 no longer has a
-        // switch case of its own to reuse (I5/I10's own cases still call
-        // build_cornell_rough_glass(scene) directly and are unaffected).
-        // CameraMode::UserControlled explicitly passed, same reason as
-        // A1's/B4's own migrations.
+        // CameraMode::UserControlled is passed explicitly: the Cornell-box camera is user-controlled, and the default
+        // (Fixed) would silently disable --cam_x/y/z and the GUI's camera controls for this scene.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B3", 171, SceneNames::CornellRoughGlass, SceneCategories::Materials,
             "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
             "Medium", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
-        // B4 migrated to pbrt-backed (this project's GPU scene-construction-
-        // duplication elimination, pilot batch) - see pbrt_scenes/
-        // cornell-conductor.pbrt's own header comment. legacy_id 170 (next
-        // after A1's 169) since 12 no longer has a switch case of its own to
-        // reuse. CameraMode::UserControlled explicitly passed, same reason
-        // as A1's own migration.
+        // CameraMode::UserControlled is passed explicitly: the Cornell-box camera is user-controlled, and the default
+        // (Fixed) would silently disable --cam_x/y/z and the GUI's camera controls for this scene.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B4", 170, SceneNames::CornellConductor, SceneCategories::Materials,
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
@@ -197,51 +98,18 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B8", 175, SceneNames::CornellWaxSlab, SceneCategories::Materials,
             "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
             "Medium", "cornell-wax-slab.pbrt", CameraMode::UserControlled),
-        // B9 migrated to pbrt-backed - see pbrt_scenes/cornell-crystal.pbrt
-        // (legacy_id 17 kept). Uses a new Material "normalizedfresnel" kind
-        // added to this loader specifically for this migration (not real
-        // pbrt-v4 - see MaterialKind::NormalizedFresnel's own comment,
-        // pbrt_flatten.h). Wired to this project's own already-implemented,
-        // already-working NormalizedFresnelBxDF on both CPU and GPU - full
-        // fidelity, not an approximation. build_cornell_crystal() has no
-        // other consumer - deleted below (build_cornell_box_lights() stays -
-        // many other scenes still use it).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B9", 17, SceneNames::CornellCrystal, SceneCategories::Materials,
             "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
             "Medium", "cornell-crystal.pbrt", CameraMode::UserControlled),
-        // B10 migrated to pbrt-backed - see pbrt_scenes/principled-showcase.pbrt
-        // (legacy_id 18 kept). Uses a new Material "principled" kind added to
-        // this loader specifically for this migration (not real pbrt-v4 -
-        // see MaterialKind::Principled's own comment, pbrt_flatten.h, and
-        // that file's own header comment for the full rationale). Wired to
-        // this project's own already-implemented, already-working
-        // PrincipledBxDF on both CPU and GPU - full fidelity, not an
-        // approximation. build_principled_showcase() has no other consumer -
-        // deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B10", 18, SceneNames::PrincipledShowcase, SceneCategories::Materials,
             "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
             "Medium", "principled-showcase.pbrt"),
-        // B11 migrated to pbrt-backed - see pbrt_scenes/hair-fibers-scene.pbrt.
-        // legacy_id 192. Uses real Material "hair" on Shape "sphere" - the
-        // same normal-as-tangent proxy native's own hair_material class
-        // already documents using for this exact scene (see that .pbrt
-        // file's own header comment) - not an approximation.
-        // build_hair_fibers() has no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B11", 192, SceneNames::HairFibers, SceneCategories::Materials,
             "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
             "Medium", "hair-fibers-scene.pbrt"),
-        // B12 migrated to pbrt-backed - see pbrt_scenes/normal-mapped-cornell.pbrt
-        // (legacy_id 20 kept). Uses real pbrt-v4 "texture displacement"
-        // (already fully wired on both CPU and GPU before this file existed -
-        // see that file's own header comment for the full derivation,
-        // including why its bump/normal sources are two newly-baked PNG
-        // textures rather than inline procedural references).
-        // build_normal_mapped_cornell() has no other consumer - deleted
-        // below (build_cornell_box_lights() stays - many other scenes still
-        // use it).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B12", 20, SceneNames::NormalMappedCornell, SceneCategories::Materials,
             "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
@@ -250,13 +118,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B13", 193, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
             "Slow", "subsurface-slab.pbrt", CameraMode::UserControlled),
-        // D1 migrated to pbrt-backed - see pbrt_scenes/depth-of-field-spheres.pbrt
-        // (legacy_id 22 kept). build_depth_of_field() (CPU) has no other
-        // consumer - deleted below. build_depth_of_field_gpu() (GPU) is ALSO
-        // deleted below, its own case 22 having diverged into a different,
-        // simpler scene than CPU's - the new pbrt file reunifies both
-        // backends on CPU's original, richer design (see that file's own
-        // header comment).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D1", 22, SceneNames::DepthOfField, SceneCategories::Cameras,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
@@ -266,15 +127,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
             "Medium", "bilinear-patch-scene.pbrt", CameraMode::UserControlled),
         // ---- pbrt-v4 light / camera / medium showcase ----
-        // C1 migrated to pbrt-backed - see pbrt_scenes/hdri-sky-gradient.pbrt
-        // for the full derivation (native's own gradient baked losslessly
-        // to a real, git-tracked .exr via write_exr_image(), then loaded
-        // back through a real LightSource "infinite" "string filename" -
-        // a genuine GPU fidelity improvement, since native GPU never
-        // reproduced the gradient at all, only a flat average-tone
-        // approximation). legacy_id 203 (next after E12's 202).
-        // build_hdri_sky_world()/build_hdri_sky() have no other consumer -
-        // deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C1", 203, SceneNames::HdriSky, SceneCategories::Lights,
             "Open scene lit by a real pbrt-v4 image infinite light (the same procedural gradient native always used, now a real baked .exr on both backends)",
@@ -311,15 +163,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "E3", 199, SceneNames::DielectricMediumShowcase, SceneCategories::Volumes,
             "Three glass spheres containing colored internal fog at varying density - dielectric surface + participating medium combined (pbrt-v4 style)",
             "Medium", "dielectric-medium-showcase.pbrt"),
-        // E4 migrated to pbrt-backed - see pbrt_scenes/rgb-grid-nebula.pbrt
-        // (legacy_id 70 kept). The "rgb sigma_s" array in that file is the
-        // literal baked output of generate_nebula_channel() (see that
-        // file's own header comment for the full derivation) - both CPU and
-        // GPU already shared this exact generator before migration (see
-        // build_rgb_grid_medium_scene_gpu()'s own "exactly - same world
-        // AABB" comment, deleted below), so this migration doesn't change
-        // either backend's render, just removes the now-redundant
-        // hand-written scene-construction code.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E4", 70, SceneNames::RgbGridMedium, SceneCategories::Volumes,
             "Heterogeneous nebula with an independent per-voxel R/G/B scattering grid (pbrt-v4 RGBGridMedium)",
@@ -332,45 +175,15 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D3", 195, SceneNames::SphericalCamera, SceneCategories::Cameras,
             "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
             "Medium", "spherical-camera-scene.pbrt"),
-        // B14 migrated to pbrt-backed - see pbrt_scenes/measured-brdf-
-        // showroom.pbrt for the full derivation. A real, disclosed fidelity
-        // IMPROVEMENT, not a lateral move: native's own measured_material
-        // (scenes_advanced.h) never read its own MeasuredBRDFData at all -
-        // scatter() just returned a flat tint, a mislabeled Lambertian on
-        // both backends. This loader's real Measured BRDF support (already
-        // proven on 3 downloaded pbrt-v4-scenes bundles) is now reachable
-        // from a small, self-contained, git-tracked demo too, via a new
-        // synthetic pbrt_scenes/synthetic-gold.bsdf baked specifically for
-        // this scene (an original, licence-free glossy lobe, not a real
-        // gonioreflectometer measurement - see the .pbrt file's own header
-        // comment). legacy_id 205 (next after C1's 203/I3's 204).
-        // build_measured_brdf_scene()/measured_material have no other
-        // consumer - deleted below.
+        // B14's synthetic-gold.bsdf is a synthetic glossy lobe, not a measurement (see the .pbrt file's header).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B14", 205, SceneNames::MeasuredBrdf, SceneCategories::Materials,
             "Sphere cluster with a real, importance-sampled measured BRDF (pbrt-v4 MeasuredBxDF) loaded from a synthetic .bsdf tensor file",
             "Medium", "measured-brdf-showroom.pbrt"),
-        // B23 migrated to pbrt-backed - see pbrt_scenes/prism-dispersion.pbrt
-        // (legacy_id 131 kept). Uses a new "float abbenumber" parameter on
-        // the existing, already-standard Material "dielectric" kind (not a
-        // new kind - a narrower extension than Principled/NormalizedFresnel -
-        // see Material::abbeNumber's own comment, pbrt_flatten.h). Full
-        // fidelity on all 3 backends - not an approximation.
-        // build_prism_dispersion()/build_prism_dispersion_geometry()/
-        // build_prism_dispersion_punct() are NOT deleted - I2 (Spectral
-        // Dispersion Education, deliberately CPU-only/out of scope, same as
-        // I1/I7/I8/I9) still calls them directly.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
             "A real glass prism splitting a parallel white light into a visible chromatic fan (CPU --spectral, GPU --wavefront: real continuous spectral integration; GPU-recursive (--gpu, no --wavefront): a simplified 3-representative-wavelength RGB-channel approximation, same qualitative fan, see shade_material()'s inout_rgb_channel comment, optix_device_helpers.h - see dielectric's dispersive constructor, material_simple.h)",
             "Medium", "prism-dispersion.pbrt", CameraMode::UserControlled),
-        // B24 migrated to pbrt-backed - see
-        // pbrt_scenes/frosted-prism-dispersion.pbrt (legacy_id 136 kept).
-        // Same "float abbenumber" extension as B23, plus "float roughness"
-        // for the existing, already-wired rough-dielectric dispatch.
-        // build_prism_dispersion_rough() had no other consumer - deleted
-        // below (unlike B23's own builders, I2 only ever used the smooth
-        // variant).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
             "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (CPU --spectral, GPU --wavefront with real continuous-wavelength dispersion, and GPU-recursive with the same 3-representative-wavelength approximation as B23)",
@@ -379,16 +192,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "C7", 194, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
             "Room scene with a sky visible through a windowed wall aperture (a flat sky_light behind a geometric hole, NOT the real pbrt-v4 PortalImageInfiniteLight class - see pbrt_scenes/portal-light.pbrt for that)",
             "Slow", "portal-window-room.pbrt", CameraMode::UserControlled),
-        // D4 migrated to pbrt-backed - see pbrt_scenes/realistic-camera-scene.pbrt.
-        // legacy_id 187. build_realistic_camera_scene() has no other
-        // consumer - deleted below. The two real bugs found and fixed
-        // during this scene's original authoring (CPU get_ray() dropping
-        // RealisticCamera::generate_ray()'s weight; the 5 spheres sitting
-        // on the camera's own viewing axis needing an oblique lookfrom to
-        // all be visible) live in shared code/this scene's own camera
-        // params respectively, both already reflected in the .pbrt file's
-        // own LookAt and this loader's existing weight-applying code path -
-        // nothing left to carry forward here.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D4", 187, SceneNames::RealisticCamera, SceneCategories::Cameras,
             "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
@@ -401,16 +204,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // panorama, real lens bokeh) directly comparable, which D1-D4's own
         // bespoke per-scene geometry doesn't support. D1-D4 are left
         // unchanged - these are additive, not replacements.
-        // D5-D8 migrated to pbrt-backed - see pbrt_scenes/cornell-dof.pbrt/
-        // cornell-orthographic.pbrt/cornell-spherical.pbrt/cornell-realistic.pbrt.
-        // legacy_ids 181-184 (next after C6's 180) - the old 65-68 are no
-        // longer assigned to any scene. All 4 reuse cornell-box-native.pbrt's
-        // (A1) exact same world, only the Camera directive differs, matching
-        // native's own "same scene, only the camera model changes" design.
-        // build_cornell_box()/build_cornell_box_lights() are NOT deleted -
-        // A1 (already pbrt-backed, doesn't call them either) aside, D13 and
-        // several B23/B24 "same world as X" aliases below still call them
-        // directly.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D5", 181, SceneNames::DepthOfFieldCornellBox, SceneCategories::Cameras,
             "The classic Cornell box (same scene as A1/D6-D8) with defocus blur from the thin-lens perspective camera",
@@ -433,37 +226,15 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // CPU default path tracer (+SPPM), see camera.h's own
         // camera_is_animated comment, AND both GPU backends (see
         // GpuCameraParams::animated, gpu/optix/optix_types.h).
-        // D13 migrated to pbrt-backed - see
-        // pbrt_scenes/cornell-camera-motion-blur.pbrt. legacy_id 196. Reuses
-        // A1's exact world (cornell-box-native.pbrt's own geometry,
-        // transcribed again here since this scene needs its own Camera
-        // block) with a real ActiveTransform "StartTime"/"EndTime" animated
-        // camera - ordinary already-supported pbrt-v4 camera motion blur, no
-        // new loader capability needed. build_cornell_box()/
-        // build_cornell_box_lights() are NOT deleted - many other scenes
-        // still call them directly.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D13", 196, SceneNames::CameraMotionBlur, SceneCategories::Cameras,
             "The classic Cornell box (same scene as A1/D5-D8), camera trucking sideways (lookat stays fixed, so this is really a small combined translate+rotate) across the exposure for real AnimatedTransform-based motion blur - CPU and GPU (both recursive and wavefront) all interpolate the same two keyframes",
             "Medium", "cornell-camera-motion-blur.pbrt"),
-        // F2 migrated to pbrt-backed - see pbrt_scenes/triangle-mesh-scene.pbrt.
-        // legacy_id 188 (next after D4's 187). The icosahedron's 12 vertices/
-        // 20 faces are fully deterministic (golden-ratio formula, no RNG),
-        // transcribed verbatim into the .pbrt file's own Shape "trianglemesh".
-        // build_triangle_mesh_scene() has no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F2", 188, SceneNames::TriangleMesh, SceneCategories::Geometry,
             "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
             "Fast", "triangle-mesh-scene.pbrt"),
         build_instanced_spheres_descriptor(),
-        // F4 migrated to pbrt-backed - see pbrt_scenes/curve-fibers-scene.pbrt.
-        // legacy_id 189 (next after F2's 188). All 70 strands' control points
-        // are fully deterministic (hash01()-driven, no RNG) and were computed
-        // once from native's exact formula, transcribed verbatim - see that
-        // .pbrt file's own header comment, including how it relates to the
-        // already-bundled pbrt_scenes/curve-tuft.pbrt example (same formula,
-        // fewer strands, no palette). build_curve_fibers_scene() has no other
-        // consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F4", 189, SceneNames::CurveFibers, SceneCategories::Geometry,
             "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection on CPU, not the sphere+HairBxDF trick scene B11 uses. GPU renders the same 70 strands tessellated into tapered tubes of bilinear patches (matches pbrt-v4's own GPU curve strategy) rather than an exact curve intersection, so the tube surface reads slightly faceted up close.",
@@ -488,12 +259,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "G5", 42, SceneNames::StanfordDragon, SceneCategories::Models,
             "Stanford XYZRGB Dragon (249,882 triangles) in bright silver, loaded from an external .obj file (requires models/xyzrgb_dragon.obj). Camera pulled back/up further than the other mesh scenes' default (0,3,7): the dragon's lunging pose is much wider than tall (~5.4 units wide vs ~3 tall after normalization, similar to scene 43's teapot), and the default statue framing cropped the head and tail.",
             "Very Slow", "mesh-stanford-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // Camera pulled back further than the other mesh scenes (0,3,7)
-        // because the teapot's spout+handle make it much wider than it
-        // is tall (~9 units wide vs ~3 tall after normalization) -
-        // the statue framing crops the spout/handle at this aspect.
-        // G6 migrated to pbrt-backed - see pbrt_scenes/mesh-utah-teapot.pbrt (legacy_id 43 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G6", 43, SceneNames::UtahTeapot, SceneCategories::Models,
             "The classic Utah Teapot (6,320 triangles) in bright silver, loaded from an external .obj file (requires models/teapot.obj)",
@@ -719,8 +484,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // controls (Sampler, Spectral rendering, Exposure, Tone mapping,
         // OptiX AI denoiser) and, as of I5/I6, the Settings tab's
         // Integrator selector (SPPM; BDPT/MLT). Each reuses an existing
-        // scene's build functions and CameraConfig verbatim - same
-        // technique B23/F3 use to share content with another entry - rather
+        // scene's pbrt file - same technique B23/F3 use to share content with another entry - rather
         // than being new renderer content: the description/technique-note
         // is the point, not the geometry. No entry for OptiX validation
         // mode - it has no visual effect by design (extra device-side
@@ -741,10 +505,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // clumping in the soft shadow penumbra. CPU-only, matching the
             // Sampler control's own tooltip (no effect on GPU) - so no GPU
             // case is needed here.
-        // I1 migrated to pbrt-backed - reuses pbrt_scenes/cornell-box-native.pbrt (legacy_id 132 kept). CPU-only by
-        // design (see the comment above): gpu_compatible is forced false after wiring, and
-        // recommended_spp is set to 16 (the file's own Sampler line says otherwise) to keep
-        // this scene's original sample count, the same two overrides I4/I6 apply.
+        // CPU-only by design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 16 (the file's own Sampler line says otherwise) to keep this scene's
+        // original sample count.
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I1", 132, SceneNames::SamplerComparison, SceneCategories::Education,
@@ -760,10 +523,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // just re-frames it under Education with a description pointing
             // at the Spectral rendering checkbox instead of duplicating the
             // geometry. CPU-only, matching --spectral's own tooltip.
-        // I2 migrated to pbrt-backed - reuses pbrt_scenes/prism-dispersion.pbrt (legacy_id 133 kept). CPU-only by
-        // design (see the comment above): gpu_compatible is forced false after wiring, and
-        // recommended_spp is set to 200 (the file's own Sampler line says otherwise) to keep
-        // this scene's original sample count, the same two overrides I4/I6 apply.
+        // CPU-only by design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 200 (the file's own Sampler line says otherwise) to keep this scene's
+        // original sample count.
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I2", 133, SceneNames::SpectralDispersionEducation, SceneCategories::Education,
@@ -773,16 +535,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             s.gpu_compatible = false;
             return s;
         }(),
-        // I3 migrated to pbrt-backed alongside C1 (same world/sky, just a
-        // different curated row for the Education category's own purpose) -
-        // reuses the identical pbrt_scenes/hdri-sky-gradient.pbrt file C1's
-        // own entry does, exactly the "fix an alias scene for free" this
-        // project's migration plan anticipated for same-world I-series
-        // entries. legacy_id 204 (next after C1's 203). This was the LAST
-        // consumer of build_hdri_sky_world_gpu()/case 134 on GPU - deleted
-        // below. build_hdri_sky_world()/build_hdri_sky() themselves stay on
-        // CPU (tests/integration/sppm_first_slice_test.cpp still calls them
-        // directly, independent of the scene registry).
+        // I3 shares C1's pbrt file (same world and sky, a curated row for the Education category).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "I3", 204, SceneNames::ExposureToneMapping, SceneCategories::Education,
             "Same HDR sky gradient as C1: try raising/lowering Exposure, then compare ACES/Reinhard/None Tone mapping (both on the Render Options tab) against this scene's bright sky vs. shadowed sphere.",
@@ -860,10 +613,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // sampling instead has to get lucky and hit the small light by
             // chance) and MIS combines both - random-walk has neither and
             // is visibly the noisiest of the four at equal spp.
-        // I7 migrated to pbrt-backed - reuses pbrt_scenes/cornell-box-native.pbrt (legacy_id 155 kept). CPU-only by
-        // design (see the comment above): gpu_compatible is forced false after wiring, and
-        // recommended_spp is set to 32 (the file's own Sampler line says otherwise) to keep
-        // this scene's original sample count, the same two overrides I4/I6 apply.
+        // CPU-only by design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 32 (the file's own Sampler line says otherwise) to keep this scene's
+        // original sample count.
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I7", 155, SceneNames::LightTransportStrategies, SceneCategories::Education,
@@ -881,10 +633,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // a light-sampler-strategy difference at all. CPU-only,
             // matching --lightsampler's own "CPU default path tracer
             // only" scope.
-        // I8 migrated to pbrt-backed - reuses pbrt_scenes/cornell-light-sampler-comparison.pbrt (legacy_id 156 kept). CPU-only by
-        // design (see the comment above): gpu_compatible is forced false after wiring, and
-        // recommended_spp is set to 32 (the file's own Sampler line says otherwise) to keep
-        // this scene's original sample count, the same two overrides I4/I6 apply.
+        // CPU-only by design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 32 (the file's own Sampler line says otherwise) to keep this scene's
+        // original sample count.
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I8", 156, SceneNames::LightSamplerComparison, SceneCategories::Education,
@@ -902,10 +653,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // crevices as the only visible structure - about as different
             // from this same box's usual lit render as any Integrator
             // switch in this registry produces.
-        // I9 migrated to pbrt-backed - reuses pbrt_scenes/cornell-box-native.pbrt (legacy_id 157 kept). CPU-only by
-        // design (see the comment above): gpu_compatible is forced false after wiring, and
-        // recommended_spp is set to 64 (the file's own Sampler line says otherwise) to keep
-        // this scene's original sample count, the same two overrides I4/I6 apply.
+        // CPU-only by design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 64 (the file's own Sampler line says otherwise) to keep this scene's
+        // original sample count.
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I9", 157, SceneNames::AmbientOcclusionEducation, SceneCategories::Education,
