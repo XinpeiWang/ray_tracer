@@ -676,9 +676,20 @@ inline bool readFileBytes(const std::string &path, std::string &bytes, std::stri
 		error = "cannot open PLY file: " + path;
 		return false;
 	}
-	std::ostringstream ss;
-	ss << in.rdbuf();
-	bytes = ss.str();
+	// Straight into the destination: the ostringstream + str() this used held the whole file twice at once
+	// (and a San Miguel OBJ is a gigabyte).
+	in.seekg(0, std::ios::end);
+	const std::streamoff size = in.tellg();
+	in.seekg(0, std::ios::beg);
+	if (size < 0) {
+		error = "cannot read PLY file: " + path;
+		return false;
+	}
+	bytes.resize(static_cast<std::size_t>(size));
+	if (size > 0 && !in.read(&bytes[0], size)) {
+		error = "cannot read PLY file: " + path;
+		return false;
+	}
 
 	// Detected from the content, not the extension. Most published pbrt
 	// geometry is gzipped, and a scene is free to name a compressed file .ply

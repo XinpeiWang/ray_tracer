@@ -15,6 +15,7 @@
 #include <mutex>
 #include <memory>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #include "../shared/pbrt_flatten.h"
@@ -605,6 +606,21 @@ struct VertexKey {
 		if (nz != o.nz) return nz < o.nz;
 		if (u != o.u) return u < o.u;
 		return v < o.v;
+	}
+	bool operator==(const VertexKey &o) const {
+		return x == o.x && y == o.y && z == o.z && nx == o.nx && ny == o.ny && nz == o.nz && u == o.u && v == o.v;
+	}
+};
+
+// Hash for the vertex weld: a hash table instead of the std::map the weld used (a tree node per unique
+// vertex - ~100 bytes of overhead on a 64-byte key - and O(log n) compares of eight doubles, on meshes of
+// ten million vertices). std::hash<double> hashes -0.0 and +0.0 alike, matching operator==.
+struct VertexKeyHash {
+	std::size_t operator()(const VertexKey &k) const {
+		std::size_t h = 1469598103934665603ull;
+		for (const double d : {k.x, k.y, k.z, k.nx, k.ny, k.nz, k.u, k.v})
+			h = (h ^ std::hash<double>{}(d)) * 1099511628211ull;
+		return h;
 	}
 };
 
@@ -1282,7 +1298,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// on this feature's own commit caught that cost).
 	if (!tris.empty()) {
 		auto mesh = std::make_shared<triangle_mesh_data>();
-		std::map<VertexKey, int> seen;
+		std::unordered_map<VertexKey, int, detail::VertexKeyHash> seen;
+		seen.reserve(tris.size() * 3 / 2 + 16);   // ~1.5 unique vertices per triangle on a typical mesh
 
 		// A mesh either has a normal for every vertex or for none: `triangle`
 		// gates interpolation on has_normals(), which is all-or-nothing, so a
