@@ -18,12 +18,31 @@
 #include "sphere.h"
 #include "material.h"
 
-// A glass sphere directly between the origin and a quad "light" must NOT
-// occlude the shadow ray: shadow_ray_hit() should see through it and find
-// the quad on the far side.
-TEST(ShadowRayTest, DielectricDoesNotOccludeLight) {
+// Glass is opaque to shadow rays, like every pbrt-v4 surface that has a material (VolPathIntegrator::
+// SampleLd returns 0 for any hit with a material, integrators.cpp:1335). Walking straight through it
+// counted a light seen through glass twice (here and on the specular BSDF path) and ignored refraction.
+// shadow_ray_hit() must therefore stop at the glass sphere, which is not an emitter.
+TEST(ShadowRayTest, DielectricOccludesLight) {
     hittable_list world;
     auto glass = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(0, 0, -5), 1.0, glass));
+
+    auto light_mat = make_shared<diffuse_light>(color(4, 4, 4));
+    world.add(make_shared<quad>(point3(-1, -1, -10), vec3(2, 0, 0), vec3(0, 2, 0), light_mat));
+
+    ray shadow_ray(point3(0, 0, 0), vec3(0, 0, -1));
+    hit_record rec;
+    ASSERT_TRUE(shadow_ray_hit(world, shadow_ray, rec));
+    color Le = rec.mat->emitted(shadow_ray, rec, rec.u, rec.v, rec.p);
+    EXPECT_EQ(Le.x(), 0.0) << "the shadow ray found the light through the glass";
+}
+
+// ...except a glass SHELL around a participating medium: the loader's fog-boundary idiom is a
+// near-invisible dielectric (eta ~1.001) + MediumInterface, which must stay transparent to NEE.
+TEST(ShadowRayTest, MediumBoundaryDielectricStaysTransparent) {
+    hittable_list world;
+    auto glass = make_shared<dielectric>(1.001);
+    glass->mark_medium_boundary();
     world.add(make_shared<sphere>(point3(0, 0, -5), 1.0, glass));
 
     auto light_mat = make_shared<diffuse_light>(color(4, 4, 4));
@@ -70,6 +89,7 @@ TEST(ShadowRayTest, RespectsTMax) {
 TEST(ShadowRayTest, MultipleDielectricsInARowAreSkipped) {
     hittable_list world;
     auto glass = make_shared<dielectric>(1.5);
+    glass->mark_medium_boundary();   // plain glass blocks; shells around a medium are walked past
     world.add(make_shared<sphere>(point3(0, 0, -3), 0.5, glass));
     world.add(make_shared<sphere>(point3(0, 0, -5), 0.5, glass));
 
