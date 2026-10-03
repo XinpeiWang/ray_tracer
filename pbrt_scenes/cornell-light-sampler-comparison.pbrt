@@ -1,0 +1,115 @@
+# cornell-light-sampler-comparison.pbrt -- migration of the native "I8 Light Sampler
+# Comparison" Education scene (cornell_box_scene.h's build_light_sampler_comparison()/
+# build_light_sampler_comparison_lights()) to a pbrt-backed scene.
+#
+# Walls, rotated white box and glass sphere are IDENTICAL to cornell-box-native.pbrt (both
+# read src/shared/cornell_box_data.h); the one change is the lighting: A1's single ceiling
+# light is replaced by FIVE of deliberately lopsided power (roughly 1:2:6:15:80) so
+# Uniform vs Power vs BVH light sampling (--lightsampler, Render Options tab) differ
+# visibly at a low sample count - Uniform spends a fifth of its next-event-estimation
+# samples on each light regardless of contribution, so it stays noisier on the one
+# dominant light than Power/BVH. The scene is CPU-only by design (--lightsampler is a
+# CPU-default-path-tracer control); the registry row marks it so.
+#
+# Native also listed the glass sphere as an extra NEE sampling TARGET (an empty-material
+# sphere in its lights list); the generic pbrt light list only holds emissive shapes, so
+# that importance-sampling hint is not carried over - it affects variance, not the converged
+# image.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- lights
+# Five ceiling lights of deliberately lopsided power, roughly 1:2:6:15:80 (the
+# 40x40 quads share one area, so each emission scale IS its power ratio; the
+# 130x105 centre light is A1's own). Same Q,u,v -> P0..P3 convention as the
+# walls, so each faces down (u x v = -y).
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 1 1 1 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 30 554 30   70 554 30   70 554 70   30 554 70 ]
+AttributeEnd
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 2 2 2 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 485 554 30   525 554 30   525 554 70   485 554 70 ]
+AttributeEnd
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 30 554 485   70 554 485   70 554 525   30 554 525 ]
+AttributeEnd
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 554 227   343 554 227   343 554 332   213 554 332 ]
+AttributeEnd
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 80 80 80 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 485 554 485   525 554 485   525 554 525   485 554 525 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+# Right wall (green): Q=(555,0,0) u=(0,0,555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+
+# Left wall (red): Q=(0,0,555) u=(0,0,-555) v=(0,555,0)
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   0 0 0   0 555 0   0 555 555 ]
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+# Ceiling (white): Q=(0,555,0) u=(555,0,0) v=(0,0,555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# Floor (white): Q=(0,0,555) u=(555,0,0) v=(0,0,-555)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 0 0   0 0 0 ]
+# Back wall (white): Q=(555,0,555) u=(-555,0,0) v=(0,555,0)
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 555   0 0 555   0 555 555   555 555 555 ]
+
+# ---------------------------------------------------------------- contents
+# Rotated white box (kBox: min=(0,0,0) max=(165,330,165), rotate_y=15,
+# translate=(265,0,295)) - 6 faces from quad.h's own box() algebra.
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+AttributeBegin
+  Translate 265 0 295
+  Rotate 15 0 1 0
+  # front: Q=(0,0,165) u=(165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 165   165 0 165   165 330 165   0 330 165 ]
+  # right: Q=(165,0,165) u=(0,0,-165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 165   165 0 0   165 330 0   165 330 165 ]
+  # back: Q=(165,0,0) u=(-165,0,0) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 165 0 0   0 0 0   0 330 0   165 330 0 ]
+  # left: Q=(0,0,0) u=(0,0,165) v=(0,330,0)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 165   0 330 165   0 330 0 ]
+  # top: Q=(0,330,165) u=(165,0,0) v=(0,0,-165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 330 165   165 330 165   165 330 0   0 330 0 ]
+  # bottom: Q=(0,0,0) u=(165,0,0) v=(0,0,165)
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   165 0 0   165 0 165   0 0 165 ]
+AttributeEnd
+
+# Glass sphere: center (190,90,190) radius 90 ior 1.5
+Material "dielectric" "float eta" [ 1.5 ]
+AttributeBegin
+  Translate 190 90 190
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
