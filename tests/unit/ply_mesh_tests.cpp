@@ -16,8 +16,11 @@
 #include "ply_mesh.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <string>
+#include <vector>
 
 using namespace ply_mesh;
 
@@ -357,4 +360,131 @@ TEST(PlyErrorTest, MissingFileIsNamedInTheError) {
 	const LoadResult r = loadFile("definitely/not/here.ply");
 	EXPECT_FALSE(r.ok);
 	EXPECT_NE(r.error.find("definitely/not/here.ply"), std::string::npos) << r.error;
+}
+
+// ---------------------------------------------------------------------------
+// Wavefront OBJ (the non-standard extension that lets `Shape "plymesh"` name a
+// .obj directly - see ply_mesh.h's OBJ SUPPORT note).
+// ---------------------------------------------------------------------------
+
+TEST(ObjTest, ATriangleLoadsAsIs) {
+	const LoadResult r = parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.mesh.vertexCount(), 3u);
+	ASSERT_EQ(r.mesh.indices.size(), 3u);
+	EXPECT_EQ(r.mesh.indices[0], 0);
+	EXPECT_EQ(r.mesh.indices[1], 1);
+	EXPECT_EQ(r.mesh.indices[2], 2);
+	EXPECT_TRUE(r.mesh.uvs.empty());
+	EXPECT_TRUE(r.mesh.normals.empty());
+}
+
+TEST(ObjTest, AQuadIsFanTriangulated) {
+	const LoadResult r = parseObj("v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nf 1 2 3 4\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	const std::vector<int> expected = {0, 1, 2, 0, 2, 3};
+	EXPECT_EQ(r.mesh.indices, expected);
+}
+
+TEST(ObjTest, NormalOnlyReferencesLoadPerVertexNormals) {
+	// `v//vn` - the shape of nearly every position+normal export. No vt means no
+	// uvs; the normals are per-vertex, so positions are expanded only as far as
+	// distinct (position, normal) pairs require - here each corner uses a
+	// different position, so 3 vertices.
+	const LoadResult r = parseObj(
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nvn 0 1 0\nvn 1 0 0\nf 1//1 2//2 3//3\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.mesh.vertexCount(), 3u);
+	EXPECT_TRUE(r.mesh.uvs.empty());
+	ASSERT_EQ(r.mesh.normals.size(), 9u);
+	EXPECT_FLOAT_EQ(r.mesh.normals[2], 1.0f);   // vertex 0 -> vn 1 = (0,0,1)
+	EXPECT_FLOAT_EQ(r.mesh.normals[4], 1.0f);   // vertex 1 -> vn 2 = (0,1,0)
+	EXPECT_FLOAT_EQ(r.mesh.normals[6], 1.0f);   // vertex 2 -> vn 3 = (1,0,0)
+}
+
+TEST(ObjTest, ASharedPositionWithDifferentNormalsIsSplitButWithTheSameNormalIsShared) {
+	// Hard edge: positions 2 and 3 are used by both triangles with DIFFERENT
+	// normals, so each is duplicated (3 + 3 distinct (position,normal) pairs).
+	const LoadResult hard = parseObj(
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\nvn 0 0 1\nvn 0 0 -1\n"
+		"f 1//1 2//1 3//1\nf 2//2 4//2 3//2\n");
+	ASSERT_TRUE(hard.ok) << hard.error;
+	EXPECT_EQ(hard.mesh.vertexCount(), 6u);
+	// Smooth edge: same normal on both sides -> the shared positions stay shared.
+	const LoadResult smooth = parseObj(
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\nvn 0 0 1\n"
+		"f 1//1 2//1 3//1\nf 2//1 4//1 3//1\n");
+	ASSERT_TRUE(smooth.ok) << smooth.error;
+	EXPECT_EQ(smooth.mesh.vertexCount(), 4u);
+	EXPECT_EQ(smooth.mesh.normals.size(), 12u);
+}
+
+TEST(ObjTest, NoNormalReferencesLeavesNormalsEmptyAndPositionsShared) {
+	const LoadResult r = parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nf 1 2 3\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.mesh.vertexCount(), 3u);
+	EXPECT_TRUE(r.mesh.normals.empty());
+}
+
+TEST(ObjTest, TextureCoordinatesBecomePerVertexByDuplicatingSharedPositions) {
+	// Two triangles share positions 1 and 3 but give them DIFFERENT uvs, which a
+	// per-vertex mesh can only represent by duplicating those positions.
+	const LoadResult r = parseObj(
+		"v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\n"
+		"vt 0 0\nvt 1 0\nvt 0 1\nvt 1 1\nvt 0.5 0.5\n"
+		"f 1/1 2/2 3/3\n"
+		"f 2/2 4/4 3/5\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.mesh.indices.size(), 6u);
+	EXPECT_EQ(r.mesh.uvs.size(), r.mesh.vertexCount() * 2);
+	// Position 3 is used with uv 3 and uv 5 -> two distinct vertices.
+	EXPECT_NE(r.mesh.indices[2], r.mesh.indices[5]);
+	// Position 2 is used twice with the SAME uv -> shared.
+	EXPECT_EQ(r.mesh.indices[1], r.mesh.indices[3]);
+	EXPECT_EQ(r.mesh.vertexCount(), 5u);
+	const int dup = r.mesh.indices[5];
+	EXPECT_FLOAT_EQ(r.mesh.uvs[dup * 2 + 0], 0.5f);
+	EXPECT_FLOAT_EQ(r.mesh.uvs[dup * 2 + 1], 0.5f);
+	EXPECT_FLOAT_EQ(r.mesh.positions[dup * 3 + 0], 0.0f);
+	EXPECT_FLOAT_EQ(r.mesh.positions[dup * 3 + 1], 1.0f);
+}
+
+TEST(ObjTest, NegativeIndicesCountBackFromTheEnd) {
+	const LoadResult r = parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nf -3 -2 -1\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	const std::vector<int> expected = {0, 1, 2};
+	EXPECT_EQ(r.mesh.indices, expected);
+}
+
+TEST(ObjTest, CommentsGroupsAndMaterialRecordsAreIgnored) {
+	const LoadResult r = parseObj(
+		"# comment\nmtllib x.mtl\no thing\ng part\ns off\nusemtl m\n"
+		"v 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 3\r\n");   // CRLF too
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.mesh.triangleCount(), 1u);
+}
+
+TEST(ObjTest, OutOfRangeFaceIndexIsRejectedWithTheLineNamed) {
+	const LoadResult r = parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 9\n");
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("line 4"), std::string::npos) << r.error;
+	EXPECT_NE(r.error.find("9"), std::string::npos) << r.error;
+}
+
+TEST(ObjTest, AVertexlessFileIsRejected) {
+	const LoadResult r = parseObj("# nothing here\n");
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("no vertices"), std::string::npos) << r.error;
+}
+
+TEST(ObjTest, LoadFileChoosesTheObjReaderByExtension) {
+	const std::string path = "ply_mesh_tests_tmp_cube_face.OBJ";   // upper-case on purpose
+	{
+		std::ofstream out(path, std::ios::binary);
+		out << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+	}
+	const LoadResult r = loadFile(path);
+	std::remove(path.c_str());
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.mesh.triangleCount(), 1u);
 }

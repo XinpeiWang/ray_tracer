@@ -553,313 +553,148 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "F4", 189, SceneNames::CurveFibers, SceneCategories::Geometry,
             "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection on CPU, not the sphere+HairBxDF trick scene B11 uses. GPU renders the same 70 strands tessellated into tapered tubes of bilinear patches (matches pbrt-v4's own GPU curve strategy) rather than an exact curve intersection, so the tube surface reads slightly faceted up close.",
             "Fast", "curve-fibers-scene.pbrt"),
-        {
+        // G1 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-bunny.pbrt (legacy_id 38 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G1", 38, SceneNames::StanfordBunny, SceneCategories::Models,
             "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_stanford_bunny,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-stanford-bunny.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G2 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-armadillo.pbrt (legacy_id 39 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G2", 39, SceneNames::StanfordArmadillo, SceneCategories::Models,
             "Stanford armadillo scan (99,976 triangles) in gunmetal, loaded from an external .obj file (requires models/armadillo.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_stanford_armadillo,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-stanford-armadillo.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G3 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-happy-buddha.pbrt (legacy_id 40 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G3", 40, SceneNames::StanfordHappyBuddha, SceneCategories::Models,
             "Stanford happy buddha scan (98,601 triangles) in polished gold, loaded from an external .obj file (requires models/happy-buddha.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_stanford_happy_buddha,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-stanford-happy-buddha.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G4 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-lucy.pbrt (legacy_id 41 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G4", 41, SceneNames::StanfordLucy, SceneCategories::Models,
             "Stanford Lucy angel figure (99,970 triangles) in bright silver, loaded from an external .obj file (requires models/lucy.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_stanford_lucy,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-stanford-lucy.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G5 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-dragon.pbrt (legacy_id 42 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G5", 42, SceneNames::StanfordDragon, SceneCategories::Models,
             "Stanford XYZRGB Dragon (249,882 triangles) in bright silver, loaded from an external .obj file (requires models/xyzrgb_dragon.obj). Camera pulled back/up further than the other mesh scenes' default (0,3,7): the dragon's lunging pose is much wider than tall (~5.4 units wide vs ~3 tall after normalization, similar to scene 43's teapot), and the default statue framing cropped the head and tail.",
-            "Very Slow", 150, true, true,
-            { 35, 0, 4, 12,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_stanford_dragon,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-stanford-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // Camera pulled back further than the other mesh scenes (0,3,7)
+        // because the teapot's spout+handle make it much wider than it
+        // is tall (~9 units wide vs ~3 tall after normalization) -
+        // the statue framing crops the spout/handle at this aspect.
+        // G6 migrated to pbrt-backed - see pbrt_scenes/mesh-utah-teapot.pbrt (legacy_id 43 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G6", 43, SceneNames::UtahTeapot, SceneCategories::Models,
             "The classic Utah Teapot (6,320 triangles) in bright silver, loaded from an external .obj file (requires models/teapot.obj)",
-            "Medium", 150, true, true,
-            // Camera pulled back further than the other mesh scenes (0,3,7)
-            // because the teapot's spout+handle make it much wider than it
-            // is tall (~9 units wide vs ~3 tall after normalization) -
-            // the statue framing crops the spout/handle at this aspect.
-            { 35, 0, 6, 20,  0, 1.2, 0,  0.05, 0.05, 0.08 },
-            build_utah_teapot,
-            []() {
-                // Matches build_utah_teapot()'s light sphere, raised to
-                // y=20 - see that function's comment for why (this scene's
-                // raised/pulled-back camera brought the standard y=8 light
-                // into frame as a blown-out disc).
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,20,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Medium", "mesh-utah-teapot.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G7 migrated to pbrt-backed - see pbrt_scenes/mesh-spot-cow.pbrt (legacy_id 44 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G7", 44, SceneNames::SpotCow, SceneCategories::Models,
             "Keenan Crane's Spot the Cow (5,856 triangles) in bright silver, loaded from an external .obj file (requires models/spot.obj)",
-            "Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_spot_cow,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Slow", "mesh-spot-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G8 migrated to pbrt-backed - see pbrt_scenes/mesh-suzanne.pbrt (legacy_id 45 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G8", 45, SceneNames::Suzanne, SceneCategories::Models,
             "Blender's Suzanne monkey-head mascot (968 triangles after fan-triangulating its mostly-quad faces) in bright silver, loaded from an external .obj file (requires models/suzanne.obj). Unlike every other mesh scene, Suzanne is a disembodied head with no neck/shoulders/pedestal, so grounding its chin at y=0 (the shared statue convention) puts its face well above the generic eye-level camera - the camera below is raised and pulled in closer to look at roughly the model's own eye height instead.",
-            "Fast", 150, true, true,
-            { 35, 0, 2.1, 6.5,  0, 1.9, 0,  0.05, 0.05, 0.08 },
-            build_suzanne,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Fast", "mesh-suzanne.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G9 migrated to pbrt-backed - see pbrt_scenes/mesh-nefertiti-bust.pbrt (legacy_id 46 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G9", 46, SceneNames::NefertitiBust, SceneCategories::Models,
             "Scanned bust of Nefertiti (99,938 triangles) in bright silver, loaded from an external .obj file (requires models/nefertiti.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_nefertiti,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-nefertiti-bust.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G10 migrated to pbrt-backed - see pbrt_scenes/mesh-horse.pbrt (legacy_id 47 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G10", 47, SceneNames::Horse, SceneCategories::Models,
             "Classic geometry-processing test horse head/neck bust (96,966 triangles) in bright silver, loaded from an external .obj file (requires models/horse.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_horse,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-horse.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G11 migrated to pbrt-backed - see pbrt_scenes/mesh-cheburashka.pbrt (legacy_id 48 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G11", 48, SceneNames::Cheburashka, SceneCategories::Models,
             "Beloved cartoon-character bust from Keenan Crane's geometry-processing course (13,334 triangles) in bright silver, loaded from an external .obj file (requires models/cheburashka.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_cheburashka,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-cheburashka.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G12 migrated to pbrt-backed - see pbrt_scenes/mesh-trophy-room.pbrt (legacy_id 49 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G12", 49, SceneNames::TrophyRoom, SceneCategories::Models,
             "Four already-loaded meshes (bunny, teapot, Suzanne, Spot the Cow) lined up in bronze/chrome/gold/gunmetal, the first scene to combine multiple external .obj meshes in one composition (requires models/stanford-bunny.obj, teapot.obj, suzanne.obj, spot.obj)",
-            "Very Slow", 200, true, true,
-            { 34, 0, 2.3, 14,  0, 0.9, 0,  0.05, 0.05, 0.08 },
-            build_trophy_room,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-trophy-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G13 migrated to pbrt-backed - see pbrt_scenes/mesh-glass-dragon.pbrt (legacy_id 50 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G13", 50, SceneNames::GlassDragon, SceneCategories::Models,
             "Stanford XYZRGB Dragon (249,882 triangles) in clear glass (dielectric, IOR 1.5), loaded from an external .obj file (requires models/xyzrgb_dragon.obj). The dragon's own surface renders persistently noisy at any sample count under EITHER the regular path tracer OR --sppm -- refraction through this deeply concave mesh is a hard case for any unidirectional camera-side estimator (SPPM's photon-density gather only ever helps non-delta/diffuse surfaces, and the dragon is 100% delta-BSDF glass), not a bug. --sppm's real benefit here is a genuine floor caustic from the dragon (CPU only -- GPU SPPM currently supports scene 11 only) that the regular path tracer's NEE can't resolve; a fully clean render of the glass surface itself would need bidirectional path tracing or MLT.",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_glass_dragon,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-glass-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G14 migrated to pbrt-backed - see pbrt_scenes/mesh-beast.pbrt (legacy_id 51 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G14", 51, SceneNames::Beast, SceneCategories::Models,
             "Fantasy creature bust (common-3d-test-models) in bronze, loaded from an external .obj file (requires models/beast.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_beast,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-beast.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G15 migrated to pbrt-backed - see pbrt_scenes/mesh-vw-beetle.pbrt (legacy_id 52 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G15", 52, SceneNames::VWBeetle, SceneCategories::Models,
             "Classic CAD-style Volkswagen Beetle in bright chrome, loaded from an external .obj file (requires models/beetle.obj). Elongated along Z after normalization, so the camera is pulled back further than the other mesh scenes, same reasoning as scene 43's Utah Teapot.",
-            "Medium", 150, true, true,
-            { 35, 0, 3, 16,  0, 1.2, 0,  0.05, 0.05, 0.08 },
-            build_beetle,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Medium", "mesh-vw-beetle.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G17 migrated to pbrt-backed - see pbrt_scenes/mesh-bimba.pbrt (legacy_id 54 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G17", 54, SceneNames::Bimba, SceneCategories::Models,
             "Smooth abstract bust/statue (AIM@SHAPE repository test model) in gold, loaded from an external .obj file (requires models/bimba.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_bimba,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-bimba.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G18 migrated to pbrt-backed - see pbrt_scenes/mesh-cow.pbrt (legacy_id 55 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G18", 55, SceneNames::Cow, SceneCategories::Models,
             "Classic Viewpoint/Alias Cow test model (distinct from scene 44's Spot the Cow) in brass, loaded from an external .obj file (requires models/cow.obj)",
-            "Medium", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_cow,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Medium", "mesh-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G19 migrated to pbrt-backed - see pbrt_scenes/mesh-fandisk.pbrt (legacy_id 56 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G19", 56, SceneNames::Fandisk, SceneCategories::Models,
             "Classic CAD mechanical-engineering test model with sharp creases, in gunmetal, loaded from an external .obj file (requires models/fandisk.obj). Camera moved to a three-quarter elevated angle rather than the usual eye-level statue framing - this mesh's proportions are shallow along the default view axis, and a face-on shot showed only a smooth, featureless wedge with none of the sharp creases the model is known for.",
-            "Medium", 150, true, true,
-            { 35, 4, 9, 4,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_fandisk,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Medium", "mesh-fandisk.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G20 migrated to pbrt-backed - see pbrt_scenes/mesh-homer.pbrt (legacy_id 57 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G20", 57, SceneNames::Homer, SceneCategories::Models,
             "Homer Simpson bust in gold, loaded from an external .obj file (requires models/homer.obj)",
-            "Medium", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_homer,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Medium", "mesh-homer.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G21 migrated to pbrt-backed - see pbrt_scenes/mesh-igea.pbrt (legacy_id 58 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G21", 58, SceneNames::Igea, SceneCategories::Models,
             "Classical Italian bust (Igea, Roman goddess of health) in bright silver, loaded from an external .obj file (requires models/igea.obj). An earlier camera here (raised and looking steeply down) was meant to compensate for this scan's upward-tilted face, but actually framed the shiny crown of the skull instead of the face - lowered/pulled back closer to the other mesh scenes' eye-level convention, which shows the face (eyes, nose, tilted-up chin) correctly.",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 5,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_igea,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-igea.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G22 migrated to pbrt-backed - see pbrt_scenes/mesh-max-planck.pbrt (legacy_id 59 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G22", 59, SceneNames::MaxPlanck, SceneCategories::Models,
             "Scanned bust of physicist Max Planck in aged bronze, loaded from an external .obj file (requires models/max-planck.obj). This scan's face points toward -Z, so the camera sits on that side (unlike the other mesh scenes' +Z default) to actually see the face instead of the back of the head.",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, -7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_max_planck,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-max-planck.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G23 migrated to pbrt-backed - see pbrt_scenes/mesh-ogre.pbrt (legacy_id 60 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G23", 60, SceneNames::Ogre, SceneCategories::Models,
             "Fantasy ogre head in dark olive metal, loaded from an external .obj file (requires models/ogre.obj)",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
-            build_ogre,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
+            "Very Slow", "mesh-ogre.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+        // G24 migrated to pbrt-backed - see pbrt_scenes/mesh-rocker-arm.pbrt (legacy_id 61 kept). The
+        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G24", 61, SceneNames::RockerArm, SceneCategories::Models,
             "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scene (G15), but much smaller overall and taller than that comparison suggested - the camera is pulled back/up further than originally set, which cropped the two boss/lobe cylinders at the top of the part. Now visible, those bosses' flat tops catch a strong mirror-like specular highlight from the overhead light - a legitimate result of a flat, low-roughness surface facing a point-ish light, confirmed by testing (repositioning/brightening the light didn't change it), not a bug.",
-            "Slow", 150, true, true,
-            { 35, 0, 4, 12,  0, 1.2, 0,  0.05, 0.05, 0.08 },
-            build_rocker_arm,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
+            "Slow", "mesh-rocker-arm.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         {
             "H1", 62, SceneNames::CrytekSponza, SceneCategories::LargeScene,
             "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, with real per-face .mtl materials and image textures (curtains, columns, floor) loaded from models/sponza_textures/, lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",

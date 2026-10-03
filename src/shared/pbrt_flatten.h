@@ -1866,10 +1866,15 @@ struct FlatScene {
 // "s"/"t") vertex properties (see ply_mesh.h's own vertexSlotFor()), left
 // empty otherwise - mirroring how a `Shape "trianglemesh"` with no `"uv"`
 // parameter leaves this loader's own UV vector empty.
+// `normals` is filled 3-per-vertex when the file carries per-vertex normals (PLY
+// "nx"/"ny"/"nz" properties, or OBJ `vn` records referenced by its faces) and
+// left empty otherwise, which keeps flat per-face shading - same convention as a
+// `Shape "trianglemesh"` with no "N" parameter.
 using MeshResolver = std::function<bool(const std::string &path,
 										std::vector<float> &positions,
 										std::vector<int> &indices,
-										std::vector<float> &uvs)>;
+										std::vector<float> &uvs,
+										std::vector<float> &normals)>;
 
 // Named flatten_detail, not the more generic "detail" - a bare "detail"
 // here previously collided with compensated_float.h's own unrelated
@@ -4548,7 +4553,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 				std::vector<float> pos;
 				std::vector<float> uvs;
-				if (!meshes(file, pos, indices, uvs)) {
+				std::vector<float> nrm;
+				if (!meshes(file, pos, indices, uvs, nrm)) {
 					warn("plymesh '" + file + "' could not be read; skipped");
 					continue;
 				}
@@ -4560,6 +4566,10 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// Triangle-construction code below (worldUV, t.uv[]/hasUVs)
 				// needs no plymesh-specific handling.
 				if (!uvs.empty()) UV.assign(uvs.begin(), uvs.end());
+				// Real per-vertex shading normals when the file carried them (smooth
+				// shading) - fed into the same `N` local the trianglemesh branch fills
+				// from its "N" parameter, so the shared validation below applies.
+				if (!nrm.empty()) N.assign(nrm.begin(), nrm.end());
 			}
 
 			const std::size_t vertexCount = P.size() / 3;

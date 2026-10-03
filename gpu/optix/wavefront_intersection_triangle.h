@@ -8,7 +8,8 @@
 // __intersection__triangle (same watertight Woop/Moller-Trumbore math,
 // wf_params instead of the recursive path's params global) - same cross-
 // module payload-type mismatch reason as wf_sphere/wf_quad/wf_bilinear_patch
-// above. Flat shading only (no per-vertex normals - see TriangleData).
+// above. Smooth-shaded when the mesh carries per-vertex normals (see
+// __closesthit__wf_triangle), flat otherwise - same as the recursive backend.
 // ============================================================================
 
 extern "C" __global__ void __intersection__wf_triangle() {
@@ -148,7 +149,27 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	// triangle, so the normal derived from them has to be carried to world
 	// space before it can be compared against the world ray. Skipped entirely
 	// when instBase < 0.
-	float3 geom_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
+	// Barycentric weights of the hit (p0's is 1-u-v) - needed both for the
+	// shading normal just below and for the interpolated UV further down.
+	const float b1 = __int_as_float(optixGetAttribute_0());
+	const float b2 = __int_as_float(optixGetAttribute_1());
+	const float b0 = 1.0f - b1 - b2;
+
+	// Shading normal: interpolated from the mesh's per-vertex normals when it
+	// has them (tri.hasNormals - a smooth OBJ `vn` / PLY nx,ny,nz / pbrt "N"),
+	// else the flat geometric cross(e1,e2). Mirrors optix_intersection_
+	// triangle.h's closest-hit exactly, including that the SHADING normal (not
+	// the geometric one) decides which side the ray is on and is flipped to
+	// face it - the same convention as pbrt-v4's Triangle interaction, which
+	// flips the geometric normal to the shading normal's hemisphere when a
+	// mesh supplies normals. This program used to be flat-shaded always, so
+	// every smooth mesh rendered faceted under --wavefront and only that
+	// backend: specular materials (conductor, dielectric) reflect the facet
+	// normal, which is why diffuse agreed to <1% but a conductor Suzanne or
+	// Beetle differed ~30% in blocks from CPU and GPU-recursive.
+	float3 geom_normal = tri.hasNormals
+		? normalize(b0 * tri.n0 + b1 * tri.n1 + b2 * tri.n2)
+		: normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
 	if (instBase >= 0)
 		geom_normal = normalize(optixTransformNormalFromObjectToWorldSpace(geom_normal));
 	bool front_face = dot(ray_dir, geom_normal) < 0.0f;
@@ -156,18 +177,13 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 
 	// Barycentric-interpolated UV, matching optix_intersection_triangle.h's
 	// closesthit exactly - tri.hasUVs gates it the same way tri.hasNormals
-	// gates smooth-normal interpolation there (this program stays flat-shaded
-	// regardless, see this function's own header comment; UV is independent
-	// of that and is the one piece MaterialType::Lambertian's textureIdx
-	// actually needs). Falls back to the barycentric weights themselves
+	// gates smooth-normal interpolation above (UV is independent of that and is
+	// the piece MaterialType::Lambertian's textureIdx actually needs). Falls back to the barycentric weights themselves
 	// (matching CPU triangle.h's own rec.u=b1,rec.v=b2) rather than a fixed
 	// (0,0) when the mesh has no real UV - a fixed value here sampled the
 	// exact same texel for every point on the whole mesh, a real "solid
 	// black on GPU" bug for an untextured-UV mesh with a real texture bound
 	// (docs/PBRT_SUPPORT.md tracked this).
-	const float b1 = __int_as_float(optixGetAttribute_0());
-	const float b2 = __int_as_float(optixGetAttribute_1());
-	const float b0 = 1.0f - b1 - b2;
 	float uv_u = b1, uv_v = b2;
 	if (tri.hasUVs) {
 		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
