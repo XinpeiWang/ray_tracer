@@ -1369,16 +1369,6 @@ class camera {
         return center + (p[0] * defocus_disk_u) + (p[1] * defocus_disk_v);
     }
 
-    // Multiple Importance Sampling: Balance heuristic weight calculation
-    // Given PDFs from two sampling strategies, returns the weight for the first strategy
-    static double mis_balance_heuristic(double pdf_a, double pdf_b) {
-        // Balance heuristic: w_a = pdf_a / (pdf_a + pdf_b)
-        // Handles edge cases: if pdf_a is 0, weight is 0; if both are 0, avoid NaN
-        if (pdf_a <= 0.0) return 0.0;
-        if (pdf_b <= 0.0) return 1.0;
-        return pdf_a / (pdf_a + pdf_b);
-    }
-
     // Power heuristic beta=2 -- delegates to shared PowerHeuristic (pbrt-v4 pattern)
     static double mis_power_heuristic(double pdf_a, double pdf_b) {
         return PowerHeuristic(pdf_a, pdf_b);

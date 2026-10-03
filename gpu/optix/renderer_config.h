@@ -143,16 +143,6 @@ struct RendererConfig {
  */
 extern RendererConfig g_rendererConfig;
 
-/**
- * @brief Initialize global configuration from environment
- * 
- * Call this once at program startup, before creating renderers.
- */
-inline void initializeRendererConfig() {
-	g_rendererConfig = RendererConfig::fromEnvironment();
-	g_rendererConfig.log();
-}
-
 } // namespace optix_renderer
 
 #ifdef _MSC_VER

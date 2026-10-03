@@ -805,61 +805,6 @@ __device__ __forceinline__ bool sample_nee_light(
 	return light_pdf > 1e-6f;
 }
 
-// Evaluate quad light PDF for a given direction
-__device__ __forceinline__ float quad_light_pdf(
-	const QuadData& quad,
-	const float3& origin,
-	const float3& direction
-) {
-	// Intersect ray with quad plane
-	float denom = dot(direction, quad.normal);
-	if (fabsf(denom) < 1e-6f) return 0.0f;
-
-	float t = (quad.D - dot(quad.normal, origin)) / denom;
-	if (t < 0.001f) return 0.0f;
-
-	// Check if hit point is inside quad
-	float3 hit_point = origin + t * direction;
-	float3 p = hit_point - quad.Q;
-
-	// Solve for (alpha, beta) such that p = alpha*u + beta*v
-	float3 n = quad.w;  // u x v
-	float n_len_sq = dot(n, n);
-	if (n_len_sq < 1e-6f) return 0.0f;
-
-	float alpha = dot(cross(p, quad.v), n) / n_len_sq;
-	float beta = dot(cross(quad.u, p), n) / n_len_sq;
-
-	if (alpha < 0.0f || alpha > 1.0f || beta < 0.0f || beta > 1.0f) {
-		return 0.0f;  // Outside quad
-	}
-
-	// Compute PDF
-	float dist_sq = t * t * dot(direction, direction);
-	float cosine = fabsf(dot(direction, quad.normal));
-	float area = sqrtf(n_len_sq);
-
-	return dist_sq / (cosine * area);
-}
-
-// Evaluate sphere light PDF for a given direction
-__device__ __forceinline__ float sphere_light_pdf(
-	const SphereData& sphere,
-	const float3& origin,
-	const float3& direction
-) {
-	// Check if direction intersects sphere (simplified - just use solid angle)
-	float3 to_center = sphere.center - origin;
-	float dist_sq = dot(to_center, to_center);
-
-	if (dist_sq < 1e-6f) return 0.0f;
-
-	float cos_theta_max = sqrtf(1.0f - sphere.radius * sphere.radius / dist_sq);
-	float solid_angle = 2.0f * 3.14159265358979323846f * (1.0f - cos_theta_max);
-
-	return 1.0f / solid_angle;
-}
-
 // Shadow-ray payload: a POINTER (packed into the two payload registers) to a
 // small per-call struct on the caller's stack, instead of the occluded flag and
 // the running transmittance living in the payload registers themselves.
