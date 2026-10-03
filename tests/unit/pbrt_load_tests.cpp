@@ -416,3 +416,46 @@ TEST(PbrtLensFileParseTest, ATrailingPartialRowIsDropped) {
 TEST(PbrtLensFileParseTest, EmptyTextYieldsNoRows) {
 	EXPECT_TRUE(pbrt_load::parseLensFile("").empty());
 }
+
+// ---- LightSource "infinite" CTM is baked into the environment image ---------------------
+// Regression: commit b894923b ("windowed/portal infinite light") turned this branch into
+// `else if (!sky.hasPortal) { <comment> }` and dropped the applyInfiniteLightOrientation()
+// call, so a rotated/mirrored environment map was silently loaded un-rotated on every backend.
+
+TEST_F(TempTree, InfiniteLightImageIsReorientedByItsTransform) {
+	// A 4x2 Radiance .hdr (flat RGBE, no RLE: stb only compresses width >= 8): four distinct
+	// pixels per row so a quarter-turn about +y visibly moves them.
+	static const unsigned char kPixels[] = {
+		255, 0, 0, 129,   0, 255, 0, 129,   0, 0, 255, 129,   255, 255, 255, 129,
+		128, 0, 0, 129,   0, 128, 0, 129,   0, 0, 128, 129,   128, 128, 128, 129 };
+	std::string hdr = R"(#?RADIANCE
+FORMAT=32-bit_rle_rgbe
+
+-Y 2 +X 4
+)";
+	hdr.append(reinterpret_cast<const char *>(kPixels), sizeof(kPixels));
+	write("env.hdr", hdr);
+
+	const std::string head = R"(LookAt 0 0 5  0 0 0  0 1 0
+Camera "perspective"
+WorldBegin
+)";
+	write("identity.pbrt", head + R"(LightSource "infinite" "string filename" ["env.hdr"]
+)");
+	write("rotated.pbrt", head + R"(AttributeBegin
+  Rotate 90 0 1 0
+  LightSource "infinite" "string filename" ["env.hdr"]
+AttributeEnd
+)");
+
+	const pbrt_load::LoadResult plain = pbrt_load::loadFile(path("identity.pbrt"));
+	const pbrt_load::LoadResult turned = pbrt_load::loadFile(path("rotated.pbrt"));
+	ASSERT_TRUE(plain.ok) << plain.error;
+	ASSERT_TRUE(turned.ok) << turned.error;
+	const auto &a = plain.scene.infiniteLight;
+	const auto &b = turned.scene.infiniteLight;
+	ASSERT_EQ(a.imageWidth, 4);
+	ASSERT_EQ(a.imageHeight, 2);
+	ASSERT_EQ(b.imagePixels.size(), a.imagePixels.size());
+	EXPECT_NE(a.imagePixels, b.imagePixels) << "a 90 degree rotation left the environment image untouched";
+}

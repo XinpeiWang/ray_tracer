@@ -392,6 +392,7 @@ inline LoadResult loadFile(const std::string &path,
 				// would need PortalImageInfiniteLightData itself to accept
 				// a transform, which it currently does not (see its own
 				// constructor comment).
+				applyInfiniteLightOrientation(sky.xform, sky.imagePixels, sky.imageWidth, sky.imageHeight);
 			}
 		} else {
 			r.scene.warnings.push_back(
