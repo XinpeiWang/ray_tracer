@@ -61,18 +61,6 @@ struct CameraConfig {
     double shutter_open  = 0.0, shutter_close = 1.0;
 };
 
-// Shared CameraConfig rows for scenes that intentionally reuse another
-// scene's exact framing (Education/B24 - see their own comments in
-// get_builtin_scene_registry() below for why: same geometry, only the id/
-// category/description/material differ). Named constants instead of each
-// entry repeating the same literal row make "same camera as X" a fact the
-// compiler enforces rather than one only asserted by comment - if A1's or
-// B23's own row is ever retuned, every sibling below picks up the change
-// automatically instead of silently going out of sync with it.
-constexpr CameraConfig kCornellBoxCamera =
-    { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled };
-constexpr CameraConfig kPrismCamera =
-    { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled };
 
 // Forward alias so std::function<void(camera_t&)> inside SceneDescriptor
 // doesn't conflict with the CameraConfig field named 'camera'.
@@ -290,7 +278,7 @@ namespace pbrt_scene_registry {
                                         // pre-existing caller's behavior unchanged. A
                                         // migrated scene that was CameraMode::UserControlled
                                         // natively (the Cornell-box family's own
-                                        // kCornellBoxCamera - see that constant's comment)
+                                        // the Cornell-box family's shared camera)
                                         // needs this passed explicitly as UserControlled,
                                         // or --cam_x/y/z and the GUI's own camera controls
                                         // silently stop moving the camera for that scene
@@ -629,7 +617,7 @@ namespace pbrt_scene_registry {
             // Fixed (the default) preserves every pre-existing call site's
             // behavior unchanged; pass UserControlled for a scene migrated
             // FROM a native scene that was CameraMode::UserControlled (the
-            // Cornell-box family's kCornellBoxCamera), so interactive
+            // Cornell-box family's shared camera), so interactive
             // camera control (--cam_x/y/z, the GUI's own camera controls)
             // keeps working after migration instead of silently regressing
             // to a fixed camera.

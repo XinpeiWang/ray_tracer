@@ -7,7 +7,7 @@
 // flow - so the split is a pure textual move with no logic change.
 // #include'd directly from scene_registry.h at the point this content used
 // to live; not meant to be included standalone (relies on SceneDescriptor,
-// SceneNames::/SceneCategories::, kCornellBoxCamera/kPrismCamera, and
+// SceneNames::/SceneCategories:: and
 // pbrt_scene_registry::build_curated_pbrt_scene_descriptor(), all declared
 // earlier in scene_registry.h).
 
@@ -26,7 +26,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // convention A6's own migration used, next after A6's 168) since 0
         // no longer has a switch case of its own to reuse. CameraMode::
         // UserControlled explicitly passed (see build_curated_pbrt_scene_
-        // descriptor()'s own `mode` parameter comment) - kCornellBoxCamera
+        // descriptor()'s own `mode` parameter comment) - the Cornell-box camera
         // was UserControlled, and wire_pbrt_backed_scene()'s own default
         // (Fixed) would otherwise silently disable --cam_x/y/z and the
         // GUI's camera controls for this scene.
@@ -918,7 +918,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // (qt_gui/mainwindow_style.cpp's integratorDescription()) rather
         // than a dedicated scene here.
         // ---------------------------------------------------------------
-        {
             // Same world/lights as A1 (Cornell Box) - only the id, category,
             // description, and recommended_spp differ. 16 spp (vs A1's 100)
             // is deliberately low: at that count, different Sampler choices
@@ -926,29 +925,38 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // clumping in the soft shadow penumbra. CPU-only, matching the
             // Sampler control's own tooltip (no effect on GPU) - so no GPU
             // case is needed here.
-            "I1", 132, SceneNames::SamplerComparison, SceneCategories::Education,
-            "Cornell box rendered at a deliberately low 16 spp so different Sampler choices (Render Options tab) leave visibly different noise/clumping in the soft shadow.",
-            "Fast", 16, false, false,
-            kCornellBoxCamera,
-            build_cornell_box,
-            build_cornell_box_lights
-        },
-        {
+        // I1 migrated to pbrt-backed - reuses pbrt_scenes/cornell-box-native.pbrt (legacy_id 132 kept). CPU-only by
+        // design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 16 (the file's own Sampler line says otherwise) to keep
+        // this scene's original sample count, the same two overrides I4/I6 apply.
+        [] {
+            auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+                "I1", 132, SceneNames::SamplerComparison, SceneCategories::Education,
+                "Cornell box rendered at a deliberately low 16 spp so different Sampler choices (Render Options tab) leave visibly different noise/clumping in the soft shadow.",
+                "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled);
+            s.recommended_spp = 16;
+            s.gpu_compatible = false;
+            return s;
+        }(),
             // Same world/lights/punctual-lights as B23 (Glass Prism
             // Dispersion) - the prism fan is already the clearest possible
             // demonstration of --spectral in this registry, so this entry
             // just re-frames it under Education with a description pointing
             // at the Spectral rendering checkbox instead of duplicating the
             // geometry. CPU-only, matching --spectral's own tooltip.
-            "I2", 133, SceneNames::SpectralDispersionEducation, SceneCategories::Education,
-            "Same glass prism as B23: white light only fans into a visible spectrum with Spectral rendering (Render Options tab) switched on - off, every wavelength refracts by the same fixed amount.",
-            "Medium", 200, false, false,
-            kPrismCamera,
-            build_prism_dispersion,
-            no_lights,
-            nullptr,
-            build_prism_dispersion_punct
-        },
+        // I2 migrated to pbrt-backed - reuses pbrt_scenes/prism-dispersion.pbrt (legacy_id 133 kept). CPU-only by
+        // design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 200 (the file's own Sampler line says otherwise) to keep
+        // this scene's original sample count, the same two overrides I4/I6 apply.
+        [] {
+            auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+                "I2", 133, SceneNames::SpectralDispersionEducation, SceneCategories::Education,
+                "Same glass prism as B23: white light only fans into a visible spectrum with Spectral rendering (Render Options tab) switched on - off, every wavelength refracts by the same fixed amount.",
+                "Medium", "prism-dispersion.pbrt", CameraMode::UserControlled);
+            s.recommended_spp = 200;
+            s.gpu_compatible = false;
+            return s;
+        }(),
         // I3 migrated to pbrt-backed alongside C1 (same world/sky, just a
         // different curated row for the Education category's own purpose) -
         // reuses the identical pbrt_scenes/hdri-sky-gradient.pbrt file C1's
@@ -1021,7 +1029,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             s.recommended_spp = 100;
             return s;
         }(),
-        {
             // Same world/lights as A1 (Cornell Box) - deliberately CPU-only
             // (gpu_compatible=false, matching I1's own precedent) since
             // every alternate integrator this demonstrates is CPU-only:
@@ -1037,14 +1044,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // sampling instead has to get lucky and hit the small light by
             // chance) and MIS combines both - random-walk has neither and
             // is visibly the noisiest of the four at equal spp.
-            "I7", 155, SceneNames::LightTransportStrategies, SceneCategories::Education,
-            "Same Cornell box as A1: pick RandomWalk, SimplePath (then try its NEE/BSDF sub-checkboxes), or leave the default Path Tracer (Integrator dropdown, Render Options tab) and compare noise at the same low sample count - each includes a different subset of next-event estimation and BSDF importance sampling, and MIS (the default) is what combines both well.",
-            "Fast", 32, false, false,
-            kCornellBoxCamera,
-            build_cornell_box,
-            build_cornell_box_lights
-        },
-        {
+        // I7 migrated to pbrt-backed - reuses pbrt_scenes/cornell-box-native.pbrt (legacy_id 155 kept). CPU-only by
+        // design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 32 (the file's own Sampler line says otherwise) to keep
+        // this scene's original sample count, the same two overrides I4/I6 apply.
+        [] {
+            auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+                "I7", 155, SceneNames::LightTransportStrategies, SceneCategories::Education,
+                "Same Cornell box as A1: pick RandomWalk, SimplePath (then try its NEE/BSDF sub-checkboxes), or leave the default Path Tracer (Integrator dropdown, Render Options tab) and compare noise at the same low sample count - each includes a different subset of next-event estimation and BSDF importance sampling, and MIS (the default) is what combines both well.",
+                "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled);
+            s.recommended_spp = 32;
+            s.gpu_compatible = false;
+            return s;
+        }(),
             // Purpose-built world (see build_light_sampler_comparison()'s
             // own comment, cornell_box_scene.h, for the full design/power-
             // ratio rationale) - the one Education scene not simply
@@ -1053,14 +1065,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // a light-sampler-strategy difference at all. CPU-only,
             // matching --lightsampler's own "CPU default path tracer
             // only" scope.
-            "I8", 156, SceneNames::LightSamplerComparison, SceneCategories::Education,
-            "Cornell box with five ceiling lights of deliberately lopsided power (roughly 1:2:6:15:80) instead of one: try Uniform vs. Power vs. BVH (Light sampler, Render Options tab) at a low sample count - Uniform spends a fifth of its next-event-estimation samples on each light regardless of how much it actually contributes, so it stays noisier on the one dominant light than Power/BVH, which weight selection toward it instead.",
-            "Fast", 32, false, false,
-            kCornellBoxCamera,
-            build_light_sampler_comparison,
-            build_light_sampler_comparison_lights
-        },
-        {
+        // I8 migrated to pbrt-backed - reuses pbrt_scenes/cornell-light-sampler-comparison.pbrt (legacy_id 156 kept). CPU-only by
+        // design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 32 (the file's own Sampler line says otherwise) to keep
+        // this scene's original sample count, the same two overrides I4/I6 apply.
+        [] {
+            auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+                "I8", 156, SceneNames::LightSamplerComparison, SceneCategories::Education,
+                "Cornell box with five ceiling lights of deliberately lopsided power (roughly 1:2:6:15:80) instead of one: try Uniform vs. Power vs. BVH (Light sampler, Render Options tab) at a low sample count - Uniform spends a fifth of its next-event-estimation samples on each light regardless of how much it actually contributes, so it stays noisier on the one dominant light than Power/BVH, which weight selection toward it instead.",
+                "Fast", "cornell-light-sampler-comparison.pbrt", CameraMode::UserControlled);
+            s.recommended_spp = 32;
+            s.gpu_compatible = false;
+            return s;
+        }(),
             // Same world/lights as A1 (Cornell Box) - CPU-only
             // (gpu_compatible=false), matching --ao's own "CPU only" scope.
             // AOIntegrator skips material color and indirect lighting
@@ -1069,13 +1086,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // crevices as the only visible structure - about as different
             // from this same box's usual lit render as any Integrator
             // switch in this registry produces.
-            "I9", 157, SceneNames::AmbientOcclusionEducation, SceneCategories::Education,
-            "Same Cornell box as A1: switch to Ambient Occlusion (Integrator dropdown, Render Options tab) - a debug/visualization mode with no material color or indirect light at all, just a grayscale occlusion term from nearby geometry, and compare against the default Path Tracer's full lit render of the identical scene.",
-            "Fast", 64, false, false,
-            kCornellBoxCamera,
-            build_cornell_box,
-            build_cornell_box_lights
-        },
+        // I9 migrated to pbrt-backed - reuses pbrt_scenes/cornell-box-native.pbrt (legacy_id 157 kept). CPU-only by
+        // design (see the comment above): gpu_compatible is forced false after wiring, and
+        // recommended_spp is set to 64 (the file's own Sampler line says otherwise) to keep
+        // this scene's original sample count, the same two overrides I4/I6 apply.
+        [] {
+            auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+                "I9", 157, SceneNames::AmbientOcclusionEducation, SceneCategories::Education,
+                "Same Cornell box as A1: switch to Ambient Occlusion (Integrator dropdown, Render Options tab) - a debug/visualization mode with no material color or indirect light at all, just a grayscale occlusion term from nearby geometry, and compare against the default Path Tracer's full lit render of the identical scene.",
+                "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled);
+            s.recommended_spp = 64;
+            s.gpu_compatible = false;
+            return s;
+        }(),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             // Same world/lights as B3 (Cornell Rough Glass) - the same
             // hard-caustic scene I5 already reuses for SPPM, and for the

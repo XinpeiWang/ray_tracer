@@ -88,79 +88,10 @@ inline hittable_list build_cornell_box_lights() {
 // pbrt_scenes/homogeneous-medium.pbrt and scene_registry_data.h's own E1
 // entry.
 
-// Education (I8): same Cornell box shell (walls/rotated box/glass sphere,
-// via cornell_box_data.h - shared with the real A1/GPU builder, not the
-// standalone build_cornell_box_scene() above) as A1, but with the single
-// ceiling light replaced by FIVE small quad lights of deliberately
-// lopsided power - roughly 1 : 2 : 6 : 15 : 80 - spread around the
-// ceiling (one at the original A1 light's spot, four more in the
-// otherwise-unlit corners). --lightsampler uniform picks among all five
-// with equal 1/5 probability regardless of how much each actually
-// contributes, so at low spp it wastes most of its NEE samples on the
-// four dim lights while the one genuinely dominant light (the bright
-// corner one) is undersampled and noisy; power/bvh weight the selection
-// toward that dominant light instead, converging faster on the identical
-// scene. CPU only - see --lightsampler's own help text.
-inline hittable_list build_light_sampler_comparison() {
-	using namespace cornell_box_data;
-	hittable_list world;
-
-	// The 5 walls only (kQuads[5] is A1's own single ceiling light -
-	// skipped here, replaced by the five below).
-	for (int i = 0; i < 5; ++i) {
-		const QuadSpec& q = kQuads[i];
-		world.add(make_shared<quad>(
-			point3(q.Q.x, q.Q.y, q.Q.z),
-			vec3(q.u.x, q.u.y, q.u.z),
-			vec3(q.v.x, q.v.y, q.v.z),
-			make_shared<lambertian>(color(q.color.r, q.color.g, q.color.b))));
-	}
-
-	shared_ptr<hittable> box1 = box(
-		point3(kBox.corner_min.x, kBox.corner_min.y, kBox.corner_min.z),
-		point3(kBox.corner_max.x, kBox.corner_max.y, kBox.corner_max.z),
-		make_shared<lambertian>(color(kBox.color.r, kBox.color.g, kBox.color.b)));
-	box1 = make_shared<rotate_y>(box1, kBox.rotate_y_degrees);
-	box1 = make_shared<translate>(box1, vec3(kBox.translate.x, kBox.translate.y, kBox.translate.z));
-	world.add(box1);
-
-	world.add(make_shared<sphere>(
-		point3(kGlassSphere.center.x, kGlassSphere.center.y, kGlassSphere.center.z),
-		kGlassSphere.radius, make_shared<dielectric>(kGlassSphere.glass_ior)));
-
-	// Five lights, ~1:2:6:15:80 power ratio (quad area is uniform at
-	// 40x40, so this ratio is also each one's emission scale directly).
-	world.add(make_shared<quad>(point3(30,554,30), vec3(40,0,0), vec3(0,0,40),
-		make_shared<diffuse_light>(color(1,1,1))));
-	world.add(make_shared<quad>(point3(485,554,30), vec3(40,0,0), vec3(0,0,40),
-		make_shared<diffuse_light>(color(2,2,2))));
-	world.add(make_shared<quad>(point3(30,554,485), vec3(40,0,0), vec3(0,0,40),
-		make_shared<diffuse_light>(color(6,6,6))));
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105),
-		make_shared<diffuse_light>(color(15,15,15))));
-	world.add(make_shared<quad>(point3(485,554,485), vec3(40,0,0), vec3(0,0,40),
-		make_shared<diffuse_light>(color(80,80,80))));
-
-	return world;
-}
-
-// Light-sampling target list for build_light_sampler_comparison() - the
-// five ceiling lights above (as empty-material NEE targets, matching
-// build_cornell_box_lights()'s own convention) plus the glass sphere.
-inline hittable_list build_light_sampler_comparison_lights() {
-	hittable_list lights;
-	auto empty_material = shared_ptr<material>();
-	lights.add(make_shared<quad>(point3(30,554,30), vec3(40,0,0), vec3(0,0,40), empty_material));
-	lights.add(make_shared<quad>(point3(485,554,30), vec3(40,0,0), vec3(0,0,40), empty_material));
-	lights.add(make_shared<quad>(point3(30,554,485), vec3(40,0,0), vec3(0,0,40), empty_material));
-	lights.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), empty_material));
-	lights.add(make_shared<quad>(point3(485,554,485), vec3(40,0,0), vec3(0,0,40), empty_material));
-	lights.add(make_shared<sphere>(
-		point3(cornell_box_data::kGlassSphere.center.x, cornell_box_data::kGlassSphere.center.y,
-			   cornell_box_data::kGlassSphere.center.z),
-		cornell_box_data::kGlassSphere.radius, empty_material));
-	return lights;
-}
+// build_light_sampler_comparison()/build_light_sampler_comparison_lights() deleted - I8
+// migrated to pbrt-backed, see pbrt_scenes/cornell-light-sampler-comparison.pbrt and
+// scene_registry_data.h's own entry (that file's header has the five-light design
+// rationale). No other consumer.
 
 // Build a light sampler with power weights computed from geometry + emission.
 // Mirrors pbrt-v4 PowerLightSampler: phi = light.Phi() = area * Le_avg * pi
