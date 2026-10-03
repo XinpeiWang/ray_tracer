@@ -220,16 +220,6 @@ struct SceneDescriptor {
     bool is_pbrt_backed = false;
 };
 
-// sky_dummy_lights() deleted - it was a dummy sphere light for native
-// scenes with no explicit light geometry (PDF-sampling placeholder); its
-// last caller (A2) migrated to pbrt-backed, and the generic pbrt
-// build_lights() path never used it (see
-// tests/unit/scene_registry_tests.cpp's SkyDummyLightsAreNonEmpty test for
-// why that's fine - a background-only pbrt scene legitimately returns an
-// empty lights list instead).
-
-static inline hittable_list no_lights() { return hittable_list{}; }
-
 // paths() is defined at the bottom of this file; forward-declared here so a
 // curated builtin entry can register its own .pbrt path the same way
 // pbrt_scene_registry::append() does for dynamically-discovered ones.

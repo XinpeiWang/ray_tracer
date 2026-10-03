@@ -64,10 +64,6 @@ inline __host__ __device__ float length(const float3& v) {
 	return sqrtf(dot(v, v));
 }
 
-inline __host__ __device__ float lengthSquared(const float3& v) {
-	return dot(v, v);
-}
-
 inline __host__ __device__ float3 normalize(const float3& v) {
 	float len = length(v);
 	if (len > 1e-6f) {
