@@ -314,9 +314,12 @@ Open `ray_tracer.sln`, then **Test → Test Explorer** and click **Run All**.
 
 #### Quick dev-loop filter
 
-A full GPU-enabled run takes ~5 minutes, but that time is extremely
-concentrated: `MaterialsAndVolumes/MaterialCpuGpuParityTest` alone accounts
-for ~60% of it (~3 minutes; it lazily renders every Materials/Volumes/
+A full GPU-enabled run takes ~4 minutes (253 s on the dev PC), but that time
+is extremely concentrated: `MaterialsAndVolumes/MaterialCpuGpuParityTest` alone
+accounts for ~55% of it (~2.3 minutes; the CPU pass runs on its own thread
+overlapped with the two GPU passes, and the GPU-wavefront pass is the long pole
+- set `MATPARITY_SERIAL=1` to run them back to back, `MATPARITY_CHECKSUM=1` to
+print a hash of every cached image; it lazily renders every Materials/Volumes/
 Textures/Lights/Cameras/Geometry/Basics scene - ~96 in all; the suite name
 predates the later categories being added - across
 CPU, GPU-recursive, and GPU-wavefront the first time any of its

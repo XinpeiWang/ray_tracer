@@ -391,14 +391,23 @@ inline LoadResult parseObj(const std::string &data) {
 					while (k < e && (data[k] == ' ' || data[k] == '\t' || data[k] == '\r')) ++k;
 					const std::size_t tokStart = k;
 					while (k < e && data[k] != ' ' && data[k] != '\t' && data[k] != '\r') ++k;
-					const std::size_t s1 = data.find('/', tokStart);
-					if (s1 == std::string::npos || s1 >= k) continue;
+					// Searches ONLY inside this token [tokStart,k): a bare
+					// data.find('/', tokStart) scans to the end of the whole file
+					// when the file has no slashes at all (the common position-only
+					// OBJ), once per face token - quadratic, ~24 s for a 10 MB mesh.
+					auto slashIn = [&](std::size_t from) {
+						for (std::size_t q = from; q < k; ++q)
+							if (data[q] == '/') return q;
+						return k;
+					};
+					const std::size_t s1 = slashIn(tokStart);
+					if (s1 >= k) continue;
 					auto isNum = [&](std::size_t q) {
 						return q < k && ((data[q] >= '0' && data[q] <= '9') || data[q] == '-');
 					};
 					if (isNum(s1 + 1)) needUv = true;
-					const std::size_t s2 = data.find('/', s1 + 1);
-					if (s2 != std::string::npos && s2 < k && isNum(s2 + 1)) needN = true;
+					const std::size_t s2 = slashIn(s1 + 1);
+					if (s2 < k && isNum(s2 + 1)) needN = true;
 				}
 			}
 			i = e + 1;

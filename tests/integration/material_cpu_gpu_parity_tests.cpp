@@ -435,6 +435,8 @@
 #include <cstdio>
 #include <cstring>
 #include <cctype>
+#include <chrono>
+#include <thread>
 #include <cstdlib>
 #include <vector>
 #include <cmath>
@@ -1081,12 +1083,38 @@ static void build_cache_once() {
 
 	const std::vector<const SceneDescriptor*> scenes = testable_scenes();
 
+	using SweepClock = std::chrono::steady_clock;
+	const auto sweepStart = SweepClock::now();
+	auto lap = [&](const char* what) {
+		const double sec = std::chrono::duration<double>(SweepClock::now() - sweepStart).count();
+		fprintf(stderr, "[matparity] %s done at %.1fs\n", what, sec);
+	};
+
 	// Pass 1: every scene's CPU render. No GPU/OptiX calls in this pass.
-	for (const SceneDescriptor* s : scenes) {
-		int cpuSpp, gpuSpp;
-		spp_for(*s, cpuSpp, gpuSpp);
-		cache.cpuImages[s->id] = render_cpu_once(*s, cpuSpp);
-	}
+	//
+	// Runs on its own thread, OVERLAPPED with the two GPU passes below, instead of
+	// before them: measured per phase (2026-10-02, 96 scenes) the CPU pass is ~54 s of
+	// multi-threaded host work while the GPU-recursive (~22 s) and especially the
+	// GPU-wavefront (~117 s) passes are bound by kernel-launch latency - the wavefront
+	// backend takes one sample per pass and synchronizes per bounce, so a 60x60 frame
+	// is thousands of tiny launches driven by ONE host thread. The two use disjoint
+	// resources (cpuImages vs recImages/wfImages, distinct temp-file names, no shared
+	// render state), so overlapping them takes the sweep from ~193 s to roughly the
+	// longer of the two (~140 s). The images are independent of scheduling - set
+	// MATPARITY_SERIAL=1 to run the CPU pass first as before, and
+	// MATPARITY_CHECKSUM=1 to print a hash of every cached image so a serial and an
+	// overlapped run can be compared for bit-identical output.
+	const bool serial = std::getenv("MATPARITY_SERIAL") != nullptr;
+	auto runCpuPass = [&]() {
+		for (const SceneDescriptor* s : scenes) {
+			int cpuSpp, gpuSpp;
+			spp_for(*s, cpuSpp, gpuSpp);
+			cache.cpuImages[s->id] = render_cpu_once(*s, cpuSpp);
+		}
+		lap("CPU pass");
+	};
+	std::thread cpuThread;
+	if (serial) runCpuPass(); else cpuThread = std::thread(runCpuPass);
 
 	// Save/restore RAY_TRACER_WAVEFRONT around both GPU passes together,
 	// same pattern as tests/unit/wavefront_tests.cpp's WavefrontRenderTest
@@ -1107,6 +1135,7 @@ static void build_cache_once() {
 		spp_for(*s, cpuSpp, gpuSpp);
 		cache.recImages[s->id] = render_gpu_once(*s, gpuSpp, "rec");
 	}
+	lap("GPU-recursive pass");
 
 	// Pass 3: every scene's GPU-wavefront render, in one uninterrupted
 	// wavefront-mode run - the ONLY backend-mode transition in this whole
@@ -1121,6 +1150,24 @@ static void build_cache_once() {
 		int cpuSpp, gpuSpp;
 		spp_for(*s, cpuSpp, gpuSpp);
 		cache.wfImages[s->id] = render_gpu_once(*s, gpuSpp, "wf");
+	}
+	lap("GPU-wavefront pass");
+	if (cpuThread.joinable()) cpuThread.join();   // tests below read cpuImages
+
+	if (std::getenv("MATPARITY_CHECKSUM")) {
+		auto fnv = [](const MPImage& img) {
+			unsigned long long h = 1469598103934665603ull;
+			for (float v : img.pixels) {
+				unsigned int bits;
+				std::memcpy(&bits, &v, sizeof bits);
+				h = (h ^ bits) * 1099511628211ull;
+			}
+			return h;
+		};
+		for (const SceneDescriptor* s : scenes) {
+			fprintf(stderr, "[matparity-checksum] %s cpu=%016llx rec=%016llx wf=%016llx\n", s->id.c_str(),
+			        fnv(cache.cpuImages[s->id]), fnv(cache.recImages[s->id]), fnv(cache.wfImages[s->id]));
+		}
 	}
 
 #ifdef _WIN32
