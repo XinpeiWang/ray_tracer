@@ -1,0 +1,67 @@
+# perlin-spheres.pbrt -- migration of the native "A5 Perlin Spheres" book scene
+# (scenes_book.h's build_perlin_spheres()/build_perlin_spheres_lights(), its GPU
+# case, and Metal's hand-authored copy) to a pbrt-backed scene.
+#
+# Noise texture - DELIBERATE APPROXIMATION, not an exact reproduction: native's
+# noise_texture(scale) is Ray Tracing in One Weekend's marble,
+# 0.5*(1 + sin(scale*z + 10*turbulence(p))), which has no pbrt directive. pbrt-v4's
+# own "marble" Texture (FBm-perturbed sine wave through a marble colour spline) is
+# the real pbrt counterpart of "Perlin-noise marble" and is what this uses, with
+# its "scale" set to the native noise scale (4 on the big sphere and ground, 8 on
+# the two small ones) so the stripe frequency is comparable. Two differences are
+# real and expected (pbrt-v4 textures.cpp, MarbleTexture::Evaluate): pbrt's veins
+# run along y where native's run along z, and pbrt's spline colours are ~0.58 scaled
+# by 1.5 (~0.87 albedo, dark blue-grey veins) where native's are a grey ramp
+# averaging 0.5 - measured whole-image ~24% brighter than native on every backend.
+# The scene's point - lit marble spheres - is unchanged. Same substitution family as
+# final-scene.pbrt's fbm noise sphere.
+#
+# Lights: native's warm key quad Q=(-4,6,-3) u=(4,0,0) v=(0,0,4) facing down
+# (u x v = -y), emission (8,6,3); the sky is native's flat (0.70,0.80,1.00)
+# background, expressed as a constant infinite light.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  13 2 3    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 20 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 100 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.7 0.8 1 ]
+
+Texture "marble-4" "spectrum" "marble" "float scale" [ 4 ]
+Texture "marble-8" "spectrum" "marble" "float scale" [ 8 ]
+
+# Ground and the main sphere share the scale-4 marble
+Material "diffuse" "texture reflectance" [ "marble-4" ]
+AttributeBegin
+  Translate 0 -1000 0
+  Shape "sphere" "float radius" [ 1000 ]
+AttributeEnd
+AttributeBegin
+  Translate 0 2 0
+  Shape "sphere" "float radius" [ 2 ]
+AttributeEnd
+
+# Two smaller companions, scale-8 marble
+Material "diffuse" "texture reflectance" [ "marble-8" ]
+AttributeBegin
+  Translate 2.2 0.8 1
+  Shape "sphere" "float radius" [ 0.8 ]
+AttributeEnd
+AttributeBegin
+  Translate -1.8 0.6 -1.2
+  Shape "sphere" "float radius" [ 0.6 ]
+AttributeEnd
+
+# Warm key light
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 8 6 3 ]
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -4 6 -3   0 6 -3   0 6 1   -4 6 1 ]
+AttributeEnd

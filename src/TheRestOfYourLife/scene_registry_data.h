@@ -89,14 +89,11 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // .pbrt file would need an invented, non-standard texture type,
         // defeating the point of migrating to real pbrt-v4 syntax. Both
         // GPU switch cases/native builders stay.
-        {
+        // A5 migrated to pbrt-backed - see pbrt_scenes/perlin-spheres.pbrt (legacy_id 4 kept).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A5", 4, SceneNames::PerlinSpheres, SceneCategories::Basics,
             "Spheres with Perlin noise marble texture",
-            "Fast", 100, false, true,
-            { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
-            build_perlin_spheres,
-            build_perlin_spheres_lights
-        },
+            "Fast", "perlin-spheres.pbrt", CameraMode::Fixed),
         // A6 migrated to pbrt-backed (this project's GPU scene-construction-
         // duplication elimination, pilot batch) - see pbrt_scenes/
         // colored-quads.pbrt's own header comment. legacy_id 168 (past every
@@ -113,14 +110,11 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // description ("Perlin spheres with emissive light sources") and
         // its build_simple_light() builder confirm it uses the identical
         // noise_texture(4) formula on its ground/center spheres.
-        {
+        // A7 migrated to pbrt-backed - see pbrt_scenes/simple-light.pbrt (legacy_id 6 kept).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A7", 6, SceneNames::SimpleLight, SceneCategories::Basics,
             "Perlin spheres with emissive light sources",
-            "Fast", 100, false, true,
-            { 20, 26, 3, 6,  0, 2, 0,  0, 0, 0 },
-            build_simple_light,
-            no_lights
-        },
+            "Fast", "simple-light.pbrt", CameraMode::Fixed),
         // A8 migrated to pbrt-backed - see pbrt_scenes/cornell-smoke.pbrt.
         // legacy_id 191. build_cornell_smoke()/build_cornell_smoke_lights()
         // have no other consumer - deleted below.
@@ -162,29 +156,18 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // native builders stay - deleting them would be a real feature
         // loss (GGX-microfacet-with-flat-tint has no equivalent GPU
         // material slot to fall back to either).
-        {
+        // B1 migrated to pbrt-backed - see pbrt_scenes/rough-metal-spheres.pbrt (legacy_id 9 kept).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B1", 9, SceneNames::RoughMetalSpheres, SceneCategories::Materials,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
-            "Medium", 200, false, true,
-            { 42, 0, 2.7, 17,  0, 1, 0,  0.10, 0.10, 0.12 },
-            build_rough_metal_spheres,
-            []() {
-                hittable_list l;
-                auto empty_mat = std::shared_ptr<material>();
-                l.add(std::make_shared<quad>(point3(-6,6,-4), vec3(12,0,0), vec3(0,0,8), empty_mat));
-                return l;
-            }
-        },
+            "Medium", "rough-metal-spheres.pbrt", CameraMode::Fixed),
         // B2 PERMANENTLY stays native - same rough_metal gap as B1's own
         // comment just above (aluminum box, gold sphere, both rough_metal).
-        {
+        // B2 migrated to pbrt-backed - see pbrt_scenes/cornell-rough-metal.pbrt (legacy_id 10 kept).
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B2", 10, SceneNames::CornellRoughMetal, SceneCategories::Materials,
             "Cornell box with rough aluminum box and rough gold sphere",
-            "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
-            build_cornell_rough_metal,
-            build_cornell_box_lights
-        },
+            "Medium", "cornell-rough-metal.pbrt", CameraMode::UserControlled),
         // B3 migrated to pbrt-backed (this project's GPU scene-construction-
         // duplication elimination, pilot batch) - see pbrt_scenes/
         // cornell-rough-glass.pbrt's own header comment (also fixes I5/I10,

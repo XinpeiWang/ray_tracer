@@ -149,13 +149,15 @@ INSTANTIATE_TEST_SUITE_P(
 // ============================================================================
 
 TEST(SpectralRgbParityTest, UnsupportedMaterialFailsClosed) {
-	// B1 (RoughMetalSpheres) uses rough_metal, which is not in --spectral's
+	// B6 (Cornell Thin Glass) uses thin_dielectric, which is not in --spectral's
 	// {lambertian, metal, dielectric, rough_dielectric, conductor,
-	// diffuse_light} whitelist.
-	const SceneDescriptor* s = find_scene("B1");
+	// diffuse_light} whitelist. (This used to be B1/rough_metal; B1 migrated to
+	// pbrt-backed and now expresses its rough metal as a conductor, which IS
+	// whitelisted, so it renders fine under --spectral.)
+	const SceneDescriptor* s = find_scene("B6");
 	ASSERT_NE(s, nullptr);
 
-	const std::string fn = "specparity_B1_reject.ppm";
+	const std::string fn = "specparity_B6_reject.ppm";
 	std::remove(fn.c_str());
 	RenderOptions opts;
 	opts.spectral = true;
@@ -163,9 +165,9 @@ TEST(SpectralRgbParityTest, UnsupportedMaterialFailsClosed) {
 	                          s->camera.lookfrom_x, s->camera.lookfrom_y, s->camera.lookfrom_z,
 	                          0, opts);
 
-	EXPECT_NE(rc, 0) << "B1 uses rough_metal, not in --spectral's material whitelist - "
+	EXPECT_NE(rc, 0) << "B6 uses thin_dielectric, not in --spectral's material whitelist - "
 	                     "expected a non-zero error, not a silently-wrong render.";
 	std::ifstream f(fn);
-	EXPECT_FALSE(f.good()) << "B1 should not have produced an output image under --spectral.";
+	EXPECT_FALSE(f.good()) << "B6 should not have produced an output image under --spectral.";
 	std::remove(fn.c_str());
 }

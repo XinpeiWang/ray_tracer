@@ -11,36 +11,13 @@
 #include "scenes_book.h"  // add_cornell_walls_and_main_light()
 #include "punctual_light_objects.h"  // distant_light_obj, via punctual_light_list::add_distant()
 
-/**
- * Rough Metal Spheres -- GGX roughness progression showcase
- * Five spheres in a row, roughness 0.05 -> 0.2 -> 0.4 -> 0.6 -> 0.8
- * Lit from a large area light above; sky background for ambient fill.
- */
-inline hittable_list build_rough_metal_spheres() {
-	hittable_list world;
+// build_rough_metal_spheres() deleted - B1 migrated to pbrt-backed, see
+// pbrt_scenes/rough-metal-spheres.pbrt and scene_registry_data.h's own entry. No
+// other consumer. (build_cornell_rough_metal() below stays, like its siblings
+// build_cornell_rough_glass/conductor/coated_diffuse: B2 migrated to pbrt-backed,
+// but tests/integration/skip_pdf_material_brightness_tests.cpp still renders that
+// native world through camera::ray_color() as a regression fixture.)
 
-	// Ground plane
-	auto ground = make_shared<lambertian>(color(0.2, 0.2, 0.2));
-	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground));
-
-	// Five rough-metal spheres with increasing roughness
-	const double roughnesses[] = { 0.05, 0.2, 0.4, 0.6, 0.8 };
-	// Gold-ish tint
-	auto albedo = color(0.95, 0.85, 0.55);
-	for (int i = 0; i < 5; i++) {
-		double x = (i - 2) * 2.5;
-		world.add(make_shared<sphere>(
-			point3(x, 1.0, 0), 1.0,
-			make_shared<rough_metal>(albedo, roughnesses[i])
-		));
-	}
-
-	// Large area light above
-	auto light = make_shared<diffuse_light>(color(6, 6, 6));
-	world.add(make_shared<quad>(point3(-6, 6, -4), vec3(12, 0, 0), vec3(0, 0, 8), light));
-
-	return world;
-}
 
 /**
  * Cornell box with rough metal objects (GGX microfacet showcase)

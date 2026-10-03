@@ -1594,58 +1594,10 @@ static void build_cornell_box(SceneData& scene) {
 		make_float3(static_cast<float>(kBox.translate.x), static_cast<float>(kBox.translate.y), static_cast<float>(kBox.translate.z)));
 }
 
-/// @brief Build Rough Metal Spheres scene (scene 9)
-/// Matches CPU build_rough_metal_spheres(): large ground sphere, 5 rough-metal
-/// spheres with roughness 0.05..0.8, and a large quad area light above.
-static void build_rough_metal_spheres(SceneData& scene) {
-    // Ground (large dark-grey Lambertian sphere)
-    const int mat_ground = add_lambertian(scene, make_float3(0.2f, 0.2f, 0.2f));
+// build_rough_metal_spheres() (former "scene 9" / B1 GPU builder) deleted - B1
+// migrated to pbrt-backed, see pbrt_scenes/rough-metal-spheres.pbrt and its case-9
+// removal below.
 
-    // Area light quad material
-    constexpr float kRMSLightIntensity = 6.0f;
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    add_diffuse_light(scene, make_float3(kRMSLightIntensity, kRMSLightIntensity, kRMSLightIntensity));
-
-    // Five rough-metal sphere materials: roughness 0.05, 0.2, 0.4, 0.6, 0.8
-    // (real GGX via add_rough_metal() - matches CPU's `rough_metal`, NOT
-    // add_metal()'s unrelated fuzz-perturbed-mirror model)
-    const float roughnesses[5] = { 0.05f, 0.2f, 0.4f, 0.6f, 0.8f };
-    int mat_metal[5];
-    for (int i = 0; i < 5; ++i) {
-        mat_metal[i] = safe_cast_to_int(scene.materials.size());
-        add_rough_metal(scene, make_float3(0.95f, 0.85f, 0.55f), roughnesses[i]);
-    }
-
-    // Ground sphere: center (0,-1000,0), radius 1000
-    SphereData ground{};
-    ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-    ground.radius = 1000.0f;
-    ground.materialIdx = mat_ground;
-    scene.spheres.push_back(ground);
-
-    // Five metal spheres at x = (i-2)*2.5, y=1, z=0, radius=1
-    for (int i = 0; i < 5; ++i) {
-        SphereData s{};
-        s.center = make_float3((i - 2) * 2.5f, 1.0f, 0.0f);
-        s.radius = 1.0f;
-        s.materialIdx = mat_metal[i];
-        scene.spheres.push_back(s);
-    }
-
-    // Area light quad: Q=(-6,6,-4), u=(12,0,0), v=(0,0,8)
-    QuadData lq{};
-    lq.Q = make_float3(-6.0f, 6.0f, -4.0f);
-    lq.u = make_float3(12.0f, 0.0f, 0.0f);
-    lq.v = make_float3(0.0f, 0.0f, 8.0f);
-    const float3 lc = cross(lq.u, lq.v);
-    lq.w = lc;
-    lq.normal = normalize(lc);
-    lq.D = dot(lq.normal, lq.Q);
-    lq.materialIdx = mat_light;
-    scene.quads.push_back(lq);
-    scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-    scene.lightKinds.push_back(GpuLightKind::Quad);
-}
 
 /// @brief Adds the 5 standard Cornell-box walls (red/white/green/white/white)
 /// and the main ceiling light - all of cornell_box_data::kQuads - to scene.
@@ -1681,33 +1633,10 @@ static void add_cornell_walls_and_main_light(SceneData& scene) {
     }
 }
 
-/// @brief Build Cornell Rough Metal scene (scene 10)
-/// Matches CPU build_cornell_rough_metal(): same walls/light, rough aluminum box + rough gold sphere
-static void build_cornell_rough_metal(SceneData& scene) {
-    add_cornell_walls_and_main_light(scene);
+// build_cornell_rough_metal() (former "scene 10" / B2 GPU builder) deleted - B2
+// migrated to pbrt-backed, see pbrt_scenes/cornell-rough-metal.pbrt and its case-10
+// removal below.
 
-    // Rough aluminum box material (roughness 0.15, real GGX via
-    // add_rough_metal() - matches CPU's `rough_metal`)
-    const int mat_alum = add_rough_metal(scene, make_float3(0.8f, 0.85f, 0.88f), 0.15f);
-
-    // Rough gold sphere material (roughness 0.3)
-    const int mat_gold = add_rough_metal(scene, make_float3(0.95f, 0.78f, 0.28f), 0.3f);
-
-    // Rough gold sphere (center 190, 90, 190), radius 90
-    SphereData sphere{};
-    sphere.center = make_float3(190.0f, 90.0f, 190.0f);
-    sphere.radius = 90.0f;
-    sphere.materialIdx = mat_gold;
-    scene.spheres.push_back(sphere);
-
-    // Rough aluminum box: box(0,0,0 -> 165,330,165), rotated 15 deg, translated (265,0,295)
-    add_box(scene,
-        make_float3(0.0f, 0.0f, 0.0f),
-        make_float3(165.0f, 330.0f, 165.0f),
-        mat_alum,
-        15.0f,
-        make_float3(265.0f, 0.0f, 295.0f));
-}
 
 /// @brief Build Cornell Conductor scene (scene 12)
 // build_cornell_conductor() (former "scene 12" / B4 Cornell Conductor GPU
@@ -1756,105 +1685,11 @@ static void build_cornell_rough_metal(SceneData& scene) {
 // migrated to pbrt-backed, see pbrt_scenes/earth-globe.pbrt and its case-3
 // removal above.
 
-/// @brief Ground + Perlin-noise sphere pair shared by scenes 4 (Perlin
-/// Spheres) and 6 (Simple Light) - both start from identical code in CPU
-/// (scenes_book.h's build_perlin_spheres() and build_simple_light() both
-/// begin with the exact same two spheres before scene 6 adds its lights).
-/// One shared noise_texture(scale=4) material for both spheres, matching
-/// CPU's single `pertext` object.
-static void add_perlin_spheres_pair_gpu(SceneData& scene) {
-	const int noiseTexIdx = add_noise_texture_gpu(scene, 4.0f);
-	const int mat = safe_cast_to_int(scene.materials.size());
-	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), noiseTexIdx);
+// add_perlin_spheres_pair_gpu()/build_perlin_spheres_gpu()/build_simple_light_gpu()
+// (former "scene 4" / A5 Perlin Spheres and "scene 6" / A7 Simple Light GPU builders)
+// deleted - both migrated to pbrt-backed, see pbrt_scenes/perlin-spheres.pbrt and
+// pbrt_scenes/simple-light.pbrt and their case-4/case-6 removals below.
 
-	SphereData ground{};
-	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
-	ground.radius = 1000.0f;
-	ground.materialIdx = mat;
-	scene.spheres.push_back(ground);
-
-	SphereData s{};
-	s.center = make_float3(0.0f, 2.0f, 0.0f);
-	s.radius = 2.0f;
-	s.materialIdx = mat;
-	scene.spheres.push_back(s);
-}
-
-/// @brief Scene 4: Perlin Spheres. Matches CPU build_perlin_spheres()
-/// (scenes_book.h) exactly: the shared ground+main-sphere pair, plus 2
-/// smaller marble companion spheres (noise scale 8, vs. the pair's 4) and a
-/// warm key-light quad - this scene used to be lit only by flat sky
-/// ambient with no directed light at all.
-static void build_perlin_spheres_gpu(SceneData& scene) {
-	add_perlin_spheres_pair_gpu(scene);
-
-	const int noiseTex2Idx = add_noise_texture_gpu(scene, 8.0f);
-	const int companionMat = safe_cast_to_int(scene.materials.size());
-	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), noiseTex2Idx);
-
-	SphereData companion1{};
-	companion1.center = make_float3(2.2f, 0.8f, 1.0f);
-	companion1.radius = 0.8f;
-	companion1.materialIdx = companionMat;
-	scene.spheres.push_back(companion1);
-
-	SphereData companion2{};
-	companion2.center = make_float3(-1.8f, 0.6f, -1.2f);
-	companion2.radius = 0.6f;
-	companion2.materialIdx = companionMat;
-	scene.spheres.push_back(companion2);
-
-	const int keyMat = safe_cast_to_int(scene.materials.size());
-	add_diffuse_light(scene, make_float3(8.0f, 6.0f, 3.0f));
-	QuadData key{};
-	key.Q = make_float3(-4.0f, 6.0f, -3.0f);
-	key.u = make_float3(4.0f, 0.0f, 0.0f);
-	key.v = make_float3(0.0f, 0.0f, 4.0f);
-	const float3 kc = cross(key.u, key.v);
-	key.w = kc;
-	key.normal = normalize(kc);
-	key.D = dot(key.normal, key.Q);
-	key.materialIdx = keyMat;
-	scene.quads.push_back(key);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Quad);
-}
-
-/// @brief Scene 6: Simple Light. Matches CPU build_simple_light()
-/// (scenes_book.h) exactly: the same Perlin-sphere pair as scene 4, plus a
-/// warm emissive sphere above and a cool emissive quad to the side (two
-/// separate materials/colors, not one shared flat-white light, for
-/// temperature contrast between them - see CPU's own comment).
-static void build_simple_light_gpu(SceneData& scene) {
-	add_perlin_spheres_pair_gpu(scene);
-
-	const int warmMat = safe_cast_to_int(scene.materials.size());
-	add_diffuse_light(scene, make_float3(6.0f, 3.0f, 1.0f));
-
-	SphereData lightSphere{};
-	lightSphere.center = make_float3(0.0f, 7.0f, 0.0f);
-	lightSphere.radius = 2.0f;
-	lightSphere.materialIdx = warmMat;
-	scene.spheres.push_back(lightSphere);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-
-	const int coolMat = safe_cast_to_int(scene.materials.size());
-	add_diffuse_light(scene, make_float3(2.0f, 3.0f, 6.0f));
-
-	QuadData lightQuad{};
-	lightQuad.Q = make_float3(3.5f, 1.0f, -3.0f);
-	lightQuad.u = make_float3(2.0f, 0.0f, 0.0f);
-	lightQuad.v = make_float3(0.0f, 2.0f, 0.0f);
-	const float3 lc = cross(lightQuad.u, lightQuad.v);
-	lightQuad.w = lc;
-	lightQuad.normal = normalize(lc);
-	lightQuad.D = dot(lightQuad.normal, lightQuad.Q);
-	lightQuad.materialIdx = coolMat;
-	scene.quads.push_back(lightQuad);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Quad);
-}
 
 // build_quads_scene() (former "scene 5" / A6 Colored Quads GPU builder)
 // deleted - A6 migrated to pbrt-backed, see pbrt_scenes/colored-quads.pbrt
@@ -2946,75 +2781,35 @@ bool build_scene(
 				// entry. Falls through to default: -> build_loaded_pbrt_scene()
 				// now that legacy_id 3 is no longer assigned to any scene.
 
-				case 4:  // Perlin Spheres (see add_perlin_spheres_pair_gpu's comment)
-					build_perlin_spheres_gpu(scene);
-
-					// Same Fixed-mode situation as scenes 1/2/3 above.
-					{
-						apply_mesh_camera(make_float3(13.0f, 2.0f, 3.0f), make_float3(0.0f, 0.0f, 0.0f), 20.0f);
-
-						// Flat light-blue background, matching CPU registry's
-						// bg=(0.70,0.80,1.00) for this scene (see
-						// GpuCameraParams::backgroundColor's comment).
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
-					}
-					break;
+				// case 4 (Perlin Spheres / A5) migrated to pbrt-backed - see
+				// pbrt_scenes/perlin-spheres.pbrt and scene_registry_data.h's own
+				// entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 4 is no longer assigned to any scene.
 
 				// case 5 (Colored Quads / A6) migrated to pbrt-backed - see
 				// pbrt_scenes/colored-quads.pbrt and scene_registry_data.h's
 				// A6 entry. Falls through to default: -> build_loaded_pbrt_scene()
 				// now that legacy_id 5 is no longer assigned to any scene.
 
-				case 6: {  // Simple Light (see build_simple_light_gpu's comment)
-					build_simple_light_gpu(scene);
-
-					const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
-					const float3 lookat = make_float3(0.0f, 2.0f, 0.0f);
-					const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-					const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-					build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
-					// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) -
-					// this scene has real emissive geometry (the light sphere and
-					// light quad above).
-					break;
-				}
+				// case 6 (Simple Light / A7) migrated to pbrt-backed - see
+				// pbrt_scenes/simple-light.pbrt and scene_registry_data.h's own
+				// entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 6 is no longer assigned to any scene.
 
 				// case 8 (Final Scene / A9) migrated to pbrt-backed - see
 				// pbrt_scenes/final-scene.pbrt and scene_registry_data.h's own
 				// entry. Falls through to default: -> build_loaded_pbrt_scene()
 				// now that legacy_id 8 is no longer assigned to any scene.
 
-				case 9: {  // Rough Metal Spheres (GGX)
-										build_rough_metal_spheres(scene);
+				// case 9 (Rough Metal Spheres / B1) migrated to pbrt-backed - see
+				// pbrt_scenes/rough-metal-spheres.pbrt and scene_registry_data.h's own
+				// entry. Falls through to default: -> build_loaded_pbrt_scene()
+				// now that legacy_id 9 is no longer assigned to any scene.
 
-										// Camera: vfov=42, lookfrom=(cam_x,cam_y,cam_z), lookat=(0,1,0) -
-										// matches CPU CameraConfig row for scene 9 (widened/pulled back so
-										// all 5 spheres, spanning x=+-6, actually fit in frame).
-										const float3 lookfrom9 = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
-										const float3 lookat9   = make_float3(0.0f, 1.0f, 0.0f);
-										const float3 vup9      = make_float3(0.0f, 1.0f, 0.0f);
-										const float aspect9    = static_cast<float>(image_width) / static_cast<float>(image_height);
-										build_pinhole_camera_params(lookfrom9, lookat9, vup9, 42.0f, aspect9, 1.0f, camera_params);
-										// CPU's registry row for this scene has a (0.10, 0.10, 0.12) flat
-										// background - it fills the whole upper half of the frame, but this
-										// case never set it, so GPU rendered pure black there (CPU avg
-										// brightness 142 vs GPU 105: B1's long-standing ~22-26% "gap", which
-										// was misattributed to rough-metal Fresnel / filter differences).
-										if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.10f, 0.10f, 0.12f);
-										break;
-									}
-
-							case 10:  // Cornell Rough Metal (GGX)
-								build_cornell_rough_metal(scene);
-								setup_cornell_box_camera();
-								if (out_camera_extra) {
-									// Matches CPU CameraConfig bg for scene 10 - a flat black background
-									// made the box's near-mirror faces (which mostly reflect back out
-									// the box's open front) read as solid black instead of shiny metal;
-									// a dim fill fixes that.
-									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
-								}
-								break;
+							// case 10 (Cornell Rough Metal / B2) migrated to pbrt-backed - see
+							// pbrt_scenes/cornell-rough-metal.pbrt and scene_registry_data.h's own
+							// entry. Falls through to default: -> build_loaded_pbrt_scene()
+							// now that legacy_id 10 is no longer assigned to any scene.
 
 							// case 11 (Cornell Rough Glass / B3) migrated to pbrt-backed - see
 							// pbrt_scenes/cornell-rough-glass.pbrt and scene_registry_data.h's
