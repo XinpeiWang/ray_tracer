@@ -19,10 +19,6 @@ Camera "perspective" "float fov" [ 60 ]
 Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
 Sampler "halton" "integer pixelsamples" [ 400 ]
 
-# GPU only: the native scene raised the shadow-ray origin offset from 0.01 to 0.5 - this cathedral's
-# dense stone tracery false-occludes most sky shadow rays at 0.01 (GPU ~24% of CPU brightness, measured).
-Integrator "volpath" "float shadowrayepsilon" [ 0.5 ]
-
 WorldBegin
 
 # Flat sky = the native scene's constant sky_light colour.
@@ -30,9 +26,11 @@ LightSource "infinite" "rgb L" [ 4.5 4.8 5.2 ]
 
 Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/sibenik_cathedral_textures/kamen.png" ]
 Texture "f1" "float" "imagemap" "string filename" [ "../models/sibenik_cathedral_textures/kamen-bump.png" ]
+Texture "f1s" "float" "scale" "float scale" [ 0.0160115467 ] "texture tex" [ "f1" ]
 Texture "c2" "spectrum" "imagemap" "string filename" [ "../models/sibenik_cathedral_textures/KAMEN-stup.png" ]
 Texture "c3" "spectrum" "imagemap" "string filename" [ "../models/sibenik_cathedral_textures/mramor6x6.png" ]
 Texture "f4" "float" "imagemap" "string filename" [ "../models/sibenik_cathedral_textures/mramor6x6-bump.png" ]
+Texture "f4s" "float" "scale" "float scale" [ 0.0160115467 ] "texture tex" [ "f4" ]
 
 # The native loader applied x*scale + offset: Translate then Scale.
 AttributeBegin
@@ -52,7 +50,7 @@ AttributeBegin
 
   AttributeBegin
     # kamen_zid
-    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1" ]
+    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1s" ]
     Shape "plymesh" "string filename" [ "../models/sibenik_cathedral.obj#kamen_zid" ]
   AttributeEnd
 
@@ -64,7 +62,7 @@ AttributeBegin
 
   AttributeBegin
     # pod
-    Material "diffuse" "texture reflectance" [ "c3" ] "texture displacement" [ "f4" ]
+    Material "diffuse" "texture reflectance" [ "c3" ] "texture displacement" [ "f4s" ]
     Shape "plymesh" "string filename" [ "../models/sibenik_cathedral.obj#pod" ]
   AttributeEnd
 
@@ -76,19 +74,19 @@ AttributeBegin
 
   AttributeBegin
     # pod_rub
-    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1" ]
+    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1s" ]
     Shape "plymesh" "string filename" [ "../models/sibenik_cathedral.obj#pod_rub" ]
   AttributeEnd
 
   AttributeBegin
     # kamen_zid_prozor
-    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1" ]
+    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1s" ]
     Shape "plymesh" "string filename" [ "../models/sibenik_cathedral.obj#kamen_zid_prozor" ]
   AttributeEnd
 
   AttributeBegin
     # zid_vani
-    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1" ]
+    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1s" ]
     Shape "plymesh" "string filename" [ "../models/sibenik_cathedral.obj#zid_vani" ]
   AttributeEnd
 

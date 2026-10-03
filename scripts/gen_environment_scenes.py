@@ -35,7 +35,7 @@ SCENES = {
                title="San Miguel", legacy=74),
     "H6": dict(slug="environment-sibenik-cathedral", obj="sibenik_cathedral.obj", tex="sibenik_cathedral_textures", off=(0.0, 15.3123, 0.0),
                scale=1.0, sky=(4.5, 4.8, 5.2), fb=(0.72, 0.71, 0.65), cam=(60, (-15, 1.7, 0), (15, 5, 0)), spp=400,
-               title="Sibenik Cathedral", legacy=75, shadow_eps=0.5),
+               title="Sibenik Cathedral", legacy=75),
     "H7": dict(slug="environment-breakfast-room", obj="breakfast_room.obj", tex="breakfast_room_textures", off=(0.54, 1.42, -2.67),
                scale=1.0, sky=(1.1, 1.2, 1.35), fb=(0.6, 0.55, 0.5), cam=(70, (-3.0, 1.5, 3.0), (2.5, 1.3, 0)), spp=300,
                title="Breakfast Room", legacy=76),
@@ -169,6 +169,23 @@ def is_grayscale(path):
     return _gray_cache[path]
 
 
+def bbox_diag(path):
+    """Length of the OBJ's axis-aligned bounding-box diagonal, in the file's own units."""
+    lo = [float("inf")] * 3
+    hi = [float("-inf")] * 3
+    with open(path, "rb") as f:
+        for raw in f:
+            if raw[:2] == b"v ":
+                try:
+                    x, y, z = (float(c) for c in raw[2:].split()[:3])
+                except ValueError:
+                    continue
+                for i, c in enumerate((x, y, z)):
+                    lo[i] = min(lo[i], c)
+                    hi[i] = max(hi[i], c)
+    return math.sqrt(sum((hi[i] - lo[i]) ** 2 for i in range(3)))
+
+
 def scan_obj(path):
     """Streams the OBJ once: (mtllib, ordered usemtl names that own >=1 face, faces-before-first-usemtl?)."""
     mtllib = ""
@@ -225,6 +242,23 @@ def generate(sid, cfg):
             tex_decl[key] = nm
             decls.append('Texture "%s" "%s" "imagemap" "string filename" [ "../models/%s" ]' % (nm, kind, relpath))
         return tex_decl[key]
+
+    # A grayscale map_Bump is a height map with no stated unit, but pbrt's bump mapping reads it as a
+    # displacement in world units (scale 1 would be a one-unit relief: wildly strong normals). Scale it to
+    # a relief of 0.03% of the model's size - about a centimetre on a 40 m building - which is what the
+    # native loader's nearest-neighbour lookup effectively produced. Normal maps need no scale.
+    relief_state = {}
+    scaled_decl = {}
+
+    def relief_scaled(tex_name):
+        if tex_name not in scaled_decl:
+            if "relief" not in relief_state:
+                relief_state["relief"] = 0.0003 * bbox_diag(obj_path)
+            nm = tex_name + "s"
+            decls.append('Texture "%s" "float" "scale" "float scale" [ %s ] "texture tex" [ "%s" ]'
+                         % (nm, num(relief_state["relief"]), tex_name))
+            scaled_decl[tex_name] = nm
+        return scaled_decl[tex_name]
 
     stats = {"emissive": 0, "glass": 0, "metal": 0, "textured": 0, "flat": 0, "fallback": 0, "bump": 0, "normal": 0, "alpha": 0}
     blocks = []
@@ -304,6 +338,8 @@ def generate(sid, cfg):
                     if load_ok(full):
                         gray = is_grayscale(full)
                         disp = texture("float" if gray else "spectrum", rel)
+                        if gray:
+                            disp = relief_scaled(disp)
                         base += ' "texture displacement" [ "%s" ]' % disp
                         stats["bump" if gray else "normal"] += 1
         alpha_clause = ""
@@ -344,11 +380,6 @@ def generate(sid, cfg):
     out.append('Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]')
     out.append('Sampler "halton" "integer pixelsamples" [ %d ]' % cfg["spp"])
     out.append("")
-    if cfg.get("shadow_eps"):
-        out.append("# GPU only: the native scene raised the shadow-ray origin offset from 0.01 to %s - this cathedral's" % num(cfg["shadow_eps"]))
-        out.append("# dense stone tracery false-occludes most sky shadow rays at 0.01 (GPU ~24% of CPU brightness, measured).")
-        out.append('Integrator "volpath" "float shadowrayepsilon" [ %s ]' % num(cfg["shadow_eps"]))
-        out.append("")
     out.append("WorldBegin")
     out.append("")
     out.append("# Flat sky = the native scene's constant sky_light colour.")

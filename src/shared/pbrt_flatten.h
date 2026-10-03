@@ -1804,9 +1804,6 @@ struct FlatScene {
 	// would want to casually override between a preview and a final
 	// render.
 	bool regularize = false;
-	// Integrator "float shadowrayepsilon" - see pbrt_scene::Scene::shadowRayEpsilon's
-	// own comment. 0 means "use the renderer's default".
-	double shadowRayEpsilon = 0.0;
 	// Accelerator "bvh"/"kdtree" - see pbrt_scene::Scene::acceleratorType's
 	// own comment. Applied unconditionally like PixelFilter/regularize
 	// above (not CLI-overridable): which acceleration structure/build
@@ -2553,7 +2550,6 @@ inline void flattenSettings(const pbrt_scene::Scene &scene, FlatScene &out) {
 	out.acceleratorMaxNodePrims = scene.acceleratorMaxNodePrims;
 	out.acceleratorKdParams = scene.acceleratorKdParams;
 	out.maxComponentValue = scene.maxComponentValue;
-	out.shadowRayEpsilon = scene.shadowRayEpsilon;
 
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds" -> a single
 	// NDC-fraction rectangle. pbrt-v4's own rule: start from the full

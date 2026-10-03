@@ -753,13 +753,6 @@ static bool build_loaded_pbrt_scene(
 	// as PixelFilter just above. See GpuCameraParams::regularize's own comment.
 	if (out_camera_extra) out_camera_extra->regularize = loaded.scene.regularize ? 1 : 0;
 
-	// Integrator "float shadowrayepsilon" - scene-authored override of the
-	// 0.01 shadow-ray origin offset (GpuCameraParams::shadowRayEpsilon's own
-	// comment). Only written when the scene asked for one: 0 must stay 0
-	// ("use the default"), and nothing else sets this field on a pbrt path.
-	if (out_camera_extra && loaded.scene.shadowRayEpsilon > 0.0)
-		out_camera_extra->shadowRayEpsilon = static_cast<float>(loaded.scene.shadowRayEpsilon);
-
 	// Film "cropwindow"/"pixelbounds" - resolved to concrete PIXEL bounds
 	// here (image_width/image_height, this function's own params, are
 	// already the render's real resolution - unlike CPU's camera class,
