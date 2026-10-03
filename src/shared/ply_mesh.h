@@ -12,6 +12,14 @@
 // texture coordinates when present; faces of any arity, triangulated as a fan.
 // That covers essentially every PLY produced by an exporter.
 //
+// OBJ SUPPORT (non-standard extension)
+// -----------------------------------
+// loadFile() also reads Wavefront .obj (chosen by file extension), so a scene can
+// write `Shape "plymesh" "string filename" [ "../models/bunny.obj" ]` and use a
+// mesh asset as-is instead of first converting every multi-megabyte .obj to PLY.
+// See parseObj() for what is and is not read (positions, texture coordinates,
+// normals, faces of any arity as a fan; NOT .mtl materials).
+//
 // Deliberately handles elements and properties it does NOT care about, rather
 // than assuming a layout. A PLY may carry per-vertex colour, confidence,
 // material indices, or whole extra elements, in any order. Skipping them
@@ -28,10 +36,14 @@
 // pure-function shape as pbrt_scene.h beside it.
 
 #include <cstdint>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "gzip_inflate.h"
@@ -341,6 +353,211 @@ inline LoadResult parse(const std::string &data) {
 	return r;
 }
 
+// Wavefront OBJ reader - `v`, `vt`, `vn` and `f` records only.
+//
+//  - Faces of any arity are fan-triangulated, exactly like the PLY path.
+//  - Face vertex references may be `v`, `v/vt`, `v//vn` or `v/vt/vn`, and any
+//    index may be negative (relative to the end of the list so far).
+//  - `vn` IS read when faces reference it, so a smooth-shaded export keeps its
+//    shading (an OBJ with no `vn`, like the Stanford scans, shades with flat
+//    per-face geometric normals - what a plymesh with no normals gets, and what
+//    the native mesh scenes this exists for do).
+//  - UVs and normals are per-vertex in a Mesh but per-corner in an OBJ, so when
+//    the file carries `vt`/`vn` data a position is duplicated for every distinct
+//    (position, uv, normal) triple it is used with; with neither (or a mesh that
+//    never references them) positions are used 1:1 and Mesh.uvs/Mesh.normals
+//    stay empty, so plain meshes pay nothing.
+//  - Everything else (`o`, `g`, `s`, `usemtl`, `mtllib`, comments) is ignored:
+//    one mesh, one material, set by the scene file's own Material directive.
+// Out-of-range references fail the load with the line named, like the PLY path.
+inline LoadResult parseObj(const std::string &data) {
+	LoadResult r;
+	std::vector<float> pos;     // 3 per `v`
+	std::vector<float> uv;      // 2 per `vt`
+	std::vector<float> nrm;     // 3 per `vn`
+
+	// A cheap pre-scan: does any face corner actually reference a vt / a vn?
+	// (`v/vt` and `v/vt/vn` reference a vt; `v//vn` and `v/vt/vn` reference a vn.)
+	bool needUv = false, needN = false;
+	{
+		std::size_t i = 0;
+		const std::size_t n = data.size();
+		while (i < n && !(needUv && needN)) {
+			std::size_t e = data.find('\n', i);
+			if (e == std::string::npos) e = n;
+			if (e - i > 2 && data[i] == 'f' && (data[i + 1] == ' ' || data[i + 1] == '\t')) {
+				std::size_t k = i + 1;
+				while (k < e) {
+					while (k < e && (data[k] == ' ' || data[k] == '\t' || data[k] == '\r')) ++k;
+					const std::size_t tokStart = k;
+					while (k < e && data[k] != ' ' && data[k] != '\t' && data[k] != '\r') ++k;
+					const std::size_t s1 = data.find('/', tokStart);
+					if (s1 == std::string::npos || s1 >= k) continue;
+					auto isNum = [&](std::size_t q) {
+						return q < k && ((data[q] >= '0' && data[q] <= '9') || data[q] == '-');
+					};
+					if (isNum(s1 + 1)) needUv = true;
+					const std::size_t s2 = data.find('/', s1 + 1);
+					if (s2 != std::string::npos && s2 < k && isNum(s2 + 1)) needN = true;
+				}
+			}
+			i = e + 1;
+		}
+	}
+	const bool expand = needUv || needN;
+
+	struct Corner { int v, t, n; };
+	std::vector<Corner> corners;
+	struct Key {
+		int v, t, n;
+		bool operator==(const Key &o) const { return v == o.v && t == o.t && n == o.n; }
+	};
+	struct KeyHash {
+		std::size_t operator()(const Key &k) const {
+			std::size_t h = static_cast<std::size_t>(k.v) * 0x9E3779B97F4A7C15ull;
+			h ^= static_cast<std::size_t>(k.t + 1) * 0xC2B2AE3D27D4EB4Full + (h << 6) + (h >> 2);
+			h ^= static_cast<std::size_t>(k.n + 1) * 0x165667B19E3779F9ull + (h << 6) + (h >> 2);
+			return h;
+		}
+	};
+	std::unordered_map<Key, int, KeyHash> corner;
+
+	std::size_t lineNo = 0, i = 0;
+	const std::size_t n = data.size();
+	auto parseIndex = [](const char *&c, const char *end, int count, int &out, bool &present) {
+		// Parses an optionally-signed integer index and resolves negatives
+		// against `count`; `present` is false when the field is empty (`v//vn`).
+		present = false;
+		const char *q = c;
+		bool neg = false;
+		if (q < end && (*q == '-' || *q == '+')) { neg = (*q == '-'); ++q; }
+		if (q >= end || *q < '0' || *q > '9') return;
+		long v = 0;
+		while (q < end && *q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); ++q; }
+		c = q;
+		present = true;
+		out = neg ? static_cast<int>(count - v) : static_cast<int>(v - 1);
+	};
+
+	while (i < n) {
+		std::size_t e = data.find('\n', i);
+		if (e == std::string::npos) e = n;
+		++lineNo;
+		const char *c = data.data() + i;
+		const char *end = data.data() + e;
+		i = e + 1;
+		while (c < end && (*c == ' ' || *c == '\t')) ++c;
+		if (c >= end) continue;
+		if (c[0] == 'v' && c + 1 < end && (c[1] == ' ' || c[1] == '\t')) {
+			char *next = nullptr;
+			float x = std::strtof(c + 1, &next);
+			float y = std::strtof(next, &next);
+			float z = std::strtof(next, &next);
+			pos.push_back(x); pos.push_back(y); pos.push_back(z);
+		} else if (c[0] == 'v' && c + 2 < end && c[1] == 't' && (c[2] == ' ' || c[2] == '\t')) {
+			char *next = nullptr;
+			float u = std::strtof(c + 2, &next);
+			float v = std::strtof(next, &next);
+			uv.push_back(u); uv.push_back(v);
+		} else if (c[0] == 'v' && c + 2 < end && c[1] == 'n' && (c[2] == ' ' || c[2] == '\t')) {
+			char *next = nullptr;
+			float x = std::strtof(c + 2, &next);
+			float y = std::strtof(next, &next);
+			float z = std::strtof(next, &next);
+			nrm.push_back(x); nrm.push_back(y); nrm.push_back(z);
+		} else if (c[0] == 'f' && c + 1 < end && (c[1] == ' ' || c[1] == '\t')) {
+			std::vector<int> face;
+			const char *q = c + 1;
+			while (q < end) {
+				while (q < end && (*q == ' ' || *q == '\t' || *q == '\r')) ++q;
+				if (q >= end) break;
+				int vi = 0, ti = -1, ni = -1;
+				bool havePos = false, haveUv = false, haveN = false;
+				parseIndex(q, end, static_cast<int>(pos.size() / 3), vi, havePos);
+				if (q < end && *q == '/') {
+					++q;
+					parseIndex(q, end, static_cast<int>(uv.size() / 2), ti, haveUv);
+					if (q < end && *q == '/') {
+						++q;
+						parseIndex(q, end, static_cast<int>(nrm.size() / 3), ni, haveN);
+					}
+				}
+				// skip any trailing junk on this token
+				while (q < end && *q != ' ' && *q != '\t' && *q != '\r') ++q;
+				const std::string at = "OBJ line " + std::to_string(lineNo) + ": ";
+				if (!havePos) {
+					r.error = at + "face vertex has no position index";
+					return r;
+				}
+				if (vi < 0 || static_cast<std::size_t>(vi) >= pos.size() / 3) {
+					r.error = at + "face index " + std::to_string(vi + 1) + " is outside the " +
+							  std::to_string(pos.size() / 3) + " vertices declared so far";
+					return r;
+				}
+				int useUv = -1, useN = -1;
+				if (needUv && haveUv) {
+					if (ti < 0 || static_cast<std::size_t>(ti) >= uv.size() / 2) {
+						r.error = at + "texture index " + std::to_string(ti + 1) + " is outside the " +
+								  std::to_string(uv.size() / 2) + " texture coordinates declared so far";
+						return r;
+					}
+					useUv = ti;
+				}
+				if (needN && haveN) {
+					if (ni < 0 || static_cast<std::size_t>(ni) >= nrm.size() / 3) {
+						r.error = at + "normal index " + std::to_string(ni + 1) + " is outside the " +
+								  std::to_string(nrm.size() / 3) + " normals declared so far";
+						return r;
+					}
+					useN = ni;
+				}
+				if (!expand) {
+					face.push_back(vi);
+				} else {
+					const Key key{vi, useUv, useN};
+					auto it = corner.find(key);
+					if (it == corner.end()) {
+						it = corner.emplace(key, static_cast<int>(corners.size())).first;
+						corners.push_back({vi, useUv, useN});
+					}
+					face.push_back(it->second);
+				}
+			}
+			for (std::size_t k = 2; k < face.size(); ++k) {
+				r.mesh.indices.push_back(face[0]);
+				r.mesh.indices.push_back(face[k - 1]);
+				r.mesh.indices.push_back(face[k]);
+			}
+		}
+	}
+
+	if (pos.empty()) { r.error = "OBJ has no vertices"; return r; }
+	if (expand) {
+		r.mesh.positions.reserve(corners.size() * 3);
+		if (needUv) r.mesh.uvs.reserve(corners.size() * 2);
+		if (needN) r.mesh.normals.reserve(corners.size() * 3);
+		for (const Corner &cv : corners) {
+			r.mesh.positions.push_back(pos[cv.v * 3 + 0]);
+			r.mesh.positions.push_back(pos[cv.v * 3 + 1]);
+			r.mesh.positions.push_back(pos[cv.v * 3 + 2]);
+			if (needUv) {
+				r.mesh.uvs.push_back(cv.t >= 0 ? uv[cv.t * 2 + 0] : 0.0f);
+				r.mesh.uvs.push_back(cv.t >= 0 ? uv[cv.t * 2 + 1] : 0.0f);
+			}
+			if (needN) {
+				// A corner with no normal (mixed file) gets +Z rather than garbage.
+				r.mesh.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 0] : 0.0f);
+				r.mesh.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 1] : 0.0f);
+				r.mesh.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 2] : 1.0f);
+			}
+		}
+	} else {
+		r.mesh.positions = std::move(pos);
+	}
+	r.ok = true;
+	return r;
+}
+
 // Convenience wrapper. Binary mode matters: on Windows a text-mode read would
 // eat 0x0D bytes inside binary vertex data.
 inline LoadResult loadFile(const std::string &path) {
@@ -365,6 +582,20 @@ inline LoadResult loadFile(const std::string &path) {
 			return r;
 		}
 		bytes.swap(inflated);
+	}
+
+	// .obj goes through parseObj() (see the OBJ SUPPORT note at the top of this
+	// file); everything else is PLY. By extension, case-insensitively: unlike a
+	// gzip wrapper, an OBJ has no magic bytes to sniff.
+	const std::size_t dot = path.find_last_of('.');
+	if (dot != std::string::npos) {
+		std::string ext = path.substr(dot);
+		for (char &ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+		if (ext == ".obj") {
+			LoadResult objParsed = parseObj(bytes);
+			if (!objParsed.ok) objParsed.error = path + ": " + objParsed.error;
+			return objParsed;
+		}
 	}
 
 	LoadResult parsed = parse(bytes);

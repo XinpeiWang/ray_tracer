@@ -1363,7 +1363,7 @@ TEST(FlattenTest, RotationAloneDoesNotCountAsNonUniformScale) {
 TEST(FlattenTest, PlyMeshIsResolvedAndTransformed) {
 	const MeshResolver res = [](const std::string &path,
 								std::vector<float> &pos, std::vector<int> &idx,
-								std::vector<float> &) {
+								std::vector<float> &, std::vector<float> &) {
 		if (path != "geometry/tri.ply") return false;
 		pos = {0, 0, 0,  1, 0, 0,  0, 1, 0};
 		idx = {0, 1, 2};
@@ -1381,7 +1381,7 @@ TEST(FlattenTest, PlyMeshIsResolvedAndTransformed) {
 TEST(FlattenTest, PlyMeshThreadsRealUVFromTheResolver) {
 	const MeshResolver res = [](const std::string &path,
 								std::vector<float> &pos, std::vector<int> &idx,
-								std::vector<float> &uvs) {
+								std::vector<float> &uvs, std::vector<float> &) {
 		if (path != "geometry/tri.ply") return false;
 		pos = {0, 0, 0,  1, 0, 0,  0, 1, 0};
 		idx = {0, 1, 2};
@@ -1402,7 +1402,7 @@ TEST(FlattenTest, PlyMeshThreadsRealUVFromTheResolver) {
 
 TEST(FlattenTest, UnreadablePlyMeshWarnsRatherThanAborting) {
 	const MeshResolver res = [](const std::string &, std::vector<float> &, std::vector<int> &,
-								std::vector<float> &) {
+								std::vector<float> &, std::vector<float> &) {
 		return false;
 	};
 	const FlatScene s = flattenSource(
