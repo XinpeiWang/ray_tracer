@@ -67,6 +67,7 @@ Texture "c39" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_te
 Texture "c40" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_vigas_a2_bump.png" ]
 Texture "c41" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_arcos_lisos_2_bump.png" ]
 Texture "f42" "float" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/Maceta_D_Bump_0.png" ]
+Texture "f42s" "float" "scale" "float scale" [ 0.0226942012 ] "texture tex" [ "f42" ]
 Texture "c43" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_piso_patio_exterior_displace_inv.png" ]
 Texture "c44" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_arco_frente_displace_inv.png" ]
 Texture "c45" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_escurridera_bump.png" ]
@@ -1314,7 +1315,7 @@ AttributeBegin
 
   AttributeBegin
     # material_44
-    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.632455532 ] "texture displacement" [ "f42" ]
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.632455532 ] "texture displacement" [ "f42s" ]
     Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_44" ]
   AttributeEnd
 
