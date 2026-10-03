@@ -81,42 +81,11 @@ inline hittable_list build_cornell_box() {
 	return world;
 }
 
-// build_bouncing_spheres() deleted - A2 migrated to pbrt-backed, see
-// pbrt_scenes/bouncing-spheres.pbrt and scene_registry_data.h's own entry
-// (that file's own header comment has the full derivation of its grid
-// layout, reused from GPU's own deterministic std::mt19937(42) sequence).
-// No other consumer (gpu/metal/metal_poc_scenes_a.mm's own scene is an
-// independent hand-ported Metal implementation that never called this
-// function).
-
-// build_checkered_spheres() deleted - A3 migrated to pbrt-backed, see
-// pbrt_scenes/checkered-spheres.pbrt and scene_registry_data.h's own entry.
-// No other consumer.
-
-// build_earth()/build_earth_lights() deleted - A4 migrated to pbrt-backed,
-// see pbrt_scenes/earth-globe.pbrt and scene_registry_data.h's own entry.
-// Neither had any other consumer.
-
 // build_perlin_spheres()/build_perlin_spheres_lights() deleted - A5 migrated to
 // pbrt-backed, see pbrt_scenes/perlin-spheres.pbrt and scene_registry_data.h's own
 // entry (that file's header has the one deliberate noise-texture substitution).
 // No other consumer (gpu/metal/'s own Perlin scene is an independent hand-ported
 // Metal implementation that never called either function).
-
-// build_quads()/build_quads_lights() (former A6 Colored Quads native CPU
-// builder) deleted - A6 migrated to pbrt-backed, see pbrt_scenes/
-// colored-quads.pbrt and scene_registry_data.h's A6 entry. NOT the Metal
-// backend's own buildColoredQuads() (gpu/metal/metal_poc_scenes_a.mm) -
-// that's a fully independent, hardcoded dispatch unaffected by this C++
-// registry, deliberately out of this migration's scope.
-
-// build_simple_light() deleted - A7 migrated to pbrt-backed, see
-// pbrt_scenes/simple-light.pbrt and scene_registry_data.h's own entry. No other
-// consumer.
-
-// build_cornell_smoke() deleted - A8 migrated to pbrt-backed, see
-// pbrt_scenes/cornell-smoke.pbrt and scene_registry_data.h's own entry. No
-// other consumer.
 
 // build_final_scene()/build_final_scene_lights() deleted - A9 migrated to
 // pbrt-backed, see pbrt_scenes/final-scene.pbrt and scene_registry_data.h's

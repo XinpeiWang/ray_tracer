@@ -60,10 +60,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A3", 185, SceneNames::CheckeredSpheres, SceneCategories::Basics,
             "Two spheres with procedural checker texture",
             "Fast", "checkered-spheres.pbrt"),
-        // A4 migrated to pbrt-backed - see pbrt_scenes/earth-globe.pbrt.
-        // legacy_id 190 (next after F4's 189). Reuses the already-bundled
-        // images/earthmap.jpg - no new asset needed. build_earth()/
-        // build_earth_lights() have no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A4", 190, SceneNames::Earth, SceneCategories::Basics,
             "Globe with earth texture mapping (requires earthmap.jpg)",
@@ -115,9 +111,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A7", 6, SceneNames::SimpleLight, SceneCategories::Basics,
             "Perlin spheres with emissive light sources",
             "Fast", "simple-light.pbrt", CameraMode::Fixed),
-        // A8 migrated to pbrt-backed - see pbrt_scenes/cornell-smoke.pbrt.
-        // legacy_id 191. build_cornell_smoke()/build_cornell_smoke_lights()
-        // have no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A8", 191, SceneNames::CornellSmoke, SceneCategories::Basics,
             "Cornell box with volumetric fog",
@@ -161,9 +154,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B1", 9, SceneNames::RoughMetalSpheres, SceneCategories::Materials,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
             "Medium", "rough-metal-spheres.pbrt", CameraMode::Fixed),
-        // B2 PERMANENTLY stays native - same rough_metal gap as B1's own
-        // comment just above (aluminum box, gold sphere, both rough_metal).
-        // B2 migrated to pbrt-backed - see pbrt_scenes/cornell-rough-metal.pbrt (legacy_id 10 kept).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B2", 10, SceneNames::CornellRoughMetal, SceneCategories::Materials,
             "Cornell box with rough aluminum box and rough gold sphere",
@@ -191,31 +181,18 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B4", 170, SceneNames::CornellConductor, SceneCategories::Materials,
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
             "Medium", "cornell-conductor.pbrt", CameraMode::UserControlled),
-        // B5 migrated to pbrt-backed - see pbrt_scenes/cornell-coated-diffuse.pbrt.
-        // legacy_id 172 (next after B3's 171). build_cornell_coated_diffuse()
-        // itself is NOT deleted - tests/integration/skip_pdf_material_brightness_tests.cpp
-        // calls it directly.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B5", 172, SceneNames::CornellCoatedDiffuse, SceneCategories::Materials,
             "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (pbrt-v4 CoatedDiffuseBxDF)",
             "Medium", "cornell-coated-diffuse.pbrt", CameraMode::UserControlled),
-        // B6 migrated to pbrt-backed - see pbrt_scenes/cornell-thin-glass.pbrt.
-        // legacy_id 173. build_cornell_thin_glass()/build_cornell_thin_glass_lights()
-        // have no other consumers - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B6", 173, SceneNames::CornellThinGlass, SceneCategories::Materials,
             "Cornell box with a vertical thin-glass panel, analytic multi-bounce Fresnel (pbrt-v4 ThinDielectricBxDF)",
             "Medium", "cornell-thin-glass.pbrt", CameraMode::UserControlled),
-        // B7 migrated to pbrt-backed - see pbrt_scenes/cornell-coated-conductor.pbrt.
-        // legacy_id 174. build_cornell_coated_conductor() has no other
-        // consumers - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B7", 174, SceneNames::CornellCoatedConductor, SceneCategories::Materials,
             "Cornell box with lacquered-gold sphere and lacquered-copper box (pbrt-v4 CoatedConductorBxDF)",
             "Medium", "cornell-coated-conductor.pbrt", CameraMode::UserControlled),
-        // B8 migrated to pbrt-backed - see pbrt_scenes/cornell-wax-slab.pbrt.
-        // legacy_id 175. build_cornell_wax_slab() has no other consumers -
-        // deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B8", 175, SceneNames::CornellWaxSlab, SceneCategories::Materials,
             "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
@@ -269,10 +246,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B12", 20, SceneNames::NormalMappedCornell, SceneCategories::Materials,
             "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
             "Medium", "normal-mapped-cornell.pbrt", CameraMode::UserControlled),
-        // B13 migrated to pbrt-backed - see pbrt_scenes/subsurface-slab.pbrt.
-        // legacy_id 193. build_subsurface_slab() has no other consumer -
-        // deleted below (build_cornell_box_lights() stays - many other
-        // scenes still use it).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B13", 193, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
@@ -288,10 +261,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D1", 22, SceneNames::DepthOfField, SceneCategories::Cameras,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
             "Medium", "depth-of-field-spheres.pbrt"),
-        // F1 migrated to pbrt-backed - see pbrt_scenes/bilinear-patch-scene.pbrt.
-        // legacy_id 200. build_bilinear_patch_scene()/
-        // build_bilinear_patch_lights() have no other consumer - deleted
-        // below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F1", 200, SceneNames::BilinearPatchScene, SceneCategories::Geometry,
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
@@ -310,61 +279,34 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "C1", 203, SceneNames::HdriSky, SceneCategories::Lights,
             "Open scene lit by a real pbrt-v4 image infinite light (the same procedural gradient native always used, now a real baked .exr on both backends)",
             "Medium", "hdri-sky-gradient.pbrt"),
-        // C2 migrated to pbrt-backed - see pbrt_scenes/cornell-spotlight.pbrt.
-        // legacy_id 176 (next after B8's 175). build_spotlight_cornell()/
-        // build_spotlight_punct() have no other consumers - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C2", 176, SceneNames::SpotlightCornell, SceneCategories::Lights,
             "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
             "Medium", "cornell-spotlight.pbrt", CameraMode::UserControlled),
-        // C3 migrated to pbrt-backed - see pbrt_scenes/cornell-distant-light.pbrt.
-        // legacy_id 177. build_distant_light_cornell()/build_distant_light_punct()
-        // have no other consumers - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C3", 177, SceneNames::DistantLightCornell, SceneCategories::Lights,
             "Cornell box lit by a parallel sun-like distant light (pbrt-v4 DistantLight)",
             "Medium", "cornell-distant-light.pbrt", CameraMode::UserControlled),
-        // C4 migrated to pbrt-backed - see pbrt_scenes/cornell-point-light.pbrt.
-        // legacy_id 178. build_point_light_cornell()/build_point_light_punct()
-        // (CPU) are NOT deleted - tests/integration/sppm_first_slice_test.cpp
-        // calls both directly.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C4", 178, SceneNames::PointLightCornell, SceneCategories::Lights,
             "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
             "Medium", "cornell-point-light.pbrt", CameraMode::UserControlled),
-        // C5 migrated to pbrt-backed - see pbrt_scenes/cornell-goniometric.pbrt.
-        // legacy_id 179 (next after C4's 178). build_goniometric_light_scene()/
-        // build_goniometric_punct() have no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C5", 179, SceneNames::GoniometricLight, SceneCategories::Lights,
             "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
             "Medium", "cornell-goniometric.pbrt", CameraMode::UserControlled),
-        // C6 migrated to pbrt-backed - see pbrt_scenes/cornell-projection.pbrt.
-        // legacy_id 180. build_projection_light_scene()/build_projection_punct()
-        // have no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C6", 180, SceneNames::ProjectionLight, SceneCategories::Lights,
             "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
             "Medium", "cornell-projection.pbrt", CameraMode::UserControlled),
-        // E1 migrated to pbrt-backed - see pbrt_scenes/homogeneous-medium.pbrt.
-        // legacy_id 197. build_homogeneous_medium_scene()/
-        // build_homogeneous_medium_lights() have no other consumer -
-        // deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E1", 197, SceneNames::HomogeneousMedium, SceneCategories::Volumes,
             "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",
             "Slow", "homogeneous-medium.pbrt", CameraMode::UserControlled),
-        // E2 migrated to pbrt-backed - see pbrt_scenes/cloud-medium-scene.pbrt.
-        // legacy_id 198. build_cloud_medium_scene() has no other consumer -
-        // deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E2", 198, SceneNames::CloudMedium, SceneCategories::Volumes,
             "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
             "Slow", "cloud-medium-scene.pbrt"),
-        // E3 migrated to pbrt-backed - see
-        // pbrt_scenes/dielectric-medium-showcase.pbrt. legacy_id 199.
-        // build_dielectric_medium_scene() has no other consumer - deleted
-        // below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E3", 199, SceneNames::DielectricMediumShowcase, SceneCategories::Volumes,
             "Three glass spheres containing colored internal fog at varying density - dielectric surface + participating medium combined (pbrt-v4 style)",
@@ -382,17 +324,10 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "E4", 70, SceneNames::RgbGridMedium, SceneCategories::Volumes,
             "Heterogeneous nebula with an independent per-voxel R/G/B scattering grid (pbrt-v4 RGBGridMedium)",
             "Slow", "rgb-grid-nebula.pbrt"),
-        // D2 migrated to pbrt-backed - see pbrt_scenes/ortho-camera-scene.pbrt.
-        // legacy_id 186 (next after A3's 185). build_ortho_camera_scene()/
-        // build_ortho_sky() have no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D2", 186, SceneNames::OrthographicCamera, SceneCategories::Cameras,
             "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
             "Fast", "ortho-camera-scene.pbrt"),
-        // D3 migrated to pbrt-backed - see pbrt_scenes/spherical-camera-scene.pbrt.
-        // legacy_id 195. Camera type already proven pbrt-representable via
-        // D7's own earlier migration. build_spherical_camera_scene()/
-        // build_spherical_sky() have no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D3", 195, SceneNames::SphericalCamera, SceneCategories::Cameras,
             "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
@@ -440,9 +375,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
             "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (CPU --spectral, GPU --wavefront with real continuous-wavelength dispersion, and GPU-recursive with the same 3-representative-wavelength approximation as B23)",
             "Medium", "frosted-prism-dispersion.pbrt", CameraMode::UserControlled),
-        // C7 migrated to pbrt-backed - see pbrt_scenes/portal-window-room.pbrt.
-        // legacy_id 194. build_portal_light_scene()/build_portal_sky() have
-        // no other consumer - deleted below.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C7", 194, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
             "Room scene with a sky visible through a windowed wall aperture (a flat sky_light behind a geometric hole, NOT the real pbrt-v4 PortalImageInfiniteLight class - see pbrt_scenes/portal-light.pbrt for that)",
@@ -536,32 +468,22 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "F4", 189, SceneNames::CurveFibers, SceneCategories::Geometry,
             "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection on CPU, not the sphere+HairBxDF trick scene B11 uses. GPU renders the same 70 strands tessellated into tapered tubes of bilinear patches (matches pbrt-v4's own GPU curve strategy) rather than an exact curve intersection, so the tube surface reads slightly faceted up close.",
             "Fast", "curve-fibers-scene.pbrt"),
-        // G1 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-bunny.pbrt (legacy_id 38 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G1", 38, SceneNames::StanfordBunny, SceneCategories::Models,
             "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
             "Very Slow", "mesh-stanford-bunny.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G2 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-armadillo.pbrt (legacy_id 39 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G2", 39, SceneNames::StanfordArmadillo, SceneCategories::Models,
             "Stanford armadillo scan (99,976 triangles) in gunmetal, loaded from an external .obj file (requires models/armadillo.obj)",
             "Very Slow", "mesh-stanford-armadillo.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G3 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-happy-buddha.pbrt (legacy_id 40 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G3", 40, SceneNames::StanfordHappyBuddha, SceneCategories::Models,
             "Stanford happy buddha scan (98,601 triangles) in polished gold, loaded from an external .obj file (requires models/happy-buddha.obj)",
             "Very Slow", "mesh-stanford-happy-buddha.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G4 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-lucy.pbrt (legacy_id 41 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G4", 41, SceneNames::StanfordLucy, SceneCategories::Models,
             "Stanford Lucy angel figure (99,970 triangles) in bright silver, loaded from an external .obj file (requires models/lucy.obj)",
             "Very Slow", "mesh-stanford-lucy.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G5 migrated to pbrt-backed - see pbrt_scenes/mesh-stanford-dragon.pbrt (legacy_id 42 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G5", 42, SceneNames::StanfordDragon, SceneCategories::Models,
             "Stanford XYZRGB Dragon (249,882 triangles) in bright silver, loaded from an external .obj file (requires models/xyzrgb_dragon.obj). Camera pulled back/up further than the other mesh scenes' default (0,3,7): the dragon's lunging pose is much wider than tall (~5.4 units wide vs ~3 tall after normalization, similar to scene 43's teapot), and the default statue framing cropped the head and tail.",
@@ -576,188 +498,118 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "G6", 43, SceneNames::UtahTeapot, SceneCategories::Models,
             "The classic Utah Teapot (6,320 triangles) in bright silver, loaded from an external .obj file (requires models/teapot.obj)",
             "Medium", "mesh-utah-teapot.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G7 migrated to pbrt-backed - see pbrt_scenes/mesh-spot-cow.pbrt (legacy_id 44 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G7", 44, SceneNames::SpotCow, SceneCategories::Models,
             "Keenan Crane's Spot the Cow (5,856 triangles) in bright silver, loaded from an external .obj file (requires models/spot.obj)",
             "Slow", "mesh-spot-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G8 migrated to pbrt-backed - see pbrt_scenes/mesh-suzanne.pbrt (legacy_id 45 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G8", 45, SceneNames::Suzanne, SceneCategories::Models,
             "Blender's Suzanne monkey-head mascot (968 triangles after fan-triangulating its mostly-quad faces) in bright silver, loaded from an external .obj file (requires models/suzanne.obj). Unlike every other mesh scene, Suzanne is a disembodied head with no neck/shoulders/pedestal, so grounding its chin at y=0 (the shared statue convention) puts its face well above the generic eye-level camera - the camera below is raised and pulled in closer to look at roughly the model's own eye height instead.",
             "Fast", "mesh-suzanne.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G9 migrated to pbrt-backed - see pbrt_scenes/mesh-nefertiti-bust.pbrt (legacy_id 46 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G9", 46, SceneNames::NefertitiBust, SceneCategories::Models,
             "Scanned bust of Nefertiti (99,938 triangles) in bright silver, loaded from an external .obj file (requires models/nefertiti.obj)",
             "Very Slow", "mesh-nefertiti-bust.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G10 migrated to pbrt-backed - see pbrt_scenes/mesh-horse.pbrt (legacy_id 47 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G10", 47, SceneNames::Horse, SceneCategories::Models,
             "Classic geometry-processing test horse head/neck bust (96,966 triangles) in bright silver, loaded from an external .obj file (requires models/horse.obj)",
             "Very Slow", "mesh-horse.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G11 migrated to pbrt-backed - see pbrt_scenes/mesh-cheburashka.pbrt (legacy_id 48 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G11", 48, SceneNames::Cheburashka, SceneCategories::Models,
             "Beloved cartoon-character bust from Keenan Crane's geometry-processing course (13,334 triangles) in bright silver, loaded from an external .obj file (requires models/cheburashka.obj)",
             "Very Slow", "mesh-cheburashka.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G12 migrated to pbrt-backed - see pbrt_scenes/mesh-trophy-room.pbrt (legacy_id 49 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G12", 49, SceneNames::TrophyRoom, SceneCategories::Models,
             "Four already-loaded meshes (bunny, teapot, Suzanne, Spot the Cow) lined up in bronze/chrome/gold/gunmetal, the first scene to combine multiple external .obj meshes in one composition (requires models/stanford-bunny.obj, teapot.obj, suzanne.obj, spot.obj)",
             "Very Slow", "mesh-trophy-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G13 migrated to pbrt-backed - see pbrt_scenes/mesh-glass-dragon.pbrt (legacy_id 50 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G13", 50, SceneNames::GlassDragon, SceneCategories::Models,
             "Stanford XYZRGB Dragon (249,882 triangles) in clear glass (dielectric, IOR 1.5), loaded from an external .obj file (requires models/xyzrgb_dragon.obj). The dragon's own surface renders persistently noisy at any sample count under EITHER the regular path tracer OR --sppm -- refraction through this deeply concave mesh is a hard case for any unidirectional camera-side estimator (SPPM's photon-density gather only ever helps non-delta/diffuse surfaces, and the dragon is 100% delta-BSDF glass), not a bug. --sppm's real benefit here is a genuine floor caustic from the dragon (CPU only -- GPU SPPM currently supports scene 11 only) that the regular path tracer's NEE can't resolve; a fully clean render of the glass surface itself would need bidirectional path tracing or MLT.",
             "Very Slow", "mesh-glass-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G14 migrated to pbrt-backed - see pbrt_scenes/mesh-beast.pbrt (legacy_id 51 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G14", 51, SceneNames::Beast, SceneCategories::Models,
             "Fantasy creature bust (common-3d-test-models) in bronze, loaded from an external .obj file (requires models/beast.obj)",
             "Very Slow", "mesh-beast.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G15 migrated to pbrt-backed - see pbrt_scenes/mesh-vw-beetle.pbrt (legacy_id 52 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G15", 52, SceneNames::VWBeetle, SceneCategories::Models,
             "Classic CAD-style Volkswagen Beetle in bright chrome, loaded from an external .obj file (requires models/beetle.obj). Elongated along Z after normalization, so the camera is pulled back further than the other mesh scenes, same reasoning as scene 43's Utah Teapot.",
             "Medium", "mesh-vw-beetle.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G17 migrated to pbrt-backed - see pbrt_scenes/mesh-bimba.pbrt (legacy_id 54 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G17", 54, SceneNames::Bimba, SceneCategories::Models,
             "Smooth abstract bust/statue (AIM@SHAPE repository test model) in gold, loaded from an external .obj file (requires models/bimba.obj)",
             "Very Slow", "mesh-bimba.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G18 migrated to pbrt-backed - see pbrt_scenes/mesh-cow.pbrt (legacy_id 55 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G18", 55, SceneNames::Cow, SceneCategories::Models,
             "Classic Viewpoint/Alias Cow test model (distinct from scene 44's Spot the Cow) in brass, loaded from an external .obj file (requires models/cow.obj)",
             "Medium", "mesh-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G19 migrated to pbrt-backed - see pbrt_scenes/mesh-fandisk.pbrt (legacy_id 56 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G19", 56, SceneNames::Fandisk, SceneCategories::Models,
             "Classic CAD mechanical-engineering test model with sharp creases, in gunmetal, loaded from an external .obj file (requires models/fandisk.obj). Camera moved to a three-quarter elevated angle rather than the usual eye-level statue framing - this mesh's proportions are shallow along the default view axis, and a face-on shot showed only a smooth, featureless wedge with none of the sharp creases the model is known for.",
             "Medium", "mesh-fandisk.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G20 migrated to pbrt-backed - see pbrt_scenes/mesh-homer.pbrt (legacy_id 57 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G20", 57, SceneNames::Homer, SceneCategories::Models,
             "Homer Simpson bust in gold, loaded from an external .obj file (requires models/homer.obj)",
             "Medium", "mesh-homer.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G21 migrated to pbrt-backed - see pbrt_scenes/mesh-igea.pbrt (legacy_id 58 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G21", 58, SceneNames::Igea, SceneCategories::Models,
             "Classical Italian bust (Igea, Roman goddess of health) in bright silver, loaded from an external .obj file (requires models/igea.obj). An earlier camera here (raised and looking steeply down) was meant to compensate for this scan's upward-tilted face, but actually framed the shiny crown of the skull instead of the face - lowered/pulled back closer to the other mesh scenes' eye-level convention, which shows the face (eyes, nose, tilted-up chin) correctly.",
             "Very Slow", "mesh-igea.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G22 migrated to pbrt-backed - see pbrt_scenes/mesh-max-planck.pbrt (legacy_id 59 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G22", 59, SceneNames::MaxPlanck, SceneCategories::Models,
             "Scanned bust of physicist Max Planck in aged bronze, loaded from an external .obj file (requires models/max-planck.obj). This scan's face points toward -Z, so the camera sits on that side (unlike the other mesh scenes' +Z default) to actually see the face instead of the back of the head.",
             "Very Slow", "mesh-max-planck.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G23 migrated to pbrt-backed - see pbrt_scenes/mesh-ogre.pbrt (legacy_id 60 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G23", 60, SceneNames::Ogre, SceneCategories::Models,
             "Fantasy ogre head in dark olive metal, loaded from an external .obj file (requires models/ogre.obj)",
             "Very Slow", "mesh-ogre.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // G24 migrated to pbrt-backed - see pbrt_scenes/mesh-rocker-arm.pbrt (legacy_id 61 kept). The
-        // mesh is a models/*.obj read through Shape "plymesh" (ply_mesh.h's OBJ SUPPORT note).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G24", 61, SceneNames::RockerArm, SceneCategories::Models,
             "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scene (G15), but much smaller overall and taller than that comparison suggested - the camera is pulled back/up further than originally set, which cropped the two boss/lobe cylinders at the top of the part. Now visible, those bosses' flat tops catch a strong mirror-like specular highlight from the overhead light - a legitimate result of a flat, low-roughness surface facing a point-ish light, confirmed by testing (repositioning/brightening the light didn't change it), not a bug.",
             "Slow", "mesh-rocker-arm.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H1 migrated to pbrt-backed - see pbrt_scenes/environment-sponza.pbrt (legacy_id 62 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H1", 62, SceneNames::CrytekSponza, SceneCategories::LargeScene,
             "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, with real per-face .mtl materials and image textures (curtains, columns, floor) loaded from models/sponza_textures/, lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",
             "Very Slow", "environment-sponza.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H2 migrated to pbrt-backed - see pbrt_scenes/environment-bistro-exterior.pbrt (legacy_id 63 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H2", 63, SceneNames::AmazonBistro, SceneCategories::LargeScene,
             "Amazon Lumberyard Bistro, Exterior (2.84M triangles) - a full outdoor street block (multiple buildings + plaza), with real per-face .mtl materials and image textures (windows, doors, foliage) loaded from models/bistro_textures/, lit by an open sky, loaded from an external .obj file (requires models/bistro_exterior.obj). Second 'whole environment' mesh scene, same design rationale as scene 62 (Crytek Sponza) -- see build_bistro_exterior()'s own comment. Camera nudged 300 units in Z from the original verified-clear-sightline position: a decorative streetlamp post sat directly in the foreground as a fully-black silhouette blocking most of the frame; the shift turns it into a pleasant framing element instead (visible tree/building behind it) rather than eliminating it.",
             "Very Slow", "environment-bistro-exterior.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H3 migrated to pbrt-backed - see pbrt_scenes/environment-rungholt.pbrt (legacy_id 64 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H3", 64, SceneNames::Rungholt, SceneCategories::LargeScene,
             "Rungholt (6.7M triangles) - a giant blocky Minecraft-style town, with real per-face .mtl material colors (no image textures for this one, unlike scenes 62/63's Sponza/Bistro), loaded from an external .obj file (requires models/rungholt.obj). Third 'whole environment' mesh scene, same design rationale as scenes 62-63 -- see build_rungholt()'s own comment (including a real OBJ-loader bug this mesh exposed and fixed: negative/relative face indices).",
             "Very Slow", "environment-rungholt.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H4 migrated to pbrt-backed - see pbrt_scenes/environment-fireplace-room.pbrt (legacy_id 73 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H4", 73, SceneNames::FireplaceRoom, SceneCategories::LargeScene,
             "Fireplace Room - a small, human-scale furnished living room (fireplace, wood floor, framed pictures, a potted plant), with real per-face .mtl materials and image textures loaded from models/fireplace_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/fireplace_room.obj). Fourth 'whole environment' mesh scene, same design rationale as scenes 62-64 -- see build_fireplace_room()'s own comment. A furnished interior rather than a building/street/town-scale environment.",
             "Slow", "environment-fireplace-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H5 migrated to pbrt-backed - see pbrt_scenes/environment-san-miguel.pbrt (legacy_id 74 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H5", 74, SceneNames::SanMiguel, SceneCategories::LargeScene,
             "San Miguel (9.9M triangles) - a dense Mexican hacienda courtyard/villa, the classic 'hero' benchmark scene with real per-face .mtl materials and image textures (tile, wood, fabric, foliage) loaded from models/san_miguel_textures/, lit by an open sky, loaded from an external .obj file (requires models/san_miguel.obj). Fifth 'whole environment' mesh scene, same design rationale as scenes 62-64/73 -- see build_san_miguel()'s own comment.",
             "Very Slow", "environment-san-miguel.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H6 migrated to pbrt-backed - see pbrt_scenes/environment-sibenik-cathedral.pbrt (legacy_id 75 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H6", 75, SceneNames::SibenikCathedral, SceneCategories::LargeScene,
             "Sibenik Cathedral - a Gothic cathedral interior (vaulted nave, stone columns, a rose window, colored stained glass), with real per-face .mtl materials, image textures, and real bump maps loaded from models/sibenik_cathedral_textures/, lit through its open doorway/arches, loaded from an external .obj file (requires models/sibenik_cathedral.obj). Sixth 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74 -- see build_sibenik_cathedral()'s own comment.",
             "Very Slow", "environment-sibenik-cathedral.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H7 migrated to pbrt-backed - see pbrt_scenes/environment-breakfast-room.pbrt (legacy_id 76 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H7", 76, SceneNames::BreakfastRoom, SceneCategories::LargeScene,
             "Breakfast Room - a cozy furnished dining interior with glassware, table settings, and marble/tile textures, with real per-face .mtl materials and image textures loaded from models/breakfast_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/breakfast_room.obj). Seventh 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74/75 -- see build_breakfast_room()'s own comment.",
             "Very Slow", "environment-breakfast-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H8 migrated to pbrt-backed - see pbrt_scenes/environment-salle-de-bain.pbrt (legacy_id 77 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H8", 77, SceneNames::SalleDeBain, SceneCategories::LargeScene,
             "Salle de Bain - a tiled bathroom interior with a mirror, tub, and a real ceiling light fixture (genuine Ke emission -- exercises the NEE-light path a second time, after Fireplace Room), with real per-face .mtl materials and image textures loaded from models/salle_de_bain_textures/, loaded from an external .obj file (requires models/salle_de_bain.obj). Eighth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-75 -- see build_salle_de_bain()'s own comment.",
             "Slow", "environment-salle-de-bain.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H9 migrated to pbrt-backed - see pbrt_scenes/environment-gallery.pbrt (legacy_id 78 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H9", 78, SceneNames::Gallery, SceneCategories::LargeScene,
             "Gallery - the Hallwyl Museum picture gallery in Stockholm, an ornate room of framed paintings, chandeliers, and a parquet floor, with a real per-face .mtl material and an image texture loaded from models/gallery_textures/, lit by an open sky, loaded from an external .obj file (requires models/gallery.obj). Ninth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-76 -- see build_gallery()'s own comment.",
             "Very Slow", "environment-gallery.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H10 migrated to pbrt-backed - see pbrt_scenes/environment-lost-empire.pbrt (legacy_id 79 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H10", 79, SceneNames::LostEmpire, SceneCategories::LargeScene,
             "Lost Empire - a large half-buried ancient city exported from a Minecraft world, with temple platforms, staircases, and a lava chamber, with real per-face .mtl materials and an image texture loaded from models/lost_empire_textures/, lit by an open sky, loaded from an external .obj file (requires models/lost_empire.obj). Tenth 'whole environment' mesh scene, and the first at a scale (165 units deep) that suits a long video flythrough -- see build_lost_empire()'s own comment.",
             "Slow", "environment-lost-empire.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H11 migrated to pbrt-backed - see pbrt_scenes/environment-vokselia-spawn.pbrt (legacy_id 80 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H11", 80, SceneNames::VokseliaSpawn, SceneCategories::LargeScene,
             "Vokselia Spawn - a small floating voxel island, exported from the same Minecraft world as Lost Empire from its spawn point, with a real per-face .mtl material and an image texture loaded from models/vokselia_spawn_textures/, lit by an open sky, loaded from an external .obj file (requires models/vokselia_spawn.obj). Eleventh 'whole environment' mesh scene -- see build_vokselia_spawn()'s own comment.",
             "Medium", "environment-vokselia-spawn.pbrt", CameraMode::Fixed, /*requires_files=*/true),
-        // H12 migrated to pbrt-backed - see pbrt_scenes/environment-power-plant.pbrt (legacy_id 81 kept). The .mtl materials,
-        // textures, camera and sky were ported by a one-off generator (that file's header lists the
-        // per-material rules); the mesh is a models/*.obj read through Shape "plymesh" "file.obj#material".
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H12", 81, SceneNames::PowerPlant, SceneCategories::LargeScene,
             "Power Plant - a complete model of an actual coal-fired power plant (12.76M triangles, 5.98M vertices), the largest scene in this collection by triangle count, with flat per-face .mtl colors (no image textures), lit by an open sky, loaded from an external .obj file (requires models/powerplant.obj). Twelfth 'whole environment' mesh scene, and the first needing a real coordinate rescale rather than raw OBJ units -- see build_power_plant()'s own comment.",
