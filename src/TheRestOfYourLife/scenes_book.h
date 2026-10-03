@@ -97,41 +97,11 @@ inline hittable_list build_cornell_box() {
 // see pbrt_scenes/earth-globe.pbrt and scene_registry_data.h's own entry.
 // Neither had any other consumer.
 
-/**
- * Build Perlin noise spheres scene
- */
-inline hittable_list build_perlin_spheres() {
-	hittable_list world;
-
-	auto pertext = make_shared<noise_texture>(4);
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(pertext)));
-	world.add(make_shared<sphere>(point3(0,2,0), 2, make_shared<lambertian>(pertext)));
-
-	// Two smaller marble companion spheres (different noise scale for
-	// variety) grouped near the main sphere - was previously just 2 bare
-	// spheres lit only by flat sky ambient with no directed light at all.
-	auto pertext2 = make_shared<noise_texture>(8);
-	world.add(make_shared<sphere>(point3(2.2, 0.8, 1.0), 0.8, make_shared<lambertian>(pertext2)));
-	world.add(make_shared<sphere>(point3(-1.8, 0.6, -1.2), 0.6, make_shared<lambertian>(pertext2)));
-
-	// Warm key light from upper-left - see build_perlin_spheres_lights().
-	auto key = make_shared<diffuse_light>(color(8, 6, 3));
-	world.add(make_shared<quad>(point3(-4,6,-3), vec3(4,0,0), vec3(0,0,4), key));
-
-	return world;
-}
-
-/**
- * Light list for build_perlin_spheres() - the key-light quad, for NEE
- * importance sampling. Replaces sky_dummy_lights() now that the scene has a
- * real light.
- */
-inline hittable_list build_perlin_spheres_lights() {
-	hittable_list lights;
-	auto empty_mat = std::shared_ptr<material>();
-	lights.add(make_shared<quad>(point3(-4,6,-3), vec3(4,0,0), vec3(0,0,4), empty_mat));
-	return lights;
-}
+// build_perlin_spheres()/build_perlin_spheres_lights() deleted - A5 migrated to
+// pbrt-backed, see pbrt_scenes/perlin-spheres.pbrt and scene_registry_data.h's own
+// entry (that file's header has the one deliberate noise-texture substitution).
+// No other consumer (gpu/metal/'s own Perlin scene is an independent hand-ported
+// Metal implementation that never called either function).
 
 // build_quads()/build_quads_lights() (former A6 Colored Quads native CPU
 // builder) deleted - A6 migrated to pbrt-backed, see pbrt_scenes/
@@ -140,27 +110,9 @@ inline hittable_list build_perlin_spheres_lights() {
 // that's a fully independent, hardcoded dispatch unaffected by this C++
 // registry, deliberately out of this migration's scope.
 
-/**
- * Build simple light scene with Perlin spheres
- */
-inline hittable_list build_simple_light() {
-	hittable_list world;
-
-	auto pertext = make_shared<noise_texture>(4);
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(pertext)));
-	world.add(make_shared<sphere>(point3(0,2,0), 2, make_shared<lambertian>(pertext)));
-
-	// Warm sphere light above, cool quad light to the side - previously
-	// both were the same flat white (4,4,4), placed symmetrically, so
-	// there was no color/temperature contrast to read as two distinct
-	// lights rather than one doubled-up source.
-	auto warm_light = make_shared<diffuse_light>(color(6,3,1));
-	world.add(make_shared<sphere>(point3(0,7,0), 2, warm_light));
-	auto cool_light = make_shared<diffuse_light>(color(2,3,6));
-	world.add(make_shared<quad>(point3(3.5,1,-3), vec3(2,0,0), vec3(0,2,0), cool_light));
-
-	return world;
-}
+// build_simple_light() deleted - A7 migrated to pbrt-backed, see
+// pbrt_scenes/simple-light.pbrt and scene_registry_data.h's own entry. No other
+// consumer.
 
 // build_cornell_smoke() deleted - A8 migrated to pbrt-backed, see
 // pbrt_scenes/cornell-smoke.pbrt and scene_registry_data.h's own entry. No
